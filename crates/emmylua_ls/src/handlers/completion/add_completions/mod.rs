@@ -80,7 +80,13 @@ fn get_detail(
             let mut params_str = signature
                 .get_type_params()
                 .iter()
-                .map(|param| param.0.clone())
+                .map(|param| {
+                    if let Some(param_type) = &param.1 {
+                        format!("{}: {}", param.0.clone(), humanize_type(builder.semantic_model.get_db(), param_type))
+                    } else {
+                        format!("{}", param.0.clone())
+                    }
+                })
                 .collect::<Vec<_>>();
 
             match display {

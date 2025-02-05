@@ -2,6 +2,7 @@
 
 # 0.4.5(unreleased)
 
+`NEW` Function completion suggestions now contain type parameters.
 
 # 0.4.4
 
