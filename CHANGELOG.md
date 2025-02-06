@@ -12,6 +12,8 @@
 
 `Fix` Fix a documentation cli tool render issue
 
+`NEW` Constant array tables are now inferred as tuples of elements
+
 # 0.4.4
 
 `NEW` Support generic alias fold
