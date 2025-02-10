@@ -210,6 +210,10 @@ impl LuaDocFuncType {
         }
     }
 
+    pub fn get_name_token(&self) -> Option<LuaNameToken> {
+        self.token()
+    }
+
     pub fn get_params(&self) -> LuaAstChildren<LuaDocTypeParam> {
         self.children()
     }

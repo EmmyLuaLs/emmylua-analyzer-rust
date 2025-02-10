@@ -1,6 +1,7 @@
 use emmylua_code_analysis::SemanticModel;
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaDocFieldKey, LuaDocObjectFieldKey, LuaExpr, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind, LuaVarExpr
+    LuaAst, LuaAstNode, LuaAstToken, LuaDocFieldKey, LuaDocObjectFieldKey, LuaDocType, LuaExpr,
+    LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
 use lsp_types::{SemanticToken, SemanticTokenType};
 use rowan::NodeOrToken;
@@ -210,10 +211,7 @@ fn build_node_semantic_token(
                 builder.push(name.syntax().clone(), SemanticTokenType::PROPERTY);
             }
             if let Some(visiblity_token) = doc_field.get_visibility_token() {
-                builder.push(
-                    visiblity_token.syntax().clone(),
-                    SemanticTokenType::MODIFIER,
-                );
+                builder.push(visiblity_token.syntax().clone(), SemanticTokenType::KEYWORD);
             }
         }
         LuaAst::LuaDocTagDiagnostic(doc_diagnostic) => {
@@ -326,6 +324,32 @@ fn build_node_semantic_token(
                             builder.push(name.syntax().clone(), SemanticTokenType::PROPERTY);
                         }
                         _ => {}
+                    }
+                }
+            }
+        }
+        LuaAst::LuaDocFuncType(doc_func_type) => {
+            let name = doc_func_type.get_name_token()?;
+            builder.push(name.syntax().clone(), SemanticTokenType::KEYWORD);
+            for param in doc_func_type.get_params().into_iter() {
+                if let Some(name) = param.get_name_token() {
+                    builder.push(name.syntax().clone(), SemanticTokenType::PARAMETER);
+
+                    // 类型为`self`时需要特殊处理
+                    if let Some(param_type) = param.get_type() {
+                        match param_type {
+                            LuaDocType::Name(name_type) => {
+                                if let Some(name) = name_type.get_name_token() {
+                                    if name.get_name_text() == "self" {
+                                        builder.push(
+                                            name.syntax().clone(),
+                                            SemanticTokenType::KEYWORD,
+                                        );
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
