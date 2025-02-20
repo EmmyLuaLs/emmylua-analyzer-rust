@@ -4,6 +4,7 @@ use emmylua_code_analysis::{
 };
 
 use emmylua_code_analysis::humanize_type;
+
 pub fn hover_const_type(db: &DbIndex, typ: &LuaType) -> String {
     let const_value = humanize_type(db, typ, RenderLevel::Detailed);
 
@@ -17,31 +18,36 @@ pub fn hover_const_type(db: &DbIndex, typ: &LuaType) -> String {
     }
 }
 
+pub enum HoverFunctionTypeResult {
+    String(String),
+    Signature(String, Vec<String>), // 函数签名, 重载签名与描述
+}
+
 pub fn hover_function_type(
     db: &DbIndex,
     typ: &LuaType,
     function_member: Option<&LuaMember>,
     func_name: &str,
-    is_completion: bool, // 是否在补全时使用
-    overload_index: Option<usize>, // 重载索引, 存在时优先使用重载
-) -> String {
+    is_completion: bool,
+) -> HoverFunctionTypeResult {
     match typ {
-        LuaType::Function => {
-            format!("function {}()", func_name)
-        }
-        LuaType::DocFunction(lua_func) => {
-            hover_doc_function_type(db, &lua_func, function_member, func_name)
-        }
-        LuaType::Signature(signature_id) => hover_signature_type(
+        LuaType::Function => HoverFunctionTypeResult::String(format!("function {}()", func_name)),
+        LuaType::DocFunction(lua_func) => HoverFunctionTypeResult::String(hover_doc_function_type(
             db,
-            signature_id.clone(),
+            &lua_func,
             function_member,
             func_name,
-            is_completion,
-            overload_index,
-        )
-        .unwrap_or(format!("function {}", func_name)),
-        _ => format!("function {}", func_name),
+        )),
+        LuaType::Signature(signature_id) =>
+            hover_signature_type(
+                db,
+                signature_id.clone(),
+                function_member,
+                func_name,
+                is_completion,
+            )
+            .unwrap_or(HoverFunctionTypeResult::String(format!("function {}", func_name))),
+        _ => HoverFunctionTypeResult::String(format!("function {}", func_name)),
     }
 }
 
@@ -147,24 +153,18 @@ fn hover_signature_type(
     signature_id: LuaSignatureId,
     owner_member: Option<&LuaMember>,
     func_name: &str,
-    is_completion: bool,           // 是否在补全时使用
-    overload_index: Option<usize>, // 重载索引, 存在时优先使用重载
-) -> Option<String> {
+    is_completion: bool, // 是否在补全时使用
+) -> Option<HoverFunctionTypeResult> {
     let signature = db.get_signature_index().get(&signature_id)?;
-    let overload = if let Some(index) = overload_index {
-        Some(signature.overloads[index].clone())
-    } else {
-        None
-    };
 
-    let mut type_prev = "function ";
+    let mut type_label = "function ";
     // 有可能来源于类. 例如: `local add = class.add`, `add()`应被视为类定义的内容
-    let full_func_name = if let Some(owner_member) = owner_member {
+    let full_name = if let Some(owner_member) = owner_member {
         let mut name = String::new();
         if let LuaMemberOwner::Type(ty) = &owner_member.get_owner() {
             name.push_str(ty.get_simple_name());
             if signature.is_colon_define {
-                type_prev = "(method) ";
+                type_label = "(method) ";
                 name.push_str(":");
             } else {
                 name.push_str(".");
@@ -178,58 +178,69 @@ fn hover_signature_type(
         func_name.to_string()
     };
 
-    let async_prev = {
-        let is_async;
-        if let Some(overload) = &overload {
-            is_async = overload.is_async();
+    // 构建 signature
+    let signature_info = {
+        let async_label = db
+            .get_property_index()
+            .get_property(LuaPropertyOwnerId::Signature(signature_id))
+            .map(|prop| if prop.is_async { "async " } else { "" })
+            .unwrap_or("");
+        let params = signature
+            .get_type_params()
+            .iter()
+            .map(|param| {
+                let name = param.0.clone();
+                if let Some(ty) = &param.1 {
+                    format!("{}: {}", name, humanize_type(db, ty, RenderLevel::Simple))
+                } else {
+                    name
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let rets = get_signature_rets_string(db, signature, is_completion, None);
+        let mut result = String::new();
+        if type_label.starts_with("function") {
+            result.push_str(async_label);
+            result.push_str(type_label);
         } else {
-            is_async = db
-                .get_property_index()
-                .get_property(LuaPropertyOwnerId::Signature(signature_id))
-                .map(|prop| prop.is_async)
-                .unwrap_or(false);
+            result.push_str(type_label);
+            result.push_str(async_label);
         }
-        if is_async {
-            "async "
-        } else {
-            ""
-        }
+        result.push_str(&full_name);
+        result.push_str("(");
+        result.push_str(params.as_str());
+        result.push_str(")");
+        result.push_str(rets.as_str());
+        result
     };
-
-    let params = if let Some(overload) = &overload {
-        overload.get_params().to_vec()
-    } else {
-        signature.get_type_params().to_vec()
-    }
-    .iter()
-    .map(|param| {
-        let name = param.0.clone();
-        if let Some(ty) = &param.1 {
-            format!("{}: {}", name, humanize_type(db, ty, RenderLevel::Simple))
-        } else {
-            name.to_string()
+    // 构建所有重载
+    let overloads = {
+        let mut overloads = Vec::new();
+        for (_, overload) in signature.overloads.iter().enumerate() {
+            let async_label = if overload.is_async() { "async " } else { "" };
+            let params = overload
+                .get_params()
+                .iter()
+                .map(|param| {
+                    let name = param.0.clone();
+                    if let Some(ty) = &param.1 {
+                        format!("{}: {}", name, humanize_type(db, ty, RenderLevel::Simple))
+                    } else {
+                        name
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let rets = get_signature_rets_string(db, signature, is_completion, Some(overload));
+            overloads.push(format!("{}function {}({}){}", async_label, full_name, params, rets));
         }
-    })
-    .collect::<Vec<_>>()
-    .join(", ");
-
-    let rets = get_signature_rets_string(
-        db,
-        signature,
-        is_completion,
-        overload.as_ref().map(|o| o.as_ref()),
-    );
-
-    let mut result = String::new();
-    result.push_str(type_prev);
-    result.push_str(async_prev);
-    result.push_str(&full_func_name);
-    result.push_str("(");
-    result.push_str(params.as_str());
-    result.push_str(")");
-    result.push_str(rets.as_str());
-
-    Some(result)
+        overloads
+    };
+    Some(HoverFunctionTypeResult::Signature(
+        signature_info,
+        overloads,
+    ))
 }
 
 fn get_signature_rets_string(

@@ -8,16 +8,18 @@ use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 
 use emmylua_code_analysis::humanize_type;
 
-use super::hover_humanize::{hover_const_type, hover_function_type};
+use super::hover_humanize::{hover_const_type, hover_function_type, HoverFunctionTypeResult};
 
 #[derive(Debug)]
 pub struct HoverContent {
-    /// 类型签名
-    pub type_signature: MarkedString,
-    /// 所在路径
+    /// 类型描述, 不包含 overload
+    pub type_description: MarkedString,
+    /// 类的全路径
     pub location_path: Option<MarkedString>,
-    /// 详细描述
-    pub detailed_description: Vec<MarkedString>,
+    /// 函数重载签名, 第一个是重载签名
+    pub signature_overload: Option<Vec<MarkedString>>,
+    /// 注释描述, 包含函数参数与返回值描述
+    pub annotation_description: Vec<MarkedString>,
 }
 
 pub fn build_semantic_info_hover(
@@ -38,7 +40,6 @@ pub fn build_semantic_info_hover(
         Some(typ),
         semantic_info.property_owner.unwrap(),
         false,
-        None,
     );
     if let Some(hover_content) = hover_content {
         build_hover_result(hover_content, document.to_lsp_range(token.text_range()))
@@ -68,18 +69,17 @@ pub fn build_hover_content(
     db: &DbIndex,
     typ: Option<LuaType>,
     property_id: LuaPropertyOwnerId,
-    is_completion: bool, // 是否是补全
-    overload_index: Option<usize>, // 重载索引
+    is_completion: bool, // 是否补全
 ) -> Option<HoverContent> {
     match property_id {
         LuaPropertyOwnerId::LuaDecl(decl_id) => {
             if let Some(semantic_model) = semantic_model {
                 if let Some(typ) = typ {
-                    build_decl_hover(semantic_model, db, typ, decl_id, is_completion, overload_index)
+                    build_decl_hover(semantic_model, db, typ, decl_id, is_completion)
                 } else {
                     let decl = db.get_decl_index().get_decl(&decl_id)?;
                     let typ = decl.get_type()?;
-                    build_decl_hover(semantic_model, db, typ.clone(), decl_id, is_completion, overload_index)
+                    build_decl_hover(semantic_model, db, typ.clone(), decl_id, is_completion)
                 }
             } else {
                 None
@@ -88,11 +88,11 @@ pub fn build_hover_content(
         LuaPropertyOwnerId::Member(member_id) => {
             if let Some(semantic_model) = semantic_model {
                 if let Some(typ) = typ {
-                    build_member_hover(semantic_model, db, typ, member_id, is_completion, overload_index)
+                    build_member_hover(semantic_model, db, typ, member_id, is_completion)
                 } else {
                     let member = db.get_member_index().get_member(&member_id)?;
                     let typ = member.get_decl_type();
-                    build_member_hover(semantic_model, db, typ.clone(), member_id, is_completion, overload_index)
+                    build_member_hover(semantic_model, db, typ.clone(), member_id, is_completion)
                 }
             } else {
                 None
@@ -109,13 +109,13 @@ fn build_decl_hover(
     typ: LuaType,
     decl_id: LuaDeclId,
     is_completion: bool,
-    overload_index: Option<usize>,
 ) -> Option<HoverContent> {
     let decl = db.get_decl_index().get_decl(&decl_id)?;
 
-    let type_signature;
+    let type_description;
+    let mut signature_overload = None;
     let mut location_path = None;
-    let mut detailed_description = Vec::new();
+    let mut annotation_description = Vec::new();
 
     let mut owner_member = None;
     let mut owner_decl = None;
@@ -132,9 +132,25 @@ fn build_decl_hover(
             }
             _ => {}
         }
-        let hover_text =
-            hover_function_type(db, &typ, owner_member, decl.get_name(), is_completion, overload_index);
-        type_signature = MarkedString::from_language_code("lua".to_string(), hover_text);
+        let function_result =
+            hover_function_type(db, &typ, owner_member, decl.get_name(), is_completion);
+
+        match function_result {
+            HoverFunctionTypeResult::String(s) => {
+                type_description = MarkedString::from_language_code("lua".to_string(), s);
+            }
+            HoverFunctionTypeResult::Signature(signature_info, overloads) => {
+                type_description =
+                    MarkedString::from_language_code("lua".to_string(), signature_info);
+                signature_overload = Some(
+                    overloads
+                        .iter()
+                        .map(|o| MarkedString::from_language_code("lua".to_string(), o.to_string()))
+                        .collect(),
+                );
+            }
+        }
+
         if let Some(owner_member) = owner_member {
             if let LuaMemberOwner::Type(ty) = &owner_member.get_owner() {
                 if ty.get_name() != ty.get_simple_name() {
@@ -147,7 +163,6 @@ fn build_decl_hover(
                 }
             }
         }
-        detailed_description.push(MarkedString::String("---".to_string()));
     } else if typ.is_const() {
         let const_value = hover_const_type(db, &typ);
         let prefix = if decl.is_local() {
@@ -155,7 +170,7 @@ fn build_decl_hover(
         } else {
             "(global) "
         };
-        type_signature = MarkedString::from_language_code(
+        type_description = MarkedString::from_language_code(
             "lua".to_string(),
             format!("{}{}: {}", prefix, decl.get_name(), const_value),
         );
@@ -166,44 +181,51 @@ fn build_decl_hover(
         } else {
             "(global) "
         };
-        type_signature = MarkedString::from_language_code(
+        type_description = MarkedString::from_language_code(
             "lua".to_string(),
             format!("{}{}: {}", prefix, decl.get_name(), type_humanize_text),
         );
     }
 
-    // 处理其他
-    let property_owner = LuaPropertyOwnerId::LuaDecl(decl_id);
+    annotation_description.push(MarkedString::String("---".to_string()));
+
     // 如果`decl`没有描述, 则尝试从`owner_member/owner_decl`获取描述
-    if !add_description(db, &mut detailed_description, property_owner) {
-        if let Some(owner_member) = owner_member {
+    add_description(
+        db,
+        &mut annotation_description,
+        LuaPropertyOwnerId::LuaDecl(decl_id),
+    )
+    .or_else(|| {
+        owner_member.and_then(|m: &LuaMember| {
             add_description(
                 db,
-                &mut detailed_description,
-                LuaPropertyOwnerId::Member(owner_member.get_id()),
-            );
-        } else if let Some(owner_decl) = owner_decl {
+                &mut annotation_description,
+                LuaPropertyOwnerId::Member(m.get_id()),
+            )
+        })
+    })
+    .or_else(|| {
+        owner_decl.and_then(|d| {
             add_description(
                 db,
-                &mut detailed_description,
-                LuaPropertyOwnerId::LuaDecl(owner_decl.get_id()),
-            );
+                &mut annotation_description,
+                LuaPropertyOwnerId::LuaDecl(d.get_id()),
+            )
+        })
+    });
+
+    if let LuaType::Signature(signature_id) = typ {
+        add_signature_param_description(db, &mut annotation_description, signature_id);
+        if is_completion {
+            add_signature_ret_description(db, &mut annotation_description, signature_id);
         }
     }
 
-    if overload_index.is_none() { // 重载没有参数说明与返回值说明
-        if let LuaType::Signature(signature_id) = typ {
-            add_signature_param_description(db, &mut detailed_description, signature_id);
-            if is_completion {
-                add_signature_ret_description(db, &mut detailed_description, signature_id);
-            }
-        } 
-    }
-
     Some(HoverContent {
-        type_signature,
+        type_description,
         location_path,
-        detailed_description,
+        signature_overload,
+        annotation_description,
     })
 }
 
@@ -213,7 +235,6 @@ fn build_member_hover(
     typ: LuaType,
     member_id: LuaMemberId,
     is_completion: bool,
-    overload_index: Option<usize>,
 ) -> Option<HoverContent> {
     let member = db.get_member_index().get_member(&member_id)?;
     let member_name = match member.get_key() {
@@ -222,23 +243,37 @@ fn build_member_hover(
         _ => return None,
     };
 
-    let type_signature;
+    let type_description;
+    let mut signature_overload = None;
     let mut location_path = None;
-    let mut detailed_description = Vec::new();
+    let mut annotation_description = Vec::new();
 
     let mut function_member = None;
     if typ.is_function() {
         function_member = get_member_function_member(semantic_model, member_id);
-        let hover_text = hover_function_type(
+        let function_result = hover_function_type(
             db,
             &typ,
             function_member.or_else(|| Option::from(member)),
             &member_name,
             is_completion,
-            overload_index,
         );
 
-        type_signature = MarkedString::from_language_code("lua".to_string(), hover_text);
+        match function_result {
+            HoverFunctionTypeResult::String(s) => {
+                type_description = MarkedString::from_language_code("lua".to_string(), s);
+            }
+            HoverFunctionTypeResult::Signature(signature_info, overloads) => {
+                type_description =
+                    MarkedString::from_language_code("lua".to_string(), signature_info);
+                signature_overload = Some(
+                    overloads
+                        .iter()
+                        .map(|o| MarkedString::from_language_code("lua".to_string(), o.to_string()))
+                        .collect(),
+                );
+            }
+        }
 
         let valid_member = function_member.as_ref().unwrap_or(&member);
         if let LuaMemberOwner::Type(ty) = &valid_member.get_owner() {
@@ -251,60 +286,58 @@ fn build_member_hover(
                 )));
             }
         }
-        detailed_description.push(MarkedString::String("---".to_string()));
     } else if typ.is_const() {
         let const_value = hover_const_type(db, &typ);
-        type_signature = MarkedString::from_language_code(
+        type_description = MarkedString::from_language_code(
             "lua".to_string(),
             format!("(field) {}: {}", member_name, const_value),
         );
     } else {
         let type_humanize_text = humanize_type(db, &typ, RenderLevel::Simple);
-        type_signature = MarkedString::from_language_code(
+        type_description = MarkedString::from_language_code(
             "lua".to_string(),
             format!("(field) {}: {}", member_name, type_humanize_text),
         );
     }
-
+    annotation_description.push(MarkedString::String("---".to_string()));
     // 如果`decl`没有描述, 则从`owner_member`获取描述
-    if !add_description(
+    add_description(
         db,
-        &mut detailed_description,
+        &mut annotation_description,
         LuaPropertyOwnerId::Member(member_id),
-    ) {
-        if let Some(owner_member) = function_member {
+    )
+    .or_else(|| {
+        function_member.and_then(|m| {
             add_description(
                 db,
-                &mut detailed_description,
-                LuaPropertyOwnerId::Member(owner_member.get_id()),
-            );
-        }
-    }
+                &mut annotation_description,
+                LuaPropertyOwnerId::Member(m.get_id()),
+            )
+        })
+    });
 
-    if overload_index.is_none() { // 重载没有参数说明与返回值说明   
-        if let LuaType::Signature(signature_id) = typ {
-            add_signature_param_description(db, &mut detailed_description, signature_id);
-            if is_completion {
-                add_signature_ret_description(db, &mut detailed_description, signature_id);
-            }
+    if let LuaType::Signature(signature_id) = typ {
+        add_signature_param_description(db, &mut annotation_description, signature_id);
+        if is_completion {
+            add_signature_ret_description(db, &mut annotation_description, signature_id);
         }
     }
 
     Some(HoverContent {
-        type_signature,
+        type_description,
         location_path,
-        detailed_description,
+        signature_overload,
+        annotation_description,
     })
 }
 
 fn build_type_decl_hover(db: &DbIndex, type_decl_id: LuaTypeDeclId) -> Option<HoverContent> {
     let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
-    let type_signature;
-    let mut detailed_description = Vec::new();
+    let type_description;
     if type_decl.is_alias() {
         if let Some(origin) = type_decl.get_alias_origin(db, None) {
             let origin_type = humanize_type(db, &origin, RenderLevel::Detailed);
-            type_signature = MarkedString::from_language_code(
+            type_description = MarkedString::from_language_code(
                 "lua".to_string(),
                 format!("(type alias) {} = {}", type_decl.get_name(), origin_type),
             );
@@ -330,10 +363,10 @@ fn build_type_decl_hover(db: &DbIndex, type_decl_id: LuaTypeDeclId) -> Option<Ho
                     s.push_str(&format!("    | {}\n", type_humanize_text));
                 }
             }
-            type_signature = MarkedString::from_language_code("lua".to_string(), s);
+            type_description = MarkedString::from_language_code("lua".to_string(), s);
         }
     } else if type_decl.is_enum() {
-        type_signature = MarkedString::from_language_code(
+        type_description = MarkedString::from_language_code(
             "lua".to_string(),
             format!("(enum) {}", type_decl.get_name()),
         );
@@ -343,19 +376,23 @@ fn build_type_decl_hover(db: &DbIndex, type_decl_id: LuaTypeDeclId) -> Option<Ho
             &LuaType::Def(type_decl_id.clone()),
             RenderLevel::Detailed,
         );
-        type_signature = MarkedString::from_language_code(
+        type_description = MarkedString::from_language_code(
             "lua".to_string(),
             format!("(class) {}", humanize_text),
         );
     }
-
-    let property_owner = LuaPropertyOwnerId::TypeDecl(type_decl_id);
-    add_description(db, &mut detailed_description, property_owner);
+    let mut annotation_description = Vec::new();
+    add_description(
+        db,
+        &mut annotation_description,
+        LuaPropertyOwnerId::TypeDecl(type_decl_id),
+    );
 
     Some(HoverContent {
-        type_signature,
+        type_description,
         location_path: None,
-        detailed_description,
+        signature_overload: None,
+        annotation_description,
     })
 }
 
@@ -363,15 +400,14 @@ fn add_description(
     db: &DbIndex,
     marked_strings: &mut Vec<MarkedString>,
     property_owner: LuaPropertyOwnerId,
-) -> bool {
-    let mut has_description = false;
+) -> Option<()> {
     if let Some(property) = db.get_property_index().get_property(property_owner.clone()) {
         if let Some(detail) = &property.description {
-            has_description = true;
             marked_strings.push(MarkedString::from_markdown(detail.to_string()));
+            return Some(());
         }
     }
-    has_description
+    None
 }
 
 pub fn add_signature_param_description(
@@ -511,7 +547,7 @@ fn build_hover_result(
     range: Option<lsp_types::Range>,
 ) -> Option<Hover> {
     let mut result = String::new();
-    match hover_content.type_signature {
+    match hover_content.type_description {
         MarkedString::String(s) => {
             result.push_str(&format!("\n{}\n", s));
         }
@@ -528,7 +564,7 @@ fn build_hover_result(
         }
     }
 
-    for marked_string in hover_content.detailed_description {
+    for marked_string in hover_content.annotation_description {
         match marked_string {
             MarkedString::String(s) => {
                 result.push_str(&format!("\n{}\n", s));
@@ -538,6 +574,22 @@ fn build_hover_result(
             }
         }
     }
+
+    // 如果 hover_content.signature_overload 不为空, 则添加签名
+    if let Some(signature_overload) = hover_content.signature_overload {
+        result.push_str("\n---\n");
+        for signature in signature_overload {
+            match signature {
+                MarkedString::String(s) => {
+                    result.push_str(&format!("\n{}\n", s));
+                }
+                MarkedString::LanguageString(s) => {
+                    result.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
+                }
+            }
+        }
+    }
+
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: lsp_types::MarkupKind::Markdown,

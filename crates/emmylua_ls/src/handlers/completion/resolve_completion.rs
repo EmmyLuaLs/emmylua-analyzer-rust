@@ -18,24 +18,22 @@ pub fn resolve_completion(
     // todo: resolve completion
     match completion_data {
         CompletionData::PropertyOwnerId(property_id) => {
-            let hover_content =
-                build_hover_content(semantic_model, db, None, property_id, true, None);
+            let hover_content = build_hover_content(semantic_model, db, None, property_id, true);
             if let Some(hover_content) = hover_content {
                 if client_id.is_vscode() {
-                    build_vscode_completion_item(completion_item, hover_content);
+                    build_vscode_completion_item(completion_item, hover_content, None);
                 } else {
-                    build_other_completion_item(completion_item, hover_content);
+                    build_other_completion_item(completion_item, hover_content, None);
                 }
             }
         }
         CompletionData::Overload((property_id, index)) => {
-            let hover_content =
-                build_hover_content(semantic_model, db, None, property_id, true, Some(index));
+            let hover_content = build_hover_content(semantic_model, db, None, property_id, true);
             if let Some(hover_content) = hover_content {
                 if client_id.is_vscode() {
-                    build_vscode_completion_item(completion_item, hover_content);
+                    build_vscode_completion_item(completion_item, hover_content, Some(index));
                 } else {
-                    build_other_completion_item(completion_item, hover_content);
+                    build_other_completion_item(completion_item, hover_content, Some(index));
                 }
             }
         }
@@ -67,8 +65,17 @@ fn markdown_to_string(marked_strings: Vec<MarkedString>, remove_first_underscore
 fn build_vscode_completion_item(
     completion_item: &mut CompletionItem,
     hover_content: HoverContent,
+    overload_index: Option<usize>,
 ) -> Option<()> {
-    match hover_content.type_signature {
+    let type_description = overload_index
+        .and_then(|index| {
+            hover_content
+                .signature_overload
+                .and_then(|overloads| overloads.get(index).cloned())
+        })
+        .unwrap_or_else(|| hover_content.type_description.clone());
+
+    match type_description {
         MarkedString::String(s) => {
             completion_item.detail = Some(s);
         }
@@ -76,7 +83,7 @@ fn build_vscode_completion_item(
             completion_item.detail = Some(s.value);
         }
     }
-    let documentation = markdown_to_string(hover_content.detailed_description, true);
+    let documentation = markdown_to_string(hover_content.annotation_description, true);
     if !documentation.is_empty() {
         completion_item.documentation = Some(Documentation::MarkupContent(MarkupContent {
             kind: lsp_types::MarkupKind::Markdown,
@@ -89,9 +96,19 @@ fn build_vscode_completion_item(
 fn build_other_completion_item(
     completion_item: &mut CompletionItem,
     hover_content: HoverContent,
+    overload_index: Option<usize>,
 ) -> Option<()> {
     let mut result = String::new();
-    match hover_content.type_signature {
+
+    let type_description = overload_index
+        .and_then(|index| {
+            hover_content
+                .signature_overload
+                .and_then(|overloads| overloads.get(index).cloned())
+        })
+        .unwrap_or_else(|| hover_content.type_description.clone());
+
+    match type_description {
         MarkedString::String(s) => {
             result.push_str(&format!("\n{}\n", s));
         }
@@ -107,7 +124,7 @@ fn build_other_completion_item(
             _ => {}
         }
     }
-    for marked_string in hover_content.detailed_description {
+    for marked_string in hover_content.annotation_description {
         match marked_string {
             MarkedString::String(s) => {
                 result.push_str(&format!("\n{}\n", s));
