@@ -1,6 +1,5 @@
 use emmylua_code_analysis::{
-    DbIndex, LuaFunctionType, LuaMember, LuaMemberKey, LuaMemberOwner, LuaPropertyOwnerId,
-    LuaSignature, LuaSignatureId, LuaType, RenderLevel,
+    DbIndex, LuaFunctionType, LuaMember, LuaMemberKey, LuaMemberOwner, LuaPropertyOwnerId, LuaSignature, LuaSignatureId, LuaType, RenderLevel
 };
 
 use emmylua_code_analysis::humanize_type;
