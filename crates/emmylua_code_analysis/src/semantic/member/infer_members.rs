@@ -56,7 +56,8 @@ fn infer_normal_members(db: &DbIndex, member_owner: LuaMemberOwner) -> InferMemb
     let mut members = Vec::new();
     let member_index = db.get_member_index();
     let member_map = member_index.get_member_map(member_owner)?;
-    for member_id in member_map.values() {
+    for member_one in member_map.values() {
+        let member_id = member_one.get_member_id();
         let member = member_index.get_member(member_id)?;
         members.push(LuaMemberInfo {
             property_owner_id: Some(LuaPropertyOwnerId::Member(*member_id)),
@@ -88,7 +89,8 @@ fn infer_custom_type_members(
     let mut members = Vec::new();
     let member_index = db.get_member_index();
     let member_map = member_index.get_member_map(LuaMemberOwner::Type(type_decl_id.clone()))?;
-    for member_id in member_map.values() {
+    for member_one in member_map.values() {
+        let member_id = member_one.get_member_id();
         let member = member_index.get_member(member_id)?;
         members.push(LuaMemberInfo {
             property_owner_id: Some(LuaPropertyOwnerId::Member(*member_id)),

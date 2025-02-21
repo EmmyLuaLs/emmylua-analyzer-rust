@@ -66,7 +66,7 @@ fn goto_type_member(
         .get_db()
         .get_member_index()
         .get_member_map(member_owner)?;
-    let member_id = member_map.get(&LuaMemberKey::Name(member_name.to_string().into()))?;
+    let member_id = member_map.get(&LuaMemberKey::Name(member_name.to_string().into()))?.get_member_id();
     let member = semantic_model
         .get_db()
         .get_member_index()

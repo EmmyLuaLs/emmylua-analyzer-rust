@@ -451,8 +451,8 @@ fn get_super_member_id(
             .get_member_index()
             .get_member_map(member_owner)?;
 
-        if let Some(member_id) = member_map.get(&member_key) {
-            return Some(member_id.clone());
+        if let Some(member_one) = member_map.get(&member_key) {
+            return Some(member_one.get_member_id().clone());
         }
 
         let super_types = semantic_model

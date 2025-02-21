@@ -79,12 +79,12 @@ fn merge_def_type_with_table(
         .cloned()
         .collect::<Vec<_>>();
     let def_owner = LuaMemberOwner::Type(def_id);
-    for member_id in expr_members {
+    for member_one in expr_members {
+        let member_id = member_one.get_member_id();
         let member = member_index
             .get_member(&member_id)?
             .with_owner(def_owner.clone());
         member_index.add_member(member);
     }
-
     Some(())
 }

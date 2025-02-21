@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 
 use crate::{
-    humanize_type, DbIndex, LuaMemberKey, LuaMemberOwner, LuaType, LuaTypeDeclId,
-    RenderLevel,
+    humanize_type, DbIndex, LuaMemberKey, LuaMemberOwner, LuaType, LuaTypeDeclId, RenderLevel,
 };
 
 use super::{
-    check_general_type_compact, is_sub_type_of, type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard, TypeCheckResult
+    check_general_type_compact, is_sub_type_of, type_check_fail_reason::TypeCheckFailReason,
+    type_check_guard::TypeCheckGuard, TypeCheckResult,
 };
 
 pub fn check_ref_type_compact(
     db: &DbIndex,
     source_id: &LuaTypeDeclId,
     compact_type: &LuaType,
-    check_guard: TypeCheckGuard
+    check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     let type_decl = db
         .get_type_index()
@@ -23,7 +23,12 @@ pub fn check_ref_type_compact(
 
     if type_decl.is_alias() {
         if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-            return check_general_type_compact(db, &origin_type, compact_type, check_guard.next_level()?);
+            return check_general_type_compact(
+                db,
+                &origin_type,
+                compact_type,
+                check_guard.next_level()?,
+            );
         }
         if let Some(members) = type_decl.get_alias_union_members() {
             for member_id in members {
@@ -32,8 +37,13 @@ pub fn check_ref_type_compact(
                     .get_member(member_id)
                     .ok_or(TypeCheckFailReason::TypeNotMatch)?;
                 let alias_member_type = member.get_decl_type();
-                if check_general_type_compact(db, alias_member_type, compact_type, check_guard.next_level()?)
-                    .is_ok()
+                if check_general_type_compact(
+                    db,
+                    alias_member_type,
+                    compact_type,
+                    check_guard.next_level()?,
+                )
+                .is_ok()
                 {
                     return Ok(());
                 }
@@ -55,12 +65,20 @@ pub fn check_ref_type_compact(
                     LuaMemberKey::None => continue,
                 };
 
-                if check_general_type_compact(db, &fake_type, compact_type, check_guard.next_level()?).is_ok() {
+                if check_general_type_compact(
+                    db,
+                    &fake_type,
+                    compact_type,
+                    check_guard.next_level()?,
+                )
+                .is_ok()
+                {
                     return Ok(());
                 }
             }
         } else {
-            for member_id in member_map.values() {
+            for member_one in member_map.values() {
+                let member_id = member_one.get_member_id();
                 let member = db
                     .get_member_index()
                     .get_member(member_id)
@@ -72,8 +90,13 @@ pub fn check_ref_type_compact(
                     _ => member_type,
                 };
 
-                if check_general_type_compact(db, member_fake_type, compact_type, check_guard.next_level()?)
-                    .is_ok()
+                if check_general_type_compact(
+                    db,
+                    member_fake_type,
+                    compact_type,
+                    check_guard.next_level()?,
+                )
+                .is_ok()
                 {
                     return Ok(());
                 }
@@ -112,7 +135,7 @@ fn check_ref_type_compact_table(
     db: &DbIndex,
     source_type_id: &LuaTypeDeclId,
     table_owner: LuaMemberOwner,
-    check_guard: TypeCheckGuard
+    check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     let member_index = db.get_member_index();
     let table_member_map = match member_index.get_member_map(table_owner.clone()) {
@@ -127,20 +150,27 @@ fn check_ref_type_compact_table(
         None => return Ok(()),
     };
 
-    for (key, type_member_id) in source_type_members {
+    for (key, type_member_one) in source_type_members {
+        let type_member_id = type_member_one.get_member_id();
         let source_type_member = member_index
             .get_member(type_member_id)
             .ok_or(TypeCheckFailReason::TypeNotMatch)?;
 
         let source_member_type = source_type_member.get_decl_type();
 
-        if let Some(table_member_id) = table_member_map.get(key) {
+        if let Some(table_member_one) = table_member_map.get(key) {
+            let table_member_id = table_member_one.get_member_id();
             let table_member = member_index
                 .get_member(table_member_id)
                 .ok_or(TypeCheckFailReason::TypeNotMatch)?;
             let table_member_type = table_member.get_decl_type();
-            if !check_general_type_compact(db, source_member_type, table_member_type, check_guard.next_level()?)
-                .is_ok()
+            if !check_general_type_compact(
+                db,
+                source_member_type,
+                table_member_type,
+                check_guard.next_level()?,
+            )
+            .is_ok()
             {
                 return Err(TypeCheckFailReason::TypeNotMatchWithReason(
                     t!(
@@ -170,7 +200,8 @@ fn check_ref_type_compact_table(
                 .clone(),
         );
         for super_type in supers {
-            let result = check_general_type_compact(db, &super_type, &table_type, check_guard.next_level()?);
+            let result =
+                check_general_type_compact(db, &super_type, &table_type, check_guard.next_level()?);
             if !result.is_ok() {
                 return result;
             }

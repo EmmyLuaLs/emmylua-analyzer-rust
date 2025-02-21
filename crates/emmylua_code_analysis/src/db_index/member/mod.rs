@@ -1,6 +1,9 @@
 mod lua_member;
 
-use std::collections::HashMap;
+use std::{
+    collections::{hash_map, HashMap},
+    sync::Arc,
+};
 
 use crate::FileId;
 pub use lua_member::{LuaMember, LuaMemberId, LuaMemberKey, LuaMemberOwner};
@@ -11,8 +14,24 @@ use super::traits::LuaIndex;
 pub struct LuaMemberIndex {
     members: HashMap<LuaMemberId, LuaMember>,
     in_field_members: HashMap<FileId, Vec<LuaMemberId>>,
-    owner_members: HashMap<LuaMemberOwner, HashMap<LuaMemberKey, LuaMemberId>>,
+    owner_members: HashMap<LuaMemberOwner, HashMap<LuaMemberKey, OneOrMulti>>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum OneOrMulti {
+    One(LuaMemberId),
+    Multi(Arc<Vec<LuaMemberId>>),
+}
+
+impl OneOrMulti {
+    pub fn get_member_id(&self) -> &LuaMemberId {
+        match self {
+            OneOrMulti::One(id) => id,
+            OneOrMulti::Multi(ids) => ids.first().unwrap(),
+        }
+    }
+}
+
 
 impl LuaMemberIndex {
     pub fn new() -> Self {
@@ -28,10 +47,29 @@ impl LuaMemberIndex {
         let owner = member.get_owner();
         let key = member.get_key().clone();
         if !owner.is_none() {
-            self.owner_members
-                .entry(owner)
-                .or_insert_with(HashMap::new)
-                .entry(key).or_insert(id);
+            let member_map = self.owner_members.entry(owner).or_insert_with(HashMap::new);
+
+            match member_map.entry(key) {
+                hash_map::Entry::Occupied(mut entry) => match entry.get_mut() {
+                    OneOrMulti::One(old_id) => {
+                        if *old_id != id {
+                            *entry.into_mut() =
+                                OneOrMulti::Multi(Arc::new(vec![old_id.clone(), id]));
+                        }
+                    }
+                    OneOrMulti::Multi(ids) => {
+                        Arc::get_mut(ids).and_then(|ids| {
+                            if !ids.contains(&id) {
+                                ids.push(id);
+                            }
+                            Some(())
+                        });
+                    }
+                },
+                hash_map::Entry::Vacant(entry) => {
+                    entry.insert(OneOrMulti::One(id));
+                }
+            }
         }
         let file_id = member.get_file_id();
         self.in_field_members
@@ -47,10 +85,29 @@ impl LuaMemberIndex {
         let key = member.get_key().clone();
         member.owner = owner.clone();
 
-        self.owner_members
-            .entry(owner)
-            .or_insert_with(HashMap::new)
-            .entry(key).or_insert(id);
+        let member_map = self.owner_members.entry(owner).or_insert_with(HashMap::new);
+
+        match member_map.entry(key) {
+            hash_map::Entry::Occupied(mut entry) => match entry.get_mut() {
+                OneOrMulti::One(old_id) => {
+                    if *old_id != id {
+                        *entry.into_mut() =
+                            OneOrMulti::Multi(Arc::new(vec![old_id.clone(), id]));
+                    }
+                }
+                OneOrMulti::Multi(ids) => {
+                    Arc::get_mut(ids).and_then(|ids| {
+                        if !ids.contains(&id) {
+                            ids.push(id);
+                        }
+                        Some(())
+                    });
+                }
+            },
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(OneOrMulti::One(id));
+            }
+        }
 
         Some(())
     }
@@ -66,7 +123,7 @@ impl LuaMemberIndex {
     pub fn get_member_map(
         &self,
         owner: LuaMemberOwner,
-    ) -> Option<&HashMap<LuaMemberKey, LuaMemberId>> {
+    ) -> Option<&HashMap<LuaMemberKey, OneOrMulti>> {
         self.owner_members.get(&owner)
     }
 }
@@ -91,7 +148,13 @@ impl LuaIndex for LuaMemberIndex {
 
     fn fill_snapshot_info(&self, info: &mut HashMap<String, String>) {
         info.insert("member.members".to_string(), self.members.len().to_string());
-        info.insert("member.in_field_members".to_string(), self.in_field_members.len().to_string());
-        info.insert("member.owner_members".to_string(), self.owner_members.len().to_string());
+        info.insert(
+            "member.in_field_members".to_string(),
+            self.in_field_members.len().to_string(),
+        );
+        info.insert(
+            "member.owner_members".to_string(),
+            self.owner_members.len().to_string(),
+        );
     }
 }

@@ -110,7 +110,10 @@ fn add_type_ref_completion(
                 .iter()
                 .map(|it| it.clone())
                 .collect::<Vec<_>>();
-            let member_ids = member_map.values().map(|it| it.clone()).collect::<Vec<_>>();
+            let member_ids = member_map
+                .values()
+                .map(|it| it.get_member_id().clone())
+                .collect::<Vec<_>>();
             add_enum_members_completion(builder, member_ids, &type_ref_id, locations);
         }
 

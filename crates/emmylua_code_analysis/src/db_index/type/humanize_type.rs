@@ -97,8 +97,7 @@ fn humanize_def_type(db: &DbIndex, id: &LuaTypeDeclId, level: RenderLevel) -> St
     let full_name = type_decl.get_full_name();
     let generic = db.get_type_index().get_generic_params(id);
     if generic.is_none() {
-        return humanize_simple_type(db, id, &full_name, level)
-            .unwrap_or(full_name.to_string());
+        return humanize_simple_type(db, id, &full_name, level).unwrap_or(full_name.to_string());
     }
 
     let generic_names = generic
@@ -124,8 +123,9 @@ fn humanize_simple_type(
     let member_index = db.get_member_index();
     let member_map = member_index.get_member_map(member_owner)?;
     let mut member_vec = Vec::new();
-    for (member_key, member_id) in member_map {
-        let member = member_index.get_member(member_id)?;
+    for (member_key, member_one) in member_map {
+        let member_id = member_one.get_member_id();
+        let member = member_index.get_member(&member_id)?;
         let typ = member.get_decl_type();
         if !typ.is_signature() {
             member_vec.push((member_key, typ));
@@ -414,7 +414,8 @@ fn humanize_table_const_type_detail_and_simple(
     let mut total_length = 0;
     let mut total_line = 0;
     let mut members_string = String::new();
-    for (member_key, member_id) in member_vec {
+    for (member_key, member_one) in member_vec {
+        let member_id = member_one.get_member_id();
         let member_value = match member_index.get_member(member_id) {
             Some(value) => value,
             None => continue,
@@ -627,9 +628,13 @@ fn build_table_member_string(
 ) -> String {
     let (member_value, separator) = if level == RenderLevel::Detailed {
         let val = match ty {
-            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => format!("integer = {member_value_string}"),
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
+                format!("integer = {member_value_string}")
+            }
             LuaType::FloatConst(_) => format!("number = {member_value_string}"),
-            LuaType::StringConst(_) | LuaType::DocStringConst(_) => format!("string = {member_value_string}"),
+            LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
+                format!("string = {member_value_string}")
+            }
             LuaType::BooleanConst(_) => format!("boolean = {member_value_string}"),
             _ => member_value_string,
         };

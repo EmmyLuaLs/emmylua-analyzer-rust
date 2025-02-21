@@ -304,7 +304,8 @@ fn check_array_type_compact_table(
     let size = member_map.len();
     for i in 0..size {
         let key = LuaMemberKey::Integer((i + 1) as i64);
-        if let Some(member_id) = member_map.get(&key) {
+        if let Some(member_one) = member_map.get(&key) {
+            let member_id = member_one.get_member_id();
             let member = member_index
                 .get_member(member_id)
                 .ok_or(TypeCheckFailReason::TypeNotMatch)?;
@@ -388,7 +389,8 @@ fn check_tuple_type_compact_table(
     for i in 0..size {
         let source_tuple_member_type = &tuple_members[i];
         let key = LuaMemberKey::Integer((i + 1) as i64);
-        if let Some(member_id) = member_map.get(&key) {
+        if let Some(member_one) = member_map.get(&key) {
+            let member_id = member_one.get_member_id();
             let member = member_index
                 .get_member(member_id)
                 .ok_or(TypeCheckFailReason::TypeNotMatch)?;
@@ -509,7 +511,7 @@ fn check_object_type_compact_member_owner(
         .unwrap_or(&default_map);
 
     for (key, source_type) in source_object.get_fields() {
-        let member_id = match members.get(key) {
+        let member_one = match members.get(key) {
             Some(id) => id,
             None => {
                 if source_type.is_optional() || source_type.is_any() {
@@ -521,6 +523,7 @@ fn check_object_type_compact_member_owner(
                 }
             }
         };
+        let member_id = member_one.get_member_id();
         let member = member_index
             .get_member(member_id)
             .ok_or(TypeCheckFailReason::TypeNotMatch)?;
@@ -618,9 +621,9 @@ fn check_table_generic_compact_member_owner(
             LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
             _ => LuaType::Any,
         };
-
+        let member_id = value.get_member_id();
         let member = member_index
-            .get_member(value)
+            .get_member(member_id)
             .ok_or(TypeCheckFailReason::TypeNotMatch)?;
         let member_type = member.get_decl_type();
         if check_general_type_compact(db, source_key, &key_type, check_guard.next_level()?).is_err()

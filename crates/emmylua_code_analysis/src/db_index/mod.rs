@@ -17,7 +17,7 @@ use crate::{Emmyrc, FileId, Vfs};
 pub use declaration::*;
 pub use diagnostic::{AnalyzeError, DiagnosticAction, DiagnosticActionKind, DiagnosticIndex};
 pub use flow::{LuaFlowChain, LuaFlowIndex};
-pub use member::{LuaMember, LuaMemberId, LuaMemberIndex, LuaMemberKey, LuaMemberOwner};
+pub use member::{LuaMember, LuaMemberId, LuaMemberIndex, LuaMemberKey, LuaMemberOwner, OneOrMulti};
 use meta::MetaFile;
 use module::LuaModuleIndex;
 pub use module::ModuleInfo;

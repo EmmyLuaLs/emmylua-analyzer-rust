@@ -89,7 +89,8 @@ fn generate_class_type_markdown(
         let mut member_vecs = member_map.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>();
         member_vecs.sort_by(|a, b| a.0.cmp(b.0));
 
-        for (member_name, member_id) in member_vecs {
+        for (member_name, member_one) in member_vecs {
+            let member_id = member_one.get_member_id();
             let member = db.get_member_index().get_member(member_id)?;
             let member_typ = member.get_decl_type();
             let member_property_id = LuaPropertyOwnerId::Member(member_id.clone());
@@ -206,7 +207,8 @@ fn generate_enum_type_markdown(
     if let Some(member_map) = member_map {
         let mut member_vecs = member_map.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>();
         member_vecs.sort_by(|a, b| a.0.cmp(b.0));
-        for (member_name, member_id) in member_vecs {
+        for (member_name, member_one) in member_vecs {
+            let member_id = member_one.get_member_id();
             let member = db.get_member_index().get_member(member_id)?;
             let member_typ = member.get_decl_type();
             let member_property_id = LuaPropertyOwnerId::Member(member_id.clone());
