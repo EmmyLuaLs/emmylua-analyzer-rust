@@ -23,6 +23,7 @@ pub use types::*;
 pub struct LuaTypeIndex {
     file_namespace: HashMap<FileId, String>,
     file_using_namespace: HashMap<FileId, Vec<String>>,
+    file_env: HashMap<FileId, String>,
     file_types: HashMap<FileId, Vec<LuaTypeDeclId>>,
     full_name_type_map: HashMap<LuaTypeDeclId, LuaTypeDecl>,
     generic_params: HashMap<LuaTypeDeclId, Vec<(String, Option<LuaType>)>>,
@@ -35,6 +36,7 @@ impl LuaTypeIndex {
         Self {
             file_namespace: HashMap::new(),
             file_using_namespace: HashMap::new(),
+            file_env: HashMap::new(),
             file_types: HashMap::new(),
             full_name_type_map: HashMap::new(),
             generic_params: HashMap::new(),
@@ -60,6 +62,14 @@ impl LuaTypeIndex {
 
     pub fn get_file_using_namespace(&self, file_id: &FileId) -> Option<&Vec<String>> {
         self.file_using_namespace.get(file_id)
+    }
+
+    pub fn add_file_env(&mut self, file_id: FileId, env: String) {
+        self.file_env.insert(file_id, env);
+    }
+
+    pub fn get_file_env(&self, file_id: &FileId) -> Option<&String> {
+        self.file_env.get(file_id)
     }
 
     pub fn add_type_decl(

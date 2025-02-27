@@ -107,6 +107,7 @@ fn build_tokens_semantic_token(
             builder.push(token, SemanticTokenType::NUMBER);
         }
         LuaTokenKind::TkTagClass
+        | LuaTokenKind::TKTagEnv
         | LuaTokenKind::TkTagEnum
         | LuaTokenKind::TkTagInterface
         | LuaTokenKind::TkTagAlias
@@ -227,6 +228,13 @@ fn build_node_semantic_token(
                     }
                 }
             }
+        }
+        LuaAst::LuaDocTagEnv(doc_env) => {
+            let name = doc_env.get_name_token()?;
+            builder.push_with_modifier(
+                name.syntax().clone(), 
+                SemanticTokenType::KEYWORD, 
+            SemanticTokenModifier::DOCUMENTATION);
         }
         LuaAst::LuaDocTagEnum(doc_enum) => {
             let name = doc_enum.get_name_token()?;

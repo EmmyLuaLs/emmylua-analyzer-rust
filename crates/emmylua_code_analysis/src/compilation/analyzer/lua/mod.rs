@@ -6,7 +6,7 @@ mod stats;
 use closure::analyze_closure;
 use emmylua_parser::{LuaAst, LuaAstNode, LuaExpr};
 pub use func_body::LuaReturnPoint;
-use module::analyze_chunk_return;
+use module::{analyze_chunk_return, analyze_chunk_env};
 use stats::{
     analyze_assign_stat, analyze_for_range_stat, analyze_func_stat, analyze_local_func_stat,
     analyze_local_stat, analyze_table_field,
@@ -23,12 +23,25 @@ pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
     let tree_list = context.tree_list.clone();
     for in_filed_tree in &tree_list {
         let root = &in_filed_tree.value;
-        let config = context.config.get_infer_config(in_filed_tree.file_id);
-        let mut analyzer = LuaAnalyzer::new(db, in_filed_tree.file_id, config);
+        let file_id = in_filed_tree.file_id;
+        let config = context.config.get_infer_config(file_id);
+        
+        let mut env_name = String::from("");
+        if let Some(name) =  db.get_type_index_mut().get_file_env(&file_id) {
+            env_name = name.to_string();
+        }
+
+        let mut analyzer = LuaAnalyzer::new(db, file_id, config);
         for node in root.descendants::<LuaAst>() {
             analyze_node(&mut analyzer, node);
         }
-        analyze_chunk_return(&mut analyzer, root.clone());
+
+        if env_name.is_empty() {
+            analyze_chunk_return(&mut analyzer, root.clone());
+        } else {
+            analyze_chunk_env(&mut analyzer, env_name);
+        }
+        
         let unresolved = analyzer.move_unresolved();
         for unresolve in unresolved {
             context.add_unresolve(unresolve);

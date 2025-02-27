@@ -54,6 +54,13 @@ impl LuaReferenceIndex {
             .insert(syntax_id);
     }
 
+    pub fn remove_global_reference(&mut self, name: &str) {
+        let key = SmolStr::new(name);
+        if self.global_references.contains_key(&key) {
+            self.global_references.remove(&key);
+        }
+    }
+
     pub fn add_index_reference(
         &mut self,
         key: LuaMemberKey,

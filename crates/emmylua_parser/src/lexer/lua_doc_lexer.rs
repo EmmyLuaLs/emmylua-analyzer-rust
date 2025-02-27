@@ -478,6 +478,7 @@ impl LuaDocLexer<'_> {
 fn to_tag(text: &str) -> LuaTokenKind {
     match text {
         "class" => LuaTokenKind::TkTagClass,
+        "env" => LuaTokenKind::TKTagEnv,
         "enum" => LuaTokenKind::TkTagEnum,
         "interface" => LuaTokenKind::TkTagInterface,
         "alias" => LuaTokenKind::TkTagAlias,

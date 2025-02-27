@@ -35,6 +35,14 @@ impl LuaDeclIndex {
             .push(decl_id);
     }
 
+    pub fn remove_global_decl(&mut self, name: &str) {
+        let key = SmolStr::new(name);
+        let key = LuaMemberKey::Name(key);
+        if self.global_decl.contains_key(&key) {
+            self.global_decl.remove(&key);
+        }
+    }
+
     pub fn add_decl_tree(&mut self, tree: LuaDeclarationTree) {
         self.decl_trees.insert(tree.file_id(), tree);
     }

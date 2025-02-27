@@ -115,6 +115,19 @@ impl LuaDecl {
     pub fn is_global(&self) -> bool {
         matches!(&self.extra, LuaDeclExtra::Global { .. })
     }
+
+    pub fn set_local(&mut self) {
+        match &self.extra {
+            LuaDeclExtra::Global { kind, decl_type } => {
+                self.extra = LuaDeclExtra::Local {
+                    kind: *kind,
+                    decl_type: decl_type.clone(),
+                    attrib: None,
+                };
+            }
+            _ => {}
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Copy)]
