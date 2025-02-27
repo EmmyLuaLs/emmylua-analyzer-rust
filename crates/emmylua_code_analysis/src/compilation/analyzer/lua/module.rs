@@ -87,7 +87,7 @@ pub fn analyze_chunk_env(analyzer: &mut LuaAnalyzer, name: String) -> Option<()>
                 let name = decl.get_name();
 
                 // 删除全局标记
-                analyzer.db.get_reference_index_mut().remove_global_reference(name);
+                analyzer.db.get_reference_index_mut().remove_global_reference(name, file_id);
                 analyzer.db.get_decl_index_mut().remove_global_decl(name);
 
                 let decl_type = match decl.extra.clone() {

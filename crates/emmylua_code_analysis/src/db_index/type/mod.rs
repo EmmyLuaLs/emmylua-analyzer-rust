@@ -64,8 +64,14 @@ impl LuaTypeIndex {
         self.file_using_namespace.get(file_id)
     }
 
-    pub fn add_file_env(&mut self, file_id: FileId, env: String) {
+    pub fn add_file_env(&mut self, file_id: FileId, env: String) -> Result<(), String> {
+        if let Some(name) = self.get_file_env(&file_id) {
+            return Err(t!("File already contains env tag: '%{name}'", name = name).to_string());
+        }
+
         self.file_env.insert(file_id, env);
+
+        Ok(())
     }
 
     pub fn get_file_env(&self, file_id: &FileId) -> Option<&String> {
@@ -261,6 +267,7 @@ impl LuaIndex for LuaTypeIndex {
     fn remove(&mut self, file_id: FileId) {
         self.file_namespace.remove(&file_id);
         self.file_using_namespace.remove(&file_id);
+        self.file_env.remove(&file_id);
         if let Some(type_id_list) = self.file_types.remove(&file_id) {
             for id in type_id_list {
                 let mut remove_type = false;
@@ -297,6 +304,10 @@ impl LuaIndex for LuaTypeIndex {
         info.insert(
             "type.file_using_namespace".to_string(),
             self.file_using_namespace.len().to_string(),
+        );
+        info.insert(
+            "type.file_env".to_string(), 
+            self.file_env.len().to_string()
         );
         info.insert(
             "type.file_types".to_string(),
