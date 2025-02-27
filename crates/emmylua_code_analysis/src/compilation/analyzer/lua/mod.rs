@@ -26,20 +26,17 @@ pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
         let file_id = in_filed_tree.file_id;
         let config = context.config.get_infer_config(file_id);
         
-        let mut env_name = String::from("");
-        if let Some(name) =  db.get_type_index_mut().get_file_env(&file_id) {
-            env_name = name.to_string();
-        }
-
         let mut analyzer = LuaAnalyzer::new(db, file_id, config);
         for node in root.descendants::<LuaAst>() {
             analyze_node(&mut analyzer, node);
         }
 
-        if env_name.is_empty() {
-            analyze_chunk_return(&mut analyzer, root.clone());
+        let file_env_name = analyzer.db.get_type_index_mut().get_file_env(&file_id);
+        if let Some(name) = file_env_name {
+            let name = name.clone();
+            analyze_chunk_env(&mut analyzer, name);
         } else {
-            analyze_chunk_env(&mut analyzer, env_name);
+            analyze_chunk_return(&mut analyzer, root.clone());
         }
         
         let unresolved = analyzer.move_unresolved();
