@@ -88,7 +88,6 @@ pub enum LuaTokenKind {
 
     // tag
     TkTagClass,     // class
-    TKTagEnv,       // env
     TkTagEnum,      // enum
     TkTagInterface, // interface
     TkTagAlias,     // alias

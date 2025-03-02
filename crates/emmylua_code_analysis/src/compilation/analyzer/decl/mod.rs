@@ -87,9 +87,6 @@ fn walk_node_enter(analyzer: &mut DeclAnalyzer, node: LuaAst) {
         LuaAst::LuaDocTagClass(doc_tag) => {
             docs::analyze_doc_tag_class(analyzer, doc_tag);
         }
-        LuaAst::LuaDocTagEnv(doc_tag) => {
-            docs::analyze_doc_tag_env(analyzer, doc_tag);
-        }
         LuaAst::LuaDocTagEnum(doc_tag) => {
             docs::analyze_doc_tag_enum(analyzer, doc_tag);
         }

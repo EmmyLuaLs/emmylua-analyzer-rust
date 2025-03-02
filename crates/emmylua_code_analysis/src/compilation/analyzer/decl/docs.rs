@@ -1,6 +1,6 @@
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaComment, LuaDocAttribute, LuaDocTag, LuaDocTagAlias,
-    LuaDocTagClass, LuaDocTagEnv, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
+    LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
 };
 use flagset::FlagSet;
 
@@ -15,7 +15,6 @@ pub fn analyze_doc_tag_class(analyzer: &mut DeclAnalyzer, class: LuaDocTagClass)
     let name_token = class.get_name_token()?;
     let name = name_token.get_name_text().to_string();
     let range = name_token.syntax().text_range();
-    let attr = class.get_attrib();
 
     let attrib = get_attrib_value(class.get_attrib());
 
@@ -23,48 +22,27 @@ pub fn analyze_doc_tag_class(analyzer: &mut DeclAnalyzer, class: LuaDocTagClass)
     let r = analyzer.db.get_type_index_mut().add_type_decl(
         file_id,
         range,
-        name,
+        name.clone(),
         LuaDeclTypeKind::Class,
         attrib,
     );
+
+    if let Some(attrib) = attrib {
+        if attrib.contains(LuaTypeAttribute::Env) {
+            let r_add_env = analyzer.db.get_type_index_mut().add_file_env(file_id, name);
+            if let Err(e) = r_add_env {
+                analyzer.db.get_diagnostic_index_mut().add_diagnostic(
+                    file_id,
+                    AnalyzeError::new(DiagnosticCode::MultiEnv, &e, range),
+                );
+            }
+        }
+    }
 
     if let Err(e) = r {
         analyzer.db.get_diagnostic_index_mut().add_diagnostic(
             file_id,
             AnalyzeError::new(DiagnosticCode::DuplicateType, &e, range),
-        );
-    }
-
-    Some(())
-}
-
-pub fn analyze_doc_tag_env(analyzer: &mut DeclAnalyzer, env: LuaDocTagEnv) -> Option<()>{
-    let name_token = env.get_name_token()?;
-    let name = name_token.get_name_text().to_string();
-    let range = name_token.syntax().text_range();
-
-    let file_id = analyzer.get_file_id();
-    let r_add_decl = analyzer.db.get_type_index_mut().add_type_decl(
-        file_id,
-        range,
-        name.clone(),
-        LuaDeclTypeKind::Env,
-        None,
-    );
-
-    let r_add_env = analyzer.db.get_type_index_mut().add_file_env(file_id, name);
-
-    if let Err(e) = r_add_decl {
-        analyzer.db.get_diagnostic_index_mut().add_diagnostic(
-            file_id,
-            AnalyzeError::new(DiagnosticCode::DuplicateType, &e, range),
-        );
-    }
-
-    if let Err(e) = r_add_env {
-        analyzer.db.get_diagnostic_index_mut().add_diagnostic(
-            file_id,
-            AnalyzeError::new(DiagnosticCode::MultiEnv, &e, range),
         );
     }
 
@@ -85,6 +63,9 @@ fn get_attrib_value(attrib: Option<LuaDocAttribute>) -> Option<FlagSet<LuaTypeAt
             // "global" => {
             //     attr |= LuaTypeAttribute::Global;
             // }
+            "env" => {
+                attr |= LuaTypeAttribute::Env;
+            }
             "exact" => {
                 attr |= LuaTypeAttribute::Exact;
             }

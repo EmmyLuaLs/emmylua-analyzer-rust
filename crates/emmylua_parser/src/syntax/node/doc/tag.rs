@@ -13,7 +13,6 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LuaDocTag {
     Class(LuaDocTagClass),
-    Env(LuaDocTagEnv),
     Enum(LuaDocTagEnum),
     Alias(LuaDocTagAlias),
     Type(LuaDocTagType),
@@ -45,7 +44,6 @@ impl LuaAstNode for LuaDocTag {
     fn syntax(&self) -> &LuaSyntaxNode {
         match self {
             LuaDocTag::Class(it) => it.syntax(),
-            LuaDocTag::Env(it) => it.syntax(),
             LuaDocTag::Enum(it) => it.syntax(),
             LuaDocTag::Alias(it) => it.syntax(),
             LuaDocTag::Type(it) => it.syntax(),
@@ -113,9 +111,6 @@ impl LuaAstNode for LuaDocTag {
         match syntax.kind().into() {
             LuaSyntaxKind::DocTagClass => {
                 Some(LuaDocTag::Class(LuaDocTagClass::cast(syntax).unwrap()))
-            }
-            LuaSyntaxKind::DocTagEnv => {
-                Some(LuaDocTag::Env(LuaDocTagEnv::cast(syntax).unwrap()))
             }
             LuaSyntaxKind::DocTagEnum => {
                 Some(LuaDocTag::Enum(LuaDocTagEnum::cast(syntax).unwrap()))
@@ -238,47 +233,6 @@ impl LuaDocTagClass {
     }
 
     pub fn get_attrib(&self) -> Option<LuaDocAttribute> {
-        self.child()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LuaDocTagEnv {
-    syntax: LuaSyntaxNode,
-}
-
-impl LuaAstNode for LuaDocTagEnv {
-    fn syntax(&self) -> &LuaSyntaxNode {
-        &self.syntax
-    }
-
-    fn can_cast(kind: LuaSyntaxKind) -> bool
-    where
-        Self: Sized,
-    {
-        kind == LuaSyntaxKind::DocTagEnv
-    }
-
-    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if Self::can_cast(syntax.kind().into()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-}
-
-impl LuaDocDescriptionOwner for LuaDocTagEnv {}
-
-impl LuaDocTagEnv {
-    pub fn get_name_token(&self) -> Option<LuaNameToken> {
-        self.token()
-    }
-
-    pub fn get_type(&self) -> Option<LuaDocType> {
         self.child()
     }
 }

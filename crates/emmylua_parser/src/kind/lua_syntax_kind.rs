@@ -56,7 +56,6 @@ pub enum LuaSyntaxKind {
 
     // doc tag
     DocTagClass,
-    DocTagEnv,
     DocTagEnum,
     DocTagInterface,
     DocTagAlias,

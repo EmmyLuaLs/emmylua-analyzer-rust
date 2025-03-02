@@ -33,7 +33,6 @@ fn parse_tag_detail(p: &mut LuaDocParser) -> ParseResult {
     match p.current_token() {
         // main tag
         LuaTokenKind::TkTagClass | LuaTokenKind::TkTagInterface => parse_tag_class(p),
-        LuaTokenKind::TKTagEnv => parse_tag_env(p),
         LuaTokenKind::TkTagEnum => parse_tag_enum(p),
         LuaTokenKind::TkTagAlias => parse_tag_alias(p),
         LuaTokenKind::TkTagField => parse_tag_field(p),
@@ -98,17 +97,6 @@ fn parse_tag_class(p: &mut LuaDocParser) -> ParseResult {
 
     p.set_state(LuaDocLexerState::Description);
     parse_description(p);
-    Ok(m.complete(p))
-}
-
-// ---@env <env name>
-fn parse_tag_env(p: &mut LuaDocParser) -> ParseResult {
-    // parse_tag_simple(p, LuaSyntaxKind::DocTagEnv)
-
-    p.set_state(LuaDocLexerState::Normal);
-    let m = p.mark(LuaSyntaxKind::DocTagEnv);
-    p.bump();
-    expect_token(p, LuaTokenKind::TkName)?;
     Ok(m.complete(p))
 }
 
