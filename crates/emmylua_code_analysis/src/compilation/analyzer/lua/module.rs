@@ -114,7 +114,7 @@ pub fn analyze_chunk_env(analyzer: &mut LuaAnalyzer, name: String) -> Option<()>
         for decl_id in decl_list {
             // 标记该decl不再是全局变量
             if let Some(decl) = analyzer.db.get_decl_index_mut().get_decl_mut(&decl_id) {
-                decl.set_local();
+                decl.set_extra_local();
             }
         }
         

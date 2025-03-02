@@ -116,7 +116,7 @@ impl LuaDecl {
         matches!(&self.extra, LuaDeclExtra::Global { .. })
     }
 
-    pub fn set_local(&mut self) {
+    pub fn set_extra_local(&mut self) {
         match &self.extra {
             LuaDeclExtra::Global { kind, decl_type } => {
                 self.extra = LuaDeclExtra::Local {
