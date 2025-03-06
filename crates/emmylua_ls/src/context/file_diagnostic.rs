@@ -84,7 +84,12 @@ impl FileDiagnostic {
         }
     }
 
-    pub async fn add_workspace_diagnostic_task(&self, client_id: ClientId, interval: u64) {
+    pub async fn add_workspace_diagnostic_task(
+        &self,
+        client_id: ClientId,
+        interval: u64,
+        silent: bool,
+    ) {
         let mut token = self.workspace_diagnostic_token.lock().await;
         if let Some(token) = token.as_ref() {
             token.cancel();
@@ -101,7 +106,7 @@ impl FileDiagnostic {
         tokio::spawn(async move {
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(interval)) => {
-                    workspace_diagnostic(analysis, client_proxy, client_id, status_bar, cancel_token).await
+                    workspace_diagnostic(analysis, client_proxy, client_id, status_bar, silent, cancel_token).await
                 }
                 _ = cancel_token.cancelled() => {
                     log::info!("cancel workspace diagnostic");
@@ -125,6 +130,7 @@ async fn workspace_diagnostic(
     client_proxy: Arc<ClientProxy>,
     client_id: ClientId,
     status_bar: Arc<StatusBar>,
+    silent: bool,
     cancel_token: CancellationToken,
 ) {
     let read_analysis = analysis.read().await;
@@ -160,24 +166,37 @@ async fn workspace_diagnostic(
 
     let mut count = 0;
     if valid_file_count != 0 {
-        let text = format!("diagnose {} files", valid_file_count);
-        let _p = Profile::new(text.as_str());
-        status_bar.create_progress_task(client_id, ProgressTask::DiagnoseWorkspace);
-        while let Some(_) = rx.recv().await {
-            count += 1;
+        if silent {
+            while let Some(_) = rx.recv().await {
+                count += 1;
+                if count == valid_file_count {
+                    break;
+                }
+            }
+        } else {
+            let text = format!("diagnose {} files", valid_file_count);
+            let _p = Profile::new(text.as_str());
+            status_bar.create_progress_task(client_id, ProgressTask::DiagnoseWorkspace);
+            while let Some(_) = rx.recv().await {
+                count += 1;
 
-            let message = format!("diagnostic {}/{}", count, valid_file_count);
-            let percentage_done = ((count as f32 / valid_file_count as f32) * 100.0) as u32;
-            status_bar.update_progress_task(
-                client_id,
-                ProgressTask::DiagnoseWorkspace,
-                Some(percentage_done),
-                Some(message),
-            );
+                let message = format!("diagnostic {}/{}", count, valid_file_count);
+                let percentage_done = ((count as f32 / valid_file_count as f32) * 100.0) as u32;
+                status_bar.update_progress_task(
+                    client_id,
+                    ProgressTask::DiagnoseWorkspace,
+                    Some(percentage_done),
+                    Some(message),
+                );
 
-            if count == valid_file_count {
-                status_bar.finish_progress_task(client_id, ProgressTask::DiagnoseWorkspace, None);
-                break;
+                if count == valid_file_count {
+                    status_bar.finish_progress_task(
+                        client_id,
+                        ProgressTask::DiagnoseWorkspace,
+                        None,
+                    );
+                    break;
+                }
             }
         }
     }

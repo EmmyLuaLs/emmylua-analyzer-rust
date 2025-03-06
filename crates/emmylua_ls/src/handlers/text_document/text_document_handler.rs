@@ -14,10 +14,6 @@ pub async fn on_did_open_text_document(
     let mut analysis = context.analysis.write().await;
     let uri = params.text_document.uri;
     let text = params.text_document.text;
-    
-    let workspace = context.workspace_manager.read().await;
-    workspace.cancel_reindex().await;
-    drop(workspace);
 
     let file_id = analysis.update_file_by_uri(&uri, Some(text));
     let emmyrc = analysis.get_emmyrc();
@@ -43,7 +39,9 @@ pub async fn on_did_save_text_document(
         duration = 1000;
     }
     let workspace = context.workspace_manager.read().await;
-    workspace.reindex_workspace(Duration::from_millis(duration)).await;
+    workspace
+        .reindex_workspace(Duration::from_millis(duration))
+        .await;
     Some(())
 }
 
@@ -58,6 +56,10 @@ pub async fn on_did_change_text_document(
     let emmyrc = analysis.get_emmyrc();
     let interval = emmyrc.diagnostics.diagnostic_interval.unwrap_or(500);
     drop(analysis);
+
+    let workspace = context.workspace_manager.read().await;
+    workspace.extend_reindex_delay().await;
+    drop(workspace);
     if let Some(file_id) = file_id {
         context
             .file_diagnostic

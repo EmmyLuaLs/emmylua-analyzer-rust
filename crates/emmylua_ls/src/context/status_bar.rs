@@ -16,6 +16,7 @@ pub struct StatusBar {
 pub enum ProgressTask {
     LoadWorkspace = 0,
     DiagnoseWorkspace = 1,
+    #[allow(dead_code)]
     RefreshIndex = 2,
 }
 
