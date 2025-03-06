@@ -414,7 +414,9 @@ impl LuaAstToken for LuaLiteralToken {
             }
             LuaTokenKind::TkNil => LuaNilToken::cast(syntax).map(LuaLiteralToken::Nil),
             LuaTokenKind::TkDots => LuaGeneralToken::cast(syntax).map(LuaLiteralToken::Dots),
-            LuaTokenKind::TkDocQuestion => LuaGeneralToken::cast(syntax).map(LuaLiteralToken::Question),
+            LuaTokenKind::TkDocQuestion => {
+                LuaGeneralToken::cast(syntax).map(LuaLiteralToken::Question)
+            }
             _ => None,
         }
     }

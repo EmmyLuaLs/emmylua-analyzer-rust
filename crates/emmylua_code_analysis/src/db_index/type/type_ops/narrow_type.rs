@@ -88,6 +88,7 @@ pub fn narrow_down_type(source: LuaType, target: LuaType) -> Option<LuaType> {
             | LuaType::TableGeneric(_) => return Some(source),
             _ => {}
         },
+        LuaType::Unknown => return Some(source),
         _ => return Some(target),
     }
 

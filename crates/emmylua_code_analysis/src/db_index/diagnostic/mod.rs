@@ -109,19 +109,10 @@ impl LuaIndex for DiagnosticIndex {
         self.file_diagnostic_enabled.remove(&file_id);
     }
 
-    fn fill_snapshot_info(&self, info: &mut HashMap<String, String>) {
-        info.insert(
-            "diagnostic_actions".to_string(),
-            self.diagnostic_actions.len().to_string(),
-        );
-        info.insert("diagnostics".to_string(), self.diagnostics.len().to_string());
-        info.insert(
-            "file_diagnostic_disabled".to_string(),
-            self.file_diagnostic_disabled.len().to_string(),
-        );
-        info.insert(
-            "file_diagnostic_enabled".to_string(),
-            self.file_diagnostic_enabled.len().to_string(),
-        );
+    fn clear(&mut self) {
+        self.diagnostic_actions.clear();
+        self.diagnostics.clear();
+        self.file_diagnostic_disabled.clear();
+        self.file_diagnostic_enabled.clear();
     }
 }

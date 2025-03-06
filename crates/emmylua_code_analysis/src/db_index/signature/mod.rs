@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-pub use signature::{LuaSignature, LuaSignatureId, LuaDocParamInfo, LuaDocReturnInfo};
+pub use signature::{
+    LuaDocParamInfo, LuaDocReturnInfo, LuaSignature, LuaSignatureId, SignatureReturnStatus,
+};
 
 use crate::FileId;
 
@@ -23,8 +25,13 @@ impl LuaSignatureIndex {
     }
 
     pub fn get_or_create(&mut self, signature_id: LuaSignatureId) -> &mut LuaSignature {
-        self.in_file_signatures.entry(signature_id.get_file_id()).or_default().insert(signature_id);
-        self.signatures.entry(signature_id).or_insert_with(LuaSignature::new)
+        self.in_file_signatures
+            .entry(signature_id.get_file_id())
+            .or_default()
+            .insert(signature_id);
+        self.signatures
+            .entry(signature_id)
+            .or_insert_with(LuaSignature::new)
     }
 
     pub fn get(&self, signature_id: &LuaSignatureId) -> Option<&LuaSignature> {
@@ -45,7 +52,8 @@ impl LuaIndex for LuaSignatureIndex {
         }
     }
 
-    fn fill_snapshot_info(&self, info: &mut HashMap<String, String>) {
-        info.insert("signature_count".to_string(), self.signatures.len().to_string());
+    fn clear(&mut self) {
+        self.signatures.clear();
+        self.in_file_signatures.clear();
     }
 }

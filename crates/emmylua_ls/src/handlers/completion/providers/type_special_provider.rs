@@ -1,13 +1,12 @@
 use emmylua_code_analysis::{
-    InferGuard, LuaDeclLocation, LuaFunctionType, LuaMemberId, LuaMemberKey, LuaMemberOwner,
-    LuaPropertyOwnerId, LuaType, LuaTypeDeclId, LuaUnionType, RenderLevel,
+    InferGuard, LuaDeclLocation, LuaFunctionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaMultiLineUnion, LuaPropertyOwnerId, LuaType, LuaTypeDeclId, LuaUnionType, RenderLevel
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaExpr,
     LuaNameToken, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
 use itertools::Itertools;
-use lsp_types::CompletionItem;
+use lsp_types::{CompletionItem, Documentation};
 
 use crate::handlers::{
     completion::completion_builder::CompletionBuilder, signature_helper::get_current_param_index,
@@ -19,8 +18,8 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         return None;
     }
 
-    let typs = get_token_should_type(builder)?;
-    for typ in typs {
+    let types = get_token_should_type(builder)?;
+    for typ in types {
         dispatch_type(builder, typ, &mut InferGuard::new());
     }
     Some(())
@@ -47,6 +46,9 @@ fn dispatch_type(
         LuaType::DocStringConst(key) => {
             add_string_completion(builder, key.as_str());
         }
+        LuaType::MultiLineUnion(multi_union) => {
+            add_multi_line_union_member_completion(builder, &multi_union, infer_guard);
+        }
         _ => {}
     }
 
@@ -70,11 +72,7 @@ fn add_type_ref_completion(
         if let Some(origin) = type_decl.get_alias_origin(db, None) {
             return dispatch_type(builder, origin.clone(), infer_guard);
         }
-        let member_ids = type_decl.get_alias_union_members()?.to_vec();
 
-        for member_id in member_ids {
-            add_alias_member_completion(builder, &member_id);
-        }
         builder.stop_here();
     } else if type_decl.is_enum() {
         let owner_id = LuaMemberOwner::Type(type_ref_id.clone());
@@ -279,50 +277,46 @@ fn infer_call_arg_list_overload(
     Some(())
 }
 
-fn add_alias_member_completion(
+fn add_multi_line_union_member_completion(
     builder: &mut CompletionBuilder,
-    member_id: &LuaMemberId,
+    union_typ: &LuaMultiLineUnion,
+    infer_guard: &mut InferGuard,
 ) -> Option<()> {
-    let member = builder
-        .semantic_model
-        .get_db()
-        .get_member_index()
-        .get_member(&member_id)?;
+    for (union_sub_typ, description) in union_typ.get_unions() {
+        let name = match union_sub_typ {
+            LuaType::DocStringConst(s) => to_enum_label(builder, s),
+            LuaType::DocIntegerConst(i) => i.to_string(),
+            _ => {
+                dispatch_type(builder, union_sub_typ.clone(), infer_guard);
+                continue;
+            }
+        };
 
-    let typ = member.get_decl_type();
-    let name = match typ {
-        LuaType::DocStringConst(s) => to_enum_label(builder, s),
-        LuaType::DocIntegerConst(i) => i.to_string(),
-        _ => return None,
-    };
-
-    let property_owner_id = LuaPropertyOwnerId::Member(member_id.clone());
-    let description = if let Some(property) = builder
-        .semantic_model
-        .get_db()
-        .get_property_index()
-        .get_property(property_owner_id)
-    {
-        if property.description.is_some() {
-            Some(*(property.description.clone().unwrap()))
+        let documentation = if let Some(description) = description {
+            Some(Documentation::String(description.clone()))
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
 
-    let completion_item = CompletionItem {
-        label: name,
-        kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-        label_details: Some(lsp_types::CompletionItemLabelDetails {
-            detail: description,
-            description: None,
-        }),
-        ..Default::default()
-    };
+        let label_details = if let Some(description) = description {
+            Some(lsp_types::CompletionItemLabelDetails {
+                detail: None,
+                description: Some(description.clone()),
+            })
+        } else {
+            None
+        };
 
-    builder.add_completion_item(completion_item);
+        let completion_item = CompletionItem {
+            label: name,
+            kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+            label_details,
+            documentation,
+            ..Default::default()
+        };
+
+        builder.add_completion_item(completion_item);
+    }
 
     Some(())
 }

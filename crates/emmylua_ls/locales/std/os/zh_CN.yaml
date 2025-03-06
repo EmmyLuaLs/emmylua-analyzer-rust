@@ -1,0 +1,81 @@
+std.oslib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os"])
+
+std.oslib.clock: |
+  返回程序使用的按秒计 CPU 时间的近似值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.clock"])
+
+std.std.osdate.year: |
+  年份，四位数字
+
+std.std.osdate.wday: |
+  星期几，1-7，星期天为 1
+
+std.std.osdate.yday: |
+  当年的第几天，1-366
+
+std.std.osdate.isdst: |
+  夏令时标记，一个布尔量
+
+std.oslib.date: |
+  返回一个字符串或一个包含日期和时间信息的表，根据给定的字符串 `format` 格式化。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.date"])
+
+std.oslib.difftime: |
+  返回以秒计算的时刻 `t1` 到 `t2` 的差值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.difftime"])
+
+std.oslib.execute: |
+  调用系统解释器执行 `command`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.execute"])
+
+std.oslib.exit: |
+  调用 ISO C 函数 `exit` 终止宿主程序。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.exit"])
+
+std.oslib.getenv: |
+  返回进程环境变量 `varname` 的值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.getenv"])
+
+std.oslib.remove: |
+  删除指定名字的文件。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.remove"])
+
+std.oslib.rename: |
+  将名字为 `oldname` 的文件或目录更名为 `newname`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.rename"])
+
+std.oslib.setlocale: |
+  设置程序的当前区域。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.setlocale"])
+
+std.std.osdateparam.year: |
+  四位数字
+
+std.std.osdateparam.wday: |
+  星期几，1-7，星期天为 1
+
+std.std.osdateparam.yday: |
+  当年的第几天，1-366
+
+std.std.osdateparam.isdst: |
+  夏令时标记，一个布尔量
+
+std.oslib.time: |
+  当不传参数时，返回当前时刻。 如果传入一张表，就返回由这张表表示的时刻。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.time"])
+
+std.oslib.tmpname: |
+  返回一个可用于临时文件的文件名字符串。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-os.tmpname"])

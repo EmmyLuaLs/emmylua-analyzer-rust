@@ -31,7 +31,7 @@ impl LuaIndex for MetaFile {
         self.meta_files.remove(&file_id);
     }
 
-    fn fill_snapshot_info(&self, info: &mut std::collections::HashMap<String, String>) {
-        info.insert("meta_file_count".to_string(), self.meta_files.len().to_string());
+    fn clear(&mut self) {
+        self.meta_files.clear();
     }
 }

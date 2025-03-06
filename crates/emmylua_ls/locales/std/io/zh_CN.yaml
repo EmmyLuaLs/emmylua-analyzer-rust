@@ -1,0 +1,118 @@
+std.iolib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io"])
+
+std.iolib.stdin: |
+  标准输入。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.stdin"])
+
+std.iolib.stdout: |
+  标准输出。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.stdout"])
+
+std.iolib.stderr: |
+  标准错误。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.stderr"])
+
+std.iolib.close: |
+  关闭 `file` 或默认输出文件。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.close"])
+
+std.iolib.flush: |
+  将写入的数据保存到默认输出文件中。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.flush"])
+
+std.iolib.input: |
+  设置 `file` 为默认输入文件。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.input"])
+
+std.iolib.lines: |
+  ```lua
+  for c in io.lines(filename, ...) do
+      body
+  end
+  ```
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.lines"])
+
+std.iolib.open: |
+  用字符串 `mode` 指定的模式打开一个文件。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.open"])
+
+std.iolib.output: |
+  设置 `file` 为默认输出文件。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.output"])
+
+std.iolib.popen: |
+  用一个分离进程开启程序 `prog` 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.popen"])
+
+std.iolib.read: |
+  读文件 `file`， 指定的格式决定了要读什么。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.read"])
+
+std.iolib.tmpfile: |
+  如果成功，返回一个临时文件的句柄。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.tmpfile"])
+
+std.iolib.type: |
+  检查 `obj` 是否是合法的文件句柄。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.type"])
+
+std.iolib.write: |
+  将参数的值逐个写入默认输出文件。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-io.write"])
+
+std.file: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file"])
+
+std.file.close: |
+  关闭 `file`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file:close"])
+
+std.file.flush: |
+  将写入的数据保存到 `file` 中。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file:flush"])
+
+std.file.lines: |
+  ```lua
+  for c in file:lines(...) do
+      body
+  end
+  ```
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file:lines"])
+
+std.file.read: |
+  读文件 `file`， 指定的格式决定了要读什么。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file:read"])
+
+std.file.seek: |
+  设置及获取基于文件开头处计算出的位置。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file:seek"])
+
+std.file.setvbuf: |
+  设置输出文件的缓冲模式。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file:setvbuf"])
+
+std.file.write: |
+  将参数的值逐个写入 `file`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-file:write"])

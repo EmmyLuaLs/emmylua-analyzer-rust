@@ -13,7 +13,7 @@ pub async fn on_formatting_handler(
 ) -> Option<Vec<TextEdit>> {
     let uri = params.text_document.uri;
     let analysis = context.analysis.read().await;
-    let config_manager = context.config_manager.read().await;
+    let config_manager = context.workspace_manager.read().await;
     let client_id = config_manager.client_config.client_id;
 
     let file_id = analysis.get_file_id(&uri)?;

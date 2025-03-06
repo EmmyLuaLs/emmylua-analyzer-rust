@@ -9,6 +9,7 @@ use crate::{
         LuaPropertyOwnerId, LuaType,
     },
     AnalyzeError, DiagnosticCode, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaSignatureId,
+    SignatureReturnStatus,
 };
 
 use super::{infer_type::infer_type, DocAnalyzer};
@@ -222,6 +223,7 @@ fn merge_signature_member(
                 type_ref: typ.clone(),
                 description: None,
             });
+            signature.resolve_return = SignatureReturnStatus::DocResolve;
         }
 
         if f.is_async() {

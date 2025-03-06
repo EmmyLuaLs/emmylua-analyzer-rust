@@ -44,26 +44,6 @@ pub fn resolve_completion(
     Some(())
 }
 
-fn markdown_to_string(marked_strings: Vec<MarkedString>, remove_first_underscore: bool) -> String {
-    let mut result = String::new();
-    let mut first_line = true;
-    for marked_string in marked_strings {
-        match marked_string {
-            MarkedString::String(s) => {
-                if first_line && remove_first_underscore && s == "---" {
-                    first_line = false;
-                } else {
-                    result.push_str(&format!("\n{}\n", s));
-                }
-            }
-            MarkedString::LanguageString(s) => {
-                result.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
-            }
-        }
-    }
-    result.trim_end().to_string()
-}
-
 fn build_vscode_completion_item(
     completion_item: &mut CompletionItem,
     hover_builder: HoverBuilder,
@@ -85,7 +65,34 @@ fn build_vscode_completion_item(
             completion_item.detail = Some(s.value);
         }
     }
-    let documentation = markdown_to_string(hover_builder.annotation_description, true);
+
+    let documentation = {
+        let mut result = String::new();
+        let mut first_line = true;
+        for description in hover_builder.annotation_description {
+            match description {
+                MarkedString::String(s) => {
+                    if first_line && s == "---" {
+                        first_line = false;
+                    } else {
+                        result.push_str(&format!("\n{}\n", s));
+                    }
+                }
+                MarkedString::LanguageString(s) => {
+                    result.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
+                }
+            }
+        }
+
+        if let Some(type_expansion) = hover_builder.type_expansion {
+            for type_expansion in type_expansion {
+                result.push_str(&format!("\n```{}\n{}\n```\n", "lua", type_expansion));
+            }
+        }
+
+        result.trim_end().to_string()
+    };
+
     if !documentation.is_empty() {
         completion_item.documentation = Some(Documentation::MarkupContent(MarkupContent {
             kind: lsp_types::MarkupKind::Markdown,
@@ -136,6 +143,13 @@ fn build_other_completion_item(
             }
         }
     }
+
+    if let Some(type_expansion) = hover_builder.type_expansion {
+        for type_expansion in type_expansion {
+            result.push_str(&format!("\n```{}\n{}\n```\n", "lua", type_expansion));
+        }
+    }
+
     completion_item.documentation = Some(Documentation::MarkupContent(MarkupContent {
         kind: lsp_types::MarkupKind::Markdown,
         value: result,

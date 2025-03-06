@@ -4,7 +4,9 @@ use emmylua_parser::{LuaAstNode, LuaSyntaxId, LuaSyntaxNode, LuaTableExpr};
 use smol_str::SmolStr;
 
 use crate::{
-    db_index::{DbIndex, LuaGenericType, LuaType}, semantic::{infer_expr, LuaInferConfig}, LuaFunctionType, LuaTupleType, LuaUnionType
+    db_index::{DbIndex, LuaGenericType, LuaType},
+    semantic::{infer_expr, LuaInferConfig},
+    LuaFunctionType, LuaTupleType, LuaUnionType,
 };
 
 use super::type_substitutor::TypeSubstitutor;
@@ -303,7 +305,7 @@ fn func_varargs_tpl_pattern_match(
     Some(())
 }
 
-fn variadic_tpl_pattern_match(
+pub fn variadic_tpl_pattern_match(
     tpl: &LuaType,
     target_rest_types: &[LuaType],
     substitutor: &mut TypeSubstitutor,
@@ -346,9 +348,16 @@ fn tuple_tpl_pattern_match(
                 tpl_pattern_match(db, config, root, tpl_type, target_type, substitutor);
             }
         }
-        // LuaType::Array(target_array_base) => {
-            
-        // }
+        LuaType::Array(target_array_base) => {
+            let tupl_tuple_types = tpl_tuple.get_types();
+            let last_type = tupl_tuple_types.last()?;
+            if let LuaType::Variadic(inner) = last_type {
+                if let LuaType::TplRef(tpl_ref) = inner.deref() {
+                    let tpl_id = tpl_ref.get_tpl_id();
+                    substitutor.insert_multi_base(tpl_id, target_array_base.deref().clone());
+                }
+            }
+        }
         _ => {}
     }
 

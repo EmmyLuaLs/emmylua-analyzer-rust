@@ -31,25 +31,6 @@ pub fn check_ref_type_compact(
                 check_guard.next_level()?,
             );
         }
-        if let Some(members) = type_decl.get_alias_union_members() {
-            for member_id in members {
-                let member = db
-                    .get_member_index()
-                    .get_member(member_id)
-                    .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-                let alias_member_type = member.get_decl_type();
-                if check_general_type_compact(
-                    db,
-                    alias_member_type,
-                    compact_type,
-                    check_guard.next_level()?,
-                )
-                .is_ok()
-                {
-                    return Ok(());
-                }
-            }
-        }
 
         return Err(TypeCheckFailReason::TypeNotMatch);
     }

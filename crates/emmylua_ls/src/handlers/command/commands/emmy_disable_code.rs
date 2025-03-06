@@ -12,7 +12,7 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 
 use crate::{
-    context::{ClientProxy, ConfigManager, ServerContextSnapshot},
+    context::{ClientProxy, WorkspaceManager, ServerContextSnapshot},
     util::time_cancel_token,
 };
 
@@ -43,7 +43,7 @@ pub async fn handle(context: ServerContextSnapshot, args: Vec<Value>) -> Option<
             add_disable_file_comment(client, semantic_model, code);
         }
         DisableAction::DisableProject => {
-            add_disable_project(context.config_manager, code).await;
+            add_disable_project(context.workspace_manager, code).await;
         }
     }
 
@@ -317,7 +317,7 @@ pub fn make_disable_code_command(
 }
 
 async fn add_disable_project(
-    config_manager: Arc<RwLock<ConfigManager>>,
+    config_manager: Arc<RwLock<WorkspaceManager>>,
     code: DiagnosticCode,
 ) -> Option<()> {
     let config_manager = config_manager.read().await;

@@ -30,7 +30,7 @@ pub async fn on_did_change_watched_files(
                 }
                 let editorconfig_path = uri_to_file_path(&file_event.uri).unwrap();
                 context
-                    .config_manager
+                    .workspace_manager
                     .read()
                     .await
                     .update_editorconfig(editorconfig_path);
@@ -42,7 +42,7 @@ pub async fn on_did_change_watched_files(
                 let emmyrc_path = uri_to_file_path(&file_event.uri).unwrap();
                 let file_dir = emmyrc_path.parent().unwrap().to_path_buf();
                 context
-                    .config_manager
+                    .workspace_manager
                     .read()
                     .await
                     .add_update_emmyrc_task(file_dir)

@@ -106,12 +106,12 @@
 
 ---@class function
 
----@alias NotNull<T> T - ?
+---@alias std.NotNull<T> T - ?
 
----@alias Nullable<T> T + ?
+---@alias std.Nullable<T> T + ?
 
 --- built-in type for Select function
----@alias Select<T, StartOrLen> unknown
+---@alias std.Select<T, StartOrLen> unknown
 ---
 --- built-in type for Unpack function
----@alias Unpack<T, Start, End> unknown
+---@alias std.Unpack<T, Start, End> unknown

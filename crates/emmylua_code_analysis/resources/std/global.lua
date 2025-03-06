@@ -21,8 +21,19 @@
 ---@generic T
 ---@param v T
 ---@param message? string
----@return NotNull<T>
+---@return std.NotNull<T>
 function assert(v, message) end
+
+---@alias std.collectgarbage_opt
+---|>"collect" # performs a full garbage-collection cycle. This is the default option.
+---| "stop" # stops automatic execution of the garbage collector. The collector will run only when explicitly invoked, until a call to restart it.
+---| "restart" # restarts automatic execution of the garbage collector.
+---| "count" # returns the total memory in use by Lua in Kbytes. The value has a fractional part, so that it multiplied by 1024 gives the exact number of bytes in use by Lua (except for overflows).
+---| "step" # performs a garbage-collection step. The step "size" is controlled by `arg`. With a zero value, the collector will perform one basic (indivisible) step. For non-zero values, the collector will perform as if Lua had allocated that amount of memory (in KBytes). Returns true if the step finished a collection cycle.
+---| "setpause" # sets `arg` as the new value for the *pause* of the collector (see §2.5). Returns the previous value for *pause`.
+---| "incremental" # Change the collector mode to incremental. This option can be followed by three numbers: the garbage-collector pause, the step multiplier, and the step size.
+---| "generational" # Change the collector mode to generational. This option can be followed by two numbers: the garbage-collector minor multiplier and the major multiplier.
+---| "isrunning" # returns a boolean that tells whether the collector is running (i.e., not stopped).
 
 ---
 --- This function is a generic interface to the garbage collector. It performs
@@ -51,11 +62,10 @@ function assert(v, message) end
 --- the major multiplier.
 --- **"isrunning"**: returns a boolean that tells whether the collector is
 --- running (i.e., not stopped).
----@alias collectgarbage_opt "collect"|"stop"|"restart"|"count"|"step"|"setpause"|"incremental"|"generational"|"isrunning"
----@param opt? collectgarbage_opt
----@param arg? string
+---@param opt? std.collectgarbage_opt
+---@param ... any
 ---@return any
-function collectgarbage(opt, arg) end
+function collectgarbage(opt, ...) end
 
 ---
 --- Opens the named file and executes its contents as a Lua chunk. When called
@@ -105,8 +115,13 @@ function getmetatable(object) end
 --- the first absent index.
 ---@generic V
 ---@param t table<any, V> | V[]
----@return fun(tbl: any):int, NotNull<V>
+---@return fun(tbl: any):int, std.NotNull<V>
 function ipairs(t) end
+
+---@alias std.loadmode
+---| "b" # only binary chunks
+---| "t" # only text chunks
+---| "bt" # both binary and text
 
 ---
 --- Loads a chunk.
@@ -139,9 +154,11 @@ function ipairs(t) end
 --- binary chunks can crash the interpreter.
 ---@param chunk (fun():string) | string
 ---@param chunkname? string
----@param mode? string
----@param env? any
+---@param mode? std.loadmode
+---@param env? table
 ---@return fun():any
+---@return string?   error_message
+---@nodiscard
 function load(chunk, chunkname, mode, env) end
 
 
@@ -216,7 +233,7 @@ function next(table, index) end
 --- traversal.
 ---@generic K, V
 ---@param t table<K, V> | V[]
----@return fun(tbl: any):K, NotNull<V>
+---@return fun(tbl: any):K, std.NotNull<V>
 function pairs(t) end
 ---
 --- Calls function `f` with the given arguments in *protected mode*. This
@@ -311,9 +328,40 @@ function require(modname) end
 --- the total number of extra arguments it received.
 ---@generic T, Num: integer | '#'
 ---@param index Num
----@param ... T
----@return Select<T, Num>
+---@param ... T...
+---@return std.Select<T..., Num>
 function select(index, ...) end
+
+
+---@class std.metatable
+---@field __mode 'v'|'k'|'kv'|nil
+---@field __metatable any|nil
+---@field __tostring (fun(t):string)|nil
+---@field __gc fun(t)|nil
+---@field __add (fun(t1,t2):any)|nil
+---@field __sub (fun(t1,t2):any)|nil
+---@field __mul (fun(t1,t2):any)|nil
+---@field __div (fun(t1,t2):any)|nil
+---@field __mod (fun(t1,t2):any)|nil
+---@field __pow (fun(t1,t2):any)|nil
+---@field __unm (fun(t):any)|nil
+---@field __idiv (fun(t1,t2):any)|nil
+---@field __band (fun(t1,t2):any)|nil
+---@field __bor (fun(t1,t2):any)|nil
+---@field __bxor (fun(t1,t2):any)|nil
+---@field __bnot (fun(t):any)|nil
+---@field __shl (fun(t1,t2):any)|nil
+---@field __shr (fun(t1,t2):any)|nil
+---@field __concat (fun(t1,t2):any)|nil
+---@field __len (fun(t):integer)|nil
+---@field __eq (fun(t1,t2):boolean)|nil
+---@field __lt (fun(t1,t2):boolean)|nil
+---@field __le (fun(t1,t2):boolean)|nil
+---@field __index table|(fun(t,k):any)|nil
+---@field __newindex table|fun(t,k,v)|nil
+---@field __call (fun(t,...):...)|nil
+---@field __pairs (fun(t):((fun(t,k,v):any,any),any,any))|nil
+---@field __close (fun(t,errobj):any)|nil
 
 ---
 --- Sets the metatable for the given table. (To change the metatable of other
@@ -324,7 +372,7 @@ function select(index, ...) end
 --- This function returns `table`.
 ---@generic T
 ---@param table T
----@param metatable table
+---@param metatable std.metatable|table
 ---@return T
 function setmetatable(table, metatable) end
 
@@ -343,15 +391,12 @@ function setmetatable(table, metatable) end
 --- represents 10, 'B' represents 11, and so forth, with 'Z' representing 35. If
 --- the string `e` is not a valid numeral in the given base, the function
 --- returns **nil**.
----@overload fun(e:number):number
----@overload fun(e:number, base: int):number
----@overload fun(e:string):number|nil
----@overload fun(e:string, base: int):number|nil
----@overload fun(e:any):nil
----@overload fun(e:any, base:int):nil
+---@overload fun(e:number, base?: int):number
+---@overload fun(e:string, base?: int):number?
+---@overload fun(e:any, base?:int):nil
 ---@param e any
 ---@param base? int
----@return number|nil
+---@return number?
 function tonumber(e, base) end
 
 ---
@@ -366,13 +411,23 @@ function tonumber(e, base) end
 ---@return string
 function tostring(v) end
 
+---@alias std.type
+---| "nil"
+---| "number"
+---| "string"
+---| "boolean"
+---| "table"
+---| "function"
+---| "thread"
+---| "userdata"
+
 ---
 --- Returns the type of its only argument, coded as a string. The possible
 --- results of this function are "`nil`" (a string, not the value **nil**),
 --- "`number`", "`string`", "`boolean`", "`table`", "`function`", "`thread`",
 --- and "`userdata`".
 ---@param v any
----@return string
+---@return std.type type
 function type(v) end
 
 ---

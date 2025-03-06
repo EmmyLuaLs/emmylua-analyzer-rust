@@ -1,0 +1,42 @@
+std.coroutinelib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine"])
+
+std.coroutinelib.create: |
+  创建一个主体函数为 `f` 的新协程。 f 必须是一个 Lua 的函数。 返回这个新协程，它是一个类型为 `"thread"` 的对象。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.create"])
+
+std.coroutinelib.isyieldable: |
+  如果协程 `co` 可以让出，则返回真。`co` 默认为正在运行的协程。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.isyieldable"])
+
+std.coroutinelib.close: |
+  关闭协程 `co`，并关闭它所有等待 *to-be-closed* 的变量，并将协程状态设为 `dead` 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.close"])
+
+std.coroutinelib.resume: |
+  开始或继续协程 `co` 的运行。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.resume"])
+
+std.coroutinelib.running: |
+  返回当前正在运行的协程加一个布尔量。 如果当前运行的协程是主线程，其为真。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.running"])
+
+std.coroutinelib.status: |
+  以字符串形式返回协程 `co` 的状态。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.status"])
+
+std.coroutinelib.wrap: |
+  创建一个主体函数为 `f` 的新协程。 f 必须是一个 Lua 的函数。 返回一个函数， 每次调用该函数都会延续该协程。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.wrap"])
+
+std.coroutinelib.yield: |
+  挂起正在调用的协程的执行。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-coroutine.yield"])

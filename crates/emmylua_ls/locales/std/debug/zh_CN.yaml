@@ -1,0 +1,101 @@
+std.debuglib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug"])
+
+std.debuglib.debug: |
+  进入一个用户交互模式，运行用户输入的每个字符串。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.debug"])
+
+std.debuglib.getfenv: |
+  返回对象 `o` 的环境。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.getfenv"])
+
+std.debuglib.gethook: |
+  返回三个表示线程钩子设置的值： 当前钩子函数，当前钩子掩码，当前钩子计数 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.gethook"])
+
+std.debuglib.getinfo: |
+  返回关于一个函数信息的表。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.getinfo"])
+
+std.debuglib.getlocal: |
+  返回在栈的 `f` 层处函数的索引为 `index` 的局部变量的名字和值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.getlocal"])
+
+std.debuglib.getmetatable: |
+  返回给定 `value` 的元表。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.getmetatable"])
+
+std.debuglib.getregistry: |
+  返回注册表。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.getregistry"])
+
+std.debuglib.getupvalue: |
+  返回函数 `f` 的第 `up` 个上值的名字和值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.getupvalue"])
+
+std.debuglib.getuservalue: |
+  返回关联在 `u` 上的第 `n` 个 `Lua` 值，以及一个布尔，`false`表示值不存在。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.getuservalue"])
+
+std.debuglib.setcstacklimit: |
+  ### **已在 `Lua 5.4.2` 中废弃**
+  ---
+  设置新的C栈限制。该限制控制Lua中嵌套调用的深度，以避免堆栈溢出。
+  ---
+  如果设置成功，该函数返回之前的限制；否则返回`false`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.setcstacklimit"])
+
+std.debuglib.setfenv: |
+  将 `table` 设置为 `object` 的环境。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.setfenv"])
+
+std.debuglib.sethook: |
+  将一个函数作为钩子函数设入。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.sethook"])
+
+std.debuglib.setlocal: |
+  将 `value` 赋给 栈上第 `level` 层函数的第 `local` 个局部变量。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.setlocal"])
+
+std.debuglib.setmetatable: |
+  将 `value` 的元表设为 `table` （可以是 `nil`）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.setmetatable"])
+
+std.debuglib.setupvalue: |
+  将 `value` 设为函数 `f` 的第 `up` 个上值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.setupvalue"])
+
+std.debuglib.setuservalue: |
+  将 `value` 设为 `udata` 的第 `n` 个关联值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.setuservalue"])
+
+std.debuglib.traceback: |
+  返回调用栈的栈回溯信息。 字符串可选项 `message` 被添加在栈回溯信息的开头。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.traceback"])
+
+std.debuglib.upvalueid: |
+  返回指定函数第 `n` 个上值的唯一标识符（一个轻量用户数据）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.upvalueid"])
+
+std.debuglib.upvaluejoin: |
+  让 Lua 闭包 `f1` 的第 `n1` 个上值 引用 `Lua` 闭包 `f2` 的第 `n2` 个上值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-debug.upvaluejoin"])

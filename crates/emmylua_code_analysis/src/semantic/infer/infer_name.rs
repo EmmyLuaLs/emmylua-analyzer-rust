@@ -2,7 +2,7 @@ use emmylua_parser::{LuaAstNode, LuaNameExpr};
 
 use crate::{
     db_index::{DbIndex, LuaDeclOrMemberId, LuaMemberKey},
-    LuaDeclExtra, LuaType,
+    LuaDeclExtra, LuaFlowId, LuaType,
 };
 
 use super::{InferResult, LuaInferConfig};
@@ -13,7 +13,7 @@ pub fn infer_name_expr(
     name_expr: LuaNameExpr,
 ) -> InferResult {
     let name_token = name_expr.get_name_token()?;
-    let name = name_token.get_name_text().to_string();
+    let name = name_token.get_name_text();
     if name == "self" {
         return infer_self(db, config, name_expr);
     }
@@ -51,10 +51,11 @@ pub fn infer_name_expr(
         } else {
             LuaType::Unknown
         };
-        let flow_chain = db.get_flow_index().get_flow_chain(file_id, decl_id);
+        let flow_id = LuaFlowId::from_node(name_expr.syntax());
+        let flow_chain = db.get_flow_index().get_flow_chain(file_id, flow_id);
         let root = name_expr.get_root();
         if let Some(flow_chain) = flow_chain {
-            for type_assert in flow_chain.get_type_asserts(name_expr.get_position()) {
+            for type_assert in flow_chain.get_type_asserts(name, name_expr.get_position()) {
                 decl_type = type_assert.tighten_type(db, config, &root, decl_type)?;
             }
         }
@@ -112,10 +113,11 @@ fn infer_self(db: &DbIndex, config: &mut LuaInferConfig, name_expr: LuaNameExpr)
                 decl_type = LuaType::Def(id);
             }
 
-            let flow_chain = db.get_flow_index().get_flow_chain(file_id, decl_id);
+            let flow_id = LuaFlowId::from_node(name_expr.syntax());
+            let flow_chain = db.get_flow_index().get_flow_chain(file_id, flow_id);
             let root = name_expr.get_root();
             if let Some(flow_chain) = flow_chain {
-                for type_assert in flow_chain.get_type_asserts(name_expr.get_position()) {
+                for type_assert in flow_chain.get_type_asserts("self", name_expr.get_position()) {
                     decl_type = type_assert.tighten_type(db, config, &root, decl_type)?;
                 }
             }

@@ -6,6 +6,7 @@ pub fn generate_index(tl: &Tera, mkdocs: &mut MkdocsIndex, output: &std::path::P
     let mut context = tera::Context::new();
     mkdocs.types.sort_by(|a, b| a.name.cmp(&b.name));
     mkdocs.modules.sort_by(|a, b| a.name.cmp(&b.name));
+    mkdocs.globals.sort_by(|a, b| a.name.cmp(&b.name));
 
 
     if !mkdocs.types.is_empty() {
@@ -13,6 +14,9 @@ pub fn generate_index(tl: &Tera, mkdocs: &mut MkdocsIndex, output: &std::path::P
     }
     if !mkdocs.modules.is_empty() {
         context.insert("modules", &mkdocs.modules);
+    }
+    if !mkdocs.globals.is_empty() {
+        context.insert("globals", &mkdocs.globals);
     }
     let index_path = output.join("docs/index.md");
     let index_text = match tl.render("index_template.tl", &context) {

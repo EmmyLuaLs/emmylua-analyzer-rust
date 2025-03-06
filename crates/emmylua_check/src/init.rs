@@ -15,7 +15,7 @@ pub fn load_workspace(
 
     let mut workspace_folders = vec![workspace_folder];
     for path in &workspace_folders {
-        analysis.add_workspace_root(path.clone());
+        analysis.add_main_workspace(path.clone());
     }
 
     let main_path = workspace_folders.get(0)?.clone();
@@ -32,11 +32,11 @@ pub fn load_workspace(
     emmyrc.pre_process_emmyrc(&main_path);
 
     for root in &emmyrc.workspace.workspace_roots {
-        analysis.add_workspace_root(PathBuf::from_str(root).unwrap());
+        analysis.add_main_workspace(PathBuf::from_str(root).unwrap());
     }
 
     for lib in &emmyrc.workspace.library {
-        analysis.add_workspace_root(PathBuf::from_str(lib).unwrap());
+        analysis.add_main_workspace(PathBuf::from_str(lib).unwrap());
         workspace_folders.push(PathBuf::from_str(lib).unwrap());
     }
 

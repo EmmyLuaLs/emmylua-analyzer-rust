@@ -1,6 +1,24 @@
 # CHANGELOG
 
-# 0.5.2 (unreleased)
+# 0.5.3 (unreleased)
+
+`NEW` Support negative integer as type
+
+`Fix` Fix alias type check issue
+
+`CHG` Refactor flow analyze algorithm
+
+`FIX` Fix property unwrap issue
+
+`NEW` Support filter the completion item
+
+`NEW` Support reindex project when save a file
+
+`NEW` Support check for `redundant_parameter`, `redundant_return_value`, `missing_return_value`, `return_type_mismatch`
+
+`NEW` Better Support require module for other editor
+
+# 0.5.2 
 
 `CHG` Refactor `folding range`
 
@@ -17,7 +35,17 @@
 
 `FIX` custom operator infer
 
+`FIX` Fix select function and add std.Select type 
 
+`CHG` Refactor Union type
+
+`NEW` Add description to type
+
+`NEW` Support description without '#' on multi union
+
+`NEW` Add standard library translation
+
+`NEW` Optimize inlay hint for parameter, if the parameter name is the same as the variable name, the parameter name will not be displayed
 
 # 0.5.1 
 

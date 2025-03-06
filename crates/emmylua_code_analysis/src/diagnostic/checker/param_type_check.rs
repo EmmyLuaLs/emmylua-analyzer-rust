@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr};
 use rowan::TextRange;
 
 use crate::{
@@ -50,6 +50,21 @@ fn check_call_expr(
         }
         (true, false) => {
             args.insert(0, None);
+
+            if let Some((_, Some(self_type))) = params.first() {
+                let result =
+                    check_first_param_colon_call(semantic_model, call_expr.clone(), self_type);
+                if !result.is_ok() {
+                    add_type_check_diagnostic(
+                        context,
+                        semantic_model,
+                        call_expr.get_colon_token()?.get_range(),
+                        self_type,
+                        &LuaType::SelfInfer,
+                        result,
+                    );
+                }
+            }
         }
     }
 
@@ -205,7 +220,7 @@ fn add_type_check_diagnostic(
                     DiagnosticCode::ParamTypeNotMatch,
                     range,
                     t!(
-                        "expected %{source} but found %{found}",
+                        "expected `%{source}` but found `%{found}`",
                         source = humanize_type(db, &param_type, RenderLevel::Simple),
                         found = humanize_type(db, &expr_type, RenderLevel::Simple)
                     )
@@ -223,4 +238,27 @@ fn add_type_check_diagnostic(
             }
         },
     }
+}
+
+/// Check if colon call is possible. This check can only be performed
+/// when it's a colon call but not a colon definition.
+fn check_first_param_colon_call(
+    semantic_model: &SemanticModel,
+    call_expr: LuaCallExpr,
+    self_type: &LuaType,
+) -> TypeCheckResult {
+    if !matches!(self_type, LuaType::SelfInfer | LuaType::Any) {
+        if let Some(LuaExpr::IndexExpr(index_expr)) = call_expr.get_prefix_expr() {
+            // We need to narrow `SelfInfer` to the actual type
+            return if let Some(prefix_expr) = index_expr.get_prefix_expr() {
+                let expr_type = semantic_model
+                    .infer_expr(prefix_expr.clone())
+                    .unwrap_or(LuaType::SelfInfer);
+                semantic_model.type_check(self_type, &expr_type)
+            } else {
+                Err(TypeCheckFailReason::TypeNotMatch)
+            };
+        }
+    }
+    Ok(())
 }

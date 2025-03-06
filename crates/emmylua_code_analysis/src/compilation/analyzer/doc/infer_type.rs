@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaDocBinaryType, LuaDocFuncType, LuaDocGenericType, LuaDocObjectFieldKey,
-    LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType,
-    LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaDocBinaryType, LuaDocFuncType, LuaDocGenericType,
+    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
+    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaTypeUnaryOperator, LuaVarExpr,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -13,10 +14,10 @@ use crate::{
         AnalyzeError, LuaAliasCallType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
         LuaIntersectionType, LuaObjectType, LuaStringTplType, LuaTupleType, LuaType, LuaUnionType,
     },
-    DiagnosticCode, GenericTpl, LuaAliasCallKind, TypeOps,
+    DiagnosticCode, GenericTpl, LuaAliasCallKind, LuaMultiLineUnion, TypeOps,
 };
 
-use super::DocAnalyzer;
+use super::{preprocess_description, DocAnalyzer};
 
 pub fn infer_type(analyzer: &mut DocAnalyzer, node: LuaDocType) -> LuaType {
     match node {
@@ -102,6 +103,9 @@ pub fn infer_type(analyzer: &mut DocAnalyzer, node: LuaDocType) -> LuaType {
         }
         LuaDocType::Variadic(variadic_type) => {
             return infer_variadic_type(analyzer, variadic_type).unwrap_or(LuaType::Unknown);
+        }
+        LuaDocType::MultiLineUnion(multi_union) => {
+            return infer_multi_line_union_type(analyzer, multi_union);
         }
         _ => {} // LuaDocType::Conditional(lua_doc_conditional_type) => todo!(),
     }
@@ -213,7 +217,7 @@ fn infer_special_generic_type(
                 return Some(LuaType::Namespace(ns_str));
             }
         }
-        "Select" => {
+        "std.Select" => {
             let mut params = Vec::new();
             for param in generic_type.get_generic_types()?.get_types() {
                 let param_type = infer_type(analyzer, param);
@@ -223,7 +227,7 @@ fn infer_special_generic_type(
                 LuaAliasCallType::new(LuaAliasCallKind::Select, params).into(),
             ));
         }
-        "Unpack" => {}
+        "std.Unpack" => {}
         _ => {}
     }
 
@@ -332,6 +336,11 @@ fn infer_unary_type(analyzer: &mut DocAnalyzer, unary_type: LuaDocUnaryType) -> 
                     return LuaType::Call(
                         LuaAliasCallType::new(LuaAliasCallKind::KeyOf, vec![base]).into(),
                     );
+                }
+                LuaTypeUnaryOperator::Neg => {
+                    if let LuaType::DocIntegerConst(i) = base {
+                        return LuaType::DocIntegerConst(-i);
+                    }
                 }
                 _ => {}
             }
@@ -481,4 +490,37 @@ fn infer_variadic_type(
     let base = infer_buildin_or_ref_type(analyzer, &name, name_type.get_range());
 
     Some(LuaType::Variadic(base.into()))
+}
+
+fn infer_multi_line_union_type(
+    analyzer: &mut DocAnalyzer,
+    multi_union: LuaDocMultiLineUnionType,
+) -> LuaType {
+    let mut union_members = Vec::new();
+    for field in multi_union.get_fields() {
+        let alias_member_type = if let Some(field_type) = field.get_type() {
+            let type_ref = infer_type(analyzer, field_type);
+            if type_ref.is_unknown() {
+                continue;
+            }
+            type_ref
+        } else {
+            continue;
+        };
+
+        let description = if let Some(description) = field.get_description() {
+            let description_text = preprocess_description(&description.get_description_text());
+            if !description_text.is_empty() {
+                Some(description_text)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        union_members.push((alias_member_type, description));
+    }
+
+    LuaType::MultiLineUnion(LuaMultiLineUnion::new(union_members).into())
 }

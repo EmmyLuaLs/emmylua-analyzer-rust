@@ -18,11 +18,10 @@ pub fn generate_module_markdown(
     db: &DbIndex,
     tl: &Tera,
     module: &ModuleInfo,
-    input: &Path,
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
 ) -> Option<()> {
-    check_filter(db, module.file_id, input)?;
+    check_filter(db, module.file_id)?;
 
     let mut context = tera::Context::new();
     context.insert("module_name", &module.full_module_name);
@@ -71,15 +70,16 @@ pub fn generate_module_markdown(
     Some(())
 }
 
-fn check_filter(db: &DbIndex, file_id: FileId, workspace: &Path) -> Option<()> {
-    let file_path = db.get_vfs().get_file_path(&file_id)?;
-    if !file_path.starts_with(workspace) {
-        return None;
+fn check_filter(db: &DbIndex, file_id: FileId) -> Option<()> {
+    let module = db.get_module_index().get_module(file_id)?;
+    if module.workspace_id.is_main() {
+        return Some(());
     }
-    Some(())
+
+    None
 }
 
-fn generate_member_owner_module(
+pub fn generate_member_owner_module(
     db: &DbIndex,
     member_owner: LuaMemberOwner,
     owner_name: &str,

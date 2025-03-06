@@ -119,5 +119,7 @@ pub fn preprocess_description(mut description: &str) -> String {
         }
         result.push('\n');
     }
-    result
+
+    // trim end
+    result.trim_end().to_string()
 }

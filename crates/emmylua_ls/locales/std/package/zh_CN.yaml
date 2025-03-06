@@ -1,0 +1,57 @@
+std.packagelib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package"])
+
+std.packagelib.require: |
+  加载一个模块，返回该模块的返回值（`nil`时为`true`）与搜索器返回的加载数据。默认搜索器的加载数据指示了加载位置，对于文件来说就是文件路径。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-require"])
+
+std.packagelib.cpath: |
+  这个路径被 `require` 在 C 加载器中做搜索时用到。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.cpath"])
+
+std.packagelib.loaded: |
+  用于 `require` 控制哪些模块已经被加载的表。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.loaded"])
+
+std.packagelib.path: |
+  这个路径被 `require` 在 Lua 加载器中做搜索时用到。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.path"])
+
+std.packagelib.preload: |
+  保存有一些特殊模块的加载器。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.preload"])
+
+std.packagelib.config: |
+  一个描述有一些为包管理准备的编译期配置信息的串。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.config"])
+
+std.packagelib.loaders: |
+  用于 `require` 控制如何加载模块的表。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.loaders"])
+
+std.packagelib.loadlib: |
+  让宿主程序动态链接 C 库 `libname` 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.loadlib"])
+
+std.packagelib.searchers: |
+  用于 `require` 控制如何加载模块的表。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.searchers"])
+
+std.packagelib.searchpath: |
+  在指定 `path` 中搜索指定的 `name` 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.searchpath"])
+
+std.packagelib.seeall: |
+  给 `module` 设置一个元表，该元表的 `__index` 域为全局环境，这样模块便会继承全局环境的值。可作为 `module` 函数的选项。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-package.seeall"])

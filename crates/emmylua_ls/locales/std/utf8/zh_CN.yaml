@@ -1,0 +1,38 @@
+std.utf8lib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-utf8"])
+
+std.utf8lib.charpattern: |
+  用于精确匹配到一个 UTF-8 字节序列的模式，它假定处理的对象是一个合法的 UTF-8 字符串。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-utf8.charpattern"])
+
+std.utf8lib.char: |
+  接收零或多个整数， 将每个整数转换成对应的 UTF-8 字节序列，并返回这些序列连接到一起的字符串。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-utf8.char"])
+
+std.utf8lib.codes: |
+  返回一系列的值，可以让
+  ```lua
+  for p, c in utf8.codes(s) do
+      body
+  end
+  ```
+  迭代出字符串 s 中所有的字符。 这里的 p 是位置（按字节数）而 c 是每个字符的编号。 如果处理到一个不合法的字节序列，将抛出一个错误。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-utf8.codes"])
+
+std.utf8lib.codepoint: |
+  以整数形式返回 `s` 中 从位置 `i` 到 `j` 间（包括两端） 所有字符的编号。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-utf8.codepoint"])
+
+std.utf8lib.len: |
+  返回字符串 `s` 中 从位置 `i` 到 `j` 间 （包括两端） UTF-8 字符的个数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-utf8.len"])
+
+std.utf8lib.offset: |
+  返回编码在 `s` 中的第 `n` 个字符的开始位置（按字节数） （从位置 `i` 处开始统计）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-utf8.offset"])

@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
+use lsp_types::DiagnosticSeverity;
 use regex::Regex;
 use smol_str::SmolStr;
 
@@ -13,6 +14,7 @@ pub struct LuaDiagnosticConfig {
     pub workspace_disabled: HashSet<DiagnosticCode>,
     pub global_disable_set: HashSet<SmolStr>,
     pub global_disable_glob: Vec<Regex>,
+    pub severity: HashMap<DiagnosticCode, DiagnosticSeverity>
 }
 
 impl LuaDiagnosticConfig {
@@ -39,11 +41,16 @@ impl LuaDiagnosticConfig {
             })
             .collect();
 
+        let mut severity = HashMap::new();
+        for (code, sev) in &emmyrc.diagnostics.severity {
+            severity.insert(code.clone(), sev.clone().into());
+        }
         Self {
             workspace_disabled,
             workspace_enabled,
             global_disable_set,
             global_disable_glob,
+            severity
         }
     }
 }

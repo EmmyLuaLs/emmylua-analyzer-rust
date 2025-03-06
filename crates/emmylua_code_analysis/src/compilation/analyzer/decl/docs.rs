@@ -163,10 +163,16 @@ pub fn analyze_doc_tag_meta(analyzer: &mut DeclAnalyzer, tag: LuaDocTagMeta) -> 
                 .get_module_index_mut()
                 .set_module_visibility(file_id, false);
         } else {
+            let workspace_id = analyzer
+                .db
+                .get_module_index()
+                .get_module(file_id)?
+                .workspace_id;
+
             analyzer
                 .db
                 .get_module_index_mut()
-                .add_module_by_module_path(file_id, name_token.get_name_text().to_string());
+                .add_module_by_module_path(file_id, name_token.get_name_text().to_string(), workspace_id);
         }
     }
 

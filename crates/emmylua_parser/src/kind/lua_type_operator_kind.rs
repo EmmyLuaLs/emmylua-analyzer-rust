@@ -4,6 +4,7 @@ use super::PriorityTable;
 pub enum LuaTypeUnaryOperator {
     None,
     Keyof,
+    Neg,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]

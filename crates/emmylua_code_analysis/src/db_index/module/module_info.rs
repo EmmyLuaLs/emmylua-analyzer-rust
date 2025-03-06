@@ -2,7 +2,7 @@ use emmylua_parser::{LuaVersionCondition, LuaVersionNumber};
 
 use crate::{db_index::LuaType, FileId};
 
-use super::module_node::ModuleNodeId;
+use super::{module_node::ModuleNodeId, workspace::WorkspaceId};
 
 #[derive(Debug)]
 pub struct ModuleInfo {
@@ -13,6 +13,7 @@ pub struct ModuleInfo {
     pub visible: bool,
     pub export_type: Option<LuaType>,
     pub version_conds: Option<Box<Vec<LuaVersionCondition>>>,
+    pub workspace_id: WorkspaceId,
 }
 
 impl ModuleInfo {

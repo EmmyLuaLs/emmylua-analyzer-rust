@@ -1,7 +1,7 @@
 use crate::{
     compilation::analyzer::lua::LuaReturnPoint,
     db_index::{DbIndex, LuaDocReturnInfo, LuaMemberOwner, LuaType},
-    semantic::{infer_expr, LuaInferConfig},
+    semantic::{infer_expr, LuaInferConfig}, SignatureReturnStatus,
 };
 
 use super::{
@@ -142,7 +142,7 @@ pub fn try_resolve_return_point(
     let signature = db
         .get_signature_index_mut()
         .get_mut(&return_.signature_id)?;
-    signature.resolve_return = true;
+    signature.resolve_return = SignatureReturnStatus::InferResolve;
     signature.return_docs = return_docs;
     Some(true)
 }

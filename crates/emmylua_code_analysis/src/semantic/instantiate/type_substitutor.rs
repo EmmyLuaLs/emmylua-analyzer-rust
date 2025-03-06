@@ -65,6 +65,15 @@ impl TypeSubstitutor {
             .insert(tpl_id, SubstitutorValue::MultiTypes(types));
     }
 
+    pub fn insert_multi_base(&mut self, tpl_id: GenericTplId, type_base: LuaType) {
+        if self.tpl_replace_map.contains_key(&tpl_id) {
+            return;
+        }
+
+        self.tpl_replace_map
+            .insert(tpl_id, SubstitutorValue::MultiBase(type_base));
+    }
+
     pub fn get(&self, tpl_id: GenericTplId) -> Option<&SubstitutorValue> {
         self.tpl_replace_map.get(&tpl_id)
     }
@@ -85,4 +94,5 @@ pub enum SubstitutorValue {
     Type(LuaType),
     Params(Vec<(String, Option<LuaType>)>),
     MultiTypes(Vec<LuaType>),
+    MultiBase(LuaType),
 }

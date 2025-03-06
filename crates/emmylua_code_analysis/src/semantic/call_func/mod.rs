@@ -4,7 +4,7 @@ use emmylua_parser::LuaCallExpr;
 
 use crate::{
     DbIndex, LuaFunctionType, LuaGenericType, LuaOperatorMetaMethod, LuaSignatureId, LuaType,
-    LuaTypeDeclId,
+    LuaTypeDeclId, LuaUnionType,
 };
 
 use super::{
@@ -53,8 +53,42 @@ pub fn infer_call_expr_func(
             infer_guard,
             args_count,
         ),
+        LuaType::Union(union) => {
+            // 此时我们将其视为泛型实例化联合体
+            if union.get_types().len() > 1
+                && union
+                    .get_types()
+                    .iter()
+                    .all(|t| matches!(t, LuaType::DocFunction(_)))
+            {
+                infer_generic_doc_function_union(db, config, &union, call_expr, args_count)
+            } else {
+                None
+            }
+        }
         _ => return None,
     }
+}
+
+fn infer_generic_doc_function_union(
+    db: &DbIndex,
+    config: &mut LuaInferConfig,
+    union: &LuaUnionType,
+    call_expr: LuaCallExpr,
+    args_count: Option<usize>,
+) -> Option<Arc<LuaFunctionType>> {
+    let overloads = union
+        .get_types()
+        .iter()
+        .filter_map(|typ| match typ {
+            LuaType::DocFunction(f) => Some(f.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    let doc_func = resolve_signature(db, config, overloads, call_expr.clone(), false, args_count)?;
+
+    Some(doc_func)
 }
 
 fn infer_signature_doc_function(
@@ -74,7 +108,8 @@ fn infer_signature_doc_function(
             vec![],
         );
         if signature.is_generic() {
-            fake_doc_function = instantiate_func_generic(db, config, &fake_doc_function, call_expr)?;
+            fake_doc_function =
+                instantiate_func_generic(db, config, &fake_doc_function, call_expr)?;
         }
 
         Some(fake_doc_function.into())

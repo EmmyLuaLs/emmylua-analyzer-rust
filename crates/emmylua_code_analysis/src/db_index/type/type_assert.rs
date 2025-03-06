@@ -1,20 +1,16 @@
-use std::{ops::Deref, sync::Arc};
-
 use crate::{infer_expr, DbIndex, LuaInferConfig};
 use emmylua_parser::{LuaAstNode, LuaExpr, LuaSyntaxId, LuaSyntaxNode};
 
-use super::{type_ops::TypeOps, LuaMemberPathExistType, LuaType};
+use super::{type_ops::TypeOps, LuaType};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum TypeAssertion {
     Exist,
     NotExist,
     Narrow(LuaType),
-    MemberPathExist(Arc<String>),
     Add(LuaType),
     Remove(LuaType),
     Reassign((LuaSyntaxId, i32)),
-    AddUnion(Vec<(LuaSyntaxId, i32)>),
 }
 
 #[allow(unused)]
@@ -39,9 +35,6 @@ impl TypeAssertion {
             TypeAssertion::Exist => Some(TypeOps::Remove.apply(&source, &LuaType::Nil)),
             TypeAssertion::NotExist => Some(force_nil_or_false(source)),
             TypeAssertion::Narrow(t) => Some(TypeOps::Narrow.apply(&source, t)),
-            TypeAssertion::MemberPathExist(key) => Some(LuaType::MemberPathExist(
-                LuaMemberPathExistType::new(&key.deref(), source, 0).into(),
-            )),
             TypeAssertion::Add(lua_type) => Some(TypeOps::Union.apply(&source, lua_type)),
             TypeAssertion::Remove(lua_type) => Some(TypeOps::Remove.apply(&source, lua_type)),
             TypeAssertion::Reassign((syntax_id, idx)) => {
@@ -55,23 +48,6 @@ impl TypeAssertion {
                 };
                 Some(TypeOps::Narrow.apply(&source, &expr_type))
             }
-            TypeAssertion::AddUnion(syntax_ids) => {
-                let mut typ = source;
-                for (syntax_id, idx) in syntax_ids {
-                    let expr = LuaExpr::cast(syntax_id.to_node_from_root(root)?)?;
-                    let expr_type = infer_expr(db, config, expr)?;
-                    let expr_type = match &expr_type {
-                        LuaType::MuliReturn(multi) => {
-                            multi.get_type(*idx as usize).unwrap_or(&LuaType::Nil)
-                        }
-                        t => t,
-                    };
-
-                    typ = TypeOps::Narrow.apply(&typ, &expr_type);
-                }
-
-                Some(typ)
-            }
             _ => Some(source),
         }
     }
@@ -82,5 +58,5 @@ fn force_nil_or_false(t: LuaType) -> LuaType {
         return LuaType::BooleanConst(false);
     }
 
-    return LuaType::Nil;
+    return TypeOps::Narrow.apply(&t, &LuaType::Nil);
 }

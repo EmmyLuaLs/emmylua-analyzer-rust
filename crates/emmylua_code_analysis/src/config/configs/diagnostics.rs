@@ -50,7 +50,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticSeveritySetting {
     /// Represents an error diagnostic severity.

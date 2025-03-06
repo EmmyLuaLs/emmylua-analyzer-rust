@@ -4,7 +4,7 @@ use emmylua_parser::{
 
 use crate::{
     compilation::analyzer::unresolve::{UnResolveClosureParams, UnResolveReturn},
-    db_index::{LuaDocReturnInfo, LuaSignatureId},
+    db_index::{LuaDocReturnInfo, LuaSignatureId}, SignatureReturnStatus,
 };
 
 use super::{func_body::analyze_func_body_returns, LuaAnalyzer, LuaReturnPoint};
@@ -68,8 +68,7 @@ fn analyze_return(
     closure: &LuaClosureExpr,
 ) -> Option<()> {
     let signature = analyzer.db.get_signature_index().get(&signature_id)?;
-    let ret = &signature.return_docs;
-    if !ret.is_empty() {
+    if signature.resolve_return == SignatureReturnStatus::DocResolve {
         return None;
     }
 
@@ -93,7 +92,7 @@ fn analyze_return(
         .get_signature_index_mut()
         .get_or_create(signature_id.clone());
     signature.return_docs = returns;
-    signature.resolve_return = true;
+    signature.resolve_return = SignatureReturnStatus::InferResolve;
     Some(())
 }
 

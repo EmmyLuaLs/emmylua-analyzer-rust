@@ -8,7 +8,7 @@ members = [
 [workspace.dependencies]
 # local
 emmylua_code_analysis = { path = "crates/emmylua_code_analysis", version = "0.5.0" }
-emmylua_parser = { path = "crates/emmylua_parser", version = "0.9.6" }
+emmylua_parser = { path = "crates/emmylua_parser", version = "0.10.0" }
 emmylua_diagnostic_macro = { path = "crates/emmylua_diagnostic_macro", version = "0.4.0" }
 
 # external

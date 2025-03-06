@@ -35,5 +35,11 @@ nav:
     - {{ item.name }} : {{ item.file }}
     {% endfor %}
   {% endif %}
+  {% if globals %}
+  - Globals:
+    {% for item in globals -%}
+    - {{ item.name }} : {{ item.file }}
+    {% endfor %}
+  {% endif %}
 extra:
   footer: ""

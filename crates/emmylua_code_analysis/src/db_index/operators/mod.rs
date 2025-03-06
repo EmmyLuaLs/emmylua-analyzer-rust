@@ -75,7 +75,9 @@ impl LuaIndex for LuaOperatorIndex {
         }
     }
 
-    fn fill_snapshot_info(&self, info: &mut HashMap<String, String>) {
-        info.insert("operator_count".to_string(), self.operators.len().to_string());
+    fn clear(&mut self) {
+        self.operators.clear();
+        self.type_operators_map.clear();
+        self.in_filed_operator_map.clear();
     }
 }

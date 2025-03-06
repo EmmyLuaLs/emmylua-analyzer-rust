@@ -85,19 +85,20 @@ pub enum LuaSyntaxKind {
     DocTagReadonly,
 
     // doc Type
-    TypeArray,          // baseType []
-    TypeUnary,          // keyof type
-    TypeBinary,         // aType | bType, aType & bType, aType extends bType, aType in bType
-    TypeConditional,    // <conditionType> and <trueType> or <falseType>
-    TypeFun,            // fun(<paramList>): returnType
-    TypeGeneric,        // name<typeList>
-    TypeTuple,          // [typeList]
+    TypeArray,             // baseType []
+    TypeUnary,             // keyof type
+    TypeBinary,            // aType | bType, aType & bType, aType extends bType, aType in bType
+    TypeConditional,       // <conditionType> and <trueType> or <falseType>
+    TypeFun,               // fun(<paramList>): returnType
+    TypeGeneric,           // name<typeList>
+    TypeTuple,             // [typeList]
     TypeObject, // { a: aType, b: bType } or { [1]: aType, [2]: bType } or { a: aType, b: bType, [number]: string }
     TypeLiteral, // "string" or <integer> or true or false
     TypeName,   // name
     TypeVariadic, // type...
     TypeNullable, // <Type>?
     TypeStringTemplate, // prefixName.`T`
+    TypeMultiLineUnion, // | simple type # description
 
     // follow donot support now
     TypeMatch,
@@ -118,8 +119,7 @@ pub enum LuaSyntaxKind {
     DocMappedKeys,         // [p in KeyType]?
     DocEnumFieldList,      // ---| <EnumField>
     DocEnumField, // <string> # description or <integer> # description or <name> # description
-    DocAliasOrTypeList, // | <DocAliasOrType>
-    DocAliasOrType, // <type> # description
+    DocOneLineField, // <type> # description
     DocDiagnosticCodeList, // unused-local, undefined-global ...
     // start with '#' or '@'
     DocDescription,

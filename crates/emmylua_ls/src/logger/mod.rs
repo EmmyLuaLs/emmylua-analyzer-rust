@@ -42,22 +42,31 @@ pub fn init_logger(root: Option<&str>, cmd_args: &CmdArgs) {
         PathBuf::from(cmd_args.log_path.as_str())
     };
     if !log_dir.exists() {
-        fs::create_dir_all(&log_dir).unwrap();
+        match fs::create_dir_all(&log_dir) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("Failed to create log directory: {:?}", e);
+                init_stderr_logger(level);
+                return;
+            }
+        }
     }
 
     let log_file_path = log_dir.join(format!("{}.log", filename));
 
-    if let Err(e) = fs::create_dir_all(log_dir) {
-        eprintln!("Failed to create log directory: {:?}", e);
-        return;
-    }
-
-    let log_file = std::fs::OpenOptions::new()
+    let log_file = match std::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
         .open(&log_file_path)
-        .unwrap();
+    {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to open log file: {:?}", e);
+            init_stderr_logger(level);
+            return;
+        }
+    };
 
     let logger = Dispatch::new()
         .format(|out, message, record| {

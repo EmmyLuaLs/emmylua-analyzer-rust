@@ -1,0 +1,182 @@
+std.mathlib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math"])
+
+std.mathlib.huge: |
+  一个具有整数最大值的整数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.huge"])
+
+std.mathlib.maxinteger: |
+  一个比任何数字值都大的整数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.maxinteger"])
+
+std.mathlib.mininteger: |
+  一个具有整数最小值的整数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.mininteger"])
+
+std.mathlib.pi: |
+  *π* 的值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.pi"])
+
+std.mathlib.abs: |
+  返回 `x` 的绝对值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.abs"])
+
+std.mathlib.acos: |
+  返回 `x` 的反余弦值（用弧度表示）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.acos"])
+
+std.mathlib.asin: |
+  返回 `x` 的反正弦值（用弧度表示）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.asin"])
+
+std.mathlib.atan: |
+  返回 `y/x` 的反正切值（用弧度表示）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.atan"])
+
+std.mathlib.atan2: |
+  返回 `y/x` 的反正切值（用弧度表示）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.atan2"])
+
+std.mathlib.ceil: |
+  返回不小于 `x` 的最小整数值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.ceil"])
+
+std.mathlib.cos: |
+  返回 `x` 的余弦（假定参数是弧度）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.cos"])
+
+std.mathlib.cosh: |
+  返回 `x` 的双曲余弦（假定参数是弧度）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.cosh"])
+
+std.mathlib.deg: |
+  将角 `x` 从弧度转换为角度。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.deg"])
+
+std.mathlib.exp: |
+  返回 `e^x` 的值 （e 为自然对数的底）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.exp"])
+
+std.mathlib.floor: |
+  返回不大于 `x` 的最大整数值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.floor"])
+
+std.mathlib.fmod: |
+  返回 `x` 除以 `y`，将商向零圆整后的余数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.fmod"])
+
+std.mathlib.frexp: |
+  将 `x` 分解为尾数与指数，返回值符合 `x = m * (2 ^ e)` 。`e` 是一个整数，`m` 是 [0.5, 1) 之间的规格化小数 (`x` 为0时 `m` 为0)。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.frexp"])
+
+std.mathlib.ldexp: |
+  返回 `m * (2 ^ e)` 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.ldexp"])
+
+std.mathlib.log: |
+  回以指定底的 `x` 的对数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.log"])
+
+std.mathlib.log10: |
+  返回 `x` 的以10为底的对数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.log10"])
+
+std.mathlib.max: |
+  返回参数中最大的值， 大小由 Lua 操作 `<` 决定。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.max"])
+
+std.mathlib.min: |
+  返回参数中最小的值， 大小由 Lua 操作 `<` 决定。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.min"])
+
+std.mathlib.modf: |
+  返回 `x` 的整数部分和小数部分。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.modf"])
+
+std.mathlib.pow: |
+  返回 `x ^ y` 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.pow"])
+
+std.mathlib.rad: |
+  将角 `x` 从角度转换为弧度。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.rad"])
+
+std.mathlib.random: |
+  * `math.random()`: 返回 [0,1) 区间内一致分布的浮点伪随机数。
+  * `math.random(n)`: 返回 [1, n] 区间内一致分布的整数伪随机数。
+  * `math.random(m, n)`: 返回 [m, n] 区间内一致分布的整数伪随机数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.random"])
+
+std.mathlib.randomseed: |
+  * `math.randomseed(x, y)`: 将 `x` 与 `y` 连接为128位的种子来重新初始化伪随机生成器。
+  * `math.randomseed(x)`: 等同于 `math.randomseed(x, 0)` 。
+  * `math.randomseed()`: 生成一个随机性较弱的种子。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.randomseed"])
+
+std.mathlib.sin: |
+  返回 `x` 的正弦值（假定参数是弧度）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.sin"])
+
+std.mathlib.sinh: |
+  返回 `x` 的双曲正弦值（假定参数是弧度）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.sinh"])
+
+std.mathlib.sqrt: |
+  返回 `x` 的平方根。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.sqrt"])
+
+std.mathlib.tan: |
+  返回 `x` 的正切值（假定参数是弧度）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.tan"])
+
+std.mathlib.tanh: |
+  返回 `x` 的双曲正切值（假定参数是弧度）。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.tanh"])
+
+std.mathlib.tointeger: |
+  如果值 `x` 可转换为整数， 则返回该整数。
+  否则，返回 `nil`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.tointeger"])
+
+std.mathlib.type: |
+  如果 `x` 是整数， 则返回 `integer`；如果是浮点数， 则返回 `float`；若 `x` 不是数字，则返回 `nil`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.type"])
+
+std.mathlib.ult: |
+  将 `m` 和 `n` 视为无符号整数进行比较, 当 `m` 小于 `n` 时，结果为真。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-math.ult"])

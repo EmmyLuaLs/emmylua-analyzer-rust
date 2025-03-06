@@ -9,12 +9,14 @@ use crate::{
     db_index::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaOperator, LuaPropertyOwnerId,
         LuaSignatureId, LuaType,
-    },
-    InFiled, TypeAssertion,
+    }, InFiled, LuaFlowId, SignatureReturnStatus, TypeAssertion
 };
 
 use super::{
-    infer_type::infer_type, preprocess_description, tags::{find_owner_closure, get_owner_id}, DocAnalyzer
+    infer_type::infer_type,
+    preprocess_description,
+    tags::{find_owner_closure, get_owner_id},
+    DocAnalyzer,
 };
 
 pub fn analyze_type(analyzer: &mut DocAnalyzer, tag: LuaDocTagType) -> Option<()> {
@@ -188,6 +190,7 @@ pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Optio
                 .get_signature_index_mut()
                 .get_or_create(signature_id);
             signature.return_docs.push(return_info);
+            signature.resolve_return = SignatureReturnStatus::DocResolve;
         }
     }
     Some(())
@@ -264,14 +267,9 @@ fn analyze_cast_with_name_token(
     name_token: LuaNameToken,
     tag: LuaDocTagCast,
 ) -> Option<()> {
-    let name = name_token.get_name_text();
-    let decl_index = analyzer.db.get_decl_index();
-    let decl_tree = decl_index.get_decl_tree(&analyzer.file_id)?;
-    let decl = decl_tree.find_local_decl(name, tag.get_position())?;
-    let decl_id = decl.get_id();
-
+    let path = name_token.get_name_text();
     let effect_range = tag.ancestors::<LuaBlock>().next()?.get_range();
-
+    let flow_id = LuaFlowId::from_node(tag.syntax());
     for cast_op_type in tag.get_op_types() {
         let action = match cast_op_type.get_op() {
             Some(op) => {
@@ -288,13 +286,21 @@ fn analyze_cast_with_name_token(
             let flow_chain = analyzer
                 .db
                 .get_flow_index_mut()
-                .get_or_create_flow_chain(analyzer.file_id, decl_id);
+                .get_or_create_flow_chain(analyzer.file_id, flow_id);
             match action {
                 CastAction::Add => {
-                    flow_chain.add_type_assert(TypeAssertion::Add(LuaType::Nil), effect_range);
+                    flow_chain.add_type_assert(
+                        path,
+                        TypeAssertion::Add(LuaType::Nil),
+                        effect_range,
+                    );
                 }
                 CastAction::Remove => {
-                    flow_chain.add_type_assert(TypeAssertion::Remove(LuaType::Nil), effect_range);
+                    flow_chain.add_type_assert(
+                        path,
+                        TypeAssertion::Remove(LuaType::Nil),
+                        effect_range,
+                    );
                 }
                 _ => {}
             }
@@ -303,17 +309,17 @@ fn analyze_cast_with_name_token(
             let flow_chain = analyzer
                 .db
                 .get_flow_index_mut()
-                .get_or_create_flow_chain(analyzer.file_id, decl_id);
+                .get_or_create_flow_chain(analyzer.file_id, flow_id);
 
             match action {
                 CastAction::Add => {
-                    flow_chain.add_type_assert(TypeAssertion::Add(typ), effect_range);
+                    flow_chain.add_type_assert(path, TypeAssertion::Add(typ), effect_range);
                 }
                 CastAction::Remove => {
-                    flow_chain.add_type_assert(TypeAssertion::Remove(typ), effect_range);
+                    flow_chain.add_type_assert(path, TypeAssertion::Remove(typ), effect_range);
                 }
                 CastAction::Force => {
-                    flow_chain.add_type_assert(TypeAssertion::Narrow(typ), effect_range);
+                    flow_chain.add_type_assert(path, TypeAssertion::Narrow(typ), effect_range);
                 }
             }
         }

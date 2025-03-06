@@ -21,7 +21,7 @@ impl VirtualWorkspace {
         let gen = VirtualUrlGenerator::new();
         let mut analysis = EmmyLuaAnalysis::new();
         let base = &gen.base;
-        analysis.add_workspace_root(base.clone());
+        analysis.add_main_workspace(base.clone());
         VirtualWorkspace {
             virtual_url_generator: gen,
             analysis,
@@ -34,7 +34,7 @@ impl VirtualWorkspace {
         let mut analysis = EmmyLuaAnalysis::new();
         analysis.init_std_lib(false);
         let base = &gen.base;
-        analysis.add_workspace_root(base.clone());
+        analysis.add_main_workspace(base.clone());
         VirtualWorkspace {
             virtual_url_generator: gen,
             analysis,

@@ -8,7 +8,7 @@ use std::{path::PathBuf, str::FromStr, sync::Arc};
 use crate::{
     cmd_args::CmdArgs,
     context::{
-        get_client_id, load_emmy_config, ClientId, ClientProxy, ProgressTask,
+        get_client_id, load_emmy_config, ClientId, ClientProxy, FileDiagnostic, ProgressTask,
         ServerContextSnapshot, StatusBar,
     },
     handlers::text_document::register_files_watch,
@@ -17,11 +17,10 @@ use crate::{
 pub use client_config::{get_client_config, ClientConfig};
 use codestyle::load_editorconfig;
 use collect_files::collect_files;
-use emmylua_code_analysis::{uri_to_file_path, EmmyLuaAnalysis, Emmyrc, FileId, Profile};
+use emmylua_code_analysis::{uri_to_file_path, EmmyLuaAnalysis, Emmyrc};
 use log::info;
 use lsp_types::InitializeParams;
 use tokio::sync::RwLock;
-use tokio_util::sync::CancellationToken;
 
 pub async fn initialized_handler(
     context: ServerContextSnapshot,
@@ -54,10 +53,11 @@ pub async fn initialized_handler(
     let emmyrc = load_emmy_config(config_root, client_config.clone());
     load_editorconfig(workspace_folders.clone());
 
-    let mut config_manager = context.config_manager.write().await;
-    config_manager.workspace_folders = workspace_folders.clone();
-    config_manager.client_config = client_config.clone();
-    drop(config_manager);
+    let mut workspace_manager = context.workspace_manager.write().await;
+    workspace_manager.workspace_folders = workspace_folders.clone();
+    workspace_manager.client_config = client_config.clone();
+    drop(workspace_manager);
+    // let file_diagnostic = context.file_diagnostic.clone();
 
     init_analysis(
         context.analysis.clone(),
@@ -66,6 +66,7 @@ pub async fn initialized_handler(
         workspace_folders,
         emmyrc,
         client_id,
+        context.file_diagnostic.clone(),
     )
     .await;
 
@@ -73,15 +74,14 @@ pub async fn initialized_handler(
     Some(())
 }
 
-#[allow(unused)]
 pub async fn init_analysis(
     analysis: Arc<RwLock<EmmyLuaAnalysis>>,
-    client_proxy: Arc<ClientProxy>,
+    _: Arc<ClientProxy>,
     status_bar: &StatusBar,
     workspace_folders: Vec<PathBuf>,
     emmyrc: Arc<Emmyrc>,
     client_id: ClientId,
-    // todo add cancel token
+    file_diagnostic: Arc<FileDiagnostic>,
 ) {
     let mut mut_analysis = analysis.write().await;
     // update config
@@ -101,17 +101,17 @@ pub async fn init_analysis(
     let mut workspace_folders = workspace_folders;
     for workspace_root in &workspace_folders {
         info!("add workspace root: {:?}", workspace_root);
-        mut_analysis.add_workspace_root(workspace_root.clone());
+        mut_analysis.add_main_workspace(workspace_root.clone());
     }
 
     for workspace_root in &emmyrc.workspace.workspace_roots {
         info!("add workspace root: {:?}", workspace_root);
-        mut_analysis.add_workspace_root(PathBuf::from_str(workspace_root).unwrap());
+        mut_analysis.add_main_workspace(PathBuf::from_str(workspace_root).unwrap());
     }
 
     for lib in &emmyrc.workspace.library {
         info!("add library: {:?}", lib);
-        mut_analysis.add_workspace_root(PathBuf::from_str(lib).unwrap());
+        mut_analysis.add_library_workspace(PathBuf::from_str(lib).unwrap());
         workspace_folders.push(PathBuf::from_str(lib).unwrap());
     }
 
@@ -134,7 +134,9 @@ pub async fn init_analysis(
         None,
         Some(format!("Indexing {} files", file_count)),
     );
-    let file_ids = mut_analysis.update_files_by_path(files);
+
+    mut_analysis.update_files_by_path(files);
+
     status_bar.finish_progress_task(
         client_id,
         ProgressTask::LoadWorkspace,
@@ -143,54 +145,7 @@ pub async fn init_analysis(
 
     drop(mut_analysis);
 
-    let cancel_token = CancellationToken::new();
-    // diagnostic files
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<FileId>(100);
-    let valid_file_count = file_ids.len();
-    for file_id in file_ids {
-        let analysis = analysis.clone();
-        let token = cancel_token.clone();
-        let client = client_proxy.clone();
-        let tx = tx.clone();
-        tokio::spawn(async move {
-            let analysis = analysis.read().await;
-            let diagnostics = analysis.diagnose_file(file_id, token);
-            if let Some(diagnostics) = diagnostics {
-                let uri = analysis.get_uri(file_id).unwrap();
-                let diagnostic_param = lsp_types::PublishDiagnosticsParams {
-                    uri,
-                    diagnostics,
-                    version: None,
-                };
-                client.publish_diagnostics(diagnostic_param);
-            }
-            let _ = tx.send(file_id).await;
-        });
-    }
-
-    let mut count = 0;
-    if valid_file_count != 0 {
-        let text = format!("diagnose {} files", valid_file_count);
-        let _p = Profile::new(text.as_str());
-        status_bar.create_progress_task(client_id, ProgressTask::DiagnoseWorkspace);
-        while let Some(_) = rx.recv().await {
-            count += 1;
-
-            let message = format!("diagnostic {}/{}", count, valid_file_count);
-            let percentage_done = ((count as f32 / valid_file_count as f32) * 100.0) as u32;
-            status_bar.update_progress_task(
-                client_id,
-                ProgressTask::DiagnoseWorkspace,
-                Some(percentage_done),
-                Some(message),
-            );
-
-            if count == valid_file_count {
-                status_bar.finish_progress_task(client_id, ProgressTask::DiagnoseWorkspace, None);
-                break;
-            }
-        }
-    }
+    file_diagnostic.add_workspace_diagnostic_task(client_id, 0).await;
 }
 
 fn get_workspace_folders(params: &InitializeParams) -> Vec<PathBuf> {

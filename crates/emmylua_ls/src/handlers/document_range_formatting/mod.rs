@@ -15,7 +15,7 @@ pub async fn on_range_formatting_handler(
     let uri = params.text_document.uri;
     let request_range = params.range;
     let analysis = context.analysis.read().await;
-    let config_manager = context.config_manager.read().await;
+    let config_manager = context.workspace_manager.read().await;
     let client_id = config_manager.client_config.client_id;
     let file_id = analysis.get_file_id(&uri)?;
     let semantic_model = analysis.compilation.get_semantic_model(file_id)?;

@@ -16,6 +16,7 @@
 -- the License.
 
 ---@version >5.3
+---@class utf8lib
 utf8 = {}
 
 ---

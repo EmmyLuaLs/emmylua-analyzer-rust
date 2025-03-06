@@ -1,13 +1,18 @@
 use crate::{
     grammar::ParseResult,
     kind::{LuaOpKind, LuaSyntaxKind, LuaTokenKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator},
+    lexer::LuaDocLexerState,
     parser::{CompleteMarker, LuaDocParser, MarkerEventContainer},
     parser_error::LuaParseError,
 };
 
-use super::{expect_token, if_token_bump};
+use super::{expect_token, if_token_bump, parse_description};
 
 pub fn parse_type(p: &mut LuaDocParser) -> ParseResult {
+    if p.current_token() == LuaTokenKind::TkDocContinueOr {
+        return parse_multi_line_union_type(p);
+    }
+
     let cm = parse_sub_type(p, 0)?;
 
     // <type>?
@@ -30,7 +35,7 @@ pub fn parse_type(p: &mut LuaDocParser) -> ParseResult {
 }
 
 // <type>
-// keyof <type>
+// keyof <type>, -1
 // <type> | <type> , <type> & <type>, <type> extends <type>, <type> in keyof <type>
 fn parse_sub_type(p: &mut LuaDocParser, limit: i32) -> ParseResult {
     let uop = LuaOpKind::to_type_unary_operator(p.current_token());
@@ -382,4 +387,28 @@ fn parse_suffixed_type(p: &mut LuaDocParser, cm: CompleteMarker) -> ParseResult 
             _ => return Ok(cm),
         }
     }
+}
+
+fn parse_multi_line_union_type(p: &mut LuaDocParser) -> ParseResult {
+    let m = p.mark(LuaSyntaxKind::TypeMultiLineUnion);
+
+    while p.current_token() == LuaTokenKind::TkDocContinueOr {
+        p.bump();
+        parse_one_line_type(p)?;
+    }
+
+    Ok(m.complete(p))
+}
+
+fn parse_one_line_type(p: &mut LuaDocParser) -> ParseResult {
+    let m = p.mark(LuaSyntaxKind::DocOneLineField);
+
+    parse_simple_type(p)?;
+    if p.current_token() != LuaTokenKind::TkDocContinueOr {
+        p.set_state(LuaDocLexerState::Description);
+        parse_description(p);
+        p.set_state(LuaDocLexerState::Normal);
+    }
+
+    Ok(m.complete(p))
 }

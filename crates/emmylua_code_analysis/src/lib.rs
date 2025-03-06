@@ -14,6 +14,7 @@ pub use config::*;
 pub use db_index::*;
 pub use diagnostic::*;
 pub use emmylua_codestyle::*;
+pub use locale::get_locale_code;
 use lsp_types::Uri;
 pub use profile::Profile;
 use resources::load_resource_std;
@@ -22,7 +23,6 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 pub use test_lib::VirtualWorkspace;
 use tokio_util::sync::CancellationToken;
 pub use vfs::*;
-pub use locale::get_locale_code;
 
 #[macro_use]
 extern crate rust_i18n;
@@ -38,6 +38,7 @@ pub struct EmmyLuaAnalysis {
     pub compilation: LuaCompilation,
     pub diagnostic: LuaDiagnostic,
     pub emmyrc: Arc<Emmyrc>,
+    lib_workspace_counter: u32,
 }
 
 impl EmmyLuaAnalysis {
@@ -47,12 +48,17 @@ impl EmmyLuaAnalysis {
             compilation: LuaCompilation::new(emmyrc.clone()),
             diagnostic: LuaDiagnostic::new(),
             emmyrc,
+            lib_workspace_counter: 2,
         }
     }
 
     pub fn init_std_lib(&mut self, allow_create_resources_dir: bool) {
         let (std_root, files) = load_resource_std(allow_create_resources_dir);
-        self.add_workspace_root(std_root);
+        self.compilation
+            .get_db_mut()
+            .get_module_index_mut()
+            .add_workspace_root(std_root, WorkspaceId::STD);
+
         let files = files
             .into_iter()
             .filter_map(|file| {
@@ -74,11 +80,23 @@ impl EmmyLuaAnalysis {
         self.compilation.get_db().get_vfs().get_uri(&file_id)
     }
 
-    pub fn add_workspace_root(&mut self, root: PathBuf) {
+    pub fn add_main_workspace(&mut self, root: PathBuf) {
         self.compilation
             .get_db_mut()
             .get_module_index_mut()
-            .add_workspace_root(root);
+            .add_workspace_root(root, WorkspaceId::MAIN);
+    }
+
+    pub fn add_library_workspace(&mut self, root: PathBuf) {
+        let id = WorkspaceId {
+            id: self.lib_workspace_counter,
+        };
+        self.lib_workspace_counter += 1;
+
+        self.compilation
+            .get_db_mut()
+            .get_module_index_mut()
+            .add_workspace_root(root, id);
     }
 
     pub fn update_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> Option<FileId> {
@@ -155,6 +173,18 @@ impl EmmyLuaAnalysis {
     ) -> Option<Vec<lsp_types::Diagnostic>> {
         self.diagnostic
             .diagnose_file(&self.compilation, file_id, cancel_token)
+    }
+
+    pub fn reindex(&mut self) {
+        let module = self.compilation.get_db().get_module_index();
+        let std_file_ids = module.get_std_file_ids();
+        let main_file_ids = module.get_main_workspace_file_ids();
+        let lib_file_ids = module.get_lib_file_ids();
+        self.compilation.clear_index();
+
+        self.compilation.update_index(std_file_ids);
+        self.compilation.update_index(lib_file_ids);
+        self.compilation.update_index(main_file_ids);
     }
 }
 

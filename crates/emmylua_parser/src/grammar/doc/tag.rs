@@ -206,36 +206,10 @@ fn parse_tag_alias(p: &mut LuaDocParser) -> ParseResult {
         parse_generic_decl_list(p, true)?;
     }
 
-    if p.current_token() == LuaTokenKind::TkDocContinueOr {
-        parse_alias_or_type_list(p)?;
-    } else {
-        parse_type(p)?;
-    }
+    parse_type(p)?;
 
     p.set_state(LuaDocLexerState::Description);
     parse_description(p);
-    Ok(m.complete(p))
-}
-
-fn parse_alias_or_type_list(p: &mut LuaDocParser) -> ParseResult {
-    let m = p.mark(LuaSyntaxKind::DocAliasOrTypeList);
-
-    while p.current_token() == LuaTokenKind::TkDocContinueOr {
-        p.bump();
-        parse_alias_or_type(p)?;
-    }
-
-    Ok(m.complete(p))
-}
-
-fn parse_alias_or_type(p: &mut LuaDocParser) -> ParseResult {
-    let m = p.mark(LuaSyntaxKind::DocAliasOrType);
-
-    parse_type(p)?;
-    if p.current_token() == LuaTokenKind::TkDocDetail {
-        p.bump();
-    }
-
     Ok(m.complete(p))
 }
 
@@ -337,30 +311,12 @@ fn parse_tag_param(p: &mut LuaDocParser) -> ParseResult {
     }
 
     if_token_bump(p, LuaTokenKind::TkDocQuestion);
-    // compact luals
-    if p.current_token() == LuaTokenKind::TkDocContinueOr {
-        p.bump();
-        parse_param_or_type_list(p)?;
-    } else {
-        parse_type(p)?;
-    }
+
+    parse_type(p)?;
 
     p.set_state(LuaDocLexerState::Description);
     parse_description(p);
     Ok(m.complete(p))
-}
-
-fn parse_param_or_type_list(p: &mut LuaDocParser) -> ParseResult {
-    let mut cm = parse_type(p)?;
-    while p.current_token() == LuaTokenKind::TkDocContinueOr {
-        let m = cm.precede(p, LuaSyntaxKind::TypeBinary);
-        p.bump();
-        parse_type(p)?;
-        if_token_bump(p, LuaTokenKind::TkDocDetail);
-        cm = m.complete(p);
-    }
-
-    Ok(cm)
 }
 
 // ---@return number
@@ -370,12 +326,9 @@ fn parse_tag_return(p: &mut LuaDocParser) -> ParseResult {
     p.set_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagReturn);
     p.bump();
-    if p.current_token() == LuaTokenKind::TkDocContinueOr {
-        p.bump();
-        parse_param_or_type_list(p)?;
-    } else {
-        parse_type(p)?;
-    }
+
+    parse_type(p)?;
+
     if_token_bump(p, LuaTokenKind::TkName);
 
     while p.current_token() == LuaTokenKind::TkComma {

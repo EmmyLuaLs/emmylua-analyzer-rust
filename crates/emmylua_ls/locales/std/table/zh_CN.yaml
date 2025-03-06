@@ -1,0 +1,66 @@
+std.tablelib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table"])
+
+std.tablelib.concat: |
+  提供一个列表，其所有元素都是字符串或数字，返回字符串 `list[i]..sep..list[i+1] ··· sep..list[j]`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.concat"])
+
+std.tablelib.insert: |
+  在 `list` 的位置 `pos` 处插入元素 `value`。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.insert"])
+
+std.tablelib.maxn: |
+  返回给定表的最大正数索引，如果表没有正数索引，则返回零。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.maxn"])
+
+std.tablelib.move: |
+  将元素从表 `a1` 移到表 `a2`。
+  ```lua
+  a2[t],··· =
+  a1[f],···,a1[e]
+  return a2
+  ```
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.move"])
+
+std.tablelib.pack: |
+  返回用所有参数以键 `1`,`2`, 等填充的新表， 并将 `"n"` 这个域设为参数的总数。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.pack"])
+
+std.tablelib.remove: |
+  移除 `list` 中 `pos` 位置上的元素，并返回这个被移除的值。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.remove"])
+
+std.tablelib.sort: |
+  在表内从 `list[1]` 到 `list[#list]` *原地* 对其间元素按指定次序排序。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.sort"])
+
+std.tablelib.unpack: |
+  返回列表中的元素。 这个函数等价于
+  ```lua
+      return list[i], list[i+1], ···, list[j]
+  ```
+  i 默认为 1 ，j 默认为 #list。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.unpack"])
+
+std.tablelib.foreach: |
+  遍历表中的每一个元素，并以key和value执行回调函数。如果回调函数返回一个非nil值则循环终止,并且返回这个值。该函数等同pair(list),比pair(list)更慢。不推荐使用
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.foreach"])
+
+std.tablelib.foreachi: |
+  遍历数组中的每一个元素，并以索引号index和value执行回调函数。如果回调函数返回一个非nil值则循环终止,并且返回这个值。该函数等同ipair(list),比ipair(list)更慢。不推荐使用
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.foreachi"])
+
+std.tablelib.getn: |
+  返回表的长度。该函数等价于#list。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.getn"])

@@ -100,6 +100,7 @@ pub enum LuaAst {
     LuaDocNullableType(LuaDocNullableType),
     LuaDocGenericType(LuaDocGenericType),
     LuaDocStrTplType(LuaDocStrTplType),
+    LuaDocMultiLineUnionType(LuaDocMultiLineUnionType),
 
     // other structure do not need enum here
 }
@@ -180,6 +181,7 @@ impl LuaAstNode for LuaAst {
             LuaAst::LuaDocNullableType(node) => node.syntax(),
             LuaAst::LuaDocGenericType(node) => node.syntax(),
             LuaAst::LuaDocStrTplType(node) => node.syntax(),
+            LuaAst::LuaDocMultiLineUnionType(node) => node.syntax(),
         }
     }
 
@@ -263,6 +265,7 @@ impl LuaAstNode for LuaAst {
             LuaSyntaxKind::TypeNullable => true,
             LuaSyntaxKind::TypeGeneric => true,
             LuaSyntaxKind::TypeStringTemplate => true,
+            LuaSyntaxKind::TypeMultiLineUnion => true,
             _ => false,
         }
     }
@@ -400,6 +403,9 @@ impl LuaAstNode for LuaAst {
             }
             LuaSyntaxKind::TypeStringTemplate => {
                 LuaDocStrTplType::cast(syntax).map(LuaAst::LuaDocStrTplType)
+            }
+            LuaSyntaxKind::TypeMultiLineUnion => {
+                LuaDocMultiLineUnionType::cast(syntax).map(LuaAst::LuaDocMultiLineUnionType)
             }
             _ => None,
         }

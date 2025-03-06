@@ -11,6 +11,10 @@ mod syntax_error;
 mod undefined_global;
 mod unused;
 mod code_style_check;
+mod redundant_parameter;
+mod return_type_mismatch;
+mod redundant_return_value;
+mod missing_return_value;
 
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use rowan::TextRange;
@@ -46,12 +50,16 @@ pub fn check_file(
     check!(undefined_global);
     check!(access_invisible);
     check!(missing_parameter);
+    check!(redundant_parameter);
     check!(local_const_reassign);
     check!(discard_returns);
     check!(await_in_sync);
     check!(param_type_check);
     check!(need_check_nil);
     check!(code_style_check);
+    check!(redundant_return_value);
+    check!(missing_return_value);
+    check!(return_type_mismatch);
 
     Some(())
 }
@@ -126,6 +134,10 @@ impl<'a> DiagnosticContext<'a> {
     }
 
     fn get_severity(&self, code: DiagnosticCode) -> Option<DiagnosticSeverity> {
+        if let Some(severity) = self.config.severity.get(&code) {
+            return Some(severity.clone());
+        }
+
         Some(get_default_severity(code))
     }
 

@@ -2,7 +2,8 @@ use emmylua_code_analysis::Emmyrc;
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaExpr, LuaLiteralExpr, LuaStringToken,
 };
-use lsp_types::CompletionItem;
+use lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
+use rowan::TextRange;
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
 
@@ -48,21 +49,27 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         ""
     };
 
+    let text_edit_range = get_text_edit_range(builder, string_token)?;
+
     let db = builder.semantic_model.get_db();
     let mut module_completions = Vec::new();
     let module_info = db.get_module_index().find_module_node(&module_path)?;
     for (name, module_id) in &module_info.children {
         let child_module_node = db.get_module_index().get_module_node(module_id)?;
+        let filter_text = format!("{}{}", prefix, name);
+        let text_edit = TextEdit {
+            range: text_edit_range.clone(),
+            new_text: filter_text.clone(),
+        };
         if let Some(child_file_id) = child_module_node.file_ids.first() {
             let child_module_info = db.get_module_index().get_module(*child_file_id)?;
-            if  child_module_info.is_visible(&version_number) {
+            if child_module_info.is_visible(&version_number) {
                 let uri = db.get_vfs().get_uri(child_file_id)?;
-                let filter_text = format!("{}{}", prefix, name);
                 let completion_item = CompletionItem {
                     label: name.clone(),
                     kind: Some(lsp_types::CompletionItemKind::FILE),
                     filter_text: Some(filter_text.clone()),
-                    insert_text: Some(filter_text),
+                    text_edit: Some(CompletionTextEdit::Edit(text_edit)),
                     detail: Some(uri.to_string()),
                     ..Default::default()
                 };
@@ -72,8 +79,8 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
             let completion_item = CompletionItem {
                 label: name.clone(),
                 kind: Some(lsp_types::CompletionItemKind::FOLDER),
-                filter_text: Some(name.clone()),
-                insert_text: Some(name.clone()),
+                filter_text: Some(filter_text.clone()),
+                text_edit: Some(CompletionTextEdit::Edit(text_edit)),
                 ..Default::default()
             };
 
@@ -98,4 +105,33 @@ fn is_require_call(emmyrc: &Emmyrc, name: &str) -> bool {
     }
 
     name == "require"
+}
+
+fn get_text_edit_range(
+    builder: &mut CompletionBuilder,
+    string_token: LuaStringToken,
+) -> Option<lsp_types::Range> {
+    let text = string_token.get_text();
+    let range = string_token.get_range();
+    if text.len() == 0 {
+        return None;
+    }
+
+    let mut start_offset = u32::from(range.start());
+    let mut end_offset = u32::from(range.end());
+    if text.starts_with('"') || text.starts_with('\'') {
+        start_offset += 1;
+    }
+
+    if text.ends_with('"') || text.ends_with('\'') {
+        end_offset -= 1;
+    }
+
+    let new_text_range = TextRange::new(start_offset.into(), end_offset.into());
+    let lsp_range = builder
+        .semantic_model
+        .get_document()
+        .to_lsp_range(new_text_range);
+
+    lsp_range
 }

@@ -279,6 +279,10 @@ pub fn check_complex_type_compact(
         LuaType::Generic(_) => {
             return Ok(());
         }
+        LuaType::MultiLineUnion(multi_union) => {
+            let union = multi_union.to_union();
+            return check_complex_type_compact(db, &union, &compact_type, check_guard.next_level()?);
+        }
 
         // donot check for now
         // LuaType::Intersection(_) |

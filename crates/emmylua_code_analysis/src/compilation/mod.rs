@@ -3,7 +3,7 @@ mod test;
 
 use std::sync::Arc;
 
-use crate::{db_index::DbIndex, semantic::SemanticModel, Emmyrc, FileId, InFiled};
+use crate::{db_index::DbIndex, semantic::SemanticModel, Emmyrc, FileId, InFiled, LuaIndex};
 
 #[derive(Debug)]
 pub struct LuaCompilation {
@@ -35,20 +35,24 @@ impl LuaCompilation {
     }
 
     pub fn update_index(&mut self, file_ids: Vec<FileId>) {
-        let mut context = analyzer::AnalyzeContext::new(self.emmyrc.clone());
+        let mut need_analyzed_files = vec![];
         for file_id in file_ids {
             let tree = self.db.get_vfs().get_syntax_tree(&file_id).unwrap();
-            context.add_tree_chunk(InFiled {
+            need_analyzed_files.push(InFiled {
                 file_id,
                 value: tree.get_chunk_node(),
             });
         }
 
-        analyzer::analyze(&mut self.db, context);
+        analyzer::analyze(&mut self.db, need_analyzed_files, self.emmyrc.clone());
     }
 
     pub fn remove_index(&mut self, file_ids: Vec<FileId>) {
         self.db.remove_index(file_ids);
+    }
+
+    pub fn clear_index(&mut self) {
+        self.db.clear();
     }
 
     pub fn get_db(&self) -> &DbIndex {

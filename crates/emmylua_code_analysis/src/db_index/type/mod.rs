@@ -114,7 +114,7 @@ impl LuaTypeIndex {
             }
 
             let location = LuaDeclLocation { file_id, range };
-            decls.defined_locations.push(location);
+            decls.locations.push(location);
         } else {
             let just_name = if let Some(i) = basic_name.rfind('.') {
                 basic_name[i + 1..].to_string()
@@ -296,35 +296,14 @@ impl LuaIndex for LuaTypeIndex {
         self.as_force_type.retain(|id, _| id.file_id != file_id);
     }
 
-    fn fill_snapshot_info(&self, info: &mut HashMap<String, String>) {
-        info.insert(
-            "type.file_namespace".to_string(),
-            self.file_namespace.len().to_string(),
-        );
-        info.insert(
-            "type.file_using_namespace".to_string(),
-            self.file_using_namespace.len().to_string(),
-        );
-        info.insert(
-            "type.file_env".to_string(), 
-            self.file_env.len().to_string()
-        );
-        info.insert(
-            "type.file_types".to_string(),
-            self.file_types.len().to_string(),
-        );
-        info.insert(
-            "type.full_name_type_map".to_string(),
-            self.full_name_type_map.len().to_string(),
-        );
-        info.insert(
-            "type.generic_params".to_string(),
-            self.generic_params.len().to_string(),
-        );
-        info.insert("type.supers".to_string(), self.supers.len().to_string());
-        info.insert(
-            "type.as_force_type".to_string(),
-            self.as_force_type.len().to_string(),
-        );
+    fn clear(&mut self) {
+        self.file_namespace.clear();
+        self.file_using_namespace.clear();
+        self.file_env.clear();
+        self.file_types.clear();
+        self.full_name_type_map.clear();
+        self.generic_params.clear();
+        self.supers.clear();
+        self.as_force_type.clear();
     }
 }

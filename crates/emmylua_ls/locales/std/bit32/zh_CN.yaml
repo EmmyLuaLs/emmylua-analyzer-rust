@@ -1,0 +1,77 @@
+std.bit32lib: |
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32"])
+
+std.bit32lib.arshift: |
+  返回 `x` 向右位移 `disp` 位的结果。`disp` 为负时向左位移。这是算数位移操作，左侧的空位使用 `x` 的高位填充，右侧空位使用 `0` 填充。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.arshift"])
+
+std.bit32lib.band: |
+  返回参数按位与的结果。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.band"])
+
+std.bit32lib.bnot: |
+  返回 `x` 按位取反的结果。
+
+  ```lua
+  assert(bit32.bnot(x) ==
+  (-1 - x) % 2^32)
+  ```
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bnot"])
+
+std.bit32lib.bor: |
+  返回参数按位或的结果。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bor"])
+
+std.bit32lib.btest: |
+  参数按位与的结果不为0时，返回 `true` 。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.btest"])
+
+std.bit32lib.bxor: |
+  返回参数按位异或的结果。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bxor"])
+
+std.bit32lib.extract: |
+  返回 `n` 中第 `field` 到第 `field + width - 1` 位组成的结果。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.extract"])
+
+std.bit32lib.replace: |
+  返回 `v` 的第 `field` 到第 `field + width - 1` 位替换 `n` 的对应位后的结果。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.replace"])
+
+std.bit32lib.lrotate: |
+  返回 `x` 向左旋转 `disp` 位的结果。`disp` 为负时向右旋转。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.lrotate"])
+
+std.bit32lib.lshift: |
+  返回 `x` 向左位移 `disp` 位的结果。`disp` 为负时向右位移。空位总是使用 `0` 填充。
+
+  ```lua
+  assert(bit32.lshift(b, disp) ==
+  (b * 2^disp) % 2^32)
+  ```
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.lshift"])
+
+std.bit32lib.rrotate: |
+  返回 `x` 向右旋转 `disp` 位的结果。`disp` 为负时向左旋转。
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.rrotate"])
+
+std.bit32lib.rshift: |
+  返回 `x` 向右位移 `disp` 位的结果。`disp` 为负时向左位移。空位总是使用 `0` 填充。
+
+  ```lua
+  assert(bit32.lshift(b, disp) ==
+  (b * 2^disp) % 2^32)
+  ```
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.rshift"])

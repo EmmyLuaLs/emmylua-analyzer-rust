@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCommentOwner, LuaDocDescriptionOwner,
-    LuaDocDetailOwner, LuaDocGenericDeclList, LuaDocTagAlias, LuaDocTagClass, LuaDocTagEnum,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCommentOwner, LuaDocDescription,
+    LuaDocDescriptionOwner, LuaDocGenericDeclList, LuaDocTagAlias, LuaDocTagClass, LuaDocTagEnum,
     LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat, LuaNameExpr, LuaSyntaxId,
     LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
 };
 use rowan::TextRange;
 
-use crate::db_index::{
-    LuaDeclId, LuaDeclTypeKind, LuaMember, LuaMemberId, LuaMemberKey, LuaMemberOwner,
-    LuaPropertyOwnerId, LuaSignatureId, LuaType,
+use crate::{
+    db_index::{
+        LuaDeclId, LuaDeclTypeKind, LuaMemberId, LuaPropertyOwnerId, LuaSignatureId, LuaType,
+    },
+    LuaTypeDeclId,
 };
 
 use super::{
@@ -63,19 +65,43 @@ pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<
         }
     }
 
-    if let Some(description) = tag.get_description() {
-        let description_text = preprocess_description(&description.get_description_text());
-        if !description_text.is_empty() {
-            analyzer.db.get_property_index_mut().add_description(
-                file_id,
-                LuaPropertyOwnerId::TypeDecl(class_decl_id.clone()),
-                description_text,
-            );
-        }
-    }
+    add_description_for_type_decl(analyzer, &class_decl_id, tag.get_description());
 
     bind_def_type(analyzer, LuaType::Def(class_decl_id.clone()));
     Some(())
+}
+
+fn add_description_for_type_decl(
+    analyzer: &mut DocAnalyzer,
+    type_decl_id: &LuaTypeDeclId,
+    description: Option<LuaDocDescription>,
+) {
+    let mut description_text = String::new();
+
+    let comment = analyzer.comment.clone();
+    if let Some(description) = comment.get_description() {
+        let description = preprocess_description(&description.get_description_text());
+        if !description.is_empty() {
+            description_text.push_str(&description);
+        }
+    }
+
+    if let Some(description) = description {
+        let description = preprocess_description(&description.get_description_text());
+        if !description.is_empty() {
+            if !description_text.is_empty() {
+                description_text.push_str("\n\n");
+            }
+
+            description_text.push_str(&description);
+        }
+    }
+
+    analyzer.db.get_property_index_mut().add_description(
+        analyzer.file_id,
+        LuaPropertyOwnerId::TypeDecl(type_decl_id.clone()),
+        description_text,
+    );
 }
 
 pub fn analyze_enum(analyzer: &mut DocAnalyzer, tag: LuaDocTagEnum) -> Option<()> {
@@ -108,16 +134,8 @@ pub fn analyze_enum(analyzer: &mut DocAnalyzer, tag: LuaDocTagEnum) -> Option<()
         enum_decl.add_enum_base(base_type);
     }
 
-    if let Some(description) = tag.get_description() {
-        let description_text = preprocess_description(&description.get_description_text());
-        if !description_text.is_empty() {
-            analyzer.db.get_property_index_mut().add_description(
-                file_id,
-                LuaPropertyOwnerId::TypeDecl(enum_decl_id.clone()),
-                description_text,
-            );
-        }
-    }
+    let description = tag.get_description();
+    add_description_for_type_decl(analyzer, &enum_decl_id, description);
 
     bind_def_type(analyzer, LuaType::Def(enum_decl_id.clone()));
 
@@ -159,68 +177,17 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
             .add_generic_scope(vec![range], params_index, false);
     }
 
-    if let Some(origin_type) = tag.get_type() {
-        let replace_type = infer_type(analyzer, origin_type);
-        if replace_type.is_unknown() {
-            return None;
-        }
-        let alias = analyzer
-            .db
-            .get_type_index_mut()
-            .get_type_decl_mut(&alias_decl_id)?;
-        alias.add_alias_origin(replace_type);
-    } else if let Some(field_list) = tag.get_alias_fields() {
-        let mut union_members = Vec::new();
-        for (i, field) in field_list.get_fields().enumerate() {
-            let alias_member_type = if let Some(field_type) = field.get_type() {
-                let type_ref = infer_type(analyzer, field_type);
-                if type_ref.is_unknown() {
-                    continue;
-                }
-                type_ref
-            } else {
-                continue;
-            };
+    let origin_type = infer_type(analyzer, tag.get_type()?);
 
-            let member = LuaMember::new(
-                LuaMemberOwner::Type(alias_decl_id.clone()),
-                LuaMemberKey::Integer(i as i64),
-                file_id,
-                field.get_syntax_id(),
-                Some(alias_member_type),
-            );
-            let member_id = analyzer.db.get_member_index_mut().add_member(member);
-            union_members.push(member_id);
-            if let Some(description_text) = field.get_detail_text() {
-                if description_text.is_empty() {
-                    continue;
-                }
-                let description_text = preprocess_description(&description_text);
-                analyzer.db.get_property_index_mut().add_description(
-                    file_id,
-                    LuaPropertyOwnerId::Member(member_id),
-                    description_text,
-                );
-            }
-        }
+    let alias = analyzer
+        .db
+        .get_type_index_mut()
+        .get_type_decl_mut(&alias_decl_id)?;
 
-        let alias = analyzer
-            .db
-            .get_type_index_mut()
-            .get_type_decl_mut(&alias_decl_id)?;
-        alias.add_alias_union_members(union_members);
-    }
+    alias.add_alias_origin(origin_type);
 
-    let description_text = tag.get_description()?.get_description_text();
-    if description_text.is_empty() {
-        return None;
-    }
-    let description_text = preprocess_description(&description_text);
-    analyzer.db.get_property_index_mut().add_description(
-        file_id,
-        LuaPropertyOwnerId::TypeDecl(alias_decl_id.clone()),
-        description_text,
-    );
+    let description = tag.get_description();
+    add_description_for_type_decl(analyzer, &alias_decl_id, description);
 
     Some(())
 }

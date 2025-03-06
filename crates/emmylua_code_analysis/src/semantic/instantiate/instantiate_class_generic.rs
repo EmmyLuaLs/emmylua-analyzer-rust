@@ -68,6 +68,7 @@ fn instantiate_tuple(db: &DbIndex, tuple: &LuaTupleType, substitutor: &TypeSubst
                             }
                         }
                         SubstitutorValue::Type(ty) => new_types.push(ty.clone()),
+                        SubstitutorValue::MultiBase(base) => new_types.push(base.clone()),
                     }
                 }
             }
@@ -135,7 +136,17 @@ pub fn instantiate_doc_function(
                                     new_returns.push(typ.clone());
                                 }
                             }
-                            _ => {}
+                            SubstitutorValue::Params(params) => {
+                                for (_, ty) in params {
+                                    new_returns.push(ty.clone().unwrap_or(LuaType::Unknown));
+                                }
+                            }
+                            SubstitutorValue::Type(ty) => new_returns.push(ty.clone()),
+                            SubstitutorValue::MultiBase(base) => {
+                                new_returns.push(LuaType::MuliReturn(
+                                    LuaMultiReturn::Base(base.clone()).into(),
+                                ));
+                            }
                         }
                     }
                 }
@@ -222,7 +233,7 @@ fn instantiate_generic(
 
     if !substitutor.check_recursion(&type_decl_id) {
         if let Some(type_decl) = db.get_type_index().get_type_decl(&type_decl_id) {
-            if type_decl.is_alias_replace() {
+            if type_decl.is_alias() {
                 let new_substitutor =
                     TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
                 if let Some(origin) = type_decl.get_alias_origin(db, Some(&new_substitutor)) {
@@ -264,6 +275,7 @@ fn instantiate_tpl_ref(_: &DbIndex, tpl: &GenericTpl, substitutor: &TypeSubstitu
                     .clone()
                     .unwrap_or(LuaType::Unknown);
             }
+            SubstitutorValue::MultiBase(base) => return base.clone(),
         }
     }
 
@@ -308,27 +320,42 @@ fn instantiate_signature(
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
     if let Some(signature) = db.get_signature_index().get(&signature_id) {
-        let rets = signature
-            .return_docs
-            .iter()
-            .map(|ret| ret.type_ref.clone())
-            .collect();
-        let is_async = if let Some(property) = db
-            .get_property_index()
-            .get_property(LuaPropertyOwnerId::Signature(signature_id.clone()))
-        {
-            property.is_async
-        } else {
-            false
+        let origin_type = {
+            let rets = signature
+                .return_docs
+                .iter()
+                .map(|ret| ret.type_ref.clone())
+                .collect();
+            let is_async = if let Some(property) = db
+                .get_property_index()
+                .get_property(LuaPropertyOwnerId::Signature(signature_id.clone()))
+            {
+                property.is_async
+            } else {
+                false
+            };
+            let fake_doc_function = LuaFunctionType::new(
+                is_async,
+                signature.is_colon_define,
+                signature.get_type_params(),
+                rets,
+            );
+            instantiate_doc_function(db, &fake_doc_function, substitutor)
         };
-        let fake_doc_function = LuaFunctionType::new(
-            is_async,
-            signature.is_colon_define,
-            signature.get_type_params(),
-            rets,
-        );
-        let instantiate_func = instantiate_doc_function(db, &fake_doc_function, substitutor);
-        return instantiate_func;
+        if signature.overloads.is_empty() {
+            return origin_type;
+        } else {
+            let mut result = Vec::new();
+            for overload in signature.overloads.iter() {
+                result.push(instantiate_doc_function(
+                    db,
+                    &(*overload).clone(),
+                    substitutor,
+                ));
+            }
+            result.push(origin_type); // 我们需要将原始类型放到最后
+            return LuaType::Union(LuaUnionType::new(result).into());
+        }
     }
 
     return LuaType::Signature(signature_id.clone());
@@ -443,25 +470,30 @@ fn instantiate_select_call(source: &LuaType, index: &LuaType) -> LuaType {
     match num_or_len {
         NumOrLen::Num(i) => match multi_return {
             LuaMultiReturn::Base(_) => LuaType::MuliReturn(multi_return.clone().into()),
-            LuaMultiReturn::Multi(types) => {
-                let start = if i < 0 { types.len() as i64 + i } else { i - 1 };
-                if start < 0 || start as usize >= types.len() {
-                    return LuaType::Unknown;
+            LuaMultiReturn::Multi(_) => {
+                let total_len = multi_return.get_len();
+                if total_len.is_none() {
+                    return source.clone();
                 }
 
-                let new_types = types
-                    .iter()
-                    .skip(start as usize)
-                    .cloned()
-                    .collect::<Vec<_>>();
+                let total_len = total_len.unwrap();
+                let start = if i < 0 { total_len as i64 + i } else { i - 1 };
+                if start < 0 || start >= total_len {
+                    return source.clone();
+                }
 
-                LuaType::MuliReturn(LuaMultiReturn::Multi(new_types).into())
+                let multi = multi_return.get_new_multi_from(start as usize);
+                LuaType::MuliReturn(multi.into())
             }
         },
-        NumOrLen::Len => match multi_return {
-            LuaMultiReturn::Base(_) => LuaType::Integer,
-            LuaMultiReturn::Multi(types) => LuaType::DocIntegerConst(types.len() as i64),
-        },
+        NumOrLen::Len => {
+            let len = multi_return.get_len();
+            if let Some(len) = len {
+                LuaType::IntegerConst(len)
+            } else {
+                LuaType::Integer
+            }
+        }
         NumOrLen::LenUnknown => LuaType::Integer,
     }
 }
@@ -484,6 +516,9 @@ fn instantiate_variadic_type(
                         .filter_map(|(_, ty)| ty.clone())
                         .collect::<Vec<_>>();
                     return LuaType::MuliReturn(LuaMultiReturn::Multi(types).into());
+                }
+                SubstitutorValue::MultiBase(base) => {
+                    return LuaType::MuliReturn(LuaMultiReturn::Base(base.clone()).into());
                 }
             }
         }

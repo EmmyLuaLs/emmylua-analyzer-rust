@@ -4,9 +4,9 @@ mod generic_type;
 mod ref_type;
 mod simple_type;
 mod sub_type;
+mod test;
 mod type_check_fail_reason;
 mod type_check_guard;
-mod test;
 
 use complex_type::check_complex_type_compact;
 use func_type::{check_doc_func_type_compact, check_sig_type_compact};
@@ -21,7 +21,6 @@ use crate::{
     TypeOps,
 };
 pub use sub_type::is_sub_type_of;
-
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 
 pub fn check_type_compact(
@@ -43,12 +42,7 @@ fn check_general_type_compact(
     }
 
     if let Some(origin_type) = escape_type(db, compact_type) {
-        return check_general_type_compact(
-            db,
-            source,
-            &origin_type,
-            check_guard.next_level()?,
-        );
+        return check_general_type_compact(db, source, &origin_type, check_guard.next_level()?);
     }
 
     match source {
@@ -91,10 +85,8 @@ fn check_general_type_compact(
         LuaType::DocFunction(doc_func) => {
             check_doc_func_type_compact(db, doc_func, compact_type, check_guard)
         }
-        // signature type 
-        LuaType::Signature(sig_id) => {
-            check_sig_type_compact(db, sig_id, compact_type, check_guard)
-        },
+        // signature type
+        LuaType::Signature(sig_id) => check_sig_type_compact(db, sig_id, compact_type, check_guard),
 
         // complex type
         LuaType::Array(_)
@@ -103,7 +95,8 @@ fn check_general_type_compact(
         | LuaType::Object(_)
         | LuaType::Union(_)
         | LuaType::Intersection(_)
-        | LuaType::TableGeneric(_) => {
+        | LuaType::TableGeneric(_)
+        | LuaType::MultiLineUnion(_) => {
             check_complex_type_compact(db, source, compact_type, check_guard)
         }
 
@@ -147,6 +140,10 @@ fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
         LuaType::MemberPathExist(member_path) => {
             let base = member_path.get_origin();
             return Some(TypeOps::Remove.apply(base, &LuaType::Nil));
+        }
+        LuaType::MultiLineUnion(multi_union) => {
+            let union = multi_union.to_union();
+            return Some(union);
         }
         _ => {}
     }

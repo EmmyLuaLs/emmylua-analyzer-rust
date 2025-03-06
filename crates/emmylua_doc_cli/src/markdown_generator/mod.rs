@@ -1,9 +1,10 @@
+mod global_gen;
 mod index_gen;
 mod init_tl;
+mod mixin_copy;
 mod mod_gen;
 mod render;
 mod typ_gen;
-mod mixin_copy;
 
 use std::path::PathBuf;
 
@@ -39,19 +40,41 @@ pub fn generate_markdown(
         std::fs::create_dir_all(&module_out).ok()?;
     }
 
+    let global_out = docs_dir.join("globals");
+    if !global_out.exists() {
+        println!("Creating globals directory: {:?}", global_out);
+        std::fs::create_dir_all(&global_out).ok()?;
+    } else {
+        println!("Clearing globals directory: {:?}", global_out);
+        std::fs::remove_dir_all(&global_out).ok()?;
+        std::fs::create_dir_all(&global_out).ok()?;
+    }
+
     let tl = init_tl::init_tl(override_template)?;
     let mut mkdocs_index = MkdocsIndex::default();
     let db = analysis.compilation.get_db();
     let type_index = db.get_type_index();
     let types = type_index.get_all_types();
     for type_decl in types {
-        typ_gen::generate_type_markdown(db, &tl, type_decl, &input, &types_out, &mut mkdocs_index);
+        typ_gen::generate_type_markdown(db, &tl, type_decl, &types_out, &mut mkdocs_index);
     }
 
     let module_index = db.get_module_index();
     let modules = module_index.get_module_infos();
     for module in modules {
-        mod_gen::generate_module_markdown(db, &tl, module, &input, &module_out, &mut mkdocs_index);
+        mod_gen::generate_module_markdown(db, &tl, module, &module_out, &mut mkdocs_index);
+    }
+
+    let decl_index = db.get_decl_index();
+    let globals = decl_index.get_global_decls();
+    for global_decl_id in globals {
+        global_gen::generate_global_markdown(
+            db,
+            &tl,
+            &global_decl_id,
+            &global_out,
+            &mut mkdocs_index,
+        );
     }
 
     index_gen::generate_index(&tl, &mut mkdocs_index, &output);
@@ -74,6 +97,7 @@ struct MemberDisplay {
 struct MkdocsIndex {
     pub types: Vec<IndexStruct>,
     pub modules: Vec<IndexStruct>,
+    pub globals: Vec<IndexStruct>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

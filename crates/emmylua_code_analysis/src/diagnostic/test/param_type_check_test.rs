@@ -172,8 +172,8 @@ mod test {
         function mergeInto(target, ...)
             -- Stuff
         end
-        "#);
-
+        "#,
+        );
 
         assert!(!ws.check_code_for(
             DiagnosticCode::ParamTypeNotMatch,
@@ -217,6 +217,70 @@ mod test {
         local range ---@type { [1]: integer, [2]: integer }
 
         table.sort(range)
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_issue_135() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+        ---@alias A
+        ---| "number" # A number
+
+        ---@param a A
+        local function f(a)
+        end
+
+        f("number")
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_colon_call_and_not_colon_define() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@class Test
+            local Test = {}
+
+            ---@param a string
+            function Test.name(a)
+            end
+
+            Test:name()
+        "#
+        ));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@class Test
+            local Test = {}
+
+            ---@param ... any
+            function Test.dots(...)
+            end
+
+            Test:dots("a", "b", "c") 
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_issue_148() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            local a = (''):format()
         "#
         ));
     }

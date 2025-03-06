@@ -5,6 +5,8 @@ use crate::{
     LuaUnionType, TypeSubstitutor,
 };
 
+use super::LuaMultiLineUnion;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderLevel {
     Detailed,
@@ -83,6 +85,9 @@ pub fn humanize_type(db: &DbIndex, ty: &LuaType, level: RenderLevel) -> String {
         LuaType::Signature(signature_id) => humanize_signature_type(db, signature_id, level),
         LuaType::Namespace(ns) => format!("{{ {} }}", ns),
         LuaType::Variadic(inner) => format!("{}...", humanize_type(db, inner, level.next_level())),
+        LuaType::MultiLineUnion(multi_union) => {
+            humanize_multi_line_union_type(db, multi_union, level)
+        }
         _ => "unknown".to_string(),
     }
 }
@@ -97,8 +102,7 @@ fn humanize_def_type(db: &DbIndex, id: &LuaTypeDeclId, level: RenderLevel) -> St
     let full_name = type_decl.get_full_name();
     let generic = db.get_type_index().get_generic_params(id);
     if generic.is_none() {
-        return humanize_simple_type(db, id, &full_name, level)
-            .unwrap_or(full_name.to_string());
+        return humanize_simple_type(db, id, &full_name, level).unwrap_or(full_name.to_string());
     }
 
     let generic_names = generic
@@ -179,6 +183,51 @@ fn humanize_union_type(db: &DbIndex, union: &LuaUnionType, level: RenderLevel) -
         .collect::<Vec<_>>()
         .join("|");
     format!("({}{})", type_str, dots)
+}
+
+fn humanize_multi_line_union_type(
+    db: &DbIndex,
+    multi_union: &LuaMultiLineUnion,
+    level: RenderLevel,
+) -> String {
+    let members = multi_union.get_unions();
+    let num = match level {
+        RenderLevel::Detailed => 10,
+        RenderLevel::Simple => 8,
+        RenderLevel::Normal => 4,
+        RenderLevel::Brief => 2,
+        RenderLevel::Minimal => {
+            return "union<...>".to_string();
+        }
+    };
+    let dots = if members.len() > num { "..." } else { "" };
+
+    let type_str = members
+        .iter()
+        .take(num)
+        .map(|(ty, _)| humanize_type(db, ty, level.next_level()))
+        .collect::<Vec<_>>()
+        .join("|");
+
+    let mut text = format!("({}{})", type_str, dots);
+    if level != RenderLevel::Detailed {
+        return text;
+    }
+
+    text.push_str("\n");
+    for (typ, description) in members {
+        let type_humanize_text = humanize_type(db, &typ, RenderLevel::Minimal);
+        if let Some(description) = description {
+            text.push_str(&format!(
+                "    | {} -- {}\n",
+                type_humanize_text, description
+            ));
+        } else {
+            text.push_str(&format!("    | {}\n", type_humanize_text));
+        }
+    }
+
+    text
 }
 
 fn humanize_tuple_type(db: &DbIndex, tuple: &LuaTupleType, level: RenderLevel) -> String {
@@ -371,7 +420,7 @@ fn humanize_generic_type(db: &DbIndex, generic: &LuaGenericType, level: RenderLe
     let simple_name = type_decl.get_name();
     match level {
         RenderLevel::Brief => {
-            if type_decl.is_alias_replace() {
+            if type_decl.is_alias() {
                 let params = generic
                     .get_params()
                     .iter()
@@ -627,9 +676,13 @@ fn build_table_member_string(
 ) -> String {
     let (member_value, separator) = if level == RenderLevel::Detailed {
         let val = match ty {
-            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => format!("integer = {member_value_string}"),
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
+                format!("integer = {member_value_string}")
+            }
             LuaType::FloatConst(_) => format!("number = {member_value_string}"),
-            LuaType::StringConst(_) | LuaType::DocStringConst(_) => format!("string = {member_value_string}"),
+            LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
+                format!("string = {member_value_string}")
+            }
             LuaType::BooleanConst(_) => format!("boolean = {member_value_string}"),
             _ => member_value_string,
         };

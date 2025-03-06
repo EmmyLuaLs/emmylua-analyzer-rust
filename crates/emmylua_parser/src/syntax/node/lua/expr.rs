@@ -8,7 +8,9 @@ use crate::{
     LuaAstToken, LuaIndexToken, LuaLiteralToken, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
 };
 
-use super::{path_trait::PathTrait, LuaBlock, LuaCallArgList, LuaIndexKey, LuaParamList, LuaTableField};
+use super::{
+    path_trait::PathTrait, LuaBlock, LuaCallArgList, LuaIndexKey, LuaParamList, LuaTableField,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LuaExpr {
@@ -320,7 +322,6 @@ impl LuaIndexExpr {
     }
 }
 
-
 impl PathTrait for LuaIndexExpr {}
 
 impl From<LuaIndexExpr> for LuaVarExpr {
@@ -372,16 +373,17 @@ impl LuaCallExpr {
     }
 
     pub fn is_colon_call(&self) -> bool {
-        let prefix = self.get_prefix_expr();
-        if let Some(prefix) = prefix {
-            if let LuaExpr::IndexExpr(index_expr) = prefix {
-                if let Some(index_token) = index_expr.get_index_token() {
-                    return index_token.is_colon();
-                }
-            }
+        if let Some(index_token) = self.get_colon_token() {
+            return index_token.is_colon();
         }
-
         return false;
+    }
+
+    pub fn get_colon_token(&self) -> Option<LuaIndexToken> {
+        self.get_prefix_expr().and_then(|prefix| match prefix {
+            LuaExpr::IndexExpr(index_expr) => index_expr.get_index_token(),
+            _ => None,
+        })
     }
 }
 

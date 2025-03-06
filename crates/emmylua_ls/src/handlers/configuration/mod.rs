@@ -11,7 +11,7 @@ pub async fn on_did_change_configuration(
     let pretty_json = serde_json::to_string_pretty(&params).ok()?;
     log::info!("on_did_change_configuration: {}", pretty_json);
 
-    let config_manager = context.config_manager.read().await;
+    let config_manager = context.workspace_manager.read().await;
     if config_manager.client_config.client_id.is_vscode() {
         return Some(());
     }
@@ -19,7 +19,7 @@ pub async fn on_did_change_configuration(
     drop(config_manager);
 
     let new_client_config = get_client_config(&context, client_id).await;
-    let mut config_manager = context.config_manager.write().await;
+    let mut config_manager = context.workspace_manager.write().await;
     config_manager.client_config = new_client_config;
 
     config_manager.reload_workspace().await;

@@ -167,6 +167,7 @@ impl LuaOpKind {
     pub fn to_type_unary_operator(kind: LuaTokenKind) -> LuaTypeUnaryOperator {
         match kind {
             LuaTokenKind::TkDocKeyOf => LuaTypeUnaryOperator::Keyof,
+            LuaTokenKind::TkMinus => LuaTypeUnaryOperator::Neg,
             _ => LuaTypeUnaryOperator::None,
         }
     }

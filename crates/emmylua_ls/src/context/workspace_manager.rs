@@ -1,9 +1,9 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use super::{ClientProxy, StatusBar};
+use super::{ClientProxy, FileDiagnostic, ProgressTask, StatusBar};
 use crate::handlers::{init_analysis, ClientConfig};
-use emmylua_code_analysis::{load_configs, EmmyLuaAnalysis, Emmyrc};
 use emmylua_code_analysis::update_code_style;
+use emmylua_code_analysis::{load_configs, EmmyLuaAnalysis, Emmyrc};
 use log::{debug, info};
 use tokio::{
     select,
@@ -11,21 +11,23 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-pub struct ConfigManager {
+pub struct WorkspaceManager {
     analysis: Arc<RwLock<EmmyLuaAnalysis>>,
     client: Arc<ClientProxy>,
     status_bar: Arc<StatusBar>,
+    update_token: Arc<Mutex<Option<CancellationToken>>>,
+    file_diagnostic: Arc<FileDiagnostic>,
     pub client_config: ClientConfig,
     pub workspace_folders: Vec<PathBuf>,
-    config_update_token: Arc<Mutex<Option<CancellationToken>>>,
     pub watcher: Option<notify::RecommendedWatcher>,
 }
 
-impl ConfigManager {
+impl WorkspaceManager {
     pub fn new(
         analysis: Arc<RwLock<EmmyLuaAnalysis>>,
         client: Arc<ClientProxy>,
         status_bar: Arc<StatusBar>,
+        file_diagnostic: Arc<FileDiagnostic>,
     ) -> Self {
         Self {
             analysis,
@@ -33,34 +35,36 @@ impl ConfigManager {
             status_bar,
             client_config: ClientConfig::default(),
             workspace_folders: Vec::new(),
-            config_update_token: Arc::new(Mutex::new(None)),
+            update_token: Arc::new(Mutex::new(None)),
+            file_diagnostic,
             watcher: None,
         }
     }
 
     pub async fn add_update_emmyrc_task(&self, file_dir: PathBuf) {
-        let mut config_update_tokens = self.config_update_token.lock().await;
-        if let Some(token) = config_update_tokens.as_ref() {
+        let mut update_token = self.update_token.lock().await;
+        if let Some(token) = update_token.as_ref() {
             token.cancel();
             debug!("cancel update config: {:?}", file_dir);
         }
 
         let cancel_token = CancellationToken::new();
-        config_update_tokens.replace(cancel_token.clone());
-        drop(config_update_tokens);
+        update_token.replace(cancel_token.clone());
+        drop(update_token);
 
         let analysis = self.analysis.clone();
         let client = self.client.clone();
         let workspace_folders = self.workspace_folders.clone();
-        let config_update_token = self.config_update_token.clone();
+        let config_update_token = self.update_token.clone();
         let client_config = self.client_config.clone();
         let status_bar = self.status_bar.clone();
         let client_id = client_config.client_id;
+        let file_diagnostic = self.file_diagnostic.clone();
         tokio::spawn(async move {
             select! {
                 _ = tokio::time::sleep(Duration::from_secs(2)) => {
                     let emmyrc = load_emmy_config(Some(file_dir.clone()), client_config);
-                    init_analysis(analysis, client, &status_bar, workspace_folders, emmyrc, client_id).await;
+                    init_analysis(analysis, client, &status_bar, workspace_folders, emmyrc, client_id, file_diagnostic).await;
                     // After completion, remove from HashMap
                     let mut tokens = config_update_token.lock().await;
                     tokens.take();
@@ -97,6 +101,7 @@ impl ConfigManager {
         let workspace_folders = self.workspace_folders.clone();
         let status_bar = self.status_bar.clone();
         let client_id = self.client_config.client_id;
+        let file_diagnostic = self.file_diagnostic.clone();
         init_analysis(
             analysis,
             client,
@@ -104,8 +109,53 @@ impl ConfigManager {
             workspace_folders,
             emmyrc,
             client_id,
+            file_diagnostic,
         )
         .await;
+
+        Some(())
+    }
+
+    pub async fn cancel_reindex(&self) -> Option<()> {
+        let mut update_token = self.update_token.lock().await;
+        if let Some(token) = update_token.as_ref() {
+            token.cancel();
+        }
+        update_token.take();
+
+        Some(())
+    }
+
+    pub async fn reindex_workspace(&self, delay: Duration) -> Option<()> {
+        let mut update_token = self.update_token.lock().await;
+        if let Some(token) = update_token.as_ref() {
+            token.cancel();
+            debug!("cancel reindex workspace");
+        }
+
+        let cancel_token = CancellationToken::new();
+        update_token.replace(cancel_token.clone());
+        drop(update_token);
+        let analysis = self.analysis.clone();
+        let file_diagnostic = self.file_diagnostic.clone();
+        let client_id = self.client_config.client_id;
+        let status_bar = self.status_bar.clone();
+
+        tokio::spawn(async move {
+            select! {
+                _ = tokio::time::sleep(delay) => {
+                    let mut analysis = analysis.write().await;
+                    status_bar.create_progress_task(client_id, ProgressTask::RefreshIndex);
+
+                    analysis.reindex();
+                    status_bar.finish_progress_task(client_id, ProgressTask::RefreshIndex, None);
+                    file_diagnostic.add_workspace_diagnostic_task(client_id, 500).await;
+                }
+                _ = cancel_token.cancelled() => {
+                    log::info!("cancel reindex workspace");
+                }
+            }
+        });
 
         Some(())
     }

@@ -18,6 +18,8 @@ pub enum DiagnosticCode {
     ParamTypeNotMatch,
     /// Missing parameter
     MissingParameter,
+    /// Redundant parameter
+    RedundantParameter,
     /// Inject field fail
     InjectFieldFail,
     /// Unreachable code
@@ -58,6 +60,12 @@ pub enum DiagnosticCode {
     AwaitInSync,
     /// Doc tag usage error
     AnnotationUsageError,
+    /// Return type mismatch
+    ReturnTypeMismatch,
+    /// Missing return value
+    MissingReturnValue,
+    /// Redundant return value
+    RedundantReturnValue,
 
     #[serde(other)]
     None,

@@ -13,6 +13,7 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
+---@class packagelib
 package = {}
 
 ---
@@ -29,7 +30,12 @@ package = {}
 --- executable's directory. Default is '!'.
 --- The fifth line is a mark to ignore all text after it when building the
 --- luaopen_ function name. Default is '-'.
-package.config = ""
+package.config = [[
+/
+;
+?
+!
+-]]
 
 ---
 --- The path used by `require` to search for a C loader.

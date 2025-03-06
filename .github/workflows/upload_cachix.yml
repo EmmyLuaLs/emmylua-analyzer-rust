@@ -1,0 +1,45 @@
+name: "Upload to Cachix"
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+jobs:
+  build-and-cache:
+    strategy:
+      fail-fast: true
+      matrix:
+        nixChannel:
+          - nixos-24.11 # make sure to update this after a NixOS stable release
+          - nixos-unstable
+          - nixpkgs-unstable
+          
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup Nix
+      uses: cachix/install-nix-action@v30
+      with:
+        nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/refs/heads/${{ matrix.nixChannel }}.tar.gz
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+          access-tokens = github.com=${{ secrets.RELEASE }}
+
+    - name: Show the current nixpkgs version
+      run: |
+        nix eval --impure --raw --expr '"Building for nixpkgs " + (import <nixpkgs> { }).lib.version'
+    
+    - name: Setup Cachix
+      uses: cachix/cachix-action@v15
+      with:
+        name: emmylua-analyzer
+        authToken: '${{ secrets.CACHIX }}'
+        
+    - name: Build emmylua-analyzer
+      run: |
+        nix build .#emmylua_{ls,doc_cli,check}

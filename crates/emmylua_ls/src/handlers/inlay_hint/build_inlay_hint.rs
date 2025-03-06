@@ -99,33 +99,17 @@ fn build_call_expr_param_hint(
         return Some(());
     }
 
-    let prefix_expr = call_expr.get_prefix_expr()?;
-    let semantic_info =
-        semantic_model.get_semantic_info(NodeOrToken::Node(prefix_expr.syntax().clone()))?;
-
+    let func = semantic_model.infer_call_expr_func(call_expr.clone(), None)?;
     let call_args_list = call_expr.get_args_list()?;
     let colon_call = call_expr.is_colon_call();
-    match semantic_info.typ {
-        LuaType::DocFunction(f) => {
-            build_call_args_for_func_type(
-                semantic_model,
-                result,
-                call_args_list.get_args().collect(),
-                colon_call,
-                &f,
-            );
-        }
-        LuaType::Signature(signature_id) => {
-            build_call_args_for_signature(
-                semantic_model,
-                result,
-                call_args_list.get_args().collect(),
-                colon_call,
-                signature_id,
-            );
-        }
-        _ => {}
-    }
+    build_call_args_for_func_type(
+        semantic_model,
+        result,
+        call_args_list.get_args().collect(),
+        colon_call,
+        &func,
+    );
+
     Some(())
 }
 
@@ -239,83 +223,15 @@ fn build_call_args_for_func_type(
         }
 
         let arg = &call_args[idx];
-        let range = arg.get_range();
-        let document = semantic_model.get_document();
-        let lsp_range = document.to_lsp_range(range)?;
-        let hint = InlayHint {
-            kind: Some(InlayHintKind::PARAMETER),
-            label: InlayHintLabel::String(format!("{}:", name)),
-            position: lsp_range.start,
-            text_edits: None,
-            tooltip: None,
-            padding_left: None,
-            padding_right: Some(true),
-            data: None,
-        };
-        result.push(hint);
-    }
-
-    Some(())
-}
-
-fn build_call_args_for_signature(
-    semantic_model: &SemanticModel,
-    result: &mut Vec<InlayHint>,
-    call_args: Vec<LuaExpr>,
-    colon_call: bool,
-    signature_id: LuaSignatureId,
-) -> Option<()> {
-    let signature = semantic_model
-        .get_db()
-        .get_signature_index()
-        .get(&signature_id)?;
-    let call_args_len = call_args.len();
-    let mut params = signature
-        .get_type_params()
-        .iter()
-        .map(|(name, _)| name.clone())
-        .collect::<Vec<_>>();
-
-    let colon_define = signature.is_colon_define;
-    match (colon_call, colon_define) {
-        (false, true) => {
-            params.insert(0, "self".to_string());
-        }
-        (true, false) => {
-            if params.len() > 0 {
-                params.remove(0);
+        if let LuaExpr::NameExpr(name_expr) = arg {
+            if let Some(param_name) = name_expr.get_name_text() {
+                // optimize like rust analyzer
+                if &param_name == name {
+                    continue;
+                }
             }
         }
-        _ => {}
-    }
 
-    for (idx, name) in params.iter().enumerate() {
-        if idx >= call_args_len {
-            break;
-        }
-
-        if name == "..." {
-            for i in idx..call_args_len {
-                let arg = &call_args[i];
-                let range = arg.get_range();
-                let document = semantic_model.get_document();
-                let lsp_range = document.to_lsp_range(range)?;
-                let hint = InlayHint {
-                    kind: Some(InlayHintKind::PARAMETER),
-                    label: InlayHintLabel::String(format!("var{}:", i - idx)),
-                    position: lsp_range.start,
-                    text_edits: None,
-                    tooltip: None,
-                    padding_left: None,
-                    padding_right: Some(true),
-                    data: None,
-                };
-                result.push(hint);
-            }
-            break;
-        }
-
-        let arg = &call_args[idx];
         let range = arg.get_range();
         let document = semantic_model.get_document();
         let lsp_range = document.to_lsp_range(range)?;

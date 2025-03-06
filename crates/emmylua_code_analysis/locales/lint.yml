@@ -27,10 +27,14 @@ The property is protected and cannot be accessed outside its subclasses.:
   en: 'The property is protected and cannot be accessed outside its subclasses.'
   zh_CN: '该属性受保护，无法在其子类之外访问。'
   zh_HK: '該屬性受保護，無法在其子類之外訪問。'
-expected %{num} but found %{found_num}. %{infos}:
-  en: 'expected %{num} but found %{found_num}. %{infos}'
-  zh_CN: '期望 %{num} 但找到 %{found_num}。%{infos}'
-  zh_HK: '期望 %{num} 但找到 %{found_num}。%{infos}'
+expected %{num} parameters but found %{found_num}:
+  en: 'expected %{num} parameters but found %{found_num}'
+  zh_CN: '期望 %{num} 个参数，但找到 %{found_num} 个'
+  zh_HK: '期望 %{num} 個參數，但找到 %{found_num} 個'
+expected %{num} parameters but found %{found_num}. %{infos}:
+  en: 'expected %{num} parameters but found %{found_num}. %{infos}'
+  zh_CN: '期望 %{num} 个参数，但找到 %{found_num} 个。%{infos}'
+  zh_HK: '期望 %{num} 個參數，但找到 %{found_num} 個。%{infos}'
 'missing parameter: %{name}':
   en: 'missing parameter: %{name}'
   zh_CN: '缺少参数: %{name}'
@@ -63,11 +67,11 @@ Should not reassign to iter variable:
   en: Should not reassign to iter variable
   zh_CN: '不应重新赋值给迭代变量'
   zh_HK: '不應重新指定迭代變數'
-_version: 2
-expected %{source} but found %{found}:
-  en: expected %{source} but found %{found}
-  zh_CN: '预期 %{source}，但得到 %{found}'
-  zh_HK: '期望 %{source}，但得到 %{found}'
+
+expected `%{source}` but found `%{found}`:
+  en: expected `%{source}` but found `%{found}`
+  zh_CN: '预期 `%{source}`，但得到 `%{found}`'
+  zh_HK: '期望 `%{source}`，但得到 `%{found}`'
 function %{name} may be nil:
   en: function %{name} may be nil
   zh_CN: '函数 %{name} 可能为 nil'
@@ -96,3 +100,16 @@ tuple member %{idx} not match, expect %{typ}, but got %{got}:
   en: tuple member %{idx} not match, expect %{typ}, but got %{got}
   zh_CN: '元组成员 %{idx} 不匹配，期望 %{typ}，但得到 %{got}'
   zh_HK: '元組成員 %{idx} 不匹配，期望 %{typ}，但得到 %{got}'
+
+Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead.:
+  en: Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead.
+  zh_CN: '第 %{index} 个返回值的类型为 `%{source}`，但实际返回类型为 `%{found}`。'
+  zh_HK: '第 %{index} 個回傳值的類型為 `%{source}` ，但實際回傳的是 `%{found}`。'
+Annotations specify that at most %{max} return value(s) are required, found %{rmax} returned here instead.:
+  en: 'Annotations specify that at most %{max} return value(s) are required, found %{rmax} returned here instead.'
+  zh_CN: '最多只有 %{max} 个返回值，但此处返回了 %{rmax} 个'
+  zh_HK: '最多只有 %{max} 個回傳值，但此處返回 %{rmax} 個'
+Annotations specify that at least %{min} return value(s) are required, found %{rmin} returned here instead.:
+  en: 'Annotations specify that at least %{min} return value(s) are required, found %{rmin} returned here instead.'
+  zh_CN: '至少需要 %{min} 个返回值，但此处只返回了 %{rmin} 个'
+  zh_HK: '至少需要 %{min} 個回傳值，但此處只返回 %{rmin} 個'

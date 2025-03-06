@@ -9,7 +9,7 @@ use crate::{
 };
 
 use super::{
-    instantiate_class_generic::instantiate_doc_function, tpl_pattern::tpl_pattern_match,
+    instantiate_class_generic::instantiate_doc_function, tpl_pattern::{tpl_pattern_match, variadic_tpl_pattern_match},
     type_substitutor::TypeSubstitutor,
 };
 
@@ -85,6 +85,12 @@ fn match_tpl_args(
         } else {
             continue;
         };
+
+        if let LuaType::Variadic(inner) = func_param_type {
+            let rest_arg_types = &arg_types[i..];
+            variadic_tpl_pattern_match(&inner, rest_arg_types, &mut substitutor);
+            break;
+        }
 
         tpl_pattern_match(
             db,

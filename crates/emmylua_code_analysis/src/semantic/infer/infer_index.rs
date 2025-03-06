@@ -1,6 +1,6 @@
 use emmylua_parser::{
     LuaAstNode, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, LuaSyntaxId, LuaSyntaxKind,
-    LuaTableExpr,
+    LuaTableExpr, PathTrait,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -10,14 +10,12 @@ use crate::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaMemberOwner,
         LuaMemberPathExistType, LuaObjectType, LuaOperatorMetaMethod, LuaTupleType, LuaType,
         LuaTypeDeclId, LuaUnionType,
-    },
-    semantic::{
+    }, semantic::{
         instantiate::{instantiate_type, TypeSubstitutor},
         member::{get_buildin_type_map_type_id, without_index_operator, without_members},
         type_check::check_type_compact,
         InferGuard,
-    },
-    InFiled, LuaInstanceType, TypeOps,
+    }, InFiled, LuaFlowId, LuaInstanceType, TypeOps
 };
 
 use super::{infer_expr, InferResult, LuaInferConfig};
@@ -29,28 +27,44 @@ pub fn infer_index_expr(
 ) -> InferResult {
     let prefix_expr = index_expr.get_prefix_expr()?;
     let prefix_type = infer_expr(db, config, prefix_expr)?;
-    let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr);
-    if let Some(member_type) = infer_member_by_member_key(
+    let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
+
+    let mut member_type = if let Some(member_type) = infer_member_by_member_key(
         db,
         config,
         &prefix_type,
         index_member_expr.clone(),
         &mut InferGuard::new(),
     ) {
-        return Some(member_type);
-    }
-
-    if let Some(member_type) = infer_member_by_operator(
+        member_type
+    } else if let Some(member_type) = infer_member_by_operator(
         db,
         config,
         &prefix_type,
         index_member_expr,
         &mut InferGuard::new(),
     ) {
-        return Some(member_type);
+        member_type
+    } else {
+        LuaType::Unknown
+    };
+
+    let flow_id = LuaFlowId::from_node(index_expr.syntax());
+    let flow_chain = db
+        .get_flow_index()
+        .get_flow_chain(config.get_file_id(), flow_id);
+    if let Some(flow_chain) = flow_chain {
+        let root = index_expr.get_root();
+        if let Some(path) = index_expr.get_access_path() {
+            for type_assert in flow_chain.get_type_asserts(&path, index_expr.get_position()) {
+                member_type = type_assert
+                    .tighten_type(db, config, &root, member_type)
+                    .unwrap_or(LuaType::Unknown);
+            }
+        }
     }
 
-    None
+    Some(member_type)
 }
 
 pub fn infer_member_by_member_key(

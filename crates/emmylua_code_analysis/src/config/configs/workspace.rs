@@ -29,6 +29,10 @@ pub struct EmmyrcWorkspace {
     /// }
     #[serde(default)]
     pub module_map: Vec<EmmyrcWorkspaceModuleMap>,
+
+    /// when save a file, ls will reindex the workspace after reindex_duration milliseconds.
+    #[serde(default= "reindex_duration_default")]
+    pub reindex_duration: u64,
 }
 
 impl Default for EmmyrcWorkspace {
@@ -41,6 +45,7 @@ impl Default for EmmyrcWorkspace {
             preload_file_size: 0,
             encoding: encoding_default(),
             module_map: Vec::new(),
+            reindex_duration: 5000,
         }
     }
 }
@@ -53,4 +58,8 @@ pub struct EmmyrcWorkspaceModuleMap {
 
 fn encoding_default() -> String {
     "utf-8".to_string()
+}
+
+fn reindex_duration_default() -> u64 {
+    5000
 }

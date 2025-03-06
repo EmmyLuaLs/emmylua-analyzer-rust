@@ -55,6 +55,12 @@ fn infer_name_expr_property_owner(
     if owner_guard.reached_limit() {
         return Some(LuaPropertyOwnerId::LuaDecl(decl_id));
     }
+
+    let is_function = decl.get_type().map_or(false, |typ| typ.is_function());
+    if decl.is_local() && !is_function {
+        return Some(LuaPropertyOwnerId::LuaDecl(decl_id));
+    }
+    
     if let Some(value_expr_id) = decl.get_value_syntax_id() {
         if matches!(
             value_expr_id.get_kind(),

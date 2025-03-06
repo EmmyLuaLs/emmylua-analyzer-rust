@@ -2,16 +2,15 @@ mod flow_chain;
 
 use std::collections::HashMap;
 
-pub use flow_chain::LuaFlowChain;
+pub use flow_chain::{LuaFlowChain, LuaFlowId};
 
 use crate::FileId;
 
-use super::{traits::LuaIndex, LuaDeclId};
-
+use super::traits::LuaIndex;
 
 #[derive(Debug)]
 pub struct LuaFlowIndex {
-    chains_map: HashMap<FileId, HashMap<LuaDeclId, LuaFlowChain>>,
+    chains_map: HashMap<FileId, HashMap<LuaFlowId, LuaFlowChain>>,
 }
 
 impl LuaFlowIndex {
@@ -22,25 +21,29 @@ impl LuaFlowIndex {
     }
 
     pub fn add_flow_chain(&mut self, file_id: FileId, chain: LuaFlowChain) {
-        let id = chain.get_decl_id();
+        let id = chain.get_flow_id();
         self.chains_map
             .entry(file_id)
             .or_insert_with(HashMap::new)
             .insert(id, chain);
     }
 
-    pub fn get_flow_chain(&self, file_id: FileId, decl_id: LuaDeclId) -> Option<&LuaFlowChain> {
+    pub fn get_flow_chain(&self, file_id: FileId, flow_id: LuaFlowId) -> Option<&LuaFlowChain> {
         self.chains_map
             .get(&file_id)
-            .and_then(|map| map.get(&decl_id))
+            .and_then(|map| map.get(&flow_id))
     }
 
-    pub fn get_or_create_flow_chain(&mut self, file_id: FileId, decl_id: LuaDeclId) -> &mut LuaFlowChain {
+    pub fn get_or_create_flow_chain(
+        &mut self,
+        file_id: FileId,
+        flow_id: LuaFlowId,
+    ) -> &mut LuaFlowChain {
         self.chains_map
             .entry(file_id)
             .or_insert_with(HashMap::new)
-            .entry(decl_id)
-            .or_insert_with(|| LuaFlowChain::new(decl_id))
+            .entry(flow_id)
+            .or_insert_with(|| LuaFlowChain::new(flow_id))
     }
 }
 
@@ -49,7 +52,7 @@ impl LuaIndex for LuaFlowIndex {
         self.chains_map.remove(&file_id);
     }
 
-    fn fill_snapshot_info(&self, info: &mut HashMap<String, String>) {
-        info.insert("flow_chain_count".to_string(), self.chains_map.len().to_string());
+    fn clear(&mut self) {
+        self.chains_map.clear();
     }
 }

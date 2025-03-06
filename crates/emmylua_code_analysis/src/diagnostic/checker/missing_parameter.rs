@@ -2,7 +2,7 @@ use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaGeneralToken, LuaLiteralExpr, LuaLiteralToken,
 };
 
-use crate::{DiagnosticCode, SemanticModel};
+use crate::{DiagnosticCode, LuaType, SemanticModel};
 
 use super::DiagnosticContext;
 
@@ -50,8 +50,19 @@ fn check_call_expr(
                 }
             }
         }
-
         let mut miss_parameter_info = Vec::new();
+
+        // 参数调用中最后一个参数是多返回值
+        if let Some(last_arg) = call_expr.get_args_list()?.get_args().last() {
+            if let Some(LuaType::MuliReturn(types)) = semantic_model.infer_expr(last_arg.clone()) {
+                let len = types.get_len().unwrap_or(0);
+                args_count = args_count + len as usize - 1;
+                if args_count >= params.len() {
+                    return Some(());
+                }
+            }
+        }
+
         for i in args_count..params.len() {
             let param_info = params.get(i)?;
             if param_info.0 == "..." {
@@ -76,10 +87,10 @@ fn check_call_expr(
                 DiagnosticCode::MissingParameter,
                 right_paren.get_range(),
                 t!(
-                    "expected %{num} but found %{found_num}.\n%{infos}",
+                    "expected %{num} parameters but found %{found_num}. %{infos}",
                     num = params.len(),
                     found_num = args_count,
-                    infos = miss_parameter_info.join("\n")
+                    infos = miss_parameter_info.join(" \n ")
                 )
                 .to_string(),
                 None,

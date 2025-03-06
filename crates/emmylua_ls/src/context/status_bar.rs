@@ -16,6 +16,7 @@ pub struct StatusBar {
 pub enum ProgressTask {
     LoadWorkspace = 0,
     DiagnoseWorkspace = 1,
+    RefreshIndex = 2,
 }
 
 impl ProgressTask {
@@ -27,6 +28,7 @@ impl ProgressTask {
         match self {
             ProgressTask::LoadWorkspace => "Load workspace",
             ProgressTask::DiagnoseWorkspace => "Diagnose workspace",
+            ProgressTask::RefreshIndex => "Refresh index",
         }
     }
 }
@@ -40,6 +42,7 @@ impl StatusBar {
         match client_id {
             ClientId::VSCode => {
                 self.vscode_set_server_status("ok", true, task.get_task_name());
+                self.vscode_report_progress(&task.get_task_name(), 0.0);
             }
             _ => {
                 self.client.send_notification(

@@ -2,7 +2,7 @@
 mod tests {
     use std::path::Path;
 
-    use crate::{db_index::{module::LuaModuleIndex, traits::LuaIndex}, FileId};
+    use crate::{db_index::{module::LuaModuleIndex, traits::LuaIndex}, FileId, WorkspaceId};
 
     fn create_module() -> LuaModuleIndex {
         let mut m = LuaModuleIndex::new();
@@ -13,7 +13,7 @@ mod tests {
     #[test]
     fn test_basic() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into());
+        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let module_info = m.get_module(file_id).unwrap();
@@ -39,8 +39,8 @@ mod tests {
     #[test]
     fn test_multi_workspace() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into());
-        m.add_workspace_root(Path::new("C:/Users/username/Downloads").into());
+        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(Path::new("C:/Users/username/Downloads").into(), WorkspaceId::MAIN);
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let module_info = m.get_module(file_id).unwrap();
@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn test_find_module() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into());
+        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let module_info = m.find_module("test").unwrap();
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn test_find_module_node() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into());
+        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let file_id = FileId { id: 2 };
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn test_set_module_visibility() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into());
+        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         m.set_module_visibility(file_id, false);
@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn test_remove_module() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into());
+        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         m.remove(file_id);

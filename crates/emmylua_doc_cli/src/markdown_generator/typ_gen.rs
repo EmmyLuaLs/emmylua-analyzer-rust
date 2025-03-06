@@ -18,11 +18,10 @@ pub fn generate_type_markdown(
     db: &DbIndex,
     tl: &Tera,
     typ: &LuaTypeDecl,
-    input: &Path,
     output: &Path,
     mkdocs_index: &mut MkdocsIndex,
 ) -> Option<()> {
-    check_filter(db, typ, input)?;
+    check_filter(db, typ)?;
     let mut context = tera::Context::new();
     let typ_name = typ.get_name();
     context.insert("type_name", &typ_name);
@@ -32,22 +31,22 @@ pub fn generate_type_markdown(
     } else if typ.is_enum() {
         generate_enum_type_markdown(db, tl, typ, &mut context, output, mkdocs_index);
     } else {
-        // generate_other_type_markdown(db, tl, typ, &mut context, input, output, mkdocs_index)?;
+        generate_alias_type_markdown(db, tl, typ, &mut context, output, mkdocs_index);
     }
     Some(())
 }
 
-fn check_filter(db: &DbIndex, typ: &LuaTypeDecl, workspace: &Path) -> Option<()> {
+fn check_filter(db: &DbIndex, typ: &LuaTypeDecl) -> Option<()> {
     let location = typ.get_locations();
     for loc in location {
         let file_id = loc.file_id;
-        let file_path = db.get_vfs().get_file_path(&file_id)?;
-        if !file_path.starts_with(&workspace) {
-            return None;
+        let module = db.get_module_index().get_module(file_id)?;
+        if module.workspace_id.is_main() {
+            return Some(());
         }
     }
 
-    Some(())
+    None
 }
 
 fn generate_class_type_markdown(
@@ -112,7 +111,8 @@ fn generate_class_type_markdown(
             };
 
             let name = match member_name {
-                LuaMemberKey::Name(name) => name,
+                LuaMemberKey::Name(name) => name.to_string(),
+                LuaMemberKey::Integer(i) => format!("[{}]", i),
                 _ => continue,
             };
 
@@ -283,4 +283,57 @@ pub struct EnumMember {
     pub name: String,
     pub value: String,
     pub description: String,
+}
+
+fn generate_alias_type_markdown(
+    db: &DbIndex,
+    tl: &Tera,
+    typ: &LuaTypeDecl,
+    context: &mut Context,
+    output: &Path,
+    mkdocs_index: &mut MkdocsIndex,
+) -> Option<()> {
+    let typ_name = typ.get_name();
+    let typ_id = typ.get_id();
+    let namespace = typ.get_namespace();
+    context.insert("namespace", &namespace);
+
+    let type_property_id = LuaPropertyOwnerId::TypeDecl(typ_id.clone());
+    let typ_property = db.get_property_index().get_property(type_property_id);
+    if let Some(typ_property) = typ_property {
+        if let Some(property_text) = &typ_property.description {
+            context.insert("description", &property_text);
+        }
+    }
+
+    if let Some(origin_typ) = typ.get_alias_origin(db, None) {
+        let origin_type_display = humanize_type(db, &origin_typ, RenderLevel::Detailed);
+        let display = format!("```lua\n(alias) {} = {}\n```\n", typ_name, origin_type_display);
+        context.insert("origin_type", &display);
+    }
+
+    let render_text = match tl.render("lua_alias_template.tl", &context) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("Failed to render template: {}", e);
+            return None;
+        }
+    };
+
+    let file_type_name = format!("{}.md", escape_type_name(typ.get_full_name()));
+    mkdocs_index.types.push(IndexStruct {
+        name: format!("alias {}", typ_name),
+        file: format!("types/{}", file_type_name.clone()),
+    });
+
+    let outpath = output.join(file_type_name);
+    println!("output type file: {}", outpath.display());
+    match std::fs::write(outpath, render_text) {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Failed to write file: {}", e);
+            return None;
+        }
+    }
+    Some(())
 }

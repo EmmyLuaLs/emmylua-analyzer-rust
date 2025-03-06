@@ -28,15 +28,15 @@ impl LuaPropertyIndex {
         }
     }
 
-    fn get_or_create_property(&mut self, owner_id: LuaPropertyOwnerId) -> &mut LuaProperty {
+    fn get_or_create_property(&mut self, owner_id: LuaPropertyOwnerId) -> Option<&mut LuaProperty> {
         if let Some(property_id) = self.property_owners_map.get(&owner_id) {
-            self.properties.get_mut(property_id).unwrap()
+            self.properties.get_mut(property_id)
         } else {
             let id = LuaPropertyId::new(self.id_count);
             self.id_count += 1;
             self.property_owners_map.insert(owner_id.clone(), id);
             self.properties.insert(id, LuaProperty::new(id.clone()));
-            self.properties.get_mut(&id).unwrap()
+            self.properties.get_mut(&id)
         }
     }
 
@@ -47,7 +47,7 @@ impl LuaPropertyIndex {
         file_id: FileId,
     ) -> Option<()> {
         let property_id = self
-            .get_or_create_property(source_owner_id.clone())
+            .get_or_create_property(source_owner_id.clone())?
             .id
             .clone();
         self.property_owners_map
@@ -66,14 +66,16 @@ impl LuaPropertyIndex {
         file_id: FileId,
         owner_id: LuaPropertyOwnerId,
         description: String,
-    ) {
-        let property = self.get_or_create_property(owner_id.clone());
+    ) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
         property.description = Some(Box::new(description));
 
         self.in_filed_owner
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
+
+        Some(())
     }
 
     pub fn add_visibility(
@@ -81,34 +83,45 @@ impl LuaPropertyIndex {
         file_id: FileId,
         owner_id: LuaPropertyOwnerId,
         visibility: VisibilityKind,
-    ) {
-        let property = self.get_or_create_property(owner_id.clone());
+    ) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
         property.visibility = Some(visibility);
 
         self.in_filed_owner
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
+
+        Some(())
     }
 
-    pub fn add_source(&mut self, file_id: FileId, owner_id: LuaPropertyOwnerId, source: String) {
-        let property = self.get_or_create_property(owner_id.clone());
+    pub fn add_source(
+        &mut self,
+        file_id: FileId,
+        owner_id: LuaPropertyOwnerId,
+        source: String,
+    ) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
         property.source = Some(Box::new(source));
 
         self.in_filed_owner
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
+
+        Some(())
     }
 
-    pub fn add_nodiscard(&mut self, file_id: FileId, owner_id: LuaPropertyOwnerId) {
-        let property = self.get_or_create_property(owner_id.clone());
+    pub fn add_nodiscard(&mut self, file_id: FileId, owner_id: LuaPropertyOwnerId) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
         property.is_nodiscard = true;
 
         self.in_filed_owner
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
+
+        Some(())
     }
 
     pub fn add_deprecated(
@@ -116,8 +129,8 @@ impl LuaPropertyIndex {
         file_id: FileId,
         owner_id: LuaPropertyOwnerId,
         message: Option<String>,
-    ) {
-        let property = self.get_or_create_property(owner_id.clone());
+    ) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
         property.is_deprecated = true;
         property.deprecated_message = message.map(Box::new);
 
@@ -125,6 +138,8 @@ impl LuaPropertyIndex {
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
+
+        Some(())
     }
 
     pub fn add_version(
@@ -132,24 +147,28 @@ impl LuaPropertyIndex {
         file_id: FileId,
         owner_id: LuaPropertyOwnerId,
         version_conds: Vec<LuaVersionCondition>,
-    ) {
-        let property = self.get_or_create_property(owner_id.clone());
+    ) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
         property.version_conds = Some(Box::new(version_conds));
 
         self.in_filed_owner
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
+        
+        Some(())
     }
 
-    pub fn add_async(&mut self, file_id: FileId, owner_id: LuaPropertyOwnerId) {
-        let property = self.get_or_create_property(owner_id.clone());
+    pub fn add_async(&mut self, file_id: FileId, owner_id: LuaPropertyOwnerId) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
         property.is_async = true;
 
         self.in_filed_owner
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
+
+        Some(())
     }
 
     pub fn get_property(&self, owner_id: LuaPropertyOwnerId) -> Option<&LuaProperty> {
@@ -170,7 +189,10 @@ impl LuaIndex for LuaPropertyIndex {
         }
     }
 
-    fn fill_snapshot_info(&self, info: &mut HashMap<String, String>) {
-        info.insert("property_count".to_string(), self.properties.len().to_string());
+    fn clear(&mut self) {
+        self.properties.clear();
+        self.property_owners_map.clear();
+        self.in_filed_owner.clear();
+        self.id_count = 0;
     }
 }

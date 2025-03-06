@@ -55,6 +55,7 @@ pub enum LuaType {
     Namespace(ArcIntern<SmolStr>),
     Variadic(Arc<LuaType>),
     Call(Arc<LuaAliasCallType>),
+    MultiLineUnion(Arc<LuaMultiLineUnion>),
 }
 
 impl PartialEq for LuaType {
@@ -102,6 +103,7 @@ impl PartialEq for LuaType {
             (LuaType::DocIntegerConst(a), LuaType::DocIntegerConst(b)) => a == b,
             (LuaType::Namespace(a), LuaType::Namespace(b)) => a == b,
             (LuaType::Variadic(a), LuaType::Variadic(b)) => a == b,
+            (LuaType::MultiLineUnion(a), LuaType::MultiLineUnion(b)) => a == b,
             _ => false, // 不同变体之间不相等
         }
     }
@@ -172,6 +174,10 @@ impl Hash for LuaType {
             LuaType::DocIntegerConst(a) => (39, a).hash(state),
             LuaType::Namespace(a) => (40, a).hash(state),
             LuaType::Variadic(a) => (42, a).hash(state),
+            LuaType::MultiLineUnion(a) => {
+                let ptr = Arc::as_ptr(a);
+                (43, ptr).hash(state)
+            }
         }
     }
 }
@@ -481,6 +487,12 @@ impl LuaFunctionType {
             .any(|(_, t)| t.as_ref().map_or(false, |t| t.contain_tpl()))
             || self.ret.iter().any(|t| t.contain_tpl())
     }
+
+    pub fn first_param_is_self(&self) -> bool {
+        self.params.first().map_or(false, |(_, t)| {
+            t.as_ref().map_or(false, |t| t.is_self_infer())
+        })
+    }
 }
 
 impl From<LuaFunctionType> for LuaType {
@@ -756,10 +768,49 @@ impl LuaMultiReturn {
         }
     }
 
-    pub fn get_len(&self) -> usize {
+    pub fn get_len(&self) -> Option<i64> {
         match self {
-            LuaMultiReturn::Multi(types) => types.len(),
-            LuaMultiReturn::Base(_) => 1,
+            LuaMultiReturn::Base(_) => None,
+            LuaMultiReturn::Multi(types) => {
+                let basic_len = types.len() as i64;
+                if basic_len == 0 {
+                    return Some(0);
+                }
+
+                if let Some(LuaType::MuliReturn(last_multi)) = types.last() {
+                    let last_element_len = last_multi.get_len();
+                    return match last_element_len {
+                        Some(len) => Some(basic_len - 1 + len),
+                        None => None,
+                    };
+                }
+
+                Some(basic_len)
+            }
+        }
+    }
+
+    pub fn get_new_multi_from(&self, idx: usize) -> LuaMultiReturn {
+        match self {
+            LuaMultiReturn::Multi(types) => {
+                if types.len() == 0 {
+                    return LuaMultiReturn::Multi(Vec::new());
+                }
+
+                let mut new_types = Vec::new();
+                if idx < types.len() {
+                    new_types.extend_from_slice(&types[idx..]);
+                } else {
+                    let last = types.len() - 1;
+                    if let LuaType::MuliReturn(multi) = &types[last] {
+                        let rest_offset = idx - last;
+                        return multi.get_new_multi_from(rest_offset);
+                    }
+                }
+
+                LuaMultiReturn::Multi(new_types)
+            }
+            LuaMultiReturn::Base(t) => LuaMultiReturn::Base(t.clone()),
         }
     }
 
@@ -928,5 +979,33 @@ impl LuaStringTplType {
 
     pub fn get_name(&self) -> &str {
         &self.name
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct LuaMultiLineUnion {
+    unions: Vec<(LuaType, Option<String>)>,
+}
+
+impl LuaMultiLineUnion {
+    pub fn new(unions: Vec<(LuaType, Option<String>)>) -> Self {
+        Self { unions }
+    }
+
+    pub fn get_unions(&self) -> &[(LuaType, Option<String>)] {
+        &self.unions
+    }
+
+    pub fn to_union(&self) -> LuaType {
+        let mut types = Vec::new();
+        for (t, _) in &self.unions {
+            types.push(t.clone());
+        }
+
+        LuaType::Union(Arc::new(LuaUnionType::new(types)))
+    }
+
+    pub fn contain_tpl(&self) -> bool {
+        self.unions.iter().any(|(t, _)| t.contain_tpl())
     }
 }

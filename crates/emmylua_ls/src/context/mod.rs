@@ -1,23 +1,23 @@
 mod client;
 mod client_id;
-mod config_manager;
 mod file_diagnostic;
 mod snapshot;
 mod status_bar;
+mod workspace_manager;
 
 pub use client::ClientProxy;
 pub use client_id::{get_client_id, ClientId};
 use emmylua_code_analysis::EmmyLuaAnalysis;
-pub use config_manager::load_emmy_config;
-pub use config_manager::ConfigManager;
 pub use file_diagnostic::FileDiagnostic;
 use lsp_server::{Connection, ErrorCode, Message, RequestId, Response};
 pub use snapshot::ServerContextSnapshot;
-pub use status_bar::StatusBar;
 pub use status_bar::ProgressTask;
+pub use status_bar::StatusBar;
 use std::{collections::HashMap, future::Future, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
+pub use workspace_manager::load_emmy_config;
+pub use workspace_manager::WorkspaceManager;
 
 pub struct ServerContext {
     #[allow(unused)]
@@ -26,7 +26,7 @@ pub struct ServerContext {
     client: Arc<ClientProxy>,
     cancllations: Arc<Mutex<HashMap<RequestId, CancellationToken>>>,
     file_diagnostic: Arc<FileDiagnostic>,
-    config_manager: Arc<RwLock<ConfigManager>>,
+    workspace_manager: Arc<RwLock<WorkspaceManager>>,
     status_bar: Arc<StatusBar>,
 }
 
@@ -44,13 +44,14 @@ impl ServerContext {
         let status_bar = Arc::new(StatusBar::new(client.clone()));
         let file_diagnostic = Arc::new(FileDiagnostic::new(
             analysis.clone(),
-            client.clone(),
             status_bar.clone(),
+            client.clone(),
         ));
-        let config_manager = Arc::new(RwLock::new(ConfigManager::new(
+        let workspace_manager = Arc::new(RwLock::new(WorkspaceManager::new(
             analysis.clone(),
             client.clone(),
             status_bar.clone(),
+            file_diagnostic.clone()
         )));
 
         ServerContext {
@@ -59,7 +60,7 @@ impl ServerContext {
             client,
             file_diagnostic,
             cancllations: Arc::new(Mutex::new(HashMap::new())),
-            config_manager,
+            workspace_manager,
             status_bar,
         }
     }
@@ -69,7 +70,7 @@ impl ServerContext {
             analysis: self.analysis.clone(),
             client: self.client.clone(),
             file_diagnostic: self.file_diagnostic.clone(),
-            config_manager: self.config_manager.clone(),
+            workspace_manager: self.workspace_manager.clone(),
             status_bar: self.status_bar.clone(),
         }
     }
@@ -126,7 +127,7 @@ impl ServerContext {
     }
 
     pub async fn close(&self) {
-        let mut config_manager = self.config_manager.write().await;
+        let mut config_manager = self.workspace_manager.write().await;
         config_manager.watcher = None;
     }
 

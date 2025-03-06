@@ -13,6 +13,7 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
+---@class coroutinelib
 coroutine = {}
 
 ---
@@ -74,10 +75,10 @@ function coroutine.running() end
 --- finished its body function, or if it has stopped with an error.
 ---@param co thread
 ---@return
----| '"running"'   # Is running.
----| '"suspended"' # Is suspended or not started.
----| '"normal"'    # Is active but not running.
----| '"dead"'      # Has finished or stopped with an error.
+---| "running"   # Is running.
+---| "suspended" # Is suspended or not started.
+---| "normal"    # Is active but not running.
+---| "dead"      # Has finished or stopped with an error.
 function coroutine.status(co) end
 
 ---

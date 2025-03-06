@@ -2,7 +2,8 @@ mod infer_expr_property_owner;
 mod owner_guard;
 
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTableField
+    LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaSyntaxKind,
+    LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
 };
 use infer_expr_property_owner::infer_expr_property_owner;
 use owner_guard::OwnerGuard;

@@ -3,7 +3,7 @@ use crate::{
     LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind,
 };
 
-use super::{LuaDocObjectField, LuaDocTypeList};
+use super::{LuaDocDescription, LuaDocObjectField, LuaDocTypeList};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LuaDocType {
@@ -20,6 +20,7 @@ pub enum LuaDocType {
     Nullable(LuaDocNullableType),
     Generic(LuaDocGenericType),
     StrTpl(LuaDocStrTplType),
+    MultiLineUnion(LuaDocMultiLineUnionType),
 }
 
 impl LuaAstNode for LuaDocType {
@@ -38,6 +39,7 @@ impl LuaAstNode for LuaDocType {
             LuaDocType::Nullable(it) => it.syntax(),
             LuaDocType::Generic(it) => it.syntax(),
             LuaDocType::StrTpl(it) => it.syntax(),
+            LuaDocType::MultiLineUnion(it) => it.syntax(),
         }
     }
 
@@ -59,6 +61,7 @@ impl LuaAstNode for LuaDocType {
             LuaSyntaxKind::TypeNullable => true,
             LuaSyntaxKind::TypeGeneric => true,
             LuaSyntaxKind::TypeStringTemplate => true,
+            LuaSyntaxKind::TypeMultiLineUnion => true,
             _ => false,
         }
     }
@@ -93,6 +96,9 @@ impl LuaAstNode for LuaDocType {
             LuaSyntaxKind::TypeStringTemplate => {
                 Some(LuaDocType::StrTpl(LuaDocStrTplType::cast(syntax)?))
             }
+            LuaSyntaxKind::TypeMultiLineUnion => Some(LuaDocType::MultiLineUnion(
+                LuaDocMultiLineUnionType::cast(syntax)?,
+            )),
             _ => None,
         }
     }
@@ -639,5 +645,79 @@ impl LuaDocStrTplType {
         let str_tpl = self.token_by_kind(LuaTokenKind::TkStringTemplateType)?;
 
         Some(str_tpl.syntax().text().trim_matches('`').to_string())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocMultiLineUnionType {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocMultiLineUnionType {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::TypeMultiLineUnion
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocMultiLineUnionType {
+    pub fn get_fields(&self) -> LuaAstChildren<LuaDocOneLineField> {
+        self.children()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocOneLineField {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocOneLineField {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocOneLineField
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocOneLineField {
+    pub fn get_type(&self) -> Option<LuaDocType> {
+        self.child()
+    }
+
+    pub fn get_description(&self) -> Option<LuaDocDescription> {
+        self.child()
     }
 }
