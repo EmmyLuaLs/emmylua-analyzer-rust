@@ -352,7 +352,10 @@ fn parse_assign_or_expr_stat(p: &mut LuaParser) -> ParseResult {
             parse_expr(p)?;
         }
     } else {
-        return Err(LuaParseError::from_source_range(&t!("unfinished stat"), range));
+        return Err(LuaParseError::from_source_range(
+            &t!("unfinished stat"),
+            range,
+        ));
     }
 
     if_token_bump(p, LuaTokenKind::TkSemicolon);

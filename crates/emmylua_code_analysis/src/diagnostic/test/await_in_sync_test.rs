@@ -116,4 +116,27 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_issue_161() {
+        let mut ws = crate::VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::AwaitInSync,
+            r#"
+        local function create(_f) end
+
+        local _a = create(
+        --- @async
+        function()
+            coroutine.yield()
+        end
+        )
+
+        --- @async
+        local _b = create(function()
+        coroutine.yield()
+        end)
+        "#
+        ));
+    }
 }

@@ -9,7 +9,7 @@ use crate::context::ServerContextSnapshot;
 pub async fn on_inline_values_handler(
     context: ServerContextSnapshot,
     params: InlineValueParams,
-    _ : CancellationToken,
+    _: CancellationToken,
 ) -> Option<Vec<InlineValue>> {
     let uri = params.text_document.uri;
     let stop_location = params.context.stopped_location;
@@ -25,6 +25,6 @@ pub fn register_capabilities(
     server_capabilities: &mut ServerCapabilities,
     _: &ClientCapabilities,
 ) -> Option<()> {
-    server_capabilities.inline_value_provider = Some(OneOf::Left(true)); 
+    server_capabilities.inline_value_provider = Some(OneOf::Left(true));
     Some(())
 }

@@ -1,4 +1,3 @@
-
 pub fn get_locale_code(locale: &str) -> String {
     let mut locale = locale.to_string();
     // If the passed `locale` contains '-', convert '-' to '_' and convert the following letters to uppercase

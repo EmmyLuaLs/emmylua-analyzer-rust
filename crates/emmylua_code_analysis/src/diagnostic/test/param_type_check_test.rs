@@ -284,4 +284,16 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_generic_dots_param() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            local d = select(1, 1, 2, 3)
+        "#
+        ));
+    }
 }

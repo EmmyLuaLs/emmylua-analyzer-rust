@@ -142,10 +142,7 @@ mod test {
         let decl = index.find_type_decl(file_id, "test.new_type").unwrap();
         assert_eq!(decl.get_name(), "new_type");
         assert_eq!(decl.get_kind(), LuaDeclTypeKind::Class);
-        assert_eq!(
-            decl.get_attrib(),
-            Some(LuaTypeAttribute::Partial.into())
-        );
+        assert_eq!(decl.get_attrib(), Some(LuaTypeAttribute::Partial.into()));
         assert_eq!(decl.get_namespace(), "test".into());
         assert_eq!(decl.get_full_name(), "test.new_type");
     }

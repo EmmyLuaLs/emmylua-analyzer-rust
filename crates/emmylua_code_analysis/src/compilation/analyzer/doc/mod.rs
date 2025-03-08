@@ -43,7 +43,8 @@ fn analyze_comment(analyzer: &mut DocAnalyzer) -> Option<()> {
     }
 
     let owenr = get_owner_id(analyzer)?;
-    let comment_description = preprocess_description(&comment.get_description()?.get_description_text());
+    let comment_description =
+        preprocess_description(&comment.get_description()?.get_description_text());
     analyzer.db.get_property_index_mut().add_description(
         analyzer.file_id,
         owenr,

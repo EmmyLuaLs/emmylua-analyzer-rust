@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::LuaSignatureId;
 use crate::{db_index::LuaType, FileId};
+use crate::{LuaMemberId, LuaSignatureId};
 use emmylua_parser::{LuaKind, LuaSyntaxId, LuaSyntaxKind};
 use rowan::{TextRange, TextSize};
 use serde::de::{self, Visitor};
@@ -27,6 +27,7 @@ pub enum LuaDeclExtra {
     Param {
         idx: usize,
         signature_id: LuaSignatureId,
+        owner_member_id: Option<LuaMemberId>,
     },
     Global {
         kind: LuaKind,

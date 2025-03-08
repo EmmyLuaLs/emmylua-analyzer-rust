@@ -6,8 +6,8 @@ mod emmy_auto_require;
 mod emmy_disable_code;
 mod emmy_fix_format;
 
-pub use emmy_disable_code::{make_disable_code_command, DisableAction};
 pub use emmy_auto_require::make_auto_require;
+pub use emmy_disable_code::{make_disable_code_command, DisableAction};
 
 pub fn get_commands_list() -> Vec<String> {
     let mut commands = Vec::new();

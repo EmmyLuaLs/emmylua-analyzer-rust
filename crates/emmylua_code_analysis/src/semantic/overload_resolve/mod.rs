@@ -141,9 +141,6 @@ fn resolve_signature_by_args(
         if match_count > max_match {
             max_match = match_count;
             matched_func = Some(func.clone());
-            if match_count == (params.len() - jump_param) as i32 {
-                break;
-            }
         }
     }
 

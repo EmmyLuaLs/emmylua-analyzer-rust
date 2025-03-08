@@ -248,10 +248,5 @@ pub fn check_sig_type_compact(
         Vec::new(),
     );
 
-    check_doc_func_type_compact(
-        db,
-        &fake_doc_func,
-        compact_type,
-        check_guard.next_level()?,
-    )
+    check_doc_func_type_compact(db, &fake_doc_func, compact_type, check_guard.next_level()?)
 }

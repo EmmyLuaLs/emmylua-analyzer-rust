@@ -43,7 +43,8 @@ impl<'a> LuaTreeBuilder<'a> {
                 MarkEvent::NodeStart {
                     kind: LuaSyntaxKind::None,
                     ..
-                } | MarkEvent::Trivia => {}
+                }
+                | MarkEvent::Trivia => {}
                 MarkEvent::NodeStart { kind, parent } => {
                     parents.push(kind);
                     let mut parent_position = parent;

@@ -1,4 +1,9 @@
-use super::{tags::get_owner_id, DocAnalyzer};
+use crate::{LuaPropertyOwnerId, LuaSignatureId};
+
+use super::{
+    tags::{find_owner_closure, get_owner_id},
+    DocAnalyzer,
+};
 use emmylua_parser::{
     LuaDocDescriptionOwner, LuaDocTagDeprecated, LuaDocTagSource, LuaDocTagVersion,
     LuaDocTagVisibility,
@@ -78,7 +83,9 @@ pub fn analyze_version(analyzer: &mut DocAnalyzer, version: LuaDocTagVersion) ->
 }
 
 pub fn analyze_async(analyzer: &mut DocAnalyzer) -> Option<()> {
-    let owner_id = get_owner_id(analyzer)?;
+    let closure = find_owner_closure(analyzer)?;
+    let sig_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
+    let owner_id = LuaPropertyOwnerId::Signature(sig_id);
 
     analyzer
         .db

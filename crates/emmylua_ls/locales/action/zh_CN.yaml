@@ -1,0 +1,10 @@
+Disable current line diagnostic (%{name}): |
+  禁用当前行诊断 (%{name})
+
+Disable all diagnostics in current file (%{name}): |
+  禁用当前文件所有诊断 (%{name})
+
+Disable all diagnostics in current project (%{name}): |
+  禁用当前项目所有诊断 (%{name})
+
+

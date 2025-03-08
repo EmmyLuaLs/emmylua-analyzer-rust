@@ -2,6 +2,7 @@ mod build_signature_helper;
 
 use crate::context::ServerContextSnapshot;
 use build_signature_helper::build_signature_helper;
+pub use build_signature_helper::get_current_param_index;
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::{
     ClientCapabilities, ServerCapabilities, SignatureHelp, SignatureHelpContext,
@@ -9,7 +10,6 @@ use lsp_types::{
 };
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
-pub use build_signature_helper::get_current_param_index;
 
 pub async fn on_signature_helper_handler(
     context: ServerContextSnapshot,

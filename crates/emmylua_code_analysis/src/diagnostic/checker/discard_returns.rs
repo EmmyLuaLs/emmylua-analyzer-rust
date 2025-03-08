@@ -23,11 +23,13 @@ fn check_call_expr(
 ) -> Option<()> {
     let call_expr = call_expr_stat.get_call_expr()?;
     let prefix_node = call_expr.get_prefix_expr()?.syntax().clone();
-    let property_owner = semantic_model.get_property_owner_id(NodeOrToken::Node(
-        prefix_node.clone(),
-    ))?;
+    let property_owner =
+        semantic_model.get_property_owner_id(NodeOrToken::Node(prefix_node.clone()))?;
 
-    let property = semantic_model.get_db().get_property_index().get_property(property_owner)?;
+    let property = semantic_model
+        .get_db()
+        .get_property_index()
+        .get_property(property_owner)?;
     if property.is_nodiscard {
         context.add_diagnostic(
             DiagnosticCode::DiscardReturns,

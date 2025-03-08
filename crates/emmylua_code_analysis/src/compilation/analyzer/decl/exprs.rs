@@ -1,11 +1,11 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaLiteralExpr,
-    LuaLiteralToken, LuaNameExpr, LuaTableExpr,
+    LuaAst, LuaAstNode, LuaAstToken, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaIndexKey,
+    LuaLiteralExpr, LuaLiteralToken, LuaNameExpr, LuaTableExpr, LuaVarExpr,
 };
 
 use crate::{
     db_index::{LuaDecl, LuaMember, LuaMemberKey, LuaMemberOwner},
-    InFiled, LuaDeclExtra, LuaDeclId, LuaSignatureId,
+    FileId, InFiled, LuaDeclExtra, LuaDeclId, LuaMemberId, LuaSignatureId,
 };
 
 use super::DeclAnalyzer;
@@ -60,7 +60,7 @@ pub fn analyze_index_expr(analyzer: &mut DeclAnalyzer, index_expr: LuaIndexExpr)
         }
         LuaIndexKey::String(string) => LuaMemberKey::Name(string.get_value().into()),
         LuaIndexKey::Expr(_) => return None,
-        LuaIndexKey::Idx(i) => LuaMemberKey::Integer(i as i64)
+        LuaIndexKey::Idx(i) => LuaMemberKey::Integer(i as i64),
     };
 
     let file_id = analyzer.get_file_id();
@@ -93,6 +93,7 @@ pub fn analyze_closure_expr(analyzer: &mut DeclAnalyzer, expr: LuaClosureExpr) -
     let params = expr.get_params_list()?;
     let signature_id = LuaSignatureId::from_closure(analyzer.get_file_id(), &expr);
     let file_id = analyzer.get_file_id();
+    let member_id = get_closure_member_id(&expr, file_id);
     for (idx, param) in params.get_params().enumerate() {
         let name = param.get_name_token().map_or_else(
             || {
@@ -110,8 +111,12 @@ pub fn analyze_closure_expr(analyzer: &mut DeclAnalyzer, expr: LuaClosureExpr) -
             &name,
             file_id,
             range,
-            LuaDeclExtra::Param { idx, signature_id },
-            None
+            LuaDeclExtra::Param {
+                idx,
+                signature_id,
+                owner_member_id: member_id,
+            },
+            None,
         );
 
         analyzer.add_decl(decl);
@@ -120,6 +125,34 @@ pub fn analyze_closure_expr(analyzer: &mut DeclAnalyzer, expr: LuaClosureExpr) -
     analyze_closure_params(analyzer, &signature_id, &expr);
 
     Some(())
+}
+
+fn get_closure_member_id(closure: &LuaClosureExpr, file_id: FileId) -> Option<LuaMemberId> {
+    let parent = closure.get_parent::<LuaAst>()?;
+    match parent {
+        LuaAst::LuaAssignStat(assign) => {
+            let (vars, value_exprs) = assign.get_var_and_expr_list();
+            let value_idx = value_exprs
+                .iter()
+                .position(|expr| expr.get_position() == closure.get_position())?;
+            let var = vars.get(value_idx)?;
+            if let LuaVarExpr::IndexExpr(index_expr) = var {
+                return Some(LuaMemberId::new(index_expr.get_syntax_id(), file_id));
+            }
+        }
+        LuaAst::LuaFuncStat(func_stat) => {
+            let func_name = func_stat.get_func_name()?;
+            if let LuaVarExpr::IndexExpr(index_expr) = func_name {
+                return Some(LuaMemberId::new(index_expr.get_syntax_id(), file_id));
+            }
+        }
+        LuaAst::LuaTableField(table_field) => {
+            return Some(LuaMemberId::new(table_field.get_syntax_id(), file_id));
+        }
+        _ => {}
+    }
+
+    None
 }
 
 fn analyze_closure_params(
@@ -184,7 +217,6 @@ pub fn analyze_literal_expr(analyzer: &mut DeclAnalyzer, expr: LuaLiteralExpr) -
 
     match literal {
         LuaLiteralToken::String(string_token) => {
-
             let value = string_token.get_value();
             if value.len() <= 64 {
                 analyzer.db.get_reference_index_mut().add_string_reference(

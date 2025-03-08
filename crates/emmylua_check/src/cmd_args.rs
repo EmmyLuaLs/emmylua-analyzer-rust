@@ -62,7 +62,6 @@ impl OutputFormat {
     }
 }
 
-
 #[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum OutputDestination {

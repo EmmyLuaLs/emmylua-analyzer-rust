@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct EmmyrcReference {
     /// Whether to enable reference search.
-    #[serde(default="default_true")]
+    #[serde(default = "default_true")]
     pub enable: bool,
     /// Determines whether to enable fuzzy searching for fields where references cannot be found.
     #[serde(default = "default_true")]

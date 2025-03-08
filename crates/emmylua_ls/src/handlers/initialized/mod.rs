@@ -145,7 +145,9 @@ pub async fn init_analysis(
 
     drop(mut_analysis);
 
-    file_diagnostic.add_workspace_diagnostic_task(client_id, 0, false).await;
+    file_diagnostic
+        .add_workspace_diagnostic_task(client_id, 0, false)
+        .await;
 }
 
 fn get_workspace_folders(params: &InitializeParams) -> Vec<PathBuf> {

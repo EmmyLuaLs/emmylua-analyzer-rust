@@ -172,7 +172,11 @@ pub fn analyze_doc_tag_meta(analyzer: &mut DeclAnalyzer, tag: LuaDocTagMeta) -> 
             analyzer
                 .db
                 .get_module_index_mut()
-                .add_module_by_module_path(file_id, name_token.get_name_text().to_string(), workspace_id);
+                .add_module_by_module_path(
+                    file_id,
+                    name_token.get_name_text().to_string(),
+                    workspace_id,
+                );
         }
     }
 

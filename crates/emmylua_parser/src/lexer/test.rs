@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::{LexerConfig, LuaLexer}, parser_error::LuaParseError};
+    use crate::{
+        lexer::{LexerConfig, LuaLexer},
+        parser_error::LuaParseError,
+    };
 
     #[test]
     fn test_all_lua_token() {
@@ -84,8 +87,12 @@ mod tests {
         // for token in &tokens {
         //     println!("{:?}", token);
         // }
-        
-        let test_str = tokens.iter().map(|x| format!("{:?}", x)).collect::<Vec<String>>().join("\n");
+
+        let test_str = tokens
+            .iter()
+            .map(|x| format!("{:?}", x))
+            .collect::<Vec<String>>()
+            .join("\n");
         let expected = r#"
 LuaTokenData { kind: TkShebang, range: SourceRange { start_offset: 0, length: 19 } }
 LuaTokenData { kind: TkEndOfLine, range: SourceRange { start_offset: 19, length: 1 } }

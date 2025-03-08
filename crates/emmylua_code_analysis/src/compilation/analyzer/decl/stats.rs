@@ -1,5 +1,6 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaAstToken, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaIndexExpr, LuaLocalFuncStat, LuaLocalStat, LuaSyntaxId, LuaSyntaxKind, LuaVarExpr
+    LuaAssignStat, LuaAstNode, LuaAstToken, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat,
+    LuaIndexExpr, LuaLocalFuncStat, LuaLocalStat, LuaSyntaxId, LuaSyntaxKind, LuaVarExpr,
 };
 
 use crate::{
@@ -10,9 +11,9 @@ use crate::{
 use super::DeclAnalyzer;
 
 pub fn analyze_local_stat(analyzer: &mut DeclAnalyzer, stat: LuaLocalStat) -> Option<()> {
-    let local_name_list= stat.get_local_name_list().collect::<Vec<_>>();
+    let local_name_list = stat.get_local_name_list().collect::<Vec<_>>();
     let value_expr_list = stat.get_value_exprs().collect::<Vec<_>>();
-    
+
     for (index, local_name) in local_name_list.iter().enumerate() {
         let name = if let Some(name_token) = local_name.get_name_token() {
             name_token.get_name_text().to_string()
@@ -48,7 +49,7 @@ pub fn analyze_local_stat(analyzer: &mut DeclAnalyzer, stat: LuaLocalStat) -> Op
                 attrib,
                 decl_type: None,
             },
-            expr_id
+            expr_id,
         );
         analyzer.add_decl(decl);
     }
@@ -87,7 +88,7 @@ pub fn analyze_assign_stat(analyzer: &mut DeclAnalyzer, stat: LuaAssignStat) -> 
                             kind: LuaSyntaxKind::NameExpr.into(),
                             decl_type: None,
                         },
-                        value_expr_id
+                        value_expr_id,
                     );
 
                     analyzer.add_decl(decl);
@@ -111,7 +112,13 @@ pub fn analyze_assign_stat(analyzer: &mut DeclAnalyzer, stat: LuaAssignStat) -> 
 
                 analyzer.db.get_member_index_mut().add_member(member);
                 if let LuaMemberKey::Name(name) = &key {
-                    analyze_maybe_global_index_expr(analyzer, index_expr, &name, None, value_expr_id);
+                    analyze_maybe_global_index_expr(
+                        analyzer,
+                        index_expr,
+                        &name,
+                        None,
+                        value_expr_id,
+                    );
                 }
             }
         }
@@ -125,7 +132,7 @@ fn analyze_maybe_global_index_expr(
     index_expr: &LuaIndexExpr,
     index_name: &str,
     typ: Option<LuaType>,
-    value_expr_id: Option<LuaSyntaxId>
+    value_expr_id: Option<LuaSyntaxId>,
 ) -> Option<()> {
     let file_id = analyzer.get_file_id();
     let prefix = index_expr.get_prefix_expr()?;
@@ -151,7 +158,7 @@ fn analyze_maybe_global_index_expr(
                         kind: LuaSyntaxKind::IndexExpr.into(),
                         decl_type: typ,
                     },
-                    value_expr_id
+                    value_expr_id,
                 );
 
                 analyzer.add_decl(decl);
@@ -203,7 +210,7 @@ pub fn analyze_for_range_stat(analyzer: &mut DeclAnalyzer, stat: LuaForRangeStat
                 attrib: Some(LocalAttribute::IterConst),
                 decl_type: None,
             },
-            None
+            None,
         );
 
         analyzer.add_decl(decl);
@@ -228,7 +235,7 @@ pub fn analyze_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaFuncStat) -> Opti
                         kind: LuaSyntaxKind::NameExpr.into(),
                         decl_type: None,
                     },
-                    None
+                    None,
                 );
 
                 let decl_id = analyzer.add_decl(decl);
@@ -264,7 +271,8 @@ pub fn analyze_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaFuncStat) -> Opti
 
     let closure = stat.get_closure()?;
     let file_id = analyzer.get_file_id();
-    let closure_owner_id = LuaPropertyOwnerId::Signature(LuaSignatureId::from_closure(file_id, &closure));
+    let closure_owner_id =
+        LuaPropertyOwnerId::Signature(LuaSignatureId::from_closure(file_id, &closure));
     analyzer.db.get_property_index_mut().add_owner_map(
         property_owner_id,
         closure_owner_id,
@@ -289,12 +297,13 @@ pub fn analyze_local_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaLocalFuncSt
             attrib: None,
             decl_type: None,
         },
-        None
+        None,
     );
 
     let decl_id = analyzer.add_decl(decl);
     let closure = stat.get_closure()?;
-    let closure_owner_id = LuaPropertyOwnerId::Signature(LuaSignatureId::from_closure(file_id, &closure));
+    let closure_owner_id =
+        LuaPropertyOwnerId::Signature(LuaSignatureId::from_closure(file_id, &closure));
     let property_decl_id = LuaPropertyOwnerId::LuaDecl(decl_id);
     analyzer
         .db

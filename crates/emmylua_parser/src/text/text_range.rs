@@ -10,7 +10,7 @@ impl SourceRange {
     pub fn new(start_offset: usize, length: usize) -> SourceRange {
         SourceRange {
             start_offset,
-            length
+            length,
         }
     }
 
@@ -57,6 +57,9 @@ impl std::fmt::Display for SourceRange {
 
 impl Into<TextRange> for SourceRange {
     fn into(self) -> TextRange {
-        TextRange::new((self.start_offset as u32).into(), (self.end_offset() as u32).into())
+        TextRange::new(
+            (self.start_offset as u32).into(),
+            (self.end_offset() as u32).into(),
+        )
     }
 }

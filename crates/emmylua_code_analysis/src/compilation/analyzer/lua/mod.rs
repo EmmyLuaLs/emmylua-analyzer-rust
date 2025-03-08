@@ -13,7 +13,10 @@ use stats::{
 };
 
 use crate::{
-    db_index::{DbIndex, LuaType}, profile::Profile, semantic::{infer_expr, LuaInferConfig}, FileId
+    db_index::{DbIndex, LuaType},
+    profile::Profile,
+    semantic::{infer_expr, LuaInferConfig},
+    FileId,
 };
 
 use super::{unresolve::UnResolve, AnalyzeContext};

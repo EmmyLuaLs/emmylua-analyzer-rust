@@ -77,21 +77,20 @@ pub async fn on_completion_resolve_handler(
         };
         let mut semantic_model = None;
         match &completion_data {
-            CompletionData::PropertyOwnerId(property_id) | CompletionData::Overload((property_id, _)) => {
+            CompletionData::PropertyOwnerId(property_id)
+            | CompletionData::Overload((property_id, _)) => {
                 let semantic_model_opt = match property_id {
-                    LuaPropertyOwnerId::LuaDecl(decl_id) => {
-                        db.get_decl_index()
-                            .get_decl(&decl_id)
-                            .map(|decl| decl.get_file_id())
-                    }
-                    LuaPropertyOwnerId::Member(member_id) => {
-                        db.get_member_index()
-                            .get_member(&member_id)
-                            .map(|member| member.get_file_id())
-                    }
+                    LuaPropertyOwnerId::LuaDecl(decl_id) => db
+                        .get_decl_index()
+                        .get_decl(&decl_id)
+                        .map(|decl| decl.get_file_id()),
+                    LuaPropertyOwnerId::Member(member_id) => db
+                        .get_member_index()
+                        .get_member(&member_id)
+                        .map(|member| member.get_file_id()),
                     _ => None,
                 };
-        
+
                 if let Some(file_id) = semantic_model_opt {
                     semantic_model = analysis.compilation.get_semantic_model(file_id);
                 }
@@ -99,7 +98,13 @@ pub async fn on_completion_resolve_handler(
             _ => {}
         }
 
-        resolve_completion(semantic_model.as_ref(), db, &mut completion_item, completion_data, client_id);
+        resolve_completion(
+            semantic_model.as_ref(),
+            db,
+            &mut completion_item,
+            completion_data,
+            client_id,
+        );
     }
 
     completion_item

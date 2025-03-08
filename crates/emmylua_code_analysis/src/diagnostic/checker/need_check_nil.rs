@@ -39,11 +39,7 @@ fn check_call_expr(
         context.add_diagnostic(
             DiagnosticCode::NeedCheckNil,
             prefix.get_range(),
-            t!(
-                "function %{name} may be nil",
-                name = prefix.syntax().text()
-            )
-            .to_string(),
+            t!("function %{name} may be nil", name = prefix.syntax().text()).to_string(),
             None,
         );
     }

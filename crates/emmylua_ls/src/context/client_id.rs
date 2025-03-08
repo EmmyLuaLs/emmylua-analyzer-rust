@@ -42,7 +42,7 @@ pub fn get_client_id(client_info: &Option<ClientInfo>) -> ClientId {
                 "Neovim" => ClientId::Neovim,
                 "Cursor" => ClientId::VSCode,
                 "Windsurf" => ClientId::VSCode, // 不确定是不是这个名, 先加上吧
-                "Trae" => ClientId::VSCode, // 字节的, 但不确定是不是这个名, 先加上吧
+                "Trae" => ClientId::VSCode,     // 字节的, 但不确定是不是这个名, 先加上吧
                 _ => ClientId::Other,
             }
         }

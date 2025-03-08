@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocDescriptionOwner, LuaDocFieldKey, LuaDocTagField,
     LuaDocTagOperator, LuaDocType,
@@ -202,40 +204,58 @@ fn merge_signature_member(
         .get_signature_index_mut()
         .get_or_create(signature_id.clone());
 
-    if let LuaType::DocFunction(f) = member.get_decl_type() {
-        signature.is_colon_define = f.is_colon_define();
-        for (i, (name, typ)) in f.get_params().iter().enumerate() {
-            signature.params.push(name.clone());
-            signature.param_docs.insert(
-                i,
-                LuaDocParamInfo {
-                    name: name.clone(),
-                    type_ref: typ.clone().unwrap_or(LuaType::Any),
-                    nullable: false,
-                    description: None,
-                },
-            );
+    let decl_type = member.get_decl_type();
+    let (f, nullable) = match decl_type {
+        LuaType::DocFunction(f) => (f, false),
+        LuaType::Nullable(base) => {
+            if let LuaType::DocFunction(f) = base.deref() {
+                (f.clone(), true)
+            } else {
+                return None;
+            }
         }
+        _ => {
+            return None;
+        }
+    };
 
-        for typ in f.get_ret() {
-            signature.return_docs.push(LuaDocReturnInfo {
-                name: None,
-                type_ref: typ.clone(),
+    signature.is_colon_define = f.is_colon_define();
+    for (i, (name, typ)) in f.get_params().iter().enumerate() {
+        signature.params.push(name.clone());
+        signature.param_docs.insert(
+            i,
+            LuaDocParamInfo {
+                name: name.clone(),
+                type_ref: typ.clone().unwrap_or(LuaType::Any),
+                nullable: false,
                 description: None,
-            });
-            signature.resolve_return = SignatureReturnStatus::DocResolve;
-        }
-
-        if f.is_async() {
-            let property_owner = LuaPropertyOwnerId::Signature(signature_id.clone());
-            analyzer
-                .db
-                .get_property_index_mut()
-                .add_async(analyzer.file_id, property_owner);
-        }
+            },
+        );
     }
 
-    member.decl_type = LuaType::Signature(signature_id);
+    for typ in f.get_ret() {
+        signature.return_docs.push(LuaDocReturnInfo {
+            name: None,
+            type_ref: typ.clone(),
+            description: None,
+        });
+        signature.resolve_return = SignatureReturnStatus::DocResolve;
+    }
+
+    if f.is_async() {
+        let property_owner = LuaPropertyOwnerId::Signature(signature_id.clone());
+        analyzer
+            .db
+            .get_property_index_mut()
+            .add_async(analyzer.file_id, property_owner);
+    }
+
+    let mut member_type = LuaType::Signature(signature_id);
+    if nullable {
+        member_type = LuaType::Nullable(member_type.into());
+    }
+
+    member.set_decl_type(member_type);
     analyzer.db.get_member_index_mut().add_member(member);
     Some(())
 }

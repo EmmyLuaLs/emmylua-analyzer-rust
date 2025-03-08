@@ -6,9 +6,11 @@ mod test {
     fn test_pcall_return() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.def(r#"
+        ws.def(
+            r#"
         a, b = pcall(string.rep, "a", 1000000000)
-        "#);
+        "#,
+        );
 
         let ty = ws.expr_ty("b");
         let expected = ws.ty("string");
@@ -19,9 +21,11 @@ mod test {
     fn test_unpack_return() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.def(r#"
+        ws.def(
+            r#"
         a, b, c = table.unpack({1, 2, 3})
-        "#);
+        "#,
+        );
 
         let a_ty = ws.expr_ty("a");
         let b_ty = ws.expr_ty("b");

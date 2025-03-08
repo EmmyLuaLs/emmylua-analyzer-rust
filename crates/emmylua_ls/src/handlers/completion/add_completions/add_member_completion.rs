@@ -110,31 +110,40 @@ pub fn add_member_completion(
 
     // add overloads if the type is function
     if let LuaType::Signature(signature_id) = typ {
-        let overloads = builder.semantic_model.get_db().get_signature_index().get(&signature_id)?.overloads.clone();
+        let overloads = builder
+            .semantic_model
+            .get_db()
+            .get_signature_index()
+            .get(&signature_id)?
+            .overloads
+            .clone();
 
-        overloads.into_iter().enumerate().for_each(|(index, overload)| {
-            let typ = LuaType::DocFunction(overload);
-            let description = get_description(builder, &typ);
-            let detail = get_detail(builder, &typ, display);
-            let data = if let Some(id) = &property_owner {
-                CompletionData::from_overload(id.clone().into(), index)
-            } else {
-                None
-            };
-            let completion_item = CompletionItem {
-                label: label.clone(),
-                kind: Some(get_completion_kind(&typ)),
-                data,
-                label_details: Some(lsp_types::CompletionItemLabelDetails {
-                    detail,
-                    description,
-                }),
-                deprecated,
-                ..Default::default()
-            };
+        overloads
+            .into_iter()
+            .enumerate()
+            .for_each(|(index, overload)| {
+                let typ = LuaType::DocFunction(overload);
+                let description = get_description(builder, &typ);
+                let detail = get_detail(builder, &typ, display);
+                let data = if let Some(id) = &property_owner {
+                    CompletionData::from_overload(id.clone().into(), index)
+                } else {
+                    None
+                };
+                let completion_item = CompletionItem {
+                    label: label.clone(),
+                    kind: Some(get_completion_kind(&typ)),
+                    data,
+                    label_details: Some(lsp_types::CompletionItemLabelDetails {
+                        detail,
+                        description,
+                    }),
+                    deprecated,
+                    ..Default::default()
+                };
 
-            builder.add_completion_item(completion_item);
-        });
+                builder.add_completion_item(completion_item);
+            });
     };
 
     Some(())

@@ -492,9 +492,7 @@ fn to_tag(text: &str) -> LuaTokenKind {
         "async" => LuaTokenKind::TkTagAsync,
         "cast" => LuaTokenKind::TkTagCast,
         "deprecated" => LuaTokenKind::TkTagDeprecated,
-        "private" | "protected" | "public" | "package" => {
-            LuaTokenKind::TkTagVisibility
-        }
+        "private" | "protected" | "public" | "package" => LuaTokenKind::TkTagVisibility,
         "readonly" => LuaTokenKind::TkTagReadonly,
         "diagnostic" => LuaTokenKind::TkTagDiagnostic,
         "meta" => LuaTokenKind::TkTagMeta,
@@ -512,9 +510,7 @@ fn to_tag(text: &str) -> LuaTokenKind {
 
 fn to_modification_or_name(text: &str) -> LuaTokenKind {
     match text {
-        "private" | "protected" | "public" | "package" => {
-            LuaTokenKind::TkDocVisibility
-        }
+        "private" | "protected" | "public" | "package" => LuaTokenKind::TkDocVisibility,
         "readonly" => LuaTokenKind::TkDocReadonly,
         _ => LuaTokenKind::TkName,
     }
@@ -538,7 +534,6 @@ fn is_doc_whitespace(ch: char) -> bool {
 
 fn read_doc_name<'a>(reader: &'a mut Reader) -> &'a str {
     reader.bump();
-
 
     while !reader.is_eof() {
         match reader.current_char() {

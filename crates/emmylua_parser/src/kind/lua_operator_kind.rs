@@ -35,7 +35,6 @@ pub enum BinaryOperator {
     OpNop,    // (empty)
 }
 
-
 pub const PRIORITY: [PriorityTable; 21] = [
     PriorityTable {
         left: 10,

@@ -1,6 +1,12 @@
 # CHANGELOG
 
-# 0.5.3 (unreleased)
+# 0.6.0 (unreleased)
+
+# 0.5.4
+
+`Fix` Fix generic dots params type check
+
+# 0.5.3 
 
 `NEW` Support negative integer as type
 
@@ -17,6 +23,8 @@
 `NEW` Support check for `redundant_parameter`, `redundant_return_value`, `missing_return_value`, `return_type_mismatch`
 
 `NEW` Better Support require module for other editor
+
+`NEW` Support function stat inherit param type from `@field` annotation
 
 # 0.5.2 
 

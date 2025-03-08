@@ -73,6 +73,20 @@ impl<'a> LuaDocument<'a> {
         self.line_index.get_offset(line, col, self.text)
     }
 
+    pub fn get_line_range(&self, line: usize) -> Option<TextRange> {
+        let start = self.line_index.get_line_offset(line)?;
+        if let Some(end) = self.line_index.get_line_offset(line + 1) {
+            Some(TextRange::new(start, end))
+        } else {
+            let end = TextSize::new(self.text.len() as u32);
+            if end > start {
+                Some(TextRange::new(start, end))
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn to_lsp_range(&self, range: TextRange) -> Option<lsp_types::Range> {
         let start = self.get_line_col(range.start())?;
         let end = self.get_line_col(range.end())?;

@@ -20,4 +20,3 @@ impl Default for EmmyrcSignature {
 fn default_true() -> bool {
     true
 }
-

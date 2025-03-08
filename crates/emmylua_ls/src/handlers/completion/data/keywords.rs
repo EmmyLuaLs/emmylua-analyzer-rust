@@ -1,4 +1,3 @@
-
 use lsp_types::CompletionItemKind;
 
 pub struct KeywordCompletionInfo {
@@ -184,5 +183,5 @@ pub const KEYWORD_EXPR_COMPLETIONS: &[KeywordCompletionInfo] = &[
         detail: "(a and b or c)",
         insert_text: "${1:a} and ${2:b} or ${3:c}",
         kind: CompletionItemKind::SNIPPET,
-    }
+    },
 ];

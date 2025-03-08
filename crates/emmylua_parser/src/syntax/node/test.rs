@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        parser::ParserConfig, syntax::traits::LuaAstNode, LuaAst, LuaDocDescription, LuaExpr, LuaLocalStat, LuaParser, LuaVarExpr
+        parser::ParserConfig, syntax::traits::LuaAstNode, LuaAst, LuaDocDescription, LuaExpr,
+        LuaLocalStat, LuaParser, LuaVarExpr,
     };
 
     #[allow(unused)]
@@ -198,26 +199,24 @@ mod tests {
         function t:aaa()
         end
         "#;
-        
+
         let tree = LuaParser::parse(code, ParserConfig::default());
         let chunk = tree.get_chunk_node();
         for node in chunk.descendants::<LuaAst>() {
             match node {
-                LuaAst::LuaFuncStat(func_stat) => {
-                    match func_stat.get_func_name().unwrap() {
-                        LuaVarExpr::NameExpr(name) => {
-                            assert_eq!(name.get_name_token().unwrap().get_name_text(), "f");
-                        }
-                        LuaVarExpr::IndexExpr(field_exp) => {
-                            match field_exp.get_prefix_expr().unwrap() {
-                                LuaExpr::NameExpr(name) => {
-                                    assert_eq!(name.get_name_token().unwrap().get_name_text(), "t");
-                                }
-                                _ => {}
+                LuaAst::LuaFuncStat(func_stat) => match func_stat.get_func_name().unwrap() {
+                    LuaVarExpr::NameExpr(name) => {
+                        assert_eq!(name.get_name_token().unwrap().get_name_text(), "f");
+                    }
+                    LuaVarExpr::IndexExpr(field_exp) => {
+                        match field_exp.get_prefix_expr().unwrap() {
+                            LuaExpr::NameExpr(name) => {
+                                assert_eq!(name.get_name_token().unwrap().get_name_text(), "t");
                             }
+                            _ => {}
                         }
                     }
-                }
+                },
                 _ => {}
             }
         }

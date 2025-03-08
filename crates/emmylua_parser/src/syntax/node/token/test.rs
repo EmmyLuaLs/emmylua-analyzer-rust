@@ -2,7 +2,7 @@
 mod tests {
     use crate::{
         kind::{LuaSyntaxKind, LuaTokenKind},
-        syntax::node::{string_token_value, int_token_value, float_token_value},
+        syntax::node::{float_token_value, int_token_value, string_token_value},
         LuaSyntaxNode, LuaSyntaxToken,
     };
 
@@ -111,7 +111,7 @@ mod tests {
         "hello 😀",
         LuaTokenKind::TkString
     );
-    
+
     #[test]
     fn test_multi_line() {
         let code = r#"'\
@@ -144,66 +144,22 @@ mod tests {
         };
     }
 
-    test_float_token_value!(
-        test_number_token_value_float1,
-        "123.0",
-        123.0
-    );
-    test_float_token_value!(
-        test_number_token_value_float2,
-        "123.456",
-        123.456
-    );
-    test_float_token_value!(
-        test_number_token_value_float3,
-        "0.123",
-        0.123
-    );
-    test_float_token_value!(
-        test_number_token_value_float4,
-        "1e10",
-        1e10
-    );
-    test_float_token_value!(
-        test_number_token_value_float5,
-        "1.23e-4",
-        1.23e-4
-    );
-    test_float_token_value!(
-        test_number_token_value_float6,
-        "1.23e+4",
-        1.23e+4
-    );
+    test_float_token_value!(test_number_token_value_float1, "123.0", 123.0);
+    test_float_token_value!(test_number_token_value_float2, "123.456", 123.456);
+    test_float_token_value!(test_number_token_value_float3, "0.123", 0.123);
+    test_float_token_value!(test_number_token_value_float4, "1e10", 1e10);
+    test_float_token_value!(test_number_token_value_float5, "1.23e-4", 1.23e-4);
+    test_float_token_value!(test_number_token_value_float6, "1.23e+4", 1.23e+4);
     test_float_token_value!(
         test_number_token_value_hex_float1,
         "0x1.91eb851eb851fp+1",
         3.14
     );
-    test_float_token_value!(
-        test_number_token_value_hex_float2,
-        "0x1.0p+1",
-        2.0
-    );
-    test_float_token_value!(
-        test_number_token_value_hex_float3,
-        "0x1.8p+1",
-        3.0
-    );
-    test_float_token_value!(
-        test_number_token_value_hex_float4,
-        "0x1.0p-1",
-        0.5
-    );
-    test_float_token_value!(
-        test_number_token_value_hex_float5,
-        "0x1.8p-1",
-        0.75
-    );
-    test_float_token_value!(
-        test_number_token_value_hex_float6,
-        "0xABCDE2",
-        11259362.0
-    );
+    test_float_token_value!(test_number_token_value_hex_float2, "0x1.0p+1", 2.0);
+    test_float_token_value!(test_number_token_value_hex_float3, "0x1.8p+1", 3.0);
+    test_float_token_value!(test_number_token_value_hex_float4, "0x1.0p-1", 0.5);
+    test_float_token_value!(test_number_token_value_hex_float5, "0x1.8p-1", 0.75);
+    test_float_token_value!(test_number_token_value_hex_float6, "0xABCDE2", 11259362.0);
 
     macro_rules! test_int_token_value {
         ($name:ident, $code:expr, $expected:expr) => {
@@ -216,49 +172,13 @@ mod tests {
         };
     }
 
-    test_int_token_value!(
-        test_number_token_value_int1,
-        "123",
-        123
-    );
-    test_int_token_value!(
-        test_number_token_value_int2,
-        "0",
-        0
-    );
-    test_int_token_value!(
-        test_number_token_value_int3,
-        "0x1A",
-        26
-    );
-    test_int_token_value!(
-        test_number_token_value_int4,
-        "0xFF",
-        255
-    );
-    test_int_token_value!(
-        test_number_token_value_int5,
-        "0x10",
-        16
-    );
-    test_int_token_value!(
-        test_number_token_value_int6,
-        "0x7B",
-        123
-    );
-    test_int_token_value!(
-        test_number_token_value_int7,
-        "0x0",
-        0
-    );
-    test_int_token_value!(
-        test_number_token_value_int8,
-        "0x11LL",
-        17
-    );
-    test_int_token_value!(
-        test_number_token_value_int9,
-        "0b10101",
-        21
-    );
+    test_int_token_value!(test_number_token_value_int1, "123", 123);
+    test_int_token_value!(test_number_token_value_int2, "0", 0);
+    test_int_token_value!(test_number_token_value_int3, "0x1A", 26);
+    test_int_token_value!(test_number_token_value_int4, "0xFF", 255);
+    test_int_token_value!(test_number_token_value_int5, "0x10", 16);
+    test_int_token_value!(test_number_token_value_int6, "0x7B", 123);
+    test_int_token_value!(test_number_token_value_int7, "0x0", 0);
+    test_int_token_value!(test_number_token_value_int8, "0x11LL", 17);
+    test_int_token_value!(test_number_token_value_int9, "0b10101", 21);
 }

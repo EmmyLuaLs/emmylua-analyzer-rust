@@ -193,5 +193,5 @@ impl LuaSignatureId {
 pub enum SignatureReturnStatus {
     UnResolve,
     DocResolve,
-    InferResolve
+    InferResolve,
 }

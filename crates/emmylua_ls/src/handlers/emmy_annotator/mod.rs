@@ -1,5 +1,5 @@
-mod emmy_annotator_request;
 mod build_annotator;
+mod emmy_annotator_request;
 
 use std::str::FromStr;
 

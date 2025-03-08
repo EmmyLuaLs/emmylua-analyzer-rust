@@ -30,7 +30,7 @@ pub async fn on_range_formatting_handler(
         0,
         request_range.end.line as i32 + 1,
         0,
-    );
+    )?;
 
     let mut formatted_text = formatted_result.text;
 

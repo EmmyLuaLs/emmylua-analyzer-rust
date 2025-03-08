@@ -14,7 +14,7 @@ pub enum MarkEvent {
         range: SourceRange,
     },
     NodeEnd,
-    Trivia
+    Trivia,
 }
 
 impl MarkEvent {

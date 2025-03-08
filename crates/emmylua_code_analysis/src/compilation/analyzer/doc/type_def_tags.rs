@@ -409,7 +409,7 @@ fn bind_def_type(analyzer: &mut DocAnalyzer, type_def: LuaType) -> Option<()> {
                     .db
                     .get_member_index_mut()
                     .get_member_mut(&member_id)?;
-                member.decl_type = type_def;
+                member.set_decl_type(type_def);
             }
         }
         LuaAst::LuaTableField(field) => {
@@ -418,7 +418,7 @@ fn bind_def_type(analyzer: &mut DocAnalyzer, type_def: LuaType) -> Option<()> {
                 .db
                 .get_member_index_mut()
                 .get_member_mut(&member_id)?;
-            member.decl_type = type_def;
+            member.set_decl_type(type_def);
         }
         _ => {}
     }

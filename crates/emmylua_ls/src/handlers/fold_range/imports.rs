@@ -5,11 +5,14 @@ use rowan::TextSize;
 
 use super::builder::FoldingRangeBuilder;
 
-
-pub fn build_imports_fold_range(builder: &mut FoldingRangeBuilder, root: LuaChunk, emmyrc: &Emmyrc) -> Option<()> {
+pub fn build_imports_fold_range(
+    builder: &mut FoldingRangeBuilder,
+    root: LuaChunk,
+    emmyrc: &Emmyrc,
+) -> Option<()> {
     let root_block = root.get_block()?;
     let require_like_func = &emmyrc.runtime.require_like_function;
-    
+
     let mut start: Option<TextSize> = None;
     let mut end: Option<TextSize> = None;
     for stat in root_block.get_stats() {
@@ -42,7 +45,6 @@ pub fn build_imports_fold_range(builder: &mut FoldingRangeBuilder, root: LuaChun
     // if just only require stat, then donot fold it
     Some(())
 }
-
 
 fn is_require_stat(stat: LuaStat, require_like_func: &Vec<String>) -> Option<bool> {
     match stat {

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EmmyrcWorkspace {
-    /// Ignore directories. 
+    /// Ignore directories.
     #[serde(default)]
     pub ignore_dir: Vec<String>,
     /// Ignore globs. eg: ["**/*.lua"]
@@ -31,7 +31,7 @@ pub struct EmmyrcWorkspace {
     pub module_map: Vec<EmmyrcWorkspaceModuleMap>,
 
     /// when save a file, ls will reindex the workspace after reindex_duration milliseconds.
-    #[serde(default= "reindex_duration_default")]
+    #[serde(default = "reindex_duration_default")]
     pub reindex_duration: u64,
 }
 

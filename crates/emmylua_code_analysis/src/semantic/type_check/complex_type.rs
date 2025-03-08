@@ -281,7 +281,12 @@ pub fn check_complex_type_compact(
         }
         LuaType::MultiLineUnion(multi_union) => {
             let union = multi_union.to_union();
-            return check_complex_type_compact(db, &union, &compact_type, check_guard.next_level()?);
+            return check_complex_type_compact(
+                db,
+                &union,
+                &compact_type,
+                check_guard.next_level()?,
+            );
         }
 
         // donot check for now
@@ -420,7 +425,7 @@ fn check_tuple_type_compact_table(
                         "tuple member %{idx} not match, expect %{typ}, but got %{got}",
                         idx = i + 1,
                         typ = humanize_type(db, source_tuple_member_type, RenderLevel::Simple),
-                        got = humanize_type(db, member.get_decl_type(), RenderLevel::Simple)
+                        got = humanize_type(db, &member.get_decl_type(), RenderLevel::Simple)
                     )
                     .to_string(),
                 ));
@@ -540,7 +545,7 @@ fn check_object_type_compact_member_owner(
             .get_member(member_id)
             .ok_or(TypeCheckFailReason::TypeNotMatch)?;
         let member_type = member.get_decl_type();
-        if check_general_type_compact(db, source_type, member_type, check_guard.next_level()?)
+        if check_general_type_compact(db, source_type, &member_type, check_guard.next_level()?)
             .is_err()
         {
             return Err(TypeCheckFailReason::TypeNotMatchWithReason(
@@ -548,7 +553,7 @@ fn check_object_type_compact_member_owner(
                     "member %{key} not match, expect %{typ}, but got %{got}",
                     key = key.to_path().to_string(),
                     typ = humanize_type(db, source_type, RenderLevel::Simple),
-                    got = humanize_type(db, member_type, RenderLevel::Simple)
+                    got = humanize_type(db, &member_type, RenderLevel::Simple)
                 )
                 .to_string(),
             ));

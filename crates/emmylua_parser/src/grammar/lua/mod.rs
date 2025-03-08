@@ -49,7 +49,11 @@ fn expect_token(p: &mut LuaParser, token: LuaTokenKind) -> Result<(), LuaParseEr
         Ok(())
     } else {
         Err(LuaParseError::from_source_range(
-            &t!("expected %{token}, but get %{current}", token = token, current = p.current_token()),
+            &t!(
+                "expected %{token}, but get %{current}",
+                token = token,
+                current = p.current_token()
+            ),
             p.current_token_range(),
         ))
     }

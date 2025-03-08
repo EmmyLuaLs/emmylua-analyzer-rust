@@ -2,10 +2,9 @@ mod add_decl_completion;
 mod add_member_completion;
 mod check_match_word;
 
-
-pub use check_match_word::check_match_word;
 pub use add_decl_completion::add_decl_completion;
 pub use add_member_completion::{add_member_completion, CompletionTriggerStatus};
+pub use check_match_word::check_match_word;
 use emmylua_code_analysis::{LuaPropertyOwnerId, LuaType, RenderLevel};
 use lsp_types::CompletionItemKind;
 use serde::{Deserialize, Serialize};
@@ -66,11 +65,7 @@ pub enum CallDisplay {
     RemoveFirst,
 }
 
-fn get_detail(
-    builder: &CompletionBuilder,
-    typ: &LuaType,
-    display: CallDisplay,
-) -> Option<String> {
+fn get_detail(builder: &CompletionBuilder, typ: &LuaType, display: CallDisplay) -> Option<String> {
     match typ {
         LuaType::Signature(signature_id) => {
             let signature = builder
@@ -171,12 +166,8 @@ fn truncate_with_ellipsis(s: &str, max_len: usize) -> String {
 
 fn get_description(builder: &CompletionBuilder, typ: &LuaType) -> Option<String> {
     match typ {
-        LuaType::Signature(_) => {
-            None
-        }
-        LuaType::DocFunction(_) => {
-            None
-        }
+        LuaType::Signature(_) => None,
+        LuaType::DocFunction(_) => None,
         _ if typ.is_unknown() => None,
         _ => Some(humanize_type(
             builder.semantic_model.get_db(),

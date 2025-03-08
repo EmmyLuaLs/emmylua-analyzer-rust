@@ -1,6 +1,5 @@
-use emmylua_parser::{LuaSyntaxToken, LuaTokenKind};
 use crate::meta_text::meta_keyword;
-
+use emmylua_parser::{LuaSyntaxToken, LuaTokenKind};
 
 pub fn is_keyword(token: LuaSyntaxToken) -> bool {
     match token.kind().into() {
@@ -20,7 +19,7 @@ pub fn is_keyword(token: LuaSyntaxToken) -> bool {
         LuaTokenKind::TkReturn => true,
         LuaTokenKind::TkBreak => true,
         LuaTokenKind::TkGoto => true,
-        _ => false
+        _ => false,
     }
 }
 
@@ -43,6 +42,6 @@ pub fn hover_keyword(token: LuaSyntaxToken) -> String {
         LuaTokenKind::TkReturn => meta_keyword("return"),
         LuaTokenKind::TkBreak => meta_keyword("break"),
         LuaTokenKind::TkGoto => meta_keyword("goto"),
-        _ => "".to_string()
+        _ => "".to_string(),
     }
 }

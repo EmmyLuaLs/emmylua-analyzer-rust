@@ -13,10 +13,8 @@ pub use lua_token_kind::LuaTokenKind;
 pub use lua_type_operator_kind::{
     LuaTypeBinaryOperator, LuaTypeTernaryOperator, LuaTypeUnaryOperator,
 };
-pub use lua_version::{LuaVersionNumber, LuaVersionCondition};
+pub use lua_version::{LuaVersionCondition, LuaVersionNumber};
 pub use lua_visibility_kind::VisibilityKind;
-
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]

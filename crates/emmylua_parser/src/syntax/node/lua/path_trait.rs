@@ -2,7 +2,7 @@ use crate::LuaAstNode;
 
 use super::{LuaExpr, LuaIndexKey};
 
-pub trait PathTrait : LuaAstNode {
+pub trait PathTrait: LuaAstNode {
     fn get_access_path(&self) -> Option<String> {
         let mut paths = Vec::new();
         let mut current_node = self.syntax().clone();

@@ -66,10 +66,7 @@ mod tests {
             TypeOps::Union.apply(&ws.ty("integer"), &ws.ty("1")),
             ws.ty("integer")
         );
-        assert_eq!(
-            TypeOps::Union.apply(&ws.ty("1"), &ws.ty("2")),
-            ws.ty("1|2")
-        );
+        assert_eq!(TypeOps::Union.apply(&ws.ty("1"), &ws.ty("2")), ws.ty("1|2"));
 
         assert_eq!(
             TypeOps::Remove.apply(&ws.ty("string | number"), &ws.ty("string")),
@@ -90,7 +87,7 @@ mod tests {
             TypeOps::Narrow.apply(&ws.ty("string | nil"), &ws.ty("string")),
             ws.ty("string")
         );
-        
+
         assert_eq!(
             TypeOps::Narrow.apply(&ws.ty("number | nil"), &ws.ty("number")),
             ws.ty("number")

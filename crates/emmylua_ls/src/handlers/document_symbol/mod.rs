@@ -7,7 +7,8 @@ use emmylua_code_analysis::SemanticModel;
 use emmylua_parser::{LuaAst, LuaAstNode, LuaChunk};
 use expr::{build_closure_expr_symbol, build_table_symbol};
 use lsp_types::{
-    ClientCapabilities, DocumentSymbol, DocumentSymbolOptions, DocumentSymbolParams, DocumentSymbolResponse, OneOf, ServerCapabilities, SymbolKind
+    ClientCapabilities, DocumentSymbol, DocumentSymbolOptions, DocumentSymbolParams,
+    DocumentSymbolResponse, OneOf, ServerCapabilities, SymbolKind,
 };
 use stats::{
     build_assign_stat_symbol, build_for_range_stat_symbol, build_for_stat_symbol,
@@ -55,7 +56,10 @@ fn build_document_symbol(semantic_model: &SemanticModel) -> Option<DocumentSymbo
     Some(builder.build(root))
 }
 
-fn build_child_document_symbols(builder: &mut DocumentSymbolBuilder, root: &LuaChunk) -> Option<()> {
+fn build_child_document_symbols(
+    builder: &mut DocumentSymbolBuilder,
+    root: &LuaChunk,
+) -> Option<()> {
     for child in root.descendants::<LuaAst>() {
         match child {
             LuaAst::LuaLocalStat(local_stat) => {

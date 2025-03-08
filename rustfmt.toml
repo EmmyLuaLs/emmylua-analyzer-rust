@@ -1,0 +1,6 @@
+# Basic Configuration
+tab_spaces = 4                  # Number of spaces used for indentation
+hard_tabs = false               # Use spaces instead of tabs
+max_width = 100                 # Maximum width of each line
+edition = "2021"                # Rust edition
+

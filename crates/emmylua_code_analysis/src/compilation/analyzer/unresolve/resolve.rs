@@ -1,7 +1,8 @@
 use crate::{
     compilation::analyzer::lua::LuaReturnPoint,
     db_index::{DbIndex, LuaDocReturnInfo, LuaMemberOwner, LuaType},
-    semantic::{infer_expr, LuaInferConfig}, SignatureReturnStatus,
+    semantic::{infer_expr, LuaInferConfig},
+    SignatureReturnStatus,
 };
 
 use super::{
@@ -54,7 +55,9 @@ pub fn try_resolve_member(
         };
         let member_id = unresolve_member.member_id.clone();
         db.get_member_index_mut()
-            .add_member_owner(member_owner, member_id);
+            .add_member_owner(member_owner.clone(), member_id);
+        db.get_member_index_mut()
+            .add_member_to_owner(member_owner, member_id);
         unresolve_member.prefix = None;
     }
 

@@ -2,8 +2,8 @@ mod cmd_args;
 mod context;
 mod handlers;
 mod logger;
-mod util;
 mod meta_text;
+mod util;
 
 use cmd_args::CmdArgs;
 use handlers::{

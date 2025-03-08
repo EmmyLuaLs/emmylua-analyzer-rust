@@ -60,7 +60,7 @@ impl TypeSubstitutor {
         if self.tpl_replace_map.contains_key(&tpl_id) {
             return;
         }
-        
+
         self.tpl_replace_map
             .insert(tpl_id, SubstitutorValue::MultiTypes(types));
     }

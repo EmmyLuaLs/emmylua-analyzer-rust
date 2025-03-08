@@ -10,12 +10,14 @@ use crate::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaMemberOwner,
         LuaMemberPathExistType, LuaObjectType, LuaOperatorMetaMethod, LuaTupleType, LuaType,
         LuaTypeDeclId, LuaUnionType,
-    }, semantic::{
+    },
+    semantic::{
         instantiate::{instantiate_type, TypeSubstitutor},
         member::{get_buildin_type_map_type_id, without_index_operator, without_members},
         type_check::check_type_compact,
         InferGuard,
-    }, InFiled, LuaFlowId, LuaInstanceType, TypeOps
+    },
+    InFiled, LuaFlowId, LuaInstanceType, TypeOps,
 };
 
 use super::{infer_expr, InferResult, LuaInferConfig};

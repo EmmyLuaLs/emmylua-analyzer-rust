@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use crate::LuaFlowId;
+use std::collections::HashMap;
 
-use super::flow_nodes::{FlowNodes, FlowNode};
+use super::flow_nodes::{FlowNode, FlowNodes};
 
 #[derive(Debug)]
 pub struct FlowBuilder {
@@ -12,7 +12,6 @@ pub struct FlowBuilder {
 
 impl FlowBuilder {
     pub fn new() -> FlowBuilder {
-    
         let mut builder = FlowBuilder {
             current_flow_id: LuaFlowId::chunk(),
             flow_id_stack: Vec::new(),

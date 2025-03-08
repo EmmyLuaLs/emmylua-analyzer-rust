@@ -2,7 +2,10 @@
 mod tests {
     use std::path::Path;
 
-    use crate::{db_index::{module::LuaModuleIndex, traits::LuaIndex}, FileId, WorkspaceId};
+    use crate::{
+        db_index::{module::LuaModuleIndex, traits::LuaIndex},
+        FileId, WorkspaceId,
+    };
 
     fn create_module() -> LuaModuleIndex {
         let mut m = LuaModuleIndex::new();
@@ -13,7 +16,10 @@ mod tests {
     #[test]
     fn test_basic() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let module_info = m.get_module(file_id).unwrap();
@@ -39,8 +45,14 @@ mod tests {
     #[test]
     fn test_multi_workspace() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
-        m.add_workspace_root(Path::new("C:/Users/username/Downloads").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Downloads").into(),
+            WorkspaceId::MAIN,
+        );
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let module_info = m.get_module(file_id).unwrap();
@@ -66,7 +78,10 @@ mod tests {
     #[test]
     fn test_find_module() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let module_info = m.find_module("test").unwrap();
@@ -95,14 +110,17 @@ mod tests {
     #[test]
     fn test_find_module_node() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         let file_id = FileId { id: 2 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test/aaa.lua");
         let file_id = FileId { id: 3 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test/hhhhiii.lua");
-        
+
         let module_node = m.find_module_node("test").unwrap();
         assert_eq!(module_node.children.len(), 2);
         let first_child = module_node.children.get("aaa");
@@ -114,7 +132,10 @@ mod tests {
     #[test]
     fn test_set_module_visibility() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         m.set_module_visibility(file_id, false);
@@ -125,7 +146,10 @@ mod tests {
     #[test]
     fn test_remove_module() {
         let mut m = create_module();
-        m.add_workspace_root(Path::new("C:/Users/username/Documents").into(), WorkspaceId::MAIN);
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
         m.remove(file_id);
@@ -133,7 +157,10 @@ mod tests {
         assert!(module_info.is_none());
 
         let file_id = FileId { id: 2 };
-        m.add_module_by_path(file_id, "C:/Users/username/Documents/test2/aaa/bbb/cccc/dddd.lua");
+        m.add_module_by_path(
+            file_id,
+            "C:/Users/username/Documents/test2/aaa/bbb/cccc/dddd.lua",
+        );
         m.remove(file_id);
         let module_info = m.get_module(file_id);
         assert!(module_info.is_none());

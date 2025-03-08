@@ -1111,7 +1111,7 @@ Syntax(Chunk)@0..4
             Token(TkRightParen)@2..3 ")"
         Token(TkColon)@3..4 ":"
         "#;
-        
+
         assert_ast_eq!(code, result);
     }
 }

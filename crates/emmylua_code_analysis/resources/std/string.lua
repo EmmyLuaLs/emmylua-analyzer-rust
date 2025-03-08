@@ -112,9 +112,8 @@ function string.find(s, pattern, init, plain) end
 --- converted to one following the same rules of `tostring`. If the option
 --- has any modifier (flags, width, length), the string argument should not
 --- contain embedded zeros.
----@generic T
 ---@param fmt string
----@param ... T...
+---@param ... any
 ---@return string
 ---@nodiscard
 function string.format(fmt, ...) end

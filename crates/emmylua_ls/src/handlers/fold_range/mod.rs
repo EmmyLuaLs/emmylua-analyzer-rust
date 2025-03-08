@@ -89,7 +89,6 @@ pub fn register_capabilities(
     Some(())
 }
 
-
 fn get_block_collapsed_range(block: LuaBlock) -> TextRange {
     let block_range = block.get_range();
 

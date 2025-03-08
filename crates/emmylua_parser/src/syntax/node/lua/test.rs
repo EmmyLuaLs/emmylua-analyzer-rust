@@ -1,13 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use crate::{LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaNameExpr, LuaParser, LuaSyntaxTree, ParserConfig, PathTrait};
+    use crate::{
+        LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaNameExpr, LuaParser, LuaSyntaxTree, ParserConfig,
+        PathTrait,
+    };
 
     fn get_tree(code: &str) -> LuaSyntaxTree {
         let config = ParserConfig::default();
         let tree = LuaParser::parse(code, config);
         tree
     }
-
 
     #[test]
     fn test_call_access_path() {

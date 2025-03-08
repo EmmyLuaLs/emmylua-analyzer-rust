@@ -6,13 +6,15 @@ mod test {
     fn test_overload_field() {
         let mut ws = VirtualWorkspace::new();
 
-        ws.def(r#"
+        ws.def(
+            r#"
         ---@class MyClass
         ---@field event fun(a: string): string
         ---@field event fun(b: number): number
         ---@field f number
         x = {}
-        "#);
+        "#,
+        );
 
         let string_ty = ws.expr_ty("x.event('hello')");
         let expected_string = ws.ty("string");

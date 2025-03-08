@@ -6,23 +6,20 @@ use serde_json::Value;
 
 #[derive(Debug, Clone)]
 pub struct FlattenConfigObject {
-    config: HashMap<String, Value>
+    config: HashMap<String, Value>,
 }
 
 impl FlattenConfigObject {
     pub fn parse(luals_json: Value) -> Self {
         let mut config = HashMap::new();
         flatten_object("", &luals_json, &mut config);
-        Self {
-            config
-        }
+        Self { config }
     }
 
     pub fn to_emmyrc(&self) -> Value {
         to_emmyrc_json(self)
     }
 }
-
 
 fn flatten_object(prefix: &str, val: &Value, config: &mut HashMap<String, Value>) {
     match val {

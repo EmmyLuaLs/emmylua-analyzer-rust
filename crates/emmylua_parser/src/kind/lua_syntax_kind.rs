@@ -85,13 +85,13 @@ pub enum LuaSyntaxKind {
     DocTagReadonly,
 
     // doc Type
-    TypeArray,             // baseType []
-    TypeUnary,             // keyof type
-    TypeBinary,            // aType | bType, aType & bType, aType extends bType, aType in bType
-    TypeConditional,       // <conditionType> and <trueType> or <falseType>
-    TypeFun,               // fun(<paramList>): returnType
-    TypeGeneric,           // name<typeList>
-    TypeTuple,             // [typeList]
+    TypeArray,          // baseType []
+    TypeUnary,          // keyof type
+    TypeBinary,         // aType | bType, aType & bType, aType extends bType, aType in bType
+    TypeConditional,    // <conditionType> and <trueType> or <falseType>
+    TypeFun,            // fun(<paramList>): returnType
+    TypeGeneric,        // name<typeList>
+    TypeTuple,          // [typeList]
     TypeObject, // { a: aType, b: bType } or { [1]: aType, [2]: bType } or { a: aType, b: bType, [number]: string }
     TypeLiteral, // "string" or <integer> or true or false
     TypeName,   // name

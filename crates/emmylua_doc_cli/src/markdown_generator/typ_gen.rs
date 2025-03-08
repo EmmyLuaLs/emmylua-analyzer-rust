@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use emmylua_code_analysis::{
-    humanize_type, DbIndex, LuaMemberKey, LuaMemberOwner, LuaPropertyOwnerId, LuaTypeDecl, RenderLevel,
+    humanize_type, DbIndex, LuaMemberKey, LuaMemberOwner, LuaPropertyOwnerId, LuaTypeDecl,
+    RenderLevel,
 };
 use emmylua_parser::VisibilityKind;
 use serde::{Deserialize, Serialize};
@@ -119,7 +120,7 @@ fn generate_class_type_markdown(
             let title_name = format!("{}.{}", typ_name, name);
             if member_typ.is_function() {
                 let func_name = format!("{}.{}", typ_name, name);
-                let display = render_function_type(db, member_typ, &func_name, false);
+                let display = render_function_type(db, &member_typ, &func_name, false);
                 method_members.push(MemberDisplay {
                     name: title_name,
                     display,
@@ -308,7 +309,10 @@ fn generate_alias_type_markdown(
 
     if let Some(origin_typ) = typ.get_alias_origin(db, None) {
         let origin_type_display = humanize_type(db, &origin_typ, RenderLevel::Detailed);
-        let display = format!("```lua\n(alias) {} = {}\n```\n", typ_name, origin_type_display);
+        let display = format!(
+            "```lua\n(alias) {} = {}\n```\n",
+            typ_name, origin_type_display
+        );
         context.insert("origin_type", &display);
     }
 

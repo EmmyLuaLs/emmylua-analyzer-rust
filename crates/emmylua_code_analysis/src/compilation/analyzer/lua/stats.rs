@@ -135,7 +135,7 @@ fn get_var_type_owner(
             match prefix_type {
                 Some(prefix_type) => {
                     var_index.get_index_key()?;
-
+                    let member_id = LuaMemberId::new(var_index.get_syntax_id(), file_id);
                     let member_owner = match prefix_type {
                         LuaType::TableConst(in_file_range) => {
                             LuaMemberOwner::Element(in_file_range)
@@ -155,16 +155,27 @@ fn get_var_type_owner(
                             let decl_id = LuaDeclId::new(file_id, prefix_expr.get_position());
                             return Some(TypeOwner::Decl(decl_id));
                         }
+                        LuaType::Ref(ref_id) => {
+                            let member_owner = LuaMemberOwner::Type(ref_id);
+                            analyzer
+                                .db
+                                .get_member_index_mut()
+                                .add_member_owner(member_owner, member_id);
+                            return None;
+                        }
                         // is ref need extend field?
                         _ => {
                             return None;
                         }
                     };
-                    let member_id = LuaMemberId::new(var_index.get_syntax_id(), file_id);
                     analyzer
                         .db
                         .get_member_index_mut()
-                        .add_member_owner(member_owner, member_id);
+                        .add_member_owner(member_owner.clone(), member_id);
+                    analyzer
+                        .db
+                        .get_member_index_mut()
+                        .add_member_to_owner(member_owner, member_id);
                     return Some(TypeOwner::Member(member_id));
                 }
                 None => {
@@ -326,8 +337,8 @@ fn merge_type_owner_and_expr_type(
                 .db
                 .get_member_index_mut()
                 .get_member_mut(&member_id)?;
-            if member.decl_type.is_unknown() {
-                member.decl_type = expr_type;
+            if member.get_decl_type().is_unknown() {
+                member.set_decl_type(expr_type);
             } else {
                 merge_member_type(analyzer.db, member_id, expr_type);
             }
@@ -448,7 +459,7 @@ pub fn analyze_func_stat(analyzer: &mut LuaAnalyzer, func_stat: LuaFuncStat) -> 
                 .get_member_index_mut()
                 .get_member_mut(&member_id)?;
 
-            member.decl_type = signature_type;
+            member.set_decl_type(signature_type);
         }
     }
 
@@ -497,7 +508,7 @@ pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> 
 
     let decl_type = member.get_decl_type();
     if decl_type.is_unknown() {
-        member.decl_type = value_type;
+        member.set_decl_type(value_type);
     } else if decl_type.is_def() {
         merge_member_type(analyzer.db, member_id, value_type);
     }

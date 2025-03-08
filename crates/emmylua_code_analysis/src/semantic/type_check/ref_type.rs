@@ -77,7 +77,7 @@ pub fn check_ref_type_compact(
                 let member_fake_type = match member_type {
                     LuaType::StringConst(s) => &LuaType::DocStringConst(s.clone().into()),
                     LuaType::IntegerConst(i) => &LuaType::DocIntegerConst(i.clone()),
-                    _ => member_type,
+                    _ => &member_type,
                 };
 
                 union_types.push(member_fake_type.clone());
@@ -152,8 +152,8 @@ fn check_ref_type_compact_table(
             let table_member_type = table_member.get_decl_type();
             if !check_general_type_compact(
                 db,
-                source_member_type,
-                table_member_type,
+                &source_member_type,
+                &table_member_type,
                 check_guard.next_level()?,
             )
             .is_ok()
@@ -162,8 +162,8 @@ fn check_ref_type_compact_table(
                     t!(
                         "member %{name} type not match, expect %{expect}, got %{got}",
                         name = key.to_path(),
-                        expect = humanize_type(db, source_member_type, RenderLevel::Simple),
-                        got = humanize_type(db, table_member_type, RenderLevel::Simple)
+                        expect = humanize_type(db, &source_member_type, RenderLevel::Simple),
+                        got = humanize_type(db, &&table_member_type, RenderLevel::Simple)
                     )
                     .to_string(),
                 ));

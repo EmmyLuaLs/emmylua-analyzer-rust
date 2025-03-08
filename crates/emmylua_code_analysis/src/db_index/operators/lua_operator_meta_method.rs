@@ -1,26 +1,26 @@
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum LuaOperatorMetaMethod {
-    Add,      // +
-    Sub,      // -
-    Mul,      // *
-    Div,      // /
-    Mod,      // %
-    Pow,      // ^
-    Unm,      // -
-    IDiv,     // //
-    BAnd,     // &
-    BOr,      // |
-    BXor,     // ~
-    BNot,     // ~
-    Shl,      // <<
-    Shr,      // >>
-    Concat,   // ..
-    Len,      // #
-    Eq,       // ==
-    Lt,       // <
-    Le,       // <=
-    Index,    // __index
-    Call,     // __call
+    Add,    // +
+    Sub,    // -
+    Mul,    // *
+    Div,    // /
+    Mod,    // %
+    Pow,    // ^
+    Unm,    // -
+    IDiv,   // //
+    BAnd,   // &
+    BOr,    // |
+    BXor,   // ~
+    BNot,   // ~
+    Shl,    // <<
+    Shr,    // >>
+    Concat, // ..
+    Len,    // #
+    Eq,     // ==
+    Lt,     // <
+    Le,     // <=
+    Index,  // __index
+    Call,   // __call
 }
 
 impl LuaOperatorMetaMethod {
@@ -30,7 +30,7 @@ impl LuaOperatorMetaMethod {
             "sub" => Some(LuaOperatorMetaMethod::Sub),
             "mul" => Some(LuaOperatorMetaMethod::Mul),
             "div" => Some(LuaOperatorMetaMethod::Div),
-            "mod" => Some(LuaOperatorMetaMethod::Mod),  
+            "mod" => Some(LuaOperatorMetaMethod::Mod),
             "pow" => Some(LuaOperatorMetaMethod::Pow),
             "unm" => Some(LuaOperatorMetaMethod::Unm),
             "idiv" => Some(LuaOperatorMetaMethod::IDiv),
@@ -46,7 +46,7 @@ impl LuaOperatorMetaMethod {
             "lt" => Some(LuaOperatorMetaMethod::Lt),
             "le" => Some(LuaOperatorMetaMethod::Le),
             "call" => Some(LuaOperatorMetaMethod::Call),
-            _ => None
+            _ => None,
         }
     }
 }

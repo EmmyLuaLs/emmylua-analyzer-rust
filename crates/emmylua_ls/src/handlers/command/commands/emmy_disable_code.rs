@@ -12,7 +12,7 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 
 use crate::{
-    context::{ClientProxy, WorkspaceManager, ServerContextSnapshot},
+    context::{ClientProxy, ServerContextSnapshot, WorkspaceManager},
     util::time_cancel_token,
 };
 

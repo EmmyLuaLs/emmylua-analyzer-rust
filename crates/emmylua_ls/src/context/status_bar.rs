@@ -82,7 +82,10 @@ impl StatusBar {
                 if let Some(message) = message {
                     self.vscode_report_progress(&message, percentage.unwrap_or(0) as f64 / 100.0);
                 } else {
-                    self.vscode_report_progress(task.get_task_name(), percentage.unwrap_or(0) as f64);
+                    self.vscode_report_progress(
+                        task.get_task_name(),
+                        percentage.unwrap_or(0) as f64,
+                    );
                 }
             }
             _ => self.client.send_notification(

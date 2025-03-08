@@ -1,7 +1,7 @@
 use emmylua_code_analysis::Emmyrc;
-use emmylua_parser::{LuaAstNode, LuaTokenKind};
+use emmylua_parser::{LuaAstNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{CompletionItem, Range};
-use rowan::{TextRange, TokenAtOffset};
+use rowan::{TextRange, TextSize, TokenAtOffset};
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
 
@@ -36,19 +36,17 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
             } else {
                 right
             }
-        },
+        }
         TokenAtOffset::None => return None,
     };
+    let (text_range, replace_range) = get_left_valid_range(left_token, trigger_pos.into())?;
 
-    let left_token_text = left_token.text().to_string();
-    let replace_range = TextRange::new(
-        left_token.text_range().start(),
-        builder.trigger_token.text_range().end(),
-    );
-    let replace_lsp_range = builder
-        .semantic_model
-        .get_document()
-        .to_lsp_range(replace_range)?;
+    let (left_token_text, replace_lsp_range) = {
+        let document = builder.semantic_model.get_document();
+        let text = document.get_text_slice(text_range);
+        let range = document.to_lsp_range(replace_range)?;
+        (text.to_string(), range)
+    };
 
     add_postfix_completion(
         builder,
@@ -184,4 +182,21 @@ fn add_postfix_completion(
 
     builder.add_completion_item(item);
     Some(())
+}
+
+// text_range, replace_range
+fn get_left_valid_range(
+    token: LuaSyntaxToken,
+    trigger_pos: TextSize,
+) -> Option<(TextRange, TextRange)> {
+    let node = token.parent()?;
+    let range = node.text_range();
+    let start = range.start();
+    if start < trigger_pos {
+        return Some((
+            TextRange::new(start, trigger_pos),
+            TextRange::new(start, (u32::from(trigger_pos) + 1).into()),
+        ));
+    }
+    None
 }

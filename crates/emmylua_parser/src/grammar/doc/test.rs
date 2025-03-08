@@ -2266,6 +2266,6 @@ Syntax(Chunk)@0..31
     Token(TkWhitespace)@23..31 "        "
         "#;
 
-        assert_ast_eq!(code, result);  
+        assert_ast_eq!(code, result);
     }
 }

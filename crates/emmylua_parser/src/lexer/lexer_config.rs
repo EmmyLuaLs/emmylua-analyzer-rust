@@ -25,10 +25,7 @@ impl LexerConfig {
     }
 
     pub fn support_binary_integer(&self) -> bool {
-        matches!(
-            self.language_level,
-            LuaLanguageLevel::LuaJIT
-        )
+        matches!(self.language_level, LuaLanguageLevel::LuaJIT)
     }
 
     pub fn support_integer_operation(&self) -> bool {

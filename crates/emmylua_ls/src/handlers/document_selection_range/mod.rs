@@ -1,5 +1,8 @@
 use emmylua_parser::LuaAstNode;
-use lsp_types::{ClientCapabilities, SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability, ServerCapabilities};
+use lsp_types::{
+    ClientCapabilities, SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
+    ServerCapabilities,
+};
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
@@ -58,6 +61,7 @@ pub fn register_capabilities(
     server_capabilities: &mut ServerCapabilities,
     _: &ClientCapabilities,
 ) -> Option<()> {
-    server_capabilities.selection_range_provider = Some(SelectionRangeProviderCapability::Simple(true));
+    server_capabilities.selection_range_provider =
+        Some(SelectionRangeProviderCapability::Simple(true));
     Some(())
 }

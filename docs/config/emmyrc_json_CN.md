@@ -44,14 +44,14 @@
   },
   "workspace": {
     "ignoreDir": [
-
     ],
     "ignoreGlobs": [
     ],
     "library": [],
     "workspaceRoots": [],
     "encoding": "",
-    "moduleMap": []
+    "moduleMap": [],
+    "reindexDuration": 5000
   },
   "resource": {
     "paths": [
@@ -75,7 +75,8 @@
 
 ```
 
-为了补全和提示配置文件, 可以通过添加`"$schema"`项来指定schema文件, schema文件的路径在:`resources/schema.json`, 
+为了补全和提示配置文件, 可以通过添加`"$schema"`项来指定schema文件, schema文件的uri是:
+https://github.com/CppCXY/emmylua-analyzer-rust/blob/main/crates/emmylua_code_analysis/resources/schema.json
 
 ## completion
 
@@ -133,6 +134,7 @@
   "replace" : "script$1"
 }
 ```
+- `reindexDuration`: 重新索引的时间间隔, 默认为 `5000` 毫秒, 用于控制重新索引的时间间隔.
 
 该功能主要是为了让require正常工作, 如果需要将以lib为起始的模块, 映射到以script为起始, 需要在这里添加映射关系.
 
@@ -146,7 +148,7 @@
 
 ## strict
 
-- `requirePath`: 是否启用require严格模式, 默认为 `true`. 严格模式时, require必须从指定的根目录开始, 否则无法跳转
+- `requirePath`: 是否启用require严格模式, 默认为 `false`. 严格模式时, require必须从指定的根目录开始, 否则无法跳转
 - `typeCall`: 是否启用类型调用时严格模式, 默认为 `true`. 严格模式时, 类型调用必须手动写好重载, 否则返回unknown, 非严格模式时, 类型调用会返回自身
 
 ## hover

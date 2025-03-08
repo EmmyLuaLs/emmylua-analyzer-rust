@@ -3,7 +3,6 @@ use emmylua_parser::LuaChunk;
 use lsp_types::{FoldingRange, FoldingRangeKind};
 use rowan::TextRange;
 
-
 #[derive(Debug)]
 pub struct FoldingRangeBuilder<'a> {
     document: &'a LuaDocument<'a>,
@@ -13,10 +12,7 @@ pub struct FoldingRangeBuilder<'a> {
 }
 
 impl FoldingRangeBuilder<'_> {
-    pub fn new<'a>(
-        document: &'a LuaDocument<'a>,
-        root: LuaChunk,
-    ) -> FoldingRangeBuilder<'a> {
+    pub fn new<'a>(document: &'a LuaDocument<'a>, root: LuaChunk) -> FoldingRangeBuilder<'a> {
         FoldingRangeBuilder {
             document,
             root,

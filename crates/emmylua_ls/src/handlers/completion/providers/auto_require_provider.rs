@@ -21,9 +21,7 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     // optimize for large project
     let prefix = name_expr.get_name_text()?.to_lowercase();
     let emmyrc = builder.semantic_model.get_emmyrc();
-    let file_conversion = emmyrc
-        .completion
-        .auto_require_naming_convention;
+    let file_conversion = emmyrc.completion.auto_require_naming_convention;
     let version_number = emmyrc.runtime.version.to_lua_version_number();
     let file_id = builder.semantic_model.get_file_id();
     let module_infos = builder
@@ -87,7 +85,7 @@ fn add_module_completion_item(
             "",
             builder.semantic_model.get_file_id(),
             module_info.file_id,
-            position
+            position,
         )),
         ..Default::default()
     };

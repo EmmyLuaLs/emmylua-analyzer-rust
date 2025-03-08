@@ -3,7 +3,8 @@ mod build_color;
 use build_color::{build_colors, convert_color_to_hex};
 use emmylua_parser::LuaAstNode;
 use lsp_types::{
-    ClientCapabilities, ColorInformation, ColorPresentation, ColorPresentationParams, ColorProviderCapability, DocumentColorParams, ServerCapabilities, TextEdit
+    ClientCapabilities, ColorInformation, ColorPresentation, ColorPresentationParams,
+    ColorProviderCapability, DocumentColorParams, ServerCapabilities, TextEdit,
 };
 use tokio_util::sync::CancellationToken;
 

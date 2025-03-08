@@ -4,8 +4,8 @@ use tokio::sync::RwLock;
 use emmylua_code_analysis::EmmyLuaAnalysis;
 
 use super::{
-    client::ClientProxy, workspace_manager::WorkspaceManager, file_diagnostic::FileDiagnostic,
-    status_bar::StatusBar,
+    client::ClientProxy, file_diagnostic::FileDiagnostic, status_bar::StatusBar,
+    workspace_manager::WorkspaceManager,
 };
 
 #[derive(Clone)]

@@ -4,7 +4,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    db_index::{DbIndex, LuaType}, infer_call_expr_func, infer_expr, InferGuard, LuaDeclId, LuaMemberId, LuaTupleType
+    db_index::{DbIndex, LuaType},
+    infer_call_expr_func, infer_expr, InferGuard, LuaDeclId, LuaMemberId, LuaTupleType,
 };
 
 use super::{
@@ -124,7 +125,7 @@ fn infer_table_type_by_parent(
     if let Some(member) = db.get_member_index().get_member(&member_id) {
         let typ = member.get_decl_type();
         match typ {
-            LuaType::TableConst(_) => {},
+            LuaType::TableConst(_) => {}
             _ => return Some(typ.clone()),
         }
     }

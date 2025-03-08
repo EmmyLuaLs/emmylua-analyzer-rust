@@ -14,7 +14,8 @@ pub fn meta_std(type_name: &str, member_name: Option<&str>) -> String {
         format!("std.{}", type_name)
     };
     let s = t!(key).to_string();
-    if s == key { // 临时处理, 因为我们还未完成所有翻译
+    if s == key {
+        // 临时处理, 因为我们还未完成所有翻译
         "".to_string()
     } else {
         s

@@ -12,7 +12,9 @@ impl<'cache> ParserConfig<'cache> {
     pub fn new(level: LuaLanguageLevel, node_cache: Option<&'cache mut NodeCache>) -> Self {
         Self {
             level,
-            lexer_config: LexerConfig { language_level: level },
+            lexer_config: LexerConfig {
+                language_level: level,
+            },
             node_cache,
         }
     }
@@ -34,8 +36,10 @@ impl<'cache> Default for ParserConfig<'cache> {
     fn default() -> Self {
         Self {
             level: LuaLanguageLevel::Lua54,
-            lexer_config: LexerConfig { language_level: LuaLanguageLevel::Lua54 },
-            node_cache: None
+            lexer_config: LexerConfig {
+                language_level: LuaLanguageLevel::Lua54,
+            },
+            node_cache: None,
         }
     }
 }

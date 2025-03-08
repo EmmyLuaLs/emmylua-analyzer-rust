@@ -28,10 +28,10 @@ fn check_return_stat(
     let signature = context.db.get_signature_index().get(&signature_id)?;
     let return_types = signature.get_return_types();
 
-    // 如果没有返回值注解, 则不检查
     if signature.resolve_return != SignatureReturnStatus::DocResolve {
-        return Some(());
+        return None;
     }
+
     let disable_return_count_check = return_types.iter().any(|ty| ty.is_variadic());
     let expr_return_len = return_stat.get_expr_list().collect::<Vec<_>>().len();
     let return_types_len = return_types.len();

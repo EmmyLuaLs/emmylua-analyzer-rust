@@ -1,9 +1,11 @@
 use rowan::{TextRange, TextSize};
 
-use crate::{db_index::{LuaType, LuaTypeDeclId}, FileId};
+use crate::{
+    db_index::{LuaType, LuaTypeDeclId},
+    FileId,
+};
 
 use super::lua_operator_meta_method::LuaOperatorMetaMethod;
-
 
 #[derive(Debug)]
 pub struct LuaOperator {
@@ -30,7 +32,7 @@ impl LuaOperator {
             operands,
             return_or_func: result,
             file_id,
-            range
+            range,
         }
     }
 
@@ -46,7 +48,7 @@ impl LuaOperator {
             operands: vec![],
             return_or_func: func,
             file_id,
-            range
+            range,
         }
     }
 

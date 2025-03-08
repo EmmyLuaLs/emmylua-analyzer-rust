@@ -1,6 +1,8 @@
 use crate::{DbIndex, LuaType};
 
-use super::{type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard, TypeCheckResult};
+use super::{
+    type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard, TypeCheckResult,
+};
 
 pub fn check_simple_type_compact(
     db: &DbIndex,
@@ -9,6 +11,7 @@ pub fn check_simple_type_compact(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     match source {
+        LuaType::Unknown | LuaType::Any => return Ok(()),
         LuaType::Nil => {
             if let LuaType::Nil = compact_type {
                 return Ok(());
@@ -148,7 +151,19 @@ pub fn check_simple_type_compact(
         }
         LuaType::Variadic(source_type) => {
             if let LuaType::Variadic(compact_type) = compact_type {
-                return check_simple_type_compact(db, source_type, compact_type, check_guard.next_level()?);
+                return check_simple_type_compact(
+                    db,
+                    source_type,
+                    compact_type,
+                    check_guard.next_level()?,
+                );
+            } else {
+                return check_simple_type_compact(
+                    db,
+                    source_type,
+                    compact_type,
+                    check_guard.next_level()?,
+                );
             }
         }
         _ => {}
@@ -156,7 +171,9 @@ pub fn check_simple_type_compact(
 
     if let LuaType::Union(union) = compact_type {
         for sub_compact in union.get_types() {
-            if check_simple_type_compact(db, source, sub_compact, check_guard.next_level()?).is_err() {
+            if check_simple_type_compact(db, source, sub_compact, check_guard.next_level()?)
+                .is_err()
+            {
                 return Err(TypeCheckFailReason::TypeNotMatch);
             }
         }
@@ -167,4 +184,3 @@ pub fn check_simple_type_compact(
     // complex infer
     Err(TypeCheckFailReason::TypeNotMatch)
 }
-

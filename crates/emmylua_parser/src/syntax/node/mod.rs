@@ -101,7 +101,6 @@ pub enum LuaAst {
     LuaDocGenericType(LuaDocGenericType),
     LuaDocStrTplType(LuaDocStrTplType),
     LuaDocMultiLineUnionType(LuaDocMultiLineUnionType),
-
     // other structure do not need enum here
 }
 
@@ -319,7 +318,9 @@ impl LuaAstNode for LuaAst {
             LuaSyntaxKind::ParamName => LuaParamName::cast(syntax).map(LuaAst::LuaParamName),
             LuaSyntaxKind::CallArgList => LuaCallArgList::cast(syntax).map(LuaAst::LuaCallArgList),
             LuaSyntaxKind::LocalName => LuaLocalName::cast(syntax).map(LuaAst::LuaLocalName),
-            LuaSyntaxKind::Attribute => LuaLocalAttribute::cast(syntax).map(LuaAst::LuaLocalAttribute),
+            LuaSyntaxKind::Attribute => {
+                LuaLocalAttribute::cast(syntax).map(LuaAst::LuaLocalAttribute)
+            }
             LuaSyntaxKind::ElseIfClauseStat => {
                 LuaElseIfClauseStat::cast(syntax).map(LuaAst::LuaElseIfClauseStat)
             }

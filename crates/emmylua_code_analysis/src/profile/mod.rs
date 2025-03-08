@@ -1,5 +1,5 @@
-use std::time::Instant;
 use log::info;
+use std::time::Instant;
 
 pub struct Profile<'a> {
     name: &'a str,

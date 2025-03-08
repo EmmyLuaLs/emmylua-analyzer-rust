@@ -1,13 +1,13 @@
 mod build_link;
 
+use crate::context::ServerContextSnapshot;
 use build_link::build_links;
+pub use build_link::is_require_path;
 use emmylua_parser::LuaAstNode;
 use lsp_types::{
     ClientCapabilities, DocumentLink, DocumentLinkOptions, DocumentLinkParams, ServerCapabilities,
 };
 use tokio_util::sync::CancellationToken;
-use crate::context::ServerContextSnapshot;
-pub use build_link::is_require_path;
 
 pub async fn on_document_link_handler(
     context: ServerContextSnapshot,

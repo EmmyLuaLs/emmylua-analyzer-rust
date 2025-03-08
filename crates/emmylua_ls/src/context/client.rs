@@ -125,16 +125,11 @@ impl ClientProxy {
     pub async fn apply_edit(
         &self,
         params: ApplyWorkspaceEditParams,
-        cancel_token: CancellationToken
+        cancel_token: CancellationToken,
     ) -> Option<ApplyWorkspaceEditResponse> {
         let request_id = self.next_id();
         let r = self
-            .send_request(
-                request_id,
-                "workspace/applyEdit",
-                params,
-                cancel_token,
-            )
+            .send_request(request_id, "workspace/applyEdit", params, cancel_token)
             .await?;
         serde_json::from_value(r.result?).ok()
     }

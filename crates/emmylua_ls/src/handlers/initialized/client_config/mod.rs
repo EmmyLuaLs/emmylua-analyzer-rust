@@ -1,5 +1,5 @@
-mod vscode_config;
 mod neovim_config;
+mod vscode_config;
 
 use neovim_config::get_client_config_neovim;
 use serde_json::Value;
@@ -14,7 +14,7 @@ pub struct ClientConfig {
     pub exclude: Vec<String>,
     pub extensions: Vec<String>,
     pub encoding: String,
-    pub partial_emmyrcs: Option<Vec<Value>>
+    pub partial_emmyrcs: Option<Vec<Value>>,
 }
 
 pub async fn get_client_config(

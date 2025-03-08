@@ -28,7 +28,7 @@ impl LuaInferConfig {
 
     pub fn is_require_function(&self, function_name: &str) -> bool {
         if self.require_function.contains(function_name) {
-            return true
+            return true;
         }
 
         function_name == "require"
@@ -39,7 +39,8 @@ impl LuaInferConfig {
     }
 
     pub fn mark_ready_cache(&mut self, syntax_id: LuaSyntaxId) {
-        self.expr_type_cache.insert(syntax_id, ExprCache::ReadyCache);
+        self.expr_type_cache
+            .insert(syntax_id, ExprCache::ReadyCache);
     }
 
     pub fn cache_expr_type(&mut self, syntax_id: LuaSyntaxId, ty: LuaType) {

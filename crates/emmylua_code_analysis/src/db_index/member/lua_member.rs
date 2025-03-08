@@ -14,7 +14,7 @@ pub struct LuaMember {
     key: LuaMemberKey,
     file_id: FileId,
     syntax_id: LuaSyntaxId,
-    pub(crate) decl_type: LuaType,
+    decl_type: Option<LuaType>,
 }
 
 impl LuaMember {
@@ -30,11 +30,7 @@ impl LuaMember {
             key,
             file_id,
             syntax_id: id,
-            decl_type: if let Some(decl_type) = decl_type {
-                decl_type
-            } else {
-                LuaType::Unknown
-            },
+            decl_type,
         }
     }
 
@@ -58,8 +54,12 @@ impl LuaMember {
         self.syntax_id
     }
 
-    pub fn get_decl_type(&self) -> &LuaType {
-        &self.decl_type
+    pub fn get_decl_type(&self) -> LuaType {
+        self.decl_type.clone().unwrap_or(LuaType::Unknown)
+    }
+
+    pub(crate) fn set_decl_type(&mut self, decl_type: LuaType) {
+        self.decl_type = Some(decl_type);
     }
 
     pub fn get_id(&self) -> LuaMemberId {
@@ -167,7 +167,7 @@ impl LuaMemberKey {
             LuaMemberKey::Name(name) => name.to_string(),
             LuaMemberKey::Integer(i) => {
                 format!("[{}]", i)
-            },
+            }
             LuaMemberKey::None => "".to_string(),
         }
     }

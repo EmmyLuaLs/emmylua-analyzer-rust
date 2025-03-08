@@ -4,7 +4,6 @@ use crate::FileId;
 
 use super::traits::LuaIndex;
 
-
 #[derive(Debug)]
 pub struct MetaFile {
     meta_files: HashSet<FileId>,

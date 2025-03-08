@@ -36,7 +36,12 @@ pub async fn on_resolve_code_lens_handler(
 ) -> CodeLens {
     let analysis = context.analysis.read().await;
     let compilation = &analysis.compilation;
-    let client_id = context.workspace_manager.read().await.client_config.client_id;
+    let client_id = context
+        .workspace_manager
+        .read()
+        .await
+        .client_config
+        .client_id;
 
     resolve_code_lens(compilation, code_lens.clone(), client_id).unwrap_or(code_lens)
 }

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::FileId;
 
-
 #[derive(Debug, Default)]
 pub struct ModuleNode {
     pub parent: Option<ModuleNodeId>,
@@ -12,5 +11,5 @@ pub struct ModuleNode {
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
 pub struct ModuleNodeId {
-    pub id: u32
+    pub id: u32,
 }

@@ -13,7 +13,7 @@ use infer_call::infer_call_expr;
 use infer_config::ExprCache;
 pub use infer_config::LuaInferConfig;
 use infer_index::infer_index_expr;
-use infer_name::infer_name_expr;
+use infer_name::{infer_name_expr, infer_param};
 use infer_table::infer_table_expr;
 pub use infer_table::infer_table_should_be;
 use infer_unary::infer_unary_expr;
@@ -21,7 +21,7 @@ use smol_str::SmolStr;
 
 use crate::{
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
-    InFiled, LuaDeclExtra, LuaMultiReturn,
+    InFiled, LuaMultiReturn,
 };
 
 pub type InferResult = Option<LuaType>;
@@ -92,16 +92,8 @@ fn infer_literal_expr(db: &DbIndex, config: &LuaInferConfig, expr: LuaLiteralExp
             let decl_type = match decl_id.and_then(|id| db.get_decl_index().get_decl(&id)) {
                 Some(decl) if decl.is_global() => LuaType::Any,
                 Some(decl) if decl.is_param() => {
-                    let LuaDeclExtra::Param { idx, signature_id } = &decl.extra else {
-                        unreachable!()
-                    };
-                    let param_info = db
-                        .get_signature_index()
-                        .get(signature_id)
-                        .and_then(|sig| sig.get_param_info_by_id(*idx))?;
-                    let mut typ = param_info.type_ref.clone();
-                    typ = LuaType::MuliReturn(LuaMultiReturn::Base(typ).into());
-                    typ
+                    let base = infer_param(db, decl).unwrap_or(LuaType::Unknown);
+                    LuaType::MuliReturn(LuaMultiReturn::Base(base).into())
                 }
                 _ => LuaType::Any, // 默认返回 Any
             };

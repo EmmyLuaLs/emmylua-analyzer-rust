@@ -6,7 +6,7 @@ use crate::DiagnosticCode;
 pub struct AnalyzeError {
     pub kind: DiagnosticCode,
     pub message: String,
-    pub range: TextRange
+    pub range: TextRange,
 }
 
 impl AnalyzeError {
@@ -14,7 +14,7 @@ impl AnalyzeError {
         Self {
             kind,
             message: message.to_string(),
-            range
+            range,
         }
     }
 }

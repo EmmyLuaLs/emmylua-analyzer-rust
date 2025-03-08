@@ -377,11 +377,11 @@ impl LuaIfStat {
     pub fn get_block(&self) -> Option<LuaBlock> {
         self.child()
     }
-    
+
     pub fn get_else_if_clause_list(&self) -> LuaAstChildren<LuaElseIfClauseStat> {
         self.children()
     }
-    
+
     pub fn get_else_clause(&self) -> Option<LuaElseClauseStat> {
         self.child()
     }
@@ -485,13 +485,15 @@ impl LuaAstNode for LuaIfClauseStat {
 
     fn can_cast(kind: LuaSyntaxKind) -> bool
     where
-        Self: Sized {
+        Self: Sized,
+    {
         LuaElseIfClauseStat::can_cast(kind) || LuaElseClauseStat::can_cast(kind)
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>
     where
-        Self: Sized {
+        Self: Sized,
+    {
         if LuaElseIfClauseStat::can_cast(syntax.kind().into()) {
             Some(LuaIfClauseStat::ElseIf(LuaElseIfClauseStat::cast(syntax)?))
         } else if LuaElseClauseStat::can_cast(syntax.kind().into()) {

@@ -95,8 +95,7 @@ fn rename_decl_references(
             {
                 semantic_model
             } else {
-                let semantic_model =
-                    compilation.get_semantic_model(in_filed_syntax_id.file_id)?;
+                let semantic_model = compilation.get_semantic_model(in_filed_syntax_id.file_id)?;
                 semantic_cache.insert(in_filed_syntax_id.file_id, semantic_model);
                 semantic_cache.get_mut(&in_filed_syntax_id.file_id)?
             };

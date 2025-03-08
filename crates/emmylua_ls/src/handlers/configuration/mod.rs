@@ -1,6 +1,4 @@
-use lsp_types::{
-    ClientCapabilities, DidChangeConfigurationParams, ServerCapabilities
-};
+use lsp_types::{ClientCapabilities, DidChangeConfigurationParams, ServerCapabilities};
 
 use crate::{context::ServerContextSnapshot, handlers::initialized::get_client_config};
 

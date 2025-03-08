@@ -111,7 +111,12 @@ pub fn instantiate_doc_function(
                                     new_params.push(param.clone());
                                 }
                             }
-                            _ => {}
+                            _ => {
+                                new_params.push((
+                                    "...".to_string(),
+                                    Some(LuaType::Variadic(LuaType::Any.into())),
+                                ));
+                            }
                         }
                     }
                 }

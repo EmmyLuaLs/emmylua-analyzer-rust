@@ -1,21 +1,23 @@
 mod access_invisible;
 mod analyze_error;
 mod await_in_sync;
+mod code_style_check;
 mod deprecated;
 mod discard_returns;
 mod local_const_reassign;
 mod missing_parameter;
+mod missing_return_value;
 mod need_check_nil;
 mod param_type_check;
+mod redundant_parameter;
+mod redundant_return_value;
+mod return_type_mismatch;
 mod syntax_error;
+mod undefined_doc_param;
 mod undefined_global;
 mod unused;
-mod code_style_check;
-mod redundant_parameter;
-mod return_type_mismatch;
-mod redundant_return_value;
-mod missing_return_value;
 
+use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaComment, LuaStat, LuaSyntaxKind};
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use rowan::TextRange;
 use std::sync::Arc;
@@ -28,10 +30,7 @@ use super::{
     DiagnosticCode,
 };
 
-pub fn check_file(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-) -> Option<()> {
+pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticModel) -> Option<()> {
     macro_rules! check {
         ($module:ident) => {
             if $module::CODES
@@ -60,6 +59,7 @@ pub fn check_file(
     check!(redundant_return_value);
     check!(missing_return_value);
     check!(return_type_mismatch);
+    check!(undefined_doc_param);
 
     Some(())
 }
@@ -204,5 +204,20 @@ impl<'a> DiagnosticContext<'a> {
 
         // default setting
         is_code_default_enable(&code)
+    }
+}
+
+pub fn get_closure_expr_comment(closure_expr: &LuaClosureExpr) -> Option<LuaComment> {
+    let comment = closure_expr
+        .ancestors::<LuaStat>()
+        .next()?
+        .syntax()
+        .prev_sibling()?;
+    match comment.kind().into() {
+        LuaSyntaxKind::Comment => {
+            let comment = LuaComment::cast(comment)?;
+            Some(comment)
+        }
+        _ => None,
     }
 }

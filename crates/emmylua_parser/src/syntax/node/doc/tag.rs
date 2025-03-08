@@ -640,6 +640,15 @@ impl LuaDocTagField {
         None
     }
 
+    pub fn get_field_key_range(&self) -> Option<rowan::TextRange> {
+        self.get_field_key().map(|key| match key {
+            LuaDocFieldKey::Name(name) => name.get_range(),
+            LuaDocFieldKey::String(string) => string.get_range(),
+            LuaDocFieldKey::Integer(integer) => integer.get_range(),
+            LuaDocFieldKey::Type(typ) => typ.get_range(),
+        })
+    }
+
     pub fn get_type(&self) -> Option<LuaDocType> {
         self.children().last()
     }

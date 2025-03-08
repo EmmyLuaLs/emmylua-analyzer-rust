@@ -132,7 +132,7 @@ fn build_decl_hover(
                 owner_decl.is_local()
             } else {
                 decl.is_local()
-            }
+            },
         );
 
         builder.set_location_path(owner_member);
@@ -236,7 +236,7 @@ fn build_member_hover(
                 owner_decl.is_local()
             } else {
                 false
-            }
+            },
         );
 
         builder.set_location_path(Some(&function_member.as_ref().unwrap_or(&member)));

@@ -34,7 +34,7 @@ pub fn merge_member_type(
     let member_type = member.get_decl_type();
     let new_type = merge_type(db, member_type.clone(), expr_type);
     let member = db.get_member_index_mut().get_member_mut(&member_id)?;
-    member.decl_type = new_type;
+    member.set_decl_type(new_type);
 
     Some(())
 }

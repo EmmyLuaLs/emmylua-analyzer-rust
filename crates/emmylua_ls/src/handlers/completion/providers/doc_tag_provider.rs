@@ -1,6 +1,6 @@
+use crate::meta_text::meta_doc_tag;
 use emmylua_parser::LuaTokenKind;
 use lsp_types::{CompletionItem, MarkupContent};
-use crate::meta_text::meta_doc_tag;
 
 use crate::handlers::completion::{completion_builder::CompletionBuilder, data::DOC_TAGS};
 
@@ -32,7 +32,7 @@ fn add_tag_completion(builder: &mut CompletionBuilder, sorted_index: usize, tag:
         kind: Some(lsp_types::CompletionItemKind::EVENT),
         documentation: Some(lsp_types::Documentation::MarkupContent(MarkupContent {
             kind: lsp_types::MarkupKind::Markdown,
-            value: meta_doc_tag(tag)
+            value: meta_doc_tag(tag),
         })),
         sort_text: Some(format!("{:03}", sorted_index)),
         ..Default::default()

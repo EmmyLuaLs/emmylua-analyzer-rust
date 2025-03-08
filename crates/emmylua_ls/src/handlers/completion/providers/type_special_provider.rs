@@ -1,5 +1,6 @@
 use emmylua_code_analysis::{
-    InferGuard, LuaDeclLocation, LuaFunctionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaMultiLineUnion, LuaPropertyOwnerId, LuaType, LuaTypeDeclId, LuaUnionType, RenderLevel
+    InferGuard, LuaDeclLocation, LuaFunctionType, LuaMemberId, LuaMemberKey, LuaMemberOwner,
+    LuaMultiLineUnion, LuaPropertyOwnerId, LuaType, LuaTypeDeclId, LuaUnionType, RenderLevel,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaExpr,
@@ -232,8 +233,8 @@ fn infer_call_arg_list_overload(
                 .get_db()
                 .get_decl_index()
                 .get_decl(&decl_id)?;
-            if let LuaType::Signature(signature_id) = decl.get_type()? {
-                Some(signature_id)
+            if let LuaType::Signature(signature_id) = &decl.get_type()? {
+                Some(signature_id.clone())
             } else {
                 None
             }
@@ -398,7 +399,7 @@ fn add_enum_members_completion(
                 .get_member(&member_id)?;
             let label = humanize_type(
                 builder.semantic_model.get_db(),
-                member.get_decl_type(),
+                &member.get_decl_type(),
                 RenderLevel::Minimal,
             );
             let description = format!("{}", type_id.get_name());

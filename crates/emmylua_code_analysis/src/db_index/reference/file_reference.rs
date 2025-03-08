@@ -25,8 +25,7 @@ impl FileReference {
         self.references_to_decl.insert(range, decl_id);
         let decl_ref = DeclReference { range, is_write };
 
-        self
-            .decl_references
+        self.decl_references
             .entry(decl_id)
             .or_insert_with(Vec::new)
             .push(decl_ref);

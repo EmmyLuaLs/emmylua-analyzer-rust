@@ -8,7 +8,7 @@ members = [
 [workspace.dependencies]
 # local
 emmylua_code_analysis = { path = "crates/emmylua_code_analysis", version = "0.5.0" }
-emmylua_parser = { path = "crates/emmylua_parser", version = "0.10.0" }
+emmylua_parser = { path = "crates/emmylua_parser", version = "0.10.1" }
 emmylua_diagnostic_macro = { path = "crates/emmylua_diagnostic_macro", version = "0.4.0" }
 
 # external
@@ -30,7 +30,7 @@ tokio-util = "0.7"
 walkdir = "2.5.0"
 serde_yml = "0.0.12"
 dirs = "5"
-emmylua_codestyle = "0.3.2"
+emmylua_codestyle = "0.4.0"
 structopt = "0.3"
 wax = "0.6.0"
 percent-encoding = "2.3"

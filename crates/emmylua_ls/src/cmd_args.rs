@@ -5,15 +5,28 @@ use structopt::StructOpt;
 #[structopt(name = "emmylua-ls", about = "EmmyLua Language Server")]
 pub struct CmdArgs {
     /// Communication method
-    #[structopt(long = "communication", short = "c", help = "Communication method", default_value = "stdio")]
+    #[structopt(
+        long = "communication",
+        short = "c",
+        help = "Communication method",
+        default_value = "stdio"
+    )]
     pub communication: Communication,
 
     /// IP address to listen on (only valid when using TCP)
-    #[structopt(long = "ip", help = "IP address to listen on", default_value = "127.0.0.1")]
+    #[structopt(
+        long = "ip",
+        help = "IP address to listen on",
+        default_value = "127.0.0.1"
+    )]
     pub ip: String,
 
     /// Port number to listen on (only valid when using TCP)
-    #[structopt(long = "port", help = "Port number to listen on", default_value = "5007")]
+    #[structopt(
+        long = "port",
+        help = "Port number to listen on",
+        default_value = "5007"
+    )]
     pub port: u16,
 
     /// Path to the log file

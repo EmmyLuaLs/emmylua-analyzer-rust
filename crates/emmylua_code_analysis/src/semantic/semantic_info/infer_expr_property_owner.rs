@@ -60,7 +60,7 @@ fn infer_name_expr_property_owner(
     if decl.is_local() && !is_function {
         return Some(LuaPropertyOwnerId::LuaDecl(decl_id));
     }
-    
+
     if let Some(value_expr_id) = decl.get_value_syntax_id() {
         if matches!(
             value_expr_id.get_kind(),

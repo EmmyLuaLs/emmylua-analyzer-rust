@@ -22,7 +22,6 @@ pub async fn on_references_handler(
         return None;
     }
 
-
     let root = semantic_model.get_root();
     let position_offset = {
         let document = semantic_model.get_document();

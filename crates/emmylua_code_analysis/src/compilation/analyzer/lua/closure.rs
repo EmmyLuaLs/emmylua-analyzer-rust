@@ -1,10 +1,13 @@
 use emmylua_parser::{
-    LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaFuncStat, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaFuncStat, LuaVarExpr,
 };
 
 use crate::{
-    compilation::analyzer::unresolve::{UnResolveClosureParams, UnResolveReturn},
-    db_index::{LuaDocReturnInfo, LuaSignatureId}, SignatureReturnStatus,
+    compilation::analyzer::unresolve::{
+        UnResolveClosureParams, UnResolveClosureReturn, UnResolveReturn,
+    },
+    db_index::{LuaDocReturnInfo, LuaSignatureId},
+    SignatureReturnStatus,
 };
 
 use super::{func_body::analyze_func_body_returns, LuaAnalyzer, LuaReturnPoint};
@@ -72,6 +75,15 @@ fn analyze_return(
         return None;
     }
 
+    let parent = closure.get_parent::<LuaAst>()?;
+    match &parent {
+        LuaAst::LuaCallArgList(_) => {
+            analyze_lambda_returns(analyzer, signature_id, closure)?;
+            return Some(());
+        }
+        _ => {}
+    };
+
     let block = closure.get_block()?;
     let return_points = analyze_func_body_returns(block);
     let returns = match analyze_return_point(analyzer, &return_points) {
@@ -93,6 +105,32 @@ fn analyze_return(
         .get_or_create(signature_id.clone());
     signature.return_docs = returns;
     signature.resolve_return = SignatureReturnStatus::InferResolve;
+    Some(())
+}
+
+fn analyze_lambda_returns(
+    analyzer: &mut LuaAnalyzer,
+    signature_id: &LuaSignatureId,
+    closure: &LuaClosureExpr,
+) -> Option<()> {
+    let call_arg_list = closure.get_parent::<LuaCallArgList>()?;
+    let call_expr = call_arg_list.get_parent::<LuaCallExpr>()?;
+    let pos = closure.get_position();
+    let founded_idx = call_arg_list
+        .get_args()
+        .position(|arg| arg.get_position() == pos)?;
+    let block = closure.get_block()?;
+    let return_points = analyze_func_body_returns(block);
+    let unresolved = UnResolveClosureReturn {
+        file_id: analyzer.file_id,
+        signature_id: signature_id.clone(),
+        call_expr,
+        param_idx: founded_idx,
+        return_points,
+    };
+
+    analyzer.add_unresolved(unresolved.into());
+
     Some(())
 }
 

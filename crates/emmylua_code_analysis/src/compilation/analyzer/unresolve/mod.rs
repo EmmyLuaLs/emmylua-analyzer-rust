@@ -1,19 +1,21 @@
 mod infer_manager;
 mod merge_type;
 mod resolve;
-mod resolve_closure_param;
+mod resolve_closure;
 
 use crate::{
-    db_index::{DbIndex, LuaDeclId, LuaMemberId, LuaSignatureId}, profile::Profile, FileId
+    db_index::{DbIndex, LuaDeclId, LuaMemberId, LuaSignatureId},
+    profile::Profile,
+    FileId,
 };
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use infer_manager::InferManager;
 pub use merge_type::{merge_decl_expr_type, merge_member_type};
 use resolve::{
-    try_resolve_decl, try_resolve_iter_var, try_resolve_member,
-    try_resolve_module, try_resolve_return_point,
+    try_resolve_decl, try_resolve_iter_var, try_resolve_member, try_resolve_module,
+    try_resolve_return_point,
 };
-use resolve_closure_param::try_resolve_closure_params;
+use resolve_closure::{try_resolve_closure_params, try_resolve_closure_return};
 
 use super::{lua::LuaReturnPoint, AnalyzeContext};
 
@@ -57,6 +59,9 @@ fn try_resolve(
             UnResolve::ClosureParams(un_resolve_closure_params) => {
                 try_resolve_closure_params(db, config, un_resolve_closure_params).unwrap_or(false)
             }
+            UnResolve::ClosureReturn(un_resolve_closure_return) => {
+                try_resolve_closure_return(db, config, un_resolve_closure_return).unwrap_or(false)
+            }
             UnResolve::IterDecl(un_resolve_iter_var) => {
                 try_resolve_iter_var(db, config, un_resolve_iter_var).unwrap_or(false)
             }
@@ -81,6 +86,7 @@ pub enum UnResolve {
     Module(Box<UnResolveModule>),
     Return(Box<UnResolveReturn>),
     ClosureParams(Box<UnResolveClosureParams>),
+    ClosureReturn(Box<UnResolveClosureReturn>),
 }
 
 #[allow(dead_code)]
@@ -98,6 +104,9 @@ impl UnResolve {
             UnResolve::Return(un_resolve_return) => Some(un_resolve_return.file_id),
             UnResolve::ClosureParams(un_resolve_closure_params) => {
                 Some(un_resolve_closure_params.file_id)
+            }
+            UnResolve::ClosureReturn(un_resolve_closure_return) => {
+                Some(un_resolve_closure_return.file_id)
             }
             UnResolve::None => None,
         }
@@ -183,5 +192,20 @@ pub struct UnResolveIterVar {
 impl From<UnResolveIterVar> for UnResolve {
     fn from(un_resolve_iter_var: UnResolveIterVar) -> Self {
         UnResolve::IterDecl(Box::new(un_resolve_iter_var))
+    }
+}
+
+#[derive(Debug)]
+pub struct UnResolveClosureReturn {
+    pub file_id: FileId,
+    pub signature_id: LuaSignatureId,
+    pub call_expr: LuaCallExpr,
+    pub param_idx: usize,
+    pub return_points: Vec<LuaReturnPoint>,
+}
+
+impl From<UnResolveClosureReturn> for UnResolve {
+    fn from(un_resolve_closure_return: UnResolveClosureReturn) -> Self {
+        UnResolve::ClosureReturn(Box::new(un_resolve_closure_return))
     }
 }

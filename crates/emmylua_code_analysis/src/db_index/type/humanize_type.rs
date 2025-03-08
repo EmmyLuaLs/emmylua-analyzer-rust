@@ -147,8 +147,8 @@ fn humanize_simple_type(
     for (member_key, typ) in member_vec {
         let member_string = build_table_member_string(
             member_key,
-            typ,
-            humanize_type(db, typ, level.next_level()),
+            &typ,
+            humanize_type(db, &typ, level.next_level()),
             level,
         );
 
@@ -471,8 +471,8 @@ fn humanize_table_const_type_detail_and_simple(
         let typ = member_value.get_decl_type();
         let member_string = build_table_member_string(
             member_key,
-            typ,
-            humanize_type(db, typ, level.next_level()),
+            &typ,
+            humanize_type(db, &typ, level.next_level()),
             level,
         );
 

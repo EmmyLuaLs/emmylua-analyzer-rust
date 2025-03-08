@@ -141,7 +141,7 @@
     },
     "strict": {
       "default": {
-        "requirePath": true,
+        "requirePath": false,
         "typeCall": false
       },
       "allOf": [
@@ -158,6 +158,7 @@
         "library": [],
         "moduleMap": [],
         "preloadFileSize": 0,
+        "reindexDuration": 5000,
         "workspaceRoots": []
       },
       "allOf": [
@@ -181,6 +182,13 @@
           "type": "string",
           "enum": [
             "syntax-error"
+          ]
+        },
+        {
+          "description": "Lua syntax error",
+          "type": "string",
+          "enum": [
+            "lua-syntax-error"
           ]
         },
         {
@@ -209,6 +217,13 @@
           "type": "string",
           "enum": [
             "missing-parameter"
+          ]
+        },
+        {
+          "description": "Redundant parameter",
+          "type": "string",
+          "enum": [
+            "redundant-parameter"
           ]
         },
         {
@@ -335,6 +350,48 @@
           "type": "string",
           "enum": [
             "await-in-sync"
+          ]
+        },
+        {
+          "description": "Doc tag usage error",
+          "type": "string",
+          "enum": [
+            "annotation-usage-error"
+          ]
+        },
+        {
+          "description": "Return type mismatch",
+          "type": "string",
+          "enum": [
+            "return-type-mismatch"
+          ]
+        },
+        {
+          "description": "Missing return value",
+          "type": "string",
+          "enum": [
+            "missing-return-value"
+          ]
+        },
+        {
+          "description": "Redundant return value",
+          "type": "string",
+          "enum": [
+            "redundant-return-value"
+          ]
+        },
+        {
+          "description": "Undefined Doc Param",
+          "type": "string",
+          "enum": [
+            "undefined-doc-param"
+          ]
+        },
+        {
+          "description": "Duplicate doc field",
+          "type": "string",
+          "enum": [
+            "duplicate-doc-field"
           ]
         }
       ]
@@ -601,7 +658,7 @@
           ]
         },
         {
-          "description": "Lua 5.4",
+          "description": "Lua Latest",
           "type": "string",
           "enum": [
             "LuaLatest"
@@ -707,7 +764,7 @@
       "properties": {
         "requirePath": {
           "description": "Whether to enable strict mode require path.",
-          "default": true,
+          "default": false,
           "type": "boolean"
         },
         "typeCall": {
@@ -760,6 +817,13 @@
           "default": 0,
           "type": "integer",
           "format": "int32"
+        },
+        "reindexDuration": {
+          "description": "when save a file, ls will reindex the workspace after reindex_duration milliseconds.",
+          "default": 5000,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         },
         "workspaceRoots": {
           "description": "Workspace roots. eg: [\"src\", \"test\"]",

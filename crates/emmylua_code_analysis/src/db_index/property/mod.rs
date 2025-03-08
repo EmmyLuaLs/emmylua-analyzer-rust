@@ -155,7 +155,7 @@ impl LuaPropertyIndex {
             .entry(file_id)
             .or_insert_with(HashSet::new)
             .insert(owner_id);
-        
+
         Some(())
     }
 

@@ -14,7 +14,7 @@ pub struct LuaDiagnosticConfig {
     pub workspace_disabled: HashSet<DiagnosticCode>,
     pub global_disable_set: HashSet<SmolStr>,
     pub global_disable_glob: Vec<Regex>,
-    pub severity: HashMap<DiagnosticCode, DiagnosticSeverity>
+    pub severity: HashMap<DiagnosticCode, DiagnosticSeverity>,
 }
 
 impl LuaDiagnosticConfig {
@@ -50,7 +50,7 @@ impl LuaDiagnosticConfig {
             workspace_enabled,
             global_disable_set,
             global_disable_glob,
-            severity
+            severity,
         }
     }
 }

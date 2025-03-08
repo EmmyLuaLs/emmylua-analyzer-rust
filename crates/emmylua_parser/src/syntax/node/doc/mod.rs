@@ -1,7 +1,7 @@
-mod tag;
-mod types;
 mod description;
+mod tag;
 mod test;
+mod types;
 
 pub use description::*;
 pub use tag::*;
@@ -9,7 +9,9 @@ pub use types::*;
 
 use super::{LuaAst, LuaBinaryOpToken, LuaNameToken, LuaNumberToken, LuaStringToken};
 use crate::{
-    kind::{LuaSyntaxKind, LuaTokenKind}, syntax::traits::LuaAstNode, LuaAstChildren, LuaAstToken, LuaAstTokenChildren, LuaKind, LuaSyntaxNode
+    kind::{LuaSyntaxKind, LuaTokenKind},
+    syntax::traits::LuaAstNode,
+    LuaAstChildren, LuaAstToken, LuaAstTokenChildren, LuaKind, LuaSyntaxNode,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -323,16 +325,20 @@ impl LuaDocObjectField {
         for child in self.syntax.children_with_tokens() {
             match child.kind() {
                 LuaKind::Token(LuaTokenKind::TkName) => {
-                    return LuaNameToken::cast(child.into_token().unwrap()).map(LuaDocObjectFieldKey::Name);
+                    return LuaNameToken::cast(child.into_token().unwrap())
+                        .map(LuaDocObjectFieldKey::Name);
                 }
                 LuaKind::Token(LuaTokenKind::TkString) => {
-                    return LuaStringToken::cast(child.into_token().unwrap()).map(LuaDocObjectFieldKey::String);
+                    return LuaStringToken::cast(child.into_token().unwrap())
+                        .map(LuaDocObjectFieldKey::String);
                 }
                 LuaKind::Token(LuaTokenKind::TkInt) => {
-                    return LuaNumberToken::cast(child.into_token().unwrap()).map(LuaDocObjectFieldKey::Integer);
+                    return LuaNumberToken::cast(child.into_token().unwrap())
+                        .map(LuaDocObjectFieldKey::Integer);
                 }
                 kind if LuaDocType::can_cast(kind.into()) => {
-                    return LuaDocType::cast(child.into_node().unwrap()).map(LuaDocObjectFieldKey::Type);
+                    return LuaDocType::cast(child.into_node().unwrap())
+                        .map(LuaDocObjectFieldKey::Type);
                 }
                 LuaKind::Token(LuaTokenKind::TkColon) => {
                     return None;

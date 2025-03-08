@@ -12,7 +12,7 @@ impl Request for EmmyAnnotatorRequest {
 
 #[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
 pub struct EmmyAnnotatorParams {
-    pub uri: String
+    pub uri: String,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]

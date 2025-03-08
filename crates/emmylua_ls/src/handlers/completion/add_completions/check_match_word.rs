@@ -1,44 +1,41 @@
 pub fn check_match_word(key: &str, candidate_key: &str) -> bool {
     if key.is_empty() || candidate_key.is_empty() {
-        return false; // 避免空字符串的情况
+        return false; // Avoid empty string cases
     }
 
-    // 获取 key 的首字符并转换为小写
+    // Get the first character of the key and convert it to lowercase
     let key_first_char = key.chars().next().unwrap().to_lowercase().next().unwrap();
 
-    // 特殊情况：当搜索关键字是下划线时
+    // Special case: when the search keyword is an underscore
     if key_first_char == '_' && candidate_key.starts_with('_') {
         return true;
     }
-    
-    let mut prev_char = '\0'; // 用于跟踪上一个字符
-    
+
+    let mut prev_char = '\0'; // Used to track the previous character
+
     for (i, curr_char) in candidate_key.chars().enumerate() {
-        // 判断当前字符是否是词的开头
-        let is_word_start = 
-            // 首字符（除非是下划线）
-            (i == 0 && curr_char != '_') ||
-            // 下划线后的字符
+        // Determine if the current character is the start of a word
+        let is_word_start = (i == 0 && curr_char != '_') ||
+            // Character after an underscore
             (prev_char == '_') ||
-            // 大写字母前面是小写字母（驼峰式）
+            // Uppercase letter preceded by a lowercase letter (camel case)
             (curr_char.is_uppercase() && prev_char.is_lowercase()) ||
-            // ASCII和非ASCII字符的边界, 中英文
+            // Boundary between ASCII and non-ASCII characters, Chinese and English
             (curr_char.is_ascii_alphabetic() != prev_char.is_ascii_alphabetic() && i > 0);
-            
-        // 如果当前字符是词的开头，检查是否匹配
+
+        // If the current character is the start of a word, check if it matches
         if is_word_start {
             let curr_lowercase = curr_char.to_lowercase().next().unwrap();
             if curr_lowercase == key_first_char {
                 return true;
             }
         }
-        
+
         prev_char = curr_char;
     }
 
-    false // 没有找到匹配
+    false // No match found
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -77,7 +74,6 @@ mod tests {
         assert_eq!(check_match_word("r", "如果"), false);
         assert_eq!(check_match_word("如", "如果If"), true);
         assert_eq!(check_match_word("果", "水果"), false);
-
     }
 
     #[test]

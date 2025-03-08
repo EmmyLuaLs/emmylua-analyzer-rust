@@ -42,7 +42,6 @@ mod test {
             "#
         ));
 
-
         assert!(!ws.check_code_for(
             DiagnosticCode::MissingParameter,
             r#" 

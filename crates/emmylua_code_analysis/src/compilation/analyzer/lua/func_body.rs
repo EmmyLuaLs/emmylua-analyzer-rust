@@ -3,7 +3,7 @@ use emmylua_parser::{
     LuaRepeatStat, LuaReturnStat, LuaStat, LuaWhileStat,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LuaReturnPoint {
     Expr(LuaExpr),
     MuliExpr(Vec<LuaExpr>),

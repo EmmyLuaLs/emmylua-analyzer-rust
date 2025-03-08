@@ -53,19 +53,14 @@ impl LuaTypeDecl {
             extra: match kind {
                 LuaDeclTypeKind::Enum => Box::new(LuaTypeExtra::Enum { base: None }),
                 LuaDeclTypeKind::Class => Box::new(LuaTypeExtra::Class),
-                LuaDeclTypeKind::Alias => Box::new(LuaTypeExtra::Alias {
-                    origin: None
-                }),
+                LuaDeclTypeKind::Alias => Box::new(LuaTypeExtra::Alias { origin: None }),
             },
         }
     }
 
     #[allow(unused)]
     pub fn get_file_ids(&self) -> Vec<FileId> {
-        self.locations
-            .iter()
-            .map(|loc| loc.file_id)
-            .collect()
+        self.locations.iter().map(|loc| loc.file_id).collect()
     }
 
     pub fn get_locations(&self) -> &[LuaDeclLocation] {
@@ -142,23 +137,31 @@ impl LuaTypeDecl {
             .map(|idx| &self.id.get_name()[..idx])
     }
 
-    pub fn get_alias_origin(&self, db: &DbIndex, substitutor: Option<&TypeSubstitutor>) -> Option<LuaType> {
+    pub fn get_alias_origin(
+        &self,
+        db: &DbIndex,
+        substitutor: Option<&TypeSubstitutor>,
+    ) -> Option<LuaType> {
         match &*self.extra {
             LuaTypeExtra::Alias {
-                origin: Some(origin)
+                origin: Some(origin),
             } => {
                 if substitutor.is_none() {
                     return Some(origin.clone());
                 }
 
                 let type_decl_id = self.get_id();
-                if db.get_type_index().get_generic_params(&type_decl_id).is_none() {
+                if db
+                    .get_type_index()
+                    .get_generic_params(&type_decl_id)
+                    .is_none()
+                {
                     return Some(origin.clone());
                 }
 
                 let substitutor = substitutor.unwrap();
                 Some(instantiate_type(db, origin, substitutor))
-            },
+            }
             _ => None,
         }
     }
@@ -244,11 +247,7 @@ pub struct LuaDeclLocation {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum LuaTypeExtra {
-    Enum {
-        base: Option<LuaType>,
-    },
+    Enum { base: Option<LuaType> },
     Class,
-    Alias {
-        origin: Option<LuaType>,
-    },
+    Alias { origin: Option<LuaType> },
 }

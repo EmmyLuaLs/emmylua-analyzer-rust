@@ -9,12 +9,12 @@ use emmylua_parser::{LineIndex, LuaParser, LuaSyntaxTree};
 pub use file_id::{FileId, InFiled};
 pub use file_uri_handler::{file_path_to_uri, uri_to_file_path};
 pub use loader::{load_workspace_files, read_file_with_encoding, LuaFileInfo};
-pub use virtual_url::VirtualUrlGenerator;
 use lsp_types::Uri;
 use rowan::{NodeCache, TextRange};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+pub use virtual_url::VirtualUrlGenerator;
 
 use crate::Emmyrc;
 

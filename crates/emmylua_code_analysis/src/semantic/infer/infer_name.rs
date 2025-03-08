@@ -1,8 +1,10 @@
+use std::ops::Deref;
+
 use emmylua_parser::{LuaAstNode, LuaNameExpr};
 
 use crate::{
     db_index::{DbIndex, LuaDeclOrMemberId, LuaMemberKey},
-    LuaDeclExtra, LuaFlowId, LuaType,
+    LuaDecl, LuaDeclExtra, LuaFlowId, LuaMember, LuaMemberId, LuaType, TypeOps,
 };
 
 use super::{InferResult, LuaInferConfig};
@@ -32,22 +34,7 @@ pub fn infer_name_expr(
         } else if let Some(typ) = decl.get_type() {
             typ.clone()
         } else if decl.is_param() {
-            match &decl.extra {
-                LuaDeclExtra::Param { idx, signature_id } => {
-                    let signature = db.get_signature_index().get(&signature_id)?;
-                    if let Some(param_info) = signature.get_param_info_by_id(*idx) {
-                        let mut typ = param_info.type_ref.clone();
-                        if param_info.nullable && !typ.is_nullable() {
-                            typ = LuaType::Nullable(typ.into());
-                        }
-
-                        typ
-                    } else {
-                        LuaType::Unknown
-                    }
-                }
-                _ => unreachable!(),
-            }
+            infer_param(db, decl).unwrap_or(LuaType::Unknown)
         } else {
             LuaType::Unknown
         };
@@ -89,22 +76,7 @@ fn infer_self(db: &DbIndex, config: &mut LuaInferConfig, name_expr: LuaNameExpr)
             } else if let Some(typ) = decl.get_type() {
                 typ.clone()
             } else if decl.is_param() {
-                match &decl.extra {
-                    LuaDeclExtra::Param { idx, signature_id } => {
-                        let signature = db.get_signature_index().get(&signature_id)?;
-                        if let Some(param_info) = signature.get_param_info_by_id(*idx) {
-                            let mut typ = param_info.type_ref.clone();
-                            if param_info.nullable && !typ.is_nullable() {
-                                typ = LuaType::Nullable(typ.into());
-                            }
-
-                            typ
-                        } else {
-                            LuaType::Unknown
-                        }
-                    }
-                    _ => unreachable!(),
-                }
+                infer_param(db, decl).unwrap_or(LuaType::Unknown)
             } else {
                 LuaType::Unknown
             };
@@ -134,4 +106,88 @@ fn infer_self(db: &DbIndex, config: &mut LuaInferConfig, name_expr: LuaNameExpr)
             }
         }
     }
+}
+
+pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
+    let (param_idx, signature_id, member_id) = match &decl.extra {
+        LuaDeclExtra::Param {
+            idx,
+            signature_id,
+            owner_member_id: closure_owner_syntax_id,
+        } => (*idx, *signature_id, *closure_owner_syntax_id),
+        _ => return None,
+    };
+
+    // find local annotation
+    if let Some(signature) = db.get_signature_index().get(&signature_id) {
+        if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
+            let mut typ = param_info.type_ref.clone();
+            if param_info.nullable && !typ.is_nullable() {
+                typ = LuaType::Nullable(typ.into());
+            }
+
+            return Some(typ);
+        }
+    }
+
+    let current_member_id = member_id?;
+    let member = find_decl_member_type(db, current_member_id)?;
+    let member_decl_type = member.get_decl_type();
+    let param_type = find_param_type_from_type(db, member_decl_type, param_idx);
+    if let Some(param_type) = param_type {
+        return Some(param_type);
+    }
+
+    // todo inherit from super
+    None
+}
+
+fn find_decl_member_type(db: &DbIndex, member_id: LuaMemberId) -> Option<&LuaMember> {
+    let member = db.get_member_index().get_member(&member_id)?;
+    let owner = member.get_owner();
+    let member = db
+        .get_member_index()
+        .get_member_from_owner(&owner, member.get_key())?;
+
+    Some(member)
+}
+
+fn find_param_type_from_type(
+    db: &DbIndex,
+    source_type: LuaType,
+    param_idx: usize,
+) -> Option<LuaType> {
+    match source_type {
+        LuaType::Signature(signature_id) => {
+            let signature = db.get_signature_index().get(&signature_id)?;
+            if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
+                let mut typ = param_info.type_ref.clone();
+                if param_info.nullable && !typ.is_nullable() {
+                    typ = TypeOps::Union.apply(&typ, &LuaType::Nil);
+                }
+
+                return Some(typ);
+            }
+        }
+        LuaType::DocFunction(f) => {
+            if let Some((_, typ)) = f.get_params().get(param_idx) {
+                return typ.clone();
+            }
+        }
+        LuaType::Nullable(base) => {
+            return find_param_type_from_type(db, base.deref().clone(), param_idx);
+        }
+        LuaType::Union(union_types) => {
+            for ty in union_types.get_types() {
+                if let Some(ty) = find_param_type_from_type(db, ty.clone(), param_idx) {
+                    return Some(ty);
+                }
+            }
+        }
+        _ => {
+            eprintln!("find_param_type_from_type: {:?}", source_type);
+        }
+    }
+
+    None
 }

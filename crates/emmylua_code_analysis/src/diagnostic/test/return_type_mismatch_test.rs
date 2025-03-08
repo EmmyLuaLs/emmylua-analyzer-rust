@@ -106,4 +106,26 @@ mod tests {
             "#
         ));
     }
+
+    #[test]
+    fn test_return_dots_syntax_error() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::LuaSyntaxError,
+            r#"
+            function bar()
+                return ...
+            end
+            "#
+        ));
+        assert!(!ws.check_code_for(
+            DiagnosticCode::LuaSyntaxError,
+            r#"
+            function bar()
+                local args = {...}
+            end
+            "#
+        ));
+    }
 }

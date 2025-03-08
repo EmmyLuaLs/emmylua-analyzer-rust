@@ -1,19 +1,19 @@
+mod register_file_watch;
+mod set_trace;
 mod text_document_handler;
 mod watched_file_handler;
-mod set_trace;
-mod register_file_watch;
 
 use lsp_types::{
     ClientCapabilities, SaveOptions, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextDocumentSyncSaveOptions,
 };
+pub use register_file_watch::register_files_watch;
+pub use set_trace::on_set_trace;
 pub use text_document_handler::{
     on_did_change_text_document, on_did_close_document, on_did_open_text_document,
     on_did_save_text_document,
 };
 pub use watched_file_handler::on_did_change_watched_files;
-pub use set_trace::on_set_trace;
-pub use register_file_watch::register_files_watch;
 
 pub fn register_capabilities(
     server_capabilities: &mut ServerCapabilities,

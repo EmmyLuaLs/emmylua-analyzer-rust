@@ -81,7 +81,8 @@ impl<'a> Reader<'a> {
     }
 
     pub fn current_saved_text(&self) -> &str {
-        &self.text[self.save_buffer_byte_pos..(self.save_buffer_byte_pos + self.save_buffer_byte_len)]
+        &self.text
+            [self.save_buffer_byte_pos..(self.save_buffer_byte_pos + self.save_buffer_byte_len)]
     }
 
     pub fn eat_when(&mut self, ch: char) -> usize {

@@ -123,7 +123,7 @@ pub fn generate_member_owner_module(
             let title_name = format!("{}.{}", owner_name, name);
             if member_typ.is_function() {
                 let func_name = format!("{}.{}", owner_name, name);
-                let display = render_function_type(db, member_typ, &func_name, false);
+                let display = render_function_type(db, &member_typ, &func_name, false);
                 method_members.push(MemberDisplay {
                     name: title_name,
                     display,

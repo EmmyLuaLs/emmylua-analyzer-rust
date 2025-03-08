@@ -2,10 +2,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    parse_macro_input, DeriveInput, Data, Fields, Ident,
-    spanned::Spanned,
-};
+use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Ident};
 
 // Convert enum variant names to kebab-case
 fn to_kebab_case(ident: &Ident) -> String {
@@ -32,12 +29,9 @@ pub fn lua_diagnostic_macro(input: TokenStream) -> TokenStream {
     let variants = match input.data {
         Data::Enum(ref data_enum) => &data_enum.variants,
         _ => {
-            return syn::Error::new(
-                input.span(),
-                "LuaDiagnosticMacro only supports enums"
-            )
-            .to_compile_error()
-            .into();
+            return syn::Error::new(input.span(), "LuaDiagnosticMacro only supports enums")
+                .to_compile_error()
+                .into();
         }
     };
 
@@ -61,18 +55,24 @@ pub fn lua_diagnostic_macro(input: TokenStream) -> TokenStream {
     }
 
     // Build match arms for get_name()
-    let get_name_arms = variant_idents.iter().zip(variant_strings.iter()).map(|(ident, kc)| {
-        quote! {
-            #name::#ident => #kc
-        }
-    });
+    let get_name_arms = variant_idents
+        .iter()
+        .zip(variant_strings.iter())
+        .map(|(ident, kc)| {
+            quote! {
+                #name::#ident => #kc
+            }
+        });
 
     // Build match arms for FromStr
-    let from_str_arms = variant_idents.iter().zip(variant_strings.iter()).map(|(ident, kc)| {
-        quote! {
-            #kc => Ok(#name::#ident)
-        }
-    });
+    let from_str_arms = variant_idents
+        .iter()
+        .zip(variant_strings.iter())
+        .map(|(ident, kc)| {
+            quote! {
+                #kc => Ok(#name::#ident)
+            }
+        });
 
     // Build the all() array
     let all_variants = variant_idents.iter().map(|ident| {

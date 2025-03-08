@@ -11,6 +11,7 @@ use crate::{
 
 pub use expr::*;
 pub use path_trait::*;
+use rowan::TextRange;
 pub use stat::*;
 
 use super::{LuaLiteralToken, LuaNameToken, LuaNumberToken, LuaStringToken};
@@ -327,7 +328,7 @@ pub enum LuaIndexKey {
     String(LuaStringToken),
     Integer(LuaNumberToken),
     Expr(LuaExpr),
-    Idx(usize)
+    Idx(usize),
 }
 
 impl LuaIndexKey {
@@ -388,6 +389,16 @@ impl LuaIndexKey {
             LuaIndexKey::Idx(i) => {
                 format!("[{}]", i)
             }
+        }
+    }
+
+    pub fn get_range(&self) -> Option<TextRange> {
+        match self {
+            LuaIndexKey::Name(token) => Some(token.get_range()),
+            LuaIndexKey::String(token) => Some(token.get_range()),
+            LuaIndexKey::Integer(token) => Some(token.get_range()),
+            LuaIndexKey::Expr(expr) => Some(expr.syntax().text_range()),
+            LuaIndexKey::Idx(_) => None,
         }
     }
 }

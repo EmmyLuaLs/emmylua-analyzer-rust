@@ -1,6 +1,9 @@
 mod infer_members;
 
-use crate::{db_index::{LuaType, LuaTypeDeclId}, LuaMemberKey, LuaPropertyOwnerId};
+use crate::{
+    db_index::{LuaType, LuaTypeDeclId},
+    LuaMemberKey, LuaPropertyOwnerId,
+};
 pub use infer_members::infer_members;
 
 pub fn without_members(type_: &LuaType) -> bool {
@@ -68,7 +71,7 @@ pub struct LuaMemberInfo {
     pub property_owner_id: Option<LuaPropertyOwnerId>,
     pub key: LuaMemberKey,
     pub typ: LuaType,
-    pub origin_typ: Option<LuaType>
+    pub origin_typ: Option<LuaType>,
 }
 
 impl LuaMemberInfo {

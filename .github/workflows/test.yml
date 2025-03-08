@@ -24,6 +24,17 @@ jobs:
     - name: Spell Check Repo
       uses: crate-ci/typos@master
 
+  reformat:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    - name: Run Rustfmt
+      run: cargo fmt --all -- --check
+
   test:
     runs-on: ubuntu-latest
     steps:

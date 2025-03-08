@@ -6,16 +6,12 @@ use crate::DiagnosticCode;
 pub struct DiagnosticAction {
     range: TextRange,
     kind: DiagnosticActionKind,
-    code: DiagnosticCode
+    code: DiagnosticCode,
 }
 
 impl DiagnosticAction {
     pub fn new(range: TextRange, kind: DiagnosticActionKind, code: DiagnosticCode) -> Self {
-        Self {
-            range,
-            kind,
-            code
-        }
+        Self { range, kind, code }
     }
 
     pub fn get_range(&self) -> TextRange {
@@ -34,7 +30,6 @@ impl DiagnosticAction {
         self.code
     }
 }
-
 
 #[derive(Debug)]
 pub enum DiagnosticActionKind {

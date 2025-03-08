@@ -51,7 +51,7 @@ impl ServerContext {
             analysis.clone(),
             client.clone(),
             status_bar.clone(),
-            file_diagnostic.clone()
+            file_diagnostic.clone(),
         )));
 
         ServerContext {
