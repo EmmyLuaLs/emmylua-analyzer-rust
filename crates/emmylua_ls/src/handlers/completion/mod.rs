@@ -117,12 +117,10 @@ pub fn register_capabilities(
     server_capabilities.completion_provider = Some(CompletionOptions {
         resolve_provider: Some(true),
         trigger_characters: Some(
-            vec![
-                ".", ":", "(", "[", "\"", "\'", " ", "@", "\\", "/", " ", "|",
-            ]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
+            vec![".", ":", "(", "[", "\"", "\'", " ", "@", "\\", "/", "|"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         ),
         work_done_progress_options: Default::default(),
         completion_item: Some(CompletionOptionsCompletionItem {
