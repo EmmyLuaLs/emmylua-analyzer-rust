@@ -50,4 +50,8 @@ impl<'a> CompletionBuilder<'a> {
     pub fn stop_here(&mut self) {
         self.stopped = true;
     }
+
+    pub fn get_trigger_text(&self) -> String {
+        self.trigger_token.text().trim_end().to_string()
+    }
 }

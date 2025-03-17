@@ -1,6 +1,9 @@
 pub fn check_match_word(key: &str, candidate_key: &str) -> bool {
-    if key.is_empty() || candidate_key.is_empty() {
-        return false; // Avoid empty string cases
+    if key.is_empty() {
+        return true; // 关键词为空, 一般是在空白处主动触发补全
+    }
+    if candidate_key.is_empty() {
+        return false;
     }
 
     // Get the first character of the key and convert it to lowercase
@@ -88,8 +91,8 @@ mod tests {
 
     #[test]
     fn test_match_keyword_empty_input() {
-        assert_eq!(check_match_word("", "if"), false);
+        assert_eq!(check_match_word("", "if"), true);
         assert_eq!(check_match_word("i", ""), false);
-        assert_eq!(check_match_word("", ""), false);
+        assert_eq!(check_match_word("", ""), true);
     }
 }

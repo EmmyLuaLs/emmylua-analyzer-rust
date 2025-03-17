@@ -71,8 +71,9 @@ fn add_stat_keyword_completions(
             return None;
         }
     }
+    let trigger_text = builder.get_trigger_text();
     for keyword_info in KEYWORD_COMPLETIONS {
-        if !check_match_word(builder.trigger_token.text(), keyword_info.label) {
+        if !check_match_word(&trigger_text, keyword_info.label) {
             continue;
         }
 
@@ -96,8 +97,9 @@ fn add_stat_keyword_completions(
 }
 
 fn add_expr_keyword_completions(builder: &mut CompletionBuilder) -> Option<()> {
+    let trigger_text = builder.get_trigger_text();
     for keyword_info in KEYWORD_EXPR_COMPLETIONS {
-        if !check_match_word(builder.trigger_token.text(), keyword_info.label) {
+        if !check_match_word(&trigger_text, keyword_info.label) {
             continue;
         }
         let item = CompletionItem {
