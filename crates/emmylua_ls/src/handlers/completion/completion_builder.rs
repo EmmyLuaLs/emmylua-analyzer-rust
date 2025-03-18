@@ -12,6 +12,8 @@ pub struct CompletionBuilder<'a> {
     completion_items: Vec<CompletionItem>,
     cancel_token: CancellationToken,
     stopped: bool,
+    // 主动触发补全
+    pub is_invoke_completion: bool,
 }
 
 impl<'a> CompletionBuilder<'a> {
@@ -19,6 +21,7 @@ impl<'a> CompletionBuilder<'a> {
         trigger_token: LuaSyntaxToken,
         semantic_model: SemanticModel<'a>,
         cancel_token: CancellationToken,
+        is_invoke_completion: bool,
     ) -> Self {
         Self {
             trigger_token,
@@ -27,6 +30,7 @@ impl<'a> CompletionBuilder<'a> {
             completion_items: Vec::new(),
             cancel_token,
             stopped: false,
+            is_invoke_completion,
         }
     }
 

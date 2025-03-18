@@ -11,12 +11,24 @@ mod postfix_provider;
 mod table_decl_field_provider;
 mod type_special_provider;
 
-use emmylua_parser::{LuaAstToken, LuaStringToken};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaStringToken};
 use rowan::TextRange;
 
 use super::completion_builder::CompletionBuilder;
 
 pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
+    // 空格补全只允许在非主动且位于函数调用参数列表中触发
+    if builder.get_trigger_text().is_empty() && !builder.is_invoke_completion {
+        let node = LuaAst::cast(builder.trigger_token.parent()?)?;
+        match node {
+            LuaAst::LuaCallArgList(_) => {
+                type_special_provider::add_completion(builder);
+                return Some(());
+            }
+            _ => return Some(()),
+        }
+    }
+
     module_path_provider::add_completion(builder);
     file_path_provider::add_completion(builder);
     keywords_provider::add_completion(builder);

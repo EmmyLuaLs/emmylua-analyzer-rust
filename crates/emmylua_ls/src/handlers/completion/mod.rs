@@ -11,7 +11,7 @@ use emmylua_parser::LuaAstNode;
 use log::error;
 use lsp_types::{
     ClientCapabilities, CompletionItem, CompletionOptions, CompletionOptionsCompletionItem,
-    CompletionParams, CompletionResponse, ServerCapabilities,
+    CompletionParams, CompletionResponse, CompletionTriggerKind, ServerCapabilities,
 };
 use providers::add_completions;
 use resolve_completion::resolve_completion;
@@ -52,7 +52,15 @@ pub async fn on_completion_handler(
         }
     };
 
-    let mut builder = CompletionBuilder::new(token, semantic_model, cancel_token);
+    let mut builder = CompletionBuilder::new(
+        token,
+        semantic_model,
+        cancel_token,
+        params
+            .context
+            .map(|context| context.trigger_kind == CompletionTriggerKind::INVOKED)
+            .unwrap_or(false),
+    );
     add_completions(&mut builder);
     Some(CompletionResponse::Array(builder.get_completion_items()))
 }
