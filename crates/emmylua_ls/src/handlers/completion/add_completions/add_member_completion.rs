@@ -1,4 +1,4 @@
-use emmylua_code_analysis::{DbIndex, LuaMemberInfo, LuaMemberKey, LuaType};
+use emmylua_code_analysis::{DbIndex, LuaMemberInfo, LuaMemberKey, LuaPropertyOwnerId, LuaType};
 use emmylua_parser::LuaTokenKind;
 use lsp_types::CompletionItem;
 
@@ -105,6 +105,19 @@ pub fn add_member_completion(
     builder.add_completion_item(completion_item)?;
 
     // add overloads if the type is function
+    add_signature_overloads(builder, property_owner, &typ, display, deprecated, label)?;
+
+    Some(())
+}
+
+fn add_signature_overloads(
+    builder: &mut CompletionBuilder,
+    property_owner: &Option<LuaPropertyOwnerId>,
+    typ: &LuaType,
+    display: CallDisplay,
+    deprecated: Option<bool>,
+    label: String,
+) -> Option<()> {
     if let LuaType::Signature(signature_id) = typ {
         let overloads = builder
             .semantic_model
@@ -141,7 +154,6 @@ pub fn add_member_completion(
                 builder.add_completion_item(completion_item);
             });
     };
-
     Some(())
 }
 

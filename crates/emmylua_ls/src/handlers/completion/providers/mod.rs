@@ -8,7 +8,7 @@ mod keywords_provider;
 mod member_provider;
 mod module_path_provider;
 mod postfix_provider;
-mod table_decl_field_provider;
+mod table_field_provider;
 mod type_special_provider;
 
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaStringToken};
@@ -29,24 +29,29 @@ pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
         }
     }
 
+    postfix_provider::add_completion(builder);
+    // 只有具有类型定义的表才会成功返回, 此时我们不需要处理其他补全
+    if table_field_provider::add_completion(builder).is_some() {
+        return Some(());
+    }
+    type_special_provider::add_completion(builder);
+    member_provider::add_completion(builder);
+    keywords_provider::add_completion(builder);
+    env_provider::add_completion(builder);
+
     module_path_provider::add_completion(builder);
     file_path_provider::add_completion(builder);
-    keywords_provider::add_completion(builder);
-    type_special_provider::add_completion(builder);
-    env_provider::add_completion(builder);
-    member_provider::add_completion(builder);
-    table_decl_field_provider::add_completion(builder);
     auto_require_provider::add_completion(builder);
     doc_tag_provider::add_completion(builder);
     doc_type_provider::add_completion(builder);
     doc_name_token_provider::add_completion(builder);
-    postfix_provider::add_completion(builder);
 
     for (index, item) in builder.get_completion_items_mut().iter_mut().enumerate() {
         if item.sort_text.is_none() {
             item.sort_text = Some(format!("{:04}", index));
         }
     }
+    // dbg!(&builder.get_completion_items_mut());
 
     Some(())
 }

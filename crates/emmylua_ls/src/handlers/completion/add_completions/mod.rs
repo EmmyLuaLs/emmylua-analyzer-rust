@@ -14,7 +14,7 @@ use emmylua_code_analysis::humanize_type;
 
 use super::completion_builder::CompletionBuilder;
 
-fn check_visibility(builder: &mut CompletionBuilder, id: LuaPropertyOwnerId) -> Option<()> {
+pub fn check_visibility(builder: &mut CompletionBuilder, id: LuaPropertyOwnerId) -> Option<()> {
     match id {
         LuaPropertyOwnerId::Member(_) => {}
         LuaPropertyOwnerId::LuaDecl(_) => {}
@@ -45,7 +45,7 @@ fn get_completion_kind(typ: &LuaType) -> CompletionItemKind {
     CompletionItemKind::VARIABLE
 }
 
-fn is_deprecated(builder: &CompletionBuilder, id: LuaPropertyOwnerId) -> bool {
+pub fn is_deprecated(builder: &CompletionBuilder, id: LuaPropertyOwnerId) -> bool {
     let property = builder
         .semantic_model
         .get_db()

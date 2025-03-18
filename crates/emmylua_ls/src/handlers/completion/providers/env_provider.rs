@@ -17,12 +17,9 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         LuaAst::LuaNameExpr(_) => {}
         LuaAst::LuaBlock(_) => {}
         LuaAst::LuaCallArgList(_) => {}
-        // 在表中无键时主动触发的补全, 不在这里处理
-        // TODO 如果左值类型不是类而是纯表则允许
-        LuaAst::LuaTableExpr(_)|
         // 字符串中触发的补全
-        LuaAst::LuaLiteralExpr(_)  => return None,
-        _ => {},
+        LuaAst::LuaLiteralExpr(_) => return None,
+        _ => {}
     };
 
     let mut duplicated_name = HashSet::new();
