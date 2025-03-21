@@ -27,7 +27,7 @@ pub fn build_semantic_info_hover(
         return build_hover_without_property(db, document, token, typ);
     }
     let hover_builder = build_hover_content(
-        Some(semantic_model),
+        semantic_model,
         db,
         Some(typ),
         semantic_info.semantic_decl.unwrap(),
@@ -57,36 +57,42 @@ fn build_hover_without_property(
     })
 }
 
-pub fn build_hover_content<'a>(
-    semantic_model: Option<&'a SemanticModel>,
+pub fn build_hover_content_for_completion<'a>(
+    semantic_model: &'a SemanticModel,
+    db: &DbIndex,
+    property_id: LuaSemanticDeclId,
+) -> Option<HoverBuilder<'a>> {
+    let typ = match property_id {
+        LuaSemanticDeclId::LuaDecl(decl_id) => {
+            let decl = db.get_decl_index().get_decl(&decl_id)?;
+            Some(decl.get_type()?.clone())
+        }
+        LuaSemanticDeclId::Member(member_id) => {
+            let member = db.get_member_index().get_member(&member_id)?;
+            Some(member.get_decl_type())
+        }
+        _ => None,
+    };
+    build_hover_content(semantic_model, db, typ, property_id, true, None)
+}
+
+fn build_hover_content<'a>(
+    semantic_model: &'a SemanticModel,
     db: &DbIndex,
     typ: Option<LuaType>,
     property_id: LuaSemanticDeclId,
     is_completion: bool,
     token: Option<LuaSyntaxToken>,
 ) -> Option<HoverBuilder<'a>> {
-    let semantic_model = semantic_model?;
     let mut builder = HoverBuilder::new(semantic_model, token, is_completion);
     match property_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
-            let effective_typ = match typ {
-                Some(t) => t,
-                None => {
-                    let decl = db.get_decl_index().get_decl(&decl_id)?;
-                    decl.get_type()?.clone()
-                }
-            };
-            build_decl_hover(&mut builder, db, effective_typ, decl_id);
+            let typ = typ?;
+            build_decl_hover(&mut builder, db, typ, decl_id);
         }
         LuaSemanticDeclId::Member(member_id) => {
-            let effective_typ = match typ {
-                Some(t) => t,
-                None => {
-                    let member = db.get_member_index().get_member(&member_id)?;
-                    member.get_decl_type().clone()
-                }
-            };
-            build_member_hover(&mut builder, db, effective_typ, member_id);
+            let typ = typ?;
+            build_member_hover(&mut builder, db, typ, member_id);
         }
         LuaSemanticDeclId::TypeDecl(type_decl_id) => {
             build_type_decl_hover(&mut builder, db, type_decl_id);

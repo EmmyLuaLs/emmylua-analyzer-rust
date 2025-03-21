@@ -3,23 +3,22 @@ use lsp_types::{CompletionItem, Documentation, MarkedString, MarkupContent};
 
 use crate::{
     context::ClientId,
-    handlers::hover::{build_hover_content, HoverBuilder},
+    handlers::hover::{build_hover_content_for_completion, HoverBuilder},
 };
 
-use super::add_completions::CompletionData;
+use super::add_completions::{CompletionData, CompletionDataType};
 
 pub fn resolve_completion(
-    semantic_model: Option<&SemanticModel>,
+    semantic_model: &SemanticModel,
     db: &DbIndex,
     completion_item: &mut CompletionItem,
     completion_data: CompletionData,
     client_id: ClientId,
 ) -> Option<()> {
     // todo: resolve completion
-    match completion_data {
-        CompletionData::PropertyOwnerId(property_id) => {
-            let hover_builder =
-                build_hover_content(semantic_model, db, None, property_id, true, None);
+    match completion_data.typ {
+        CompletionDataType::PropertyOwnerId(property_id) => {
+            let hover_builder = build_hover_content_for_completion(semantic_model, db, property_id);
             if let Some(hover_builder) = hover_builder {
                 if client_id.is_vscode() {
                     build_vscode_completion_item(completion_item, hover_builder, None);
@@ -28,9 +27,8 @@ pub fn resolve_completion(
                 }
             }
         }
-        CompletionData::Overload((property_id, index)) => {
-            let hover_builder =
-                build_hover_content(semantic_model, db, None, property_id, true, None);
+        CompletionDataType::Overload((property_id, index)) => {
+            let hover_builder = build_hover_content_for_completion(semantic_model, db, property_id);
             if let Some(hover_builder) = hover_builder {
                 if client_id.is_vscode() {
                     build_vscode_completion_item(completion_item, hover_builder, Some(index));

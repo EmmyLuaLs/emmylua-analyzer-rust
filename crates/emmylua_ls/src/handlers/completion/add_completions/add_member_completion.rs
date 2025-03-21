@@ -62,9 +62,9 @@ pub fn add_member_completion(
 
     let completion_data = if let Some(id) = &property_owner {
         if let Some(index) = member_info.overload_index {
-            CompletionData::from_overload(id.clone().into(), index)
+            CompletionData::from_overload(builder, id.clone().into(), index)
         } else {
-            CompletionData::from_property_owner_id(id.clone().into())
+            CompletionData::from_property_owner_id(builder, id.clone().into())
         }
     } else {
         None
@@ -139,7 +139,7 @@ fn add_signature_overloads(
                 let description = get_description(builder, &typ);
                 let detail = get_detail(builder, &typ, display);
                 let data = if let Some(id) = &property_owner {
-                    CompletionData::from_overload(id.clone().into(), index)
+                    CompletionData::from_overload(builder, id.clone().into(), index)
                 } else {
                     None
                 };

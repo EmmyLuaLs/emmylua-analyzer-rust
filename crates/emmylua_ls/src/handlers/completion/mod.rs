@@ -7,7 +7,7 @@ mod test;
 
 use add_completions::CompletionData;
 use completion_builder::CompletionBuilder;
-use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, LuaSemanticDeclId};
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::LuaAstNode;
 use log::error;
 use lsp_types::{
@@ -102,36 +102,18 @@ pub async fn on_completion_resolve_handler(
                 return completion_item;
             }
         };
-        let mut semantic_model = None;
-        match &completion_data {
-            CompletionData::PropertyOwnerId(property_id)
-            | CompletionData::Overload((property_id, _)) => {
-                let semantic_model_opt = match property_id {
-                    LuaSemanticDeclId::LuaDecl(decl_id) => db
-                        .get_decl_index()
-                        .get_decl(&decl_id)
-                        .map(|decl| decl.get_file_id()),
-                    LuaSemanticDeclId::Member(member_id) => db
-                        .get_member_index()
-                        .get_member(&member_id)
-                        .map(|member| member.get_file_id()),
-                    _ => None,
-                };
-
-                if let Some(file_id) = semantic_model_opt {
-                    semantic_model = analysis.compilation.get_semantic_model(file_id);
-                }
-            }
-            _ => {}
+        let semantic_model = analysis
+            .compilation
+            .get_semantic_model(completion_data.field_id);
+        if let Some(semantic_model) = semantic_model {
+            resolve_completion(
+                &semantic_model,
+                db,
+                &mut completion_item,
+                completion_data,
+                client_id,
+            );
         }
-
-        resolve_completion(
-            semantic_model.as_ref(),
-            db,
-            &mut completion_item,
-            completion_data,
-            client_id,
-        );
     }
 
     completion_item

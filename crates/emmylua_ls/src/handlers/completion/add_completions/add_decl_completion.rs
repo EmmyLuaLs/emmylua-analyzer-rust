@@ -20,7 +20,7 @@ pub fn add_decl_completion(
     let mut completion_item = CompletionItem {
         label: name.to_string(),
         kind: Some(get_completion_kind(&typ)),
-        data: CompletionData::from_property_owner_id(decl_id.into()),
+        data: CompletionData::from_property_owner_id(builder, decl_id.into()),
         label_details: Some(lsp_types::CompletionItemLabelDetails {
             detail: get_detail(builder, &typ, CallDisplay::None),
             description: get_description(builder, &typ),
