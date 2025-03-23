@@ -22,17 +22,18 @@ fn check_closure_expr(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     closure_expr: &LuaClosureExpr,
-) -> Option<()> {
-    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), &closure_expr);
-    let signature = context.db.get_signature_index().get(&signature_id)?;
+) {
+    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
+    let Some(signature) = context.db.get_signature_index().get(&signature_id) else {
+        return;
+    };
     if signature.resolve_return != SignatureReturnStatus::DocResolve {
-        return None;
+        return;
     }
     let return_types = signature.get_return_types();
     for return_stat in get_own_return_stats(closure_expr) {
         check_return_stat(context, semantic_model, &return_types, &return_stat);
     }
-    Some(())
 }
 
 fn check_return_stat(
@@ -40,17 +41,16 @@ fn check_return_stat(
     semantic_model: &SemanticModel,
     return_types: &[LuaType],
     return_stat: &LuaReturnStat,
-) -> Option<()> {
+) {
     let (return_expr_types, return_expr_ranges) = {
-        let infos = semantic_model.infer_multi_value_adjusted_expression_types(
+        let Some(infos) = semantic_model.infer_multi_value_adjusted_expression_types(
             &return_stat.get_expr_list().collect::<Vec<_>>(),
             None,
-        )?;
+        ) else {
+            return;
+        };
         let return_expr_types = infos.iter().map(|(typ, _)| typ.clone()).collect::<Vec<_>>();
-        let return_expr_ranges = infos
-            .iter()
-            .map(|(_, range)| range.clone())
-            .collect::<Vec<_>>();
+        let return_expr_ranges = infos.iter().map(|(_, range)| *range).collect::<Vec<_>>();
         (return_expr_types, return_expr_ranges)
     };
 
@@ -73,7 +73,7 @@ fn check_return_stat(
 
         let return_expr_type = return_expr_types.get(index).unwrap_or(&LuaType::Any);
         let result = semantic_model.type_check(return_type, return_expr_type);
-        if !result.is_ok() {
+        if result.is_err() {
             add_type_check_diagnostic(
                 context,
                 semantic_model,
@@ -87,8 +87,6 @@ fn check_return_stat(
             );
         }
     }
-
-    Some(())
 }
 
 fn check_variadic_return_type_match(
@@ -104,7 +102,7 @@ fn check_variadic_return_type_match(
         return_expr_types.iter().zip(return_expr_ranges.iter())
     {
         let result = semantic_model.type_check(variadic_type, return_expr_type);
-        if !result.is_ok() {
+        if result.is_err() {
             add_type_check_diagnostic(
                 context,
                 semantic_model,
@@ -130,7 +128,7 @@ fn add_type_check_diagnostic(
 ) {
     let db = semantic_model.get_db();
     match result {
-        Ok(_) => return,
+        Ok(_) => (),
         Err(reason) => match reason {
             TypeCheckFailReason::TypeNotMatchWithReason(reason) => {
                 context.add_diagnostic(DiagnosticCode::ParamTypeNotMatch, range, reason, None);
@@ -142,8 +140,8 @@ fn add_type_check_diagnostic(
                     t!(
                         "Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead.",
                         index = index + 1,
-                        source = humanize_type(db, &param_type, RenderLevel::Simple),
-                        found = humanize_type(db, &expr_type, RenderLevel::Simple)
+                        source = humanize_type(db, param_type, RenderLevel::Simple),
+                        found = humanize_type(db, expr_type, RenderLevel::Simple)
                     )
                     .to_string(),
                     None,
