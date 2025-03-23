@@ -34,10 +34,7 @@ fn get_function_return_info(
 
     match typ {
         LuaType::DocFunction(func_type) => {
-            return Some((
-                true,
-                func_type.get_ret().iter().map(|ty| ty.clone()).collect(),
-            ));
+            return Some((true, func_type.get_ret().to_vec()));
         }
         LuaType::Signature(signature) => {
             let signature = context.db.get_signature_index().get(&signature)?;
@@ -49,7 +46,7 @@ fn get_function_return_info(
         _ => {}
     };
 
-    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), &closure_expr);
+    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
     let signature = context.db.get_signature_index().get(&signature_id)?;
 
     Some((
@@ -62,14 +59,13 @@ fn check_missing_return(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     closure_expr: &LuaClosureExpr,
-) -> Option<()> {
-    let (is_doc_resolve_return, return_types) =
-        get_function_return_info(context, semantic_model, closure_expr)?;
-
+) {
     // 如果返回状态不是 DocResolve, 则跳过检查
-    if !is_doc_resolve_return {
-        return None;
-    }
+    let Some((true, return_types)) =
+        get_function_return_info(context, semantic_model, closure_expr)
+    else {
+        return;
+    };
 
     // 如果包含可变参数, 则跳过检查最大值
     let skip_check_max = return_types.iter().any(|ty| ty.is_variadic());
@@ -96,27 +92,29 @@ fn check_missing_return(
         let range = if let Some(block) = closure_expr.get_block() {
             let result = check_return_block(context, semantic_model, block);
             match result {
-                Ok(_) => return Some(()),
+                Ok(_) => return,
                 Err(block) => {
                     let token = get_block_end_token(&block)
-                        .unwrap_or(block.tokens::<LuaGeneralToken>().last()?);
-                    Some(token.get_range())
+                        .or_else(|| block.tokens::<LuaGeneralToken>().last());
+                    match token {
+                        None => return,
+                        Some(token) => token.get_range(),
+                    }
                 }
             }
         } else {
-            Some(closure_expr.token_by_kind(LuaTokenKind::TkEnd)?.get_range())
+            match closure_expr.token_by_kind(LuaTokenKind::TkEnd) {
+                None => return,
+                Some(token) => token.get_range(),
+            }
         };
-        if let Some(range) = range {
-            context.add_diagnostic(
-                DiagnosticCode::MissingReturn,
-                range,
-                t!("Annotations specify that a return value is required here.").to_string(),
-                None,
-            );
-        }
+        context.add_diagnostic(
+            DiagnosticCode::MissingReturn,
+            range,
+            t!("Annotations specify that a return value is required here.").to_string(),
+            None,
+        );
     }
-
-    Some(())
 }
 
 fn get_block_end_token(block: &LuaBlock) -> Option<LuaGeneralToken> {
@@ -180,11 +178,7 @@ fn check_if_stat(
         }
 
         // 检查是否存在`else`分支, 如果存在则上面已经检查过
-        if !has_return && if_stat.get_else_clause().is_none() {
-            has_return = false;
-        } else {
-            has_return = true;
-        }
+        has_return = has_return || if_stat.get_else_clause().is_some();
     }
 
     if has_return {
@@ -208,7 +202,7 @@ fn check_while_stat(
         }
 
         // 检查`while`条件是否恒真, 如果恒真则代表存在返回语句(上面已经检查过子块)
-        if is_while_condition_true(semantic_model, &while_stat).is_some() {
+        if is_while_condition_true(semantic_model, &while_stat) {
             has_return = true;
         }
     }
@@ -216,22 +210,14 @@ fn check_while_stat(
 }
 
 /// 确定 LuaWhileStat 的条件表达式是否为`true`
-fn is_while_condition_true(
-    semantic_model: &SemanticModel,
-    while_stat: &LuaWhileStat,
-) -> Option<()> {
-    let condition_expr = while_stat.get_condition_expr()?;
-    let condition_type = semantic_model.infer_expr(condition_expr.clone())?;
-    match condition_type {
-        LuaType::BooleanConst(value) => {
-            if value {
-                Some(())
-            } else {
-                None
-            }
-        }
-        _ => None,
+fn is_while_condition_true(semantic_model: &SemanticModel, while_stat: &LuaWhileStat) -> bool {
+    if let Some(LuaType::BooleanConst(value)) = while_stat
+        .get_condition_expr()
+        .and_then(|expr| semantic_model.infer_expr(expr.clone()))
+    {
+        return value;
     }
+    false
 }
 
 /// 检查返回值数量
@@ -242,7 +228,7 @@ fn check_return_count(
     return_types: &[LuaType],
     min_expected_return_count: usize,
     skip_check_max: bool,
-) -> Option<()> {
+) {
     let max_return_count = return_types.len();
 
     // 计算实际返回的表达式数量并记录多余的范围
@@ -296,6 +282,4 @@ fn check_return_count(
         );
         }
     }
-
-    Some(())
 }
