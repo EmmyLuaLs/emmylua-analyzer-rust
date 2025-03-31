@@ -14,7 +14,7 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         return None;
     }
 
-    if allow_add_env_completion(builder).is_none() {
+    if check_can_add_completion(builder).is_none() {
         return Some(());
     }
 
@@ -40,13 +40,13 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     Some(())
 }
 
-fn allow_add_env_completion(builder: &CompletionBuilder) -> Option<()> {
+fn check_can_add_completion(builder: &CompletionBuilder) -> Option<()> {
+    if builder.is_space_trigger_character {
+        return None;
+    }
+
     let trigger_text = builder.get_trigger_text();
     if builder.trigger_kind == CompletionTriggerKind::TRIGGER_CHARACTER {
-        // 由字符触发的空格补全不允许添加
-        if trigger_text.is_empty() {
-            return None;
-        }
         let parent = builder.trigger_token.parent()?;
 
         if trigger_text == "(" {

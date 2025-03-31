@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use emmylua_code_analysis::{LuaMemberInfo, LuaMemberKey};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaTableExpr, LuaTableField};
 use lsp_types::CompletionItem;
+use rowan::NodeOrToken;
 
 use crate::handlers::completion::{
     add_completions::{check_visibility, is_deprecated, CompletionData},
@@ -10,6 +11,10 @@ use crate::handlers::completion::{
 };
 
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+    if !check_can_add_completion(builder) {
+        return Some(());
+    }
+
     let table_expr = get_table_expr(builder)?;
     let table_type = builder
         .semantic_model
@@ -38,6 +43,19 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     // 中止补全
     builder.stop_here();
     Some(())
+}
+
+fn check_can_add_completion(builder: &mut CompletionBuilder) -> bool {
+    if builder.is_space_trigger_character {
+        return false;
+    }
+
+    if let Some(NodeOrToken::Node(node)) = builder.trigger_token.prev_sibling_or_token() {
+        if let Some(LuaAst::LuaComment(_)) = LuaAst::cast(node) {
+            return false;
+        }
+    }
+    true
 }
 
 fn get_table_expr(builder: &mut CompletionBuilder) -> Option<LuaTableExpr> {

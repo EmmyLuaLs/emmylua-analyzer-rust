@@ -163,4 +163,18 @@ mod tests {
             },],
         ));
     }
+
+    #[test]
+    fn test_4() {
+        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_completion(
+            r#"
+                local isIn = setmetatable({}, {
+                    ---@return string <??>
+                    __index = function(t, k) return k end,
+                })
+        "#,
+            vec![]
+        ));
+    }
 }

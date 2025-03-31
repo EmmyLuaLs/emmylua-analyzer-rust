@@ -14,6 +14,8 @@ pub struct CompletionBuilder<'a> {
     stopped: bool,
     pub trigger_kind: CompletionTriggerKind,
     pub env_range: (usize, usize),
+    // 是否为空格字符触发的补全(非主动触发)
+    pub is_space_trigger_character: bool,
 }
 
 impl<'a> CompletionBuilder<'a> {
@@ -23,6 +25,13 @@ impl<'a> CompletionBuilder<'a> {
         cancel_token: CancellationToken,
         trigger_kind: CompletionTriggerKind,
     ) -> Self {
+        let is_space_trigger_character = if trigger_kind == CompletionTriggerKind::TRIGGER_CHARACTER
+        {
+            trigger_token.text().trim_end().is_empty()
+        } else {
+            false
+        };
+
         Self {
             trigger_token,
             semantic_model,
@@ -32,6 +41,7 @@ impl<'a> CompletionBuilder<'a> {
             stopped: false,
             trigger_kind,
             env_range: (0, 0),
+            is_space_trigger_character,
         }
     }
 
