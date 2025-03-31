@@ -3,15 +3,17 @@ mod hover_builder;
 mod hover_humanize;
 mod keyword_hover;
 mod std_hover;
+mod test;
 
 pub use build_hover::build_hover_content_for_completion;
 use build_hover::build_semantic_info_hover;
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::LuaAstNode;
 pub use hover_builder::HoverBuilder;
 use keyword_hover::{hover_keyword, is_keyword};
 use lsp_types::{
     ClientCapabilities, Hover, HoverContents, HoverParams, HoverProviderCapability, MarkupContent,
-    ServerCapabilities,
+    Position, ServerCapabilities,
 };
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
@@ -29,8 +31,11 @@ pub async fn on_hover(
     let position = params.text_document_position_params.position;
     let analysis = context.analysis.read().await;
     let file_id = analysis.get_file_id(&uri)?;
-    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
+    hover(&analysis, file_id, position)
+}
 
+pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) -> Option<Hover> {
+    let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
     if !semantic_model.get_emmyrc().hover.enable {
         return None;
     }
@@ -52,7 +57,6 @@ pub async fn on_hover(
             return None;
         }
     };
-
     match token {
         keywords if is_keyword(keywords.clone()) => {
             let document = semantic_model.get_document();
