@@ -177,4 +177,112 @@ mod tests {
             vec![]
         ));
     }
+
+    #[test]
+    fn test_5() {
+        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_completion(
+            r#"
+                    ---@class Test
+                    ---@field event fun(a: "A", b: number)
+                    ---@field event fun(a: "B", b: string)
+                    local Test = {}
+                    Test.event("<??>")
+                "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "A".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "B".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+            ],
+        ));
+
+        assert!(ws.check_completion(
+            r#"
+            ---@overload fun(event: "AAA", callback: fun(trg: string, data: number)): number
+            ---@overload fun(event: "BBB", callback: fun(trg: string, data: string)): string
+            local function test(event, callback)
+            end
+            test("<??>")
+                "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "AAA".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "BBB".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+            ],
+        ));
+    }
+
+    #[test]
+    fn test_enum() {
+        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.check_completion(
+            r#"
+                ---@overload fun(event: C6.Param, callback: fun(trg: string, data: number)): number
+                ---@overload fun(event: C6.Param, callback: fun(trg: string, data: string)): string
+                local function test2(event, callback)
+                end
+
+                ---@enum C6.Param
+                local EP = {
+                    A = "A",
+                    B = "B"
+                }
+
+                test2(<??>)
+                "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "EP.A".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "EP.B".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+            ],
+        ));
+    }
+
+    #[test]
+    fn test_enum_string() {
+        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.check_completion(
+            r#"
+                ---@overload fun(event: C6.Param, callback: fun(trg: string, data: number)): number
+                ---@overload fun(event: C6.Param, callback: fun(trg: string, data: string)): string
+                local function test2(event, callback)
+                end
+
+                ---@enum C6.Param
+                local EP = {
+                    A = "A",
+                    B = "B"
+                }
+
+                test2("<??>")
+                "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "A".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "B".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+            ],
+        ));
+    }
 }

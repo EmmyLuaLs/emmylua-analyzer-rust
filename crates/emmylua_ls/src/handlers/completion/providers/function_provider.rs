@@ -5,8 +5,8 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaComment,
-    LuaDocTagParam, LuaNameToken, LuaParamList, LuaStat, LuaSyntaxId, LuaSyntaxKind,
-    LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
+    LuaDocTagParam, LuaLiteralExpr, LuaLiteralToken, LuaNameToken, LuaParamList, LuaStat,
+    LuaSyntaxId, LuaSyntaxKind, LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
 use itertools::Itertools;
 use lsp_types::{CompletionItem, Documentation};
@@ -26,6 +26,30 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         dispatch_type(builder, typ, &mut InferGuard::new());
     }
     Some(())
+}
+
+fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>> {
+    let token = builder.trigger_token.clone();
+    let mut parent_node = token.parent()?;
+    // 输入`""`时允许往上找
+    if LuaLiteralExpr::can_cast(parent_node.kind().into()) {
+        parent_node = parent_node.parent()?;
+    }
+
+    match parent_node.kind().into() {
+        LuaSyntaxKind::CallArgList => {
+            return infer_call_arg_list(builder, LuaCallArgList::cast(parent_node)?, token);
+        }
+        LuaSyntaxKind::ParamList => {
+            if builder.is_space_trigger_character {
+                return None;
+            }
+            return infer_param_list(builder, LuaParamList::cast(parent_node)?);
+        }
+        _ => {}
+    }
+
+    None
 }
 
 fn dispatch_type(
@@ -157,29 +181,6 @@ fn add_string_completion(builder: &mut CompletionBuilder, str: &str) -> Option<(
     Some(())
 }
 
-fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>> {
-    let token = builder.trigger_token.clone();
-    let parent_node = token.parent()?;
-    // if LuaExpr::can_cast(parent_node.kind().into()) {
-    //     parent_node = parent_node.parent()?;
-    // }
-
-    match parent_node.kind().into() {
-        LuaSyntaxKind::CallArgList => {
-            return infer_call_arg_list(builder, LuaCallArgList::cast(parent_node)?, token);
-        }
-        LuaSyntaxKind::ParamList => {
-            return infer_param_list(builder, LuaParamList::cast(parent_node)?);
-        }
-        LuaSyntaxKind::BinaryExpr => {
-            // infer_binary_expr(builder, binary_expr)?;
-        }
-        _ => {}
-    }
-
-    None
-}
-
 fn infer_param_list(
     builder: &mut CompletionBuilder,
     param_list: LuaParamList,
@@ -247,7 +248,12 @@ fn infer_call_arg_list(
             param_idx += 1;
         }
     }
-    let typ = call_expr_func.get_params().get(param_idx)?.1.clone()?;
+    let typ = call_expr_func
+        .get_params()
+        .get(param_idx)?
+        .1
+        .clone()
+        .unwrap_or(LuaType::Unknown);
     let mut types = Vec::new();
     types.push(typ);
     push_function_overloads_param(
@@ -468,48 +474,63 @@ fn add_enum_members_completion(
         .get_members(&owner_id)?
         .iter()
         .map(|it| (it.get_key().clone(), it.get_decl_type()))
+        .sorted_by(|a, b| a.0.cmp(&b.0))
         .collect::<Vec<_>>();
+
+    // 判断是否为字符串字面量触发
+    let is_string_literal_trigger = builder.get_trigger_text() == "\"\""
+        && builder
+            .trigger_token
+            .parent()
+            .and_then(LuaLiteralExpr::cast)
+            .and_then(|literal_expr| literal_expr.get_literal())
+            .map_or(false, |literal| {
+                matches!(literal, LuaLiteralToken::String(_))
+            });
+
     let file_id = builder.semantic_model.get_file_id();
     let is_same_file = locations.iter().all(|it| it.file_id == file_id);
-    if let Some(variable_name) = get_enum_decl_variable_name(builder, locations, is_same_file) {
-        for (key, _) in members {
+    // 可能存在的本地变量名
+    let variable_name = get_enum_decl_variable_name(builder, locations, is_same_file);
+
+    // 遍历成员并生成补全项
+    for (key, typ) in members {
+        let label = if is_string_literal_trigger {
+            let mut label =
+                humanize_type(builder.semantic_model.get_db(), &typ, RenderLevel::Minimal);
+            if label.starts_with("\"") {
+                label = label[1..].to_string();
+                if label.ends_with("\"") {
+                    label = label[..label.len() - 1].to_string();
+                }
+            }
+            label
+        } else if let Some(ref var_name) = variable_name {
             let label = match key {
-                LuaMemberKey::Name(str) => format!("{}.{}", variable_name, str.to_string()),
-                LuaMemberKey::Integer(i) => format!("{}[{}]", variable_name, i),
-                LuaMemberKey::None => continue,
-                LuaMemberKey::SyntaxId(_) => continue,
+                LuaMemberKey::Name(str) => format!("{}.{}", var_name, str),
+                LuaMemberKey::Integer(i) => format!("{}[{}]", var_name, i),
+                _ => continue, // 跳过不支持的key类型
             };
-
-            let description = format!("{}", type_id.get_name());
-            let completion_item = CompletionItem {
-                label,
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                label_details: Some(lsp_types::CompletionItemLabelDetails {
-                    detail: None,
-                    description: Some(description.clone()),
-                }),
-                ..Default::default()
-            };
-
-            builder.add_completion_item(completion_item);
-        }
-    } else {
-        for (_, typ) in members {
+            label
+        } else {
             let label = humanize_type(builder.semantic_model.get_db(), &typ, RenderLevel::Minimal);
-            let description = format!("{}", type_id.get_name());
-            let completion_item = CompletionItem {
-                label,
-                kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-                label_details: Some(lsp_types::CompletionItemLabelDetails {
-                    detail: None,
-                    description: Some(description.clone()),
-                }),
-                ..Default::default()
-            };
+            label
+        };
 
-            builder.add_completion_item(completion_item);
-        }
+        let description = type_id.get_name().to_string();
+        let completion_item = CompletionItem {
+            label,
+            kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+            label_details: Some(lsp_types::CompletionItemLabelDetails {
+                detail: None,
+                description: Some(description),
+            }),
+            ..Default::default()
+        };
+
+        builder.add_completion_item(completion_item);
     }
+
     Some(())
 }
 

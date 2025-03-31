@@ -9,7 +9,7 @@ mod member_provider;
 mod module_path_provider;
 mod postfix_provider;
 mod table_field_provider;
-mod type_special_provider;
+mod function_provider;
 
 use emmylua_parser::LuaAstToken;
 use emmylua_parser::LuaStringToken;
@@ -20,7 +20,7 @@ use super::completion_builder::CompletionBuilder;
 pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
     postfix_provider::add_completion(builder);
     // `type_special_provider`优先级必须高于`env_provider`
-    type_special_provider::add_completion(builder);
+    function_provider::add_completion(builder);
     // `env_provider`在某些情况下是不需要的, 但有些补全功能依赖于他, 因此我们先添加`env_provider`的补全, 再在某些补全中移除掉他的补全.
     // 目前可能移除掉他的补全为: `table_field_provider`
     env_provider::add_completion(builder);

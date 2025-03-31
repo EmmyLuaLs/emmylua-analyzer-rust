@@ -14,7 +14,7 @@ pub struct CompletionBuilder<'a> {
     stopped: bool,
     pub trigger_kind: CompletionTriggerKind,
     pub env_range: (usize, usize),
-    // 是否为空格字符触发的补全(非主动触发)
+    /// 是否为空格字符触发的补全(非主动触发)
     pub is_space_trigger_character: bool,
 }
 
