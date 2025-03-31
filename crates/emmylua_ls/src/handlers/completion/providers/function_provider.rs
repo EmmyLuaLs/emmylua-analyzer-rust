@@ -52,7 +52,7 @@ fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>
     None
 }
 
-fn dispatch_type(
+pub fn dispatch_type(
     builder: &mut CompletionBuilder,
     typ: LuaType,
     infer_guard: &mut InferGuard,

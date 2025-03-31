@@ -285,4 +285,93 @@ mod tests {
             ],
         ));
     }
+
+    #[test]
+    fn test_type_comparison() {
+        let mut ws = CompletionVirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias std.type
+            ---| "nil"
+            ---| "number"
+            ---| "string"
+
+            ---@param v any
+            ---@return std.type type
+            function type(v) end
+        "#,
+        );
+        assert!(ws.check_completion(
+            r#"
+            local a = 1
+
+            if type(a) == "<??>" then
+            elseif type(a) == "boolean" then
+            end
+                "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "nil".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "number".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "string".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+            ],
+        ));
+
+        assert!(ws.check_completion_with_kind(
+            r#"
+            local a = 1
+
+            if type(a) == <??> then
+            end
+                "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "\"nil\"".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "\"number\"".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "\"string\"".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+            ],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+
+        assert!(ws.check_completion_with_kind(
+            r#"
+                local a = 1
+
+                if type(a) ~= "nil" then
+                elseif type(a) == <??> then
+                end
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "\"nil\"".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "\"number\"".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+                VirtualCompletionItem {
+                    label: "\"string\"".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                },
+            ],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
 }

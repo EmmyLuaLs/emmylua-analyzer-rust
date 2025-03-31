@@ -582,6 +582,10 @@ impl LuaBinaryExpr {
     pub fn get_op_token(&self) -> Option<LuaBinaryOpToken> {
         self.token()
     }
+
+    pub fn get_left_expr(&self) -> Option<LuaExpr> {
+        self.child()
+    }
 }
 
 impl From<LuaBinaryExpr> for LuaExpr {
