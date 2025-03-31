@@ -333,4 +333,8 @@ impl<'a> HoverBuilder<'a> {
             range,
         })
     }
+
+    pub fn get_trigger_token(&self) -> Option<LuaSyntaxToken> {
+        self.trigger_token.clone()
+    }
 }

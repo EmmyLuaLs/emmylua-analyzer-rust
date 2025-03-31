@@ -17,4 +17,71 @@ mod tests {
             },
         ));
     }
+
+    #[test]
+    fn test_right_to_left() {
+        let mut ws = HoverVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@class H4
+                local m = {
+                    x = 1
+                }
+
+                ---@type H4
+                local m1
+
+                m1.x = {}
+                m1.<??>x = {}
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\n(field) x: integer = 1\n```\n\n---\n".to_string(),
+            },
+        ));
+
+        assert!(ws.check_hover(
+            r#"
+                ---@class Node
+                ---@field x number
+                ---@field right Node?
+
+                ---@return Node
+                local function createRBNode()
+                end
+
+                ---@type Node
+                local node
+
+                if node.right then
+                else
+                    node.<??>right = createRBNode()
+                end
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\n(field) right: Node\n```\n\n---\n".to_string(),
+            },
+        ));
+
+        assert!(ws.check_hover(
+            r#"
+                 ---@class Node1
+                ---@field x number
+
+                ---@return Node1
+                local function createRBNode()
+                end
+
+                ---@type Node1?
+                local node
+
+                if node then
+                else
+                    <??>node = createRBNode()
+                end
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\nlocal node: Node1 {\n    x: number,\n}\n```\n\n---\n".to_string(),
+            },
+        ));
+    }
 }

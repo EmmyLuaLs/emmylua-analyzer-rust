@@ -1,4 +1,4 @@
-use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaNameExpr};
+use emmylua_parser::{LuaAstNode, LuaNameExpr};
 
 use crate::{
     db_index::{DbIndex, LuaDeclOrMemberId},
@@ -37,12 +37,9 @@ pub fn infer_name_expr(
         let flow_chain = db.get_flow_index().get_flow_chain(file_id, flow_id);
         let root = name_expr.get_root();
         if let Some(flow_chain) = flow_chain {
-            let mut position = name_expr.get_position();
-            // 如果是赋值语句, 那么我们使用赋值语句的结束位置来获取类型, 应用于`hover`左值
-            if let Some(assign_stat) = name_expr.get_parent::<LuaAssignStat>() {
-                position = assign_stat.get_range().end();
-            }
-            for type_assert in flow_chain.get_type_asserts(name, position, Some(decl_id.position)) {
+            for type_assert in
+                flow_chain.get_type_asserts(name, name_expr.get_position(), Some(decl_id.position))
+            {
                 decl_type = type_assert.tighten_type(db, cache, &root, decl_type)?;
             }
         }

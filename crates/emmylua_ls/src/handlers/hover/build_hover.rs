@@ -152,8 +152,10 @@ fn build_decl_hover(
         };
         builder.set_type_description(format!("{}{}: {}", prefix, decl.get_name(), const_value));
     } else {
+        let decl_hover_type =
+            get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
         let type_humanize_text =
-            hover_type(builder, &typ, Some(RenderLevel::Detailed)).unwrap_or_default();
+            hover_type(builder, &decl_hover_type, Some(RenderLevel::Detailed)).unwrap_or_default();
         let prefix = if decl.is_local() {
             "local "
         } else {
@@ -251,8 +253,10 @@ fn build_member_hover(
         builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
         builder.set_location_path(Some(&member));
     } else {
+        let member_hover_type =
+            get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
         let type_humanize_text =
-            hover_type(builder, &typ, Some(RenderLevel::Simple)).unwrap_or_default();
+            hover_type(builder, &member_hover_type, Some(RenderLevel::Simple)).unwrap_or_default();
         builder.set_type_description(format!("(field) {}: {}", member_name, type_humanize_text));
         builder.set_location_path(Some(&member));
     }
@@ -444,4 +448,37 @@ fn get_member_owner(
         }
     }
     resolved_property_owner
+}
+
+pub fn get_hover_type(builder: &HoverBuilder, semantic_model: &SemanticModel) -> Option<LuaType> {
+    let assign_stat = LuaAssignStat::cast(builder.get_trigger_token()?.parent()?.parent()?)?;
+    let (vars, exprs) = assign_stat.get_var_and_expr_list();
+    for (i, var) in vars.iter().enumerate() {
+        if var
+            .syntax()
+            .text_range()
+            .contains(builder.get_trigger_token()?.text_range().start())
+        {
+            let mut expr: Option<&emmylua_parser::LuaExpr> = exprs.get(i);
+            let multi_return_index = if expr.is_none() {
+                expr = Some(&exprs.last().unwrap());
+                i + 1 - exprs.len()
+            } else {
+                0
+            };
+
+            let expr_type = semantic_model.infer_expr(expr.unwrap().clone());
+            match expr_type {
+                Ok(expr_type) => match expr_type {
+                    LuaType::MuliReturn(muli_return) => {
+                        return muli_return.get_type(multi_return_index).map(|t| t.clone());
+                    }
+                    _ => return Some(expr_type),
+                },
+                Err(_) => return None,
+            }
+        }
+    }
+
+    None
 }
