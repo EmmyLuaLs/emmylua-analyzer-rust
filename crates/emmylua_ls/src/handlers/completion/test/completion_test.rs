@@ -374,4 +374,30 @@ mod tests {
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
     }
+
+    #[test]
+    fn test_issue_272() {
+        let mut ws = CompletionVirtualWorkspace::new();
+        assert!(ws.check_completion_with_kind(
+            r#"
+                ---@class Box
+
+                ---@class BoxyBox : Box
+
+                ---@class Truck
+                ---@field box Box
+                local Truck = {}
+
+                ---@class TruckyTruck : Truck
+                ---@field box BoxyBox
+                local TruckyTruck = {}
+                TruckyTruck.<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "box".to_string(),
+                kind: CompletionItemKind::VARIABLE,
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
 }

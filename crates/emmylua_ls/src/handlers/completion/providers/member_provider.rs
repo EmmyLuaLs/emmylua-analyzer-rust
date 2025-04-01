@@ -43,6 +43,7 @@ fn add_resolve_member_infos(
         add_member_completion(builder, member_info.clone(), completion_status);
         return Some(());
     }
+    let first_type = &member_infos[0].typ;
 
     let mut resolve_state = MemberResolveState::All;
     for member_info in member_infos {
@@ -68,6 +69,9 @@ fn add_resolve_member_infos(
     let mut first_doc_function = false;
 
     for member_info in member_infos {
+        if &member_info.typ != first_type {
+            continue;
+        }
         if limit_doc_functions && matches!(member_info.typ, LuaType::DocFunction(_)) {
             if first_doc_function {
                 continue;
