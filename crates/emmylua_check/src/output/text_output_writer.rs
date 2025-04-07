@@ -85,7 +85,7 @@ impl OutputWriter for TextOutputWriter {
                 _ => "".to_string(),
             };
 
-            Report::build(kind, (file_path, span.0..span.1))
+            Report::build(kind, (file_path, (span.0-1)..(span.1-1)))
                 .with_code(code)
                 .with_label(
                     Label::new((file_path, span.0..span.1))
