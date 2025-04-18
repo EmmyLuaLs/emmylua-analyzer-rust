@@ -1,7 +1,8 @@
-use crate::{DbIndex, LuaType};
+use crate::{semantic::type_check::is_sub_type_of, DbIndex, LuaType};
 
 use super::{
-    type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard, TypeCheckResult,
+    sub_type::get_base_type_id, type_check_fail_reason::TypeCheckFailReason,
+    type_check_guard::TypeCheckGuard, TypeCheckResult,
 };
 
 pub fn check_simple_type_compact(
@@ -68,30 +69,59 @@ pub fn check_simple_type_compact(
                 return Ok(());
             }
             LuaType::Ref(_) => {
-                let real_type = get_alias_real_type(db, compact_type);
-                match real_type {
-                    Some(LuaType::MultiLineUnion(multi_line_union)) => {
-                        let all_are_string = multi_line_union
-                            .get_unions()
-                            .iter()
-                            .all(|(t, _)| t.is_string());
-                        if all_are_string {
-                            return Ok(());
+                if let Some(real_type) = get_alias_real_type(db, compact_type) {
+                    match &real_type {
+                        LuaType::MultiLineUnion(multi_line_union) => {
+                            if multi_line_union
+                                .get_unions()
+                                .iter()
+                                .all(|(t, _)| t.is_string())
+                            {
+                                return Ok(());
+                            }
                         }
+                        LuaType::Ref(type_decl_id) => {
+                            if let Some(source_id) = get_base_type_id(&source) {
+                                if is_sub_type_of(db, type_decl_id, &source_id) {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
             _ => {}
         },
-        LuaType::Integer | LuaType::IntegerConst(_) => {
-            if matches!(
-                compact_type,
-                LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)
-            ) {
+        LuaType::Integer | LuaType::IntegerConst(_) => match compact_type {
+            LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
                 return Ok(());
             }
-        }
+            LuaType::Ref(_) => {
+                if let Some(real_type) = get_alias_real_type(db, compact_type) {
+                    match &real_type {
+                        LuaType::MultiLineUnion(multi_line_union) => {
+                            if multi_line_union
+                                .get_unions()
+                                .iter()
+                                .all(|(t, _)| t.is_integer())
+                            {
+                                return Ok(());
+                            }
+                        }
+                        LuaType::Ref(type_decl_id) => {
+                            if let Some(source_id) = get_base_type_id(&source) {
+                                if is_sub_type_of(db, type_decl_id, &source_id) {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        },
         LuaType::Number | LuaType::FloatConst(_) => {
             if matches!(
                 compact_type,

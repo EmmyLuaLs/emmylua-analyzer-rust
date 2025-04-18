@@ -130,6 +130,7 @@ fn is_valid_member(
     index_key: &LuaIndexKey,
     code: DiagnosticCode,
 ) -> Option<()> {
+    // dbg!(semantic_model.get_semantic_info(index_expr.syntax().clone().into()));
     // 检查 member_info
     let need_add_diagnostic =
         match semantic_model.get_semantic_info(index_expr.syntax().clone().into()) {
@@ -259,8 +260,13 @@ fn is_valid_member(
 fn get_prefix_types(prefix_typ: &LuaType) -> HashSet<LuaType> {
     let mut type_set = HashSet::new();
     let mut stack = vec![prefix_typ.clone()];
+    let mut visited = HashSet::new();
 
     while let Some(current_type) = stack.pop() {
+        if visited.contains(&current_type) {
+            continue;
+        }
+        visited.insert(current_type.clone());
         match &current_type {
             LuaType::Union(union_typ) => {
                 for t in union_typ.get_types() {
@@ -279,8 +285,13 @@ fn get_prefix_types(prefix_typ: &LuaType) -> HashSet<LuaType> {
 fn get_key_types(typ: &LuaType) -> HashSet<LuaType> {
     let mut type_set = HashSet::new();
     let mut stack = vec![typ.clone()];
+    let mut visited = HashSet::new();
 
     while let Some(current_type) = stack.pop() {
+        if visited.contains(&current_type) {
+            continue;
+        }
+        visited.insert(current_type.clone());
         match &current_type {
             LuaType::String => {
                 type_set.insert(current_type);

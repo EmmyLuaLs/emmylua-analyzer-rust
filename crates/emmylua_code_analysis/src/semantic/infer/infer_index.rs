@@ -17,8 +17,8 @@ use crate::{
         type_check::{self, check_type_compact},
         InferGuard,
     },
-    InFiled, LuaFlowId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner,
-    LuaTypeDecl, TypeOps, VarRefId,
+    InFiled, LuaFlowId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
+    VarRefId,
 };
 
 use super::{infer_expr, infer_name::infer_global_type, InferFailReason, InferResult};
@@ -301,13 +301,14 @@ fn get_expr_key_members(
     } else {
         LuaType::Ref(index_id.clone())
     };
-    let mut member_keys = Vec::new();
-    get_all_member_key(db, index_type_decl, &origin_type, &mut member_keys);
-    for key in member_keys {
-        if let Some(member_item) = db.get_member_index().get_member_item(&owner, &key) {
-            if let Ok(member_type) = member_item.resolve_type(db) {
-                if !result.contains(&member_type) {
-                    result.push(member_type);
+
+    if let Some(member_keys) = get_all_member_key(db, &origin_type) {
+        for key in member_keys {
+            if let Some(member_item) = db.get_member_index().get_member_item(&owner, &key) {
+                if let Ok(member_type) = member_item.resolve_type(db) {
+                    if !result.contains(&member_type) {
+                        result.push(member_type);
+                    }
                 }
             }
         }
@@ -320,70 +321,78 @@ fn get_expr_key_members(
     };
 }
 
-fn get_all_member_key(
-    db: &DbIndex,
-    index_type_decl: &LuaTypeDecl,
-    origin_type: &LuaType,
-    result: &mut Vec<LuaMemberKey>,
-) -> Option<()> {
-    match &origin_type {
-        LuaType::MultiLineUnion(types) => {
-            for (typ, _) in types.get_unions() {
-                let member_key: LuaMemberKey = match typ {
-                    LuaType::DocStringConst(s) | LuaType::StringConst(s) => (*s).to_string().into(),
-                    LuaType::DocIntegerConst(i) | LuaType::IntegerConst(i) => (*i).into(),
-                    LuaType::Ref(_) => {
-                        get_all_member_key(db, index_type_decl, typ, result);
-                        continue;
-                    }
-                    _ => continue,
-                };
+fn get_all_member_key(db: &DbIndex, origin_type: &LuaType) -> Option<Vec<LuaMemberKey>> {
+    let mut result = Vec::new();
+    let mut stack = vec![origin_type]; // 堆栈用于迭代处理
+    let mut visited = HashSet::new();
 
-                result.push(member_key);
-            }
+    while let Some(current_type) = stack.pop() {
+        if visited.contains(current_type) {
+            continue;
         }
-        LuaType::Union(union_type) => {
-            for typ in union_type.get_types() {
-                if let LuaType::Ref(_) = typ {
-                    get_all_member_key(db, index_type_decl, typ, result)?;
+        visited.insert(current_type.clone());
+        match current_type {
+            LuaType::MultiLineUnion(types) => {
+                for (typ, _) in types.get_unions() {
+                    match typ {
+                        LuaType::DocStringConst(s) | LuaType::StringConst(s) => {
+                            result.push((*s).to_string().into());
+                        }
+                        LuaType::DocIntegerConst(i) | LuaType::IntegerConst(i) => {
+                            result.push((*i).into());
+                        }
+                        LuaType::Ref(_) => {
+                            stack.push(typ); // 将 Ref 类型推入堆栈进一步处理
+                        }
+                        _ => {}
+                    }
                 }
             }
-        }
-        LuaType::Ref(id) => {
-            let type_decl = db.get_type_index().get_type_decl(id)?;
-            if type_decl.is_enum() {
-                let owner = LuaMemberOwner::Type(id.clone());
-                if let Some(members) = db.get_member_index().get_members(&owner) {
-                    let is_enum_key = type_decl.is_enum_key();
-                    for member in members {
-                        if is_enum_key {
-                            result.push(member.get_key().clone());
-                        } else {
-                            let typ = db
-                                .get_type_index()
-                                .get_type_cache(&member.get_id().into())
-                                .map(|it| it.as_type());
-                            if let Some(typ) = typ {
-                                let member_key: LuaMemberKey = match typ {
-                                    LuaType::DocStringConst(s) | LuaType::StringConst(s) => {
-                                        (*s).to_string().into()
+            LuaType::Union(union_type) => {
+                for typ in union_type.get_types() {
+                    if let LuaType::Ref(_) = typ {
+                        stack.push(typ); // 推入堆栈
+                    }
+                }
+            }
+            LuaType::Ref(id) => {
+                if let Some(type_decl) = db.get_type_index().get_type_decl(id) {
+                    if type_decl.is_enum() {
+                        let owner = LuaMemberOwner::Type(id.clone());
+                        if let Some(members) = db.get_member_index().get_members(&owner) {
+                            let is_enum_key = type_decl.is_enum_key();
+                            for member in members {
+                                if is_enum_key {
+                                    result.push(member.get_key().clone());
+                                } else {
+                                    if let Some(typ) = db
+                                        .get_type_index()
+                                        .get_type_cache(&member.get_id().into())
+                                        .map(|it| it.as_type())
+                                    {
+                                        match typ {
+                                            LuaType::DocStringConst(s)
+                                            | LuaType::StringConst(s) => {
+                                                result.push((*s).to_string().into());
+                                            }
+                                            LuaType::DocIntegerConst(i)
+                                            | LuaType::IntegerConst(i) => {
+                                                result.push((*i).into());
+                                            }
+                                            _ => {}
+                                        }
                                     }
-                                    LuaType::DocIntegerConst(i) | LuaType::IntegerConst(i) => {
-                                        (*i).into()
-                                    }
-                                    _ => continue,
-                                };
-                                result.push(member_key);
+                                }
                             }
                         }
                     }
                 }
             }
+            _ => {}
         }
-        _ => {}
     }
 
-    Some(())
+    Some(result)
 }
 
 fn infer_tuple_member(tuple_type: &LuaTupleType, index_expr: LuaIndexMemberExpr) -> InferResult {
