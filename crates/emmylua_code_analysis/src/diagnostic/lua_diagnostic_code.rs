@@ -107,7 +107,6 @@ pub fn get_default_severity(code: DiagnosticCode) -> DiagnosticSeverity {
         DiagnosticCode::InjectFieldFail => DiagnosticSeverity::ERROR,
         DiagnosticCode::UnreachableCode => DiagnosticSeverity::HINT,
         DiagnosticCode::Unused => DiagnosticSeverity::HINT,
-        DiagnosticCode::UndefinedGlobal => DiagnosticSeverity::ERROR,
         DiagnosticCode::Deprecated => DiagnosticSeverity::HINT,
         DiagnosticCode::AccessInvisible => DiagnosticSeverity::WARNING,
         DiagnosticCode::DiscardReturns => DiagnosticSeverity::WARNING,
