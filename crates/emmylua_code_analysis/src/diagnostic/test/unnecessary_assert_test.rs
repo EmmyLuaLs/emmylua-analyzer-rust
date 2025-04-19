@@ -1,10 +1,13 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, Emmyrc, VirtualWorkspace};
 
     #[test]
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
+        let mut config = Emmyrc::default();
+        config.strict.array_index = true;
+        ws.analysis.update_config(config.into());
 
         assert!(ws.check_code_for(
             DiagnosticCode::UnnecessaryAssert,
