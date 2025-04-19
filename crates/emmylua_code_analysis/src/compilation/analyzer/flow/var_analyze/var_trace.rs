@@ -18,7 +18,7 @@ pub struct VarTrace<'a> {
     var_refs: Vec<(VarRefNode, LuaFlowId)>,
     assertions: Vec<LuaFlowChainInfo>,
     current_flow_id: Option<LuaFlowId>,
-    unresolve_traces: HashMap<UnResolveTraceId, UnResolveTraceInfo>,
+    unresolve_traces: HashMap<UnResolveTraceId, (LuaFlowId, UnResolveTraceInfo)>,
     flow_tree: &'a FlowTree,
 }
 
@@ -89,10 +89,10 @@ impl<'a> VarTrace<'a> {
         trace_info: Arc<VarTraceInfo>,
     ) {
         if let Some(old_info) = self.unresolve_traces.get_mut(&trace_id) {
-            old_info.add_trace_info(trace_info);
+            old_info.1.add_trace_info(trace_info);
         } else {
             let trace_info = UnResolveTraceInfo::Trace(trace_info);
-            self.unresolve_traces.insert(trace_id, trace_info);
+            self.unresolve_traces.insert(trace_id, (self.current_flow_id.unwrap(), trace_info));
         }
     }
 
@@ -109,11 +109,11 @@ impl<'a> VarTrace<'a> {
     pub fn pop_unresolve_trace(
         &mut self,
         trace_id: &UnResolveTraceId,
-    ) -> Option<UnResolveTraceInfo> {
+    ) -> Option<(LuaFlowId, UnResolveTraceInfo)> {
         self.unresolve_traces.remove(trace_id)
     }
 
-    pub fn pop_all_unresolve_traces(&mut self) -> HashMap<UnResolveTraceId, UnResolveTraceInfo> {
+    pub fn pop_all_unresolve_traces(&mut self) -> HashMap<UnResolveTraceId, (LuaFlowId, UnResolveTraceInfo)> {
         std::mem::take(&mut self.unresolve_traces)
     }
 

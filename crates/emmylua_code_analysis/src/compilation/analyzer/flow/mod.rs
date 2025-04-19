@@ -59,7 +59,7 @@ fn analyze_flow(
                 }
             }
         }
-
+        let last_flow_id = var_trace.get_current_flow_id();
         let mut guard_count = 0;
         while var_trace.has_unresolve_traces() {
             resolve_flow_analyze(db, &mut var_trace);
@@ -67,6 +67,9 @@ fn analyze_flow(
             if guard_count > 10 {
                 break;
             }
+        }
+        if let Some(last_flow_id) = last_flow_id {
+            var_trace.set_current_flow_id(last_flow_id);
         }
     }
 
@@ -79,11 +82,12 @@ fn analyze_flow(
 fn resolve_flow_analyze(db: &mut DbIndex, var_trace: &mut VarTrace) -> Option<()> {
     let all_trace = var_trace.pop_all_unresolve_traces();
     for (trace_id, uresolve_trace_info) in all_trace {
+        var_trace.set_current_flow_id(uresolve_trace_info.0);
         match trace_id {
             UnResolveTraceId::Expr(expr) => {
                 let binary_expr = expr.get_parent::<LuaBinaryExpr>()?;
                 let op = binary_expr.get_op_token()?.get_op();
-                let trace_info = uresolve_trace_info.get_trace_info()?;
+                let trace_info = uresolve_trace_info.1.get_trace_info()?;
                 if op == BinaryOperator::OpAnd || op == BinaryOperator::OpOr {
                     broadcast_up(
                         db,
@@ -99,6 +103,7 @@ fn resolve_flow_analyze(db: &mut DbIndex, var_trace: &mut VarTrace) -> Option<()
             }
             UnResolveTraceId::If(if_stat) => {
                 let asserts = uresolve_trace_info
+                    .1
                     .get_trace_infos()?
                     .into_iter()
                     .map(|trace_info| trace_info.type_assertion.clone())

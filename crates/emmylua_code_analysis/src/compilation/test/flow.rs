@@ -530,4 +530,34 @@ end
             "#,
         ));
     }
+
+    #[test]
+    fn test_issue_382() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+            ---@class Trigger
+
+            ---@class Event
+            ---@field private wait_pushing? Trigger[]
+            local M
+
+
+            ---@param trigger Trigger
+            function M:add_trigger(trigger)
+                if not self.wait_pushing then
+                    self.wait_pushing = {}
+                end
+                self.wait_pushing[1] = trigger
+            end
+
+            ---@private
+            function M:check_waiting()
+                if self.wait_pushing then
+                end
+            end
+            "#,
+        ));
+    }
 }

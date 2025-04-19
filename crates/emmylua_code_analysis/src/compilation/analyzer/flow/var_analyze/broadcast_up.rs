@@ -210,7 +210,7 @@ pub fn broadcast_up_and(
     } else {
         let left_id = UnResolveTraceId::Expr(left);
         if let Some(left_unresolve_trace_info) = var_trace.pop_unresolve_trace(&left_id) {
-            let left_trace_info = left_unresolve_trace_info.get_trace_info()?;
+            let left_trace_info = left_unresolve_trace_info.1.get_trace_info()?;
             let new_assert = left_trace_info
                 .type_assertion
                 .and_assert(trace_info.type_assertion.clone());
@@ -260,7 +260,7 @@ pub fn broadcast_up_or(
     } else {
         let left_id = UnResolveTraceId::Expr(left);
         if let Some(left_unresolve_trace_info) = var_trace.pop_unresolve_trace(&left_id) {
-            let left_trace_info = left_unresolve_trace_info.get_trace_info()?;
+            let left_trace_info = left_unresolve_trace_info.1.get_trace_info()?;
             let new_assert = left_trace_info
                 .type_assertion
                 .or_assert(trace_info.type_assertion.clone());
