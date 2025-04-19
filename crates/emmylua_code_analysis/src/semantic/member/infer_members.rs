@@ -28,6 +28,7 @@ pub fn infer_members_guard(
             let member_owner = LuaMemberOwner::Element(id.clone());
             infer_normal_members(db, member_owner)
         }
+        LuaType::TableGeneric(table_type) => infer_table_generic_members(table_type),
         LuaType::String | LuaType::Io | LuaType::StringConst(_) => {
             let type_decl_id = get_buildin_type_map_type_id(&prefix_type)?;
             infer_custom_type_members(db, &type_decl_id, infer_guard)
@@ -47,6 +48,25 @@ pub fn infer_members_guard(
         LuaType::Namespace(ns) => infer_namespace_members(db, ns),
         _ => None,
     }
+}
+
+fn infer_table_generic_members(table_type: &Vec<LuaType>) -> InferMembersResult {
+    let mut members = Vec::new();
+    if table_type.len() != 2 {
+        return None;
+    }
+
+    let key_type = &table_type[0];
+    let value_type = &table_type[1];
+    members.push(LuaMemberInfo {
+        property_owner_id: None,
+        key: LuaMemberKey::Expr(key_type.clone()),
+        typ: value_type.clone(),
+        feature: None,
+        overload_index: None,
+    });
+
+    Some(members)
 }
 
 fn infer_normal_members(db: &DbIndex, member_owner: LuaMemberOwner) -> InferMembersResult {

@@ -23,7 +23,7 @@ impl Default for EmmyrcStrict {
         Self {
             require_path: false,
             type_call: false,
-            array_index: true,
+            array_index: false,
         }
     }
 }

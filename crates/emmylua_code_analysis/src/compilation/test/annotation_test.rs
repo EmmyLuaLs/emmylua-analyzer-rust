@@ -38,7 +38,7 @@ mod test {
         let ty = ws.expr_ty("GG.fun");
         assert_eq!(
             format!("{:?}", ty),
-            "Signature(LuaSignatureId { file_id: FileId { id: 20 }, position: 76 })"
+            "Signature(LuaSignatureId { file_id: FileId { id: 14 }, position: 76 })"
         );
     }
 }

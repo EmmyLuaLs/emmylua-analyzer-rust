@@ -75,14 +75,17 @@ fn resolve_signature_by_args(
         if params.len() < arg_count {
             continue;
         }
-
-        let jump_param = if is_colon_call && !func.is_colon_define() {
-            1
-        } else {
-            0
-        };
         let mut total_weight = 0; // 总权重
+
         let mut fake_expr_len = expr_types.len();
+        let jump_param;
+        if is_colon_call && !func.is_colon_define() {
+            jump_param = 1;
+            fake_expr_len += 1;
+        } else {
+            jump_param = 0;
+        };
+
         // 检查每个参数的匹配情况
         for (i, param) in params.iter().enumerate() {
             if i == 0 && jump_param > 0 {

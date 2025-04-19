@@ -542,4 +542,33 @@ mod test {
         "#
         ));
     }
+
+
+    #[test]
+    fn test_super() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+                ---@class py.ETypeMeta
+
+                ---@class py.Vector3: py.ETypeMeta
+                ---@class py.FVector3: py.ETypeMeta
+
+                ---@alias Point.HandleType py.FVector3
+
+                ---@class py.Point: py.Vector3
+
+                ---@param point py.Point
+                local function test(point)
+                end
+
+                ---@type Point.HandleType
+                local handle
+
+                test(handle)
+        "#
+        ));
+    }
 }

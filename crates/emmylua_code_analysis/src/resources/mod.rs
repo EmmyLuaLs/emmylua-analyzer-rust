@@ -10,7 +10,10 @@ use crate::{load_workspace_files, LuaFileInfo};
 static RESOURCE_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/resources");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub fn load_resource_std(create_resources_dir: Option<String>) -> (PathBuf, Vec<LuaFileInfo>) {
+pub fn load_resource_std(
+    create_resources_dir: Option<String>,
+    is_jit: bool,
+) -> (PathBuf, Vec<LuaFileInfo>) {
     if let Some(create_resources_dir) = create_resources_dir {
         let resource_path = if create_resources_dir.is_empty() {
             get_best_resources_dir()
@@ -20,7 +23,12 @@ pub fn load_resource_std(create_resources_dir: Option<String>) -> (PathBuf, Vec<
         let std_dir = PathBuf::from(&resource_path).join("std");
         let result = load_resource_from_file_system(&resource_path);
         match result {
-            Some(files) => return (std_dir, files),
+            Some(mut files) => {
+                if !is_jit {
+                    remove_jit_resource(&mut files);
+                }
+                return (std_dir, files);
+            }
             None => {}
         }
     }
@@ -28,7 +36,7 @@ pub fn load_resource_std(create_resources_dir: Option<String>) -> (PathBuf, Vec<
     let resoucres_dir = get_best_resources_dir();
     let std_dir = resoucres_dir.join("std");
     let files = load_resource_from_include_dir();
-    let files = files
+    let mut files = files
         .into_iter()
         .filter_map(|file| {
             if file.path.ends_with(".lua") {
@@ -42,8 +50,24 @@ pub fn load_resource_std(create_resources_dir: Option<String>) -> (PathBuf, Vec<
             }
         })
         .collect::<_>();
-
+    if !is_jit {
+        remove_jit_resource(&mut files);
+    }
     (std_dir, files)
+}
+
+fn remove_jit_resource(files: &mut Vec<LuaFileInfo>) {
+    files.retain(|file| {
+        let path = Path::new(&file.path);
+        let should_remove = path.ends_with("std/jit.lua")
+            || path.ends_with("std/jit/profile.lua")
+            || path.ends_with("std/jit/util.lua")
+            || path.ends_with("std/string/buffer.lua")
+            || path.ends_with("std/table/clear.lua")
+            || path.ends_with("std/table/new.lua");
+
+        !should_remove
+    });
 }
 
 fn load_resource_from_file_system(resources_dir: &Path) -> Option<Vec<LuaFileInfo>> {
