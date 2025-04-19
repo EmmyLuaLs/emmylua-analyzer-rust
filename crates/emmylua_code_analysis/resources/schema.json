@@ -142,7 +142,7 @@
     },
     "strict": {
       "default": {
-        "arrayIndex": true,
+        "arrayIndex": false,
         "requirePath": false,
         "typeCall": false
       },
