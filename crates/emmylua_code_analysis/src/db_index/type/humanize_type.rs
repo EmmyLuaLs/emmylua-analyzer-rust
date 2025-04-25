@@ -210,14 +210,9 @@ where
             type_strings.push(type_str);
         }
     }
-    // 取指定数量的类型
+    let dots = if type_strings.len() > num { "..." } else { "" };
     let display_types: Vec<_> = type_strings.into_iter().take(num).collect();
     let type_str = display_types.join("|");
-    let dots = if display_types.len() < types.len() {
-        "..."
-    } else {
-        ""
-    };
 
     if display_types.len() == 1 {
         if has_function && has_nil {
