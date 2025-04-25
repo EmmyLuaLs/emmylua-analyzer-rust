@@ -166,6 +166,23 @@ fn humanize_simple_type(
 }
 
 fn humanize_union_type(db: &DbIndex, union: &LuaUnionType, level: RenderLevel) -> String {
+    format_union_type(
+        union,
+        level,
+        |ty, level| humanize_type(db, ty, level.next_level()),
+        true,
+    )
+}
+
+pub fn format_union_type<F>(
+    union: &LuaUnionType,
+    level: RenderLevel,
+    mut type_formatter: F,
+    is_hover: bool,
+) -> String
+where
+    F: FnMut(&LuaType, RenderLevel) -> String,
+{
     let types = union.get_types();
     let num = match level {
         RenderLevel::Detailed => 10,
@@ -180,12 +197,15 @@ fn humanize_union_type(db: &DbIndex, union: &LuaUnionType, level: RenderLevel) -
     let mut seen = HashSet::new();
     let mut type_strings = Vec::new();
     let mut has_nil = false;
+    let mut has_function = false;
     for ty in types.iter() {
-        if ty.is_nil() {
+        if (!is_hover && !ty.is_function() && ty.is_nil()) || (is_hover && ty.is_nil()) {
             has_nil = true;
             continue;
+        } else if ty.is_function() {
+            has_function = true;
         }
-        let type_str = humanize_type(db, ty, level.next_level());
+        let type_str = type_formatter(ty, level.next_level());
         if seen.insert(type_str.clone()) {
             type_strings.push(type_str);
         }
@@ -200,7 +220,11 @@ fn humanize_union_type(db: &DbIndex, union: &LuaUnionType, level: RenderLevel) -
     };
 
     if display_types.len() == 1 {
-        format!("{}{}", type_str, if has_nil { "?" } else { "" })
+        if has_function && has_nil {
+            format!("({})?", type_str)
+        } else {
+            format!("{}{}", type_str, if has_nil { "?" } else { "" })
+        }
     } else {
         format!("({}{}){}", type_str, dots, if has_nil { "?" } else { "" })
     }

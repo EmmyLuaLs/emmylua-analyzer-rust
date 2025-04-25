@@ -8,7 +8,7 @@ mod types;
 
 use super::traits::LuaIndex;
 use crate::{FileId, InFiled};
-pub use humanize_type::{humanize_type, RenderLevel};
+pub use humanize_type::{format_union_type, humanize_type, RenderLevel};
 use std::collections::{HashMap, HashSet};
 pub use type_assert::TypeAssertion;
 pub use type_decl::{

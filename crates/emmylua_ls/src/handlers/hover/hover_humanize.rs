@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use emmylua_code_analysis::{
-    DbIndex, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberKey, LuaMemberOwner,
-    LuaMultiLineUnion, LuaSemanticDeclId, LuaSignature, LuaSignatureId, LuaType, LuaUnionType,
-    RenderLevel, SemanticDeclLevel, SemanticModel,
+    format_union_type, DbIndex, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberKey,
+    LuaMemberOwner, LuaMultiLineUnion, LuaSemanticDeclId, LuaSignature, LuaSignatureId, LuaType,
+    LuaUnionType, RenderLevel, SemanticDeclLevel, SemanticModel,
 };
 
 use emmylua_code_analysis::humanize_type;
@@ -458,44 +458,12 @@ fn hover_union_type(
     union: &LuaUnionType,
     level: RenderLevel,
 ) -> String {
-    let types = union.get_types();
-    let num = match level {
-        RenderLevel::Detailed => 10,
-        RenderLevel::Simple => 8,
-        RenderLevel::Normal => 4,
-        RenderLevel::Brief => 2,
-        RenderLevel::Minimal => {
-            return "union<...>".to_string();
-        }
-    };
-    // 需要确保顺序
-    let mut seen = HashSet::new();
-    let mut type_strings = Vec::new();
-    let mut has_nil = false;
-    for ty in types.iter() {
-        if ty.is_nil() {
-            has_nil = true;
-            continue;
-        }
-        let type_str = hover_type(builder, ty, Some(level.next_level()));
-        if seen.insert(type_str.clone()) {
-            type_strings.push(type_str);
-        }
-    }
-    // 取指定数量的类型
-    let display_types: Vec<_> = type_strings.into_iter().take(num).collect();
-    let type_str = display_types.join("|");
-    let dots = if display_types.len() < types.len() {
-        "..."
-    } else {
-        ""
-    };
-
-    if display_types.len() == 1 {
-        format!("{}{}", type_str, if has_nil { "?" } else { "" })
-    } else {
-        format!("({}{}){}", type_str, dots, if has_nil { "?" } else { "" })
-    }
+    format_union_type(
+        union,
+        level,
+        |ty, level| hover_type(builder, ty, Some(level)),
+        true,
+    )
 }
 
 fn hover_multi_line_union_type(
