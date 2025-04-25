@@ -4,14 +4,16 @@ use emmylua_code_analysis::{
     FileId, InferGuard, LuaFunctionType, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
     LuaSignatureId, LuaType, RenderLevel, SemanticModel,
 };
+use emmylua_parser::LuaTokenKind;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaFuncStat, LuaIndexExpr,
-    LuaLocalName, LuaSyntaxId, LuaVarExpr,
+    LuaLocalName, LuaStat, LuaSyntaxId, LuaVarExpr,
 };
 use lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintLabelPart, Location};
 use rowan::NodeOrToken;
 
 use emmylua_code_analysis::humanize_type;
+use rowan::TokenAtOffset;
 
 pub fn build_inlay_hints(semantic_model: &SemanticModel) -> Option<Vec<InlayHint>> {
     let mut result = Vec::new();
@@ -106,7 +108,7 @@ fn build_call_expr_param_hint(
     if !semantic_model.get_emmyrc().hint.param_hint {
         return Some(());
     }
-
+    let params_location = get_call_signature_param_location(semantic_model, &call_expr);
     let func = semantic_model.infer_call_expr_func(call_expr.clone(), None)?;
     let call_args_list = call_expr.get_args_list()?;
     let colon_call = call_expr.is_colon_call();
@@ -116,9 +118,68 @@ fn build_call_expr_param_hint(
         call_args_list.get_args().collect(),
         colon_call,
         &func,
+        params_location,
     );
 
     Some(())
+}
+
+fn get_call_signature_param_location(
+    semantic_model: &SemanticModel,
+    call_expr: &LuaCallExpr,
+) -> Option<HashMap<String, Location>> {
+    let prefix_expr = call_expr.get_prefix_expr()?;
+    let semantic_info =
+        semantic_model.get_semantic_info(NodeOrToken::Node(prefix_expr.syntax().clone()))?;
+    let mut document = None;
+    let closure = if let LuaType::Signature(signature_id) = &semantic_info.typ {
+        let sig_file_id = signature_id.get_file_id();
+        let sig_position = signature_id.get_position();
+        document = semantic_model.get_document_by_file_id(sig_file_id);
+
+        if let Some(root) = semantic_model.get_root_by_file_id(sig_file_id) {
+            let token = match root.syntax().token_at_offset(sig_position) {
+                TokenAtOffset::Single(token) => token,
+                TokenAtOffset::Between(left, right) => {
+                    if left.kind() == LuaTokenKind::TkName.into() {
+                        left
+                    } else {
+                        right
+                    }
+                }
+                TokenAtOffset::None => {
+                    return None;
+                }
+            };
+            let stat = token.parent_ancestors().find_map(LuaStat::cast)?;
+            match stat {
+                LuaStat::LocalFuncStat(local_func_stat) => local_func_stat.get_closure(),
+                LuaStat::FuncStat(func_stat) => func_stat.get_closure(),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    }?;
+    let lua_params = closure.get_params_list()?;
+    let document = document?;
+    let url = document.get_uri();
+    let mut lua_params_map: HashMap<String, Location> = HashMap::new();
+    for param in lua_params.get_params() {
+        if let Some(name_token) = param.get_name_token() {
+            let name = name_token.get_name_text().to_string();
+            let range = param.get_range();
+            let lsp_range = document.to_lsp_range(range)?;
+            lua_params_map.insert(name, Location::new(url.clone(), lsp_range));
+        } else if param.is_dots() {
+            let range = param.get_range();
+            let lsp_range = document.to_lsp_range(range)?;
+            lua_params_map.insert("...".to_string(), Location::new(url.clone(), lsp_range));
+        }
+    }
+    Some(lua_params_map)
 }
 
 fn build_call_expr_await_hint(
@@ -182,6 +243,7 @@ fn build_call_args_for_func_type(
     call_args: Vec<LuaExpr>,
     colon_call: bool,
     func_type: &LuaFunctionType,
+    params_location: Option<HashMap<String, Location>>,
 ) -> Option<()> {
     let call_args_len = call_args.len();
     let mut params = func_type
@@ -210,13 +272,28 @@ fn build_call_args_for_func_type(
 
         if name == "..." {
             for i in idx..call_args_len {
+                let label_name = format!("var{}:", i - idx);
+                let label = if let Some(params_location) = &params_location {
+                    if let Some(location) = params_location.get(name) {
+                        InlayHintLabel::LabelParts(vec![InlayHintLabelPart {
+                            value: label_name,
+                            location: Some(location.clone()),
+                            ..Default::default()
+                        }])
+                    } else {
+                        InlayHintLabel::String(label_name)
+                    }
+                } else {
+                    InlayHintLabel::String(label_name)
+                };
+
                 let arg = &call_args[i];
                 let range = arg.get_range();
                 let document = semantic_model.get_document();
                 let lsp_range = document.to_lsp_range(range)?;
                 let hint = InlayHint {
                     kind: Some(InlayHintKind::PARAMETER),
-                    label: InlayHintLabel::String(format!("var{}:", i - idx)),
+                    label,
                     position: lsp_range.start,
                     text_edits: None,
                     tooltip: None,
@@ -239,12 +316,27 @@ fn build_call_args_for_func_type(
             }
         }
 
-        let range = arg.get_range();
         let document = semantic_model.get_document();
-        let lsp_range = document.to_lsp_range(range)?;
+        let lsp_range = document.to_lsp_range(arg.get_range())?;
+
+        let label_name = format!("{}:", name);
+        let label = if let Some(params_location) = &params_location {
+            if let Some(location) = params_location.get(name) {
+                InlayHintLabel::LabelParts(vec![InlayHintLabelPart {
+                    value: label_name,
+                    location: Some(location.clone()),
+                    ..Default::default()
+                }])
+            } else {
+                InlayHintLabel::String(label_name)
+            }
+        } else {
+            InlayHintLabel::String(label_name)
+        };
+
         let hint = InlayHint {
             kind: Some(InlayHintKind::PARAMETER),
-            label: InlayHintLabel::String(format!("{}:", name)),
+            label,
             position: lsp_range.start,
             text_edits: None,
             tooltip: None,
