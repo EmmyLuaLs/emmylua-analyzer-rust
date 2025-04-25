@@ -103,7 +103,7 @@ fn add_table_field_completion(
     }
 
     let data = if let Some(id) = &property_owner {
-        CompletionData::from_property_owner_id(builder, id.clone().into())
+        CompletionData::from_property_owner_id(builder, id.clone().into(), None)
     } else {
         None
     };

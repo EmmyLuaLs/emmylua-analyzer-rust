@@ -127,7 +127,7 @@ mod tests {
         // 主动触发补全
         assert!(ws.check_completion(
             r#"
-                    ---@class Test
+                    ---@class Test1
                     ---@field event fun(a: "A", b: number)
                     ---@field event fun(a: "B", b: string)
                     local Test = {}
@@ -151,7 +151,7 @@ mod tests {
 
         assert!(ws.check_completion(
             r#"
-                    ---@class Test
+                    ---@class Test2
                     ---@field event fun(a: "A", b: number)
                     ---@field event fun(a: "B", b: string)
                     local Test = {}
@@ -160,7 +160,7 @@ mod tests {
             vec![VirtualCompletionItem {
                 label: "event".to_string(),
                 kind: CompletionItemKind::FUNCTION,
-            },],
+            }],
         ));
     }
 

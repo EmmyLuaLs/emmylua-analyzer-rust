@@ -21,6 +21,7 @@ pub fn add_member_completion(
     builder: &mut CompletionBuilder,
     member_info: LuaMemberInfo,
     status: CompletionTriggerStatus,
+    function_overload_count: Option<usize>,
 ) -> Option<()> {
     if builder.is_cancelled() {
         return None;
@@ -62,9 +63,9 @@ pub fn add_member_completion(
 
     let completion_data = if let Some(id) = &property_owner {
         if let Some(index) = member_info.overload_index {
-            CompletionData::from_overload(builder, id.clone().into(), index)
+            CompletionData::from_overload(builder, id.clone().into(), index, function_overload_count)
         } else {
-            CompletionData::from_property_owner_id(builder, id.clone().into())
+            CompletionData::from_property_owner_id(builder, id.clone().into(), function_overload_count)
         }
     } else {
         None
@@ -109,7 +110,7 @@ pub fn add_member_completion(
     builder.add_completion_item(completion_item)?;
 
     // add overloads if the type is function
-    add_signature_overloads(builder, property_owner, &typ, display, deprecated, label)?;
+    add_signature_overloads(builder, property_owner, &typ, display, deprecated, label, function_overload_count)?;
 
     Some(())
 }
@@ -121,6 +122,7 @@ fn add_signature_overloads(
     display: CallDisplay,
     deprecated: Option<bool>,
     label: String,
+    function_overload_count: Option<usize>,
 ) -> Option<()> {
     if let LuaType::Signature(signature_id) = typ {
         let overloads = builder
@@ -139,7 +141,7 @@ fn add_signature_overloads(
                 let description = get_description(builder, &typ);
                 let detail = get_detail(builder, &typ, display);
                 let data = if let Some(id) = &property_owner {
-                    CompletionData::from_overload(builder, id.clone().into(), index)
+                    CompletionData::from_overload(builder, id.clone().into(), index, function_overload_count)
                 } else {
                     None
                 };

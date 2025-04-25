@@ -188,6 +188,8 @@ pub enum CompletionDataType {
 pub struct CompletionData {
     pub field_id: FileId,
     pub typ: CompletionDataType,
+    /// 函数重载总数
+    pub function_overload_count: Option<usize>,
 }
 
 #[allow(unused)]
@@ -195,10 +197,12 @@ impl CompletionData {
     pub fn from_property_owner_id(
         builder: &CompletionBuilder,
         id: LuaSemanticDeclId,
+        function_overload_count: Option<usize>,
     ) -> Option<Value> {
         let data = Self {
             field_id: builder.semantic_model.get_file_id(),
             typ: CompletionDataType::PropertyOwnerId(id),
+            function_overload_count,
         };
         Some(serde_json::to_value(data).unwrap())
     }
@@ -207,10 +211,12 @@ impl CompletionData {
         builder: &CompletionBuilder,
         id: LuaSemanticDeclId,
         index: usize,
+        function_overload_count: Option<usize>,
     ) -> Option<Value> {
         let data = Self {
             field_id: builder.semantic_model.get_file_id(),
             typ: CompletionDataType::Overload((id, index)),
+            function_overload_count,
         };
         Some(serde_json::to_value(data).unwrap())
     }
@@ -219,6 +225,7 @@ impl CompletionData {
         let data = Self {
             field_id: builder.semantic_model.get_file_id(),
             typ: CompletionDataType::Module(module),
+            function_overload_count: None,
         };
         Some(serde_json::to_value(data).unwrap())
     }
