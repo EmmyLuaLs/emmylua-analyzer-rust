@@ -8,7 +8,7 @@ use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaFuncStat, LuaIndexExpr,
     LuaLocalName, LuaSyntaxId, LuaVarExpr,
 };
-use lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintLabelPart};
+use lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintLabelPart, Location};
 use rowan::NodeOrToken;
 
 use emmylua_code_analysis::humanize_type;
@@ -77,8 +77,12 @@ fn build_closure_hint(
                 let lsp_range = document.to_lsp_range(lua_param.get_range())?;
                 let typ_desc = format!(": {}", humanize_type(db, &typ, RenderLevel::Simple));
                 let hint = InlayHint {
-                    kind: Some(InlayHintKind::PARAMETER),
-                    label: InlayHintLabel::String(typ_desc),
+                    kind: Some(InlayHintKind::TYPE),
+                    label: InlayHintLabel::LabelParts(vec![InlayHintLabelPart {
+                        value: typ_desc,
+                        location: Some(Location::new(document.get_uri(), lsp_range)),
+                        ..Default::default()
+                    }]),
                     position: lsp_range.end,
                     text_edits: None,
                     tooltip: None,
