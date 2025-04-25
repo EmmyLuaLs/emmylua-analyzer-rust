@@ -19,7 +19,7 @@ use resolve_completion::resolve_completion;
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{ClientId, ServerContextSnapshot};
 
 use super::RegisterCapabilities;
 
@@ -90,10 +90,18 @@ pub async fn on_completion_resolve_handler(
     _: CancellationToken,
 ) -> CompletionItem {
     let analysis = context.analysis.read().await;
-    let db = analysis.compilation.get_db();
-    let mut completion_item = params;
     let config_manager = context.workspace_manager.read().await;
     let client_id = config_manager.client_config.client_id;
+    completion_resolve(&analysis, params, client_id)
+}
+
+pub fn completion_resolve(
+    analysis: &EmmyLuaAnalysis,
+    params: CompletionItem,
+    client_id: ClientId,
+) -> CompletionItem {
+    let mut completion_item = params;
+    let db = analysis.compilation.get_db();
     if let Some(data) = completion_item.data.clone() {
         let completion_data = match serde_json::from_value::<CompletionData>(data.clone()) {
             Ok(data) => data,
@@ -115,7 +123,6 @@ pub async fn on_completion_resolve_handler(
             );
         }
     }
-
     completion_item
 }
 

@@ -3,8 +3,12 @@ use emmylua_parser::LuaAstNode;
 use lsp_types::{CompletionItemKind, CompletionResponse, CompletionTriggerKind, Position};
 use tokio_util::sync::CancellationToken;
 
+mod completion_resolve_test;
 mod completion_test;
-use super::completion;
+
+use crate::context::ClientId;
+
+use super::{completion, completion_resolve};
 
 /// A virtual workspace for testing.
 #[allow(unused)]
@@ -19,6 +23,11 @@ struct CompletionVirtualWorkspace {
 struct VirtualCompletionItem {
     pub label: String,
     pub kind: CompletionItemKind,
+}
+
+#[derive(Debug)]
+struct VirtualCompletionResolveItem {
+    pub detail: String,
 }
 
 #[allow(unused)]
@@ -143,6 +152,43 @@ impl CompletionVirtualWorkspace {
             if item.label != expect.label || item.kind != Some(expect.kind) {
                 return false;
             }
+        }
+        true
+    }
+
+    pub fn check_completion_resolve(
+        &mut self,
+        block_str: &str,
+        expect: VirtualCompletionResolveItem,
+    ) -> bool {
+        let content = Self::handle_file_content(block_str);
+        let Some((content, position)) = content else {
+            return false;
+        };
+        let file_id = self.def(&content);
+        let result = completion(
+            &self.analysis,
+            file_id,
+            position,
+            CompletionTriggerKind::INVOKED,
+            CancellationToken::new(),
+        );
+        let Some(result) = result else {
+            return false;
+        };
+        let items = match result {
+            CompletionResponse::Array(items) => items,
+            CompletionResponse::List(list) => list.items,
+        };
+        let Some(param) = items.get(0) else {
+            return false;
+        };
+        let item = completion_resolve(&self.analysis, param.clone(), ClientId::VSCode);
+        let Some(item_detail) = item.detail else {
+            return false;
+        };
+        if item_detail != expect.detail {
+            return false;
         }
         true
     }
