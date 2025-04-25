@@ -86,7 +86,7 @@ impl DiagnosticIndex {
 
     pub fn is_file_disabled(&self, file_id: &FileId, code: &DiagnosticCode) -> bool {
         if let Some(disabled) = self.file_diagnostic_disabled.get(file_id) {
-            disabled.contains(code)
+            disabled.contains(code) || disabled.contains(&DiagnosticCode::All)
         } else {
             false
         }

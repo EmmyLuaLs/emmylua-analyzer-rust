@@ -93,6 +93,8 @@ pub enum DiagnosticCode {
     /// unnecessary-if
     UnnecessaryIf,
 
+    #[serde(skip)]
+    All,
     #[serde(other)]
     None,
 }
