@@ -10,6 +10,8 @@ mod code_style;
 mod code_style_check;
 mod deprecated;
 mod discard_returns;
+mod duplicate_field;
+mod duplicate_index;
 mod duplicate_require;
 mod duplicate_type;
 mod incomplete_signature_doc;
@@ -87,6 +89,8 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<check_return_count::CheckReturnCount>(context, semantic_model);
     run_check::<unbalanced_assignments::UnbalancedAssignmentsChecker>(context, semantic_model);
     run_check::<check_param_count::CheckParamCountChecker>(context, semantic_model);
+    run_check::<duplicate_field::DuplicateFieldChecker>(context, semantic_model);
+    run_check::<duplicate_index::DuplicateIndexChecker>(context, semantic_model);
 
     run_check::<code_style::non_literal_expressions_in_assert::NonLiteralExpressionsInAssertChecker>(
         context,

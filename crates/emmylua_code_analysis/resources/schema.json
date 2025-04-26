@@ -474,6 +474,20 @@
           "enum": [
             "unnecessary-if"
           ]
+        },
+        {
+          "description": "duplicate-set-field",
+          "type": "string",
+          "enum": [
+            "duplicate-set-field"
+          ]
+        },
+        {
+          "description": "duplicate-index",
+          "type": "string",
+          "enum": [
+            "duplicate-index"
+          ]
         }
       ]
     },

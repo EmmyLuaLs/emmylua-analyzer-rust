@@ -233,4 +233,12 @@ Cannot use `...` outside a vararg function.:
   en: "Duplicate class constructor '%{name}'. constructor must have only one."
   zh_CN: "类有重复的 (constructor) 定义 '%{name}'。(constructor) 必须只有一个。"
   zh_HK: "類有重複的 (constructor) 定義 '%{name}'。(constructor) 必須只有一個。"
+"Duplicate field `%{name}`.":
+  en: "Duplicate field `%{name}`."
+  zh_CN: "重复定义的字段 `%{name}`."
+  zh_HK: "重複定義的字段 `%{name}`."
+"Duplicate index `%{name}`.":
+  en: "Duplicate index `%{name}`."
+  zh_CN: "重复定义的索引 `%{name}`."
+  zh_HK: "重複定義的索引 `%{name}`."
 

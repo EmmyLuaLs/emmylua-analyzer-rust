@@ -55,7 +55,7 @@ pub fn hover_function_type(
                 format!("function {}", func_name)
             });
             builder.set_type_description(type_description);
-        },
+        }
         LuaType::Union(union) => {
             hover_union_function_type(builder, db, union, function_member, func_name)
         }

@@ -92,6 +92,10 @@ pub enum DiagnosticCode {
     UnnecessaryAssert,
     /// unnecessary-if
     UnnecessaryIf,
+    /// duplicate-set-field
+    DuplicateSetField,
+    /// duplicate-index
+    DuplicateIndex,
 
     #[serde(skip)]
     All,
