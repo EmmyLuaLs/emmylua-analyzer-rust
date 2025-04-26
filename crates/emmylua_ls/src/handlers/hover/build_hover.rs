@@ -483,7 +483,7 @@ fn is_function(typ: &LuaType) -> bool {
             LuaType::Union(union) => union
                 .get_types()
                 .iter()
-                .all(|t| matches!(t, LuaType::DocFunction(_))),
+                .all(|t| matches!(t, LuaType::DocFunction(_) | LuaType::Signature(_))),
             _ => false,
         }
 }

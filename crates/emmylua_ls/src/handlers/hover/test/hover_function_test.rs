@@ -125,4 +125,42 @@ mod tests {
             },
         ));
     }
+
+    #[test]
+    fn test_union_function() {
+        let mut ws = HoverVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@diagnostic disable: missing-return
+                ---@class Trigger
+                ---@class EventTypeA
+
+                ---@class (partial) GameA
+                local M
+
+                -- 注册引擎事件
+                ---@param event_type EventTypeA
+                ---@param ... any
+                ---@return Trigger
+                function M:<??>event(event_type, ...)
+                end
+
+                ---@class (partial) GameA
+                ---@field event fun(self: self, event: "游戏-初始化"): Trigger
+                ---@field event fun(self: self, event: "游戏-追帧完成"): Trigger
+                ---@field event fun(self: self, event: "游戏-逻辑不同步"): Trigger
+                ---@field event fun(self: self, event: "游戏-地形预设加载完成"): Trigger
+                ---@field event fun(self: self, event: "游戏-结束"): Trigger
+                ---@field event fun(self: self, event: "游戏-暂停"): Trigger
+                ---@field event fun(self: self, event: "游戏-恢复"): Trigger
+                ---@field event fun(self: self, event: "游戏-昼夜变化"): Trigger
+                ---@field event fun(self: self, event: "区域-进入"): Trigger
+                ---@field event fun(self: self, event: "区域-离开"): Trigger
+                ---@field event fun(self: self, event: "游戏-http返回"): Trigger
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\n(method) GameA:event(event_type: EventTypeA, ...: any)\n  -> Trigger\n\n```\n\n---\n\n---\n\n```lua\n(method) GameA:event(event: \"游戏-初始化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-追帧完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-逻辑不同步\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-地形预设加载完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-结束\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-暂停\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-恢复\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-昼夜变化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"区域-进入\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"区域-离开\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-http返回\") -> Trigger\n```\n".to_string(),
+            },
+        ));
+    }
 }

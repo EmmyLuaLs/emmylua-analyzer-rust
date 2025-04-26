@@ -41,51 +41,81 @@ pub fn hover_function_type(
             function_member,
             func_name,
         )),
-        LuaType::Signature(signature_id) => hover_signature_type(
-            builder,
-            db,
-            signature_id.clone(),
-            function_member,
-            func_name,
-            is_local,
-        )
-        .unwrap_or_else(|| {
-            builder.set_type_description(format!("function {}", func_name));
-            builder.signature_overload = None;
-        }),
+        LuaType::Signature(signature_id) => {
+            let type_description = hover_signature_type(
+                builder,
+                db,
+                signature_id.clone(),
+                function_member,
+                func_name,
+                is_local,
+            )
+            .unwrap_or_else(|| {
+                builder.signature_overload = None;
+                format!("function {}", func_name)
+            });
+            builder.set_type_description(type_description);
+        },
         LuaType::Union(union) => {
-            // 泛型处理
-            if let Some(call) = builder.get_call_signature() {
-                builder.set_type_description(hover_doc_function_type(
-                    builder,
-                    db,
-                    &call,
-                    function_member,
-                    func_name,
-                ))
-            } else {
-                // 将最后一个作为 type_description
-                let mut overloads = Vec::new();
-                for typ in union.get_types() {
-                    if let LuaType::DocFunction(lua_func) = typ {
-                        overloads.push(hover_doc_function_type(
-                            builder,
-                            db,
-                            &lua_func,
-                            function_member,
-                            func_name,
-                        ));
-                    }
-                }
-                if let Some(signature) = overloads.pop() {
-                    builder.set_type_description(signature);
-                    for overload in overloads {
-                        builder.add_signature_overload(overload);
-                    }
-                }
-            }
+            hover_union_function_type(builder, db, union, function_member, func_name)
         }
         _ => builder.set_type_description(format!("function {}", func_name)),
+    }
+}
+
+fn hover_union_function_type(
+    builder: &mut HoverBuilder,
+    db: &DbIndex,
+    union: &LuaUnionType,
+    function_member: Option<&LuaMember>,
+    func_name: &str,
+) {
+    // 泛型处理
+    if let Some(call) = builder.get_call_signature() {
+        builder.set_type_description(hover_doc_function_type(
+            builder,
+            db,
+            &call,
+            function_member,
+            func_name,
+        ));
+        return;
+    }
+    let mut overloads = Vec::new();
+
+    let types = union.get_types();
+    for typ in types {
+        match typ {
+            LuaType::DocFunction(lua_func) => {
+                overloads.push(hover_doc_function_type(
+                    builder,
+                    db,
+                    &lua_func,
+                    function_member,
+                    func_name,
+                ));
+            }
+            LuaType::Signature(signature_id) => {
+                if let Some(type_description) = hover_signature_type(
+                    builder,
+                    db,
+                    signature_id.clone(),
+                    function_member,
+                    func_name,
+                    false,
+                ) {
+                    overloads.push(type_description);
+                }
+            }
+            _ => {}
+        }
+    }
+    // 将最后一个作为 type_description
+    if let Some(type_description) = overloads.pop() {
+        builder.set_type_description(type_description);
+        for overload in overloads {
+            builder.add_signature_overload(overload);
+        }
     }
 }
 
@@ -172,7 +202,7 @@ fn hover_signature_type(
     owner_member: Option<&LuaMember>,
     func_name: &str,
     is_local: bool,
-) -> Option<()> {
+) -> Option<String> {
     let signature = db.get_signature_index().get(&signature_id)?;
     let call_signature = builder.get_call_signature();
 
@@ -240,9 +270,8 @@ fn hover_signature_type(
         if let Some(call_signature) = &call_signature {
             if call_signature.get_params() == signature.get_type_params() {
                 // 如果具有完全匹配的签名, 那么将其设置为当前签名, 且不显示重载
-                builder.set_type_description(result);
                 builder.signature_overload = None;
-                return Some(());
+                return Some(result);
             }
         }
         result
@@ -278,9 +307,8 @@ fn hover_signature_type(
             if let Some(call_signature) = &call_signature {
                 if *call_signature == **overload {
                     // 如果具有完全匹配的签名, 那么将其设置为当前签名, 且不显示重载
-                    builder.set_type_description(result);
                     builder.signature_overload = None;
-                    return Some(());
+                    return Some(result);
                 }
             };
             overloads.push(result);
@@ -288,11 +316,12 @@ fn hover_signature_type(
         overloads
     };
 
-    builder.set_type_description(signature_info);
+    // 设置重载信息
     for overload in overloads {
         builder.add_signature_overload(overload);
     }
-    Some(())
+
+    Some(signature_info)
 }
 
 fn build_signature_rets(
