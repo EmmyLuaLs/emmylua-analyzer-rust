@@ -41,10 +41,10 @@ fn infer_union_binary_expr(
     left_type: &LuaType,
     right_type: &LuaType,
 ) -> Option<LuaType> {
-    let (u, other) = if let LuaType::Union(u) = left_type {
-        (u, right_type)
+    let (u, other, is_left_union) = if let LuaType::Union(u) = left_type {
+        (u, right_type, true)
     } else if let LuaType::Union(u) = right_type {
-        (u, left_type)
+        (u, left_type, false)
     } else {
         return None;
     };
@@ -52,11 +52,15 @@ fn infer_union_binary_expr(
     let mut result = LuaType::Unknown;
     let types = u.get_types();
     for ty in types.iter() {
-        if let Ok(ty) = infer_binary_expr_type(db, ty.clone(), other.clone(), op) {
+        if let Ok(ty) = if is_left_union {
+            infer_binary_expr_type(db, ty.clone(), other.clone(), op)
+        } else {
+            infer_binary_expr_type(db, other.clone(), ty.clone(), op)
+        } {
             result = TypeOps::Union.apply(&result, &ty);
         }
     }
-    return Some(result);
+    Some(result)
 }
 
 fn infer_binary_expr_type(

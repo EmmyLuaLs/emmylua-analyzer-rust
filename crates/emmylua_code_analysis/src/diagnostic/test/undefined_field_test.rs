@@ -538,4 +538,33 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_string_add_enum_key() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@class py.GameAPI
+                GameAPI = {}
+
+                function GameAPI.get_kv_pair_value_unit_entity(handle, key) end
+
+                function GameAPI.get_kv_pair_value_unit_name() end
+
+                ---@enum(key) KV.SupportTypeEnum
+                local apiAlias = {
+                    Unit         = 'unit_entity',
+                    UnitKey      = 'unit_name',
+                }
+
+                ---@param lua_type 'boolean' | 'number' | 'integer' | 'string' | 'table' | KV.SupportTypeEnum
+                ---@return any
+                local function kv_load_from_handle(lua_type)
+                    local alias = apiAlias[lua_type]
+                    local api = GameAPI['get_kv_pair_value_' .. alias]
+                end
+        "#
+        ));
+    }
 }
