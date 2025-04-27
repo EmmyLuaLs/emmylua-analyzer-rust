@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaVarExpr};
 
 use crate::{
     infer_call_expr_func, infer_expr, infer_member_map, infer_table_should_be, DbIndex,
     InferFailReason, InferGuard, LuaDocParamInfo, LuaDocReturnInfo, LuaFunctionType, LuaInferCache,
-    LuaMemberInfo, LuaSemanticDeclId, LuaSignatureId, LuaType, LuaTypeDeclId,
-    SignatureReturnStatus,
+    LuaMemberInfo, LuaSemanticDeclId, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType,
+    SignatureReturnStatus, TypeOps,
 };
 
 use super::{
@@ -226,7 +228,6 @@ pub fn try_resolve_closure_parent_params(
                         }
                     };
                     self_type = Some(typ.clone());
-
                     find_best_function_type(db, cache, &typ, &closure_params.signature_id)
                 }
                 _ => return Some(true),
@@ -271,8 +272,9 @@ pub fn try_resolve_closure_parent_params(
         }
     };
 
-    let Some(member_type) = member_type else {
-        return Some(true);
+    let member_type = match member_type {
+        Some(member_type) => member_type,
+        None => return Some(true),
     };
 
     match &member_type {
@@ -296,6 +298,58 @@ pub fn try_resolve_closure_parent_params(
             } else {
                 Some(true)
             }
+        }
+        LuaType::Union(union_types) => {
+            let mut final_params = signature.get_type_params().to_vec();
+            for typ in union_types.get_types() {
+                let LuaType::DocFunction(doc_func) = typ else {
+                    continue;
+                };
+                let mut doc_params = doc_func.get_params().to_vec();
+                match (doc_func.is_colon_define(), signature.is_colon_define) {
+                    (true, true) | (false, false) => {}
+                    (true, false) => {
+                        // 原始签名是冒号定义, 但未解析的签名不是冒号定义, 即要插入第一个参数
+                        doc_params.insert(0, ("self".to_string(), Some(LuaType::SelfInfer)));
+                    }
+                    (false, true) => {
+                        // 原始签名不是冒号定义, 但未解析的签名是冒号定义, 即要删除第一个参数
+                        doc_params.remove(0);
+                    }
+                }
+                // 如果第一个参数是 self, 则需要将 self 的类型设置为 self_type
+                if doc_params.get(0).map_or(false, |(_, typ)| match typ {
+                    Some(LuaType::SelfInfer) => true,
+                    _ => false,
+                }) {
+                    if let Some(self_type) = &self_type {
+                        doc_params[0].1 = Some(self_type.clone());
+                    }
+                }
+                for (idx, param) in doc_params.iter().enumerate() {
+                    if let Some(final_param) = final_params.get(idx) {
+                        if final_param.0 == "..." {
+                            continue;
+                        }
+                        let new_type = TypeOps::Union.apply(
+                            final_param.1.as_ref().unwrap_or(&LuaType::Unknown),
+                            param.1.as_ref().unwrap_or(&LuaType::Unknown),
+                        );
+                        final_params[idx] = (final_param.0.clone(), Some(new_type));
+                    }
+                }
+            }
+            resolve_doc_function(
+                db,
+                closure_params,
+                &LuaFunctionType::new(
+                    signature.is_async,
+                    signature.is_colon_define,
+                    final_params,
+                    signature.get_return_types(),
+                ),
+                self_type,
+            )
         }
         _ => Some(true),
     }
@@ -355,16 +409,17 @@ fn resolve_doc_function(
         || signature.resolve_return == SignatureReturnStatus::InferResolve
     {
         signature.return_docs.clear();
-        signature.resolve_return = SignatureReturnStatus::DocResolve;
-        for ret in doc_func.get_ret() {
-            signature.return_docs.push(LuaDocReturnInfo {
-                name: None,
-                type_ref: ret.clone(),
-                description: None,
-            });
+        if !doc_func.get_ret().is_empty() {
+            signature.resolve_return = SignatureReturnStatus::DocResolve;
+            for ret in doc_func.get_ret() {
+                signature.return_docs.push(LuaDocReturnInfo {
+                    name: None,
+                    type_ref: ret.clone(),
+                    description: None,
+                });
+            }
         }
     }
-
     Some(true)
 }
 
@@ -386,47 +441,80 @@ fn find_best_function_type(
     prefix_type: &LuaType,
     signature_id: &LuaSignatureId,
 ) -> Option<LuaType> {
-    let member_info_map = infer_member_map(db, &prefix_type)?;
+    let member_info_map = infer_member_map(db, prefix_type)?;
     let mut current_type_id = None;
-    // 如果找不到证明是重定义
+
     let target_infos = member_info_map.into_values().find(|infos| {
-        infos.iter().any(|info| match &info.typ {
-            LuaType::Signature(id) => {
+        infos.iter().any(|info| {
+            if let LuaType::Signature(id) = &info.typ {
                 if id == signature_id {
                     current_type_id = get_owner_type_id(db, info);
                     return true;
                 }
-                false
             }
-            _ => false,
+            false
         })
     })?;
-    // 找到第一个具有实际参数类型的签名
-    target_infos.iter().find_map(|info| {
-        // 所有者类型一致, 但我们找的是父类型
-        if get_owner_type_id(db, info) == current_type_id {
-            return None;
-        }
+
+    let mut current_function_types = Vec::with_capacity(target_infos.len());
+    // 父类或许也应该返回联合类型
+    let mut parent_function_type = None;
+
+    for info in target_infos {
         let function_type =
-            get_final_function_type(db, cache, &info.typ).unwrap_or(info.typ.clone());
-        let param_type_len = match &function_type {
+            get_final_function_type(db, cache, &info.typ).unwrap_or_else(|| info.typ.clone());
+
+        // 所有者类型一致, 不是父类
+        if get_owner_type_id(db, &info) == current_type_id {
+            match &function_type {
+                LuaType::Signature(id) => {
+                    if let Some(cur_signature) = db.get_signature_index().get(id) {
+                        // 只需要重载声明
+                        if cur_signature.param_docs.is_empty() {
+                            current_function_types.extend(cur_signature.overloads.iter().cloned());
+                        }
+                    }
+                }
+                LuaType::DocFunction(doc_func) => {
+                    // 使用迭代器优化参数计数
+                    if doc_func.get_params().iter().any(|(_, typ)| typ.is_some()) {
+                        current_function_types.push(doc_func.clone());
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+
+        // 父类处理
+        let has_params = match &function_type {
             LuaType::Signature(id) => db
                 .get_signature_index()
-                .get(&id)
-                .map(|sig| sig.param_docs.len())
-                .unwrap_or(0),
-            LuaType::DocFunction(doc_func) => doc_func
-                .get_params()
-                .iter()
-                .filter(|(_, typ)| typ.is_some())
-                .count(),
-            _ => 0, // 跳过其他类型
+                .get(id)
+                .map_or(false, |sig| !sig.param_docs.is_empty()),
+            LuaType::DocFunction(doc_func) => {
+                doc_func.get_params().iter().any(|(_, typ)| typ.is_some())
+            }
+            _ => false,
         };
-        if param_type_len > 0 {
-            return Some(function_type.clone());
+
+        if has_params {
+            parent_function_type = Some(function_type);
         }
-        None
-    })
+    }
+    match current_function_types.len() {
+        0 => parent_function_type,
+        1 => current_function_types
+            .into_iter()
+            .next()
+            .map(LuaType::DocFunction),
+        _ => Some(LuaType::Union(Arc::new(LuaUnionType::new(
+            current_function_types
+                .into_iter()
+                .map(LuaType::DocFunction)
+                .collect(),
+        )))),
+    }
 }
 
 fn get_final_function_type(

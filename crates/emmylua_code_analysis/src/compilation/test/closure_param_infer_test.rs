@@ -209,4 +209,69 @@ mod test {
         let expected = ws.ty("string[]");
         assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
     }
+
+    #[test]
+    fn test_field_doc_function() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class ClosureTest
+            ---@field e fun(a: string, b: number)
+            ---@field e fun(a: number, b: number)
+            local Test
+
+            function Test.e(a, b)
+                A = a
+            end
+            "#,
+        );
+        let ty = ws.expr_ty("A");
+        let expected = ws.ty("string|number");
+        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+    }
+
+    #[test]
+    fn test_field_doc_function_2() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class ClosureTest
+            ---@field e fun(a: string, b: number)
+            ---@field e fun(a: number, b: number)
+            local Test
+
+            ---@overload fun(a: string, b: number)
+            ---@overload fun(a: number, b: number)
+            function Test.e(a, b)
+                d = b
+            end
+            "#,
+        );
+        let ty = ws.expr_ty("d");
+        let expected = ws.ty("number");
+        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+    }
+
+    #[test]
+    fn test_field_doc_function_3() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class ClosureTest
+            ---@field e fun(a: string, b: number) -- 不在 overload 时必须声明 self 才被视为方法
+            ---@field e fun(a: number, b: number)
+            local Test
+
+            function Test:e(a, b) -- `:`声明
+                A = a
+            end
+            "#,
+        );
+        let ty = ws.expr_ty("A");
+        let expected = ws.ty("number");
+        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+    }
 }

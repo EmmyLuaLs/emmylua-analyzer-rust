@@ -192,19 +192,88 @@ fn find_param_type_from_type(
                 return typ.clone();
             }
         }
-        LuaType::Union(union_types) => {
-            for ty in union_types.get_types() {
-                if let Some(ty) =
-                    find_param_type_from_type(db, ty.clone(), param_idx, current_colon_define)
-                {
-                    return Some(ty);
-                }
-            }
+        LuaType::Union(_) => {
+            return find_param_type_from_union(db, source_type, param_idx, current_colon_define)
         }
         _ => {}
     }
 
     None
+}
+
+fn find_param_type_from_union(
+    db: &DbIndex,
+    source_type: LuaType,
+    param_idx: usize,
+    origin_colon_define: bool,
+) -> Option<LuaType> {
+    match source_type {
+        LuaType::Signature(signature_id) => {
+            let signature = db.get_signature_index().get(&signature_id)?;
+            if !signature.param_docs.is_empty() {
+                return None;
+            }
+            let mut final_type = None;
+            for overload in &signature.overloads {
+                let mut param_idx = param_idx;
+                match (origin_colon_define, overload.is_colon_define()) {
+                    (true, false) => {
+                        param_idx += 1;
+                    }
+                    (false, true) => {
+                        if param_idx > 0 {
+                            param_idx -= 1;
+                        }
+                    }
+                    _ => {}
+                }
+
+                if let Some((_, typ)) = overload.get_params().get(param_idx) {
+                    if let Some(typ) = typ {
+                        final_type = match final_type {
+                            Some(existing) => Some(TypeOps::Union.apply(&existing, typ)),
+                            None => Some(typ.clone()),
+                        };
+                    }
+                }
+            }
+            final_type
+        }
+        LuaType::DocFunction(f) => {
+            let mut param_idx = param_idx;
+            match (origin_colon_define, f.is_colon_define()) {
+                (true, false) => {
+                    param_idx += 1;
+                }
+                (false, true) => {
+                    if param_idx > 0 {
+                        param_idx -= 1;
+                    }
+                }
+                _ => {}
+            }
+
+            if let Some((_, typ)) = f.get_params().get(param_idx) {
+                return typ.clone();
+            }
+            None
+        }
+        LuaType::Union(union_types) => {
+            let mut final_type = None;
+            for ty in union_types.get_types() {
+                if let Some(ty) =
+                    find_param_type_from_union(db, ty.clone(), param_idx, origin_colon_define)
+                {
+                    final_type = match final_type {
+                        Some(existing) => Some(TypeOps::Union.apply(&existing, &ty)),
+                        None => Some(ty),
+                    };
+                }
+            }
+            final_type
+        }
+        _ => None,
+    }
 }
 
 pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
