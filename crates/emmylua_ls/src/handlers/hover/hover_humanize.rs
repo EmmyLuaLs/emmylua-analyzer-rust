@@ -49,6 +49,7 @@ pub fn hover_function_type(
                 function_member,
                 func_name,
                 is_local,
+                false,
             )
             .unwrap_or_else(|| {
                 builder.signature_overload = None;
@@ -103,6 +104,7 @@ fn hover_union_function_type(
                     function_member,
                     func_name,
                     false,
+                    true,
                 ) {
                     overloads.push(type_description);
                 }
@@ -202,8 +204,12 @@ fn hover_signature_type(
     owner_member: Option<&LuaMember>,
     func_name: &str,
     is_local: bool,
+    is_form_union: bool,
 ) -> Option<String> {
     let signature = db.get_signature_index().get(&signature_id)?;
+    if is_form_union && signature.param_docs.is_empty() {
+        return None;
+    }
     let call_signature = builder.get_call_signature();
 
     let mut type_label = "function ";
@@ -368,42 +374,43 @@ fn build_signature_rets(
             }
         };
         result.push_str(rets.as_str());
+        return result;
+    }
+
+    let rets = if !overload_rets_string.is_empty() {
+        overload_rets_string
     } else {
-        let rets = if !overload_rets_string.is_empty() {
-            overload_rets_string
+        let rets = &signature.return_docs;
+        if rets.is_empty() {
+            "".to_string()
         } else {
-            let rets = &signature.return_docs;
-            if rets.is_empty() {
-                "".to_string()
-            } else {
-                let mut rets_string_multiline = String::new();
-                rets_string_multiline.push_str("\n");
+            let mut rets_string_multiline = String::new();
+            rets_string_multiline.push_str("\n");
 
-                for (i, ret) in rets.iter().enumerate() {
-                    let type_text = build_signature_ret_type(builder, ret, i);
-                    let prefix = if i == 0 {
-                        "-> ".to_string()
+            for (i, ret) in rets.iter().enumerate() {
+                let type_text = build_signature_ret_type(builder, ret, i);
+                let prefix = if i == 0 {
+                    "-> ".to_string()
+                } else {
+                    format!("{}. ", i + 1)
+                };
+                let name = ret.name.clone().unwrap_or_default();
+
+                rets_string_multiline.push_str(&format!(
+                    "  {}{}{}\n",
+                    prefix,
+                    if !name.is_empty() {
+                        format!("{}: ", name)
                     } else {
-                        format!("{}. ", i + 1)
-                    };
-                    let name = ret.name.clone().unwrap_or_default();
-
-                    rets_string_multiline.push_str(&format!(
-                        "  {}{}{}\n",
-                        prefix,
-                        if !name.is_empty() {
-                            format!("{}: ", name)
-                        } else {
-                            "".to_string()
-                        },
-                        type_text,
-                    ));
-                }
-                rets_string_multiline
+                        "".to_string()
+                    },
+                    type_text,
+                ));
             }
-        };
-        result.push_str(rets.as_str());
+            rets_string_multiline
+        }
     };
+    result.push_str(rets.as_str());
     result
 }
 

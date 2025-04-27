@@ -185,8 +185,8 @@ where
 {
     let types = union.get_types();
     let num = match level {
-        RenderLevel::Detailed => 10,
-        RenderLevel::Simple => 8,
+        RenderLevel::Detailed => 8,
+        RenderLevel::Simple => 6,
         RenderLevel::Normal => 4,
         RenderLevel::Brief => 2,
         RenderLevel::Minimal => {

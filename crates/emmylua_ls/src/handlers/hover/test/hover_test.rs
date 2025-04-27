@@ -103,4 +103,19 @@ mod tests {
             },
         ));
     }
+
+    #[test]
+    fn test_function_infer_return_val() {
+        let mut ws = HoverVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                local function <??>f(a, b)
+                    a = 1
+                end
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\nlocal function f(a, b)\n```\n\n---\n\n\n".to_string(),
+            },
+        ));
+    }
 }
