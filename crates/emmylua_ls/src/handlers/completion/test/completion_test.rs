@@ -3,11 +3,11 @@ mod tests {
 
     use lsp_types::{CompletionItemKind, CompletionTriggerKind};
 
-    use crate::handlers::completion::test::{CompletionVirtualWorkspace, VirtualCompletionItem};
+    use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualCompletionItem};
 
     #[test]
     fn test_1() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
 
         assert!(ws.check_completion(
             r#"
@@ -23,7 +23,7 @@ mod tests {
 
     #[test]
     fn test_2() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         assert!(ws.check_completion(
             r#"
             ---@overload fun(event: "AAA", callback: fun(trg: string, data: number)): number
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_3() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         // 被动触发补全
         assert!(ws.check_completion_with_kind(
             r#"
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn test_4() {
-        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
         assert!(ws.check_completion(
             r#"
                 local isIn = setmetatable({}, {
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn test_5() {
-        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
         assert!(ws.check_completion(
             r#"
                     ---@class Test
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_enum() {
-        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
 
         assert!(ws.check_completion(
             r#"
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_enum_string() {
-        let mut ws = CompletionVirtualWorkspace::new_with_init_std_lib();
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
 
         assert!(ws.check_completion(
             r#"
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_type_comparison() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
             r#"
             ---@alias std.type
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn test_issue_272() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         assert!(ws.check_completion_with_kind(
             r#"
                 ---@class Box
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_function_self() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         assert!(ws.check_completion_with_kind(
             r#"
                 ---@class A
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_class_attr() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         assert!(ws.check_completion_with_kind(
             r#"
             ---@class (<??>) A

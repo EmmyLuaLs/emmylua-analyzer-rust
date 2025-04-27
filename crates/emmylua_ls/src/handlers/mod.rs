@@ -27,6 +27,7 @@ mod semantic_token;
 mod signature_helper;
 mod text_document;
 mod workspace_symbol;
+mod test_lib;
 
 pub use initialized::initialized_handler;
 pub use initialized::{init_analysis, ClientConfig};

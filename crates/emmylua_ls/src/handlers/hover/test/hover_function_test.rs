@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
 
-    use crate::handlers::hover::test::{HoverVirtualWorkspace, VirtualHoverResult};
+    use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualHoverResult};
 
     #[test]
     fn test_1() {
-        let mut ws = HoverVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         assert!(ws.check_hover(
             r#"
                 ---@param a number 参数a
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn test_2() {
-        let mut ws = HoverVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
             r#"
             ---@class Game
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_3() {
-        let mut ws = HoverVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
             r#"
             ---@class Hover.Test3<T>
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_union_function() {
-        let mut ws = HoverVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
         assert!(ws.check_hover(
             r#"
                 ---@diagnostic disable: missing-return

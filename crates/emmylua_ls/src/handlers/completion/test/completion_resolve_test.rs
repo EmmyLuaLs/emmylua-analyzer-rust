@@ -1,13 +1,11 @@
 #[cfg(test)]
 mod tests {
 
-    use crate::handlers::completion::test::{
-        CompletionVirtualWorkspace, VirtualCompletionResolveItem,
-    };
+    use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualCompletionResolveItem};
 
     #[test]
     fn test_1() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
 
         assert!(ws.check_completion_resolve(
             r#"
@@ -32,7 +30,7 @@ mod tests {
     }
     #[test]
     fn test_2() {
-        let mut ws = CompletionVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new();
 
         assert!(ws.check_completion_resolve(
             r#"
