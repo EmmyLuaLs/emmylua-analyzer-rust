@@ -161,8 +161,14 @@ fn analyze_return(
         .db
         .get_signature_index_mut()
         .get_or_create(signature_id.clone());
-    signature.return_docs = returns;
+
     signature.resolve_return = SignatureReturnStatus::InferResolve;
+
+    if returns.len() == 1 && returns[0].type_ref.is_nil() {
+    } else {
+        signature.return_docs = returns;
+    }
+
     Some(())
 }
 
