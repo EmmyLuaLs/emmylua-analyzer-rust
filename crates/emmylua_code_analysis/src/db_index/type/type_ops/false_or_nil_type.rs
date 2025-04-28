@@ -1,13 +1,13 @@
-use crate::{LuaType, LuaUnionType};
+use crate::{DbIndex, LuaType, LuaUnionType};
 
 use super::TypeOps;
 
-pub fn narrow_false_or_nil(t: LuaType) -> LuaType {
+pub fn narrow_false_or_nil(db: &DbIndex, t: LuaType) -> LuaType {
     if t.is_boolean() {
         return LuaType::BooleanConst(false);
     }
 
-    return TypeOps::Narrow.apply(&t, &LuaType::Nil);
+    return TypeOps::Narrow.apply(db, &t, &LuaType::Nil);
 }
 
 pub fn remove_false_or_nil(t: LuaType) -> LuaType {

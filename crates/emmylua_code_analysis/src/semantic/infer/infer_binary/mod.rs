@@ -57,7 +57,7 @@ fn infer_union_binary_expr(
         } else {
             infer_binary_expr_type(db, other.clone(), ty.clone(), op)
         } {
-            result = TypeOps::Union.apply(&result, &ty);
+            result = TypeOps::Union.apply(db, &result, &ty);
         }
     }
     Some(result)
@@ -83,8 +83,8 @@ fn infer_binary_expr_type(
         BinaryOperator::OpShl => infer_binary_expr_shl(db, left_type, right_type),
         BinaryOperator::OpShr => infer_binary_expr_shr(db, left_type, right_type),
         BinaryOperator::OpConcat => infer_binary_expr_concat(db, left_type, right_type),
-        BinaryOperator::OpOr => infer_binary_expr_or(left_type, right_type),
-        BinaryOperator::OpAnd => infer_binary_expr_and(left_type, right_type),
+        BinaryOperator::OpOr => infer_binary_expr_or(db, left_type, right_type),
+        BinaryOperator::OpAnd => infer_binary_expr_and(db, left_type, right_type),
         BinaryOperator::OpLt
         | BinaryOperator::OpLe
         | BinaryOperator::OpGt
@@ -409,14 +409,18 @@ fn infer_binary_expr_concat(db: &DbIndex, left: LuaType, right: LuaType) -> Infe
     infer_binary_custom_operator(db, &left, &right, LuaOperatorMetaMethod::Concat)
 }
 
-fn infer_binary_expr_and(left: LuaType, right: LuaType) -> InferResult {
+fn infer_binary_expr_and(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
     if left.is_always_falsy() {
         return Ok(left);
     } else if left.is_always_truthy() {
         return Ok(right);
     }
 
-    Ok(TypeOps::Union.apply(&TypeOps::NarrowFalseOrNil.apply_source(&left), &right))
+    Ok(TypeOps::Union.apply(
+        db,
+        &TypeOps::NarrowFalseOrNil.apply_source(db, &left),
+        &right,
+    ))
 }
 
 fn infer_cmp_expr(_: &DbIndex, left: LuaType, right: LuaType, op: BinaryOperator) -> InferResult {

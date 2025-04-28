@@ -75,6 +75,7 @@ fn resolve_member_type(
                     let mut typ = LuaType::Unknown;
                     for member in members {
                         typ = TypeOps::Union.apply(
+                            db,
                             &typ,
                             &db.get_type_index()
                                 .get_type_cache(&member.get_id().into())
@@ -90,6 +91,7 @@ fn resolve_member_type(
                         let feature = member.get_feature();
                         if feature.is_meta_decl() {
                             typ = TypeOps::Union.apply(
+                                db,
                                 &typ,
                                 &db.get_type_index()
                                     .get_type_cache(&member.get_id().into())
@@ -106,6 +108,7 @@ fn resolve_member_type(
                         let feature = member.get_feature();
                         if feature.is_file_decl() {
                             typ = TypeOps::Union.apply(
+                                db,
                                 &typ,
                                 &db.get_type_index()
                                     .get_type_cache(&member.get_id().into())

@@ -168,7 +168,7 @@ fn infer_array_member(
 ) -> Result<LuaType, InferFailReason> {
     let key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
     let expression_type = if db.get_emmyrc().strict.array_index {
-        TypeOps::Union.apply(array_type, &LuaType::Nil)
+        TypeOps::Union.apply(db, array_type, &LuaType::Nil)
     } else {
         array_type.clone()
     };
@@ -698,7 +698,7 @@ fn infer_member_by_index_table(
                                 .map(|it| it.as_type())
                                 .unwrap_or(&LuaType::Unknown);
 
-                            result_type = TypeOps::Union.apply(&result_type, member_type);
+                            result_type = TypeOps::Union.apply(db, &result_type, member_type);
                         }
                     }
 
@@ -707,7 +707,7 @@ fn infer_member_by_index_table(
                             key_type,
                             LuaType::String | LuaType::Number | LuaType::Integer
                         ) {
-                            result_type = TypeOps::Union.apply(&result_type, &LuaType::Nil);
+                            result_type = TypeOps::Union.apply(db, &result_type, &LuaType::Nil);
                         }
 
                         return Ok(result_type);
@@ -791,7 +791,7 @@ fn infer_member_by_index_array(
 ) -> InferResult {
     let member_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
     let expression_type = if db.get_emmyrc().strict.array_index {
-        TypeOps::Union.apply(base, &LuaType::Nil)
+        TypeOps::Union.apply(db, base, &LuaType::Nil)
     } else {
         base.clone()
     };
@@ -846,7 +846,7 @@ fn infer_member_by_index_union(
         );
         match result {
             Ok(typ) => {
-                member_type = TypeOps::Union.apply(&member_type, &typ);
+                member_type = TypeOps::Union.apply(db, &member_type, &typ);
             }
             Err(InferFailReason::FieldDotFound) => {}
             Err(err) => {

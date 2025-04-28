@@ -53,7 +53,7 @@ pub fn infer_token_semantic_info(
                     let param_info = signature.get_param_info_by_id(*idx)?;
                     let mut typ = param_info.type_ref.clone();
                     if param_info.nullable && !typ.is_nullable() {
-                        typ = TypeOps::Union.apply(&typ, &LuaType::Nil);
+                        typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
                     }
 
                     Some(SemanticInfo {

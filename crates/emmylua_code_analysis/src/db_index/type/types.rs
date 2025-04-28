@@ -10,7 +10,7 @@ use smol_str::SmolStr;
 
 use crate::{
     db_index::{LuaMemberKey, LuaSignatureId},
-    InFiled,
+    DbIndex, InFiled,
 };
 
 use super::{type_decl::LuaTypeDeclId, TypeOps};
@@ -432,21 +432,21 @@ impl LuaTupleType {
         self.types.iter().any(|t| t.contain_tpl())
     }
 
-    pub fn cast_down_array_base(&self) -> LuaType {
+    pub fn cast_down_array_base(&self, db: &DbIndex) -> LuaType {
         let mut ty = LuaType::Unknown;
         for t in &self.types {
             match t {
                 LuaType::IntegerConst(i) => {
-                    ty = TypeOps::Union.apply(&ty, &LuaType::DocIntegerConst(*i));
+                    ty = TypeOps::Union.apply(db, &ty, &LuaType::DocIntegerConst(*i));
                 }
                 LuaType::FloatConst(_) => {
-                    ty = TypeOps::Union.apply(&ty, &LuaType::Number);
+                    ty = TypeOps::Union.apply(db, &ty, &LuaType::Number);
                 }
                 LuaType::StringConst(s) => {
-                    ty = TypeOps::Union.apply(&ty, &LuaType::DocStringConst(s.clone()));
+                    ty = TypeOps::Union.apply(db, &ty, &LuaType::DocStringConst(s.clone()));
                 }
                 _ => {
-                    ty = TypeOps::Union.apply(&ty, t);
+                    ty = TypeOps::Union.apply(db, &ty, t);
                 }
             }
         }
@@ -598,7 +598,7 @@ impl LuaObjectType {
                 .any(|(k, v)| k.contain_tpl() || v.contain_tpl())
     }
 
-    pub fn cast_down_array_base(&self) -> Option<LuaType> {
+    pub fn cast_down_array_base(&self, db: &DbIndex) -> Option<LuaType> {
         if self.index_access.len() != 0 {
             let mut ty = None;
             for (key, value_type) in self.index_access.iter() {
@@ -607,7 +607,7 @@ impl LuaObjectType {
                         ty = Some(LuaType::Unknown);
                     }
                     if let Some(t) = ty {
-                        ty = Some(TypeOps::Union.apply(&t, value_type));
+                        ty = Some(TypeOps::Union.apply(db, &t, value_type));
                     }
                 }
             }
@@ -634,7 +634,7 @@ impl LuaObjectType {
 
             count += 1;
 
-            ty = TypeOps::Union.apply(&ty, value_type);
+            ty = TypeOps::Union.apply(db, &ty, value_type);
         }
 
         Some(ty)

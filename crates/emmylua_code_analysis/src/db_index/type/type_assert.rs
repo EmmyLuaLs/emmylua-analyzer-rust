@@ -48,11 +48,11 @@ impl TypeAssertion {
         source: LuaType,
     ) -> Result<LuaType, InferFailReason> {
         match self {
-            TypeAssertion::Exist => Ok(TypeOps::RemoveNilOrFalse.apply_source(&source)),
-            TypeAssertion::NotExist => Ok(TypeOps::NarrowFalseOrNil.apply_source(&source)),
-            TypeAssertion::Narrow(t) => Ok(TypeOps::Narrow.apply(&source, t)),
-            TypeAssertion::Add(lua_type) => Ok(TypeOps::Union.apply(&source, lua_type)),
-            TypeAssertion::Remove(lua_type) => Ok(TypeOps::Remove.apply(&source, lua_type)),
+            TypeAssertion::Exist => Ok(TypeOps::RemoveNilOrFalse.apply_source(db, &source)),
+            TypeAssertion::NotExist => Ok(TypeOps::NarrowFalseOrNil.apply_source(db, &source)),
+            TypeAssertion::Narrow(t) => Ok(TypeOps::Narrow.apply(db, &source, t)),
+            TypeAssertion::Add(lua_type) => Ok(TypeOps::Union.apply(db, &source, lua_type)),
+            TypeAssertion::Remove(lua_type) => Ok(TypeOps::Remove.apply(db, &source, lua_type)),
             TypeAssertion::Force(t) => Ok(t.clone()),
             TypeAssertion::Reassign((syntax_id, idx)) => {
                 let expr = LuaExpr::cast(
@@ -68,7 +68,7 @@ impl TypeAssertion {
                     }
                     t => t,
                 };
-                Ok(TypeOps::Narrow.apply(&source, &expr_type))
+                Ok(TypeOps::Narrow.apply(db, &source, &expr_type))
             }
             TypeAssertion::And(a) => {
                 let mut result = vec![];
@@ -82,7 +82,7 @@ impl TypeAssertion {
                     _ => {
                         let mut result_type = result.remove(0);
                         for t in result {
-                            result_type = TypeOps::And.apply(&result_type, &t);
+                            result_type = TypeOps::And.apply(db, &result_type, &t);
                             if result_type.is_nil() {
                                 return Ok(LuaType::Nil);
                             }
@@ -104,7 +104,7 @@ impl TypeAssertion {
                     _ => {
                         let mut result_type = result.remove(0);
                         for t in result {
-                            result_type = TypeOps::Union.apply(&result_type, &t);
+                            result_type = TypeOps::Union.apply(db, &result_type, &t);
                         }
 
                         Ok(result_type)

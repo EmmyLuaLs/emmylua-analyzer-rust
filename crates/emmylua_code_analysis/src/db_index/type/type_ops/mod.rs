@@ -5,6 +5,8 @@ mod remove_type;
 mod test;
 mod union_type;
 
+use crate::DbIndex;
+
 use super::LuaType;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -24,11 +26,11 @@ pub enum TypeOps {
 }
 
 impl TypeOps {
-    pub fn apply(&self, source: &LuaType, target: &LuaType) -> LuaType {
+    pub fn apply(&self, db: &DbIndex, source: &LuaType, target: &LuaType) -> LuaType {
         match self {
             TypeOps::Union => union_type::union_type(source.clone(), target.clone()),
             TypeOps::Remove => {
-                remove_type::remove_type(source.clone(), target.clone()).unwrap_or(LuaType::Any)
+                remove_type::remove_type(db, source.clone(), target.clone()).unwrap_or(LuaType::Any)
             }
             TypeOps::Narrow => narrow_type::narrow_down_type(source.clone(), target.clone())
                 .unwrap_or(target.clone()),
@@ -37,9 +39,9 @@ impl TypeOps {
         }
     }
 
-    pub fn apply_source(&self, source: &LuaType) -> LuaType {
+    pub fn apply_source(&self, db: &DbIndex, source: &LuaType) -> LuaType {
         match self {
-            TypeOps::NarrowFalseOrNil => false_or_nil_type::narrow_false_or_nil(source.clone()),
+            TypeOps::NarrowFalseOrNil => false_or_nil_type::narrow_false_or_nil(db, source.clone()),
             TypeOps::RemoveNilOrFalse => false_or_nil_type::remove_false_or_nil(source.clone()),
             _ => source.clone(),
         }

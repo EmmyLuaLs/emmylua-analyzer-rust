@@ -115,7 +115,7 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
         if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
             let mut typ = param_info.type_ref.clone();
             if param_info.nullable && !typ.is_nullable() {
-                typ = TypeOps::Union.apply(&typ, &LuaType::Nil);
+                typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
             }
 
             return Ok(typ);
@@ -167,7 +167,7 @@ fn find_param_type_from_type(
             if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
                 let mut typ = param_info.type_ref.clone();
                 if param_info.nullable && !typ.is_nullable() {
-                    typ = TypeOps::Union.apply(&typ, &LuaType::Nil);
+                    typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
                 }
 
                 return Some(typ);
@@ -231,7 +231,7 @@ fn find_param_type_from_union(
                 if let Some((_, typ)) = overload.get_params().get(param_idx) {
                     if let Some(typ) = typ {
                         final_type = match final_type {
-                            Some(existing) => Some(TypeOps::Union.apply(&existing, typ)),
+                            Some(existing) => Some(TypeOps::Union.apply(db, &existing, typ)),
                             None => Some(typ.clone()),
                         };
                     }
@@ -265,7 +265,7 @@ fn find_param_type_from_union(
                     find_param_type_from_union(db, ty.clone(), param_idx, origin_colon_define)
                 {
                     final_type = match final_type {
-                        Some(existing) => Some(TypeOps::Union.apply(&existing, &ty)),
+                        Some(existing) => Some(TypeOps::Union.apply(db, &existing, &ty)),
                         None => Some(ty),
                     };
                 }

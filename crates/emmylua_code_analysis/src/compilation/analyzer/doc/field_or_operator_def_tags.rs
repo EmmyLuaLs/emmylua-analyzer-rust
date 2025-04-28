@@ -56,7 +56,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
     };
 
     if nullable && !field_type.is_nullable() {
-        field_type = TypeOps::Union.apply(&field_type, &LuaType::Nil);
+        field_type = TypeOps::Union.apply(analyzer.db, &field_type, &LuaType::Nil);
     }
 
     let description = if let Some(description) = tag.get_description() {

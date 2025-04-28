@@ -109,7 +109,7 @@ pub fn analyze_param(analyzer: &mut DocAnalyzer, tag: LuaDocTagParam) -> Option<
     };
 
     if nullable && !type_ref.is_nullable() {
-        type_ref = TypeOps::Union.apply(&type_ref, &LuaType::Nil);
+        type_ref = TypeOps::Union.apply(analyzer.db, &type_ref, &LuaType::Nil);
     }
 
     let description = if let Some(des) = tag.get_description() {

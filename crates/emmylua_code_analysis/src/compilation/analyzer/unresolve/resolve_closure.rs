@@ -332,6 +332,7 @@ pub fn try_resolve_closure_parent_params(
                             continue;
                         }
                         let new_type = TypeOps::Union.apply(
+                            db,
                             final_param.1.as_ref().unwrap_or(&LuaType::Unknown),
                             param.1.as_ref().unwrap_or(&LuaType::Unknown),
                         );

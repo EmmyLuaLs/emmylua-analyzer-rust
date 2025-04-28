@@ -1,6 +1,6 @@
-use crate::{LuaType, LuaUnionType};
+use crate::{DbIndex, LuaType, LuaUnionType};
 
-pub fn remove_type(source: LuaType, removed_type: LuaType) -> Option<LuaType> {
+pub fn remove_type(db: &DbIndex, source: LuaType, removed_type: LuaType) -> Option<LuaType> {
     if source == removed_type {
         match source {
             LuaType::IntegerConst(_) => return Some(LuaType::Integer),
@@ -65,6 +65,7 @@ pub fn remove_type(source: LuaType, removed_type: LuaType) -> Option<LuaType> {
             | LuaType::Array(_)
             | LuaType::Tuple(_)
             | LuaType::Generic(_)
+            | LuaType::Object(_)
             | LuaType::TableGeneric(_) => return None,
             _ => {}
         },
@@ -127,20 +128,19 @@ pub fn remove_type(source: LuaType, removed_type: LuaType) -> Option<LuaType> {
         let mut types = u
             .get_types()
             .iter()
-            .filter_map(|t| remove_type(t.clone(), removed_type.clone()))
+            .filter_map(|t| remove_type(db, t.clone(), removed_type.clone()))
             .collect::<Vec<_>>();
         types.dedup();
-
-        return match types.len() {
-            0 => None,
-            1 => Some(types[0].clone()),
-            _ => Some(LuaType::Union(LuaUnionType::new(types).into())),
-        };
+        match types.len() {
+            0 => return Some(LuaType::Nil),
+            1 => return types.pop(),
+            _ => return Some(LuaType::Union(LuaUnionType::new(types).into())),
+        }
     } else if let LuaType::Union(u) = &removed_type {
         let mut types = u
             .get_types()
             .iter()
-            .filter_map(|t| remove_type(source.clone(), t.clone()))
+            .filter_map(|t| remove_type(db, source.clone(), t.clone()))
             .collect::<Vec<_>>();
         types.dedup();
         return match types.len() {

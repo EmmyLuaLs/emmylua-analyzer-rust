@@ -35,7 +35,7 @@ pub fn infer_type(analyzer: &mut DocAnalyzer, node: LuaDocType) -> LuaType {
                 }
 
                 if !t.is_nullable() {
-                    return TypeOps::Union.apply(&t, &LuaType::Nil);
+                    return TypeOps::Union.apply(analyzer.db, &t, &LuaType::Nil);
                 }
 
                 return t;
@@ -408,7 +408,7 @@ fn infer_func_type(analyzer: &mut DocAnalyzer, func: &LuaDocFuncType) -> LuaType
         let type_ref = if let Some(type_ref) = param.get_type() {
             let mut typ = infer_type(analyzer, type_ref);
             if nullable && !typ.is_nullable() {
-                typ = TypeOps::Union.apply(&typ, &LuaType::Nil);
+                typ = TypeOps::Union.apply(analyzer.db, &typ, &LuaType::Nil);
             }
             Some(typ)
         } else {
@@ -497,7 +497,7 @@ fn infer_object_type(analyzer: &mut DocAnalyzer, object_type: &LuaDocObjectType)
         };
 
         if field.is_nullable() {
-            type_ref = TypeOps::Union.apply(&type_ref, &LuaType::Nil);
+            type_ref = TypeOps::Union.apply(analyzer.db, &type_ref, &LuaType::Nil);
         }
 
         fields.push((key, type_ref));

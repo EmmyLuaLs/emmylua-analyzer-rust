@@ -37,6 +37,11 @@ pub fn union_type(source: LuaType, target: LuaType) -> LuaType {
         // function | function const
         (LuaType::Function, LuaType::DocFunction(_) | LuaType::Signature(_)) => LuaType::Function,
         (LuaType::DocFunction(_) | LuaType::Signature(_), LuaType::Function) => LuaType::Function,
+        // class references
+        (LuaType::Ref(_), LuaType::Ref(_)) => {
+            // Create a union of two class references
+            LuaType::Union(LuaUnionType::new(vec![source.clone(), target.clone()]).into())
+        }
         // union
         (LuaType::Union(left), right) if !right.is_union() => {
             let left = left.deref().clone();

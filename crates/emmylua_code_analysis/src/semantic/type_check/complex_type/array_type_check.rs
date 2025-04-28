@@ -45,7 +45,7 @@ pub fn check_array_type_compact(
         }
         LuaType::Object(compact_object) => {
             let compact_base = compact_object
-                .cast_down_array_base()
+                .cast_down_array_base(db)
                 .ok_or(TypeCheckFailReason::TypeNotMatch)?;
             return check_general_type_compact(
                 db,

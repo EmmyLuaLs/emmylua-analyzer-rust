@@ -5,8 +5,8 @@ use lsp_types::NumberOrString;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    check_type_compact, humanize_type, DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType,
-    RenderLevel, VirtualUrlGenerator,
+    check_type_compact, humanize_type, DbIndex, DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId,
+    LuaType, RenderLevel, VirtualUrlGenerator,
 };
 
 /// A virtual workspace for testing.
@@ -182,6 +182,11 @@ impl VirtualWorkspace {
         let db = &self.analysis.compilation.get_db();
         let level = 0;
         humanize_type(db, &ty, RenderLevel::Brief)
+    }
+
+    pub fn get_db_mut(&mut self) -> &mut DbIndex {
+        let db = self.analysis.compilation.get_db_mut();
+        db
     }
 }
 

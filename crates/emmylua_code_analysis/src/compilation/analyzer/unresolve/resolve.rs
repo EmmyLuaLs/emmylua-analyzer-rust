@@ -286,7 +286,7 @@ pub fn try_resolve_iter_var(
         .get_type(iter_var.ret_idx)
         .cloned()
         .unwrap_or(LuaType::Unknown);
-    iter_type = TypeOps::Remove.apply(&iter_type, &LuaType::Nil);
+    iter_type = TypeOps::Remove.apply(db, &iter_type, &LuaType::Nil);
     let decl_id = iter_var.decl_id;
     bind_type(
         db,

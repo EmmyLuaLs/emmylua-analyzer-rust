@@ -276,11 +276,11 @@ fn array_tpl_pattern_match(
             tpl_pattern_match(db, cache, root, base, target_base, substitutor);
         }
         LuaType::Tuple(target_tuple) => {
-            let target_base = target_tuple.cast_down_array_base();
+            let target_base = target_tuple.cast_down_array_base(db);
             tpl_pattern_match(db, cache, root, base, &target_base, substitutor);
         }
         LuaType::Object(target_object) => {
-            let target_base = target_object.cast_down_array_base()?;
+            let target_base = target_object.cast_down_array_base(db)?;
             tpl_pattern_match(db, cache, root, base, &target_base, substitutor);
         }
         _ => {}
@@ -343,7 +343,7 @@ fn table_generic_tpl_pattern_match(
             }
 
             let key_type = LuaType::Union(LuaUnionType::new(keys).into());
-            let target_base = target_tuple.cast_down_array_base();
+            let target_base = target_tuple.cast_down_array_base(db);
             tpl_pattern_match(
                 db,
                 cache,

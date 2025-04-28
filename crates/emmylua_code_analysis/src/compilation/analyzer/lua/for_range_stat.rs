@@ -31,7 +31,7 @@ pub fn analyze_for_range_stat(
                         .get_type(idx)
                         .cloned()
                         .unwrap_or(LuaType::Unknown);
-                    let ret_type = TypeOps::Remove.apply(&ret_type, &LuaType::Nil);
+                    let ret_type = TypeOps::Remove.apply(analyzer.db, &ret_type, &LuaType::Nil);
                     analyzer
                         .db
                         .get_type_index_mut()
