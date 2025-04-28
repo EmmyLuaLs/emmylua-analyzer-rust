@@ -7,37 +7,26 @@ mod tests {
     fn test_1() {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def_file(
-            "1.lua",
-            r#"
-                local M = {}
-                function M.delete(a)
-                end
-                return M
-            "#,
-        );
-        ws.def_file(
             "2.lua",
             r#"
-               delete = require("1").delete
+               delete = require("virtual_0").delete
                delete()
             "#,
         );
         ws.def_file(
             "3.lua",
             r#"
-               delete = require("1").delete
+               delete = require("virtual_0").delete
                delete()
             "#,
         );
-        // ws.check_implementation(
-        //     r#"
-        //         de<??>lete()
-        //     "#,
-        // );
 
         ws.check_implementation(
             r#"
-                local a = require("1").del<??>ete
+                local M = {}
+                function M.de<??>lete(a)
+                end
+                return M
             "#,
         );
     }
@@ -88,10 +77,14 @@ mod tests {
                 if false then
                     yyy.a = 1
                     if yyy.a then
-                        yyy.<??>a = 2
                     end
                 end
 
+            "#,
+        );
+        ws.check_implementation(
+            r#"
+                yyy.<??>a = 2
             "#,
         );
     }
