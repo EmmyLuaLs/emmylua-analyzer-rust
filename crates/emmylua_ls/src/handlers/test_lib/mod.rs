@@ -1,7 +1,7 @@
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, VirtualUrlGenerator};
 use lsp_types::{
-    CompletionItemKind, CompletionResponse, CompletionTriggerKind, Hover, HoverContents,
-    MarkupContent, Position,
+    CompletionItemKind, CompletionResponse, CompletionTriggerKind, GotoDefinitionResponse, Hover,
+    HoverContents, MarkupContent, Position,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -10,7 +10,7 @@ use crate::{
     handlers::completion::{completion, completion_resolve},
 };
 
-use super::hover::hover;
+use super::{hover::hover, implementation::implementation};
 
 /// A virtual workspace for testing.
 #[allow(unused)]
@@ -207,6 +207,23 @@ impl ProviderVirtualWorkspace {
         if item_detail != expect.detail {
             return false;
         }
+        true
+    }
+
+    pub fn check_implementation(&mut self, block_str: &str) -> bool {
+        let content = Self::handle_file_content(block_str);
+        let Some((content, position)) = content else {
+            return false;
+        };
+        let file_id = self.def(&content);
+        let result = implementation(&self.analysis, file_id, position);
+        let Some(result) = result else {
+            return false;
+        };
+        let GotoDefinitionResponse::Array(implementations) = result else {
+            return false;
+        };
+        dbg!(&implementations.len());
         true
     }
 }

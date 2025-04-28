@@ -7,9 +7,10 @@ use lsp_types::request::{
     CodeActionRequest, CodeLensRequest, CodeLensResolve, ColorPresentationRequest, Completion,
     DocumentColor, DocumentHighlightRequest, DocumentLinkRequest, DocumentLinkResolve,
     DocumentSymbolRequest, ExecuteCommand, FoldingRangeRequest, Formatting, GotoDefinition,
-    HoverRequest, InlayHintRequest, InlayHintResolveRequest, InlineValueRequest,
-    PrepareRenameRequest, RangeFormatting, References, Rename, ResolveCompletionItem,
-    SelectionRangeRequest, SemanticTokensFullRequest, SignatureHelpRequest, WorkspaceSymbolRequest,
+    GotoImplementation, HoverRequest, InlayHintRequest, InlayHintResolveRequest,
+    InlineValueRequest, PrepareRenameRequest, RangeFormatting, References, Rename,
+    ResolveCompletionItem, SelectionRangeRequest, SemanticTokensFullRequest, SignatureHelpRequest,
+    WorkspaceSymbolRequest,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -35,6 +36,7 @@ use super::{
     emmy_annotator::{on_emmy_annotator_handler, EmmyAnnotatorRequest},
     fold_range::on_folding_range_handler,
     hover::on_hover,
+    implementation::on_implementation_handler,
     inlay_hint::{on_inlay_hint_handler, on_resolve_inlay_hint},
     inline_values::on_inline_values_handler,
     references::on_references_handler,
@@ -76,6 +78,8 @@ pub async fn on_req_handler(
         .on_parallel::<InlayHintResolveRequest, _, _>(on_resolve_inlay_hint)
         .await
         .on_parallel::<GotoDefinition, _, _>(on_goto_definition_handler)
+        .await
+        .on_parallel::<GotoImplementation, _, _>(on_implementation_handler)
         .await
         .on_parallel::<References, _, _>(on_references_handler)
         .await

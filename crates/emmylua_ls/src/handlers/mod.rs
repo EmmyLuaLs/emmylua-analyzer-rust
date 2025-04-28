@@ -15,6 +15,7 @@ mod document_symbol;
 mod emmy_annotator;
 mod fold_range;
 mod hover;
+mod implementation;
 mod initialized;
 mod inlay_hint;
 mod inline_values;
@@ -25,9 +26,9 @@ mod request_handler;
 mod response_handler;
 mod semantic_token;
 mod signature_helper;
+mod test_lib;
 mod text_document;
 mod workspace_symbol;
-mod test_lib;
 
 pub use initialized::initialized_handler;
 pub use initialized::{init_analysis, ClientConfig};
@@ -88,6 +89,10 @@ pub fn server_capabilities(client_capabilities: &ClientCapabilities) -> ServerCa
     register::<completion::CompletionCapabilities>(&mut server_capabilities, client_capabilities);
     register::<inlay_hint::InlayHintCapabilities>(&mut server_capabilities, client_capabilities);
     register::<definition::DefinitionCapabilities>(&mut server_capabilities, client_capabilities);
+    register::<implementation::ImplementationCapabilities>(
+        &mut server_capabilities,
+        client_capabilities,
+    );
     register::<references::ReferencesCapabilities>(&mut server_capabilities, client_capabilities);
     register::<rename::RenameCapabilities>(&mut server_capabilities, client_capabilities);
     register::<code_lens::CodeLensCapabilities>(&mut server_capabilities, client_capabilities);
