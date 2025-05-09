@@ -94,4 +94,40 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_duplicate_function_2() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "1.lua",
+            r#"
+                ---@class D31.A
+                local A = {}
+
+                ---@param ... any
+                ---@return any, any, any, any
+                function A:execute(...)
+                end
+
+                return A
+            "#,
+        );
+        // TODO: 这里应该报错, 但底层存在问题, 暂时不报错, issue: #430
+        assert!(ws.check_code_for(
+            DiagnosticCode::DuplicateSetField,
+            r#"
+            local A = require("1")
+
+            ---@class D31.B
+            local B = {}
+
+            function B:__init()
+                self.originalExecute = A.execute
+                A.execute = function(trg, ...)
+                    self.originalExecute(trg, ...)
+                end
+            end
+        "#
+        ));
+    }
 }

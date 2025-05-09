@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use emmylua_parser::{LuaAstNode, LuaDocTag, LuaDocTagClass};
-
-use crate::{DiagnosticCode, LuaMember, LuaMemberFeature, LuaMemberKey, LuaType, SemanticModel};
+use crate::{
+    DiagnosticCode, LuaDeclExtra, LuaMember, LuaMemberFeature, LuaMemberKey, LuaType,
+    LuaTypeDeclId, SemanticModel,
+};
 
 use super::{Checker, DiagnosticContext};
 
@@ -15,19 +16,39 @@ impl Checker for DuplicateFieldChecker {
     ];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-
-        for tag in root.descendants::<LuaDocTag>() {
-            match tag {
-                LuaDocTag::Class(class_tag) => {
-                    check_class_duplicate_field(context, semantic_model, class_tag);
-                }
-                _ => {}
+        let type_decl_id_set = get_type_decl_id(semantic_model);
+        if let Some(type_decl_id_set) = type_decl_id_set {
+            for type_decl_id in type_decl_id_set {
+                check_class_duplicate_field(context, semantic_model, &type_decl_id);
             }
         }
     }
 }
 
+fn get_type_decl_id(semantic_model: &SemanticModel) -> Option<HashSet<LuaTypeDeclId>> {
+    let file_id = semantic_model.get_file_id();
+    let Some(decl_tree) = semantic_model
+        .get_db()
+        .get_decl_index()
+        .get_decl_tree(&file_id)
+    else {
+        return None;
+    };
+    let mut type_decl_id_set = HashSet::new();
+    for (decl_id, decl) in decl_tree.get_decls() {
+        if matches!(
+            &decl.extra,
+            LuaDeclExtra::Local { .. } | LuaDeclExtra::Global { .. }
+        ) {
+            let decl_type = semantic_model.get_type((*decl_id).into());
+            if let LuaType::Def(id) = decl_type {
+                type_decl_id_set.insert(id);
+            }
+        }
+    }
+
+    Some(type_decl_id_set)
+}
 struct DiagnosticMemberInfo<'a> {
     typ: LuaType,
     feature: LuaMemberFeature,
@@ -37,15 +58,13 @@ struct DiagnosticMemberInfo<'a> {
 fn check_class_duplicate_field(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    class_tag: LuaDocTagClass,
+    type_decl_id: &LuaTypeDeclId,
 ) -> Option<()> {
-    let file_id = context.file_id;
-    let name_token = class_tag.get_name_token()?;
-    let name = name_token.get_name_text();
     let type_decl = context
         .get_db()
         .get_type_index()
-        .find_type_decl(file_id, name)?;
+        .get_type_decl(type_decl_id)?;
+    let file_id = context.file_id;
 
     let members = semantic_model
         .get_db()
