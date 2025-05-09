@@ -920,4 +920,39 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_self_1() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "1.lua",
+            r#"
+                ---@class D31.A
+                local A = {}
+
+                ---@param ... any
+                ---@return any, any, any, any
+                function A:execute(...)
+                end
+
+                return A
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            local A = require("1")
+
+            ---@class D31.B
+            local B = {}
+
+            function B:__init()
+                self.originalExecute = A.execute
+                A.execute = function(trg, ...)
+                    self.originalExecute(trg, ...)
+                end
+            end
+        "#
+        ));
+    }
 }
