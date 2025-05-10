@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
+    use std::{ops::Deref, sync::Arc};
 
     use crate::{DiagnosticCode, VirtualWorkspace};
 
@@ -916,6 +916,75 @@ mod test {
                 ---@param superInit? fun(self: D23.A, super: Super, ...)
                 local function declare(super, superInit)
                     extends(superInit)
+                end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_self_1() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "1.lua",
+            r#"
+                ---@class D31.A
+                local A = {}
+
+                ---@param ... any
+                ---@return any, any, any, any
+                function A:execute(...)
+                end
+
+                return A
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            local A = require("1")
+
+            ---@class D31.B
+            local B = {}
+
+            function B:__init()
+                self.originalExecute = A.execute
+                A.execute = function(trg, ...)
+                    self.originalExecute(trg, ...)
+                end
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_flow_alias() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let mut emmyrc = ws.analysis.get_emmyrc().deref().clone();
+        emmyrc.strict.array_index = false;
+        ws.analysis.update_config(Arc::new(emmyrc));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+                ---@class Trigger
+                ---@alias Trigger.CallBack fun(trg: Trigger, ...): any, any, any, any
+
+                ---@param callback Trigger.CallBack
+                local function event(callback)
+                end
+
+                local function core_subscribe(...)
+                    ---@type Trigger.CallBack
+                    local callback
+                    local nargs = select('#', ...)
+                    if nargs == 1 then
+                        callback = ...
+                    elseif nargs > 1 then
+                        extra_args = { ... }
+                        callback = extra_args[nargs]
+                    end
+
+                    local b = event(callback)
                 end
         "#
         ));

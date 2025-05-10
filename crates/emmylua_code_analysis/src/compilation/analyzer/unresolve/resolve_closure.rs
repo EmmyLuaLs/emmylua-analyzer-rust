@@ -442,8 +442,8 @@ fn resolve_doc_function(
     if signature.resolve_return == SignatureReturnStatus::UnResolve
         || signature.resolve_return == SignatureReturnStatus::InferResolve
     {
-        signature.resolve_return = SignatureReturnStatus::DocResolve;
         if signature.return_docs.is_empty() && !doc_func.get_ret().is_nil() {
+            signature.resolve_return = SignatureReturnStatus::DocResolve;
             signature.return_docs.push(LuaDocReturnInfo {
                 name: None,
                 type_ref: doc_func.get_ret().clone(),
