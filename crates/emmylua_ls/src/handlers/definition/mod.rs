@@ -1,16 +1,19 @@
 mod goto_def_definition;
 mod goto_doc_see;
 mod goto_module_file;
+mod test;
 
-use emmylua_code_analysis::SemanticDeclLevel;
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, SemanticDeclLevel};
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocTagSee, LuaGeneralToken, LuaStringToken, LuaTokenKind,
 };
-use goto_def_definition::goto_def_definition;
-use goto_doc_see::goto_doc_see;
-use goto_module_file::goto_module_file;
+pub use goto_def_definition::goto_def_definition;
+use goto_def_definition::goto_str_tpl_ref_definition;
+pub use goto_doc_see::goto_doc_see;
+pub use goto_module_file::goto_module_file;
 use lsp_types::{
-    ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, OneOf, ServerCapabilities,
+    ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, OneOf, Position,
+    ServerCapabilities,
 };
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
@@ -28,6 +31,15 @@ pub async fn on_goto_definition_handler(
     let analysis = context.analysis.read().await;
     let file_id = analysis.get_file_id(&uri)?;
     let position = params.text_document_position_params.position;
+
+    definition(&analysis, file_id, position)
+}
+
+pub fn definition(
+    analysis: &EmmyLuaAnalysis,
+    file_id: FileId,
+    position: Position,
+) -> Option<GotoDefinitionResponse> {
     let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
     let root = semantic_model.get_root();
     let position_offset = {
@@ -58,8 +70,13 @@ pub async fn on_goto_definition_handler(
     {
         return goto_def_definition(&semantic_model, semantic_decl);
     } else if let Some(string_token) = LuaStringToken::cast(token.clone()) {
-        if let Some(module_response) = goto_module_file(&semantic_model, string_token) {
+        if let Some(module_response) = goto_module_file(&semantic_model, string_token.clone()) {
             return Some(module_response);
+        }
+        if let Some(str_tpl_ref_response) =
+            goto_str_tpl_ref_definition(&semantic_model, string_token)
+        {
+            return Some(str_tpl_ref_response);
         }
     } else if token.kind() == LuaTokenKind::TkDocSeeContent.into() {
         let general_token = LuaGeneralToken::cast(token.clone())?;

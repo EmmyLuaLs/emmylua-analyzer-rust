@@ -217,6 +217,7 @@ impl ProviderVirtualWorkspace {
         };
         let file_id = self.def(&content);
         let result = implementation(&self.analysis, file_id, position);
+        dbg!(&result);
         let Some(result) = result else {
             return false;
         };
@@ -225,5 +226,23 @@ impl ProviderVirtualWorkspace {
         };
         dbg!(&implementations.len());
         true
+    }
+
+    pub fn check_definition(&mut self, block_str: &str) -> bool {
+        let content = Self::handle_file_content(block_str);
+        let Some((content, position)) = content else {
+            return false;
+        };
+        let file_id = self.def(&content);
+        let result = super::definition::definition(&self.analysis, file_id, position);
+        dbg!(&result);
+        let Some(result) = result else {
+            return false;
+        };
+        match result {
+            GotoDefinitionResponse::Scalar(_) => true,
+            GotoDefinitionResponse::Array(_) => true,
+            GotoDefinitionResponse::Link(_) => true,
+        }
     }
 }
