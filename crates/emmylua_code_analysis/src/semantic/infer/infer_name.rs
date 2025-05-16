@@ -124,7 +124,13 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
 
     if let Some(current_member_id) = member_id {
         let member_decl_type = find_decl_member_type(db, current_member_id)?;
-        let param_type = find_param_type_from_type(db, member_decl_type, param_idx, colon_define);
+        let param_type = find_param_type_from_type(
+            db,
+            member_decl_type,
+            param_idx,
+            colon_define,
+            decl.get_name() == "...",
+        );
         if let Some(param_type) = param_type {
             return Ok(param_type);
         }
@@ -141,64 +147,127 @@ fn find_decl_member_type(db: &DbIndex, member_id: LuaMemberId) -> InferResult {
     item.resolve_type(db)
 }
 
+fn adjust_param_idx(
+    param_idx: usize,
+    current_colon_define: bool,
+    decl_colon_defined: bool,
+) -> usize {
+    let mut adjusted_idx = param_idx;
+    match (current_colon_define, decl_colon_defined) {
+        (true, false) => {
+            adjusted_idx += 1;
+        }
+        (false, true) => {
+            if adjusted_idx > 0 {
+                adjusted_idx -= 1;
+            }
+        }
+        _ => {}
+    }
+    adjusted_idx
+}
+
+fn check_dots_param_types(
+    params: &[(String, Option<LuaType>)],
+    param_idx: usize,
+    cur_type: &Option<LuaType>,
+) -> Option<LuaType> {
+    for (_, typ) in params.iter().skip(param_idx) {
+        if let Some(typ) = typ {
+            if let Some(cur_type) = cur_type {
+                if cur_type != typ {
+                    return Some(LuaType::Any);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn find_param_type_from_type(
     db: &DbIndex,
     source_type: LuaType,
     param_idx: usize,
     current_colon_define: bool,
+    is_dots: bool,
 ) -> Option<LuaType> {
     match source_type {
         LuaType::Signature(signature_id) => {
             let signature = db.get_signature_index().get(&signature_id)?;
-            let decl_colon_defined = signature.is_colon_define;
-            let mut param_idx = param_idx;
-            match (current_colon_define, decl_colon_defined) {
-                (true, false) => {
-                    param_idx += 1;
-                }
-                (false, true) => {
-                    if param_idx > 0 {
-                        param_idx -= 1;
+            let adjusted_idx =
+                adjust_param_idx(param_idx, current_colon_define, signature.is_colon_define);
+
+            match signature.get_param_info_by_id(adjusted_idx) {
+                Some(param_info) => {
+                    let mut typ = param_info.type_ref.clone();
+                    if param_info.nullable && !typ.is_nullable() {
+                        typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
                     }
+                    Some(typ)
                 }
-                _ => {}
-            }
+                None => {
+                    if !signature.param_docs.is_empty() {
+                        return None;
+                    }
 
-            if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
-                let mut typ = param_info.type_ref.clone();
-                if param_info.nullable && !typ.is_nullable() {
-                    typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
+                    let mut final_type = None;
+                    for overload in &signature.overloads {
+                        let adjusted_idx = adjust_param_idx(
+                            param_idx,
+                            current_colon_define,
+                            overload.is_colon_define(),
+                        );
+
+                        let cur_type =
+                            if let Some((_, typ)) = overload.get_params().get(adjusted_idx) {
+                                typ.clone()
+                            } else {
+                                return None;
+                            };
+
+                        if is_dots {
+                            if let Some(any_type) = check_dots_param_types(
+                                &overload.get_params(),
+                                adjusted_idx,
+                                &cur_type,
+                            ) {
+                                return Some(any_type);
+                            }
+                        }
+
+                        if let Some(typ) = cur_type {
+                            final_type = match final_type {
+                                Some(existing) => Some(TypeOps::Union.apply(db, &existing, &typ)),
+                                None => Some(typ.clone()),
+                            };
+                        }
+                    }
+                    final_type
                 }
-
-                return Some(typ);
             }
         }
         LuaType::DocFunction(f) => {
-            let mut param_idx = param_idx;
-            let decl_colon_defined = f.is_colon_define();
-            match (current_colon_define, decl_colon_defined) {
-                (true, false) => {
-                    param_idx += 1;
-                }
-                (false, true) => {
-                    if param_idx > 0 {
-                        param_idx -= 1;
+            let adjusted_idx =
+                adjust_param_idx(param_idx, current_colon_define, f.is_colon_define());
+            if let Some((_, typ)) = f.get_params().get(adjusted_idx) {
+                let cur_type = typ.clone();
+                if is_dots {
+                    if let Some(any_type) =
+                        check_dots_param_types(&f.get_params(), adjusted_idx, &cur_type)
+                    {
+                        return Some(any_type);
                     }
                 }
-                _ => {}
-            }
-
-            if let Some((_, typ)) = f.get_params().get(param_idx) {
-                return typ.clone();
+                cur_type
+            } else {
+                None
             }
         }
         LuaType::Union(_) => {
-            return find_param_type_from_union(db, source_type, param_idx, current_colon_define)
+            find_param_type_from_union(db, source_type, param_idx, current_colon_define, is_dots)
         }
-        _ => {}
+        _ => None,
     }
-
-    None
 }
 
 fn find_param_type_from_union(
@@ -206,6 +275,7 @@ fn find_param_type_from_union(
     source_type: LuaType,
     param_idx: usize,
     origin_colon_define: bool,
+    is_dots: bool,
 ) -> Option<LuaType> {
     match source_type {
         LuaType::Signature(signature_id) => {
@@ -215,55 +285,64 @@ fn find_param_type_from_union(
             }
             let mut final_type = None;
             for overload in &signature.overloads {
-                let mut param_idx = param_idx;
-                match (origin_colon_define, overload.is_colon_define()) {
-                    (true, false) => {
-                        param_idx += 1;
+                let adjusted_idx =
+                    adjust_param_idx(param_idx, origin_colon_define, overload.is_colon_define());
+
+                let cur_type = if let Some((_, typ)) = overload.get_params().get(adjusted_idx) {
+                    typ.clone()
+                } else {
+                    return None;
+                };
+
+                if is_dots {
+                    if let Some(any_type) =
+                        check_dots_param_types(&overload.get_params(), adjusted_idx, &cur_type)
+                    {
+                        return Some(any_type);
                     }
-                    (false, true) => {
-                        if param_idx > 0 {
-                            param_idx -= 1;
-                        }
-                    }
-                    _ => {}
                 }
 
-                if let Some((_, typ)) = overload.get_params().get(param_idx) {
-                    if let Some(typ) = typ {
-                        final_type = match final_type {
-                            Some(existing) => Some(TypeOps::Union.apply(db, &existing, typ)),
-                            None => Some(typ.clone()),
-                        };
-                    }
+                if let Some(typ) = cur_type {
+                    final_type = match final_type {
+                        Some(existing) => Some(TypeOps::Union.apply(db, &existing, &typ)),
+                        None => Some(typ.clone()),
+                    };
                 }
             }
             final_type
         }
         LuaType::DocFunction(f) => {
-            let mut param_idx = param_idx;
-            match (origin_colon_define, f.is_colon_define()) {
-                (true, false) => {
-                    param_idx += 1;
+            let adjusted_idx =
+                adjust_param_idx(param_idx, origin_colon_define, f.is_colon_define());
+            let cur_type = if let Some((_, typ)) = f.get_params().get(adjusted_idx) {
+                typ.clone()
+            } else {
+                return None;
+            };
+
+            if is_dots {
+                if let Some(any_type) =
+                    check_dots_param_types(&f.get_params(), adjusted_idx, &cur_type)
+                {
+                    return Some(any_type);
                 }
-                (false, true) => {
-                    if param_idx > 0 {
-                        param_idx -= 1;
-                    }
-                }
-                _ => {}
             }
 
-            if let Some((_, typ)) = f.get_params().get(param_idx) {
-                return typ.clone();
-            }
-            None
+            cur_type
         }
         LuaType::Union(union_types) => {
             let mut final_type = None;
             for ty in union_types.get_types() {
-                if let Some(ty) =
-                    find_param_type_from_union(db, ty.clone(), param_idx, origin_colon_define)
-                {
+                if let Some(ty) = find_param_type_from_union(
+                    db,
+                    ty.clone(),
+                    param_idx,
+                    origin_colon_define,
+                    is_dots,
+                ) {
+                    if is_dots && ty.is_any() {
+                        return Some(ty);
+                    }
                     final_type = match final_type {
                         Some(existing) => Some(TypeOps::Union.apply(db, &existing, &ty)),
                         None => Some(ty),
@@ -289,10 +368,18 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
         };
     }
 
+    let mut sorted_decl_ids = decl_ids.to_vec();
+    sorted_decl_ids.sort_by(|a, b| {
+        let a_is_std = db.get_module_index().is_std(&a.file_id);
+        let b_is_std = db.get_module_index().is_std(&b.file_id);
+        b_is_std.cmp(&a_is_std)
+    });
+
+    // TODO: 或许应该联合所有定义的类型?
     let mut valid_type = LuaType::Unknown;
     let mut last_resolve_reason = InferFailReason::None;
-    for decl_id in decl_ids {
-        let decl_type_cache = db.get_type_index().get_type_cache(&decl_id.clone().into());
+    for decl_id in sorted_decl_ids {
+        let decl_type_cache = db.get_type_index().get_type_cache(&decl_id.into());
         match decl_type_cache {
             Some(type_cache) => {
                 let typ = type_cache.as_type();
@@ -305,7 +392,7 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
                 }
             }
             None => {
-                last_resolve_reason = InferFailReason::UnResolveDeclType(*decl_id);
+                last_resolve_reason = InferFailReason::UnResolveDeclType(decl_id);
             }
         }
     }

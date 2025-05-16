@@ -1,8 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use emmylua_parser::{LuaAstNode, LuaDocTag, LuaDocTagClass};
+use emmylua_parser::{
+    LuaAstNode, LuaDocTagField, LuaIndexExpr, LuaStat, LuaSyntaxKind, LuaSyntaxNode,
+};
 
-use crate::{DiagnosticCode, LuaMember, LuaMemberFeature, LuaMemberKey, LuaType, SemanticModel};
+use crate::{
+    DiagnosticCode, LuaDecl, LuaDeclExtra, LuaMember, LuaMemberFeature, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
+};
 
 use super::{Checker, DiagnosticContext};
 
@@ -15,17 +20,54 @@ impl Checker for DuplicateFieldChecker {
     ];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-
-        for tag in root.descendants::<LuaDocTag>() {
-            match tag {
-                LuaDocTag::Class(class_tag) => {
-                    check_class_duplicate_field(context, semantic_model, class_tag);
-                }
-                _ => {}
+        let decl_set = get_decl_set(semantic_model);
+        if let Some(decl_set) = decl_set {
+            for decl_info in decl_set {
+                check_decl_duplicate_field(context, semantic_model, &decl_info);
             }
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DeclInfo {
+    id: LuaTypeDeclId,
+    is_require: bool,
+}
+
+fn get_decl_set(semantic_model: &SemanticModel) -> Option<HashSet<DeclInfo>> {
+    let file_id = semantic_model.get_file_id();
+    let Some(decl_tree) = semantic_model
+        .get_db()
+        .get_decl_index()
+        .get_decl_tree(&file_id)
+    else {
+        return None;
+    };
+    let mut type_decl_id_set = HashSet::new();
+    for (decl_id, decl) in decl_tree.get_decls() {
+        if matches!(
+            &decl.extra,
+            LuaDeclExtra::Local { .. } | LuaDeclExtra::Global { .. }
+        ) {
+            let decl_type = semantic_model.get_type((*decl_id).into());
+            if let LuaType::Def(id) = decl_type {
+                type_decl_id_set.insert(DeclInfo {
+                    id,
+                    is_require: is_require_decl(&decl),
+                });
+            }
+        }
+    }
+
+    Some(type_decl_id_set)
+}
+
+fn is_require_decl(decl: &LuaDecl) -> bool {
+    let Some(expr_id) = decl.get_value_syntax_id() else {
+        return false;
+    };
+    expr_id.get_kind() == LuaSyntaxKind::RequireCallExpr
 }
 
 struct DiagnosticMemberInfo<'a> {
@@ -34,18 +76,16 @@ struct DiagnosticMemberInfo<'a> {
     member: &'a LuaMember,
 }
 
-fn check_class_duplicate_field(
+fn check_decl_duplicate_field(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    class_tag: LuaDocTagClass,
+    decl_info: &DeclInfo,
 ) -> Option<()> {
-    let file_id = context.file_id;
-    let name_token = class_tag.get_name_token()?;
-    let name = name_token.get_name_text();
     let type_decl = context
         .get_db()
         .get_type_index()
-        .find_type_decl(file_id, name)?;
+        .get_type_decl(&decl_info.id)?;
+    let file_id = context.file_id;
 
     let members = semantic_model
         .get_db()
@@ -71,10 +111,14 @@ fn check_class_duplicate_field(
 
     for (key, members) in member_map.iter() {
         if members.len() < 2 {
+            // 需要特殊处理: require("a").fun = function() end
+            if let Some(member) = members.first() {
+                check_one_member(context, semantic_model, member, decl_info.is_require);
+            }
             continue;
         }
 
-        let mut member_infos = Vec::new();
+        let mut member_infos = Vec::with_capacity(members.len());
         for member in members.iter() {
             let typ = semantic_model.get_type(member.get_id().into());
             let feature = member.get_feature();
@@ -130,6 +174,125 @@ fn check_class_duplicate_field(
                 }
             }
         }
+    }
+
+    Some(())
+}
+
+fn check_one_member(
+    context: &mut DiagnosticContext,
+    semantic_model: &SemanticModel,
+    member: &LuaMember,
+    is_require: bool,
+) -> Option<()> {
+    let key = member.get_key();
+    let member_id = member.get_id();
+    let typ = semantic_model.get_type(member.get_id().into());
+    // 如果不是 signature 则不需要检查
+    if !matches!(typ, LuaType::Signature(_)) {
+        return None;
+    }
+    let references = semantic_model
+        .get_db()
+        .get_reference_index()
+        .get_index_references(&key)?;
+    let root = semantic_model.get_root().syntax();
+    let property_owner = LuaSemanticDeclId::Member(member_id);
+
+    for in_filed in references {
+        // 不同文件不检查
+        if in_filed.file_id != context.file_id {
+            continue;
+        }
+        // 不需要检查自身
+        if in_filed.value == *member_id.get_syntax_id() {
+            continue;
+        }
+        let node = in_filed.value.to_node_from_root(root)?;
+
+        if !semantic_model.is_reference_to(
+            node.clone(),
+            property_owner.clone(),
+            SemanticDeclLevel::default(),
+        ) {
+            continue;
+        }
+
+        // 如果不是赋值则不需要检查
+        if check_function_member_is_set(&semantic_model, &node, is_require).is_none() {
+            continue;
+        }
+
+        context.add_diagnostic(
+            DiagnosticCode::DuplicateSetField,
+            in_filed.value.get_range(),
+            t!("Duplicate field `%{name}`.", name = key.to_path()).to_string(),
+            None,
+        );
+    }
+
+    Some(())
+}
+
+/// 检查是否是 .member = newValue
+fn check_function_member_is_set(
+    semantic_model: &SemanticModel,
+    node: &LuaSyntaxNode,
+    is_require: bool,
+) -> Option<()> {
+    match node {
+        expr_node if LuaIndexExpr::can_cast(expr_node.kind().into()) => {
+            let expr = LuaIndexExpr::cast(expr_node.clone())?;
+            let prefix_type = semantic_model
+                .infer_expr(expr.get_prefix_expr()?.into())
+                .ok()?;
+            match prefix_type {
+                LuaType::Ref(_) => {
+                    return None;
+                }
+                _ => {}
+            };
+            // 往上寻找 stat 节点
+            let stat = expr.ancestors::<LuaStat>().next()?;
+            match stat {
+                LuaStat::FuncStat(_) => {
+                    return Some(());
+                }
+                LuaStat::AssignStat(assign_stat) => {
+                    // 判断是否在左侧
+                    let (vars, exprs) = assign_stat.get_var_and_expr_list();
+                    for (i, var) in vars.iter().enumerate() {
+                        if var
+                            .syntax()
+                            .text_range()
+                            .contains(node.text_range().start())
+                        {
+                            // 如果是 require 导入的, 则直接认为是重复字段
+                            if is_require {
+                                return Some(());
+                            }
+                            // 确定右侧表达式是否是 signature
+                            if let Some(expr) = exprs.get(i) {
+                                let expr_type =
+                                    semantic_model.infer_expr(expr.clone().into()).ok()?;
+                                if matches!(expr_type, LuaType::Signature(_)) {
+                                    return Some(());
+                                }
+                            }
+                            return None;
+                        }
+                    }
+                    return None;
+                }
+                _ => {
+                    return None;
+                }
+            }
+        }
+        tag_field_node if LuaDocTagField::can_cast(tag_field_node.kind().into()) => {
+            return Some(());
+        }
+        _ => {}
     }
 
     Some(())

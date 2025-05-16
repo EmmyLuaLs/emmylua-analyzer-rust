@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod test {
+    use std::{ops::Deref, sync::Arc};
+
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
@@ -564,6 +566,35 @@ mod test {
                     local alias = apiAlias[lua_type]
                     local api = GameAPI['get_kv_pair_value_' .. alias]
                 end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_global_arg_override() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let mut emmyrc = ws.analysis.emmyrc.deref().clone();
+        emmyrc.strict.meta_override_file_define = false;
+        ws.analysis.update_config(Arc::new(emmyrc));
+
+        ws.def(
+            r#"
+        ---@class py.Dict
+        
+        ---@return py.Dict
+        local function lua_get_start_args() end
+        
+        ---@type table<string, string>
+        arg = lua_get_start_args()
+        "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+            local function isDebuggerValid()
+                if arg['lua_multi_mode'] == 'true' then
+                end
+            end
         "#
         ));
     }

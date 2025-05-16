@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::VirtualWorkspace;
+    use crate::{LuaType, VirtualWorkspace};
 
     #[test]
     fn test_closure_param_infer() {
@@ -217,18 +217,42 @@ mod test {
         ws.def(
             r#"
             ---@class ClosureTest
-            ---@field e fun(a: string, b: number)
-            ---@field e fun(a: number, b: number)
+            ---@field e fun(a: string, b: boolean)
+            ---@field e fun(a: number, b: boolean)
             local Test
 
             function Test.e(a, b)
-                A = a
             end
+            A = Test.e
             "#,
         );
+        // 必须要这样写, 无法直接`A = a`拿到`a`的实际类型, `A`的推断目前是独立的且在`Test.e`推断之前缓存
         let ty = ws.expr_ty("A");
-        let expected = ws.ty("string|number");
-        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+        let expected_a = ws.ty("string|number");
+        let expected_a_str = ws.humanize_type(expected_a);
+
+        match ty {
+            LuaType::Union(union) => {
+                let signature = union
+                    .get_types()
+                    .last()
+                    .and_then(|t| match t {
+                        LuaType::Signature(id) => {
+                            ws.get_db_mut().get_signature_index_mut().get_mut(id)
+                        }
+                        _ => None,
+                    })
+                    .expect("Expected a function type");
+
+                let param_type = signature
+                    .get_param_info_by_name("a")
+                    .map(|p| p.type_ref.clone())
+                    .expect("Parameter 'a' not found");
+
+                assert_eq!(ws.humanize_type(param_type), expected_a_str);
+            }
+            _ => panic!("Expected a union type"),
+        }
     }
 
     #[test]
@@ -238,20 +262,28 @@ mod test {
         ws.def(
             r#"
             ---@class ClosureTest
-            ---@field e fun(a: string, b: number)
-            ---@field e fun(a: number, b: number)
             local Test
 
             ---@overload fun(a: string, b: number)
             ---@overload fun(a: number, b: number)
             function Test.e(a, b)
-                d = b
+                A = a
+                B = b
             end
             "#,
         );
-        let ty = ws.expr_ty("d");
-        let expected = ws.ty("number");
-        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+
+        {
+            let ty = ws.expr_ty("A");
+            let expected = ws.ty("string|number");
+            assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+        }
+
+        {
+            let ty = ws.expr_ty("B");
+            let expected = ws.ty("number");
+            assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+        }
     }
 
     #[test]
@@ -319,6 +351,55 @@ mod test {
 
         let ty = ws.expr_ty("A");
         let expected = ws.ty("Trigger");
+        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+    }
+
+    #[test]
+    fn test_field_doc_function_4() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Trigger.CallBack fun(trg: Trigger, ...): any, any, any, any
+
+                ---@class CustomEvent1
+                ---@field event_on fun(self: self, event_name:string, callback:Trigger.CallBack):Trigger
+                ---@field event_on fun(self: self, event_name:string, args:any[] | any, callback:Trigger.CallBack):Trigger
+                local M
+
+
+                function M:event_on(...)
+                    local event_name, args, callback = ...
+                    A = args
+                end
+
+            "#,
+        );
+        let ty = ws.expr_ty("A");
+        let expected = ws.ty("any");
+        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+    }
+
+    #[test]
+    fn test_field_doc_function_5() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Trigger.CallBack fun(trg: Trigger, ...): any, any, any, any
+
+                ---@class CustomEvent1
+                local M
+
+                ---@overload fun(self: self, event_name:string, callback:Trigger.CallBack):Trigger
+                ---@overload fun(self: self, event_name:string, args:any[] | any, callback:Trigger.CallBack):Trigger
+                function M:event_on(...)
+                    local event_name, args, callback = ...
+                    A = args
+                end
+
+            "#,
+        );
+        let ty = ws.expr_ty("A");
+        let expected = ws.ty("any");
         assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
     }
 }
