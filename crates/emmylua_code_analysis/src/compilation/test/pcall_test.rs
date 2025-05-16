@@ -18,7 +18,7 @@ mod test {
         );
 
         let aaa_ty = ws.expr_ty("b");
-        let expected = ws.ty("integer|string");
+        let expected = ws.ty("integer|any");
         assert_eq!(aaa_ty, expected);
     }
 

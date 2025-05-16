@@ -48,7 +48,10 @@ function math.asin(x) end
 function math.atan(y, x) end
 
 ---
---- Returns the smallest integer larger than or equal to `x`.
+--- Returns the smallest whole number larger than or equal to `x`.
+---
+--- Return type is integer if input is a definite floating-point value that fits
+--- into a lua integer.
 ---@param x number
 ---@return integer
 function math.ceil(x) return 0 end
@@ -72,7 +75,7 @@ function math.deg(x) end
 function math.exp(x) end
 
 ---
---- Returns the largest integer smaller than or equal to `x`.
+--- Returns the largest whole number smaller than or equal to `x`.
 ---@param x number
 ---@return integer
 function math.floor(x) end
@@ -86,8 +89,8 @@ function math.floor(x) end
 function math.fmod(x, y) end
 
 ---
---- The float value `HUGE_VAL`, a value larger than any other numeric value.
----@type integer
+--- The float infinity, a value larger than any other numeric value.
+---@type number
 math.huge = nil
 
 ---
@@ -194,8 +197,10 @@ function math.tointeger(x) end
 ---
 --- Returns "`integer`" if `x` is an integer, "`float`" if it is a float, or
 --- **nil** if `x` is not a number.
+---@overload fun(x: integer): "integer"
+---@overload fun(x: number): "integer"|"float"
 ---@param x any
----@return 'integer'|'float'|'nil'
+---@return "integer"|"float"|nil
 function math.type(x) end
 
 ---@version >5.3

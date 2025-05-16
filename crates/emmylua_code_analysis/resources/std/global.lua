@@ -102,7 +102,7 @@ _G = {}
 --- object's metatable has a `"__metatable"` field, returns the associated
 --- value. Otherwise, returns the metatable of the given object.
 ---@param object any
----@return any
+---@return std.metatable?
 function getmetatable(object) end
 
 ---
@@ -112,8 +112,9 @@ function getmetatable(object) end
 --- will iterate over the key–value pairs (1,`t[1]`), (2,`t[2]`), ..., up to
 --- the first absent index.
 ---@generic V
----@param t V[] | table<any, V> | {[any]: V}
----@return fun(tbl: any):int, V
+---@param t V[] | table<integer, V> | {[integer]: V}
+---@return fun(tbl: any): integer, V
+---@return V[]
 function ipairs(t) end
 
 ---@alias std.loadmode
@@ -150,11 +151,11 @@ function ipairs(t) end
 ---
 --- Lua does not check the consistency of binary chunks. Maliciously crafted
 --- binary chunks can crash the interpreter.
----@param chunk (fun(...:any):string) | string
+---@param chunk (fun(): string) | string
 ---@param chunkname? string
 ---@param mode? std.loadmode
 ---@param env? table
----@return fun(...:any):any
+---@return function?
 ---@return string?   error_message
 ---@nodiscard
 function load(chunk, chunkname, mode, env) end
@@ -175,10 +176,13 @@ function loadstring(text, chunkname) end
 ---
 --- Similar to `load`, but gets the chunk from file `filename` or from the
 --- standard input, if no file name is given.
----@overload fun()
----@param filename string
+---
+---@param filename? string
 ---@param mode? string
 ---@param env? any
+---@return function?
+---@return string?   error_message
+---@nodiscard
 function loadfile(filename, mode, env) end
 
 ---@version 5.1, JIT
@@ -212,11 +216,12 @@ function module(name, ...) end
 --- The behavior of `next` is undefined if, during the traversal, you assign
 --- any value to a non-existent field in the table. You may however modify
 --- existing fields. In particular, you may set existing fields to nil.
----@overload fun(table:table):any
----@param table table
----@param index? any
----@return any
-function next(table, index) end
+---@generic K, V
+---@param t table<K, V> | V[] | {[K]: V}
+---@param index? K
+---@return K
+---@return V
+function next(t, index) end
 
 ---
 --- If `t` has a metamethod `__pairs`, calls it with `t` as argument and returns
@@ -231,8 +236,10 @@ function next(table, index) end
 --- traversal.
 ---@generic K, V
 ---@param t table<K, V> | V[] | {[K]: V}
----@return fun(tbl: any):K, V
+---@return fun(tbl: any): K, V
+---@return table<K, V>
 function pairs(t) end
+
 ---
 --- Calls function `f` with the given arguments in *protected mode*. This
 --- means that any error inside `f` is not propagated; instead, `pcall` catches
@@ -243,7 +250,7 @@ function pairs(t) end
 ---@generic T, R, R1
 ---@param f fun(...: T...): R1, R...
 ---@param ... T...
----@return boolean, R1|string, R...
+---@return boolean, R1|any, R...
 function pcall(f, ...) end
 
 ---
@@ -252,6 +259,7 @@ function pcall(f, ...) end
 --- intended for formatted output, but only as a quick way to show a value,
 --- for instance for debugging. For complete control over the output, use
 --- `string.format` and `io.write`.
+---@param ... any
 function print(...) end
 
 ---
@@ -263,7 +271,7 @@ function print(...) end
 function rawequal(v1, v2) end
 
 ---
---- Gets the real value of `table[index]`, the `__index` metamethod. `table`
+--- Gets the real value of `table[index]`, ignoring the `__index` metamethod. `table`
 --- must be a table; `index` may be any value.
 ---@param table table
 ---@param index any
@@ -330,7 +338,6 @@ function require(modname) end
 ---@return std.Select<T..., Num>
 function select(index, ...) end
 
-
 ---@class std.metatable
 ---@field __mode? 'v'|'k'|'kv'
 ---@field __metatable? any
@@ -371,7 +378,7 @@ function select(index, ...) end
 ---
 --- This function returns `table`.
 ---@param table table
----@param metatable std.metatable|table
+---@param metatable std.metatable
 ---@return table
 function setmetatable(table, metatable) end
 
@@ -435,20 +442,21 @@ _VERSION = "Lua 5.4"
 ---
 --- This function is similar to `pcall`, except that it sets a new message
 --- handler `msgh`.
----@generic T, R
----@param f fun(...:T...): R...
----@param msgh fun(err:string):void
+---@generic T, R, R1, M
+---@param f fun(...:T...): R1, R...
+---@param msgh fun(err: any): M
 ---@param ... T...
----@return boolean, R...
+---@return boolean, R1|M, R...
 function xpcall(f, msgh, ...) end
 
 ---@version 5.1, JIT
----@generic T
----@param i? integer
----@param j? integer
----@param list [T...]
----@return T?...
+---@generic T, I: integer, J: integer
+---@param list [T...] | T[] | table<integer, T> | {[integer]: T}
+---@param i? I
+---@param j? J
+---@return T...
 function unpack(list, i, j) end
+--XXX: @return std.Unpack<T..., I, J>
 
 ---@version > 5.4
 ---@param message string

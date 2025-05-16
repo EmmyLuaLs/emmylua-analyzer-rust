@@ -17,13 +17,13 @@
 -- Built-in Types
 
 ---
---- The type *nil* has one single value, **nil**, whose main property is to be 
---- different from any other value; it usually represents the absence of a 
+--- The type *nil* has one single value, **nil**, whose main property is to be
+--- different from any other value; it usually represents the absence of a
 --- useful value.
 ---@class nil
 
 ---
---- The type *boolean* has two values, **false** and **true**. Both **nil** and 
+--- The type *boolean* has two values, **false** and **true**. Both **nil** and
 --- **false** make a condition false; any other value makes it true.
 ---@class boolean
 
@@ -44,22 +44,22 @@
 ---@class integer
 
 ---
---- The type *userdata* is provided to allow arbitrary C data to be stored in 
---- Lua variables. A userdata value represents a block of raw memory. There 
+--- The type *userdata* is provided to allow arbitrary C data to be stored in
+--- Lua variables. A userdata value represents a block of raw memory. There
 --- are two kinds of userdata: *full userdata*, which is an object with a block
 --- of memory managed by Lua, and *light userdata*, which is simply a C pointer
---- value. Userdata has no predefined operations in Lua, except assignment 
---- and identity test. By using *metatables*, the programmer can define 
+--- value. Userdata has no predefined operations in Lua, except assignment
+--- and identity test. By using *metatables*, the programmer can define
 --- operations for full userdata values. Userdata values cannot be
---- created or modified in Lua, only through the C API. This guarantees the 
+--- created or modified in Lua, only through the C API. This guarantees the
 --- integrity of data owned by the host program.
 ---@class userdata
 
 ---@class lightuserdata
 
 ---
---- The type *thread* represents independent threads of execution and it is 
---- used to implement coroutines. Lua threads are not related to 
+--- The type *thread* represents independent threads of execution and it is
+--- used to implement coroutines. Lua threads are not related to
 --- operating-system threads. Lua supports coroutines on all systems, even those
 --- that do not support threads natively.
 ---@class thread
@@ -85,14 +85,14 @@
 --- because functions are first-class values, table fields can contain functions.
 --- Thus tables can also carry *methods*.
 ---
---- The indexing of tables follows the definition of raw equality in the 
+--- The indexing of tables follows the definition of raw equality in the
 --- language. The expressions `a[i]` and `a[j]` denote the same table element
---- if and only if `i` and `j` are raw equal (that is, equal without 
---- metamethods). In particular, floats with integral values are equal to 
---- their respective integers. To avoid ambiguities, any float with integral 
+--- if and only if `i` and `j` are raw equal (that is, equal without
+--- metamethods). In particular, floats with integral values are equal to
+--- their respective integers. To avoid ambiguities, any float with integral
 --- value used as a key is converted to its respective integer. For instance,
 --- if you write `a[2.0] = true`, the actual key inserted into the table will
---- be the integer `2`. (On the other hand, 2 and "`2`" are different Lua 
+--- be the integer `2`. (On the other hand, 2 and "`2`" are different Lua
 --- values and therefore denote different table entries.)
 ---@class table
 
@@ -102,8 +102,6 @@
 
 ---@class self
 
----@alias int integer
-
 ---@class namespace<T: string>
 
 ---@class function
@@ -112,10 +110,10 @@
 
 ---@alias std.Nullable<T> T + ?
 
---- built-in type for Select function
+--- Built-in type for the `table.select` function.
 ---@alias std.Select<T, StartOrLen> unknown
----
---- built-in type for Unpack function
+
+--- Built-in type for the `table.unpack` function.
 ---@alias std.Unpack<T, Start, End> unknown
 
 --- compact luals
@@ -125,3 +123,7 @@
 ---@alias collectgarbage_opt std.collectgarbage_opt
 
 ---@alias metatable std.metatable
+
+---@alias int integer
+
+---@alias bool boolean

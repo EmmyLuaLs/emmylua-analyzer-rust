@@ -61,16 +61,16 @@ function debug.gethook(thread) end
 ---@field func            function
 ---@field ftransfer       integer
 ---@field ntransfer       integer
----@field activelines     table
+---@field activelines?    table
 
 ---@alias debuglib.InfoWhat
----|+"n"     # `name` 和 `namewhat`
----|+"S"     # `source`，`short_src`，`linedefined`，`lalinedefined`，和 `what`
+---|+"n"     # `name`, `namewhat`
+---|+"S"     # `source`，`short_src`，`linedefined`，`lalinedefined`, `what`
 ---|+"l"     # `currentline`
 ---|+"t"     # `istailcall`
----|+"u"     # `nups`、`nparams` 和 `isvararg`
+---|+"u"     # `nups`, `nparams`, `isvararg`
 ---|+"f"     # `func`
----|+"r"     # `ftransfer` 和 `ntransfer`
+---|+"r"     # `ftransfer`, `ntransfer`
 ---|+"L"     # `activelines`
 ---| string
 
@@ -94,7 +94,7 @@ function debug.gethook(thread) end
 --- with a name for the current function, if a reasonable name can be found,
 --- and the expression `debug.getinfo(print)` returns a table with all available
 --- information about the `print` function.
----@overload fun(f: int|function, what?: debuglib.InfoWhat):debuglib.DebugInfo
+---@overload fun(f: integer|function, what?: debuglib.InfoWhat):debuglib.DebugInfo
 ---@param thread thread
 ---@param f integer|function
 ---@param what? debuglib.InfoWhat

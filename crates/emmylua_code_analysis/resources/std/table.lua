@@ -21,7 +21,7 @@ table = {}
 --- `list[i]..sep..list[i+1] ... sep..list[j]`. The default value for
 --- `sep` is the empty string, the default for `i` is 1, and the default for
 --- `j` is #list. If `i` is greater than `j`, returns the empty string.
----@param list table
+---@param list (string|number)[] | table<integer, string|number> | {[integer]: string|number}
 ---@param sep? string
 ---@param i?   integer
 ---@param j?   integer
@@ -34,10 +34,11 @@ function table.concat(list, sep, i, j) end
 --- elements to `list[pos]`, `list[pos+1]`, `···`, `list[#list]`. The default
 --- value for `pos` is ``#list+1`, so that a call `table.insert(t,x)`` inserts
 --- `x` at the end of list `t`.
----@overload fun(list:table, value:any):integer
----@param list table
+---@generic V
+---@overload fun(list: V[] | table<integer, V> | {[integer]: V}, value: V): integer
+---@param list V[] | table<integer, V> | {[integer]: V}
 ---@param pos integer
----@param value any
+---@param value V
 ---@return integer
 function table.insert(list, pos, value) end
 
@@ -77,7 +78,7 @@ function table.maxn(table) end
 --- The default value for `pos` is `#list`, so that a call `table.remove(l)`
 --- removes the last element of list `l`.
 ---@generic V
----@param list table<integer, V> | V[]
+---@param list V[] | table<integer, V> | {[integer]: V}
 ---@param pos? integer
 ---@return V
 function table.remove(list, pos) end
@@ -97,8 +98,8 @@ function table.remove(list, pos) end
 --- The sort algorithm is not stable: elements considered equal by the given
 --- order may have their relative positions changed by the sort.
 ---@generic V
----@param list V[]
----@param comp? fun(a:V, b:V):boolean
+---@param list V[] | table<integer, V> | {[integer]: V}
+---@param comp? fun(a: V, b: V): boolean
 ---@return integer
 function table.sort(list, comp) end
 
@@ -106,11 +107,12 @@ function table.sort(list, comp) end
 --- Returns the elements from the given list. This function is equivalent to
 --- return `list[i]`, `list[i+1]`, `···`, `list[j]`
 --- By default, i is 1 and j is #list.
----@generic T
----@param list [T...] | T[] | table<any, T>
----@param i? integer
----@param j? integer
+---@generic T, I: integer, J: integer
+---@param list [T...] | T[] | table<integer, T> | {[integer]: T}
+---@param i? I
+---@param j? J
 ---@return T...
+--XXX: @return std.Unpack<T..., I, J>
 function table.unpack(list, i, j) end
 
 ---@version > 5.2, JIT
@@ -119,7 +121,7 @@ function table.unpack(list, i, j) end
 ---
 ---@generic T
 ---@param ... T...
----@return [T...] | { n: integer }
+---@return [T...] & { n: integer }
 ---@nodiscard
 function table.pack(...) end
 
