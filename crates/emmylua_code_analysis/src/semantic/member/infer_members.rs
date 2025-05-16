@@ -1,8 +1,6 @@
-use std::collections::HashSet;
-
-use smol_str::SmolStr;
-
+use super::{get_buildin_type_map_type_id, InferMembersResult, LuaMemberInfo};
 use crate::{
+    make_intersection,
     semantic::{
         generic::{instantiate_type_generic, TypeSubstitutor},
         InferGuard,
@@ -11,8 +9,9 @@ use crate::{
     LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType, LuaTypeDeclId,
     LuaUnionType,
 };
-
-use super::{get_buildin_type_map_type_id, InferMembersResult, LuaMemberInfo};
+use smol_str::SmolStr;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 
 pub fn infer_members(db: &DbIndex, prefix_type: &LuaType) -> InferMembersResult {
     infer_members_guard(db, prefix_type, &mut InferGuard::new())
@@ -174,15 +173,62 @@ fn infer_union_members(
     union_type: &LuaUnionType,
     infer_guard: &mut InferGuard,
 ) -> InferMembersResult {
-    let mut members = Vec::new();
-    for typ in union_type.get_types().iter() {
-        let sub_members = infer_members_guard(db, typ, infer_guard);
-        if let Some(sub_members) = sub_members {
-            members.extend(sub_members);
-        }
-    }
+    let union_types = union_type.get_types();
 
-    Some(members)
+    if union_types.is_empty() {
+        return None;
+    } else if union_types.len() == 1 {
+        return infer_members_guard(db, &union_types[0], infer_guard);
+    } else {
+        let mut seen_keys = Vec::new();
+        let mut members_per_key: HashMap<LuaMemberKey, Vec<LuaType>> = HashMap::new();
+
+        for members in union_types
+            .iter()
+            .filter(|typ| typ != &&LuaType::Nil)
+            .filter_map(|typ| infer_members_guard(db, typ, infer_guard))
+        {
+            for member in members {
+                let key = member.key.clone();
+                let typ = member.typ.clone();
+
+                match members_per_key.entry(key) {
+                    Entry::Occupied(mut entry) => {
+                        entry.get_mut().push(typ);
+                    }
+                    Entry::Vacant(entry) => {
+                        seen_keys.push(entry.key().clone());
+                        entry.insert(vec![typ]);
+                    }
+                }
+            }
+        }
+
+        return Some(
+            seen_keys
+                .into_iter()
+                .filter_map(|key| {
+                    let types = members_per_key.get_mut(&key).unwrap();
+
+                    if types.len() == union_types.len() {
+                        // Member is present in all union types.
+                        types.dedup();
+                        Some(LuaMemberInfo {
+                            property_owner_id: None,
+                            key,
+                            typ: LuaType::Union(LuaUnionType::new(std::mem::take(types)).into()),
+                            feature: None,
+                            overload_index: None,
+                        })
+                    } else {
+                        // Member is absent in one of union types. Accessing it may result
+                        // in error.
+                        None
+                    }
+                })
+                .collect(),
+        );
+    }
 }
 
 fn infer_intersection_members(
@@ -190,40 +236,46 @@ fn infer_intersection_members(
     intersection_type: &LuaIntersectionType,
     infer_guard: &mut InferGuard,
 ) -> InferMembersResult {
-    let mut members = Vec::new();
-    for typ in intersection_type.get_types().iter() {
-        let sub_members = infer_members_guard(db, typ, infer_guard);
-        if let Some(sub_members) = sub_members {
-            members.push(sub_members);
-        }
-    }
+    let intersection_types = intersection_type.get_types();
 
-    if members.is_empty() {
+    if intersection_types.is_empty() {
         return None;
-    } else if members.len() == 1 {
-        return Some(members.remove(0));
+    } else if intersection_types.len() == 1 {
+        return infer_members_guard(db, &intersection_types[0], infer_guard);
     } else {
-        let mut result = Vec::new();
-        let mut member_set = HashSet::new();
+        let mut member_set: HashMap<LuaMemberKey, LuaType> = HashMap::new();
 
-        for member in members.iter().flatten() {
+        for member in intersection_types
+            .iter()
+            .filter_map(|typ| infer_members_guard(db, typ, infer_guard))
+            .flatten()
+        {
             let key = member.key.clone();
             let typ = member.typ.clone();
-            if member_set.contains(&key) {
-                continue;
-            }
-            member_set.insert(key.clone());
 
-            result.push(LuaMemberInfo {
-                property_owner_id: None,
-                key,
-                typ,
-                feature: None,
-                overload_index: None,
-            });
+            match member_set.entry(key) {
+                Entry::Occupied(mut entry) => {
+                    let left_type = entry.get().clone();
+                    entry.insert(make_intersection(left_type, typ));
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(typ);
+                }
+            }
         }
 
-        return Some(result);
+        return Some(
+            member_set
+                .into_iter()
+                .map(|(key, typ)| LuaMemberInfo {
+                    property_owner_id: None,
+                    key,
+                    typ,
+                    feature: None,
+                    overload_index: None,
+                })
+                .collect(),
+        );
     }
 }
 

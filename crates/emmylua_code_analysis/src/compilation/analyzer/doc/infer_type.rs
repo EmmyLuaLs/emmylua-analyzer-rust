@@ -12,10 +12,10 @@ use smol_str::SmolStr;
 use crate::{
     db_index::{
         AnalyzeError, LuaAliasCallType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
-        LuaIntersectionType, LuaObjectType, LuaStringTplType, LuaTupleType, LuaType, LuaUnionType,
+        LuaObjectType, LuaStringTplType, LuaTupleType, LuaType,
     },
-    DiagnosticCode, GenericTpl, InFiled, LuaAliasCallKind, LuaMultiLineUnion, LuaTypeDeclId,
-    TypeOps, VariadicType,
+    make_intersection, make_union, DiagnosticCode, GenericTpl, InFiled, LuaAliasCallKind,
+    LuaMultiLineUnion, LuaTypeDeclId, TypeOps, VariadicType,
 };
 
 use super::{preprocess_description, DocAnalyzer};
@@ -289,53 +289,12 @@ fn infer_binary_type(analyzer: &mut DocAnalyzer, binary_type: &LuaDocBinaryType)
 
         if let Some(op) = binary_type.get_op_token() {
             match op.get_op() {
-                LuaTypeBinaryOperator::Union => match (left_type, right_type) {
-                    (LuaType::Union(left_type_union), LuaType::Union(right_type_union)) => {
-                        let mut left_types = left_type_union.into_types();
-                        let right_types = right_type_union.into_types();
-                        left_types.extend(right_types);
-                        return LuaType::Union(LuaUnionType::new(left_types).into());
-                    }
-                    (LuaType::Union(left_type_union), right) => {
-                        let mut left_types = (*left_type_union).into_types();
-                        left_types.push(right);
-                        return LuaType::Union(LuaUnionType::new(left_types).into());
-                    }
-                    (left, LuaType::Union(right_type_union)) => {
-                        let mut right_types = (*right_type_union).into_types();
-                        right_types.push(left);
-                        return LuaType::Union(LuaUnionType::new(right_types).into());
-                    }
-                    (left, right) => {
-                        return LuaType::Union(LuaUnionType::new(vec![left, right]).into());
-                    }
-                },
-                LuaTypeBinaryOperator::Intersection => match (left_type, right_type) {
-                    (
-                        LuaType::Intersection(left_type_union),
-                        LuaType::Intersection(right_type_union),
-                    ) => {
-                        let mut left_types = left_type_union.into_types();
-                        let right_types = right_type_union.into_types();
-                        left_types.extend(right_types);
-                        return LuaType::Intersection(LuaIntersectionType::new(left_types).into());
-                    }
-                    (LuaType::Intersection(left_type_union), right) => {
-                        let mut left_types = left_type_union.into_types();
-                        left_types.push(right);
-                        return LuaType::Intersection(LuaIntersectionType::new(left_types).into());
-                    }
-                    (left, LuaType::Intersection(right_type_union)) => {
-                        let mut right_types = right_type_union.into_types();
-                        right_types.push(left);
-                        return LuaType::Intersection(LuaIntersectionType::new(right_types).into());
-                    }
-                    (left, right) => {
-                        return LuaType::Intersection(
-                            LuaIntersectionType::new(vec![left, right]).into(),
-                        );
-                    }
-                },
+                LuaTypeBinaryOperator::Union => {
+                    return make_union(left_type, right_type);
+                }
+                LuaTypeBinaryOperator::Intersection => {
+                    return make_intersection(left_type, right_type);
+                }
                 LuaTypeBinaryOperator::Extends => {
                     return LuaType::Call(
                         LuaAliasCallType::new(

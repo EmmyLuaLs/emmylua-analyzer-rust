@@ -725,6 +725,29 @@ impl From<LuaUnionType> for LuaType {
     }
 }
 
+pub fn make_union(left_type: LuaType, right_type: LuaType) -> LuaType {
+    match (left_type, right_type) {
+        (left, right) if left == right => left,
+        (LuaType::Union(left_type_union), LuaType::Union(right_type_union)) => {
+            let mut left_types = left_type_union.into_types();
+            let right_types = right_type_union.into_types();
+            left_types.extend(right_types);
+            LuaType::Union(LuaUnionType::new(left_types).into())
+        }
+        (LuaType::Union(left_type_union), right) => {
+            let mut left_types = (*left_type_union).into_types();
+            left_types.push(right);
+            LuaType::Union(LuaUnionType::new(left_types).into())
+        }
+        (left, LuaType::Union(right_type_union)) => {
+            let mut right_types = (*right_type_union).into_types();
+            right_types.push(left);
+            LuaType::Union(LuaUnionType::new(right_types).into())
+        }
+        (left, right) => LuaType::Union(LuaUnionType::new(vec![left, right]).into()),
+    }
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaIntersectionType {
     types: Vec<LuaType>,
@@ -751,6 +774,29 @@ impl LuaIntersectionType {
 impl From<LuaIntersectionType> for LuaType {
     fn from(t: LuaIntersectionType) -> Self {
         LuaType::Intersection(t.into())
+    }
+}
+
+pub fn make_intersection(left_type: LuaType, right_type: LuaType) -> LuaType {
+    match (left_type, right_type) {
+        (left, right) if left == right => left,
+        (LuaType::Intersection(left_type_union), LuaType::Intersection(right_type_union)) => {
+            let mut left_types = left_type_union.into_types();
+            let right_types = right_type_union.into_types();
+            left_types.extend(right_types);
+            LuaType::Intersection(LuaIntersectionType::new(left_types).into())
+        }
+        (LuaType::Intersection(left_type_union), right) => {
+            let mut left_types = left_type_union.into_types();
+            left_types.push(right);
+            LuaType::Intersection(LuaIntersectionType::new(left_types).into())
+        }
+        (left, LuaType::Intersection(right_type_union)) => {
+            let mut right_types = right_type_union.into_types();
+            right_types.push(left);
+            LuaType::Intersection(LuaIntersectionType::new(right_types).into())
+        }
+        (left, right) => LuaType::Intersection(LuaIntersectionType::new(vec![left, right]).into()),
     }
 }
 

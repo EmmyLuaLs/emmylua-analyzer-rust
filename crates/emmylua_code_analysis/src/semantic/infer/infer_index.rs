@@ -471,8 +471,45 @@ fn infer_union_member(
     union_type: &LuaUnionType,
     index_expr: LuaIndexMemberExpr,
 ) -> InferResult {
+    let mut member_type = LuaType::Unknown;
+    for member in union_type.get_types() {
+        if member == &LuaType::Nil {
+            // Allow inferring keys of nullable types.
+            continue;
+        }
+
+        let result = infer_member_by_member_key(
+            db,
+            cache,
+            member,
+            index_expr.clone(),
+            &mut InferGuard::new(),
+        );
+        match result {
+            Ok(typ) => {
+                member_type = TypeOps::Union.apply(db, &member_type, &typ);
+            }
+            Err(err) => {
+                return Err(err);
+            }
+        }
+    }
+
+    if member_type.is_unknown() {
+        return Err(InferFailReason::FieldDotFound);
+    }
+
+    Ok(member_type)
+}
+
+fn infer_intersection_member(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    intersection_type: &LuaIntersectionType,
+    index_expr: LuaIndexMemberExpr,
+) -> InferResult {
     let mut member_types = Vec::new();
-    for sub_type in union_type.get_types() {
+    for sub_type in intersection_type.get_types() {
         let result = infer_member_by_member_key(
             db,
             cache,
@@ -482,9 +519,7 @@ fn infer_union_member(
         );
         match result {
             Ok(typ) => {
-                if !typ.is_nil() {
-                    member_types.push(typ);
-                }
+                member_types.push(typ);
             }
             _ => {}
         }
@@ -492,33 +527,12 @@ fn infer_union_member(
 
     member_types.dedup();
     match member_types.len() {
-        0 => Ok(LuaType::Nil),
+        0 => Err(InferFailReason::FieldDotFound),
         1 => Ok(member_types[0].clone()),
-        _ => Ok(LuaType::Union(LuaUnionType::new(member_types).into())),
+        _ => Ok(LuaType::Intersection(
+            LuaIntersectionType::new(member_types).into(),
+        )),
     }
-}
-
-fn infer_intersection_member(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    intersection_type: &LuaIntersectionType,
-    index_expr: LuaIndexMemberExpr,
-) -> InferResult {
-    for member in intersection_type.get_types() {
-        match infer_member_by_member_key(
-            db,
-            cache,
-            member,
-            index_expr.clone(),
-            &mut InferGuard::new(),
-        ) {
-            Ok(ty) => return Ok(ty),
-            Err(InferFailReason::FieldDotFound) => continue,
-            Err(reason) => return Err(reason),
-        }
-    }
-
-    Err(InferFailReason::FieldDotFound)
 }
 
 fn infer_generic_members_from_super_generics(
@@ -835,6 +849,10 @@ fn infer_member_by_index_union(
 ) -> InferResult {
     let mut member_type = LuaType::Unknown;
     for member in union.get_types() {
+        if member == &LuaType::Nil {
+            // Allow inferring keys of nullable types.
+            continue;
+        }
         let result = infer_member_by_operator(
             db,
             cache,
@@ -846,7 +864,6 @@ fn infer_member_by_index_union(
             Ok(typ) => {
                 member_type = TypeOps::Union.apply(db, &member_type, &typ);
             }
-            Err(InferFailReason::FieldDotFound) => {}
             Err(err) => {
                 return Err(err);
             }
@@ -866,6 +883,7 @@ fn infer_member_by_index_intersection(
     intersection: &LuaIntersectionType,
     index_expr: LuaIndexMemberExpr,
 ) -> InferResult {
+    let mut member_types = Vec::new();
     for member in intersection.get_types() {
         match infer_member_by_operator(
             db,
@@ -874,13 +892,21 @@ fn infer_member_by_index_intersection(
             index_expr.clone(),
             &mut InferGuard::new(),
         ) {
-            Ok(ty) => return Ok(ty),
-            Err(InferFailReason::FieldDotFound) => continue,
-            Err(reason) => return Err(reason),
+            Ok(typ) => {
+                member_types.push(typ);
+            }
+            _ => {}
         }
     }
 
-    Err(InferFailReason::FieldDotFound)
+    member_types.dedup();
+    match member_types.len() {
+        0 => Err(InferFailReason::FieldDotFound),
+        1 => Ok(member_types[0].clone()),
+        _ => Ok(LuaType::Intersection(
+            LuaIntersectionType::new(member_types).into(),
+        )),
+    }
 }
 
 fn infer_member_by_index_generic(
