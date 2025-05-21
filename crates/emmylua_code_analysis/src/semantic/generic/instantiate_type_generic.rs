@@ -299,6 +299,28 @@ fn instantiate_signature(
     return LuaType::Signature(signature_id.clone());
 }
 
+#[derive(Debug, Clone)]
+enum ExtractKeyName {
+    String(String),
+    Integer(i64),
+    Nothing(()),
+}
+
+fn extract_key_name(lua_type: &LuaType) -> ExtractKeyName {
+    match lua_type {
+        LuaType::StringConst(key_value) | LuaType::DocStringConst(key_value) => {
+            let name = key_value.as_str().to_string();
+            ExtractKeyName::String(name)
+        }
+        LuaType::DocIntegerConst(key_value) | LuaType::IntegerConst(key_value) => {
+            ExtractKeyName::Integer(key_value.clone())
+        }
+        _ => {
+            ExtractKeyName::Nothing(())
+        }
+    }
+}
+
 fn instantiate_alias_call(
     db: &DbIndex,
     alias_call: &LuaAliasCallType,
@@ -356,6 +378,64 @@ fn instantiate_alias_call(
             }
 
             return instantiate_select_call(&operands[0], &operands[1]);
+        }
+        LuaAliasCallKind::Get => {
+            if operands.len() != 2 {
+                return LuaType::Unknown;
+            }
+
+            let extracted_key = extract_key_name(&operands[1]);
+            match &operands[0] {
+                LuaType::Ref(id) | LuaType::Def(id) => {
+                    if substitutor.check_recursion(id) {
+                        return LuaType::Unknown;
+                    }
+
+                    if let Some(type_decl) = db.get_type_index().get_type_decl(&id) {
+                        if type_decl.is_class() {
+                            let members = infer_members(db, &operands[0]).unwrap_or(Vec::new());
+
+                            for member in members {
+                                if let Some(member_name) = member.key.get_name() {
+                                    match extracted_key {
+                                        ExtractKeyName::String(ref name) => {
+                                            if member_name == *name {
+                                                return member.typ.clone();
+                                            }
+                                        }
+                                        ExtractKeyName::Integer(ref index) => {
+                                            if member_name == index.to_string() {
+                                                return member.typ.clone();
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                LuaType::TableConst(_) => {
+                    let members = infer_members(db, &operands[0]).unwrap_or(Vec::new());
+                    for member in members {
+                        if let Some(member_name) = member.key.get_name() {
+                            if let ExtractKeyName::String(ref name) = extracted_key {
+                                if member_name == *name {
+                                    return member.typ.clone();
+                                }
+                            }
+                        } else if let Some(member_index) = member.key.get_integer() {
+                            if let ExtractKeyName::Integer(ref index) = extracted_key {
+                                if member_index == *index {
+                                    return member.typ.clone();
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return LuaType::Any;
         }
         _ => {}
     }

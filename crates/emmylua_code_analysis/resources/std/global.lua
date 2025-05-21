@@ -267,9 +267,10 @@ function rawequal(v1, v2) end
 ---
 --- Gets the real value of `table[index]`, the `__index` metamethod. `table`
 --- must be a table; `index` may be any value.
----@param table table
----@param index any
----@return any
+---@generic T, K
+---@param table T
+---@param index K
+---@return std.Get<T, K>
 function rawget(table, index) end
 
 --- Returns the length of the object `v`, which must be a table or a string, without

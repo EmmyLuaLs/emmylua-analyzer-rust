@@ -118,6 +118,9 @@
 --- built-in type for Unpack function
 ---@alias std.Unpack<T, Start, End> unknown
 
+--- built-in type for Get function, returns the value type for a key in a table
+---@alias std.Get<T, K> unknown
+
 --- compact luals
 
 ---@alias type std.type

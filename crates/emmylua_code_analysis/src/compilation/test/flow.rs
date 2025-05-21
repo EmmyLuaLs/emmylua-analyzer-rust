@@ -760,4 +760,85 @@ end
             "#
         ));
     }
+
+    #[test]
+    fn test_better_rawget() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@generic T, K
+        ---@param table T
+        ---@param index K
+        ---@return std.Get<T, K>
+        function rawget(table, index) end
+
+        tbl = { a = 1, 2, false, function() end }
+
+        v1 = rawget(tbl, false)
+        v2 = rawget(tbl, "a")
+        v3 = rawget(tbl, 1)
+        v4 = rawget(tbl, 2)
+        v5 = rawget(tbl, 3)
+        "#,
+        );
+
+        let v1 = ws.expr_ty("v1");
+        let expected = ws.ty("any");
+        assert_eq!(v1, expected);
+
+        let v2 = ws.expr_ty("v2");
+        let expected = ws.expr_ty("tbl['a']");
+        assert_eq!(v2, expected);
+
+        let v3 = ws.expr_ty("v3");
+        let expected = ws.expr_ty("tbl[1]");
+        assert_eq!(v3, expected);
+
+        let v4 = ws.expr_ty("v4");
+        let expected = ws.expr_ty("tbl[2]");
+        assert_eq!(v4, expected);
+
+        let v5 = ws.expr_ty("v5");
+        let expected = ws.expr_ty("tbl[3]");
+        assert_eq!(v5, expected);
+    }
+
+    #[test]
+    fn test_better_rawget2() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@generic T, K
+        ---@param table T
+        ---@param index K
+        ---@return std.Get<T, K>
+        function rawget(table, index) end
+
+        ---@class Position
+        Position = {}
+
+        ---@class Player
+        ---@field getPosition fun(self:Player):Position
+        ---@field getName fun(self:Player):string
+        ---@overload fun():Player
+        Player = {}
+
+        player = Player()
+        getPos = rawget(player, "getPosition")
+        getName = rawget(Player, "getName")
+        pos = getPos(player)
+        name = getName(player)
+        "#,
+        );
+
+        let get_pos = ws.expr_ty("getPos");
+        let expected = ws.expr_ty("Player.getPosition");
+        assert_eq!(get_pos, expected);
+
+        let get_name = ws.expr_ty("getName");
+        let expected = ws.expr_ty("Player.getName");
+        assert_eq!(get_name, expected);
+    }
 }
