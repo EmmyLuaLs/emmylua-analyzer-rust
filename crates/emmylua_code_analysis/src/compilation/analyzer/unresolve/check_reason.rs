@@ -58,6 +58,26 @@ pub fn resolve_all_reason(
     }
 }
 
+pub fn resolve_param_as_any(
+    db: &mut DbIndex,
+    reason_unresolves: &mut HashMap<InferFailReason, Vec<UnResolve>>,
+) {
+    for (reason, _) in reason_unresolves.iter_mut() {
+        if let InferFailReason::UnResolveDeclType(decl_id) = reason {
+            let decl = match db.get_decl_index().get_decl(decl_id) {
+                Some(decl) => decl,
+                None => continue,
+            };
+            if decl.is_param() {
+                db.get_type_index_mut().bind_type(
+                    decl_id.clone().into(),
+                    LuaTypeCache::InferType(LuaType::Any),
+                );
+            }
+        }
+    }
+}
+
 pub fn resolve_as_any(db: &mut DbIndex, reason: &InferFailReason) -> Option<()> {
     match reason {
         InferFailReason::None

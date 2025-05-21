@@ -10,7 +10,7 @@ use crate::{
     profile::Profile,
     FileId, InferFailReason, LuaMemberFeature, LuaSemanticDeclId,
 };
-use check_reason::{check_reach_reason, resolve_all_reason};
+use check_reason::{check_reach_reason, resolve_all_reason, resolve_param_as_any};
 use emmylua_parser::{
     LuaAssignStat, LuaCallExpr, LuaExpr, LuaFuncStat, LuaTableExpr, LuaTableField,
 };
@@ -48,9 +48,11 @@ pub fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
 
         if loop_count == 0 {
             infer_manager.set_force();
+            resolve_param_as_any(db, &mut reason_resolve);
+        } else {
+            resolve_all_reason(db, &mut reason_resolve);
         }
 
-        resolve_all_reason(db, &mut reason_resolve);
         if loop_count >= 5 {
             break;
         }

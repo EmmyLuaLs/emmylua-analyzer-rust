@@ -214,10 +214,11 @@ function module(name, ...) end
 --- The behavior of `next` is undefined if, during the traversal, you assign
 --- any value to a non-existent field in the table. You may however modify
 --- existing fields. In particular, you may set existing fields to nil.
----@overload fun(table:table):any
----@param table table
----@param index? any
----@return any
+---@generic K, V
+---@overload fun(table:table<K, V>):K?,V?
+---@param table table<K, V> | V[] | {[K]: V}
+---@param index? K
+---@return K?, V?
 function next(table, index) end
 
 ---
@@ -446,11 +447,11 @@ _VERSION = "Lua 5.4"
 function xpcall(f, msgh, ...) end
 
 ---@version 5.1, JIT
----@generic T
----@param i? integer
----@param j? integer
----@param list [T...]
----@return T?...
+---@generic T, Start: integer, End: integer
+---@param i? Start
+---@param j? End
+---@param list T
+---@return std.Unpack<T, Start, End>
 function unpack(list, i, j) end
 
 ---@version > 5.4

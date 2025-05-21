@@ -269,6 +269,16 @@ fn infer_special_generic_type(
                 LuaAliasCallType::new(LuaAliasCallKind::Select, params).into(),
             ));
         }
+        "std.Unpack" => {
+            let mut params = Vec::new();
+            for param in generic_type.get_generic_types()?.get_types() {
+                let param_type = infer_type(analyzer, param);
+                params.push(param_type);
+            }
+            return Some(LuaType::Call(
+                LuaAliasCallType::new(LuaAliasCallKind::Unpack, params).into(),
+            ));
+        }
         "std.Get" => {
             let mut params = Vec::new();
             for param in generic_type.get_generic_types()?.get_types() {

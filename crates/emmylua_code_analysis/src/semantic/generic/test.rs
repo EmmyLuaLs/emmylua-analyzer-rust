@@ -84,11 +84,11 @@ mod test {
         );
 
         let a = ws.expr_ty("a");
-        let expected = ws.ty("number");
+        let expected = ws.ty("number?");
         let b = ws.expr_ty("b");
-        let expected_b = ws.ty("number");
+        let expected_b = ws.ty("number?");
         let c = ws.expr_ty("c");
-        let expected_c = ws.ty("number");
+        let expected_c = ws.ty("number?");
         assert_eq!(a, expected);
         assert_eq!(b, expected_b);
         assert_eq!(c, expected_c);
