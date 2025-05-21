@@ -300,7 +300,6 @@ fn instantiate_signature(
     return LuaType::Signature(signature_id.clone());
 }
 
-#[derive(Debug, Clone)]
 enum ExtractKeyName {
     String(String),
     Integer(i64),
