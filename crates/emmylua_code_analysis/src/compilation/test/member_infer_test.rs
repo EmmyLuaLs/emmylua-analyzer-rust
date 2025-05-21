@@ -102,4 +102,64 @@ mod test {
         assert_eq!(e_ty, LuaType::Integer);
         assert_eq!(f_ty, LuaType::Integer);
     }
+
+    #[test]
+    fn test_issue_454_unions() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        --- @class A
+        --- @field a integer
+        --- @field c integer
+        --- @field d integer
+
+        --- @class B
+        --- @field b integer
+        --- @field c integer
+        --- @field d string
+
+        ab --- @type A | B
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("ab.a"), LuaType::Unknown);
+        assert_eq!(ws.expr_ty("ab.b"), LuaType::Unknown);
+        assert_eq!(ws.expr_ty("ab.c"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab.d"), ws.ty("integer | string"));
+        assert_eq!(ws.expr_ty("ab['a']"), LuaType::Unknown);
+        assert_eq!(ws.expr_ty("ab['b']"), LuaType::Unknown);
+        assert_eq!(ws.expr_ty("ab['c']"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab['d']"), ws.ty("integer | string"));
+    }
+
+    #[test]
+    fn test_issue_454_intersections() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        --- @class A
+        --- @field a integer
+        --- @field c integer
+        --- @field d integer
+
+        --- @class B
+        --- @field b integer
+        --- @field c integer
+        --- @field d string
+
+        ab --- @type A & B
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("ab.a"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab.b"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab.c"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab.d"), ws.ty("integer & string"));
+        assert_eq!(ws.expr_ty("ab['a']"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab['b']"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab['c']"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ab['d']"), ws.ty("integer & string"));
+    }
 }
