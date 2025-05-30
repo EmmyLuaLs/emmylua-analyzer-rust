@@ -218,7 +218,7 @@ fn check_str_tpl_ref(
                 }
             }
         }
-        LuaType::String | LuaType::Any | LuaType::Unknown => {}
+        LuaType::String | LuaType::Any | LuaType::Unknown | LuaType::StrTplRef(_) => {}
         _ => {
             context.add_diagnostic(
                 DiagnosticCode::GenericConstraintMismatch,

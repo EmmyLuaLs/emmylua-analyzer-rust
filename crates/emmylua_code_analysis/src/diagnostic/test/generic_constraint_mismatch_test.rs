@@ -161,4 +161,24 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_str_tpl_ref_param() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                ---@generic T
+                ---@param a `T`
+                local function bar(a)
+                end
+
+                ---@generic T
+                ---@param a `T`
+                local function foo(a)
+                    bar(a)
+                end
+        "#
+        ));
+    }
 }
