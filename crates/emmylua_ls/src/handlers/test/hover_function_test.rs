@@ -24,6 +24,7 @@ mod tests {
 
         assert!(ws.check_hover(
             r#"
+                -- 删除
                 ---@param a number 参数a
                 ---@return number a 返回值a
                 local function delete(a)
@@ -37,7 +38,7 @@ mod tests {
                 }
             "#,
             VirtualHoverResult {
-                value: "\n```lua\nlocal function delete(a: number)\n  -> a: number\n\n```\n\n---\n\n@*param* `a` — 参数a\n\n\n\n@*return* `a`  — 返回值a\n\n\n".to_string(),
+                value: "\n```lua\nlocal function delete(a: number)\n  -> a: number\n\n```\n\n---\n\n删除\n\n@*param* `a` — 参数a\n\n\n\n@*return* `a`  — 返回值a\n\n\n".to_string(),
             },
         ));
 
