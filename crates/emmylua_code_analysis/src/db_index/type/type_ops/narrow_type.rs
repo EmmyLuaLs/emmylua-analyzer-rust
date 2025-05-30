@@ -52,11 +52,16 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
                 if type_decl.is_enum() {
                     return None;
                 }
-                if type_decl.is_alias() {
-                    if let Some(alias_ref) = get_real_type(db, &source) {
-                        return narrow_down_type(db, alias_ref.clone(), target);
+
+                // 需要对`userdata`进行特殊处理
+                if let Some(super_types) = db.get_type_index().get_super_types_iter(type_decl_id) {
+                    for super_type in super_types {
+                        if super_type.is_userdata() {
+                            return None;
+                        }
                     }
                 }
+
                 return Some(source);
             }
             _ => {}
