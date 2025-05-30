@@ -10,7 +10,8 @@ use smol_str::SmolStr;
 use crate::{
     InFiled, LuaAliasCallKind, LuaAliasCallType, LuaFunctionType, LuaGenericType,
     LuaIndexAccessKey, LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType,
-    LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticModel, TypeOps, VariadicType,
+    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, SemanticModel, TypeOps,
+    VariadicType,
 };
 
 pub fn infer_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType {
@@ -79,7 +80,7 @@ pub fn infer_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType 
                 }
                 types.push(t);
             }
-            return LuaType::Tuple(LuaTupleType::new(types).into());
+            return LuaType::Tuple(LuaTupleType::new(types, LuaTupleStatus::DocResolve).into());
         }
         LuaDocType::Generic(generic_type) => {
             return infer_generic_type(semantic_model, generic_type);

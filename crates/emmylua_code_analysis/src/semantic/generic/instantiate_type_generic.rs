@@ -86,7 +86,7 @@ fn instantiate_tuple(db: &DbIndex, tuple: &LuaTupleType, substitutor: &TypeSubst
         let t = instantiate_type_generic(db, t, substitutor);
         new_types.push(t);
     }
-    LuaType::Tuple(LuaTupleType::new(new_types).into())
+    LuaType::Tuple(LuaTupleType::new(new_types, tuple.status).into())
 }
 
 pub fn instantiate_doc_function(
