@@ -142,4 +142,23 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_extend_string() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                ---@class ABC1
+                
+                ---@generic T: string
+                ---@param t `T` 
+                ---@return T
+                local function test(t)
+                end
+
+                test("ABC1")
+        "#
+        ));
+    }
 }

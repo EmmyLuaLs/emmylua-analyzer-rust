@@ -202,20 +202,18 @@ fn check_str_tpl_ref(
             }
 
             if let Some(extend_type) = extend_type {
-                if !extend_type.is_string() {
-                    if let Some(type_decl) = founded_type_decl {
-                        let type_id = type_decl.get_id();
-                        let ref_type = LuaType::Ref(type_id);
-                        let result = semantic_model.type_check(&extend_type, &ref_type);
-                        if result.is_err() {
-                            add_type_check_diagnostic(
-                                context,
-                                semantic_model,
-                                range,
-                                &extend_type,
-                                result,
-                            );
-                        }
+                if let Some(type_decl) = founded_type_decl {
+                    let type_id = type_decl.get_id();
+                    let ref_type = LuaType::Ref(type_id);
+                    let result = semantic_model.type_check(&extend_type, &ref_type);
+                    if result.is_err() {
+                        add_type_check_diagnostic(
+                            context,
+                            semantic_model,
+                            range,
+                            &extend_type,
+                            result,
+                        );
                     }
                 }
             }
