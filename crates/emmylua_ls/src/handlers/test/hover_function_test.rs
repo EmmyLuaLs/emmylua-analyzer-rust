@@ -200,7 +200,7 @@ mod tests {
                 }
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(method) T:func()\n```\n\n---\n\n\n".to_string(),
+                value: "\n```lua\n(method) T:func()\n```\n\n---\n\n注释注释\n\n\n".to_string(),
             },
         ));
     }

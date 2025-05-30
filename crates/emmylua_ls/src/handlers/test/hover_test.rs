@@ -137,4 +137,25 @@ mod tests {
             },
         ));
     }
+
+    #[test]
+    fn test_issue_499_2() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@class T
+                ---@field func fun(self:string) 注释注释
+
+                ---@type T
+                local t = {
+                    fu<??>nc = function(self)
+                    end,
+                }
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\nfunction T.func(self: string)\n```\n\n---\n\n注释注释\n\n\n"
+                    .to_string(),
+            },
+        ));
+    }
 }
