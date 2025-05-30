@@ -1,7 +1,8 @@
-use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaDocTagType};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaDocTagType};
 use rowan::TextRange;
 
 use crate::diagnostic::checker::generic::infer_type::infer_type;
+use crate::diagnostic::checker::param_type_check::get_call_source_type;
 use crate::{
     humanize_type, DiagnosticCode, GenericTplId, LuaMemberOwner, LuaSemanticDeclId, LuaSignature,
     LuaStringTplType, LuaType, RenderLevel, SemanticDeclLevel, SemanticModel, TypeCheckFailReason,
@@ -74,21 +75,31 @@ fn check_call_expr(
     let function = semantic_model
         .infer_expr(call_expr.get_prefix_expr()?.clone())
         .ok()?;
+
     if let LuaType::Signature(signature_id) = function {
         let signature = semantic_model
             .get_db()
             .get_signature_index()
             .get(&signature_id)?;
         let mut params = signature.get_type_params();
+
+        let arg_exprs = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
+        let mut arg_infos =
+            semantic_model.infer_multi_value_adjusted_expression_types(&arg_exprs, None);
         match (call_expr.is_colon_call(), signature.is_colon_define) {
             (true, true) | (false, false) => {}
             (false, true) => {
                 params.insert(0, ("self".into(), Some(LuaType::SelfInfer)));
             }
             (true, false) => {
-                if params.len() >= 1 {
-                    params.remove(0);
-                }
+                // 往调用参数插入插入调用者类型
+                arg_infos.insert(
+                    0,
+                    (
+                        get_call_source_type(semantic_model, &call_expr)?,
+                        call_expr.get_colon_token()?.get_range(),
+                    ),
+                );
             }
         }
 
@@ -123,7 +134,7 @@ fn check_call_expr(
                         tpl_ref.get_tpl_id(),
                         signature,
                     );
-                    check_tpl_ref(context, semantic_model, &call_expr, i, &extend_type);
+                    check_tpl_ref(context, semantic_model, &extend_type, arg_infos.get(i));
                 }
                 _ => {}
             }
@@ -234,22 +245,14 @@ fn check_str_tpl_ref(
 fn check_tpl_ref(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    call_expr: &LuaCallExpr,
-    param_index: usize,
     extend_type: &Option<LuaType>,
+    arg_info: Option<&(LuaType, TextRange)>,
 ) -> Option<()> {
     let extend_type = extend_type.clone()?;
-    let arg_expr = call_expr.get_args_list()?.get_args().nth(param_index)?;
-    let arg_type = semantic_model.infer_expr(arg_expr.clone()).ok()?;
-    let result = semantic_model.type_check(&extend_type, &arg_type);
+    let arg_info = arg_info?;
+    let result = semantic_model.type_check(&extend_type, &arg_info.0);
     if !result.is_ok() {
-        add_type_check_diagnostic(
-            context,
-            semantic_model,
-            arg_expr.get_range(),
-            &extend_type,
-            result,
-        );
+        add_type_check_diagnostic(context, semantic_model, arg_info.1, &extend_type, result);
     }
     Some(())
 }

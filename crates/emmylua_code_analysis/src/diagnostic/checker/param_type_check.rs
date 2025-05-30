@@ -37,7 +37,7 @@ fn check_call_expr(
 ) -> Option<()> {
     let func = semantic_model.infer_call_expr_func(call_expr.clone(), None)?;
     let mut params = func.get_params().to_vec();
-    let arg_exprs: Vec<LuaExpr> = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
+    let arg_exprs = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
     let (mut arg_types, mut arg_ranges) = {
         let infos = semantic_model.infer_multi_value_adjusted_expression_types(&arg_exprs, None);
         let arg_types = infos.iter().map(|(typ, _)| typ.clone()).collect::<Vec<_>>();
@@ -165,7 +165,7 @@ fn add_type_check_diagnostic(
     }
 }
 
-fn get_call_source_type(
+pub fn get_call_source_type(
     semantic_model: &SemanticModel,
     call_expr: &LuaCallExpr,
 ) -> Option<LuaType> {

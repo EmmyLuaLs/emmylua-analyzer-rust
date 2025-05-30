@@ -181,4 +181,23 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_issue_516() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                ---@generic T: table
+                ---@param t T
+                ---@return T
+                local function wrap(t)
+                    return t
+                end
+
+                local a --- @type string[]?
+                wrap(assert(a))
+        "#
+        ));
+    }
 }
