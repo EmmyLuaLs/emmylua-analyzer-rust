@@ -189,6 +189,15 @@ impl LuaTypeIndex {
         }
     }
 
+    pub fn get_super_types_iter(
+        &self,
+        decl_id: &LuaTypeDeclId,
+    ) -> Option<impl Iterator<Item = &LuaType> + '_> {
+        self.supers
+            .get(decl_id)
+            .map(|supers| supers.iter().map(|s| &s.value))
+    }
+
     pub fn get_type_decl(&self, decl_id: &LuaTypeDeclId) -> Option<&LuaTypeDecl> {
         self.full_name_type_map.get(decl_id)
     }

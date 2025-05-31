@@ -198,37 +198,35 @@ fn build_member_hover(
     typ: LuaType,
     member_id: LuaMemberId,
 ) -> Option<()> {
-    let member = db.get_member_index().get_member(&member_id)?;
+    let mut member = db.get_member_index().get_member(&member_id)?;
+
+    let mut origin_decl = None;
+    match find_member_origin_owner(&builder.semantic_model, member_id) {
+        Some(LuaSemanticDeclId::Member(member_id)) => {
+            member = db.get_member_index().get_member(&member_id)?;
+        }
+        Some(LuaSemanticDeclId::LuaDecl(decl_id)) => {
+            origin_decl = Some(db.get_decl_index().get_decl(&decl_id)?);
+        }
+        _ => {}
+    }
+
     let member_name = match member.get_key() {
         LuaMemberKey::Name(name) => name.to_string(),
         LuaMemberKey::Integer(i) => format!("[{}]", i),
         _ => return None,
     };
 
-    let mut origin_function_member = None;
-    let mut origin_decl = None;
     if is_function(&typ) {
-        let origin_decl_id = find_member_origin_owner(&builder.semantic_model, member_id);
-        match origin_decl_id {
-            Some(LuaSemanticDeclId::Member(member_id)) => {
-                origin_function_member = Some(db.get_member_index().get_member(&member_id)?);
-            }
-            Some(LuaSemanticDeclId::LuaDecl(decl_id)) => {
-                origin_decl = Some(db.get_decl_index().get_decl(&decl_id)?);
-            }
-            _ => {}
-        }
         hover_function_type(
             builder,
             db,
             &typ,
-            origin_function_member.or_else(|| {
-                if origin_decl.is_none() {
-                    Some(&member)
-                } else {
-                    None
-                }
-            }),
+            if origin_decl.is_none() {
+                Some(&member)
+            } else {
+                None
+            },
             if let Some(owner_decl) = origin_decl {
                 owner_decl.get_name()
             } else {
@@ -241,7 +239,7 @@ fn build_member_hover(
             },
         );
 
-        builder.set_location_path(Some(&origin_function_member.as_ref().unwrap_or(&member)));
+        builder.set_location_path(Some(&member));
     } else if typ.is_const() {
         let const_value = hover_const_type(db, &typ);
         builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
@@ -257,13 +255,9 @@ fn build_member_hover(
 
     builder.add_annotation_description("---".to_string());
 
-    // 如果`decl`没有描述, 则从`owner_member`获取描述
-    builder
-        .add_description(LuaSemanticDeclId::Member(member_id))
-        .or_else(|| {
-            origin_function_member
-                .and_then(|m| builder.add_description(LuaSemanticDeclId::Member(m.get_id())))
-        });
+    // 添加注释文本
+    origin_decl.and_then(|d| builder.add_description(LuaSemanticDeclId::LuaDecl(d.get_id())));
+    builder.add_description(LuaSemanticDeclId::Member(member.get_id()));
 
     builder.add_signature_params_rets_description(typ);
     Some(())

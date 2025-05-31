@@ -142,4 +142,62 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_extend_string() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                ---@class ABC1
+                
+                ---@generic T: string
+                ---@param t `T` 
+                ---@return T
+                local function test(t)
+                end
+
+                test("ABC1")
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_str_tpl_ref_param() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                ---@generic T
+                ---@param a `T`
+                local function bar(a)
+                end
+
+                ---@generic T
+                ---@param a `T`
+                local function foo(a)
+                    bar(a)
+                end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_issue_516() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                ---@generic T: table
+                ---@param t T
+                ---@return T
+                local function wrap(t)
+                    return t
+                end
+
+                local a --- @type string[]?
+                wrap(assert(a))
+        "#
+        ));
+    }
 }

@@ -78,6 +78,15 @@ pub fn remove_type(db: &DbIndex, source: LuaType, removed_type: LuaType) -> Opti
                         return remove_type(db, alias_ref.clone(), removed_type);
                     }
                 }
+
+                // 需要对`userdata`进行特殊处理
+                if let Some(super_types) = db.get_type_index().get_super_types_iter(type_decl_id) {
+                    for super_type in super_types {
+                        if super_type.is_userdata() {
+                            return Some(source);
+                        }
+                    }
+                }
                 return None;
             }
             _ => {}
