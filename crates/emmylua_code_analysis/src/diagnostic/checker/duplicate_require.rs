@@ -46,7 +46,7 @@ fn check_require_call_expr(
                 context.add_diagnostic(
                     DiagnosticCode::DuplicateRequire,
                     call_expr.get_range(),
-                    t!("The same file is duplicate requires.").to_string(),
+                    t!("The same file is required multiple times.").to_string(),
                     None,
                 );
                 return Some(());

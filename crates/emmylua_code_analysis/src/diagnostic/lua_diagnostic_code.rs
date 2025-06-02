@@ -125,6 +125,7 @@ pub fn get_default_severity(code: DiagnosticCode) -> DiagnosticSeverity {
         DiagnosticCode::DuplicateType => DiagnosticSeverity::WARNING,
         DiagnosticCode::AnnotationUsageError => DiagnosticSeverity::ERROR,
         DiagnosticCode::RedefinedLocal => DiagnosticSeverity::HINT,
+        DiagnosticCode::DuplicateRequire => DiagnosticSeverity::HINT,
         _ => DiagnosticSeverity::WARNING,
     }
 }
