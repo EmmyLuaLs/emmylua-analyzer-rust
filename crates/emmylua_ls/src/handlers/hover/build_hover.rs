@@ -11,7 +11,10 @@ use std::collections::HashSet;
 
 use emmylua_code_analysis::humanize_type;
 
-use crate::handlers::hover::{function_humanize::is_function, hover_humanize::hover_humanize_type};
+use crate::handlers::hover::{
+    function_humanize::{is_function, try_extract_signature_id_from_field},
+    hover_humanize::hover_humanize_type,
+};
 
 use super::{
     hover_builder::HoverBuilder,
@@ -259,6 +262,11 @@ fn build_member_hover(
     origin_decl.and_then(|d| builder.add_description(LuaSemanticDeclId::LuaDecl(d.get_id())));
     builder.add_description(LuaSemanticDeclId::Member(member.get_id()));
 
+    if let Some(signature_id) = try_extract_signature_id_from_field(builder.semantic_model, &member)
+    {
+        builder.add_description(LuaSemanticDeclId::Signature(signature_id));
+    }
+
     builder.add_signature_params_rets_description(typ);
     Some(())
 }
@@ -401,7 +409,6 @@ pub fn find_decl_origin_owner(
         _ => None,
     }
 }
-
 pub fn find_member_origin_owner(
     semantic_model: &SemanticModel,
     member_id: LuaMemberId,

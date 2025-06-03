@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocDescriptionOwner, LuaDocFieldKey, LuaDocTagField,
-    LuaDocTagOperator, VisibilityKind,
+    LuaDocTagOperator, LuaDocType, VisibilityKind,
 };
 
 use crate::{
@@ -10,8 +10,8 @@ use crate::{
         LuaMember, LuaMemberKey, LuaMemberOwner, LuaOperator, LuaOperatorMetaMethod,
         LuaSemanticDeclId, LuaType,
     },
-    AnalyzeError, DiagnosticCode, LuaFunctionType, LuaMemberFeature, LuaMemberId, LuaTypeCache,
-    OperatorFunction, TypeOps,
+    AnalyzeError, DiagnosticCode, LuaFunctionType, LuaMemberFeature, LuaMemberId, LuaSignatureId,
+    LuaTypeCache, OperatorFunction, TypeOps,
 };
 
 use super::{infer_type::infer_type, DocAnalyzer};
@@ -45,10 +45,17 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
 
     let nullable = tag.is_nullable();
     let type_node = tag.get_type()?;
-    let (mut field_type, property_owner) = (
-        infer_type(analyzer, type_node),
-        LuaSemanticDeclId::Member(member_id),
-    );
+    let (mut field_type, property_owner) = match &type_node {
+        LuaDocType::Func(doc_func) => {
+            let typ = infer_type(analyzer, type_node.clone());
+            let signature_id = LuaSignatureId::from_doc_func(analyzer.file_id, &doc_func);
+            (typ, LuaSemanticDeclId::Signature(signature_id))
+        }
+        _ => (
+            infer_type(analyzer, type_node),
+            LuaSemanticDeclId::Member(member_id),
+        ),
+    };
     if nullable && !field_type.is_nullable() {
         field_type = TypeOps::Union.apply(analyzer.db, &field_type, &LuaType::Nil);
     }

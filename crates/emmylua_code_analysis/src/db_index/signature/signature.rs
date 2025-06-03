@@ -238,7 +238,6 @@ impl LuaSignatureId {
         }
     }
 
-    #[allow(dead_code)]
     pub fn from_doc_func(file_id: FileId, func_type: &LuaDocFuncType) -> Self {
         Self {
             file_id,
