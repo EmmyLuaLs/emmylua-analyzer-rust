@@ -2,6 +2,7 @@ mod build_flow_tree;
 mod cast_analyze;
 mod flow_node;
 mod var_analyze;
+mod cfg;
 
 use std::collections::HashMap;
 
