@@ -4,12 +4,11 @@ use emmylua_code_analysis::{
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxToken};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 
-use crate::handlers::hover::std_hover::hover_std_description;
-
-use super::{
-    build_hover::{add_signature_param_description, add_signature_ret_description},
-    std_hover::is_std,
+use crate::handlers::hover::hover_humanize::{
+    extract_description_from_property_owner, DescriptionInfo,
 };
+
+use super::build_hover::{add_signature_param_description, add_signature_ret_description};
 
 #[derive(Debug)]
 pub struct HoverBuilder<'a> {
@@ -79,6 +78,9 @@ impl<'a> HoverBuilder<'a> {
     }
 
     pub fn add_signature_overload(&mut self, signature_overload: String) {
+        if signature_overload.is_empty() {
+            return;
+        }
         if self.signature_overload.is_none() {
             self.signature_overload = Some(Vec::new());
         }
@@ -92,6 +94,9 @@ impl<'a> HoverBuilder<'a> {
     }
 
     pub fn add_type_expansion(&mut self, type_expansion: String) {
+        if type_expansion.is_empty() {
+            return;
+        }
         if self.type_expansion.is_none() {
             self.type_expansion = Some(Vec::new());
         }
@@ -117,71 +122,37 @@ impl<'a> HoverBuilder<'a> {
     }
 
     pub fn add_annotation_description(&mut self, annotation_description: String) {
+        if annotation_description.is_empty() {
+            return;
+        }
         self.annotation_description
             .push(MarkedString::from_markdown(annotation_description));
     }
 
-    pub fn add_description(&mut self, property_owner: LuaSemanticDeclId) -> Option<()> {
-        let property = self
-            .semantic_model
-            .get_db()
-            .get_property_index()
-            .get_property(&property_owner)?;
+    pub fn add_description(&mut self, property_owner: &LuaSemanticDeclId) -> Option<()> {
+        self.add_description_from_info(extract_description_from_property_owner(
+            self.semantic_model,
+            property_owner,
+        ))
+    }
 
-        if let Some(detail) = &property.description {
-            let mut description = detail.to_string();
-
-            match property_owner {
-                LuaSemanticDeclId::Member(id) => {
-                    if let Some(member) = self
-                        .semantic_model
-                        .get_db()
-                        .get_member_index()
-                        .get_member(&id)
-                    {
-                        if let Some(LuaMemberOwner::Type(ty)) = self
-                            .semantic_model
-                            .get_db()
-                            .get_member_index()
-                            .get_current_owner(&id)
-                        {
-                            if is_std(self.semantic_model.get_db(), member.get_file_id()) {
-                                let std_desc = hover_std_description(
-                                    ty.get_name(),
-                                    member.get_key().get_name(),
-                                );
-                                if !std_desc.is_empty() {
-                                    description = std_desc;
-                                }
-                            }
-                        }
-                    }
-                }
-                LuaSemanticDeclId::LuaDecl(id) => {
-                    if let Some(decl) = self.semantic_model.get_db().get_decl_index().get_decl(&id)
-                    {
-                        if is_std(self.semantic_model.get_db(), decl.get_file_id()) {
-                            let std_desc = hover_std_description(decl.get_name(), None);
-                            if !std_desc.is_empty() {
-                                description = std_desc;
-                            }
-                        }
-                    }
-                }
-                _ => {}
+    pub fn add_description_from_info(&mut self, type_desc: Option<DescriptionInfo>) -> Option<()> {
+        if let Some(desc_info) = type_desc {
+            if let Some(description) = desc_info.description {
+                self.add_annotation_description(description);
             }
 
-            self.add_annotation_description(description);
-        }
+            if let Some(see) = desc_info.see_content {
+                self.see_content = Some(see);
+            }
+            if let Some(other) = desc_info.other_content {
+                self.other_content = Some(other);
+            }
 
-        if let Some(see) = &property.see_content {
-            self.see_content = Some(see.to_string());
+            Some(())
+        } else {
+            None
         }
-        if let Some(other) = &property.other_content {
-            self.other_content = Some(other.to_string());
-        }
-
-        Some(())
     }
 
     pub fn add_signature_params_rets_description(&mut self, typ: LuaType) {
@@ -199,7 +170,7 @@ impl<'a> HoverBuilder<'a> {
         }
     }
 
-    pub fn get_call_signature(&mut self) -> Option<LuaFunctionType> {
+    pub fn get_call_function(&mut self) -> Option<LuaFunctionType> {
         if self.is_completion {
             return None;
         }
@@ -212,6 +183,7 @@ impl<'a> HoverBuilder<'a> {
                         .semantic_model
                         .infer_call_expr_func(call_expr.clone(), None);
                     if let Some(func) = func {
+                        // TODO: 对比参数类型确定是否完全匹配
                         // 确定参数量是否与当前输入的参数数量一致, 因为`infer_call_expr_func`必然返回一个有效的类型, 即使不是完全匹配的
                         let call_expr_args_count = call_expr.get_args_count();
                         if let Some(mut call_expr_args_count) = call_expr_args_count {
@@ -233,63 +205,84 @@ impl<'a> HoverBuilder<'a> {
     }
 
     pub fn build_hover_result(&self, range: Option<lsp_types::Range>) -> Option<Hover> {
-        let mut result = String::new();
-        match &self.type_description {
-            MarkedString::String(s) => {
-                result.push_str(&format!("\n{}\n", s));
-            }
-            MarkedString::LanguageString(s) => {
-                result.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
-            }
-        }
-        if let Some(location_path) = &self.location_path {
-            match location_path {
+        let header = {
+            let mut header = String::new();
+            match &self.type_description {
                 MarkedString::String(s) => {
-                    result.push_str(&format!("\n{}\n", s));
-                }
-                _ => {}
-            }
-        }
-
-        for marked_string in &self.annotation_description {
-            match marked_string {
-                MarkedString::String(s) => {
-                    result.push_str(&format!("\n{}\n", s));
+                    header.push_str(&format!("\n{}\n", s));
                 }
                 MarkedString::LanguageString(s) => {
-                    result.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
+                    header.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
                 }
             }
-        }
-
-        if let Some(see_content) = &self.see_content {
-            result.push_str(&format!("\n@*see* {}\n", see_content));
-        }
-
-        if let Some(other) = &self.other_content {
-            result.push_str("\n\n");
-            result.push_str(other);
-        }
-
-        if let Some(signature_overload) = &self.signature_overload {
-            result.push_str("\n---\n");
-            for signature in signature_overload {
-                match signature {
+            if let Some(location_path) = &self.location_path {
+                match location_path {
                     MarkedString::String(s) => {
-                        result.push_str(&format!("\n{}\n", s));
+                        header.push_str(&format!("\n{}\n", s));
+                    }
+                    _ => {}
+                }
+            }
+            header
+        };
+
+        let description_content = {
+            let mut content = String::new();
+
+            for marked_string in &self.annotation_description {
+                match marked_string {
+                    MarkedString::String(s) => {
+                        content.push_str(&format!("\n{}\n", s));
                     }
                     MarkedString::LanguageString(s) => {
-                        result.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
+                        content.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
                     }
                 }
             }
-        }
 
-        if let Some(type_expansion) = &self.type_expansion {
-            for type_expansion in type_expansion {
-                result.push_str(&format!("\n```{}\n{}\n```\n", "lua", type_expansion));
+            if let Some(see_content) = &self.see_content {
+                content.push_str(&format!("\n@*see* {}\n", see_content));
             }
+
+            if let Some(other) = &self.other_content {
+                content.push_str("\n\n");
+                content.push_str(other);
+            }
+            content
+        };
+
+        let expansion = {
+            let mut expansion = String::new();
+            if let Some(signature_overload) = &self.signature_overload {
+                expansion.push_str("\n---\n");
+                for signature in signature_overload {
+                    match signature {
+                        MarkedString::String(s) => {
+                            expansion.push_str(&format!("\n{}\n", s));
+                        }
+                        MarkedString::LanguageString(s) => {
+                            expansion.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
+                        }
+                    }
+                }
+            }
+
+            if let Some(type_expansion) = &self.type_expansion {
+                for type_expansion in type_expansion {
+                    expansion.push_str(&format!("\n```{}\n{}\n```\n", "lua", type_expansion));
+                }
+            }
+            expansion
+        };
+
+        let mut result = String::new();
+
+        result.push_str(&header);
+        if !description_content.is_empty() || !expansion.is_empty() {
+            result.push_str("\n---\n");
         }
+        result.push_str(&description_content);
+        result.push_str(&expansion);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {

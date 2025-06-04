@@ -160,7 +160,7 @@ mod tests {
                 ---@field event fun(self: self, event: "游戏-http返回"): Trigger
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(method) GameA:event(event_type: EventTypeA, ...: any)\n  -> Trigger\n\n```\n\n---\n\n---\n\n```lua\n(method) GameA:event(event: \"游戏-初始化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-追帧完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-逻辑不同步\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-地形预设加载完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-结束\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-暂停\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-恢复\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-昼夜变化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"区域-进入\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"区域-离开\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-http返回\") -> Trigger\n```\n".to_string(),
+                value: "\n```lua\n(method) GameA:event(event_type: EventTypeA, ...: any)\n  -> Trigger\n\n```\n\n---\n\n注册引擎事件\n\n---\n\n```lua\n(method) GameA:event(event: \"游戏-初始化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-追帧完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-逻辑不同步\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-地形预设加载完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-结束\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-暂停\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-恢复\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-昼夜变化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"区域-进入\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"区域-离开\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-http返回\") -> Trigger\n```\n".to_string(),
             },
         ));
     }
@@ -200,7 +200,92 @@ mod tests {
                 }
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(method) T:func()\n```\n\n---\n\n注释注释\n\n\n".to_string(),
+                value: "\n```lua\n(method) T:func()\n```\n\n---\n\n注释注释\n".to_string(),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_issue_499() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@class T
+                ---@field a string 注释注释a
+
+                ---@type T
+                local t = {
+                    a<??> = "a"
+                }
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\n(field) a: string = \"a\"\n```\n\n---\n\n注释注释a\n".to_string(),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_issue_499_2() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@class T
+                ---@field func fun(self:string) 注释注释
+
+                ---@type T
+                local t = {
+                    fu<??>nc = function(self)
+                    end,
+                }
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\n(field) T.func(self: string)\n```\n\n---\n\n注释注释\n"
+                    .to_string(),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_issue_499_3() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@class T
+                ---@field func fun(a:string) 注释1
+                ---@field func fun(a:number) 注释2
+
+                ---@type T
+                local t = {
+                    fu<??>nc = function(a)
+                    end,
+                }
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\n(field) T.func(a: (string|number))\n```\n\n---\n\n注释1\n\n注释2\n\n---\n\n```lua\n(field) T.func(a: string)\n```\n\n```lua\n(field) T.func(a: number)\n```\n"
+                    .to_string(),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_issue_499_4() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@class T
+                ---@field func fun(a:string) 注释1
+                ---@field func fun(a:number) 注释2
+
+                ---@type T
+                local t = {
+                    func = function(a)
+                    end
+                }
+
+                t.fu<??>nc(1)
+            "#,
+            VirtualHoverResult {
+                value: "\n```lua\n(field) T.func(a: number)\n```\n\n---\n\n注释2\n".to_string(),
             },
         ));
     }

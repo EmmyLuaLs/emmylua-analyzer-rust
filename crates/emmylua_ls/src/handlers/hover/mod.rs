@@ -3,11 +3,11 @@ mod function_humanize;
 mod hover_builder;
 mod hover_humanize;
 mod keyword_hover;
+mod member_origin;
 mod std_hover;
 
 pub use build_hover::build_hover_content_for_completion;
 use build_hover::build_semantic_info_hover;
-pub use build_hover::find_member_origin_owner;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::LuaAstNode;
 pub use hover_builder::HoverBuilder;
@@ -17,6 +17,7 @@ use lsp_types::{
     ClientCapabilities, Hover, HoverContents, HoverParams, HoverProviderCapability, MarkupContent,
     Position, ServerCapabilities,
 };
+pub use member_origin::find_member_origin_owner;
 use rowan::TokenAtOffset;
 pub use std_hover::{hover_std_description, is_std};
 use tokio_util::sync::CancellationToken;

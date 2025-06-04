@@ -41,7 +41,9 @@ pub fn goto_def_definition(
         }
         LuaSemanticDeclId::Member(member_id) => {
             if let Some(property_owner) = find_member_origin_owner(semantic_model, member_id) {
-                return goto_def_definition(semantic_model, property_owner, trigger_token);
+                if property_owner != LuaSemanticDeclId::Member(member_id) {
+                    return goto_def_definition(semantic_model, property_owner, trigger_token);
+                }
             }
 
             let member_key = semantic_model
