@@ -8,7 +8,7 @@ use emmylua_parser::{
 use crate::{
     db_index::{DbIndex, LuaType},
     infer_call_expr_func, infer_expr, InferGuard, LuaDeclId, LuaInferCache, LuaMemberId,
-    LuaTupleType, VariadicType,
+    LuaTupleStatus, LuaTupleType, VariadicType,
 };
 
 use super::{
@@ -57,7 +57,9 @@ fn infer_table_tuple_or_array(
                         return Ok(LuaType::Array(base.clone().into()));
                     }
                     VariadicType::Multi(tuple) => {
-                        return Ok(LuaType::Tuple(LuaTupleType::new(tuple.clone()).into()));
+                        return Ok(LuaType::Tuple(
+                            LuaTupleType::new(tuple.clone(), LuaTupleStatus::InferResolve).into(),
+                        ));
                     }
                 },
                 _ => {
@@ -79,7 +81,9 @@ fn infer_table_tuple_or_array(
         }
     }
 
-    Ok(LuaType::Tuple(LuaTupleType::new(types).into()))
+    Ok(LuaType::Tuple(
+        LuaTupleType::new(types, LuaTupleStatus::InferResolve).into(),
+    ))
 }
 
 fn flatten_multi_into_tuple(tuple_list: &mut Vec<LuaType>, multi: &VariadicType) {

@@ -1,4 +1,5 @@
 mod build_hover;
+mod find_origin;
 mod function_humanize;
 mod hover_builder;
 mod hover_humanize;
@@ -7,9 +8,9 @@ mod std_hover;
 
 pub use build_hover::build_hover_content_for_completion;
 use build_hover::build_semantic_info_hover;
-pub use build_hover::find_member_origin_owner;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use emmylua_parser::LuaAstNode;
+pub use find_origin::find_member_origin_owner;
 pub use hover_builder::HoverBuilder;
 pub use hover_humanize::infer_prefix_global_name;
 use keyword_hover::{hover_keyword, is_keyword};

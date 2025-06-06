@@ -13,7 +13,7 @@ mod tests {
                 ---@field c boolean
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(class) A {\n    a: number,\n    b: string,\n    c: boolean,\n}\n```\n\n\n".to_string(),
+                value: "\n```lua\n(class) A {\n    a: number,\n    b: string,\n    c: boolean,\n}\n```\n".to_string(),
             },
         ));
     }
@@ -35,7 +35,7 @@ mod tests {
                 m1.<??>x = {}
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) x: integer = 1\n```\n\n---\n".to_string(),
+                value: "\n```lua\n(field) x: integer = 1\n```\n".to_string(),
             },
         ));
 
@@ -58,7 +58,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) right: Node\n```\n\n---\n".to_string(),
+                value: "\n```lua\n(field) right: Node\n```\n".to_string(),
             },
         ));
 
@@ -80,7 +80,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\nlocal node: Node1 {\n    x: number,\n}\n```\n\n---\n".to_string(),
+                value: "\n```lua\nlocal node: Node1 {\n    x: number,\n}\n```\n".to_string(),
             },
         ));
     }
@@ -99,7 +99,7 @@ mod tests {
                 local d = a.<??>a
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) a: number?\n```\n\n---\n".to_string(),
+                value: "\n```lua\n(field) a: number?\n```\n".to_string(),
             },
         ));
     }
@@ -114,7 +114,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\nlocal function f(a, b)\n```\n\n---\n\n\n".to_string(),
+                value: "\n```lua\nlocal function f(a, b)\n```\n".to_string(),
             },
         ));
     }

@@ -401,4 +401,26 @@ mod tests {
             "#
         ));
     }
+    #[test]
+    fn test_issue_474() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class Range4
+            ---@class TSNode: userdata
+            ---@field range fun(self: TSNode): Range4
+
+            ---@param node_or_range TSNode|Range4
+            ---@return Range4
+            function foo(node_or_range)
+                if type(node_or_range) == 'table' then
+                    return node_or_range
+                else
+                    return node_or_range:range()
+                end
+            end
+            "#
+        ));
+    }
 }

@@ -1,21 +1,22 @@
 use emmylua_code_analysis::{
-    DbIndex, LuaDeclId, LuaDocument, LuaMember, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
-    LuaSignatureId, LuaType, LuaTypeDeclId, RenderLevel, SemanticDeclLevel, SemanticInfo,
-    SemanticModel,
+    DbIndex, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey, LuaSemanticDeclId, LuaSignatureId,
+    LuaType, LuaTypeDeclId, RenderLevel, SemanticInfo, SemanticModel,
 };
-use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaExpr, LuaSyntaxKind, LuaSyntaxToken, LuaTableExpr, LuaTableField,
-};
+use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaExpr, LuaSyntaxToken};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
-use std::collections::HashSet;
 
 use emmylua_code_analysis::humanize_type;
 
-use crate::handlers::hover::{function_humanize::is_function, hover_humanize::hover_humanize_type};
+use crate::handlers::hover::{
+    find_origin::replace_semantic_type,
+    function_humanize::is_function,
+    hover_humanize::{hover_function_type, hover_humanize_type},
+};
 
 use super::{
+    find_origin::{find_decl_origin_owners, find_member_origin_owners},
     hover_builder::HoverBuilder,
-    hover_humanize::{hover_const_type, hover_function_type},
+    hover_humanize::hover_const_type,
 };
 
 pub fn build_semantic_info_hover(
@@ -67,13 +68,10 @@ pub fn build_hover_content_for_completion<'a>(
 ) -> Option<HoverBuilder<'a>> {
     let typ = match property_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
-            // let decl = db.get_decl_index().get_decl(&decl_id)?;
             Some(semantic_model.get_type(decl_id.into()).clone())
         }
         LuaSemanticDeclId::Member(member_id) => {
-            // let member = db.get_member_index().get_member(&member_id)?;
             Some(semantic_model.get_type(member_id.into()).clone())
-            // Some(member.get_decl_type())
         }
         _ => None,
     };
@@ -114,81 +112,74 @@ fn build_decl_hover(
 ) -> Option<()> {
     let decl = db.get_decl_index().get_decl(&decl_id)?;
 
-    let mut origin_member = None;
-    let mut origin_decl = None;
-
+    let mut semantic_decls = find_decl_origin_owners(&builder.semantic_model, decl_id)
+        .get_types(&builder.semantic_model);
+    replace_semantic_type(&mut semantic_decls, &typ);
     // 处理类型签名
     if is_function(&typ) {
-        let origin_decl_id = find_decl_origin_owner(builder.semantic_model, decl_id.clone());
-        match origin_decl_id {
-            Some(LuaSemanticDeclId::Member(member_id)) => {
-                origin_member = Some(db.get_member_index().get_member(&member_id).unwrap());
-            }
-            Some(LuaSemanticDeclId::LuaDecl(decl_id)) => {
-                origin_decl = Some(db.get_decl_index().get_decl(&decl_id).unwrap());
-            }
-            _ => {}
+        // 如果找到了那么需要将它移动到末尾, 因为尾部最优先显示
+        if let Some(pos) = semantic_decls
+            .iter()
+            .position(|(_, origin_type)| origin_type == &typ)
+        {
+            let item = semantic_decls.remove(pos);
+            semantic_decls.push(item);
+        } else {
+            let semantic_decl = {
+                if let Some(semantic_decl) = semantic_decls.first() {
+                    semantic_decl.0.clone()
+                } else {
+                    LuaSemanticDeclId::LuaDecl(decl_id)
+                }
+            };
+            semantic_decls.push((semantic_decl, typ.clone()));
         }
-        hover_function_type(
-            builder,
-            db,
-            &typ,
-            origin_member,
-            if let Some(owner_decl) = origin_decl {
-                owner_decl.get_name()
-            } else {
-                decl.get_name()
-            },
-            if let Some(owner_decl) = origin_decl {
-                owner_decl.is_local()
-            } else {
-                decl.is_local()
-            },
-        );
 
-        builder.set_location_path(origin_member);
-    } else if typ.is_const() {
-        let const_value = hover_const_type(db, &typ);
-        let prefix = if decl.is_local() {
-            "local "
-        } else {
-            "(global) "
-        };
-        builder.set_type_description(format!("{}{}: {}", prefix, decl.get_name(), const_value));
+        hover_function_type(builder, db, &semantic_decls);
+
+        if let Some((LuaSemanticDeclId::Member(member_id), _)) = semantic_decls
+            .iter()
+            .find(|(decl, _)| matches!(decl, LuaSemanticDeclId::Member(_)))
+        {
+            let member = db.get_member_index().get_member(member_id);
+            builder.set_location_path(member);
+        }
+
+        builder.add_signature_params_rets_description(typ);
     } else {
-        let decl_hover_type =
-            get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
-        let type_humanize_text =
-            hover_humanize_type(builder, &decl_hover_type, Some(RenderLevel::Detailed));
-        let prefix = if decl.is_local() {
-            "local "
+        if typ.is_const() {
+            let const_value = hover_const_type(db, &typ);
+            let prefix = if decl.is_local() {
+                "local "
+            } else {
+                "(global) "
+            };
+            builder.set_type_description(format!("{}{}: {}", prefix, decl.get_name(), const_value));
         } else {
-            "(global) "
-        };
-        builder.set_type_description(format!(
-            "{}{}: {}",
-            prefix,
-            decl.get_name(),
-            type_humanize_text
-        ));
+            let decl_hover_type =
+                get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
+            let type_humanize_text =
+                hover_humanize_type(builder, &decl_hover_type, Some(RenderLevel::Detailed));
+            let prefix = if decl.is_local() {
+                "local "
+            } else {
+                "(global) "
+            };
+            builder.set_type_description(format!(
+                "{}{}: {}",
+                prefix,
+                decl.get_name(),
+                type_humanize_text
+            ));
+        }
+
+        // 添加注释文本
+        builder.add_description(&LuaSemanticDeclId::LuaDecl(decl_id));
+        for (semantic_decl, _) in semantic_decls {
+            builder.add_description(&semantic_decl);
+        }
     }
 
-    builder.add_annotation_description("---".to_string());
-
-    // 如果`decl`没有描述, 则尝试从`owner_member/owner_decl`获取描述
-    builder
-        .add_description(LuaSemanticDeclId::LuaDecl(decl_id))
-        .or_else(|| {
-            origin_member.and_then(|m: &LuaMember| {
-                builder.add_description(LuaSemanticDeclId::Member(m.get_id()))
-            })
-        })
-        .or_else(|| {
-            origin_decl
-                .and_then(|d| builder.add_description(LuaSemanticDeclId::LuaDecl(d.get_id())))
-        });
-
-    builder.add_signature_params_rets_description(typ);
     Some(())
 }
 
@@ -199,73 +190,61 @@ fn build_member_hover(
     member_id: LuaMemberId,
 ) -> Option<()> {
     let member = db.get_member_index().get_member(&member_id)?;
+    let mut semantic_decls = find_member_origin_owners(&builder.semantic_model, member_id)
+        .get_types(&builder.semantic_model);
+    replace_semantic_type(&mut semantic_decls, &typ);
     let member_name = match member.get_key() {
         LuaMemberKey::Name(name) => name.to_string(),
         LuaMemberKey::Integer(i) => format!("[{}]", i),
         _ => return None,
     };
 
-    let mut origin_function_member = None;
-    let mut origin_decl = None;
     if is_function(&typ) {
-        let origin_decl_id = find_member_origin_owner(&builder.semantic_model, member_id);
-        match origin_decl_id {
-            Some(LuaSemanticDeclId::Member(member_id)) => {
-                origin_function_member = Some(db.get_member_index().get_member(&member_id)?);
-            }
-            Some(LuaSemanticDeclId::LuaDecl(decl_id)) => {
-                origin_decl = Some(db.get_decl_index().get_decl(&decl_id)?);
-            }
-            _ => {}
-        }
-        hover_function_type(
-            builder,
-            db,
-            &typ,
-            origin_function_member.or_else(|| {
-                if origin_decl.is_none() {
-                    Some(&member)
+        // 如果找到了那么需要将它移动到末尾, 因为尾部最优先显示
+        if let Some(pos) = semantic_decls
+            .iter()
+            .position(|(_, origin_type)| origin_type == &typ)
+        {
+            let item = semantic_decls.remove(pos);
+            semantic_decls.push(item);
+        } else {
+            let semantic_decl = {
+                if let Some(semantic_decl) = semantic_decls.first() {
+                    semantic_decl.0.clone()
                 } else {
-                    None
+                    LuaSemanticDeclId::Member(member_id)
                 }
-            }),
-            if let Some(owner_decl) = origin_decl {
-                owner_decl.get_name()
-            } else {
-                &member_name
-            },
-            if let Some(owner_decl) = origin_decl {
-                owner_decl.is_local()
-            } else {
-                false
-            },
-        );
+            };
+            semantic_decls.push((semantic_decl, typ.clone()));
+        }
 
-        builder.set_location_path(Some(&origin_function_member.as_ref().unwrap_or(&member)));
-    } else if typ.is_const() {
-        let const_value = hover_const_type(db, &typ);
-        builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
+        hover_function_type(builder, db, &semantic_decls);
+
         builder.set_location_path(Some(&member));
+
+        builder.add_signature_params_rets_description(typ);
     } else {
-        let member_hover_type =
-            get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
-        let type_humanize_text =
-            hover_humanize_type(builder, &member_hover_type, Some(RenderLevel::Simple));
-        builder.set_type_description(format!("(field) {}: {}", member_name, type_humanize_text));
-        builder.set_location_path(Some(&member));
+        if typ.is_const() {
+            let const_value = hover_const_type(db, &typ);
+            builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
+            builder.set_location_path(Some(&member));
+        } else {
+            let member_hover_type =
+                get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
+            let type_humanize_text =
+                hover_humanize_type(builder, &member_hover_type, Some(RenderLevel::Simple));
+            builder
+                .set_type_description(format!("(field) {}: {}", member_name, type_humanize_text));
+            builder.set_location_path(Some(&member));
+        }
+
+        // 添加注释文本
+        builder.add_description(&LuaSemanticDeclId::Member(member.get_id()));
+        for (semantic_decl, _) in semantic_decls {
+            builder.add_description(&semantic_decl);
+        }
     }
 
-    builder.add_annotation_description("---".to_string());
-
-    // 如果`decl`没有描述, 则从`owner_member`获取描述
-    builder
-        .add_description(LuaSemanticDeclId::Member(member_id))
-        .or_else(|| {
-            origin_function_member
-                .and_then(|m| builder.add_description(LuaSemanticDeclId::Member(m.get_id())))
-        });
-
-    builder.add_signature_params_rets_description(typ);
     Some(())
 }
 
@@ -294,7 +273,7 @@ fn build_type_decl_hover(
     };
 
     builder.set_type_description(type_description);
-    builder.add_description(LuaSemanticDeclId::TypeDecl(type_decl_id));
+    builder.add_description(&LuaSemanticDeclId::TypeDecl(type_decl_id));
     Some(())
 }
 
@@ -346,7 +325,9 @@ pub fn add_signature_ret_description(
             ));
         }
     }
-    marked_strings.push(MarkedString::from_markdown(s));
+    if !s.is_empty() {
+        marked_strings.push(MarkedString::from_markdown(s));
+    }
     Some(())
 }
 
@@ -381,129 +362,4 @@ pub fn get_hover_type(builder: &HoverBuilder, semantic_model: &SemanticModel) ->
     }
 
     None
-}
-
-pub fn find_decl_origin_owner(
-    semantic_model: &SemanticModel,
-    decl_id: LuaDeclId,
-) -> Option<LuaSemanticDeclId> {
-    let root = semantic_model
-        .get_db()
-        .get_vfs()
-        .get_syntax_tree(&decl_id.file_id)?
-        .get_red_root();
-    let node = semantic_model
-        .get_db()
-        .get_decl_index()
-        .get_decl(&decl_id)?
-        .get_value_syntax_id()?
-        .to_node_from_root(&root)?;
-    let semantic_decl = semantic_model.find_decl(node.into(), SemanticDeclLevel::default());
-    match semantic_decl {
-        Some(LuaSemanticDeclId::Member(member_id)) => {
-            find_member_origin_owner(semantic_model, member_id).or(semantic_decl)
-        }
-        Some(LuaSemanticDeclId::LuaDecl(_)) => semantic_decl,
-        _ => None,
-    }
-}
-
-pub fn find_member_origin_owner(
-    semantic_model: &SemanticModel,
-    member_id: LuaMemberId,
-) -> Option<LuaSemanticDeclId> {
-    const MAX_ITERATIONS: usize = 50;
-    let mut visited_members = HashSet::new();
-
-    let mut current_owner = resolve_member_owner(semantic_model, &member_id);
-    let mut final_owner = current_owner.clone();
-    let mut iteration_count = 0;
-
-    while let Some(LuaSemanticDeclId::Member(current_member_id)) = &current_owner {
-        if visited_members.contains(current_member_id) || iteration_count >= MAX_ITERATIONS {
-            break;
-        }
-
-        visited_members.insert(current_member_id.clone());
-        iteration_count += 1;
-
-        match resolve_member_owner(semantic_model, current_member_id) {
-            Some(next_owner) => {
-                final_owner = Some(next_owner.clone());
-                current_owner = Some(next_owner);
-            }
-            None => break,
-        }
-    }
-
-    final_owner
-}
-
-fn resolve_member_owner(
-    semantic_model: &SemanticModel,
-    member_id: &LuaMemberId,
-) -> Option<LuaSemanticDeclId> {
-    let root = semantic_model
-        .get_db()
-        .get_vfs()
-        .get_syntax_tree(&member_id.file_id)?
-        .get_red_root();
-    let current_node = member_id.get_syntax_id().to_node_from_root(&root)?;
-    match member_id.get_syntax_id().get_kind() {
-        LuaSyntaxKind::TableFieldAssign => {
-            if LuaTableField::can_cast(current_node.kind().into()) {
-                let table_field = LuaTableField::cast(current_node.clone())?;
-                // 如果表是类, 那么通过类型推断获取 owner
-                if let Some(owner_id) =
-                    resolve_table_field_through_type_inference(semantic_model, &table_field)
-                {
-                    return Some(owner_id);
-                }
-                // 非类, 那么通过右值推断
-                let value_expr = table_field.get_value_expr()?;
-                let value_node = value_expr.get_syntax_id().to_node_from_root(&root)?;
-                semantic_model.find_decl(value_node.into(), SemanticDeclLevel::default())
-            } else {
-                None
-            }
-        }
-        LuaSyntaxKind::IndexExpr => {
-            let assign_node = current_node.parent()?;
-            let assign_stat = LuaAssignStat::cast(assign_node)?;
-            let (vars, exprs) = assign_stat.get_var_and_expr_list();
-
-            for (var, expr) in vars.iter().zip(exprs.iter()) {
-                if var.syntax().text_range() == current_node.text_range() {
-                    let expr_node = expr.get_syntax_id().to_node_from_root(&root)?;
-                    return semantic_model
-                        .find_decl(expr_node.into(), SemanticDeclLevel::default());
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-fn resolve_table_field_through_type_inference(
-    semantic_model: &SemanticModel,
-    table_field: &LuaTableField,
-) -> Option<LuaSemanticDeclId> {
-    let parent = table_field.syntax().parent()?;
-    let table_expr = LuaTableExpr::cast(parent)?;
-    let table_type = semantic_model.infer_table_should_be(table_expr)?;
-
-    if !matches!(table_type, LuaType::Ref(_) | LuaType::Def(_)) {
-        return None;
-    }
-
-    let field_key = table_field.get_field_key()?;
-    let key = semantic_model.get_member_key(&field_key)?;
-    let member_infos = semantic_model.get_member_infos(&table_type)?;
-
-    member_infos
-        .iter()
-        .find(|m| m.key == key)?
-        .property_owner_id
-        .clone()
 }

@@ -20,9 +20,9 @@ use emmylua_parser::{
 use infer::{infer_left_value_type_from_right_value, infer_multi_value_adjusted_expression_types};
 pub use infer::{infer_table_field_value_should_be, infer_table_should_be};
 use lsp_types::Uri;
-use member::find_members;
 pub use member::get_member_map;
 pub use member::LuaMemberInfo;
+use member::{find_member_origin_owner, find_members};
 use reference::is_reference_to;
 use rowan::{NodeOrToken, TextRange};
 pub(crate) use semantic_info::infer_node_semantic_decl;
@@ -39,7 +39,7 @@ use crate::{
     db_index::{DbIndex, LuaType},
     FileId,
 };
-use crate::{LuaFunctionType, LuaMemberKey, LuaTypeOwner};
+use crate::{LuaFunctionType, LuaMemberId, LuaMemberKey, LuaTypeOwner};
 pub use generic::*;
 pub use infer::infer_param;
 pub use infer::InferFailReason;
@@ -276,6 +276,10 @@ impl<'a> SemanticModel<'a> {
         member_key: &LuaMemberKey,
     ) -> Result<LuaType, InferFailReason> {
         member::infer_raw_member_type(self.db, prefix_type, member_key)
+    }
+
+    pub fn get_member_origin_owner(&self, member_id: LuaMemberId) -> Option<LuaSemanticDeclId> {
+        find_member_origin_owner(self.db, &mut self.infer_cache.borrow_mut(), member_id)
     }
 }
 

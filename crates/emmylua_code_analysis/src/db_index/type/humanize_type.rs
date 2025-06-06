@@ -125,11 +125,13 @@ fn humanize_simple_type(
     if level != RenderLevel::Detailed {
         return Some(name.to_string());
     }
+    let max_display_count = 12;
 
     let member_owner = LuaMemberOwner::Type(id.clone());
     let member_index = db.get_member_index();
     let members = member_index.get_sorted_members(&member_owner)?;
     let mut member_vec = Vec::new();
+    let mut function_vec = Vec::new();
     for member in members {
         let member_key = member.get_key();
         let type_cache = db.get_type_index().get_type_cache(&member.get_id().into());
@@ -137,33 +139,53 @@ fn humanize_simple_type(
             Some(type_cache) => type_cache,
             None => &super::LuaTypeCache::InferType(LuaType::Any),
         };
-        if !type_cache.is_signature() {
-            member_vec.push((member_key, type_cache.as_type().clone()));
+        if type_cache.is_function() {
+            function_vec.push(member_key);
+        } else {
+            member_vec.push((member_key, type_cache.as_type()));
         }
     }
 
-    if member_vec.is_empty() {
+    if member_vec.is_empty() && function_vec.is_empty() {
         return Some(name.to_string());
     }
+    let all_count = member_vec.len() + function_vec.len();
 
     let mut member_strings = String::new();
     let mut count = 0;
     for (member_key, typ) in member_vec {
         let member_string = build_table_member_string(
             member_key,
-            &typ,
-            humanize_type(db, &typ, level.next_level()),
+            typ,
+            humanize_type(db, typ, level.next_level()),
             level,
         );
 
         member_strings.push_str(&format!("    {},\n", member_string));
         count += 1;
-        if count >= 12 {
-            member_strings.push_str("    ...\n");
+        if count >= max_display_count {
             break;
         }
     }
+    if count < all_count {
+        for function_key in function_vec {
+            let member_string = build_table_member_string(
+                function_key,
+                &LuaType::Function,
+                "function".to_string(),
+                level,
+            );
 
+            member_strings.push_str(&format!("    {},\n", member_string));
+            count += 1;
+            if count >= max_display_count {
+                break;
+            }
+        }
+    }
+    if count >= max_display_count {
+        member_strings.push_str(&format!("    ...(+{})\n", all_count - max_display_count));
+    }
     Some(format!("{} {{\n{}}}", name, member_strings))
 }
 

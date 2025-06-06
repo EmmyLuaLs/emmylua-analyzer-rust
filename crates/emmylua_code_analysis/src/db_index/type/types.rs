@@ -424,11 +424,18 @@ impl LuaType {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaTupleType {
     types: Vec<LuaType>,
+    pub status: LuaTupleStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LuaTupleStatus {
+    DocResolve,
+    InferResolve,
 }
 
 impl LuaTupleType {
-    pub fn new(types: Vec<LuaType>) -> Self {
-        Self { types }
+    pub fn new(types: Vec<LuaType>, status: LuaTupleStatus) -> Self {
+        Self { types, status }
     }
 
     pub fn get_types(&self) -> &[LuaType] {
@@ -467,6 +474,10 @@ impl LuaTupleType {
         }
 
         ty
+    }
+
+    pub fn is_infer_resolve(&self) -> bool {
+        matches!(self.status, LuaTupleStatus::InferResolve)
     }
 }
 

@@ -169,8 +169,8 @@ Cannot use `...` outside a vararg function.:
   en: 'Cannot assign `%{value}` to `%{source}`. %{reason}'
   zh_CN: '不能将 `%{value}` 赋值给 `%{source}`。%{reason}'
   zh_HK: '不能將 `%{value}` 賦值給 `%{source}`。%{reason}'
-'The same file is duplicate requires.':
-  en: 'The same file is duplicate requires.'
+'The same file is required multiple times.':
+  en: 'The same file is required multiple times.'
   zh_CN: '同一个文件被重复 require。'
   zh_HK: '同一個文件被重複 require。'
 'Annotations specify that a return value is required here.':
