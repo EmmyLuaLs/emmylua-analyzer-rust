@@ -1,20 +1,21 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaMemberId, LuaSemanticDeclId, LuaType, SemanticModel};
+use emmylua_code_analysis::{
+    LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
+};
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxKind, LuaTableExpr, LuaTableField};
 
-/// Result type for finding member origin owners that can handle multiple same-named fields
 #[derive(Debug, Clone)]
-pub enum MemberOriginResult {
+pub enum DeclOriginResult {
     Single(LuaSemanticDeclId),
     Multiple(Vec<LuaSemanticDeclId>),
 }
 
-impl MemberOriginResult {
+impl DeclOriginResult {
     pub fn get_first(&self) -> Option<LuaSemanticDeclId> {
         match self {
-            MemberOriginResult::Single(decl) => Some(decl.clone()),
-            MemberOriginResult::Multiple(decls) => decls.first().cloned(),
+            DeclOriginResult::Single(decl) => Some(decl.clone()),
+            DeclOriginResult::Multiple(decls) => decls.first().cloned(),
         }
     }
 
@@ -34,16 +35,50 @@ impl MemberOriginResult {
         };
 
         match self {
-            MemberOriginResult::Single(decl) => get_type(decl).into_iter().collect(),
-            MemberOriginResult::Multiple(decls) => decls.iter().filter_map(get_type).collect(),
+            DeclOriginResult::Single(decl) => get_type(decl).into_iter().collect(),
+            DeclOriginResult::Multiple(decls) => decls.iter().filter_map(get_type).collect(),
         }
+    }
+}
+
+pub fn find_decl_origin_owners(
+    semantic_model: &SemanticModel,
+    decl_id: LuaDeclId,
+) -> DeclOriginResult {
+    let node = semantic_model
+        .get_db()
+        .get_vfs()
+        .get_syntax_tree(&decl_id.file_id)
+        .and_then(|tree| {
+            let root = tree.get_red_root();
+            semantic_model
+                .get_db()
+                .get_decl_index()
+                .get_decl(&decl_id)
+                .and_then(|decl| decl.get_value_syntax_id())
+                .and_then(|syntax_id| syntax_id.to_node_from_root(&root))
+        });
+
+    if let Some(node) = node {
+        let semantic_decl = semantic_model.find_decl(node.into(), SemanticDeclLevel::default());
+        match semantic_decl {
+            Some(LuaSemanticDeclId::Member(member_id)) => {
+                find_member_origin_owners(semantic_model, member_id)
+            }
+            Some(LuaSemanticDeclId::LuaDecl(decl_id)) => {
+                DeclOriginResult::Single(LuaSemanticDeclId::LuaDecl(decl_id))
+            }
+            _ => DeclOriginResult::Single(LuaSemanticDeclId::LuaDecl(decl_id)),
+        }
+    } else {
+        DeclOriginResult::Single(LuaSemanticDeclId::LuaDecl(decl_id))
     }
 }
 
 pub fn find_member_origin_owners(
     semantic_model: &SemanticModel,
     member_id: LuaMemberId,
-) -> MemberOriginResult {
+) -> DeclOriginResult {
     const MAX_ITERATIONS: usize = 50;
     let mut visited_members = HashSet::new();
 
@@ -75,11 +110,11 @@ pub fn find_member_origin_owners(
     // 如果存在多个同名成员, 则返回多个成员
     if let Some(same_named_members) = find_all_same_named_members(semantic_model, &final_owner) {
         if same_named_members.len() > 1 {
-            return MemberOriginResult::Multiple(same_named_members);
+            return DeclOriginResult::Multiple(same_named_members);
         }
     }
     // 否则返回单个成员
-    MemberOriginResult::Single(final_owner.unwrap_or_else(|| LuaSemanticDeclId::Member(member_id)))
+    DeclOriginResult::Single(final_owner.unwrap_or_else(|| LuaSemanticDeclId::Member(member_id)))
 }
 
 pub fn find_member_origin_owner(
@@ -202,4 +237,34 @@ fn resolve_table_field_through_type_inference(
         .find(|m| m.key == key)?
         .property_owner_id
         .clone()
+}
+
+pub fn replace_semantic_type(
+    semantic_decls: &mut [(LuaSemanticDeclId, LuaType)],
+    origin_type: &LuaType,
+) {
+    // `origin_type`不一定包含所有`semantic_decls`中的类型, 实际的推断可能非常复杂, 这里仅是临时方案.
+
+    // 解开`origin_type`
+    let mut type_vec = Vec::new();
+    match origin_type {
+        LuaType::Union(union) => {
+            for typ in union.get_types() {
+                type_vec.push(typ.clone());
+            }
+        }
+        _ => {
+            type_vec.push(origin_type.clone());
+        }
+    }
+    if type_vec.len() != semantic_decls.len() {
+        return;
+    }
+
+    // 替换`semantic_decls`中的类型
+    for (i, (_, typ)) in semantic_decls.iter_mut().enumerate() {
+        if i < type_vec.len() {
+            *typ = type_vec[i].clone();
+        }
+    }
 }
