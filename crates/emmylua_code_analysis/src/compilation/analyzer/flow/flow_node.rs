@@ -1,3 +1,5 @@
+use emmylua_parser::LuaAst;
+
 #[allow(unused)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FlowNodeKind {
@@ -25,18 +27,20 @@ impl FlowNodeKind {
     }
 }
 
-#[allow(unused)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
+pub struct FlowId(pub u32);
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum FlowAntecedent {
-    None,
-    Node(usize),
-    Multiple(Box<Vec<usize>>),
+    Node(FlowId),
+    Multiple(u32 /* index in multiple_antecedents*/),
 }
 
 #[allow(unused)]
 #[derive(Debug)]
 pub struct FlowNode {
-    pub id: usize,
+    pub id: FlowId,
     pub kind: FlowNodeKind,
-    pub antecedent: FlowAntecedent,
+    pub node: Option<LuaAst>,
+    pub antecedent: Option<FlowAntecedent>,
 }

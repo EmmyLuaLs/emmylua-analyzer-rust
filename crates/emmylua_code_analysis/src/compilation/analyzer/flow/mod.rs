@@ -1,9 +1,9 @@
-mod bind_file;
+mod bind_analyze;
 mod binder;
 mod flow_node;
 
 use crate::{
-    compilation::analyzer::flow::{bind_file::bind_file, binder::FlowBinder},
+    compilation::analyzer::flow::{bind_analyze::bind_analyze, binder::FlowBinder},
     db_index::DbIndex,
     profile::Profile,
 };
@@ -18,6 +18,6 @@ pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
         let chunk = in_filed_tree.value.clone();
         // let file_id = in_filed_tree.file_id;
         let mut binder = FlowBinder::new();
-        bind_file(&mut binder, chunk);
+        bind_analyze(&mut binder, chunk);
     }
 }
