@@ -56,6 +56,14 @@ impl FlowBinder {
         self.create_node(FlowNodeKind::Unreachable, None, None)
     }
 
+    pub fn create_flow_mutation(
+        &mut self,
+        node: Option<LuaAst>,
+        antecedent: Option<FlowAntecedent>,
+    ) -> FlowId {
+        self.create_node(FlowNodeKind::Assignment, node, antecedent)
+    }
+
     pub fn add_antecedent(&mut self, node_id: FlowId, antecedent: FlowId) {
         if let Some(existing) = self.flow_nodes.get_mut(node_id.0 as usize) {
             match existing.antecedent {

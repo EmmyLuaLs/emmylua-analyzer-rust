@@ -18,6 +18,6 @@ pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
         let chunk = in_filed_tree.value.clone();
         // let file_id = in_filed_tree.file_id;
         let mut binder = FlowBinder::new();
-        bind_analyze(&mut binder, chunk);
+        // bind_analyze(&mut binder, chunk);
     }
 }
