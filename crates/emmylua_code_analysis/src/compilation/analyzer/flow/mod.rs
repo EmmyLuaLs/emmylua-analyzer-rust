@@ -16,8 +16,8 @@ pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
     // build decl and ref flow chain
     for in_filed_tree in &tree_list {
         let chunk = in_filed_tree.value.clone();
-        // let file_id = in_filed_tree.file_id;
-        let mut binder = FlowBinder::new();
+        let file_id = in_filed_tree.file_id;
+        let mut binder = FlowBinder::new(&db, file_id);
         // bind_analyze(&mut binder, chunk);
     }
 }

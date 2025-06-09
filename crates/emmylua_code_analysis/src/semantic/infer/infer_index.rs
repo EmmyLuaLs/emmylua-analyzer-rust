@@ -17,7 +17,7 @@ use crate::{
         type_check::{self, check_type_compact},
         InferGuard,
     },
-    InFiled, LuaFlowId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner,
+    InFiled, LuaClosureId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner,
     LuaVarRefId, TypeOps,
 };
 
@@ -95,7 +95,7 @@ fn infer_member_type_pass_flow(
         None => return Ok(member_type.clone()),
     };
     let var_ref_id = LuaVarRefId::Name(SmolStr::new(&access_path));
-    let flow_id = LuaFlowId::from_node(index_expr.syntax());
+    let flow_id = LuaClosureId::from_node(index_expr.syntax());
     let flow_chain = db
         .get_flow_index()
         .get_flow_chain(cache.get_file_id(), var_ref_id);

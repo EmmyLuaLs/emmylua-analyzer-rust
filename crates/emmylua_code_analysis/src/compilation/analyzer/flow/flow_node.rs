@@ -1,31 +1,42 @@
-use emmylua_parser::LuaAst;
+use std::sync::Arc;
+
+use emmylua_parser::{LuaAst, LuaExpr};
+use internment::ArcIntern;
+use smol_str::SmolStr;
+
+use crate::{LuaType, LuaVarRefId};
 
 #[allow(unused)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum FlowNodeKind {
+pub enum FlowNodeType {
     None,
     Unreachable,
     Start,
     BranchLabel,
     LoopLabel,
-    Assignment,
-    TrueCondition,
-    FalseCondition,
-    Call,
+    NameLabel(ArcIntern<SmolStr>),
+    Assignment(Arc<LuaFlowAssignment>),
+    Condition(Arc<LuaFlowCondition>)
 }
 
-#[allow(unused)]
-impl FlowNodeKind {
-    pub fn is_label(&self) -> bool {
-        matches!(self, FlowNodeKind::BranchLabel | FlowNodeKind::LoopLabel)
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LuaFlowAssignment {
+    pub var_ref_id: LuaVarRefId,
+    pub expr: LuaExpr,
+    pub idx: u32,
+}
 
-    pub fn is_condition(&self) -> bool {
-        matches!(
-            self,
-            FlowNodeKind::TrueCondition | FlowNodeKind::FalseCondition
-        )
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LuaFlowCondition {
+    Exist(LuaVarRefId),
+    NotExist(LuaVarRefId),
+    Narrow(LuaVarRefId, LuaType),
+    Add(LuaVarRefId, LuaType),
+    Remove(LuaVarRefId, LuaType),
+    Force(LuaVarRefId, LuaType),
+    And(Arc<LuaFlowCondition>, Arc<LuaFlowCondition>),
+    Or(Arc<LuaFlowCondition>, Arc<LuaFlowCondition>),
+    Call(),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Default)]
@@ -41,7 +52,6 @@ pub enum FlowAntecedent {
 #[derive(Debug)]
 pub struct FlowNode {
     pub id: FlowId,
-    pub kind: FlowNodeKind,
-    pub node: Option<LuaAst>,
+    pub kind: FlowNodeType,
     pub antecedent: Option<FlowAntecedent>,
 }

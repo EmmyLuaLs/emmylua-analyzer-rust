@@ -1,84 +1,82 @@
-use emmylua_parser::LuaAst;
+use std::collections::HashMap;
 
-use crate::compilation::analyzer::flow::flow_node::{
-    FlowAntecedent, FlowId, FlowNode, FlowNodeKind,
+use internment::ArcIntern;
+use smol_str::SmolStr;
+
+use crate::{
+    compilation::analyzer::flow::flow_node::{FlowAntecedent, FlowId, FlowNode, FlowNodeType},
+    DbIndex, FileId, LuaDeclId, LuaClosureId,
 };
 
 #[derive(Debug)]
-pub struct FlowBinder {
+pub struct FlowBinder<'a> {
+    pub db: &'a DbIndex,
+    pub file_id: FileId,
     flow_nodes: Vec<FlowNode>,
     multiple_antecedents: Vec<Vec<FlowId>>,
+    labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
+    pub decl_bind_flow_ref: HashMap<LuaDeclId, FlowId>,
     pub none_label: FlowId,
     pub start: FlowId,
     pub unreachable: FlowId,
-    pub current: FlowId,
     pub loop_label: FlowId,
+    pub current: FlowId,
 }
 
-impl FlowBinder {
-    pub fn new() -> Self {
+impl<'a> FlowBinder<'a> {
+    pub fn new(db: &'a DbIndex, file_id: FileId) -> Self {
         let mut binder = FlowBinder {
+            db,
+            file_id,
             flow_nodes: Vec::new(),
             multiple_antecedents: Vec::new(),
+            decl_bind_flow_ref: HashMap::new(),
+            labels: HashMap::new(),
             start: FlowId::default(),
             none_label: FlowId::default(),
             unreachable: FlowId::default(),
-            current: FlowId::default(),
             loop_label: FlowId::default(),
+            current: FlowId::default(),
         };
 
-        binder.none_label = binder.create_node(FlowNodeKind::None, None, None);
+        binder.none_label = binder.create_node(FlowNodeType::None);
         binder.start = binder.create_start();
         binder.unreachable = binder.create_unreachable();
-        binder.current = binder.start;
         binder.loop_label = binder.none_label;
+        binder.current = binder.start;
 
         binder
     }
 
-    pub fn create_node(
-        &mut self,
-        kind: FlowNodeKind,
-        node: Option<LuaAst>,
-        antecedent: Option<FlowAntecedent>,
-    ) -> FlowId {
+    pub fn create_node(&mut self, kind: FlowNodeType) -> FlowId {
         let id = FlowId(self.flow_nodes.len() as u32);
         let flow_node = FlowNode {
             id,
             kind,
-            node,
-            antecedent,
+            antecedent: None,
         };
         self.flow_nodes.push(flow_node);
         id
     }
-
+    
     pub fn create_branch_label(&mut self) -> FlowId {
-        self.create_node(FlowNodeKind::BranchLabel, None, None)
+        self.create_node(FlowNodeType::BranchLabel)
     }
 
     pub fn create_loop_label(&mut self) -> FlowId {
-        self.create_node(FlowNodeKind::LoopLabel, None, None)
+        self.create_node(FlowNodeType::LoopLabel)
+    }
+
+    pub fn create_name_label(&mut self, name: String) -> FlowId {
+        self.create_node(FlowNodeType::NameLabel(ArcIntern::from(SmolStr::new(name))))
     }
 
     pub fn create_start(&mut self) -> FlowId {
-        self.create_node(FlowNodeKind::Start, None, None)
+        self.create_node(FlowNodeType::Start)
     }
 
     pub fn create_unreachable(&mut self) -> FlowId {
-        self.create_node(FlowNodeKind::Unreachable, None, None)
-    }
-
-    pub fn create_flow_mutation(
-        &mut self,
-        node: Option<LuaAst>,
-        antecedent: Option<FlowId>,
-    ) -> FlowId {
-        self.create_node(
-            FlowNodeKind::Assignment,
-            node,
-            antecedent.map(|id| FlowAntecedent::Node(id)),
-        )
+        self.create_node(FlowNodeType::Unreachable)
     }
 
     pub fn add_antecedent(&mut self, node_id: FlowId, antecedent: FlowId) {

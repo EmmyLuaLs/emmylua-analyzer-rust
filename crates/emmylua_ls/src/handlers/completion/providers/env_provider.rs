@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaFlowId, LuaSignatureId, LuaType, LuaVarRefId};
+use emmylua_code_analysis::{LuaClosureId, LuaSignatureId, LuaType, LuaVarRefId};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaCallArgList, LuaClosureExpr, LuaParamList};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionTriggerKind};
 
@@ -144,7 +144,7 @@ fn add_local_env(
             continue;
         }
 
-        let flow_id = LuaFlowId::from_node(node.syntax());
+        let flow_id = LuaClosureId::from_node(node.syntax());
         let var_ref_id = LuaVarRefId::DeclId(*decl_id);
         // 类型缩窄
         if let Some(chain) = builder

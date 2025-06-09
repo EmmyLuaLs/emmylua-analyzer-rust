@@ -1,7 +1,6 @@
 mod comment;
 mod exprs;
 mod stats;
-mod var_assertion;
 
 use emmylua_parser::{LuaAst, LuaAstNode, LuaBlock, LuaChunk};
 
@@ -13,7 +12,7 @@ use crate::compilation::analyzer::flow::{
 #[allow(unused)]
 pub fn bind_analyze(binder: &mut FlowBinder, chunk: LuaChunk) -> Option<()> {
     let block = chunk.get_block()?;
-    bind_block(binder, block);
+    bind_block(binder, block)?;
     Some(())
 }
 
@@ -34,7 +33,7 @@ fn bind_node(binder: &mut FlowBinder, node: LuaAst) -> Option<()> {
         LuaAst::LuaAssignStat(assign_stat) => bind_assign_stat(binder, assign_stat),
         LuaAst::LuaLocalStat(local_stat) => bind_local_stat(binder, local_stat),
         LuaAst::LuaCallExprStat(call_expr_stat) => bind_call_expr_stat(binder, call_expr_stat),
-        LuaAst::LuaLabelStat(label_stat) => Some(()),
+        LuaAst::LuaLabelStat(_) => Some(()),
         LuaAst::LuaBreakStat(break_stat) => todo!(),
         LuaAst::LuaGotoStat(goto_stat) => todo!(),
         LuaAst::LuaDoStat(do_stat) => todo!(),
