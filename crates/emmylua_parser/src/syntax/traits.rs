@@ -89,6 +89,10 @@ pub trait LuaAstNode {
         LuaSyntaxId::from_node(self.syntax())
     }
 
+    fn get_text(&self) -> String {
+        format!("{}", self.syntax().text())
+    }
+
     fn dump(&self) -> String {
         format!("{:#?}", self.syntax())
     }
