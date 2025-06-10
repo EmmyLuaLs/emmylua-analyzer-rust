@@ -1,6 +1,6 @@
 use emmylua_parser::{LuaAst, LuaCallExpr};
 
-use crate::compilation::analyzer::flow::{bind_analyze::bind_each_child, binder::FlowBinder, flow_node::{FlowId, FlowNodeType}};
+use crate::compilation::analyzer::flow::{bind_analyze::bind_each_child, binder::FlowBinder, flow_node::{FlowId, FlowNodeKind}};
 
 
 pub fn bind_call_expr(binder: &mut FlowBinder, call_expr: LuaCallExpr) -> Option<FlowId> {

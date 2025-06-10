@@ -6,7 +6,7 @@ use crate::{
     compilation::analyzer::flow::{
         bind_analyze::{bind_each_child, exprs::bind_call_expr::bind_call_expr},
         binder::FlowBinder,
-        flow_node::{FlowId, FlowNodeType, LuaFlowCondition},
+        flow_node::{FlowId, FlowNodeKind, FlowCondition},
     },
     LuaVarRefId,
 };
@@ -40,8 +40,8 @@ fn bind_name_expr(binder: &mut FlowBinder, name_expr: LuaNameExpr) -> Option<Flo
         None => LuaVarRefId::Name(name_text.into()),
     };
 
-    let flow_id = binder.create_node(FlowNodeType::Condition(
-        LuaFlowCondition::Exist(var_ref_id).into(),
+    let flow_id = binder.create_node(FlowNodeKind::Condition(
+        FlowCondition::Truthy(var_ref_id).into(),
     ));
 
     Some(flow_id)

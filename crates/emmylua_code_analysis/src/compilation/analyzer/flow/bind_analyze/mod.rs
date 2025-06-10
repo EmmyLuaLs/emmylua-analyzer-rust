@@ -5,7 +5,7 @@ mod stats;
 use emmylua_parser::{LuaAst, LuaAstNode, LuaBlock, LuaChunk};
 
 use crate::compilation::analyzer::flow::{
-    bind_analyze::{comment::bind_comment, stats::{bind_assign_stat, bind_call_expr_stat, bind_local_stat}},
+    bind_analyze::{comment::bind_comment, stats::{bind_assign_stat, bind_call_expr_stat, bind_do_stat, bind_goto_stat, bind_if_stat, bind_label_stat, bind_local_stat, bind_repeat_stat, bind_while_stat}},
     binder::FlowBinder,
 };
 
@@ -33,13 +33,13 @@ fn bind_node(binder: &mut FlowBinder, node: LuaAst) -> Option<()> {
         LuaAst::LuaAssignStat(assign_stat) => bind_assign_stat(binder, assign_stat),
         LuaAst::LuaLocalStat(local_stat) => bind_local_stat(binder, local_stat),
         LuaAst::LuaCallExprStat(call_expr_stat) => bind_call_expr_stat(binder, call_expr_stat),
-        LuaAst::LuaLabelStat(_) => Some(()),
+        LuaAst::LuaLabelStat(label_stat) => bind_label_stat(binder, label_stat),
         LuaAst::LuaBreakStat(break_stat) => todo!(),
-        LuaAst::LuaGotoStat(goto_stat) => todo!(),
-        LuaAst::LuaDoStat(do_stat) => todo!(),
-        LuaAst::LuaWhileStat(while_stat) => todo!(),
-        LuaAst::LuaRepeatStat(repeat_stat) => todo!(),
-        LuaAst::LuaIfStat(if_stat) => todo!(),
+        LuaAst::LuaGotoStat(goto_stat) => bind_goto_stat(binder, goto_stat),
+        LuaAst::LuaDoStat(do_stat) => bind_do_stat(binder, do_stat),
+        LuaAst::LuaWhileStat(while_stat) => bind_while_stat(binder, while_stat),
+        LuaAst::LuaRepeatStat(repeat_stat) => bind_repeat_stat(binder, repeat_stat),
+        LuaAst::LuaIfStat(if_stat) => bind_if_stat(binder, if_stat),
         LuaAst::LuaForStat(for_stat) => todo!(),
         LuaAst::LuaForRangeStat(for_range_stat) => todo!(),
         LuaAst::LuaFuncStat(func_stat) => todo!(),

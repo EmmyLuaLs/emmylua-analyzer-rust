@@ -1,26 +1,28 @@
 use std::collections::HashMap;
 
+use emmylua_parser::{LuaGotoStat, LuaSyntaxId};
 use internment::ArcIntern;
 use smol_str::SmolStr;
 
 use crate::{
-    compilation::analyzer::flow::flow_node::{FlowAntecedent, FlowId, FlowNode, FlowNodeType},
-    DbIndex, FileId, LuaDeclId, LuaClosureId,
+    compilation::analyzer::flow::flow_node::{FlowAntecedent, FlowId, FlowNode, FlowNodeKind},
+    DbIndex, FileId, LuaClosureId, LuaDeclId,
 };
 
 #[derive(Debug)]
 pub struct FlowBinder<'a> {
     pub db: &'a DbIndex,
     pub file_id: FileId,
-    flow_nodes: Vec<FlowNode>,
-    multiple_antecedents: Vec<Vec<FlowId>>,
-    labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
     pub decl_bind_flow_ref: HashMap<LuaDeclId, FlowId>,
-    pub none_label: FlowId,
     pub start: FlowId,
     pub unreachable: FlowId,
     pub loop_label: FlowId,
     pub current: FlowId,
+    flow_nodes: Vec<FlowNode>,
+    multiple_antecedents: Vec<Vec<FlowId>>,
+    labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
+    goto_stats: Vec<(LuaGotoStat, LuaClosureId)>,
+    bindings: HashMap<LuaSyntaxId, FlowId>,
 }
 
 impl<'a> FlowBinder<'a> {
@@ -33,22 +35,22 @@ impl<'a> FlowBinder<'a> {
             decl_bind_flow_ref: HashMap::new(),
             labels: HashMap::new(),
             start: FlowId::default(),
-            none_label: FlowId::default(),
             unreachable: FlowId::default(),
             loop_label: FlowId::default(),
             current: FlowId::default(),
+            bindings: HashMap::new(),
+            goto_stats: Vec::new(),
         };
 
-        binder.none_label = binder.create_node(FlowNodeType::None);
         binder.start = binder.create_start();
         binder.unreachable = binder.create_unreachable();
-        binder.loop_label = binder.none_label;
+        binder.loop_label = binder.unreachable;
         binder.current = binder.start;
 
         binder
     }
 
-    pub fn create_node(&mut self, kind: FlowNodeType) -> FlowId {
+    pub fn create_node(&mut self, kind: FlowNodeKind) -> FlowId {
         let id = FlowId(self.flow_nodes.len() as u32);
         let flow_node = FlowNode {
             id,
@@ -58,31 +60,39 @@ impl<'a> FlowBinder<'a> {
         self.flow_nodes.push(flow_node);
         id
     }
-    
+
     pub fn create_branch_label(&mut self) -> FlowId {
-        self.create_node(FlowNodeType::BranchLabel)
+        self.create_node(FlowNodeKind::BranchLabel)
     }
 
     pub fn create_loop_label(&mut self) -> FlowId {
-        self.create_node(FlowNodeType::LoopLabel)
+        self.create_node(FlowNodeKind::LoopLabel)
     }
 
-    pub fn create_name_label(&mut self, name: String) -> FlowId {
-        self.create_node(FlowNodeType::NameLabel(ArcIntern::from(SmolStr::new(name))))
+    pub fn create_name_label(&mut self, name: &str, closure_id: LuaClosureId) -> FlowId {
+        let label_id = self.create_node(FlowNodeKind::NamedLabel(ArcIntern::from(SmolStr::new(
+            name,
+        ))));
+        self.labels
+            .entry(closure_id)
+            .or_default()
+            .insert(SmolStr::new(name), label_id);
+
+        label_id
     }
 
     pub fn create_start(&mut self) -> FlowId {
-        self.create_node(FlowNodeType::Start)
+        self.create_node(FlowNodeKind::Start)
     }
 
     pub fn create_unreachable(&mut self) -> FlowId {
-        self.create_node(FlowNodeType::Unreachable)
+        self.create_node(FlowNodeKind::Unreachable)
     }
 
     pub fn add_antecedent(&mut self, node_id: FlowId, antecedent: FlowId) {
         if let Some(existing) = self.flow_nodes.get_mut(node_id.0 as usize) {
             match existing.antecedent {
-                Some(FlowAntecedent::Node(existing_id)) => {
+                Some(FlowAntecedent::Single(existing_id)) => {
                     // If the existing antecedent is a single node, convert it to multiple
                     if existing_id == antecedent {
                         return; // No change needed if it's the same antecedent
@@ -103,9 +113,17 @@ impl<'a> FlowBinder<'a> {
                 }
                 _ => {
                     // Set new antecedent
-                    existing.antecedent = Some(FlowAntecedent::Node(antecedent));
+                    existing.antecedent = Some(FlowAntecedent::Single(antecedent));
                 }
             };
         }
+    }
+
+    pub fn bind_syntax_node(&mut self, syntax_id: LuaSyntaxId, flow_id: FlowId) {
+        self.bindings.insert(syntax_id, flow_id);
+    }
+
+    pub fn add_goto_stat(&mut self, goto_stat: LuaGotoStat, closure_id: LuaClosureId) {
+        self.goto_stats.push((goto_stat, closure_id));
     }
 }
