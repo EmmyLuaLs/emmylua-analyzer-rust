@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
-use emmylua_parser::{LuaGotoStat, LuaSyntaxId};
+use emmylua_parser::LuaSyntaxId;
 use internment::ArcIntern;
 use smol_str::SmolStr;
 
 use crate::{
-    compilation::analyzer::flow::flow_node::{FlowAntecedent, FlowId, FlowNode, FlowNodeKind},
+    compilation::analyzer::{
+        flow::flow_node::{FlowAntecedent, FlowId, FlowNode, FlowNodeKind},
+        AnalyzeContext,
+    },
     DbIndex, FileId, LuaClosureId, LuaDeclId,
 };
 
@@ -13,23 +16,24 @@ use crate::{
 pub struct FlowBinder<'a> {
     pub db: &'a DbIndex,
     pub file_id: FileId,
+    pub context: &'a AnalyzeContext,
     pub decl_bind_flow_ref: HashMap<LuaDeclId, FlowId>,
     pub start: FlowId,
     pub unreachable: FlowId,
     pub loop_label: FlowId,
-    pub current: FlowId,
     flow_nodes: Vec<FlowNode>,
     multiple_antecedents: Vec<Vec<FlowId>>,
     labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
-    goto_stats: Vec<(LuaGotoStat, LuaClosureId)>,
+    goto_stats: Vec<GotoCache>,
     bindings: HashMap<LuaSyntaxId, FlowId>,
 }
 
 impl<'a> FlowBinder<'a> {
-    pub fn new(db: &'a DbIndex, file_id: FileId) -> Self {
+    pub fn new(db: &'a DbIndex, file_id: FileId, context: &'a AnalyzeContext) -> Self {
         let mut binder = FlowBinder {
             db,
             file_id,
+            context,
             flow_nodes: Vec::new(),
             multiple_antecedents: Vec::new(),
             decl_bind_flow_ref: HashMap::new(),
@@ -37,7 +41,6 @@ impl<'a> FlowBinder<'a> {
             start: FlowId::default(),
             unreachable: FlowId::default(),
             loop_label: FlowId::default(),
-            current: FlowId::default(),
             bindings: HashMap::new(),
             goto_stats: Vec::new(),
         };
@@ -45,7 +48,6 @@ impl<'a> FlowBinder<'a> {
         binder.start = binder.create_start();
         binder.unreachable = binder.create_unreachable();
         binder.loop_label = binder.unreachable;
-        binder.current = binder.start;
 
         binder
     }
@@ -56,6 +58,21 @@ impl<'a> FlowBinder<'a> {
             id,
             kind,
             antecedent: None,
+        };
+        self.flow_nodes.push(flow_node);
+        id
+    }
+
+    pub fn create_node_with_antecedent(
+        &mut self,
+        kind: FlowNodeKind,
+        antecedent: Option<FlowAntecedent>,
+    ) -> FlowId {
+        let id = FlowId(self.flow_nodes.len() as u32);
+        let flow_node = FlowNode {
+            id,
+            kind,
+            antecedent,
         };
         self.flow_nodes.push(flow_node);
         id
@@ -87,6 +104,14 @@ impl<'a> FlowBinder<'a> {
 
     pub fn create_unreachable(&mut self) -> FlowId {
         self.create_node(FlowNodeKind::Unreachable)
+    }
+
+    pub fn create_break(&mut self) -> FlowId {
+        self.create_node(FlowNodeKind::Break)
+    }
+
+    pub fn create_return(&mut self) -> FlowId {
+        self.create_node(FlowNodeKind::Return)
     }
 
     pub fn add_antecedent(&mut self, node_id: FlowId, antecedent: FlowId) {
@@ -123,7 +148,28 @@ impl<'a> FlowBinder<'a> {
         self.bindings.insert(syntax_id, flow_id);
     }
 
-    pub fn add_goto_stat(&mut self, goto_stat: LuaGotoStat, closure_id: LuaClosureId) {
-        self.goto_stats.push((goto_stat, closure_id));
+    pub fn cache_goto_flow(&mut self, closure_id: LuaClosureId, label: &str, flow_id: FlowId) {
+        self.goto_stats.push(GotoCache {
+            closure_id,
+            label: SmolStr::new(label),
+            flow_id,
+        });
     }
+
+    pub fn get_flow(&self, flow_id: FlowId) -> Option<&FlowNode> {
+        self.flow_nodes.get(flow_id.0 as usize)
+    }
+
+    pub fn get_antecedents(&self, flow_id: FlowId) -> Option<&FlowAntecedent> {
+        self.flow_nodes
+            .get(flow_id.0 as usize)
+            .and_then(|node| node.antecedent.as_ref())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GotoCache {
+    pub closure_id: LuaClosureId,
+    pub label: SmolStr,
+    pub flow_id: FlowId,
 }
