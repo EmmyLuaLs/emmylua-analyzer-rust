@@ -1,14 +1,12 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaBreakStat, LuaCallExprStat, LuaDoStat, LuaForRangeStat,
-    LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalStat, LuaRepeatStat, LuaReturnStat,
-    LuaVarExpr, LuaWhileStat, PathTrait,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaBreakStat, LuaCallExprStat, LuaDoStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaUnaryExpr, LuaVarExpr, LuaWhileStat, PathTrait, UnaryOperator
 };
 
 use crate::{
     compilation::analyzer::flow::{
         bind_analyze::{bind_block, bind_each_child, exprs::bind_expr},
         binder::FlowBinder,
-        flow_node::{FlowAssignment, FlowId, FlowNodeKind},
+        flow_node::{FlowAssertion, FlowAssignment, FlowId, FlowNodeKind},
     },
     LuaClosureId, LuaDeclId, LuaVarRefId,
 };
@@ -331,16 +329,75 @@ pub fn bind_for_range_stat(
     for_range_stat: LuaForRangeStat,
     current: FlowId,
 ) -> FlowId {
-    bind_each_child(binder, LuaAst::LuaForRangeStat(for_range_stat), current);
+    let loop_label = binder.create_loop_label();
+    binder.add_antecedent(loop_label, current);
+    let old_loop_label = binder.loop_label;
+    binder.loop_label = loop_label;
+    bind_each_child(binder, LuaAst::LuaForRangeStat(for_range_stat), loop_label);
+    binder.loop_label = old_loop_label;
     current
 }
 
-pub fn bind_for_stat(
-    binder: &mut FlowBinder,
-    _for_stat: emmylua_parser::LuaForStat,
-    current: FlowId,
-) -> FlowId {
-    // For loops are not yet implemented
-    // For now, we just return the current flow
+pub fn bind_for_stat(binder: &mut FlowBinder, for_stat: LuaForStat, current: FlowId) -> FlowId {
+    let loop_label = binder.create_loop_label();
+    binder.add_antecedent(loop_label, current);
+    let old_loop_label = binder.loop_label;
+    binder.loop_label = loop_label;
+
+    let Some(var_name_token) = for_stat.get_var_name() else {
+        binder.loop_label = old_loop_label;
+        return current;
+    };
+
+    let var_name = var_name_token.get_name_text();
+    let var_list = for_stat.get_iter_expr().collect::<Vec<_>>();
+    for expr in &var_list {
+        bind_expr(binder, expr.clone(), loop_label);
+    }
+
+    if var_list.len() < 2 {
+        binder.loop_label = old_loop_label;
+        return current;
+    }
+
+    let mut parent_flow_id = loop_label;
+    let second_expr = var_list[1].clone();
+    if let LuaExpr::UnaryExpr(unary_expr) = second_expr {
+        if let Some(length_var_name) = get_for_length_name(unary_expr) {
+            let var_ref_id = LuaVarRefId::Name(format!("{}.[{}]", length_var_name, var_name).into());
+            let flow_id = binder.create_node(FlowNodeKind::Assertion(
+                FlowAssertion::Truthy(var_ref_id).into(),
+            ));
+            binder.add_antecedent(flow_id, loop_label);
+            parent_flow_id = flow_id;
+        }
+    }
+
+    if let Some(block) = for_stat.get_block() {
+        bind_block(binder, block, parent_flow_id);
+    }
+
+    binder.loop_label = old_loop_label;
     current
+}
+
+fn get_for_length_name(unary_expr: LuaUnaryExpr) -> Option<String> {
+    let op_token = unary_expr.get_op_token()?;
+    if op_token.get_op() == UnaryOperator::OpLen {
+        if let Some(inner) = unary_expr.get_expr() {
+            match inner {
+                LuaExpr::IndexExpr(index_expr) => {
+                    if let Some(access_path) = index_expr.get_access_path() {
+                        return Some(access_path.into());
+                    }
+                }
+                LuaExpr::NameExpr(name_expr) => {
+                    return Some(name_expr.get_name_text()?);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    None
 }
