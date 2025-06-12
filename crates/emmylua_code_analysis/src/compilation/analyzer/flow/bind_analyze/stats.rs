@@ -1,5 +1,7 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaBreakStat, LuaCallExprStat, LuaDoStat, LuaForRangeStat, LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaVarExpr, LuaWhileStat, PathTrait
+    LuaAssignStat, LuaAst, LuaAstNode, LuaBreakStat, LuaCallExprStat, LuaDoStat, LuaForRangeStat,
+    LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalStat, LuaRepeatStat, LuaReturnStat,
+    LuaVarExpr, LuaWhileStat, PathTrait,
 };
 
 use crate::{
@@ -219,7 +221,11 @@ pub fn bind_while_stat(
     current
 }
 
-pub fn bind_repeat_stat(binder: &mut FlowBinder, repeat_stat: LuaRepeatStat, current: FlowId) -> FlowId {
+pub fn bind_repeat_stat(
+    binder: &mut FlowBinder,
+    repeat_stat: LuaRepeatStat,
+    current: FlowId,
+) -> FlowId {
     let old_loop_label = binder.loop_label;
 
     // Create a loop label for the repeat statement
@@ -306,11 +312,7 @@ pub fn bind_if_stat(binder: &mut FlowBinder, if_stat: LuaIfStat, current: FlowId
     current
 }
 
-pub fn bind_func_stat(
-    binder: &mut FlowBinder,
-    func_stat: LuaFuncStat,
-    current: FlowId,
-) -> FlowId {
+pub fn bind_func_stat(binder: &mut FlowBinder, func_stat: LuaFuncStat, current: FlowId) -> FlowId {
     bind_each_child(binder, LuaAst::LuaFuncStat(func_stat), current);
     current
 }

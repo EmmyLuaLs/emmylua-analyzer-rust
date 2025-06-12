@@ -3,7 +3,7 @@ use smol_str::SmolStr;
 
 use crate::{
     db_index::{DbIndex, LuaDeclOrMemberId},
-    LuaDecl, LuaDeclExtra, LuaClosureId, LuaInferCache, LuaMemberId, LuaType, LuaVarRefId, TypeOps,
+    LuaClosureId, LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaType, LuaVarRefId, TypeOps,
 };
 
 use super::{InferFailReason, InferResult};

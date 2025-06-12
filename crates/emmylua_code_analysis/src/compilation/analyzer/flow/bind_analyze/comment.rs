@@ -4,7 +4,8 @@ use crate::{
     compilation::analyzer::flow::{
         binder::FlowBinder,
         flow_node::{FlowAssertion, FlowId, FlowNodeKind},
-    }, InFiled, LuaType, LuaVarRefId
+    },
+    InFiled, LuaType, LuaVarRefId,
 };
 
 enum CastAction {
@@ -62,8 +63,7 @@ pub fn bind_comment(
                     }
                     _ => {}
                 }
-            }
-            else if let Some(doc_typ) = cast_op_type.get_type() {
+            } else if let Some(doc_typ) = cast_op_type.get_type() {
                 let file_id = binder.file_id;
                 let key = InFiled::new(file_id, doc_typ.get_syntax_id());
                 let typ = match binder.context.cast_flow.get(&key) {

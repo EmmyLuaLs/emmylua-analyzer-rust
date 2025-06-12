@@ -227,7 +227,7 @@ fn bind_or_expr(binder: &mut FlowBinder, binary_expr: LuaBinaryExpr, current: Fl
     }
 
     let Some(left_ne_flow_id) = left_ne_flow_id else {
-        return current
+        return current;
     };
 
     let right_flow_id = bind_expr(binder, right, left_ne_flow_id);

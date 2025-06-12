@@ -56,7 +56,9 @@ impl LuaClosureId {
 
     pub fn from_node(node: &LuaSyntaxNode) -> Self {
         let flow_id = node.ancestors().find_map(|node| match node.kind().into() {
-            LuaSyntaxKind::ClosureExpr => LuaClosureExpr::cast(node).map(LuaClosureId::from_closure),
+            LuaSyntaxKind::ClosureExpr => {
+                LuaClosureExpr::cast(node).map(LuaClosureId::from_closure)
+            }
             LuaSyntaxKind::Chunk => LuaChunk::cast(node).map(LuaClosureId::from_chunk),
             _ => None,
         });
