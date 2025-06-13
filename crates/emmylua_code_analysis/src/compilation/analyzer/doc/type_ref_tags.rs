@@ -6,9 +6,7 @@ use emmylua_parser::{
 };
 
 use crate::{
-    compilation::analyzer::{
-        bind_type::bind_type, flow::CastAction, unresolve::UnResolveModuleRef,
-    },
+    compilation::analyzer::{bind_type::bind_type, unresolve::UnResolveModuleRef},
     db_index::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaOperator, LuaSemanticDeclId,
         LuaSignatureId, LuaType,
@@ -186,6 +184,12 @@ pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Optio
         }
     }
     Some(())
+}
+
+enum CastAction {
+    Add,
+    Remove,
+    Force,
 }
 
 pub fn analyze_return_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturnCast) -> Option<()> {
