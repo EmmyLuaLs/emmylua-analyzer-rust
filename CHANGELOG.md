@@ -2,12 +2,7 @@
 
 # 0.8.2 (unreleased)
 
-`CHG` When a function call jumps, if there are multiple declarations, it will attempt to find the most matching definition to jump directly to, rather than returning multiple locations.
-
-> [!WARNING]
-> If there is a matching `---@field method fun()`, it will prevent you from directly jumping to the real definition, and you must use `Find All Implementations` to navigate.
-
-
+`CHG` When a function call jumps, if there are multiple declarations, It will then attempt to return the most matching definition along with all actual code declarations, rather than returning all definitions.
 
 # 0.8.1
 

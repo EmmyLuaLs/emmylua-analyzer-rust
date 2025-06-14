@@ -9,10 +9,10 @@ pub fn find_match_function(
     semantic_model: &SemanticModel,
     trigger_token: &LuaSyntaxToken,
     semantic_decls: &Vec<LuaSemanticDeclId>,
-) -> Option<LuaSemanticDeclId> {
+) -> Option<Vec<LuaSemanticDeclId>> {
     let call_expr = LuaCallExpr::cast(trigger_token.parent()?.parent()?)?;
     let call_function = get_call_function(semantic_model, &call_expr)?;
-
+    let mut result = Vec::new();
     let member_decls: Vec<_> = semantic_decls
         .iter()
         .filter_map(|decl| match decl {
@@ -21,12 +21,14 @@ pub fn find_match_function(
         })
         .collect();
 
+    let mut has_match = false;
     for (decl, member_id) in member_decls {
         let typ = semantic_model.get_type(member_id.clone().into());
         match typ {
             LuaType::DocFunction(func) => {
                 if compare_function_types(semantic_model, &call_function, &func, &call_expr)? {
-                    return Some(decl.clone());
+                    result.push(decl.clone());
+                    has_match = true;
                 }
             }
             LuaType::Signature(signature_id) => {
@@ -40,14 +42,23 @@ pub fn find_match_function(
                     compare_function_types(semantic_model, &call_function, func, &call_expr)
                         .unwrap_or(false)
                 }) {
-                    return Some(decl.clone());
+                    has_match = true;
                 }
+                // 此处为降低优先级, 因为如果返回多个选项, 那么 vscode 会默认指向最后的选项
+                result.insert(0, decl.clone());
             }
             _ => continue,
         }
     }
 
-    None
+    if !has_match {
+        return None;
+    }
+
+    match result.len() {
+        0 => None,
+        _ => Some(result),
+    }
 }
 
 /// 获取最匹配的函数(并不能确保完全匹配)
@@ -91,16 +102,16 @@ fn compare_function_types(
     func: &Arc<LuaFunctionType>,
     call_expr: &LuaCallExpr,
 ) -> Option<bool> {
-    let func = if func.contain_tpl() {
-        instantiate_func_generic(
+    if func.contain_tpl() {
+        let instantiated_func = instantiate_func_generic(
             semantic_model.get_db(),
             &mut semantic_model.get_config().borrow_mut(),
             func,
             call_expr.clone(),
         )
-        .ok()?
+        .ok()?;
+        Some(call_function == &instantiated_func)
     } else {
-        (**func).clone()
-    };
-    Some(call_function == &func)
+        Some(call_function == func.as_ref())
+    }
 }

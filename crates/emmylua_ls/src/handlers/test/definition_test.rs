@@ -78,15 +78,11 @@ mod tests {
     #[test]
     fn test_goto_overload() {
         let mut ws = ProviderVirtualWorkspace::new();
-        let result = ws
-            .check_definition(
-                r#"
+        ws.def(
+            r#"
                 ---@class Goto1
-                local Goto1
                 ---@class Goto2
-                local Goto2
                 ---@class Goto3
-                local Goto3
 
                 ---@class T
                 ---@field func fun(a:Goto1) # 1
@@ -96,20 +92,49 @@ mod tests {
 
                 function T:func(a)
                 end
+            "#,
+        );
+
+        {
+            let result = ws
+                .check_definition(
+                    r#"
+                ---@type Goto2
+                local Goto2
 
                 ---@type T
                 local t
-
-                t.func(Goto1)
                 t.fu<??>nc(Goto2)
-                t.func(Goto3)
-            "#,
-            )
-            .unwrap();
-        match result {
-            GotoDefinitionResponse::Scalar(_) => {}
-            _ => {
-                panic!("expect scalar");
+                 "#,
+                )
+                .unwrap();
+            match result {
+                GotoDefinitionResponse::Array(array) => {
+                    assert_eq!(array.len(), 2);
+                }
+                _ => {
+                    panic!("expect array");
+                }
+            }
+        }
+
+        {
+            let result = ws
+                .check_definition(
+                    r#"
+                ---@type T
+                local t
+                t.fu<??>nc()
+                 "#,
+                )
+                .unwrap();
+            match result {
+                GotoDefinitionResponse::Array(array) => {
+                    assert_eq!(array.len(), 4);
+                }
+                _ => {
+                    panic!("expect array");
+                }
             }
         }
     }

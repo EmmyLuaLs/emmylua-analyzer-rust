@@ -43,25 +43,31 @@ pub fn goto_def_definition(
             return Some(GotoDefinitionResponse::Scalar(location));
         }
         LuaSemanticDeclId::Member(member_id) => {
-            let same_named_members: Vec<LuaSemanticDeclId> = find_all_same_named_members(
+            let same_named_members = find_all_same_named_members(
                 semantic_model,
                 &Some(LuaSemanticDeclId::Member(member_id)),
             )?;
-            // 如果是函数, 则尝试寻找最匹配的定义
-            if let Some(match_member) =
-                find_match_function(semantic_model, trigger_token, &same_named_members)
-            {
-                match match_member {
-                    LuaSemanticDeclId::Member(member_id) => {
-                        if let Some(location) = get_member_location(semantic_model, &member_id) {
-                            return Some(GotoDefinitionResponse::Scalar(location));
-                        }
-                    }
-                    _ => {}
-                }
-            }
 
             let mut locations: Vec<Location> = Vec::new();
+            // 如果是函数, 则尝试寻找最匹配的定义
+            if let Some(match_members) =
+                find_match_function(semantic_model, trigger_token, &same_named_members)
+            {
+                for member in match_members {
+                    match member {
+                        LuaSemanticDeclId::Member(member_id) => {
+                            if let Some(location) = get_member_location(semantic_model, &member_id)
+                            {
+                                locations.push(location);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if !locations.is_empty() {
+                    return Some(GotoDefinitionResponse::Array(locations));
+                }
+            }
 
             // 添加原始成员的位置
             for member in same_named_members {
