@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use lsp_types::GotoDefinitionResponse;
+
     use crate::handlers::test_lib::ProviderVirtualWorkspace;
 
     #[test]
@@ -71,5 +73,44 @@ mod tests {
                 print(t.abc<??>)
             "#,
         );
+    }
+
+    #[test]
+    fn test_goto_overload() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let result = ws
+            .check_definition(
+                r#"
+                ---@class Goto1
+                local Goto1
+                ---@class Goto2
+                local Goto2
+                ---@class Goto3
+                local Goto3
+
+                ---@class T
+                ---@field func fun(a:Goto1) # 1
+                ---@field func fun(a:Goto2) # 2
+                ---@field func fun(a:Goto3) # 3
+                local T = {}
+
+                function T:func(a)
+                end
+
+                ---@type T
+                local t
+
+                t.func(Goto1)
+                t.fu<??>nc(Goto2)
+                t.func(Goto3)
+            "#,
+            )
+            .unwrap();
+        match result {
+            GotoDefinitionResponse::Scalar(_) => {}
+            _ => {
+                panic!("expect scalar");
+            }
+        }
     }
 }
