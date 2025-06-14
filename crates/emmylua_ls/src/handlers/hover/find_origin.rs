@@ -262,10 +262,16 @@ pub fn replace_semantic_type(
     }
 
     // 判断是否存在泛型, 如果有任意类型不匹配我们就认为存在泛型
+    let mut has_generic = false;
+    let type_set: HashSet<_> = type_vec.iter().collect();
     for (_, typ) in semantic_decls.iter() {
-        if !type_vec.iter().any(|t| *t == typ) {
+        if !type_set.contains(&typ) {
+            has_generic = true;
             break;
         }
+    }
+    if !has_generic {
+        return;
     }
 
     // 替换`semantic_decls`中的类型

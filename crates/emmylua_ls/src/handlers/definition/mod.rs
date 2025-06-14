@@ -1,5 +1,6 @@
 mod goto_def_definition;
 mod goto_doc_see;
+mod goto_function;
 mod goto_module_file;
 
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, SemanticDeclLevel};
