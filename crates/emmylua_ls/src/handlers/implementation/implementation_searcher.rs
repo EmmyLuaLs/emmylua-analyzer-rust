@@ -5,7 +5,8 @@ use emmylua_code_analysis::{
     SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{
-    LuaAstNode, LuaDocTagField, LuaIndexExpr, LuaStat, LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
+    LuaAstNode, LuaDocTagField, LuaExpr, LuaIndexExpr, LuaStat, LuaSyntaxNode, LuaSyntaxToken,
+    LuaTableField,
 };
 use lsp_types::Location;
 
@@ -69,35 +70,46 @@ pub fn search_member_implementations(
             };
         let root = semantic_model.get_root();
         let node = in_filed_syntax_id.value.to_node_from_root(root.syntax())?;
+        if let Some(is_signature) = check_member_reference(&semantic_model, node.clone()) {
+            if !semantic_model.is_reference_to(
+                node,
+                property_owner.clone(),
+                SemanticDeclLevel::default(),
+            ) {
+                continue;
+            }
 
-        if check_member_reference(&semantic_model, node.clone()).is_none() {
-            continue;
+            let document = semantic_model.get_document();
+            let range = in_filed_syntax_id.value.get_range();
+            let location = document.to_lsp_location(range)?;
+            // 由于允许函数声明重载, 所以需要将签名放在前面
+            if is_signature {
+                result.insert(0, location);
+            } else {
+                result.push(location);
+            }
         }
-
-        if !semantic_model.is_reference_to(
-            node,
-            property_owner.clone(),
-            SemanticDeclLevel::default(),
-        ) {
-            continue;
-        }
-
-        let document = semantic_model.get_document();
-        let range = in_filed_syntax_id.value.get_range();
-        let location = document.to_lsp_location(range)?;
-        result.push(location);
     }
     Some(())
 }
 
 /// 检查成员引用是否符合实现
-fn check_member_reference(semantic_model: &SemanticModel, node: LuaSyntaxNode) -> Option<()> {
+fn check_member_reference(semantic_model: &SemanticModel, node: LuaSyntaxNode) -> Option<bool> {
     match &node {
         expr_node if LuaIndexExpr::can_cast(expr_node.kind().into()) => {
             let expr = LuaIndexExpr::cast(expr_node.clone())?;
             let prefix_type = semantic_model
                 .infer_expr(expr.get_prefix_expr()?.into())
                 .ok()?;
+            let mut is_signature = false;
+            if let Some(current_type) = semantic_model
+                .infer_expr(LuaExpr::IndexExpr(expr.clone()))
+                .ok()
+            {
+                if current_type.is_signature() {
+                    is_signature = true;
+                }
+            }
             // TODO: 需要实现更复杂的逻辑, 即当为`Ref`时, 针对指定的实例定义到其实现
             /*
                ---@class A
@@ -123,7 +135,7 @@ fn check_member_reference(semantic_model: &SemanticModel, node: LuaSyntaxNode) -
             let stat = expr.ancestors::<LuaStat>().next()?;
             match stat {
                 LuaStat::FuncStat(_) => {
-                    return Some(());
+                    return Some(is_signature);
                 }
                 LuaStat::AssignStat(assign_stat) => {
                     // 判断是否在左侧
@@ -134,7 +146,7 @@ fn check_member_reference(semantic_model: &SemanticModel, node: LuaSyntaxNode) -
                             .text_range()
                             .contains(node.text_range().start())
                         {
-                            return Some(());
+                            return Some(is_signature);
                         }
                     }
                     return None;
@@ -145,12 +157,12 @@ fn check_member_reference(semantic_model: &SemanticModel, node: LuaSyntaxNode) -
             }
         }
         tag_field_node if LuaDocTagField::can_cast(tag_field_node.kind().into()) => {
-            return Some(());
+            return Some(false);
         }
         table_field_node if LuaTableField::can_cast(table_field_node.kind().into()) => {
             let table_field = LuaTableField::cast(table_field_node.clone())?;
             if table_field.is_assign_field() {
-                return Some(());
+                return Some(false);
             } else {
                 return None;
             }
@@ -158,8 +170,9 @@ fn check_member_reference(semantic_model: &SemanticModel, node: LuaSyntaxNode) -
         _ => {}
     }
 
-    Some(())
+    Some(false)
 }
+
 pub fn search_type_implementations(
     semantic_model: &SemanticModel,
     compilation: &LuaCompilation,
