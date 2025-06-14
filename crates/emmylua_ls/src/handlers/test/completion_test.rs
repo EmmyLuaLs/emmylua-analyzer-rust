@@ -752,4 +752,30 @@ mod tests {
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
     }
+
+    #[test]
+    fn test_issue_502() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@param a { foo: { bar: number } }
+                function buz(a) end
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                buz({
+                    foo = {
+                        b<??>
+                    }
+                })
+            "#,
+            vec![VirtualCompletionItem {
+                label: "bar = ".to_string(),
+                kind: CompletionItemKind::PROPERTY,
+                ..Default::default()
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
 }

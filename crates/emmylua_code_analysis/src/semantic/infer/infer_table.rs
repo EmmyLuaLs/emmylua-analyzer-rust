@@ -230,8 +230,17 @@ fn infer_table_field_type_by_parent(
 ) -> InferResult {
     let member_id = LuaMemberId::new(field.get_syntax_id(), cache.get_file_id());
     if let Some(type_cache) = db.get_type_index().get_type_cache(&member_id.into()) {
-        match type_cache.as_type() {
+        let typ = type_cache.as_type();
+        match typ {
             LuaType::TableConst(_) => {}
+            LuaType::Tuple(tuple) => {
+                let types = tuple.get_types();
+                // 这种情况下缓存的类型可能是不精确的
+                if tuple.is_infer_resolve() && types.len() == 1 && types[0].is_unknown() {
+                } else {
+                    return Ok(typ.clone());
+                }
+            }
             typ => return Ok(typ.clone()),
         }
     } else {
