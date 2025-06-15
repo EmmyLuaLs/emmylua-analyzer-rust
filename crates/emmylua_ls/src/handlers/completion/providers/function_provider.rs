@@ -1,12 +1,12 @@
 use emmylua_code_analysis::{
-    DbIndex, InferGuard, LuaDeclLocation, LuaFunctionType, LuaMember, LuaMemberKey, LuaMemberOwner,
-    LuaMultiLineUnion, LuaSemanticDeclId, LuaStringTplType, LuaType, LuaTypeCache, LuaTypeDeclId,
-    LuaUnionType, RenderLevel, SemanticDeclLevel,
+    get_real_type, DbIndex, InferGuard, LuaDeclLocation, LuaFunctionType, LuaMember, LuaMemberKey,
+    LuaMemberOwner, LuaMultiLineUnion, LuaSemanticDeclId, LuaStringTplType, LuaType, LuaTypeCache,
+    LuaTypeDeclId, LuaUnionType, RenderLevel, SemanticDeclLevel,
 };
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaComment,
-    LuaDocTagParam, LuaLiteralExpr, LuaLiteralToken, LuaNameToken, LuaParamList, LuaStat,
-    LuaSyntaxId, LuaSyntaxKind, LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaClosureExpr,
+    LuaComment, LuaDocTagParam, LuaLiteralExpr, LuaLiteralToken, LuaNameToken, LuaParamList,
+    LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
 use itertools::Itertools;
 use lsp_types::{CompletionItem, Documentation};
@@ -46,6 +46,32 @@ fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>
             }
             return infer_param_list(builder, LuaParamList::cast(parent_node)?);
         }
+        LuaSyntaxKind::Block => {
+            /*
+               补全以下形式:
+               ```lua
+               ---@class A
+               ---@field func fun(a: string)
+
+               ---@type A
+               local a
+
+               a.func =
+               ```
+            */
+            let prev_token = token.prev_token()?;
+            let assign_stat = LuaAssignStat::cast(prev_token.parent()?)?;
+            let (vars, exprs) = assign_stat.get_var_and_expr_list();
+            if vars.len() != 1 || !exprs.is_empty() {
+                return None;
+            }
+            let var = vars.first()?;
+            let var_type = builder.semantic_model.infer_expr(var.clone().into()).ok()?;
+            let real_type = get_real_type(&builder.semantic_model.get_db(), &var_type)?;
+            if real_type.is_function() {
+                return Some(vec![real_type.clone()]);
+            }
+        }
         _ => {}
     }
 
@@ -76,7 +102,6 @@ pub fn dispatch_type(
         LuaType::StrTplRef(key) => {
             add_str_tpl_ref_completion(builder, &key);
         }
-
         _ => {}
     }
 
@@ -467,8 +492,8 @@ fn add_lambda_completion(builder: &mut CompletionBuilder, func: &LuaFunctionType
         .iter()
         .map(|p| p.0.clone())
         .collect::<Vec<_>>();
-    let label = format!("function ({}) end", params_str.join(", "));
-    let insert_text = format!("function ({})\n\t$0\nend", params_str.join(", "));
+    let label = format!("function({}) end", params_str.join(", "));
+    let insert_text = format!("function({})\n\t$0\nend", params_str.join(", "));
 
     let completion_item = CompletionItem {
         label,

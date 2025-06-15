@@ -778,4 +778,29 @@ mod tests {
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
     }
+
+    #[test]
+    fn test_class_function_1() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class C1
+                ---@field on_add fun(a: string, b: string)
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                ---@type C1
+                local c1
+
+                c1.on_add = <??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "function(a, b) end".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                ..Default::default()
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
 }

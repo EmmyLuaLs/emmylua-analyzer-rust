@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaMemberInfo, LuaMemberKey, LuaType};
+use emmylua_code_analysis::{get_real_type, LuaMemberInfo, LuaMemberKey, LuaType};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaTableExpr, LuaTableField};
 use lsp_types::{CompletionItem, InsertTextFormat, InsertTextMode};
 use rowan::NodeOrToken;
@@ -10,8 +10,6 @@ use crate::handlers::completion::{
     completion_builder::CompletionBuilder,
     completion_data::CompletionData,
 };
-
-use super::get_real_type;
 
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     add_table_field_key_completion(builder);
