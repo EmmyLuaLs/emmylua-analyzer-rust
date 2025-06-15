@@ -2,6 +2,8 @@
 
 # 0.8.2 (unreleased)
 
+`CHG` When a function call jumps, if there are multiple declarations, It will then attempt to return the most matching definition along with all actual code declarations, rather than returning all definitions.
+
 # 0.8.1
 
 `CHG` Generic constraint (StrTplRef) removes the protection for string: 
