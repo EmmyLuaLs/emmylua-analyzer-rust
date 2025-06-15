@@ -1,119 +1,146 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 
-use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaBlock, LuaGotoStat, LuaLabelStat, LuaStat, LuaSyntaxId,
-};
-use rowan::{TextRange, TextSize};
+use emmylua_parser::LuaSyntaxId;
+use internment::ArcIntern;
 use smol_str::SmolStr;
 
-use crate::LuaFlowId;
+use crate::{LuaType, LuaVarRefId};
 
-#[derive(Debug)]
+/// Unique identifier for flow nodes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct FlowId(pub u32);
+
+/// Represents how flow nodes are connected
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FlowAntecedent {
+    /// Single predecessor node
+    Single(FlowId),
+    /// Multiple predecessor nodes (stored externally by index)
+    Multiple(u32),
+}
+
+/// Main flow node structure containing all flow analysis information
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowNode {
-    flow_id: LuaFlowId,
-    parent_id: Option<LuaFlowId>,
-    label_ref: HashMap<BlockId, Vec<(SmolStr, LuaLabelStat)>>,
-    jump_to_stat_end: HashMap<LuaSyntaxId, LuaStat>,
-    children: Vec<LuaFlowId>,
-    range: TextRange,
+    pub id: FlowId,
+    pub kind: FlowNodeKind,
+    pub antecedent: Option<FlowAntecedent>,
+}
+
+/// Different types of flow nodes in the control flow graph
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FlowNodeKind {
+    /// Entry point of the flow
+    Start,
+    /// Unreachable code
+    Unreachable,
+    /// Label for branching (if/else, switch cases)
+    BranchLabel,
+    /// Label for loops (while, for, repeat)
+    LoopLabel,
+    /// Named label (goto target)
+    NamedLabel(ArcIntern<SmolStr>),
+    /// Variable assignment
+    Assignment(Box<FlowAssignment>),
+    /// Conditional flow (type guards, existence checks)
+    Assertion(Box<FlowAssertion>),
+    /// Break statement
+    Break,
+    /// Return statement
+    Return,
 }
 
 #[allow(unused)]
-impl FlowNode {
-    pub fn new(flow_id: LuaFlowId, range: TextRange, parent_id: Option<LuaFlowId>) -> FlowNode {
-        FlowNode {
-            flow_id,
-            parent_id,
-            children: Vec::new(),
-            label_ref: HashMap::new(),
-            jump_to_stat_end: HashMap::new(),
-            range,
-        }
+impl FlowNodeKind {
+    pub fn is_branch_label(&self) -> bool {
+        matches!(self, FlowNodeKind::BranchLabel)
     }
 
-    pub fn get_range(&self) -> TextRange {
-        self.range
+    pub fn is_loop_label(&self) -> bool {
+        matches!(self, FlowNodeKind::LoopLabel)
     }
 
-    pub fn get_flow_id(&self) -> LuaFlowId {
-        self.flow_id
+    pub fn is_named_label(&self) -> bool {
+        matches!(self, FlowNodeKind::NamedLabel(_))
     }
 
-    pub fn get_parent_id(&self) -> Option<LuaFlowId> {
-        self.parent_id
-    }
-
-    pub fn get_children(&self) -> &Vec<LuaFlowId> {
-        &self.children
-    }
-
-    pub fn add_child(&mut self, child: LuaFlowId) {
-        self.children.push(child);
-    }
-
-    pub fn add_label_ref(&mut self, name: &str, label: LuaLabelStat) -> Option<()> {
-        let block = label.get_parent::<LuaBlock>()?;
-        let block_id = BlockId::from_block(block);
-        let name = SmolStr::new(name);
-
-        self.label_ref
-            .entry(block_id)
-            .or_insert_with(Vec::new)
-            .push((name, label));
-
-        Some(())
-    }
-
-    pub fn is_exist_label_in_same_block(&self, name: &str, block_id: BlockId) -> bool {
-        let name = SmolStr::new(name);
-        self.label_ref
-            .get(&block_id)
-            .map_or(false, |labels| labels.iter().any(|(n, _)| n == &name))
-    }
-
-    pub fn find_label(&self, name: &str, goto: LuaGotoStat) -> Option<&LuaLabelStat> {
-        let name = SmolStr::new(name);
-        for block in goto.ancestors::<LuaBlock>() {
-            let block_id = BlockId::from_block(block);
-            if block_id.0 < self.flow_id.get_position() {
-                break;
-            }
-
-            if let Some(labels) = self.label_ref.get(&block_id) {
-                for (label_name, label) in labels {
-                    if label_name == &name {
-                        return Some(label);
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
-    pub fn add_jump_to_stat(&mut self, jump_syntax_id: LuaSyntaxId, stat: LuaStat) {
-        self.jump_to_stat_end.insert(jump_syntax_id, stat);
-    }
-
-    pub fn get_jump_to_stat(&self, jump_syntax_id: LuaSyntaxId) -> Option<LuaStat> {
-        self.jump_to_stat_end.get(&jump_syntax_id).cloned()
+    pub fn is_change_flow(&self) -> bool {
+        matches!(self, FlowNodeKind::Break | FlowNodeKind::Return)
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct BlockId(TextSize);
+/// Represents a variable assignment in the flow
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowAssignment {
+    /// The variable being assigned
+    pub var_ref_id: LuaVarRefId,
+    /// The expression being assigned
+    pub expr: LuaSyntaxId,
+    pub idx: u32,
+}
 
-impl BlockId {
-    pub fn from_block(block: LuaBlock) -> BlockId {
-        BlockId(block.get_position())
-    }
-
-    pub fn from_ast(ast: LuaAst) -> Option<BlockId> {
-        if LuaBlock::can_cast(ast.syntax().kind().into()) {
-            Some(BlockId(ast.get_position()))
-        } else {
-            let block = ast.ancestors::<LuaBlock>().next()?;
-            Some(BlockId(block.get_position()))
+impl FlowAssignment {
+    pub fn new(var_ref_id: LuaVarRefId, expr: LuaSyntaxId, idx: u32) -> Self {
+        Self {
+            var_ref_id,
+            expr,
+            idx,
         }
     }
+}
+
+/// Represents conditional flow constraints for type analysis
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FlowAssertion {
+    /// Variable exists (not nil)
+    Truthy(LuaVarRefId),
+    /// Variable is falsy (nil or false)
+    Falsy(LuaVarRefId),
+    /// Type narrowing (variable is of specific type)
+    TypeGuard(LuaVarRefId, LuaType),
+    /// Type addition (union with new type)
+    TypeAdd(LuaVarRefId, LuaType),
+    /// Type removal (subtract from union)
+    TypeRemove(LuaVarRefId, LuaType),
+    /// Force type (override existing type)
+    TypeForce(LuaVarRefId, LuaType),
+
+    TruthyCall(Arc<FlowCall>),
+    FalsyCall(Arc<FlowCall>),
+
+    And(Vec<Arc<FlowAssertion>>),
+
+    Or(Vec<Arc<FlowAssertion>>),
+}
+
+impl FlowAssertion {
+    pub fn get_negation(&self) -> Self {
+        match self {
+            FlowAssertion::Truthy(var) => FlowAssertion::Falsy(var.clone()),
+            FlowAssertion::Falsy(var) => FlowAssertion::Truthy(var.clone()),
+            FlowAssertion::TypeGuard(var, ty) => FlowAssertion::TypeRemove(var.clone(), ty.clone()),
+            FlowAssertion::TypeAdd(var, ty) => FlowAssertion::TypeRemove(var.clone(), ty.clone()),
+            FlowAssertion::TypeRemove(var, ty) => FlowAssertion::TypeGuard(var.clone(), ty.clone()),
+            FlowAssertion::TypeForce(var, ty) => FlowAssertion::TypeRemove(var.clone(), ty.clone()),
+            FlowAssertion::And(assertions) => {
+                FlowAssertion::Or(assertions.iter().map(|a| a.get_negation().into()).collect())
+            }
+            FlowAssertion::Or(assertions) => {
+                FlowAssertion::And(assertions.iter().map(|a| a.get_negation().into()).collect())
+            }
+            FlowAssertion::TruthyCall(call) => FlowAssertion::FalsyCall(call.clone()),
+            FlowAssertion::FalsyCall(call) => FlowAssertion::TruthyCall(call.clone()),
+        }
+    }
+}
+
+/// Represents a function call that may affect control flow
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowCall {
+    /// The function being called
+    pub call_expr: LuaSyntaxId,
+    /// Arguments passed to the function
+    pub args: Vec<Option<LuaVarRefId>>,
+    /// The "self" variable for method calls
+    pub self_var_ref: Option<LuaVarRefId>,
 }
