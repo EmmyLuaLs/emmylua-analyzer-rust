@@ -38,6 +38,7 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     {
         return None;
     }
+
     let member_info_map = builder.semantic_model.get_member_info_map(&prefix_type)?;
     for (_, member_infos) in member_info_map.iter() {
         add_resolve_member_infos(builder, &member_infos, completion_status);
@@ -52,7 +53,7 @@ fn add_resolve_member_infos(
     completion_status: CompletionTriggerStatus,
 ) -> Option<()> {
     if member_infos.len() == 1 {
-        let function_count = count_function_overloads(
+        let overload_count = count_function_overloads(
             builder.semantic_model.get_db(),
             &member_infos.iter().map(|info| info).collect::<Vec<_>>(),
         );
@@ -61,7 +62,7 @@ fn add_resolve_member_infos(
             builder,
             member_info.clone(),
             completion_status,
-            function_count,
+            overload_count,
         );
         return Some(());
     }
@@ -170,7 +171,7 @@ fn count_function_overloads(db: &DbIndex, member_infos: &Vec<&LuaMemberInfo>) ->
             _ => {}
         }
     }
-    if count > 1 {
+    if count >= 1 {
         count -= 1;
     }
     if count == 0 {

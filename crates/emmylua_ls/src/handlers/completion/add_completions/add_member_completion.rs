@@ -1,5 +1,8 @@
 use emmylua_code_analysis::{DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType};
-use emmylua_parser::LuaTokenKind;
+use emmylua_parser::{
+    LuaAssignStat, LuaAstNode, LuaAstToken, LuaFuncStat, LuaGeneralToken, LuaIndexExpr,
+    LuaParenExpr, LuaTokenKind,
+};
 use lsp_types::CompletionItem;
 
 use crate::handlers::completion::{
@@ -54,14 +57,12 @@ pub fn add_member_completion(
         },
     };
 
-    let display = get_call_show(builder.semantic_model.get_db(), &member_info.typ, status)
-        .unwrap_or(CallDisplay::None);
-
     let typ = member_info.typ;
     if status == CompletionTriggerStatus::Colon && !typ.is_function() {
         return None;
     }
 
+    // 附加数据, 用于在`resolve`时进一步处理
     let completion_data = if let Some(id) = &property_owner {
         if let Some(index) = member_info.overload_index {
             CompletionData::from_overload(
@@ -81,8 +82,10 @@ pub fn add_member_completion(
         None
     };
 
+    let call_display =
+        get_call_show(builder.semantic_model.get_db(), &typ, status).unwrap_or(CallDisplay::None);
     // 紧靠着 label 显示的描述
-    let detail = get_detail(builder, &typ, display);
+    let detail = get_detail(builder, &typ, call_display);
     // 在`detail`更右侧, 且不紧靠着`detail`显示
     let description = get_description(builder, &typ);
 
@@ -116,6 +119,15 @@ pub fn add_member_completion(
             new_text: "".to_string(),
         }]);
     }
+    // 对于函数的定义时的特殊处理
+    if matches!(
+        status,
+        CompletionTriggerStatus::Dot | CompletionTriggerStatus::Colon
+    ) && (builder.trigger_token.kind() == LuaTokenKind::TkDot.into()
+        || builder.trigger_token.kind() == LuaTokenKind::TkColon.into())
+    {
+        resolve_function_params(builder, &mut completion_item, &typ, call_display);
+    }
 
     builder.add_completion_item(completion_item)?;
 
@@ -124,11 +136,11 @@ pub fn add_member_completion(
         builder,
         property_owner,
         &typ,
-        display,
+        call_display,
         deprecated,
         label,
         function_overload_count,
-    )?;
+    );
 
     Some(())
 }
@@ -137,52 +149,50 @@ fn add_signature_overloads(
     builder: &mut CompletionBuilder,
     property_owner: &Option<LuaSemanticDeclId>,
     typ: &LuaType,
-    display: CallDisplay,
+    call_display: CallDisplay,
     deprecated: Option<bool>,
     label: String,
-    function_overload_count: Option<usize>,
+    overload_count: Option<usize>,
 ) -> Option<()> {
-    if let LuaType::Signature(signature_id) = typ {
-        let overloads = builder
-            .semantic_model
-            .get_db()
-            .get_signature_index()
-            .get(&signature_id)?
-            .overloads
-            .clone();
-
-        overloads
-            .into_iter()
-            .enumerate()
-            .for_each(|(index, overload)| {
-                let typ = LuaType::DocFunction(overload);
-                let description = get_description(builder, &typ);
-                let detail = get_detail(builder, &typ, display);
-                let data = if let Some(id) = &property_owner {
-                    CompletionData::from_overload(
-                        builder,
-                        id.clone().into(),
-                        index,
-                        function_overload_count,
-                    )
-                } else {
-                    None
-                };
-                let completion_item = CompletionItem {
-                    label: label.clone(),
-                    kind: Some(get_completion_kind(&typ)),
-                    data,
-                    label_details: Some(lsp_types::CompletionItemLabelDetails {
-                        detail,
-                        description,
-                    }),
-                    deprecated,
-                    ..Default::default()
-                };
-
-                builder.add_completion_item(completion_item);
-            });
+    let signature_id = match typ {
+        LuaType::Signature(signature_id) => signature_id,
+        _ => return None,
     };
+
+    let overloads = builder
+        .semantic_model
+        .get_db()
+        .get_signature_index()
+        .get(&signature_id)?
+        .overloads
+        .clone();
+
+    overloads
+        .into_iter()
+        .enumerate()
+        .for_each(|(index, overload)| {
+            let typ = LuaType::DocFunction(overload);
+            let description = get_description(builder, &typ);
+            let detail = get_detail(builder, &typ, call_display);
+            let data = if let Some(id) = &property_owner {
+                CompletionData::from_overload(builder, id.clone().into(), index, overload_count)
+            } else {
+                None
+            };
+            let completion_item = CompletionItem {
+                label: label.clone(),
+                kind: Some(get_completion_kind(&typ)),
+                data,
+                label_details: Some(lsp_types::CompletionItemLabelDetails {
+                    detail,
+                    description,
+                }),
+                deprecated,
+                ..Default::default()
+            };
+
+            builder.add_completion_item(completion_item);
+        });
     Some(())
 }
 
@@ -210,5 +220,87 @@ fn get_call_show(
         (false, true) => Some(CallDisplay::AddSelf),
         (true, false) => Some(CallDisplay::RemoveFirst),
         _ => Some(CallDisplay::None),
+    }
+}
+
+/// 在定义函数时, 是否需要补全参数列表
+/// ```lua
+/// ---@class A
+/// ---@field on_add fun(self: A, a: string, b: string)
+///
+/// ---@type A
+/// local a
+/// function a:<??>() end
+/// ```
+fn resolve_function_params(
+    builder: &mut CompletionBuilder,
+    completion_item: &mut CompletionItem,
+    typ: &LuaType,
+    call_display: CallDisplay,
+) -> Option<()> {
+    // 目前仅允许`completion_item.label`存在值时触发
+    if completion_item.insert_text.is_some() || completion_item.text_edit.is_some() {
+        return None;
+    }
+    let index_expr = LuaIndexExpr::cast(builder.trigger_token.parent()?)?;
+    let func_stat = index_expr.get_parent::<LuaFuncStat>()?;
+    // 从 ast 解析
+    if func_stat.get_closure().is_some() {
+        return None;
+    }
+    let next_sibling = func_stat.syntax().next_sibling()?;
+    let assign_stat = LuaAssignStat::cast(next_sibling)?;
+    let paren_expr = assign_stat.child::<LuaParenExpr>()?;
+    // 如果 ast 中包含了参数, 则不补全
+    if let Some(_) = paren_expr.get_expr() {
+        return None;
+    }
+    let left_paren = paren_expr.token::<LuaGeneralToken>()?;
+    if left_paren.get_token_kind() != LuaTokenKind::TkLeftParen.into() {
+        return None;
+    }
+    // 可能不稳定! 因为 completion_item.label 先被应用, 然后再应用本项, 此时 range 发生了改变
+    let document = builder.semantic_model.get_document();
+    // 先取得左括号位置
+    let add_range = left_paren.syntax().text_range();
+    let mut lsp_add_range = document.to_lsp_range(add_range)?;
+    // 必须要移动一位字符, 不能与 label 的插入位置重复
+    lsp_add_range.start.character += 1;
+    let new_text = get_resolve_function_params_str(&typ, call_display)?;
+    if new_text.is_empty() {
+        return None;
+    }
+
+    completion_item.additional_text_edits = Some(vec![lsp_types::TextEdit {
+        range: lsp_add_range,
+        new_text: new_text,
+    }]);
+
+    Some(())
+}
+
+fn get_resolve_function_params_str(typ: &LuaType, display: CallDisplay) -> Option<String> {
+    match typ {
+        LuaType::DocFunction(f) => {
+            let mut params_str = f
+                .get_params()
+                .iter()
+                .map(|param| param.0.clone())
+                .collect::<Vec<_>>();
+
+            match display {
+                CallDisplay::AddSelf => {
+                    params_str.insert(0, "self".to_string());
+                }
+                CallDisplay::RemoveFirst => {
+                    if !params_str.is_empty() {
+                        params_str.remove(0);
+                    }
+                }
+                _ => {}
+            }
+            Some(format!("{}", params_str.join(", ")))
+        }
+        _ => None,
     }
 }

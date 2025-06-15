@@ -803,4 +803,31 @@ mod tests {
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
     }
+
+    #[test]
+    fn test_class_function_2() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class C1
+                ---@field on_add fun(self: C1, a: string, b: string)
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                ---@type C1
+                local c1
+
+                function c1:<??>()
+
+                end
+            "#,
+            vec![VirtualCompletionItem {
+                label: "on_add".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                label_detail: Some("(a, b)".to_string()),
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
 }
