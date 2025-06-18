@@ -13,7 +13,7 @@ pub struct LuaFlowChain {
 pub struct LuaFlowChainInfo {
     pub range: TextRange,
     pub type_assert: TypeAssertion,
-    pub allow_flow_id: Vec<LuaFlowId>,
+    pub allow_flow_id: Vec<LuaClosureId>,
 }
 
 impl LuaFlowChain {
@@ -31,7 +31,7 @@ impl LuaFlowChain {
     pub fn get_type_asserts(
         &self,
         position: TextSize,
-        flow_id: LuaFlowId,
+        flow_id: LuaClosureId,
     ) -> impl Iterator<Item = &TypeAssertion> {
         self.type_asserts
             .iter()
@@ -43,9 +43,9 @@ impl LuaFlowChain {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct LuaFlowId(TextRange);
+pub struct LuaClosureId(TextRange);
 
-impl LuaFlowId {
+impl LuaClosureId {
     pub fn from_closure(closure_expr: LuaClosureExpr) -> Self {
         Self(closure_expr.get_range())
     }
@@ -56,12 +56,14 @@ impl LuaFlowId {
 
     pub fn from_node(node: &LuaSyntaxNode) -> Self {
         let flow_id = node.ancestors().find_map(|node| match node.kind().into() {
-            LuaSyntaxKind::ClosureExpr => LuaClosureExpr::cast(node).map(LuaFlowId::from_closure),
-            LuaSyntaxKind::Chunk => LuaChunk::cast(node).map(LuaFlowId::from_chunk),
+            LuaSyntaxKind::ClosureExpr => {
+                LuaClosureExpr::cast(node).map(LuaClosureId::from_closure)
+            }
+            LuaSyntaxKind::Chunk => LuaChunk::cast(node).map(LuaClosureId::from_chunk),
             _ => None,
         });
 
-        flow_id.unwrap_or_else(|| LuaFlowId(TextRange::default()))
+        flow_id.unwrap_or_else(|| LuaClosureId(TextRange::default()))
     }
 
     pub fn get_position(&self) -> TextSize {
