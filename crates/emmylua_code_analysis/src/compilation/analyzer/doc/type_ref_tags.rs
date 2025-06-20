@@ -11,7 +11,7 @@ use crate::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaOperator, LuaSemanticDeclId,
         LuaSignatureId, LuaType,
     },
-    InFiled, InferFailReason, LuaOperatorMetaMethod, LuaTypeCache, OperatorFunction,
+    InFiled, InferFailReason, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
     SignatureReturnStatus, TypeAssertion, TypeOps,
 };
 
@@ -358,13 +358,12 @@ pub fn analyze_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagCast) -> Option<()
     for op in tag.get_op_types() {
         if let Some(doc_type) = op.get_type() {
             let typ = infer_type(analyzer, doc_type.clone());
-            analyzer.context.cast_flow.insert(
-                InFiled {
-                    file_id: analyzer.file_id,
-                    value: doc_type.get_syntax_id(),
-                },
-                typ,
-            );
+            let type_owner =
+                LuaTypeOwner::SyntaxId(InFiled::new(analyzer.file_id, doc_type.get_syntax_id()));
+            analyzer
+                .db
+                .get_type_index_mut()
+                .bind_type(type_owner, LuaTypeCache::DocType(typ));
         }
     }
     Some(())

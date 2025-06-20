@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use emmylua_parser::LuaSyntaxId;
+use emmylua_parser::{LuaAssignStat, LuaAst, LuaAstPtr, LuaCallExpr, LuaDocTagCast, LuaExpr, LuaForStat, LuaNameExpr, LuaSyntaxId, LuaVarExpr};
 use internment::ArcIntern;
 use smol_str::SmolStr;
 
@@ -41,9 +41,17 @@ pub enum FlowNodeKind {
     /// Named label (goto target)
     NamedLabel(ArcIntern<SmolStr>),
     /// Variable assignment
-    Assignment(Box<FlowAssignment>),
+    Assignment(LuaAstPtr<LuaAssignStat>),
     /// Conditional flow (type guards, existence checks)
-    Assertion(Box<FlowAssertion>),
+    TrueCondition(LuaAstPtr<LuaExpr>),
+    /// Conditional flow (type guards, existence checks)
+    FalseCondition(LuaAstPtr<LuaExpr>),
+    /// Call expression
+    Call(LuaAstPtr<LuaCallExpr>),
+    /// Variable reference
+    Variable(LuaAstPtr<LuaNameExpr>),
+    ForIStat(LuaAstPtr<LuaForStat>),
+    TagCast(LuaAstPtr<LuaDocTagCast>),
     /// Break statement
     Break,
     /// Return statement
@@ -67,80 +75,16 @@ impl FlowNodeKind {
     pub fn is_change_flow(&self) -> bool {
         matches!(self, FlowNodeKind::Break | FlowNodeKind::Return)
     }
-}
 
-/// Represents a variable assignment in the flow
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlowAssignment {
-    /// The variable being assigned
-    pub var_ref_id: LuaVarRefId,
-    /// The expression being assigned
-    pub expr: LuaSyntaxId,
-    pub idx: u32,
-}
-
-impl FlowAssignment {
-    pub fn new(var_ref_id: LuaVarRefId, expr: LuaSyntaxId, idx: u32) -> Self {
-        Self {
-            var_ref_id,
-            expr,
-            idx,
-        }
+    pub fn is_assignment(&self) -> bool {
+        matches!(self, FlowNodeKind::Assignment(_))
     }
-}
 
-/// Represents conditional flow constraints for type analysis
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FlowAssertion {
-    /// Variable exists (not nil)
-    Truthy(LuaVarRefId),
-    /// Variable is falsy (nil or false)
-    Falsy(LuaVarRefId),
-    /// Type narrowing (variable is of specific type)
-    TypeGuard(LuaVarRefId, LuaType),
-    /// Type addition (union with new type)
-    TypeAdd(LuaVarRefId, LuaType),
-    /// Type removal (subtract from union)
-    TypeRemove(LuaVarRefId, LuaType),
-    /// Force type (override existing type)
-    TypeForce(LuaVarRefId, LuaType),
-
-    TruthyCall(Arc<FlowCall>),
-    FalsyCall(Arc<FlowCall>),
-
-    And(Vec<Arc<FlowAssertion>>),
-
-    Or(Vec<Arc<FlowAssertion>>),
-}
-
-impl FlowAssertion {
-    pub fn get_negation(&self) -> Self {
-        match self {
-            FlowAssertion::Truthy(var) => FlowAssertion::Falsy(var.clone()),
-            FlowAssertion::Falsy(var) => FlowAssertion::Truthy(var.clone()),
-            FlowAssertion::TypeGuard(var, ty) => FlowAssertion::TypeRemove(var.clone(), ty.clone()),
-            FlowAssertion::TypeAdd(var, ty) => FlowAssertion::TypeRemove(var.clone(), ty.clone()),
-            FlowAssertion::TypeRemove(var, ty) => FlowAssertion::TypeGuard(var.clone(), ty.clone()),
-            FlowAssertion::TypeForce(var, ty) => FlowAssertion::TypeRemove(var.clone(), ty.clone()),
-            FlowAssertion::And(assertions) => {
-                FlowAssertion::Or(assertions.iter().map(|a| a.get_negation().into()).collect())
-            }
-            FlowAssertion::Or(assertions) => {
-                FlowAssertion::And(assertions.iter().map(|a| a.get_negation().into()).collect())
-            }
-            FlowAssertion::TruthyCall(call) => FlowAssertion::FalsyCall(call.clone()),
-            FlowAssertion::FalsyCall(call) => FlowAssertion::TruthyCall(call.clone()),
-        }
+    pub fn is_conditional(&self) -> bool {
+        matches!(self, FlowNodeKind::TrueCondition(_) | FlowNodeKind::FalseCondition(_))
     }
-}
 
-/// Represents a function call that may affect control flow
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlowCall {
-    /// The function being called
-    pub call_expr: LuaSyntaxId,
-    /// Arguments passed to the function
-    pub args: Vec<Option<LuaVarRefId>>,
-    /// The "self" variable for method calls
-    pub self_var_ref: Option<LuaVarRefId>,
+    pub fn is_unreachable(&self) -> bool {
+        matches!(self, FlowNodeKind::Unreachable)
+    }
 }

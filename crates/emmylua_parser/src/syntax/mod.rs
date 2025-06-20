@@ -224,14 +224,14 @@ impl<'de> Deserialize<'de> for LuaSyntaxId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LuaAstPtr<T: LuaAstNode> {
     pub syntax_id: LuaSyntaxId,
-    phantom: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T: LuaAstNode> LuaAstPtr<T> {
     pub fn new(node: &T) -> Self {
         LuaAstPtr {
             syntax_id: node.get_syntax_id(),
-            phantom: PhantomData,
+            _phantom: PhantomData,
         }
     }
 

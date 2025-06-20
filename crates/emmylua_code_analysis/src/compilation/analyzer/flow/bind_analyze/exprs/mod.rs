@@ -10,12 +10,23 @@ use crate::{
     compilation::analyzer::flow::{
         bind_analyze::bind_each_child,
         binder::FlowBinder,
-        flow_node::{FlowAssertion, FlowId, FlowNodeKind},
+        flow_node::{FlowId, FlowNodeKind},
     },
     LuaVarRefId,
 };
 pub use bind_binary_expr::bind_binary_expr;
 pub use bind_call_expr::bind_call_expr;
+
+pub fn bind_condition_expr(
+    binder: &mut FlowBinder,
+    condition_expr: LuaExpr,
+    current: FlowId,
+    true_target: FlowId,
+    false_target: FlowId,
+) {
+    let flow_id = bind_expr(binder, condition_expr, current);
+    // todo
+}
 
 pub fn bind_expr(binder: &mut FlowBinder, expr: LuaExpr, current: FlowId) -> FlowId {
     match expr {
@@ -32,27 +43,10 @@ pub fn bind_expr(binder: &mut FlowBinder, expr: LuaExpr, current: FlowId) -> Flo
 }
 
 pub fn bind_name_expr(binder: &mut FlowBinder, name_expr: LuaNameExpr, current: FlowId) -> FlowId {
-    let Some(name_text) = name_expr.get_name_text() else {
-        return current;
-    };
-    let position = name_expr.get_position();
-
-    let Some(decl_tree) = binder.db.get_decl_index().get_decl_tree(&binder.file_id) else {
-        return current;
-    };
-    let var_ref_id = match decl_tree.find_local_decl(&name_text, position) {
-        Some(decl) => LuaVarRefId::DeclId(decl.get_id()),
-        None => LuaVarRefId::Name(name_text.into()),
-    };
-
-    let flow_id = binder.create_node(FlowNodeKind::Assertion(
-        FlowAssertion::Truthy(var_ref_id).into(),
-    ));
-
-    binder.add_antecedent(flow_id, current);
-    binder.bind_syntax_node(name_expr.get_syntax_id(), flow_id);
-
-    flow_id
+    let name_node = binder.create_node(FlowNodeKind::Variable(name_expr.to_ptr()));
+    binder.add_antecedent(name_node, current);
+    binder.bind_syntax_node(name_expr.get_syntax_id(), name_node);
+    name_node
 }
 
 pub fn bind_table_expr(

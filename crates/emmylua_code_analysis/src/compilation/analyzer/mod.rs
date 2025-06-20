@@ -100,7 +100,6 @@ pub struct AnalyzeContext {
     tree_list: Vec<InFiled<LuaChunk>>,
     #[allow(unused)]
     config: Arc<Emmyrc>,
-    cast_flow: HashMap<InFiled<LuaSyntaxId>, LuaType>,
     unresolves: Vec<(UnResolve, InferFailReason)>,
     infer_manager: InferCacheManager,
 }
@@ -110,7 +109,6 @@ impl AnalyzeContext {
         Self {
             tree_list: Vec::new(),
             config: emmyrc,
-            cast_flow: HashMap::new(),
             unresolves: Vec::new(),
             infer_manager: InferCacheManager::new(),
         }

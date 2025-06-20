@@ -1,16 +1,17 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaBreakStat, LuaCallExprStat, LuaDoStat, LuaExpr,
-    LuaForRangeStat, LuaForStat, LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalStat,
-    LuaRepeatStat, LuaReturnStat, LuaUnaryExpr, LuaVarExpr, LuaWhileStat, PathTrait, UnaryOperator,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaBlock, LuaBreakStat, LuaCallExprStat, LuaDoStat, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaWhileStat
 };
 
 use crate::{
     compilation::analyzer::flow::{
-        bind_analyze::{bind_block, bind_each_child, exprs::bind_expr},
+        bind_analyze::{
+            bind_block, bind_each_child,
+            exprs::{bind_condition_expr, bind_expr},
+        },
         binder::FlowBinder,
-        flow_node::{FlowAssertion, FlowAssignment, FlowId, FlowNodeKind},
+        flow_node::{FlowId, FlowNodeKind},
     },
-    LuaClosureId, LuaDeclId, LuaVarRefId,
+    AnalyzeError, DiagnosticCode, LuaClosureId, LuaDeclId,
 };
 
 pub fn bind_local_stat(
@@ -51,79 +52,44 @@ pub fn bind_assign_stat(
         }
     }
 
-    let mut current = current;
-    let mut last_expr = match values.first() {
-        Some(e) => e.clone(),
-        None => {
-            return current; // If there are no values, just return the current flow
-        }
-    };
-    // For each variable being assigned, create a separate assignment flow node
-    for (i, var) in vars.iter().enumerate() {
-        let (expr, idx) = match values.get(i) {
-            Some(e) => {
-                last_expr = e.clone();
-                (e.clone(), 0)
-            }
-            None => (last_expr.clone(), i),
-        };
+    let assignment_kind = FlowNodeKind::Assignment(assign_stat.to_ptr());
+    let flow_id = binder.create_node(assignment_kind);
+    binder.add_antecedent(flow_id, current);
 
-        if let Some(var_ref_id) = get_var_ref_id(binder, var.clone()) {
-            // Create a flow node for the assignment
-            let flow_id = binder.create_node(FlowNodeKind::Assignment(
-                FlowAssignment::new(var_ref_id, expr.get_syntax_id(), idx as u32).into(),
-            ));
-
-            binder.add_antecedent(flow_id, current);
-            current = flow_id;
-        }
-    }
-
-    current
-}
-
-pub fn get_var_ref_id(binder: &mut FlowBinder, var_expr: LuaVarExpr) -> Option<LuaVarRefId> {
-    match var_expr {
-        LuaVarExpr::NameExpr(name_expr) => {
-            let name_text = name_expr.get_name_text()?;
-            let position = name_expr.get_position();
-            let decl_tree = binder.db.get_decl_index().get_decl_tree(&binder.file_id)?;
-            match decl_tree.find_local_decl(&name_text, position) {
-                Some(decl) => Some(LuaVarRefId::DeclId(decl.get_id())),
-                None => Some(LuaVarRefId::Name(name_text.into())),
-            }
-        }
-        _ => {
-            let path = var_expr.get_access_path()?;
-            Some(LuaVarRefId::Name(path.into()))
-        }
-    }
+    flow_id
 }
 
 pub fn bind_call_expr_stat(
     binder: &mut FlowBinder,
     call_expr_stat: LuaCallExprStat,
-    mut current: FlowId,
+    current: FlowId,
 ) -> FlowId {
     let call_expr = match call_expr_stat.get_call_expr() {
         Some(expr) => expr,
         None => return current, // If there's no call expression, just return the current flow
     };
 
-    if let Some(ast) = LuaAst::cast(call_expr.syntax().clone()) {
-        bind_each_child(binder, ast, current);
-    }
-
     if call_expr.is_assert() {
+        let post_assert_label = binder.create_branch_label();
         if let Some(call_arg_list) = call_expr.get_args_list() {
             for call_arg in call_arg_list.get_args() {
                 let flow_id = bind_expr(binder, call_arg.clone(), current);
-                current = flow_id;
+                binder.add_antecedent(post_assert_label, flow_id);
             }
         }
-    }
 
-    current
+        if binder.get_antecedents(post_assert_label).is_none() {
+            binder.add_antecedent(post_assert_label, current);
+        }
+
+        post_assert_label
+    } else {
+        if let Some(ast) = LuaAst::cast(call_expr.syntax().clone()) {
+            bind_each_child(binder, ast, current);
+        }
+
+        current
+    }
 }
 
 pub fn bind_label_stat(
@@ -142,11 +108,27 @@ pub fn bind_label_stat(
     name_label
 }
 
-pub fn bind_break_stat(binder: &mut FlowBinder, _: LuaBreakStat, current: FlowId) -> FlowId {
+pub fn bind_break_stat(
+    binder: &mut FlowBinder,
+    break_stat: LuaBreakStat,
+    current: FlowId,
+) -> FlowId {
     let break_flow_id = binder.create_break();
     // TODO: check if we are inside a loop
+    if let Some(loop_flow) = binder.get_flow(binder.loop_label) {
+        if loop_flow.kind.is_unreachable() {
+            // report a error if we are trying to break outside a loop
+            binder.report_error(AnalyzeError::new(
+                DiagnosticCode::SyntaxError,
+                &t!("Break outside loop"),
+                break_stat.get_range(),
+            ));
+            return current;
+        }
+    }
 
     binder.add_antecedent(break_flow_id, current);
+    binder.add_antecedent(binder.loop_post_label, break_flow_id);
     break_flow_id
 }
 
@@ -194,31 +176,64 @@ pub fn bind_do_stat(binder: &mut FlowBinder, do_stat: LuaDoStat, mut current: Fl
     current
 }
 
+fn bind_iter_block(
+    binder: &mut FlowBinder,
+    iter_block: LuaBlock,
+    current: FlowId,
+    loop_label: FlowId,
+    loop_post_label: FlowId,
+) -> FlowId {
+    let old_loop_label = binder.loop_label;
+    let old_loop_post_label = binder.loop_post_label;
+
+    binder.loop_label = loop_label;
+    binder.loop_post_label = loop_post_label;
+    // Bind the block of code inside the iterator
+    let flow_id = bind_block(binder, iter_block, current);
+
+    // Restore the previous loop labels
+    binder.loop_label = old_loop_label;
+    binder.loop_post_label = old_loop_post_label;
+
+    flow_id
+}
+
 pub fn bind_while_stat(
     binder: &mut FlowBinder,
     while_stat: LuaWhileStat,
     current: FlowId,
 ) -> FlowId {
-    // While statements are typically used for loops
-    // We can treat them as a loop and bind their contents
-    // For now, we just return None to indicate no flow node is created
-    let old_loop_label = binder.loop_label;
     let loop_label = binder.create_loop_label();
+    let loop_post_label = binder.create_branch_label();
+    let pre_block_label = binder.create_branch_label();
     binder.add_antecedent(loop_label, current);
+    binder.add_antecedent(pre_block_label, loop_label);
+    binder.add_antecedent(loop_post_label, loop_label);
 
-    binder.loop_label = loop_label;
     let Some(condition_expr) = while_stat.get_condition_expr() else {
-        return current;
+        return loop_post_label;
     };
 
-    let condition_flow_id = bind_expr(binder, condition_expr, loop_label);
-    if let Some(while_block) = while_stat.get_block() {
-        bind_block(binder, while_block, condition_flow_id);
+    bind_condition_expr(
+        binder,
+        condition_expr,
+        current,
+        pre_block_label,
+        loop_post_label,
+    );
+
+    if let Some(iter_block) = while_stat.get_block() {
+        // Bind the block of code inside the while loop
+        bind_iter_block(
+            binder,
+            iter_block,
+            pre_block_label,
+            loop_label,
+            loop_post_label,
+        );
     }
 
-    binder.loop_label = old_loop_label;
-
-    current
+    loop_post_label
 }
 
 pub fn bind_repeat_stat(
@@ -226,90 +241,70 @@ pub fn bind_repeat_stat(
     repeat_stat: LuaRepeatStat,
     current: FlowId,
 ) -> FlowId {
-    let old_loop_label = binder.loop_label;
-
-    // Create a loop label for the repeat statement
     let loop_label = binder.create_loop_label();
+    let loop_post_label = binder.create_branch_label();
     binder.add_antecedent(loop_label, current);
-    binder.loop_label = loop_label;
+    binder.add_antecedent(loop_post_label, loop_label);
 
     let mut block_flow_id = loop_label;
-    // Bind the block first (repeat-until executes the block at least once)
-    if let Some(repeat_block) = repeat_stat.get_block() {
-        block_flow_id = bind_block(binder, repeat_block, loop_label);
+    // Bind the block of code inside the repeat statement
+    if let Some(iter_block) = repeat_stat.get_block() {
+        block_flow_id =
+            bind_iter_block(binder, iter_block, loop_label, loop_label, loop_post_label);
     }
 
+    // Bind the condition expression
     if let Some(condition_expr) = repeat_stat.get_condition_expr() {
-        // Bind the condition expression
         bind_expr(binder, condition_expr, block_flow_id);
     }
 
-    // Restore previous state
-    binder.loop_label = old_loop_label;
-    current
+    loop_post_label
 }
 
 pub fn bind_if_stat(binder: &mut FlowBinder, if_stat: LuaIfStat, current: FlowId) -> FlowId {
-    // let current = binder.current;
-    // let mut branch_endings = Vec::new();
+    let post_if_label = binder.create_branch_label();
+    let mut else_label = binder.create_branch_label();
+    let then_label = binder.create_branch_label();
+    if let Some(condition_expr) = if_stat.get_condition_expr() {
+        bind_condition_expr(binder, condition_expr, current, then_label, else_label);
+    }
 
-    // // Process the main if condition
-    // let condition = if_stat.get_condition_expr()?;
-    // if let Some(condition_flow_id) = bind_condition_expr(binder, condition) {
-    //     binder.add_antecedent(condition_flow_id, current);
-    //     binder.current = condition_flow_id;
-    // } else {
-    //     binder.current = current;
-    // }
+    if let Some(then_block) = if_stat.get_block() {
+        let block_id = bind_block(binder, then_block, then_label);
+        binder.add_antecedent(post_if_label, block_id);
+    }
 
-    // // Process the if block (true branch)
-    // if let Some(if_block) = if_stat.get_block() {
-    //     bind_block(binder, if_block);
-    //     branch_endings.push(binder.current);
-    // }
+    for elseif_clause in if_stat.get_else_if_clause_list() {
+        let post_elseif_label = binder.create_branch_label();
+        let elseif_then_label = binder.create_branch_label();
+        if let Some(condition_expr) = elseif_clause.get_condition_expr() {
+            bind_condition_expr(
+                binder,
+                condition_expr,
+                else_label,
+                elseif_then_label,
+                post_elseif_label,
+            );
+        }
+        else_label = post_elseif_label;
+        if let Some(elseif_block) = elseif_clause.get_block() {
+            let block_id = bind_block(binder, elseif_block, elseif_then_label);
+            binder.add_antecedent(post_if_label, block_id);
+        }
+    }
 
-    // // Process elseif clauses
-    // for elseif_clause in if_stat.get_else_if_clause_list() {
-    //     binder.current = current; // Reset to the beginning for each elseif
+    if let Some(else_clause) = if_stat.get_else_clause() {
+        let else_block = else_clause.get_block();
+        if let Some(else_block) = else_block {
+            let block_id = bind_block(binder, else_block, else_label);
+            binder.add_antecedent(post_if_label, block_id);
+        }
+    } else {
+        // If there's no else clause, we still need to connect the else_label to the post_if_label
+        binder.add_antecedent(post_if_label, else_label);
+    }
 
-    //     if let Some(elseif_condition) = elseif_clause.get_condition_expr() {
-    //         if let Some(condition_flow_id) = bind_condition_expr(binder, elseif_condition) {
-    //             binder.add_antecedent(condition_flow_id, current);
-    //             binder.current = condition_flow_id;
-    //         }
-    //     }
-
-    //     if let Some(elseif_block) = elseif_clause.get_block() {
-    //         bind_block(binder, elseif_block);
-    //         branch_endings.push(binder.current);
-    //     }
-    // }
-
-    // // Process else clause if it exists
-    // if let Some(else_clause) = if_stat.get_else_clause() {
-    //     binder.current = current; // Reset to the beginning for else
-
-    //     if let Some(else_block) = else_clause.get_block() {
-    //         bind_block(binder, else_block);
-    //         branch_endings.push(binder.current);
-    //     }
-    // } else {
-    //     // If there's no else clause, the original flow continues
-    //     branch_endings.push(current);
-    // }
-
-    // // Create a branch label to merge all branches
-    // if !branch_endings.is_empty() {
-    //     let branch_label = binder.create_branch_label();
-    //     for ending in branch_endings {
-    //         binder.add_antecedent(branch_label, ending);
-    //     }
-    //     binder.current = branch_label;
-    // } else {
-    //     binder.current = current;
-    // }
-
-    current
+    post_if_label
 }
 
 pub fn bind_func_stat(binder: &mut FlowBinder, func_stat: LuaFuncStat, current: FlowId) -> FlowId {
@@ -332,75 +327,38 @@ pub fn bind_for_range_stat(
     current: FlowId,
 ) -> FlowId {
     let loop_label = binder.create_loop_label();
+    let loop_post_label = binder.create_branch_label();
     binder.add_antecedent(loop_label, current);
-    let old_loop_label = binder.loop_label;
-    binder.loop_label = loop_label;
-    bind_each_child(binder, LuaAst::LuaForRangeStat(for_range_stat), loop_label);
-    binder.loop_label = old_loop_label;
-    current
+    binder.add_antecedent(loop_post_label, loop_label);
+    for expr in for_range_stat.get_expr_list() {
+        bind_expr(binder, expr.clone(), loop_label);
+    }
+
+    if let Some(iter_block) = for_range_stat.get_block() {
+        // Bind the block of code inside the for loop
+        bind_iter_block(binder, iter_block, loop_label, loop_label, loop_post_label);
+    }
+
+    loop_post_label
 }
 
 pub fn bind_for_stat(binder: &mut FlowBinder, for_stat: LuaForStat, current: FlowId) -> FlowId {
     let loop_label = binder.create_loop_label();
+    let loop_post_label = binder.create_branch_label();
     binder.add_antecedent(loop_label, current);
-    let old_loop_label = binder.loop_label;
-    binder.loop_label = loop_label;
+    binder.add_antecedent(loop_post_label, loop_label);
 
-    let Some(var_name_token) = for_stat.get_var_name() else {
-        binder.loop_label = old_loop_label;
-        return current;
-    };
-
-    let var_name = var_name_token.get_name_text();
-    let var_list = for_stat.get_iter_expr().collect::<Vec<_>>();
-    for expr in &var_list {
-        bind_expr(binder, expr.clone(), loop_label);
+    for var_expr in for_stat.get_iter_expr() {
+        bind_expr(binder, var_expr.clone(), loop_label);
     }
 
-    if var_list.len() < 2 {
-        binder.loop_label = old_loop_label;
-        return current;
+    let for_node = binder.create_node(FlowNodeKind::ForIStat(for_stat.to_ptr()));
+    binder.add_antecedent(for_node, loop_label);
+
+    if let Some(iter_block) = for_stat.get_block() {
+        // Bind the block of code inside the for loop
+        bind_iter_block(binder, iter_block, loop_label, for_node, loop_post_label);
     }
 
-    let mut parent_flow_id = loop_label;
-    let second_expr = var_list[1].clone();
-    if let LuaExpr::UnaryExpr(unary_expr) = second_expr {
-        if let Some(length_var_name) = get_for_length_name(unary_expr) {
-            let var_ref_id =
-                LuaVarRefId::Name(format!("{}.[{}]", length_var_name, var_name).into());
-            let flow_id = binder.create_node(FlowNodeKind::Assertion(
-                FlowAssertion::Truthy(var_ref_id).into(),
-            ));
-            binder.add_antecedent(flow_id, loop_label);
-            parent_flow_id = flow_id;
-        }
-    }
-
-    if let Some(block) = for_stat.get_block() {
-        bind_block(binder, block, parent_flow_id);
-    }
-
-    binder.loop_label = old_loop_label;
-    current
-}
-
-fn get_for_length_name(unary_expr: LuaUnaryExpr) -> Option<String> {
-    let op_token = unary_expr.get_op_token()?;
-    if op_token.get_op() == UnaryOperator::OpLen {
-        if let Some(inner) = unary_expr.get_expr() {
-            match inner {
-                LuaExpr::IndexExpr(index_expr) => {
-                    if let Some(access_path) = index_expr.get_access_path() {
-                        return Some(access_path.into());
-                    }
-                }
-                LuaExpr::NameExpr(name_expr) => {
-                    return Some(name_expr.get_name_text()?);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    None
+    loop_post_label
 }

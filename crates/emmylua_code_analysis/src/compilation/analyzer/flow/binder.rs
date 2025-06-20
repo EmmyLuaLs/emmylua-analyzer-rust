@@ -8,19 +8,21 @@ use crate::{
     compilation::analyzer::{
         flow::flow_node::{FlowAntecedent, FlowId, FlowNode, FlowNodeKind},
         AnalyzeContext,
-    },
-    DbIndex, FileId, LuaClosureId, LuaDeclId,
+    }, AnalyzeError, DbIndex, FileId, LuaClosureId, LuaDeclId
 };
 
 #[derive(Debug)]
 pub struct FlowBinder<'a> {
-    pub db: &'a DbIndex,
+    pub db: &'a mut DbIndex,
     pub file_id: FileId,
     pub context: &'a AnalyzeContext,
     pub decl_bind_flow_ref: HashMap<LuaDeclId, FlowId>,
     pub start: FlowId,
     pub unreachable: FlowId,
     pub loop_label: FlowId,
+    pub loop_post_label: FlowId,
+    pub true_target: FlowId,
+    pub false_target: FlowId,
     flow_nodes: Vec<FlowNode>,
     multiple_antecedents: Vec<Vec<FlowId>>,
     labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
@@ -29,7 +31,7 @@ pub struct FlowBinder<'a> {
 }
 
 impl<'a> FlowBinder<'a> {
-    pub fn new(db: &'a DbIndex, file_id: FileId, context: &'a AnalyzeContext) -> Self {
+    pub fn new(db: &'a mut DbIndex, file_id: FileId, context: &'a AnalyzeContext) -> Self {
         let mut binder = FlowBinder {
             db,
             file_id,
@@ -40,14 +42,20 @@ impl<'a> FlowBinder<'a> {
             labels: HashMap::new(),
             start: FlowId::default(),
             unreachable: FlowId::default(),
-            loop_label: FlowId::default(),
+            loop_post_label: FlowId::default(),
             bindings: HashMap::new(),
             goto_stats: Vec::new(),
+            true_target: FlowId::default(),
+            false_target: FlowId::default(),
+            loop_label: FlowId::default(),
         };
 
         binder.start = binder.create_start();
         binder.unreachable = binder.create_unreachable();
+        binder.loop_post_label = binder.unreachable;
         binder.loop_label = binder.unreachable;
+        binder.true_target = binder.unreachable;
+        binder.false_target = binder.unreachable;
 
         binder
     }
@@ -164,6 +172,13 @@ impl<'a> FlowBinder<'a> {
         self.flow_nodes
             .get(flow_id.0 as usize)
             .and_then(|node| node.antecedent.as_ref())
+    }
+
+    pub fn report_error(
+        &mut self,
+        error: AnalyzeError,
+    ) {
+        self.db.get_diagnostic_index_mut().add_diagnostic(self.file_id, error);
     }
 }
 
