@@ -239,9 +239,9 @@ fn handle_value_is_table_expr(
                     handle_value_is_table_expr(context, semantic_model, source_type.clone(), &expr);
                     // 如果continue，则字段类型为非table，但是提供了table的情况下，会检查不出来
                     // continue;
-                } else if field.is_value_field() { 
-                    continue;  
-                } 
+                } else if field.is_value_field() {
+                    continue;
+                }
 
                 let expr_type = semantic_model.infer_expr(expr).unwrap_or(LuaType::Any);
 

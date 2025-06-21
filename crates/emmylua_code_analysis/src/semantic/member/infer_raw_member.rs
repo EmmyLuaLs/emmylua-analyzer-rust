@@ -1,11 +1,11 @@
+use super::{get_buildin_type_map_type_id, RawGetMemberTypeResult};
+use crate::semantic::check_type_compact;
 use crate::{
     DbIndex, InferFailReason, InferGuard, LuaMemberKey, LuaMemberOwner, LuaObjectType,
     LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
 };
-use std::sync::Arc;
 use smol_str::SmolStr;
-use crate::semantic::check_type_compact;
-use super::{get_buildin_type_map_type_id, RawGetMemberTypeResult};
+use std::sync::Arc;
 
 #[allow(unused)]
 pub fn infer_raw_member_type(
@@ -62,13 +62,13 @@ fn infer_table_generic_member_type(
     let key_type = &table_params[0];
     let value_type = &table_params[1];
     let access_key_type = match member_key {
-        LuaMemberKey::Integer(i) => {LuaType::IntegerConst(*i)}
-        LuaMemberKey::Name(name) => {LuaType::StringConst(SmolStr::new(name.as_str()).into())}
+        LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
+        LuaMemberKey::Name(name) => LuaType::StringConst(SmolStr::new(name.as_str()).into()),
         _ => {
             return Err(InferFailReason::None);
         }
     };
-    if check_type_compact(db, key_type, &access_key_type).is_ok(){
+    if check_type_compact(db, key_type, &access_key_type).is_ok() {
         return Ok(value_type.clone());
     }
 
