@@ -218,9 +218,9 @@ fn handle_value_is_table_expr(
     }
 
     for field in fields {
-        if field.is_value_field() {
-            continue;
-        }
+        // if field.is_value_field() {
+        //     continue;
+        // }
 
         let field_key = field.get_field_key();
         if let Some(field_key) = field_key {
@@ -234,6 +234,11 @@ fn handle_value_is_table_expr(
 
             let expr = field.get_value_expr();
             if let Some(expr) = expr {
+                // Handle nested table expressions recursively
+                if LuaTableExpr::cast(expr.syntax().clone()).is_some() {
+                    handle_value_is_table_expr(context, semantic_model, source_type.clone(), &expr);
+                }
+
                 let expr_type = semantic_model.infer_expr(expr).unwrap_or(LuaType::Any);
 
                 let allow_nil = match table_type {
