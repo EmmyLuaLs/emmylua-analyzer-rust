@@ -45,7 +45,7 @@ EmmyLua 语言服务器支持灵活的配置系统，通过配置文件可以精
 
 ```json
 {
-  "$schema": "https://github.com/CppCXY/emmylua-analyzer-rust/blob/main/crates/emmylua_code_analysis/resources/schema.json"
+  "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json"
 }
 ```
 

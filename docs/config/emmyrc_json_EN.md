@@ -47,7 +47,7 @@ To enable intelligent completion and validation for configuration files, you can
 
 ```json
 {
-  "$schema": "https://github.com/CppCXY/emmylua-analyzer-rust/blob/main/crates/emmylua_code_analysis/resources/schema.json"
+  "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json"
 }
 ```
 
