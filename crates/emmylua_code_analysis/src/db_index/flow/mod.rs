@@ -4,7 +4,7 @@ mod type_assert;
 
 use std::collections::HashMap;
 
-pub use flow_chain::{LuaFlowChain, LuaFlowChainInfo, LuaFlowId};
+pub use flow_chain::{LuaClosureId, LuaFlowChain, LuaFlowChainInfo};
 pub use flow_var_ref_id::{LuaVarRefId, LuaVarRefNode};
 pub use type_assert::TypeAssertion;
 
