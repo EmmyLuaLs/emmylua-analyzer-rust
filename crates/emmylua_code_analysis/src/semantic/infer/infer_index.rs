@@ -177,6 +177,7 @@ fn infer_array_member(
                 Err(InferFailReason::FieldNotFound)
             }
         }
+        LuaIndexKey::Idx(_) => Ok(expression_type),
         _ => Err(InferFailReason::FieldNotFound),
     }
 }
