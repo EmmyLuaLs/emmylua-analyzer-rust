@@ -189,3 +189,18 @@ colon accessor must be followed by a function call or table constructor or strin
   zh_CN: 冒号访问器后必须跟随函数调用、表构造或字符串字面量
   zh_HK: 冒號訪問器後必須跟隨函數調用、表構造或字符串字面量
   zh_TW: 冒號存取器後必須跟隨函數呼叫、表建構或字串字面量
+expected '}' to close table:
+  en: expected '}' to close table
+  zh_CN: 期望 '}' 关闭表
+  zh_HK: 期望 '}' 關閉表
+  zh_TW: 期望 '}' 關閉表
+expected ']':
+  en: expected ']'
+  zh_CN: 期望 ']'
+  zh_HK: 期望 ']'
+  zh_TW: 期望 ']'
+expected '=':
+  en: expected '='
+  zh_CN: 期望 '='
+  zh_HK: 期望 '='
+  zh_TW: 期望 '='

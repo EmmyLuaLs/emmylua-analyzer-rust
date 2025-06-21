@@ -1,2 +1,2 @@
 pub mod generic_constraint_mismatch;
-mod infer_type;
+pub mod infer_doc_type;

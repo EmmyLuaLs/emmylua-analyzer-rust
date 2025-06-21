@@ -1101,7 +1101,8 @@ Syntax(Chunk)@0..169
       Syntax(DocTagCast)@13..26
         Token(TkTagCast)@13..17 "cast"
         Token(TkWhitespace)@17..18 " "
-        Token(TkName)@18..19 "a"
+        Syntax(NameExpr)@18..19
+          Token(TkName)@18..19 "a"
         Token(TkWhitespace)@19..20 " "
         Syntax(DocOpType)@20..26
           Syntax(TypeName)@20..26
@@ -1112,7 +1113,8 @@ Syntax(Chunk)@0..169
       Syntax(DocTagCast)@39..53
         Token(TkTagCast)@39..43 "cast"
         Token(TkWhitespace)@43..44 " "
-        Token(TkName)@44..45 "b"
+        Syntax(NameExpr)@44..45
+          Token(TkName)@44..45 "b"
         Token(TkWhitespace)@45..46 " "
         Syntax(DocOpType)@46..53
           Token(TkPlus)@46..47 "+"
@@ -1124,7 +1126,8 @@ Syntax(Chunk)@0..169
       Syntax(DocTagCast)@66..80
         Token(TkTagCast)@66..70 "cast"
         Token(TkWhitespace)@70..71 " "
-        Token(TkName)@71..72 "c"
+        Syntax(NameExpr)@71..72
+          Token(TkName)@71..72 "c"
         Token(TkWhitespace)@72..73 " "
         Syntax(DocOpType)@73..80
           Token(TkMinus)@73..74 "-"
@@ -1136,7 +1139,8 @@ Syntax(Chunk)@0..169
       Syntax(DocTagCast)@93..102
         Token(TkTagCast)@93..97 "cast"
         Token(TkWhitespace)@97..98 " "
-        Token(TkName)@98..99 "d"
+        Syntax(NameExpr)@98..99
+          Token(TkName)@98..99 "d"
         Token(TkWhitespace)@99..100 " "
         Syntax(DocOpType)@100..102
           Token(TkPlus)@100..101 "+"
@@ -1147,7 +1151,8 @@ Syntax(Chunk)@0..169
       Syntax(DocTagCast)@115..124
         Token(TkTagCast)@115..119 "cast"
         Token(TkWhitespace)@119..120 " "
-        Token(TkName)@120..121 "e"
+        Syntax(NameExpr)@120..121
+          Token(TkName)@120..121 "e"
         Token(TkWhitespace)@121..122 " "
         Syntax(DocOpType)@122..124
           Token(TkMinus)@122..123 "-"
@@ -1158,7 +1163,8 @@ Syntax(Chunk)@0..169
       Syntax(DocTagCast)@137..160
         Token(TkTagCast)@137..141 "cast"
         Token(TkWhitespace)@141..142 " "
-        Token(TkName)@142..143 "f"
+        Syntax(NameExpr)@142..143
+          Token(TkName)@142..143 "f"
         Token(TkWhitespace)@143..144 " "
         Syntax(DocOpType)@144..151
           Token(TkPlus)@144..145 "+"
@@ -1748,6 +1754,98 @@ Syntax(Chunk)@0..51
         "#;
 
         assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_cast_expr() {
+        let code = r#"
+---@cast a number
+---@cast a.field string
+---@cast A.b.c.d boolean
+---@cast -?
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..88
+  Syntax(Block)@0..88
+    Token(TkEndOfLine)@0..1 "\n"
+    Syntax(Comment)@1..79
+      Token(TkDocStart)@1..5 "---@"
+      Syntax(DocTagCast)@5..18
+        Token(TkTagCast)@5..9 "cast"
+        Token(TkWhitespace)@9..10 " "
+        Syntax(NameExpr)@10..11
+          Token(TkName)@10..11 "a"
+        Token(TkWhitespace)@11..12 " "
+        Syntax(DocOpType)@12..18
+          Syntax(TypeName)@12..18
+            Token(TkName)@12..18 "number"
+      Token(TkEndOfLine)@18..19 "\n"
+      Token(TkDocStart)@19..23 "---@"
+      Syntax(DocTagCast)@23..42
+        Token(TkTagCast)@23..27 "cast"
+        Token(TkWhitespace)@27..28 " "
+        Syntax(IndexExpr)@28..35
+          Syntax(NameExpr)@28..29
+            Token(TkName)@28..29 "a"
+          Token(TkDot)@29..30 "."
+          Token(TkName)@30..35 "field"
+        Token(TkWhitespace)@35..36 " "
+        Syntax(DocOpType)@36..42
+          Syntax(TypeName)@36..42
+            Token(TkName)@36..42 "string"
+      Token(TkEndOfLine)@42..43 "\n"
+      Token(TkDocStart)@43..47 "---@"
+      Syntax(DocTagCast)@47..67
+        Token(TkTagCast)@47..51 "cast"
+        Token(TkWhitespace)@51..52 " "
+        Syntax(IndexExpr)@52..59
+          Syntax(IndexExpr)@52..57
+            Syntax(IndexExpr)@52..55
+              Syntax(NameExpr)@52..53
+                Token(TkName)@52..53 "A"
+              Token(TkDot)@53..54 "."
+              Token(TkName)@54..55 "b"
+            Token(TkDot)@55..56 "."
+            Token(TkName)@56..57 "c"
+          Token(TkDot)@57..58 "."
+          Token(TkName)@58..59 "d"
+        Token(TkWhitespace)@59..60 " "
+        Syntax(DocOpType)@60..67
+          Syntax(TypeName)@60..67
+            Token(TkName)@60..67 "boolean"
+      Token(TkEndOfLine)@67..68 "\n"
+      Token(TkDocStart)@68..72 "---@"
+      Syntax(DocTagCast)@72..79
+        Token(TkTagCast)@72..76 "cast"
+        Token(TkWhitespace)@76..77 " "
+        Syntax(DocOpType)@77..79
+          Token(TkMinus)@77..78 "-"
+          Token(TkDocQuestion)@78..79 "?"
+    Token(TkEndOfLine)@79..80 "\n"
+    Token(TkWhitespace)@80..88 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_multi_level_cast() {
+        let code = r#"
+        ---@cast obj.a.b.c.d string
+        "#;
+        // Note: The exact line numbers may vary, but the structure should be correct
+        let tree = LuaParser::parse(code, ParserConfig::default());
+        let result = format!("{:#?}", tree.get_red_root());
+
+        // Verify that we have the correct nested structure
+        assert!(result.contains("IndexExpr"));
+        assert!(result.contains("NameExpr"));
+        assert!(result.contains("TkDot"));
+        assert!(result.contains("obj"));
+        assert!(result.contains("string"));
+
+        // Print the actual result for debugging
+        println!("Actual AST structure:\n{}", result);
     }
 
     #[test]

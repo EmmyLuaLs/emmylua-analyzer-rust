@@ -7,4 +7,5 @@ Disable all diagnostics in current file (%{name}): |
 Disable all diagnostics in current project (%{name}): |
   在此项目禁用诊断 (%{name})
 
-
+use cast to remove nil: |
+  使用 cast 移除 nil

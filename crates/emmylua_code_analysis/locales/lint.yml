@@ -253,3 +253,11 @@ Cannot use `...` outside a vararg function.:
   en: "the string template type must be a string constant"
   zh_CN: "字符串模板类型必须是字符串常量"
   zh_HK: "字串模板類型必須是字串常量"
+"Cannot cast `%{original}` to `%{target}`. %{reason}":
+  en: "Cannot cast `%{original}` to `%{target}`. %{reason}"
+  zh_CN: "不能将 `%{original}` 转换为 `%{target}`。%{reason}"
+  zh_HK: "不能將 `%{original}` 轉換為 `%{target}`。%{reason}"
+"type recursion":
+  en: "type recursion"
+  zh_CN: "类型递归"
+  zh_HK: "類型遞歸"

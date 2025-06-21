@@ -1150,4 +1150,62 @@ Syntax(Chunk)@0..12
             ParserConfig::with_level(LuaLanguageLevel::Lua55)
         );
     }
+
+    #[test]
+    fn test_wrong_table_expr() {
+        let code = r#"
+        local _A = {
+            a = ,
+            b = ,
+            c = ,
+        }
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..94
+  Syntax(Block)@0..94
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(LocalStat)@9..85
+      Token(TkLocal)@9..14 "local"
+      Token(TkWhitespace)@14..15 " "
+      Syntax(LocalName)@15..17
+        Token(TkName)@15..17 "_A"
+      Token(TkWhitespace)@17..18 " "
+      Token(TkAssign)@18..19 "="
+      Token(TkWhitespace)@19..20 " "
+      Syntax(TableObjectExpr)@20..85
+        Token(TkLeftBrace)@20..21 "{"
+        Token(TkEndOfLine)@21..22 "\n"
+        Token(TkWhitespace)@22..34 "            "
+        Syntax(TableFieldAssign)@34..37
+          Token(TkName)@34..35 "a"
+          Token(TkWhitespace)@35..36 " "
+          Token(TkAssign)@36..37 "="
+        Token(TkWhitespace)@37..38 " "
+        Token(TkComma)@38..39 ","
+        Token(TkEndOfLine)@39..40 "\n"
+        Token(TkWhitespace)@40..52 "            "
+        Syntax(TableFieldAssign)@52..55
+          Token(TkName)@52..53 "b"
+          Token(TkWhitespace)@53..54 " "
+          Token(TkAssign)@54..55 "="
+        Token(TkWhitespace)@55..56 " "
+        Token(TkComma)@56..57 ","
+        Token(TkEndOfLine)@57..58 "\n"
+        Token(TkWhitespace)@58..70 "            "
+        Syntax(TableFieldAssign)@70..73
+          Token(TkName)@70..71 "c"
+          Token(TkWhitespace)@71..72 " "
+          Token(TkAssign)@72..73 "="
+        Token(TkWhitespace)@73..74 " "
+        Token(TkComma)@74..75 ","
+        Token(TkEndOfLine)@75..76 "\n"
+        Token(TkWhitespace)@76..84 "        "
+        Token(TkRightBrace)@84..85 "}"
+    Token(TkEndOfLine)@85..86 "\n"
+    Token(TkWhitespace)@86..94 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
 }

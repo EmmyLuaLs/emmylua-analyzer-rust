@@ -116,7 +116,7 @@ pub fn analyze_param(analyzer: &mut DocAnalyzer, tag: LuaDocTagParam) -> Option<
     }
 
     let description = if let Some(des) = tag.get_description() {
-        Some(preprocess_description(&des.get_description_text()))
+        Some(preprocess_description(&des.get_description_text(), None))
     } else {
         None
     };
@@ -155,7 +155,7 @@ pub fn analyze_param(analyzer: &mut DocAnalyzer, tag: LuaDocTagParam) -> Option<
 
 pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Option<()> {
     let description = if let Some(des) = tag.get_description() {
-        Some(preprocess_description(&des.get_description_text()))
+        Some(preprocess_description(&des.get_description_text(), None))
     } else {
         None
     };
@@ -383,7 +383,7 @@ pub fn analyze_other(analyzer: &mut DocAnalyzer, other: LuaDocTagOther) -> Optio
     let owner = get_owner_id(analyzer)?;
     let tag_name = other.get_tag_name()?;
     let description = if let Some(des) = other.get_description() {
-        let description = preprocess_description(&des.get_description_text());
+        let description = preprocess_description(&des.get_description_text(), None);
         format!("@*{}* {}", tag_name, description)
     } else {
         format!("@*{}*", tag_name)

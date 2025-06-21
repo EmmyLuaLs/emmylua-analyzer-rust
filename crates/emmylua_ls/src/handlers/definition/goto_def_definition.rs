@@ -11,7 +11,9 @@ use emmylua_parser::{
 use itertools::Itertools;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
-use crate::handlers::hover::find_all_same_named_members;
+use crate::handlers::{
+    definition::goto_function::find_match_function, hover::find_all_same_named_members,
+};
 
 pub fn goto_def_definition(
     semantic_model: &SemanticModel,
@@ -47,6 +49,25 @@ pub fn goto_def_definition(
             )?;
 
             let mut locations: Vec<Location> = Vec::new();
+            // 如果是函数, 则尝试寻找最匹配的定义
+            if let Some(match_members) =
+                find_match_function(semantic_model, trigger_token, &same_named_members)
+            {
+                for member in match_members {
+                    match member {
+                        LuaSemanticDeclId::Member(member_id) => {
+                            if let Some(location) = get_member_location(semantic_model, &member_id)
+                            {
+                                locations.push(location);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if !locations.is_empty() {
+                    return Some(GotoDefinitionResponse::Array(locations));
+                }
+            }
 
             // 添加原始成员的位置
             for member in same_named_members {

@@ -6,7 +6,10 @@ use lsp_types::{
     NumberOrString, Range, WorkspaceEdit,
 };
 
-use crate::handlers::command::{make_disable_code_command, DisableAction};
+use crate::handlers::{
+    code_actions::actions::build_need_check_nil,
+    command::{make_disable_code_command, DisableAction},
+};
 
 use super::actions::{build_disable_file_changes, build_disable_next_line_changes};
 
@@ -29,7 +32,13 @@ pub fn build_actions(
         if let Some(code) = diagnostic.code {
             if let NumberOrString::String(action_string) = code {
                 if let Some(diagnostic_code) = DiagnosticCode::from_str(&action_string).ok() {
-                    add_fix_code_action(&mut actions, diagnostic_code, file_id, diagnostic.range);
+                    add_fix_code_action(
+                        &semantic_model,
+                        &mut actions,
+                        diagnostic_code,
+                        file_id,
+                        diagnostic.range,
+                    );
                     add_disable_code_action(
                         &semantic_model,
                         &mut actions,
@@ -51,12 +60,16 @@ pub fn build_actions(
 
 #[allow(unused_variables)]
 fn add_fix_code_action(
+    semantic_model: &SemanticModel,
     actions: &mut Vec<CodeActionOrCommand>,
     diagnostic_code: DiagnosticCode,
     file_id: FileId,
     range: Range,
 ) -> Option<()> {
-    Some(())
+    match diagnostic_code {
+        DiagnosticCode::NeedCheckNil => build_need_check_nil(semantic_model, actions, range),
+        _ => Some(()),
+    }
 }
 
 fn add_disable_code_action(

@@ -2,6 +2,7 @@ mod access_invisible;
 mod analyze_error;
 mod assign_type_mismatch;
 mod await_in_sync;
+mod cast_type_mismatch;
 mod check_field;
 mod check_param_count;
 mod check_return_count;
@@ -96,6 +97,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
         context,
         semantic_model,
     );
+    run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, semantic_model);
 
     run_check::<code_style::non_literal_expressions_in_assert::NonLiteralExpressionsInAssertChecker>(
         context,

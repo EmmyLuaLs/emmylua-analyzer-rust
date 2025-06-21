@@ -2,8 +2,9 @@ use crate::{
     kind::LuaSyntaxKind,
     syntax::{traits::LuaAstNode, LuaDocDescriptionOwner},
     BinaryOperator, LuaAstChildren, LuaAstToken, LuaAstTokenChildren, LuaBinaryOpToken,
-    LuaDocVersionNumberToken, LuaDocVisibilityToken, LuaGeneralToken, LuaKind, LuaNameToken,
-    LuaNumberToken, LuaPathToken, LuaStringToken, LuaSyntaxNode, LuaTokenKind, LuaVersionCondition,
+    LuaDocVersionNumberToken, LuaDocVisibilityToken, LuaExpr, LuaGeneralToken, LuaKind,
+    LuaNameToken, LuaNumberToken, LuaPathToken, LuaStringToken, LuaSyntaxNode, LuaTokenKind,
+    LuaVersionCondition,
 };
 
 use super::{
@@ -993,8 +994,8 @@ impl LuaDocTagCast {
         self.children()
     }
 
-    pub fn get_name_token(&self) -> Option<LuaNameToken> {
-        self.token()
+    pub fn get_key_expr(&self) -> Option<LuaExpr> {
+        self.child()
     }
 }
 

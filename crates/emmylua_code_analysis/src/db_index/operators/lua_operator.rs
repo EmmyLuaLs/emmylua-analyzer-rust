@@ -164,6 +164,10 @@ impl LuaOperator {
             position: self.range.start(),
         }
     }
+
+    pub fn get_range(&self) -> TextRange {
+        self.range
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

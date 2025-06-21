@@ -1,13 +1,14 @@
-use emmylua_parser::{LuaAstNode, LuaDocTagCast, LuaVarExpr};
+use emmylua_parser::{LuaAstNode, LuaDocTagCast, LuaSyntaxId, LuaVarExpr};
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
-use crate::LuaDeclId;
+use crate::{InFiled, LuaDeclId};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum LuaVarRefId {
     DeclId(LuaDeclId),
     Name(SmolStr),
+    SyntaxId(InFiled<LuaSyntaxId>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]

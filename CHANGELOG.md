@@ -17,6 +17,8 @@
   local a = {}
   ```
 
+### 🔧 Changed
+- **Class Method Completion**: When a function call jumps, if there are multiple declarations, It will then attempt to return the most matching definition along with all actual code declarations, rather than returning all definitions.
 
 ### 🐛 Fixed
 - **Enum Variable Parameter Issue**: Fixed a crash issue when checking enum variable as parameter

@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use emmylua_code_analysis::{
-    FileId, InferGuard, LuaFunctionType, LuaMemberId, LuaMemberKey, LuaSemanticDeclId, LuaType,
-    SemanticModel,
+    FileId, InferGuard, LuaFunctionType, LuaMemberId, LuaMemberKey, LuaOperatorId,
+    LuaOperatorMetaMethod, LuaSemanticDeclId, LuaType, SemanticModel,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaLocalFuncStat,
@@ -14,6 +15,7 @@ use rowan::NodeOrToken;
 
 use rowan::TokenAtOffset;
 
+use crate::handlers::definition::compare_function_types;
 use crate::handlers::inlay_hint::build_function_hint::{build_closure_hint, build_label_parts};
 
 pub fn build_inlay_hints(semantic_model: &SemanticModel) -> Option<Vec<InlayHint>> {
@@ -26,7 +28,8 @@ pub fn build_inlay_hints(semantic_model: &SemanticModel) -> Option<Vec<InlayHint
             }
             LuaAst::LuaCallExpr(call_expr) => {
                 build_call_expr_param_hint(semantic_model, &mut result, call_expr.clone());
-                build_call_expr_await_hint(semantic_model, &mut result, call_expr);
+                build_call_expr_await_hint(semantic_model, &mut result, call_expr.clone());
+                build_call_expr_meta_call_hint(semantic_model, &mut result, call_expr);
             }
             LuaAst::LuaLocalName(local_name) => {
                 build_local_name_hint(semantic_model, &mut result, local_name);
@@ -344,7 +347,7 @@ fn build_local_name_hint(
         position: lsp_range.end,
         text_edits: None,
         tooltip: None,
-        padding_left: Some(true),
+        padding_left: None,
         padding_right: None,
         data: None,
     };
@@ -457,4 +460,155 @@ fn get_override_lsp_location(
 
     let lsp_range = document.to_lsp_location(range)?;
     Some(lsp_range)
+}
+
+fn build_call_expr_meta_call_hint(
+    semantic_model: &SemanticModel,
+    result: &mut Vec<InlayHint>,
+    call_expr: LuaCallExpr,
+) -> Option<()> {
+    if !semantic_model.get_emmyrc().hint.meta_call_hint {
+        return Some(());
+    }
+
+    let prefix_expr = call_expr.get_prefix_expr()?;
+    let semantic_info =
+        semantic_model.get_semantic_info(NodeOrToken::Node(prefix_expr.syntax().clone()))?;
+
+    match &semantic_info.typ {
+        LuaType::Ref(id) | LuaType::Def(id) => {
+            let decl = semantic_model.get_db().get_type_index().get_type_decl(id)?;
+            if !decl.is_class() {
+                return Some(());
+            }
+
+            let call_operator_ids = semantic_model
+                .get_db()
+                .get_operator_index()
+                .get_operators(&id.clone().into(), LuaOperatorMetaMethod::Call)?;
+
+            set_meta_call_part(
+                semantic_model,
+                result,
+                call_operator_ids,
+                call_expr,
+                semantic_info.typ,
+            )?;
+        }
+        _ => {}
+    }
+    Some(())
+}
+
+fn set_meta_call_part(
+    semantic_model: &SemanticModel,
+    result: &mut Vec<InlayHint>,
+    operator_ids: &Vec<LuaOperatorId>,
+    call_expr: LuaCallExpr,
+    target_type: LuaType,
+) -> Option<()> {
+    let (operator_id, call_func) =
+        find_match_meta_call_operator_id(semantic_model, operator_ids, call_expr.clone())?;
+
+    let operator = semantic_model
+        .get_db()
+        .get_operator_index()
+        .get_operator(&operator_id)?;
+
+    let location = {
+        let range = operator.get_range();
+        let document = semantic_model.get_document_by_file_id(operator.get_file_id())?;
+        let lsp_range = document.to_lsp_range(range)?;
+        Location::new(document.get_uri(), lsp_range)
+    };
+
+    let document = semantic_model.get_document();
+    let parent = call_expr.syntax().parent()?;
+
+    // 如果是 `Class(...)` 且调用返回值是 Class 类型, 则显示 `new` 提示
+    let hint_new = {
+        LuaStat::can_cast(parent.kind().into())
+            && !matches!(call_expr.get_prefix_expr()?, LuaExpr::CallExpr(_))
+            && semantic_model
+                .type_check(call_func.get_ret(), &target_type)
+                .is_ok()
+    };
+
+    let (value, hint_range, padding_right) = if hint_new {
+        ("new".to_string(), call_expr.get_range(), Some(true))
+    } else {
+        (
+            "⚡".to_string(),
+            call_expr.get_prefix_expr()?.get_range(),
+            None,
+        )
+    };
+
+    let hint_position = {
+        let lsp_range = document.to_lsp_range(hint_range)?;
+        if hint_new {
+            lsp_range.start
+        } else {
+            lsp_range.end
+        }
+    };
+
+    let part = InlayHintLabelPart {
+        value,
+        location: Some(location),
+        ..Default::default()
+    };
+
+    let hint = InlayHint {
+        kind: Some(InlayHintKind::TYPE),
+        label: InlayHintLabel::LabelParts(vec![part]),
+        position: hint_position,
+        text_edits: None,
+        tooltip: None,
+        padding_left: None,
+        padding_right,
+        data: None,
+    };
+
+    result.push(hint);
+    Some(())
+}
+
+fn find_match_meta_call_operator_id(
+    semantic_model: &SemanticModel,
+    operator_ids: &Vec<LuaOperatorId>,
+    call_expr: LuaCallExpr,
+) -> Option<(LuaOperatorId, Arc<LuaFunctionType>)> {
+    let call_func = semantic_model.infer_call_expr_func(call_expr.clone(), None)?;
+    if operator_ids.len() == 1 {
+        return Some((operator_ids.first().cloned()?, call_func));
+    }
+    for operator_id in operator_ids {
+        let operator = semantic_model
+            .get_db()
+            .get_operator_index()
+            .get_operator(operator_id)?;
+        let operator_func = {
+            let operator_type = operator.get_operator_func(semantic_model.get_db());
+            match operator_type {
+                LuaType::DocFunction(func) => func,
+                LuaType::Signature(signature_id) => {
+                    let signature = semantic_model
+                        .get_db()
+                        .get_signature_index()
+                        .get(&signature_id)?;
+                    signature.to_doc_func_type()
+                }
+                _ => return None,
+            }
+        };
+        let is_match =
+            compare_function_types(semantic_model, &call_func, &operator_func, &call_expr)
+                .unwrap_or(false);
+
+        if is_match {
+            return Some((operator_id.clone(), operator_func));
+        }
+    }
+    operator_ids.first().cloned().map(|id| (id, call_func))
 }

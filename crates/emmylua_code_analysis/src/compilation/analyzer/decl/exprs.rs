@@ -1,6 +1,7 @@
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaIndexExpr,
-    LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr, LuaTableExpr, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaDocTagCast, LuaExpr,
+    LuaIndexExpr, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr, LuaTableExpr,
+    LuaVarExpr,
 };
 
 use crate::{
@@ -50,6 +51,9 @@ pub fn analyze_name_expr(analyzer: &mut DeclAnalyzer, expr: LuaNameExpr) -> Opti
 }
 
 pub fn analyze_index_expr(analyzer: &mut DeclAnalyzer, index_expr: LuaIndexExpr) -> Option<()> {
+    if index_expr.ancestors::<LuaDocTagCast>().next().is_some() {
+        return Some(());
+    }
     let index_key = index_expr.get_index_key()?;
     let key = match index_key {
         LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().to_string().into()),

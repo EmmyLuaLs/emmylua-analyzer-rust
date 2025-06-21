@@ -1,7 +1,7 @@
 use emmylua_parser::{
-    LuaAstNode, LuaDocBinaryType, LuaDocFuncType, LuaDocGenericType, LuaDocMultiLineUnionType,
-    LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType,
-    LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaAstNode, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericType,
+    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
+    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
     LuaTypeUnaryOperator,
 };
 use rowan::TextRange;
@@ -14,7 +14,7 @@ use crate::{
     VariadicType,
 };
 
-pub fn infer_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType {
+pub fn infer_doc_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType {
     match node {
         LuaDocType::Name(name_type) => {
             if let Some(name) = name_type.get_name_text() {
@@ -28,7 +28,7 @@ pub fn infer_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType 
         }
         LuaDocType::Nullable(nullable_type) => {
             if let Some(inner_type) = nullable_type.get_type() {
-                let t = infer_type(semantic_model, &inner_type);
+                let t = infer_doc_type(semantic_model, &inner_type);
                 if t.is_unknown() {
                     return LuaType::Unknown;
                 }
@@ -42,7 +42,7 @@ pub fn infer_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType 
         }
         LuaDocType::Array(array_type) => {
             if let Some(inner_type) = array_type.get_type() {
-                let t = infer_type(semantic_model, &inner_type);
+                let t = infer_doc_type(semantic_model, &inner_type);
                 if t.is_unknown() {
                     return LuaType::Unknown;
                 }
@@ -74,7 +74,7 @@ pub fn infer_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType 
         LuaDocType::Tuple(tuple_type) => {
             let mut types = Vec::new();
             for type_node in tuple_type.get_types() {
-                let t = infer_type(semantic_model, &type_node);
+                let t = infer_doc_type(semantic_model, &type_node);
                 if t.is_unknown() {
                     return LuaType::Unknown;
                 }
@@ -199,7 +199,7 @@ fn infer_generic_type(semantic_model: &SemanticModel, generic_type: &LuaDocGener
             let mut generic_params = Vec::new();
             if let Some(generic_decl_list) = generic_type.get_generic_types() {
                 for param in generic_decl_list.get_types() {
-                    let param_type = infer_type(semantic_model, &param);
+                    let param_type = infer_doc_type(semantic_model, &param);
                     if param_type.is_unknown() {
                         return LuaType::Unknown;
                     }
@@ -224,7 +224,7 @@ fn infer_special_generic_type(
             let mut types = Vec::new();
             if let Some(generic_decl_list) = generic_type.get_generic_types() {
                 for param in generic_decl_list.get_types() {
-                    let param_type = infer_type(semantic_model, &param);
+                    let param_type = infer_doc_type(semantic_model, &param);
                     types.push(param_type);
                 }
             }
@@ -232,7 +232,7 @@ fn infer_special_generic_type(
         }
         "namespace" => {
             let first_doc_param_type = generic_type.get_generic_types()?.get_types().next()?;
-            let first_param = infer_type(semantic_model, &first_doc_param_type);
+            let first_param = infer_doc_type(semantic_model, &first_doc_param_type);
             if let LuaType::DocStringConst(ns_str) = first_param {
                 return Some(LuaType::Namespace(ns_str));
             }
@@ -240,7 +240,7 @@ fn infer_special_generic_type(
         "std.Select" => {
             let mut params = Vec::new();
             for param in generic_type.get_generic_types()?.get_types() {
-                let param_type = infer_type(semantic_model, &param);
+                let param_type = infer_doc_type(semantic_model, &param);
                 params.push(param_type);
             }
             return Some(LuaType::Call(
@@ -250,7 +250,7 @@ fn infer_special_generic_type(
         "std.Unpack" => {
             let mut params = Vec::new();
             for param in generic_type.get_generic_types()?.get_types() {
-                let param_type = infer_type(semantic_model, &param);
+                let param_type = infer_doc_type(semantic_model, &param);
                 params.push(param_type);
             }
             return Some(LuaType::Call(
@@ -260,7 +260,7 @@ fn infer_special_generic_type(
         "std.RawGet" => {
             let mut params = Vec::new();
             for param in generic_type.get_generic_types()?.get_types() {
-                let param_type = infer_type(semantic_model, &param);
+                let param_type = infer_doc_type(semantic_model, &param);
                 params.push(param_type);
             }
             return Some(LuaType::Call(
@@ -269,7 +269,7 @@ fn infer_special_generic_type(
         }
         "TypeGuard" => {
             let first_doc_param_type = generic_type.get_generic_types()?.get_types().next()?;
-            let first_param = infer_type(semantic_model, &first_doc_param_type);
+            let first_param = infer_doc_type(semantic_model, &first_doc_param_type);
 
             return Some(LuaType::TypeGuard(first_param.into()));
         }
@@ -281,8 +281,8 @@ fn infer_special_generic_type(
 
 fn infer_binary_type(semantic_model: &SemanticModel, binary_type: &LuaDocBinaryType) -> LuaType {
     if let Some((left, right)) = binary_type.get_types() {
-        let left_type = infer_type(semantic_model, &left);
-        let right_type = infer_type(semantic_model, &right);
+        let left_type = infer_doc_type(semantic_model, &left);
+        let right_type = infer_doc_type(semantic_model, &right);
         if left_type.is_unknown() {
             return right_type;
         }
@@ -370,7 +370,7 @@ fn infer_binary_type(semantic_model: &SemanticModel, binary_type: &LuaDocBinaryT
 
 fn infer_unary_type(semantic_model: &SemanticModel, unary_type: &LuaDocUnaryType) -> LuaType {
     if let Some(base_type) = unary_type.get_type() {
-        let base = infer_type(semantic_model, &base_type);
+        let base = infer_doc_type(semantic_model, &base_type);
         if base.is_unknown() {
             return LuaType::Unknown;
         }
@@ -409,7 +409,7 @@ fn infer_func_type(semantic_model: &SemanticModel, func: &LuaDocFuncType) -> Lua
         let nullable = param.is_nullable();
 
         let type_ref = if let Some(type_ref) = param.get_type() {
-            let mut typ = infer_type(semantic_model, &type_ref);
+            let mut typ = infer_doc_type(semantic_model, &type_ref);
             if nullable && !typ.is_nullable() {
                 typ = TypeOps::Union.apply(semantic_model.get_db(), &typ, &LuaType::Nil);
             }
@@ -426,7 +426,7 @@ fn infer_func_type(semantic_model: &SemanticModel, func: &LuaDocFuncType) -> Lua
         for return_type in return_type_list.get_return_type_list() {
             let (_, typ) = return_type.get_name_and_type();
             if let Some(typ) = typ {
-                let t = infer_type(semantic_model, &typ);
+                let t = infer_doc_type(semantic_model, &typ);
                 return_types.push(t);
             } else {
                 return_types.push(LuaType::Unknown);
@@ -468,7 +468,7 @@ fn infer_object_type(semantic_model: &SemanticModel, object_type: &LuaDocObjectT
                     LuaIndexAccessKey::String(str.get_value().to_string().into())
                 }
                 LuaDocObjectFieldKey::Type(t) => {
-                    LuaIndexAccessKey::Type(infer_type(semantic_model, &t))
+                    LuaIndexAccessKey::Type(infer_doc_type(semantic_model, &t))
                 }
             }
         } else {
@@ -476,7 +476,7 @@ fn infer_object_type(semantic_model: &SemanticModel, object_type: &LuaDocObjectT
         };
 
         let mut type_ref = if let Some(type_ref) = field.get_type() {
-            infer_type(semantic_model, &type_ref)
+            infer_doc_type(semantic_model, &type_ref)
         } else {
             LuaType::Unknown
         };
@@ -518,7 +518,7 @@ fn infer_variadic_type(
     variadic_type: &LuaDocVariadicType,
 ) -> Option<LuaType> {
     let inner_type = variadic_type.get_type()?;
-    let base = infer_type(semantic_model, &inner_type);
+    let base = infer_doc_type(semantic_model, &inner_type);
     let variadic = VariadicType::Base(base.clone());
     Some(LuaType::Variadic(variadic.into()))
 }
@@ -530,7 +530,7 @@ fn infer_multi_line_union_type(
     let mut union_members = Vec::new();
     for field in multi_union.get_fields() {
         let alias_member_type = if let Some(field_type) = field.get_type() {
-            let type_ref = infer_type(semantic_model, &field_type);
+            let type_ref = infer_doc_type(semantic_model, &field_type);
             if type_ref.is_unknown() {
                 continue;
             }

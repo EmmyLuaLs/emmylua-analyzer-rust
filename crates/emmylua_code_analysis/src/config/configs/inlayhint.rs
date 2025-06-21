@@ -20,6 +20,9 @@ pub struct EmmyrcInlayHint {
     /// Whether to enable override hints.
     #[serde(default = "default_true")]
     pub override_hint: bool,
+    /// Whether to enable meta __call operator hints.
+    #[serde(default = "default_true")]
+    pub meta_call_hint: bool,
 }
 
 impl Default for EmmyrcInlayHint {
@@ -30,6 +33,7 @@ impl Default for EmmyrcInlayHint {
             index_hint: default_true(),
             local_hint: default_true(),
             override_hint: default_true(),
+            meta_call_hint: default_true(),
         }
     }
 }

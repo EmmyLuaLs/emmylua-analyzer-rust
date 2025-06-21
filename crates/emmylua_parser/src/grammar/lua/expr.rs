@@ -132,15 +132,20 @@ fn parse_table_expr(p: &mut LuaParser) -> ParseResult {
         return Ok(m.complete(p));
     }
 
-    let mut cm = parse_field(p)?;
-    match cm.kind {
-        LuaSyntaxKind::TableFieldAssign => {
-            m.set_kind(p, LuaSyntaxKind::TableObjectExpr);
+    match parse_field_with_recovery(p) {
+        Ok(cm) => match cm.kind {
+            LuaSyntaxKind::TableFieldAssign => {
+                m.set_kind(p, LuaSyntaxKind::TableObjectExpr);
+            }
+            LuaSyntaxKind::TableFieldValue => {
+                m.set_kind(p, LuaSyntaxKind::TableArrayExpr);
+            }
+            _ => {}
+        },
+        Err(_) => {
+            //  即使字段解析失败, 我们也不中止解析
+            recover_to_table_boundary(p);
         }
-        LuaSyntaxKind::TableFieldValue => {
-            m.set_kind(p, LuaSyntaxKind::TableArrayExpr);
-        }
-        _ => {}
     }
 
     while p.current_token() == LuaTokenKind::TkComma
@@ -150,40 +155,168 @@ fn parse_table_expr(p: &mut LuaParser) -> ParseResult {
         if p.current_token() == LuaTokenKind::TkRightBrace {
             break;
         }
-        cm = parse_field(p)?;
-        if cm.kind == LuaSyntaxKind::TableFieldAssign {
-            m.set_kind(p, LuaSyntaxKind::TableObjectExpr);
+
+        match parse_field_with_recovery(p) {
+            Ok(cm) => {
+                if cm.kind == LuaSyntaxKind::TableFieldAssign {
+                    m.set_kind(p, LuaSyntaxKind::TableObjectExpr);
+                }
+            }
+            Err(_) => {
+                // 即使字段解析失败, 我们也不中止解析
+                recover_to_table_boundary(p);
+                if p.current_token() == LuaTokenKind::TkRightBrace {
+                    break;
+                }
+            }
         }
     }
 
-    expect_token(p, LuaTokenKind::TkRightBrace)?;
+    // 处理闭合括号
+    if p.current_token() == LuaTokenKind::TkRightBrace {
+        p.bump();
+    } else {
+        // 表可能是错的, 但可以继续尝试解析
+        let mut found_brace = false;
+        let mut brace_count = 1; // 我们已经在表中
+        let mut lookahead_count = 0;
+        const MAX_LOOKAHEAD: usize = 50; // 限制令牌数避免无休止的解析
+
+        while p.current_token() != LuaTokenKind::TkEof && lookahead_count < MAX_LOOKAHEAD {
+            match p.current_token() {
+                LuaTokenKind::TkRightBrace => {
+                    brace_count -= 1;
+                    if brace_count == 0 {
+                        p.bump(); // 消费闭合括号
+                        found_brace = true;
+                        break;
+                    }
+                    p.bump();
+                }
+                LuaTokenKind::TkLeftBrace => {
+                    brace_count += 1;
+                    p.bump();
+                }
+                // 如果遇到则认为已经是表的边界
+                LuaTokenKind::TkLocal
+                | LuaTokenKind::TkFunction
+                | LuaTokenKind::TkIf
+                | LuaTokenKind::TkWhile
+                | LuaTokenKind::TkFor
+                | LuaTokenKind::TkReturn => {
+                    break;
+                }
+                _ => {
+                    p.bump();
+                }
+            }
+            lookahead_count += 1;
+        }
+
+        if !found_brace {
+            // 没有找到闭合括号, 报告错误
+            p.push_error(LuaParseError::syntax_error_from(
+                &t!("expected '}' to close table"),
+                p.current_token_range(),
+            ));
+        }
+    }
+
     Ok(m.complete(p))
 }
 
-fn parse_field(p: &mut LuaParser) -> ParseResult {
+fn parse_field_with_recovery(p: &mut LuaParser) -> ParseResult {
     let mut m = p.mark(LuaSyntaxKind::TableFieldValue);
-
-    if p.current_token() == LuaTokenKind::TkLeftBracket {
-        m.set_kind(p, LuaSyntaxKind::TableFieldAssign);
-        p.bump();
-        parse_expr(p)?;
-        expect_token(p, LuaTokenKind::TkRightBracket)?;
-        expect_token(p, LuaTokenKind::TkAssign)?;
-        parse_expr(p)?;
-    } else if p.current_token() == LuaTokenKind::TkName {
-        if p.peek_next_token() == LuaTokenKind::TkAssign {
+    // 即使字段解析失败, 我们也不会中止解析
+    match p.current_token() {
+        LuaTokenKind::TkLeftBracket => {
             m.set_kind(p, LuaSyntaxKind::TableFieldAssign);
             p.bump();
-            p.bump();
-            parse_expr(p)?;
-        } else {
-            parse_expr(p)?;
+            match parse_expr(p) {
+                Ok(_) => {}
+                Err(err) => {
+                    p.push_error(err);
+                    // 找到边界
+                    while !matches!(
+                        p.current_token(),
+                        LuaTokenKind::TkRightBracket
+                            | LuaTokenKind::TkAssign
+                            | LuaTokenKind::TkComma
+                            | LuaTokenKind::TkSemicolon
+                            | LuaTokenKind::TkRightBrace
+                            | LuaTokenKind::TkEof
+                    ) {
+                        p.bump();
+                    }
+                }
+            }
+            if p.current_token() == LuaTokenKind::TkRightBracket {
+                p.bump();
+            } else {
+                p.push_error(LuaParseError::syntax_error_from(
+                    &t!("expected ']'"),
+                    p.current_token_range(),
+                ));
+            }
+            if p.current_token() == LuaTokenKind::TkAssign {
+                p.bump();
+            } else {
+                p.push_error(LuaParseError::syntax_error_from(
+                    &t!("expected '='"),
+                    p.current_token_range(),
+                ));
+            }
+            match parse_expr(p) {
+                Ok(_) => {}
+                Err(err) => {
+                    p.push_error(err);
+                }
+            }
         }
-    } else {
-        parse_expr(p)?;
+        LuaTokenKind::TkName => {
+            if p.peek_next_token() == LuaTokenKind::TkAssign {
+                m.set_kind(p, LuaSyntaxKind::TableFieldAssign);
+                p.bump(); // consume name
+                p.bump(); // consume '='
+                match parse_expr(p) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        p.push_error(err);
+                    }
+                }
+            } else {
+                match parse_expr(p) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        p.push_error(err);
+                    }
+                }
+            }
+        }
+        // 一些表示`table`实际上已经结束的令牌
+        LuaTokenKind::TkEof | LuaTokenKind::TkLocal => {}
+        _ => match parse_expr(p) {
+            Ok(_) => {}
+            Err(err) => {
+                p.push_error(err);
+            }
+        },
     }
 
     Ok(m.complete(p))
+}
+
+fn recover_to_table_boundary(p: &mut LuaParser) {
+    // 跳过直到找到表边界或字段分隔符
+    while !matches!(
+        p.current_token(),
+        LuaTokenKind::TkComma
+            | LuaTokenKind::TkSemicolon
+            | LuaTokenKind::TkRightBrace
+            | LuaTokenKind::TkEof
+    ) {
+        p.bump();
+    }
 }
 
 fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {

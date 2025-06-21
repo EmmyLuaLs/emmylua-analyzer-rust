@@ -1,7 +1,7 @@
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaDocTagType};
 use rowan::TextRange;
 
-use crate::diagnostic::checker::generic::infer_type::infer_type;
+use crate::diagnostic::checker::generic::infer_doc_type::infer_doc_type;
 use crate::diagnostic::checker::param_type_check::get_call_source_type;
 use crate::{
     humanize_type, DiagnosticCode, GenericTplId, LuaMemberOwner, LuaSemanticDeclId, LuaSignature,
@@ -40,7 +40,7 @@ fn check_doc_tag_type(
 ) -> Option<()> {
     let type_list = doc_tag_type.get_type_list();
     for doc_type in type_list {
-        let type_ref = infer_type(semantic_model, &doc_type);
+        let type_ref = infer_doc_type(semantic_model, &doc_type);
         let generic_type = match type_ref {
             LuaType::Generic(generic_type) => generic_type,
             _ => continue,

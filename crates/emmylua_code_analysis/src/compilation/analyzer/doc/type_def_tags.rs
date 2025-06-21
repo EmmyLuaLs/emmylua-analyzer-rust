@@ -74,8 +74,16 @@ fn add_description_for_type_decl(
 ) {
     let mut description_text = String::new();
 
+    // let comment = analyzer.comment.clone();
+    // if let Some(description) = comment.get_description() {
+    //     let description = preprocess_description(&description.get_description_text(), None);
+    //     if !description.is_empty() {
+    //         description_text.push_str(&description);
+    //     }
+    // }
+
     for description in descriptions {
-        let description = preprocess_description(&description.get_description_text());
+        let description = preprocess_description(&description.get_description_text(), None);
         if !description.is_empty() {
             if !description_text.is_empty() {
                 description_text.push_str("\n\n");

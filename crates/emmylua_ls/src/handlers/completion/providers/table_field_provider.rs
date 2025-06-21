@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaMemberInfo, LuaMemberKey, LuaType};
-use emmylua_parser::{LuaAst, LuaAstNode, LuaTableExpr, LuaTableField};
+use emmylua_code_analysis::{get_real_type, LuaMemberInfo, LuaMemberKey, LuaType};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaKind, LuaTableExpr, LuaTableField, LuaTokenKind};
 use lsp_types::{CompletionItem, InsertTextFormat, InsertTextMode};
 use rowan::NodeOrToken;
 
@@ -10,8 +10,6 @@ use crate::handlers::completion::{
     completion_builder::CompletionBuilder,
     completion_data::CompletionData,
 };
-
-use super::get_real_type;
 
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     add_table_field_key_completion(builder);
@@ -22,9 +20,25 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
 
 fn add_table_field_key_completion(builder: &mut CompletionBuilder) -> Option<()> {
     if !can_add_key_completion(builder) {
-        return Some(());
+        return None;
     }
-    let table_expr = get_table_expr(builder)?;
+    // 出现以下情况则代表是补全 value
+    let prev_token = builder.trigger_token.prev_token()?;
+    if builder.trigger_token.kind() == LuaKind::Token(LuaTokenKind::TkWhitespace)
+        && prev_token.kind() == LuaKind::Token(LuaTokenKind::TkAssign)
+    {
+        return None;
+    }
+
+    let node = LuaAst::cast(builder.trigger_token.parent()?)?;
+    let table_expr = match node {
+        LuaAst::LuaTableExpr(table_expr) => Some(table_expr),
+        LuaAst::LuaNameExpr(name_expr) => name_expr
+            .get_parent::<LuaTableField>()?
+            .get_parent::<LuaTableExpr>(),
+        _ => None,
+    }?;
+
     let table_type = builder
         .semantic_model
         .infer_table_should_be(table_expr.clone())?;
@@ -65,18 +79,6 @@ fn can_add_key_completion(builder: &mut CompletionBuilder) -> bool {
         }
     }
     true
-}
-
-fn get_table_expr(builder: &mut CompletionBuilder) -> Option<LuaTableExpr> {
-    let node = LuaAst::cast(builder.trigger_token.parent()?)?;
-
-    match node {
-        LuaAst::LuaTableExpr(table_expr) => Some(table_expr),
-        LuaAst::LuaNameExpr(name_expr) => name_expr
-            .get_parent::<LuaTableField>()?
-            .get_parent::<LuaTableExpr>(),
-        _ => None,
-    }
 }
 
 fn add_field_key_completion(

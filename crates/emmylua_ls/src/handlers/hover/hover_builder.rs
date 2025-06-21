@@ -284,6 +284,9 @@ impl<'a> HoverBuilder<'a> {
         result.push_str(&description_content);
         result.push_str(&expansion);
 
+        // 清除空白字符
+        result = result.trim().to_string();
+
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,

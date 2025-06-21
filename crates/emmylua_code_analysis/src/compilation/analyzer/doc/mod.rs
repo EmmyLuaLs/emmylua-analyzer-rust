@@ -11,7 +11,7 @@ use super::AnalyzeContext;
 use crate::{
     db_index::{DbIndex, LuaTypeDeclId},
     profile::Profile,
-    FileId,
+    FileId, LuaSemanticDeclId,
 };
 use emmylua_parser::{LuaAstNode, LuaComment, LuaSyntaxNode};
 use file_generic_index::FileGenericIndex;
@@ -44,8 +44,10 @@ fn analyze_comment(analyzer: &mut DocAnalyzer) -> Option<()> {
     }
 
     let owenr = get_owner_id(analyzer)?;
-    let comment_description =
-        preprocess_description(&comment.get_description()?.get_description_text());
+    let comment_description = preprocess_description(
+        &comment.get_description()?.get_description_text(),
+        Some(&owenr),
+    );
     analyzer.db.get_property_index_mut().add_description(
         analyzer.file_id,
         owenr,
@@ -90,9 +92,16 @@ impl<'a> DocAnalyzer<'a> {
     }
 }
 
-pub fn preprocess_description(mut description: &str) -> String {
-    if description.starts_with(['#', '@']) {
-        description = description.trim_start_matches(|c| c == '#' || c == '@');
+pub fn preprocess_description(mut description: &str, owner: Option<&LuaSemanticDeclId>) -> String {
+    let has_remove_start_char = if let Some(owner) = owner {
+        !matches!(owner, LuaSemanticDeclId::Signature(_))
+    } else {
+        true
+    };
+    if has_remove_start_char {
+        if description.starts_with(['#', '@']) {
+            description = description.trim_start_matches(|c| c == '#' || c == '@');
+        }
     }
 
     let mut result = String::new();

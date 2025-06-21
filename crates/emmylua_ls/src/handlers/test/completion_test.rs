@@ -752,4 +752,139 @@ mod tests {
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
     }
+
+    #[test]
+    fn test_issue_502() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@param a { foo: { bar: number } }
+                function buz(a) end
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                buz({
+                    foo = {
+                        b<??>
+                    }
+                })
+            "#,
+            vec![VirtualCompletionItem {
+                label: "bar = ".to_string(),
+                kind: CompletionItemKind::PROPERTY,
+                ..Default::default()
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
+
+    #[test]
+    fn test_class_function_1() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class C1
+                ---@field on_add fun(a: string, b: string)
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                ---@type C1
+                local c1
+
+                c1.on_add = <??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "function(a, b) end".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                ..Default::default()
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
+
+    #[test]
+    fn test_class_function_2() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class C1
+                ---@field on_add fun(self: C1, a: string, b: string)
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                ---@type C1
+                local c1
+
+                function c1:<??>()
+
+                end
+            "#,
+            vec![VirtualCompletionItem {
+                label: "on_add".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                label_detail: Some("(a, b)".to_string()),
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
+
+    #[test]
+    fn test_class_function_3() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class (partial) SkillMutator
+                ---@field on_add? fun(self: self, owner: string)
+
+                ---@class (partial) SkillMutator.A
+                ---@field on_add? fun(self: self, owner: string)
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                ---@class (partial) SkillMutator.A
+                local a
+                a.on_add = <??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "function(self, owner) end".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                ..Default::default()
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
+
+    #[test]
+    fn test_class_function_4() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class (partial) SkillMutator
+                ---@field on_add? fun(self: self, owner: string)
+
+                ---@class (partial) SkillMutator.A
+                ---@field on_add? fun(self: self, owner: string)
+        "#,
+        );
+        assert!(ws.check_completion_with_kind(
+            r#"
+                ---@class (partial) SkillMutator.A
+                local a
+                function a:<??>()
+                    
+                end
+
+            "#,
+            vec![VirtualCompletionItem {
+                label: "on_add".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                label_detail: Some("(owner)".to_string()),
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        ));
+    }
 }

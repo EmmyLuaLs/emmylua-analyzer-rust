@@ -13,7 +13,9 @@ mod tests {
                 ---@field c boolean
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(class) A {\n    a: number,\n    b: string,\n    c: boolean,\n}\n```\n".to_string(),
+                value:
+                    "```lua\n(class) A {\n    a: number,\n    b: string,\n    c: boolean,\n}\n```"
+                        .to_string(),
             },
         ));
     }
@@ -35,7 +37,7 @@ mod tests {
                 m1.<??>x = {}
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) x: integer = 1\n```\n".to_string(),
+                value: "```lua\n(field) x: integer = 1\n```".to_string(),
             },
         ));
 
@@ -58,7 +60,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) right: Node\n```\n".to_string(),
+                value: "```lua\n(field) right: Node\n```".to_string(),
             },
         ));
 
@@ -80,7 +82,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\nlocal node: Node1 {\n    x: number,\n}\n```\n".to_string(),
+                value: "```lua\nlocal node: Node1 {\n    x: number,\n}\n```".to_string(),
             },
         ));
     }
@@ -99,7 +101,7 @@ mod tests {
                 local d = a.<??>a
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) a: number?\n```\n".to_string(),
+                value: "```lua\n(field) a: number?\n```".to_string(),
             },
         ));
     }
@@ -114,7 +116,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\nlocal function f(a, b)\n```\n".to_string(),
+                value: "```lua\nlocal function f(a, b)\n```".to_string(),
             },
         ));
     }
@@ -133,7 +135,7 @@ mod tests {
                 data.pu<??>lse
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) pulse: number?\n```\n\n&nbsp;&nbsp;in class `Buff.AddData`\n\n---\n\n心跳周期\n".to_string(),
+                value: "```lua\n(field) pulse: number?\n```\n\n&nbsp;&nbsp;in class `Buff.AddData`\n\n---\n\n心跳周期".to_string(),
             },
         ));
     }
@@ -154,7 +156,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) _cfg: number\n```\n".to_string(),
+                value: "```lua\n(field) _cfg: number\n```".to_string(),
             },
         ));
 
@@ -176,7 +178,52 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "\n```lua\n(field) _cfg: number\n```\n".to_string(),
+                value: "```lua\n(field) _cfg: number\n```".to_string(),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_signature_desc() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+            -- # A
+            local function a<??>bc()
+            end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function abc()\n```\n\n---\n\n# A".to_string(),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_class_desc() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+            ---A1
+            ---@class AB<??>C
+            ---A2
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(class) ABC\n```\n\n---\n\nA1".to_string(),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_alias_desc() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                ---@alias Tes<??>Alias
+                ---| 'A' # A1
+                ---| 'B' # A2
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(alias) TesAlias = (\"A\"|\"B\")\n    | \"A\" -- A1\n    | \"B\" -- A2\n\n```".to_string(),
             },
         ));
     }

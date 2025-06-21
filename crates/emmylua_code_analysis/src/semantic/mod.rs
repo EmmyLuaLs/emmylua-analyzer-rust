@@ -22,6 +22,7 @@ use emmylua_parser::{
 use infer::{infer_bind_value_type, infer_multi_value_adjusted_expression_types};
 pub use infer::{infer_table_field_value_should_be, infer_table_should_be};
 use lsp_types::Uri;
+pub use member::find_index_operations;
 pub use member::get_member_map;
 pub use member::LuaMemberInfo;
 use member::{find_member_origin_owner, find_members};

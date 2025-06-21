@@ -3,8 +3,8 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaDocFieldKey, LuaDocObjectFieldKey, LuaExpr,
-    LuaGeneralToken, LuaLiteralToken, LuaNameToken, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
-    LuaVarExpr,
+    LuaGeneralToken, LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxNode, LuaSyntaxToken,
+    LuaTokenKind, LuaVarExpr,
 };
 use lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
 use rowan::NodeOrToken;
@@ -179,23 +179,7 @@ fn build_tokens_semantic_token(
             builder.push(token, SemanticTokenType::KEYWORD);
         }
         LuaTokenKind::TkDocStart => {
-            let range = token.text_range();
-            // find '@'
-            let text = token.text();
-            let mut start = 0;
-            for (i, c) in text.char_indices() {
-                if c == '@' {
-                    start = i;
-                    break;
-                }
-            }
-            let position = u32::from(range.start()) + start as u32;
-            builder.push_at_position(
-                position.into(),
-                1,
-                SemanticTokenType::KEYWORD,
-                SemanticTokenModifier::DOCUMENTATION,
-            );
+            render_doc_at(builder, &token);
         }
         _ => {}
     }
@@ -273,8 +257,65 @@ fn build_node_semantic_token(
             }
         }
         LuaAst::LuaDocTagCast(doc_cast) => {
-            let name = doc_cast.get_name_token()?;
-            builder.push(name.syntax(), SemanticTokenType::VARIABLE);
+            // 在 call 后追加移除`nil`且同一行仍具有后续代码, 使之不显眼
+            // if let Some(parent) = doc_cast.syntax().parent()?.parent() {
+            //     if LuaExpr::can_cast(parent.kind().into()) {
+            //         let expr = LuaExpr::cast(parent)?;
+            //         match expr {
+            //             LuaExpr::IndexExpr(index_expr) => {
+            //                 let prefix_expr = index_expr.get_prefix_expr()?;
+            //                 if let LuaExpr::CallExpr(_) = prefix_expr {
+            //                     if doc_cast.get_op_types().any(|op_type| op_type.is_nullable()) {
+            //                         let position = doc_cast.syntax().text_range().start();
+            //                         let len = doc_cast.syntax().text_range().len();
+            //                         builder.push_at_position(
+            //                             position.into(),
+            //                             len.into(),
+            //                             SemanticTokenType::COMMENT,
+            //                             None,
+            //                         );
+            //                         return Some(());
+            //                     }
+            //                 }
+            //             }
+            //             _ => {}
+            //         }
+            //     }
+            // }
+
+            if let Some(target_expr) = doc_cast.get_key_expr() {
+                match target_expr {
+                    LuaExpr::NameExpr(name_expr) => {
+                        builder.push(
+                            name_expr.get_name_token()?.syntax(),
+                            SemanticTokenType::VARIABLE,
+                        );
+                    }
+                    LuaExpr::IndexExpr(index_expr) => {
+                        let position = index_expr.syntax().text_range().start();
+                        let len = index_expr.syntax().text_range().len();
+                        builder.push_at_position(
+                            position.into(),
+                            len.into(),
+                            SemanticTokenType::VARIABLE,
+                            None,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(NodeOrToken::Token(token)) = doc_cast.syntax().prev_sibling_or_token() {
+                if token.kind() == LuaKind::Token(LuaTokenKind::TkDocLongStart) {
+                    render_doc_at(builder, &token);
+                }
+            }
+        }
+        LuaAst::LuaDocTagAs(doc_as) => {
+            if let Some(NodeOrToken::Token(token)) = doc_as.syntax().prev_sibling_or_token() {
+                if token.kind() == LuaKind::Token(LuaTokenKind::TkDocLongStart) {
+                    render_doc_at(builder, &token);
+                }
+            }
         }
         LuaAst::LuaDocTagGeneric(doc_generic) => {
             let type_parameter_list = doc_generic.get_generic_decl_list()?;
@@ -610,4 +651,24 @@ fn handle_name_node(
 
     builder.push(name_token.syntax(), SemanticTokenType::VARIABLE);
     Some(())
+}
+
+fn render_doc_at(builder: &mut SemanticBuilder, token: &LuaSyntaxToken) {
+    let range = token.text_range();
+    // find '@'
+    let text = token.text();
+    let mut start = 0;
+    for (i, c) in text.char_indices() {
+        if c == '@' {
+            start = i;
+            break;
+        }
+    }
+    let position = u32::from(range.start()) + start as u32;
+    builder.push_at_position(
+        position.into(),
+        1,
+        SemanticTokenType::KEYWORD,
+        Some(SemanticTokenModifier::DOCUMENTATION),
+    );
 }

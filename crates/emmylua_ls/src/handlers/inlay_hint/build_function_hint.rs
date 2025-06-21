@@ -147,7 +147,7 @@ fn get_part(semantic_model: &SemanticModel, typ: &LuaType) -> Option<InlayHintLa
 
 fn get_type_location(semantic_model: &SemanticModel, typ: &LuaType) -> Option<Location> {
     match typ {
-        LuaType::Ref(id) => {
+        LuaType::Ref(id) | LuaType::Def(id) => {
             let type_decl = semantic_model
                 .get_db()
                 .get_type_index()

@@ -40,6 +40,10 @@ impl LuaFlowChain {
             })
             .map(|assert| &assert.type_assert)
     }
+
+    pub fn get_all_type_asserts(&self) -> impl Iterator<Item = &TypeAssertion> {
+        self.type_asserts.iter().map(|assert| &assert.type_assert)
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

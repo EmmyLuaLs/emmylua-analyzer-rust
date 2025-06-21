@@ -78,14 +78,29 @@ fn add_stat_keyword_completions(
             continue;
         }
 
+        let (label_detail, insert_text) =
+            if matches!(keyword_info.label, "function" | "local function")
+                && !base_function_includes_name(builder)
+            {
+                (
+                    keyword_info.detail.replace("name", ""),
+                    keyword_info.insert_text.replace("name", ""),
+                )
+            } else {
+                (
+                    keyword_info.detail.to_string(),
+                    keyword_info.insert_text.to_string(),
+                )
+            };
+
         let item = CompletionItem {
             label: keyword_info.label.to_string(),
             kind: Some(keyword_info.kind),
             label_details: Some(CompletionItemLabelDetails {
-                detail: Some(keyword_info.detail.to_string()),
+                detail: Some(label_detail),
                 ..CompletionItemLabelDetails::default()
             }),
-            insert_text: Some(keyword_info.insert_text.to_string()),
+            insert_text: Some(insert_text),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             insert_text_mode: Some(InsertTextMode::ADJUST_INDENTATION),
             ..CompletionItem::default()
@@ -140,4 +155,12 @@ fn add_function_keyword_completions(builder: &mut CompletionBuilder) -> Option<(
     builder.add_completion_item(item)?;
 
     Some(())
+}
+
+fn base_function_includes_name(builder: &CompletionBuilder) -> bool {
+    builder
+        .semantic_model
+        .get_emmyrc()
+        .completion
+        .base_function_includes_name
 }

@@ -173,7 +173,7 @@ impl<'a> SemanticBuilder<'a> {
         position: TextSize,
         length: u32,
         ty: SemanticTokenType,
-        modifiers: SemanticTokenModifier,
+        modifiers: Option<SemanticTokenModifier>,
     ) -> Option<()> {
         let lsp_position = self.document.to_lsp_position(position)?;
         let start_line = lsp_position.line;
@@ -186,7 +186,7 @@ impl<'a> SemanticBuilder<'a> {
                 col: start_col as u32,
                 length,
                 typ: *self.type_to_id.get(&ty)?,
-                modifiers: 1 << *self.modifier_to_id.get(&modifiers)?,
+                modifiers: modifiers.map_or(0, |m| 1 << *self.modifier_to_id.get(&m).unwrap_or(&0)),
             }),
         );
         Some(())

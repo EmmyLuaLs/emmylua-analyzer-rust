@@ -1,16 +1,18 @@
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, VirtualUrlGenerator};
 use lsp_types::{
-    CompletionItemKind, CompletionResponse, CompletionTriggerKind, GotoDefinitionResponse, Hover,
-    HoverContents, InlayHint, MarkupContent, Position, SignatureHelpContext,
-    SignatureHelpTriggerKind,
+    CodeActionResponse, CompletionItemKind, CompletionResponse, CompletionTriggerKind,
+    GotoDefinitionResponse, Hover, HoverContents, InlayHint, MarkupContent, Position,
+    SemanticTokensResult, SignatureHelpContext, SignatureHelpTriggerKind,
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     context::ClientId,
     handlers::{
+        code_actions::code_action,
         completion::{completion, completion_resolve},
         inlay_hint::inlay_hint,
+        semantic_token::semantic_token,
         signature_helper::signature_help,
     },
 };
@@ -143,7 +145,7 @@ impl ProviderVirtualWorkspace {
         let HoverContents::Markup(MarkupContent { kind, value }) = contents else {
             return false;
         };
-        dbg!(&value);
+        // dbg!(&value);
         if value != expect.value {
             return false;
         }
@@ -185,7 +187,7 @@ impl ProviderVirtualWorkspace {
             CompletionResponse::Array(items) => items,
             CompletionResponse::List(list) => list.items,
         };
-        dbg!(&items);
+        // dbg!(&items);
         if items.len() != expect.len() {
             return false;
         }
@@ -247,36 +249,31 @@ impl ProviderVirtualWorkspace {
         };
         let file_id = self.def(&content);
         let result = implementation(&self.analysis, file_id, position);
-        dbg!(&result);
         let Some(result) = result else {
             return false;
         };
         let GotoDefinitionResponse::Array(implementations) = result else {
             return false;
         };
-        dbg!(&implementations.len());
         if implementations.len() == len {
             return true;
         }
         false
     }
 
-    pub fn check_definition(&mut self, block_str: &str) -> bool {
+    pub fn check_definition(&mut self, block_str: &str) -> Option<GotoDefinitionResponse> {
         let content = Self::handle_file_content(block_str);
         let Some((content, position)) = content else {
-            return false;
+            return None;
         };
         let file_id = self.def(&content);
-        let result = super::definition::definition(&self.analysis, file_id, position);
-        dbg!(&result);
+        let result: Option<GotoDefinitionResponse> =
+            super::definition::definition(&self.analysis, file_id, position);
         let Some(result) = result else {
-            return false;
+            return None;
         };
-        match result {
-            GotoDefinitionResponse::Scalar(_) => true,
-            GotoDefinitionResponse::Array(_) => true,
-            GotoDefinitionResponse::Link(_) => true,
-        }
+        // dbg!(&result);
+        Some(result)
     }
 
     pub fn check_signature_helper(
@@ -315,6 +312,32 @@ impl ProviderVirtualWorkspace {
     pub fn check_inlay_hint(&mut self, block_str: &str) -> Option<Vec<InlayHint>> {
         let file_id = self.def(&block_str);
         let result = inlay_hint(&self.analysis, file_id);
+        dbg!(&result);
         return result;
+    }
+
+    pub fn check_code_action(&mut self, block_str: &str) -> Option<CodeActionResponse> {
+        let file_id = self.def(block_str);
+        let result = self
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new());
+        let Some(diagnostics) = result else {
+            return None;
+        };
+        let result = code_action(&self.analysis, file_id, diagnostics);
+        // dbg!(&result);
+        result
+    }
+
+    pub fn check_semantic_token(&mut self, block_str: &str) -> Option<SemanticTokensResult> {
+        let file_id = self.def(block_str);
+        let result = semantic_token(&self.analysis, file_id, ClientId::VSCode);
+        let Some(result) = result else {
+            return None;
+        };
+
+        let data = serde_json::to_string(&result).unwrap();
+        dbg!(&data);
+        Some(result)
     }
 }

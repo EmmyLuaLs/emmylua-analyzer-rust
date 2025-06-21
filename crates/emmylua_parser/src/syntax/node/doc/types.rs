@@ -1,9 +1,10 @@
 use crate::{
-    LuaAstChildren, LuaAstNode, LuaAstToken, LuaDocTypeBinaryToken, LuaDocTypeUnaryToken,
-    LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind,
+    LuaAstChildren, LuaAstNode, LuaAstToken, LuaDocDescriptionOwner, LuaDocTypeBinaryToken,
+    LuaDocTypeUnaryToken, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode,
+    LuaTokenKind,
 };
 
-use super::{LuaDocDescription, LuaDocObjectField, LuaDocTypeList};
+use super::{LuaDocObjectField, LuaDocTypeList};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LuaDocType {
@@ -717,12 +718,10 @@ impl LuaAstNode for LuaDocOneLineField {
     }
 }
 
+impl LuaDocDescriptionOwner for LuaDocOneLineField {}
+
 impl LuaDocOneLineField {
     pub fn get_type(&self) -> Option<LuaDocType> {
-        self.child()
-    }
-
-    pub fn get_description(&self) -> Option<LuaDocDescription> {
         self.child()
     }
 }

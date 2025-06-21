@@ -92,6 +92,8 @@ pub enum DiagnosticCode {
     DuplicateIndex,
     /// generic-constraint-mismatch
     GenericConstraintMismatch,
+    /// cast-type-mismatch
+    CastTypeMismatch,
 
     #[serde(other)]
     None,

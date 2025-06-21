@@ -55,4 +55,26 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_cast() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Cast1
+            ---@field get fun(self: self, a: number): Cast1?
+            ---@field get2 fun(self: self, a: number): Cast1?
+        "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+                ---@type Cast1
+                local A
+
+                local a = A:get(1) --[[@cast -?]]
+                    :get2(2)
+            "#
+        ));
+    }
 }

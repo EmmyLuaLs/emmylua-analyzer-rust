@@ -1,3 +1,4 @@
+mod code_actions_test;
 mod completion_resolve_test;
 mod completion_test;
 mod definition_test;
@@ -5,4 +6,5 @@ mod hover_function_test;
 mod hover_test;
 mod implementation_test;
 mod inlay_hint_test;
+mod semantic_token_test;
 mod signature_helper_test;

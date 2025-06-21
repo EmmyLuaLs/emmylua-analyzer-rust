@@ -98,6 +98,11 @@ impl LuaDocParser<'_, '_> {
                     self.eat_current_and_lex_next();
                 }
             }
+            LuaDocLexerState::CastExpr => {
+                while matches!(self.current_token, LuaTokenKind::TkWhitespace) {
+                    self.eat_current_and_lex_next();
+                }
+            }
             LuaDocLexerState::Init => {
                 while matches!(
                     self.current_token,
@@ -204,6 +209,11 @@ impl LuaDocParser<'_, '_> {
                     self.current_token = LuaTokenKind::TkDocTrivia;
                 }
             }
+            LuaDocLexerState::Normal => {
+                if self.lexer.state == LuaDocLexerState::CastExpr {
+                    self.re_calc_cast_type();
+                }
+            }
             _ => {}
         }
 
@@ -227,6 +237,31 @@ impl LuaDocParser<'_, '_> {
         self.lexer.reset(origin_token_kind, new_range);
         self.lexer.state = LuaDocLexerState::Description;
         self.bump();
+    }
+
+    fn re_calc_cast_type(&mut self) {
+        if self.lexer.is_invalid() {
+            return;
+        }
+
+        // cast key 的解析是可以以`.`分割的, 但 `type` 不能以`.`分割必须视为一个整体, 因此我们需要回退
+        let read_range = self.current_token_range;
+        let origin_token_range = self.tokens[self.origin_token_index].range;
+        let origin_token_kind = self.tokens[self.origin_token_index].kind;
+        let new_range = SourceRange {
+            start_offset: read_range.start_offset,
+            length: origin_token_range.end_offset() - read_range.start_offset,
+        };
+        self.lexer.reset(origin_token_kind, new_range);
+
+        self.lexer.state = LuaDocLexerState::Normal;
+
+        let token = self.lex_token();
+        self.current_token = token.kind;
+
+        if !token.range.is_empty() {
+            self.current_token_range = token.range;
+        }
     }
 
     pub fn bump_to_end(&mut self) {

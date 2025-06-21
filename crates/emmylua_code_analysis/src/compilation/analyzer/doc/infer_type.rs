@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaDocBinaryType, LuaDocFuncType, LuaDocGenericType,
-    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
-    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
-    LuaTypeUnaryOperator, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
+    LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
+    LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken,
+    LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVarExpr,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -588,7 +588,8 @@ fn infer_multi_line_union_type(
         };
 
         let description = if let Some(description) = field.get_description() {
-            let description_text = preprocess_description(&description.get_description_text());
+            let description_text =
+                preprocess_description(&description.get_description_text(), None);
             if !description_text.is_empty() {
                 Some(description_text)
             } else {

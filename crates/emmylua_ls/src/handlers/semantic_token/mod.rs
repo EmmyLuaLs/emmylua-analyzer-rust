@@ -1,8 +1,9 @@
 mod build_semantic_tokens;
 mod semantic_token_builder;
 
-use crate::context::ServerContextSnapshot;
+use crate::context::{ClientId, ServerContextSnapshot};
 use build_semantic_tokens::build_semantic_tokens;
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
 use lsp_types::{
     ClientCapabilities, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
     SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
@@ -26,8 +27,15 @@ pub async fn on_semantic_token_handler(
     let client_id = config_manager.client_config.client_id;
     let _ = config_manager;
     let file_id = analysis.get_file_id(&uri)?;
-    let mut semantic_model = analysis.compilation.get_semantic_model(file_id)?;
+    semantic_token(&analysis, file_id, client_id)
+}
 
+pub fn semantic_token(
+    analysis: &EmmyLuaAnalysis,
+    file_id: FileId,
+    client_id: ClientId,
+) -> Option<SemanticTokensResult> {
+    let mut semantic_model = analysis.compilation.get_semantic_model(file_id)?;
     if !semantic_model.get_emmyrc().semantic_tokens.enable {
         return None;
     }

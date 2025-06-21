@@ -1,6 +1,7 @@
 mod access_invisible_test;
 mod assign_type_mismatch_test;
 mod await_in_sync_test;
+mod cast_type_mismatch_test;
 mod check_return_count_test;
 mod code_style;
 mod disable_line_test;

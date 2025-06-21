@@ -1,5 +1,6 @@
 mod goto_def_definition;
 mod goto_doc_see;
+mod goto_function;
 mod goto_module_file;
 
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, SemanticDeclLevel};
@@ -9,6 +10,7 @@ use emmylua_parser::{
 pub use goto_def_definition::goto_def_definition;
 use goto_def_definition::goto_str_tpl_ref_definition;
 pub use goto_doc_see::goto_doc_see;
+pub use goto_function::compare_function_types;
 pub use goto_module_file::goto_module_file;
 use lsp_types::{
     ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, OneOf, Position,

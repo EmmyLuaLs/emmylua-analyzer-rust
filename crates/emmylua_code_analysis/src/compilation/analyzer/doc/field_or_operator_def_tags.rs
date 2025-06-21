@@ -66,7 +66,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
     for desc in tag.get_descriptions() {
         let mut desc_text = desc.get_description_text().to_string();
         if !desc_text.is_empty() {
-            let text = preprocess_description(&mut desc_text);
+            let text = preprocess_description(&mut desc_text, Some(&property_owner));
             if !description.is_empty() {
                 description.push_str("\n\n");
             }

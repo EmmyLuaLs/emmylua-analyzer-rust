@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaBreakStat, LuaChunk, LuaDocTagCast, LuaGotoStat,
-    LuaIndexExpr, LuaLabelStat, LuaLoopStat, LuaNameExpr, LuaStat, LuaSyntaxKind, LuaTokenKind,
-    PathTrait,
+    LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaBreakStat, LuaChunk, LuaComment, LuaDocTagCast,
+    LuaExpr, LuaGotoStat, LuaIndexExpr, LuaLabelStat, LuaLoopStat, LuaNameExpr, LuaStat,
+    LuaSyntaxKind, LuaTokenKind, PathTrait,
 };
 use rowan::{TextRange, TextSize, WalkEvent};
 use smol_str::SmolStr;
 
 use crate::{
-    AnalyzeError, DbIndex, DiagnosticCode, FileId, LuaDeclId, LuaFlowId, LuaVarRefId, LuaVarRefNode,
+    AnalyzeError, DbIndex, DiagnosticCode, FileId, InFiled, LuaDeclId, LuaFlowId, LuaVarRefId,
+    LuaVarRefNode,
 };
 
 use super::flow_node::{BlockId, FlowNode};
@@ -285,26 +286,59 @@ fn build_cast_flow(
     file_id: FileId,
     tag_cast: LuaDocTagCast,
 ) -> Option<()> {
-    let name_token = tag_cast.get_name_token()?;
-    let decl_tree = db.get_decl_index().get_decl_tree(&file_id)?;
-    let text = name_token.get_name_text();
-    if let Some(decl) = decl_tree.find_local_decl(text, name_token.get_position()) {
-        let decl_id = decl.get_id();
-        builder.add_flow_node(
-            LuaVarRefId::DeclId(decl_id),
-            LuaVarRefNode::CastRef(tag_cast.clone()),
-        );
-    } else {
-        let ref_id = LuaVarRefId::Name(SmolStr::new(text));
-        if db
-            .get_decl_index()
-            .get_decl(&LuaDeclId::new(file_id, name_token.get_position()))
-            .is_none()
-        {
-            builder.add_flow_node(ref_id, LuaVarRefNode::CastRef(tag_cast.clone()));
+    match tag_cast.get_key_expr() {
+        Some(target_expr) => {
+            let text = match &target_expr {
+                LuaExpr::NameExpr(name_expr) => name_expr.get_name_text()?,
+                LuaExpr::IndexExpr(index_expr) => index_expr.get_access_path()?,
+                _ => {
+                    return None;
+                }
+            };
+
+            let decl_tree = db.get_decl_index().get_decl_tree(&file_id)?;
+            if let Some(decl) = decl_tree.find_local_decl(&text, target_expr.get_position()) {
+                let decl_id = decl.get_id();
+                builder.add_flow_node(
+                    LuaVarRefId::DeclId(decl_id),
+                    LuaVarRefNode::CastRef(tag_cast.clone()),
+                );
+            } else {
+                let ref_id = LuaVarRefId::Name(SmolStr::new(text));
+                if db
+                    .get_decl_index()
+                    .get_decl(&LuaDeclId::new(file_id, target_expr.get_position()))
+                    .is_none()
+                {
+                    builder.add_flow_node(ref_id, LuaVarRefNode::CastRef(tag_cast.clone()));
+                }
+            }
+        }
+        None => {
+            // 没有指定名称, 则附加到最近的表达式上
+            let comment = tag_cast.get_parent::<LuaComment>()?;
+            let mut left_token = comment.syntax().first_token()?.prev_token()?;
+            if left_token.kind() == LuaTokenKind::TkWhitespace.into() {
+                left_token = left_token.prev_token()?;
+            }
+
+            let mut ast_node = left_token.parent()?;
+            loop {
+                if LuaExpr::can_cast(ast_node.kind().into()) {
+                    break;
+                } else if LuaBlock::can_cast(ast_node.kind().into()) {
+                    return None;
+                }
+                ast_node = ast_node.parent()?;
+            }
+            let expr = LuaExpr::cast(ast_node)?;
+            let in_filed_syntax_id = InFiled::new(file_id, expr.get_syntax_id());
+            builder.add_flow_node(
+                LuaVarRefId::SyntaxId(in_filed_syntax_id),
+                LuaVarRefNode::CastRef(tag_cast.clone()),
+            );
         }
     }
-
     Some(())
 }
 
