@@ -6,12 +6,19 @@ pub fn check_export_visibility(
 ) -> Option<bool> {
     // 检查模块是否有 export 标记
     let property_owner_id = module_info.property_owner_id.clone()?;
-    let property = semantic_model
+    let common_property = semantic_model
         .get_db()
         .get_property_index()
-        .get_property(&property_owner_id)?
-        .export
-        .as_ref()?;
+        .get_property(&property_owner_id);
+    let Some(common_property) = common_property else {
+        return Some(true);
+    };
+
+    let Some(property) = common_property.export.as_ref() else {
+        // 没有 export 标记, 视为可见
+        return Some(true);
+    };
+
     match property.scope {
         LuaExportScope::Namespace => {
             let type_index = semantic_model.get_db().get_type_index();

@@ -70,6 +70,10 @@ fn add_module_completion_item(
     position: Position,
     completions: &mut Vec<CompletionItem>,
 ) -> Option<()> {
+    if !check_export_visibility(&builder.semantic_model, &module_info).unwrap_or(false) {
+        return None;
+    }
+
     let completion_name = module_name_convert(module_info, file_conversion);
     if !completion_name.to_lowercase().starts_with(prefix) {
         try_add_member_completion_items(
@@ -123,10 +127,6 @@ fn try_add_member_completion_items(
     position: Position,
     completions: &mut Vec<CompletionItem>,
 ) -> Option<()> {
-    if !check_export_visibility(&builder.semantic_model, &module_info).unwrap_or(false) {
-        return None;
-    }
-
     if let Some(export_type) = &module_info.export_type {
         match export_type {
             LuaType::TableConst(_) | LuaType::Def(_) => {
