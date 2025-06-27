@@ -930,11 +930,11 @@ mod tests {
                 ---@export
                 local export = {}
 
-    //             ---@enum MapName
-    //             export.MapName = {
-    //                 A = 1,
-    //                 B = 2,
-    //             }
+                ---@enum MapName
+                export.MapName = {
+                    A = 1,
+                    B = 2,
+                }
 
                 return export
             "#,

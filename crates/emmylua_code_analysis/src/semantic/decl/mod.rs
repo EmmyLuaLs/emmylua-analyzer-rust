@@ -1,11 +1,12 @@
 use std::collections::HashSet;
 
-use emmylua_parser::{LuaAstNode, LuaIndexExpr};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaSyntaxKind};
 use rowan::NodeOrToken;
 
 use crate::{
-    infer_node_semantic_decl, semantic::semantic_info::infer_token_semantic_decl, DbIndex,
-    LuaDeclId, LuaInferCache, LuaSemanticDeclId, LuaType, SemanticDeclLevel,
+    infer_node_semantic_decl, semantic::semantic_info::infer_token_semantic_decl, DbIndex, LuaDecl,
+    LuaDeclId, LuaInferCache, LuaSemanticDeclId, LuaType, ModuleInfo, SemanticDeclLevel,
+    SemanticModel,
 };
 
 pub fn enum_variable_is_param(
@@ -105,4 +106,45 @@ fn find_enum_origin(
         }
         _ => None,
     }
+}
+
+/// 解析 require 调用表达式并获取模块信息
+pub fn parse_require_module_info<'a>(
+    semantic_model: &'a SemanticModel,
+    decl: &LuaDecl,
+) -> Option<&'a ModuleInfo> {
+    let value_syntax_id = decl.get_value_syntax_id()?;
+    if value_syntax_id.get_kind() != LuaSyntaxKind::RequireCallExpr {
+        return None;
+    }
+
+    let node = semantic_model
+        .get_db()
+        .get_vfs()
+        .get_syntax_tree(&decl.get_file_id())
+        .and_then(|tree| {
+            let root = tree.get_red_root();
+            semantic_model
+                .get_db()
+                .get_decl_index()
+                .get_decl(&decl.get_id())
+                .and_then(|decl| decl.get_value_syntax_id())
+                .and_then(|syntax_id| syntax_id.to_node_from_root(&root))
+        })?;
+
+    let call_expr = LuaCallExpr::cast(node)?;
+    let arg_list = call_expr.get_args_list()?;
+    let first_arg = arg_list.get_args().next()?;
+    let require_path_type = semantic_model.infer_expr(first_arg.clone()).ok()?;
+    let module_path: String = match &require_path_type {
+        LuaType::StringConst(module_path) => module_path.as_ref().to_string(),
+        _ => {
+            return None;
+        }
+    };
+
+    semantic_model
+        .get_db()
+        .get_module_index()
+        .find_module(&module_path)
 }

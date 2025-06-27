@@ -6,7 +6,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    enum_variable_is_param, DiagnosticCode, InferFailReason, LuaMemberKey, LuaType, SemanticModel,
+    enum_variable_is_param, parse_require_module_info, DiagnosticCode, InferFailReason,
+    LuaExportScope, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticModel,
 };
 
 use super::{humanize_lint_type, Checker, DiagnosticContext};
@@ -63,8 +64,18 @@ fn check_index_expr(
         .infer_expr(index_expr.get_prefix_expr()?)
         .unwrap_or(LuaType::Unknown);
 
-    if !is_valid_prefix_type(&prefix_typ) {
-        return Some(());
+    if is_invalid_prefix_type(&prefix_typ) {
+        // 检查是否为 require 导入且具有 export 标记的变量
+        if matches!(code, DiagnosticCode::UndefinedField)
+            && matches!(prefix_typ, LuaType::TableConst(_))
+        {
+            // 如果是 require 导入且具有 export 标记的变量, 那么不应该跳过检查
+            if check_is_require_with_export(semantic_model, &prefix_typ, index_expr).is_none() {
+                return Some(());
+            }
+        } else {
+            return Some(());
+        }
     }
 
     let index_key = index_expr.get_index_key()?;
@@ -102,7 +113,7 @@ fn check_index_expr(
     Some(())
 }
 
-fn is_valid_prefix_type(typ: &LuaType) -> bool {
+fn is_invalid_prefix_type(typ: &LuaType) -> bool {
     let mut current_typ = typ;
     loop {
         match current_typ {
@@ -111,11 +122,11 @@ fn is_valid_prefix_type(typ: &LuaType) -> bool {
             | LuaType::Table
             | LuaType::TplRef(_)
             | LuaType::StrTplRef(_)
-            | LuaType::TableConst(_) => return false,
+            | LuaType::TableConst(_) => return true,
             LuaType::Instance(instance_typ) => {
                 current_typ = instance_typ.get_base();
             }
-            _ => return true,
+            _ => return false,
         }
     }
 }
@@ -438,4 +449,51 @@ fn check_enum_is_param(
         index_expr,
         prefix_typ,
     )
+}
+
+/// 检查变量是否为 require 导入且具有 export 标记
+fn check_is_require_with_export(
+    semantic_model: &SemanticModel,
+    _prefix_typ: &LuaType,
+    index_expr: &LuaIndexExpr,
+) -> Option<()> {
+    // 获取前缀表达式的语义信息
+    let prefix_expr = index_expr.get_prefix_expr()?;
+    let semantic_info = semantic_model.get_semantic_info(prefix_expr.syntax().clone().into())?;
+
+    // 检查是否是声明引用
+    let decl_id = match semantic_info.semantic_decl? {
+        LuaSemanticDeclId::LuaDecl(decl_id) => decl_id,
+        _ => return None,
+    };
+
+    // 获取声明
+    let decl = semantic_model
+        .get_db()
+        .get_decl_index()
+        .get_decl(&decl_id)?;
+
+    // 检查是否是 require 导入的模块
+    let module_info = parse_require_module_info(semantic_model, &decl)?;
+
+    // 检查模块是否有 export 标记
+    let property_owner_id = module_info.property_owner_id.clone()?;
+    let property = semantic_model
+        .get_db()
+        .get_property_index()
+        .get_property(&property_owner_id)?
+        .export
+        .as_ref()?;
+
+    // 如果是 namespace 类型的 export，需要检查是否在同一个命名空间
+    if property.scope == LuaExportScope::Namespace {
+        let type_index = semantic_model.get_db().get_type_index();
+        if type_index.get_file_namespace(&semantic_model.get_file_id())
+            != type_index.get_file_namespace(&module_info.file_id)
+        {
+            return None;
+        }
+    }
+
+    Some(())
 }
