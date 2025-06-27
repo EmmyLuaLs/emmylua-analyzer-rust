@@ -11,8 +11,8 @@ use super::{
     diagnostic_tags::analyze_diagnostic,
     field_or_operator_def_tags::{analyze_field, analyze_operator},
     property_tags::{
-        analyze_async, analyze_deprecated, analyze_nodiscard, analyze_source, analyze_version,
-        analyze_visibility,
+        analyze_async, analyze_deprecated, analyze_export, analyze_nodiscard, analyze_source,
+        analyze_version, analyze_visibility,
     },
     type_def_tags::{analyze_alias, analyze_class, analyze_enum, analyze_func_generic},
     type_ref_tags::{
@@ -103,6 +103,9 @@ pub fn analyze_tag(analyzer: &mut DocAnalyzer, tag: LuaDocTag) -> Option<()> {
         }
         LuaDocTag::Other(other) => {
             analyze_other(analyzer, other)?;
+        }
+        LuaDocTag::Export(export) => {
+            analyze_export(analyzer, export)?;
         }
         _ => {}
     }

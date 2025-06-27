@@ -2793,4 +2793,86 @@ Syntax(Chunk)@0..263
 
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_export_doc() {
+        let code = r#"
+        ---@export
+        local a = 1
+
+        ---@export namespace
+        local b = 2
+
+        ---@export global
+        local c = 3
+"#;
+
+        let result = r#"
+Syntax(Chunk)@0..137
+  Syntax(Block)@0..137
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..19
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagExport)@13..19
+        Token(TkTagExport)@13..19 "export"
+    Token(TkEndOfLine)@19..20 "\n"
+    Token(TkWhitespace)@20..28 "        "
+    Syntax(LocalStat)@28..39
+      Token(TkLocal)@28..33 "local"
+      Token(TkWhitespace)@33..34 " "
+      Syntax(LocalName)@34..35
+        Token(TkName)@34..35 "a"
+      Token(TkWhitespace)@35..36 " "
+      Token(TkAssign)@36..37 "="
+      Token(TkWhitespace)@37..38 " "
+      Syntax(LiteralExpr)@38..39
+        Token(TkInt)@38..39 "1"
+    Token(TkEndOfLine)@39..40 "\n"
+    Token(TkEndOfLine)@40..41 "\n"
+    Token(TkWhitespace)@41..49 "        "
+    Syntax(Comment)@49..69
+      Token(TkDocStart)@49..53 "---@"
+      Syntax(DocTagExport)@53..69
+        Token(TkTagExport)@53..59 "export"
+        Token(TkWhitespace)@59..60 " "
+        Token(TkName)@60..69 "namespace"
+    Token(TkEndOfLine)@69..70 "\n"
+    Token(TkWhitespace)@70..78 "        "
+    Syntax(LocalStat)@78..89
+      Token(TkLocal)@78..83 "local"
+      Token(TkWhitespace)@83..84 " "
+      Syntax(LocalName)@84..85
+        Token(TkName)@84..85 "b"
+      Token(TkWhitespace)@85..86 " "
+      Token(TkAssign)@86..87 "="
+      Token(TkWhitespace)@87..88 " "
+      Syntax(LiteralExpr)@88..89
+        Token(TkInt)@88..89 "2"
+    Token(TkEndOfLine)@89..90 "\n"
+    Token(TkEndOfLine)@90..91 "\n"
+    Token(TkWhitespace)@91..99 "        "
+    Syntax(Comment)@99..116
+      Token(TkDocStart)@99..103 "---@"
+      Syntax(DocTagExport)@103..116
+        Token(TkTagExport)@103..109 "export"
+        Token(TkWhitespace)@109..110 " "
+        Token(TkName)@110..116 "global"
+    Token(TkEndOfLine)@116..117 "\n"
+    Token(TkWhitespace)@117..125 "        "
+    Syntax(LocalStat)@125..136
+      Token(TkLocal)@125..130 "local"
+      Token(TkWhitespace)@130..131 " "
+      Syntax(LocalName)@131..132
+        Token(TkName)@131..132 "c"
+      Token(TkWhitespace)@132..133 " "
+      Token(TkAssign)@133..134 "="
+      Token(TkWhitespace)@134..135 " "
+      Syntax(LiteralExpr)@135..136
+        Token(TkInt)@135..136 "3"
+    Token(TkEndOfLine)@136..137 "\n"
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
 }

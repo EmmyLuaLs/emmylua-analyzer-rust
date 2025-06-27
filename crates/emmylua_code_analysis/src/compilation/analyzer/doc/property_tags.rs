@@ -1,12 +1,12 @@
-use crate::{LuaNoDiscard, LuaSignatureId};
+use crate::{LuaExport, LuaExportScope, LuaNoDiscard, LuaSignatureId};
 
 use super::{
     tags::{find_owner_closure, get_owner_id},
     DocAnalyzer,
 };
 use emmylua_parser::{
-    LuaDocDescriptionOwner, LuaDocTagDeprecated, LuaDocTagNodiscard, LuaDocTagSource,
-    LuaDocTagVersion, LuaDocTagVisibility,
+    LuaDocDescriptionOwner, LuaDocTagDeprecated, LuaDocTagExport, LuaDocTagNodiscard,
+    LuaDocTagSource, LuaDocTagVersion, LuaDocTagVisibility,
 };
 
 pub fn analyze_visibility(
@@ -107,6 +107,31 @@ pub fn analyze_async(analyzer: &mut DocAnalyzer) -> Option<()> {
         .get_mut(&signature_id)?;
 
     signature.is_async = true;
+
+    Some(())
+}
+
+pub fn analyze_export(analyzer: &mut DocAnalyzer, tag: LuaDocTagExport) -> Option<()> {
+    let owner_id = get_owner_id(analyzer)?;
+
+    let export_scope = if let Some(scope_text) = tag.get_export_scope() {
+        match scope_text.as_str() {
+            "namespace" => LuaExportScope::Namespace,
+            "global" => LuaExportScope::Global,
+            _ => LuaExportScope::Global, // 默认为 global
+        }
+    } else {
+        LuaExportScope::Global // 没有参数时默认为 global
+    };
+
+    let export = LuaExport {
+        scope: export_scope,
+    };
+
+    analyzer
+        .db
+        .get_property_index_mut()
+        .add_export(analyzer.file_id, owner_id, export);
 
     Some(())
 }
