@@ -1,9 +1,9 @@
 use emmylua_parser::{LuaAstNode, LuaNameExpr};
-use smol_str::SmolStr;
 
 use crate::{
     db_index::{DbIndex, LuaDeclOrMemberId},
-    LuaDecl, LuaDeclExtra, LuaFlowId, LuaInferCache, LuaMemberId, LuaType, LuaVarRefId, TypeOps,
+    semantic::narrow::infer_name_expr_narrow_type,
+    LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaType, TypeOps,
 };
 
 use super::{InferFailReason, InferResult};
@@ -33,17 +33,8 @@ pub fn infer_name_expr(
             .get_decl_index()
             .get_decl(&decl_id)
             .ok_or(InferFailReason::None)?;
-        let mut decl_type = get_decl_type(db, decl)?;
-        let var_ref_id = LuaVarRefId::DeclId(decl_id);
-        let flow_chain = db.get_flow_index().get_flow_chain(file_id, var_ref_id);
-        let root = name_expr.get_root();
-        if let Some(flow_chain) = flow_chain {
-            let flow_id = LuaFlowId::from_node(name_expr.syntax());
-            for type_assert in flow_chain.get_type_asserts(name_expr.get_position(), flow_id) {
-                decl_type = type_assert.tighten_type(db, cache, &root, decl_type)?;
-            }
-        }
-        Ok(decl_type)
+        let decl_type = get_decl_type(db, decl)?;
+        infer_name_expr_narrow_type(db, cache, name_expr, decl_id, decl_type)
     } else {
         infer_global_type(db, name)
     }
@@ -67,7 +58,6 @@ fn get_decl_type(db: &DbIndex, decl: &LuaDecl) -> InferResult {
 }
 
 fn infer_self(db: &DbIndex, cache: &mut LuaInferCache, name_expr: LuaNameExpr) -> InferResult {
-    let file_id = cache.get_file_id();
     let semantic_id =
         find_self_decl_or_member_id(db, cache, &name_expr).ok_or(InferFailReason::None)?;
     match semantic_id {
@@ -82,15 +72,15 @@ fn infer_self(db: &DbIndex, cache: &mut LuaInferCache, name_expr: LuaNameExpr) -
             }
 
             // let flow_id = LuaFlowId::from_node(name_expr.syntax());
-            let var_ref_id = LuaVarRefId::Name(SmolStr::new("self"));
-            let flow_chain = db.get_flow_index().get_flow_chain(file_id, var_ref_id);
-            let root = name_expr.get_root();
-            if let Some(flow_chain) = flow_chain {
-                let flow_id = LuaFlowId::from_node(name_expr.syntax());
-                for type_assert in flow_chain.get_type_asserts(name_expr.get_position(), flow_id) {
-                    decl_type = type_assert.tighten_type(db, cache, &root, decl_type)?;
-                }
-            }
+            // let var_ref_id = LuaVarRefId::Name(SmolStr::new("self"));
+            // let flow_chain = db.get_flow_index().get_flow_chain(file_id, var_ref_id);
+            // let root = name_expr.get_root();
+            // if let Some(flow_chain) = flow_chain {
+            //     let flow_id = LuaClosureId::from_node(name_expr.syntax());
+            //     for type_assert in flow_chain.get_type_asserts(name_expr.get_position(), flow_id) {
+            //         decl_type = type_assert.tighten_type(db, cache, &root, decl_type)?;
+            //     }
+            // }
 
             Ok(decl_type)
         }

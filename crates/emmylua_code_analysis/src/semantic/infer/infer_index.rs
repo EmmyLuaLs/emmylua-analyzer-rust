@@ -18,8 +18,8 @@ use crate::{
         type_check::{self, check_type_compact},
         InferGuard,
     },
-    InFiled, LuaFlowId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner,
-    LuaVarRefId, TypeOps,
+    InFiled, LuaClosureId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner,
+    TypeOps,
 };
 
 use super::{infer_expr, infer_name::infer_global_type, InferFailReason, InferResult};
@@ -110,29 +110,29 @@ fn infer_member_type_pass_flow(
         _ => {}
     }
 
-    let access_path = match index_expr.get_access_path() {
-        Some(path) => path,
-        None => return Ok(member_type.clone()),
-    };
-    let var_ref_id = LuaVarRefId::Name(SmolStr::new(&access_path));
-    let flow_id = LuaFlowId::from_node(index_expr.syntax());
-    let flow_chain = db
-        .get_flow_index()
-        .get_flow_chain(cache.get_file_id(), var_ref_id);
-    if let Some(flow_chain) = flow_chain {
-        let root = index_expr.get_root();
-        for type_assert in flow_chain.get_type_asserts(index_expr.get_position(), flow_id) {
-            let new_type = type_assert.tighten_type(db, cache, &root, member_type.clone())?;
-            if type_assert.is_reassign() && !allow_reassign {
-                // 允许仅去除 nil
-                if member_type.is_nullable() && !new_type.is_nullable() {
-                    member_type = new_type;
-                }
-                continue;
-            }
-            member_type = new_type;
-        }
-    }
+    // let access_path = match index_expr.get_access_path() {
+    //     Some(path) => path,
+    //     None => return Ok(member_type.clone()),
+    // };
+    // let var_ref_id = LuaVarRefId::Name(SmolStr::new(&access_path));
+    // let flow_id = LuaClosureId::from_node(index_expr.syntax());
+    // let flow_chain = db
+    //     .get_flow_index()
+    //     .get_flow_chain(cache.get_file_id(), var_ref_id);
+    // if let Some(flow_chain) = flow_chain {
+    //     let root = index_expr.get_root();
+    //     for type_assert in flow_chain.get_type_asserts(index_expr.get_position(), flow_id) {
+    //         let new_type = type_assert.tighten_type(db, cache, &root, member_type.clone())?;
+    //         if type_assert.is_reassign() && !allow_reassign {
+    //             // 允许仅去除 nil
+    //             if member_type.is_nullable() && !new_type.is_nullable() {
+    //                 member_type = new_type;
+    //             }
+    //             continue;
+    //         }
+    //         member_type = new_type;
+    //     }
+    // }
 
     Ok(member_type)
 }

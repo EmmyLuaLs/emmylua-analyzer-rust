@@ -8,6 +8,7 @@ mod reference;
 mod semantic_info;
 mod type_check;
 mod visibility;
+mod narrow;
 
 use std::cell::RefCell;
 use std::collections::HashMap;

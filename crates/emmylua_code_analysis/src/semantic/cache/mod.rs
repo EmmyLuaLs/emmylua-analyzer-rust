@@ -4,12 +4,13 @@ pub use cache_options::{CacheOptions, LuaAnalysisPhase};
 use emmylua_parser::LuaSyntaxId;
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{db_index::LuaType, FileId, LuaFunctionType};
+use crate::{db_index::LuaType, FileId, FlowId, LuaDeclId, LuaFunctionType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CacheKey {
     Expr(LuaSyntaxId),
     Call(LuaSyntaxId, Option<usize>, LuaType),
+    FlowNode(LuaDeclId, FlowId)
 }
 
 #[derive(Debug)]
