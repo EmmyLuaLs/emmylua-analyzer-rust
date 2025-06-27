@@ -10,7 +10,7 @@ pub struct LuaCommonProperty {
     pub version_conds: Option<Box<Vec<LuaVersionCondition>>>,
     pub see_content: Option<Box<String>>,
     pub other_content: Option<Box<String>>,
-    pub export: Option<Box<LuaExport>>,
+    pub export: Option<LuaExport>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

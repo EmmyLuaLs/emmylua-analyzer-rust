@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
-    parse_require_module_info, LuaDecl, LuaDeclExtra, LuaExportScope, LuaMemberId, LuaMemberOwner,
-    LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
+    check_export_visibility, parse_require_module_info, LuaDecl, LuaDeclExtra, LuaMemberId,
+    LuaMemberOwner, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaDocFieldKey, LuaDocObjectFieldKey, LuaExpr,
@@ -704,21 +704,8 @@ fn check_ref_is_require_def(
 /// 检查是否是导入语句
 fn check_import_decl(semantic_model: &SemanticModel, decl: &LuaDecl) -> Option<bool> {
     let module_info = parse_require_module_info(semantic_model, decl)?;
-
-    let property_owner_id = module_info.property_owner_id.clone()?;
-    let property = semantic_model
-        .get_db()
-        .get_property_index()
-        .get_property(&property_owner_id)?
-        .export
-        .as_ref()?;
-    if property.scope == LuaExportScope::Namespace {
-        let type_index = semantic_model.get_db().get_type_index();
-        if type_index.get_file_namespace(&semantic_model.get_file_id())
-            != type_index.get_file_namespace(&module_info.file_id)
-        {
-            return None;
-        }
+    if check_export_visibility(semantic_model, &module_info).unwrap_or(false) {
+        return Some(true);
     }
-    Some(true)
+    None
 }

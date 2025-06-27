@@ -202,7 +202,9 @@ impl LuaPropertyIndex {
         export: property::LuaExport,
     ) -> Option<()> {
         let property = self.get_or_create_property(owner_id.clone())?;
-        property.export = Some(Box::new(export));
+        property.export = Some(LuaExport {
+            scope: export.scope,
+        });
 
         self.in_filed_owner
             .entry(file_id)

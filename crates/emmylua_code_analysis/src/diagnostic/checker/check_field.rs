@@ -6,8 +6,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    enum_variable_is_param, parse_require_module_info, DiagnosticCode, InferFailReason,
-    LuaExportScope, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticModel,
+    check_export_visibility, enum_variable_is_param, parse_require_module_info, DiagnosticCode,
+    InferFailReason, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticModel,
 };
 
 use super::{humanize_lint_type, Checker, DiagnosticContext};
@@ -66,9 +66,7 @@ fn check_index_expr(
 
     if is_invalid_prefix_type(&prefix_typ) {
         // 检查是否为 require 导入且具有 export 标记的变量
-        if matches!(code, DiagnosticCode::UndefinedField)
-            && matches!(prefix_typ, LuaType::TableConst(_))
-        {
+        if matches!(prefix_typ, LuaType::TableConst(_)) {
             // 如果是 require 导入且具有 export 标记的变量, 那么不应该跳过检查
             if check_is_require_with_export(semantic_model, &prefix_typ, index_expr).is_none() {
                 return Some(());
@@ -476,24 +474,9 @@ fn check_is_require_with_export(
     // 检查是否是 require 导入的模块
     let module_info = parse_require_module_info(semantic_model, &decl)?;
 
-    // 检查模块是否有 export 标记
-    let property_owner_id = module_info.property_owner_id.clone()?;
-    let property = semantic_model
-        .get_db()
-        .get_property_index()
-        .get_property(&property_owner_id)?
-        .export
-        .as_ref()?;
-
-    // 如果是 namespace 类型的 export，需要检查是否在同一个命名空间
-    if property.scope == LuaExportScope::Namespace {
-        let type_index = semantic_model.get_db().get_type_index();
-        if type_index.get_file_namespace(&semantic_model.get_file_id())
-            != type_index.get_file_namespace(&module_info.file_id)
-        {
-            return None;
-        }
+    if check_export_visibility(semantic_model, &module_info).unwrap_or(false) {
+        return Some(());
     }
 
-    Some(())
+    None
 }
