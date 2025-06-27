@@ -5,7 +5,10 @@ use std::marker::PhantomData;
 
 use rowan::{TextRange, TextSize, WalkEvent};
 
-use crate::kind::{LuaSyntaxKind, LuaTokenKind};
+use crate::{
+    kind::{LuaSyntaxKind, LuaTokenKind},
+    LuaAstPtr,
+};
 
 use super::LuaSyntaxId;
 pub use super::{
@@ -94,8 +97,19 @@ pub trait LuaAstNode {
         LuaSyntaxId::from_node(self.syntax())
     }
 
+    fn get_text(&self) -> String {
+        format!("{}", self.syntax().text())
+    }
+
     fn dump(&self) -> String {
         format!("{:#?}", self.syntax())
+    }
+
+    fn to_ptr(&self) -> LuaAstPtr<Self>
+    where
+        Self: Sized,
+    {
+        LuaAstPtr::new(&self)
     }
 }
 

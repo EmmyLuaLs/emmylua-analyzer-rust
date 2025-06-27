@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{LuaFlowId, LuaSignatureId, LuaType, LuaVarRefId};
-use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaCallArgList, LuaClosureExpr, LuaParamList, LuaTokenKind,
-};
+use emmylua_code_analysis::{LuaSignatureId, LuaType};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaCallArgList, LuaClosureExpr, LuaParamList};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionTriggerKind};
 
 use crate::handlers::completion::{
@@ -150,25 +148,25 @@ fn add_local_env(
             continue;
         }
 
-        let flow_id = LuaFlowId::from_node(node.syntax());
-        let var_ref_id = LuaVarRefId::DeclId(*decl_id);
-        // 类型缩窄
-        if let Some(chain) = builder
-            .semantic_model
-            .get_db()
-            .get_flow_index()
-            .get_flow_chain(file_id, var_ref_id)
-        {
-            let semantic_model = &builder.semantic_model;
-            let db = semantic_model.get_db();
-            let root = semantic_model.get_root().syntax();
-            let config = semantic_model.get_config();
-            for type_assert in chain.get_type_asserts(node.get_position(), flow_id) {
-                typ = type_assert
-                    .tighten_type(db, &mut config.borrow_mut(), root, typ)
-                    .unwrap_or(LuaType::Unknown);
-            }
-        }
+        // let flow_id = LuaClosureId::from_node(node.syntax());
+        // let var_ref_id = LuaVarRefId::DeclId(*decl_id);
+        // // 类型缩窄
+        // if let Some(chain) = builder
+        //     .semantic_model
+        //     .get_db()
+        //     .get_flow_index()
+        //     .get_flow_chain(file_id, var_ref_id)
+        // {
+        //     let semantic_model = &builder.semantic_model;
+        //     let db = semantic_model.get_db();
+        //     let root = semantic_model.get_root().syntax();
+        //     let config = semantic_model.get_config();
+        //     for type_assert in chain.get_type_asserts(node.get_position(), flow_id) {
+        //         typ = type_assert
+        //             .tighten_type(db, &mut config.borrow_mut(), root, typ)
+        //             .unwrap_or(LuaType::Unknown);
+        //     }
+        // }
 
         duplicated_name.insert(name.clone());
         add_decl_completion(builder, decl_id.clone(), &name, &typ);
