@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use emmylua_code_analysis::{LuaSignatureId, LuaType};
-use emmylua_parser::{LuaAst, LuaAstNode, LuaCallArgList, LuaClosureExpr, LuaParamList};
+use emmylua_parser::{
+    LuaAst, LuaAstNode, LuaCallArgList, LuaClosureExpr, LuaParamList, LuaTokenKind,
+};
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionTriggerKind};
 
 use crate::handlers::completion::{
