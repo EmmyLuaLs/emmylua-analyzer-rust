@@ -22,6 +22,7 @@ mod missing_fields;
 mod need_check_nil;
 mod param_type_check;
 mod redefined_local;
+mod require_module_visibility;
 mod return_type_mismatch;
 mod syntax_error;
 mod unbalanced_assignments;
@@ -98,6 +99,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
         semantic_model,
     );
     run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, semantic_model);
+    run_check::<require_module_visibility::RequireModuleVisibilityChecker>(context, semantic_model);
 
     run_check::<code_style::non_literal_expressions_in_assert::NonLiteralExpressionsInAssertChecker>(
         context,

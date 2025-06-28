@@ -261,3 +261,7 @@ Cannot use `...` outside a vararg function.:
   en: "type recursion"
   zh_CN: "类型递归"
   zh_HK: "類型遞歸"
+"Module '%{module}' is not visible. It has @export restrictions.":
+  en: "Module '%{module}' is not visible. It has @export restrictions."
+  zh_CN: "模块 '%{module}' 不可见。它有 @export 限制。"
+  zh_HK: "模組 '%{module}' 不可見。它有 @export 限制。"

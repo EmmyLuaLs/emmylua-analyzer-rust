@@ -94,6 +94,8 @@ pub enum DiagnosticCode {
     GenericConstraintMismatch,
     /// cast-type-mismatch
     CastTypeMismatch,
+    /// require-module-not-visible
+    RequireModuleNotVisible,
 
     #[serde(other)]
     None,

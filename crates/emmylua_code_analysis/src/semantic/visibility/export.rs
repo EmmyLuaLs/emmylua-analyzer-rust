@@ -1,25 +1,16 @@
-use crate::{LuaExportScope, ModuleInfo, SemanticModel};
+use crate::{LuaExport, LuaExportScope, ModuleInfo, SemanticModel};
 
+/// 检查模块是否可见, 如果没有 export 标记, 视为可见
 pub fn check_export_visibility(
     semantic_model: &SemanticModel,
     module_info: &ModuleInfo,
 ) -> Option<bool> {
     // 检查模块是否有 export 标记
-    let property_owner_id = module_info.property_owner_id.clone()?;
-    let common_property = semantic_model
-        .get_db()
-        .get_property_index()
-        .get_property(&property_owner_id);
-    let Some(common_property) = common_property else {
+    let Some(export) = get_export(semantic_model, module_info) else {
         return Some(true);
     };
 
-    let Some(property) = common_property.export.as_ref() else {
-        // 没有 export 标记, 视为可见
-        return Some(true);
-    };
-
-    match property.scope {
+    match export.scope {
         LuaExportScope::Namespace => {
             let type_index = semantic_model.get_db().get_type_index();
             let module_namespace = type_index.get_file_namespace(&module_info.file_id)?;
@@ -43,4 +34,20 @@ pub fn check_export_visibility(
     }
 
     Some(false)
+}
+
+fn get_export<'a>(
+    semantic_model: &'a SemanticModel,
+    module_info: &ModuleInfo,
+) -> Option<&'a LuaExport> {
+    // 检查模块是否有 export 标记
+    let property_owner_id = module_info.property_owner_id.clone()?;
+    let export = semantic_model
+        .get_db()
+        .get_property_index()
+        .get_property(&property_owner_id)?
+        .export
+        .as_ref()?;
+
+    Some(export)
 }
