@@ -1066,4 +1066,39 @@ mod tests {
             vec![],
         ));
     }
+
+    #[test]
+    fn test_issue_558() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "AAA.lua",
+            r#"
+                ---@class ability
+                ---@field t abilityType
+
+                ---@enum (key) abilityType
+                local abilityType = {
+                    passive = 1,
+                }
+
+                ---@param a ability
+                function test(a)
+
+                end
+
+            "#,
+        );
+        assert!(ws.check_completion(
+            r#"
+            test({
+                t = <??>
+            })
+            "#,
+            vec![VirtualCompletionItem {
+                label: "\"passive\"".to_string(),
+                kind: CompletionItemKind::ENUM_MEMBER,
+                ..Default::default()
+            },],
+        ));
+    }
 }
