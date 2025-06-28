@@ -113,9 +113,9 @@ fn check_name_expr(
         check_table_expr(
             context,
             semantic_model,
+            &expr,
             source_type.as_ref(),
             Some(&value_type),
-            &expr,
         );
     }
 
@@ -149,9 +149,9 @@ fn check_index_expr(
         check_table_expr(
             context,
             semantic_model,
+            &expr,
             source_type.as_ref(),
             Some(&value_type),
-            &expr,
         );
     }
     Some(())
@@ -192,35 +192,35 @@ fn check_local_stat(
             check_table_expr(
                 context,
                 semantic_model,
+                &expr,
                 Some(&var_type),
                 Some(&value_type),
-                &expr,
             );
         }
     }
     Some(())
 }
 
-fn check_table_expr(
+pub fn check_table_expr(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
+    table_expr: &LuaExpr,
     table_type: Option<&LuaType>, // 记录的类型
     expr_type: Option<&LuaType>,  // 实际表达式推导出的类型
-    table_expr: &LuaExpr,
-) -> Option<()> {
+) -> Option<bool> {
     // 需要进行一些过滤
     if table_type == expr_type {
-        return Some(());
+        return Some(false);
     }
     let table_type = table_type?;
     match table_type {
-        LuaType::Def(_) => return Some(()),
+        LuaType::Def(_) => return Some(false),
         _ => {}
     }
     if let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) {
-        check_table_expr_content(context, semantic_model, table_type, &table_expr);
+        return check_table_expr_content(context, semantic_model, table_type, &table_expr);
     }
-    Some(())
+    Some(false)
 }
 
 // 处理 value_expr 是 TableExpr 的情况, 但不会处理 `local a = { x = 1 }, local v = a`
@@ -229,16 +229,17 @@ fn check_table_expr_content(
     semantic_model: &SemanticModel,
     table_type: &LuaType,
     table_expr: &LuaTableExpr,
-) -> Option<()> {
+) -> Option<bool> {
     const MAX_CHECK_COUNT: usize = 250;
     let mut check_count = 0;
+    let mut has_diagnostic = false;
 
     let fields = table_expr.get_fields().collect::<Vec<_>>();
 
     for (idx, field) in fields.iter().enumerate() {
         check_count += 1;
         if check_count > MAX_CHECK_COUNT {
-            return Some(());
+            return Some(has_diagnostic);
         }
         let Some(value_expr) = field.get_value_expr() else {
             continue;
@@ -255,12 +256,14 @@ fn check_table_expr_content(
                     // 解开可变参数
                     let expr_types =
                         semantic_model.infer_expr_list_types(&vec![value_expr.clone()], None);
-                    check_table_last_variadic_type(
+                    if let Some(result) = check_table_last_variadic_type(
                         context,
                         semantic_model,
                         table_type,
                         &expr_types,
-                    );
+                    ) {
+                        has_diagnostic = has_diagnostic || result;
+                    }
                     continue;
                 }
                 _ => {}
@@ -283,7 +286,11 @@ fn check_table_expr_content(
         if source_type.is_table() || source_type.is_custom_type() {
             if let Some(table_expr) = LuaTableExpr::cast(value_expr.syntax().clone()) {
                 // 检查子表
-                check_table_expr_content(context, semantic_model, &source_type, &table_expr);
+                if let Some(result) =
+                    check_table_expr_content(context, semantic_model, &source_type, &table_expr)
+                {
+                    has_diagnostic = has_diagnostic || result;
+                }
                 continue;
             }
         }
@@ -293,17 +300,19 @@ fn check_table_expr_content(
             _ => false,
         };
 
-        check_assign_type_mismatch(
+        if let Some(result) = check_assign_type_mismatch(
             context,
             semantic_model,
             field.get_range(),
             Some(&source_type),
             &expr_type,
             allow_nil,
-        );
+        ) {
+            has_diagnostic = has_diagnostic || result;
+        }
     }
 
-    Some(())
+    Some(has_diagnostic)
 }
 
 fn check_table_last_variadic_type(
@@ -311,7 +320,9 @@ fn check_table_last_variadic_type(
     semantic_model: &SemanticModel,
     table_type: &LuaType,
     expr_types: &[(LuaType, TextRange)],
-) -> Option<()> {
+) -> Option<bool> {
+    let mut has_diagnostic = false;
+
     for (idx, (expr_type, range)) in expr_types.iter().enumerate() {
         // 此时的值必然是从下标 1 开始递增的
         let member_key = LuaMemberKey::Integer(idx as i64 + 1);
@@ -328,16 +339,18 @@ fn check_table_last_variadic_type(
             expr_type.clone()
         };
 
-        check_assign_type_mismatch(
+        if let Some(result) = check_assign_type_mismatch(
             context,
             semantic_model,
             *range,
             Some(&source_type),
             &expr_type,
             false,
-        );
+        ) {
+            has_diagnostic = has_diagnostic || result;
+        }
     }
-    Some(())
+    Some(has_diagnostic)
 }
 
 fn check_assign_type_mismatch(
@@ -347,28 +360,28 @@ fn check_assign_type_mismatch(
     source_type: Option<&LuaType>,
     value_type: &LuaType,
     allow_nil: bool,
-) -> Option<()> {
+) -> Option<bool> {
     let source_type = source_type.unwrap_or(&LuaType::Any);
     // 如果一致, 则不进行类型检查
     if source_type == value_type {
-        return Some(());
+        return Some(false);
     }
 
     // 某些情况下我们应允许可空, 例如: boolean[]
     if allow_nil && value_type.is_nullable() {
-        return Some(());
+        return Some(false);
     }
 
     match (&source_type, &value_type) {
         // 如果源类型是定义类型, 则仅在目标类型是定义类型或引用类型时进行类型检查
         (LuaType::Def(_), LuaType::Def(_) | LuaType::Ref(_)) => {}
-        (LuaType::Def(_), _) => return Some(()),
+        (LuaType::Def(_), _) => return Some(false),
         // 此时检查交给 table_field
-        (LuaType::Ref(_) | LuaType::Tuple(_), LuaType::TableConst(_)) => return Some(()),
-        (LuaType::Nil, _) => return Some(()),
+        (LuaType::Ref(_) | LuaType::Tuple(_), LuaType::TableConst(_)) => return Some(false),
+        (LuaType::Nil, _) => return Some(false),
         (LuaType::Ref(_), LuaType::Instance(instance)) => {
             if instance.get_base().is_table() {
-                return Some(());
+                return Some(false);
             }
         }
         _ => {}
@@ -384,8 +397,9 @@ fn check_assign_type_mismatch(
             &value_type,
             result,
         );
+        return Some(true);
     }
-    Some(())
+    Some(false)
 }
 
 fn add_type_check_diagnostic(

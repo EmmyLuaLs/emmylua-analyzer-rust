@@ -922,4 +922,30 @@ return t
         "#
         ));
     }
+
+    #[test]
+    fn test_param_tbale() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class ability
+                ---@field t abilityType
+
+                ---@enum (key) abilityType
+                local abilityType = {
+                    passive = 1,
+                }
+
+                ---@param a ability
+                function test(a)
+
+                end
+
+                test({
+                    t = ""
+                })
+        "#
+        ));
+    }
 }
