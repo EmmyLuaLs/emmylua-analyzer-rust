@@ -1,6 +1,6 @@
 use emmylua_parser::{LuaVersionCondition, LuaVersionNumber};
 
-use crate::{db_index::LuaType, FileId, LuaSemanticDeclId};
+use crate::{db_index::LuaType, DbIndex, FileId, LuaExport, LuaSemanticDeclId};
 
 use super::{module_node::ModuleNodeId, workspace::WorkspaceId};
 
@@ -35,5 +35,27 @@ impl ModuleInfo {
         }
 
         true
+    }
+
+    pub fn is_export(&self, db: &DbIndex) -> bool {
+        let Some(property_owner_id) = &self.property_owner_id else {
+            return false;
+        };
+
+        db.get_property_index()
+            .get_property(property_owner_id)
+            .and_then(|property| property.export.as_ref())
+            .is_some()
+    }
+
+    pub fn get_export<'a>(&self, db: &'a DbIndex) -> Option<&'a LuaExport> {
+        let property_owner_id = self.property_owner_id.as_ref()?;
+        let export = db
+            .get_property_index()
+            .get_property(property_owner_id)?
+            .export
+            .as_ref()?;
+
+        Some(export)
     }
 }

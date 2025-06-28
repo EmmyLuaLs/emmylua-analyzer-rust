@@ -8,27 +8,19 @@ mod test {
         ws.def_file(
             "A.lua",
             r#"
-            ---@export
-            local A = {}
 
-            return A
+            ---@export
+            return {
+               newField = 1           
+            }
         "#,
         );
 
         ws.def(
             r#"
             local A = require("A")
-            A.newField = 1
+            A.newField = 2
         "#,
         );
-
-        ws.def(
-            r#"
-            E = require("A").newField
-            
-        "#,
-        );
-        let res = ws.expr_ty("E");
-        dbg!(&res);
     }
 }

@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests {
 
-    use std::{ops::Deref, sync::Arc};
-
     use emmylua_code_analysis::EmmyrcFilenameConvention;
     use lsp_types::{CompletionItemKind, CompletionTriggerKind};
 
@@ -894,9 +892,9 @@ mod tests {
     #[test]
     fn test_auto_require() {
         let mut ws = ProviderVirtualWorkspace::new();
-        let mut emmyrc = ws.analysis.emmyrc.deref().clone();
+        let mut emmyrc = ws.get_emmyrc();
         emmyrc.completion.auto_require_naming_convention = EmmyrcFilenameConvention::KeepClass;
-        ws.analysis.update_config(Arc::new(emmyrc));
+        ws.update_emmyrc(emmyrc);
         ws.def_file(
             "map.lua",
             r#"
@@ -921,9 +919,6 @@ mod tests {
     #[test]
     fn test_auto_require_table_field() {
         let mut ws = ProviderVirtualWorkspace::new();
-        let mut emmyrc = ws.analysis.emmyrc.deref().clone();
-        emmyrc.completion.auto_require_naming_convention = EmmyrcFilenameConvention::KeepClass;
-        ws.analysis.update_config(Arc::new(emmyrc));
         ws.def_file(
             "aaaa.lua",
             r#"
@@ -1047,6 +1042,28 @@ mod tests {
                 ..Default::default()
             },],
             CompletionTriggerKind::INVOKED,
+        ));
+    }
+
+    #[test]
+    fn test_auto_require_field_1() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        // 没有 export 标记, 不允许子字段自动导入
+        ws.def_file(
+            "AAA.lua",
+            r#"
+                local function map()
+                end
+                return {
+                    map = map,
+                }
+            "#,
+        );
+        assert!(ws.check_completion(
+            r#"
+                map<??>
+            "#,
+            vec![],
         ));
     }
 }

@@ -127,6 +127,14 @@ fn try_add_member_completion_items(
     position: Position,
     completions: &mut Vec<CompletionItem>,
 ) -> Option<()> {
+    // 模块必须要有 export 标记
+    if module_info
+        .get_export(builder.semantic_model.get_db())
+        .is_none()
+    {
+        return None;
+    };
+
     if let Some(export_type) = &module_info.export_type {
         match export_type {
             LuaType::TableConst(_) | LuaType::Def(_) => {

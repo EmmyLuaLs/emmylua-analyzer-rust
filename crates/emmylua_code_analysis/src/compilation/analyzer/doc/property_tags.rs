@@ -1,12 +1,14 @@
-use crate::{LuaExport, LuaExportScope, LuaNoDiscard, LuaSignatureId};
+use crate::{
+    LuaDeclId, LuaExport, LuaExportScope, LuaNoDiscard, LuaSemanticDeclId, LuaSignatureId,
+};
 
 use super::{
     tags::{find_owner_closure, get_owner_id},
     DocAnalyzer,
 };
 use emmylua_parser::{
-    LuaDocDescriptionOwner, LuaDocTagDeprecated, LuaDocTagExport, LuaDocTagNodiscard,
-    LuaDocTagSource, LuaDocTagVersion, LuaDocTagVisibility,
+    LuaAst, LuaAstNode, LuaDocDescriptionOwner, LuaDocTagDeprecated, LuaDocTagExport,
+    LuaDocTagNodiscard, LuaDocTagSource, LuaDocTagVersion, LuaDocTagVisibility, LuaTableExpr,
 };
 
 pub fn analyze_visibility(
@@ -112,7 +114,17 @@ pub fn analyze_async(analyzer: &mut DocAnalyzer) -> Option<()> {
 }
 
 pub fn analyze_export(analyzer: &mut DocAnalyzer, tag: LuaDocTagExport) -> Option<()> {
-    let owner_id = get_owner_id(analyzer)?;
+    let owner = analyzer.comment.get_owner()?;
+    let owner_id = match owner {
+        LuaAst::LuaReturnStat(return_stat) => {
+            let return_table_expr = return_stat.child::<LuaTableExpr>()?;
+            LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
+                analyzer.file_id,
+                return_table_expr.get_position(),
+            ))
+        }
+        _ => get_owner_id(analyzer)?,
+    };
 
     let export_scope = if let Some(scope_text) = tag.get_export_scope() {
         match scope_text.as_str() {

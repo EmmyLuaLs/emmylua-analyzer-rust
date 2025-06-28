@@ -583,7 +583,7 @@ fn handle_name_node(
                 .get_decl_index()
                 .get_decl(&decl_id)?;
             let decl_type = semantic_model.get_type(decl_id.into());
-            if let Some(true) = check_import_decl(semantic_model, &decl) {
+            if let Some(true) = check_require_decl(semantic_model, &decl) {
                 builder.push_with_modifier(
                     name_token.syntax(),
                     SemanticTokenType::CLASS,
@@ -706,7 +706,7 @@ fn check_ref_is_require_def(
 }
 
 /// 检查是否是导入语句
-fn check_import_decl(semantic_model: &SemanticModel, decl: &LuaDecl) -> Option<bool> {
+fn check_require_decl(semantic_model: &SemanticModel, decl: &LuaDecl) -> Option<bool> {
     let module_info = parse_require_module_info(semantic_model, decl)?;
     if check_export_visibility(semantic_model, &module_info).unwrap_or(false) {
         return Some(true);

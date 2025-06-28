@@ -68,7 +68,7 @@ fn check_index_expr(
     if is_invalid_prefix_type(&prefix_typ) {
         if matches!(prefix_typ, LuaType::TableConst(_)) {
             // 如果导入了被 @export 标记的表常量, 那么不应该跳过检查
-            module_info = check_import_table_const(semantic_model, index_expr);
+            module_info = check_require_table_const_with_export(semantic_model, index_expr);
             if module_info.is_none() {
                 return Some(());
             }
@@ -488,7 +488,7 @@ fn check_enum_is_param(
 }
 
 /// 检查导入的表常量
-fn check_import_table_const<'a>(
+fn check_require_table_const_with_export<'a>(
     semantic_model: &'a SemanticModel,
     index_expr: &LuaIndexExpr,
 ) -> Option<&'a ModuleInfo> {
@@ -508,5 +508,9 @@ fn check_import_table_const<'a>(
         .get_decl_index()
         .get_decl(&decl_id)?;
 
-    parse_require_module_info(semantic_model, &decl)
+    let module_info = parse_require_module_info(semantic_model, &decl)?;
+    if module_info.is_export(semantic_model.get_db()) {
+        return Some(module_info);
+    }
+    None
 }

@@ -1,4 +1,6 @@
-use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, VirtualUrlGenerator};
+use std::{ops::Deref, sync::Arc};
+
+use emmylua_code_analysis::{EmmyLuaAnalysis, Emmyrc, FileId, VirtualUrlGenerator};
 use lsp_types::{
     CodeActionResponse, CompletionItemKind, CompletionResponse, CompletionTriggerKind,
     GotoDefinitionResponse, Hover, HoverContents, InlayHint, MarkupContent, Position,
@@ -102,6 +104,14 @@ impl ProviderVirtualWorkspace {
             .update_file_by_uri(&uri, Some(content.to_string()))
             .unwrap();
         file_id
+    }
+
+    pub fn get_emmyrc(&self) -> Emmyrc {
+        self.analysis.emmyrc.deref().clone()
+    }
+
+    pub fn update_emmyrc(&mut self, emmyrc: Emmyrc) {
+        self.analysis.update_config(Arc::new(emmyrc));
     }
 
     /// 处理文件内容
