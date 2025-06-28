@@ -470,22 +470,12 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "key".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "constructor".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
                     label: "exact".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "meta".to_string(),
+                    label: "constructor".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -500,22 +490,12 @@ mod tests {
             "#,
             vec![
                 VirtualCompletionItem {
-                    label: "key".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "constructor".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
                     label: "exact".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "meta".to_string(),
+                    label: "constructor".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -525,8 +505,8 @@ mod tests {
 
         assert!(ws.check_completion_with_kind(
             r#"
-            ---@class (partial, <??>) C
-            ---@field a string
+            ---@enum (<??>) C
+
             "#,
             vec![
                 VirtualCompletionItem {
@@ -535,17 +515,12 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "constructor".to_string(),
+                    label: "partial".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "exact".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "meta".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
