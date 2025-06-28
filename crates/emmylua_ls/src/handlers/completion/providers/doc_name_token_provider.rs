@@ -38,6 +38,9 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         DocCompletionExpected::Using => {
             add_tag_using_completion(builder);
         }
+        DocCompletionExpected::Export => {
+            add_tag_export_completion(builder);
+        }
     }
 
     builder.stop_here();
@@ -74,6 +77,7 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
                 }
                 LuaTokenKind::TkTagNamespace => Some(DocCompletionExpected::Namespace),
                 LuaTokenKind::TkTagUsing => Some(DocCompletionExpected::Using),
+                LuaTokenKind::TkTagExport => Some(DocCompletionExpected::Export),
                 LuaTokenKind::TkComma => {
                     let parent = left_token.parent()?;
                     match parent.kind().into() {
@@ -122,6 +126,7 @@ enum DocCompletionExpected {
     ClassAttr,
     Namespace,
     Using,
+    Export,
 }
 
 fn add_tag_param_name_completion(builder: &mut CompletionBuilder) -> Option<()> {
@@ -301,6 +306,19 @@ fn add_tag_using_completion(builder: &mut CompletionBuilder) {
             kind: Some(lsp_types::CompletionItemKind::MODULE),
             sort_text: Some(format!("{:03}", sorted_index)),
             insert_text: Some(format!("{}", namespace)),
+            ..Default::default()
+        };
+        builder.add_completion_item(completion_item);
+    }
+}
+
+fn add_tag_export_completion(builder: &mut CompletionBuilder) {
+    let key = vec!["namespace", "global"];
+    for (sorted_index, key) in key.iter().enumerate() {
+        let completion_item = CompletionItem {
+            label: key.to_string(),
+            kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+            sort_text: Some(format!("{:03}", sorted_index)),
             ..Default::default()
         };
         builder.add_completion_item(completion_item);

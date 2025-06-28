@@ -384,6 +384,11 @@
           "description": "cast-type-mismatch",
           "type": "string",
           "const": "cast-type-mismatch"
+        },
+        {
+          "description": "require-module-not-visible",
+          "type": "string",
+          "const": "require-module-not-visible"
         }
       ]
     },

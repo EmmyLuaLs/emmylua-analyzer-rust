@@ -312,6 +312,10 @@ fn build_node_semantic_token(
             let name = doc_using.get_name_token()?;
             builder.push(name.syntax(), SemanticTokenType::NAMESPACE);
         }
+        LuaAst::LuaDocTagExport(doc_export) => {
+            let name = doc_export.get_name_token()?;
+            builder.push(name.syntax(), SemanticTokenType::NAMESPACE);
+        }
         LuaAst::LuaParamName(param_name) => {
             let name = param_name.get_name_token()?;
             if name.get_name_text() == "self" {
