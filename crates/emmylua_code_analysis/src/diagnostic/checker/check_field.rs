@@ -317,23 +317,38 @@ fn is_valid_member(
             }
             if members.is_empty() {
                 // 当没有任何成员信息且是 enum 类型时, 需要检查参数是否为自己
-                if let LuaType::Ref(id) | LuaType::Def(id) = prefix_type {
-                    if let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(&id)
-                    {
-                        if decl.is_enum() {
-                            if key_types.iter().any(|typ| match typ {
-                                LuaType::Ref(key_id) | LuaType::Def(key_id) => id == *key_id,
-                                _ => false,
-                            }) {
-                                return Some(());
-                            }
-                        }
-                    }
+                if check_enum_self_reference(semantic_model, &prefix_type, &key_types).is_some() {
+                    return Some(());
                 }
+            }
+        } else {
+            if check_enum_self_reference(semantic_model, &prefix_type, &key_types).is_some() {
+                return Some(());
             }
         }
     }
 
+    None
+}
+
+/// 检查枚举类型的自引用
+fn check_enum_self_reference(
+    semantic_model: &SemanticModel,
+    prefix_type: &LuaType,
+    key_types: &HashSet<LuaType>,
+) -> Option<()> {
+    if let LuaType::Ref(id) | LuaType::Def(id) = prefix_type {
+        if let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(&id) {
+            if decl.is_enum() {
+                if key_types.iter().any(|typ| match typ {
+                    LuaType::Ref(key_id) | LuaType::Def(key_id) => *id == *key_id,
+                    _ => false,
+                }) {
+                    return Some(());
+                }
+            }
+        }
+    }
     None
 }
 

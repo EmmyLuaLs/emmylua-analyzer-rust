@@ -2,8 +2,11 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexKey, LuaTableExpr
 
 use crate::{
     infer_expr,
-    semantic::{infer::InferResult, member::find_members},
-    DbIndex, InFiled, InferFailReason, LuaInferCache, LuaType,
+    semantic::{
+        infer::InferResult,
+        member::{find_members, find_members_with_key},
+    },
+    DbIndex, InFiled, InferFailReason, LuaInferCache, LuaMemberKey, LuaType,
 };
 
 pub fn infer_setmetatable_call(
@@ -55,20 +58,19 @@ fn meta_type_contain_table(
     meta_type: LuaType,
     table_expr: LuaTableExpr,
 ) -> Option<LuaType> {
-    let meta_members = find_members(db, &meta_type)?;
+    let meta_members =
+        find_members_with_key(db, &meta_type, LuaMemberKey::Name("__index".into()), true)?;
     for member in meta_members {
-        if member.key.get_name() == Some("__index") {
-            let index_members = find_members(db, &member.typ)?;
-            let table_type = infer_expr(db, cache, LuaExpr::TableExpr(table_expr.clone())).ok()?;
-            let table_members = find_members(db, &table_type)?;
-            // 如果 index_members 包含了 table_members 中的所有成员，则返回 meta_type
-            if table_members.iter().all(|table_member| {
-                index_members
-                    .iter()
-                    .any(|index_member| index_member.key.to_path() == table_member.key.to_path())
-            }) {
-                return Some(meta_type);
-            }
+        let index_members = find_members(db, &member.typ)?;
+        let table_type = infer_expr(db, cache, LuaExpr::TableExpr(table_expr.clone())).ok()?;
+        let table_members = find_members(db, &table_type)?;
+        // 如果 index_members 包含了 table_members 中的所有成员，则返回 meta_type
+        if table_members.iter().all(|table_member| {
+            index_members
+                .iter()
+                .any(|index_member| index_member.key.to_path() == table_member.key.to_path())
+        }) {
+            return Some(meta_type);
         }
     }
     None

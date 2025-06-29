@@ -245,13 +245,11 @@ fn resolve_table_field_through_type_inference(
 
     let field_key = table_field.get_field_key()?;
     let key = semantic_model.get_member_key(&field_key)?;
-    let member_infos = semantic_model.get_member_infos(&table_type)?;
-
+    let member_infos = semantic_model.get_member_info_with_key(&table_type, key, false)?;
     member_infos
-        .iter()
-        .find(|m| m.key == key)?
-        .property_owner_id
-        .clone()
+        .first()
+        .cloned()
+        .and_then(|m| m.property_owner_id)
 }
 
 pub fn replace_semantic_type(

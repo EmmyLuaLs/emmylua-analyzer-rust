@@ -39,6 +39,7 @@ use type_check::is_sub_type_of;
 pub use visibility::check_export_visibility;
 use visibility::check_visibility;
 
+use crate::semantic::member::find_members_with_key;
 use crate::{db_index::LuaTypeDeclId, Emmyrc, LuaDocument, LuaSemanticDeclId};
 use crate::{
     db_index::{DbIndex, LuaType},
@@ -118,6 +119,15 @@ impl<'a> SemanticModel<'a> {
 
     pub fn get_member_infos(&self, prefix_type: &LuaType) -> Option<Vec<LuaMemberInfo>> {
         find_members(self.db, prefix_type)
+    }
+
+    pub fn get_member_info_with_key(
+        &self,
+        prefix_type: &LuaType,
+        member_key: LuaMemberKey,
+        find_all: bool,
+    ) -> Option<Vec<LuaMemberInfo>> {
+        find_members_with_key(self.db, prefix_type, member_key, find_all)
     }
 
     pub fn get_member_info_map(

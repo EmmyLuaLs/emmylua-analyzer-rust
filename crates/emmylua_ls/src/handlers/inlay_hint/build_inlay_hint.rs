@@ -6,8 +6,8 @@ use emmylua_code_analysis::{
     LuaOperatorMetaMethod, LuaSemanticDeclId, LuaType, SemanticModel,
 };
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaLocalFuncStat,
-    LuaLocalName, LuaLocalStat, LuaStat, LuaSyntaxId, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaCallExpr, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaIndexKey,
+    LuaLocalFuncStat, LuaLocalName, LuaLocalStat, LuaStat, LuaSyntaxId, LuaVarExpr,
 };
 use emmylua_parser::{LuaAstToken, LuaTokenKind};
 use lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, InlayHintLabelPart, Location};
@@ -628,13 +628,17 @@ fn build_index_expr_hint(
 
     // 只处理整数索引
     let index_key = index_expr.get_index_key()?;
+    if !matches!(index_key, LuaIndexKey::Integer(_)) {
+        return Some(());
+    }
 
     // 获取前缀表达式的类型信息
     let prefix_expr = index_expr.get_prefix_expr()?;
     let prefix_type = semantic_model.infer_expr(prefix_expr.into()).ok()?;
     let member_key = semantic_model.get_member_key(&index_key)?;
-    let member_infos = semantic_model.get_member_infos(&prefix_type)?;
-    let member_info = member_infos.iter().find(|m| m.key == member_key)?;
+
+    let member_infos = semantic_model.get_member_info_with_key(&prefix_type, member_key, false)?;
+    let member_info = member_infos.first()?;
     // 尝试提取别名
     let alias = extract_index_member_alias(semantic_model.get_db(), member_info)?;
     // 创建 hint
