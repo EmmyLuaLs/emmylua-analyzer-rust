@@ -659,7 +659,7 @@ fn build_index_expr_hint(
     let hint = InlayHint {
         kind: Some(InlayHintKind::TYPE),
         label: InlayHintLabel::LabelParts(vec![InlayHintLabelPart {
-            value: format!(">{}", alias),
+            value: format!(": {}", alias),
             location: Some(label_location),
             ..Default::default()
         }]),
