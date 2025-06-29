@@ -14,13 +14,17 @@ use crate::{
 
 use super::{get_buildin_type_map_type_id, FindMembersResult, LuaMemberInfo};
 
-/// 搜索成员的过滤条件
 #[derive(Debug, Clone)]
 pub enum FindMemberFilter {
     /// 寻找所有成员
     All,
-    /// 根据指定的key寻找成员, 是否寻找所有成员
-    ByKey(LuaMemberKey, bool),
+    /// 根据指定的key寻找成员
+    ByKey {
+        /// 要搜索的成员key
+        member_key: LuaMemberKey,
+        /// 是否寻找所有匹配的成员,为`false`时,找到第一个匹配的成员后停止
+        find_all: bool,
+    },
 }
 
 pub fn find_members(db: &DbIndex, prefix_type: &LuaType) -> FindMembersResult {
@@ -42,7 +46,10 @@ pub fn find_members_with_key(
         db,
         prefix_type,
         &mut InferGuard::new(),
-        &FindMemberFilter::ByKey(member_key, find_all),
+        &FindMemberFilter::ByKey {
+            member_key,
+            find_all,
+        },
     )
 }
 
@@ -86,18 +93,18 @@ fn find_members_guard(
 }
 
 /// 检查成员是否应该被包含
-fn should_include_member(member_key: &LuaMemberKey, filter: &FindMemberFilter) -> bool {
+fn should_include_member(key: &LuaMemberKey, filter: &FindMemberFilter) -> bool {
     match filter {
         FindMemberFilter::All => true,
-        FindMemberFilter::ByKey(target_key, _) => member_key == target_key,
+        FindMemberFilter::ByKey { member_key, .. } => member_key == key,
     }
 }
 
 /// 检查是否应该停止收集更多成员
 fn should_stop_collecting(current_count: usize, filter: &FindMemberFilter) -> bool {
     match filter {
-        FindMemberFilter::All => false,
-        FindMemberFilter::ByKey(_, find_all) => !find_all && current_count > 0,
+        FindMemberFilter::ByKey { find_all, .. } => !find_all && current_count > 0,
+        _ => false,
     }
 }
 
