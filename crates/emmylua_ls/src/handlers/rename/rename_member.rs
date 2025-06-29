@@ -4,8 +4,8 @@ use emmylua_code_analysis::{
     LuaCompilation, LuaMemberId, LuaSemanticDeclId, SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaIndexToken, LuaLiteralExpr, LuaNameToken, LuaSyntaxNode,
-    LuaTokenKind,
+    LuaAst, LuaAstNode, LuaAstToken, LuaIndexToken, LuaLiteralExpr, LuaNameToken, LuaNumberToken,
+    LuaSyntaxNode, LuaTokenKind,
 };
 use lsp_types::Uri;
 
@@ -72,12 +72,24 @@ fn get_member_name_token_lsp_range(
 
     // 此时可能是 [] 访问
     if let Some(_) = node.token::<LuaIndexToken>() {
-        let literal = node.child::<LuaLiteralExpr>()?.get_literal()?;
-        if matches!(
-            literal.get_token_kind(),
-            LuaTokenKind::TkInt | LuaTokenKind::TkString
-        ) {
-            return document.to_lsp_range(literal.get_range());
+        match node {
+            LuaAst::LuaDocTagField(tag) => {
+                if let Some(token) = tag.token::<LuaNumberToken>() {
+                    if matches!(token.get_token_kind(), LuaTokenKind::TkInt) {
+                        return document.to_lsp_range(token.get_range());
+                    }
+                    return document.to_lsp_range(token.get_range());
+                }
+            }
+            _ => {
+                let literal = node.child::<LuaLiteralExpr>()?.get_literal()?;
+                if matches!(
+                    literal.get_token_kind(),
+                    LuaTokenKind::TkInt | LuaTokenKind::TkString
+                ) {
+                    return document.to_lsp_range(literal.get_range());
+                }
+            }
         }
     }
 

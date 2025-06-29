@@ -14,6 +14,7 @@ use crate::{
         code_actions::code_action,
         completion::{completion, completion_resolve},
         inlay_hint::inlay_hint,
+        rename::rename,
         semantic_token::semantic_token,
         signature_helper::signature_help,
     },

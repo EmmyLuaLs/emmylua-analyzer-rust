@@ -5,7 +5,7 @@ mod rename_type;
 use std::collections::HashMap;
 
 use emmylua_code_analysis::{LuaCompilation, LuaSemanticDeclId, SemanticDeclLevel, SemanticModel};
-use emmylua_parser::{LuaAstNode, LuaLiteralExpr, LuaSyntaxToken, LuaTableField, LuaTokenKind};
+use emmylua_parser::{LuaAstNode, LuaLiteralExpr, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{
     ClientCapabilities, OneOf, PrepareRenameResponse, RenameOptions, RenameParams,
     ServerCapabilities, TextDocumentPositionParams, WorkspaceEdit,
@@ -54,7 +54,9 @@ pub async fn on_prepare_rename_handler(
     let token = match root.syntax().token_at_offset(position_offset) {
         TokenAtOffset::Single(token) => token,
         TokenAtOffset::Between(left, right) => {
-            if left.kind() == LuaTokenKind::TkName.into() {
+            if left.kind() == LuaTokenKind::TkName.into()
+                || left.kind() == LuaTokenKind::TkInt.into()
+            {
                 left
             } else {
                 right
@@ -118,10 +120,7 @@ fn rename_references(
 ) -> Option<WorkspaceEdit> {
     let mut result = HashMap::new();
     let semantic_decl = match try_get_table_field(token.clone()) {
-        Some(table_field) => semantic_model.find_decl(
-            table_field.syntax().clone().into(),
-            SemanticDeclLevel::NoTrace,
-        ),
+        Some(node) => semantic_model.find_decl(node.into(), SemanticDeclLevel::NoTrace),
         None => semantic_model.find_decl(token.into(), SemanticDeclLevel::NoTrace),
     }?;
 
@@ -169,10 +168,10 @@ fn rename_references(
     })
 }
 
-fn try_get_table_field(token: LuaSyntaxToken) -> Option<LuaTableField> {
+fn try_get_table_field(token: LuaSyntaxToken) -> Option<LuaSyntaxNode> {
     let parent = token.parent()?;
     let literal_expr = LuaLiteralExpr::cast(parent)?;
-    literal_expr.get_parent::<LuaTableField>()
+    literal_expr.syntax().parent()
 }
 
 pub struct RenameCapabilities;
