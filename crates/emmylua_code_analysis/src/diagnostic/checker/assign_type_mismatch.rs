@@ -206,17 +206,17 @@ pub fn check_table_expr(
     semantic_model: &SemanticModel,
     table_expr: &LuaExpr,
     table_type: Option<&LuaType>, // 记录的类型
-    expr_type: Option<&LuaType>,  // 实际表达式推导出的类型
+    _expr_type: Option<&LuaType>, // 实际表达式推导出的类型
 ) -> Option<bool> {
     // 需要进行一些过滤
-    if table_type == expr_type {
-        return Some(false);
-    }
+    // if table_type == expr_type {
+    //     return Some(false);
+    // }
     let table_type = table_type?;
-    match table_type {
-        LuaType::Def(_) => return Some(false),
-        _ => {}
-    }
+    // match table_type {
+    //     LuaType::Def(_) => return Some(false),
+    //     _ => {}
+    // }
     if let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) {
         return check_table_expr_content(context, semantic_model, table_type, &table_expr);
     }
