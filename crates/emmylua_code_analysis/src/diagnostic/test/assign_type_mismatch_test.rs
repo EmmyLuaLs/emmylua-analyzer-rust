@@ -950,7 +950,7 @@ return t
     }
 
     #[test]
-    fn test_tabe_field_type_mismatch() {
+    fn test_table_field_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.check_code_for(
             DiagnosticCode::AssignTypeMismatch,
