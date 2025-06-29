@@ -350,4 +350,28 @@ impl ProviderVirtualWorkspace {
         dbg!(&data);
         Some(result)
     }
+
+    pub fn check_rename(&mut self, block_str: &str, new_name: String, len: usize) -> bool {
+        let content = Self::handle_file_content(block_str);
+        let Some((content, position)) = content else {
+            return false;
+        };
+        let file_id = self.def(&content);
+        let result = rename(&self.analysis, file_id, position, new_name.clone());
+        let Some(result) = result else {
+            return false;
+        };
+        // dbg!(&result);
+        if let Some(changes) = result.changes {
+            let mut count = 0;
+            for (_, edits) in changes {
+                count += edits.len();
+            }
+            if count != len {
+                return false;
+            }
+        }
+
+        true
+    }
 }

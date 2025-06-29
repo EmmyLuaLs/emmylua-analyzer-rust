@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use emmylua_code_analysis::{
     LuaCompilation, LuaMemberId, LuaSemanticDeclId, SemanticDeclLevel, SemanticModel,
 };
-use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaNameToken, LuaSyntaxNode};
+use emmylua_parser::{
+    LuaAst, LuaAstNode, LuaAstToken, LuaIndexToken, LuaLiteralExpr, LuaNameToken, LuaSyntaxNode,
+    LuaTokenKind,
+};
 use lsp_types::Uri;
 
 use crate::handlers::hover::find_member_origin_owner;
@@ -44,11 +47,13 @@ pub fn rename_member_references(
             property_owner.clone(),
             SemanticDeclLevel::NoTrace,
         ) {
-            let range = get_member_name_token_lsp_range(semantic_model, node.clone())?;
-            result
-                .entry(semantic_model.get_document().get_uri())
-                .or_insert_with(HashMap::new)
-                .insert(range, new_name.clone());
+            let range = get_member_name_token_lsp_range(semantic_model, node.clone());
+            if let Some(range) = range {
+                result
+                    .entry(semantic_model.get_document().get_uri())
+                    .or_insert_with(HashMap::new)
+                    .insert(range, new_name.clone());
+            }
         }
     }
 
@@ -61,7 +66,20 @@ fn get_member_name_token_lsp_range(
 ) -> Option<lsp_types::Range> {
     let document = semantic_model.get_document();
     let node = LuaAst::cast(node)?;
-    // todo
-    let token = node.token::<LuaNameToken>()?;
-    document.to_lsp_range(token.get_range())
+    if let Some(token) = node.token::<LuaNameToken>() {
+        return document.to_lsp_range(token.get_range());
+    }
+
+    // 此时可能是 [] 访问
+    if let Some(_) = node.token::<LuaIndexToken>() {
+        let literal = node.child::<LuaLiteralExpr>()?.get_literal()?;
+        if matches!(
+            literal.get_token_kind(),
+            LuaTokenKind::TkInt | LuaTokenKind::TkString
+        ) {
+            return document.to_lsp_range(literal.get_range());
+        }
+    }
+
+    None
 }
