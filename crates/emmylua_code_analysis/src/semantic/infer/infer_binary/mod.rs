@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 use crate::{
     check_type_compact,
     db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
-    LuaInferCache, TypeOps,
+    get_real_type, LuaInferCache, TypeOps,
 };
 
 use super::{get_custom_type_operator, infer_expr, InferFailReason, InferResult};
@@ -21,18 +21,29 @@ pub fn infer_binary_expr(
     let (left, right) = expr.get_exprs().ok_or(InferFailReason::None)?;
     let left_type = infer_expr(db, cache, left.clone())?;
     let right_type = infer_expr(db, cache, right.clone())?;
+    let real_left_type = get_real_type(db, &left_type);
+    let real_right_type = get_real_type(db, &right_type);
+    let left_type_ref = real_left_type.unwrap_or(&left_type);
+    let right_type_ref = real_right_type.unwrap_or(&right_type);
 
     if op == BinaryOperator::OpOr {
-        if let Some(ty) = special_or_rule(db, &left_type, &right_type, left, right) {
+        if let Some(ty) = special_or_rule(db, left_type_ref, right_type_ref, left, right) {
             return Ok(ty);
         }
     } else if !matches!(op, BinaryOperator::OpAnd | BinaryOperator::OpOr) {
-        if let Some(ty) = infer_union_binary_expr(db, op, &left_type, &right_type) {
+        if let Some(ty) = infer_union_binary_expr(db, op, left_type_ref, right_type_ref) {
             return Ok(ty);
         }
     }
 
-    infer_binary_expr_type(db, left_type, right_type, op)
+    match (real_left_type.is_some(), real_right_type.is_some()) {
+        (false, false) => infer_binary_expr_type(db, left_type, right_type, op),
+        (true, false) => infer_binary_expr_type(db, left_type_ref.clone(), right_type, op),
+        (false, true) => infer_binary_expr_type(db, left_type, right_type_ref.clone(), op),
+        (true, true) => {
+            infer_binary_expr_type(db, left_type_ref.clone(), right_type_ref.clone(), op)
+        }
+    }
 }
 
 fn infer_union_binary_expr(
@@ -52,11 +63,14 @@ fn infer_union_binary_expr(
     let mut result = LuaType::Unknown;
     let types = u.get_types();
     for ty in types.iter() {
-        if let Ok(ty) = if is_left_union {
+        // 只在实际调用时才 clone，而不是预先 clone
+        let ty_result = if is_left_union {
             infer_binary_expr_type(db, ty.clone(), other.clone(), op)
         } else {
             infer_binary_expr_type(db, other.clone(), ty.clone(), op)
-        } {
+        };
+
+        if let Ok(ty) = ty_result {
             result = TypeOps::Union.apply(db, &result, &ty);
         }
     }
@@ -101,22 +115,26 @@ fn infer_binary_custom_operator(
     right: &LuaType,
     op: LuaOperatorMetaMethod,
 ) -> InferResult {
-    let operators = get_custom_type_operator(db, left.clone(), op);
-    if let Some(operators) = operators {
-        for operator in operators {
-            let operand = operator.get_operand(db);
-            if check_type_compact(db, &operand, right).is_ok() {
-                return operator.get_result(db);
+    // 先检查 left 是否是自定义类型，避免不必要的 clone
+    if left.is_custom_type() {
+        if let Some(operators) = get_custom_type_operator(db, left.clone(), op) {
+            for operator in operators {
+                let operand = operator.get_operand(db);
+                if check_type_compact(db, &operand, right).is_ok() {
+                    return operator.get_result(db);
+                }
             }
         }
     }
 
-    let operators = get_custom_type_operator(db, right.clone(), op);
-    if let Some(operators) = operators {
-        for operator in operators {
-            let operand = operator.get_operand(db);
-            if check_type_compact(db, &operand, left).is_ok() {
-                return operator.get_result(db);
+    // 再检查 right 是否是自定义类型，只在需要时 clone
+    if right.is_custom_type() {
+        if let Some(operators) = get_custom_type_operator(db, right.clone(), op) {
+            for operator in operators {
+                let operand = operator.get_operand(db);
+                if check_type_compact(db, &operand, left).is_ok() {
+                    return operator.get_result(db);
+                }
             }
         }
     }
