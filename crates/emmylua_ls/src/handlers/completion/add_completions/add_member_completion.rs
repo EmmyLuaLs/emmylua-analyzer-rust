@@ -316,7 +316,7 @@ fn try_add_alias_completion_item(
     completion_item: &CompletionItem,
     label: &String,
 ) -> Option<bool> {
-    let alias_label = extract_index_member_alias(builder, member_info)?;
+    let alias_label = extract_index_member_alias(builder.semantic_model.get_db(), member_info)?;
 
     let mut alias_completion_item = completion_item.clone();
     alias_completion_item.label = alias_label;
@@ -337,10 +337,7 @@ fn try_add_alias_completion_item(
 
 /// 从注释中提取索引成员的别名, 只处理整数成员.
 /// 格式为`-- [nameX]`.
-fn extract_index_member_alias(
-    builder: &mut CompletionBuilder,
-    member_info: &LuaMemberInfo,
-) -> Option<String> {
+pub fn extract_index_member_alias(db: &DbIndex, member_info: &LuaMemberInfo) -> Option<String> {
     let LuaMemberKey::Integer(_) = member_info.key else {
         return None;
     };
@@ -350,9 +347,7 @@ fn extract_index_member_alias(
         return None;
     };
 
-    let description = builder
-        .semantic_model
-        .get_db()
+    let description = db
         .get_property_index()
         .get_property(property_owner_id)?
         .description

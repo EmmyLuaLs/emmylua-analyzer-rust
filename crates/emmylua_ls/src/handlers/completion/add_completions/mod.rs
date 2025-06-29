@@ -3,6 +3,7 @@ mod add_member_completion;
 mod check_match_word;
 
 pub use add_decl_completion::add_decl_completion;
+pub use add_member_completion::extract_index_member_alias;
 pub use add_member_completion::{add_member_completion, CompletionTriggerStatus};
 pub use check_match_word::check_match_word;
 use emmylua_code_analysis::{LuaSemanticDeclId, LuaType, RenderLevel};

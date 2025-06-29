@@ -15,6 +15,7 @@ use rowan::NodeOrToken;
 
 use rowan::TokenAtOffset;
 
+use crate::handlers::completion::extract_index_member_alias;
 use crate::handlers::definition::compare_function_types;
 use crate::handlers::inlay_hint::build_function_hint::{build_closure_hint, build_label_parts};
 
@@ -36,6 +37,9 @@ pub fn build_inlay_hints(semantic_model: &SemanticModel) -> Option<Vec<InlayHint
             }
             LuaAst::LuaFuncStat(func_stat) => {
                 build_func_stat_override_hint(semantic_model, &mut result, func_stat);
+            }
+            LuaAst::LuaIndexExpr(index_expr) => {
+                build_index_expr_hint(semantic_model, &mut result, index_expr);
             }
             _ => {}
         }
@@ -611,4 +615,58 @@ fn find_match_meta_call_operator_id(
         }
     }
     operator_ids.first().cloned().map(|id| (id, call_func))
+}
+
+fn build_index_expr_hint(
+    semantic_model: &SemanticModel,
+    result: &mut Vec<InlayHint>,
+    index_expr: LuaIndexExpr,
+) -> Option<()> {
+    if !semantic_model.get_emmyrc().hint.index_hint {
+        return Some(());
+    }
+
+    // 只处理整数索引
+    let index_key = index_expr.get_index_key()?;
+
+    // 获取前缀表达式的类型信息
+    let prefix_expr = index_expr.get_prefix_expr()?;
+    let prefix_type = semantic_model.infer_expr(prefix_expr.into()).ok()?;
+    let member_key = semantic_model.get_member_key(&index_key)?;
+    let member_infos = semantic_model.get_member_infos(&prefix_type)?;
+    let member_info = member_infos.iter().find(|m| m.key == member_key)?;
+    // 尝试提取别名
+    let alias = extract_index_member_alias(semantic_model.get_db(), member_info)?;
+    // 创建 hint
+    let document = semantic_model.get_document();
+    let position = {
+        let index_token = index_expr.get_index_name_token()?;
+        let range = index_token.text_range();
+        let lsp_range = document.to_lsp_range(range)?;
+        lsp_range.end
+    };
+
+    let label_location = {
+        let range = index_expr.get_index_key()?.get_range()?;
+        let lsp_range = document.to_lsp_range(range)?;
+        Location::new(document.get_uri(), lsp_range)
+    };
+
+    let hint = InlayHint {
+        kind: Some(InlayHintKind::TYPE),
+        label: InlayHintLabel::LabelParts(vec![InlayHintLabelPart {
+            value: format!(">{}", alias),
+            location: Some(label_location),
+            ..Default::default()
+        }]),
+        position,
+        text_edits: None,
+        tooltip: None,
+        padding_left: Some(true),
+        padding_right: None,
+        data: None,
+    };
+
+    result.push(hint);
+    Some(())
 }

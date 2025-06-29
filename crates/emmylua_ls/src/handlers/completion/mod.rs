@@ -18,6 +18,7 @@ use providers::add_completions;
 use resolve_completion::resolve_completion;
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
+pub use add_completions::extract_index_member_alias;
 
 use crate::context::{ClientId, ServerContextSnapshot};
 

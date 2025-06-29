@@ -119,7 +119,7 @@ fn rename_references(
     new_name: String,
 ) -> Option<WorkspaceEdit> {
     let mut result = HashMap::new();
-    let semantic_decl = match try_get_table_field(token.clone()) {
+    let semantic_decl = match get_literal_expr_parent(token.clone()) {
         Some(node) => semantic_model.find_decl(node.into(), SemanticDeclLevel::NoTrace),
         None => semantic_model.find_decl(token.into(), SemanticDeclLevel::NoTrace),
     }?;
@@ -168,7 +168,7 @@ fn rename_references(
     })
 }
 
-fn try_get_table_field(token: LuaSyntaxToken) -> Option<LuaSyntaxNode> {
+fn get_literal_expr_parent(token: LuaSyntaxToken) -> Option<LuaSyntaxNode> {
     let parent = token.parent()?;
     let literal_expr = LuaLiteralExpr::cast(parent)?;
     literal_expr.syntax().parent()
