@@ -1076,4 +1076,23 @@ mod tests {
             },],
         ));
     }
+
+    #[test]
+    fn test_index_key_alias() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_completion(
+            r#"
+                local export = {
+                    [1] = 1, -- [nameX]
+                }
+
+                export.<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "nameX".to_string(),
+                kind: CompletionItemKind::CONSTANT,
+                ..Default::default()
+            },],
+        ));
+    }
 }

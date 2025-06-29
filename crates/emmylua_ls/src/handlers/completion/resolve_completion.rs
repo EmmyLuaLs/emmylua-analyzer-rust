@@ -22,10 +22,7 @@ pub fn resolve_completion(
             let hover_builder =
                 build_hover_content_for_completion(compilation, semantic_model, db, property_id);
             if let Some(mut hover_builder) = hover_builder {
-                update_function_signature_info(
-                    &mut hover_builder,
-                    completion_data.function_overload_count,
-                );
+                update_function_signature_info(&mut hover_builder, completion_data.overload_count);
                 if client_id.is_vscode() {
                     build_vscode_completion_item(completion_item, hover_builder, None);
                 } else {
@@ -37,10 +34,7 @@ pub fn resolve_completion(
             let hover_builder =
                 build_hover_content_for_completion(compilation, semantic_model, db, property_id);
             if let Some(mut hover_builder) = hover_builder {
-                update_function_signature_info(
-                    &mut hover_builder,
-                    completion_data.function_overload_count,
-                );
+                update_function_signature_info(&mut hover_builder, completion_data.overload_count);
                 if client_id.is_vscode() {
                     build_vscode_completion_item(completion_item, hover_builder, Some(index));
                 } else {
@@ -55,19 +49,19 @@ pub fn resolve_completion(
 
 pub fn update_function_signature_info(
     hover_builder: &mut HoverBuilder,
-    function_overload_count: Option<usize>,
+    overload_count: Option<usize>,
 ) {
-    if let Some(function_overload_count) = function_overload_count {
-        if function_overload_count > 0 {
+    if let Some(overload_count) = overload_count {
+        if overload_count > 0 {
             if let Some(signature_overload) = &mut hover_builder.signature_overload {
                 for signature in signature_overload.iter_mut() {
                     if let MarkedString::LanguageString(s) = signature {
-                        s.value = format!("{} (+{} overloads)", s.value, function_overload_count);
+                        s.value = format!("{} (+{} overloads)", s.value, overload_count);
                     }
                 }
             }
             if let MarkedString::LanguageString(s) = &mut hover_builder.type_description {
-                s.value = format!("{} (+{} overloads)", s.value, function_overload_count);
+                s.value = format!("{} (+{} overloads)", s.value, overload_count);
             }
         }
     }

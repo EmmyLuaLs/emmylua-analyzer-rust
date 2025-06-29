@@ -9,7 +9,7 @@ pub struct CompletionData {
     pub field_id: FileId,
     pub typ: CompletionDataType,
     /// Total count of function overloads
-    pub function_overload_count: Option<usize>,
+    pub overload_count: Option<usize>,
 }
 
 #[allow(unused)]
@@ -17,12 +17,12 @@ impl CompletionData {
     pub fn from_property_owner_id(
         builder: &CompletionBuilder,
         id: LuaSemanticDeclId,
-        function_overload_count: Option<usize>,
+        overload_count: Option<usize>,
     ) -> Option<Value> {
         let data = Self {
             field_id: builder.semantic_model.get_file_id(),
             typ: CompletionDataType::PropertyOwnerId(id),
-            function_overload_count,
+            overload_count,
         };
         Some(serde_json::to_value(data).unwrap())
     }
@@ -31,12 +31,12 @@ impl CompletionData {
         builder: &CompletionBuilder,
         id: LuaSemanticDeclId,
         index: usize,
-        function_overload_count: Option<usize>,
+        overload_count: Option<usize>,
     ) -> Option<Value> {
         let data = Self {
             field_id: builder.semantic_model.get_file_id(),
             typ: CompletionDataType::Overload((id, index)),
-            function_overload_count,
+            overload_count,
         };
         Some(serde_json::to_value(data).unwrap())
     }
@@ -45,7 +45,7 @@ impl CompletionData {
         let data = Self {
             field_id: builder.semantic_model.get_file_id(),
             typ: CompletionDataType::Module(module),
-            function_overload_count: None,
+            overload_count: None,
         };
         Some(serde_json::to_value(data).unwrap())
     }
@@ -81,7 +81,7 @@ pub enum CompletionDataType {
 //             },
 //         };
 
-//         let overload_part = match self.function_overload_count {
+//         let overload_part = match self.overload_count {
 //             Some(count) => format!("|{}", count),
 //             None => String::new(),
 //         };
@@ -160,8 +160,8 @@ pub enum CompletionDataType {
 //                     return Err(E::custom("expected ':' separator in type part"));
 //                 };
 
-//                 // Parse function_overload_count
-//                 let function_overload_count = if parts.len() == 3 {
+//                 // Parse overload_count
+//                 let overload_count = if parts.len() == 3 {
 //                     if parts[2].is_empty() {
 //                         None
 //                     } else {
@@ -178,7 +178,7 @@ pub enum CompletionDataType {
 //                 Ok(CompletionData {
 //                     field_id,
 //                     typ,
-//                     function_overload_count,
+//                     overload_count,
 //                 })
 //             }
 //         }
@@ -199,7 +199,7 @@ pub enum CompletionDataType {
 //         let data = CompletionData {
 //             field_id: FileId::new(1),
 //             typ: CompletionDataType::PropertyOwnerId(LuaSemanticDeclId::TypeDecl(type_id)),
-//             function_overload_count: Some(3),
+//             overload_count: Some(3),
 //         };
 
 //         // Test serialization
@@ -219,7 +219,7 @@ pub enum CompletionDataType {
 //         let data = CompletionData {
 //             field_id: FileId::new(42),
 //             typ: CompletionDataType::Module("socket.core".to_string()),
-//             function_overload_count: None,
+//             overload_count: None,
 //         };
 
 //         let json = serde_json::to_string(&data).unwrap();
@@ -235,7 +235,7 @@ pub enum CompletionDataType {
 //         let data = CompletionData {
 //             field_id: FileId::new(10),
 //             typ: CompletionDataType::Overload((LuaSemanticDeclId::TypeDecl(type_id), 2)),
-//             function_overload_count: Some(5),
+//             overload_count: Some(5),
 //         };
 
 //         let json = serde_json::to_string(&data).unwrap();
@@ -251,7 +251,7 @@ pub enum CompletionDataType {
 //         let data = CompletionData {
 //             field_id: FileId::new(999),
 //             typ: CompletionDataType::PropertyOwnerId(LuaSemanticDeclId::TypeDecl(type_id.clone())),
-//             function_overload_count: Some(10),
+//             overload_count: Some(10),
 //         };
 
 //         // Our compact serialization
@@ -262,13 +262,13 @@ pub enum CompletionDataType {
 //         struct DefaultSerialized {
 //             field_id: u32,
 //             typ: CompletionDataType,
-//             function_overload_count: Option<usize>,
+//             overload_count: Option<usize>,
 //         }
 
 //         let default_data = DefaultSerialized {
 //             field_id: data.field_id.id,
 //             typ: data.typ.clone(),
-//             function_overload_count: data.function_overload_count,
+//             overload_count: data.overload_count,
 //         };
 
 //         let default_json = serde_json::to_string(&default_data).unwrap();

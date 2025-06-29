@@ -1,0 +1,5 @@
+_version: 2
+completion.index %{label}:
+  en: index %{label}
+  zh_CN: 索引 %{label}
+  zh_HK: 索引 %{label}
