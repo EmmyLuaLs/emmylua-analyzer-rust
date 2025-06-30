@@ -4,8 +4,8 @@ use std::path::PathBuf;
 #[derive(Debug, Parser)]
 pub struct CmdArgs {
     /// The path of the lua project
-    #[arg(long, short)]
-    pub input: PathBuf,
+    #[arg(long, short, num_args = 1..)]
+    pub input: Vec<PathBuf>,
 
     /// Format of the output, default is Markdown
     #[arg(long, short, default_value = "markdown")]

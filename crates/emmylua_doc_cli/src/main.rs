@@ -11,12 +11,19 @@ mod markdown_generator;
 
 fn main() {
     let args = CmdArgs::parse();
-    let mut input = args.input;
-    if input.is_relative() {
-        input = std::env::current_dir().ok().unwrap().join(&input);
+    let current_path = std::env::current_dir().ok().unwrap();
+    let input = args.input;
+    let mut files: Vec<String> = Vec::new();
+    for path in &input {
+        if path.is_relative() {
+            let abs_path = current_path.join(path).to_str().unwrap().to_string();
+            files.push(abs_path);
+        } else {
+            files.push(path.to_str().unwrap().to_string());
+        }
     }
 
-    let analysis = init::load_workspace(vec![input.to_str().unwrap()]);
+    let analysis = init::load_workspace(files);
     if let Some(mut analysis) = analysis {
         let res = match args.format {
             Format::Markdown => markdown_generator::generate_markdown(
