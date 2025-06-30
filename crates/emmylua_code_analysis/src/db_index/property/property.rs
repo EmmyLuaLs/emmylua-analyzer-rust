@@ -10,12 +10,24 @@ pub struct LuaCommonProperty {
     pub version_conds: Option<Box<Vec<LuaVersionCondition>>>,
     pub see_content: Option<Box<String>>,
     pub other_content: Option<Box<String>>,
+    pub export: Option<LuaExport>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LuaDeprecated {
     Deprecated,
     DeprecatedWithMessage(Box<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LuaExportScope {
+    Global,
+    Namespace,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LuaExport {
+    pub scope: LuaExportScope,
 }
 
 impl LuaCommonProperty {
@@ -29,6 +41,7 @@ impl LuaCommonProperty {
             version_conds: None,
             see_content: None,
             other_content: None,
+            export: None,
         }
     }
 }

@@ -2,8 +2,9 @@ use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaI
 use rowan::TextRange;
 
 use crate::{
-    humanize_type, DiagnosticCode, LuaSemanticDeclId, LuaType, RenderLevel, SemanticDeclLevel,
-    SemanticModel, TypeCheckFailReason, TypeCheckResult,
+    diagnostic::checker::assign_type_mismatch::check_table_expr, humanize_type, DiagnosticCode,
+    LuaSemanticDeclId, LuaType, RenderLevel, SemanticDeclLevel, SemanticModel, TypeCheckFailReason,
+    TypeCheckResult,
 };
 
 use super::{Checker, DiagnosticContext};
@@ -11,7 +12,10 @@ use super::{Checker, DiagnosticContext};
 pub struct ParamTypeCheckChecker;
 
 impl Checker for ParamTypeCheckChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::ParamTypeNotMatch];
+    const CODES: &[DiagnosticCode] = &[
+        DiagnosticCode::ParamTypeNotMatch,
+        DiagnosticCode::AssignTypeMismatch,
+    ];
 
     /// a simple implementation of param type check, later we will do better
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
@@ -85,6 +89,35 @@ fn check_call_expr(
             }
             let result = semantic_model.type_check(&check_type, arg_type);
             if !result.is_ok() {
+                // 这里执行了`AssignTypeMismatch`的检查
+                if arg_type.is_table() {
+                    let arg_expr_idx = match (colon_call, colon_define) {
+                        (true, false) => {
+                            if idx == 0 {
+                                continue;
+                            } else {
+                                idx - 1
+                            }
+                        }
+                        _ => idx,
+                    };
+
+                    if let Some(arg_expr) = arg_exprs.get(arg_expr_idx) {
+                        // 表字段已经报错了, 则不添加参数不匹配的诊断避免干扰
+                        if let Some(add_diagnostic) = check_table_expr(
+                            context,
+                            semantic_model,
+                            arg_expr,
+                            Some(&param_type),
+                            Some(arg_type),
+                        ) {
+                            if add_diagnostic {
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 try_add_diagnostic(
                     context,
                     semantic_model,

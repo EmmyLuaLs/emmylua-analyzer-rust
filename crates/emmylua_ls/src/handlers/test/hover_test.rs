@@ -227,4 +227,22 @@ mod tests {
             },
         ));
     }
+
+    #[test]
+    fn test_type_desc() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_hover(
+            r#"
+                local export = {
+                    ---@type number? activeSub
+                    vvv = nil
+                }
+
+                export.v<??>vv
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) vvv: number?\n```\n\n---\n\nactiveSub".to_string(),
+            },
+        ));
+    }
 }

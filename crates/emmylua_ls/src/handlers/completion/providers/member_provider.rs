@@ -104,7 +104,7 @@ fn add_resolve_member_infos(
         .iter()
         .all(|info| matches!(info.typ, LuaType::DocFunction(_)));
 
-    let function_count = count_function_overloads(builder.semantic_model.get_db(), &member_infos);
+    let overload_count = count_function_overloads(builder.semantic_model.get_db(), &member_infos);
 
     for member_info in member_infos {
         match resolve_state {
@@ -113,7 +113,7 @@ fn add_resolve_member_infos(
                     builder,
                     member_info.clone(),
                     completion_status,
-                    function_count,
+                    overload_count,
                 );
                 if limit_doc_function {
                     break;
@@ -126,7 +126,7 @@ fn add_resolve_member_infos(
                             builder,
                             member_info.clone(),
                             completion_status,
-                            function_count,
+                            overload_count,
                         );
                         if limit_doc_function {
                             break;
@@ -141,7 +141,7 @@ fn add_resolve_member_infos(
                             builder,
                             member_info.clone(),
                             completion_status,
-                            function_count,
+                            overload_count,
                         );
                         if limit_doc_function {
                             break;

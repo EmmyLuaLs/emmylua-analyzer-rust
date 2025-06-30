@@ -59,9 +59,13 @@ fn check_can_add_completion(builder: &CompletionBuilder) -> Option<()> {
     } else if builder.trigger_kind == CompletionTriggerKind::INVOKED {
         let parent = builder.trigger_token.parent()?;
         let prev_token = builder.trigger_token.prev_token()?;
-        if prev_token.kind() == LuaTokenKind::TkTagUsing.into() {
-            return None;
+        match prev_token.kind().into() {
+            LuaTokenKind::TkTagUsing | LuaTokenKind::TkTagExport | LuaTokenKind::TkTagNamespace => {
+                return None;
+            }
+            _ => {}
         }
+
         // 即时是主动触发, 也不允许在函数定义的参数列表中添加
         if trigger_text == "(" {
             if LuaParamList::can_cast(parent.kind().into()) {

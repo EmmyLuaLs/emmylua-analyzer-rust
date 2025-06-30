@@ -5,6 +5,7 @@ mod data;
 mod providers;
 mod resolve_completion;
 
+pub use add_completions::extract_index_member_alias;
 use completion_builder::CompletionBuilder;
 use completion_data::CompletionData;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};

@@ -39,7 +39,7 @@ pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
 
     for (index, item) in builder.get_completion_items_mut().iter_mut().enumerate() {
         if item.sort_text.is_none() {
-            item.sort_text = Some(format!("{:04}", index + 1));
+            item.sort_text = Some(format!("{:04}", index + 32));
         }
     }
 

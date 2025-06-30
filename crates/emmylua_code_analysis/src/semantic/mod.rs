@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::{collections::HashSet, sync::Arc};
 
 pub use cache::{CacheEntry, CacheKey, CacheOptions, LuaAnalysisPhase, LuaInferCache};
-pub use decl::enum_variable_is_param;
+pub use decl::{enum_variable_is_param, parse_require_module_info};
 use emmylua_parser::{
     LuaCallExpr, LuaChunk, LuaExpr, LuaIndexKey, LuaParseError, LuaSyntaxNode, LuaSyntaxToken,
     LuaTableExpr,
@@ -36,8 +36,10 @@ use semantic_info::{
 };
 pub(crate) use type_check::check_type_compact;
 use type_check::is_sub_type_of;
+pub use visibility::check_export_visibility;
 use visibility::check_visibility;
 
+use crate::semantic::member::find_members_with_key;
 use crate::{db_index::LuaTypeDeclId, Emmyrc, LuaDocument, LuaSemanticDeclId};
 use crate::{
     db_index::{DbIndex, LuaType},
@@ -117,6 +119,15 @@ impl<'a> SemanticModel<'a> {
 
     pub fn get_member_infos(&self, prefix_type: &LuaType) -> Option<Vec<LuaMemberInfo>> {
         find_members(self.db, prefix_type)
+    }
+
+    pub fn get_member_info_with_key(
+        &self,
+        prefix_type: &LuaType,
+        member_key: LuaMemberKey,
+        find_all: bool,
+    ) -> Option<Vec<LuaMemberInfo>> {
+        find_members_with_key(self.db, prefix_type, member_key, find_all)
     }
 
     pub fn get_member_info_map(

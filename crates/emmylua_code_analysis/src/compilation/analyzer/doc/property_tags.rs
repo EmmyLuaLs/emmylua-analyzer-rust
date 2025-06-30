@@ -1,12 +1,14 @@
-use crate::{LuaNoDiscard, LuaSignatureId};
+use crate::{
+    LuaDeclId, LuaExport, LuaExportScope, LuaNoDiscard, LuaSemanticDeclId, LuaSignatureId,
+};
 
 use super::{
     tags::{find_owner_closure, get_owner_id},
     DocAnalyzer,
 };
 use emmylua_parser::{
-    LuaDocDescriptionOwner, LuaDocTagDeprecated, LuaDocTagNodiscard, LuaDocTagSource,
-    LuaDocTagVersion, LuaDocTagVisibility,
+    LuaAst, LuaAstNode, LuaDocDescriptionOwner, LuaDocTagDeprecated, LuaDocTagExport,
+    LuaDocTagNodiscard, LuaDocTagSource, LuaDocTagVersion, LuaDocTagVisibility, LuaTableExpr,
 };
 
 pub fn analyze_visibility(
@@ -107,6 +109,41 @@ pub fn analyze_async(analyzer: &mut DocAnalyzer) -> Option<()> {
         .get_mut(&signature_id)?;
 
     signature.is_async = true;
+
+    Some(())
+}
+
+pub fn analyze_export(analyzer: &mut DocAnalyzer, tag: LuaDocTagExport) -> Option<()> {
+    let owner = analyzer.comment.get_owner()?;
+    let owner_id = match owner {
+        LuaAst::LuaReturnStat(return_stat) => {
+            let return_table_expr = return_stat.child::<LuaTableExpr>()?;
+            LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
+                analyzer.file_id,
+                return_table_expr.get_position(),
+            ))
+        }
+        _ => get_owner_id(analyzer)?,
+    };
+
+    let export_scope = if let Some(scope_text) = tag.get_export_scope() {
+        match scope_text.as_str() {
+            "namespace" => LuaExportScope::Namespace,
+            "global" => LuaExportScope::Global,
+            _ => LuaExportScope::Global, // 默认为 global
+        }
+    } else {
+        LuaExportScope::Global // 没有参数时默认为 global
+    };
+
+    let export = LuaExport {
+        scope: export_scope,
+    };
+
+    analyzer
+        .db
+        .get_property_index_mut()
+        .add_export(analyzer.file_id, owner_id, export);
 
     Some(())
 }

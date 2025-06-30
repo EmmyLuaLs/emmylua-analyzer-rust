@@ -26,7 +26,7 @@ pub fn add_member_completion(
     builder: &mut CompletionBuilder,
     member_info: LuaMemberInfo,
     status: CompletionTriggerStatus,
-    function_overload_count: Option<usize>,
+    overload_count: Option<usize>,
 ) -> Option<()> {
     if builder.is_cancelled() {
         return None;
@@ -58,9 +58,9 @@ pub fn add_member_completion(
         },
     };
 
-    let typ = member_info.typ;
+    let typ = &member_info.typ;
     let remove_nil_type =
-        get_function_remove_nil(&builder.semantic_model.get_db(), &typ).unwrap_or(typ);
+        get_function_remove_nil(&builder.semantic_model.get_db(), typ).unwrap_or(typ.clone());
     if status == CompletionTriggerStatus::Colon && !remove_nil_type.is_function() {
         return None;
     }
@@ -68,18 +68,9 @@ pub fn add_member_completion(
     // 附加数据, 用于在`resolve`时进一步处理
     let completion_data = if let Some(id) = &property_owner {
         if let Some(index) = member_info.overload_index {
-            CompletionData::from_overload(
-                builder,
-                id.clone().into(),
-                index,
-                function_overload_count,
-            )
+            CompletionData::from_overload(builder, id.clone().into(), index, overload_count)
         } else {
-            CompletionData::from_property_owner_id(
-                builder,
-                id.clone().into(),
-                function_overload_count,
-            )
+            CompletionData::from_property_owner_id(builder, id.clone().into(), overload_count)
         }
     } else {
         None
@@ -137,7 +128,12 @@ pub fn add_member_completion(
         );
     }
 
-    builder.add_completion_item(completion_item)?;
+    // 尝试添加别名补全项, 如果添加成功, 则不添加原本 `[index]` 补全项
+    if !try_add_alias_completion_item(builder, &member_info, &completion_item, &label)
+        .unwrap_or(false)
+    {
+        builder.add_completion_item(completion_item)?;
+    }
 
     // add overloads if the type is function
     add_signature_overloads(
@@ -147,7 +143,7 @@ pub fn add_member_completion(
         call_display,
         deprecated,
         label,
-        function_overload_count,
+        overload_count,
     );
 
     Some(())
@@ -311,4 +307,78 @@ fn get_resolve_function_params_str(typ: &LuaType, display: CallDisplay) -> Optio
         }
         _ => None,
     }
+}
+
+/// 添加索引成员的别名补全项
+fn try_add_alias_completion_item(
+    builder: &mut CompletionBuilder,
+    member_info: &LuaMemberInfo,
+    completion_item: &CompletionItem,
+    label: &String,
+) -> Option<bool> {
+    let alias_label = extract_index_member_alias(builder.semantic_model.get_db(), member_info)?;
+
+    let mut alias_completion_item = completion_item.clone();
+    alias_completion_item.label = alias_label;
+    alias_completion_item.insert_text = Some(label.clone());
+
+    // 更新 label_details 添加别名提示
+    let index_hint = t!("completion.index %{label}", label = label).to_string();
+    let label_details = alias_completion_item
+        .label_details
+        .get_or_insert_with(Default::default);
+    label_details.description = match label_details.description.take() {
+        Some(desc) => Some(format!("({}) {} ", index_hint, desc)),
+        None => Some(index_hint),
+    };
+    builder.add_completion_item(alias_completion_item)?;
+    Some(true)
+}
+
+/// 从注释中提取索引成员的别名, 只处理整数成员.
+/// 格式为`-- [nameX]`.
+pub fn extract_index_member_alias(db: &DbIndex, member_info: &LuaMemberInfo) -> Option<String> {
+    let LuaMemberKey::Integer(_) = member_info.key else {
+        return None;
+    };
+
+    let property_owner_id = member_info.property_owner_id.as_ref()?;
+    let LuaSemanticDeclId::Member(_) = property_owner_id else {
+        return None;
+    };
+
+    let description = db
+        .get_property_index()
+        .get_property(property_owner_id)?
+        .description
+        .as_ref()?;
+
+    // 只去掉左侧空白字符，保留右侧内容以支持后续文本
+    let left_trimmed = description.trim_start();
+    if !left_trimmed.starts_with('[') {
+        return None;
+    }
+
+    // 找到对应的右方括号
+    let close_bracket_pos = left_trimmed.find(']')?;
+
+    let content = left_trimmed[1..close_bracket_pos].trim();
+
+    if content.is_empty() {
+        return None;
+    }
+
+    let first_char = content.chars().next()?;
+    if !first_char.is_alphabetic() && first_char != '_' {
+        return None;
+    }
+
+    if !content.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    if content.parse::<i64>().is_ok() || content.parse::<f64>().is_ok() {
+        return None;
+    }
+
+    Some(content.to_string())
 }

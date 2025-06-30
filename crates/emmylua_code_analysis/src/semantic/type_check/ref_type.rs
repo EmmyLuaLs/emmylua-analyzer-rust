@@ -97,8 +97,11 @@ fn check_ref_enum(
         if union_types
             .get_types()
             .iter()
-            .all(|t| matches!(t, LuaType::DocIntegerConst(_)))
-            && matches!(compact_type, LuaType::Integer)
+            .all(|t| matches!(t, LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)))
+            && matches!(
+                compact_type,
+                LuaType::Integer | LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)
+            )
         {
             return Ok(());
         }

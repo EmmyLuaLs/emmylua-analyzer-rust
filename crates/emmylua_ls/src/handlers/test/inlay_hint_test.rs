@@ -159,4 +159,20 @@ mod tests {
             Range::new(Position::new(4, 27), Position::new(4, 33))
         );
     }
+
+    #[test]
+    fn test_index_key_alias_hint() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let result = ws
+            .check_inlay_hint(
+                r#"
+                local export = {
+                    [1] = 1, -- [nameX]
+                }
+                print(export[1])
+            "#,
+            )
+            .unwrap();
+        assert!(result.len() == 1);
+    }
 }

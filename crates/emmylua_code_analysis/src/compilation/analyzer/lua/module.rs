@@ -2,7 +2,7 @@ use emmylua_parser::{LuaAstNode, LuaChunk, LuaExpr};
 
 use crate::{
     compilation::analyzer::unresolve::UnResolveModule, db_index::LuaType, InferFailReason,
-    LuaSemanticDeclId, LuaSignatureId,
+    LuaDeclId, LuaSemanticDeclId, LuaSignatureId,
 };
 
 use super::{func_body::analyze_func_body_returns, LuaAnalyzer, LuaReturnPoint};
@@ -67,6 +67,11 @@ fn get_property_owner_id(analyzer: &LuaAnalyzer, expr: LuaExpr) -> Option<LuaSem
         LuaExpr::ClosureExpr(closure) => Some(LuaSemanticDeclId::Signature(
             LuaSignatureId::from_closure(analyzer.file_id, &closure),
         )),
+        // `return {}`
+        LuaExpr::TableExpr(table_expr) => Some(LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
+            analyzer.file_id,
+            table_expr.get_position(),
+        ))),
         _ => None,
     }
 }

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use emmylua_parser::{LuaVersionCondition, VisibilityKind};
 use property::LuaCommonProperty;
-pub use property::{LuaDeprecated, LuaPropertyId};
+pub use property::{LuaDeprecated, LuaExport, LuaExportScope, LuaPropertyId};
 
 use crate::FileId;
 
@@ -186,6 +186,25 @@ impl LuaPropertyIndex {
         } else {
             property.other_content = Some(other_content.into());
         }
+
+        self.in_filed_owner
+            .entry(file_id)
+            .or_insert_with(HashSet::new)
+            .insert(owner_id);
+
+        Some(())
+    }
+
+    pub fn add_export(
+        &mut self,
+        file_id: FileId,
+        owner_id: LuaSemanticDeclId,
+        export: property::LuaExport,
+    ) -> Option<()> {
+        let property = self.get_or_create_property(owner_id.clone())?;
+        property.export = Some(LuaExport {
+            scope: export.scope,
+        });
 
         self.in_filed_owner
             .entry(file_id)

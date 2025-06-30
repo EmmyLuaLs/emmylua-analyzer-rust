@@ -51,11 +51,14 @@ pub fn definition(
     if position_offset > root.syntax().text_range().end() {
         return None;
     }
-
     let token = match root.syntax().token_at_offset(position_offset) {
         TokenAtOffset::Single(token) => token,
         TokenAtOffset::Between(left, right) => {
             if left.kind() == LuaTokenKind::TkName.into() {
+                left
+            } else if left.kind() == LuaTokenKind::TkLeftBracket.into()
+                && right.kind() == LuaTokenKind::TkInt.into()
+            {
                 left
             } else {
                 right

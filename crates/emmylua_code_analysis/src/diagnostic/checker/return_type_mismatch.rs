@@ -4,8 +4,9 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    humanize_type, DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType, RenderLevel,
-    SemanticDeclLevel, SemanticModel, SignatureReturnStatus, TypeCheckFailReason, TypeCheckResult,
+    diagnostic::checker::assign_type_mismatch::check_table_expr, humanize_type, DiagnosticCode,
+    LuaSemanticDeclId, LuaSignatureId, LuaType, RenderLevel, SemanticDeclLevel, SemanticModel,
+    SignatureReturnStatus, TypeCheckFailReason, TypeCheckResult,
 };
 
 use super::{get_return_stats, Checker, DiagnosticContext};
@@ -13,7 +14,10 @@ use super::{get_return_stats, Checker, DiagnosticContext};
 pub struct ReturnTypeMismatch;
 
 impl Checker for ReturnTypeMismatch {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::ReturnTypeMismatch];
+    const CODES: &[DiagnosticCode] = &[
+        DiagnosticCode::ReturnTypeMismatch,
+        DiagnosticCode::AssignTypeMismatch,
+    ];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
         let root = semantic_model.get_root().clone();
@@ -54,9 +58,9 @@ fn check_return_stat(
     return_type: &LuaType,
     return_stat: &LuaReturnStat,
 ) -> Option<()> {
+    let return_exprs = return_stat.get_expr_list().collect::<Vec<_>>();
     let (return_expr_types, return_expr_ranges) = {
-        let infos = semantic_model
-            .infer_expr_list_types(&return_stat.get_expr_list().collect::<Vec<_>>(), None);
+        let infos = semantic_model.infer_expr_list_types(&return_exprs, None);
         let mut return_expr_types = infos.iter().map(|(typ, _)| typ.clone()).collect::<Vec<_>>();
         // 解决 setmetatable 的返回值类型问题
         let setmetatable_index = has_setmetatable(semantic_model, return_stat);
@@ -87,6 +91,18 @@ fn check_return_stat(
 
                 let result = semantic_model.type_check(check_type, return_expr_type);
                 if !result.is_ok() {
+                    if return_expr_type.is_table() {
+                        if let Some(return_expr) = return_exprs.get(index) {
+                            check_table_expr(
+                                context,
+                                semantic_model,
+                                return_expr,
+                                Some(check_type),
+                                Some(return_expr_type),
+                            );
+                        }
+                    }
+
                     add_type_check_diagnostic(
                         context,
                         semantic_model,
@@ -112,6 +128,22 @@ fn check_return_stat(
             let return_expr_range = return_expr_ranges[0];
             let result = semantic_model.type_check(check_type, &return_expr_type);
             if !result.is_ok() {
+                if return_expr_type.is_table() {
+                    if let Some(return_expr) = return_exprs.get(0) {
+                        // 表字段已经报错了, 则不添加返回值不匹配的诊断避免干扰
+                        if let Some(add_diagnostic) = check_table_expr(
+                            context,
+                            semantic_model,
+                            return_expr,
+                            Some(return_type),
+                            Some(return_expr_type),
+                        ) {
+                            if add_diagnostic {
+                                return Some(());
+                            }
+                        }
+                    }
+                }
                 add_type_check_diagnostic(
                     context,
                     semantic_model,

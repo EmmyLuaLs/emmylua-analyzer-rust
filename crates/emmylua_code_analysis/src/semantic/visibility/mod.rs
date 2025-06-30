@@ -1,3 +1,5 @@
+mod export;
+
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaFuncStat, LuaGeneralToken, LuaIndexExpr,
     LuaSyntaxToken, LuaVarExpr, VisibilityKind,
@@ -6,6 +8,8 @@ use emmylua_parser::{
 use crate::{DbIndex, Emmyrc, FileId, LuaMemberOwner, LuaSemanticDeclId, LuaType};
 
 use super::{infer_expr, type_check::is_sub_type_of, LuaInferCache};
+
+pub use export::check_export_visibility;
 
 pub fn check_visibility(
     db: &DbIndex,

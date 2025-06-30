@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests {
 
-    use std::{ops::Deref, sync::Arc};
-
     use emmylua_code_analysis::EmmyrcFilenameConvention;
     use lsp_types::{CompletionItemKind, CompletionTriggerKind};
 
@@ -472,22 +470,12 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "key".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "constructor".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
                     label: "exact".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "meta".to_string(),
+                    label: "constructor".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -502,22 +490,12 @@ mod tests {
             "#,
             vec![
                 VirtualCompletionItem {
-                    label: "key".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "constructor".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
                     label: "exact".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "meta".to_string(),
+                    label: "constructor".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -527,8 +505,8 @@ mod tests {
 
         assert!(ws.check_completion_with_kind(
             r#"
-            ---@class (partial, <??>) C
-            ---@field a string
+            ---@enum (<??>) C
+
             "#,
             vec![
                 VirtualCompletionItem {
@@ -537,17 +515,12 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "constructor".to_string(),
+                    label: "partial".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "exact".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "meta".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -894,9 +867,9 @@ mod tests {
     #[test]
     fn test_auto_require() {
         let mut ws = ProviderVirtualWorkspace::new();
-        let mut emmyrc = ws.analysis.emmyrc.deref().clone();
+        let mut emmyrc = ws.get_emmyrc();
         emmyrc.completion.auto_require_naming_convention = EmmyrcFilenameConvention::KeepClass;
-        ws.analysis.update_config(Arc::new(emmyrc));
+        ws.update_emmyrc(emmyrc);
         ws.def_file(
             "map.lua",
             r#"
@@ -918,37 +891,48 @@ mod tests {
         ));
     }
 
-    // #[test]
-    // fn test_auto_require_table_field() {
-    //     let mut ws = ProviderVirtualWorkspace::new();
-    //     let mut emmyrc = ws.analysis.emmyrc.deref().clone();
-    //     emmyrc.completion.auto_require_naming_convention = EmmyrcFilenameConvention::KeepClass;
-    //     ws.analysis.update_config(Arc::new(emmyrc));
-    //     ws.def_file(
-    //         "aaaa.lua",
-    //         r#"
-    //             local export = {}
+    #[test]
+    fn test_auto_require_table_field() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "aaaa.lua",
+            r#"
+                ---@export
+                local export = {}
 
-    //             ---@enum MapName
-    //             export.MapName = {
-    //                 A = 1,
-    //                 B = 2,
-    //             }
+                ---@enum MapName
+                export.MapName = {
+                    A = 1,
+                    B = 2,
+                }
 
-    //             return export
-    //         "#,
-    //     );
-    //     assert!(ws.check_completion(
-    //         r#"
-    //             mapn<??>
-    //         "#,
-    //         vec![VirtualCompletionItem {
-    //             label: "MapName".to_string(),
-    //             kind: CompletionItemKind::MODULE,
-    //             label_detail: Some("    (in aaaa)".to_string()),
-    //         },],
-    //     ));
-    // }
+                return export
+            "#,
+        );
+        ws.def_file(
+            "bbbb.lua",
+            r#"
+                local export = {}
+
+                ---@enum PA
+                export.PA = {
+                    A = 1,
+                }
+
+                return export
+            "#,
+        );
+        assert!(ws.check_completion(
+            r#"
+                mapn<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "MapName".to_string(),
+                kind: CompletionItemKind::MODULE,
+                label_detail: Some("    (in aaaa)".to_string()),
+            },],
+        ));
+    }
 
     #[test]
     fn test_field_is_alias_function() {
@@ -1033,6 +1017,82 @@ mod tests {
                 ..Default::default()
             },],
             CompletionTriggerKind::INVOKED,
+        ));
+    }
+
+    #[test]
+    fn test_auto_require_field_1() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        // 没有 export 标记, 不允许子字段自动导入
+        ws.def_file(
+            "AAA.lua",
+            r#"
+                local function map()
+                end
+                return {
+                    map = map,
+                }
+            "#,
+        );
+        assert!(ws.check_completion(
+            r#"
+                map<??>
+            "#,
+            vec![],
+        ));
+    }
+
+    #[test]
+    fn test_issue_558() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "AAA.lua",
+            r#"
+                ---@class ability
+                ---@field t abilityType
+
+                ---@enum (key) abilityType
+                local abilityType = {
+                    passive = 1,
+                }
+
+                ---@param a ability
+                function test(a)
+
+                end
+
+            "#,
+        );
+        assert!(ws.check_completion(
+            r#"
+            test({
+                t = <??>
+            })
+            "#,
+            vec![VirtualCompletionItem {
+                label: "\"passive\"".to_string(),
+                kind: CompletionItemKind::ENUM_MEMBER,
+                ..Default::default()
+            },],
+        ));
+    }
+
+    #[test]
+    fn test_index_key_alias() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        assert!(ws.check_completion(
+            r#"
+                local export = {
+                    [1] = 1, -- [nameX]
+                }
+
+                export.<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "nameX".to_string(),
+                kind: CompletionItemKind::CONSTANT,
+                ..Default::default()
+            },],
         ));
     }
 }

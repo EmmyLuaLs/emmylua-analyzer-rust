@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use emmylua_parser::{
-    LuaAstNode, LuaDocTagField, LuaIndexExpr, LuaStat, LuaSyntaxKind, LuaSyntaxNode,
+    LuaAstNode, LuaDocTagClass, LuaDocTagField, LuaIndexExpr, LuaStat, LuaSyntaxKind, LuaSyntaxNode,
 };
 
 use crate::{
@@ -57,6 +57,16 @@ fn get_decl_set(semantic_model: &SemanticModel) -> Option<HashSet<DeclInfo>> {
                     is_require: is_require_decl(&decl),
                 });
             }
+        }
+    }
+
+    let root = semantic_model.get_root();
+    for tag_class in root.descendants::<LuaDocTagClass>() {
+        if let Some(class_name) = tag_class.get_name_token() {
+            type_decl_id_set.insert(DeclInfo {
+                id: LuaTypeDeclId::new(class_name.get_name_text()),
+                is_require: false,
+            });
         }
     }
 

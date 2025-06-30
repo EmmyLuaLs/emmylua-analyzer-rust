@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{get_real_type, LuaMemberInfo, LuaMemberKey, LuaType};
+use emmylua_code_analysis::{get_real_type, InferGuard, LuaMemberInfo, LuaMemberKey, LuaType};
 use emmylua_parser::{LuaAst, LuaAstNode, LuaKind, LuaTableExpr, LuaTableField, LuaTokenKind};
 use lsp_types::{CompletionItem, InsertTextFormat, InsertTextMode};
 use rowan::NodeOrToken;
@@ -9,6 +9,7 @@ use crate::handlers::completion::{
     add_completions::{check_visibility, is_deprecated},
     completion_builder::CompletionBuilder,
     completion_data::CompletionData,
+    providers::function_provider::dispatch_type,
 };
 
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
@@ -252,6 +253,8 @@ fn add_field_value_completion(
         };
 
         return builder.add_completion_item(item);
+    } else {
+        dispatch_type(builder, real_type.clone(), &mut InferGuard::new())?;
     }
 
     None

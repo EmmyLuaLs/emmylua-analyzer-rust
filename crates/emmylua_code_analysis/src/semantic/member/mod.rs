@@ -11,7 +11,7 @@ use crate::{
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxKind, LuaTableExpr, LuaTableField};
 pub use find_index::find_index_operations;
-pub use find_members::find_members;
+pub use find_members::{find_members, find_members_with_key};
 pub use get_member_map::get_member_map;
 pub use infer_raw_member::infer_raw_member_type;
 
@@ -139,11 +139,10 @@ fn resolve_table_field_through_type_inference(
 
     let field_key = table_field.get_field_key()?;
     let key = LuaMemberKey::from_index_key(db, infer_config, &field_key).ok()?;
-    let member_infos = find_members(db, &table_type)?;
+    let member_infos = find_members_with_key(db, &table_type, key, false)?;
 
     member_infos
-        .iter()
-        .find(|m| m.key == key)?
-        .property_owner_id
-        .clone()
+        .first()
+        .cloned()
+        .and_then(|m| m.property_owner_id)
 }

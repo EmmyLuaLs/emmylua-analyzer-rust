@@ -118,6 +118,7 @@ pub enum LuaTokenKind {
     TkTagUsing,      // using
     TkTagSource,     // source
     TkTagReturnCast, // return cast
+    TkTagExport,     // export
 
     TkDocOr,              // |
     TkDocAnd,             // &

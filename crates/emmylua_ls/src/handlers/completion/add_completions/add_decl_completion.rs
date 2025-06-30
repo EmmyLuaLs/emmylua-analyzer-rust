@@ -18,15 +18,11 @@ pub fn add_decl_completion(
     let property_owner = LuaSemanticDeclId::LuaDecl(decl_id);
     check_visibility(builder, property_owner.clone())?;
 
-    let function_overload_count = count_function_overloads(builder.semantic_model.get_db(), typ);
+    let overload_count = count_function_overloads(builder.semantic_model.get_db(), typ);
     let mut completion_item = CompletionItem {
         label: name.to_string(),
         kind: Some(get_completion_kind(&typ)),
-        data: CompletionData::from_property_owner_id(
-            builder,
-            decl_id.into(),
-            function_overload_count,
-        ),
+        data: CompletionData::from_property_owner_id(builder, decl_id.into(), overload_count),
         label_details: Some(lsp_types::CompletionItemLabelDetails {
             detail: get_detail(builder, &typ, CallDisplay::None),
             description: get_description(builder, &typ),

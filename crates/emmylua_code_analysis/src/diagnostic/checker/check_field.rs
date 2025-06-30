@@ -6,7 +6,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    enum_variable_is_param, DiagnosticCode, InferFailReason, LuaMemberKey, LuaType, SemanticModel,
+    enum_variable_is_param, parse_require_module_info, DiagnosticCode, InferFailReason,
+    LuaMemberKey, LuaSemanticDeclId, LuaType, ModuleInfo, SemanticModel,
 };
 
 use super::{humanize_lint_type, Checker, DiagnosticContext};
@@ -62,14 +63,32 @@ fn check_index_expr(
     let prefix_typ = semantic_model
         .infer_expr(index_expr.get_prefix_expr()?)
         .unwrap_or(LuaType::Unknown);
+    let mut module_info = None;
 
-    if !is_valid_prefix_type(&prefix_typ) {
-        return Some(());
+    if is_invalid_prefix_type(&prefix_typ) {
+        if matches!(prefix_typ, LuaType::TableConst(_)) {
+            // 如果导入了被 @export 标记的表常量, 那么不应该跳过检查
+            module_info = check_require_table_const_with_export(semantic_model, index_expr);
+            if module_info.is_none() {
+                return Some(());
+            }
+        } else {
+            return Some(());
+        }
     }
 
     let index_key = index_expr.get_index_key()?;
 
-    if is_valid_member(semantic_model, &prefix_typ, index_expr, &index_key, code).is_some() {
+    if is_valid_member(
+        semantic_model,
+        &prefix_typ,
+        index_expr,
+        &index_key,
+        code,
+        module_info,
+    )
+    .is_some()
+    {
         return Some(());
     }
 
@@ -102,7 +121,7 @@ fn check_index_expr(
     Some(())
 }
 
-fn is_valid_prefix_type(typ: &LuaType) -> bool {
+fn is_invalid_prefix_type(typ: &LuaType) -> bool {
     let mut current_typ = typ;
     loop {
         match current_typ {
@@ -111,11 +130,11 @@ fn is_valid_prefix_type(typ: &LuaType) -> bool {
             | LuaType::Table
             | LuaType::TplRef(_)
             | LuaType::StrTplRef(_)
-            | LuaType::TableConst(_) => return false,
+            | LuaType::TableConst(_) => return true,
             LuaType::Instance(instance_typ) => {
                 current_typ = instance_typ.get_base();
             }
-            _ => return true,
+            _ => return false,
         }
     }
 }
@@ -126,6 +145,7 @@ fn is_valid_member(
     index_expr: &LuaIndexExpr,
     index_key: &LuaIndexKey,
     code: DiagnosticCode,
+    module_info: Option<&ModuleInfo>,
 ) -> Option<()> {
     match prefix_typ {
         LuaType::Global | LuaType::Userdata => return Some(()),
@@ -172,6 +192,25 @@ fn is_valid_member(
         match semantic_model.get_semantic_info(index_expr.syntax().clone().into()) {
             Some(info) => {
                 let need = info.semantic_decl.is_none() && info.typ.is_unknown();
+                // TODO: 元组类型的检查或许需要独立出来
+                if !need && matches!(code, DiagnosticCode::InjectField) {
+                    // if let LuaType::Tuple(tuple) = prefix_typ {
+                    //     if tuple.is_infer_resolve() {
+                    //         return Some(());
+                    //     } else {
+                    //         // 元组类型禁止修改
+                    //         return None;
+                    //     }
+                    // }
+                    // 前缀是导入的表常量, 检查定义的文件是否与导入的表常量相同, 不同则认为是非法的
+                    if let Some(module_info) = module_info {
+                        if let Some(LuaSemanticDeclId::Member(member_id)) = info.semantic_decl {
+                            if module_info.file_id != member_id.file_id {
+                                return None;
+                            }
+                        }
+                    }
+                }
                 need
             }
             None => true,
@@ -207,6 +246,14 @@ fn is_valid_member(
 
     // 一些类型组合需要特殊处理
     match (prefix_typ, &key_type) {
+        // (LuaType::Tuple(tuple), LuaType::Integer | LuaType::IntegerConst(_)) => {
+        //     if tuple.is_infer_resolve() {
+        //         return Some(());
+        //     } else {
+        //         // 元组类型禁止修改
+        //         return None;
+        //     }
+        // }
         (LuaType::Def(id), _) => {
             if let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(id) {
                 if decl.is_class() {
@@ -270,23 +317,38 @@ fn is_valid_member(
             }
             if members.is_empty() {
                 // 当没有任何成员信息且是 enum 类型时, 需要检查参数是否为自己
-                if let LuaType::Ref(id) | LuaType::Def(id) = prefix_type {
-                    if let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(&id)
-                    {
-                        if decl.is_enum() {
-                            if key_types.iter().any(|typ| match typ {
-                                LuaType::Ref(key_id) | LuaType::Def(key_id) => id == *key_id,
-                                _ => false,
-                            }) {
-                                return Some(());
-                            }
-                        }
-                    }
+                if check_enum_self_reference(semantic_model, &prefix_type, &key_types).is_some() {
+                    return Some(());
                 }
+            }
+        } else {
+            if check_enum_self_reference(semantic_model, &prefix_type, &key_types).is_some() {
+                return Some(());
             }
         }
     }
 
+    None
+}
+
+/// 检查枚举类型的自引用
+fn check_enum_self_reference(
+    semantic_model: &SemanticModel,
+    prefix_type: &LuaType,
+    key_types: &HashSet<LuaType>,
+) -> Option<()> {
+    if let LuaType::Ref(id) | LuaType::Def(id) = prefix_type {
+        if let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(&id) {
+            if decl.is_enum() {
+                if key_types.iter().any(|typ| match typ {
+                    LuaType::Ref(key_id) | LuaType::Def(key_id) => *id == *key_id,
+                    _ => false,
+                }) {
+                    return Some(());
+                }
+            }
+        }
+    }
     None
 }
 
@@ -438,4 +500,32 @@ fn check_enum_is_param(
         index_expr,
         prefix_typ,
     )
+}
+
+/// 检查导入的表常量
+fn check_require_table_const_with_export<'a>(
+    semantic_model: &'a SemanticModel,
+    index_expr: &LuaIndexExpr,
+) -> Option<&'a ModuleInfo> {
+    // 获取前缀表达式的语义信息
+    let prefix_expr = index_expr.get_prefix_expr()?;
+    let semantic_info = semantic_model.get_semantic_info(prefix_expr.syntax().clone().into())?;
+
+    // 检查是否是声明引用
+    let decl_id = match semantic_info.semantic_decl? {
+        LuaSemanticDeclId::LuaDecl(decl_id) => decl_id,
+        _ => return None,
+    };
+
+    // 获取声明
+    let decl = semantic_model
+        .get_db()
+        .get_decl_index()
+        .get_decl(&decl_id)?;
+
+    let module_info = parse_require_module_info(semantic_model, &decl)?;
+    if module_info.is_export(semantic_model.get_db()) {
+        return Some(module_info);
+    }
+    None
 }

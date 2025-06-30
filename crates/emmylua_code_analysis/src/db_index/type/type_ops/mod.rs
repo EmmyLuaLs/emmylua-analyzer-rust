@@ -57,7 +57,7 @@ fn get_real_type_with_depth<'a>(
     typ: &'a LuaType,
     depth: u32,
 ) -> Option<&'a LuaType> {
-    const MAX_RECURSION_DEPTH: u32 = 100;
+    const MAX_RECURSION_DEPTH: u32 = 50;
 
     if depth >= MAX_RECURSION_DEPTH {
         return Some(typ);

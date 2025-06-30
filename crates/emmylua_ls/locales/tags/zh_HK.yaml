@@ -218,3 +218,15 @@ tags.readonly: |
   ---@readonly
   MyClass.readonlyField = "constant"
   ```
+tags.export: |
+  `export` 標籤用於表示一個變量為導出的，用於支持快速導入。
+  接收的參數為 `namespace` 或 `global`，不輸入參數默認為 `global`。
+  示例:
+  ```lua
+  ---@export namespace -- 當為`namespace`時僅允許同命名空間引入
+  local export = {}
+
+  export.func = function()
+    -- 在其他文件輸入`func`時會提示導入
+  end
+  ```

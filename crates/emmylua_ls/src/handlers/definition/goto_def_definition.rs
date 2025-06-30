@@ -264,14 +264,7 @@ pub fn find_instance_table_member(
             let table_field = LuaTableField::cast(table_field_node)?;
             let table_expr = table_field.get_parent::<LuaTableExpr>()?;
             let typ = semantic_model.infer_table_should_be(table_expr)?;
-            let member_infos = semantic_model.get_member_infos(&typ)?;
-            return Some(
-                member_infos
-                    .iter()
-                    .filter(|m| m.key == *member_key)
-                    .cloned()
-                    .collect(),
-            );
+            return semantic_model.get_member_info_with_key(&typ, member_key.clone(), true);
         }
         _ => {}
     }
@@ -302,14 +295,7 @@ fn find_member_in_table_const(
         .infer_expr(LuaExpr::TableExpr(table_expr))
         .ok()?;
 
-    let member_infos = semantic_model.get_member_infos(&typ)?;
-    Some(
-        member_infos
-            .iter()
-            .filter(|m| m.key == *member_key)
-            .cloned()
-            .collect(),
-    )
+    semantic_model.get_member_info_with_key(&typ, member_key.clone(), true)
 }
 
 /// 是否对 member 启动追踪
