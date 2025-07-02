@@ -61,7 +61,9 @@ pub fn load_workspace_files(
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
-        if exclude_dir.iter().any(|dir| path.starts_with(dir)) {
+        let raw_path_buf = path.to_path_buf();
+        let path_buf = raw_path_buf.canonicalize().unwrap_or(raw_path_buf);
+        if exclude_dir.iter().any(|dir| path_buf.starts_with(dir)) {
             continue;
         }
 

@@ -121,6 +121,11 @@ fn pre_process_path(path: &str, workspace: &Path) -> String {
 
     path = replace_placeholders(&path, workspace_str);
 
+    fn canonicalize_path(path_buf: PathBuf) -> String {
+        let new_path_buf = path_buf.canonicalize().unwrap_or(path_buf);
+        new_path_buf.to_string_lossy().to_string()
+    }
+
     if path.starts_with('~') {
         let home_dir = match dirs::home_dir() {
             Some(path) => path,
@@ -129,13 +134,13 @@ fn pre_process_path(path: &str, workspace: &Path) -> String {
                 return path;
             }
         };
-        path = home_dir.join(&path[1..]).to_string_lossy().to_string();
+        path = canonicalize_path(home_dir.join(&path[1..]));
     } else if path.starts_with("./") {
-        path = workspace.join(&path[2..]).to_string_lossy().to_string();
+        path = canonicalize_path(workspace.join(&path[2..]));
     } else if PathBuf::from(&path).is_absolute() {
         path = path.to_string();
     } else {
-        path = workspace.join(&path).to_string_lossy().to_string();
+        path = canonicalize_path(workspace.join(&path));
     }
 
     path
