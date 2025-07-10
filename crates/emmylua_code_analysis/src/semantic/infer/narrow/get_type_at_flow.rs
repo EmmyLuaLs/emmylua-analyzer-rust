@@ -33,12 +33,13 @@ pub fn get_type_at_flow(
         }
     }
 
-    let mut result_type = LuaType::Unknown;
+    let result_type;
     let mut antecedent_flow_id = flow_id;
     loop {
         let flow_node = tree
             .get_flow_node(antecedent_flow_id)
             .ok_or(InferFailReason::None)?;
+
         match &flow_node.kind {
             FlowNodeKind::Start | FlowNodeKind::Unreachable => {
                 result_type = get_var_ref_type(db, cache, var_ref_id)?;
@@ -49,10 +50,42 @@ pub fn get_type_at_flow(
             }
             FlowNodeKind::BranchLabel | FlowNodeKind::NamedLabel(_) => {
                 let multi_antecedents = get_multi_antecedents(tree, flow_node)?;
-                for flow_id in multi_antecedents {
+
+                // 在分支前获取原始类型
+                let original_type = if let Some(antecedent) = &flow_node.antecedent {
+                    match antecedent {
+                        crate::FlowAntecedent::Single(single_id) => {
+                            get_type_at_flow(db, tree, cache, root, var_ref_id, *single_id)?
+                        }
+                        crate::FlowAntecedent::Multiple(_) => {
+                            // 在 BranchLabel 中，多个 antecedent 需要获取共同的祖先
+                            get_var_ref_type(db, cache, var_ref_id)?
+                        }
+                    }
+                } else {
+                    get_var_ref_type(db, cache, var_ref_id)?
+                };
+
+                let mut branch_types = Vec::new();
+
+                for &flow_id in &multi_antecedents {
                     let branch_type = get_type_at_flow(db, tree, cache, root, var_ref_id, flow_id)?;
-                    result_type = TypeOps::Union.apply(db, &result_type, &branch_type);
+                    branch_types.push(branch_type);
                 }
+
+                // 分析类型覆盖
+                let result_type_analysis = analyze_branch_coverage(
+                    &original_type,
+                    &branch_types,
+                    db,
+                    tree,
+                    cache,
+                    root,
+                    var_ref_id,
+                    &multi_antecedents,
+                )?;
+
+                result_type = result_type_analysis;
                 break;
             }
             FlowNodeKind::DeclPosition(position) => {
@@ -236,4 +269,139 @@ fn get_type_at_assign_stat(
     }
 
     Ok(ResultTypeOrContinue::Continue)
+}
+
+// 分析分支覆盖率, 确定原始类型中哪些部分被赋值覆盖
+fn analyze_branch_coverage(
+    original_type: &LuaType,
+    branch_types: &[LuaType],
+    db: &DbIndex,
+    tree: &FlowTree,
+    cache: &mut LuaInferCache,
+    root: &LuaChunk,
+    var_ref_id: &VarRefId,
+    flow_ids: &[FlowId],
+) -> Result<LuaType, InferFailReason> {
+    if branch_types.is_empty() {
+        return Ok(original_type.clone());
+    }
+
+    // 检查哪些分支实际上有赋值
+    let mut assignment_branches = Vec::new();
+    let mut non_assignment_branches = Vec::new();
+
+    for (i, &flow_id) in flow_ids.iter().enumerate() {
+        let branch_type = &branch_types[i];
+
+        // 检查这个分支是否有赋值, 通过检查类型是否显著变化
+        let has_assignment = !types_are_equivalent(branch_type, original_type)
+            && has_assignment_in_branch(db, tree, cache, root, var_ref_id, flow_id)?;
+
+        if has_assignment {
+            assignment_branches.push(branch_type.clone());
+        } else {
+            non_assignment_branches.push(branch_type.clone());
+        }
+    }
+
+    if !assignment_branches.is_empty() {
+        // 检查所有赋值分支是否都是相同的类型
+        let first_assignment_type = &assignment_branches[0];
+        let all_assignments_same = assignment_branches
+            .iter()
+            .all(|t| types_are_equivalent(t, first_assignment_type));
+
+        if all_assignments_same && assignment_branches.len() >= 2 {
+            // 多个分支具有相同的赋值类型, 表明完全覆盖
+            return Ok(first_assignment_type.clone());
+        }
+    }
+
+    // 回退到原始行为: 合并所有分支类型
+    let mut result_type = LuaType::Unknown;
+    let mut has_any_type = false;
+
+    for branch_type in branch_types {
+        if !has_any_type {
+            result_type = branch_type.clone();
+            has_any_type = true;
+        } else {
+            result_type = TypeOps::Union.apply(db, &result_type, branch_type);
+        }
+    }
+
+    Ok(result_type)
+}
+
+// 检查分支是否包含对目标变量的赋值
+fn has_assignment_in_branch(
+    db: &DbIndex,
+    tree: &FlowTree,
+    cache: &mut LuaInferCache,
+    root: &LuaChunk,
+    var_ref_id: &VarRefId,
+    start_flow_id: FlowId,
+) -> Result<bool, InferFailReason> {
+    let mut current_flow_id = start_flow_id;
+
+    // 遍历流向后看是否在这个分支中有赋值
+    loop {
+        let flow_node = tree
+            .get_flow_node(current_flow_id)
+            .ok_or(InferFailReason::None)?;
+
+        match &flow_node.kind {
+            FlowNodeKind::Assignment(assign_ptr) => {
+                let assign_stat = assign_ptr.to_node(root).ok_or(InferFailReason::None)?;
+                let result_or_continue = get_type_at_assign_stat(
+                    db,
+                    tree,
+                    cache,
+                    root,
+                    var_ref_id,
+                    flow_node,
+                    assign_stat,
+                )?;
+
+                if let ResultTypeOrContinue::Result(_) = result_or_continue {
+                    return Ok(true);
+                }
+
+                // 继续检查 antecedents
+                current_flow_id = get_single_antecedent(tree, flow_node)?;
+            }
+            FlowNodeKind::TrueCondition(_) | FlowNodeKind::FalseCondition(_) => {
+                // 继续通过条件节点
+                current_flow_id = get_single_antecedent(tree, flow_node)?;
+            }
+            FlowNodeKind::BranchLabel | FlowNodeKind::NamedLabel(_) => {
+                // 到达另一个分支点, 停止这里
+                return Ok(false);
+            }
+            FlowNodeKind::Start | FlowNodeKind::Unreachable => {
+                // 到达开始没有找到赋值
+                return Ok(false);
+            }
+            FlowNodeKind::DeclPosition(_) => {
+                // 到达声明, 停止这里
+                return Ok(false);
+            }
+            _ => {
+                // 继续检查 antecedents 对于其他 flow node 类型
+                current_flow_id = get_single_antecedent(tree, flow_node)?;
+            }
+        }
+    }
+}
+
+// 检查两个类型是否等价
+fn types_are_equivalent(a: &LuaType, b: &LuaType) -> bool {
+    match (a, b) {
+        (LuaType::Union(a_union), LuaType::Union(b_union)) => {
+            let a_types = a_union.into_vec();
+            let b_types = b_union.into_vec();
+            a_types.len() == b_types.len() && a_types.iter().all(|t| b_types.contains(t))
+        }
+        _ => a == b,
+    }
 }

@@ -945,4 +945,60 @@ end
         let a_expected = ws.ty("string");
         assert_eq!(a, a_expected);
     }
+
+    #[test]
+    fn test_issue_598() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            ---@class A<T>
+            A = {}
+            ---@class IDisposable
+            ---@class B<T>: IDisposable
+
+            ---@class AnonymousObserver<T>: IDisposable
+
+            ---@generic T
+            ---@return AnonymousObserver<T>
+            function createAnonymousObserver()
+            end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+                ---@param observer fun(value: T) | B<T>
+                ---@return IDisposable
+                function A:subscribe(observer)
+                    local typ = type(observer)
+                    if typ == 'function' then
+                        ---@cast observer fun(value: T)
+                        observer = createAnonymousObserver()
+                    elseif typ == 'table' then
+                        ---@cast observer -function
+                        observer = createAnonymousObserver()
+                    end
+
+                    return observer
+                end
+            "#,
+        ));
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+                ---@param observer fun(value: T) | B<T>
+                ---@return IDisposable
+                function A:test2(observer)
+                    local typ = type(observer)
+                    if typ == 'function' then
+                        ---@cast observer fun(value: T)
+                        observer = createAnonymousObserver()
+                    end
+
+                    return observer
+                end
+            "#,
+        ));
+    }
 }
