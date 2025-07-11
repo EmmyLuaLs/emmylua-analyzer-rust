@@ -43,6 +43,7 @@ pub fn instantiate_func_generic(
     }
 
     let mut substitutor = TypeSubstitutor::new();
+    substitutor.set_call_expr(call_expr.clone());
     tpl_pattern_match_args(
         db,
         cache,

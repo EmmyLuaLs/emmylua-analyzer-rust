@@ -70,7 +70,9 @@ pub fn check_table_generic_type_compact(
         }
         // maybe support object
         // need check later
-        LuaType::Ref(_) | LuaType::Def(_) | LuaType::Userdata => return Ok(()),
+        LuaType::Ref(_) | LuaType::Def(_) | LuaType::Userdata | LuaType::Generic(_) => {
+            return Ok(());
+        }
         LuaType::Union(union) => {
             for union_type in union.get_types() {
                 check_table_generic_type_compact(

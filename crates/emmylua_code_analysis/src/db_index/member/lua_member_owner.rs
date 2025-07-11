@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
 
-use crate::{GlobalId, InFiled, LuaTypeDeclId};
+use crate::{GlobalId, InFiled, LuaGenericType, LuaTypeDeclId};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum LuaMemberOwner {
@@ -10,6 +12,7 @@ pub enum LuaMemberOwner {
     Type(LuaTypeDeclId),
     Element(InFiled<TextRange>),
     GlobalPath(GlobalId),
+    Generic(Arc<LuaGenericType>),
 }
 
 impl From<LuaTypeDeclId> for LuaMemberOwner {
@@ -39,6 +42,12 @@ impl From<ArcIntern<SmolStr>> for LuaMemberOwner {
 impl From<GlobalId> for LuaMemberOwner {
     fn from(global_id: GlobalId) -> Self {
         Self::GlobalPath(global_id)
+    }
+}
+
+impl From<LuaGenericType> for LuaMemberOwner {
+    fn from(generic: LuaGenericType) -> Self {
+        Self::Generic(Arc::new(generic))
     }
 }
 
