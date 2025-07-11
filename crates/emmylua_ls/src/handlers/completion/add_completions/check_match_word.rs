@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 pub fn check_match_word(key: &str, candidate_key: &str) -> bool {
     if key.is_empty() {
         return true; // 关键词为空, 一般是在空白处主动触发补全
@@ -30,6 +32,14 @@ pub fn check_match_word(key: &str, candidate_key: &str) -> bool {
         if is_word_start {
             let curr_lowercase = curr_char.to_lowercase().next().unwrap();
             if curr_lowercase == key_first_char {
+                // 如果首字母匹配, 则需要检查 candidate_key 是否包含 key 中的所有字符
+                let candidate_key_set: HashSet<char> =
+                    candidate_key.to_lowercase().chars().collect();
+                for trigger_char in key.to_lowercase().chars() {
+                    if !candidate_key_set.contains(&trigger_char) {
+                        return false;
+                    }
+                }
                 return true;
             }
         }
