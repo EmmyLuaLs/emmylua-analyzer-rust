@@ -23,13 +23,15 @@ pub fn rename_member_references(
         .get_member_index()
         .get_member(&member_id)?;
     let key = member.get_key();
-    let index_references = semantic_model
-        .get_db()
-        .get_reference_index()
-        .get_index_references(&key)?;
+    let index_references: Vec<emmylua_code_analysis::InFiled<emmylua_parser::LuaSyntaxId>> =
+        semantic_model
+            .get_db()
+            .get_reference_index()
+            .get_index_references(&key)?;
 
-    let property_owner = find_member_origin_owner(compilation, semantic_model, member_id)
+    let origin_property_owner = find_member_origin_owner(compilation, semantic_model, member_id)
         .unwrap_or(LuaSemanticDeclId::Member(member_id));
+    let property_owner = LuaSemanticDeclId::Member(member_id);
     let mut semantic_cache = HashMap::new();
     for in_filed_syntax_id in index_references {
         let semantic_model =
@@ -44,6 +46,10 @@ pub fn rename_member_references(
         let node = in_filed_syntax_id.value.to_node_from_root(root.syntax())?;
         if semantic_model.is_reference_to(
             node.clone(),
+            origin_property_owner.clone(),
+            SemanticDeclLevel::NoTrace,
+        ) || semantic_model.is_reference_to(
+            node.clone(),
             property_owner.clone(),
             SemanticDeclLevel::NoTrace,
         ) {
@@ -56,7 +62,6 @@ pub fn rename_member_references(
             }
         }
     }
-
     Some(())
 }
 
