@@ -1131,4 +1131,17 @@ mod tests {
             ],
         ));
     }
+
+    #[test]
+    fn test_file_start() {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_completion(
+            "table<??>",
+            vec![VirtualCompletionItem {
+                label: "table".to_string(),
+                kind: CompletionItemKind::CLASS,
+                ..Default::default()
+            },],
+        ));
+    }
 }
