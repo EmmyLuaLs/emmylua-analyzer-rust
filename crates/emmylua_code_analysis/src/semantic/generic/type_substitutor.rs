@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use emmylua_parser::LuaCallExpr;
+
 use crate::{GenericTplId, LuaType, LuaTypeDeclId};
 
 #[derive(Debug, Clone)]
@@ -7,6 +9,7 @@ pub struct TypeSubstitutor {
     tpl_replace_map: HashMap<GenericTplId, SubstitutorValue>,
     alias_type_id: Option<LuaTypeDeclId>,
     self_type: Option<LuaType>,
+    call_expr: Option<LuaCallExpr>,
 }
 
 impl TypeSubstitutor {
@@ -15,6 +18,7 @@ impl TypeSubstitutor {
             tpl_replace_map: HashMap::new(),
             alias_type_id: None,
             self_type: None,
+            call_expr: None,
         }
     }
 
@@ -27,6 +31,7 @@ impl TypeSubstitutor {
             tpl_replace_map,
             alias_type_id: None,
             self_type: None,
+            call_expr: None,
         }
     }
 
@@ -39,6 +44,7 @@ impl TypeSubstitutor {
             tpl_replace_map,
             alias_type_id: Some(alias_type_id),
             self_type: None,
+            call_expr: None,
         }
     }
 
@@ -128,6 +134,14 @@ impl TypeSubstitutor {
                 _ => {}
             }
         }
+    }
+
+    pub fn set_call_expr(&mut self, call_expr: LuaCallExpr) {
+        self.call_expr = Some(call_expr);
+    }
+
+    pub fn get_call_expr(&self) -> Option<&LuaCallExpr> {
+        self.call_expr.as_ref()
     }
 }
 

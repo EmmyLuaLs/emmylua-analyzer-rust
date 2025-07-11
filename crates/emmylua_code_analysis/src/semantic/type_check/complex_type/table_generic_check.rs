@@ -80,6 +80,9 @@ pub fn check_table_generic_type_compact(
                 check_guard.next_level()?,
             );
         }
+        LuaType::Generic(_) => {
+            return Ok(());
+        }
         LuaType::Union(union) => {
             for union_type in union.into_vec() {
                 check_table_generic_type_compact(

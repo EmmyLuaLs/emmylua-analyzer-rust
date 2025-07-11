@@ -1212,4 +1212,45 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_meta_pairs() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@class RingBufferSpan<T>
+                local RingBufferSpan
+
+                ---@return fun(): integer, T
+                function RingBufferSpan:__pairs()
+                end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            local pairs = pairs
+
+            ---@type RingBufferSpan
+            local span
+
+            for k, v in pairs(span) do
+            end
+            "#
+        ));
+
+        // 测试泛型
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            local pairs = pairs
+
+            ---@type RingBufferSpan<number>
+            local span
+            
+            for k, v in pairs(span) do
+            end
+            "#
+        ));
+    }
 }
