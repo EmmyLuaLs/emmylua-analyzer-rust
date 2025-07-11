@@ -8,6 +8,7 @@ mod disable_line_test;
 mod duplicate_field_test;
 mod duplicate_index_test;
 mod duplicate_require_test;
+mod enum_value_mismatch_test;
 mod generic_constraint_mismatch_test;
 mod incomplete_signature_doc_test;
 mod inject_field_test;

@@ -401,6 +401,11 @@
           "description": "require-module-not-visible",
           "type": "string",
           "const": "require-module-not-visible"
+        },
+        {
+          "description": "enum-value-mismatch",
+          "type": "string",
+          "const": "enum-value-mismatch"
         }
       ]
     },

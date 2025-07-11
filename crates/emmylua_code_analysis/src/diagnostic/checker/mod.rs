@@ -15,6 +15,7 @@ mod duplicate_field;
 mod duplicate_index;
 mod duplicate_require;
 mod duplicate_type;
+mod enum_value_mismatch;
 mod generic;
 mod incomplete_signature_doc;
 mod local_const_reassign;
@@ -102,6 +103,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, semantic_model);
     run_check::<require_module_visibility::RequireModuleVisibilityChecker>(context, semantic_model);
     run_check::<unknown_doc_tag::UnknownDocTag>(context, semantic_model);
+    run_check::<enum_value_mismatch::EnumValueMismatchChecker>(context, semantic_model);
 
     run_check::<code_style::non_literal_expressions_in_assert::NonLiteralExpressionsInAssertChecker>(
         context,
