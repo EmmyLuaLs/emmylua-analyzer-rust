@@ -23,6 +23,9 @@ pub struct EmmyrcInlayHint {
     /// Whether to enable meta __call operator hints.
     #[serde(default = "default_true")]
     pub meta_call_hint: bool,
+    /// Whether to enable enum parameter hints.
+    #[serde(default = "default_false")]
+    pub enum_param_hint: bool,
 }
 
 impl Default for EmmyrcInlayHint {
@@ -34,10 +37,15 @@ impl Default for EmmyrcInlayHint {
             local_hint: default_true(),
             override_hint: default_true(),
             meta_call_hint: default_true(),
+            enum_param_hint: default_false(),
         }
     }
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_false() -> bool {
+    false
 }
