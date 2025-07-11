@@ -334,7 +334,7 @@ fn build_local_name_hint(
 
     // 目前没时间完善结合 ast 的类型过滤, 所以只允许一些类型显示
     match typ {
-        LuaType::Ref(_) => {}
+        LuaType::Ref(_) | LuaType::Generic(_) => {}
         _ => {
             return Some(());
         }
