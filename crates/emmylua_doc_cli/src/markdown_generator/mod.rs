@@ -6,6 +6,7 @@ mod render;
 
 use std::path::PathBuf;
 
+use crate::OutputDestination;
 use emmylua_code_analysis::EmmyLuaAnalysis;
 use gen::{
     generate_global_markdown, generate_index, generate_module_markdown, generate_type_markdown,
@@ -13,39 +14,43 @@ use gen::{
 use markdown_types::MkdocsIndex;
 
 pub fn generate_markdown(
-    analysis: &mut EmmyLuaAnalysis,
-    output: PathBuf,
+    analysis: &EmmyLuaAnalysis,
+    output: OutputDestination,
     override_template: Option<PathBuf>,
     site_name: Option<String>,
     mixin: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let OutputDestination::File(output) = output else {
+        return Err("Output must be a path when using markdown format".into());
+    };
+
     let docs_dir = output.join("docs");
     let types_out = docs_dir.join("types");
     if !types_out.exists() {
-        eprintln!("Creating types directory: {:?}", types_out);
+        log::info!("Creating types directory: {:?}", types_out);
         std::fs::create_dir_all(&types_out)?;
     } else {
-        eprintln!("Clearing types directory: {:?}", types_out);
+        log::info!("Clearing types directory: {:?}", types_out);
         std::fs::remove_dir_all(&types_out)?;
         std::fs::create_dir_all(&types_out)?;
     }
 
     let module_out = docs_dir.join("modules");
     if !module_out.exists() {
-        eprintln!("Creating modules directory: {:?}", module_out);
+        log::info!("Creating modules directory: {:?}", module_out);
         std::fs::create_dir_all(&module_out)?;
     } else {
-        eprintln!("Clearing modules directory: {:?}", module_out);
+        log::info!("Clearing modules directory: {:?}", module_out);
         std::fs::remove_dir_all(&module_out)?;
         std::fs::create_dir_all(&module_out)?;
     }
 
     let global_out = docs_dir.join("globals");
     if !global_out.exists() {
-        eprintln!("Creating globals directory: {:?}", global_out);
+        log::info!("Creating globals directory: {:?}", global_out);
         std::fs::create_dir_all(&global_out)?;
     } else {
-        eprintln!("Clearing globals directory: {:?}", global_out);
+        log::info!("Clearing globals directory: {:?}", global_out);
         std::fs::remove_dir_all(&global_out)?;
         std::fs::create_dir_all(&global_out)?;
     }
@@ -80,6 +85,8 @@ pub fn generate_markdown(
     if let Some(mixin) = mixin {
         mixin_copy::mixin_copy(&output, mixin);
     }
+
+    eprintln!("Documentation markdown exported to {:?}", docs_dir);
 
     Ok(())
 }

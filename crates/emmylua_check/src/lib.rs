@@ -4,52 +4,38 @@ mod output;
 mod terminal_display;
 
 pub use cmd_args::*;
-use fern::Dispatch;
-use log::LevelFilter;
 use output::output_result;
 use std::{error::Error, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
-use crate::init::get_need_check_ids;
+use crate::init::{get_need_check_ids, setup_logger};
 
 pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + Send>> {
-    let mut workspace = cmd_args.workspace;
-    if !workspace.is_absolute() {
-        workspace = std::env::current_dir()?.join(workspace);
-    }
+    setup_logger(cmd_args.verbose);
 
-    let verbose = cmd_args.verbose;
-    let logger = Dispatch::new()
-        .format(move |out, message, record| {
-            let (color, reset) = match record.level() {
-                log::Level::Error => ("\x1b[31m", "\x1b[0m"), // Red
-                log::Level::Warn => ("\x1b[33m", "\x1b[0m"),  // Yellow
-                log::Level::Info | log::Level::Debug | log::Level::Trace => ("", ""),
-            };
-            out.finish(format_args!(
-                "{}{}: {}{}",
-                color,
-                record.level(),
-                if verbose {
-                    format!("({}) {}", record.target(), message)
-                } else {
-                    message.to_string()
-                },
-                reset
-            ))
+    let cwd = std::env::current_dir()?;
+    let workspaces: Vec<_> = cmd_args
+        .workspace
+        .into_iter()
+        .map(|workspace| {
+            if workspace.is_absolute() {
+                workspace
+            } else {
+                cwd.join(workspace)
+            }
         })
-        .level(if verbose {
-            LevelFilter::Info
-        } else {
-            LevelFilter::Warn
-        })
-        .chain(std::io::stderr());
+        .collect();
+    let main_path = workspaces
+        .first()
+        .ok_or("Failed to load workspace")?
+        .clone();
 
-    if let Err(e) = logger.apply() {
-        eprintln!("Failed to apply logger: {:?}", e);
-    }
-
-    let analysis = match init::load_workspace(workspace.clone(), cmd_args.config, cmd_args.ignore) {
+    let analysis = match init::load_workspace(
+        main_path.clone(),
+        workspaces.clone(),
+        cmd_args.config,
+        cmd_args.ignore,
+    ) {
         Some(analysis) => analysis,
         None => {
             return Err("Failed to load workspace".into());
@@ -58,7 +44,7 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
 
     let files = analysis.compilation.get_db().get_vfs().get_all_file_ids();
     let db = analysis.compilation.get_db();
-    let need_check_files = get_need_check_ids(db, files, &workspace);
+    let need_check_files = get_need_check_ids(db, files, &workspaces);
 
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
     let analysis = Arc::new(analysis);
@@ -76,7 +62,7 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
     let exit_code = output_result(
         need_check_files.len(),
         db,
-        workspace,
+        main_path,
         receiver,
         cmd_args.output_format,
         cmd_args.output,

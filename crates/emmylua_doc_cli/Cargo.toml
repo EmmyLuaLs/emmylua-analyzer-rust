@@ -29,3 +29,8 @@ walkdir.workspace = true
 tera.workspace = true
 include_dir.workspace = true
 clap.workspace = true
+log.workspace = true
+fern.workspace = true
+
+[[bin]]
+name = "emmylua_doc_cli"

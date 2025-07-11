@@ -1,10 +1,9 @@
-use std::path::Path;
-
 use emmylua_code_analysis::{
     humanize_type, DbIndex, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType, LuaTypeCache,
     LuaTypeDecl, RenderLevel,
 };
 use emmylua_parser::VisibilityKind;
+use std::path::Path;
 use tera::{Context, Tera};
 
 use crate::markdown_generator::{
@@ -151,7 +150,7 @@ fn generate_class_type_markdown(
     let render_text = match tl.render("lua_type_template.tl", context) {
         Ok(text) => text,
         Err(e) => {
-            eprintln!("Failed to render template: {}", e);
+            log::error!("Failed to render template: {}", e);
             return None;
         }
     };
@@ -163,11 +162,11 @@ fn generate_class_type_markdown(
     });
 
     let outpath = output.join(file_type_name);
-    eprintln!("output class file: {}", outpath.display());
+    log::info!("Writing class file: {}", outpath.display());
     match std::fs::write(outpath, render_text) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to write file: {}", e);
+            log::error!("Failed to write file: {}", e);
             return None;
         }
     }
@@ -237,7 +236,7 @@ fn generate_enum_type_markdown(
     let render_text = match tl.render("lua_enum_template.tl", context) {
         Ok(text) => text,
         Err(e) => {
-            eprintln!("Failed to render template: {}", e);
+            log::error!("Failed to render template: {}", e);
             return None;
         }
     };
@@ -249,11 +248,11 @@ fn generate_enum_type_markdown(
     });
 
     let outpath = output.join(file_type_name);
-    eprintln!("output enum file: {}", outpath.display());
+    log::info!("Writing enum file: {}", outpath.display());
     match std::fs::write(outpath, render_text) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to write file: {}", e);
+            log::error!("Failed to write file: {}", e);
             return None;
         }
     }
@@ -293,7 +292,7 @@ fn generate_alias_type_markdown(
     let render_text = match tl.render("lua_alias_template.tl", context) {
         Ok(text) => text,
         Err(e) => {
-            eprintln!("Failed to render template: {}", e);
+            log::error!("Failed to render template: {}", e);
             return None;
         }
     };
@@ -305,11 +304,11 @@ fn generate_alias_type_markdown(
     });
 
     let outpath = output.join(file_type_name);
-    eprintln!("output alias file: {}", outpath.display());
+    log::info!("Writing alias file: {}", outpath.display());
     match std::fs::write(outpath, render_text) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to write file: {}", e);
+            log::error!("Failed to write file: {}", e);
             return None;
         }
     }

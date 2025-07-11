@@ -14,7 +14,8 @@ pub struct CmdArgs {
     pub config: Option<Vec<PathBuf>>,
 
     /// Path to the workspace directory
-    pub workspace: PathBuf,
+    #[arg(num_args = 1..)]
+    pub workspace: Vec<PathBuf>,
 
     /// Comma separated list of ignore patterns.
     /// Patterns must follow glob syntax
@@ -24,11 +25,17 @@ pub struct CmdArgs {
     /// Specify output format
     #[cfg_attr(
         feature = "cli",
-        arg(long, default_value = "text", value_enum, ignore_case = true)
+        arg(
+            long,
+            short = 'f',
+            default_value = "text",
+            value_enum,
+            ignore_case = true
+        )
     )]
     pub output_format: OutputFormat,
 
-    /// Specify output destination (stdout or a file path, only used when output_format is json).
+    /// Specify output destination (stdout or a file path, only used when output_format is json)
     #[cfg_attr(feature = "cli", arg(long, default_value = "stdout"))]
     pub output: OutputDestination,
 
