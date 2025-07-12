@@ -2,6 +2,7 @@ use clap::{Parser, ValueEnum};
 
 #[allow(unused)]
 #[derive(Debug, Parser, Clone)]
+#[command(version)]
 pub struct CmdArgs {
     /// Communication method
     #[structopt(long, short, default_value = "stdio")]

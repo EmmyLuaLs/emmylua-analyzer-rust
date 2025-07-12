@@ -6,6 +6,7 @@ use std::path::PathBuf;
 #[allow(unused)]
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "cli", derive(Parser))]
+#[cfg_attr(feature = "cli", command(version))]
 pub struct CmdArgs {
     /// Configuration file paths.
     /// If not provided, both ".emmyrc.json" and ".luarc.json" will be searched in the workspace

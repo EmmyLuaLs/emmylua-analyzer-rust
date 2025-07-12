@@ -2,6 +2,7 @@ use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
+#[command(version)]
 pub struct CmdArgs {
     /// The path of the lua project
     #[arg(long, short, num_args = 1..)]
