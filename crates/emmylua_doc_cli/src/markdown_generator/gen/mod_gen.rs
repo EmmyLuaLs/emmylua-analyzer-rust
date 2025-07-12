@@ -55,7 +55,7 @@ pub fn generate_module_markdown(
     let render_text = match tl.render("lua_module_template.tl", &context) {
         Ok(text) => text,
         Err(e) => {
-            eprintln!("Failed to render template: {}", e);
+            log::error!("Failed to render template: {}", e);
             return None;
         }
     };
@@ -67,11 +67,11 @@ pub fn generate_module_markdown(
     });
 
     let outpath = output.join(file_name);
-    eprintln!("output module file: {}", outpath.display());
+    log::info!("Writing module file: {}", outpath.display());
     match std::fs::write(outpath, render_text) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to write file: {}", e);
+            log::error!("Failed to write file: {}", e);
             return None;
         }
     }

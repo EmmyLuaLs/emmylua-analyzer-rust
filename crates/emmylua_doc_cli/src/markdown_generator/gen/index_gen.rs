@@ -28,7 +28,7 @@ pub fn generate_index(
     let index_text = match tl.render("index_template.tl", &context) {
         Ok(text) => text,
         Err(e) => {
-            eprintln!("Failed to render index: {}", e);
+            log::error!("Failed to render index: {}", e);
             return None;
         }
     };
@@ -39,7 +39,7 @@ pub fn generate_index(
     let mkdocs_yml_text = match tl.render("mkdocs_template.tl", &context) {
         Ok(text) => text,
         Err(e) => {
-            eprintln!("Failed to render mkdocs.yml: {}", e);
+            log::error!("Failed to render mkdocs.yml: {}", e);
             return None;
         }
     };

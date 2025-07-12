@@ -21,7 +21,7 @@ pub fn mixin_copy(output: &Path, mixin: PathBuf) -> Option<()> {
     match copy_dir_all(&mixin, output) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to copy mixin: {}", e);
+            log::error!("Failed to copy mixin: {}", e);
             return None;
         }
     }

@@ -1,9 +1,10 @@
-use std::{path::PathBuf, str::FromStr, sync::Arc};
-
 use emmylua_code_analysis::{
     load_configs, load_workspace_files, update_code_style, DbIndex, EmmyLuaAnalysis, Emmyrc,
     FileId, LuaFileInfo,
 };
+use fern::Dispatch;
+use log::LevelFilter;
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 fn root_from_configs(config_paths: &Vec<PathBuf>, fallback: &PathBuf) -> PathBuf {
     if config_paths.len() != 1 {
@@ -26,13 +27,44 @@ fn root_from_configs(config_paths: &Vec<PathBuf>, fallback: &PathBuf) -> PathBuf
     }
 }
 
+pub fn setup_logger(verbose: bool) {
+    let logger = Dispatch::new()
+        .format(move |out, message, record| {
+            let (color, reset) = match record.level() {
+                log::Level::Error => ("\x1b[31m", "\x1b[0m"), // Red
+                log::Level::Warn => ("\x1b[33m", "\x1b[0m"),  // Yellow
+                log::Level::Info | log::Level::Debug | log::Level::Trace => ("", ""),
+            };
+            out.finish(format_args!(
+                "{}{}: {}{}",
+                color,
+                record.level(),
+                if verbose {
+                    format!("({}) {}", record.target(), message)
+                } else {
+                    message.to_string()
+                },
+                reset
+            ))
+        })
+        .level(if verbose {
+            LevelFilter::Info
+        } else {
+            LevelFilter::Warn
+        })
+        .chain(std::io::stderr());
+
+    if let Err(e) = logger.apply() {
+        eprintln!("Failed to apply logger: {:?}", e);
+    }
+}
+
 pub fn load_workspace(
-    workspace_folder: PathBuf,
+    main_path: PathBuf,
+    mut workspace_folders: Vec<PathBuf>,
     config_paths: Option<Vec<PathBuf>>,
     ignore: Option<Vec<String>>,
 ) -> Option<EmmyLuaAnalysis> {
-    let mut workspace_folders = vec![workspace_folder];
-    let main_path = workspace_folders.first()?.clone();
     let (config_files, config_root): (Vec<PathBuf>, PathBuf) =
         if let Some(config_paths) = config_paths {
             (
@@ -176,11 +208,11 @@ pub fn calculate_include_and_exclude(
     (include, exclude, exclude_dirs)
 }
 
-pub fn get_need_check_ids(db: &DbIndex, files: Vec<FileId>, workspace: &PathBuf) -> Vec<FileId> {
+pub fn get_need_check_ids(db: &DbIndex, files: Vec<FileId>, workspace: &[PathBuf]) -> Vec<FileId> {
     let mut need_check_files = Vec::new();
     for file_id in files {
         let file_path = db.get_vfs().get_file_path(&file_id).unwrap();
-        if file_path.starts_with(workspace) {
+        if workspace.iter().any(|ws| file_path.starts_with(ws)) {
             need_check_files.push(file_id);
         }
     }

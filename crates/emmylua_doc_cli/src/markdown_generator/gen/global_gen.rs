@@ -49,7 +49,7 @@ pub fn generate_global_markdown(
     let render_text = match tl.render(template_name, &context) {
         Ok(text) => text,
         Err(e) => {
-            eprintln!("Failed to render template: {}", e);
+            log::error!("Failed to render template: {}", e);
             return None;
         }
     };
@@ -61,11 +61,11 @@ pub fn generate_global_markdown(
     });
 
     let outpath = output.join(file_name);
-    eprintln!("output global file: {}", outpath.display());
+    log::info!("Writing global file: {}", outpath.display());
     match std::fs::write(outpath, render_text) {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Failed to write file: {}", e);
+            log::error!("Failed to write file: {}", e);
             return None;
         }
     }
