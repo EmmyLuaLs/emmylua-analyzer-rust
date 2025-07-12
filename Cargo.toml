@@ -48,3 +48,4 @@ toml_edit = "0.22.23"
 itertools = "0.14.0"
 clap = { version = "4.5.39", features = ["derive", "wrap_help"] }
 ansi_term = "0.12.1"
+num-traits = { version = "0.2", features = ["std"] }

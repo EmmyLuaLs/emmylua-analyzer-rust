@@ -613,6 +613,7 @@ dependencies = [
  "emmylua_parser",
  "include_dir",
  "lsp-types",
+ "num-traits",
  "rowan",
  "serde",
  "serde_json",
