@@ -43,25 +43,25 @@ impl LuaAstNode for LuaExpr {
     where
         Self: Sized,
     {
-        match kind {
+        matches!(
+            kind,
             LuaSyntaxKind::CallExpr
-            | LuaSyntaxKind::AssertCallExpr
-            | LuaSyntaxKind::ErrorCallExpr
-            | LuaSyntaxKind::RequireCallExpr
-            | LuaSyntaxKind::TypeCallExpr
-            | LuaSyntaxKind::SetmetatableCallExpr => true,
-            LuaSyntaxKind::TableArrayExpr
-            | LuaSyntaxKind::TableObjectExpr
-            | LuaSyntaxKind::TableEmptyExpr => true,
-            LuaSyntaxKind::LiteralExpr => true,
-            LuaSyntaxKind::BinaryExpr => true,
-            LuaSyntaxKind::UnaryExpr => true,
-            LuaSyntaxKind::ClosureExpr => true,
-            LuaSyntaxKind::ParenExpr => true,
-            LuaSyntaxKind::NameExpr => true,
-            LuaSyntaxKind::IndexExpr => true,
-            _ => false,
-        }
+                | LuaSyntaxKind::AssertCallExpr
+                | LuaSyntaxKind::ErrorCallExpr
+                | LuaSyntaxKind::RequireCallExpr
+                | LuaSyntaxKind::TypeCallExpr
+                | LuaSyntaxKind::SetmetatableCallExpr
+                | LuaSyntaxKind::TableArrayExpr
+                | LuaSyntaxKind::TableObjectExpr
+                | LuaSyntaxKind::TableEmptyExpr
+                | LuaSyntaxKind::LiteralExpr
+                | LuaSyntaxKind::BinaryExpr
+                | LuaSyntaxKind::UnaryExpr
+                | LuaSyntaxKind::ClosureExpr
+                | LuaSyntaxKind::ParenExpr
+                | LuaSyntaxKind::NameExpr
+                | LuaSyntaxKind::IndexExpr
+        )
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>
@@ -110,11 +110,7 @@ impl LuaAstNode for LuaVarExpr {
     where
         Self: Sized,
     {
-        match kind {
-            LuaSyntaxKind::NameExpr => true,
-            LuaSyntaxKind::IndexExpr => true,
-            _ => false,
-        }
+        matches!(kind, LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr)
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>
@@ -167,13 +163,13 @@ impl LuaAstNode for LuaSingleArgExpr {
     where
         Self: Sized,
     {
-        match kind {
+        matches!(
+            kind,
             LuaSyntaxKind::TableArrayExpr
-            | LuaSyntaxKind::TableObjectExpr
-            | LuaSyntaxKind::TableEmptyExpr => true,
-            LuaSyntaxKind::LiteralExpr => true,
-            _ => false,
-        }
+                | LuaSyntaxKind::TableObjectExpr
+                | LuaSyntaxKind::TableEmptyExpr
+                | LuaSyntaxKind::LiteralExpr
+        )
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>

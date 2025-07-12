@@ -68,10 +68,7 @@ fn check_value_expr_is_check_expr(value_expr: LuaExpr) -> bool {
                 return false;
             };
 
-            match op.get_op() {
-                BinaryOperator::OpEq | BinaryOperator::OpNe => true,
-                _ => false,
-            }
+            matches!(op.get_op(), BinaryOperator::OpEq | BinaryOperator::OpNe)
         }
         LuaExpr::CallExpr(_) => true,
         _ => false, // Other expressions can be checked

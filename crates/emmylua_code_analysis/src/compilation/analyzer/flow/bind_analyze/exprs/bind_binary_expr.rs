@@ -72,10 +72,10 @@ pub fn is_binary_logical(expr: &LuaExpr) -> bool {
                 return false;
             };
 
-            return match op_token.get_op() {
-                BinaryOperator::OpAnd | BinaryOperator::OpOr => true,
-                _ => false,
-            };
+            return matches!(
+                op_token.get_op(),
+                BinaryOperator::OpAnd | BinaryOperator::OpOr
+            );
         }
         LuaExpr::ParenExpr(paren_expr) => {
             if let Some(inner_expr) = paren_expr.get_expr() {

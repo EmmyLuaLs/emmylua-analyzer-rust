@@ -122,19 +122,19 @@ fn walk_node_leave(analyzer: &mut DeclAnalyzer, node: LuaAst) {
 }
 
 fn is_scope_owner(node: &LuaAst) -> bool {
-    match node.syntax().kind().into() {
+    matches!(
+        node.syntax().kind().into(),
         LuaSyntaxKind::Chunk
-        | LuaSyntaxKind::Block
-        | LuaSyntaxKind::ClosureExpr
-        | LuaSyntaxKind::RepeatStat
-        | LuaSyntaxKind::ForRangeStat
-        | LuaSyntaxKind::ForStat
-        | LuaSyntaxKind::LocalStat
-        | LuaSyntaxKind::FuncStat
-        | LuaSyntaxKind::LocalFuncStat
-        | LuaSyntaxKind::AssignStat => true,
-        _ => false,
-    }
+            | LuaSyntaxKind::Block
+            | LuaSyntaxKind::ClosureExpr
+            | LuaSyntaxKind::RepeatStat
+            | LuaSyntaxKind::ForRangeStat
+            | LuaSyntaxKind::ForStat
+            | LuaSyntaxKind::LocalStat
+            | LuaSyntaxKind::FuncStat
+            | LuaSyntaxKind::LocalFuncStat
+            | LuaSyntaxKind::AssignStat
+    )
 }
 
 #[derive(Debug)]
