@@ -83,4 +83,24 @@ mod tests {
         );
         assert!(result);
     }
+
+    #[test]
+    fn test_rename_class_field_1() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let result = ws.check_rename(
+            r#"
+                ---@class ABC
+                local ABC = {}
+
+                local function test()
+                end
+                ABC.te<??>st = test
+
+                ABC.test()
+            "#,
+            "test1".to_string(),
+            2,
+        );
+        assert!(result);
+    }
 }
