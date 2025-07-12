@@ -12,14 +12,14 @@ mod module_path_provider;
 mod postfix_provider;
 mod table_field_provider;
 
+use super::completion_builder::CompletionBuilder;
+use emmylua_code_analysis::Emmyrc;
 use emmylua_parser::LuaAstToken;
 use emmylua_parser::LuaStringToken;
 pub use function_provider::get_function_remove_nil;
 use rowan::TextRange;
 
-use super::completion_builder::CompletionBuilder;
-
-pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
+pub fn add_completions(builder: &mut CompletionBuilder, emmyrc: &Emmyrc) -> Option<()> {
     postfix_provider::add_completion(builder);
     // `function_provider`优先级必须高于`env_provider`
     function_provider::add_completion(builder);
@@ -33,7 +33,7 @@ pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
     module_path_provider::add_completion(builder);
     file_path_provider::add_completion(builder);
     auto_require_provider::add_completion(builder);
-    doc_tag_provider::add_completion(builder);
+    doc_tag_provider::add_completion(builder, emmyrc);
     doc_type_provider::add_completion(builder);
     doc_name_token_provider::add_completion(builder);
 

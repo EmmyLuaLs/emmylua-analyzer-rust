@@ -6,12 +6,13 @@ use lsp_types::{
     NumberOrString, Range, WorkspaceEdit,
 };
 
+use super::actions::{
+    build_add_doc_tag, build_disable_file_changes, build_disable_next_line_changes,
+};
 use crate::handlers::{
     code_actions::actions::build_need_check_nil,
     command::{make_disable_code_command, DisableAction},
 };
-
-use super::actions::{build_disable_file_changes, build_disable_next_line_changes};
 
 pub fn build_actions(
     semantic_model: &SemanticModel,
@@ -38,6 +39,7 @@ pub fn build_actions(
                         diagnostic_code,
                         file_id,
                         diagnostic.range,
+                        &diagnostic.data,
                     );
                     add_disable_code_action(
                         &semantic_model,
@@ -65,9 +67,11 @@ fn add_fix_code_action(
     diagnostic_code: DiagnosticCode,
     file_id: FileId,
     range: Range,
+    data: &Option<serde_json::Value>,
 ) -> Option<()> {
     match diagnostic_code {
-        DiagnosticCode::NeedCheckNil => build_need_check_nil(semantic_model, actions, range),
+        DiagnosticCode::NeedCheckNil => build_need_check_nil(semantic_model, actions, range, data),
+        DiagnosticCode::UnknownDocTag => build_add_doc_tag(semantic_model, actions, range, data),
         _ => Some(()),
     }
 }

@@ -28,6 +28,7 @@ mod syntax_error;
 mod unbalanced_assignments;
 mod undefined_doc_param;
 mod undefined_global;
+mod unknown_doc_tag;
 mod unnecessary_assert;
 mod unnecessary_if;
 mod unused;
@@ -100,6 +101,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     );
     run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, semantic_model);
     run_check::<require_module_visibility::RequireModuleVisibilityChecker>(context, semantic_model);
+    run_check::<unknown_doc_tag::UnknownDocTag>(context, semantic_model);
 
     run_check::<code_style::non_literal_expressions_in_assert::NonLiteralExpressionsInAssertChecker>(
         context,

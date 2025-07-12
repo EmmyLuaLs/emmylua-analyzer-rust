@@ -265,3 +265,6 @@ Cannot use `...` outside a vararg function.:
   en: "Module '%{module}' is not visible. It has @export restrictions."
   zh_CN: "模块 '%{module}' 不可见。它有 @export 限制。"
   zh_HK: "模組 '%{module}' 不可見。它有 @export 限制。"
+"Unknown doc tag: `%{name}`":
+  en: "Unknown doc tag: `%{name}`"
+  # TODO: translate

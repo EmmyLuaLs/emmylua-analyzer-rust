@@ -49,6 +49,7 @@
     "doc": {
       "$ref": "#/$defs/EmmyrcDoc",
       "default": {
+        "knownTags": [],
         "privateName": []
       }
     },
@@ -317,6 +318,11 @@
           "const": "duplicate-doc-field"
         },
         {
+          "description": "Unknown doc annotation",
+          "type": "string",
+          "const": "unknown-doc-tag"
+        },
+        {
           "description": "Missing fields",
           "type": "string",
           "const": "missing-fields"
@@ -551,6 +557,14 @@
     "EmmyrcDoc": {
       "type": "object",
       "properties": {
+        "knownTags": {
+          "description": "List of known documentation tags.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
         "privateName": {
           "description": "Treat specific field names as private, e.g. `m_*` means `XXX.m_id` and `XXX.m_type` are private, witch can only be accessed in the class where the definition is located.",
           "type": "array",

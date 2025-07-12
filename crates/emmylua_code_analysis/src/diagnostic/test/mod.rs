@@ -24,5 +24,6 @@ mod unbalanced_assignments_test;
 mod undefined_doc_param_test;
 mod undefined_field_test;
 mod undefined_global_test;
+mod unknown_doc_tag;
 mod unnecessary_assert_test;
 mod unnecessary_if_test;

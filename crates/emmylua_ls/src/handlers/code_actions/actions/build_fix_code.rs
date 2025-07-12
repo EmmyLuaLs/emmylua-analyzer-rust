@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::handlers::command::make_auto_doc_tag_command;
 use emmylua_code_analysis::SemanticModel;
 use emmylua_parser::{LuaAstNode, LuaExpr};
 use lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, Range, TextEdit, WorkspaceEdit};
@@ -9,6 +10,7 @@ pub fn build_need_check_nil(
     semantic_model: &SemanticModel,
     actions: &mut Vec<CodeActionOrCommand>,
     range: Range,
+    _data: &Option<serde_json::Value>,
 ) -> Option<()> {
     let document = semantic_model.get_document();
     let offset = document.get_offset(range.end.line as usize, range.end.character as usize)?;
@@ -49,6 +51,31 @@ pub fn build_need_check_nil(
         },
         _ => {}
     }
+
+    Some(())
+}
+
+pub fn build_add_doc_tag(
+    _semantic_model: &SemanticModel,
+    actions: &mut Vec<CodeActionOrCommand>,
+    _range: Range,
+    data: &Option<serde_json::Value>,
+) -> Option<()> {
+    let Some(data) = data else {
+        return None;
+    };
+
+    let tag_name = data.as_str()?;
+    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+        title: t!("Add @%{name} to the list of known tags", name = tag_name).to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(make_auto_doc_tag_command(
+            &t!("Add @%{name} to the list of known tags", name = tag_name).to_string(),
+            tag_name,
+        )),
+
+        ..Default::default()
+    }));
 
     Some(())
 }

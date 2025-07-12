@@ -7,6 +7,10 @@ Disable all diagnostics in current file (%{name}): |
 Disable all diagnostics in current project (%{name}): |
   在此项目禁用诊断 (%{name})
 
+# TODO: translate
+Add @%{name} to the list of known tags: |
+  Add @%{name} to the list of known tags
+
 use cast to remove nil: |
   使用 cast 移除 nil
 
