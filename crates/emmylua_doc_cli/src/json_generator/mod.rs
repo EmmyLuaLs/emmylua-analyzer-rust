@@ -10,7 +10,14 @@ pub fn generate_json(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = analysis.compilation.get_db();
 
-    let json_path = if output.ends_with(".json") {
+    let json_path = if output.extension() == Some("json".as_ref()) {
+        if let Some(parent) = output.parent() {
+            if !parent.exists() {
+                eprintln!("Creating output directory: {:?}", parent);
+                std::fs::create_dir_all(&parent)?;
+            }
+        }
+
         output
     } else {
         if !output.exists() {
