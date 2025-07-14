@@ -1,8 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    humanize_type, semantic::member::find_members, DbIndex, LuaGenericType, LuaMemberOwner,
-    LuaType, LuaTypeCache, RenderLevel, TypeSubstitutor,
+    humanize_type,
+    semantic::{member::find_members, type_check::is_sub_type_of},
+    DbIndex, LuaGenericType, LuaMemberOwner, LuaType, LuaTypeCache, RenderLevel, TypeSubstitutor,
 };
 
 use super::{
@@ -79,7 +80,7 @@ fn check_generic_type_compact_generic(
 ) -> TypeCheckResult {
     let source_base_id = source_generic.get_base_type_id();
     let compact_base_id = compact_generic.get_base_type_id();
-    if source_base_id != compact_base_id {
+    if !is_sub_type_of(db, &compact_base_id, &source_base_id) {
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
 

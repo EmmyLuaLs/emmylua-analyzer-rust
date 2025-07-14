@@ -496,4 +496,28 @@ mod tests {
             "#
         ));
     }
+
+    #[test]
+    fn test_generic_type_2() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Observable<T>
+                ---@class CountObservable<T>: Observable<integer>
+                CountObservable = {}
+                ---@return CountObservable<T>
+                function CountObservable:new()
+                end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+                ---@return Observable<integer>
+                local function count()
+                    return CountObservable:new()
+                end
+            "#
+        ));
+    }
 }
