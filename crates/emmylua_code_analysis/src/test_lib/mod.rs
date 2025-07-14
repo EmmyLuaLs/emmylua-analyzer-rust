@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName};
 use lsp_types::NumberOrString;
@@ -80,6 +80,14 @@ impl VirtualWorkspace {
         file_ids.sort();
 
         file_ids
+    }
+
+    pub fn get_emmyrc(&self) -> Emmyrc {
+        self.analysis.emmyrc.deref().clone()
+    }
+
+    pub fn update_emmyrc(&mut self, emmyrc: Emmyrc) {
+        self.analysis.update_config(Arc::new(emmyrc));
     }
 
     pub fn get_node<Ast: LuaAstNode>(&self, file_id: FileId) -> Ast {
