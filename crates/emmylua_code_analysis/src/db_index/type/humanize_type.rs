@@ -244,7 +244,7 @@ where
 
     if display_types.len() == 1 {
         if has_function && has_nil {
-            format!("{}?", type_str)
+            format!("({})?", type_str)
         } else {
             format!("{}{}", type_str, if has_nil { "?" } else { "" })
         }

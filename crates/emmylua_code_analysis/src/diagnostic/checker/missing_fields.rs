@@ -29,7 +29,33 @@ fn check_table_expr(
     type_cache: &mut HashMap<LuaType, HashSet<String>>,
 ) -> Option<()> {
     let db = context.db;
-    let table_type = semantic_model.infer_table_should_be(expr.clone())?;
+
+    let table_type = match semantic_model.infer_table_should_be(expr.clone())? {
+        LuaType::Union(union) => {
+            let mut set = HashSet::new();
+            for ty in union.get_types() {
+                match ty {
+                    LuaType::Ref(_)
+                    | LuaType::Object(_)
+                    | LuaType::Generic(_)
+                    | LuaType::Intersection(_) => {
+                        set.insert(ty.clone());
+                    }
+                    LuaType::Table | LuaType::Userdata => {
+                        return Some(());
+                    }
+                    _ => {}
+                }
+            }
+            match set.len() {
+                1 => set.into_iter().next()?.clone(),
+                _ => {
+                    return Some(());
+                }
+            }
+        }
+        table_type => table_type,
+    };
 
     let current_fields = expr
         .get_fields()

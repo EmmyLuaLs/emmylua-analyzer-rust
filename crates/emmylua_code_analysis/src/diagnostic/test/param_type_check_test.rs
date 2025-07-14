@@ -1253,4 +1253,28 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_generic_union_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Params<T>
+                ---@field next fun(value: T)
+                ---@field error? fun(error: any)
+
+                ---@generic T
+                ---@param params fun(value: T) | Params<T>
+                function test(params)
+                end
+
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+                test({})
+            "#
+        ));
+    }
 }
