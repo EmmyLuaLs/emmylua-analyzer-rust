@@ -33,7 +33,7 @@ fn check_table_expr(
     let table_type = match semantic_model.infer_table_should_be(expr.clone())? {
         LuaType::Union(union) => {
             let mut set = HashSet::new();
-            for ty in union.get_types() {
+            for ty in union.into_vec().iter() {
                 match ty {
                     LuaType::Ref(_)
                     | LuaType::Object(_)
