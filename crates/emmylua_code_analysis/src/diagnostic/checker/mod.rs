@@ -78,13 +78,13 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<local_const_reassign::LocalConstReassignChecker>(context, semantic_model);
     run_check::<discard_returns::DiscardReturnsChecker>(context, semantic_model);
     run_check::<await_in_sync::AwaitInSyncChecker>(context, semantic_model);
+    run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<param_type_check::ParamTypeCheckChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
     run_check::<code_style_check::CodeStyleCheckChecker>(context, semantic_model);
     run_check::<return_type_mismatch::ReturnTypeMismatch>(context, semantic_model);
     run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, semantic_model);
     run_check::<redefined_local::RedefinedLocalChecker>(context, semantic_model);
-    run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<check_field::CheckFieldChecker>(context, semantic_model);
     run_check::<circle_doc_class::CircleDocClassChecker>(context, semantic_model);
     run_check::<incomplete_signature_doc::IncompleteSignatureDocChecker>(context, semantic_model);

@@ -17,9 +17,7 @@ pub fn check_generic_type_compact(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     // 不检查尚未实例化的泛型类
-    if source_generic.contain_tpl() {
-        return Ok(());
-    }
+    let is_tpl = source_generic.contain_tpl();
 
     let source_base_id = source_generic.get_base_type_id();
     let type_decl = db
@@ -41,24 +39,34 @@ pub fn check_generic_type_compact(
     }
 
     match compact_type {
-        LuaType::Generic(compact_generic) => check_generic_type_compact_generic(
-            db,
-            source_generic,
-            compact_generic,
-            check_guard.next_level()?,
-        ),
+        LuaType::Generic(compact_generic) => {
+            if is_tpl {
+                return Ok(());
+            }
+            check_generic_type_compact_generic(
+                db,
+                source_generic,
+                compact_generic,
+                check_guard.next_level()?,
+            )
+        }
         LuaType::TableConst(range) => check_generic_type_compact_table(
             db,
             source_generic,
             LuaMemberOwner::Element(range.clone()),
             check_guard.next_level()?,
         ),
-        LuaType::Ref(_) | LuaType::Def(_) => check_ref_type_compact(
-            db,
-            &source_generic.get_base_type_id(),
-            compact_type,
-            check_guard.next_level()?,
-        ),
+        LuaType::Ref(_) | LuaType::Def(_) => {
+            if is_tpl {
+                return Ok(());
+            }
+            check_ref_type_compact(
+                db,
+                &source_generic.get_base_type_id(),
+                compact_type,
+                check_guard.next_level()?,
+            )
+        }
         _ => Err(TypeCheckFailReason::TypeNotMatch),
     }
 }
