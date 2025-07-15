@@ -1067,4 +1067,58 @@ end
             "#,
         ));
     }
+
+    #[test]
+    fn test_issue_622() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Test.A
+            ---@field base number
+            ---@field add number
+            T = {}
+
+            ---@enum Test.op
+            Op = {
+                base = "base",
+                add = "add",
+            };
+            "#,
+        );
+        ws.def(
+            r#"
+            ---@param op Test.op
+            ---@param value number
+            ---@return boolean
+            function T:SetValue(op, value)
+                local oldValue = self[op]
+                if oldValue == value then
+                    return false
+                end
+                A = oldValue
+                return true
+            end
+            "#,
+        );
+        let a = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a), "number");
+    }
+
+    #[test]
+    fn test_nil_1() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@type number?
+            local angle
+
+            if angle ~= nil and angle >= 0 then
+                A = angle
+            end
+
+            "#,
+        );
+        let a = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a), "number");
+    }
 }

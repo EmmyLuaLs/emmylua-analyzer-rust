@@ -211,6 +211,22 @@ fn maybe_type_guard_binary(
     Ok(ResultTypeOrContinue::Result(result_type))
 }
 
+fn allow_narrow_type(left_type: &LuaType, right_type: &LuaType) -> bool {
+    match (left_type, right_type) {
+        (
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) | LuaType::FloatConst(_),
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) | LuaType::FloatConst(_),
+        ) => true,
+        (
+            LuaType::StringConst(_) | LuaType::DocStringConst(_),
+            LuaType::StringConst(_) | LuaType::DocStringConst(_),
+        ) => true,
+        (LuaType::BooleanConst(_), LuaType::BooleanConst(_)) => true,
+        (LuaType::Nil, _) | (_, LuaType::Nil) => true,
+        _ => false,
+    }
+}
+
 fn maybe_var_eq_narrow(
     db: &DbIndex,
     tree: &FlowTree,
@@ -240,6 +256,10 @@ fn maybe_var_eq_narrow(
             let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
             let antecedent_type =
                 get_type_at_flow(db, tree, cache, root, &var_ref_id, antecedent_flow_id)?;
+
+            if !allow_narrow_type(&antecedent_type, &right_expr_type) {
+                return Ok(ResultTypeOrContinue::Continue);
+            }
 
             let result_type = match condition_flow {
                 InferConditionFlow::TrueCondition => {

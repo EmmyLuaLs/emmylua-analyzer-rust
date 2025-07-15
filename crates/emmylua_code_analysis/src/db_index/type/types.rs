@@ -745,7 +745,14 @@ impl LuaUnionType {
     }
 
     pub fn from_vec(types: Vec<LuaType>) -> Self {
-        Self::Multi(types)
+        let mut set = std::collections::HashSet::new();
+        let mut unique_types = Vec::new();
+        for t in types {
+            if set.insert(t.clone()) {
+                unique_types.push(t);
+            }
+        }
+        Self::Multi(unique_types)
     }
 
     pub fn into_vec(&self) -> Vec<LuaType> {
