@@ -319,4 +319,28 @@ mod tests {
             .unwrap();
         assert_eq!(result.len(), 1);
     }
+
+    #[test]
+    fn test_generic_type_override() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A<T>
+            ---@field aaa fun(a: integer): integer
+        "#,
+        );
+        let result = ws
+            .check_inlay_hint(
+                r#"
+                ---@class B<T>: A<T>
+                local B
+
+                function B:aaa(a)
+                    return a
+                end
+            "#,
+            )
+            .unwrap();
+        assert_eq!(result.len(), 1);
+    }
 }
