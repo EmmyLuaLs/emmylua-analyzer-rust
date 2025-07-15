@@ -435,18 +435,20 @@ fn get_super_member_id(
     member_key: &LuaMemberKey,
     infer_guard: &mut InferGuard,
 ) -> Option<LuaMemberId> {
-    if let LuaType::Ref(super_type_id) = &super_type {
-        infer_guard.check(super_type_id).ok()?;
-        let member_map = semantic_model.get_member_info_map(&super_type)?;
+    let super_type_id = match &super_type {
+        LuaType::Ref(id) => id,
+        LuaType::Generic(generic) => generic.get_base_type_id_ref(),
+        _ => return None,
+    };
+    infer_guard.check(super_type_id).ok()?;
+    let member_map = semantic_model.get_member_info_map(&super_type)?;
 
-        if let Some(member_infos) = member_map.get(&member_key) {
-            let first_property = member_infos.first()?.property_owner_id.clone()?;
-            if let LuaSemanticDeclId::Member(member_id) = first_property {
-                return Some(member_id);
-            }
+    if let Some(member_infos) = member_map.get(&member_key) {
+        let first_property = member_infos.first()?.property_owner_id.clone()?;
+        if let LuaSemanticDeclId::Member(member_id) = first_property {
+            return Some(member_id);
         }
     }
-
     None
 }
 
