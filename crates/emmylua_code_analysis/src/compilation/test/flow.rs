@@ -461,7 +461,7 @@ end
         );
 
         let b = ws.expr_ty("b");
-        let b_expected = ws.ty("nil");
+        let b_expected = ws.ty("unknown");
         assert_eq!(b, b_expected);
     }
 
@@ -1120,5 +1120,18 @@ end
         );
         let a = ws.expr_ty("A");
         assert_eq!(ws.humanize_type(a), "number");
+    }
+
+    #[test]
+    fn test_default_is_unknown() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            local pos
+            A = pos
+            "#,
+        );
+        let a = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a), "unknown");
     }
 }

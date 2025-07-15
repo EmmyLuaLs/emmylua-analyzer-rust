@@ -255,6 +255,12 @@ fn is_valid_member(
         //         return None;
         //     }
         // }
+        (LuaType::Array(_), key) => {
+            // 数组添加了一个`unknown`类型时可能返回了`unknown`类型, 此时认为其是合法的
+            if key.is_integer() {
+                return Some(());
+            }
+        }
         (LuaType::Def(id), _) => {
             if let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(id) {
                 if decl.is_class() {

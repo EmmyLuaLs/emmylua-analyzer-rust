@@ -8,9 +8,11 @@ mod test {
         assert!(ws.check_code_for(
             DiagnosticCode::InjectField,
             r#"
-            local ret = {} --- @type string[]
+            --- @type string[]
+            local ret = {}
             local b
             ret[#ret + 1] = b
+            ret[#ret + 1] = 'a'
             ret[#ret + 1] = 'a'
         "#
         ));

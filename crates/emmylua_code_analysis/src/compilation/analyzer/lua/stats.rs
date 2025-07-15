@@ -27,7 +27,7 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
             analyzer
                 .db
                 .get_type_index_mut()
-                .bind_type(decl_id.into(), LuaTypeCache::InferType(LuaType::Nil));
+                .bind_type(decl_id.into(), LuaTypeCache::InferType(LuaType::Unknown));
         }
 
         return Some(());

@@ -434,7 +434,7 @@ fn infer_binary_expr_concat(db: &DbIndex, left: LuaType, right: LuaType) -> Infe
 }
 
 fn infer_binary_expr_and(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
-    if left.is_always_falsy() {
+    if left.is_always_falsy() || left.is_unknown() {
         return Ok(left);
     } else if left.is_always_truthy() {
         return Ok(right);
