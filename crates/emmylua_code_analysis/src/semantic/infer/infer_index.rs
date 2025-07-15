@@ -243,7 +243,13 @@ fn infer_array_member(
 
                 let result_type = match &base_type {
                     LuaType::Any | LuaType::Unknown => base_type.clone(),
-                    _ => TypeOps::Union.apply(db, base_type, &LuaType::Nil),
+                    _ => {
+                        if db.get_emmyrc().strict.array_index {
+                            TypeOps::Union.apply(db, base_type, &LuaType::Nil)
+                        } else {
+                            base_type.clone()
+                        }
+                    }
                 };
 
                 Ok(result_type)

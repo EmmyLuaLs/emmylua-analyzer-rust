@@ -1,5 +1,6 @@
 mod and_or_test;
 mod annotation_test;
+mod array_test;
 mod closure_generic;
 mod closure_param_infer_test;
 mod closure_return_test;
