@@ -71,7 +71,35 @@ mod test {
         );
 
         let ty = ws.expr_ty("a");
-        // disable test temp
-        // assert_eq!(ws.humanize_type(ty), "switch");
+        assert_eq!(ws.humanize_type(ty), "switch");
+    }
+
+    #[test]
+    fn test_issue_599() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Class.Config
+            ---@field abc string
+            local ClassConfigMeta = {}
+
+            ---@type table<string, Class.Config>
+            local _classConfigMap = {}
+
+
+            ---@param name string
+            ---@return Class.Config
+            local function getConfig(name)
+                local config = _classConfigMap[name]
+                if not config then
+                    A = setmetatable({ name = name }, { __index = ClassConfigMeta })
+                end
+            end
+            "#,
+        );
+
+        let ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(ty), "Class.Config");
     }
 }

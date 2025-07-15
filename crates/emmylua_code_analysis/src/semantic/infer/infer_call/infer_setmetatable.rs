@@ -1,8 +1,9 @@
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexKey};
 
 use crate::{
-    infer_expr, semantic::infer::InferResult, DbIndex, InFiled, InferFailReason, LuaInferCache,
-    LuaInstanceType, LuaType,
+    infer_expr,
+    semantic::{infer::InferResult, member::find_members_with_key},
+    DbIndex, InFiled, InferFailReason, LuaInferCache, LuaInstanceType, LuaMemberKey, LuaType,
 };
 
 pub fn infer_setmetatable_call(
@@ -114,5 +115,15 @@ fn infer_metatable_index_type(
     };
 
     let meta_type = infer_expr(db, cache, metatable)?;
+    if let Some(meta_members) =
+        find_members_with_key(db, &meta_type, LuaMemberKey::Name("__index".into()), false)
+    {
+        if let Some(meta_member) = meta_members.first() {
+            if meta_member.typ.is_custom_type() {
+                return Ok((meta_member.typ.clone(), true));
+            }
+        }
+    }
+
     Ok((meta_type, false))
 }
