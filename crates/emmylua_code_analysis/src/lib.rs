@@ -241,6 +241,14 @@ impl EmmyLuaAnalysis {
         // 获取所有当前在VFS中的文件
         let vfs = self.compilation.get_db().get_vfs();
         for file_id in vfs.get_all_file_ids() {
+            if self
+                .compilation
+                .get_db()
+                .get_module_index()
+                .is_std(&file_id)
+            {
+                continue;
+            }
             if let Some(path) = vfs.get_file_path(&file_id) {
                 if !path.exists() {
                     if let Some(uri) = file_path_to_uri(path) {
