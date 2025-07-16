@@ -32,11 +32,8 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     let file_conversion = emmyrc.completion.auto_require_naming_convention;
     let version_number = emmyrc.runtime.version.to_lua_version_number();
     let file_id = builder.semantic_model.get_file_id();
-    let module_infos = builder
-        .semantic_model
-        .get_db()
-        .get_module_index()
-        .get_module_infos();
+    let module_index = builder.semantic_model.get_db().get_module_index();
+    let module_infos = module_index.get_module_infos();
     let range = builder.trigger_token.text_range();
     let document = builder.semantic_model.get_document();
     let lsp_position = document.to_lsp_range(range)?.start;
@@ -46,6 +43,7 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         if module_info.is_visible(&version_number)
             && module_info.file_id != file_id
             && module_info.export_type.is_some()
+            && !module_index.is_std(&module_info.file_id)
         {
             add_module_completion_item(
                 builder,

@@ -98,6 +98,8 @@ pub enum DiagnosticCode {
     CastTypeMismatch,
     /// require-module-not-visible
     RequireModuleNotVisible,
+    /// enum-value-mismatch
+    EnumValueMismatch,
 
     #[serde(other)]
     None,

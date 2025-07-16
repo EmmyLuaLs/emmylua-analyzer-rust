@@ -21,12 +21,17 @@ pub fn check_export_visibility(
                 type_index.get_file_using_namespace(&semantic_model.get_file_id())
             {
                 for using_namespace in using_namespaces {
-                    if using_namespace == module_namespace {
+                    if using_namespace == module_namespace
+                        || using_namespace.starts_with(&format!("{}.", module_namespace))
+                    {
                         return Some(true);
                     }
                 }
             }
-            if type_index.get_file_namespace(&semantic_model.get_file_id())? == module_namespace {
+            let file_namespace = type_index.get_file_namespace(&semantic_model.get_file_id())?;
+            if file_namespace == module_namespace
+                || file_namespace.starts_with(&format!("{}.", module_namespace))
+            {
                 return Some(true);
             }
         }

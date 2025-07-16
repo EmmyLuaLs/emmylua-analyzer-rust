@@ -63,6 +63,7 @@
       "$ref": "#/$defs/EmmyrcInlayHint",
       "default": {
         "enable": true,
+        "enumParamHint": false,
         "indexHint": true,
         "localHint": true,
         "metaCallHint": true,
@@ -401,6 +402,11 @@
           "description": "require-module-not-visible",
           "type": "string",
           "const": "require-module-not-visible"
+        },
+        {
+          "description": "enum-value-mismatch",
+          "type": "string",
+          "const": "enum-value-mismatch"
         }
       ]
     },
@@ -631,6 +637,11 @@
           "description": "Whether to enable inlay hints.",
           "type": "boolean",
           "default": true
+        },
+        "enumParamHint": {
+          "description": "Whether to enable enum parameter hints.",
+          "type": "boolean",
+          "default": false
         },
         "indexHint": {
           "description": "Whether to enable index hints.",
