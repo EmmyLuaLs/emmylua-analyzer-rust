@@ -239,4 +239,64 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_union_2() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T: table
+            ---@param obj T
+            function add(obj)
+            end
+            
+            ---@class GCNode
+        "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@generic T: table
+            ---@param obj T | string
+            ---@return T?
+            function bindGC(obj)
+                if type(obj) == "string" then
+                    ---@type GCNode
+                    obj = {}
+                end
+
+                return add(obj)
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_union_3() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T: table
+            ---@param obj T
+            function add(obj)
+            end
+            
+
+        "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+
+            ---@class GCNode<T: table>
+            GCNode = {}
+
+            ---@param obj T
+            ---@return T?
+            function GCNode:bindGC(obj)
+                return add(obj)
+            end
+        "#
+        ));
+    }
 }
