@@ -61,6 +61,13 @@ impl VarRefId {
             }
         }
     }
+
+    pub fn is_self_ref(&self) -> bool {
+        match self {
+            VarRefId::SelfRef(_) => true,
+            _ => false,
+        }
+    }
 }
 
 fn get_call_expr_var_ref_id(
