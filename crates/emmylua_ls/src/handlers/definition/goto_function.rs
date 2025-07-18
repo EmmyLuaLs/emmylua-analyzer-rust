@@ -1,12 +1,14 @@
 use emmylua_code_analysis::{
-    instantiate_func_generic, LuaFunctionType, LuaSemanticDeclId, LuaSignature, LuaType,
-    SemanticModel,
+    instantiate_func_generic, LuaCompilation, LuaFunctionType, LuaSemanticDeclId, LuaSignature,
+    LuaSignatureId, LuaType, SemanticDeclLevel, SemanticModel,
 };
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxToken};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxToken, LuaTokenKind};
+use rowan::{NodeOrToken, TokenAtOffset};
 use std::sync::Arc;
 
-pub fn find_call_match_function(
+pub fn find_call_match_function_for_member(
     semantic_model: &SemanticModel,
+    compilation: &LuaCompilation,
     trigger_token: &LuaSyntaxToken,
     semantic_decls: &Vec<LuaSemanticDeclId>,
 ) -> Option<Vec<LuaSemanticDeclId>> {
@@ -44,8 +46,14 @@ pub fn find_call_match_function(
                 }) {
                     has_match = true;
                 }
-                // 此处为降低优先级, 因为如果返回多个选项, 那么 vscode 会默认指向最后的选项
-                result.insert(0, decl.clone());
+                // 无论是否匹配, 都需要将真实的定义添加到结果中
+                // 如果存在原始定义, 则优先使用原始定义
+                let origin = get_signature_origin(compilation, &signature_id);
+                if let Some(origin) = origin {
+                    result.insert(0, origin);
+                } else {
+                    result.insert(0, decl.clone());
+                }
             }
             _ => continue,
         }
@@ -59,6 +67,96 @@ pub fn find_call_match_function(
         0 => None,
         _ => Some(result),
     }
+}
+
+fn get_signature_origin(
+    compilation: &LuaCompilation,
+    signature_id: &LuaSignatureId,
+) -> Option<LuaSemanticDeclId> {
+    let semantic_model = compilation.get_semantic_model(signature_id.get_file_id())?;
+    let root = semantic_model.get_root_by_file_id(signature_id.get_file_id())?;
+    let token = match root.syntax().token_at_offset(signature_id.get_position()) {
+        TokenAtOffset::Single(token) => token,
+        TokenAtOffset::Between(left, right) => {
+            if left.kind() == LuaTokenKind::TkName.into() {
+                left
+            } else if left.kind() == LuaTokenKind::TkLeftBracket.into()
+                && right.kind() == LuaTokenKind::TkInt.into()
+            {
+                left
+            } else {
+                right
+            }
+        }
+        TokenAtOffset::None => {
+            return None;
+        }
+    };
+    let semantic_info =
+        semantic_model.find_decl(NodeOrToken::Token(token), SemanticDeclLevel::default());
+    semantic_info
+}
+
+pub fn find_call_expr_origin_for_decl(
+    semantic_model: &SemanticModel,
+    compilation: &LuaCompilation,
+    trigger_token: &LuaSyntaxToken,
+    semantic_decl: &LuaSemanticDeclId,
+) -> Option<LuaSemanticDeclId> {
+    let call_expr = LuaCallExpr::cast(trigger_token.parent()?.parent()?)?;
+    let call_function = get_call_function(semantic_model, &call_expr)?;
+    let decl_id = match semantic_decl {
+        LuaSemanticDeclId::LuaDecl(decl_id) => decl_id,
+        _ => return None,
+    };
+
+    let typ = semantic_model.get_type(decl_id.clone().into());
+    match typ {
+        LuaType::DocFunction(func) => {
+            if compare_function_types(semantic_model, &call_function, &func, &call_expr)? {
+                return Some(decl_id.clone().into());
+            }
+        }
+        LuaType::Signature(signature_id) => {
+            let signature = semantic_model
+                .get_db()
+                .get_signature_index()
+                .get(&signature_id)?;
+            let functions = get_signature_functions(signature);
+            if functions.iter().any(|func| {
+                compare_function_types(semantic_model, &call_function, func, &call_expr)
+                    .unwrap_or(false)
+            }) {
+                let semantic_model = compilation.get_semantic_model(signature_id.get_file_id())?;
+                let root = semantic_model.get_root_by_file_id(signature_id.get_file_id())?;
+                let token = match root.syntax().token_at_offset(signature_id.get_position()) {
+                    TokenAtOffset::Single(token) => token,
+                    TokenAtOffset::Between(left, right) => {
+                        if left.kind() == LuaTokenKind::TkName.into() {
+                            left
+                        } else if left.kind() == LuaTokenKind::TkLeftBracket.into()
+                            && right.kind() == LuaTokenKind::TkInt.into()
+                        {
+                            left
+                        } else {
+                            right
+                        }
+                    }
+                    TokenAtOffset::None => {
+                        return None;
+                    }
+                };
+                let semantic_info = semantic_model
+                    .find_decl(NodeOrToken::Token(token), SemanticDeclLevel::default());
+                if let Some(semantic_info) = semantic_info {
+                    return Some(semantic_info);
+                }
+            }
+        }
+        _ => return None,
+    };
+
+    None
 }
 
 /// 获取最匹配的函数(并不能确保完全匹配)
