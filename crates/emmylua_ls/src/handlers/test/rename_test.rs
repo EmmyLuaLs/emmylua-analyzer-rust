@@ -103,4 +103,35 @@ mod tests {
         );
         assert!(result);
     }
+
+    #[test]
+    fn test_doc_param() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        {
+            let result = ws.check_rename(
+                r#"
+                ---@param aaa<??> number
+                local function test(aaa)
+                    local b = aaa
+                end
+            "#,
+                "aaa1".to_string(),
+                3,
+            );
+            assert!(result);
+        }
+        {
+            let result = ws.check_rename(
+                r#"
+                    ---@param aaa<??> number
+                    function testA(aaa)
+                        local b = aaa
+                    end
+                "#,
+                "aaa1".to_string(),
+                3,
+            );
+            assert!(result);
+        }
+    }
 }
