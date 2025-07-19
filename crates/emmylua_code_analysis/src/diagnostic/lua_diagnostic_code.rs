@@ -55,6 +55,8 @@ pub enum DiagnosticCode {
     AwaitInSync,
     /// Doc tag usage error
     AnnotationUsageError,
+    /// Custom doc tag usage warning
+    CustomAnnotationUsageWarning,
     /// Return type mismatch
     ReturnTypeMismatch,
     /// Missing return value
@@ -126,6 +128,7 @@ pub fn get_default_severity(code: DiagnosticCode) -> DiagnosticSeverity {
         DiagnosticCode::RedefinedLocal => DiagnosticSeverity::HINT,
         DiagnosticCode::DuplicateRequire => DiagnosticSeverity::HINT,
         DiagnosticCode::IterVariableReassign => DiagnosticSeverity::ERROR,
+        DiagnosticCode::CustomAnnotationUsageWarning => DiagnosticSeverity::WARNING,
         _ => DiagnosticSeverity::WARNING,
     }
 }
@@ -136,11 +139,12 @@ pub fn is_code_default_enable(code: &DiagnosticCode, level: LuaLanguageLevel) ->
         DiagnosticCode::CodeStyleCheck => false,
         DiagnosticCode::IncompleteSignatureDoc => false,
         DiagnosticCode::MissingGlobalDoc => false,
-        DiagnosticCode::UnknownDocTag => false,
         // ... handle other variants
 
         // neovim-code-style
+        DiagnosticCode::CustomAnnotationUsageWarning => false,
         DiagnosticCode::NonLiteralExpressionsInAssert => false,
+        DiagnosticCode::UnknownDocTag => false,
 
         _ => true,
     }

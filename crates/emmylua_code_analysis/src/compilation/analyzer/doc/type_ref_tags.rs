@@ -20,8 +20,8 @@ use crate::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaOperator, LuaSemanticDeclId,
         LuaSignatureId, LuaType,
     },
-    InFiled, InferFailReason, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
-    SignatureReturnStatus, TypeOps,
+    AnalyzeError, DiagnosticCode, InFiled, InferFailReason, LuaOperatorMetaMethod, LuaTypeCache,
+    LuaTypeOwner, OperatorFunction, SignatureReturnStatus, TypeOps,
 };
 
 pub fn analyze_type(analyzer: &mut DocAnalyzer, tag: LuaDocTagType) -> Option<()> {
@@ -399,7 +399,21 @@ pub fn analyze_see(analyzer: &mut DocAnalyzer, tag: LuaDocTagSee) -> Option<()> 
 }
 
 pub fn analyze_other(analyzer: &mut DocAnalyzer, other: LuaDocTagOther) -> Option<()> {
-    let owner = get_owner_id_or_report(analyzer, &other)?;
+    let Some(owner) = get_owner_id(analyzer) else {
+        analyzer.db.get_diagnostic_index_mut().add_diagnostic(
+            analyzer.file_id,
+            AnalyzeError {
+                kind: DiagnosticCode::CustomAnnotationUsageWarning,
+                message: t!(
+                    "`@%{name}` is not attached to any object",
+                    name = other.get_text()
+                )
+                .to_string(),
+                range: other.get_range(),
+            },
+        );
+        return None;
+    };
     let tag_name = other.get_tag_name()?;
     let description = if let Some(des) = other.get_description() {
         let description = preprocess_description(&des.get_description_text(), None);

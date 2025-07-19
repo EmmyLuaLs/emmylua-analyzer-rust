@@ -293,6 +293,11 @@
           "const": "annotation-usage-error"
         },
         {
+          "description": "Custom doc tag usage warning",
+          "type": "string",
+          "const": "custom-annotation-usage-warning"
+        },
+        {
           "description": "Return type mismatch",
           "type": "string",
           "const": "return-type-mismatch"
