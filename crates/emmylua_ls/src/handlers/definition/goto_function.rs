@@ -173,7 +173,8 @@ fn handle_signature_match(
     }
 }
 
-fn extract_semantic_decl_from_signature(
+/// 从函数签名中提取其定义的语义ID
+pub fn extract_semantic_decl_from_signature(
     compilation: &LuaCompilation,
     signature_id: &LuaSignatureId,
 ) -> Option<LuaSemanticDeclId> {

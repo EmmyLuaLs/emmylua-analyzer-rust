@@ -20,6 +20,7 @@ use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
 use crate::context::ServerContextSnapshot;
+pub use goto_function::extract_semantic_decl_from_signature;
 
 use super::RegisterCapabilities;
 
