@@ -1258,4 +1258,30 @@ end
             "#,
         ));
     }
+
+    #[test]
+    fn test_self_1() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Node
+            ---@field parent? Node 
+
+            ---@class Subject<T>: Node
+            ---@field package root? Node 
+            Subject = {}
+            "#,
+        );
+        ws.def(
+            r#"
+            function Subject:add()
+                if self == self.parent then
+                    A = self
+                end
+            end
+            "#,
+        );
+        let a = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a), "Node");
+    }
 }

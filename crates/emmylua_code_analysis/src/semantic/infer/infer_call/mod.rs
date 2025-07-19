@@ -10,10 +10,10 @@ use super::{
     },
     InferFailReason, InferResult,
 };
-use crate::semantic::infer_expr;
 use crate::semantic::{
     generic::instantiate_doc_function, infer::narrow::get_type_at_call_expr_inline_cast,
 };
+use crate::{build_self_type, infer_self_type, semantic::infer_expr};
 use crate::{
     CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType,
@@ -265,7 +265,8 @@ fn infer_type_doc_function(
             LuaType::DocFunction(f) => {
                 if f.contain_self() {
                     let mut substitutor = TypeSubstitutor::new();
-                    substitutor.add_self_type(call_expr_type.clone());
+                    let self_type = build_self_type(db, call_expr_type);
+                    substitutor.add_self_type(self_type);
                     if let LuaType::DocFunction(f) = instantiate_doc_function(db, &f, &substitutor)
                     {
                         overloads.push(f);
@@ -565,15 +566,8 @@ pub(crate) fn unwrapp_return_type(
             };
         }
         LuaType::SelfInfer => {
-            let prefix_expr = call_expr.get_prefix_expr();
-            if let Some(prefix_expr) = prefix_expr {
-                if let LuaExpr::IndexExpr(index) = prefix_expr {
-                    let self_expr = index.get_prefix_expr();
-                    if let Some(self_expr) = self_expr {
-                        let self_type = infer_expr(db, cache, self_expr.into());
-                        return self_type;
-                    }
-                }
+            if let Some(self_type) = infer_self_type(db, cache, &call_expr) {
+                return Ok(self_type);
             }
         }
         LuaType::TypeGuard(_) => return Ok(LuaType::Boolean),

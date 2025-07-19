@@ -103,4 +103,58 @@ mod tests {
         );
         assert!(result);
     }
+
+    #[test]
+    fn test_doc_param() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        {
+            let result = ws.check_rename(
+                r#"
+                ---@param aaa<??> number
+                local function test(aaa)
+                    local b = aaa
+                end
+            "#,
+                "aaa1".to_string(),
+                3,
+            );
+            assert!(result);
+        }
+        {
+            let result = ws.check_rename(
+                r#"
+                    ---@param aaa<??> number
+                    function testA(aaa)
+                        local b = aaa
+                    end
+                "#,
+                "aaa1".to_string(),
+                3,
+            );
+            assert!(result);
+        }
+    }
+
+    #[test]
+    fn test_namespace_class() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+                ---@param a Luakit.Test.Abc
+                local function Of(a)
+                end
+
+            "#,
+        );
+        ws.check_rename(
+            r#"
+                ---@namespace Luakit
+                ---@class Test.Abc<??>
+                local Test = {}
+            "#,
+            "Abc".to_string(),
+            2,
+        );
+    }
 }

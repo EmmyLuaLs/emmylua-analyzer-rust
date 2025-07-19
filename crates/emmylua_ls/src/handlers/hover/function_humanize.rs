@@ -7,12 +7,15 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{LuaAstNode, LuaDocTagField, LuaDocType};
 
-use crate::handlers::hover::{
-    hover_humanize::{
-        extract_description_from_property_owner, extract_owner_name_from_element,
-        hover_humanize_type, DescriptionInfo,
+use crate::handlers::{
+    definition::extract_semantic_decl_from_signature,
+    hover::{
+        hover_humanize::{
+            extract_description_from_property_owner, extract_owner_name_from_element,
+            hover_humanize_type, DescriptionInfo,
+        },
+        infer_prefix_global_name, HoverBuilder,
     },
-    infer_prefix_global_name, HoverBuilder,
 };
 
 #[derive(Debug, Clone)]
@@ -86,6 +89,41 @@ pub fn hover_function_type(
             }
             _ => None,
         };
+
+        // 如果函数定义来自于其他文件, 我们需要添加原始的注释信息. 参考`test_other_file_function`
+        if let LuaType::Signature(signature_id) = typ {
+            if let Some(semantic_id) =
+                extract_semantic_decl_from_signature(builder.compilation, &signature_id)
+            {
+                if semantic_id != *semantic_decl_id {
+                    // signature 的原始定义的描述信息
+                    if let Some(origin_description) = extract_description_from_property_owner(
+                        &builder.semantic_model,
+                        &semantic_id,
+                    ) {
+                        match &mut function_info.description {
+                            Some(current_description) => {
+                                // 如果描述不为空, 则合并描述
+                                if let Some(description) = origin_description.description {
+                                    if current_description.description.is_none() {
+                                        current_description.description = Some(description);
+                                    } else {
+                                        current_description.description = Some(format!(
+                                            "{}\n{}",
+                                            current_description.description.take()?,
+                                            description
+                                        ));
+                                    }
+                                }
+                            }
+                            None => {
+                                function_info.description = Some(origin_description);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // 如果当前类型是 Union，传入已处理的类型集合
         let result = match typ {

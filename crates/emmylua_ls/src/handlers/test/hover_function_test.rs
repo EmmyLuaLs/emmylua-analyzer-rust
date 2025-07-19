@@ -426,4 +426,27 @@ mod tests {
             },
         ));
     }
+    #[test]
+    fn test_other_file_function() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+            ---测试
+            local function zipLatest(...)
+            end
+            return zipLatest
+
+            "#,
+        );
+        assert!(ws.check_hover(
+            r#"
+                local zipLatest = require("a")
+                <??>zipLatest()
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function zipLatest(...)\n```\n\n---\n\n测试".to_string(),
+            },
+        ));
+    }
 }

@@ -5,7 +5,10 @@ mod rename_type;
 use std::collections::HashMap;
 
 use emmylua_code_analysis::{LuaCompilation, LuaSemanticDeclId, SemanticDeclLevel, SemanticModel};
-use emmylua_parser::{LuaAstNode, LuaLiteralExpr, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
+use emmylua_parser::{
+    LuaAst, LuaAstNode, LuaComment, LuaDocTagParam, LuaLiteralExpr, LuaSyntaxKind, LuaSyntaxNode,
+    LuaSyntaxToken, LuaTokenKind,
+};
 use lsp_types::{
     ClientCapabilities, OneOf, PrepareRenameResponse, RenameOptions, RenameParams,
     ServerCapabilities, TextDocumentPositionParams, WorkspaceEdit,
@@ -119,7 +122,7 @@ fn rename_references(
     new_name: String,
 ) -> Option<WorkspaceEdit> {
     let mut result = HashMap::new();
-    let semantic_decl = match get_literal_expr_parent(token.clone()) {
+    let semantic_decl = match get_target_node(token.clone()) {
         Some(node) => semantic_model.find_decl(node.into(), SemanticDeclLevel::NoTrace),
         None => semantic_model.find_decl(token.into(), SemanticDeclLevel::NoTrace),
     }?;
@@ -168,10 +171,49 @@ fn rename_references(
     })
 }
 
-fn get_literal_expr_parent(token: LuaSyntaxToken) -> Option<LuaSyntaxNode> {
+fn get_target_node(token: LuaSyntaxToken) -> Option<LuaSyntaxNode> {
     let parent = token.parent()?;
-    let literal_expr = LuaLiteralExpr::cast(parent)?;
-    literal_expr.syntax().parent()
+    match parent.kind().into() {
+        LuaSyntaxKind::LiteralExpr => {
+            let literal_expr = LuaLiteralExpr::cast(parent)?;
+            return literal_expr.syntax().parent();
+        }
+        LuaSyntaxKind::DocTagParam => {
+            let doc_tag_param = LuaDocTagParam::cast(parent)?;
+            let name = doc_tag_param.get_name_token()?;
+            let name_text = name.get_name_text();
+            let comment = doc_tag_param.get_parent::<LuaComment>()?;
+            let owner = comment.get_owner()?;
+            match owner {
+                LuaAst::LuaLocalFuncStat(local_func_stat) => {
+                    let closure_expr = local_func_stat.get_closure()?;
+                    let param_list = closure_expr.get_params_list()?;
+                    let param_name = param_list.get_params().find(|param| {
+                        if let Some(name_token) = param.get_name_token() {
+                            name_token.get_name_text() == name_text
+                        } else {
+                            false
+                        }
+                    })?;
+                    return Some(param_name.syntax().clone());
+                }
+                LuaAst::LuaFuncStat(func_stat) => {
+                    let closure_expr = func_stat.get_closure()?;
+                    let param_list = closure_expr.get_params_list()?;
+                    let param_name = param_list.get_params().find(|param| {
+                        if let Some(name_token) = param.get_name_token() {
+                            name_token.get_name_text() == name_text
+                        } else {
+                            false
+                        }
+                    })?;
+                    return Some(param_name.syntax().clone());
+                }
+                _ => return None,
+            }
+        }
+        _ => return None,
+    }
 }
 
 pub struct RenameCapabilities;

@@ -268,3 +268,8 @@ Cannot use `...` outside a vararg function.:
 "Unknown doc tag: `%{name}`":
   en: "Unknown doc tag: `%{name}`"
   # TODO: translate
+
+"Value '%{value}' does not match any enum value. Expected one of: %{enum_values}":
+  en: "Value '%{value}' does not match any enum value. Expected one of: %{enum_values}"
+  zh_CN: "值 '%{value}' 与任何枚举值都不匹配。应为以下之一: %{enum_values}"
+  zh_HK: "值 '%{value}' 與任何枚舉值都不匹配。應為以下之一: %{enum_values}"

@@ -126,6 +126,66 @@ mod test {
     }
 
     #[test]
+    fn test_generic_type_extends() {
+        let mut ws = VirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.runtime.class_default_call.force_non_colon = true;
+        emmyrc.runtime.class_default_call.force_return_self = true;
+        emmyrc.runtime.class_default_call.function_name = "__init".to_string();
+        ws.update_emmyrc(emmyrc);
+        ws.def(
+            r#"
+            ---@class State
+            ---@field a string
+
+            ---@class StateMachine<T: State>
+            ---@field aaa T
+            ---@field new fun(self: self): self
+            StateMachine = {}
+
+            ---@return self
+            function StateMachine:abc()
+            end
+
+            
+            ---@return self
+            function StateMachine:__init()
+            end
+            "#,
+        );
+        {
+            ws.def(
+                r#"
+            A = StateMachine:new()
+            "#,
+            );
+            let ty = ws.expr_ty("A");
+            let expected = ws.ty("StateMachine<State>");
+            assert_eq!(ty, expected);
+        }
+        {
+            ws.def(
+                r#"
+            B = StateMachine:abc()
+            "#,
+            );
+            let ty = ws.expr_ty("B");
+            let expected = ws.ty("StateMachine<State>");
+            assert_eq!(ty, expected);
+        }
+        {
+            ws.def(
+                r#"
+            C = StateMachine:abc()
+            "#,
+            );
+            let ty = ws.expr_ty("C");
+            let expected = ws.ty("StateMachine<State>");
+            assert_eq!(ty, expected);
+        }
+    }
+
+    #[test]
     fn test_type_return_usage() {
         let mut ws = VirtualWorkspace::new();
 

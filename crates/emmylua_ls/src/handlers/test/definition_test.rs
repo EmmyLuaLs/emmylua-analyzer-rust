@@ -251,4 +251,79 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_goto_export_function() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+            local function create()
+            end
+
+            return create
+            "#,
+        );
+        let result = ws
+            .check_definition(
+                r#"
+                local create = require('a')
+                create<??>()
+            "#,
+            )
+            .unwrap();
+        match result {
+            GotoDefinitionResponse::Scalar(location) => {
+                assert_eq!(location.uri.path().as_str().ends_with("a.lua"), true);
+            }
+            _ => {
+                panic!("expect array");
+            }
+        }
+    }
+
+    #[test]
+    fn test_goto_export_function_2() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+            local function testA()
+            end
+
+            local function create()
+            end
+
+            return create
+            "#,
+        );
+        ws.def_file(
+            "b.lua",
+            r#"
+            local Rxlua = {}
+            local create = require('a')
+
+            Rxlua.create = create
+            return Rxlua
+            "#,
+        );
+        let result = ws
+            .check_definition(
+                r#"
+                local create = require('b').create
+                create<??>()
+            "#,
+            )
+            .unwrap();
+        match result {
+            GotoDefinitionResponse::Array(array) => {
+                assert_eq!(array.len(), 1);
+                let location = &array[0];
+                assert_eq!(location.uri.path().as_str().ends_with("a.lua"), true);
+            }
+            _ => {
+                panic!("expect array");
+            }
+        }
+    }
 }

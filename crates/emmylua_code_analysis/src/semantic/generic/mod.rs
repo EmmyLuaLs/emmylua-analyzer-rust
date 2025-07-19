@@ -5,6 +5,8 @@ mod test;
 mod tpl_pattern;
 mod type_substitutor;
 
+pub use instantiate_func_generic::build_self_type;
+pub use instantiate_func_generic::infer_self_type;
 pub use instantiate_func_generic::instantiate_func_generic;
 pub use instantiate_type_generic::instantiate_doc_function;
 pub use instantiate_type_generic::instantiate_type_generic;

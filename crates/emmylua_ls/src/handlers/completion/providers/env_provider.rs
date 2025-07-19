@@ -15,7 +15,6 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
-
     if check_can_add_completion(builder).is_none() {
         return Some(());
     }
@@ -58,12 +57,15 @@ fn check_can_add_completion(builder: &CompletionBuilder) -> Option<()> {
         }
     } else if builder.trigger_kind == CompletionTriggerKind::INVOKED {
         let parent = builder.trigger_token.parent()?;
-        let prev_token = builder.trigger_token.prev_token()?;
-        match prev_token.kind().into() {
-            LuaTokenKind::TkTagUsing | LuaTokenKind::TkTagExport | LuaTokenKind::TkTagNamespace => {
-                return None;
+        if let Some(prev_token) = builder.trigger_token.prev_token() {
+            match prev_token.kind().into() {
+                LuaTokenKind::TkTagUsing
+                | LuaTokenKind::TkTagExport
+                | LuaTokenKind::TkTagNamespace => {
+                    return None;
+                }
+                _ => {}
             }
-            _ => {}
         }
 
         // 即时是主动触发, 也不允许在函数定义的参数列表中添加
@@ -230,8 +232,15 @@ fn add_global_env(
 
 fn env_check_match_word(trigger_text: &str, name: &str) -> bool {
     // 如果首字母是`(`或者`,`则允许, 用于在函数参数调用处触发补全
-    match trigger_text.chars().next() {
-        Some('(') | Some(',') => true,
-        _ => check_match_word(trigger_text, name),
+    if matches!(trigger_text.chars().next(), Some('(') | Some(',')) {
+        return true;
     }
+
+    if check_match_word(trigger_text, name) {
+        // 如果首字母匹配, 则需要检查 trigger_text 的每个字符是否都存在于 name 中
+
+        return true;
+    }
+
+    false
 }

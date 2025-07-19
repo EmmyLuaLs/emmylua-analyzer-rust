@@ -175,4 +175,172 @@ mod tests {
             .unwrap();
         assert!(result.len() == 1);
     }
+
+    #[test]
+    fn test_enum_param_hint() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.hint.enum_param_hint = true;
+        ws.update_emmyrc(emmyrc);
+        ws.def(
+            r#"
+                ---@enum Status
+                Status = {
+                    Done = 1,
+                    NotDone = 2,
+                }
+
+                ---@param a Status
+                function test(a)
+                end
+        "#,
+        );
+        let result = ws
+            .check_inlay_hint(
+                r#"
+                test(1)
+            "#,
+            )
+            .unwrap();
+        assert_eq!(result.len(), 2);
+        let enum_hint = result
+            .iter()
+            .find(|h| match &h.label {
+                InlayHintLabel::String(s) => s == "Status.Done",
+                _ => false,
+            })
+            .expect("Enum hint not found");
+
+        assert_eq!(
+            enum_hint.position,
+            lsp_types::Position {
+                line: 1,
+                character: 22
+            }
+        );
+    }
+
+    #[test]
+    fn test_enum_param_hint_suppressed() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.hint.enum_param_hint = true;
+        ws.update_emmyrc(emmyrc);
+        ws.def(
+            r#"
+                ---@enum Status
+                Status = {
+                    Done = 1,
+                    NotDone = 2,
+                }
+
+                ---@param a Status
+                function test(a)
+                end
+        "#,
+        );
+        let result = ws
+            .check_inlay_hint(
+                r#"
+                local Done = 1
+                test(Done)
+            "#,
+            )
+            .unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_enum_param_hint_1() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.hint.enum_param_hint = true;
+        ws.update_emmyrc(emmyrc);
+        ws.def(
+            r#"
+                ---@enum Status
+                Status = {
+                    Done = 1,
+                    NotDone = 2,
+                }
+
+                ---@param a Status
+                function test(a)
+                end
+        "#,
+        );
+        {
+            let result = ws
+                .check_inlay_hint(
+                    r#"
+                test(Status.Done)
+            "#,
+                )
+                .unwrap();
+            assert_eq!(result.len(), 1);
+        }
+        {
+            let result = ws
+                .check_inlay_hint(
+                    r#"
+                test(1)
+            "#,
+                )
+                .unwrap();
+            assert_eq!(result.len(), 2);
+        }
+    }
+
+    #[test]
+    fn test_enum_param_hint_key() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.hint.enum_param_hint = true;
+        ws.update_emmyrc(emmyrc);
+        ws.def(
+            r#"
+                ---@enum (key) Status
+                Status = {
+                    Done = 1,
+                    NotDone = 2,
+                }
+
+                ---@param a Status
+                function test(a)
+                end
+        "#,
+        );
+        let result = ws
+            .check_inlay_hint(
+                r#"
+                test("Done")
+            "#,
+            )
+            .unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_generic_type_override() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A<T>
+            ---@field aaa fun(a: integer): integer
+        "#,
+        );
+        let result = ws
+            .check_inlay_hint(
+                r#"
+                ---@class B<T>: A<T>
+                local B
+
+                function B:aaa(a)
+                    return a
+                end
+            "#,
+            )
+            .unwrap();
+        assert_eq!(result.len(), 1);
+    }
 }
