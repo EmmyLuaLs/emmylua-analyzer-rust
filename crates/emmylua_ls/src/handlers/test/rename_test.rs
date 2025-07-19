@@ -134,4 +134,27 @@ mod tests {
             assert!(result);
         }
     }
+
+    #[test]
+    fn test_namespace_class() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+                ---@param a Luakit.Test.Abc
+                local function Of(a)
+                end
+
+            "#,
+        );
+        ws.check_rename(
+            r#"
+                ---@namespace Luakit
+                ---@class Test.Abc<??>
+                local Test = {}
+            "#,
+            "Abc".to_string(),
+            2,
+        );
+    }
 }
