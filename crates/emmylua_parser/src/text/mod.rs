@@ -4,5 +4,5 @@ mod test;
 mod text_range;
 
 pub use line_index::LineIndex;
-pub use reader::Reader;
+pub use reader::{Reader, ReaderWithMarks};
 pub(crate) use text_range::SourceRange;

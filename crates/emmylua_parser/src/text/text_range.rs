@@ -35,6 +35,11 @@ impl SourceRange {
         self.start_offset < range.end_offset() && range.start_offset < self.end_offset()
     }
 
+    pub fn moved(&self, offset: usize) -> SourceRange {
+        debug_assert!(offset <= self.length);
+        SourceRange::new(self.start_offset + offset, self.length - offset)
+    }
+
     pub fn merge(&self, range: &SourceRange) -> SourceRange {
         let start = self.start_offset.min(range.start_offset);
         let end = self.end_offset().max(range.end_offset());

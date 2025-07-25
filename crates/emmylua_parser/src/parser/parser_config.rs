@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use rowan::NodeCache;
 
+use crate::parser::desc_parser::DescParserType;
 use crate::{kind::LuaLanguageLevel, lexer::LexerConfig};
 
 pub struct ParserConfig<'cache> {
@@ -9,6 +10,7 @@ pub struct ParserConfig<'cache> {
     lexer_config: LexerConfig,
     node_cache: Option<&'cache mut NodeCache>,
     special_like: HashMap<String, SpecialFunction>,
+    desc_parser_type: DescParserType,
 }
 
 impl<'cache> ParserConfig<'cache> {
@@ -16,6 +18,7 @@ impl<'cache> ParserConfig<'cache> {
         level: LuaLanguageLevel,
         node_cache: Option<&'cache mut NodeCache>,
         special_like: HashMap<String, SpecialFunction>,
+        desc_parser_type: DescParserType,
     ) -> Self {
         Self {
             level,
@@ -24,6 +27,7 @@ impl<'cache> ParserConfig<'cache> {
             },
             node_cache,
             special_like,
+            desc_parser_type,
         }
     }
 
@@ -53,14 +57,33 @@ impl<'cache> ParserConfig<'cache> {
         }
     }
 
+    pub fn desc_parser_type(&self) -> &DescParserType {
+        &self.desc_parser_type
+    }
+
     pub fn with_level(level: LuaLanguageLevel) -> Self {
         Self {
             level,
             lexer_config: LexerConfig {
                 language_level: level,
+                ..Default::default()
             },
             node_cache: None,
             special_like: HashMap::new(),
+            desc_parser_type: DescParserType::default(),
+        }
+    }
+
+    pub fn with_desc_parser_type(desc_parser_type: DescParserType) -> Self {
+        Self {
+            level: LuaLanguageLevel::Lua54,
+            lexer_config: LexerConfig {
+                language_level: LuaLanguageLevel::Lua54,
+                ..Default::default()
+            },
+            node_cache: None,
+            special_like: HashMap::new(),
+            desc_parser_type,
         }
     }
 }
@@ -71,9 +94,11 @@ impl Default for ParserConfig<'_> {
             level: LuaLanguageLevel::Lua54,
             lexer_config: LexerConfig {
                 language_level: LuaLanguageLevel::Lua54,
+                ..Default::default()
             },
             node_cache: None,
             special_like: HashMap::new(),
+            desc_parser_type: DescParserType::default(),
         }
     }
 }

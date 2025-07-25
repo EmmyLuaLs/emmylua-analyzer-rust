@@ -50,7 +50,8 @@
       "$ref": "#/$defs/EmmyrcDoc",
       "default": {
         "knownTags": [],
-        "privateName": []
+        "privateName": [],
+        "syntax": "none"
       }
     },
     "documentColor": {
@@ -434,6 +435,15 @@
         }
       ]
     },
+    "DocSyntax": {
+      "type": "string",
+      "enum": [
+        "none",
+        "md",
+        "myst",
+        "rst"
+      ]
+    },
     "EmmyrcCodeAction": {
       "type": "object",
       "properties": {
@@ -578,6 +588,25 @@
           "items": {
             "type": "string"
           }
+        },
+        "rstDefaultRole": {
+          "description": "When `syntax` is `Myst` or `Rst`, specifies default role used\nwith RST processor.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rstPrimaryDomain": {
+          "description": "When `syntax` is `Myst` or `Rst`, specifies primary domain used\nwith RST processor.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "syntax": {
+          "description": "Syntax for highlighting documentation.",
+          "$ref": "#/$defs/DocSyntax",
+          "default": "none"
         }
       }
     },

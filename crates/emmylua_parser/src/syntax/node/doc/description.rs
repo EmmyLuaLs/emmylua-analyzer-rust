@@ -47,31 +47,24 @@ impl LuaDocDescription {
         let mut text = String::new();
         for token in self
             .syntax()
-            .children_with_tokens()
+            .descendants_with_tokens()
             .filter_map(|it| it.into_token())
         {
             match token.kind().into() {
-                LuaTokenKind::TkDocDetail => {
+                LuaTokenKind::TkDocDetail
+                | LuaTokenKind::TkDocDetailMarkup
+                | LuaTokenKind::TkDocDetailArgMarkup
+                | LuaTokenKind::TkDocDetailArg
+                | LuaTokenKind::TkDocDetailCode
+                | LuaTokenKind::TkDocDetailInlineMarkup
+                | LuaTokenKind::TkDocDetailInlineArgMarkup
+                | LuaTokenKind::TkDocDetailInlineArg
+                | LuaTokenKind::TkDocDetailInlineCode
+                | LuaTokenKind::TkDocDetailRef => {
                     text.push_str(token.text());
                 }
                 LuaTokenKind::TkEndOfLine => {
                     text.push('\n');
-                }
-                LuaTokenKind::TkNormalStart | LuaTokenKind::TkDocContinue => {
-                    let mut white_space_count = 0;
-                    let start_text_chars = token.text().chars();
-                    for c in start_text_chars {
-                        if c == ' ' {
-                            white_space_count += 1;
-                        } else if c == '\t' {
-                            white_space_count += 4;
-                        }
-                    }
-
-                    if white_space_count > 0 {
-                        let white_space = " ".repeat(white_space_count);
-                        text.push_str(&white_space);
-                    }
                 }
                 _ => {}
             }

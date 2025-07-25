@@ -154,6 +154,39 @@ fn build_tokens_semantic_token(
         LuaTokenKind::TkDocDetail => {
             builder.push(token, SemanticTokenType::COMMENT);
         }
+        LuaTokenKind::TkDocDetailCode => {
+            builder.push_with_modifier(
+                token,
+                SemanticTokenType::OPERATOR,
+                SemanticTokenModifier::DOCUMENTATION,
+            );
+        }
+        LuaTokenKind::TkDocDetailInlineCode
+        | LuaTokenKind::TkDocDetailRef
+        | LuaTokenKind::TkDocDetailInlineLink => {
+            builder.push_with_modifier(
+                token,
+                SemanticTokenType::STRING,
+                SemanticTokenModifier::DOCUMENTATION,
+            );
+        }
+        LuaTokenKind::TkDocDetailArg | LuaTokenKind::TkDocDetailInlineArg => {
+            builder.push_with_modifier(
+                token,
+                SemanticTokenType::OPERATOR,
+                SemanticTokenModifier::DOCUMENTATION,
+            );
+        }
+        LuaTokenKind::TkDocDetailMarkup
+        | LuaTokenKind::TkDocDetailArgMarkup
+        | LuaTokenKind::TkDocDetailInlineMarkup
+        | LuaTokenKind::TkDocDetailInlineArgMarkup => {
+            builder.push_with_modifier(
+                token,
+                SemanticTokenType::OPERATOR,
+                SemanticTokenModifier::DOCUMENTATION,
+            );
+        }
         LuaTokenKind::TkDocQuestion => {
             builder.push(token, SemanticTokenType::OPERATOR);
         }

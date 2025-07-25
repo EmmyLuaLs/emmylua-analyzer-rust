@@ -3,7 +3,7 @@ use crate::{
     text::SourceRange,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum MarkEvent {
     NodeStart {
         kind: LuaSyntaxKind,
@@ -49,6 +49,7 @@ pub(crate) trait MarkerEventContainer {
     }
 }
 
+#[derive(Copy, Clone)]
 pub(crate) struct Marker {
     pub position: usize,
 }

@@ -36,8 +36,6 @@ fn parse_docs(p: &mut LuaDocParser) {
                 p.set_state(LuaDocLexerState::NormalDescription);
                 p.bump();
 
-                if_token_bump(p, LuaTokenKind::TkWhitespace);
-
                 if matches!(
                     p.current_token(),
                     LuaTokenKind::TkDocRegion | LuaTokenKind::TkDocEndRegion
@@ -79,6 +77,7 @@ fn parse_docs(p: &mut LuaDocParser) {
 
 fn parse_description(p: &mut LuaDocParser) {
     let m = p.mark(LuaSyntaxKind::DocDescription);
+    let desc_start_pos = p.get_events().len();
 
     loop {
         match p.current_token() {
@@ -93,6 +92,17 @@ fn parse_description(p: &mut LuaDocParser) {
                 break;
             }
         }
+    }
+
+    if p.desc_parser.is_some() {
+        let desc_events: Vec<_> = p.get_events().drain(desc_start_pos..).collect();
+        let text = p.origin_text();
+        let events = p
+            .desc_parser
+            .as_deref_mut()
+            .unwrap()
+            .parse(text, &desc_events);
+        p.get_events().extend(events);
     }
 
     m.complete(p);
@@ -125,6 +135,7 @@ fn if_token_bump(p: &mut LuaDocParser, token: LuaTokenKind) -> bool {
 
 fn parse_normal_description(p: &mut LuaDocParser) {
     let m = p.mark(LuaSyntaxKind::DocDescription);
+    let desc_start_pos = p.get_events().len();
 
     loop {
         match p.current_token() {
@@ -139,6 +150,17 @@ fn parse_normal_description(p: &mut LuaDocParser) {
                 break;
             }
         }
+    }
+
+    if p.desc_parser.is_some() {
+        let desc_events: Vec<_> = p.get_events().drain(desc_start_pos..).collect();
+        let text = p.origin_text();
+        let events = p
+            .desc_parser
+            .as_deref_mut()
+            .unwrap()
+            .parse(text, &desc_events);
+        p.get_events().extend(events);
     }
 
     m.complete(p);

@@ -224,11 +224,15 @@ mod tests {
             ---hello
             ---world
             ---      hihihi
+            ---
+            --- xyz
         "#;
         let description = get_ast_node::<LuaDocDescription>(code);
         let expected = r#"hello
 world
-      hihihi"#;
+      hihihi
+
+ xyz"#;
         assert_eq!(description.get_description_text(), expected);
 
         let code2 = r#"

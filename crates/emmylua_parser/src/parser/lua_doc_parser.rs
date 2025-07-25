@@ -1,3 +1,5 @@
+use super::{LuaParser, MarkEvent, MarkerEventContainer, desc_parser};
+use crate::parser::desc_parser::LuaDescParser;
 use crate::{
     grammar::parse_comment,
     kind::LuaTokenKind,
@@ -6,8 +8,6 @@ use crate::{
     text::SourceRange,
 };
 
-use super::{LuaParser, MarkEvent, MarkerEventContainer};
-
 pub struct LuaDocParser<'a, 'b> {
     lua_parser: &'a mut LuaParser<'b>,
     tokens: &'a [LuaTokenData],
@@ -15,6 +15,7 @@ pub struct LuaDocParser<'a, 'b> {
     current_token: LuaTokenKind,
     current_token_range: SourceRange,
     origin_token_index: usize,
+    pub desc_parser: Option<Box<dyn LuaDescParser>>,
 }
 
 impl MarkerEventContainer for LuaDocParser<'_, '_> {
@@ -35,9 +36,11 @@ impl MarkerEventContainer for LuaDocParser<'_, '_> {
     }
 }
 
-impl LuaDocParser<'_, '_> {
+impl<'b> LuaDocParser<'_, 'b> {
     pub fn parse(lua_parser: &mut LuaParser<'_>, tokens: &[LuaTokenData]) {
         let lexer = LuaDocLexer::new(lua_parser.origin_text());
+        let desc_parser =
+            desc_parser::make_desc_parser(lua_parser.parse_config.desc_parser_type().clone());
 
         let mut parser = LuaDocParser {
             lua_parser,
@@ -46,6 +49,7 @@ impl LuaDocParser<'_, '_> {
             current_token: LuaTokenKind::None,
             current_token_range: SourceRange::EMPTY,
             origin_token_index: 0,
+            desc_parser,
         };
 
         parser.init();
@@ -74,9 +78,7 @@ impl LuaDocParser<'_, '_> {
     fn calc_next_current_token(&mut self) {
         let token = self.lex_token();
         self.current_token = token.kind;
-        if !token.range.is_empty() {
-            self.current_token_range = token.range;
-        }
+        self.current_token_range = token.range;
 
         if self.current_token == LuaTokenKind::TkEof {
             return;
@@ -174,10 +176,13 @@ impl LuaDocParser<'_, '_> {
         self.current_token_range
     }
 
-    pub fn current_token_text(&self) -> &str {
-        let source_text = self.lua_parser.origin_text();
+    pub fn current_token_text(&self) -> &'b str {
         let range = self.current_token_range;
-        &source_text[range.start_offset..range.end_offset()]
+        &self.origin_text()[range.start_offset..range.end_offset()]
+    }
+
+    pub fn origin_text(&self) -> &'b str {
+        self.lua_parser.origin_text()
     }
 
     pub fn set_state(&mut self, state: LuaDocLexerState) {

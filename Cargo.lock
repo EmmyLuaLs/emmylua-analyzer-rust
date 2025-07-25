@@ -664,6 +664,7 @@ dependencies = [
 name = "emmylua_parser"
 version = "0.12.0"
 dependencies = [
+ "regex",
  "rowan",
  "rust-i18n",
  "serde",

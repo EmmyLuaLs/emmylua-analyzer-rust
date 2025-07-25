@@ -95,10 +95,7 @@ pub fn definition(
         }
     }
 
-    // goto self
-    let document = semantic_model.get_document();
-    let lsp_location = document.to_lsp_location(token.text_range())?;
-    Some(GotoDefinitionResponse::Scalar(lsp_location))
+    None
 }
 
 pub struct DefinitionCapabilities;

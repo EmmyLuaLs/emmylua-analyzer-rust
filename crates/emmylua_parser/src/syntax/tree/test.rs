@@ -36,7 +36,12 @@ mod test {
 if a ~= b then
 end
         "#;
-        let parse_config = ParserConfig::new(LuaLanguageLevel::Lua51, None, HashMap::new());
+        let parse_config = ParserConfig::new(
+            LuaLanguageLevel::Lua51,
+            None,
+            HashMap::new(),
+            Default::default(),
+        );
         let tree = LuaParser::parse(code, parse_config);
         assert_eq!(tree.get_errors().len(), 0);
     }

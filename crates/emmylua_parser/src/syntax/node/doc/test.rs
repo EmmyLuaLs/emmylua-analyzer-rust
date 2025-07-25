@@ -28,7 +28,7 @@ mod test {
         let comment_1 = comment_iter.next().unwrap();
         assert_eq!(
             comment_1.get_description().unwrap().get_description_text(),
-            "1 comment"
+            " 1 comment"
         );
         assert_eq!(
             comment_1.get_owner().unwrap().syntax().text(),
@@ -38,7 +38,7 @@ mod test {
         let comment_2 = comment_iter.next().unwrap();
         assert_eq!(
             comment_2.get_description().unwrap().get_description_text(),
-            "2 comment"
+            " 2 comment"
         );
         assert_eq!(
             comment_2.get_owner().unwrap().syntax().text(),
@@ -48,7 +48,7 @@ mod test {
         let comment_3 = comment_iter.next().unwrap();
         assert_eq!(
             comment_3.get_description().unwrap().get_description_text(),
-            "3 comment"
+            " 3 comment"
         );
         assert_eq!(comment_3.get_owner().unwrap().syntax().text(), "aa = 1123");
 
@@ -62,7 +62,7 @@ mod test {
         let comment_5 = comment_iter.next().unwrap();
         assert_eq!(
             comment_5.get_description().unwrap().get_description_text(),
-            "5 comment"
+            " 5 comment"
         );
         assert_eq!(comment_5.get_owner().unwrap().syntax().text(), "qi = 123");
     }
