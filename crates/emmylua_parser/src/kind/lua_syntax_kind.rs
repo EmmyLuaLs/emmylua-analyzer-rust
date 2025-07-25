@@ -135,4 +135,9 @@ pub enum LuaSyntaxKind {
 
     // [<|>] [<framework>] <version>, <version> can be '5.1', '5.2', '5.3', '5.4', 'JIT', <framework> can be 'openresty'
     DocVersion,
+
+    DocRef, // Cross reference to a lua object. Actual reference text is contained in `TkDocDetailRef`.
+    DocScope, // A section of documentation.
+    DocEm,  // Emphasis.
+    DocStrong, // Strong emphasis.
 }

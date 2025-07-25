@@ -1,3 +1,5 @@
+use super::{desc_parser, LuaParser, MarkEvent, MarkerEventContainer};
+use crate::parser::desc_parser::LuaDescParser;
 use crate::{
     grammar::parse_comment,
     kind::LuaTokenKind,
@@ -6,8 +8,6 @@ use crate::{
     text::SourceRange,
 };
 
-use super::{LuaParser, MarkEvent, MarkerEventContainer};
-
 pub struct LuaDocParser<'a, 'b> {
     lua_parser: &'a mut LuaParser<'b>,
     tokens: &'a [LuaTokenData],
@@ -15,6 +15,7 @@ pub struct LuaDocParser<'a, 'b> {
     current_token: LuaTokenKind,
     current_token_range: SourceRange,
     origin_token_index: usize,
+    pub desc_parser: Option<Box<dyn LuaDescParser>>,
 }
 
 impl MarkerEventContainer for LuaDocParser<'_, '_> {
@@ -38,6 +39,8 @@ impl MarkerEventContainer for LuaDocParser<'_, '_> {
 impl<'b> LuaDocParser<'_, 'b> {
     pub fn parse(lua_parser: &mut LuaParser<'_>, tokens: &[LuaTokenData]) {
         let lexer = LuaDocLexer::new(lua_parser.origin_text());
+        let desc_parser =
+            desc_parser::make_desc_parser(lua_parser.parse_config.desc_parser_type().clone());
 
         let mut parser = LuaDocParser {
             lua_parser,
@@ -46,6 +49,7 @@ impl<'b> LuaDocParser<'_, 'b> {
             current_token: LuaTokenKind::None,
             current_token_range: SourceRange::EMPTY,
             origin_token_index: 0,
+            desc_parser,
         };
 
         parser.init();

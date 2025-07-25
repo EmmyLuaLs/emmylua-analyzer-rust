@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::config::configs::DocSyntax;
 pub use config_loader::load_configs;
 pub use configs::EmmyrcFilenameConvention;
 pub use configs::EmmyrcLuaVersion;
@@ -16,7 +17,7 @@ use configs::{
     EmmyrcInlineValues, EmmyrcReference, EmmyrcResource, EmmyrcRuntime, EmmyrcSemanticToken,
     EmmyrcSignature, EmmyrcStrict, EmmyrcWorkspace,
 };
-use emmylua_parser::{LuaLanguageLevel, ParserConfig, SpecialFunction};
+use emmylua_parser::{DescParserType, LuaLanguageLevel, ParserConfig, SpecialFunction};
 use regex::Regex;
 use rowan::NodeCache;
 use schemars::JsonSchema;
@@ -72,7 +73,23 @@ impl Emmyrc {
         for name in self.runtime.require_like_function.iter() {
             special_like.insert(name.clone(), SpecialFunction::Require);
         }
-        ParserConfig::new(lua_language_level, Some(node_cache), special_like)
+        let desc_parser_type = match self.doc.syntax {
+            DocSyntax::None => DescParserType::None,
+            DocSyntax::Md => DescParserType::Md,
+            DocSyntax::Myst => DescParserType::MySt {
+                primary_domain: self.doc.rst_primary_domain.clone(),
+            },
+            DocSyntax::Rst => DescParserType::Rst {
+                primary_domain: self.doc.rst_primary_domain.clone(),
+                default_role: self.doc.rst_default_role.clone(),
+            },
+        };
+        ParserConfig::new(
+            lua_language_level,
+            Some(node_cache),
+            special_like,
+            desc_parser_type,
+        )
     }
 
     pub fn get_language_level(&self) -> LuaLanguageLevel {

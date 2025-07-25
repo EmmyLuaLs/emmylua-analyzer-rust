@@ -141,6 +141,18 @@ pub enum LuaTokenKind {
     TkDocRegion,          // region
     TkDocEndRegion,       // endregion
     TkDocSeeContent,      // see content
+
+    // markdown/rst syntax
+    TkDocDetailMarkup,          // block-level markup
+    TkDocDetailArgMarkup,       // markup around directive argument
+    TkDocDetailArg,             // directive argument
+    TkDocDetailCode,            // code block
+    TkDocDetailInlineMarkup,    // inline-level markup
+    TkDocDetailInlineArgMarkup, // inline-level markup around directive argument
+    TkDocDetailInlineArg,       // inline-level directive argument
+    TkDocDetailInlineCode,      // inline-level code block
+    TkDocDetailRef,             // cross-reference to a lua object
+    TkDocDetailInlineLink,      // hyperlink
 }
 
 impl fmt::Display for LuaTokenKind {

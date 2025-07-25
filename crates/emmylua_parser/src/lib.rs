@@ -7,7 +7,7 @@ mod syntax;
 mod text;
 
 pub use kind::*;
-pub use parser::{LuaParser, ParserConfig, SpecialFunction};
+pub use parser::{DescParserType, LuaParser, ParserConfig, SpecialFunction};
 pub use parser_error::{LuaParseError, LuaParseErrorKind};
 pub use syntax::*;
 pub use text::LineIndex;
