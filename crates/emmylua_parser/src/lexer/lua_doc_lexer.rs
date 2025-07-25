@@ -47,7 +47,8 @@ impl LuaDocLexer<'_> {
     }
 
     pub fn reset(&mut self, kind: LuaTokenKind, range: SourceRange) {
-        self.reader = Some(Reader::new_with_range(self.origin_text, range));
+        let text = &self.origin_text[range.start_offset..range.end_offset()];
+        self.reader = Some(Reader::new_with_range(text, range));
         self.origin_token_kind = kind;
     }
 
@@ -76,7 +77,7 @@ impl LuaDocLexer<'_> {
     }
 
     pub fn current_token_range(&self) -> SourceRange {
-        self.reader.as_ref().unwrap().saved_range()
+        self.reader.as_ref().unwrap().current_range()
     }
 
     fn lex_init(&mut self) -> LuaTokenKind {
@@ -135,7 +136,7 @@ impl LuaDocLexer<'_> {
             ch if is_name_start(ch) => {
                 reader.bump();
                 reader.eat_while(is_name_continue);
-                let text = reader.current_saved_text();
+                let text = reader.current_text();
                 to_tag(text)
             }
             _ => {
@@ -490,7 +491,7 @@ impl LuaDocLexer<'_> {
                 }
 
                 reader.eat_while(|c| c.is_ascii_alphabetic());
-                let text = reader.current_saved_text();
+                let text = reader.current_text();
                 match text {
                     "region" | "#region" => LuaTokenKind::TkDocRegion,
                     "endregion" | "#endregion" => LuaTokenKind::TkDocEndRegion,
@@ -651,7 +652,7 @@ fn read_doc_name<'a>(reader: &'a mut Reader) -> (&'a str, bool /* str tpl */) {
         }
     }
 
-    (reader.current_saved_text(), str_tpl)
+    (reader.current_text(), str_tpl)
 }
 
 fn is_source_continue(ch: char) -> bool {

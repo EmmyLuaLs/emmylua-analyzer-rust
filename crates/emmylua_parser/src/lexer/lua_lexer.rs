@@ -30,7 +30,7 @@ impl LuaLexer<'_> {
                 break;
             }
 
-            tokens.push(LuaTokenData::new(kind, self.reader.saved_range()));
+            tokens.push(LuaTokenData::new(kind, self.reader.current_range()));
         }
 
         tokens
@@ -105,7 +105,7 @@ impl LuaLexer<'_> {
                 if self.reader.current_char() != '[' {
                     self.errors.push(LuaParseError::syntax_error_from(
                         &t!("invalid long string delimiter"),
-                        self.reader.saved_range(),
+                        self.reader.current_range(),
                     ));
                     return LuaTokenKind::TkLongString;
                 }
@@ -132,7 +132,7 @@ impl LuaLexer<'_> {
                         if !self.lexer_config.support_integer_operation() {
                             self.errors.push(LuaParseError::syntax_error_from(
                                 &t!("bitwise operation is not supported"),
-                                self.reader.saved_range(),
+                                self.reader.current_range(),
                             ));
                         }
 
@@ -153,7 +153,7 @@ impl LuaLexer<'_> {
                         if !self.lexer_config.support_integer_operation() {
                             self.errors.push(LuaParseError::syntax_error_from(
                                 &t!("bitwise operation is not supported"),
-                                self.reader.saved_range(),
+                                self.reader.current_range(),
                             ));
                         }
 
@@ -169,7 +169,7 @@ impl LuaLexer<'_> {
                     if !self.lexer_config.support_integer_operation() {
                         self.errors.push(LuaParseError::syntax_error_from(
                             &t!("bitwise operation is not supported"),
-                            self.reader.saved_range(),
+                            self.reader.current_range(),
                         ));
                     }
                     return LuaTokenKind::TkBitXor;
@@ -218,7 +218,7 @@ impl LuaLexer<'_> {
                 if self.reader.current_char() != quote {
                     self.errors.push(LuaParseError::syntax_error_from(
                         &t!("unfinished string"),
-                        self.reader.saved_range(),
+                        self.reader.current_range(),
                     ));
                     return LuaTokenKind::TkString;
                 }
@@ -251,7 +251,7 @@ impl LuaLexer<'_> {
                 if !self.lexer_config.support_integer_operation() {
                     self.errors.push(LuaParseError::syntax_error_from(
                         &t!("integer division is not supported"),
-                        self.reader.saved_range(),
+                        self.reader.current_range(),
                     ));
                 }
 
@@ -286,7 +286,7 @@ impl LuaLexer<'_> {
                 if !self.lexer_config.support_integer_operation() {
                     self.errors.push(LuaParseError::syntax_error_from(
                         &t!("bitwise operation is not supported"),
-                        self.reader.saved_range(),
+                        self.reader.current_range(),
                     ));
                 }
 
@@ -297,7 +297,7 @@ impl LuaLexer<'_> {
                 if !self.lexer_config.support_integer_operation() {
                     self.errors.push(LuaParseError::syntax_error_from(
                         &t!("bitwise operation is not supported"),
-                        self.reader.saved_range(),
+                        self.reader.current_range(),
                     ));
                 }
 
@@ -340,7 +340,7 @@ impl LuaLexer<'_> {
             ch if is_name_start(ch) => {
                 self.reader.bump();
                 self.reader.eat_while(is_name_continue);
-                let name = self.reader.current_saved_text();
+                let name = self.reader.current_text();
                 self.name_to_kind(name)
             }
             _ => {
@@ -403,7 +403,7 @@ impl LuaLexer<'_> {
         if !end {
             self.errors.push(LuaParseError::syntax_error_from(
                 &t!("unfinished long string or comment"),
-                self.reader.saved_range(),
+                self.reader.current_range(),
             ));
         }
 
@@ -528,7 +528,7 @@ impl LuaLexer<'_> {
                     "unexpected character '{}' after number literal",
                     self.reader.current_char()
                 ),
-                self.reader.saved_range(),
+                self.reader.current_range(),
             ));
         }
 
