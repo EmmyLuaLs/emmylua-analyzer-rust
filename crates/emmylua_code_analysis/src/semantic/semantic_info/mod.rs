@@ -7,14 +7,14 @@ use crate::{
     TypeOps,
 };
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaParamName,
-    LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
+    LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocRef, LuaDocTag, LuaExpr, LuaLocalName,
+    LuaParamName, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
 };
 pub use infer_expr_semantic_decl::infer_expr_semantic_decl;
 pub use semantic_decl_level::SemanticDeclLevel;
 pub use semantic_guard::SemanticDeclGuard;
 
-use super::{LuaInferCache, infer_expr};
+use super::{infer_expr, LuaInferCache};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticInfo {
@@ -138,6 +138,18 @@ pub fn infer_node_semantic_info(
                 _ => return None,
             }
         }
+        doc_ref if LuaDocRef::can_cast(doc_ref.kind().into()) => {
+            let doc_ref = LuaDocRef::cast(doc_ref)?;
+            let name_token = doc_ref.get_name_token()?;
+            let name = name_token.get_name_text();
+            let type_decl = db
+                .get_type_index()
+                .find_type_decl(cache.get_file_id(), &name)?;
+            Some(SemanticInfo {
+                typ: LuaType::Ref(type_decl.get_id()),
+                semantic_decl: LuaSemanticDeclId::TypeDecl(type_decl.get_id()).into(),
+            })
+        }
         _ => None,
     }
 }
@@ -224,6 +236,15 @@ pub fn infer_node_semantic_decl(
             let param_name = LuaParamName::cast(param_name)?;
             let name_token = param_name.get_name_token()?;
             infer_token_semantic_decl(db, cache, name_token.syntax().clone(), level)
+        }
+        doc_ref if LuaDocRef::can_cast(doc_ref.kind().into()) => {
+            let doc_ref = LuaDocRef::cast(doc_ref)?;
+            let name_token = doc_ref.get_name_token()?;
+            let name = name_token.get_name_text();
+            let type_decl = db
+                .get_type_index()
+                .find_type_decl(cache.get_file_id(), &name)?;
+            LuaSemanticDeclId::TypeDecl(type_decl.get_id()).into()
         }
         _ => None,
     }

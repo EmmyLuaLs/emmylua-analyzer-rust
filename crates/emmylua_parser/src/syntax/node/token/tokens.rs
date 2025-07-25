@@ -711,3 +711,38 @@ impl LuaPathToken {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocRefToken {
+    token: LuaSyntaxToken,
+}
+
+impl LuaAstToken for LuaDocRefToken {
+    fn syntax(&self) -> &LuaSyntaxToken {
+        &self.token
+    }
+
+    fn can_cast(kind: LuaTokenKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaTokenKind::TkDocDetailRef
+    }
+
+    fn cast(syntax: LuaSyntaxToken) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(LuaDocRefToken { token: syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocRefToken {
+    pub fn get_name_text(&self) -> &str {
+        self.token.text()
+    }
+}

@@ -4,9 +4,9 @@ mod stat;
 mod test;
 
 use crate::{
-    LuaCommentOwner, LuaSyntaxNode,
     kind::{LuaSyntaxKind, LuaTokenKind},
     syntax::traits::{LuaAstChildren, LuaAstNode, LuaAstToken},
+    LuaCommentOwner, LuaDocRefToken, LuaSyntaxNode,
 };
 
 pub use expr::*;
@@ -540,5 +540,40 @@ impl LuaIndexMemberExpr {
             LuaIndexMemberExpr::IndexExpr(expr) => expr.get_prefix_expr(),
             LuaIndexMemberExpr::TableField(field) => field.get_parent(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocRef {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocRef {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocRef
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocRef {
+    pub fn get_name_token(&self) -> Option<LuaDocRefToken> {
+        self.token()
     }
 }
