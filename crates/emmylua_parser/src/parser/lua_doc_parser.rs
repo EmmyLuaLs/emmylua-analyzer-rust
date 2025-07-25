@@ -35,7 +35,7 @@ impl MarkerEventContainer for LuaDocParser<'_, '_> {
     }
 }
 
-impl LuaDocParser<'_, '_> {
+impl<'b> LuaDocParser<'_, 'b> {
     pub fn parse(lua_parser: &mut LuaParser<'_>, tokens: &[LuaTokenData]) {
         let lexer = LuaDocLexer::new(lua_parser.origin_text());
 
@@ -74,9 +74,7 @@ impl LuaDocParser<'_, '_> {
     fn calc_next_current_token(&mut self) {
         let token = self.lex_token();
         self.current_token = token.kind;
-        if !token.range.is_empty() {
-            self.current_token_range = token.range;
-        }
+        self.current_token_range = token.range;
 
         if self.current_token == LuaTokenKind::TkEof {
             return;
@@ -141,7 +139,10 @@ impl LuaDocParser<'_, '_> {
                         self.origin_token_index + 1
                     };
                 if next_origin_index >= self.tokens.len() {
-                    return LuaTokenData::new(LuaTokenKind::TkEof, SourceRange::EMPTY);
+                    return LuaTokenData::new(
+                        LuaTokenKind::TkEof,
+                        SourceRange::new(self.current_token_range.end_offset(), 0),
+                    );
                 }
 
                 let next_origin_token = self.tokens[next_origin_index];
@@ -174,10 +175,13 @@ impl LuaDocParser<'_, '_> {
         self.current_token_range
     }
 
-    pub fn current_token_text(&self) -> &str {
-        let source_text = self.lua_parser.origin_text();
+    pub fn current_token_text(&self) -> &'b str {
         let range = self.current_token_range;
-        &source_text[range.start_offset..range.end_offset()]
+        &self.origin_text()[range.start_offset..range.end_offset()]
+    }
+
+    pub fn origin_text(&self) -> &'b str {
+        self.lua_parser.origin_text()
     }
 
     pub fn set_state(&mut self, state: LuaDocLexerState) {
