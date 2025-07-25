@@ -16,3 +16,7 @@ fn is_name_start(ch: char) -> bool {
 fn is_name_continue(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
+
+pub fn is_doc_whitespace(ch: char) -> bool {
+    ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n'
+}

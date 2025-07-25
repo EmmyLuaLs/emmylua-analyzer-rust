@@ -1,4 +1,4 @@
-use super::{is_name_continue, is_name_start};
+use super::{is_doc_whitespace, is_name_continue, is_name_start};
 use crate::{
     kind::LuaTokenKind,
     text::{Reader, SourceRange},
@@ -638,10 +638,6 @@ fn to_token_or_name(text: &str) -> LuaTokenKind {
         "or" => LuaTokenKind::TkOr,
         _ => LuaTokenKind::TkName,
     }
-}
-
-fn is_doc_whitespace(ch: char) -> bool {
-    ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n'
 }
 
 fn read_doc_name<'a>(reader: &'a mut Reader) -> (&'a str, bool /* str tpl */) {
