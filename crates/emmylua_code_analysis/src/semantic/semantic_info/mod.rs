@@ -14,7 +14,7 @@ pub use infer_expr_semantic_decl::infer_expr_semantic_decl;
 pub use semantic_decl_level::SemanticDeclLevel;
 pub use semantic_guard::SemanticDeclGuard;
 
-use super::{infer_expr, LuaInferCache};
+use super::{LuaInferCache, infer_expr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticInfo {

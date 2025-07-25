@@ -1,4 +1,4 @@
-use super::{desc_parser, LuaParser, MarkEvent, MarkerEventContainer};
+use super::{LuaParser, MarkEvent, MarkerEventContainer, desc_parser};
 use crate::parser::desc_parser::LuaDescParser;
 use crate::{
     grammar::parse_comment,

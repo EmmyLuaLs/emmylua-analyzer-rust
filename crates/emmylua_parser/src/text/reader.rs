@@ -1,6 +1,6 @@
 use super::text_range::SourceRange;
-use crate::parser::{MarkEvent, MarkerEventContainer};
 use crate::LuaTokenKind;
+use crate::parser::{MarkEvent, MarkerEventContainer};
 use std::mem::forget;
 use std::ops::{Deref, DerefMut};
 use std::str::Chars;

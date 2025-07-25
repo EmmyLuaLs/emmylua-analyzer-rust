@@ -1,9 +1,9 @@
 use crate::lexer::is_doc_whitespace;
-use crate::parser::desc_parser::util::{
-    check_marks_are_consistent, directive_is_code, find_common_indent, is_blank, is_closing_quote,
-    is_opening_quote, is_quote_match, BacktrackGuard,
-};
 use crate::parser::desc_parser::LuaDescParser;
+use crate::parser::desc_parser::util::{
+    BacktrackGuard, check_marks_are_consistent, directive_is_code, find_common_indent, is_blank,
+    is_closing_quote, is_opening_quote, is_quote_match,
+};
 use crate::parser::{MarkEvent, MarkerEventContainer};
 use crate::text::{Reader, ReaderWithMarks, SourceRange};
 use crate::{LuaSyntaxKind, LuaTokenKind};

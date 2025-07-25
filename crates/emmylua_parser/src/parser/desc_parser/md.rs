@@ -1,10 +1,10 @@
 use crate::lexer::is_doc_whitespace;
+use crate::parser::desc_parser::LuaDescParser;
 use crate::parser::desc_parser::rst::{eat_rst_flag_body, process_inline_code, process_lua_ref};
 use crate::parser::desc_parser::util::{
-    check_marks_are_consistent, directive_is_code, find_common_indent, is_blank, is_punct,
-    BacktrackGuard,
+    BacktrackGuard, check_marks_are_consistent, directive_is_code, find_common_indent, is_blank,
+    is_punct,
 };
-use crate::parser::desc_parser::LuaDescParser;
 use crate::parser::{MarkEvent, Marker, MarkerEventContainer};
 use crate::text::{Reader, ReaderWithMarks, SourceRange};
 use crate::{LuaSyntaxKind, LuaTokenKind};

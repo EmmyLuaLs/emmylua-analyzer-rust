@@ -1,7 +1,7 @@
+use crate::LuaTokenKind;
 use crate::lexer::is_doc_whitespace;
 use crate::parser::MarkEvent;
 use crate::text::ReaderWithMarks;
-use crate::LuaTokenKind;
 use std::cmp::min;
 use std::sync::LazyLock;
 

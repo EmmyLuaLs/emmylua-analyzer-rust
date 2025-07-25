@@ -4,9 +4,9 @@ mod stat;
 mod test;
 
 use crate::{
+    LuaCommentOwner, LuaDocRefToken, LuaSyntaxNode,
     kind::{LuaSyntaxKind, LuaTokenKind},
     syntax::traits::{LuaAstChildren, LuaAstNode, LuaAstToken},
-    LuaCommentOwner, LuaDocRefToken, LuaSyntaxNode,
 };
 
 pub use expr::*;
