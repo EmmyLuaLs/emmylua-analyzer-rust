@@ -1,9 +1,10 @@
+use super::{is_name_continue, is_name_start};
 use crate::{
     kind::LuaTokenKind,
     text::{Reader, SourceRange},
 };
-
-use super::{is_name_continue, is_name_start};
+use regex::Regex;
+use std::sync::LazyLock;
 
 #[derive(Debug, Clone)]
 pub struct LuaDocLexer<'a> {
@@ -104,13 +105,19 @@ impl LuaDocLexer<'_> {
                         }
                     }
                     3 => {
+                        let prev_reader_state = reader.clone();
+
                         reader.eat_while(is_doc_whitespace);
                         match reader.current_char() {
                             '@' => {
                                 reader.bump();
                                 LuaTokenKind::TkDocStart
                             }
-                            _ => LuaTokenKind::TkNormalStart,
+                            _ => {
+                                // Backtrack so that desc parser can see leading whitespaces.
+                                *reader = prev_reader_state;
+                                LuaTokenKind::TkNormalStart
+                            }
                         }
                     }
                     _ => {
@@ -308,10 +315,6 @@ impl LuaDocLexer<'_> {
     fn lex_description(&mut self) -> LuaTokenKind {
         let reader = self.reader.as_mut().unwrap();
         match reader.current_char() {
-            ch if is_doc_whitespace(ch) => {
-                reader.eat_while(is_doc_whitespace);
-                LuaTokenKind::TkWhitespace
-            }
             '-' if reader.is_start_of_line() => {
                 let count = reader.consume_char_n_times('-', 3);
                 match count {
@@ -333,6 +336,8 @@ impl LuaDocLexer<'_> {
                         }
                     }
                     3 => {
+                        let prev_reader_state = reader.clone();
+
                         reader.eat_while(is_doc_whitespace);
                         match reader.current_char() {
                             '@' => {
@@ -348,7 +353,11 @@ impl LuaDocLexer<'_> {
 
                                 LuaTokenKind::TkDocContinueOr
                             }
-                            _ => LuaTokenKind::TkNormalStart,
+                            _ => {
+                                // Backtrack so that desc parser can see leading whitespaces.
+                                *reader = prev_reader_state;
+                                LuaTokenKind::TkNormalStart
+                            }
                         }
                     }
                     _ => {
@@ -481,26 +490,6 @@ impl LuaDocLexer<'_> {
     fn lex_normal_description(&mut self) -> LuaTokenKind {
         let reader = self.reader.as_mut().unwrap();
         match reader.current_char() {
-            ch if is_doc_whitespace(ch) => {
-                reader.eat_while(is_doc_whitespace);
-                LuaTokenKind::TkWhitespace
-            }
-            ch if ch.is_ascii_alphabetic() || ch == '#' => {
-                if reader.current_char() == '#' {
-                    reader.bump();
-                }
-
-                reader.eat_while(|c| c.is_ascii_alphabetic());
-                let text = reader.current_text();
-                match text {
-                    "region" | "#region" => LuaTokenKind::TkDocRegion,
-                    "endregion" | "#endregion" => LuaTokenKind::TkDocEndRegion,
-                    _ => {
-                        reader.eat_while(|_| true);
-                        LuaTokenKind::TkDocDetail
-                    }
-                }
-            }
             '-' if reader.is_start_of_line() => {
                 let count = reader.consume_char_n_times('-', 3);
                 match count {
@@ -522,13 +511,19 @@ impl LuaDocLexer<'_> {
                         }
                     }
                     3 => {
+                        let prev_reader_state = reader.clone();
+
                         reader.eat_while(is_doc_whitespace);
                         match reader.current_char() {
                             '@' => {
                                 reader.bump();
                                 LuaTokenKind::TkDocStart
                             }
-                            _ => LuaTokenKind::TkNormalStart,
+                            _ => {
+                                // Backtrack so that `TkNormalStart` doesn't include whitespaces.
+                                *reader = prev_reader_state;
+                                LuaTokenKind::TkNormalStart
+                            }
                         }
                     }
                     _ => {
@@ -536,6 +531,18 @@ impl LuaDocLexer<'_> {
                         LuaTokenKind::TKDocTriviaStart
                     }
                 }
+            }
+            _ if is_region_start(reader.tail_text()) => {
+                reader.eat_while(is_doc_whitespace);
+                reader.eat_when('#');
+                reader.eat_while(|c| c.is_ascii_alphabetic());
+                LuaTokenKind::TkDocRegion
+            }
+            _ if is_region_end(reader.tail_text()) => {
+                reader.eat_while(is_doc_whitespace);
+                reader.eat_when('#');
+                reader.eat_while(|c| c.is_ascii_alphabetic());
+                LuaTokenKind::TkDocEndRegion
             }
             _ => {
                 reader.eat_while(|_| true);
@@ -563,6 +570,16 @@ impl LuaDocLexer<'_> {
             _ => self.lex_normal(),
         }
     }
+}
+
+fn is_region_start(s: &str) -> bool {
+    static REG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#?region(\s|$)").unwrap());
+    REG_RE.is_match(s)
+}
+
+fn is_region_end(s: &str) -> bool {
+    static REG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#?endregion(\s|$)").unwrap());
+    REG_RE.is_match(s)
 }
 
 fn to_tag(text: &str) -> LuaTokenKind {

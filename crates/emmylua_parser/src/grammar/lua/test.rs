@@ -76,9 +76,8 @@ Syntax(Chunk)@0..770
     Token(TkWhitespace)@1..13 "            "
     Syntax(Comment)@13..33
       Token(TkNormalStart)@13..15 "--"
-      Token(TkWhitespace)@15..16 " "
-      Syntax(DocDescription)@16..33
-        Token(TkDocDetail)@16..33 "This is a comment"
+      Syntax(DocDescription)@15..33
+        Token(TkDocDetail)@15..33 " This is a comment"
     Token(TkEndOfLine)@33..34 "\n"
     Token(TkWhitespace)@34..46 "            "
     Syntax(LocalStat)@46..58

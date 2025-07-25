@@ -33,22 +33,19 @@ Syntax(Chunk)@0..83
     Token(TkWhitespace)@1..9 "        "
     Syntax(Comment)@9..19
       Token(TkNormalStart)@9..11 "--"
-      Token(TkWhitespace)@11..12 " "
-      Syntax(DocDescription)@12..19
-        Token(TkDocDetail)@12..19 "comment"
+      Syntax(DocDescription)@11..19
+        Token(TkDocDetail)@11..19 " comment"
     Token(TkEndOfLine)@19..20 "\n"
     Token(TkEndOfLine)@20..21 "\n"
     Token(TkWhitespace)@21..29 "        "
     Syntax(Comment)@29..74
       Token(TkNormalStart)@29..31 "--"
-      Token(TkWhitespace)@31..32 " "
-      Syntax(DocDescription)@32..74
-        Token(TkDocDetail)@32..38 "hihihi"
+      Syntax(DocDescription)@31..74
+        Token(TkDocDetail)@31..38 " hihihi"
         Token(TkEndOfLine)@38..39 "\n"
         Token(TkWhitespace)@39..47 "        "
         Token(TkNormalStart)@47..49 "--"
-        Token(TkWhitespace)@49..54 "     "
-        Token(TkDocDetail)@54..59 "hello"
+        Token(TkDocDetail)@49..59 "     hello"
         Token(TkEndOfLine)@59..60 "\n"
         Token(TkWhitespace)@60..68 "        "
         Token(TkNormalStart)@68..70 "--"
@@ -76,9 +73,9 @@ Syntax(Chunk)@0..163
     Token(TkEndOfLine)@0..1 "\n"
     Token(TkWhitespace)@1..9 "        "
     Syntax(Comment)@9..120
-      Token(TkNormalStart)@9..15 "---   "
-      Syntax(DocDescription)@15..22
-        Token(TkDocDetail)@15..22 "hiihihi"
+      Token(TkNormalStart)@9..12 "---"
+      Syntax(DocDescription)@12..22
+        Token(TkDocDetail)@12..22 "   hiihihi"
       Token(TkEndOfLine)@22..23 "\n"
       Token(TkWhitespace)@23..31 "        "
       Token(TkDocStart)@31..35 "---@"
@@ -94,8 +91,8 @@ Syntax(Chunk)@0..163
         Token(TkDocDetail)@50..62 "hihihi hello"
         Token(TkEndOfLine)@62..63 "\n"
         Token(TkWhitespace)@63..71 "        "
-        Token(TkNormalStart)@71..78 "---    "
-        Token(TkDocDetail)@78..86 "enenenen"
+        Token(TkNormalStart)@71..74 "---"
+        Token(TkDocDetail)@74..86 "    enenenen"
       Token(TkEndOfLine)@86..87 "\n"
       Token(TkWhitespace)@87..95 "        "
       Token(TkDocStart)@95..99 "---@"
@@ -1742,15 +1739,41 @@ Syntax(Chunk)@0..51
     Syntax(Comment)@9..42
       Token(TkNormalStart)@9..11 "--"
       Token(TkDocRegion)@11..17 "region"
-      Token(TkWhitespace)@17..18 " "
-      Syntax(DocDescription)@18..33
-        Token(TkDocDetail)@18..22 "hhhh"
+      Syntax(DocDescription)@17..33
+        Token(TkDocDetail)@17..22 " hhhh"
         Token(TkEndOfLine)@22..23 "\n"
         Token(TkWhitespace)@23..31 "        "
         Token(TkNormalStart)@31..33 "--"
       Token(TkDocEndRegion)@33..42 "endregion"
     Token(TkEndOfLine)@42..43 "\n"
     Token(TkWhitespace)@43..51 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_not_region() {
+        let code = r#"
+        --regional department of rust lang
+        --endregional department of rust lang
+        "#;
+
+        let result = r#"
+Syntax(Chunk)@0..98
+  Syntax(Block)@0..98
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..89
+      Token(TkNormalStart)@9..11 "--"
+      Syntax(DocDescription)@11..89
+        Token(TkDocDetail)@11..43 "regional department o ..."
+        Token(TkEndOfLine)@43..44 "\n"
+        Token(TkWhitespace)@44..52 "        "
+        Token(TkNormalStart)@52..54 "--"
+        Token(TkDocDetail)@54..89 "endregional departmen ..."
+    Token(TkEndOfLine)@89..90 "\n"
+    Token(TkWhitespace)@90..98 "        "
         "#;
 
         assert_ast_eq!(code, result);
@@ -2327,12 +2350,12 @@ Syntax(Chunk)@0..127
             Token(TkDocDetail)@40..48 "# nihao "
             Token(TkEndOfLine)@48..49 "\n"
             Token(TkWhitespace)@49..57 "        "
-            Token(TkNormalStart)@57..62 "---  "
-            Token(TkDocDetail)@62..69 "woyehao"
+            Token(TkNormalStart)@57..60 "---"
+            Token(TkDocDetail)@60..69 "  woyehao"
             Token(TkEndOfLine)@69..70 "\n"
             Token(TkWhitespace)@70..78 "        "
-            Token(TkNormalStart)@78..82 "--- "
-            Token(TkDocDetail)@82..90 "dajiahao"
+            Token(TkNormalStart)@78..81 "---"
+            Token(TkDocDetail)@81..90 " dajiahao"
           Token(TkEndOfLine)@90..91 "\n"
           Token(TkWhitespace)@91..99 "        "
           Token(TkDocContinueOr)@99..103 "---|"
@@ -2497,21 +2520,21 @@ Syntax(Chunk)@0..118
     Token(TkEndOfLine)@0..1 "\n"
     Token(TkWhitespace)@1..9 "        "
     Syntax(Comment)@9..93
-      Token(TkNormalStart)@9..13 "--- "
-      Syntax(DocDescription)@13..93
-        Token(TkDocDetail)@13..27 "Note: ajfioiof"
+      Token(TkNormalStart)@9..12 "---"
+      Syntax(DocDescription)@12..93
+        Token(TkDocDetail)@12..27 " Note: ajfioiof"
         Token(TkEndOfLine)@27..28 "\n"
         Token(TkWhitespace)@28..36 "        "
-        Token(TkNormalStart)@36..41 "---  "
-        Token(TkDocDetail)@41..49 "|enenen|"
+        Token(TkNormalStart)@36..39 "---"
+        Token(TkDocDetail)@39..49 "  |enenen|"
         Token(TkEndOfLine)@49..50 "\n"
         Token(TkWhitespace)@50..58 "        "
-        Token(TkNormalStart)@58..63 "---  "
-        Token(TkDocDetail)@63..71 "|enenen|"
+        Token(TkNormalStart)@58..61 "---"
+        Token(TkDocDetail)@61..71 "  |enenen|"
         Token(TkEndOfLine)@71..72 "\n"
         Token(TkWhitespace)@72..80 "        "
-        Token(TkNormalStart)@80..85 "---  "
-        Token(TkDocDetail)@85..93 "|enenen|"
+        Token(TkNormalStart)@80..83 "---"
+        Token(TkDocDetail)@83..93 "  |enenen|"
     Token(TkEndOfLine)@93..94 "\n"
     Token(TkWhitespace)@94..102 "        "
     Syntax(LocalStat)@102..109
@@ -2699,9 +2722,9 @@ Syntax(Chunk)@0..263
     Token(TkEndOfLine)@0..1 "\n"
     Token(TkWhitespace)@1..9 "        "
     Syntax(Comment)@9..90
-      Token(TkNormalStart)@9..13 "--- "
-      Syntax(DocDescription)@13..19
-        Token(TkDocDetail)@13..19 "hihiih"
+      Token(TkNormalStart)@9..12 "---"
+      Syntax(DocDescription)@12..19
+        Token(TkDocDetail)@12..19 " hihiih"
       Token(TkEndOfLine)@19..20 "\n"
       Token(TkWhitespace)@20..28 "        "
       Token(TkDocStart)@28..32 "---@"
