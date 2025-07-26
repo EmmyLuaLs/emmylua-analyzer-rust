@@ -326,4 +326,47 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_goto_variable_param() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+                ---@class Observable<T>
+
+                ---test
+                local function zipLatest(...)
+                end
+                return zipLatest
+            "#,
+        );
+        ws.def_file(
+            "b.lua",
+            r#"
+            local export = {}
+            local zipLatest = require('a')
+            export.zipLatest = zipLatest
+            return export
+            "#,
+        );
+        let result = ws
+            .check_definition(
+                r#"
+                local zipLatest = require('b').zipLatest
+                zipLatest<??>()
+            "#,
+            )
+            .unwrap();
+        match result {
+            GotoDefinitionResponse::Array(array) => {
+                assert_eq!(array.len(), 1);
+                let location = &array[0];
+                assert_eq!(location.uri.path().as_str().ends_with("a.lua"), true);
+            }
+            _ => {
+                panic!("expect array");
+            }
+        }
+    }
 }

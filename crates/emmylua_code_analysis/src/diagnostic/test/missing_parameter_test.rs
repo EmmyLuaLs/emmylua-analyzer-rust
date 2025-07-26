@@ -195,4 +195,35 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_issue_633() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "test.lua",
+            r#"
+            ---@param mode number
+            ---@param a number
+            ---@param b number
+            ---@param c number
+            ---@param d number?
+            ---@return string
+            ---@overload fun(mode:number, a:number, b:number):number
+            function test(mode, a, b, c, d)
+            end
+
+            ---@return number, number
+            function getNumbers()
+                return 1, 2
+            end
+        "#,
+        );
+
+        assert!(ws.check_code_for_namespace(
+            DiagnosticCode::MissingParameter,
+            r#"
+            test(1, getNumbers())
+        "#
+        ));
+    }
 }

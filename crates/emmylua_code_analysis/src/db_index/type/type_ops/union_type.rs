@@ -1,9 +1,11 @@
 use std::ops::Deref;
 
-use crate::{LuaType, LuaUnionType};
+use crate::{DbIndex, LuaType, LuaUnionType, get_real_type};
 
-pub fn union_type(source: LuaType, target: LuaType) -> LuaType {
-    match (&source, &target) {
+pub fn union_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType {
+    let real_type = get_real_type(db, &source).unwrap_or(&source);
+
+    match (&real_type, &target) {
         // ANY | T = ANY
         (LuaType::Any, _) => LuaType::Any,
         (_, LuaType::Any) => LuaType::Any,
@@ -48,6 +50,28 @@ pub fn union_type(source: LuaType, target: LuaType) -> LuaType {
                 LuaType::from_vec(vec![source.clone(), target.clone()])
             }
         }
+        (LuaType::MultiLineUnion(left), right) => {
+            let include = match right {
+                LuaType::StringConst(v) => {
+                    left.get_unions().iter().any(|(t, _)| match (t, right) {
+                        (LuaType::DocStringConst(a), _) => a == v,
+                        _ => false,
+                    })
+                }
+                LuaType::IntegerConst(v) => {
+                    left.get_unions().iter().any(|(t, _)| match (t, right) {
+                        (LuaType::DocIntegerConst(a), _) => a == v,
+                        _ => false,
+                    })
+                }
+                _ => false,
+            };
+
+            if include {
+                return source;
+            }
+            LuaType::from_vec(vec![source, target])
+        }
         // union
         (LuaType::Union(left), right) if !right.is_union() => {
             let left = left.deref().clone();
@@ -66,7 +90,7 @@ pub fn union_type(source: LuaType, target: LuaType) -> LuaType {
                 return target.clone();
             }
 
-            types.push(left.clone());
+            types.push(source.clone());
             LuaType::Union(LuaUnionType::from_vec(types).into())
         }
         // two union
@@ -79,7 +103,7 @@ pub fn union_type(source: LuaType, target: LuaType) -> LuaType {
         }
 
         // same type
-        (left, right) if left == right => source.clone(),
+        (left, right) if *left == right => source.clone(),
         _ => LuaType::from_vec(vec![source, target]),
     }
 }

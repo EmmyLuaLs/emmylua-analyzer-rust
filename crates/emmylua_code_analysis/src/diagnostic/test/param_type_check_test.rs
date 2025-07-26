@@ -1279,4 +1279,33 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_alias_branch_label_flow() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "test.lua",
+            r#"
+            ---@alias EditorAttrTypeAlias
+            ---| 'ATTR_BASE'
+            ---| 'ATTR_BASE_RATIO'
+            ---| 'ATTR_ALL_RATIO'
+
+            ---@param attr_element string
+            function test(attr_element) end
+        "#,
+        );
+
+        assert!(ws.check_code_for_namespace(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@param attr_type EditorAttrTypeAlias
+            function add_attr(attr_type)
+                if attr_type ~= 'ATTR_BASE' then
+                end
+                test(attr_type)
+            end
+        "#
+        ));
+    }
 }

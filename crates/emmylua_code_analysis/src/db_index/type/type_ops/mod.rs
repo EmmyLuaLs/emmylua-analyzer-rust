@@ -17,7 +17,7 @@ pub enum TypeOps {
 impl TypeOps {
     pub fn apply(&self, db: &DbIndex, source: &LuaType, target: &LuaType) -> LuaType {
         match self {
-            TypeOps::Union => union_type::union_type(source.clone(), target.clone()),
+            TypeOps::Union => union_type::union_type(db, source.clone(), target.clone()),
             TypeOps::Remove => {
                 let result = remove_type::remove_type(db, source.clone(), target.clone());
                 if let Some(result) = result {
