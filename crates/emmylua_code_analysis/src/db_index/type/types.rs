@@ -427,6 +427,10 @@ impl LuaType {
         matches!(self, LuaType::TypeGuard(_))
     }
 
+    pub fn is_multi_line_union(&self) -> bool {
+        matches!(self, LuaType::MultiLineUnion(_))
+    }
+
     pub fn from_vec(types: Vec<LuaType>) -> Self {
         return match types.len() {
             0 => LuaType::Nil,
