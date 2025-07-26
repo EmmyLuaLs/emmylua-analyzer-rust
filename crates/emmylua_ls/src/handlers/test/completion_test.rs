@@ -1224,4 +1224,29 @@ mod tests {
             vec![],
         ));
     }
+
+    #[test]
+    fn test_issue_646() {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Base
+            ---@field a string
+            "#,
+        );
+        assert!(ws.check_completion(
+            r#"
+            ---@generic T: Base
+            ---@param file T
+            function dirname(file)
+                file.<??>
+            end
+            "#,
+            vec![VirtualCompletionItem {
+                label: "a".to_string(),
+                kind: CompletionItemKind::VARIABLE,
+                ..Default::default()
+            },],
+        ));
+    }
 }
