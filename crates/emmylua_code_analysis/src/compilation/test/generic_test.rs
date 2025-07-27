@@ -96,4 +96,28 @@ mod test {
         let expected = ws.ty("Observable<number>");
         assert_eq!(a_ty, expected);
     }
+
+    #[test]
+    fn test_issue_646() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Base
+            ---@field a string
+            "#,
+        );
+        ws.def(
+            r#"
+            ---@generic T: Base
+            ---@param file T
+            function dirname(file)
+                A = file.a
+            end
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        let expected = ws.ty("string");
+        assert_eq!(a_ty, expected);
+    }
 }

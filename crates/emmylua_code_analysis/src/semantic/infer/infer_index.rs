@@ -9,13 +9,13 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
-    CacheEntry, InFiled, LuaArrayLen, LuaArrayType, LuaDeclOrMemberId, LuaInferCache,
+    CacheEntry, GenericTpl, InFiled, LuaArrayLen, LuaArrayType, LuaDeclOrMemberId, LuaInferCache,
     LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    enum_variable_is_param,
+    enum_variable_is_param, get_tpl_ref_extend_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -173,6 +173,7 @@ pub fn infer_member_by_member_key(
         LuaType::Instance(inst) => infer_instance_member(db, cache, inst, index_expr, infer_guard),
         LuaType::Namespace(ns) => infer_namespace_member(db, cache, ns, index_expr),
         LuaType::Array(array_type) => infer_array_member(db, cache, array_type, index_expr),
+        LuaType::TplRef(tpl) => infer_tpl_ref_member(db, cache, tpl, index_expr, infer_guard),
         _ => Err(InferFailReason::FieldNotFound),
     }
 }
@@ -1232,4 +1233,26 @@ fn expr_to_member_key(
         }
     }
     Some(keys)
+}
+
+fn infer_tpl_ref_member(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    generic: &GenericTpl,
+    index_expr: LuaIndexMemberExpr,
+    infer_guard: &mut InferGuard,
+) -> InferResult {
+    let extend_type = get_tpl_ref_extend_type(
+        db,
+        cache,
+        &LuaType::TplRef(generic.clone().into()),
+        index_expr
+            .get_index_expr()
+            .ok_or(InferFailReason::None)?
+            .get_prefix_expr()
+            .ok_or(InferFailReason::None)?,
+        0,
+    )
+    .ok_or(InferFailReason::None)?;
+    return infer_member_by_member_key(db, cache, &extend_type, index_expr.clone(), infer_guard);
 }

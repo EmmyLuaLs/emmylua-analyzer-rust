@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
     DbIndex, LuaMemberInfo, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
-    enum_variable_is_param,
+    enum_variable_is_param, get_tpl_ref_extend_type,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
 
@@ -27,7 +27,20 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     };
 
     let prefix_expr = index_expr.get_prefix_expr()?;
-    let prefix_type = builder.semantic_model.infer_expr(prefix_expr.into()).ok()?;
+    let prefix_type = match builder
+        .semantic_model
+        .infer_expr(prefix_expr.clone())
+        .ok()?
+    {
+        LuaType::TplRef(tpl) => get_tpl_ref_extend_type(
+            builder.semantic_model.get_db(),
+            &mut builder.semantic_model.get_cache().borrow_mut(),
+            &LuaType::TplRef(tpl.clone().into()),
+            prefix_expr.clone(),
+            0,
+        )?,
+        prefix_type => prefix_type,
+    };
     // 如果是枚举类型且为函数参数, 则不进行补全
     if enum_variable_is_param(
         builder.semantic_model.get_db(),
