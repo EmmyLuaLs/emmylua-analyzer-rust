@@ -22,6 +22,7 @@ use stats::{
 
 use crate::{
     Emmyrc, FileId, InferFailReason,
+    compilation::analyzer::AnalysisPipeline,
     db_index::{DbIndex, LuaType},
     profile::Profile,
     semantic::infer_expr,
@@ -29,23 +30,27 @@ use crate::{
 
 use super::AnalyzeContext;
 
-pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
-    let _p = Profile::cond_new("lua analyze", context.tree_list.len() > 1);
-    let tree_list = context.tree_list.clone();
-    let file_ids = tree_list.iter().map(|x| x.file_id).collect::<Vec<_>>();
-    let tree_map = tree_list
-        .iter()
-        .map(|x| (x.file_id, x.value.clone()))
-        .collect::<HashMap<_, _>>();
-    let file_dependency = db.get_file_dependencies_index().get_file_dependencies();
-    let order = file_dependency.get_best_analysis_order(file_ids.clone());
-    for file_id in order {
-        if let Some(root) = tree_map.get(&file_id) {
-            let mut analyzer = LuaAnalyzer::new(db, file_id, context);
-            for node in root.descendants::<LuaAst>() {
-                analyze_node(&mut analyzer, node);
+pub struct LuaAnalysisPipeline;
+
+impl AnalysisPipeline for LuaAnalysisPipeline {
+    fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
+        let _p = Profile::cond_new("lua analyze", context.tree_list.len() > 1);
+        let tree_list = context.tree_list.clone();
+        let file_ids = tree_list.iter().map(|x| x.file_id).collect::<Vec<_>>();
+        let tree_map = tree_list
+            .iter()
+            .map(|x| (x.file_id, x.value.clone()))
+            .collect::<HashMap<_, _>>();
+        let file_dependency = db.get_file_dependencies_index().get_file_dependencies();
+        let order = file_dependency.get_best_analysis_order(file_ids.clone());
+        for file_id in order {
+            if let Some(root) = tree_map.get(&file_id) {
+                let mut analyzer = LuaAnalyzer::new(db, file_id, context);
+                for node in root.descendants::<LuaAst>() {
+                    analyze_node(&mut analyzer, node);
+                }
+                analyze_chunk_return(&mut analyzer, root.clone());
             }
-            analyze_chunk_return(&mut analyzer, root.clone());
         }
     }
 }
