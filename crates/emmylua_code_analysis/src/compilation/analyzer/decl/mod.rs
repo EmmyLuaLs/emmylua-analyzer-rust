@@ -9,7 +9,7 @@ use crate::{
 };
 
 use super::AnalyzeContext;
-use emmylua_parser::{LuaAst, LuaAstNode, LuaChunk, LuaFuncStat, LuaSyntaxKind, LuaVarExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaFuncStat, LuaSyntaxKind, LuaVarExpr};
 use rowan::{TextRange, TextSize, WalkEvent};
 
 use crate::{
@@ -23,13 +23,13 @@ pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
     for in_filed_tree in tree_list.iter() {
         db.get_reference_index_mut()
             .create_local_reference(in_filed_tree.file_id);
-        let mut analyzer = DeclAnalyzer::new(
-            db,
-            in_filed_tree.file_id,
-            in_filed_tree.value.clone(),
-            context,
-        );
-        analyzer.analyze();
+        let mut analyzer = DeclAnalyzer::new(db, in_filed_tree.file_id, context);
+        for walk_event in in_filed_tree.value.walk_descendants::<LuaAst>() {
+            match walk_event {
+                WalkEvent::Enter(node) => walk_node_enter(&mut analyzer, node),
+                WalkEvent::Leave(node) => walk_node_leave(&mut analyzer, node),
+            }
+        }
         let decl_tree = analyzer.get_decl_tree();
         db.get_decl_index_mut().add_decl_tree(decl_tree);
     }
@@ -140,7 +140,6 @@ fn is_scope_owner(node: &LuaAst) -> bool {
 #[derive(Debug)]
 pub struct DeclAnalyzer<'a> {
     db: &'a mut DbIndex,
-    root: LuaChunk,
     decl: LuaDeclarationTree,
     scopes: Vec<LuaScopeId>,
     is_meta: bool,
@@ -151,26 +150,14 @@ impl<'a> DeclAnalyzer<'a> {
     pub fn new(
         db: &'a mut DbIndex,
         file_id: FileId,
-        root: LuaChunk,
         context: &'a mut AnalyzeContext,
     ) -> DeclAnalyzer<'a> {
         DeclAnalyzer {
             db,
-            root,
             decl: LuaDeclarationTree::new(file_id),
             scopes: Vec::new(),
             is_meta: false,
             context,
-        }
-    }
-
-    pub fn analyze(&mut self) {
-        let root = self.root.clone();
-        for walk_event in root.walk_descendants::<LuaAst>() {
-            match walk_event {
-                WalkEvent::Enter(node) => walk_node_enter(self, node),
-                WalkEvent::Leave(node) => walk_node_leave(self, node),
-            }
         }
     }
 
