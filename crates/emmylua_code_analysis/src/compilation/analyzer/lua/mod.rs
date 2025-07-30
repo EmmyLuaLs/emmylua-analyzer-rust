@@ -114,7 +114,7 @@ impl LuaAnalyzer<'_> {
 
 impl LuaAnalyzer<'_> {
     pub fn infer_expr(&mut self, expr: &LuaExpr) -> Result<LuaType, InferFailReason> {
-        let cache = self.context.infer_manager.get_infer_cache(self.file_id);
+        let cache = self.context.infer_caches.get_infer_cache(self.file_id);
         infer_expr(self.db, cache, expr.clone())
     }
 }

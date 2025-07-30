@@ -23,7 +23,7 @@ use resolve_closure::{
     try_resolve_call_closure_params, try_resolve_closure_parent_params, try_resolve_closure_return,
 };
 
-use super::{AnalyzeContext, infer_manager::InferCacheManager, lua::LuaReturnPoint};
+use super::{AnalyzeContext, infer_cache_manager::InferCacheManager, lua::LuaReturnPoint};
 
 type ResolveResult = Result<(), InferFailReason>;
 
@@ -32,7 +32,7 @@ pub struct ResolveAnalysisPipeline;
 impl AnalysisPipeline for ResolveAnalysisPipeline {
     fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
         let _p = Profile::cond_new("resolve analyze", context.tree_list.len() > 1);
-        let mut infer_manager = std::mem::take(&mut context.infer_manager);
+        let mut infer_manager = std::mem::take(&mut context.infer_caches);
         infer_manager.clear();
         let mut reason_resolve: HashMap<InferFailReason, Vec<UnResolve>> = HashMap::new();
         for (unresolve, reason) in context.unresolves.drain(..) {

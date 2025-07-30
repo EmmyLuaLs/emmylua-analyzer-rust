@@ -17,7 +17,7 @@ use crate::compilation::analyzer::doc::tags::{
 use crate::{
     InFiled, InferFailReason, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
     SignatureReturnStatus, TypeOps,
-    compilation::analyzer::{bind_type::bind_type, unresolve::UnResolveModuleRef},
+    compilation::analyzer::{common::bind_type, unresolve::UnResolveModuleRef},
     db_index::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaOperator, LuaSemanticDeclId,
         LuaSignatureId, LuaType,

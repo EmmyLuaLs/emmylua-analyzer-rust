@@ -42,11 +42,11 @@ impl LuaMemberIndex {
         let file_id = member.get_file_id();
         self.members.insert(id, member);
         self.add_in_file_object(file_id, MemberOrOwner::Member(id));
-        if !owner.is_unknown() {
-            self.member_current_owner.insert(id, owner.clone());
-            self.add_in_file_object(file_id, MemberOrOwner::Owner(owner.clone()));
-            self.add_member_to_owner(owner.clone(), id);
-        }
+
+        self.member_current_owner.insert(id, owner.clone());
+        self.add_in_file_object(file_id, MemberOrOwner::Owner(owner.clone()));
+        self.add_member_to_owner(owner.clone(), id);
+
         id
     }
 

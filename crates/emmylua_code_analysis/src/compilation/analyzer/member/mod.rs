@@ -1,12 +1,61 @@
+mod stats;
+
+use emmylua_parser::{LuaAst, LuaAstNode};
+
 use crate::{
-    DbIndex, Profile,
-    compilation::analyzer::{AnalysisPipeline, AnalyzeContext},
+    DbIndex, FileId, Profile,
+    compilation::analyzer::{
+        AnalysisPipeline, AnalyzeContext,
+        member::stats::{analyze_assign_stat, analyze_func_stat, analyze_local_stat},
+    },
 };
 
 pub struct MemberAnalysisPipeline;
 
 impl AnalysisPipeline for MemberAnalysisPipeline {
-    fn analyze(_: &mut DbIndex, context: &mut AnalyzeContext) {
+    fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
         let _p = Profile::cond_new("member analyze", context.tree_list.len() > 1);
+        let tree_list = context.tree_list.clone();
+        for in_filed_tree in tree_list {
+            let root = &in_filed_tree.value;
+            let mut analyzer = MemberAnalyzer::new(db, in_filed_tree.file_id, context);
+            for node in root.descendants::<LuaAst>() {
+                match node {
+                    LuaAst::LuaLocalStat(local_stat) => {
+                        analyze_local_stat(&mut analyzer, local_stat);
+                    }
+                    LuaAst::LuaAssignStat(assign_stat) => {
+                        analyze_assign_stat(&mut analyzer, assign_stat);
+                    }
+                    LuaAst::LuaFuncStat(func_stat) => {
+                        analyze_func_stat(&mut analyzer, func_stat);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+struct MemberAnalyzer<'a> {
+    db: &'a mut DbIndex,
+    file_id: FileId,
+    #[allow(unused)]
+    context: &'a mut AnalyzeContext,
+    is_meta: bool,
+}
+
+impl<'a> MemberAnalyzer<'a> {
+    fn new(db: &'a mut DbIndex, file_id: FileId, context: &'a mut AnalyzeContext) -> Self {
+        let is_meta = db
+            .get_module_index()
+            .get_module(file_id)
+            .map_or(false, |module| module.is_meta);
+        Self {
+            db,
+            file_id,
+            context,
+            is_meta,
+        }
     }
 }

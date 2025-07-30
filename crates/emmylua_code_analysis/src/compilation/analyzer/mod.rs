@@ -1,8 +1,8 @@
-mod bind_type;
+mod common;
 mod decl;
 mod doc;
 mod flow;
-mod infer_manager;
+mod infer_cache_manager;
 mod lua;
 mod member;
 mod unresolve;
@@ -10,16 +10,13 @@ mod unresolve;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    Emmyrc, InFiled, InferFailReason, WorkspaceId,
     compilation::analyzer::{
         doc::DocAnalysisPipeline, flow::FlowAnalysisPipeline, lua::LuaAnalysisPipeline,
         member::MemberAnalysisPipeline, unresolve::ResolveAnalysisPipeline,
-    },
-    db_index::DbIndex,
-    profile::Profile,
+    }, db_index::DbIndex, profile::Profile, Emmyrc, InFiled, InferFailReason, LuaDeclId, WorkspaceId
 };
 use emmylua_parser::LuaChunk;
-use infer_manager::InferCacheManager;
+use infer_cache_manager::InferCacheManager;
 use unresolve::UnResolve;
 
 pub fn analyze(db: &mut DbIndex, need_analyzed_files: Vec<InFiled<LuaChunk>>, config: Arc<Emmyrc>) {
@@ -129,7 +126,9 @@ pub struct AnalyzeContext {
     #[allow(unused)]
     config: Arc<Emmyrc>,
     unresolves: Vec<(UnResolve, InferFailReason)>,
-    infer_manager: InferCacheManager,
+    #[allow(unused)]
+    unresolve_member_ids: HashMap<LuaDeclId, ()>,
+    infer_caches: InferCacheManager,
 }
 
 impl AnalyzeContext {
@@ -138,7 +137,8 @@ impl AnalyzeContext {
             tree_list: Vec::new(),
             config: emmyrc,
             unresolves: Vec::new(),
-            infer_manager: InferCacheManager::new(),
+            unresolve_member_ids: HashMap::new(),
+            infer_caches: InferCacheManager::new(),
         }
     }
 
