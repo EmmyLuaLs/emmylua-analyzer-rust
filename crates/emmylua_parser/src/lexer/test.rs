@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use crate::text::Reader;
     use crate::{
         lexer::{LexerConfig, LuaLexer},
         parser_error::LuaParseError,
@@ -82,7 +83,7 @@ mod tests {
         "#;
         let config = LexerConfig::default();
         let mut errors: Vec<LuaParseError> = Vec::new();
-        let mut lexer = LuaLexer::new(text, config, &mut errors);
+        let mut lexer = LuaLexer::new(Reader::new(text), config, Some(&mut errors));
         let tokens = lexer.tokenize();
         // for token in &tokens {
         //     println!("{:?}", token);

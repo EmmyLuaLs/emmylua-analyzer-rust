@@ -6,7 +6,7 @@ mod token_data;
 
 pub use lexer_config::LexerConfig;
 pub use lua_doc_lexer::{LuaDocLexer, LuaDocLexerState};
-pub use lua_lexer::LuaLexer;
+pub use lua_lexer::{LuaLexer, LuaLexerState};
 pub use token_data::LuaTokenData;
 
 fn is_name_start(ch: char) -> bool {

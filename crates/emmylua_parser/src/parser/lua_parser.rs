@@ -1,3 +1,9 @@
+use super::{
+    lua_doc_parser::LuaDocParser,
+    marker::{MarkEvent, MarkerEventContainer},
+    parser_config::ParserConfig,
+};
+use crate::text::Reader;
 use crate::{
     LuaSyntaxTree, LuaTreeBuilder,
     grammar::parse_chunk,
@@ -5,12 +11,6 @@ use crate::{
     lexer::{LuaLexer, LuaTokenData},
     parser_error::LuaParseError,
     text::SourceRange,
-};
-
-use super::{
-    lua_doc_parser::LuaDocParser,
-    marker::{MarkEvent, MarkerEventContainer},
-    parser_config::ParserConfig,
 };
 
 #[allow(unused)]
@@ -48,7 +48,8 @@ impl<'a> LuaParser<'a> {
     pub fn parse(text: &'a str, config: ParserConfig) -> LuaSyntaxTree {
         let mut errors: Vec<LuaParseError> = Vec::new();
         let tokens = {
-            let mut lexer = LuaLexer::new(text, config.lexer_config(), &mut errors);
+            let mut lexer =
+                LuaLexer::new(Reader::new(text), config.lexer_config(), Some(&mut errors));
             lexer.tokenize()
         };
 
@@ -320,6 +321,7 @@ fn is_invalid_kind(kind: LuaTokenKind) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::text::Reader;
     use crate::{
         LuaParser, kind::LuaTokenKind, lexer::LuaLexer, parser::ParserConfig,
         parser_error::LuaParseError,
@@ -333,7 +335,7 @@ mod tests {
         show_tokens: bool,
     ) -> LuaParser<'a> {
         let tokens = {
-            let mut lexer = LuaLexer::new(text, config.lexer_config(), errors);
+            let mut lexer = LuaLexer::new(Reader::new(text), config.lexer_config(), Some(errors));
             lexer.tokenize()
         };
 
