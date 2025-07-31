@@ -181,18 +181,16 @@ impl<'a> Reader<'a> {
         count
     }
 
+    pub fn eat_till_end(&mut self) -> usize {
+        self.eat_while(|_| true)
+    }
+
     pub fn get_source_text(&self) -> &'a str {
         self.text
     }
 
     pub fn get_current_end_pos(&self) -> usize {
         self.current_buffer_byte_pos + self.current_buffer_byte_len
-    }
-}
-
-impl<'a> Default for Reader<'a> {
-    fn default() -> Self {
-        Self::new("")
     }
 }
 
