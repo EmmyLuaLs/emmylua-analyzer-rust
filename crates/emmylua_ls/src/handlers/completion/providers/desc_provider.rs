@@ -141,7 +141,6 @@ fn add_by_prefix(
 
         // Modules.
         add_modules(builder, &prefix, None);
-        dbg!(&seen_types);
         complete_types_by_prefix(builder, &prefix, Some(&seen_types));
     }
 

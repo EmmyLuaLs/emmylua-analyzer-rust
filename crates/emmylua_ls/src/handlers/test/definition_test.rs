@@ -1,13 +1,53 @@
 #[cfg(test)]
 mod tests {
+    use crate::handlers::test_lib::ProviderVirtualWorkspace;
+    use emmylua_code_analysis::{DocSyntax, Emmyrc};
     use lsp_types::GotoDefinitionResponse;
 
-    use crate::handlers::test_lib::ProviderVirtualWorkspace;
+    #[derive(Debug, Copy, Clone)]
+    struct Expected {
+        file: &'static str,
+        line: u32,
+    }
+
+    fn assert_def(result: Option<GotoDefinitionResponse>, expected_items: &[Expected]) {
+        let mut expected_items = Vec::from(expected_items);
+
+        let Some(result) = result else {
+            panic!("expect result, got None");
+        };
+
+        let mut items = match result {
+            GotoDefinitionResponse::Scalar(item) => vec![item],
+            GotoDefinitionResponse::Array(array) => array,
+            GotoDefinitionResponse::Link(_) => {
+                panic!("expect scalar, got Link");
+            }
+        };
+
+        items.sort_by_key(|item| item.range.start.line);
+        expected_items.sort_by_key(|item| item.line);
+
+        assert_eq!(items.len(), expected_items.len());
+        for (item, expected_item) in items.iter().zip(expected_items) {
+            if !expected_item.file.is_empty() {
+                assert!(
+                    item.uri.path().as_str().ends_with(expected_item.file),
+                    "expected uri {:?}, got {:?}",
+                    expected_item.file,
+                    item.uri
+                );
+            }
+            if expected_item.line > 0 {
+                assert_eq!(item.range.start.line, expected_item.line);
+            }
+        }
+    }
 
     #[test]
     fn test_basic_definition() {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.check_definition(
+        let result = ws.check_definition(
             r#"
                 ---@generic T
                 ---@param name `T`
@@ -21,12 +61,13 @@ mod tests {
                 local a = new("<??>Ability")
             "#,
         );
+        assert_def(result, &[Expected { file: "", line: 8 }])
     }
 
     #[test]
     fn test_table_field_definition_1() {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.check_definition(
+        let result = ws.check_definition(
             r#"
                 ---@class T
                 ---@field func fun(self:string)
@@ -38,12 +79,19 @@ mod tests {
                 }
             "#,
         );
+        assert_def(
+            result,
+            &[
+                Expected { file: "", line: 2 },
+                Expected { file: "", line: 6 },
+            ],
+        )
     }
 
     #[test]
     fn test_table_field_definition_2() {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.check_definition(
+        let result = ws.check_definition(
             r#"
                 ---@class T
                 ---@field func fun(self: T) 注释注释
@@ -58,12 +106,14 @@ mod tests {
                 t:func<??>()
             "#,
         );
+        // XXX: only one result?
+        assert_def(result, &[Expected { file: "", line: 2 }])
     }
 
     #[test]
     fn test_goto_field() {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.check_definition(
+        let result = ws.check_definition(
             r#"
                 local t = {}
                 function t:test(a)
@@ -73,12 +123,14 @@ mod tests {
                 print(t.abc<??>)
             "#,
         );
+        assert_def(result, &[Expected { file: "", line: 3 }])
     }
 
     #[test]
     fn test_goto_overload() {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.def(
+        ws.def_file(
+            "test.lua",
             r#"
                 ---@class Goto1
                 ---@class Goto2
@@ -90,15 +142,15 @@ mod tests {
                 ---@field func fun(a:Goto3) # 3
                 local T = {}
 
+                -- impl
                 function T:func(a)
                 end
             "#,
         );
 
         {
-            let result = ws
-                .check_definition(
-                    r#"
+            let result = ws.check_definition(
+                r#"
                 ---@type Goto2
                 local Goto2
 
@@ -106,36 +158,52 @@ mod tests {
                 local t
                 t.fu<??>nc(Goto2)
                  "#,
-                )
-                .unwrap();
-            match result {
-                GotoDefinitionResponse::Array(array) => {
-                    assert_eq!(array.len(), 2);
-                }
-                _ => {
-                    panic!("expect array");
-                }
-            }
+            );
+            // XXX: why reference to 1, and no references to impl?
+            assert_def(
+                result,
+                &[
+                    Expected {
+                        file: "test.lua",
+                        line: 6,
+                    },
+                    Expected {
+                        file: "test.lua",
+                        line: 7,
+                    },
+                ],
+            )
         }
 
         {
-            let result = ws
-                .check_definition(
-                    r#"
+            let result = ws.check_definition(
+                r#"
                 ---@type T
                 local t
                 t.fu<??>nc()
                  "#,
-                )
-                .unwrap();
-            match result {
-                GotoDefinitionResponse::Array(array) => {
-                    assert_eq!(array.len(), 4);
-                }
-                _ => {
-                    panic!("expect array");
-                }
-            }
+            );
+            assert_def(
+                result,
+                &[
+                    Expected {
+                        file: "test.lua",
+                        line: 6,
+                    },
+                    Expected {
+                        file: "test.lua",
+                        line: 7,
+                    },
+                    Expected {
+                        file: "test.lua",
+                        line: 8,
+                    },
+                    Expected {
+                        file: "test.lua",
+                        line: 12,
+                    },
+                ],
+            )
         }
     }
 
@@ -154,24 +222,20 @@ mod tests {
             }
             "#,
         );
-        let result = ws
-            .check_definition(
-                r#"
+        let result = ws.check_definition(
+            r#"
             local t = require("test")
             local test = t.test
             te<??>st()
             "#,
-            )
-            .unwrap();
-        match result {
-            GotoDefinitionResponse::Array(locations) => {
-                assert_eq!(locations.len(), 1);
-                assert_eq!(locations[0].range.start.line, 1);
-            }
-            _ => {
-                panic!("expect scalar");
-            }
-        }
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "test.lua",
+                line: 1,
+            }],
+        )
     }
 
     #[test]
@@ -194,23 +258,19 @@ mod tests {
             return export
             "#,
         );
-        let result = ws
-            .check_definition(
-                r#"
+        let result = ws.check_definition(
+            r#"
             local new = require("test").new
             new<??>("A")
             "#,
-            )
-            .unwrap();
-        match result {
-            GotoDefinitionResponse::Array(locations) => {
-                assert_eq!(locations.len(), 1);
-                assert_eq!(locations[0].range.start.line, 8);
-            }
-            _ => {
-                panic!("expect scalar");
-            }
-        }
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "test.lua",
+                line: 8,
+            }],
+        )
     }
 
     #[test]
@@ -233,23 +293,18 @@ mod tests {
             ---@class BBB<T>
             "#,
         );
-        let result = ws
-            .check_definition(
-                r#"
+        let result = ws.check_definition(
+            r#"
                 new("AAA.BBB<??>")
             "#,
-            )
-            .unwrap();
-        match result {
-            GotoDefinitionResponse::Array(array) => {
-                assert_eq!(array.len(), 1);
-                let location = &array[0];
-                assert_eq!(location.uri.path().as_str().ends_with("2.lua"), true);
-            }
-            _ => {
-                panic!("expect array");
-            }
-        }
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "2.lua",
+                line: 2,
+            }],
+        )
     }
 
     #[test]
@@ -264,22 +319,19 @@ mod tests {
             return create
             "#,
         );
-        let result = ws
-            .check_definition(
-                r#"
+        let result = ws.check_definition(
+            r#"
                 local create = require('a')
                 create<??>()
             "#,
-            )
-            .unwrap();
-        match result {
-            GotoDefinitionResponse::Scalar(location) => {
-                assert_eq!(location.uri.path().as_str().ends_with("a.lua"), true);
-            }
-            _ => {
-                panic!("expect array");
-            }
-        }
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 1,
+            }],
+        )
     }
 
     #[test]
@@ -307,23 +359,131 @@ mod tests {
             return Rxlua
             "#,
         );
-        let result = ws
-            .check_definition(
-                r#"
+        let result = ws.check_definition(
+            r#"
                 local create = require('b').create
                 create<??>()
             "#,
-            )
-            .unwrap();
-        match result {
-            GotoDefinitionResponse::Array(array) => {
-                assert_eq!(array.len(), 1);
-                let location = &array[0];
-                assert_eq!(location.uri.path().as_str().ends_with("a.lua"), true);
-            }
-            _ => {
-                panic!("expect array");
-            }
-        }
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 4,
+            }],
+        )
+    }
+
+    #[test]
+    fn test_doc_resolve() {
+        let mut ws = ProviderVirtualWorkspace::new();
+
+        let mut emmyrc = Emmyrc::default();
+        emmyrc.doc.syntax = DocSyntax::Myst;
+        ws.analysis.update_config(emmyrc.into());
+
+        ws.def_file(
+            "a.lua",
+            r#"
+            --- @class X
+            --- @field a string
+
+            --- @class ns.Y
+            --- @field b string
+            "#,
+        );
+
+        let result = ws.check_definition(
+            r#"
+                --- {lua:obj}`X<??>`
+            "#,
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 1,
+            }],
+        );
+
+        let result = ws.check_definition(
+            r#"
+                --- {lua:obj}`X<??>.a`
+            "#,
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 1,
+            }],
+        );
+
+        let result = ws.check_definition(
+            r#"
+                --- {lua:obj}`X.a<??>`
+            "#,
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 2,
+            }],
+        );
+
+        let result = ws.check_definition(
+            r#"
+                --- @using ns
+
+                --- {lua:obj}`X<??>`
+            "#,
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 1,
+            }],
+        );
+
+        let result = ws.check_definition(
+            r#"
+                --- @using ns
+
+                --- {lua:obj}`Y<??>`
+            "#,
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 4,
+            }],
+        );
+
+        let result = ws.check_definition(
+            r#"
+                --- @using ns
+
+                --- {lua:obj}`ns.Y<??>`
+            "#,
+        );
+        assert_def(
+            result,
+            &[Expected {
+                file: "a.lua",
+                line: 4,
+            }],
+        );
+
+        let result = ws.check_definition(
+            r#"
+                --- {lua:obj}`c<??>`
+                --- @class Z
+                --- @field c string
+            "#,
+        );
+        assert_def(result, &[Expected { file: "", line: 3 }]);
     }
 }
