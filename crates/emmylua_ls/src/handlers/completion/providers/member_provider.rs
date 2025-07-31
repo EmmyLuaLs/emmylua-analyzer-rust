@@ -1,8 +1,9 @@
 use emmylua_code_analysis::{
-    DbIndex, LuaMemberInfo, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
+    DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
     enum_variable_is_param,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
+use std::collections::HashMap;
 
 use crate::handlers::completion::{
     add_completions::{CompletionTriggerStatus, add_member_completion},
@@ -41,8 +42,17 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     }
 
     let member_info_map = builder.semantic_model.get_member_info_map(&prefix_type)?;
+
+    add_completions_for_members(builder, &member_info_map, completion_status)
+}
+
+pub fn add_completions_for_members(
+    builder: &mut CompletionBuilder,
+    members: &HashMap<LuaMemberKey, Vec<LuaMemberInfo>>,
+    completion_status: CompletionTriggerStatus,
+) -> Option<()> {
     // 排序
-    let mut sorted_entries: Vec<_> = member_info_map.iter().collect();
+    let mut sorted_entries: Vec<_> = members.iter().collect();
     sorted_entries.sort_unstable_by(|(name1, _), (name2, _)| name1.cmp(name2));
 
     for (_, member_infos) in sorted_entries {

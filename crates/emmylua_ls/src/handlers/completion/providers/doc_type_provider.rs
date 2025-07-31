@@ -1,6 +1,7 @@
 use emmylua_code_analysis::LuaTypeDeclId;
 use emmylua_parser::{LuaAstNode, LuaDocNameType, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::CompletionItem;
+use std::collections::HashSet;
 
 use crate::handlers::completion::{
     completion_builder::CompletionBuilder, completion_data::CompletionData,
@@ -20,15 +21,31 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     } else {
         ""
     };
+    complete_types_by_prefix(builder, prefix, None);
+    builder.stop_here();
+    Some(())
+}
 
+pub fn complete_types_by_prefix(
+    builder: &mut CompletionBuilder,
+    prefix: &str,
+    filter: Option<&HashSet<LuaTypeDeclId>>,
+) -> Option<()> {
     let file_id = builder.semantic_model.get_file_id();
     let type_index = builder.semantic_model.get_db().get_type_index();
     let results = type_index.find_type_decls(file_id, prefix);
 
     for (name, type_decl) in results {
+        if let Some(filter) = filter {
+            if type_decl
+                .as_ref()
+                .is_some_and(|type_decl| filter.contains(type_decl))
+            {
+                continue;
+            }
+        }
         add_type_completion_item(builder, &name, type_decl);
     }
-    builder.stop_here();
 
     Some(())
 }

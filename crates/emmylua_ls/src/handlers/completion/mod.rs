@@ -80,9 +80,14 @@ pub fn completion(
         }
     };
 
-    let mut builder = CompletionBuilder::new(token, semantic_model, cancel_token, trigger_kind);
-    let emmyrc = analysis.get_emmyrc();
-    add_completions(&mut builder, &emmyrc);
+    let mut builder = CompletionBuilder::new(
+        token,
+        semantic_model,
+        cancel_token,
+        trigger_kind,
+        position_offset,
+    );
+    add_completions(&mut builder);
     Some(CompletionResponse::Array(builder.get_completion_items()))
 }
 

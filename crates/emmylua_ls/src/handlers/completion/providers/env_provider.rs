@@ -32,7 +32,7 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
 
     let mut duplicated_name = HashSet::new();
     add_local_env(builder, &mut duplicated_name, &parent_node);
-    add_global_env(builder, &mut duplicated_name);
+    add_global_env(builder, &mut duplicated_name, &builder.get_trigger_text());
     add_self(builder, &mut duplicated_name, &parent_node);
     builder.env_duplicate_name.extend(duplicated_name);
 
@@ -183,11 +183,11 @@ fn add_local_env(
     Some(())
 }
 
-fn add_global_env(
+pub fn add_global_env(
     builder: &mut CompletionBuilder,
     duplicated_name: &mut HashSet<String>,
+    trigger_text: &str,
 ) -> Option<()> {
-    let trigger_text = builder.get_trigger_text();
     let global_env = builder
         .semantic_model
         .get_db()

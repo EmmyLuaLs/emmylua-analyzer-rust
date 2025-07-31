@@ -1,10 +1,9 @@
 use crate::handlers::completion::{completion_builder::CompletionBuilder, data::DOC_TAGS};
 use crate::meta_text::meta_doc_tag;
-use emmylua_code_analysis::Emmyrc;
 use emmylua_parser::LuaTokenKind;
 use lsp_types::{CompletionItem, MarkupContent};
 
-pub fn add_completion(builder: &mut CompletionBuilder, emmyrc: &Emmyrc) -> Option<()> {
+pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
@@ -17,6 +16,7 @@ pub fn add_completion(builder: &mut CompletionBuilder, emmyrc: &Emmyrc) -> Optio
         return None;
     }
 
+    let emmyrc = builder.semantic_model.get_emmyrc_arc();
     let known_other_tags = emmyrc.doc.known_tags.iter().map(|tag| tag.as_str());
 
     for (sorted_index, tag) in DOC_TAGS.iter().copied().chain(known_other_tags).enumerate() {

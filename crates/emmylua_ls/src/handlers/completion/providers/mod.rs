@@ -1,4 +1,5 @@
 mod auto_require_provider;
+mod desc_provider;
 mod doc_name_token_provider;
 mod doc_tag_provider;
 mod doc_type_provider;
@@ -13,13 +14,12 @@ mod postfix_provider;
 mod table_field_provider;
 
 use super::completion_builder::CompletionBuilder;
-use emmylua_code_analysis::Emmyrc;
 use emmylua_parser::LuaAstToken;
 use emmylua_parser::LuaStringToken;
 pub use function_provider::get_function_remove_nil;
 use rowan::TextRange;
 
-pub fn add_completions(builder: &mut CompletionBuilder, emmyrc: &Emmyrc) -> Option<()> {
+pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
     postfix_provider::add_completion(builder);
     // `function_provider`优先级必须高于`env_provider`
     function_provider::add_completion(builder);
@@ -33,9 +33,10 @@ pub fn add_completions(builder: &mut CompletionBuilder, emmyrc: &Emmyrc) -> Opti
     module_path_provider::add_completion(builder);
     file_path_provider::add_completion(builder);
     auto_require_provider::add_completion(builder);
-    doc_tag_provider::add_completion(builder, emmyrc);
+    doc_tag_provider::add_completion(builder);
     doc_type_provider::add_completion(builder);
     doc_name_token_provider::add_completion(builder);
+    desc_provider::add_completions(builder);
 
     for (index, item) in builder.get_completion_items_mut().iter_mut().enumerate() {
         if item.sort_text.is_none() {

@@ -8,8 +8,7 @@ use std::{
 };
 
 pub use config_loader::load_configs;
-pub use configs::EmmyrcFilenameConvention;
-pub use configs::EmmyrcLuaVersion;
+pub use configs::{DocSyntax, EmmyrcFilenameConvention, EmmyrcLuaVersion};
 use configs::{EmmyrcCodeAction, EmmyrcDocumentColor};
 use configs::{
     EmmyrcCodeLen, EmmyrcCompletion, EmmyrcDiagnostic, EmmyrcDoc, EmmyrcHover, EmmyrcInlayHint,

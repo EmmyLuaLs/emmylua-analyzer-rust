@@ -2,10 +2,12 @@ mod goto_def_definition;
 mod goto_doc_see;
 mod goto_function;
 mod goto_module_file;
+mod goto_path;
 
-use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, SemanticDeclLevel};
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, SemanticDeclLevel, WorkspaceId};
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaDocTagSee, LuaGeneralToken, LuaStringToken, LuaTokenKind,
+    LuaAstNode, LuaAstToken, LuaDocDescription, LuaDocTagSee, LuaGeneralToken, LuaStringToken,
+    LuaTokenKind,
 };
 pub use goto_def_definition::goto_def_definition;
 use goto_def_definition::goto_str_tpl_ref_definition;
@@ -19,10 +21,11 @@ use lsp_types::{
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
-pub use goto_function::extract_semantic_decl_from_signature;
-
 use super::RegisterCapabilities;
+use crate::context::ServerContextSnapshot;
+use crate::handlers::definition::goto_path::goto_path;
+use crate::util::find_ref_at;
+pub use goto_function::extract_semantic_decl_from_signature;
 
 pub async fn on_goto_definition_handler(
     context: ServerContextSnapshot,
@@ -93,12 +96,26 @@ pub fn definition(
         if let Some(_) = general_token.get_parent::<LuaDocTagSee>() {
             return goto_doc_see(&semantic_model, general_token);
         }
+    } else if token.kind() == LuaTokenKind::TkDocDetail.into() {
+        let parent = token.parent()?;
+        let description = LuaDocDescription::cast(parent)?;
+        let document = semantic_model.get_document();
+
+        let path = find_ref_at(
+            semantic_model
+                .get_module()
+                .map(|m| m.workspace_id)
+                .unwrap_or(WorkspaceId::MAIN),
+            semantic_model.get_emmyrc(),
+            document.get_text(),
+            description.clone(),
+            position_offset,
+        )?;
+
+        return goto_path(&semantic_model, &analysis.compilation, &path, &token);
     }
 
-    // goto self
-    let document = semantic_model.get_document();
-    let lsp_location = document.to_lsp_location(token.text_range())?;
-    Some(GotoDefinitionResponse::Scalar(lsp_location))
+    None
 }
 
 pub struct DefinitionCapabilities;
