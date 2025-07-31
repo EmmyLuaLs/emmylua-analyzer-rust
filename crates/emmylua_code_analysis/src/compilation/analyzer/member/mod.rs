@@ -1,4 +1,4 @@
-mod stats;
+mod members;
 
 use emmylua_parser::{LuaAst, LuaAstNode};
 
@@ -6,10 +6,15 @@ use crate::{
     DbIndex, FileId, Profile,
     compilation::analyzer::{
         AnalysisPipeline, AnalyzeContext,
-        member::stats::{analyze_assign_stat, analyze_func_stat, analyze_local_stat},
+        member::members::{
+            analyze_assign_stat, analyze_func_stat, analyze_local_stat, analyze_table_field,
+        },
     },
 };
 
+/// Due to the widespread use of global variables in Lua and the various ways to define members,
+/// it is impossible to fully analyze them without knowing their types.
+/// Therefore, this only tries to identify as many members as possible in advance.
 pub struct MemberAnalysisPipeline;
 
 impl AnalysisPipeline for MemberAnalysisPipeline {
@@ -29,6 +34,9 @@ impl AnalysisPipeline for MemberAnalysisPipeline {
                     }
                     LuaAst::LuaFuncStat(func_stat) => {
                         analyze_func_stat(&mut analyzer, func_stat);
+                    }
+                    LuaAst::LuaTableField(table_field) => {
+                        analyze_table_field(&mut analyzer, table_field);
                     }
                     _ => {}
                 }

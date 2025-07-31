@@ -7,7 +7,7 @@ pub enum LuaMemberOwner {
     Type(LuaTypeDeclId),
     Element(InFiled<TextRange>),
     DeclId(LuaDeclId),
-    Global(GlobalId)
+    Global(GlobalId),
 }
 
 impl From<LuaTypeDeclId> for LuaMemberOwner {

@@ -10,10 +10,13 @@ mod unresolve;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
+    Emmyrc, InFiled, InferFailReason, LuaDeclId, WorkspaceId,
     compilation::analyzer::{
         doc::DocAnalysisPipeline, flow::FlowAnalysisPipeline, lua::LuaAnalysisPipeline,
         member::MemberAnalysisPipeline, unresolve::ResolveAnalysisPipeline,
-    }, db_index::DbIndex, profile::Profile, Emmyrc, InFiled, InferFailReason, LuaDeclId, WorkspaceId
+    },
+    db_index::DbIndex,
+    profile::Profile,
 };
 use emmylua_parser::LuaChunk;
 use infer_cache_manager::InferCacheManager;
