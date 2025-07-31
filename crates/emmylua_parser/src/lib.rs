@@ -1,3 +1,4 @@
+pub mod desc_parser;
 mod grammar;
 mod kind;
 mod lexer;
