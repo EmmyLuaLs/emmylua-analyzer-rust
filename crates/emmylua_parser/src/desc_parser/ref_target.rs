@@ -31,7 +31,6 @@ pub fn parse_ref_target(
 
     let mut reader = Reader::new_with_range(&text[range], range.into());
     let mut result = Vec::new();
-    let mut found_erroneous_symbol = false;
 
     while !reader.is_eof() {
         match reader.current_char() {
@@ -69,10 +68,7 @@ pub fn parse_ref_target(
                             reader.current_range().into(),
                         ));
                     }
-                    Err(()) => {
-                        found_erroneous_symbol = true;
-                        break;
-                    }
+                    Err(()) => return None,
                 }
 
                 if reader.current_range().end_offset() >= cursor_offset {
@@ -100,8 +96,13 @@ pub fn parse_ref_target(
             }
             '-' | '_' | 'a'..='z' | 'A'..='Z' | '0'..='9' => reader.bump(),
             _ => {
-                found_erroneous_symbol = reader.current_range().end_offset() < cursor_offset;
-                break;
+                if reader.current_range().end_offset() < cursor_offset {
+                    // Illegal character before cursor, bail.
+                    return None;
+                } else {
+                    // Illegal character after cursor, ignore.
+                    break;
+                }
             }
         }
     }
@@ -111,10 +112,6 @@ pub fn parse_ref_target(
             LuaDescRefPathItem::Name(reader.current_text().to_string()),
             reader.current_range().into(),
         ));
-    }
-
-    if found_erroneous_symbol && result.is_empty() {
-        return None;
     }
 
     Some(result)
