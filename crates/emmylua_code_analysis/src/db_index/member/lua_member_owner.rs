@@ -6,8 +6,8 @@ use crate::{GlobalId, InFiled, LuaDeclId, LuaTypeDeclId};
 pub enum LuaMemberOwner {
     Type(LuaTypeDeclId),
     Element(InFiled<TextRange>),
-    DeclId(LuaDeclId),
-    Global(GlobalId),
+    LocalDeclId(LuaDeclId),
+    GlobalId(GlobalId),
 }
 
 impl From<LuaTypeDeclId> for LuaMemberOwner {

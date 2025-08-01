@@ -1,13 +1,16 @@
 mod members;
 
-use emmylua_parser::{LuaAst, LuaAstNode};
+use std::collections::HashSet;
+
+use emmylua_parser::{LuaAst, LuaAstNode, LuaSyntaxId};
 
 use crate::{
     DbIndex, FileId, Profile,
     compilation::analyzer::{
         AnalysisPipeline, AnalyzeContext,
         member::members::{
-            analyze_assign_stat, analyze_func_stat, analyze_local_stat, analyze_table_field,
+            analyze_assign_stat, analyze_func_stat, analyze_local_stat, analyze_table_expr,
+            analyze_table_field,
         },
     },
 };
@@ -38,6 +41,9 @@ impl AnalysisPipeline for MemberAnalysisPipeline {
                     LuaAst::LuaTableField(table_field) => {
                         analyze_table_field(&mut analyzer, table_field);
                     }
+                    LuaAst::LuaTableExpr(table_expr) => {
+                        analyze_table_expr(&mut analyzer, table_expr);
+                    }
                     _ => {}
                 }
             }
@@ -51,6 +57,7 @@ struct MemberAnalyzer<'a> {
     #[allow(unused)]
     context: &'a mut AnalyzeContext,
     is_meta: bool,
+    visited_table_expr: HashSet<LuaSyntaxId>,
 }
 
 impl<'a> MemberAnalyzer<'a> {
@@ -64,6 +71,7 @@ impl<'a> MemberAnalyzer<'a> {
             file_id,
             context,
             is_meta,
+            visited_table_expr: HashSet::new(),
         }
     }
 }

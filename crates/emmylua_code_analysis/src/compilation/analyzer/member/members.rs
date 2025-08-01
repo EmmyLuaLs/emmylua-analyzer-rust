@@ -1,10 +1,11 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaExpr, LuaFuncStat, LuaIndexKey, LuaLocalStat, LuaTableField,
-    LuaVarExpr,
+    LuaAssignStat, LuaAstNode, LuaExpr, LuaFuncStat, LuaIndexKey, LuaLocalStat, LuaTableExpr,
+    LuaTableField, LuaVarExpr,
 };
 
 use crate::{
-    LuaDeclId, LuaMember, LuaMemberFeature, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaType,
+    InFiled, LuaDeclId, LuaMember, LuaMemberFeature, LuaMemberId, LuaMemberKey, LuaMemberOwner,
+    LuaType,
     compilation::analyzer::{
         common::{get_global_path, get_name_expr_member_owner},
         member::MemberAnalyzer,
@@ -18,8 +19,12 @@ pub fn analyze_local_stat(analyzer: &mut MemberAnalyzer, local_stat: LuaLocalSta
         let local_name = local_name_list.get(i)?;
         let local_expr = local_expr_list.get(i)?;
         if let LuaExpr::TableExpr(table_expr) = local_expr {
+            analyzer
+                .visited_table_expr
+                .insert(table_expr.get_syntax_id());
+
             let decl_id = LuaDeclId::new(analyzer.file_id, local_name.get_position());
-            let owner = LuaMemberOwner::DeclId(decl_id);
+            let owner = LuaMemberOwner::LocalDeclId(decl_id);
             if table_expr.is_object() {
                 for table_field in table_expr.get_fields() {
                     if let Some(field_key) = table_field.get_field_key() {
@@ -64,14 +69,14 @@ pub fn analyze_assign_stat(
                         }
                         LuaExpr::IndexExpr(prefix_index_expr) => {
                             if let Some(global_id) =
-                                get_global_path(&analyzer.db, &prefix_index_expr)
+                                get_global_path(&analyzer.db, analyzer.file_id, &prefix_index_expr)
                             {
                                 if let Some(field_key) = index_expr.get_index_key() {
                                     let member_id = LuaMemberId::new(
                                         index_expr.get_syntax_id(),
                                         analyzer.file_id,
                                     );
-                                    let owner = LuaMemberOwner::Global(global_id);
+                                    let owner = LuaMemberOwner::GlobalId(global_id);
                                     add_field_member(analyzer, owner, field_key, member_id);
                                 }
                             }
@@ -84,6 +89,10 @@ pub fn analyze_assign_stat(
                 if let Some(owner) =
                     get_name_expr_member_owner(&analyzer.db, analyzer.file_id, &name_expr)
                 {
+                    analyzer
+                        .visited_table_expr
+                        .insert(table_expr.get_syntax_id());
+
                     if table_expr.is_object() {
                         for table_field in table_expr.get_fields() {
                             if let Some(field_key) = table_field.get_field_key() {
@@ -133,6 +142,10 @@ pub fn analyze_table_field(
     let LuaExpr::TableExpr(table_value) = value_expr else {
         return None;
     };
+
+    analyzer
+        .visited_table_expr
+        .insert(table_value.get_syntax_id());
 
     let member_id = LuaMemberId::new(table_field.get_syntax_id(), analyzer.file_id);
     let doc_type = analyzer
@@ -193,6 +206,32 @@ fn add_field_member(
         .db
         .get_member_index_mut()
         .add_member(member_owner, member);
+
+    Some(())
+}
+
+pub fn analyze_table_expr(analyzer: &mut MemberAnalyzer, table_expr: LuaTableExpr) -> Option<()> {
+    let in_filed = InFiled::new(analyzer.file_id, table_expr.get_range().clone());
+    let owner_id = LuaMemberOwner::Element(in_filed);
+    if analyzer
+        .visited_table_expr
+        .contains(&table_expr.get_syntax_id())
+    {
+        return Some(());
+    }
+
+    analyzer
+        .visited_table_expr
+        .insert(table_expr.get_syntax_id());
+
+    if table_expr.is_object() {
+        for field in table_expr.get_fields() {
+            if let Some(field_key) = field.get_field_key() {
+                let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
+                add_field_member(analyzer, owner_id.clone(), field_key, member_id);
+            }
+        }
+    }
 
     Some(())
 }
