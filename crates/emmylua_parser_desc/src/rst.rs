@@ -6,6 +6,7 @@ use crate::util::{
 use crate::{DescItem, DescItemKind, LuaDescParser};
 use emmylua_parser::{LexerConfig, LuaLexer, Reader, SourceRange};
 use std::cmp::min;
+use std::sync::LazyLock;
 
 pub struct RstParser {
     primary_domain: Option<String>,
@@ -1566,7 +1567,11 @@ impl RstParser {
                 '-' | ':' | '/' | '\'' | '"' | '<' | '(' | '[' | '{' | '\0'
             )
         } else {
-            false // TODO: Ps|Pi|Pf|Pd|Po
+            static RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+                regex::Regex::new(r"^\p{Ps}|\p{Pi}|\p{Pf}|\p{Pd}|\p{Po}$").unwrap()
+            });
+            let mut tmp = [0; 4];
+            RE.is_match(prev.encode_utf8(&mut tmp))
         }
     }
 
@@ -1600,7 +1605,11 @@ impl RstParser {
                     | '\0'
             )
         } else {
-            false // TODO: Pe|Pi|Pf|Pd|Po
+            static RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+                regex::Regex::new(r"^\p{Pe}|\p{Pi}|\p{Pf}|\p{Pd}|\p{Po}$").unwrap()
+            });
+            let mut tmp = [0; 4];
+            RE.is_match(prev.encode_utf8(&mut tmp))
         }
     }
 }

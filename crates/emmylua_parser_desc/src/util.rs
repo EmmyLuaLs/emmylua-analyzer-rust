@@ -4,6 +4,7 @@ use emmylua_parser::{
     SourceRange,
 };
 use std::cmp::min;
+use std::sync::LazyLock;
 
 pub fn is_ws(c: char) -> bool {
     matches!(c, ' ' | '\t')
@@ -233,7 +234,10 @@ pub fn is_punct(c: char) -> bool {
     if c.is_ascii() {
         c.is_ascii_punctuation()
     } else {
-        false // TODO: P|S
+        static RE: LazyLock<regex::Regex> =
+            LazyLock::new(|| regex::Regex::new(r"^\p{P}|\p{S}$").unwrap());
+        let mut tmp = [0; 4];
+        RE.is_match(c.encode_utf8(&mut tmp))
     }
 }
 
@@ -241,7 +245,10 @@ pub fn is_opening_quote(c: char) -> bool {
     if c.is_ascii() {
         matches!(c, '\'' | '"' | '<' | '(' | '[' | '{')
     } else {
-        false // TODO: Ps|Pi|Pf
+        static RE: LazyLock<regex::Regex> =
+            LazyLock::new(|| regex::Regex::new(r"^\p{Ps}|\p{Pi}|\p{Pf}$").unwrap());
+        let mut tmp = [0; 4];
+        RE.is_match(c.encode_utf8(&mut tmp))
     }
 }
 
@@ -249,7 +256,10 @@ pub fn is_closing_quote(c: char) -> bool {
     if c.is_ascii() {
         matches!(c, '\'' | '"' | '>' | ')' | ']' | '}')
     } else {
-        false // TODO: Pe|Pi|Pf
+        static RE: LazyLock<regex::Regex> =
+            LazyLock::new(|| regex::Regex::new(r"^\p{Pe}|\p{Pi}|\p{Pf}$").unwrap());
+        let mut tmp = [0; 4];
+        RE.is_match(c.encode_utf8(&mut tmp))
     }
 }
 
