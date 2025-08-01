@@ -2,11 +2,11 @@ use emmylua_code_analysis::{
     DbIndex, DocSyntax, Emmyrc, FileId, LuaMemberId, LuaMemberKey, LuaType, LuaTypeDeclId,
     SemanticInfo, WorkspaceId, get_member_map,
 };
-use emmylua_parser::desc_parser::{
-    DescItem, DescParserType, DescRangeKind, LuaDescRefPathItem, parse_ref_target,
-};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaDocDescription, LuaDocTag, LuaSyntaxToken,
+};
+use emmylua_parser_desc::{
+    DescItem, DescItemKind, DescParserType, LuaDescRefPathItem, parse_ref_target,
 };
 use itertools::Itertools;
 use rowan::{TextRange, TextSize};
@@ -38,7 +38,7 @@ pub fn parse_desc(
         }
     };
 
-    emmylua_parser::desc_parser::parse(parser_kind, text, desc, offset)
+    emmylua_parser_desc::parse(parser_kind, text, desc, offset)
 }
 
 pub fn find_ref_at(
@@ -51,7 +51,7 @@ pub fn find_ref_at(
     let items = parse_desc(workspace_id, emmyrc, text, desc, Some(offset.into()));
 
     for item in items {
-        if item.kind == DescRangeKind::Ref {
+        if item.kind == DescItemKind::Ref {
             if !item.range.contains_inclusive(offset) {
                 continue;
             }

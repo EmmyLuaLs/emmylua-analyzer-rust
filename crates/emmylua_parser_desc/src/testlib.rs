@@ -1,6 +1,8 @@
-use crate::desc_parser::util::sort_result;
-use crate::desc_parser::{DescItem, LuaDescParser};
-use crate::{LuaAstNode, LuaDocDescription, LuaKind, LuaParser, LuaSyntaxKind, ParserConfig};
+use crate::util::sort_result;
+use crate::{DescItem, LuaDescParser};
+use emmylua_parser::{
+    LuaAstNode, LuaDocDescription, LuaKind, LuaParser, LuaSyntaxKind, ParserConfig,
+};
 
 pub fn test(code: &str, mut parser: Box<dyn LuaDescParser>, expected: &str) {
     let tree = LuaParser::parse(code, ParserConfig::default());

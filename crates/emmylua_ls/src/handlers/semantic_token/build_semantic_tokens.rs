@@ -8,12 +8,12 @@ use emmylua_code_analysis::{
     SemanticDeclLevel, SemanticModel, WorkspaceId, check_export_visibility,
     parse_require_module_info,
 };
-use emmylua_parser::desc_parser::{DescItem, DescRangeKind};
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaDocFieldKey, LuaDocObjectFieldKey, LuaExpr,
     LuaGeneralToken, LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode,
     LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
+use emmylua_parser_desc::{DescItem, DescItemKind};
 use lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
 use rowan::{NodeOrToken, TextRange};
 
@@ -772,7 +772,7 @@ fn render_desc_ranges(
         }
         let token_text = &text[item.range];
         match item.kind {
-            DescRangeKind::Code | DescRangeKind::CodeBlock | DescRangeKind::Ref => {
+            DescItemKind::Code | DescItemKind::CodeBlock | DescItemKind::Ref => {
                 builder.push_at_range(
                     token_text,
                     item.range,
@@ -781,7 +781,7 @@ fn render_desc_ranges(
                 );
                 pos = item.range.end();
             }
-            DescRangeKind::Link => {
+            DescItemKind::Link => {
                 builder.push_at_range(
                     token_text,
                     item.range,
@@ -790,7 +790,7 @@ fn render_desc_ranges(
                 );
                 pos = item.range.end();
             }
-            DescRangeKind::Markup | DescRangeKind::Arg => {
+            DescItemKind::Markup | DescItemKind::Arg => {
                 builder.push_at_range(
                     token_text,
                     item.range,
@@ -799,7 +799,7 @@ fn render_desc_ranges(
                 );
                 pos = item.range.end();
             }
-            DescRangeKind::CodeBlockHl(lua_token_kind) => {
+            DescItemKind::CodeBlockHl(lua_token_kind) => {
                 let token_handled = build_tokens_semantic_token(
                     builder,
                     lua_token_kind,

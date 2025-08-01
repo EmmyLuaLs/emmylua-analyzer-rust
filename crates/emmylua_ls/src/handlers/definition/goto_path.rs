@@ -2,7 +2,7 @@ use crate::handlers::definition::goto_def_definition;
 use crate::util::resolve_ref;
 use emmylua_code_analysis::{LuaCompilation, SemanticModel};
 use emmylua_parser::LuaSyntaxToken;
-use emmylua_parser::desc_parser::LuaDescRefPathItem;
+use emmylua_parser_desc::LuaDescRefPathItem;
 use lsp_types::GotoDefinitionResponse;
 use rowan::TextRange;
 

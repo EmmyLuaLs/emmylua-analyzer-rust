@@ -1,4 +1,4 @@
-use crate::{LuaDocDescription, LuaTokenKind};
+use emmylua_parser::{LuaDocDescription, LuaTokenKind};
 use rowan::TextRange;
 
 mod md;
@@ -6,14 +6,14 @@ mod ref_target;
 mod rst;
 mod util;
 
-use crate::desc_parser::util::sort_result;
 pub use ref_target::*;
+use util::sort_result;
 
 #[cfg(test)]
 mod testlib;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum DescRangeKind {
+pub enum DescItemKind {
     /// Generic block of documentation.
     Scope,
 
@@ -49,7 +49,7 @@ pub enum DescRangeKind {
 #[derive(Debug, Clone)]
 pub struct DescItem {
     pub range: TextRange,
-    pub kind: DescRangeKind,
+    pub kind: DescItemKind,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

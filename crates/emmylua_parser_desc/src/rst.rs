@@ -1,11 +1,10 @@
 use crate::LuaDocDescription;
-use crate::desc_parser::util::{
+use crate::util::{
     BacktrackPoint, ResultContainer, desc_to_lines, is_blank, is_closing_quote, is_code_directive,
     is_lua_role, is_opening_quote, is_quote_match, is_ws, process_lua_code,
 };
-use crate::desc_parser::{DescItem, DescRangeKind, LuaDescParser};
-use crate::lexer::{LexerConfig, LuaLexer};
-use crate::text::{Reader, SourceRange};
+use crate::{DescItem, DescItemKind, LuaDescParser};
+use emmylua_parser::{LexerConfig, LuaLexer, Reader, SourceRange};
 use std::cmp::min;
 
 pub struct RstParser {
@@ -182,12 +181,12 @@ impl RstParser {
         let scope_start = lines[start].current_range().start_offset;
         for line in &mut lines[start..end] {
             line.eat_till_end();
-            self.emit(line, DescRangeKind::CodeBlock);
+            self.emit(line, DescItemKind::CodeBlock);
         }
         let scope_end = lines[end - 1].current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(end)
@@ -206,7 +205,7 @@ impl RstParser {
         let scope_start = line.current_range().start_offset;
 
         line.bump();
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
         self.process_inline_content(line);
 
         let end = self.gather_indented_lines(lines, start + 1, false);
@@ -217,7 +216,7 @@ impl RstParser {
         let scope_end = lines[end - 1].current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(end)
@@ -236,7 +235,7 @@ impl RstParser {
         let scope_start = line.current_range().start_offset;
 
         line.bump();
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
 
         let end = {
             if line.is_eof() {
@@ -251,7 +250,7 @@ impl RstParser {
         let scope_end = lines[end - 1].current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(end)
@@ -358,7 +357,7 @@ impl RstParser {
             }
         }
 
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
         indent += line.eat_while(is_ws);
         line.reset_buff();
         bt.commit(self, line);
@@ -369,7 +368,7 @@ impl RstParser {
         let scope_end = lines[end - 1].current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(end)
@@ -389,15 +388,15 @@ impl RstParser {
         let scope_start = line.current_range().start_offset;
 
         line.bump();
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
         eat_rst_flag_body(line);
         if line.current_char() != ':' {
             bt.rollback(self, line);
             return Err(());
         }
-        self.emit(line, DescRangeKind::Arg);
+        self.emit(line, DescItemKind::Arg);
         line.bump();
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
         line.eat_while(is_ws);
         line.reset_buff();
         bt.commit(self, line);
@@ -408,7 +407,7 @@ impl RstParser {
         let scope_end = lines[end - 1].current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(end)
@@ -430,11 +429,11 @@ impl RstParser {
         line.bump();
         line.bump();
         line.bump();
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
         line.eat_while(is_ws);
         line.reset_buff();
         line.eat_till_end();
-        self.emit(line, DescRangeKind::CodeBlock);
+        self.emit(line, DescItemKind::CodeBlock);
 
         for i in start + 1..lines.len() {
             let line = &mut lines[i];
@@ -445,7 +444,7 @@ impl RstParser {
                 let scope_end = line.current_range().end_offset();
                 self.emit_range(
                     SourceRange::from_start_end(scope_start, scope_end),
-                    DescRangeKind::Scope,
+                    DescItemKind::Scope,
                 );
                 return Ok(i + 1);
             }
@@ -454,21 +453,21 @@ impl RstParser {
                 line.bump();
                 line.bump();
                 line.bump();
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
                 line.eat_while(is_ws);
                 line.reset_buff();
                 line.eat_till_end();
-                self.emit(line, DescRangeKind::CodeBlock);
+                self.emit(line, DescItemKind::CodeBlock);
             } else {
                 line.eat_till_end();
-                self.emit(line, DescRangeKind::CodeBlock);
+                self.emit(line, DescItemKind::CodeBlock);
             }
         }
 
         let scope_end = lines.last_mut().unwrap().current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
         Ok(lines.len())
     }
@@ -496,7 +495,7 @@ impl RstParser {
             bt.rollback(self, line);
             return Err(());
         }
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
         line.eat_while(is_ws);
         line.reset_buff();
 
@@ -506,15 +505,15 @@ impl RstParser {
             // Footnote/citation
             '[' => {
                 line.bump();
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
                 line.eat_while(|c| c != ']');
-                self.emit(line, DescRangeKind::Arg);
+                self.emit(line, DescItemKind::Arg);
                 if line.current_char() != ']' {
                     bt.rollback(self, line);
                     return Err(());
                 }
                 line.bump();
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
                 line.eat_while(is_ws);
                 line.reset_buff();
                 self.process_inline_content(line);
@@ -527,30 +526,30 @@ impl RstParser {
             // Hyperlink target
             '_' => {
                 line.eat_when('_');
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
                 if !Self::eat_target_name(line) || line.current_char() != ':' {
                     bt.rollback(self, line);
                     return Err(());
                 }
-                self.emit(line, DescRangeKind::Arg);
+                self.emit(line, DescItemKind::Arg);
                 line.bump();
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
                 line.eat_while(is_ws);
                 line.reset_buff();
                 line.eat_till_end();
-                self.emit(line, DescRangeKind::Link);
+                self.emit(line, DescItemKind::Link);
                 bt.commit(self, line);
 
                 let end = self.gather_indented_lines(lines, start + 1, true);
                 for line in lines[start + 1..end].iter_mut() {
                     line.eat_till_end();
-                    self.emit(line, DescRangeKind::Link);
+                    self.emit(line, DescItemKind::Link);
                 }
 
                 let scope_end = lines[end - 1].current_range().end_offset();
                 self.emit_range(
                     SourceRange::from_start_end(scope_start, scope_end),
-                    DescRangeKind::Scope,
+                    DescItemKind::Scope,
                 );
 
                 return Ok(end);
@@ -573,22 +572,22 @@ impl RstParser {
                     let scope_end = lines[end - 1].current_range().end_offset();
                     self.emit_range(
                         SourceRange::from_start_end(scope_start, scope_end),
-                        DescRangeKind::Scope,
+                        DescItemKind::Scope,
                     );
 
                     return Ok(end);
                 }
 
                 is_code = is_code_directive(line.current_text());
-                self.emit(line, DescRangeKind::Arg);
+                self.emit(line, DescItemKind::Arg);
                 line.bump();
                 line.bump();
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
                 line.eat_while(is_ws);
                 line.reset_buff();
                 line.eat_till_end();
                 is_lua = is_code && line.current_text().trim() == "lua";
-                self.emit(line, DescRangeKind::CodeBlock);
+                self.emit(line, DescItemKind::CodeBlock);
                 bt.commit(self, line);
             }
         }
@@ -610,12 +609,12 @@ impl RstParser {
                 let bt = BacktrackPoint::new(self, line);
 
                 line.bump();
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
                 eat_rst_flag_body(line);
                 if line.current_char() == ':' {
-                    self.emit(line, DescRangeKind::Arg);
+                    self.emit(line, DescItemKind::Arg);
                     line.bump();
-                    self.emit(line, DescRangeKind::Markup);
+                    self.emit(line, DescItemKind::Markup);
                     line.eat_while(is_ws);
                     line.reset_buff();
                     bt.commit(self, line);
@@ -624,7 +623,7 @@ impl RstParser {
                 }
             }
             line.eat_till_end();
-            self.emit(line, DescRangeKind::CodeBlock);
+            self.emit(line, DescItemKind::CodeBlock);
 
             start += 1;
         }
@@ -640,7 +639,7 @@ impl RstParser {
         } else if is_code {
             for line in lines[start..end].iter_mut() {
                 line.eat_till_end();
-                self.emit(line, DescRangeKind::CodeBlock);
+                self.emit(line, DescItemKind::CodeBlock);
             }
         } else {
             self.process_block(&mut lines[start..end]);
@@ -649,7 +648,7 @@ impl RstParser {
         let scope_end = lines[end - 1].current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(end)
@@ -666,7 +665,7 @@ impl RstParser {
         let scope_end = lines[end - 1].current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(end)
@@ -695,18 +694,18 @@ impl RstParser {
             bt.rollback(self, line);
             return Err(());
         }
-        self.emit(line, DescRangeKind::Link);
+        self.emit(line, DescItemKind::Link);
         line.eat_while(is_ws);
         line.reset_buff();
         line.eat_till_end();
-        self.emit(line, DescRangeKind::Link);
+        self.emit(line, DescItemKind::Link);
 
         bt.commit(self, line);
 
         let scope_end = line.current_range().end_offset();
         self.emit_range(
             SourceRange::from_start_end(scope_start, scope_end),
-            DescRangeKind::Scope,
+            DescItemKind::Scope,
         );
 
         Ok(start + 1)
@@ -734,7 +733,7 @@ impl RstParser {
                 let scope_end = lines[start + 2].current_range().end_offset();
                 self.emit_range(
                     SourceRange::from_start_end(scope_start, scope_end),
-                    DescRangeKind::Scope,
+                    DescItemKind::Scope,
                 );
 
                 return (start + 3, LineEnding::Normal);
@@ -749,7 +748,7 @@ impl RstParser {
                 let scope_end = lines[start + 1].current_range().end_offset();
                 self.emit_range(
                     SourceRange::from_start_end(scope_start, scope_end),
-                    DescRangeKind::Scope,
+                    DescItemKind::Scope,
                 );
 
                 return (start + 3, LineEnding::Normal);
@@ -824,7 +823,7 @@ impl RstParser {
             if line.current_char() == prefix {
                 end = i + 1;
                 line.bump();
-                self.emit(line, DescRangeKind::Markup);
+                self.emit(line, DescItemKind::Markup);
             } else {
                 break;
             }
@@ -900,7 +899,7 @@ impl RstParser {
         line.eat_while(is_ws);
         line.reset_buff();
         line.eat_while(|c| !is_ws(c));
-        self.emit(line, DescRangeKind::Markup);
+        self.emit(line, DescItemKind::Markup);
         line.eat_till_end();
         line.reset_buff();
     }
@@ -930,7 +929,7 @@ impl RstParser {
                     reader.reset_buff();
                     reader.bump();
                     reader.bump();
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
                 }
 
                 // Explicit role.
@@ -944,7 +943,7 @@ impl RstParser {
                     let bt = BacktrackPoint::new(self, reader);
 
                     reader.bump();
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
                     if !Self::eat_role_name(reader)
                         || reader.current_char() != ':'
                         || reader.next_char() != '`'
@@ -961,9 +960,9 @@ impl RstParser {
                             && !role_text.contains(":")
                             && is_lua_role(role_text));
 
-                    self.emit(reader, DescRangeKind::Arg);
+                    self.emit(reader, DescItemKind::Arg);
                     reader.bump();
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
 
                     if !self.try_handle_role_body(reader, true, is_lua_ref, self.cursor_position) {
                         bt.rollback(self, reader);
@@ -996,7 +995,7 @@ impl RstParser {
                         continue;
                     }
 
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
 
                     if !self.try_handle_inline_code(reader) {
                         bt.rollback(self, reader);
@@ -1078,7 +1077,7 @@ impl RstParser {
                         continue;
                     }
 
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
 
                     if !self.try_handle_hyperlink_ref(reader) {
                         bt.rollback(self, reader);
@@ -1101,7 +1100,7 @@ impl RstParser {
                     let bt = BacktrackPoint::new(self, reader);
                     reader.reset_buff();
                     reader.bump();
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
 
                     if !self.try_handle_subst(reader) {
                         bt.rollback(self, reader);
@@ -1123,7 +1122,7 @@ impl RstParser {
                     let bt = BacktrackPoint::new(self, reader);
                     reader.reset_buff();
                     reader.bump();
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
 
                     if !self.try_handle_footnote(reader) {
                         bt.rollback(self, reader);
@@ -1159,7 +1158,7 @@ impl RstParser {
                         continue;
                     }
 
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
 
                     if !self.try_handle_em(reader, is_strong) {
                         bt.rollback(self, reader);
@@ -1172,9 +1171,9 @@ impl RstParser {
                     self.emit_range(
                         SourceRange::from_start_end(start_range, end_range),
                         if is_strong {
-                            DescRangeKind::Strong
+                            DescItemKind::Strong
                         } else {
-                            DescRangeKind::Em
+                            DescItemKind::Em
                         },
                     );
 
@@ -1229,7 +1228,7 @@ impl RstParser {
                     if !Self::is_end_string(prev, reader.current_char()) {
                         continue;
                     }
-                    self.emit_mark_end(reader, Some(DescRangeKind::Code), 2);
+                    self.emit_mark_end(reader, Some(DescItemKind::Code), 2);
                     return true;
                 }
                 _ => {
@@ -1272,14 +1271,14 @@ impl RstParser {
                     }
 
                     if mark_len > 1 && !has_explicit_role {
-                        process_inline_code(self, code, DescRangeKind::Link);
+                        process_inline_code(self, code, DescItemKind::Link);
                     } else if is_lua_role {
                         process_lua_ref(self, code);
                     } else {
-                        process_inline_code(self, code, DescRangeKind::Code);
+                        process_inline_code(self, code, DescItemKind::Code);
                     }
 
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
                     bt.commit(self, reader);
 
                     return true;
@@ -1337,8 +1336,8 @@ impl RstParser {
         let markup_range =
             SourceRange::new(content_range.start_offset + range.length - n_chars, n_chars);
 
-        self.emit_range(href_range, DescRangeKind::Link);
-        self.emit_range(markup_range, DescRangeKind::Markup);
+        self.emit_range(href_range, DescItemKind::Link);
+        self.emit_range(markup_range, DescItemKind::Markup);
     }
 
     #[must_use]
@@ -1352,9 +1351,9 @@ impl RstParser {
                         reader.bump();
                         continue;
                     }
-                    self.emit(reader, DescRangeKind::Link);
+                    self.emit(reader, DescItemKind::Link);
                     reader.bump();
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
                     return true;
                 }
                 '\\' => {
@@ -1383,9 +1382,9 @@ impl RstParser {
                         continue;
                     }
                     let kind = if mark_len == 1 {
-                        DescRangeKind::Code
+                        DescItemKind::Code
                     } else {
-                        DescRangeKind::Link
+                        DescItemKind::Link
                     };
                     self.emit_mark_end(reader, Some(kind), mark_len);
                     return true;
@@ -1415,7 +1414,7 @@ impl RstParser {
                     if !Self::is_end_string(prev, reader.current_char()) {
                         continue;
                     }
-                    self.emit_mark_end(reader, Some(DescRangeKind::Link), 2);
+                    self.emit_mark_end(reader, Some(DescItemKind::Link), 2);
                     return true;
                 }
                 '\\' => {
@@ -1467,7 +1466,7 @@ impl RstParser {
     fn emit_mark_end(
         &mut self,
         line: &mut Reader,
-        content_kind: Option<DescRangeKind>,
+        content_kind: Option<DescItemKind>,
         mark_len: usize,
     ) {
         let range = line.current_range();
@@ -1480,7 +1479,7 @@ impl RstParser {
         }
 
         let mark_range = SourceRange::new(range.start_offset + range.length - mark_len, mark_len);
-        self.emit_range(mark_range, DescRangeKind::Markup);
+        self.emit_range(mark_range, DescItemKind::Markup);
         line.reset_buff();
     }
 
@@ -1635,14 +1634,14 @@ pub fn process_lua_ref<C: ResultContainer>(container: &mut C, mut reader: Reader
     if reader.tail_text().chars().all(|c| c == '`') || !reader.tail_text().ends_with("`") {
         // Happens when auto complete called on an empty/incomplete reference.
         reader.bump();
-        container.emit(&mut reader, DescRangeKind::Markup);
+        container.emit(&mut reader, DescItemKind::Markup);
         reader.eat_till_end();
-        container.emit(&mut reader, DescRangeKind::Ref);
+        container.emit(&mut reader, DescItemKind::Ref);
         return;
     }
 
     let n_backticks = reader.eat_when('`');
-    container.emit(&mut reader, DescRangeKind::Markup);
+    container.emit(&mut reader, DescItemKind::Markup);
 
     let text = reader.tail_text().trim_matches('`');
     let has_explicit_title = text.ends_with('>') && (text.starts_with('<') || text.contains(" <"));
@@ -1657,24 +1656,24 @@ pub fn process_lua_ref<C: ResultContainer>(container: &mut C, mut reader: Reader
             }
         }
         reader.consume_char_n_times('~', 1);
-        container.emit(&mut reader, DescRangeKind::Code);
+        container.emit(&mut reader, DescItemKind::Code);
         while reader.tail_range().length > n_backticks + 1 {
             reader.bump();
         }
-        container.emit(&mut reader, DescRangeKind::Ref);
+        container.emit(&mut reader, DescItemKind::Ref);
         reader.bump();
-        container.emit(&mut reader, DescRangeKind::Code);
+        container.emit(&mut reader, DescItemKind::Code);
         reader.eat_while(|_| true);
-        container.emit(&mut reader, DescRangeKind::Markup);
+        container.emit(&mut reader, DescItemKind::Markup);
     } else {
         reader.consume_char_n_times('~', 1);
-        container.emit(&mut reader, DescRangeKind::Code);
+        container.emit(&mut reader, DescItemKind::Code);
         while reader.tail_range().length > n_backticks {
             reader.bump();
         }
-        container.emit(&mut reader, DescRangeKind::Ref);
+        container.emit(&mut reader, DescItemKind::Ref);
         reader.eat_while(|_| true);
-        container.emit(&mut reader, DescRangeKind::Markup);
+        container.emit(&mut reader, DescItemKind::Markup);
     }
 }
 
@@ -1686,22 +1685,22 @@ pub fn process_lua_ref<C: ResultContainer>(container: &mut C, mut reader: Reader
 pub fn process_inline_code<C: ResultContainer>(
     container: &mut C,
     mut reader: Reader,
-    kind: DescRangeKind,
+    kind: DescItemKind,
 ) {
     let n_backticks = reader.eat_when('`');
-    container.emit(&mut reader, DescRangeKind::Markup);
+    container.emit(&mut reader, DescItemKind::Markup);
     while reader.tail_range().length > n_backticks {
         reader.bump();
     }
     container.emit(&mut reader, kind);
     reader.eat_while(|_| true);
-    container.emit(&mut reader, DescRangeKind::Markup);
+    container.emit(&mut reader, DescItemKind::Markup);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::desc_parser::testlib::test;
+    use crate::testlib::test;
 
     #[test]
     fn test_rst() {

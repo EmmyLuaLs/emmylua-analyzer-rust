@@ -1,7 +1,8 @@
-use crate::desc_parser::{DescItem, DescRangeKind};
-use crate::lexer::LuaTokenData;
-use crate::text::{Reader, SourceRange};
-use crate::{LuaAstNode, LuaDocDescription, LuaKind, LuaSyntaxElement, LuaTokenKind};
+use crate::{DescItem, DescItemKind};
+use emmylua_parser::{
+    LuaAstNode, LuaDocDescription, LuaKind, LuaSyntaxElement, LuaTokenData, LuaTokenKind, Reader,
+    SourceRange,
+};
 use std::cmp::min;
 
 pub fn is_ws(c: char) -> bool {
@@ -163,9 +164,9 @@ pub trait ResultContainer {
 
     fn cursor_position(&self) -> Option<usize>;
 
-    fn emit_range(&mut self, range: SourceRange, kind: DescRangeKind) {
+    fn emit_range(&mut self, range: SourceRange, kind: DescItemKind) {
         let should_emit = if let Some(cursor_position) = self.cursor_position() {
-            kind == DescRangeKind::Ref && range.contains_inclusive(cursor_position)
+            kind == DescItemKind::Ref && range.contains_inclusive(cursor_position)
         } else {
             !range.is_empty()
         };
@@ -191,7 +192,7 @@ pub trait ResultContainer {
         }
     }
 
-    fn emit(&mut self, reader: &mut Reader, kind: DescRangeKind) {
+    fn emit(&mut self, reader: &mut Reader, kind: DescItemKind) {
         self.emit_range(reader.current_range(), kind);
         reader.reset_buff();
     }
@@ -306,14 +307,14 @@ pub fn process_lua_code<'a, C: ResultContainer>(
         if pos < token.range.start_offset {
             c.emit_range(
                 SourceRange::from_start_end(pos, token.range.start_offset),
-                DescRangeKind::CodeBlock,
+                DescItemKind::CodeBlock,
             )
         }
         if !matches!(
             token.kind,
             LuaTokenKind::TkEof | LuaTokenKind::TkEndOfLine | LuaTokenKind::TkWhitespace
         ) {
-            c.emit_range(token.range, DescRangeKind::CodeBlockHl(token.kind));
+            c.emit_range(token.range, DescItemKind::CodeBlockHl(token.kind));
             pos = token.range.end_offset();
         } else {
             pos = token.range.start_offset;
@@ -323,7 +324,7 @@ pub fn process_lua_code<'a, C: ResultContainer>(
     if pos < range.end_offset() {
         c.emit_range(
             SourceRange::from_start_end(pos, range.end_offset()),
-            DescRangeKind::CodeBlock,
+            DescItemKind::CodeBlock,
         )
     }
 }
@@ -333,9 +334,9 @@ pub fn sort_result(items: &mut Vec<DescItem>) {
         let len: usize = r.range.len().into();
 
         (
-            r.range.start(),                // Sort by start position,
-            usize::MAX - len,               // longer tokens first,
-            r.kind != DescRangeKind::Scope, // scopes go first.
+            r.range.start(),               // Sort by start position,
+            usize::MAX - len,              // longer tokens first,
+            r.kind != DescItemKind::Scope, // scopes go first.
         )
     });
 }

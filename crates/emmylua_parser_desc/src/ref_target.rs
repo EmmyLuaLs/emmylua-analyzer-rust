@@ -1,4 +1,4 @@
-use crate::text::{Reader, SourceRange};
+use emmylua_parser::{Reader, SourceRange};
 use rowan::{TextRange, TextSize};
 use std::str::FromStr;
 

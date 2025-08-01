@@ -1,12 +1,11 @@
-use crate::desc_parser::rst::{eat_rst_flag_body, process_inline_code, process_lua_ref};
-use crate::desc_parser::util::{
+use crate::rst::{eat_rst_flag_body, process_inline_code, process_lua_ref};
+use crate::util::{
     BacktrackPoint, ResultContainer, desc_to_lines, is_blank, is_code_directive, is_lua_role,
     is_punct, is_ws, process_lua_code,
 };
-use crate::desc_parser::{DescItem, DescRangeKind, LuaDescParser};
-use crate::lexer::{LexerConfig, LuaLexer, LuaLexerState};
-use crate::text::{Reader, SourceRange};
-use crate::{LuaAstNode, LuaDocDescription};
+use crate::{DescItem, DescItemKind, LuaDescParser};
+use emmylua_parser::{LexerConfig, LuaLexer, LuaLexerState, Reader, SourceRange};
+use emmylua_parser::{LuaAstNode, LuaDocDescription};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -271,7 +270,7 @@ impl MdParser {
                         return;
                     } else {
                         reader.eat_till_end();
-                        self.emit(reader, DescRangeKind::CodeBlock);
+                        self.emit(reader, DescItemKind::CodeBlock);
                         return;
                     }
                 }
@@ -332,13 +331,13 @@ impl MdParser {
 
                 reader.reset_buff();
                 reader.eat_when('#');
-                self.emit(reader, DescRangeKind::Markup);
+                self.emit(reader, DescItemKind::Markup);
                 self.process_inline_content(reader);
 
                 let scope_end = reader.current_range().end_offset();
                 self.emit_range(
                     SourceRange::from_start_end(scope_start, scope_end),
-                    DescRangeKind::Scope,
+                    DescItemKind::Scope,
                 );
 
                 return NO_MORE_CONTENT;
@@ -362,7 +361,7 @@ impl MdParser {
                         // This is a code block.
                         reader.eat_till_end();
                         let is_lua = reader.current_text().trim() == "lua";
-                        self.emit(reader, DescRangeKind::CodeBlock);
+                        self.emit(reader, DescItemKind::CodeBlock);
                         self.states.borrow_mut().push(State::FencedCode {
                             n_fences,
                             fence,
@@ -381,7 +380,7 @@ impl MdParser {
                 reader.bump();
                 reader.reset_buff();
                 reader.eat_till_end();
-                self.emit(reader, DescRangeKind::CodeBlock);
+                self.emit(reader, DescItemKind::CodeBlock);
                 self.states.borrow_mut().push(State::Code { scope_start });
                 return NO_MORE_CONTENT;
             }
@@ -426,18 +425,18 @@ impl MdParser {
                     && reader.current_char() == ':'
                     && is_ws(reader.next_char())
                 {
-                    self.emit(reader, DescRangeKind::Link);
+                    self.emit(reader, DescItemKind::Link);
                     reader.bump();
-                    self.emit(reader, DescRangeKind::Markup);
+                    self.emit(reader, DescItemKind::Markup);
                     reader.eat_while(is_ws);
                     reader.reset_buff();
                     reader.eat_till_end();
-                    self.emit(reader, DescRangeKind::Link);
+                    self.emit(reader, DescItemKind::Link);
 
                     let scope_end = reader.current_range().end_offset();
                     self.emit_range(
                         SourceRange::from_start_end(scope_start, scope_end),
-                        DescRangeKind::Scope,
+                        DescItemKind::Scope,
                     );
 
                     bt.commit(self, reader);
@@ -476,7 +475,7 @@ impl MdParser {
             return Err(());
         } else {
             reader.bump();
-            self.emit(reader, DescRangeKind::Markup);
+            self.emit(reader, DescItemKind::Markup);
         }
 
         let mut n_marks = 1;
@@ -487,7 +486,7 @@ impl MdParser {
                 break;
             } else if reader.current_char() == first_char {
                 reader.bump();
-                self.emit(reader, DescRangeKind::Markup);
+                self.emit(reader, DescItemKind::Markup);
                 n_marks += 1;
             } else {
                 bt.rollback(self, reader);
@@ -502,7 +501,7 @@ impl MdParser {
             let scope_end = reader.current_range().end_offset();
             self.emit_range(
                 SourceRange::from_start_end(scope_start, scope_end),
-                DescRangeKind::Scope,
+                DescItemKind::Scope,
             );
 
             bt.commit(self, reader);
@@ -541,7 +540,7 @@ impl MdParser {
         if reader.current_char() == '>' {
             reader.reset_buff();
             reader.bump();
-            self.emit(reader, DescRangeKind::Markup);
+            self.emit(reader, DescItemKind::Markup);
             reader.consume_n_times(is_ws, 1);
             reader.reset_buff();
 
@@ -604,7 +603,7 @@ impl MdParser {
                 indent += 2;
                 reader.reset_buff();
                 reader.bump();
-                self.emit(reader, DescRangeKind::Markup);
+                self.emit(reader, DescItemKind::Markup);
                 if reader.is_eof() {
                     bt.commit(self, reader);
                     return Ok((indent, scope_start));
@@ -622,7 +621,7 @@ impl MdParser {
                     return Err(());
                 }
                 reader.bump();
-                self.emit(reader, DescRangeKind::Markup);
+                self.emit(reader, DescItemKind::Markup);
                 if reader.is_eof() {
                     bt.commit(self, reader);
                     return Ok((indent, scope_start));
@@ -683,7 +682,7 @@ impl MdParser {
                     bt.rollback(self, reader);
                     return Err(());
                 }
-                self.emit(reader, DescRangeKind::Markup);
+                self.emit(reader, DescItemKind::Markup);
 
                 bt.commit(self, reader);
                 Ok((n_fences, '`', scope_start))
@@ -695,7 +694,7 @@ impl MdParser {
                     bt.rollback(self, reader);
                     return Err(());
                 }
-                self.emit(reader, DescRangeKind::Markup);
+                self.emit(reader, DescItemKind::Markup);
 
                 bt.commit(self, reader);
                 Ok((n_fences, '~', scope_start))
@@ -707,7 +706,7 @@ impl MdParser {
                     bt.rollback(self, reader);
                     return Err(());
                 }
-                self.emit(reader, DescRangeKind::Markup);
+                self.emit(reader, DescItemKind::Markup);
 
                 bt.commit(self, reader);
                 Ok((n_fences, ':', scope_start))
@@ -742,21 +741,21 @@ impl MdParser {
             return Err(());
         }
         reader.bump();
-        self.emit(reader, DescRangeKind::Markup);
+        self.emit(reader, DescItemKind::Markup);
         reader.eat_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '+' | '_' | '-'));
         if reader.current_char() != '}' {
             bt.rollback(self, reader);
             return Err(());
         }
         let dir_name = reader.current_text();
-        self.emit(reader, DescRangeKind::Arg);
+        self.emit(reader, DescItemKind::Arg);
         reader.bump();
-        self.emit(reader, DescRangeKind::Markup);
+        self.emit(reader, DescItemKind::Markup);
         reader.eat_while(is_ws);
         reader.reset_buff();
         reader.eat_till_end();
         let dir_args = reader.current_text();
-        self.emit(reader, DescRangeKind::CodeBlock);
+        self.emit(reader, DescItemKind::CodeBlock);
         bt.commit(self, reader);
         Ok((dir_name, dir_args))
     }
@@ -771,19 +770,19 @@ impl MdParser {
         }
         reader.reset_buff();
         reader.bump();
-        self.emit(reader, DescRangeKind::Markup);
+        self.emit(reader, DescItemKind::Markup);
         eat_rst_flag_body(reader);
-        self.emit(reader, DescRangeKind::Arg);
+        self.emit(reader, DescItemKind::Arg);
         if reader.current_char() != ':' {
             bt.rollback(self, reader);
             return Err(());
         }
         reader.bump();
-        self.emit(reader, DescRangeKind::Markup);
+        self.emit(reader, DescItemKind::Markup);
         reader.eat_while(is_ws);
         reader.reset_buff();
         reader.eat_till_end();
-        self.emit(reader, DescRangeKind::CodeBlock);
+        self.emit(reader, DescItemKind::CodeBlock);
         bt.commit(self, reader);
         Ok(())
     }
@@ -807,7 +806,7 @@ impl MdParser {
         reader.bump();
         reader.bump();
         reader.bump();
-        self.emit(reader, DescRangeKind::Markup);
+        self.emit(reader, DescItemKind::Markup);
         reader.eat_till_end();
         reader.reset_buff();
         bt.commit(self, reader);
@@ -832,7 +831,7 @@ impl MdParser {
             bt.rollback(self, reader);
             return Err(());
         }
-        self.emit(reader, DescRangeKind::Markup);
+        self.emit(reader, DescItemKind::Markup);
         reader.eat_till_end();
         reader.reset_buff();
 
@@ -863,7 +862,7 @@ impl MdParser {
                 bt.rollback(self, reader);
                 return Err(());
             }
-            self.emit(reader, DescRangeKind::Markup);
+            self.emit(reader, DescItemKind::Markup);
             reader.eat_till_end();
             reader.reset_buff();
 
@@ -893,7 +892,7 @@ impl MdParser {
             reader.reset_buff();
             reader.bump();
             reader.bump();
-            self.emit(reader, DescRangeKind::Markup);
+            self.emit(reader, DescItemKind::Markup);
             reader.eat_while(is_ws);
             reader.reset_buff();
             if reader.current_char() == '(' {
@@ -906,7 +905,7 @@ impl MdParser {
                     return Err(());
                 }
                 reader.bump();
-                self.emit(reader, DescRangeKind::Arg);
+                self.emit(reader, DescItemKind::Arg);
             }
             reader.eat_till_end();
             reader.reset_buff();
@@ -940,7 +939,7 @@ impl MdParser {
 
             process_lua_code(self, line_range, lua_tokens);
         } else {
-            self.emit(reader, DescRangeKind::CodeBlock);
+            self.emit(reader, DescItemKind::CodeBlock);
         }
     }
 
@@ -979,7 +978,7 @@ impl MdParser {
                     process_inline_code(
                         self,
                         reader.reset_buff_into_sub_reader(),
-                        DescRangeKind::Code,
+                        DescItemKind::Code,
                     );
 
                     bt.commit(self, reader);
@@ -1031,8 +1030,8 @@ impl MdParser {
 
                     self.process_inline_content_style(prev, after_prev);
 
-                    self.emit_range(title_range, DescRangeKind::Link);
-                    self.emit_range(url_range, DescRangeKind::Link);
+                    self.emit_range(title_range, DescItemKind::Link);
+                    self.emit_range(url_range, DescItemKind::Link);
 
                     bt.commit(self, reader);
                 }
@@ -1068,7 +1067,7 @@ impl MdParser {
                     if is_lua_ref {
                         process_lua_ref(self, code);
                     } else {
-                        process_inline_code(self, code, DescRangeKind::Code);
+                        process_inline_code(self, code, DescItemKind::Code);
                     }
 
                     bt.commit(self, reader);
@@ -1229,13 +1228,13 @@ impl MdParser {
 
     fn process_inline_math(&mut self, mut reader: Reader) {
         let n_backticks = reader.eat_when('$');
-        self.emit(&mut reader, DescRangeKind::Markup);
+        self.emit(&mut reader, DescItemKind::Markup);
         while reader.tail_range().length > n_backticks {
             reader.bump();
         }
-        self.emit(&mut reader, DescRangeKind::Code);
+        self.emit(&mut reader, DescItemKind::Code);
         reader.eat_till_end();
-        self.emit(&mut reader, DescRangeKind::Markup);
+        self.emit(&mut reader, DescItemKind::Markup);
     }
 
     fn process_role_name<'a>(&mut self, reader: &mut Reader<'a>) -> Result<&'a str, ()> {
@@ -1243,13 +1242,13 @@ impl MdParser {
             return Err(());
         }
         reader.bump();
-        self.emit(reader, DescRangeKind::Markup);
+        self.emit(reader, DescItemKind::Markup);
         reader.eat_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '+' | '_' | '-'));
         if reader.current_char() == '}' {
             let role_text = reader.current_text();
-            self.emit(reader, DescRangeKind::Arg);
+            self.emit(reader, DescItemKind::Arg);
             reader.bump();
-            self.emit(reader, DescRangeKind::Markup);
+            self.emit(reader, DescItemKind::Markup);
             Ok(role_text)
         } else {
             Err(())
@@ -1270,7 +1269,7 @@ impl MdParser {
                     reader.reset_buff();
                     reader.bump();
                     reader.bump();
-                    self.emit(&mut reader, DescRangeKind::Markup);
+                    self.emit(&mut reader, DescItemKind::Markup);
                 }
                 ch @ '*' | ch @ '_' => {
                     reader.reset_buff();
@@ -1347,7 +1346,7 @@ impl MdParser {
             let scope_end = reader.current_range().end_offset();
             self.emit_range(
                 SourceRange::from_start_end(scope_start, scope_end),
-                DescRangeKind::Scope,
+                DescItemKind::Scope,
             );
         }
     }
@@ -1397,10 +1396,10 @@ impl MdParser {
                         let scope_end = reader.current_range().end_offset();
                         self.emit_range(
                             SourceRange::from_start_end(scope_start, scope_end),
-                            DescRangeKind::Em,
+                            DescItemKind::Em,
                         );
-                        self.emit_range(start_markup_range, DescRangeKind::Markup);
-                        self.emit(reader, DescRangeKind::Markup);
+                        self.emit_range(start_markup_range, DescItemKind::Markup);
+                        self.emit(reader, DescItemKind::Markup);
 
                         r_n_chars -= 1;
                     } else {
@@ -1418,10 +1417,10 @@ impl MdParser {
                         let scope_end = reader.current_range().end_offset();
                         self.emit_range(
                             SourceRange::from_start_end(scope_start, scope_end),
-                            DescRangeKind::Strong,
+                            DescItemKind::Strong,
                         );
-                        self.emit_range(start_markup_range, DescRangeKind::Markup);
-                        self.emit(reader, DescRangeKind::Markup);
+                        self.emit_range(start_markup_range, DescItemKind::Markup);
+                        self.emit(reader, DescItemKind::Markup);
 
                         r_n_chars -= 2;
                     } else {
@@ -1439,14 +1438,14 @@ impl MdParser {
                         let scope_end = reader.current_range().end_offset();
                         self.emit_range(
                             SourceRange::from_start_end(scope_start, scope_end),
-                            DescRangeKind::Em,
+                            DescItemKind::Em,
                         );
                         self.emit_range(
                             SourceRange::from_start_end(scope_start, scope_end),
-                            DescRangeKind::Strong,
+                            DescItemKind::Strong,
                         );
-                        self.emit_range(start_markup_range, DescRangeKind::Markup);
-                        self.emit(reader, DescRangeKind::Markup);
+                        self.emit_range(start_markup_range, DescItemKind::Markup);
+                        self.emit(reader, DescItemKind::Markup);
 
                         if r_n_chars == 1 {
                             self.start_highlight(r_ch, 2, reader);
@@ -1473,7 +1472,7 @@ impl MdParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::desc_parser::testlib::test;
+    use crate::testlib::test;
 
     #[test]
     fn test_md() {

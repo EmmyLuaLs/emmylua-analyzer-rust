@@ -6,8 +6,8 @@ use crate::handlers::completion::providers::member_provider::add_completions_for
 use crate::handlers::completion::providers::module_path_provider::add_modules;
 use crate::util::{find_comment_scope, find_ref_at, resolve_ref};
 use emmylua_code_analysis::{LuaType, WorkspaceId};
-use emmylua_parser::desc_parser::LuaDescRefPathItem;
 use emmylua_parser::{LuaAstNode, LuaDocDescription};
+use emmylua_parser_desc::LuaDescRefPathItem;
 use rowan::TextRange;
 use std::collections::HashSet;
 
