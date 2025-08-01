@@ -3,6 +3,7 @@ use emmylua_parser::{
     LuaAstNode, LuaDocDescription, LuaKind, LuaSyntaxElement, LuaTokenData, LuaTokenKind, Reader,
     SourceRange,
 };
+use rowan::Direction;
 use std::cmp::min;
 use std::sync::LazyLock;
 
@@ -20,15 +21,15 @@ pub fn desc_to_lines(
     let mut skip_current_line_content = false;
     let mut seen_doc_comments = false;
 
-    for child in desc.syntax().children_with_tokens() {
-        let LuaSyntaxElement::Token(token) = child else {
-            continue;
+    let mut handle_token = |token: &LuaSyntaxElement| {
+        let LuaSyntaxElement::Token(token) = token else {
+            return;
         };
 
         match token.kind() {
             LuaKind::Token(LuaTokenKind::TkDocDetail) => {
                 if skip_current_line_content {
-                    continue;
+                    return;
                 }
 
                 let range: SourceRange = token.text_range().into();
@@ -36,13 +37,18 @@ pub fn desc_to_lines(
                     line.length += range.length;
                 } else {
                     if line != SourceRange::EMPTY {
-                        seen_doc_comments |= !token.text().trim_end().chars().all(|c| c == '-');
+                        seen_doc_comments |= !text[line.start_offset..line.end_offset()]
+                            .chars()
+                            .all(|c| c == '-');
                         lines.push(line);
                     }
                     line = range;
                 }
             }
             LuaKind::Token(LuaTokenKind::TkEndOfLine) => {
+                seen_doc_comments |= !text[line.start_offset..line.end_offset()]
+                    .chars()
+                    .all(|c| c == '-');
                 lines.push(line);
                 line = SourceRange::EMPTY;
                 skip_current_line_content = false
@@ -68,6 +74,21 @@ pub fn desc_to_lines(
             }
             _ => {}
         }
+    };
+
+    let prev_token = desc
+        .syntax()
+        .siblings_with_tokens(Direction::Prev)
+        .skip(1)
+        .skip_while(|tk| tk.kind() == LuaTokenKind::TkWhitespace.into())
+        .next();
+    if let Some(prev_token) = prev_token {
+        if prev_token.kind() == LuaTokenKind::TkNormalStart.into() {
+            handle_token(&prev_token);
+        }
+    }
+    for child in desc.syntax().children_with_tokens() {
+        handle_token(&child);
     }
 
     if !line.is_empty() {
@@ -118,7 +139,7 @@ pub fn desc_to_lines(
 
     // Find and remove comment indentation.
     let mut common_indent = None;
-    for line in lines.iter().skip(1) {
+    for line in lines.iter() {
         let text = &text[line.start_offset..line.end_offset()];
 
         if is_blank(text) {
@@ -134,7 +155,7 @@ pub fn desc_to_lines(
 
     let common_indent = common_indent.unwrap_or_default();
     if common_indent > 0 {
-        for line in lines.iter_mut().skip(1) {
+        for line in lines.iter_mut() {
             if line.length >= common_indent {
                 line.start_offset += common_indent;
                 line.length -= common_indent;
@@ -349,4 +370,135 @@ pub fn sort_result(items: &mut Vec<DescItem>) {
             r.kind != DescItemKind::Scope, // scopes go first.
         )
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use emmylua_parser::{LuaParser, ParserConfig};
+
+    fn get_desc(code: &str) -> LuaDocDescription {
+        LuaParser::parse(code, ParserConfig::default())
+            .get_chunk_node()
+            .descendants::<LuaDocDescription>()
+            .next()
+            .unwrap()
+    }
+
+    fn run_desc_to_lines(code: &str) -> Vec<&str> {
+        let desc = get_desc(code);
+        let lines = desc_to_lines(code, desc, None);
+        lines
+            .iter()
+            .map(|range| &code[range.start_offset..range.end_offset()])
+            .collect()
+    }
+
+    #[test]
+    fn test_desc_to_lines() {
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                -- Desc
+            "#
+            ),
+            vec![""; 0]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                ----------
+                -- Desc --
+                ----------
+            "#
+            ),
+            vec![""; 0]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                ----------
+                -- Desc --
+                ----------
+                -- Desc --
+                ----------
+            "#
+            ),
+            vec![""; 0]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                --- Desc
+            "#
+            ),
+            vec!["Desc"]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                --------
+                --- Desc
+                --------
+            "#
+            ),
+            vec!["Desc"]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                --------
+                --- Desc
+                --------
+                --- Desc
+                --------
+            "#
+            ),
+            vec![" Desc", "-----", " Desc"]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                --- Desc
+                ---Desc 2
+            "#
+            ),
+            vec![" Desc", "Desc 2"]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                ---Desc
+                --- Desc 2
+            "#
+            ),
+            vec!["Desc", " Desc 2"]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                ---  Desc
+                ---  Desc 2
+            "#
+            ),
+            vec!["Desc", "Desc 2"]
+        );
+
+        assert_eq!(
+            run_desc_to_lines(
+                r#"
+                --- @param x int Desc
+            "#
+            ),
+            vec!["Desc"]
+        );
+    }
 }
