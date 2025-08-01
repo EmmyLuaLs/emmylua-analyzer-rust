@@ -15,6 +15,8 @@ pub fn desc_to_lines(
 ) -> Vec<SourceRange> {
     let mut lines = Vec::new();
     let mut line = SourceRange::EMPTY;
+    let mut skip_current_line_content = false;
+    let mut seen_doc_comments = false;
 
     for child in desc.syntax().children_with_tokens() {
         let LuaSyntaxElement::Token(token) = child else {
@@ -23,11 +25,16 @@ pub fn desc_to_lines(
 
         match token.kind() {
             LuaKind::Token(LuaTokenKind::TkDocDetail) => {
+                if skip_current_line_content {
+                    continue;
+                }
+
                 let range: SourceRange = token.text_range().into();
                 if line.end_offset() == range.start_offset {
                     line.length += range.length;
                 } else {
                     if line != SourceRange::EMPTY {
+                        seen_doc_comments |= !token.text().trim_end().chars().all(|c| c == '-');
                         lines.push(line);
                     }
                     line = range;
@@ -36,21 +43,78 @@ pub fn desc_to_lines(
             LuaKind::Token(LuaTokenKind::TkEndOfLine) => {
                 lines.push(line);
                 line = SourceRange::EMPTY;
+                skip_current_line_content = false
             }
             LuaKind::Token(LuaTokenKind::TkNormalStart | LuaTokenKind::TkDocContinue) => {
-                line = token.text_range().into();
                 let leading_marks = token.text().chars().take_while(|c| *c == '-').count();
-                line.start_offset += leading_marks;
-                line.length -= leading_marks;
+
+                // Skip content for lines that don't start with three dashes.
+                // Parser will see them as empty lines.
+                //
+                // Note: `leading_marks` can't be longer than three dashes.
+                // If comment starts with four or more dashes, the first three
+                // will end up in `TkNormalStart`, and the rest will be in `TkDocDetail`.
+                skip_current_line_content = leading_marks != 3;
+
+                if skip_current_line_content {
+                    line = SourceRange::new(token.text_range().start().into(), 0);
+                } else {
+                    line = token.text_range().into();
+                    line.start_offset += leading_marks;
+                    line.length -= leading_marks;
+                }
             }
             _ => {}
         }
     }
 
     if !line.is_empty() {
+        seen_doc_comments |= !text[line.start_offset..line.end_offset()]
+            .trim_end()
+            .chars()
+            .all(|c| c == '-');
         lines.push(line);
     }
 
+    if !seen_doc_comments {
+        // Comment block consists entirely of lines that only start with
+        // two dashes, or lines that consist only of dashes and nothing else.
+        return Vec::new();
+    }
+
+    // Strip lines that consist entirely of dashes from start and end
+    // of the comment block.
+    //
+    // This handles cases where comment is adorned with long dashed lines:
+    //
+    // ```
+    // ---------------
+    // --- Comment ---
+    // ---------------
+    // ```
+    let mut new_start = 0;
+    for line in lines.iter() {
+        let line_text = &text[line.start_offset..line.end_offset()];
+        if line_text.trim_end().chars().all(|c| c == '-') {
+            new_start += 1;
+        } else {
+            break;
+        }
+    }
+    let mut new_end = lines.len();
+    for line in lines[new_start..].iter().rev() {
+        let line_text = &text[line.start_offset..line.end_offset()];
+        if line_text.trim_end().chars().all(|c| c == '-') {
+            new_end -= 1;
+        } else {
+            break;
+        }
+    }
+    if new_start > 0 || new_end < lines.len() {
+        lines = lines.drain(new_start..new_end).collect();
+    }
+
+    // Find and remove comment indentation.
     let mut common_indent = None;
     for line in lines.iter().skip(1) {
         let text = &text[line.start_offset..line.end_offset()];
@@ -78,7 +142,7 @@ pub fn desc_to_lines(
 
     // Don't parse lines past user's cursor when calculating
     // Go To Definition or Completion. We handle this here so that
-    // we don't affect common indent.
+    // we don't affect common indent and other logic.
     if let Some(cursor_position) = cursor_position {
         for (i, line) in lines.iter().enumerate() {
             let start: usize = line.start_offset.into();

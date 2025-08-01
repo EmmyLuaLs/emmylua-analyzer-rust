@@ -1,8 +1,6 @@
-use crate::desc_parser::dummy::DummyParser;
 use crate::{LuaDocDescription, LuaTokenKind};
 use rowan::TextRange;
 
-mod dummy;
 mod md;
 mod ref_target;
 mod rst;
@@ -86,7 +84,7 @@ pub fn parse(
     cursor_position: Option<usize>,
 ) -> Vec<DescItem> {
     let mut items = match kind {
-        DescParserType::None => DummyParser.parse(text, desc),
+        DescParserType::None => Vec::new(),
         DescParserType::Md => md::MdParser::new(cursor_position).parse(text, desc),
         DescParserType::MySt { primary_domain } => {
             md::MdParser::new_myst(primary_domain, cursor_position).parse(text, desc)

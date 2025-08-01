@@ -87,7 +87,10 @@ fn build_tokens_semantic_token(
             true
         }
         LuaTokenKind::TkLocal => {
-            if !client_id.is_vscode() {
+            // If token is None, we're highlighting inside of a comment,
+            // so we need to emit this range. Otherwise, we emit this range unless
+            // we're in VSCode, because VSCode handles locals/globals via `emmy_annotator`.
+            if token.is_none() || !client_id.is_vscode() {
                 builder.push_at_range(token_text, range, SemanticTokenType::KEYWORD, None);
                 true
             } else {

@@ -20,7 +20,10 @@ pub fn parse_desc(
     offset: Option<usize>,
 ) -> Vec<DescItem> {
     let parser_kind = if workspace_id == WorkspaceId::STD {
-        DescParserType::Md
+        match emmyrc.doc.syntax {
+            DocSyntax::None => DescParserType::None,
+            _ => DescParserType::Md,
+        }
     } else {
         match emmyrc.doc.syntax {
             DocSyntax::None => DescParserType::None,
