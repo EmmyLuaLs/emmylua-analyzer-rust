@@ -1,6 +1,4 @@
-mod migrate_global_member;
-
-use migrate_global_member::migrate_global_members_when_type_resolve;
+// use migrate_global_member::migrate_global_members_when_type_resolve;
 use rowan::TextRange;
 
 use crate::{
@@ -46,7 +44,7 @@ pub fn bind_type(
 
         db.get_type_index_mut()
             .bind_type(type_owner.clone(), type_cache);
-        migrate_global_members_when_type_resolve(db, type_owner);
+        // migrate_global_members_when_type_resolve(db, type_owner);
     } else {
         let decl_type = decl_type_cache?.as_type();
         merge_def_type(db, decl_type.clone(), type_cache.as_type().clone());
@@ -100,12 +98,12 @@ pub fn add_member(db: &mut DbIndex, owner: LuaMemberOwner, member_id: LuaMemberI
     Some(())
 }
 
-fn get_owner_id(db: &DbIndex, type_owner: &LuaTypeOwner) -> Option<LuaMemberOwner> {
-    let type_cache = db.get_type_index().get_type_cache(&type_owner)?;
-    match type_cache.as_type() {
-        LuaType::Ref(type_id) => Some(LuaMemberOwner::Type(type_id.clone())),
-        LuaType::TableConst(id) => Some(LuaMemberOwner::Element(id.clone())),
-        LuaType::Instance(inst) => Some(LuaMemberOwner::Element(inst.get_range().clone())),
-        _ => None,
-    }
-}
+// fn get_owner_id(db: &DbIndex, type_owner: &LuaTypeOwner) -> Option<LuaMemberOwner> {
+//     let type_cache = db.get_type_index().get_type_cache(&type_owner)?;
+//     match type_cache.as_type() {
+//         LuaType::Ref(type_id) => Some(LuaMemberOwner::Type(type_id.clone())),
+//         LuaType::TableConst(id) => Some(LuaMemberOwner::Element(id.clone())),
+//         LuaType::Instance(inst) => Some(LuaMemberOwner::Element(inst.get_range().clone())),
+//         _ => None,
+//     }
+// }
