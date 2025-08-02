@@ -3,7 +3,8 @@ use emmylua_code_analysis::{
     SemanticInfo, WorkspaceId, get_member_map,
 };
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaComment, LuaDocDescription, LuaDocTag, LuaSyntaxToken,
+    LuaAst, LuaAstNode, LuaComment, LuaDocDescription, LuaDocTag, LuaLocalName, LuaSyntaxToken,
+    LuaVarExpr,
 };
 use emmylua_parser_desc::{
     DescItem, DescItemKind, DescParserType, LuaDescRefPathItem, parse_ref_target,
@@ -87,7 +88,7 @@ pub fn resolve_ref<'a>(
 ) -> Vec<SemanticInfo> {
     let mut result = Vec::new();
 
-    // 1. Try resolving in comment's owner. I.e. documentation for a class
+    // Try resolving in comment's owner. I.e. documentation for a class
     // can refer to class members without prefixing them by class name.
     if let Some(scope) = find_comment_scope(db, file_id, desc) {
         let scopes = vec![SemanticInfo {
@@ -99,7 +100,7 @@ pub fn resolve_ref<'a>(
         }
     }
 
-    // 2. Find in namespaces and modules.
+    // Find in namespaces and modules.
 
     // We need to deduplicate types found in namespace and module.
     //
@@ -157,7 +158,22 @@ pub fn resolve_ref<'a>(
         }
     }
 
-    // 3. Find in globals.
+    // Find in current module.
+    if let Some(module) = db.get_module_index().get_module(file_id) {
+        let scopes = vec![SemanticInfo {
+            typ: module.export_type.clone().unwrap_or(LuaType::Nil),
+            semantic_decl: module.semantic_id.clone(),
+        }];
+        if let Some(found_refs) = find_members(db, scopes, &path) {
+            result.extend(
+                found_refs
+                    .into_iter()
+                    .filter(|item| !seen_types.contains(&item.typ)),
+            );
+        }
+    }
+
+    // Find in globals.
     if let Some((LuaDescRefPathItem::Name(name), _)) = path.first() {
         if let Some(globals) = db.get_global_index().get_global_decl_ids(name) {
             let scopes = globals
@@ -205,14 +221,19 @@ pub fn find_comment_scope(
         );
     }
 
-    // 2. Try comment owner.
+    // Try comment owner.
     let owner = parent.get_owner()?;
     let owner_syntax_id = match owner {
-        LuaAst::LuaAssignStat(stat) => stat.get_syntax_id(),
-        LuaAst::LuaLocalStat(stat) => stat.get_syntax_id(),
+        LuaAst::LuaAssignStat(stat) => {
+            let first_var = stat.child::<LuaVarExpr>()?;
+            match first_var {
+                LuaVarExpr::NameExpr(name_expr) => name_expr.get_syntax_id(),
+                LuaVarExpr::IndexExpr(index_expr) => index_expr.get_syntax_id(),
+            }
+        }
+        LuaAst::LuaLocalStat(stat) => stat.child::<LuaLocalName>()?.get_syntax_id(),
         LuaAst::LuaTableField(stat) => stat.get_syntax_id(),
-        LuaAst::LuaFuncStat(stat) => stat.get_syntax_id(),
-        LuaAst::LuaLocalFuncStat(stat) => stat.get_syntax_id(),
+        LuaAst::LuaFuncStat(stat) => stat.get_func_name()?.get_syntax_id(),
         _ => return None,
     };
     // Comment owner is a member of some class/type, try to find it.

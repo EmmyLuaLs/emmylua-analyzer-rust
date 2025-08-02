@@ -1302,7 +1302,13 @@ mod tests {
         );
 
         ws.check_completion(
-            r"--- :lua:obj:`<??>`",
+            r#"
+                --- :lua:obj:`<??>`
+
+                return {
+                    foo = 0
+                }
+            "#,
             vec![
                 VirtualCompletionItem {
                     label: "mod_with_class_and_def".to_string(),
@@ -1332,6 +1338,11 @@ mod tests {
                 VirtualCompletionItem {
                     label: "virtual_0".to_string(),
                     kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "foo".to_string(),
+                    kind: CompletionItemKind::CONSTANT,
                     label_detail: None,
                 },
                 VirtualCompletionItem {
@@ -1453,6 +1464,263 @@ mod tests {
                     label: "x".to_string(),
                     kind: CompletionItemKind::VARIABLE,
                     label_detail: None,
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn test_doc_completion_in_members() {
+        let make_ws = || {
+            let mut ws = ProviderVirtualWorkspace::new();
+
+            let mut emmyrc = Emmyrc::default();
+            emmyrc.doc.syntax = DocSyntax::Rst;
+            ws.analysis.update_config(emmyrc.into());
+            ws
+        };
+
+        let mut ws = make_ws();
+        ws.check_completion(
+            r#"
+                --- @class Foo
+                --- @field x integer
+                local Foo = {}
+
+                --- :lua:obj:`<??>`
+                Foo.y = 0
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Foo".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "x".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "y".to_string(),
+                    kind: CompletionItemKind::CONSTANT,
+                    label_detail: None,
+                },
+            ],
+        );
+
+        let mut ws = make_ws();
+        ws.check_completion(
+            r#"
+                --- @class Foo
+                --- @field x integer
+                local Foo = {}
+
+                --- :lua:obj:`<??>`
+                Foo.y = function() end
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Foo".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "x".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "y".to_string(),
+                    kind: CompletionItemKind::FUNCTION,
+                    label_detail: Some("()".to_string()),
+                },
+            ],
+        );
+
+        let mut ws = make_ws();
+        ws.check_completion(
+            r#"
+                --- @class Foo
+                --- @field x integer
+                local Foo = {}
+
+                --- :lua:obj:`<??>`
+                function Foo.y() end
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Foo".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "x".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "y".to_string(),
+                    kind: CompletionItemKind::FUNCTION,
+                    label_detail: Some("()".to_string()),
+                },
+            ],
+        );
+
+        let mut ws = make_ws();
+        ws.check_completion(
+            r#"
+                --- @class Foo
+                --- @field x integer
+                local Foo = {}
+
+                --- :lua:obj:`<??>`
+                function Foo:y() end
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Foo".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "x".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "y".to_string(),
+                    kind: CompletionItemKind::FUNCTION,
+                    label_detail: Some("(self)".to_string()),
+                },
+            ],
+        );
+
+        let mut ws = make_ws();
+        ws.check_completion(
+            r#"
+                --- @class Foo
+                --- @field x integer
+                local Foo = {
+                    --- :lua:obj:`<??>`
+                    y = 0
+                }
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Foo".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "x".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "y".to_string(),
+                    kind: CompletionItemKind::CONSTANT,
+                    label_detail: None,
+                },
+            ],
+        );
+
+        let mut ws = make_ws();
+        ws.check_completion(
+            r#"
+                --- @class Foo
+                --- @field x integer
+                local Foo = {
+                    --- :lua:obj:`<??>`
+                    y = function() end
+                }
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Foo".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "x".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "y".to_string(),
+                    kind: CompletionItemKind::FUNCTION,
+                    label_detail: Some("()".to_string()),
+                },
+            ],
+        );
+
+        let mut ws = make_ws();
+        ws.check_completion(
+            r#"
+                --- @class Foo
+                --- @field x integer
+                local Foo = {}
+
+                function Foo:init()
+                    --- :lua:obj:`<??>`
+                    self.y = 0
+                end
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Foo".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "x".to_string(),
+                    kind: CompletionItemKind::VARIABLE,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "y".to_string(),
+                    kind: CompletionItemKind::CONSTANT,
+                    label_detail: None,
+                },
+                VirtualCompletionItem {
+                    label: "init".to_string(),
+                    kind: CompletionItemKind::FUNCTION,
+                    label_detail: Some("(self) -> nil".to_string()),
                 },
             ],
         );
