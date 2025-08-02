@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use emmylua_code_analysis::SemanticModel;
 use emmylua_parser::LuaSyntaxToken;
 use lsp_types::{CompletionItem, CompletionTriggerKind};
+use rowan::TextSize;
 use tokio_util::sync::CancellationToken;
 
 pub struct CompletionBuilder<'a> {
@@ -15,6 +16,7 @@ pub struct CompletionBuilder<'a> {
     pub trigger_kind: CompletionTriggerKind,
     /// 是否为空格字符触发的补全(非主动触发)
     pub is_space_trigger_character: bool,
+    pub position_offset: TextSize,
 }
 
 impl<'a> CompletionBuilder<'a> {
@@ -23,6 +25,7 @@ impl<'a> CompletionBuilder<'a> {
         semantic_model: SemanticModel<'a>,
         cancel_token: CancellationToken,
         trigger_kind: CompletionTriggerKind,
+        position_offset: TextSize,
     ) -> Self {
         let is_space_trigger_character = if trigger_kind == CompletionTriggerKind::TRIGGER_CHARACTER
         {
@@ -40,6 +43,7 @@ impl<'a> CompletionBuilder<'a> {
             stopped: false,
             trigger_kind,
             is_space_trigger_character,
+            position_offset,
         }
     }
 

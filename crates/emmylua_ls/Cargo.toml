@@ -14,6 +14,7 @@ categories = ["development-tools"]
 # local
 emmylua_code_analysis.workspace = true
 emmylua_parser.workspace = true
+emmylua_parser_desc.workspace = true
 
 # external
 lsp-server.workspace = true

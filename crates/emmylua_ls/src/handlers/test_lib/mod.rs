@@ -168,23 +168,19 @@ impl ProviderVirtualWorkspace {
         true
     }
 
-    pub fn check_completion(
-        &mut self,
-        block_str: &str,
-        expect: Vec<VirtualCompletionItem>,
-    ) -> bool {
+    pub fn check_completion(&mut self, block_str: &str, expect: Vec<VirtualCompletionItem>) {
         self.check_completion_with_kind(block_str, expect, CompletionTriggerKind::INVOKED)
     }
 
     pub fn check_completion_with_kind(
         &mut self,
         block_str: &str,
-        expect: Vec<VirtualCompletionItem>,
+        mut expect: Vec<VirtualCompletionItem>,
         trigger_kind: CompletionTriggerKind,
-    ) -> bool {
+    ) {
         let content = Self::handle_file_content(block_str);
         let Some((content, position)) = content else {
-            return false;
+            panic!("content is empty");
         };
         let file_id = self.def(&content);
         let result = completion(
@@ -195,29 +191,24 @@ impl ProviderVirtualWorkspace {
             CancellationToken::new(),
         );
         let Some(result) = result else {
-            return false;
+            panic!("completion result is empty");
         };
         // 对比
-        let items = match result {
+        let mut items = match result {
             CompletionResponse::Array(items) => items,
             CompletionResponse::List(list) => list.items,
         };
-        // dbg!(&items);
-        if items.len() != expect.len() {
-            return false;
-        }
+        items.sort_by(|l, r| Ord::cmp((&l.label), (&r.label)));
+        expect.sort_by(|l, r| Ord::cmp((&l.label), (&r.label)));
+        assert_eq!(items.len(), expect.len());
         // 需要顺序一致
         for (item, expect) in items.iter().zip(expect.iter()) {
-            if item.label != expect.label || item.kind != Some(expect.kind) {
-                return false;
-            }
+            assert_eq!(item.label, expect.label);
+            assert_eq!(item.kind, Some(expect.kind));
             if let Some(label_detail) = item.label_details.as_ref() {
-                if label_detail.detail != expect.label_detail {
-                    return false;
-                }
+                assert_eq!(label_detail.detail, expect.label_detail);
             }
         }
-        true
     }
 
     pub fn check_completion_resolve(
@@ -308,7 +299,6 @@ impl ProviderVirtualWorkspace {
             active_signature_help: None,
         };
         let result = signature_help(&self.analysis, file_id, position, param_context);
-        dbg!(&result);
         let Some(result) = result else {
             return false;
         };
@@ -326,9 +316,7 @@ impl ProviderVirtualWorkspace {
 
     pub fn check_inlay_hint(&mut self, block_str: &str) -> Option<Vec<InlayHint>> {
         let file_id = self.def(&block_str);
-        let result = inlay_hint(&self.analysis, file_id);
-        dbg!(&result);
-        return result;
+        inlay_hint(&self.analysis, file_id)
     }
 
     pub fn check_code_action(&mut self, block_str: &str) -> Option<CodeActionResponse> {
@@ -375,7 +363,6 @@ impl ProviderVirtualWorkspace {
         let file_id = self.def(&content);
         let result = references(&self.analysis, file_id, position);
         // dbg!(&result);
-        dbg!(&result.as_ref().unwrap().len());
         result
     }
 }

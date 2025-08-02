@@ -1,0 +1,19 @@
+[package]
+name = "emmylua_parser_desc"
+version = "0.12.0"
+edition = "2024"
+authors = ["CppCXY", "taminomara"]
+description = "A parser for markup within Lua comments"
+license = "MIT"
+repository = "https://github.com/CppCXY/emmylua-analyzer-rust"
+readme = "README.md"
+keywords = ["emmylua", "luals", "parser", "lua"]
+categories = ["development-tools", "parsing"]
+
+[dependencies]
+# local
+emmylua_parser.workspace = true
+
+# external
+rowan.workspace = true
+regex.workspace = true

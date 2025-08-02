@@ -1,7 +1,7 @@
 use emmylua_code_analysis::LuaDocument;
 use emmylua_parser::LuaSyntaxToken;
 use lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
-use rowan::TextSize;
+use rowan::{TextRange, TextSize};
 use std::{collections::HashMap, vec::Vec};
 
 pub const SEMANTIC_TOKEN_TYPES: &[SemanticTokenType] = &[
@@ -92,13 +92,12 @@ impl<'a> SemanticBuilder<'a> {
         }
     }
 
-    fn push_data(&mut self, token: &LuaSyntaxToken, typ: u32, modifiers: u32) -> Option<()> {
-        let position = token.text_range().start();
+    fn push_data(&mut self, range: TextRange, text: &str, typ: u32, modifiers: u32) -> Option<()> {
+        let position = range.start();
         if self.data.contains_key(&position) {
             return Some(());
         }
 
-        let range = token.text_range();
         let lsp_range = self.document.to_lsp_range(range)?;
         let start_line = lsp_range.start.line;
         let start_col = lsp_range.start.character;
@@ -135,7 +134,7 @@ impl<'a> SemanticBuilder<'a> {
             self.data
                 .insert(position, SemanticTokenData::MultiLine(muliti_line_data));
         } else {
-            let length = token.text().chars().count() as u32;
+            let length = text.chars().count() as u32;
             self.data.insert(
                 position,
                 SemanticTokenData::Basic(BasicSemanticTokenData {
@@ -152,7 +151,12 @@ impl<'a> SemanticBuilder<'a> {
     }
 
     pub fn push(&mut self, token: &LuaSyntaxToken, ty: SemanticTokenType) -> Option<()> {
-        self.push_data(token, *self.type_to_id.get(&ty)?, 0);
+        self.push_data(
+            token.text_range(),
+            token.text(),
+            *self.type_to_id.get(&ty)?,
+            0,
+        );
         Some(())
     }
 
@@ -164,7 +168,7 @@ impl<'a> SemanticBuilder<'a> {
     ) -> Option<()> {
         let typ = *self.type_to_id.get(&ty)?;
         let modifier = 1 << *self.modifier_to_id.get(&modifier)?;
-        self.push_data(token, typ, modifier);
+        self.push_data(token.text_range(), token.text(), typ, modifier);
         Some(())
     }
 
@@ -192,6 +196,22 @@ impl<'a> SemanticBuilder<'a> {
         Some(())
     }
 
+    pub fn push_at_range(
+        &mut self,
+        token_text: &str,
+        range: TextRange,
+        ty: SemanticTokenType,
+        modifiers: Option<SemanticTokenModifier>,
+    ) -> Option<()> {
+        self.push_data(
+            range,
+            token_text,
+            *self.type_to_id.get(&ty)?,
+            modifiers.map_or(0, |m| 1 << *self.modifier_to_id.get(&m).unwrap_or(&0)),
+        );
+        Some(())
+    }
+
     #[allow(unused)]
     pub fn push_with_modifiers(
         &mut self,
@@ -204,7 +224,7 @@ impl<'a> SemanticBuilder<'a> {
         for m in modifiers {
             modifier |= 1 << *self.modifier_to_id.get(&m)?;
         }
-        self.push_data(token, typ, modifier);
+        self.push_data(token.text_range(), token.text(), typ, modifier);
 
         Some(())
     }

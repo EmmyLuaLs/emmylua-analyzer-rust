@@ -7,10 +7,12 @@ mod syntax;
 mod text;
 
 pub use kind::*;
+pub use lexer::{LexerConfig, LuaLexer, LuaLexerState, LuaTokenData};
 pub use parser::{LuaParser, ParserConfig, SpecialFunction};
 pub use parser_error::{LuaParseError, LuaParseErrorKind};
 pub use syntax::*;
 pub use text::LineIndex;
+pub use text::{Reader, SourceRange};
 
 #[macro_use]
 extern crate rust_i18n;

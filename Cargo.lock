@@ -641,6 +641,7 @@ dependencies = [
  "dirs",
  "emmylua_code_analysis",
  "emmylua_parser",
+ "emmylua_parser_desc",
  "fern",
  "glob",
  "itertools 0.14.0",
@@ -667,6 +668,15 @@ dependencies = [
  "rowan",
  "rust-i18n",
  "serde",
+]
+
+[[package]]
+name = "emmylua_parser_desc"
+version = "0.12.0"
+dependencies = [
+ "emmylua_parser",
+ "regex",
+ "rowan",
 ]
 
 [[package]]

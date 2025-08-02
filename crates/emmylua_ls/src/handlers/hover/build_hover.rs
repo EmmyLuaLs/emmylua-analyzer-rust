@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
+use emmylua_code_analysis::humanize_type;
 use emmylua_code_analysis::{
     DbIndex, LuaCompilation, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
     LuaSignatureId, LuaType, LuaTypeDeclId, RenderLevel, SemanticInfo, SemanticModel,
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaExpr, LuaSyntaxToken};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
-
-use emmylua_code_analysis::humanize_type;
+use rowan::TextRange;
 
 use crate::handlers::hover::{
     find_origin::replace_semantic_type,
@@ -28,6 +28,7 @@ pub fn build_semantic_info_hover(
     document: &LuaDocument,
     token: LuaSyntaxToken,
     semantic_info: SemanticInfo,
+    range: TextRange,
 ) -> Option<Hover> {
     let typ = semantic_info.clone().typ;
     if semantic_info.semantic_decl.is_none() {
@@ -43,7 +44,7 @@ pub fn build_semantic_info_hover(
         Some(token.clone()),
     );
     if let Some(hover_builder) = hover_builder {
-        hover_builder.build_hover_result(document.to_lsp_range(token.text_range()))
+        hover_builder.build_hover_result(document.to_lsp_range(range))
     } else {
         None
     }

@@ -8,8 +8,8 @@ mod std_hover;
 
 pub use build_hover::build_hover_content_for_completion;
 use build_hover::build_semantic_info_hover;
-use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
-use emmylua_parser::LuaAstNode;
+use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, WorkspaceId};
+use emmylua_parser::{LuaAstNode, LuaDocDescription, LuaKind, LuaTokenKind};
 pub use find_origin::{find_all_same_named_members, find_member_origin_owner};
 pub use hover_builder::HoverBuilder;
 pub use hover_humanize::infer_prefix_global_name;
@@ -22,9 +22,9 @@ use rowan::TokenAtOffset;
 pub use std_hover::{hover_std_description, is_std};
 use tokio_util::sync::CancellationToken;
 
-use crate::context::ServerContextSnapshot;
-
 use super::RegisterCapabilities;
+use crate::context::ServerContextSnapshot;
+use crate::util::{find_ref_at, resolve_ref_single};
 
 pub async fn on_hover(
     context: ServerContextSnapshot,
@@ -72,10 +72,40 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
                 range: document.to_lsp_range(keywords.text_range()),
             });
         }
+        detail if detail.kind() == LuaKind::Token(LuaTokenKind::TkDocDetail) => {
+            let parent = detail.parent()?;
+            let description = LuaDocDescription::cast(parent)?;
+            let document = semantic_model.get_document();
+
+            let path = find_ref_at(
+                semantic_model
+                    .get_module()
+                    .map(|m| m.workspace_id)
+                    .unwrap_or(WorkspaceId::MAIN),
+                semantic_model.get_emmyrc(),
+                document.get_text(),
+                description.clone(),
+                position_offset,
+            )?;
+
+            let db = analysis.compilation.get_db();
+            let semantic_info = resolve_ref_single(db, file_id, &path, &detail)?;
+
+            build_semantic_info_hover(
+                &analysis.compilation,
+                &semantic_model,
+                db,
+                &document,
+                detail,
+                semantic_info,
+                path.last()?.1,
+            )
+        }
         _ => {
             let semantic_info = semantic_model.get_semantic_info(token.clone().into())?;
             let db = semantic_model.get_db();
             let document = semantic_model.get_document();
+            let range = token.text_range();
             build_semantic_info_hover(
                 &analysis.compilation,
                 &semantic_model,
@@ -83,6 +113,7 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
                 &document,
                 token,
                 semantic_info,
+                range,
             )
         }
     }
