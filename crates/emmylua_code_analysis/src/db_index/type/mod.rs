@@ -221,15 +221,16 @@ impl LuaTypeIndex {
         self.full_name_type_map.get_mut(decl_id)
     }
 
-    pub fn bind_type(&mut self, owner: LuaTypeOwner, cache: LuaTypeCache) {
+    pub fn bind_type(&mut self, owner: LuaTypeOwner, cache: LuaTypeCache) -> bool {
         if self.types.contains_key(&owner) {
-            return;
+            return false;
         }
         self.types.insert(owner.clone(), cache);
         self.in_filed_type_owner
             .entry(owner.get_file_id())
             .or_insert_with(HashSet::new)
             .insert(owner);
+        true
     }
 
     pub fn get_type_cache(&self, owner: &LuaTypeOwner) -> Option<&LuaTypeCache> {

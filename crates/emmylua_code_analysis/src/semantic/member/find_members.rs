@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, FileId, LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMemberKey,
+    DbIndex, FileId, GlobalId, LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType, LuaTypeDeclId,
     LuaUnionType,
     semantic::{
@@ -62,6 +62,10 @@ fn find_members_guard(
     match &prefix_type {
         LuaType::TableConst(id) => {
             let member_owner = LuaMemberOwner::Element(id.clone());
+            find_normal_members(db, member_owner, filter)
+        }
+        LuaType::GlobalTable(global_id) => {
+            let member_owner = LuaMemberOwner::GlobalId(GlobalId(global_id.clone()));
             find_normal_members(db, member_owner, filter)
         }
         LuaType::TableGeneric(table_type) => find_table_generic_members(table_type, filter),

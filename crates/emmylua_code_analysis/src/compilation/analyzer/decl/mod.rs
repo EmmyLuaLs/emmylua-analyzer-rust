@@ -1,15 +1,15 @@
 mod docs;
 mod exprs;
-mod members;
 mod stats;
 
 use crate::{
+    compilation::analyzer::AnalysisPipeline,
     db_index::{DbIndex, LuaScopeKind},
     profile::Profile,
 };
 
 use super::AnalyzeContext;
-use emmylua_parser::{LuaAst, LuaAstNode, LuaChunk, LuaFuncStat, LuaSyntaxKind, LuaVarExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaFuncStat, LuaSyntaxKind, LuaVarExpr};
 use rowan::{TextRange, TextSize, WalkEvent};
 
 use crate::{
@@ -17,21 +17,25 @@ use crate::{
     db_index::{LuaDecl, LuaDeclId, LuaDeclarationTree, LuaScopeId},
 };
 
-pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
-    let _p = Profile::cond_new("decl analyze", context.tree_list.len() > 1);
-    let tree_list = context.tree_list.clone();
-    for in_filed_tree in tree_list.iter() {
-        db.get_reference_index_mut()
-            .create_local_reference(in_filed_tree.file_id);
-        let mut analyzer = DeclAnalyzer::new(
-            db,
-            in_filed_tree.file_id,
-            in_filed_tree.value.clone(),
-            context,
-        );
-        analyzer.analyze();
-        let decl_tree = analyzer.get_decl_tree();
-        db.get_decl_index_mut().add_decl_tree(decl_tree);
+pub struct DeclAnalysisPipeline;
+
+impl AnalysisPipeline for DeclAnalysisPipeline {
+    fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
+        let _p = Profile::cond_new("decl analyze", context.tree_list.len() > 1);
+        let tree_list = context.tree_list.clone();
+        for in_filed_tree in tree_list.iter() {
+            db.get_reference_index_mut()
+                .create_local_reference(in_filed_tree.file_id);
+            let mut analyzer = DeclAnalyzer::new(db, in_filed_tree.file_id);
+            for walk_event in in_filed_tree.value.walk_descendants::<LuaAst>() {
+                match walk_event {
+                    WalkEvent::Enter(node) => walk_node_enter(&mut analyzer, node),
+                    WalkEvent::Leave(node) => walk_node_leave(&mut analyzer, node),
+                }
+            }
+            let decl_tree = analyzer.get_decl_tree();
+            db.get_decl_index_mut().add_decl_tree(decl_tree);
+        }
     }
 }
 
@@ -83,9 +87,6 @@ fn walk_node_enter(analyzer: &mut DeclAnalyzer, node: LuaAst) {
         LuaAst::LuaClosureExpr(expr) => {
             analyzer.create_scope(expr.get_range(), LuaScopeKind::Normal);
             exprs::analyze_closure_expr(analyzer, expr);
-        }
-        LuaAst::LuaTableExpr(expr) => {
-            exprs::analyze_table_expr(analyzer, expr);
         }
         LuaAst::LuaLiteralExpr(expr) => {
             exprs::analyze_literal_expr(analyzer, expr);
@@ -140,37 +141,18 @@ fn is_scope_owner(node: &LuaAst) -> bool {
 #[derive(Debug)]
 pub struct DeclAnalyzer<'a> {
     db: &'a mut DbIndex,
-    root: LuaChunk,
     decl: LuaDeclarationTree,
     scopes: Vec<LuaScopeId>,
     is_meta: bool,
-    context: &'a mut AnalyzeContext,
 }
 
 impl<'a> DeclAnalyzer<'a> {
-    pub fn new(
-        db: &'a mut DbIndex,
-        file_id: FileId,
-        root: LuaChunk,
-        context: &'a mut AnalyzeContext,
-    ) -> DeclAnalyzer<'a> {
+    pub fn new(db: &'a mut DbIndex, file_id: FileId) -> DeclAnalyzer<'a> {
         DeclAnalyzer {
             db,
-            root,
             decl: LuaDeclarationTree::new(file_id),
             scopes: Vec::new(),
             is_meta: false,
-            context,
-        }
-    }
-
-    pub fn analyze(&mut self) {
-        let root = self.root.clone();
-        for walk_event in root.walk_descendants::<LuaAst>() {
-            match walk_event {
-                WalkEvent::Enter(node) => walk_node_enter(self, node),
-                WalkEvent::Leave(node) => walk_node_leave(self, node),
-            }
         }
     }
 

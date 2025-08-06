@@ -118,7 +118,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
         LuaMemberFeature::FileFieldDecl
     };
 
-    let member = LuaMember::new(member_id, key.clone(), decl_feature, None);
+    let member = LuaMember::new(member_id, key.clone(), decl_feature);
     analyzer.db.get_reference_index_mut().add_index_reference(
         key,
         analyzer.file_id,

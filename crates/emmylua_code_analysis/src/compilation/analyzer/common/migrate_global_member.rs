@@ -1,6 +1,7 @@
-use crate::{DbIndex, GlobalId, LuaDeclId, LuaMemberId, LuaMemberOwner, LuaTypeOwner};
-
-use super::get_owner_id;
+use crate::{
+    DbIndex, GlobalId, LuaDeclId, LuaMemberId, LuaMemberOwner, LuaTypeOwner,
+    compilation::analyzer::common::{add_member, get_owner_id},
+};
 
 pub fn migrate_global_members_when_type_resolve(
     db: &mut DbIndex,
@@ -30,28 +31,27 @@ fn migrate_global_member_to_decl(db: &mut DbIndex, decl_id: LuaDeclId) -> Option
     let global_id = GlobalId::new(name.into());
     let members = db
         .get_member_index()
-        .get_members(&LuaMemberOwner::GlobalPath(global_id))?
+        .get_members(&LuaMemberOwner::GlobalId(global_id))?
         .iter()
         .map(|member| member.get_id())
         .collect::<Vec<_>>();
 
-    let member_index = db.get_member_index_mut();
     for member_id in members {
-        member_index.set_member_owner(owner_id.clone(), member_id.file_id, member_id);
-        member_index.add_member_to_owner(owner_id.clone(), member_id);
+        add_member(db, owner_id.clone(), member_id);
     }
 
     Some(())
 }
 
 fn migrate_global_member_to_member(db: &mut DbIndex, member_id: LuaMemberId) -> Option<()> {
-    let member = db.get_member_index().get_member(&member_id)?;
-    let global_id = member.get_global_id()?;
+    let global_id = db
+        .get_member_index()
+        .get_member_global_id(&member_id)?;
     let owner_id = get_owner_id(db, &member_id.clone().into())?;
 
     let members = db
         .get_member_index()
-        .get_members(&LuaMemberOwner::GlobalPath(global_id.clone()))?
+        .get_members(&LuaMemberOwner::GlobalId(global_id.clone()))?
         .iter()
         .map(|member| member.get_id())
         .collect::<Vec<_>>();

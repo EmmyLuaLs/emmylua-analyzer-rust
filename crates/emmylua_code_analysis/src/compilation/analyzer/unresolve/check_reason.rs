@@ -4,8 +4,8 @@ use emmylua_parser::LuaAstNode;
 
 use crate::{
     DbIndex, InFiled, InferFailReason, LuaDocReturnInfo, LuaSemanticDeclId, LuaType, LuaTypeCache,
-    SignatureReturnStatus, compilation::analyzer::infer_manager::InferCacheManager, infer_expr,
-    infer_param,
+    SignatureReturnStatus, compilation::analyzer::infer_cache_manager::InferCacheManager,
+    infer_expr, infer_param,
 };
 
 use super::UnResolve;

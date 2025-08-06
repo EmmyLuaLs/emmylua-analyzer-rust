@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use crate::{
     FileId, InferFailReason, LuaMemberFeature, LuaSemanticDeclId,
+    compilation::analyzer::AnalysisPipeline,
     db_index::{DbIndex, LuaDeclId, LuaMemberId, LuaSignatureId},
     profile::Profile,
 };
@@ -22,40 +23,44 @@ use resolve_closure::{
     try_resolve_call_closure_params, try_resolve_closure_parent_params, try_resolve_closure_return,
 };
 
-use super::{AnalyzeContext, infer_manager::InferCacheManager, lua::LuaReturnPoint};
+use super::{AnalyzeContext, infer_cache_manager::InferCacheManager, lua::LuaReturnPoint};
 
 type ResolveResult = Result<(), InferFailReason>;
 
-pub fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
-    let _p = Profile::cond_new("resolve analyze", context.tree_list.len() > 1);
-    let mut infer_manager = std::mem::take(&mut context.infer_manager);
-    infer_manager.clear();
-    let mut reason_resolve: HashMap<InferFailReason, Vec<UnResolve>> = HashMap::new();
-    for (unresolve, reason) in context.unresolves.drain(..) {
-        reason_resolve
-            .entry(reason.clone())
-            .or_insert_with(Vec::new)
-            .push(unresolve);
-    }
+pub struct ResolveAnalysisPipeline;
 
-    let mut loop_count = 0;
-    while !reason_resolve.is_empty() {
-        try_resolve(db, &mut infer_manager, &mut reason_resolve);
-
-        if reason_resolve.is_empty() {
-            break;
+impl AnalysisPipeline for ResolveAnalysisPipeline {
+    fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
+        let _p = Profile::cond_new("resolve analyze", context.tree_list.len() > 1);
+        let mut infer_manager = std::mem::take(&mut context.infer_caches);
+        infer_manager.clear();
+        let mut reason_resolve: HashMap<InferFailReason, Vec<UnResolve>> = HashMap::new();
+        for (unresolve, reason) in context.unresolves.drain(..) {
+            reason_resolve
+                .entry(reason.clone())
+                .or_insert_with(Vec::new)
+                .push(unresolve);
         }
 
-        if loop_count == 0 {
-            infer_manager.set_force();
-        }
+        let mut loop_count = 0;
+        while !reason_resolve.is_empty() {
+            try_resolve(db, &mut infer_manager, &mut reason_resolve);
 
-        resolve_all_reason(db, &mut reason_resolve, loop_count);
+            if reason_resolve.is_empty() {
+                break;
+            }
 
-        if loop_count >= 5 {
-            break;
+            if loop_count == 0 {
+                infer_manager.set_force();
+            }
+
+            resolve_all_reason(db, &mut reason_resolve, loop_count);
+
+            if loop_count >= 5 {
+                break;
+            }
+            loop_count += 1;
         }
-        loop_count += 1;
     }
 }
 

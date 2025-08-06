@@ -14,7 +14,7 @@ use super::{
 use crate::compilation::analyzer::doc::tags::report_orphan_tag;
 use crate::{
     LuaTypeCache, LuaTypeDeclId,
-    compilation::analyzer::bind_type::bind_type,
+    compilation::analyzer::common::bind_type,
     db_index::{LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType},
 };
 

@@ -1,14 +1,11 @@
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaDocTagCast, LuaExpr,
-    LuaFuncStat, LuaIndexExpr, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr,
-    LuaTableExpr, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaFuncStat,
+    LuaIndexExpr, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr, LuaVarExpr,
 };
 
 use crate::{
-    FileId, InFiled, InferFailReason, LuaDeclExtra, LuaDeclId, LuaMemberFeature, LuaMemberId,
-    LuaSignatureId,
-    compilation::analyzer::unresolve::UnResolveTableField,
-    db_index::{LuaDecl, LuaMember, LuaMemberKey, LuaMemberOwner},
+    FileId, LuaDeclExtra, LuaDeclId, LuaMemberId, LuaSignatureId,
+    db_index::{LuaDecl, LuaMemberKey},
 };
 
 use super::DeclAnalyzer;
@@ -51,9 +48,6 @@ pub fn analyze_name_expr(analyzer: &mut DeclAnalyzer, expr: LuaNameExpr) -> Opti
 }
 
 pub fn analyze_index_expr(analyzer: &mut DeclAnalyzer, index_expr: LuaIndexExpr) -> Option<()> {
-    if index_expr.ancestors::<LuaDocTagCast>().next().is_some() {
-        return Some(());
-    }
     let index_key = index_expr.get_index_key()?;
     let key = match index_key {
         LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().to_string().into()),
@@ -214,67 +208,67 @@ fn analyze_closure_params(
     Some(())
 }
 
-pub fn analyze_table_expr(analyzer: &mut DeclAnalyzer, table_expr: LuaTableExpr) -> Option<()> {
-    if table_expr.is_object() {
-        let file_id = analyzer.get_file_id();
-        let owner_id = LuaMemberOwner::Element(InFiled {
-            file_id,
-            value: table_expr.get_range(),
-        });
-        let decl_feature = if analyzer.is_meta {
-            LuaMemberFeature::MetaDefine
-        } else {
-            LuaMemberFeature::FileDefine
-        };
+// pub fn analyze_table_expr(analyzer: &mut DeclAnalyzer, table_expr: LuaTableExpr) -> Option<()> {
+//     if table_expr.is_object() {
+//         let file_id = analyzer.get_file_id();
+//         let owner_id = LuaMemberOwner::Element(InFiled {
+//             file_id,
+//             value: table_expr.get_range(),
+//         });
+//         let decl_feature = if analyzer.is_meta {
+//             LuaMemberFeature::MetaDefine
+//         } else {
+//             LuaMemberFeature::FileDefine
+//         };
 
-        for field in table_expr.get_fields() {
-            if let Some(field_key) = field.get_field_key() {
-                let key: LuaMemberKey = match field_key {
-                    LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().into()),
-                    LuaIndexKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
-                    LuaIndexKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
-                    LuaIndexKey::Idx(idx) => LuaMemberKey::Integer(idx as i64),
-                    LuaIndexKey::Expr(field_expr) => {
-                        let unresolve_member = UnResolveTableField {
-                            file_id: analyzer.get_file_id(),
-                            table_expr: table_expr.clone(),
-                            field: field.clone(),
-                            decl_feature,
-                        };
-                        analyzer.context.add_unresolve(
-                            unresolve_member.into(),
-                            InferFailReason::UnResolveExpr(InFiled::new(
-                                analyzer.get_file_id(),
-                                field_expr.clone(),
-                            )),
-                        );
-                        continue;
-                    }
-                };
+//         for field in table_expr.get_fields() {
+//             if let Some(field_key) = field.get_field_key() {
+//                 let key: LuaMemberKey = match field_key {
+//                     LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().into()),
+//                     LuaIndexKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
+//                     LuaIndexKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
+//                     LuaIndexKey::Idx(idx) => LuaMemberKey::Integer(idx as i64),
+//                     LuaIndexKey::Expr(field_expr) => {
+//                         // let unresolve_member = UnResolveTableField {
+//                         //     file_id: analyzer.get_file_id(),
+//                         //     table_expr: table_expr.clone(),
+//                         //     field: field.clone(),
+//                         //     decl_feature,
+//                         // };
+//                         // analyzer.context.add_unresolve(
+//                         //     unresolve_member.into(),
+//                         //     InferFailReason::UnResolveExpr(InFiled::new(
+//                         //         analyzer.get_file_id(),
+//                         //         field_expr.clone(),
+//                         //     )),
+//                         // );
+//                         continue;
+//                     }
+//                 };
 
-                analyzer.db.get_reference_index_mut().add_index_reference(
-                    key.clone(),
-                    file_id,
-                    field.get_syntax_id(),
-                );
+//                 analyzer.db.get_reference_index_mut().add_index_reference(
+//                     key.clone(),
+//                     file_id,
+//                     field.get_syntax_id(),
+//                 );
 
-                let member_id = LuaMemberId::new(field.get_syntax_id(), file_id);
-                let member = match &owner_id {
-                    LuaMemberOwner::GlobalPath(path) => {
-                        LuaMember::new(member_id, key, decl_feature, Some(path.clone()))
-                    }
-                    _ => LuaMember::new(member_id, key, decl_feature, None),
-                };
-                analyzer
-                    .db
-                    .get_member_index_mut()
-                    .add_member(owner_id.clone(), member);
-            }
-        }
-    }
+//                 let member_id = LuaMemberId::new(field.get_syntax_id(), file_id);
+//                 let member = match &owner_id {
+//                     LuaMemberOwner::GlobalPath(path) => {
+//                         LuaMember::new(member_id, key, decl_feature, Some(path.clone()))
+//                     }
+//                     _ => LuaMember::new(member_id, key, decl_feature, None),
+//                 };
+//                 analyzer
+//                     .db
+//                     .get_member_index_mut()
+//                     .add_member(owner_id.clone(), member);
+//             }
+//         }
+//     }
 
-    Some(())
-}
+//     Some(())
+// }
 
 pub fn analyze_literal_expr(analyzer: &mut DeclAnalyzer, expr: LuaLiteralExpr) -> Option<()> {
     let literal = expr.get_literal()?;

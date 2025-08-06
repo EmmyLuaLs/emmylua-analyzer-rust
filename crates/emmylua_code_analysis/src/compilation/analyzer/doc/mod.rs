@@ -10,6 +10,7 @@ mod type_ref_tags;
 use super::AnalyzeContext;
 use crate::{
     FileId, LuaSemanticDeclId,
+    compilation::analyzer::AnalysisPipeline,
     db_index::{DbIndex, LuaTypeDeclId},
     profile::Profile,
 };
@@ -17,22 +18,26 @@ use emmylua_parser::{LuaAstNode, LuaComment, LuaSyntaxNode};
 use file_generic_index::FileGenericIndex;
 use tags::get_owner_id;
 
-pub(crate) fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
-    let _p = Profile::cond_new("doc analyze", context.tree_list.len() > 1);
-    let tree_list = context.tree_list.clone();
-    for in_filed_tree in tree_list.iter() {
-        let root = &in_filed_tree.value;
-        let mut generic_index = FileGenericIndex::new();
-        for comment in root.descendants::<LuaComment>() {
-            let mut analyzer = DocAnalyzer::new(
-                db,
-                in_filed_tree.file_id,
-                &mut generic_index,
-                comment,
-                root.syntax().clone(),
-                context,
-            );
-            analyze_comment(&mut analyzer);
+pub struct DocAnalysisPipeline;
+
+impl AnalysisPipeline for DocAnalysisPipeline {
+    fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
+        let _p = Profile::cond_new("doc analyze", context.tree_list.len() > 1);
+        let tree_list = context.tree_list.clone();
+        for in_filed_tree in tree_list.iter() {
+            let root = &in_filed_tree.value;
+            let mut generic_index = FileGenericIndex::new();
+            for comment in root.descendants::<LuaComment>() {
+                let mut analyzer = DocAnalyzer::new(
+                    db,
+                    in_filed_tree.file_id,
+                    &mut generic_index,
+                    comment,
+                    root.syntax().clone(),
+                    context,
+                );
+                analyze_comment(&mut analyzer);
+            }
         }
     }
 }

@@ -6,28 +6,21 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use super::lua_member_feature::LuaMemberFeature;
-use crate::{DbIndex, FileId, GlobalId, InferFailReason, LuaInferCache, LuaType, infer_expr};
+use crate::{DbIndex, FileId, InferFailReason, LuaInferCache, LuaType, infer_expr};
 
 #[derive(Debug)]
 pub struct LuaMember {
     member_id: LuaMemberId,
     key: LuaMemberKey,
     feature: LuaMemberFeature,
-    global_id: Option<GlobalId>,
 }
 
 impl LuaMember {
-    pub fn new(
-        member_id: LuaMemberId,
-        key: LuaMemberKey,
-        decl_feature: LuaMemberFeature,
-        global_path: Option<GlobalId>,
-    ) -> Self {
+    pub fn new(member_id: LuaMemberId, key: LuaMemberKey, decl_feature: LuaMemberFeature) -> Self {
         Self {
             member_id,
             key,
             feature: decl_feature,
-            global_id: global_path,
         }
     }
 
@@ -63,10 +56,6 @@ impl LuaMember {
 
     pub fn get_feature(&self) -> LuaMemberFeature {
         self.feature
-    }
-
-    pub fn get_global_id(&self) -> Option<&GlobalId> {
-        self.global_id.as_ref()
     }
 }
 

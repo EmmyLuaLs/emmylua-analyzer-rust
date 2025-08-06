@@ -17,7 +17,7 @@ use crate::compilation::analyzer::doc::tags::{
 use crate::{
     InFiled, InferFailReason, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
     SignatureReturnStatus, TypeOps,
-    compilation::analyzer::{bind_type::bind_type, unresolve::UnResolveModuleRef},
+    compilation::analyzer::{common::bind_type, unresolve::UnResolveModuleRef},
     db_index::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaOperator, LuaSemanticDeclId,
         LuaSignatureId, LuaType,
@@ -386,7 +386,7 @@ pub fn analyze_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagCast) -> Option<()
 }
 
 pub fn analyze_see(analyzer: &mut DocAnalyzer, tag: LuaDocTagSee) -> Option<()> {
-    let owner = get_owner_id_or_report(analyzer, &tag)?;
+    let owner = get_owner_id(analyzer)?;
     let content = tag.get_see_content()?;
     let text = content.get_text();
 

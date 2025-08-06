@@ -17,7 +17,7 @@ pub fn analyze_for_range_stat(
     let iter_exprs = for_range_stat.get_expr_list().collect::<Vec<_>>();
     let cache = analyzer
         .context
-        .infer_manager
+        .infer_caches
         .get_infer_cache(analyzer.file_id);
     let iter_var_types = infer_for_range_iter_expr_func(analyzer.db, cache, &iter_exprs);
 

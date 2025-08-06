@@ -6,7 +6,7 @@ use crate::{
     InFiled, InferFailReason, LuaDeclId, LuaMember, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
     LuaTypeCache, SignatureReturnStatus, TypeOps,
     compilation::analyzer::{
-        bind_type::{add_member, bind_type},
+        common::{add_member, bind_type},
         lua::{analyze_return_point, infer_for_range_iter_expr_func},
     },
     db_index::{DbIndex, LuaMemberOwner, LuaType},
@@ -125,12 +125,7 @@ pub fn try_resolve_table_field(
     };
 
     let member_id = LuaMemberId::new(field.get_syntax_id(), file_id);
-    let member = LuaMember::new(
-        member_id,
-        member_key,
-        unresolve_table_field.decl_feature,
-        None,
-    );
+    let member = LuaMember::new(member_id, member_key, unresolve_table_field.decl_feature);
     db.get_member_index_mut().add_member(owner_id, member);
     db.get_type_index_mut().bind_type(
         member_id.clone().into(),
