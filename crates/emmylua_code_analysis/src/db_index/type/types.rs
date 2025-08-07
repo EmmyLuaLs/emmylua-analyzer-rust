@@ -61,6 +61,7 @@ pub enum LuaType {
     MultiLineUnion(Arc<LuaMultiLineUnion>),
     TypeGuard(Arc<LuaType>),
     ConstTplRef(Arc<GenericTpl>),
+    GlobalTable(ArcIntern<SmolStr>),
 }
 
 impl PartialEq for LuaType {
@@ -109,6 +110,7 @@ impl PartialEq for LuaType {
             (LuaType::TypeGuard(a), LuaType::TypeGuard(b)) => a == b,
             (LuaType::Never, LuaType::Never) => true,
             (LuaType::ConstTplRef(a), LuaType::ConstTplRef(b)) => a == b,
+            (LuaType::GlobalTable(a), LuaType::GlobalTable(b)) => a == b,
             _ => false, // 不同变体之间不相等
         }
     }
@@ -142,50 +144,51 @@ impl Hash for LuaType {
             LuaType::Def(a) => (20, a).hash(state),
             LuaType::Array(a) => (22, a).hash(state),
             LuaType::Call(a) => (23, a).hash(state),
-            LuaType::Tuple(a) => (25, a).hash(state),
-            LuaType::DocFunction(a) => (26, a).hash(state),
+            LuaType::Tuple(a) => (24, a).hash(state),
+            LuaType::DocFunction(a) => (25, a).hash(state),
             LuaType::Object(a) => {
                 let ptr = Arc::as_ptr(a);
-                (27, ptr).hash(state)
+                (26, ptr).hash(state)
             }
             LuaType::Union(a) => {
                 let ptr = Arc::as_ptr(a);
-                (28, ptr).hash(state)
+                (27, ptr).hash(state)
             }
             LuaType::Intersection(a) => {
                 let ptr = Arc::as_ptr(a);
-                (29, ptr).hash(state)
+                (28, ptr).hash(state)
             }
             LuaType::Generic(a) => {
                 let ptr = Arc::as_ptr(a);
-                (30, ptr).hash(state)
+                (29, ptr).hash(state)
             }
             LuaType::TableGeneric(a) => {
                 let ptr = Arc::as_ptr(a);
-                (31, ptr).hash(state)
+                (30, ptr).hash(state)
             }
-            LuaType::TplRef(a) => (32, a).hash(state),
-            LuaType::StrTplRef(a) => (33, a).hash(state),
+            LuaType::TplRef(a) => (31, a).hash(state),
+            LuaType::StrTplRef(a) => (32, a).hash(state),
             LuaType::Variadic(a) => {
                 let ptr = Arc::as_ptr(a);
-                (34, ptr).hash(state)
+                (33, ptr).hash(state)
             }
-            LuaType::DocBooleanConst(a) => (35, a).hash(state),
-            LuaType::Signature(a) => (36, a).hash(state),
-            LuaType::Instance(a) => (37, a).hash(state),
-            LuaType::DocStringConst(a) => (38, a).hash(state),
-            LuaType::DocIntegerConst(a) => (39, a).hash(state),
-            LuaType::Namespace(a) => (40, a).hash(state),
+            LuaType::DocBooleanConst(a) => (34, a).hash(state),
+            LuaType::Signature(a) => (35, a).hash(state),
+            LuaType::Instance(a) => (36, a).hash(state),
+            LuaType::DocStringConst(a) => (37, a).hash(state),
+            LuaType::DocIntegerConst(a) => (38, a).hash(state),
+            LuaType::Namespace(a) => (39, a).hash(state),
             LuaType::MultiLineUnion(a) => {
                 let ptr = Arc::as_ptr(a);
-                (43, ptr).hash(state)
+                (40, ptr).hash(state)
             }
             LuaType::TypeGuard(a) => {
                 let ptr = Arc::as_ptr(a);
-                (44, ptr).hash(state)
+                (41, ptr).hash(state)
             }
-            LuaType::Never => 45.hash(state),
-            LuaType::ConstTplRef(a) => (46, a).hash(state),
+            LuaType::Never => 42.hash(state),
+            LuaType::ConstTplRef(a) => (43, a).hash(state),
+            LuaType::GlobalTable(a) => (44, a).hash(state),
         }
     }
 }

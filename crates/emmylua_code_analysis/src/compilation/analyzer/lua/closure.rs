@@ -144,7 +144,7 @@ fn analyze_return(
         &analyzer.db,
         &mut analyzer
             .context
-            .infer_manager
+            .infer_caches
             .get_infer_cache(analyzer.file_id),
         &return_points,
     ) {
