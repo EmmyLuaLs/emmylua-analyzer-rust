@@ -365,4 +365,52 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_see_tag() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                --- Description
+                ---
+                --- @see a.b.c
+                local function te<??>st() end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function test()\n```\n\n---\n\nDescription\n\n---\n\n@*see* a.b.c".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                --- Description
+                ---
+                --- @see a.b.c see description
+                local function te<??>st() end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function test()\n```\n\n---\n\nDescription\n\n---\n\n@*see* a.b.c see description".to_string(),
+            },
+        ));
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_other_tag() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                --- Description
+                ---
+                --- @xyz content
+                local function te<??>st() end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function test()\n```\n\n---\n\nDescription\n\n---\n\n@*xyz* content".to_string(),
+            },
+        ));
+
+        Ok(())
+    }
 }
