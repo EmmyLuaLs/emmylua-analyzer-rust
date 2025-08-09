@@ -30,9 +30,10 @@ pub fn build_semantic_info_hover(
     semantic_info: SemanticInfo,
     range: TextRange,
 ) -> Option<Hover> {
+    let verbose = semantic_model.get_emmyrc().hover.verbose;
     let typ = semantic_info.clone().typ;
     if semantic_info.semantic_decl.is_none() {
-        return build_hover_without_property(db, document, token, typ);
+        return build_hover_without_property(db, document, token, typ, verbose);
     }
     let hover_builder = build_hover_content(
         compilation,
@@ -42,6 +43,7 @@ pub fn build_semantic_info_hover(
         semantic_info.semantic_decl.unwrap(),
         false,
         Some(token.clone()),
+        verbose,
     );
     if let Some(hover_builder) = hover_builder {
         hover_builder.build_hover_result(document.to_lsp_range(range))
@@ -55,8 +57,15 @@ fn build_hover_without_property(
     document: &LuaDocument,
     token: LuaSyntaxToken,
     typ: LuaType,
+    verbose: bool,
 ) -> Option<Hover> {
-    let hover = humanize_type(db, &typ, RenderLevel::Detailed);
+    let render_level = if verbose {
+        RenderLevel::Verbose
+    } else {
+        RenderLevel::Detailed
+    };
+
+    let hover = humanize_type(db, &typ, render_level);
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: lsp_types::MarkupKind::Markdown,
@@ -89,6 +98,7 @@ pub fn build_hover_content_for_completion<'a>(
         property_id,
         true,
         None,
+        semantic_model.get_emmyrc().hover.verbose,
     )
 }
 
@@ -100,19 +110,20 @@ fn build_hover_content<'a>(
     property_id: LuaSemanticDeclId,
     is_completion: bool,
     token: Option<LuaSyntaxToken>,
+    verbose: bool,
 ) -> Option<HoverBuilder<'a>> {
     let mut builder = HoverBuilder::new(compilation, semantic_model, token, is_completion);
     match property_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
             let typ = typ?;
-            build_decl_hover(&mut builder, db, typ, decl_id);
+            build_decl_hover(&mut builder, db, typ, decl_id, verbose);
         }
         LuaSemanticDeclId::Member(member_id) => {
             let typ = typ?;
-            build_member_hover(&mut builder, db, typ, member_id);
+            build_member_hover(&mut builder, db, typ, member_id, verbose);
         }
         LuaSemanticDeclId::TypeDecl(type_decl_id) => {
-            build_type_decl_hover(&mut builder, db, type_decl_id);
+            build_type_decl_hover(&mut builder, db, type_decl_id, verbose);
         }
         _ => return None,
     }
@@ -124,6 +135,7 @@ fn build_decl_hover(
     db: &DbIndex,
     typ: LuaType,
     decl_id: LuaDeclId,
+    verbose: bool,
 ) -> Option<()> {
     let decl = db.get_decl_index().get_decl(&decl_id)?;
 
@@ -151,7 +163,7 @@ fn build_decl_hover(
             semantic_decls.push((semantic_decl, typ.clone()));
         }
 
-        hover_function_type(builder, db, &semantic_decls);
+        hover_function_type(builder, db, &semantic_decls, verbose);
 
         if let Some((LuaSemanticDeclId::Member(member_id), _)) = semantic_decls
             .iter()
@@ -166,7 +178,7 @@ fn build_decl_hover(
             .add_signature_params_rets_description(builder.semantic_model.get_type(decl_id.into()));
     } else {
         if typ.is_const() {
-            let const_value = hover_const_type(db, &typ);
+            let const_value = hover_const_type(db, &typ, verbose);
             let prefix = if decl.is_local() {
                 "local "
             } else {
@@ -177,7 +189,7 @@ fn build_decl_hover(
             let decl_hover_type =
                 get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
             let type_humanize_text =
-                hover_humanize_type(builder, &decl_hover_type, Some(RenderLevel::Detailed));
+                hover_humanize_type(builder, &decl_hover_type, verbose, RenderLevel::Detailed);
             let prefix = if decl.is_local() {
                 "local "
             } else {
@@ -209,6 +221,7 @@ fn build_member_hover(
     db: &DbIndex,
     typ: LuaType,
     member_id: LuaMemberId,
+    verbose: bool,
 ) -> Option<()> {
     let member = db.get_member_index().get_member(&member_id)?;
     let mut semantic_decls = find_member_origin_owners(
@@ -245,7 +258,7 @@ fn build_member_hover(
             semantic_decls.push((semantic_decl, typ.clone()));
         }
 
-        hover_function_type(builder, db, &semantic_decls);
+        hover_function_type(builder, db, &semantic_decls, verbose);
 
         builder.set_location_path(Some(&member));
 
@@ -255,14 +268,14 @@ fn build_member_hover(
         );
     } else {
         if typ.is_const() {
-            let const_value = hover_const_type(db, &typ);
+            let const_value = hover_const_type(db, &typ, verbose);
             builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
             builder.set_location_path(Some(&member));
         } else {
             let member_hover_type =
                 get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
             let type_humanize_text =
-                hover_humanize_type(builder, &member_hover_type, Some(RenderLevel::Simple));
+                hover_humanize_type(builder, &member_hover_type, verbose, RenderLevel::Simple);
             builder
                 .set_type_description(format!("(field) {}: {}", member_name, type_humanize_text));
             builder.set_location_path(Some(&member));
@@ -285,23 +298,27 @@ fn build_type_decl_hover(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     type_decl_id: LuaTypeDeclId,
+    verbose: bool,
 ) -> Option<()> {
+    let render_level = if verbose {
+        RenderLevel::Verbose
+    } else {
+        RenderLevel::Detailed
+    };
+
     let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
     let type_description = if type_decl.is_alias() {
         if let Some(origin) = type_decl.get_alias_origin(db, None) {
-            let origin_type = humanize_type(db, &origin, RenderLevel::Detailed);
+            let origin_type = humanize_type(db, &origin, render_level);
             format!("(alias) {} = {}", type_decl.get_name(), origin_type)
         } else {
             "".to_string()
         }
     } else if type_decl.is_enum() {
-        format!("(enum) {}", type_decl.get_name())
+        let humanize_text = humanize_type(db, &LuaType::Ref(type_decl_id.clone()), render_level);
+        format!("(enum) {}", humanize_text)
     } else {
-        let humanize_text = humanize_type(
-            db,
-            &LuaType::Def(type_decl_id.clone()),
-            RenderLevel::Detailed,
-        );
+        let humanize_text = humanize_type(db, &LuaType::Ref(type_decl_id.clone()), render_level);
         format!("(class) {}", humanize_text)
     };
 

@@ -10,8 +10,14 @@ use rowan::TextRange;
 
 use super::hover_builder::HoverBuilder;
 
-pub fn hover_const_type(db: &DbIndex, typ: &LuaType) -> String {
-    let const_value = humanize_type(db, typ, RenderLevel::Detailed);
+pub fn hover_const_type(db: &DbIndex, typ: &LuaType, verbose: bool) -> String {
+    let render_level = if verbose {
+        RenderLevel::Verbose
+    } else {
+        RenderLevel::Detailed
+    };
+
+    let const_value = humanize_type(db, typ, render_level);
 
     match typ {
         LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
@@ -26,8 +32,15 @@ pub fn hover_const_type(db: &DbIndex, typ: &LuaType) -> String {
 pub fn hover_humanize_type(
     builder: &mut HoverBuilder,
     ty: &LuaType,
-    fallback_level: Option<RenderLevel>, // 当有值时, 若获取类型描述为空会回退到使用`humanize_type()`
+    verbose: bool,
+    fallback_level: RenderLevel, // 当有值时, 若获取类型描述为空会回退到使用`humanize_type()`
 ) -> String {
+    let render_level = if verbose {
+        RenderLevel::Verbose
+    } else {
+        RenderLevel::Detailed
+    };
+
     let db = builder.semantic_model.get_db();
     match ty {
         LuaType::Ref(type_decl_id) => {
@@ -40,17 +53,19 @@ pub fn hover_humanize_type(
                         db,
                         multi_union.as_ref(),
                         Some(type_decl.get_full_name()),
+                        verbose,
                     )
                     .unwrap_or_default();
                 }
             }
-            humanize_type(db, ty, fallback_level.unwrap_or(RenderLevel::Simple))
+            humanize_type(db, ty, fallback_level)
         }
         LuaType::MultiLineUnion(multi_union) => {
-            hover_multi_line_union_type(builder, db, multi_union.as_ref(), None).unwrap_or_default()
+            hover_multi_line_union_type(builder, db, multi_union.as_ref(), None, verbose)
+                .unwrap_or_default()
         }
-        LuaType::Union(union) => hover_union_type(builder, union, RenderLevel::Detailed),
-        _ => humanize_type(db, ty, fallback_level.unwrap_or(RenderLevel::Simple)),
+        LuaType::Union(union) => hover_union_type(builder, union, render_level, verbose),
+        _ => humanize_type(db, ty, fallback_level),
     }
 }
 
@@ -58,9 +73,10 @@ fn hover_union_type(
     builder: &mut HoverBuilder,
     union: &LuaUnionType,
     level: RenderLevel,
+    verbose: bool,
 ) -> String {
     format_union_type(union, level, |ty, level| {
-        hover_humanize_type(builder, ty, Some(level))
+        hover_humanize_type(builder, ty, verbose, level)
     })
 }
 
@@ -69,14 +85,21 @@ fn hover_multi_line_union_type(
     db: &DbIndex,
     multi_union: &LuaMultiLineUnion,
     ty_name: Option<&str>,
+    verbose: bool,
 ) -> Option<String> {
+    let render_level = if verbose {
+        RenderLevel::Simple
+    } else {
+        RenderLevel::Normal
+    };
+
     let members = multi_union.get_unions();
     let type_name = if ty_name.is_none() {
         let members = multi_union.get_unions();
         let type_str = members
             .iter()
             .take(10)
-            .map(|(ty, _)| humanize_type(db, ty, RenderLevel::Simple))
+            .map(|(ty, _)| humanize_type(db, ty, render_level))
             .collect::<Vec<_>>()
             .join("|");
         Some(format!("({})", type_str))
@@ -85,7 +108,7 @@ fn hover_multi_line_union_type(
     };
     let mut text = format!("{}:\n", type_name.clone().unwrap_or_default());
     for (typ, description) in members {
-        let type_humanize_text = humanize_type(db, &typ, RenderLevel::Minimal);
+        let type_humanize_text = humanize_type(db, &typ, render_level.next_level().next_level());
         if let Some(description) = description {
             text.push_str(&format!(
                 "    | {} -- {}\n",

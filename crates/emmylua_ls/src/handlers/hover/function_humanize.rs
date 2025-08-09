@@ -30,6 +30,7 @@ pub fn hover_function_type(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     semantic_decls: &[(LuaSemanticDeclId, LuaType)],
+    verbose: bool,
 ) -> Option<()> {
     let (name, is_local) = {
         let Some((semantic_decl, _)) = semantic_decls.first() else {
@@ -134,6 +135,7 @@ pub fn hover_function_type(
                 is_local,
                 call_function.as_ref(),
                 &processed_types,
+                verbose,
             ),
             _ => {
                 // 记录非 Union 类型
@@ -146,6 +148,7 @@ pub fn hover_function_type(
                     &name,
                     is_local,
                     call_function.as_ref(),
+                    verbose,
                 )
             }
         };
@@ -243,7 +246,14 @@ fn hover_doc_function_type(
     lua_func: &LuaFunctionType,
     owner_member: Option<&LuaMember>,
     func_name: &str,
+    verbose: bool,
 ) -> String {
+    let render_level = if verbose {
+        RenderLevel::Simple
+    } else {
+        RenderLevel::Normal
+    };
+
     let async_label = if lua_func.is_async() { "async " } else { "" };
     let mut is_method = lua_func.is_colon_define();
     let mut type_label = "function ";
@@ -304,7 +314,7 @@ fn hover_doc_function_type(
             if index == 0 && is_method && !lua_func.is_colon_define() {
                 "".to_string()
             } else if let Some(ty) = &param.1 {
-                format!("{}: {}", name, humanize_type(db, ty, RenderLevel::Normal))
+                format!("{}: {}", name, humanize_type(db, ty, render_level))
             } else {
                 name.to_string()
             }
@@ -318,7 +328,7 @@ fn hover_doc_function_type(
         match ret_type {
             LuaType::Nil => "".to_string(),
             _ => {
-                format!(" -> {}", humanize_type(db, ret_type, RenderLevel::Simple))
+                format!(" -> {}", humanize_type(db, ret_type, render_level))
             }
         }
     };
@@ -339,7 +349,14 @@ fn hover_signature_type(
     func_name: &str,
     is_local: bool,
     call_function: Option<&LuaFunctionType>,
+    verbose: bool,
 ) -> Option<HoverSignatureResult> {
+    let render_level = if verbose {
+        RenderLevel::Simple
+    } else {
+        RenderLevel::Normal
+    };
+
     let signature = db.get_signature_index().get(&signature_id)?;
 
     let mut is_method = signature.is_colon_define;
@@ -410,7 +427,7 @@ fn hover_signature_type(
                 if index == 0 && !signature.is_colon_define && is_method {
                     "".to_string()
                 } else if let Some(ty) = &param.1 {
-                    format!("{}: {}", name, humanize_type(db, ty, RenderLevel::Simple))
+                    format!("{}: {}", name, humanize_type(db, ty, render_level))
                 } else {
                     name
                 }
@@ -418,7 +435,7 @@ fn hover_signature_type(
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join(", ");
-        let rets = build_signature_rets(builder, signature, builder.is_completion, None);
+        let rets = build_signature_rets(builder, signature, builder.is_completion, None, verbose);
         let result = format_function_type(type_label, async_label, full_name.clone(), params, rets);
         // 由于 @field 定义的`docfunction`会被视为`signature`, 因此这里额外处理
         if let Some(call_function) = call_function {
@@ -450,7 +467,7 @@ fn hover_signature_type(
                     {
                         "".to_string()
                     } else if let Some(ty) = &param.1 {
-                        format!("{}: {}", name, humanize_type(db, ty, RenderLevel::Simple))
+                        format!("{}: {}", name, humanize_type(db, ty, render_level))
                     } else {
                         name
                     }
@@ -458,8 +475,13 @@ fn hover_signature_type(
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join(", ");
-            let rets =
-                build_signature_rets(builder, signature, builder.is_completion, Some(overload));
+            let rets = build_signature_rets(
+                builder,
+                signature,
+                builder.is_completion,
+                Some(overload),
+                verbose,
+            );
             let result =
                 format_function_type(type_label, async_label, full_name.clone(), params, rets);
 
@@ -490,7 +512,14 @@ fn build_signature_rets(
     signature: &LuaSignature,
     is_completion: bool,
     overload: Option<&LuaFunctionType>,
+    verbose: bool,
 ) -> String {
+    let render_level = if verbose {
+        RenderLevel::Simple
+    } else {
+        RenderLevel::Normal
+    };
+
     let db = builder.semantic_model.get_db();
     let mut result = String::new();
     // overload 的返回值固定为单行
@@ -499,7 +528,7 @@ fn build_signature_rets(
         match ret_type {
             LuaType::Nil => "".to_string(),
             _ => {
-                format!(" -> {}", humanize_type(db, ret_type, RenderLevel::Simple))
+                format!(" -> {}", humanize_type(db, ret_type, render_level))
             }
         }
     } else {
@@ -518,7 +547,7 @@ fn build_signature_rets(
                     " -> {}",
                     rets.iter()
                         .enumerate()
-                        .map(|(i, ret)| build_signature_ret_type(builder, ret, i))
+                        .map(|(i, ret)| build_signature_ret_type(builder, ret, i, verbose))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
@@ -539,7 +568,7 @@ fn build_signature_rets(
             rets_string_multiline.push_str("\n");
 
             for (i, ret) in rets.iter().enumerate() {
-                let type_text = build_signature_ret_type(builder, ret, i);
+                let type_text = build_signature_ret_type(builder, ret, i, verbose);
                 let prefix = if i == 0 {
                     "-> ".to_string()
                 } else {
@@ -569,9 +598,16 @@ fn build_signature_ret_type(
     builder: &mut HoverBuilder,
     ret_info: &LuaDocReturnInfo,
     i: usize,
+    verbose: bool,
 ) -> String {
+    let render_level = if verbose {
+        RenderLevel::Simple
+    } else {
+        RenderLevel::Normal
+    };
+
     let type_expansion_count = builder.get_type_expansion_count();
-    let type_text = hover_humanize_type(builder, &ret_info.type_ref, Some(RenderLevel::Simple));
+    let type_text = hover_humanize_type(builder, &ret_info.type_ref, verbose, render_level);
     if builder.get_type_expansion_count() > type_expansion_count {
         // 重新设置`type_expansion`
         if let Some(pop_type_expansion) =
@@ -623,6 +659,7 @@ fn process_single_function_type(
     name: &str,
     is_local: bool,
     call_function: Option<&LuaFunctionType>,
+    verbose: bool,
 ) -> ProcessFunctionTypeResult {
     match typ {
         LuaType::Function => ProcessFunctionTypeResult::Single(HoverFunctionInfo {
@@ -633,7 +670,7 @@ fn process_single_function_type(
         }),
         LuaType::DocFunction(lua_func) => {
             let type_description =
-                hover_doc_function_type(builder, db, &lua_func, function_member, &name);
+                hover_doc_function_type(builder, db, &lua_func, function_member, &name, verbose);
             let is_call_function = if let Some(call_function) = call_function {
                 call_function.get_params() == lua_func.get_params()
             } else {
@@ -656,6 +693,7 @@ fn process_single_function_type(
                 name,
                 is_local,
                 call_function,
+                verbose,
             )
             .unwrap_or_else(|| HoverSignatureResult {
                 type_description: format!("function {}", name),
@@ -683,6 +721,7 @@ fn process_single_function_type(
                     name,
                     is_local,
                     call_function,
+                    verbose,
                 ) {
                     ProcessFunctionTypeResult::Single(info) => {
                         results.push(info);
@@ -718,6 +757,7 @@ fn process_single_function_type_with_exclusions(
     is_local: bool,
     call_function: Option<&LuaFunctionType>,
     processed_types: &HashSet<LuaType>,
+    verbose: bool,
 ) -> ProcessFunctionTypeResult {
     match typ {
         LuaType::Union(union) => {
@@ -737,6 +777,7 @@ fn process_single_function_type_with_exclusions(
                     is_local,
                     call_function,
                     processed_types,
+                    verbose,
                 ) {
                     ProcessFunctionTypeResult::Single(info) => {
                         results.push(info);
@@ -764,6 +805,7 @@ fn process_single_function_type_with_exclusions(
                 name,
                 is_local,
                 call_function,
+                verbose,
             )
         }
     }
