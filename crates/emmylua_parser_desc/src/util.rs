@@ -358,6 +358,7 @@ pub fn sort_result(items: &mut Vec<DescItem>) {
 mod tests {
     use super::*;
     use emmylua_parser::{LuaParser, ParserConfig};
+    use googletest::prelude::*;
 
     fn get_desc(code: &str) -> LuaDocDescription {
         LuaParser::parse(code, ParserConfig::default())
@@ -376,9 +377,9 @@ mod tests {
             .collect()
     }
 
-    #[test]
+    #[gtest]
     fn test_desc_to_lines() {
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 -- Desc
@@ -387,7 +388,7 @@ mod tests {
             vec![""; 0]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 ----------
@@ -398,7 +399,7 @@ mod tests {
             vec![""; 0]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 ----------
@@ -411,7 +412,7 @@ mod tests {
             vec![""; 0]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 --- Desc
@@ -420,7 +421,7 @@ mod tests {
             vec!["Desc"]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 --------
@@ -431,7 +432,7 @@ mod tests {
             vec!["Desc"]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 --------
@@ -444,7 +445,7 @@ mod tests {
             vec![" Desc", "-----", " Desc"]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 --- Desc
@@ -454,7 +455,7 @@ mod tests {
             vec![" Desc", "Desc 2"]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 ---Desc
@@ -464,7 +465,7 @@ mod tests {
             vec!["Desc", " Desc 2"]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 ---  Desc
@@ -474,7 +475,7 @@ mod tests {
             vec!["Desc", "Desc 2"]
         );
 
-        assert_eq!(
+        expect_eq!(
             run_desc_to_lines(
                 r#"
                 --- @param x int Desc

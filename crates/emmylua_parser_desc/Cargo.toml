@@ -17,3 +17,6 @@ emmylua_parser.workspace = true
 # external
 rowan.workspace = true
 unicode-general-category.workspace = true
+
+[dev-dependencies]
+googletest.workspace = true

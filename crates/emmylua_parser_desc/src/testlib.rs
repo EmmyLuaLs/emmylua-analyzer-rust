@@ -3,8 +3,9 @@ use crate::{DescItem, LuaDescParser};
 use emmylua_parser::{
     LuaAstNode, LuaDocDescription, LuaKind, LuaParser, LuaSyntaxKind, ParserConfig,
 };
+use googletest::prelude::*;
 
-pub fn test(code: &str, mut parser: Box<dyn LuaDescParser>, expected: &str) {
+pub fn test(code: &str, mut parser: Box<dyn LuaDescParser>, expected: &str) -> Result<()> {
     let tree = LuaParser::parse(code, ParserConfig::default());
     let Some(desc) = tree
         .get_red_root()
@@ -12,7 +13,7 @@ pub fn test(code: &str, mut parser: Box<dyn LuaDescParser>, expected: &str) {
         .filter(|node| matches!(node.kind(), LuaKind::Syntax(LuaSyntaxKind::DocDescription)))
         .next()
     else {
-        panic!("No desc found in {:?}", tree.get_red_root());
+        return fail!("No desc found in {:?}", tree.get_red_root());
     };
     let ranges = parser.parse(code, LuaDocDescription::cast(desc).unwrap());
     let result = format_result(code, ranges);
@@ -20,34 +21,9 @@ pub fn test(code: &str, mut parser: Box<dyn LuaDescParser>, expected: &str) {
     let result_trimmed = result.trim();
     let expected_trimmed = expected.trim();
 
-    if result_trimmed != expected_trimmed {
-        // Split strings by lines
-        let result_lines: Vec<&str> = result_trimmed.lines().collect();
-        let expected_lines: Vec<&str> = expected_trimmed.lines().collect();
+    expect_eq!(result_trimmed, expected_trimmed);
 
-        println!("Strings do not match! Detailed comparison:");
-        println!(
-            "Actual result has {} lines, expected result has {} lines",
-            result_lines.len(),
-            expected_lines.len()
-        );
-        println!();
-
-        let max_lines = result_lines.len().max(expected_lines.len());
-        for i in 0..max_lines {
-            let actual_line = result_lines.get(i).unwrap_or(&"<line does not exist>");
-            let expected_line = expected_lines.get(i).unwrap_or(&"<line does not exist>");
-
-            if actual_line != expected_line {
-                println!("Line {} does not match:", i + 1);
-                println!("  Actual:   {:?}", actual_line);
-                println!("  Expected: {:?}", expected_line);
-                println!();
-            }
-        }
-
-        panic!("Test failed: actual result does not match expected result");
-    }
+    Ok(())
 }
 
 #[allow(unused)]
@@ -73,20 +49,20 @@ pub fn format_result(text: &str, mut items: Vec<DescItem>) -> String {
     let mut cur_items: Vec<DescItem> = Vec::new();
     let mut res = String::new();
 
-    fn pop_cur_itemss(
+    fn pop_cur_items(
         text: &str,
-        cur_itemss: &mut Vec<DescItem>,
+        cur_items: &mut Vec<DescItem>,
         pos: &mut usize,
         end: usize,
         res: &mut String,
     ) {
-        while let Some(cur_items) = cur_itemss.last() {
-            let cur_end: usize = cur_items.range.end().into();
+        while let Some(cur_item) = cur_items.last() {
+            let cur_end: usize = cur_item.range.end().into();
             if cur_end <= end {
                 *res += &text[*pos..cur_end];
                 *pos = cur_end;
-                *res += &format!("</{:?}>", cur_items.kind);
-                cur_itemss.pop();
+                *res += &format!("</{:?}>", cur_item.kind);
+                cur_items.pop();
             } else {
                 break;
             }
@@ -97,7 +73,7 @@ pub fn format_result(text: &str, mut items: Vec<DescItem>) -> String {
     }
 
     for next_item in items {
-        pop_cur_itemss(
+        pop_cur_items(
             text,
             &mut cur_items,
             &mut pos,
@@ -110,7 +86,7 @@ pub fn format_result(text: &str, mut items: Vec<DescItem>) -> String {
         cur_items.push(next_item);
     }
 
-    pop_cur_itemss(text, &mut cur_items, &mut pos, text.len(), &mut res);
+    pop_cur_items(text, &mut cur_items, &mut pos, text.len(), &mut res);
     res += &text[pos..];
 
     res

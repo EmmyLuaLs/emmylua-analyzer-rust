@@ -1728,9 +1728,10 @@ mod tests {
     use super::*;
     #[allow(unused)]
     use crate::testlib::{print_result, test};
+    use googletest::prelude::*;
 
-    #[test]
-    fn test_rst() {
+    #[gtest]
+    fn test_rst() -> Result<()> {
         let code = r#"
 --- Inline markup
 --- =============
@@ -2179,11 +2180,12 @@ mod tests {
 --- <Scope><Markup>-</Markup> And this is list.</Scope>
 "#;
 
-        test(&code, Box::new(RstParser::new(None, None, None)), &expected);
+        test(&code, Box::new(RstParser::new(None, None, None)), &expected).or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_rst_no_indent() {
+    #[gtest]
+    fn test_rst_no_indent() -> Result<()> {
         let code = r#"
 ---```lua
 ---
@@ -2214,11 +2216,13 @@ local t = 123
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), None)),
             &expected,
-        );
+        )
+        .or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_rst_default_role() {
+    #[gtest]
+    fn test_rst_default_role() -> Result<()> {
         let code = r#"--- See `ref`"#;
 
         let expected = r#"--- See <Markup>`</Markup><Ref>ref</Ref><Markup>`</Markup>"#;
@@ -2227,11 +2231,13 @@ local t = 123
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), None)),
             &expected,
-        );
+        )
+        .or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_rst_primary_domain() {
+    #[gtest]
+    fn test_rst_primary_domain() -> Result<()> {
         let code = r#"--- See :obj:`ref`"#;
 
         let expected = r#"
@@ -2242,28 +2248,33 @@ local t = 123
             &code,
             Box::new(RstParser::new(Some("lua".to_string()), None, None)),
             &expected,
-        );
+        )
+        .or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_rst_search_at_offset() {
+    #[gtest]
+    fn test_rst_search_at_offset() -> Result<()> {
         let code = r#"--- See :lua:obj:`x` :lua:obj:`ref`"#;
         let expected = r#"--- See :lua:obj:`x` :lua:obj:`<Ref>ref</Ref>`"#;
         test(
             &code,
             Box::new(RstParser::new(None, None, Some(31))),
             &expected,
-        );
+        )
+        .or_fail()?;
         test(
             &code,
             Box::new(RstParser::new(None, None, Some(32))),
             &expected,
-        );
+        )
+        .or_fail()?;
         test(
             &code,
             Box::new(RstParser::new(None, None, Some(34))),
             &expected,
-        );
+        )
+        .or_fail()?;
 
         let code = r#"--- See :lua:obj:`x` :lua:obj:`"#;
         let expected = r#"--- See :lua:obj:`x` :lua:obj:`<Ref></Ref>"#;
@@ -2271,7 +2282,8 @@ local t = 123
             &code,
             Box::new(RstParser::new(None, None, Some(31))),
             &expected,
-        );
+        )
+        .or_fail()?;
 
         let code = r#"--- See :lua:obj:`x` :lua:obj:``..."#;
         let expected = r#"--- See :lua:obj:`x` :lua:obj:`<Ref>`</Ref>..."#;
@@ -2279,28 +2291,33 @@ local t = 123
             &code,
             Box::new(RstParser::new(None, None, Some(31))),
             &expected,
-        );
+        )
+        .or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_rst_search_at_offset_default_role() {
+    #[gtest]
+    fn test_rst_search_at_offset_default_role() -> Result<()> {
         let code = r#"--- See `ab`"#;
         let expected = r#"--- See `<Ref>ab</Ref>`"#;
         test(
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), Some(9))),
             &expected,
-        );
+        )
+        .or_fail()?;
         test(
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), Some(10))),
             &expected,
-        );
+        )
+        .or_fail()?;
         test(
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), Some(11))),
             &expected,
-        );
+        )
+        .or_fail()?;
 
         let code = r#"--- See `"#;
         let expected = r#"--- See `<Ref></Ref>"#;
@@ -2308,7 +2325,8 @@ local t = 123
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), Some(9))),
             &expected,
-        );
+        )
+        .or_fail()?;
 
         let code = r#"--- See `..."#;
         let expected = r#"--- See `<Ref>...</Ref>"#;
@@ -2316,7 +2334,8 @@ local t = 123
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), Some(9))),
             &expected,
-        );
+        )
+        .or_fail()?;
 
         let code = r#"--- See ``"#;
         let expected = r#"--- See `<Ref>`</Ref>"#;
@@ -2324,6 +2343,8 @@ local t = 123
             &code,
             Box::new(RstParser::new(None, Some("lua:obj".to_string()), Some(9))),
             &expected,
-        );
+        )
+        .or_fail()?;
+        Ok(())
     }
 }
