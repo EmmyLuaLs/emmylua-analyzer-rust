@@ -203,11 +203,12 @@ fn eat_string(reader: &mut Reader) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use googletest::prelude::*;
 
-    #[test]
+    #[gtest]
     fn test_parse_ref_target_simple() {
         let res = parse_ref_target("a.b.c.d", TextRange::up_to(7.into()), 7.into());
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (
@@ -230,10 +231,10 @@ mod tests {
         )
     }
 
-    #[test]
+    #[gtest]
     fn test_parse_ref_target_simple_partial() {
         let res = parse_ref_target("a.abc.d", TextRange::up_to(7.into()), 2.into());
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (
@@ -248,7 +249,7 @@ mod tests {
         );
 
         let res = parse_ref_target("a.abc.d", TextRange::up_to(7.into()), 3.into());
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (
@@ -263,7 +264,7 @@ mod tests {
         );
 
         let res = parse_ref_target("a.abc.d", TextRange::up_to(7.into()), 5.into());
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (
@@ -278,10 +279,10 @@ mod tests {
         );
     }
 
-    #[test]
+    #[gtest]
     fn test_parse_ref_target_type() {
         let res = parse_ref_target("a.b.[c.d].e", TextRange::up_to(11.into()), 11.into());
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (
@@ -304,10 +305,10 @@ mod tests {
         )
     }
 
-    #[test]
+    #[gtest]
     fn test_parse_ref_target_type_at_end() {
         let res = parse_ref_target("a.b.[c.d]", TextRange::up_to(9.into()), 9.into());
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (
@@ -326,14 +327,14 @@ mod tests {
         )
     }
 
-    #[test]
+    #[gtest]
     fn test_parse_ref_target_type_braces_strings() {
         let res = parse_ref_target(
             "a.b.[fun(x: table<int, string>): { n: int, lit: \"}]\" }]",
             TextRange::up_to(55.into()),
             55.into(),
         );
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (
@@ -354,10 +355,10 @@ mod tests {
         )
     }
 
-    #[test]
+    #[gtest]
     fn test_parse_ref_target_type_string_literal() {
         let res = parse_ref_target("a.b.['c']", TextRange::up_to(9.into()), 9.into());
-        assert_eq!(
+        expect_eq!(
             res,
             Some(vec![
                 (

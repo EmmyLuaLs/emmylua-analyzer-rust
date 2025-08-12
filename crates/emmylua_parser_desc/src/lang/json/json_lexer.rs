@@ -198,8 +198,9 @@ impl<'a> JsonLexer<'a> {
 mod tests {
     use super::*;
     use emmylua_parser::Reader;
+    use googletest::prelude::*;
 
-    #[test]
+    #[gtest]
     fn test_json_lexer_basic() {
         let json = r#"
 {
@@ -235,11 +236,11 @@ mod tests {
             }
         }
 
-        assert!(string_count > 0, "Should find strings");
-        assert!(number_count > 0, "Should find numbers");
-        assert!(keyword_count > 0, "Should find keywords");
-        assert!(brace_count > 0, "Should find braces");
-        assert!(bracket_count > 0, "Should find brackets");
+        expect_gt!(string_count, 0, "Should find strings");
+        expect_gt!(number_count, 0, "Should find numbers");
+        expect_gt!(keyword_count, 0, "Should find keywords");
+        expect_gt!(brace_count, 0, "Should find braces");
+        expect_gt!(bracket_count, 0, "Should find brackets");
 
         println!(
             "Found {} strings, {} numbers, {} keywords, {} braces, {} brackets",
@@ -247,7 +248,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[gtest]
     fn test_json_lexer_keywords() {
         let json = "true false null";
 
@@ -260,10 +261,10 @@ mod tests {
             .filter(|t| t.kind == JsonTokenKind::TkKeyword)
             .collect();
 
-        assert_eq!(keywords.len(), 3, "Should find exactly 3 keywords");
+        expect_eq!(keywords.len(), 3, "Should find exactly 3 keywords");
     }
 
-    #[test]
+    #[gtest]
     fn test_json_lexer_numbers() {
         let json = "42 -17 3.14 -2.5 1e10 1E-5 -1.23e+4";
 
@@ -276,10 +277,10 @@ mod tests {
             .filter(|t| t.kind == JsonTokenKind::TkNumber)
             .collect();
 
-        assert_eq!(numbers.len(), 7, "Should find exactly 7 numbers");
+        expect_eq!(numbers.len(), 7, "Should find exactly 7 numbers");
     }
 
-    #[test]
+    #[gtest]
     fn test_json_lexer_strings() {
         let json = r#""hello" "world with spaces" "escaped\"quote" "unicode\u0041""#;
 
@@ -292,10 +293,10 @@ mod tests {
             .filter(|t| t.kind == JsonTokenKind::TkString)
             .collect();
 
-        assert_eq!(strings.len(), 4, "Should find exactly 4 strings");
+        expect_eq!(strings.len(), 4, "Should find exactly 4 strings");
     }
 
-    #[test]
+    #[gtest]
     fn test_json_lexer_structure() {
         let json = r#"{"key": ["value1", "value2"]}"#;
 
@@ -315,11 +316,11 @@ mod tests {
         let has_colon = tokens.iter().any(|t| t.kind == JsonTokenKind::TkColon);
         let has_comma = tokens.iter().any(|t| t.kind == JsonTokenKind::TkComma);
 
-        assert!(has_left_brace, "Should have left brace");
-        assert!(has_right_brace, "Should have right brace");
-        assert!(has_left_bracket, "Should have left bracket");
-        assert!(has_right_bracket, "Should have right bracket");
-        assert!(has_colon, "Should have colon");
-        assert!(has_comma, "Should have comma");
+        expect_true!(has_left_brace, "Should have left brace");
+        expect_true!(has_right_brace, "Should have right brace");
+        expect_true!(has_left_bracket, "Should have left bracket");
+        expect_true!(has_right_bracket, "Should have right bracket");
+        expect_true!(has_colon, "Should have colon");
+        expect_true!(has_comma, "Should have comma");
     }
 }

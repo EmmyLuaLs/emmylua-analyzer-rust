@@ -1465,9 +1465,10 @@ mod tests {
     use super::*;
     #[allow(unused)]
     use crate::testlib::{print_result, test};
+    use googletest::prelude::*;
 
-    #[test]
-    fn test_md() {
+    #[gtest]
+    fn test_md() -> Result<()> {
         let code = r#"
 --- # Inline code
 ---
@@ -1720,11 +1721,12 @@ mod tests {
 "#;
 
         // print_result(&code, Box::new(MdParser::new(None)));
-        test(&code, Box::new(MdParser::new(None)), &expected);
+        test(&code, Box::new(MdParser::new(None)), &expected).or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_myst() {
+    #[gtest]
+    fn test_myst() -> Result<()> {
         let code = r#"
 --- # Inline
 ---
@@ -1823,11 +1825,12 @@ mod tests {
 --- <Markup>$$</Markup> <Arg>(anchor)</Arg></Scope>
 "#;
 
-        test(&code, Box::new(MdParser::new_myst(None, None)), &expected);
+        test(&code, Box::new(MdParser::new_myst(None, None)), &expected).or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_myst_primary_domain() {
+    #[gtest]
+    fn test_myst_primary_domain() -> Result<()> {
         let code = r#"--- See {obj}`ref`"#;
 
         let expected = r#"
@@ -1838,28 +1841,33 @@ mod tests {
             &code,
             Box::new(MdParser::new_myst(Some("lua".to_string()), None)),
             &expected,
-        );
+        )
+        .or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_myst_search_at_offset() {
+    #[gtest]
+    fn test_myst_search_at_offset() -> Result<()> {
         let code = r#"--- See {lua:obj}`x` {lua:obj}`ref`"#;
         let expected = r#"--- See {lua:obj}`x` {lua:obj}`<Ref>ref</Ref>`"#;
         test(
             &code,
             Box::new(MdParser::new_myst(None, Some(31))),
             &expected,
-        );
+        )
+        .or_fail()?;
         test(
             &code,
             Box::new(MdParser::new_myst(None, Some(32))),
             &expected,
-        );
+        )
+        .or_fail()?;
         test(
             &code,
             Box::new(MdParser::new_myst(None, Some(34))),
             &expected,
-        );
+        )
+        .or_fail()?;
 
         let code = r#"--- See {lua:obj}`x` {lua:obj}`"#;
         let expected = r#"--- See {lua:obj}`x` {lua:obj}`<Ref></Ref>"#;
@@ -1867,7 +1875,8 @@ mod tests {
             &code,
             Box::new(MdParser::new_myst(None, Some(31))),
             &expected,
-        );
+        )
+        .or_fail()?;
 
         let code = r#"--- See {lua:obj}`x` {lua:obj}``..."#;
         let expected = r#"--- See {lua:obj}`x` {lua:obj}`<Ref>`...</Ref>"#;
@@ -1875,11 +1884,13 @@ mod tests {
             &code,
             Box::new(MdParser::new_myst(None, Some(31))),
             &expected,
-        );
+        )
+        .or_fail()?;
+        Ok(())
     }
 
-    #[test]
-    fn test_md_no_indent() {
+    #[gtest]
+    fn test_md_no_indent() -> Result<()> {
         let code = r#"
 ---```lua
 ---
@@ -1906,6 +1917,7 @@ local t = 123
 local t = 123
 "#;
 
-        test(&code, Box::new(MdParser::new(None)), &expected);
+        test(&code, Box::new(MdParser::new(None)), &expected).or_fail()?;
+        Ok(())
     }
 }

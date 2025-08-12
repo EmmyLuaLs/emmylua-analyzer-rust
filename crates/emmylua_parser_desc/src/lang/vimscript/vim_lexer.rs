@@ -448,8 +448,9 @@ impl<'a> VimscriptLexer<'a> {
 mod tests {
     use super::*;
     use emmylua_parser::Reader;
+    use googletest::prelude::*;
 
-    #[test]
+    #[gtest]
     fn test_vim_lexer_basic() {
         let code = r#"
 " This is a comment
@@ -483,10 +484,10 @@ endfunction
             }
         }
 
-        assert!(keyword_count > 0, "Should find keywords");
-        assert!(string_count > 0, "Should find strings");
-        assert!(comment_count > 0, "Should find comments");
-        assert!(number_count > 0, "Should find numbers");
+        expect_gt!(keyword_count, 0, "Should find keywords");
+        expect_gt!(string_count, 0, "Should find strings");
+        expect_gt!(comment_count, 0, "Should find comments");
+        expect_gt!(number_count, 0, "Should find numbers");
 
         println!(
             "Found {} keywords, {} strings, {} comments, {} numbers",
@@ -494,7 +495,7 @@ endfunction
         );
     }
 
-    #[test]
+    #[gtest]
     fn test_vim_lexer_keywords() {
         let code = "function! if else endif let echo return";
 
@@ -507,6 +508,6 @@ endfunction
             .filter(|t| t.kind == VimTokenKind::TkKeyword)
             .collect();
 
-        assert!(keywords.len() >= 5, "Should find multiple keywords");
+        expect_ge!(keywords.len(), 5, "Should find multiple keywords");
     }
 }
