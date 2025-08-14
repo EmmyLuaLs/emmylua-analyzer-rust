@@ -231,7 +231,7 @@ mod tests {
                 ---| 'B' # A2
             "#,
             VirtualHoverResult {
-                value: "```lua\n(alias) TesAlias = (\"A\"|\"B\")\n    | \"A\" -- A1\n    | \"B\" -- A2\n\n```".to_string(),
+                value: "```lua\n(alias) TesAlias = (\"A\" | \"B\")\n    | \"A\" -- A1\n    | \"B\" -- A2\n\n```".to_string(),
             },
         ));
         Ok(())
@@ -363,6 +363,59 @@ mod tests {
             },
         ));
 
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_verbose() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.hover.verbose = true;
+        ws.update_emmyrc(emmyrc);
+
+        ws.def(
+            r#"
+                --- @alias AA [1, AA, BB]
+
+                --- @class BB
+                --- @field a AA
+                --- @field b BB
+                --- @field c CC
+
+                --- @enum CC
+                local CC = { a = 1, b = 2 }
+            "#,
+        );
+
+        check!(ws.check_hover(
+            r#"
+                --- @type A<??>A
+                local _
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(alias) AA = (1, AA (1, AA, BB), BB {\n    a: AA,\n    b: BB,\n    c: CC,\n})\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                --- @type B<??>B
+                local _
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(class) BB {\n    a = AA (1, AA, BB),\n    b = BB {\n        a: AA,\n        b: BB,\n        c: CC,\n    },\n    c = CC {\n        a: integer = 1,\n        b: integer = 2,\n    },\n}\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                --- @type C<??>C
+                local _
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(enum) CC {\n    a = 1,\n    b = 2,\n}\n```".to_string(),
+            },
+        ));
         Ok(())
     }
 }
