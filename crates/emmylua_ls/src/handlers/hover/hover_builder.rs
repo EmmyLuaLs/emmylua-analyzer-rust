@@ -23,7 +23,7 @@ pub struct HoverBuilder<'a> {
     pub annotation_description: Vec<MarkedString>,
     /// Type expansion, often used for alias types
     pub type_expansion: Option<Vec<String>>,
-    /// see
+    /// For `@see` and unknown tags tags
     tag_content: Option<Vec<(String, String)>>,
 
     pub is_completion: bool,
@@ -239,6 +239,9 @@ impl<'a> HoverBuilder<'a> {
             }
 
             if let Some(tag_content) = &self.tag_content {
+                if !tag_content.is_empty() {
+                    content.push_str("\n---\n");
+                }
                 for (tag_name, description) in tag_content {
                     content.push_str(&format!("\n@*{}* {}\n", tag_name, description));
                 }

@@ -6,8 +6,8 @@ use crate::handlers::completion::providers::member_provider::add_completions_for
 use crate::handlers::completion::providers::module_path_provider::add_modules;
 use crate::util::{find_comment_scope, find_ref_at, resolve_ref};
 use emmylua_code_analysis::{LuaType, WorkspaceId};
-use emmylua_parser::{LuaAstNode, LuaDocDescription};
-use emmylua_parser_desc::LuaDescRefPathItem;
+use emmylua_parser::{LuaAstNode, LuaDocDescription, LuaTokenKind};
+use emmylua_parser_desc::{LuaDescRefPathItem, parse_ref_target};
 use rowan::TextRange;
 use std::collections::HashSet;
 
@@ -18,28 +18,41 @@ pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
 
     let semantic_model = &builder.semantic_model;
     let document = semantic_model.get_document();
-    let description = LuaDocDescription::cast(builder.trigger_token.parent()?)?;
 
-    // Quickly scan the line before actually parsing comment.
-    let line = document.get_line(builder.position_offset)?;
-    let line_range = document.get_line_range(line)?;
-    let line_text =
-        &document.get_text()[line_range.intersect(TextRange::up_to(builder.position_offset))?];
+    let path = if let Some(description) = builder
+        .trigger_token
+        .parent()
+        .and_then(LuaDocDescription::cast)
+    {
+        // Quickly scan the line before actually parsing comment.
+        let line = document.get_line(builder.position_offset)?;
+        let line_range = document.get_line_range(line)?;
+        let line_text = &document.get_text()
+            [line_range.intersect(TextRange::up_to(builder.position_offset))?];
 
-    if !line_text.contains('`') {
+        if !line_text.contains('`') {
+            return None;
+        }
+
+        find_ref_at(
+            semantic_model
+                .get_module()
+                .map(|m| m.workspace_id)
+                .unwrap_or(WorkspaceId::MAIN),
+            semantic_model.get_emmyrc(),
+            document.get_text(),
+            description,
+            builder.position_offset,
+        )?
+    } else if builder.trigger_token.kind() == LuaTokenKind::TkDocSeeContent.into() {
+        parse_ref_target(
+            document.get_text(),
+            builder.trigger_token.text_range(),
+            builder.position_offset,
+        )?
+    } else {
         return None;
-    }
-
-    let path = find_ref_at(
-        semantic_model
-            .get_module()
-            .map(|m| m.workspace_id)
-            .unwrap_or(WorkspaceId::MAIN),
-        semantic_model.get_emmyrc(),
-        document.get_text(),
-        description.clone(),
-        builder.position_offset,
-    )?;
+    };
 
     if path.is_empty() {
         add_global_completions(builder);

@@ -94,7 +94,12 @@ pub fn definition(
     } else if token.kind() == LuaTokenKind::TkDocSeeContent.into() {
         let general_token = LuaGeneralToken::cast(token.clone())?;
         if let Some(_) = general_token.get_parent::<LuaDocTagSee>() {
-            return goto_doc_see(&semantic_model, general_token);
+            return goto_doc_see(
+                &semantic_model,
+                &analysis.compilation,
+                general_token,
+                position_offset,
+            );
         }
     } else if token.kind() == LuaTokenKind::TkDocDetail.into() {
         let parent = token.parent()?;

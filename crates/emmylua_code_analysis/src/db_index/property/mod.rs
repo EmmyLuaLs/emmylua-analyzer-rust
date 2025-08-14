@@ -160,12 +160,18 @@ impl LuaPropertyIndex {
         &mut self,
         file_id: FileId,
         owner_id: LuaSemanticDeclId,
-        see_content: String,
+        mut see_content: String,
+        see_description: Option<String>,
     ) -> Option<()> {
         let property = self.get_or_create_property(owner_id.clone())?;
         let tag_content = property
             .tag_content
             .get_or_insert_with(|| Box::new(LuaTagContent::new()));
+
+        if let Some(see_description) = see_description {
+            see_content += " ";
+            see_content += &see_description;
+        }
 
         tag_content.add_tag("see".into(), see_content);
 

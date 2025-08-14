@@ -466,4 +466,56 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_goto_see() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let mut emmyrc = Emmyrc::default();
+        emmyrc.doc.syntax = DocSyntax::Myst;
+        ws.analysis.update_config(emmyrc.into());
+
+        ws.def_file(
+            "a.lua",
+            r#"
+                ---@class Meep
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                --- @see Mee<??>p
+            "#,
+            vec![Expected {
+                file: "a.lua".to_string(),
+                line: 1,
+            }],
+        ));
+
+        check!(ws.check_definition(
+            r#"
+                --- @see Meep {lua:obj}`Meep<??>`
+            "#,
+            vec![Expected {
+                file: "a.lua".to_string(),
+                line: 1,
+            }],
+        ));
+
+        check!(ws.check_definition(
+            r#"
+                --- @class Foo
+                --- @field bar int
+                local Foo = {}
+
+                --- @see b<??>ar
+                Foo.xxx = 0
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 2,
+            }],
+        ));
+
+        Ok(())
+    }
 }

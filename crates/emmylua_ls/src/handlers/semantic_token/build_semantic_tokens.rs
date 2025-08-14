@@ -219,10 +219,17 @@ fn build_tokens_semantic_token(
                 SemanticTokenModifier::DOCUMENTATION,
             );
         }
-        LuaTokenKind::TKDocPath | LuaTokenKind::TkDocSeeContent => {
+        LuaTokenKind::TKDocPath => {
             builder.push_with_modifier(
                 token,
                 SemanticTokenType::STRING,
+                SemanticTokenModifier::DOCUMENTATION,
+            );
+        }
+        LuaTokenKind::TkDocSeeContent => {
+            builder.push_with_modifier(
+                token,
+                SemanticTokenType::VARIABLE,
                 SemanticTokenModifier::DOCUMENTATION,
             );
         }

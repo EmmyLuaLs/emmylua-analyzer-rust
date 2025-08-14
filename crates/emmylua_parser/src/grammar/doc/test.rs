@@ -1361,6 +1361,33 @@ Syntax(Chunk)@0..33
     }
 
     #[test]
+    fn test_see_doc_with_description() {
+        let code = r#"
+        ---@see aaa.[1].[{"boo": Bar}].x#bbb description
+        "#;
+
+        let result = r##"
+Syntax(Chunk)@0..66
+  Syntax(Block)@0..66
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..57
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagSee)@13..45
+        Token(TkTagSee)@13..16 "see"
+        Token(TkWhitespace)@16..17 " "
+        Token(TkDocSeeContent)@17..45 "aaa.[1].[{\"boo\": Bar} ..."
+      Token(TkWhitespace)@45..46 " "
+      Syntax(DocDescription)@46..57
+        Token(TkDocDetail)@46..57 "description"
+    Token(TkEndOfLine)@57..58 "\n"
+    Token(TkWhitespace)@58..66 "        "
+        "##;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
     fn test_version_doc() {
         let code = r#"
         ---@version 5.1

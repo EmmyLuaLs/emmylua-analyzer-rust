@@ -403,7 +403,30 @@ impl LuaDocLexer<'_> {
                 LuaTokenKind::TkWhitespace
             }
             _ => {
-                reader.eat_while(|_| true);
+                let mut brace_level = 0usize;
+                while !reader.is_eof() {
+                    match reader.current_char() {
+                        '[' | '(' | '<' | '{' => {
+                            brace_level += 1;
+                            reader.bump();
+                        }
+                        ']' | ')' | '>' | '}' => {
+                            brace_level = brace_level.saturating_sub(1);
+                            reader.bump();
+                        }
+                        ch @ '"' | ch @ '\'' => {
+                            reader.bump();
+                            reader.eat_while(|c| c != ch);
+                            if reader.current_char() == ch {
+                                reader.bump();
+                            }
+                        }
+                        '-' | '_' | '.' | '#' | 'a'..='z' | 'A'..='Z' | '0'..='9' => reader.bump(),
+                        _ if brace_level > 0 => reader.bump(),
+                        _ => break,
+                    }
+                }
+
                 LuaTokenKind::TkDocSeeContent
             }
         }

@@ -2082,4 +2082,37 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_see_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Meep
+            "#,
+        );
+        check!(ws.check_completion(
+            r#"
+            --- @see M<??>
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "Meep".to_string(),
+                    kind: CompletionItemKind::CLASS,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "virtual_0".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "virtual_1".to_string(),
+                    kind: CompletionItemKind::FILE,
+                    ..Default::default()
+                },
+            ],
+        ));
+        Ok(())
+    }
 }
