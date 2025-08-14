@@ -344,9 +344,17 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
         .ok_or(InferFailReason::None)?;
     if decl_ids.len() == 1 {
         let id = decl_ids[0];
-        return match db.get_type_index().get_type_cache(&id.into()) {
-            Some(type_cache) => Ok(type_cache.as_type().clone()),
-            None => Err(InferFailReason::UnResolveDeclType(id)),
+        let typ = match db.get_type_index().get_type_cache(&id.into()) {
+            Some(type_cache) => type_cache.as_type().clone(),
+            None => return Err(InferFailReason::UnResolveDeclType(id)),
+        };
+        return if typ.contain_tpl() {
+            // This decl is located in a generic function,
+            // and is type contains references to generic variables
+            // of this function.
+            Ok(LuaType::Unknown)
+        } else {
+            Ok(typ)
         };
     }
 
@@ -365,6 +373,14 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
         match decl_type_cache {
             Some(type_cache) => {
                 let typ = type_cache.as_type();
+
+                if typ.contain_tpl() {
+                    // This decl is located in a generic function,
+                    // and is type contains references to generic variables
+                    // of this function.
+                    continue;
+                }
+
                 if typ.is_def() || typ.is_ref() || typ.is_function() {
                     return Ok(typ.clone());
                 }

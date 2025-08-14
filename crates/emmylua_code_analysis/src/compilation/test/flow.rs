@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod test {
-
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     #[test]
@@ -1174,8 +1173,25 @@ end
             end
             "#,
         );
-        let a = ws.expr_ty("A");
-        assert_eq!(ws.humanize_type(a), "T");
+
+        // Note: we can't use `ws.ty_expr("A")` to get a true type of `A`
+        // because `infer_global_type` will not allow generic variables
+        // from `bindGC` to escape into global space.
+        let db = &ws.analysis.compilation.db;
+        let decl_id = db
+            .get_global_index()
+            .get_global_decl_ids("A")
+            .unwrap()
+            .first()
+            .unwrap()
+            .clone();
+        let typ = db
+            .get_type_index()
+            .get_type_cache(&decl_id.into())
+            .unwrap()
+            .as_type();
+
+        assert_eq!(ws.humanize_type(typ.clone()), "T");
     }
 
     #[test]

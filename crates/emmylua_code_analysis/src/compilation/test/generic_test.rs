@@ -120,4 +120,42 @@ mod test {
         let expected = ws.ty("string");
         assert_eq!(a_ty, expected);
     }
+
+    #[test]
+    fn test_local_generics_in_global_scope() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                --- @generic T
+                --- @param x T
+                function foo(x)
+                    a = x
+                end
+            "#,
+        );
+        let a_ty = ws.expr_ty("a");
+        assert_eq!(a_ty, ws.ty("unknown"));
+    }
+
+    // Currently fails:
+    /*
+    #[test]
+    fn test_local_generics_in_global_scope_member() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                t = {}
+
+                --- @generic T
+                --- @param x T
+                function foo(x)
+                    t.a = x
+                end
+                local b = t.a
+            "#,
+        );
+        let a_ty = ws.expr_ty("t.a");
+        assert_eq!(a_ty, LuaType::Unknown);
+    }
+    */
 }
