@@ -1,13 +1,5 @@
+use std::borrow::Cow;
 use std::sync::Arc;
-
-use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
-    LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
-    LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken,
-    LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVarExpr,
-};
-use rowan::TextRange;
-use smol_str::SmolStr;
 
 use crate::{
     DiagnosticCode, GenericTpl, InFiled, LuaAliasCallKind, LuaArrayLen, LuaArrayType,
@@ -17,6 +9,15 @@ use crate::{
         LuaIntersectionType, LuaObjectType, LuaStringTplType, LuaTupleType, LuaType,
     },
 };
+use emmylua_parser::{
+    LuaAst, LuaAstNode, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
+    LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
+    LuaDocStrTplType, LuaDocTagOperator, LuaDocTagParam, LuaDocType, LuaDocUnaryType,
+    LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaTypeUnaryOperator, LuaVarExpr,
+};
+use rowan::TextRange;
+use smol_str::SmolStr;
 
 use super::{DocAnalyzer, preprocess_description};
 
@@ -589,8 +590,121 @@ fn infer_variadic_type(
 ) -> Option<LuaType> {
     let inner_type = variadic_type.get_type()?;
     let base = infer_type(analyzer, inner_type);
+
+    if let Err(msg) = check_variadic_position(variadic_type) {
+        analyzer.db.get_diagnostic_index_mut().add_diagnostic(
+            analyzer.file_id,
+            AnalyzeError::new(
+                DiagnosticCode::DocTypeUnexpectedVariadic,
+                &msg,
+                variadic_type
+                    .syntax()
+                    .last_token()
+                    .map(|t| t.text_range())
+                    .unwrap_or(variadic_type.syntax().text_range()),
+            ),
+        );
+
+        return Some(base);
+    }
+
     let variadic = VariadicType::Base(base.clone());
     Some(LuaType::Variadic(variadic.into()))
+}
+
+fn check_variadic_position(variadic_type: &LuaDocVariadicType) -> Result<(), Cow<'static, str>> {
+    let default_err = || Err(t!("Variadic expansion can't be used here"));
+
+    let Some(parent) = variadic_type.syntax().parent() else {
+        return default_err();
+    };
+
+    match parent.kind().try_into() {
+        Ok(LuaSyntaxKind::TypeTuple) => {
+            let next_type = variadic_type.syntax().next_sibling();
+            if next_type.is_none() {
+                Ok(())
+            } else {
+                Err(t!("Only the last tuple element can be variadic"))
+            }
+        }
+        Ok(LuaSyntaxKind::DocTypedParameter) => {
+            // We're able to match parameters of anonymous functions even if
+            // they use variadics in the middle of parameter list, or if there
+            // are multiple variadic types.
+            Ok(())
+        }
+        Ok(LuaSyntaxKind::DocNamedReturnType) => {
+            let next_type = parent.next_sibling_by_kind(&|kind| kind == parent.kind());
+            if next_type.is_none() {
+                Ok(())
+            } else {
+                Err(t!("Only the last return type can be variadic"))
+            }
+        }
+        Ok(LuaSyntaxKind::DocTagOperator) => {
+            let is_call_operator = LuaDocTagOperator::cast(parent)
+                .unwrap()
+                .get_name_token()
+                .is_some_and(|name| matches!(name.get_name_text(), "call"));
+
+            if is_call_operator {
+                Ok(())
+            } else {
+                Err(t!("Operators can't return variadic values"))
+            }
+        }
+        Ok(LuaSyntaxKind::DocTagParam) => {
+            if LuaDocTagParam::cast(parent).unwrap().is_vararg() {
+                Ok(())
+            } else {
+                Err(t!("Only variadic parameters can use variadic types"))
+            }
+        }
+        Ok(LuaSyntaxKind::DocTagReturn) => {
+            let next_type = variadic_type
+                .syntax()
+                .next_sibling_by_kind(&|kind| LuaDocType::can_cast(kind.to_syntax()));
+            if next_type.is_some() {
+                return Err(t!("Only the last return type can be variadic"));
+            }
+
+            let next_return = parent.next_sibling_by_kind(&|kind| kind == parent.kind());
+
+            if next_return.is_some() {
+                Err(t!("Only the last return type can be variadic"))
+            } else {
+                Ok(())
+            }
+        }
+        Ok(LuaSyntaxKind::DocTagReturnCast) => Err(t!("Return cast can't be variadic")),
+        Ok(LuaSyntaxKind::DocTypeList) => {
+            let Some(list_parent_kind) = parent.parent() else {
+                return default_err();
+            };
+
+            if list_parent_kind.kind() == LuaSyntaxKind::TypeGeneric.into() {
+                // Any generic argument can be variadic.
+                return Ok(());
+            }
+
+            if let Some(list_parent) = LuaDocTagOperator::cast(list_parent_kind) {
+                let is_call_operator = list_parent
+                    .get_name_token()
+                    .is_some_and(|name| matches!(name.get_name_text(), "call"));
+                return if is_call_operator {
+                    Err(t!("Operator parameters can't be variadic; \
+                        to avoid this limitation, consider using `@overload` \
+                        instead of `@operator call`"))
+                } else {
+                    Err(t!("Operator parameters can't be variadic"))
+                };
+            }
+
+            default_err()
+        }
+        _ => default_err(),
+    }
 }
 
 fn infer_multi_line_union_type(
