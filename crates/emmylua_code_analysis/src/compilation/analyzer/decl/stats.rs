@@ -95,30 +95,6 @@ pub fn analyze_assign_stat(analyzer: &mut DeclAnalyzer, stat: LuaAssignStat) -> 
                 }
             }
             LuaVarExpr::IndexExpr(index_expr) => {
-                // let index_key = index_expr.get_index_key()?;
-                // let key: LuaMemberKey = match index_key {
-                //     LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().into()),
-                //     LuaIndexKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
-                //     LuaIndexKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
-                //     LuaIndexKey::Idx(idx) => LuaMemberKey::Integer(idx as i64),
-                //     LuaIndexKey::Expr(_) => {
-                //         continue;
-                //     }
-                // };
-
-                // let file_id = analyzer.get_file_id();
-                // let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
-                // let decl_feature = if analyzer.is_meta {
-                //     LuaMemberFeature::MetaDefine
-                // } else {
-                //     LuaMemberFeature::FileDefine
-                // };
-
-                // let (owner, global_id) = find_index_owner(analyzer, index_expr.clone());
-                // let member = LuaMember::new(member_id, key.clone(), decl_feature, global_id);
-
-                // analyzer.db.get_member_index_mut().add_member(owner, member);
-
                 analyze_maybe_global_index_expr(analyzer, index_expr, value_expr_id);
             }
         }
@@ -248,29 +224,6 @@ pub fn analyze_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaFuncStat) -> Opti
             }
         }
         LuaVarExpr::IndexExpr(index_expr) => {
-            // let index_key = index_expr.get_index_key()?;
-            // let key: LuaMemberKey = match index_key {
-            //     LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().into()),
-            //     LuaIndexKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
-            //     LuaIndexKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
-            //     LuaIndexKey::Idx(idx) => LuaMemberKey::Integer(idx as i64),
-            //     LuaIndexKey::Expr(_) => {
-            //         return None;
-            //     }
-            // };
-
-            // let decl_feature = if analyzer.is_meta {
-            //     LuaMemberFeature::MetaMethodDecl
-            // } else {
-            //     LuaMemberFeature::FileMethodDecl
-            // };
-
-            // let (owner_id, global_id) = find_index_owner(analyzer, index_expr.clone());
-            // let member = LuaMember::new(member_id, key.clone(), decl_feature, global_id);
-            // let member_id = analyzer
-            //     .db
-            //     .get_member_index_mut()
-            //     .add_member(owner_id, member);
             let file_id = analyzer.get_file_id();
             let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
             analyze_maybe_global_index_expr(analyzer, &index_expr, None);

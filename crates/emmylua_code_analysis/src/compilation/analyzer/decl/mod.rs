@@ -88,6 +88,9 @@ fn walk_node_enter(analyzer: &mut DeclAnalyzer, node: LuaAst) {
             analyzer.create_scope(expr.get_range(), LuaScopeKind::Normal);
             exprs::analyze_closure_expr(analyzer, expr);
         }
+        LuaAst::LuaTableField(field) => {
+            exprs::analyze_table_field(analyzer, field);
+        }
         LuaAst::LuaLiteralExpr(expr) => {
             exprs::analyze_literal_expr(analyzer, expr);
         }
