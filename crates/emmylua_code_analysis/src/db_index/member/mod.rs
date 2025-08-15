@@ -7,7 +7,7 @@ mod lua_owner_members;
 use std::collections::{HashMap, HashSet};
 
 use super::traits::LuaIndex;
-use crate::{FileId, db_index::member::lua_owner_members::LuaOwnerMembers};
+use crate::{FileId, GlobalId, db_index::member::lua_owner_members::LuaOwnerMembers};
 pub use lua_member::{LuaMember, LuaMemberId, LuaMemberKey};
 pub use lua_member_feature::LuaMemberFeature;
 pub use lua_member_item::LuaMemberIndexItem;
@@ -19,6 +19,7 @@ pub struct LuaMemberIndex {
     in_filed: HashMap<FileId, HashSet<MemberOrOwner>>,
     owner_members: HashMap<LuaMemberOwner, LuaOwnerMembers>,
     member_current_owner: HashMap<LuaMemberId, LuaMemberOwner>,
+    member_global_id: HashMap<LuaMemberId, GlobalId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -34,6 +35,7 @@ impl LuaMemberIndex {
             in_filed: HashMap::new(),
             owner_members: HashMap::new(),
             member_current_owner: HashMap::new(),
+            member_global_id: HashMap::new(),
         }
     }
 
@@ -42,11 +44,11 @@ impl LuaMemberIndex {
         let file_id = member.get_file_id();
         self.members.insert(id, member);
         self.add_in_file_object(file_id, MemberOrOwner::Member(id));
-        if !owner.is_unknown() {
-            self.member_current_owner.insert(id, owner.clone());
-            self.add_in_file_object(file_id, MemberOrOwner::Owner(owner.clone()));
-            self.add_member_to_owner(owner.clone(), id);
-        }
+
+        self.member_current_owner.insert(id, owner.clone());
+        self.add_in_file_object(file_id, MemberOrOwner::Owner(owner.clone()));
+        self.add_member_to_owner(owner.clone(), id);
+
         id
     }
 
@@ -118,6 +120,19 @@ impl LuaMemberIndex {
         }
 
         Some(())
+    }
+
+    pub fn add_member_global_id(
+        &mut self,
+        member_id: LuaMemberId,
+        global_id: GlobalId,
+    ) -> Option<()> {
+        self.member_global_id.insert(member_id, global_id);
+        Some(())
+    }
+
+    pub fn get_member_global_id(&self, member_id: &LuaMemberId) -> Option<&GlobalId> {
+        self.member_global_id.get(member_id)
     }
 
     fn is_item_only_meta(&self, item: &LuaMemberIndexItem) -> bool {
@@ -233,12 +248,14 @@ impl LuaIndex for LuaMemberIndex {
                     MemberOrOwner::Member(member_id) => {
                         self.members.remove(&member_id);
                         self.member_current_owner.remove(&member_id);
+                        self.member_global_id.remove(&member_id);
                     }
                     MemberOrOwner::Owner(owner) => {
                         owners.insert(owner);
                     }
                 }
             }
+
 
             let mut need_removed_owner = Vec::new();
             for owner in owners {
@@ -280,5 +297,7 @@ impl LuaIndex for LuaMemberIndex {
         self.members.clear();
         self.in_filed.clear();
         self.owner_members.clear();
+        self.member_current_owner.clear();
+        self.member_global_id.clear();
     }
 }
