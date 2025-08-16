@@ -27,3 +27,4 @@ mod syntax_error_test;
 mod tuple_test;
 mod type_check_test;
 mod unpack_test;
+mod variadic_test;

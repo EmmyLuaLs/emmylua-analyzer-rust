@@ -154,7 +154,7 @@ pub fn infer_for_range_iter_expr_func(
         db,
         cache,
         substitutor: &mut substitutor,
-        root: root,
+        root,
         call_expr: None,
     };
     let params = doc_function

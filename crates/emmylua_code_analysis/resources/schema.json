@@ -417,6 +417,11 @@
           "description": "enum-value-mismatch",
           "type": "string",
           "const": "enum-value-mismatch"
+        },
+        {
+          "description": "Variadic operator (`T...`) used in a context where it's not allowed.",
+          "type": "string",
+          "const": "doc-type-unexpected-variadic"
         }
       ]
     },

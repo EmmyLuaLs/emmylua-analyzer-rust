@@ -50,6 +50,29 @@ pub enum LuaType {
     TableGeneric(Arc<Vec<LuaType>>),
     TplRef(Arc<GenericTpl>),
     StrTplRef(Arc<LuaStringTplType>),
+
+    /// Represents result of a variadic expansion.
+    ///
+    /// A variadic type can be either [`VariadicType::Base`] or [`VariadicType::Multi`].
+    /// See these types for details about how variadics can nest within each other.
+    ///
+    /// When working with variadic types, it is important to distinguish between
+    /// doc types and normal types.
+    ///
+    /// Doc types are types arising from parsing doc tags. In such types, `Variadic`
+    /// represents an application of a variadic expansion operator. That is, annotation
+    /// `@param ... Future<T>...` will result in `...` having doc type
+    /// `Variadic(Base(Generic("Future", ["T"])))`.
+    ///
+    /// Normal types are types resulting from inference. In such types, `Variadic` represents
+    /// return type of a multi-return function. That is, if a function returns multiple values,
+    /// its inferred return type will be a variadic.
+    ///
+    /// The confusion between these can happen when matching or instantiating generics.
+    /// For example, when instantiating a function annotated as `@return T...`, doc type
+    /// of function return will be `Variadic(Base("T"))`, while inferred type of `T` can be
+    /// something like `Variadic(Multi("A", "B"))`. In this case, it is important to remember
+    /// that `Variadic` in doc type is an *operator* that *expands* `Variadic` in inferred type.
     Variadic(Arc<VariadicType>),
     Signature(LuaSignatureId),
     Instance(Arc<LuaInstanceType>),
@@ -388,6 +411,15 @@ impl LuaType {
         matches!(self, LuaType::Global)
     }
 
+    pub fn get_tpl_id(&self) -> Option<GenericTplId> {
+        match self {
+            LuaType::TplRef(tpl_ref) => Some(tpl_ref.get_tpl_id()),
+            LuaType::ConstTplRef(tpl_ref) => Some(tpl_ref.get_tpl_id()),
+            LuaType::StrTplRef(tpl_ref) => Some(tpl_ref.get_tpl_id()),
+            _ => None,
+        }
+    }
+
     pub fn contain_tpl(&self) -> bool {
         match self {
             LuaType::Array(base) => base.contain_tpl(),
@@ -411,12 +443,37 @@ impl LuaType {
         }
     }
 
+    pub fn find_all_tpl(&self) -> Vec<LuaType> {
+        let mut res = Vec::new();
+        self.visit_type(&mut |typ: &LuaType| {
+            if matches!(
+                typ,
+                LuaType::TplRef(_)
+                    | LuaType::StrTplRef(_)
+                    | LuaType::ConstTplRef(_)
+                    | LuaType::SelfInfer
+            ) {
+                res.push(typ.clone());
+            }
+        });
+
+        res
+    }
+
     pub fn is_namespace(&self) -> bool {
         matches!(self, LuaType::Namespace(_))
     }
 
     pub fn is_variadic(&self) -> bool {
         matches!(self, LuaType::Variadic(_))
+    }
+
+    pub fn is_variadic_base(&self) -> bool {
+        if let LuaType::Variadic(variadic) = self {
+            matches!(variadic.deref(), VariadicType::Base(_))
+        } else {
+            false
+        }
     }
 
     pub fn is_member_owner(&self) -> bool {
@@ -1092,7 +1149,22 @@ impl From<LuaGenericType> for LuaType {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum VariadicType {
+    /// A variadic expansion of a known length. I.e. `fun(): A, B` will have
+    /// return type `Multi([A, B])`.
+    ///
+    /// The last type in `Multi` can be a `Base` variadic. In this case, we're
+    /// dealing with a variadic that have an arbitrary length limited from below.
+    /// That is, `fun(): A, B, C...` will have return type `Multi([A, B, Base(C)])`.
+    ///
+    /// It is also possible that the last type in `Multi` is also a `Multi` variadic.
+    /// We take care to avoid these situations by flattening such types.
+    /// See [`collapse_variadics_in_vec`] for details.
+    ///
+    /// [`collapse_variadics_in_vec`]: crate::semantic::generic::instantiate_type_generic::collapse_variadics_in_vec
     Multi(Vec<LuaType>),
+
+    /// A variadic expansion of arbitrary length. I.e. `fun(): T...`
+    /// will have return type `Base(T)`.
     Base(LuaType),
 }
 
@@ -1218,18 +1290,21 @@ impl From<SmolStr> for LuaType {
     fn from(s: SmolStr) -> Self {
         let str: &str = s.as_ref();
         match str {
-            "nil" => LuaType::Nil,
-            "table" => LuaType::Table,
+            "unknown" => LuaType::Unknown,
+            "nil" | "void" => LuaType::Nil,
+            "any" => LuaType::Any,
             "userdata" => LuaType::Userdata,
-            "function" => LuaType::Function,
             "thread" => LuaType::Thread,
-            "boolean" => LuaType::Boolean,
+            "boolean" | "bool" => LuaType::Boolean,
             "string" => LuaType::String,
-            "integer" => LuaType::Integer,
+            "integer" | "int" => LuaType::Integer,
             "number" => LuaType::Number,
             "io" => LuaType::Io,
-            "global" => LuaType::Global,
             "self" => LuaType::SelfInfer,
+            "global" => LuaType::Global,
+            "function" => LuaType::Function,
+            "never" => LuaType::Never,
+            "table" => LuaType::Table,
             _ => LuaType::Ref(LuaTypeDeclId::new_by_id(s.into())),
         }
     }
@@ -1416,6 +1491,10 @@ impl LuaArrayType {
 
     pub fn get_base(&self) -> &LuaType {
         &self.base
+    }
+
+    pub fn replace_base(&mut self, f: impl FnOnce(LuaType) -> LuaType) {
+        self.base = f(std::mem::replace(&mut self.base, LuaType::Nil));
     }
 
     pub fn get_len(&self) -> &LuaArrayLen {

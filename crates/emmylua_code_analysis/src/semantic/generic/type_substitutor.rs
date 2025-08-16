@@ -142,6 +142,10 @@ impl TypeSubstitutor {
             }
         }
     }
+
+    pub fn reset_type(&mut self, tpl_id: GenericTplId) {
+        self.tpl_replace_map.insert(tpl_id, SubstitutorValue::None);
+    }
 }
 
 fn convert_type_def_to_ref(ty: &LuaType) -> LuaType {
