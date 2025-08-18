@@ -64,10 +64,10 @@ fn find_members_guard(
             let member_owner = LuaMemberOwner::Element(id.clone());
             find_normal_members(db, member_owner, filter)
         }
-        LuaType::GlobalTable(global_id) => {
-            let member_owner = LuaMemberOwner::GlobalId(GlobalId(global_id.clone()));
-            find_normal_members(db, member_owner, filter)
-        }
+        // LuaType::GlobalTable(global_id) => {
+        //     let member_owner = LuaMemberOwner::GlobalId(GlobalId(global_id.clone()));
+        //     find_normal_members(db, member_owner, filter)
+        // }
         LuaType::TableGeneric(table_type) => find_table_generic_members(table_type, filter),
         LuaType::String | LuaType::Io | LuaType::StringConst(_) => {
             let type_decl_id = get_buildin_type_map_type_id(&prefix_type)?;

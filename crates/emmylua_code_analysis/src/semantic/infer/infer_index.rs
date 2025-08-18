@@ -177,10 +177,10 @@ pub fn infer_member_by_member_key(
         LuaType::Namespace(ns) => infer_namespace_member(db, cache, ns, index_expr),
         LuaType::Array(array_type) => infer_array_member(db, cache, array_type, index_expr),
         LuaType::TplRef(tpl) => infer_tpl_ref_member(db, cache, tpl, index_expr, infer_guard),
-        LuaType::GlobalTable(global_table_name) => {
-            let owner = LuaMemberOwner::GlobalId(GlobalId(global_table_name.clone()));
-            infer_member_owner_member(db, cache, owner, index_expr)
-        }
+        // LuaType::GlobalTable(global_table_name) => {
+        //     let owner = LuaMemberOwner::GlobalId(GlobalId(global_table_name.clone()));
+        //     infer_member_owner_member(db, cache, owner, index_expr)
+        // }
         _ => Err(InferFailReason::FieldNotFound),
     }
 }

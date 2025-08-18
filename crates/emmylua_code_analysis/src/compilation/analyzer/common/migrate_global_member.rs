@@ -69,7 +69,7 @@ fn get_owner_id(db: &DbIndex, type_owner: &LuaTypeOwner) -> Option<LuaMemberOwne
         LuaType::Ref(type_id) => Some(LuaMemberOwner::Type(type_id.clone())),
         LuaType::TableConst(id) => Some(LuaMemberOwner::Element(id.clone())),
         LuaType::Instance(inst) => Some(LuaMemberOwner::Element(inst.get_range().clone())),
-        LuaType::GlobalTable(inst) => Some(LuaMemberOwner::GlobalId(GlobalId(inst.clone()))),
+        // LuaType::GlobalTable(inst) => Some(LuaMemberOwner::GlobalId(GlobalId(inst.clone()))),
         _ => None,
     }
 }

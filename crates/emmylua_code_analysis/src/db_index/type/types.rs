@@ -61,7 +61,7 @@ pub enum LuaType {
     MultiLineUnion(Arc<LuaMultiLineUnion>),
     TypeGuard(Arc<LuaType>),
     ConstTplRef(Arc<GenericTpl>),
-    GlobalTable(ArcIntern<SmolStr>),
+    // GlobalTable(ArcIntern<SmolStr>),
 }
 
 impl PartialEq for LuaType {
@@ -110,7 +110,6 @@ impl PartialEq for LuaType {
             (LuaType::TypeGuard(a), LuaType::TypeGuard(b)) => a == b,
             (LuaType::Never, LuaType::Never) => true,
             (LuaType::ConstTplRef(a), LuaType::ConstTplRef(b)) => a == b,
-            (LuaType::GlobalTable(a), LuaType::GlobalTable(b)) => a == b,
             _ => false, // 不同变体之间不相等
         }
     }
@@ -188,7 +187,7 @@ impl Hash for LuaType {
             }
             LuaType::Never => 42.hash(state),
             LuaType::ConstTplRef(a) => (43, a).hash(state),
-            LuaType::GlobalTable(a) => (44, a).hash(state),
+            // LuaType::GlobalTable(a) => (44, a).hash(state),
         }
     }
 }
@@ -215,8 +214,7 @@ impl LuaType {
                 | LuaType::TableConst(_)
                 | LuaType::Global
                 | LuaType::Tuple(_)
-                | LuaType::Array(_)
-                | LuaType::GlobalTable(_)
+                | LuaType::Array(_) // | LuaType::GlobalTable(_)
         )
     }
 
