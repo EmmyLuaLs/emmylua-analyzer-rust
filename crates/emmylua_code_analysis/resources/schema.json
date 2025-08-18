@@ -82,7 +82,8 @@
     "hover": {
       "$ref": "#/$defs/EmmyrcHover",
       "default": {
-        "enable": true
+        "enable": true,
+        "verbose": false
       }
     },
     "inlineValues": {
@@ -715,6 +716,12 @@
           "description": "Enable showing documentation on hover.",
           "type": "boolean",
           "default": true,
+          "x-vscode-setting": true
+        },
+        "verbose": {
+          "description": "Increase verbosity of types shown in hovers.\n\nEnabling this option will increase maximum nesting of displayed types,\nadd alias expansions on top level, increase number of shown members.",
+          "type": "boolean",
+          "default": false,
           "x-vscode-setting": true
         }
       }
