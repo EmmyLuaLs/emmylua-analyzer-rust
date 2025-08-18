@@ -1,5 +1,6 @@
 mod docs;
 mod exprs;
+mod global_path;
 mod stats;
 
 use crate::{
@@ -88,8 +89,8 @@ fn walk_node_enter(analyzer: &mut DeclAnalyzer, node: LuaAst) {
             analyzer.create_scope(expr.get_range(), LuaScopeKind::Normal);
             exprs::analyze_closure_expr(analyzer, expr);
         }
-        LuaAst::LuaTableField(field) => {
-            exprs::analyze_table_field(analyzer, field);
+        LuaAst::LuaTableExpr(table_expr) => {
+            exprs::analyze_table_expr(analyzer, table_expr);
         }
         LuaAst::LuaLiteralExpr(expr) => {
             exprs::analyze_literal_expr(analyzer, expr);

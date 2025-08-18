@@ -1,7 +1,7 @@
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaFuncStat,
-    LuaIndexExpr, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr, LuaTableField,
-    LuaVarExpr,
+    LuaIndexExpr, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr, LuaTableExpr,
+    LuaTableField, LuaVarExpr,
 };
 
 use crate::{
@@ -209,7 +209,20 @@ fn analyze_closure_params(
     Some(())
 }
 
-pub fn analyze_table_field(analyzer: &mut DeclAnalyzer, field: LuaTableField) -> Option<()> {
+pub fn analyze_table_expr(analyzer: &mut DeclAnalyzer, table_expr: LuaTableExpr) -> Option<()> {
+    let fields = table_expr.get_fields().collect::<Vec<_>>();
+    if fields.len() > 50 {
+        return Some(());
+    }
+
+    for field in fields {
+        analyze_table_field(analyzer, field);
+    }
+
+    Some(())
+}
+
+fn analyze_table_field(analyzer: &mut DeclAnalyzer, field: LuaTableField) -> Option<()> {
     let file_id = analyzer.get_file_id();
     let index_key = field.get_field_key()?;
     let key = match index_key {

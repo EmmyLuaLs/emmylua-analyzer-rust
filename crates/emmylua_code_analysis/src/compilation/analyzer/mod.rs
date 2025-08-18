@@ -4,7 +4,6 @@ mod doc;
 mod flow;
 mod infer_cache_manager;
 mod lua;
-mod member;
 mod unresolve;
 
 use std::{collections::HashMap, sync::Arc};
@@ -13,8 +12,7 @@ use crate::{
     Emmyrc, InFiled, InferFailReason, LuaDeclId, WorkspaceId,
     compilation::analyzer::{
         decl::DeclAnalysisPipeline, doc::DocAnalysisPipeline, flow::FlowAnalysisPipeline,
-        lua::LuaAnalysisPipeline, member::MemberAnalysisPipeline,
-        unresolve::ResolveAnalysisPipeline,
+        lua::LuaAnalysisPipeline, unresolve::ResolveAnalysisPipeline,
     },
     db_index::DbIndex,
     profile::Profile,
@@ -36,7 +34,6 @@ pub fn analyze(db: &mut DbIndex, need_analyzed_files: Vec<InFiled<LuaChunk>>, co
         run_analysis::<DeclAnalysisPipeline>(db, &mut context);
         run_analysis::<DocAnalysisPipeline>(db, &mut context);
         run_analysis::<FlowAnalysisPipeline>(db, &mut context);
-        run_analysis::<MemberAnalysisPipeline>(db, &mut context);
         run_analysis::<LuaAnalysisPipeline>(db, &mut context);
         run_analysis::<ResolveAnalysisPipeline>(db, &mut context);
     }

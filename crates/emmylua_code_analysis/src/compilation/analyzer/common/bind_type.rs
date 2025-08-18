@@ -1,8 +1,10 @@
 use rowan::TextRange;
 
 use crate::{
-    InFiled, LuaMemberId, LuaTypeCache, LuaTypeOwner,
-    compilation::analyzer::common::migrate_global_member::migrate_global_members_when_type_resolve,
+    InFiled, LuaTypeCache, LuaTypeOwner,
+    compilation::analyzer::common::{
+        add_member, migrate_global_member::migrate_global_members_when_type_resolve,
+    },
     db_index::{DbIndex, LuaMemberOwner, LuaType, LuaTypeDeclId},
 };
 
@@ -92,22 +94,6 @@ fn merge_def_type_with_table(
     for table_member_id in expr_member_ids {
         add_member(db, def_owner.clone(), table_member_id);
     }
-
-    Some(())
-}
-
-pub fn add_member(db: &mut DbIndex, owner: LuaMemberOwner, member_id: LuaMemberId) -> Option<()> {
-    let old_member_owner = db.get_member_index().get_current_owner(&member_id);
-    if let Some(old_owner) = old_member_owner {
-        if old_owner == &owner {
-            return None; // Already exists
-        }
-    }
-
-    db.get_member_index_mut()
-        .set_member_owner(owner.clone(), member_id.file_id, member_id);
-    db.get_member_index_mut()
-        .add_member_to_owner(owner.clone(), member_id);
 
     Some(())
 }

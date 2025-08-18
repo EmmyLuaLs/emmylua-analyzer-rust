@@ -5,8 +5,12 @@ use emmylua_parser::{
 };
 
 use crate::{
-    LuaDeclExtra, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType, LuaTypeCache,
-    compilation::analyzer::common::bind_type,
+    DbIndex, GlobalId, LuaDeclExtra, LuaDeclId, LuaMember, LuaMemberFeature, LuaMemberId,
+    LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaSignatureId, LuaType, LuaTypeCache,
+    compilation::analyzer::{
+        common::bind_type,
+        decl::global_path::{get_global_path, to_path_name},
+    },
     db_index::{LocalAttribute, LuaDecl},
 };
 
@@ -95,7 +99,55 @@ pub fn analyze_assign_stat(analyzer: &mut DeclAnalyzer, stat: LuaAssignStat) -> 
                 }
             }
             LuaVarExpr::IndexExpr(index_expr) => {
-                analyze_maybe_global_index_expr(analyzer, index_expr, value_expr_id);
+                if analyze_maybe_global_index_expr(analyzer, index_expr, value_expr_id).is_some() {
+                    continue;
+                }
+
+                let mut added_global_field = false;
+                if let Some(prefix_expr) = index_expr.get_prefix_expr() {
+                    if let Some(global_id) = get_global_path(analyzer, prefix_expr) {
+                        if let Some(field_key) = index_expr.get_index_key() {
+                            let member_id = LuaMemberId::new(
+                                index_expr.get_syntax_id(),
+                                analyzer.get_file_id(),
+                            );
+                            let base = global_id.get_name();
+
+                            if let Some(current_name) = to_path_name(index_expr) {
+                                let field_global_name = format!("{}.{}", base, current_name);
+                                analyzer.db.get_member_index_mut().add_member_global_id(
+                                    member_id,
+                                    GlobalId::new(&field_global_name),
+                                );
+                            }
+
+                            let owner_id = LuaMemberOwner::GlobalId(global_id);
+                            add_field_member(
+                                analyzer.db,
+                                analyzer.is_meta,
+                                owner_id,
+                                field_key,
+                                member_id,
+                            );
+                            added_global_field = true;
+                        }
+                    }
+                }
+
+                if !added_global_field {
+                    let member_id =
+                        LuaMemberId::new(index_expr.get_syntax_id(), analyzer.get_file_id());
+                    let owner_id = LuaMemberOwner::UnResolve;
+                    if let Some(field_key) = index_expr.get_index_key() {
+                        add_field_member(
+                            analyzer.db,
+                            analyzer.is_meta,
+                            owner_id,
+                            field_key,
+                            member_id,
+                        );
+                    }
+                }
             }
         }
     }
@@ -107,7 +159,7 @@ fn analyze_maybe_global_index_expr(
     analyzer: &mut DeclAnalyzer,
     index_expr: &LuaIndexExpr,
     value_expr_id: Option<LuaSyntaxId>,
-) -> Option<()> {
+) -> Option<LuaDeclId> {
     let file_id = analyzer.get_file_id();
     let prefix = index_expr.get_prefix_expr()?;
     if let LuaExpr::NameExpr(name_expr) = prefix {
@@ -140,13 +192,14 @@ fn analyze_maybe_global_index_expr(
                     },
                     value_expr_id,
                 );
-
+                let decl_id = decl.get_id();
                 analyzer.add_decl(decl);
+                return Some(decl_id);
             }
         }
     }
 
-    Some(())
+    None
 }
 
 pub fn analyze_for_stat(analyzer: &mut DeclAnalyzer, stat: LuaForStat) -> Option<()> {
@@ -225,9 +278,45 @@ pub fn analyze_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaFuncStat) -> Opti
         }
         LuaVarExpr::IndexExpr(index_expr) => {
             let file_id = analyzer.get_file_id();
-            let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
-            analyze_maybe_global_index_expr(analyzer, &index_expr, None);
-            LuaSemanticDeclId::Member(member_id)
+
+            if let Some(decl_id) = analyze_maybe_global_index_expr(analyzer, &index_expr, None) {
+                LuaSemanticDeclId::LuaDecl(decl_id)
+            } else {
+                let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
+                let mut added_global_field = false;
+                if let Some(prefix_name_expr) = index_expr.get_prefix_expr() {
+                    if let Some(global_id) = get_global_path(&analyzer, prefix_name_expr.clone()) {
+                        if let Some(field_key) = index_expr.get_index_key() {
+                            let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
+                            let owner = LuaMemberOwner::GlobalId(global_id);
+                            add_field_member(
+                                analyzer.db,
+                                analyzer.is_meta,
+                                owner.clone(),
+                                field_key,
+                                member_id,
+                            );
+                            added_global_field = true;
+                        }
+                    }
+                }
+
+                if !added_global_field {
+                    let owner = LuaMemberOwner::UnResolve;
+                    let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
+                    if let Some(field_key) = index_expr.get_index_key() {
+                        add_field_member(
+                            analyzer.db,
+                            analyzer.is_meta,
+                            owner,
+                            field_key,
+                            member_id,
+                        );
+                    }
+                }
+
+                LuaSemanticDeclId::Member(member_id)
+            }
         }
     };
 
@@ -270,6 +359,48 @@ pub fn analyze_local_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaLocalFuncSt
         .db
         .get_property_index_mut()
         .add_owner_map(semantic_decl_id, closure_owner_id, file_id);
+
+    Some(())
+}
+
+pub fn add_field_member(
+    db: &mut DbIndex,
+    is_meta: bool,
+    member_owner: LuaMemberOwner,
+    field_key: LuaIndexKey,
+    member_id: LuaMemberId,
+) -> Option<()> {
+    let decl_feature = if is_meta {
+        LuaMemberFeature::MetaDefine
+    } else {
+        LuaMemberFeature::FileDefine
+    };
+
+    let key: LuaMemberKey = match field_key {
+        LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().into()),
+        LuaIndexKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
+        LuaIndexKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
+        LuaIndexKey::Idx(idx) => LuaMemberKey::Integer(idx as i64),
+        LuaIndexKey::Expr(_) => {
+            // let unresolve_member = UnResolveTableField {
+            //     file_id: analyzer.file_id,
+            //     table_expr: table_expr.clone(),
+            //     field: field.clone(),
+            //     decl_feature,
+            // };
+            // analyzer.context.add_unresolve(
+            //     unresolve_member.into(),
+            //     InferFailReason::UnResolveExpr(InFiled::new(
+            //         analyzer.get_file_id(),
+            //         field_expr.clone(),
+            //     )),
+            // );
+            return None;
+        }
+    };
+
+    let member = LuaMember::new(member_id, key.clone(), decl_feature);
+    db.get_member_index_mut().add_member(member_owner, member);
 
     Some(())
 }

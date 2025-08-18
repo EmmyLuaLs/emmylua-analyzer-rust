@@ -256,7 +256,6 @@ impl LuaIndex for LuaMemberIndex {
                 }
             }
 
-
             let mut need_removed_owner = Vec::new();
             for owner in owners {
                 if let Some(member_items) = self.owner_members.get_mut(&owner) {

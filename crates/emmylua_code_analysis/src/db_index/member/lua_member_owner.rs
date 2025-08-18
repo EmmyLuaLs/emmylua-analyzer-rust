@@ -4,6 +4,7 @@ use crate::{GlobalId, InFiled, LuaTypeDeclId};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum LuaMemberOwner {
+    UnResolve,
     Type(LuaTypeDeclId),
     Element(InFiled<TextRange>),
     GlobalId(GlobalId),

@@ -1,6 +1,6 @@
 use crate::{
-    DbIndex, GlobalId, LuaDeclId, LuaMemberId, LuaMemberOwner, LuaTypeOwner,
-    compilation::analyzer::common::{add_member, get_owner_id},
+    DbIndex, GlobalId, LuaDeclId, LuaMemberId, LuaMemberOwner, LuaType, LuaTypeOwner,
+    compilation::analyzer::common::add_member,
 };
 
 pub fn migrate_global_members_when_type_resolve(
@@ -44,9 +44,7 @@ fn migrate_global_member_to_decl(db: &mut DbIndex, decl_id: LuaDeclId) -> Option
 }
 
 fn migrate_global_member_to_member(db: &mut DbIndex, member_id: LuaMemberId) -> Option<()> {
-    let global_id = db
-        .get_member_index()
-        .get_member_global_id(&member_id)?;
+    let global_id = db.get_member_index().get_member_global_id(&member_id)?;
     let owner_id = get_owner_id(db, &member_id.clone().into())?;
 
     let members = db
@@ -63,4 +61,15 @@ fn migrate_global_member_to_member(db: &mut DbIndex, member_id: LuaMemberId) -> 
     }
 
     Some(())
+}
+
+fn get_owner_id(db: &DbIndex, type_owner: &LuaTypeOwner) -> Option<LuaMemberOwner> {
+    let type_cache = db.get_type_index().get_type_cache(&type_owner)?;
+    match type_cache.as_type() {
+        LuaType::Ref(type_id) => Some(LuaMemberOwner::Type(type_id.clone())),
+        LuaType::TableConst(id) => Some(LuaMemberOwner::Element(id.clone())),
+        LuaType::Instance(inst) => Some(LuaMemberOwner::Element(inst.get_range().clone())),
+        LuaType::GlobalTable(inst) => Some(LuaMemberOwner::GlobalId(GlobalId(inst.clone()))),
+        _ => None,
+    }
 }

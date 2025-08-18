@@ -216,6 +216,7 @@ impl LuaType {
                 | LuaType::Global
                 | LuaType::Tuple(_)
                 | LuaType::Array(_)
+                | LuaType::GlobalTable(_)
         )
     }
 
