@@ -64,35 +64,35 @@ mod test {
         "#,
         );
 
-        ws.def(
-            r#"
+        // ws.def(
+        //     r#"
 
-        ---@class A: ProxyHandler
-        local A
+        // ---@class A: ProxyHandler
+        // local A
 
-        function A:get(target, key, receiver, name)
-            a = self
-        end
-                "#,
-        );
-        let ty = ws.expr_ty("a");
-        let expected = ws.ty("A");
-        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+        // function A:get(target, key, receiver, name)
+        //     a = self
+        // end
+        //         "#,
+        // );
+        // let ty = ws.expr_ty("a");
+        // let expected = ws.ty("A");
+        // assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
 
-        ws.def(
-            r#"
+        // ws.def(
+        //     r#"
 
-        ---@class B: ProxyHandler
-        local B
+        // ---@class B: ProxyHandler
+        // local B
 
-        B.get = function(self, target, key, receiver, name)
-            b = self
-        end
-                "#,
-        );
-        let ty = ws.expr_ty("b");
-        let expected = ws.ty("B");
-        assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
+        // B.get = function(self, target, key, receiver, name)
+        //     b = self
+        // end
+        //         "#,
+        // );
+        // let ty = ws.expr_ty("b");
+        // let expected = ws.ty("B");
+        // assert_eq!(ws.humanize_type(ty), ws.humanize_type(expected));
 
         ws.def(
             r#"

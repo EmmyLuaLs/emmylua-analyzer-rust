@@ -102,6 +102,11 @@ pub fn analyze_assign_stat(analyzer: &mut DeclAnalyzer, stat: LuaAssignStat) -> 
                 if analyze_maybe_global_index_expr(analyzer, index_expr, value_expr_id).is_some() {
                     continue;
                 }
+                let decl_feature = if analyzer.is_meta {
+                    LuaMemberFeature::MetaDefine
+                } else {
+                    LuaMemberFeature::FileDefine
+                };
 
                 let mut added_global_field = false;
                 if let Some(prefix_expr) = index_expr.get_prefix_expr() {
@@ -122,9 +127,10 @@ pub fn analyze_assign_stat(analyzer: &mut DeclAnalyzer, stat: LuaAssignStat) -> 
                             }
 
                             let owner_id = LuaMemberOwner::GlobalId(global_id);
+
                             add_field_member(
                                 analyzer.db,
-                                analyzer.is_meta,
+                                decl_feature,
                                 owner_id,
                                 field_key,
                                 member_id,
@@ -139,13 +145,7 @@ pub fn analyze_assign_stat(analyzer: &mut DeclAnalyzer, stat: LuaAssignStat) -> 
                         LuaMemberId::new(index_expr.get_syntax_id(), analyzer.get_file_id());
                     let owner_id = LuaMemberOwner::UnResolve;
                     if let Some(field_key) = index_expr.get_index_key() {
-                        add_field_member(
-                            analyzer.db,
-                            analyzer.is_meta,
-                            owner_id,
-                            field_key,
-                            member_id,
-                        );
+                        add_field_member(analyzer.db, decl_feature, owner_id, field_key, member_id);
                     }
                 }
             }
@@ -283,15 +283,21 @@ pub fn analyze_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaFuncStat) -> Opti
                 LuaSemanticDeclId::LuaDecl(decl_id)
             } else {
                 let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
+                let feature = if analyzer.is_meta {
+                    LuaMemberFeature::MetaMethodDecl
+                } else {
+                    LuaMemberFeature::FileMethodDecl
+                };
                 let mut added_global_field = false;
                 if let Some(prefix_name_expr) = index_expr.get_prefix_expr() {
                     if let Some(global_id) = get_global_path(&analyzer, prefix_name_expr.clone()) {
                         if let Some(field_key) = index_expr.get_index_key() {
                             let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
                             let owner = LuaMemberOwner::GlobalId(global_id);
+
                             add_field_member(
                                 analyzer.db,
-                                analyzer.is_meta,
+                                feature,
                                 owner.clone(),
                                 field_key,
                                 member_id,
@@ -305,13 +311,7 @@ pub fn analyze_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaFuncStat) -> Opti
                     let owner = LuaMemberOwner::UnResolve;
                     let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
                     if let Some(field_key) = index_expr.get_index_key() {
-                        add_field_member(
-                            analyzer.db,
-                            analyzer.is_meta,
-                            owner,
-                            field_key,
-                            member_id,
-                        );
+                        add_field_member(analyzer.db, feature, owner, field_key, member_id);
                     }
                 }
 
@@ -365,17 +365,11 @@ pub fn analyze_local_func_stat(analyzer: &mut DeclAnalyzer, stat: LuaLocalFuncSt
 
 pub fn add_field_member(
     db: &mut DbIndex,
-    is_meta: bool,
+    feature: LuaMemberFeature,
     member_owner: LuaMemberOwner,
     field_key: LuaIndexKey,
     member_id: LuaMemberId,
 ) -> Option<()> {
-    let decl_feature = if is_meta {
-        LuaMemberFeature::MetaDefine
-    } else {
-        LuaMemberFeature::FileDefine
-    };
-
     let key: LuaMemberKey = match field_key {
         LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().into()),
         LuaIndexKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
@@ -399,7 +393,7 @@ pub fn add_field_member(
         }
     };
 
-    let member = LuaMember::new(member_id, key.clone(), decl_feature);
+    let member = LuaMember::new(member_id, key.clone(), feature);
     db.get_member_index_mut().add_member(member_owner, member);
 
     Some(())

@@ -5,7 +5,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    FileId, LuaDeclExtra, LuaDeclId, LuaMemberId, LuaSignatureId,
+    FileId, InFiled, LuaDeclExtra, LuaDeclId, LuaMember, LuaMemberFeature, LuaMemberId,
+    LuaMemberOwner, LuaSignatureId,
     db_index::{LuaDecl, LuaMemberKey},
 };
 
@@ -210,19 +211,39 @@ fn analyze_closure_params(
 }
 
 pub fn analyze_table_expr(analyzer: &mut DeclAnalyzer, table_expr: LuaTableExpr) -> Option<()> {
-    let fields = table_expr.get_fields().collect::<Vec<_>>();
-    if fields.len() > 50 {
-        return Some(());
-    }
+    let feature = if analyzer.is_meta {
+        LuaMemberFeature::MetaFieldDecl
+    } else {
+        LuaMemberFeature::FileFieldDecl
+    };
 
-    for field in fields {
-        analyze_table_field(analyzer, field);
+    let member_owner =
+        LuaMemberOwner::Element(InFiled::new(analyzer.get_file_id(), table_expr.get_range()));
+
+    if table_expr.is_array() {
+        let fields = table_expr.get_fields().collect::<Vec<_>>();
+        if fields.len() > 50 {
+            return Some(());
+        }
+
+        for field in fields {
+            add_table_field(analyzer, member_owner.clone(), field, feature);
+        }
+    } else {
+        for field in table_expr.get_fields() {
+            add_table_field(analyzer, member_owner.clone(), field, feature);
+        }
     }
 
     Some(())
 }
 
-fn analyze_table_field(analyzer: &mut DeclAnalyzer, field: LuaTableField) -> Option<()> {
+fn add_table_field(
+    analyzer: &mut DeclAnalyzer,
+    member_owner: LuaMemberOwner,
+    field: LuaTableField,
+    feature: LuaMemberFeature,
+) -> Option<()> {
     let file_id = analyzer.get_file_id();
     let index_key = field.get_field_key()?;
     let key = match index_key {
@@ -239,10 +260,19 @@ fn analyze_table_field(analyzer: &mut DeclAnalyzer, field: LuaTableField) -> Opt
         LuaIndexKey::Idx(i) => LuaMemberKey::Integer(i as i64),
     };
 
+    analyzer.db.get_reference_index_mut().add_index_reference(
+        key.clone(),
+        file_id,
+        field.get_syntax_id(),
+    );
+
+    let member_id = LuaMemberId::new(field.get_syntax_id(), file_id);
+    let member = LuaMember::new(member_id, key.clone(), feature);
     analyzer
         .db
-        .get_reference_index_mut()
-        .add_index_reference(key, file_id, field.get_syntax_id());
+        .get_member_index_mut()
+        .add_member(member_owner, member);
+
     Some(())
 }
 
