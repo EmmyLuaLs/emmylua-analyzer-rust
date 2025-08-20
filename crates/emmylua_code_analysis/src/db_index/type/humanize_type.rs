@@ -623,7 +623,7 @@ fn humanize_variadic_type(db: &DbIndex, multi: &VariadicType, level: RenderLevel
     match multi {
         VariadicType::Base(base) => {
             let base_str = humanize_type(db, base, level);
-            format!("{} ...", base_str)
+            format!("{}...", base_str)
         }
         VariadicType::Multi(types) => {
             let max_num = match level {
@@ -644,7 +644,7 @@ fn humanize_variadic_type(db: &DbIndex, multi: &VariadicType, level: RenderLevel
                 .map(|ty| humanize_type(db, ty, level.next_level()))
                 .collect::<Vec<_>>()
                 .join(",");
-            format!("({}{})", type_str, dots)
+            format!("multi<{}{}>", type_str, dots)
         }
     }
 }

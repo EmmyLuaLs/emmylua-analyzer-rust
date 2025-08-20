@@ -31,7 +31,13 @@ pub fn try_resolve_decl(
             .get_type(decl.ret_idx)
             .cloned()
             .unwrap_or(LuaType::Unknown),
-        _ => expr_type,
+        _ => {
+            if decl.ret_idx == 0 {
+                expr_type
+            } else {
+                LuaType::Unknown
+            }
+        }
     };
 
     bind_type(db, decl_id.into(), LuaTypeCache::InferType(expr_type));

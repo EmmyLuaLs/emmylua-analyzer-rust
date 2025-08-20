@@ -6,8 +6,8 @@ use rowan::NodeOrToken;
 use smol_str::SmolStr;
 
 use crate::{
-    InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType,
-    LuaSemanticDeclId, LuaTupleType, LuaUnionType, SemanticDeclLevel, VariadicType,
+    GenericTplId, InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner,
+    LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaUnionType, SemanticDeclLevel, VariadicType,
     check_type_compact,
     db_index::{DbIndex, LuaGenericType, LuaType},
     infer_node_semantic_decl,
@@ -108,22 +108,12 @@ pub fn tpl_pattern_match(
     target: &LuaType,
 ) -> TplPatternMatchResult {
     let target = escape_alias(context.db, target);
-    if !pattern.contain_tpl() {
-        return Ok(());
-    }
-
     match pattern {
         LuaType::TplRef(tpl) => {
-            if tpl.get_tpl_id().is_func() {
-                context
-                    .substitutor
-                    .insert_type(tpl.get_tpl_id(), constant_decay(target));
-            }
+            tpl_ref_pattern_match(context, tpl.get_tpl_id(), target)?;
         }
         LuaType::ConstTplRef(tpl) => {
-            if tpl.get_tpl_id().is_func() {
-                context.substitutor.insert_type(tpl.get_tpl_id(), target);
-            }
+            tpl_ref_pattern_match_const_tpl(context, tpl.get_tpl_id(), target)?;
         }
         LuaType::StrTplRef(str_tpl) => match target {
             LuaType::StringConst(s) => {
@@ -254,6 +244,46 @@ fn object_tpl_pattern_match_member_owner_match(
                 tpl_pattern_match(context, field_value, &resolve_type)?;
             }
         }
+    }
+
+    Ok(())
+}
+
+fn tpl_ref_pattern_match(
+    context: &mut TplContext,
+    tpl_id: GenericTplId,
+    target: LuaType,
+) -> TplPatternMatchResult {
+    // Non-variadic tpl ref can't become a variadic.
+    let target = match target {
+        LuaType::Variadic(variadic) => variadic.get_type(0).cloned().unwrap_or(LuaType::Nil),
+        target => target,
+    };
+
+    if tpl_id.is_func() {
+        context
+            .substitutor
+            .insert_type(tpl_id, constant_decay(target));
+    }
+
+    Ok(())
+}
+
+fn tpl_ref_pattern_match_const_tpl(
+    context: &mut TplContext,
+    tpl_id: GenericTplId,
+    target: LuaType,
+) -> TplPatternMatchResult {
+    // Non-variadic tpl ref can't become a variadic.
+    let target = match target {
+        LuaType::Variadic(variadic) => variadic.get_type(0).cloned().unwrap_or(LuaType::Nil),
+        target => target,
+    };
+
+    if tpl_id.is_func() {
+        context
+            .substitutor
+            .insert_type(tpl_id, target);
     }
 
     Ok(())
@@ -558,6 +588,9 @@ fn func_tpl_pattern_match(
             if !signature.is_resolve_return() {
                 return Err(InferFailReason::UnResolveSignatureReturn(*signature_id));
             }
+            // TODO: find all tpl_refs that refer to signature's own types and replace them
+            //       with their base types. I.e. if we're matching `fun<T>(x: T)`, this `T`
+            //       shouldn't end up in our substitutor.
             let fake_doc_func = signature.to_doc_func_type();
             func_tpl_pattern_match_doc_func(context, tpl_func, &fake_doc_func)?;
         }
@@ -758,75 +791,135 @@ pub fn variadic_tpl_pattern_match(
     target_rest_types: &[LuaType],
 ) -> TplPatternMatchResult {
     match tpl {
-        VariadicType::Base(base) => match base {
-            LuaType::TplRef(tpl_ref) => {
-                let tpl_id = tpl_ref.get_tpl_id();
-                match target_rest_types.len() {
-                    0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil);
-                    }
-                    1 => {
-                        context
-                            .substitutor
-                            .insert_type(tpl_id, constant_decay(target_rest_types[0].clone()));
-                    }
-                    _ => {
-                        context.substitutor.insert_multi_types(
-                            tpl_id,
-                            target_rest_types
-                                .iter()
-                                .map(|t| constant_decay(t.clone()))
-                                .collect(),
-                        );
-                    }
+        VariadicType::Base(base) => {
+            let tpl_ids: Vec<_> = base
+                .find_all_tpl()
+                .iter()
+                .filter_map(LuaType::get_tpl_id)
+                .collect();
+
+            if tpl_ids.is_empty() {
+                return Ok(());
+            }
+
+            let mut multi_types: HashMap<_, _> =
+                tpl_ids.iter().map(|tpl_id| (*tpl_id, Vec::new())).collect();
+
+            for (i, target) in target_rest_types.iter().enumerate() {
+                match_variadic_element(
+                    context,
+                    base,
+                    &mut multi_types,
+                    target,
+                    i == target_rest_types.len() - 1,
+                )?;
+                if multi_types.is_empty() {
+                    // All generic parameters failed to infer, there's nothing more to do here.
+                    break;
                 }
             }
-            LuaType::ConstTplRef(tpl_ref) => {
-                let tpl_id = tpl_ref.get_tpl_id();
-                match target_rest_types.len() {
-                    0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil);
-                    }
-                    1 => {
-                        context
-                            .substitutor
-                            .insert_type(tpl_id, target_rest_types[0].clone());
-                    }
-                    _ => {
-                        context
-                            .substitutor
-                            .insert_multi_types(tpl_id, target_rest_types.to_vec());
-                    }
-                }
+
+            for (tpl_id, types) in multi_types {
+                context.substitutor.insert_multi_types(tpl_id, types);
             }
-            _ => {}
-        },
+        }
         VariadicType::Multi(multi) => {
+            // This branch only happens when matching function return type.
+            // Return type of`fun(): A, B, C...` is encoded as `Multi([A, B, Base(C)])`.
             for (i, ret_type) in multi.iter().enumerate() {
                 match ret_type {
                     LuaType::Variadic(inner) => {
+                        // Found tailing variadic return, i.e. `C` from example above.
                         if i < target_rest_types.len() {
                             variadic_tpl_pattern_match(context, inner, &target_rest_types[i..])?;
                         }
 
                         break;
                     }
-                    LuaType::TplRef(tpl_ref) => {
-                        let tpl_id = tpl_ref.get_tpl_id();
+                    tpl => {
+                        // Found regular return type, i.e. `A` or `B` from example above.
                         match target_rest_types.get(i) {
-                            Some(t) => {
-                                context
-                                    .substitutor
-                                    .insert_type(tpl_id, constant_decay(t.clone()));
+                            Some(typ) => {
+                                tpl_pattern_match(context, tpl, typ)?;
                             }
                             None => {
                                 break;
                             }
                         };
                     }
-                    _ => {}
                 }
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn match_variadic_element(
+    context: &mut TplContext,
+    base: &LuaType,
+    multi_types: &mut HashMap<GenericTplId, Vec<LuaType>>,
+    target: &LuaType,
+    is_last: bool,
+) -> TplPatternMatchResult {
+    let mut new_substitutor = context.substitutor.clone();
+    for tpl_id in multi_types.keys() {
+        new_substitutor.reset_type(*tpl_id);
+    }
+
+    let mut new_context = TplContext {
+        db: context.db,
+        cache: context.cache,
+        substitutor: &mut new_substitutor,
+        root: context.root.clone(),
+        call_expr: context.call_expr.clone(),
+    };
+
+    let target_is_base = is_last && target.is_variadic_base();
+    if target_is_base {
+        let LuaType::Variadic(target) = target else {
+            unreachable!();
+        };
+        let VariadicType::Base(target) = target.deref() else {
+            unreachable!();
+        };
+
+        tpl_pattern_match(&mut new_context, base, target)?;
+    } else {
+        tpl_pattern_match(&mut new_context, base, target)?;
+    }
+
+    for tpl_id in multi_types.keys().cloned().collect::<Vec<_>>() {
+        let matched_type = match new_context.substitutor.get(tpl_id) {
+            Some(SubstitutorValue::Type(t)) => t.clone(),
+            Some(SubstitutorValue::Params(params)) => {
+                let ts = params
+                    .iter()
+                    .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
+                    .collect();
+                LuaType::Variadic(VariadicType::Multi(ts).into())
+            }
+            Some(SubstitutorValue::MultiTypes(ts)) => {
+                LuaType::Variadic(VariadicType::Multi(ts.clone()).into())
+            }
+            Some(SubstitutorValue::MultiBase(t)) => {
+                LuaType::Variadic(VariadicType::Base(t.clone()).into())
+            }
+            None | Some(SubstitutorValue::None) => {
+                // Failed to infer type for this generic parameter; abandon it, maybe
+                // it will be inferred from another type expression.
+                multi_types.remove(&tpl_id);
+                continue;
+            }
+        };
+
+        if target_is_base {
+            multi_types
+                .get_mut(&tpl_id)
+                .unwrap()
+                .push(LuaType::Variadic(VariadicType::Base(matched_type).into()));
+        } else {
+            multi_types.get_mut(&tpl_id).unwrap().push(matched_type);
         }
     }
 
@@ -877,6 +970,7 @@ fn tuple_tpl_pattern_match(
                 }
             }
         }
+        // LuaType::TableConst() // TODO!
         _ => {}
     }
 

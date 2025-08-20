@@ -134,6 +134,7 @@ fn infer_buildin_or_ref_type(
         "self" => LuaType::SelfInfer,
         "global" => LuaType::Global,
         "function" => LuaType::Function,
+        "never" => LuaType::Never,
         "table" => {
             if let Some(inst) = infer_special_table_type(semantic_model, _node) {
                 return inst;

@@ -101,6 +101,8 @@ pub enum DiagnosticCode {
     RequireModuleNotVisible,
     /// enum-value-mismatch
     EnumValueMismatch,
+    /// Variadic operator (`T...`) used in a context where it's not allowed.
+    DocTypeUnexpectedVariadic,
 
     #[serde(other)]
     None,
