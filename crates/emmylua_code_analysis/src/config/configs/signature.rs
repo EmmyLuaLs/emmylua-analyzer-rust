@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct EmmyrcSignature {
     /// Whether to enable signature help.
     #[serde(default = "default_true")]
+    #[schemars(extend("x-vscode-setting" = true))]
     pub detail_signature_helper: bool,
 }
 

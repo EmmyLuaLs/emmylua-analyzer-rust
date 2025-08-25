@@ -5,30 +5,45 @@ use serde_with::{DefaultOnError, serde_as};
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
 #[serde(rename_all = "camelCase")]
-/// Configuration for EmmyLua code completion.
 pub struct EmmyrcCompletion {
     /// Enable autocompletion.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub enable: bool,
-    /// Automatically insert call to `require` when autocompletion
-    /// inserts objects from other modules.
+
+    /// When enabled, selecting a completion suggestion from another
+    /// module will add the appropriate require statement.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub auto_require: bool,
-    /// The function used for auto-requiring modules.
+
+    /// Name of the function that's inserted when auto-requiring modules.
+    ///
+    /// Default is `"require"`, but can be customized to use any module loader function.
     #[serde(default = "default_require_function")]
     pub auto_require_function: String,
+
     /// The naming convention for auto-required filenames.
+    ///
+    /// Controls how the imported module names are formatted in the `require` statement.
     #[serde(default)]
     pub auto_require_naming_convention: EmmyrcFilenameConvention,
-    /// A separator used in auto-require paths.
+
+    /// Defines the character used to separate path segments in require statements.
+    ///
+    /// Default is `"."`, but can be changed to other separators like `"/"`.
     #[serde(default = "default_auto_require_separator")]
     pub auto_require_separator: String,
+
     /// Whether to use call snippets in completions.
+    ///
+    /// When enabled, function completions will insert a snippet with placeholders
+    /// for function arguments, allowing for quick tabbing between parameters.
     #[serde(default)]
     #[serde_as(deserialize_as = "DefaultOnError")]
+    #[schemars(extend("x-vscode-setting" = true))]
     pub call_snippet: bool,
+
     /// Symbol that's used to trigger postfix autocompletion.
     #[serde(default = "default_postfix")]
     #[schemars(extend("x-vscode-setting" = {
@@ -39,7 +54,10 @@ pub struct EmmyrcCompletion {
         "markdownEnumDescriptions": ["%config.common.enum.default.description%"],
     }))]
     pub postfix: String,
-    /// Whether to include the name in the base function completion. Effect: `function () end` -> `function name() end`.
+
+    /// Whether to include the name in the base function in postfix autocompletion.
+    ///
+    /// Effect: `function () end` -> `function name() end`.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub base_function_includes_name: bool,
@@ -76,18 +94,35 @@ fn default_auto_require_separator() -> String {
     ".".to_string()
 }
 
+/// The naming convention for auto-required filenames.
+///
+/// Controls how the imported module names are formatted in the `require` statement.
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Copy)]
 #[serde(rename_all = "kebab-case")]
 pub enum EmmyrcFilenameConvention {
-    /// Keep the original filename.
+    /// Keep the original filename without any transformation.
+    ///
+    /// Example: `"my-module"` remains `"my-module"`.
     Keep,
-    /// Convert the filename to snake_case.
+
+    /// Convert the filename to `snake_case`.
+    ///
+    /// Example: `"MyModule"` becomes `"my_module"`.
     SnakeCase,
-    /// Convert the filename to PascalCase.
+
+    /// Convert the filename to `PascalCase`.
+    ///
+    /// Example: `"my_module"` becomes `"MyModule"`.
     PascalCase,
-    /// Convert the filename to camelCase.
+
+    /// Convert the filename to `camelCase`.
+    ///
+    /// Example: `"my_module"` becomes `"myModule"`.
     CamelCase,
-    /// When returning class definition, use class name, otherwise keep original name.
+
+    /// When returning a class definition, use the class name; otherwise keep the original name.
+    ///
+    /// This is useful for modules that export a single class with a name that might differ from the filename.
     KeepClass,
 }
 

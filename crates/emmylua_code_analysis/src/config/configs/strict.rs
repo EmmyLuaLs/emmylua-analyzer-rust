@@ -13,18 +13,25 @@ fn default_false() -> bool {
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct EmmyrcStrict {
-    /// Whether to enable strict mode require path.
+    /// Whether to enable strict mode for resolving require paths.
     #[serde(default)]
     pub require_path: bool,
+
     #[serde(default)]
     pub type_call: bool,
-    /// Whether to enable strict mode array indexing.
+
+    /// Whether to enable strict mode when inferring type
+    /// of array indexing operation.
     #[serde(default = "default_true")]
     pub array_index: bool,
-    /// meta define overrides file define
+
+    /// Definitions from `@meta` files always overrides definitions
+    /// from normal files.
     #[serde(default = "default_true")]
     pub meta_override_file_define: bool,
-    /// Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.
+
+    /// Base constant types defined in doc can match base types, allowing `int`
+    /// to match `---@alias id 1|2|3`, same for string.
     #[serde(default = "default_false")]
     pub doc_base_const_match_base_type: bool,
 }
