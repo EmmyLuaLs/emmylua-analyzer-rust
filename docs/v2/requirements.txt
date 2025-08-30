@@ -1,0 +1,8 @@
+Sphinx~=8.2
+sphinx-intl~=2.3
+get-version~=3.5
+myst-parser~=4.0
+sphinx_immaterial~=0.13
+sphinx-lua-ls~=3.0
+frozendict~=2.4
+referencing~=0.36.2

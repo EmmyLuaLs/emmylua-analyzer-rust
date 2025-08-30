@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 pub struct EmmyrcCodeAction {
     /// Add space after `---` comments when inserting `@diagnostic disable-next-line`.
     #[serde(default = "default_false")]
-    #[schemars(extend("x-vscode-setting" = true))]
     pub insert_space: bool,
 }
 

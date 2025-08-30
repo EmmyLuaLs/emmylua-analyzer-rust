@@ -28,38 +28,72 @@ pub struct Emmyrc {
     #[serde(rename = "$schema")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
+
+    /// Configuration for code completion features.
     #[serde(default)]
     pub completion: EmmyrcCompletion,
+
+    /// Configuration for diagnostics and error detection.
     #[serde(default)]
     pub diagnostics: EmmyrcDiagnostic,
+
+    /// Configuration for function signature help.
     #[serde(default)]
     pub signature: EmmyrcSignature,
+
+    /// Configuration for inlay hints in the editor.
     #[serde(default)]
     pub hint: EmmyrcInlayHint,
+
+    /// Configuration for Lua runtime.
     #[serde(default)]
     pub runtime: EmmyrcRuntime,
+
+    /// Configuration for workspace management.
     #[serde(default)]
     pub workspace: EmmyrcWorkspace,
+
+    /// Configuration for resource file management.
     #[serde(default)]
     pub resource: EmmyrcResource,
+
+    /// Configuration for code lens features.
     #[serde(default)]
     pub code_lens: EmmyrcCodeLens,
+
+    /// Configuration for strict type checks.
     #[serde(default)]
     pub strict: EmmyrcStrict,
+
+    /// Configuration for semantic token highlighting.
     #[serde(default)]
     pub semantic_tokens: EmmyrcSemanticToken,
+
+    /// Configuration for reference lookup features.
     #[serde(default)]
     pub references: EmmyrcReference,
+
+    /// Configuration for hover information.
     #[serde(default)]
     pub hover: EmmyrcHover,
+
+    /// Configuration for document color features.
     #[serde(default)]
     pub document_color: EmmyrcDocumentColor,
+
+    /// Configuration for code actions and quick fixes.
     #[serde(default)]
     pub code_action: EmmyrcCodeAction,
+
+    /// Configuration for inline value display.
     #[serde(default)]
     pub inline_values: EmmyrcInlineValues,
+
+    /// Configuration for documentation parsing.
     #[serde(default)]
     pub doc: EmmyrcDoc,
+
+    /// Configuration for code formatting.
     #[serde(default)]
     pub format: EmmyrcReformat,
 }

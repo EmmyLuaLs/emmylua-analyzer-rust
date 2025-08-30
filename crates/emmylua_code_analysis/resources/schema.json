@@ -10,18 +10,21 @@
       ]
     },
     "codeAction": {
+      "description": "Configuration for code actions and quick fixes.",
       "$ref": "#/$defs/EmmyrcCodeAction",
       "default": {
         "insertSpace": false
       }
     },
     "codeLens": {
+      "description": "Configuration for code lens features.",
       "$ref": "#/$defs/EmmyrcCodeLens",
       "default": {
         "enable": true
       }
     },
     "completion": {
+      "description": "Configuration for code completion features.",
       "$ref": "#/$defs/EmmyrcCompletion",
       "default": {
         "autoRequire": true,
@@ -35,6 +38,7 @@
       }
     },
     "diagnostics": {
+      "description": "Configuration for diagnostics and error detection.",
       "$ref": "#/$defs/EmmyrcDiagnostic",
       "default": {
         "diagnosticInterval": 500,
@@ -47,6 +51,7 @@
       }
     },
     "doc": {
+      "description": "Configuration for documentation parsing.",
       "$ref": "#/$defs/EmmyrcDoc",
       "default": {
         "knownTags": [],
@@ -55,12 +60,14 @@
       }
     },
     "documentColor": {
+      "description": "Configuration for document color features.",
       "$ref": "#/$defs/EmmyrcDocumentColor",
       "default": {
         "enable": true
       }
     },
     "format": {
+      "description": "Configuration for code formatting.",
       "$ref": "#/$defs/EmmyrcReformat",
       "default": {
         "externalTool": null,
@@ -68,6 +75,7 @@
       }
     },
     "hint": {
+      "description": "Configuration for inlay hints in the editor.",
       "$ref": "#/$defs/EmmyrcInlayHint",
       "default": {
         "enable": true,
@@ -80,18 +88,21 @@
       }
     },
     "hover": {
+      "description": "Configuration for hover information.",
       "$ref": "#/$defs/EmmyrcHover",
       "default": {
         "enable": true
       }
     },
     "inlineValues": {
+      "description": "Configuration for inline value display.",
       "$ref": "#/$defs/EmmyrcInlineValues",
       "default": {
         "enable": true
       }
     },
     "references": {
+      "description": "Configuration for reference lookup features.",
       "$ref": "#/$defs/EmmyrcReference",
       "default": {
         "enable": true,
@@ -100,12 +111,14 @@
       }
     },
     "resource": {
+      "description": "Configuration for resource file management.",
       "$ref": "#/$defs/EmmyrcResource",
       "default": {
         "paths": []
       }
     },
     "runtime": {
+      "description": "Configuration for Lua runtime.",
       "$ref": "#/$defs/EmmyrcRuntime",
       "default": {
         "classDefaultCall": {
@@ -123,6 +136,7 @@
       }
     },
     "semanticTokens": {
+      "description": "Configuration for semantic token highlighting.",
       "$ref": "#/$defs/EmmyrcSemanticToken",
       "default": {
         "enable": true,
@@ -130,12 +144,14 @@
       }
     },
     "signature": {
+      "description": "Configuration for function signature help.",
       "$ref": "#/$defs/EmmyrcSignature",
       "default": {
         "detailSignatureHelper": true
       }
     },
     "strict": {
+      "description": "Configuration for strict type checks.",
       "$ref": "#/$defs/EmmyrcStrict",
       "default": {
         "arrayIndex": true,
@@ -146,6 +162,7 @@
       }
     },
     "workspace": {
+      "description": "Configuration for workspace management.",
       "$ref": "#/$defs/EmmyrcWorkspace",
       "default": {
         "enableReindex": false,
@@ -165,17 +182,17 @@
       "type": "object",
       "properties": {
         "forceNonColon": {
-          "description": "Mandatory non`:` definition. When `function_name` is not empty, it takes effect.",
+          "description": "Remove the `self` parameter from list of constructor parameters\nwhen inferring constructor signature using `functionName`.",
           "type": "boolean",
           "default": true
         },
         "forceReturnSelf": {
-          "description": "Force to return `self`.",
+          "description": "Always use `self` as constructor's return type when inferring\nconstructor signature using `functionName`.",
           "type": "boolean",
           "default": true
         },
         "functionName": {
-          "description": "class default overload function. eg. \"__init\".",
+          "description": "Name of the method that's used to resolve class default `__call` operator.\n\nFor example, if `functionName` is `\"__init\"`, then EmmyLua will use parameters\nand return types of `__init` method as parameters and return types\nof class' `__call` operator:\n\n```lua\n--- @class Example\n--- @field __init fun(): Example\n\n-- Unless `Example` provides its own `@overload`,\n-- any call to `Example()` is treated as a call to `Example:__init()`:\nlocal example = Example()\n--    ^^^^^^^ type of `example` is inferred as `Example`.\n```",
           "type": "string",
           "default": ""
         }
@@ -451,12 +468,28 @@
       ]
     },
     "DocSyntax": {
-      "type": "string",
-      "enum": [
-        "none",
-        "md",
-        "myst",
-        "rst"
+      "description": "Syntax for highlighting documentation.",
+      "oneOf": [
+        {
+          "description": "Documentation is not highlighted.",
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "description": "Documentation is highlighted as plain [MarkDown].\n\n[MarkDown]: https://commonmark.org/",
+          "type": "string",
+          "const": "md"
+        },
+        {
+          "description": "Documentation is highlighted as [MySt], a MarkDown plugin for [Sphinx].\n\nEnables Autocompletion and Go To Definition for sphinx cross-references.\n\n[MySt]: https://myst-parser.readthedocs.io/\n[Sphinx]: https://www.sphinx-doc.org/",
+          "type": "string",
+          "const": "myst"
+        },
+        {
+          "description": "Documentation is highlighted as [ReStructured Text].\n\nEnables Autocompletion and Go To Definition for [sphinx] cross-references.\n\n[ReStructured Text]: https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html\n[sphinx]: https://www.sphinx-doc.org/",
+          "type": "string",
+          "const": "rst"
+        }
       ]
     },
     "EmmyrcCodeAction": {
@@ -465,8 +498,7 @@
         "insertSpace": {
           "description": "Add space after `---` comments when inserting `@diagnostic disable-next-line`.",
           "type": "boolean",
-          "default": false,
-          "x-vscode-setting": true
+          "default": false
         }
       }
     },
@@ -482,40 +514,40 @@
       }
     },
     "EmmyrcCompletion": {
-      "description": "Configuration for EmmyLua code completion.",
       "type": "object",
       "properties": {
         "autoRequire": {
-          "description": "Automatically insert call to `require` when autocompletion\ninserts objects from other modules.",
+          "description": "When enabled, selecting a completion suggestion from another\nmodule will add the appropriate require statement.",
           "type": "boolean",
           "default": true,
           "x-vscode-setting": true
         },
         "autoRequireFunction": {
-          "description": "The function used for auto-requiring modules.",
+          "description": "Name of the function that's inserted when auto-requiring modules.\n\nDefault is `\"require\"`, but can be customized to use any module loader function.",
           "type": "string",
           "default": "require"
         },
         "autoRequireNamingConvention": {
-          "description": "The naming convention for auto-required filenames.",
+          "description": "The naming convention for auto-required filenames.\n\nControls how the imported module names are formatted in the `require` statement.",
           "$ref": "#/$defs/EmmyrcFilenameConvention",
           "default": "keep"
         },
         "autoRequireSeparator": {
-          "description": "A separator used in auto-require paths.",
+          "description": "Defines the character used to separate path segments in require statements.\n\nDefault is `\".\"`, but can be changed to other separators like `\"/\"`.",
           "type": "string",
           "default": "."
         },
         "baseFunctionIncludesName": {
-          "description": "Whether to include the name in the base function completion. Effect: `function () end` -> `function name() end`.",
+          "description": "Whether to include the name in the base function in postfix autocompletion.\n\nEffect: `function () end` -> `function name() end`.",
           "type": "boolean",
           "default": true,
           "x-vscode-setting": true
         },
         "callSnippet": {
-          "description": "Whether to use call snippets in completions.",
+          "description": "Whether to use call snippets in completions.\n\nWhen enabled, function completions will insert a snippet with placeholders\nfor function arguments, allowing for quick tabbing between parameters.",
           "type": "boolean",
-          "default": false
+          "default": false,
+          "x-vscode-setting": true
         },
         "enable": {
           "description": "Enable autocompletion.",
@@ -564,7 +596,7 @@
           "x-vscode-setting": true
         },
         "disable": {
-          "description": "A list of diagnostic codes that are disabled.",
+          "description": "A list of suppressed diagnostics.",
           "type": "array",
           "default": [],
           "items": {
@@ -572,12 +604,12 @@
           }
         },
         "enable": {
-          "description": "A flag indicating whether diagnostics are enabled.",
+          "description": "A flag indicating whether diagnostics are enabled at all.",
           "type": "boolean",
           "default": true
         },
         "enables": {
-          "description": "A list of diagnostic codes that are enabled.",
+          "description": "A list of diagnostic codes that are enabled, in addition to default ones.",
           "type": "array",
           "default": [],
           "items": {
@@ -585,7 +617,7 @@
           }
         },
         "globals": {
-          "description": "A list of global variables.",
+          "description": "A list of global variables.\n\nVariables from this list are always treated as defined globals.",
           "type": "array",
           "default": [],
           "items": {
@@ -593,7 +625,7 @@
           }
         },
         "globalsRegex": {
-          "description": "A list of regular expressions for global variables.",
+          "description": "A list of regular expressions for global variables.\n\nVariables that match these regular expressions are always treated as defined globals.",
           "type": "array",
           "default": [],
           "items": {
@@ -622,7 +654,7 @@
           }
         },
         "privateName": {
-          "description": "Treat specific field names as private, e.g. `m_*` means `XXX.m_id` and `XXX.m_type` are private, witch can only be accessed in the class where the definition is located.",
+          "description": "List of glob patterns that enable treating specific field names as private.\n\nFor example, `m_*` would make fields `Type.m_id` and `Type.m_type` private.",
           "type": "array",
           "default": [],
           "items": {
@@ -630,14 +662,14 @@
           }
         },
         "rstDefaultRole": {
-          "description": "When `syntax` is `Myst` or `Rst`, specifies default role used\nwith RST processor.",
+          "description": "When `syntax` is `Myst` or `Rst`, specifies [default role] used\nwith RST processor.\n\n[default role]: https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-default_role",
           "type": [
             "string",
             "null"
           ]
         },
         "rstPrimaryDomain": {
-          "description": "When `syntax` is `Myst` or `Rst`, specifies primary domain used\nwith RST processor.",
+          "description": "When `syntax` is `Myst` or `Rst`, specifies [primary domain] used\nwith RST processor.\n\n[primary domain]: https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-primary_domain",
           "type": [
             "string",
             "null"
@@ -665,7 +697,7 @@
       "type": "object",
       "properties": {
         "args": {
-          "description": "The arguments to pass to the external tool.",
+          "description": "List of arguments to pass to the external tool.\n\nEach argument can contain the following patterns:\n\n- `${file}` expands to the file path that needs formatting;\n\n- `${indent_size}` expands to numeric value for indentation size;\n\n- `${use_tabs?<on_yes>:<on_no>}` expands to `<on_yes>` placeholder or\n  `<on_no>` placeholder depending on whether tabs are used\n  for indentation.\n\n  For example, `${use_tabs?--tabs}` will expand to `--tabs` if tabs\n  are required, or an empty string if tabs are not required.\n\n- `${insert_final_newline?<on_yes>:<on_no>}` expands to `<on_yes>`\n  placeholder or `<on_no>` placeholder depending on whether the tool\n  should insert final newline.\n\n- `${non_standard_symbol?<on_yes>:<on_no>}` expands to `<on_yes>`\n  placeholder or `<on_no>` placeholder depending on whether\n  non-standard symbols are enabled.",
           "type": "array",
           "default": [],
           "items": {
@@ -678,6 +710,7 @@
           "default": ""
         },
         "timeout": {
+          "description": "Command timeout, in milliseconds.",
           "type": "integer",
           "format": "uint64",
           "default": 5000,
@@ -686,29 +719,30 @@
       }
     },
     "EmmyrcFilenameConvention": {
+      "description": "The naming convention for auto-required filenames.\n\nControls how the imported module names are formatted in the `require` statement.",
       "oneOf": [
         {
-          "description": "Keep the original filename.",
+          "description": "Keep the original filename without any transformation.\n\nExample: `\"my-module\"` remains `\"my-module\"`.",
           "type": "string",
           "const": "keep"
         },
         {
-          "description": "Convert the filename to snake_case.",
+          "description": "Convert the filename to `snake_case`.\n\nExample: `\"MyModule\"` becomes `\"my_module\"`.",
           "type": "string",
           "const": "snake-case"
         },
         {
-          "description": "Convert the filename to PascalCase.",
+          "description": "Convert the filename to `PascalCase`.\n\nExample: `\"my_module\"` becomes `\"MyModule\"`.",
           "type": "string",
           "const": "pascal-case"
         },
         {
-          "description": "Convert the filename to camelCase.",
+          "description": "Convert the filename to `camelCase`.\n\nExample: `\"my_module\"` becomes `\"myModule\"`.",
           "type": "string",
           "const": "camel-case"
         },
         {
-          "description": "When returning class definition, use class name, otherwise keep original name.",
+          "description": "When returning a class definition, use the class name; otherwise keep the original name.\n\nThis is useful for modules that export a single class with a name that might differ from the filename.",
           "type": "string",
           "const": "keep-class"
         }
@@ -816,7 +850,7 @@
           "const": "Lua5.5"
         },
         {
-          "description": "Lua Latest",
+          "description": "Lua Latest, currently set to `Lua5.4`.",
           "type": "string",
           "const": "LuaLatest"
         }
@@ -873,7 +907,7 @@
       "type": "object",
       "properties": {
         "externalTool": {
-          "description": "Whether to enable internal code reformatting.",
+          "description": "Configuration for external formatting tool.",
           "anyOf": [
             {
               "$ref": "#/$defs/EmmyrcExternalTool"
@@ -895,6 +929,7 @@
       "type": "object",
       "properties": {
         "paths": {
+          "description": "List of resource directories used in a project. Files from these\ndirectories will be added to autocompletion when completing\nfile paths.\n\nThis list can contain anything, like directories with game assets,\ntemplate files, and so on. No special interpretation beyond\nautocompletion is given to these paths.",
           "type": "array",
           "default": [],
           "items": {
@@ -907,7 +942,7 @@
       "type": "object",
       "properties": {
         "classDefaultCall": {
-          "description": "class default overload function.",
+          "description": "Controls resolution of class constructors.",
           "$ref": "#/$defs/ClassDefaultCall",
           "default": {
             "forceNonColon": false,
@@ -916,7 +951,7 @@
           }
         },
         "extensions": {
-          "description": "file Extensions. eg: .lua, .lua.txt",
+          "description": "Extensions of Lua files that need analysis.\n\nExample: `[\".lua\", \".lua.txt\"]`.",
           "type": "array",
           "default": [],
           "items": {
@@ -924,7 +959,6 @@
           }
         },
         "frameworkVersions": {
-          "description": "Framework versions.",
           "type": "array",
           "default": [],
           "items": {
@@ -932,7 +966,7 @@
           }
         },
         "nonstandardSymbol": {
-          "description": "Non-standard symbols.",
+          "description": "List of enabled non-standard symbols.",
           "type": "array",
           "default": [],
           "items": {
@@ -940,7 +974,7 @@
           }
         },
         "requireLikeFunction": {
-          "description": "Functions that like require.",
+          "description": "Functions that are treated like `require`.",
           "type": "array",
           "default": [],
           "items": {
@@ -948,7 +982,7 @@
           }
         },
         "requirePattern": {
-          "description": "Require pattern. eg. \"?.lua\", \"?/init.lua\"",
+          "description": "Require pattern in the format of Lua's [`path`].\n\nExample: `[\"?.lua\", \"?/init.lua\"]`.\n\n[`path`]: https://www.lua.org/pil/8.1.html",
           "type": "array",
           "default": [],
           "items": {
@@ -993,7 +1027,8 @@
         "detailSignatureHelper": {
           "description": "Whether to enable signature help.",
           "type": "boolean",
-          "default": true
+          "default": true,
+          "x-vscode-setting": true
         }
       }
     },
@@ -1012,22 +1047,22 @@
       "type": "object",
       "properties": {
         "arrayIndex": {
-          "description": "Whether to enable strict mode array indexing.",
+          "description": "Whether to enable strict mode when inferring type\nof array indexing operation.",
           "type": "boolean",
           "default": true
         },
         "docBaseConstMatchBaseType": {
-          "description": "Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.",
+          "description": "Base constant types defined in doc can match base types, allowing `int`\nto match `---@alias id 1|2|3`, same for string.",
           "type": "boolean",
           "default": false
         },
         "metaOverrideFileDefine": {
-          "description": "meta define overrides file define",
+          "description": "Definitions from `@meta` files always overrides definitions\nfrom normal files.",
           "type": "boolean",
           "default": true
         },
         "requirePath": {
-          "description": "Whether to enable strict mode require path.",
+          "description": "Whether to enable strict mode for resolving require paths.",
           "type": "boolean",
           "default": false
         },
@@ -1047,12 +1082,12 @@
           "x-vscode-setting": true
         },
         "encoding": {
-          "description": "Encoding. eg: \"utf-8\"",
+          "description": "File encoding.",
           "type": "string",
           "default": "utf-8"
         },
         "ignoreDir": {
-          "description": "Ignore directories.",
+          "description": "List of ignored directories.",
           "type": "array",
           "default": [],
           "items": {
@@ -1060,7 +1095,7 @@
           }
         },
         "ignoreGlobs": {
-          "description": "Ignore globs. eg: [\"**/*.lua\"]",
+          "description": "List of globs for ignored files.",
           "type": "array",
           "default": [],
           "items": {
@@ -1068,7 +1103,7 @@
           }
         },
         "library": {
-          "description": "Library paths. eg: \"/usr/local/share/lua/5.1\"",
+          "description": "List of library roots.\n\nExample: `\"/usr/local/share/lua/5.1\"`.",
           "type": "array",
           "default": [],
           "items": {
@@ -1076,7 +1111,7 @@
           }
         },
         "moduleMap": {
-          "description": "Module map. key is regex, value is new module regex\neg: {\n    \"^(.*)$\": \"module_$1\"\n    \"^lib(.*)$\": \"script$1\"\n}",
+          "description": "Module map. Allows customizing conversion from file paths\nto module names and require paths.\n\nThis is a list of objects, each containing a regular expression\nand a replace string. When generating module name for a file,\nEmmyLua will reverse-match file path with require patterns,\ngenerate an appropriate module name, then run it through these replace\npatterns to get the final module name.\n\nExample:\n\n```json\n{\n    \"workspace\": {\n        \"moduleMap\": [\n            {\n                \"pattern\": \"^_core\\\\.public\\\\.(.*)$\",\n                \"replace\": \"@core.$1\"\n            }\n        ]\n    }\n}\n```",
           "type": "array",
           "default": [],
           "items": {
@@ -1097,7 +1132,7 @@
           "x-vscode-setting": true
         },
         "workspaceRoots": {
-          "description": "Workspace roots. eg: [\"src\", \"test\"]",
+          "description": "List of workspace roots.\n\nExample: `[\"src\", \"test\"]`.",
           "type": "array",
           "default": [],
           "items": {
@@ -1110,9 +1145,11 @@
       "type": "object",
       "properties": {
         "pattern": {
+          "description": "Regular expression that will be matched against the generated module\nname. See [regex] crate for details about syntax.\n\n[regex]: https://docs.rs/regex/latest/regex/#syntax",
           "type": "string"
         },
         "replace": {
+          "description": "Replace string. Use `$name` to substitute capturing groups from regex.",
           "type": "string"
         }
       },

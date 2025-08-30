@@ -11,22 +11,33 @@ pub struct EmmyrcRuntime {
     /// Lua version.
     #[serde(default)]
     pub version: EmmyrcLuaVersion,
+
     #[serde(default)]
-    /// Functions that like require.
+    /// Functions that are treated like `require`.
     pub require_like_function: Vec<String>,
+
     #[serde(default)]
-    /// Framework versions.
     pub framework_versions: Vec<String>,
+
+    /// Extensions of Lua files that need analysis.
+    ///
+    /// Example: `[".lua", ".lua.txt"]`.
     #[serde(default)]
-    /// file Extensions. eg: .lua, .lua.txt
     pub extensions: Vec<String>,
+
+    /// Require pattern in the format of Lua's [`path`].
+    ///
+    /// Example: `["?.lua", "?/init.lua"]`.
+    ///
+    /// [`path`]: https://www.lua.org/pil/8.1.html
     #[serde(default)]
-    /// Require pattern. eg. "?.lua", "?/init.lua"
     pub require_pattern: Vec<String>,
+
+    /// Controls resolution of class constructors.
     #[serde(default)]
-    /// class default overload function.
     pub class_default_call: ClassDefaultCall,
-    /// Non-standard symbols.
+
+    /// List of enabled non-standard symbols.
     #[serde(default)]
     pub nonstandard_symbol: Vec<EmmyrcNonStdSymbol>,
     /// Special symbols.
@@ -69,7 +80,7 @@ pub enum EmmyrcLuaVersion {
     /// Lua 5.5
     #[serde(rename = "Lua5.5", alias = "Lua 5.5")]
     Lua55,
-    /// Lua Latest
+    /// Lua Latest, currently set to `Lua5.4`.
     #[serde(rename = "LuaLatest", alias = "Lua Latest")]
     LuaLatest,
 }
@@ -97,13 +108,31 @@ impl EmmyrcLuaVersion {
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassDefaultCall {
+    /// Name of the method that's used to resolve class default `__call` operator.
+    ///
+    /// For example, if `functionName` is `"__init"`, then EmmyLua will use parameters
+    /// and return types of `__init` method as parameters and return types
+    /// of class' `__call` operator:
+    ///
+    /// ```lua
+    /// --- @class Example
+    /// --- @field __init fun(): Example
+    ///
+    /// -- Unless `Example` provides its own `@overload`,
+    /// -- any call to `Example()` is treated as a call to `Example:__init()`:
+    /// local example = Example()
+    /// --    ^^^^^^^ type of `example` is inferred as `Example`.
+    /// ```
     #[serde(default)]
-    /// class default overload function. eg. "__init".
     pub function_name: String,
+
+    /// Remove the `self` parameter from list of constructor parameters
+    /// when inferring constructor signature using `functionName`.
     #[serde(default = "default_true")]
-    /// Mandatory non`:` definition. When `function_name` is not empty, it takes effect.
     pub force_non_colon: bool,
-    /// Force to return `self`.
+
+    /// Always use `self` as constructor's return type when inferring
+    /// constructor signature using `functionName`.
     #[serde(default = "default_true")]
     pub force_return_self: bool,
 }
