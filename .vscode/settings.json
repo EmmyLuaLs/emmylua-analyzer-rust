@@ -3,5 +3,7 @@
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
     "files.trimTrailingWhitespace": true,
-    "files.trimTrailingWhitespaceInRegexAndStrings": true
+    "files.trimTrailingWhitespaceInRegexAndStrings": true,
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.pythonProjects": []
 }

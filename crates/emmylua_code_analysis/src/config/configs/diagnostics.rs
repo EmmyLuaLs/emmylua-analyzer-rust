@@ -10,24 +10,34 @@ use crate::DiagnosticCode;
 #[serde(rename_all = "camelCase")]
 /// Represents the diagnostic configuration for Emmyrc.
 pub struct EmmyrcDiagnostic {
-    /// A list of diagnostic codes that are disabled.
+    /// A list of suppressed diagnostics.
     #[serde(default)]
     pub disable: Vec<DiagnosticCode>,
-    /// A flag indicating whether diagnostics are enabled.
+
+    /// A flag indicating whether diagnostics are enabled at all.
     #[serde(default = "default_true")]
     pub enable: bool,
+
     /// A list of global variables.
+    ///
+    /// Variables from this list are always treated as defined globals.
     #[serde(default)]
     pub globals: Vec<String>,
+
     /// A list of regular expressions for global variables.
+    ///
+    /// Variables that match these regular expressions are always treated as defined globals.
     #[serde(default)]
     pub globals_regex: Vec<String>,
+
     /// A map of diagnostic codes to their severity settings.
     #[serde(default)]
     pub severity: HashMap<DiagnosticCode, DiagnosticSeveritySetting>,
-    /// A list of diagnostic codes that are enabled.
+
+    /// A list of diagnostic codes that are enabled, in addition to default ones.
     #[serde(default)]
     pub enables: Vec<DiagnosticCode>,
+
     /// Delay between opening/changing a file and scanning it for errors, in milliseconds.
     #[schemars(extend("x-vscode-setting" = true))]
     pub diagnostic_interval: Option<u64>,

@@ -1,0 +1,130 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2025, CppCXY
+# This file is distributed under the same license as the EmmyLua Analyzer
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: EmmyLua Analyzer \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-08-21 00:14+0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: zh\n"
+"Language-Team: zh <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: ../../source/guide/configuration.md:1
+msgid "Configuration"
+msgstr ""
+
+#: ../../source/guide/configuration.md:3
+msgid ""
+"EmmyLua loads settings from `.emmyrc.json` located in project's root. For"
+" settings that aren't listed in project's `.emmyrc.json`, EmmyLua will "
+"search for user-specific defaults."
+msgstr ""
+
+#: ../../source/guide/configuration.md:7 ../../source/guide/configuration.md:55
+msgid "See also"
+msgstr ""
+
+#: ../../source/guide/configuration.md:8
+msgid ""
+"Full list of configuration values   [is available in the reference "
+"section](../reference/configuration.md#full-list-of-config-values)."
+msgstr ""
+
+#: ../../source/guide/configuration.md:12
+msgid "Compatibility with LuaLs"
+msgstr ""
+
+#: ../../source/guide/configuration.md:14
+msgid ""
+"If your project uses LuaLs, EmmyLua will be able to extract some settings"
+" from `.luarc.json`. However, `.emmyrc.json` configuration format is more"
+" feature-rich, and incompatible parts will be automatically ignored."
+msgstr ""
+
+#: ../../source/guide/configuration.md:18
+msgid "Project settings"
+msgstr ""
+
+#: ../../source/guide/configuration.md:20
+msgid ""
+"Create an `.emmyrc.json` in the root directory of your project. At the "
+"minimum, you'll want to configure Lua runtime version:"
+msgstr ""
+
+#: ../../source/guide/configuration.md:31
+msgid ""
+"To kick-start configuration process you can use this template. It "
+"contains all project-specific settings along with their default values:"
+msgstr ""
+
+#: ../../source/guide/configuration.md:34
+msgid "A template for project-specific `.emmyrc.json`"
+msgstr ""
+
+#: ../../source/guide/configuration.md:42
+msgid "Tip"
+msgstr ""
+
+#: ../../source/guide/configuration.md:43
+msgid ""
+"Only add project-specific setting to your project's `.emmyrc.json`. For "
+"example,   it's a good idea to set up [Lua "
+"version](#EmmyRc.runtime.version)   or [naming convention for auto-"
+"required paths](#EmmyRc.completion.autoRequireNamingConvention),   but "
+"overriding [settings for inlay hints](#EmmyRc.hint) would serve   no "
+"purpose."
+msgstr ""
+
+#: ../../source/guide/configuration.md:50
+msgid "User settings"
+msgstr ""
+
+#: ../../source/guide/configuration.md:52
+msgid ""
+"You can override default settings by creating an `.emmyrc.json` in your "
+"home or config directory."
+msgstr ""
+
+#: ../../source/guide/configuration.md:56
+msgid ""
+"Full list of places where EmmyLua searches for configs   [is available in"
+" the reference section](../reference/configuration.md#loading-order)."
+msgstr ""
+
+#: ../../source/guide/configuration.md:60
+msgid ""
+"Additionally, some editors allow overriding project's config values. See "
+"[installation instructions](installation) for details."
+msgstr ""
+
+#: ../../source/guide/configuration.md:63
+msgid ""
+"To kick-start configuration process you can use this template. It "
+"contains all user-specific settings along with their default values:"
+msgstr ""
+
+#: ../../source/guide/configuration.md:66
+msgid "A template for user-specific `.emmyrc.json`"
+msgstr ""
+
+#: ../../source/guide/configuration.md:74
+msgid "Schema"
+msgstr ""
+
+#: ../../source/guide/configuration.md:76
+msgid ""
+"To enable intelligent completion and validation for configuration files, "
+"you can add a schema reference to your configuration file:"
+msgstr ""
+

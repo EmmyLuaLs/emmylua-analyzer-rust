@@ -1,0 +1,754 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2025, CppCXY
+# This file is distributed under the same license as the EmmyLua Analyzer
+# package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: EmmyLua Analyzer \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-08-21 00:14+0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: zh\n"
+"Language-Team: zh <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: ../../source/reference/configuration.md:1
+msgid "Configuration"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "See also"
+msgstr ""
+
+#: ../../source/reference/configuration.md:4
+msgid "See our guide on [how to configure EmmyLua](../guide/configuration.md)."
+msgstr ""
+
+#: ../../source/reference/configuration.md:7
+msgid "Loading order"
+msgstr ""
+
+#: ../../source/reference/configuration.md:9
+msgid ""
+"EmmyLua will search for configs in the following order. Values from "
+"configs higher in the list override values from configs lower in the "
+"list:"
+msgstr ""
+
+#: ../../source/reference/configuration.md:12
+msgid "local `.emmyrc.json`: a JSON file located in your project's root,"
+msgstr ""
+
+#: ../../source/reference/configuration.md:13
+msgid "local `.luarc.json`: a JSON file located in your project's root,"
+msgstr ""
+
+#: ../../source/reference/configuration.md:14
+msgid "a JSON file specified by environment variable `$EMMYLUALS_CONFIG`,"
+msgstr ""
+
+#: ../../source/reference/configuration.md:15
+msgid "global `<config-dir>/emmylua_ls/.emmyrc.json`,"
+msgstr ""
+
+#: ../../source/reference/configuration.md:16
+msgid "global `<config-dir>/emmylua_ls/.luarc.json`,"
+msgstr ""
+
+#: ../../source/reference/configuration.md:17
+msgid "global `<home-dir>/.emmyrc.json`,"
+msgstr ""
+
+#: ../../source/reference/configuration.md:18
+msgid "global `<home-dir>/.luarc.json`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:20
+msgid "Depending on your platform, `<config-dir>` will be different:"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "Platform"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "Value"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "Example"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "Linux"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "`$XDG_CONFIG_HOME` or `$HOME/.config`"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "`/home/alice/.config`"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "macOS"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "`$HOME/Library/Application Support`"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "`/Users/Alice/Library/Application Support`"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "Windows"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+#, python-brace-format
+msgid "`{FOLDERID_RoamingAppData}`"
+msgstr ""
+
+#: ../../source/reference/configuration.md:3
+msgid "`C:\\Users\\Alice\\AppData\\Roaming`"
+msgstr ""
+
+#: ../../source/reference/configuration.md:28
+msgid "Full list of config values"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for code actions and quick fixes."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Add space after `---` comments when inserting `@diagnostic disable-next-"
+"line`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for code lens features."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Enable code lens."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for code completion features."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"When enabled, selecting a completion suggestion from another module will "
+"add the appropriate require statement."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Name of the function that's inserted when auto-requiring modules."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid ""
+"Default is `\"require\"`, but can be customized to use any module loader "
+"function."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "The naming convention for auto-required filenames."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid ""
+"Controls how the imported module names are formatted in the `require` "
+"statement."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Keep the original filename without any transformation."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `\"my-module\"` remains `\"my-module\"`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Convert the filename to `snake_case`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `\"MyModule\"` becomes `\"my_module\"`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Convert the filename to `PascalCase`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `\"my_module\"` becomes `\"MyModule\"`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Convert the filename to `camelCase`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `\"my_module\"` becomes `\"myModule\"`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"When returning a class definition, use the class name; otherwise keep the"
+" original name."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid ""
+"This is useful for modules that export a single class with a name that "
+"might differ from the filename."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Defines the character used to separate path segments in require "
+"statements."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Default is `\".\"`, but can be changed to other separators like `\"/\"`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Whether to include the name in the base function in postfix "
+"autocompletion."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Effect: `function () end` -> `function name() end`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Whether to use call snippets in completions."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid ""
+"When enabled, function completions will insert a snippet with "
+"placeholders for function arguments, allowing for quick tabbing between "
+"parameters."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Enable autocompletion."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Symbol that's used to trigger postfix autocompletion."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for diagnostics and error detection."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Delay between opening/changing a file and scanning it for errors, in "
+"milliseconds."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "A list of suppressed diagnostics."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "A flag indicating whether diagnostics are enabled at all."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "A list of diagnostic codes that are enabled, in addition to default ones."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "A list of global variables."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Variables from this list are always treated as defined globals."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "A list of regular expressions for global variables."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid ""
+"Variables that match these regular expressions are always treated as "
+"defined globals."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "A map of diagnostic codes to their severity settings."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Represents an error diagnostic severity."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Represents a warning diagnostic severity."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Represents an information diagnostic severity."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Represents a hint diagnostic severity."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for documentation parsing."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "List of known documentation tags."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"List of glob patterns that enable treating specific field names as "
+"private."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid ""
+"For example, `m_*` would make fields `Type.m_id` and `Type.m_type` "
+"private."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"When `syntax` is `Myst` or `Rst`, specifies [default role] used with RST "
+"processor."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"When `syntax` is `Myst` or `Rst`, specifies [primary domain] used with "
+"RST processor."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Syntax for highlighting documentation."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Documentation is not highlighted."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Documentation is highlighted as plain [MarkDown]."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Documentation is highlighted as [MySt], a MarkDown plugin for [Sphinx]."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Enables Autocompletion and Go To Definition for sphinx cross-references."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Documentation is highlighted as [ReStructured Text]."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Enables Autocompletion and Go To Definition for [sphinx] cross-references."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for document color features."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Enable parsing strings for color tags and showing a color picker next to "
+"them."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for code formatting."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for external formatting tool."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "List of arguments to pass to the external tool."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Each argument can contain the following patterns:"
+msgstr ""
+
+#: ../../source/reference/configuration.md:35
+#, python-brace-format
+msgid "`${file}` expands to the file path that needs formatting;"
+msgstr ""
+
+#: ../../source/reference/configuration.md:37
+#, python-brace-format
+msgid "`${indent_size}` expands to numeric value for indentation size;"
+msgstr ""
+
+#: ../../source/reference/configuration.md:39
+#, python-brace-format
+msgid ""
+"`${use_tabs?<on_yes>:<on_no>}` expands to `<on_yes>` placeholder or "
+"`<on_no>` placeholder depending on whether tabs are used for indentation."
+msgstr ""
+
+#: ../../source/reference/configuration.md:43
+#, python-brace-format
+msgid ""
+"For example, `${use_tabs?--tabs}` will expand to `--tabs` if tabs are "
+"required, or an empty string if tabs are not required."
+msgstr ""
+
+#: ../../source/reference/configuration.md:46
+#, python-brace-format
+msgid ""
+"`${insert_final_newline?<on_yes>:<on_no>}` expands to `<on_yes>` "
+"placeholder or `<on_no>` placeholder depending on whether the tool should"
+" insert final newline."
+msgstr ""
+
+#: ../../source/reference/configuration.md:50
+#, python-brace-format
+msgid ""
+"`${non_standard_symbol?<on_yes>:<on_no>}` expands to `<on_yes>` "
+"placeholder or `<on_no>` placeholder depending on whether non-standard "
+"symbols are enabled."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "The command to run the external tool."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Command timeout, in milliseconds."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Whether to use the diff algorithm for formatting."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for inlay hints in the editor."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Enable inlay hints."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Show name of enumerator when passing a literal value to a function that "
+"expects an enum."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+#: ../../source/reference/configuration.md:34
+#: ../../source/reference/configuration.md:40
+msgid "Example:"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Show named array indexes."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Show types of local variables."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Show hint when calling an object results in a call to its meta table's "
+"`__call` function."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Show methods that override functions from base class."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Show parameter names in function calls and parameter types in function "
+"definitions."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for hover information."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Enable showing documentation on hover."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for inline value display."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Show inline values during debug."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for reference lookup features."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Enable searching for symbol usages."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Use fuzzy search when searching for symbol usages and normal search "
+"didn't find anything."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Also search for usages in strings."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for resource file management."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"List of resource directories used in a project. Files from these "
+"directories will be added to autocompletion when completing file paths."
+msgstr ""
+
+#: ../../source/reference/configuration.md:35
+msgid ""
+"This list can contain anything, like directories with game assets, "
+"template files, and so on. No special interpretation beyond "
+"autocompletion is given to these paths."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for Lua runtime."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Controls resolution of class constructors."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Remove the `self` parameter from list of constructor parameters when "
+"inferring constructor signature using `functionName`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Always use `self` as constructor's return type when inferring constructor"
+" signature using `functionName`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Name of the method that's used to resolve class default `__call` operator."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid ""
+"For example, if `functionName` is `\"__init\"`, then EmmyLua will use "
+"parameters and return types of `__init` method as parameters and return "
+"types of class' `__call` operator:"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Extensions of Lua files that need analysis."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `[\".lua\", \".lua.txt\"]`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "List of enabled non-standard symbols."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Functions that are treated like `require`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Require pattern in the format of Lua's [`path`]."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `[\"?.lua\", \"?/init.lua\"]`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Lua version."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Lua 5.1"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "LuaJIT"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Lua 5.2"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Lua 5.3"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Lua 5.4"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Lua 5.5"
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Lua Latest, currently set to `Lua5.4`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for semantic token highlighting."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Enable semantic tokens."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Render Markdown/RST in documentation. Set `doc.syntax` for this option to"
+" have effect."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for function signature help."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Whether to enable signature help."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for strict type checks."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Whether to enable strict mode when inferring type of array indexing "
+"operation."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Base constant types defined in doc can match base types, allowing `int` "
+"to match `---@alias id 1|2|3`, same for string."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Definitions from `@meta` files always overrides definitions from normal "
+"files."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Whether to enable strict mode for resolving require paths."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Configuration for workspace management."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Enable full project reindex after changing a file."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "File encoding."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "List of ignored directories."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "List of globs for ignored files."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "List of library roots."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `\"/usr/local/share/lua/5.1\"`."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Module map. Allows customizing conversion from file paths to module names"
+" and require paths."
+msgstr ""
+
+#: ../../source/reference/configuration.md:34
+msgid ""
+"This is a list of objects, each containing a regular expression and a "
+"replace string. When generating module name for a file, EmmyLua will "
+"reverse-match file path with require patterns, generate an appropriate "
+"module name, then run it through these replace patterns to get the final "
+"module name."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid ""
+"Regular expression that will be matched against the generated module "
+"name. See [regex] crate for details about syntax."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Replace string. Use `$name` to substitute capturing groups from regex."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "Delay between changing a file and full project reindex, in milliseconds."
+msgstr ""
+
+#: ../../source/reference/configuration.md:31
+msgid "List of workspace roots."
+msgstr ""
+
+#: ../../source/reference/configuration.md:33
+msgid "Example: `[\"src\", \"test\"]`."
+msgstr ""
+

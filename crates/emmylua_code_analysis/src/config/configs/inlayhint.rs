@@ -8,10 +8,12 @@ pub struct EmmyrcInlayHint {
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub enable: bool,
+
     /// Show parameter names in function calls and parameter types in function definitions.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub param_hint: bool,
+
     /// Show named array indexes.
     ///
     /// Example:
@@ -26,19 +28,23 @@ pub struct EmmyrcInlayHint {
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub index_hint: bool,
+
     /// Show types of local variables.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub local_hint: bool,
+
     /// Show methods that override functions from base class.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub override_hint: bool,
+
     /// Show hint when calling an object results in a call to
     /// its meta table's `__call` function.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub meta_call_hint: bool,
+
     /// Show name of enumerator when passing a literal value to a function
     /// that expects an enum.
     ///

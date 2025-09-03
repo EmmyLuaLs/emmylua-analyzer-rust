@@ -8,11 +8,13 @@ pub struct EmmyrcReference {
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub enable: bool,
+
     /// Use fuzzy search when searching for symbol usages
     /// and normal search didn't find anything.
     #[serde(default = "default_true")]
     #[schemars(extend("x-vscode-setting" = true))]
     pub fuzzy_search: bool,
+
     /// Also search for usages in strings.
     #[serde(default = "default_false")]
     #[schemars(extend("x-vscode-setting" = true))]
