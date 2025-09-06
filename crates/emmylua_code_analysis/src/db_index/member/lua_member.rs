@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use emmylua_parser::{LuaDocFieldKey, LuaIndexKey, LuaSyntaxId, LuaSyntaxKind};
+use emmylua_parser::{LuaIndexKey, LuaSyntaxId, LuaSyntaxKind};
 use rowan::{TextRange, TextSize};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -184,32 +184,6 @@ impl Ord for LuaMemberKey {
             (Name(_), _) => std::cmp::Ordering::Less,
             (_, Name(_)) => std::cmp::Ordering::Greater,
             (ExprType(_), ExprType(_)) => std::cmp::Ordering::Equal,
-        }
-    }
-}
-
-impl From<LuaDocFieldKey> for LuaMemberKey {
-    fn from(key: LuaDocFieldKey) -> Self {
-        match key {
-            LuaDocFieldKey::Name(name) => {
-                LuaMemberKey::Name(name.get_name_text().to_string().into())
-            }
-            LuaDocFieldKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
-            LuaDocFieldKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
-            _ => LuaMemberKey::None,
-        }
-    }
-}
-
-impl From<&LuaDocFieldKey> for LuaMemberKey {
-    fn from(key: &LuaDocFieldKey) -> Self {
-        match key {
-            LuaDocFieldKey::Name(name) => {
-                LuaMemberKey::Name(name.get_name_text().to_string().into())
-            }
-            LuaDocFieldKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
-            LuaDocFieldKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
-            _ => LuaMemberKey::None,
         }
     }
 }

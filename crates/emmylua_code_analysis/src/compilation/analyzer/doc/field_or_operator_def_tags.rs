@@ -102,13 +102,13 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
                             "self".to_string(),
                             Some(LuaType::Ref(current_type_id.clone())),
                         ),
-                        ("key".to_string(), Some(key_type_ref)),
+                        ("key".to_string(), Some(key_type_ref.clone())),
                     ],
-                    field_type,
+                    field_type.clone(),
                 ))),
             );
             analyzer.db.get_operator_index_mut().add_operator(operator);
-            return Some(());
+            LuaMemberKey::ExprType(key_type_ref)
         }
     };
 
