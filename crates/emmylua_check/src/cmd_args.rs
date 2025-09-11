@@ -54,6 +54,7 @@ pub struct CmdArgs {
 pub enum OutputFormat {
     Json,
     Text,
+    Sarif,
 }
 
 #[allow(unused)]

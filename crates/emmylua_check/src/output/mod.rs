@@ -1,4 +1,5 @@
 mod json_output_writer;
+mod sarif_output_writer;
 mod text_output_writer;
 
 use std::path::PathBuf;
@@ -22,6 +23,7 @@ pub async fn output_result(
 ) -> i32 {
     let mut writer: Box<dyn OutputWriter> = match output_format {
         OutputFormat::Json => Box::new(json_output_writer::JsonOutputWriter::new(output)),
+        OutputFormat::Sarif => Box::new(sarif_output_writer::SarifOutputWriter::new(output)),
         OutputFormat::Text => {
             Box::new(text_output_writer::TextOutputWriter::new(workspace.clone()))
         }
