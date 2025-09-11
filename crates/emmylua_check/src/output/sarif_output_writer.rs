@@ -34,7 +34,9 @@ impl SarifOutputWriter {
         }
     }
 
-    fn diagnostic_severity_to_sarif_level(severity: Option<lsp_types::DiagnosticSeverity>) -> &'static str {
+    fn diagnostic_severity_to_sarif_level(
+        severity: Option<lsp_types::DiagnosticSeverity>,
+    ) -> &'static str {
         match severity {
             Some(lsp_types::DiagnosticSeverity::ERROR) => "error",
             Some(lsp_types::DiagnosticSeverity::WARNING) => "warning",
@@ -102,7 +104,7 @@ impl OutputWriter for SarifOutputWriter {
                     "driver": {
                         "name": "emmylua_check",
                         "version": "0.8.2",
-                        "informationUri": "https://github.com/CppCXY/emmylua-analyzer-rust"
+                        "informationUri": "https://github.com/EmmyLuaLs/emmylua-analyzer-rust"
                     }
                 },
                 "results": self.sarif_runs
