@@ -139,7 +139,11 @@ fn infer_literal_expr(db: &DbIndex, config: &LuaInferCache, expr: LuaLiteralExpr
                 Some(decl) if decl.is_global() => LuaType::Any,
                 Some(decl) if decl.is_param() => {
                     let base = infer_param(db, decl).unwrap_or(LuaType::Unknown);
-                    LuaType::Variadic(VariadicType::Base(base).into())
+                    if matches!(base, LuaType::Variadic(_)) {
+                        base
+                    } else {
+                        LuaType::Variadic(VariadicType::Base(base).into())
+                    }
                 }
                 _ => LuaType::Any, // 默认返回 Any
             };
