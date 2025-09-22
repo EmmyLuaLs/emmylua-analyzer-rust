@@ -2867,4 +2867,61 @@ Syntax(Chunk)@0..137
 
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_attribute_doc() {
+        let code = r#"
+        ---@attribute check_point(x: string, y: number)
+        ---@[check_point("a", 0)]
+        "#;
+        // print_ast(code);
+        let result = r#"
+Syntax(Chunk)@0..99
+  Syntax(Block)@0..99
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..90
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagAttributeDef)@13..56
+        Token(TkTagAttribute)@13..22 "attribute"
+        Token(TkWhitespace)@22..23 " "
+        Token(TkName)@23..34 "check_point"
+        Token(TkLeftParen)@34..35 "("
+        Syntax(DocTypedParameter)@35..44
+          Token(TkName)@35..36 "x"
+          Token(TkColon)@36..37 ":"
+          Token(TkWhitespace)@37..38 " "
+          Syntax(TypeName)@38..44
+            Token(TkName)@38..44 "string"
+        Token(TkComma)@44..45 ","
+        Token(TkWhitespace)@45..46 " "
+        Syntax(DocTypedParameter)@46..55
+          Token(TkName)@46..47 "y"
+          Token(TkColon)@47..48 ":"
+          Token(TkWhitespace)@48..49 " "
+          Syntax(TypeName)@49..55
+            Token(TkName)@49..55 "number"
+        Token(TkRightParen)@55..56 ")"
+      Token(TkEndOfLine)@56..57 "\n"
+      Token(TkWhitespace)@57..65 "        "
+      Token(TkDocStart)@65..69 "---@"
+      Syntax(DocAttributeUsage)@69..90
+        Token(TkDocAttributeStart)@69..70 "["
+        Syntax(DocAttributeName)@70..81
+          Token(TkName)@70..81 "check_point"
+        Syntax(DocAttributeArgList)@81..89
+          Token(TkLeftParen)@81..82 "("
+          Syntax(DocAttributeArg)@82..85
+            Token(TkString)@82..85 "\"a\""
+          Token(TkComma)@85..86 ","
+          Token(TkWhitespace)@86..87 " "
+          Syntax(DocAttributeArg)@87..88
+            Token(TkInt)@87..88 "0"
+          Token(TkRightParen)@88..89 ")"
+        Token(TkRightBracket)@89..90 "]"
+    Token(TkEndOfLine)@90..91 "\n"
+    Token(TkWhitespace)@91..99 "        "
+        "#;
+        assert_ast_eq!(code, result);
+    }
 }

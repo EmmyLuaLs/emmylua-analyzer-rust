@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     expect_token, if_token_bump, parse_description,
-    types::{parse_fun_type, parse_type, parse_type_list},
+    types::{parse_fun_type, parse_type, parse_type_list, parse_typed_param},
 };
 
 pub fn parse_tag(p: &mut LuaDocParser) {
@@ -57,6 +57,8 @@ fn parse_tag_detail(p: &mut LuaDocParser) -> DocParseResult {
         LuaTokenKind::TkTagMeta => parse_tag_meta(p),
         LuaTokenKind::TkTagExport => parse_tag_export(p),
         LuaTokenKind::TkLanguage => parse_tag_language(p),
+        LuaTokenKind::TkTagAttribute => parse_tag_attribute_def(p),
+        LuaTokenKind::TkDocAttributeStart => parse_attribute_usage(p),
 
         // simple tag
         LuaTokenKind::TkTagVisibility => parse_tag_simple(p, LuaSyntaxKind::DocTagVisibility),
@@ -644,4 +646,129 @@ fn parse_tag_language(p: &mut LuaDocParser) -> DocParseResult {
     p.set_state(LuaDocLexerState::Description);
     parse_description(p);
     Ok(m.complete(p))
+}
+
+// ---@attribute 名称(参数列表)
+fn parse_tag_attribute_def(p: &mut LuaDocParser) -> DocParseResult {
+    p.set_state(LuaDocLexerState::Normal);
+    let m = p.mark(LuaSyntaxKind::DocTagAttributeDef);
+    p.bump();
+
+    // 解析属性名称
+    expect_token(p, LuaTokenKind::TkName)?;
+
+    // 解析参数列表
+    expect_token(p, LuaTokenKind::TkLeftParen)?;
+
+    if p.current_token() != LuaTokenKind::TkRightParen {
+        parse_typed_param(p)?;
+        while p.current_token() == LuaTokenKind::TkComma {
+            p.bump();
+            parse_typed_param(p)?;
+        }
+    }
+
+    expect_token(p, LuaTokenKind::TkRightParen)?;
+
+    p.set_state(LuaDocLexerState::Description);
+    parse_description(p);
+    Ok(m.complete(p))
+}
+
+// ---@[attribute_name(params)] or ---@[attribute_name]
+pub fn parse_attribute_usage(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::DocAttributeUsage);
+    p.bump(); // consume '['
+
+    // 解析属性名称
+    parse_attribute_name(p)?;
+
+    // 解析参数列表, 允许没有参数的特性在使用时省略括号
+    if p.current_token() == LuaTokenKind::TkLeftParen {
+        parse_attribute_arg_list(p)?;
+    }
+
+    // 期望结束符号 ']'
+    expect_token(p, LuaTokenKind::TkRightBracket)?;
+
+    // 属性使用解析完成后, 重置状态
+    p.set_state(LuaDocLexerState::Description);
+
+    Ok(m.complete(p))
+}
+
+// 解析属性名称
+fn parse_attribute_name(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::DocAttributeName);
+    expect_token(p, LuaTokenKind::TkName)?;
+    Ok(m.complete(p))
+}
+
+// 解析属性参数列表
+fn parse_attribute_arg_list(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::DocAttributeArgList);
+    p.bump(); // consume '('
+
+    // 解析参数值列表
+    while p.current_token() != LuaTokenKind::TkRightParen
+        && p.current_token() != LuaTokenKind::TkEof
+    {
+        // 跳过空白字符
+        while p.current_token() == LuaTokenKind::TkWhitespace {
+            p.bump();
+        }
+
+        // 如果遇到右括号则跳出
+        if p.current_token() == LuaTokenKind::TkRightParen {
+            break;
+        }
+
+        // 解析单个参数
+        parse_attribute_arg(p)?;
+
+        // 跳过空白字符
+        while p.current_token() == LuaTokenKind::TkWhitespace {
+            p.bump();
+        }
+
+        // 处理逗号分隔符
+        if p.current_token() == LuaTokenKind::TkComma {
+            p.bump();
+        } else if p.current_token() != LuaTokenKind::TkRightParen {
+            break;
+        }
+    }
+
+    expect_token(p, LuaTokenKind::TkRightParen)?;
+    Ok(m.complete(p))
+}
+
+// 解析单个属性参数
+fn parse_attribute_arg(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::DocAttributeArg);
+
+    // TODO: 添加具名参数支持(name = value)
+    parse_attribute_arg_value(p)?;
+
+    Ok(m.complete(p))
+}
+
+// 解析属性参数值
+fn parse_attribute_arg_value(p: &mut LuaDocParser) -> Result<(), LuaParseError> {
+    match p.current_token() {
+        LuaTokenKind::TkString
+        | LuaTokenKind::TkLongString
+        | LuaTokenKind::TkInt
+        | LuaTokenKind::TkFloat
+        | LuaTokenKind::TkTrue
+        | LuaTokenKind::TkFalse
+        | LuaTokenKind::TkName => {
+            p.bump();
+            Ok(())
+        }
+        _ => Err(LuaParseError::doc_error_from(
+            "Expected attribute argument value",
+            p.current_token_range(),
+        )),
+    }
 }
