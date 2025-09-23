@@ -92,7 +92,7 @@ pub enum LuaSyntaxKind {
     DocTagReturnCast,
     DocTagExport,
     DocTagLanguage,
-    DocTagAttributeDef,
+    DocTagAttribute,
 
     // doc Type
     TypeArray,          // baseType []
@@ -109,6 +109,7 @@ pub enum LuaSyntaxKind {
     TypeNullable, // <Type>?
     TypeStringTemplate, // prefixName.`T`
     TypeMultiLineUnion, // | simple type # description
+    TypeAttribute, // attribute(paramList)
 
     // follow donot support now
     TypeMatch,
@@ -127,7 +128,6 @@ pub enum LuaSyntaxKind {
     DocTypeList,
     DocAttribute,          // (partial, global, local, ...)
     DocAttributeUsage,     // '@[attribute_name(params)]' or '@[attribute_name]'
-    DocAttributeName,      // attribute_name in @[attribute_name(...)]
     DocAttributeArgList,   // argument list in @[attribute_name(arg1, arg2, ...)]
     DocAttributeArg,       // single argument in attribute usage
     DocOpType,             // +<type>, -<type>, +?

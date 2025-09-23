@@ -17,6 +17,7 @@ pub enum LuaDocTag {
     Class(LuaDocTagClass),
     Enum(LuaDocTagEnum),
     Alias(LuaDocTagAlias),
+    Attribute(LuaDocTagAttribute),
     Type(LuaDocTagType),
     Param(LuaDocTagParam),
     Return(LuaDocTagReturn),
@@ -51,6 +52,7 @@ impl LuaAstNode for LuaDocTag {
             LuaDocTag::Class(it) => it.syntax(),
             LuaDocTag::Enum(it) => it.syntax(),
             LuaDocTag::Alias(it) => it.syntax(),
+            LuaDocTag::Attribute(it) => it.syntax(),
             LuaDocTag::Type(it) => it.syntax(),
             LuaDocTag::Param(it) => it.syntax(),
             LuaDocTag::Return(it) => it.syntax(),
@@ -88,6 +90,7 @@ impl LuaAstNode for LuaDocTag {
             || kind == LuaSyntaxKind::DocTagEnum
             || kind == LuaSyntaxKind::DocTagAlias
             || kind == LuaSyntaxKind::DocTagType
+            || kind == LuaSyntaxKind::DocTagAttribute
             || kind == LuaSyntaxKind::DocTagParam
             || kind == LuaSyntaxKind::DocTagReturn
             || kind == LuaSyntaxKind::DocTagOverload
@@ -129,6 +132,9 @@ impl LuaAstNode for LuaDocTag {
             LuaSyntaxKind::DocTagAlias => {
                 Some(LuaDocTag::Alias(LuaDocTagAlias::cast(syntax).unwrap()))
             }
+            LuaSyntaxKind::DocTagAttribute => Some(LuaDocTag::Attribute(
+                LuaDocTagAttribute::cast(syntax).unwrap(),
+            )),
             LuaSyntaxKind::DocTagType => {
                 Some(LuaDocTag::Type(LuaDocTagType::cast(syntax).unwrap()))
             }
@@ -1543,5 +1549,38 @@ impl LuaDocDescriptionOwner for LuaDocTagLanguage {}
 impl LuaDocTagLanguage {
     pub fn get_name_token(&self) -> Option<LuaNameToken> {
         self.token()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocTagAttribute {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocTagAttribute {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool {
+        kind == LuaSyntaxKind::DocTagAttribute
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocTagAttribute {
+    pub fn get_name_token(&self) -> Option<LuaNameToken> {
+        self.token()
+    }
+
+    pub fn get_type(&self) -> Option<LuaDocType> {
+        self.child()
     }
 }

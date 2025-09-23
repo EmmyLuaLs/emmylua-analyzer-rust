@@ -57,8 +57,8 @@ fn parse_tag_detail(p: &mut LuaDocParser) -> DocParseResult {
         LuaTokenKind::TkTagMeta => parse_tag_meta(p),
         LuaTokenKind::TkTagExport => parse_tag_export(p),
         LuaTokenKind::TkLanguage => parse_tag_language(p),
-        LuaTokenKind::TkTagAttribute => parse_tag_attribute_def(p),
-        LuaTokenKind::TkDocAttributeStart => parse_attribute_usage(p),
+        LuaTokenKind::TkTagAttribute => parse_tag_attribute(p),
+        LuaTokenKind::TkDocAttribute => parse_attribute_usage(p),
 
         // simple tag
         LuaTokenKind::TkTagVisibility => parse_tag_simple(p, LuaSyntaxKind::DocTagVisibility),
@@ -86,7 +86,7 @@ fn parse_tag_class(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTagClass);
     p.bump();
     if p.current_token() == LuaTokenKind::TkLeftParen {
-        parse_tag_attribute(p)?;
+        parse_doc_attribute(p)?;
     }
 
     expect_token(p, LuaTokenKind::TkName)?;
@@ -106,7 +106,7 @@ fn parse_tag_class(p: &mut LuaDocParser) -> DocParseResult {
 }
 
 // (partial, global, local)
-fn parse_tag_attribute(p: &mut LuaDocParser) -> DocParseResult {
+fn parse_doc_attribute(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocAttribute);
     p.bump();
     expect_token(p, LuaTokenKind::TkName)?;
@@ -160,7 +160,7 @@ fn parse_tag_enum(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTagEnum);
     p.bump();
     if p.current_token() == LuaTokenKind::TkLeftParen {
-        parse_tag_attribute(p)?;
+        parse_doc_attribute(p)?;
     }
 
     expect_token(p, LuaTokenKind::TkName)?;
@@ -247,7 +247,7 @@ fn parse_tag_field(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTagField);
     p.bump();
     if p.current_token() == LuaTokenKind::TkLeftParen {
-        parse_tag_attribute(p)?;
+        parse_doc_attribute(p)?;
     }
 
     p.set_state(LuaDocLexerState::Normal);
@@ -649,15 +649,25 @@ fn parse_tag_language(p: &mut LuaDocParser) -> DocParseResult {
 }
 
 // ---@attribute 名称(参数列表)
-fn parse_tag_attribute_def(p: &mut LuaDocParser) -> DocParseResult {
+fn parse_tag_attribute(p: &mut LuaDocParser) -> DocParseResult {
     p.set_state(LuaDocLexerState::Normal);
-    let m = p.mark(LuaSyntaxKind::DocTagAttributeDef);
+    let m = p.mark(LuaSyntaxKind::DocTagAttribute);
     p.bump();
 
     // 解析属性名称
     expect_token(p, LuaTokenKind::TkName)?;
 
     // 解析参数列表
+    parse_type_attribute(p)?;
+
+    p.set_state(LuaDocLexerState::Description);
+    parse_description(p);
+    Ok(m.complete(p))
+}
+
+// (param1: type1, param2: type2, ...)
+fn parse_type_attribute(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::TypeAttribute);
     expect_token(p, LuaTokenKind::TkLeftParen)?;
 
     if p.current_token() != LuaTokenKind::TkRightParen {
@@ -669,9 +679,6 @@ fn parse_tag_attribute_def(p: &mut LuaDocParser) -> DocParseResult {
     }
 
     expect_token(p, LuaTokenKind::TkRightParen)?;
-
-    p.set_state(LuaDocLexerState::Description);
-    parse_description(p);
     Ok(m.complete(p))
 }
 
@@ -680,8 +687,7 @@ pub fn parse_attribute_usage(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocAttributeUsage);
     p.bump(); // consume '['
 
-    // 解析属性名称
-    parse_attribute_name(p)?;
+    expect_token(p, LuaTokenKind::TkName)?;
 
     // 解析参数列表, 允许没有参数的特性在使用时省略括号
     if p.current_token() == LuaTokenKind::TkLeftParen {
@@ -697,45 +703,25 @@ pub fn parse_attribute_usage(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-// 解析属性名称
-fn parse_attribute_name(p: &mut LuaDocParser) -> DocParseResult {
-    let m = p.mark(LuaSyntaxKind::DocAttributeName);
-    expect_token(p, LuaTokenKind::TkName)?;
-    Ok(m.complete(p))
-}
-
 // 解析属性参数列表
 fn parse_attribute_arg_list(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocAttributeArgList);
     p.bump(); // consume '('
 
     // 解析参数值列表
-    while p.current_token() != LuaTokenKind::TkRightParen
-        && p.current_token() != LuaTokenKind::TkEof
-    {
-        // 跳过空白字符
-        while p.current_token() == LuaTokenKind::TkWhitespace {
-            p.bump();
-        }
-
-        // 如果遇到右括号则跳出
-        if p.current_token() == LuaTokenKind::TkRightParen {
-            break;
-        }
-
-        // 解析单个参数
-        parse_attribute_arg(p)?;
-
-        // 跳过空白字符
-        while p.current_token() == LuaTokenKind::TkWhitespace {
-            p.bump();
-        }
-
-        // 处理逗号分隔符
-        if p.current_token() == LuaTokenKind::TkComma {
-            p.bump();
-        } else if p.current_token() != LuaTokenKind::TkRightParen {
-            break;
+    if p.current_token() != LuaTokenKind::TkRightParen {
+        loop {
+            if p.current_token() == LuaTokenKind::TkEof {
+                break;
+            }
+            parse_attribute_arg(p)?;
+            if p.current_token() != LuaTokenKind::TkComma {
+                break;
+            }
+            p.bump(); // consume comma
+            if p.current_token() == LuaTokenKind::TkRightParen {
+                break; // trailing comma
+            }
         }
     }
 
