@@ -28,7 +28,7 @@ pub fn analyze_tag_attribute_use(
     let attribute_uses = attribute_use.get_attribute_uses();
     for attribute_use in attribute_uses {
         let mut params = Vec::new();
-        if let Some(attribute_call_arg_list) = attribute_use.get_attribute_call_arg_list() {
+        if let Some(attribute_call_arg_list) = attribute_use.get_arg_list() {
             for arg in attribute_call_arg_list.get_args() {
                 let arg_type = infer_attribute_arg_type(arg);
                 params.push(arg_type);
