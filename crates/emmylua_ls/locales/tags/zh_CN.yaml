@@ -245,3 +245,15 @@ tags.language: |
       INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com');
   ]]
   ```
+tags.attribute: |
+  `attribute` 标签定义一个特性。特性用于附加额外信息到定义。
+  示例:
+  ```lua
+  ---@attribute deprecated(message: string?)
+
+  ---@class A
+  ---@[deprecated("delete")]
+  ---@field b string # `b` 字段被标记为已弃用
+  ---@[deprecated] # 如果`attribute`允许无参数，则可以省略括号
+  ---@field c string
+  ```
