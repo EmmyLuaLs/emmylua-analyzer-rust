@@ -93,6 +93,7 @@ pub enum LuaSyntaxKind {
     DocTagExport,
     DocTagLanguage,
     DocTagAttribute,
+    DocTagAttributeUse, // '@['
 
     // doc Type
     TypeArray,          // baseType []
@@ -109,7 +110,7 @@ pub enum LuaSyntaxKind {
     TypeNullable, // <Type>?
     TypeStringTemplate, // prefixName.`T`
     TypeMultiLineUnion, // | simple type # description
-    TypeAttribute, // attribute(paramList)
+    TypeAttribute, // declare. attribute<(paramList)>
 
     // follow donot support now
     TypeMatch,
@@ -126,13 +127,12 @@ pub enum LuaSyntaxKind {
     DocGenericDeclareList,
     DocDiagnosticNameList,
     DocTypeList,
-    DocAttribute,          // (partial, global, local, ...)
-    DocAttributeUsage,     // '@[attribute_name(params)]' or '@[attribute_name]'
-    DocAttributeArgList,   // argument list in @[attribute_name(arg1, arg2, ...)]
-    DocAttributeArg,       // single argument in attribute usage
-    DocOpType,             // +<type>, -<type>, +?
-    DocMappedKeys,         // [p in KeyType]?
-    DocEnumFieldList,      // ---| <EnumField>
+    DocAttribute,            // (partial, global, local, ...)
+    DocAttributeUse,         // use. attribute in @[attribute1, attribute2, ...]
+    DocAttributeCallArgList, // use. argument list in @[attribute_name(arg1, arg2, ...)]
+    DocOpType,               // +<type>, -<type>, +?
+    DocMappedKeys,           // [p in KeyType]?
+    DocEnumFieldList,        // ---| <EnumField>
     DocEnumField, // <string> # description or <integer> # description or <name> # description
     DocOneLineField, // <type> # description
     DocDiagnosticCodeList, // unused-local, undefined-global ...

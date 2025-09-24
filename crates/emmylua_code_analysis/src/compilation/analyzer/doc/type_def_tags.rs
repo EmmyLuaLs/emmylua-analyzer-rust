@@ -1,8 +1,8 @@
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCommentOwner, LuaDocDescription,
-    LuaDocDescriptionOwner, LuaDocGenericDeclList, LuaDocTagAlias, LuaDocTagClass, LuaDocTagEnum,
-    LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat, LuaNameExpr, LuaSyntaxId,
-    LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
+    LuaDocDescriptionOwner, LuaDocGenericDeclList, LuaDocTagAlias, LuaDocTagAttribute,
+    LuaDocTagClass, LuaDocTagEnum, LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat,
+    LuaNameExpr, LuaSyntaxId, LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -171,6 +171,32 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
 
     add_description_for_type_decl(analyzer, &alias_decl_id, tag.get_descriptions());
 
+    Some(())
+}
+
+/// 分析属性定义
+pub fn analyze_attribute(analyzer: &mut DocAnalyzer, tag: LuaDocTagAttribute) -> Option<()> {
+    let file_id = analyzer.file_id;
+    let name = tag.get_name_token()?.get_name_text().to_string();
+
+    let decl_id = {
+        let decl = analyzer
+            .db
+            .get_type_index()
+            .find_type_decl(file_id, &name)?;
+        if !decl.is_attribute() {
+            return None;
+        }
+        decl.get_id()
+    };
+    let attribute_type = infer_type(analyzer, tag.get_type()?);
+    let attribute_decl = analyzer
+        .db
+        .get_type_index_mut()
+        .get_type_decl_mut(&decl_id)?;
+    attribute_decl.add_attribute_type(attribute_type);
+
+    add_description_for_type_decl(analyzer, &decl_id, tag.get_descriptions());
     Some(())
 }
 

@@ -27,7 +27,7 @@ pub enum LuaDocLexerState {
     Source,
     NormalDescription,
     CastExpr,
-    AttributeUsage,
+    AttributeUse,
 }
 
 impl LuaDocLexer<'_> {
@@ -74,7 +74,7 @@ impl LuaDocLexer<'_> {
             LuaDocLexerState::Source => self.lex_source(),
             LuaDocLexerState::NormalDescription => self.lex_normal_description(),
             LuaDocLexerState::CastExpr => self.lex_cast_expr(),
-            LuaDocLexerState::AttributeUsage => self.lex_attribute_usage(),
+            LuaDocLexerState::AttributeUse => self.lex_attribute_use(),
         }
     }
 
@@ -146,7 +146,7 @@ impl LuaDocLexer<'_> {
             }
             '[' => {
                 reader.bump();
-                self.state = LuaDocLexerState::AttributeUsage;
+                self.state = LuaDocLexerState::AttributeUse;
                 LuaTokenKind::TkDocAttribute
             }
             ch if is_name_start(ch) => {
@@ -600,7 +600,7 @@ impl LuaDocLexer<'_> {
         }
     }
 
-    fn lex_attribute_usage(&mut self) -> LuaTokenKind {
+    fn lex_attribute_use(&mut self) -> LuaTokenKind {
         let reader = self.reader.as_mut().unwrap();
         match reader.current_char() {
             ch if is_doc_whitespace(ch) => {
