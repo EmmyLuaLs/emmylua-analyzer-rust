@@ -105,6 +105,7 @@ impl StatusBar {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmmyServerStatus {
     health: String,
@@ -112,6 +113,7 @@ pub struct EmmyServerStatus {
     message: String,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmmyProgress {
     text: String,
