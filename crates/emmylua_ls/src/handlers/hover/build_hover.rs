@@ -3,22 +3,23 @@ use std::collections::HashSet;
 use emmylua_code_analysis::humanize_type;
 use emmylua_code_analysis::{
     DbIndex, LuaCompilation, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
-    LuaSignatureId, LuaType, LuaTypeDeclId, RenderLevel, SemanticInfo, SemanticModel,
+    LuaSignatureId, LuaType, RenderLevel, SemanticInfo, SemanticModel,
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaExpr, LuaSyntaxToken};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 use rowan::TextRange;
 
+use crate::handlers::hover::humanize_type_decl::build_type_decl_hover;
 use crate::handlers::hover::{
     find_origin::replace_semantic_type,
-    function_humanize::{hover_function_type, is_function},
-    hover_humanize::hover_humanize_type,
+    humanize_function::{hover_function_type, is_function},
+    humanize_types::hover_humanize_type,
 };
 
 use super::{
     find_origin::{find_decl_origin_owners, find_member_origin_owners},
     hover_builder::HoverBuilder,
-    hover_humanize::hover_const_type,
+    humanize_types::hover_const_type,
 };
 
 pub fn build_semantic_info_hover(
@@ -282,37 +283,6 @@ fn build_member_hover(
         }
     }
 
-    Some(())
-}
-
-fn build_type_decl_hover(
-    builder: &mut HoverBuilder,
-    db: &DbIndex,
-    type_decl_id: LuaTypeDeclId,
-) -> Option<()> {
-    let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
-    let type_description = if type_decl.is_alias() {
-        if let Some(origin) = type_decl.get_alias_origin(db, None) {
-            let origin_type = humanize_type(db, &origin, builder.detail_render_level);
-            format!("(alias) {} = {}", type_decl.get_name(), origin_type)
-        } else {
-            "".to_string()
-        }
-    } else if type_decl.is_enum() {
-        format!("(enum) {}", type_decl.get_name())
-    } else if type_decl.is_attribute() {
-        format!("(attribute) {}", type_decl.get_name())
-    } else {
-        let humanize_text = humanize_type(
-            db,
-            &LuaType::Def(type_decl_id.clone()),
-            builder.detail_render_level,
-        );
-        format!("(class) {}", humanize_text)
-    };
-
-    builder.set_type_description(type_description);
-    builder.add_description(&LuaSemanticDeclId::TypeDecl(type_decl_id));
     Some(())
 }
 
