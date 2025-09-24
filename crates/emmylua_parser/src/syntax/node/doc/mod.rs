@@ -11,7 +11,7 @@ use super::{
     LuaAst, LuaBinaryOpToken, LuaLiteralToken, LuaNameToken, LuaNumberToken, LuaStringToken,
 };
 use crate::{
-    LuaAstChildren, LuaAstToken, LuaAstTokenChildren, LuaKind, LuaSyntaxNode,
+    LuaAstChildren, LuaAstToken, LuaAstTokenChildren, LuaKind, LuaLiteralExpr, LuaSyntaxNode,
     kind::{LuaSyntaxKind, LuaTokenKind},
     syntax::traits::LuaAstNode,
 };
@@ -485,5 +485,79 @@ impl LuaDocNamedReturnType {
         } else {
             (None, None)
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocAttributeUse {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocAttributeUse {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocAttributeUse
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocAttributeUse {
+    pub fn get_name_token(&self) -> Option<LuaNameToken> {
+        self.token()
+    }
+
+    pub fn get_attribute_call_arg_list(&self) -> Option<LuaDocAttributeCallArgList> {
+        self.child()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocAttributeCallArgList {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocAttributeCallArgList {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocAttributeCallArgList
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocAttributeCallArgList {
+    pub fn get_args(&self) -> LuaAstChildren<LuaLiteralExpr> {
+        self.children()
     }
 }

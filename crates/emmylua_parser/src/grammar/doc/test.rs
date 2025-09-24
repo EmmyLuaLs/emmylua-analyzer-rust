@@ -2872,7 +2872,7 @@ Syntax(Chunk)@0..137
     fn test_attribute_doc() {
         let code = r#"
         ---@attribute check_point(x: string, y: number)
-        ---@[check_point("a", 0)]
+        ---@[Skip, check_point("a", 0)]
         "#;
         // print_ast(code);
         // print_ast(r#"
@@ -2880,11 +2880,11 @@ Syntax(Chunk)@0..137
         // check_point("a", 0)
         // "#);
         let result = r#"
-Syntax(Chunk)@0..99
-  Syntax(Block)@0..99
+Syntax(Chunk)@0..105
+  Syntax(Block)@0..105
     Token(TkEndOfLine)@0..1 "\n"
     Token(TkWhitespace)@1..9 "        "
-    Syntax(Comment)@9..90
+    Syntax(Comment)@9..96
       Token(TkDocStart)@9..13 "---@"
       Syntax(DocTagAttribute)@13..56
         Token(TkTagAttribute)@13..22 "attribute"
@@ -2910,21 +2910,26 @@ Syntax(Chunk)@0..99
       Token(TkEndOfLine)@56..57 "\n"
       Token(TkWhitespace)@57..65 "        "
       Token(TkDocStart)@65..69 "---@"
-      Syntax(DocAttributeUsage)@69..90
+      Syntax(DocTagAttributeUse)@69..96
         Token(TkDocAttribute)@69..70 "["
-        Token(TkName)@70..81 "check_point"
-        Syntax(DocAttributeArgList)@81..89
-          Token(TkLeftParen)@81..82 "("
-          Syntax(DocAttributeArg)@82..85
-            Token(TkString)@82..85 "\"a\""
-          Token(TkComma)@85..86 ","
-          Token(TkWhitespace)@86..87 " "
-          Syntax(DocAttributeArg)@87..88
-            Token(TkInt)@87..88 "0"
-          Token(TkRightParen)@88..89 ")"
-        Token(TkRightBracket)@89..90 "]"
-    Token(TkEndOfLine)@90..91 "\n"
-    Token(TkWhitespace)@91..99 "        "
+        Syntax(DocAttributeUse)@70..74
+          Token(TkName)@70..74 "Skip"
+        Token(TkComma)@74..75 ","
+        Token(TkWhitespace)@75..76 " "
+        Syntax(DocAttributeUse)@76..95
+          Token(TkName)@76..87 "check_point"
+          Syntax(DocAttributeCallArgList)@87..95
+            Token(TkLeftParen)@87..88 "("
+            Syntax(LiteralExpr)@88..91
+              Token(TkString)@88..91 "\"a\""
+            Token(TkComma)@91..92 ","
+            Token(TkWhitespace)@92..93 " "
+            Syntax(LiteralExpr)@93..94
+              Token(TkInt)@93..94 "0"
+            Token(TkRightParen)@94..95 ")"
+        Token(TkRightBracket)@95..96 "]"
+    Token(TkEndOfLine)@96..97 "\n"
+    Token(TkWhitespace)@97..105 "        "
         "#;
         assert_ast_eq!(code, result);
     }

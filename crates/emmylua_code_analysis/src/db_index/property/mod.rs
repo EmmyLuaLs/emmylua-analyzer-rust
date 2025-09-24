@@ -9,6 +9,7 @@ use emmylua_parser::{LuaAstNode, LuaDocTagField, LuaDocType, LuaVersionCondition
 pub use property::LuaCommonProperty;
 pub use property::{LuaDeprecated, LuaExport, LuaExportScope, LuaPropertyId};
 
+pub use crate::db_index::property::property::LuaAttributeUse;
 use crate::{DbIndex, FileId, LuaMember, LuaSignatureId};
 
 use super::{LuaSemanticDeclId, traits::LuaIndex};
@@ -231,6 +232,22 @@ impl LuaPropertyIndex {
             .or_default()
             .insert(owner_id);
 
+        Some(())
+    }
+
+    pub fn add_attribute_use(
+        &mut self,
+        file_id: FileId,
+        owner_id: LuaSemanticDeclId,
+        attribute_use: LuaAttributeUse,
+    ) -> Option<()> {
+        let (property, _) = self.get_or_create_property(owner_id.clone())?;
+        property.add_attribute_use(attribute_use);
+
+        self.in_filed_owner
+            .entry(file_id)
+            .or_default()
+            .insert(owner_id);
         Some(())
     }
 

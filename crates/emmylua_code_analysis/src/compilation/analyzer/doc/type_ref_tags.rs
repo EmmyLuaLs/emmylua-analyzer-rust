@@ -247,7 +247,7 @@ pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Optio
 }
 
 pub fn analyze_return_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturnCast) -> Option<()> {
-    if let Some(LuaSemanticDeclId::Signature(signature_id)) = get_owner_id(analyzer) {
+    if let Some(LuaSemanticDeclId::Signature(signature_id)) = get_owner_id(analyzer, None, false) {
         let name_token = tag.get_name_token()?;
         let name = name_token.get_name_text();
         let cast_op_type = tag.get_op_type()?;
@@ -396,7 +396,7 @@ pub fn analyze_see(analyzer: &mut DocAnalyzer, tag: LuaDocTagSee) -> Option<()> 
 }
 
 pub fn analyze_other(analyzer: &mut DocAnalyzer, other: LuaDocTagOther) -> Option<()> {
-    let owner = get_owner_id(analyzer)?;
+    let owner = get_owner_id(analyzer, None, false)?;
     let tag_name = other.get_tag_name()?;
     let description = if let Some(des) = other.get_description() {
         preprocess_description(&des.get_description_text(), None)

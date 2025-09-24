@@ -564,6 +564,7 @@ dependencies = [
  "emmylua_parser",
  "encoding_rs",
  "flagset",
+ "googletest",
  "include_dir",
  "internment",
  "itertools 0.14.0",
