@@ -300,6 +300,8 @@ fn build_type_decl_hover(
         }
     } else if type_decl.is_enum() {
         format!("(enum) {}", type_decl.get_name())
+    } else if type_decl.is_attribute() {
+        format!("(attribute) {}", type_decl.get_name())
     } else {
         let humanize_text = humanize_type(
             db,
