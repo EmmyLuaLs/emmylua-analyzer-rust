@@ -1,6 +1,6 @@
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaDocTagAttributeUse, LuaExpr, LuaKind, LuaLiteralExpr, LuaLiteralToken,
-    LuaSyntaxKind, LuaSyntaxNode,
+    LuaAst, LuaAstNode, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaKind, LuaLiteralExpr,
+    LuaLiteralToken, LuaSyntaxKind, LuaSyntaxNode,
 };
 use smol_str::SmolStr;
 
@@ -8,6 +8,7 @@ use crate::{
     LuaAttributeUse, LuaType,
     compilation::analyzer::doc::{
         DocAnalyzer,
+        infer_type::infer_type,
         tags::{get_owner_id, report_orphan_tag},
     },
 };
@@ -33,14 +34,14 @@ pub fn analyze_tag_attribute_use(
                 params.push(arg_type);
             }
         }
-        analyzer.db.get_property_index_mut().add_attribute_use(
-            analyzer.file_id,
-            owner_id.clone(),
-            LuaAttributeUse::new(
-                attribute_use.get_name_token()?.get_name_text().to_string(),
-                params,
-            ),
-        );
+        let attribute_type = infer_type(analyzer, LuaDocType::Name(attribute_use.get_type()?));
+        if let LuaType::Ref(type_id) = attribute_type {
+            analyzer.db.get_property_index_mut().add_attribute_use(
+                analyzer.file_id,
+                owner_id.clone(),
+                LuaAttributeUse::new(type_id, params),
+            );
+        }
     }
     Some(())
 }

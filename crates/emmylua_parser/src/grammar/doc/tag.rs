@@ -708,7 +708,7 @@ pub fn parse_attribute_use(p: &mut LuaDocParser) -> DocParseResult {
 fn parse_doc_attribute_use(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocAttributeUse);
 
-    expect_token(p, LuaTokenKind::TkName)?;
+    parse_type(p)?;
 
     // 解析参数列表, 允许没有参数的特性在使用时省略括号
     if p.current_token() == LuaTokenKind::TkLeftParen {

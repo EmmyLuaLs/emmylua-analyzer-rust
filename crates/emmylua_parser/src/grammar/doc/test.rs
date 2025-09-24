@@ -2913,11 +2913,13 @@ Syntax(Chunk)@0..105
       Syntax(DocTagAttributeUse)@69..96
         Token(TkDocAttribute)@69..70 "["
         Syntax(DocAttributeUse)@70..74
-          Token(TkName)@70..74 "Skip"
+          Syntax(TypeName)@70..74
+            Token(TkName)@70..74 "Skip"
         Token(TkComma)@74..75 ","
         Token(TkWhitespace)@75..76 " "
         Syntax(DocAttributeUse)@76..95
-          Token(TkName)@76..87 "check_point"
+          Syntax(TypeName)@76..87
+            Token(TkName)@76..87 "check_point"
           Syntax(DocAttributeCallArgList)@87..95
             Token(TkLeftParen)@87..88 "("
             Syntax(LiteralExpr)@88..91

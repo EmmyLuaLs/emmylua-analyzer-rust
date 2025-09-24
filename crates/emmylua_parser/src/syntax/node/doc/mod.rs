@@ -518,8 +518,8 @@ impl LuaAstNode for LuaDocAttributeUse {
 }
 
 impl LuaDocAttributeUse {
-    pub fn get_name_token(&self) -> Option<LuaNameToken> {
-        self.token()
+    pub fn get_type(&self) -> Option<LuaDocNameType> {
+        self.child()
     }
 
     pub fn get_attribute_call_arg_list(&self) -> Option<LuaDocAttributeCallArgList> {
