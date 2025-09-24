@@ -2,9 +2,9 @@ use std::ops::Deref;
 
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaLocalStat,
-    LuaNameExpr, LuaTableExpr, LuaVarExpr,
+    LuaNameExpr, LuaSyntaxNode, LuaSyntaxToken, LuaTableExpr, LuaVarExpr,
 };
-use rowan::TextRange;
+use rowan::{NodeOrToken, TextRange};
 
 use crate::{
     DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey, LuaSemanticDeclId, LuaType,
@@ -78,7 +78,7 @@ fn check_name_expr(
         rowan::NodeOrToken::Node(name_expr.syntax().clone()),
         SemanticDeclLevel::default(),
     )?;
-    let source_type = match semantic_decl {
+    let source_type = match semantic_decl.clone() {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
             let decl = semantic_model
                 .get_db()
@@ -116,9 +116,9 @@ fn check_name_expr(
         check_table_expr(
             context,
             semantic_model,
+            rowan::NodeOrToken::Node(name_expr.syntax().clone()),
             &expr,
             source_type.as_ref(),
-            Some(&value_type),
         );
     }
 
@@ -152,9 +152,9 @@ fn check_index_expr(
         check_table_expr(
             context,
             semantic_model,
+            rowan::NodeOrToken::Node(index_expr.syntax().clone()),
             &expr,
             source_type.as_ref(),
-            Some(&value_type),
         );
     }
     Some(())
@@ -195,9 +195,9 @@ fn check_local_stat(
             check_table_expr(
                 context,
                 semantic_model,
+                rowan::NodeOrToken::Node(var.syntax().clone()),
                 expr,
                 Some(&var_type),
-                Some(&value_type),
             );
         }
     }
@@ -207,19 +207,32 @@ fn check_local_stat(
 pub fn check_table_expr(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
+    decl_node: NodeOrToken<LuaSyntaxNode, LuaSyntaxToken>,
     table_expr: &LuaExpr,
     table_type: Option<&LuaType>, // 记录的类型
-    _expr_type: Option<&LuaType>, // 实际表达式推导出的类型
 ) -> Option<bool> {
-    // 需要进行一些过滤
-    // if table_type == expr_type {
-    //     return Some(false);
-    // }
+    // 检查是否附加了元数据以跳过诊断
+    if let Some(semantic_decl) = semantic_model.find_decl(decl_node, SemanticDeclLevel::default()) {
+        if let Some(property) = semantic_model
+            .get_db()
+            .get_property_index()
+            .get_property(&semantic_decl)
+        {
+            if let Some(attribute_uses) = property.attribute_uses() {
+                for attribute_use in attribute_uses.iter() {
+                    if attribute_use.id.get_name() == "skip_diagnostic" {
+                        if let Some(LuaType::DocStringConst(code)) = attribute_use.params.get(0) {
+                            if code.as_ref() == "table_field" {
+                                return Some(false);
+                            }
+                        };
+                    }
+                }
+            }
+        }
+    }
+
     let table_type = table_type?;
-    // match table_type {
-    //     LuaType::Def(_) => return Some(false),
-    //     _ => {}
-    // }
     if let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) {
         return check_table_expr_content(context, semantic_model, table_type, &table_expr);
     }

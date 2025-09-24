@@ -5,6 +5,13 @@ mod test {
     #[test]
     fn test_def_attribute() {
         let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@attribute Deprecated(message: string?)
+        ---@attribute SkipDiagnosticTable() -- 跳过对表的部分诊断, 用于优化性能, 通常来说对巨型配置表使用.
+        ---@attribute IndexFieldAlias(name: string) -- 索引字段别名, 将在`hint`与`completion`中显示别名.
+        "#,
+        );
 
         // ws.def(
         //     r#"
@@ -25,7 +32,7 @@ mod test {
             r#"
         ---@class A
         ---@field a string
-        ---@[deprecated]
+        ---@[Deprecated]
         ---@field b string
         "#,
         );

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use emmylua_parser::{LuaVersionCondition, VisibilityKind};
 
 use crate::{
-    LuaType,
+    LuaType, LuaTypeDeclId,
     db_index::property::decl_feature::{DeclFeatureFlag, PropertyDeclFeature},
 };
 
@@ -105,6 +105,10 @@ impl LuaCommonProperty {
         )
         .push(attribute_use);
     }
+
+    pub fn attribute_uses(&self) -> Option<&Arc<Vec<LuaAttributeUse>>> {
+        self.attribute_uses.as_ref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,12 +166,12 @@ impl LuaPropertyId {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaAttributeUse {
-    pub name: String,
+    pub id: LuaTypeDeclId,
     pub params: Vec<LuaType>,
 }
 
 impl LuaAttributeUse {
-    pub fn new(name: String, params: Vec<LuaType>) -> Self {
-        Self { name, params }
+    pub fn new(name: LuaTypeDeclId, params: Vec<LuaType>) -> Self {
+        Self { id: name, params }
     }
 }

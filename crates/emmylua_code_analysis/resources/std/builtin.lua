@@ -138,3 +138,19 @@
 ---@alias TypeGuard<T> boolean
 
 ---@alias Language<T: string> string
+
+--- attribute
+
+--- Deprecated. Receives an optional message parameter.
+---@attribute deprecated(message: string?)
+
+--- Skip partial diagnostics, typically used to optimize diagnostic performance.
+---
+--- Receives a parameter, the options are:
+--- - `table_field` - Skip diagnostic for `table` fields
+---@attribute skip_diagnostic(code: string)
+
+--- Index field alias, will be displayed in `hint` and `completion`.
+---
+--- Receives a string parameter for the alias name.
+---@attribute index_alias(name: string)
