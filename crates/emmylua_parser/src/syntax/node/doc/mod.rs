@@ -522,7 +522,7 @@ impl LuaDocAttributeUse {
         self.child()
     }
 
-    pub fn get_attribute_call_arg_list(&self) -> Option<LuaDocAttributeCallArgList> {
+    pub fn get_arg_list(&self) -> Option<LuaDocAttributeCallArgList> {
         self.child()
     }
 }
