@@ -109,6 +109,14 @@ impl LuaCommonProperty {
     pub fn attribute_uses(&self) -> Option<&Arc<Vec<LuaAttributeUse>>> {
         self.attribute_uses.as_ref()
     }
+
+    pub fn find_attribute_use(&self, id: LuaTypeDeclId) -> Option<&LuaAttributeUse> {
+        self.attribute_uses.as_ref().and_then(|attribute_uses| {
+            attribute_uses
+                .iter()
+                .find(|attribute_use| attribute_use.id == id)
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

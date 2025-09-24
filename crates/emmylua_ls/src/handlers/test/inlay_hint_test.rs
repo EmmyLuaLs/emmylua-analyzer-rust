@@ -167,16 +167,18 @@ mod tests {
     #[gtest]
     fn test_index_key_alias_hint() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(" ---@attribute index_alias(name: string)");
         check!(ws.check_inlay_hint(
             r#"
                 local export = {
-                    [1] = 1, -- [nameX]
+                    ---@[index_alias("nameX")]
+                    [1] = 1,
                 }
                 print(export[1])
             "#,
             vec![VirtualInlayHint {
                 label: ": nameX".to_string(),
-                line: 4,
+                line: 5,
                 pos: 30,
                 ref_file: Some("".to_string()),
             }]
