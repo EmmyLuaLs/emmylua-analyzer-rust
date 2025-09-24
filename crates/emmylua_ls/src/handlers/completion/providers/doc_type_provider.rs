@@ -59,6 +59,16 @@ pub fn complete_types_by_prefix(
                 }
             }
             CompletionType::Type => {
+                if let Some(decl_id) = &type_decl {
+                    let type_decl = builder
+                        .semantic_model
+                        .get_db()
+                        .get_type_index()
+                        .get_type_decl(decl_id)?;
+                    if type_decl.is_attribute() {
+                        continue;
+                    }
+                }
                 add_type_completion_item(builder, &name, type_decl);
             }
         }
