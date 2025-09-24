@@ -1,5 +1,5 @@
 use emmylua_code_analysis::{
-    DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticModel,
+    DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
     try_extract_signature_id_from_field,
 };
 use emmylua_parser::{
@@ -129,8 +129,8 @@ pub fn add_member_completion(
         );
     }
 
-    // 尝试添加别名补全项, 如果添加成功, 则不添加原本 `[index]` 补全项
-    if !try_add_alias_completion_item(builder, &member_info, &completion_item, &label)
+    // 尝试添加别名补全项, 如果添加成功, 则不添加原来的 `[index]` 补全项
+    if !try_add_alias_completion_item_new(builder, &member_info, &completion_item, &label)
         .unwrap_or(false)
     {
         builder.add_completion_item(completion_item)?;
@@ -310,6 +310,69 @@ fn get_resolve_function_params_str(typ: &LuaType, display: CallDisplay) -> Optio
     }
 }
 
+fn try_add_alias_completion_item_new(
+    builder: &mut CompletionBuilder,
+    member_info: &LuaMemberInfo,
+    completion_item: &CompletionItem,
+    label: &String,
+) -> Option<bool> {
+    let alias_label = get_index_alias_name(&builder.semantic_model, member_info)?;
+    let mut alias_completion_item = completion_item.clone();
+    alias_completion_item.label = alias_label;
+    alias_completion_item.insert_text = Some(label.clone());
+
+    // 更新 label_details 添加别名提示
+    let index_hint = t!("completion.index %{label}", label = label).to_string();
+    let label_details = alias_completion_item
+        .label_details
+        .get_or_insert_with(Default::default);
+    label_details.description = match label_details.description.take() {
+        Some(desc) => Some(format!("({}) {} ", index_hint, desc)),
+        None => Some(index_hint),
+    };
+    builder.add_completion_item(alias_completion_item)?;
+    Some(true)
+}
+
+pub fn get_index_alias_name(
+    semantic_model: &SemanticModel,
+    member_info: &LuaMemberInfo,
+) -> Option<String> {
+    let db = semantic_model.get_db();
+    let LuaMemberKey::Integer(_) = member_info.key else {
+        return None;
+    };
+
+    let property_owner_id = member_info.property_owner_id.as_ref()?;
+    let LuaSemanticDeclId::Member(member_id) = property_owner_id else {
+        return None;
+    };
+    let common_property = match db.get_property_index().get_property(property_owner_id) {
+        Some(common_property) => common_property,
+        None => {
+            // field定义的`signature`的`common_property`绑定位置稍有不同, 需要特殊处理
+            let member = db.get_member_index().get_member(member_id)?;
+            let signature_id =
+                try_extract_signature_id_from_field(semantic_model.get_db(), member)?;
+            db.get_property_index()
+                .get_property(&LuaSemanticDeclId::Signature(signature_id))?
+        }
+    };
+
+    let alias_label = common_property
+        .find_attribute_use(LuaTypeDeclId::new("index_alias"))?
+        .params
+        .get(0)
+        .map(|param| match param {
+            LuaType::DocStringConst(s) => s.as_ref(),
+            _ => "",
+        })?
+        .to_string();
+    Some(alias_label)
+}
+
+#[deprecated]
+#[allow(dead_code)]
 /// 添加索引成员的别名补全项
 fn try_add_alias_completion_item(
     builder: &mut CompletionBuilder,
@@ -317,6 +380,7 @@ fn try_add_alias_completion_item(
     completion_item: &CompletionItem,
     label: &String,
 ) -> Option<bool> {
+    #[allow(deprecated)]
     let alias_label = extract_index_member_alias(&builder.semantic_model, member_info)?;
 
     let mut alias_completion_item = completion_item.clone();
@@ -336,9 +400,10 @@ fn try_add_alias_completion_item(
     Some(true)
 }
 
+#[deprecated]
 /// 从注释中提取索引成员的别名, 只处理整数成员.
 /// 格式为`-- [nameX]`.
-pub fn extract_index_member_alias(
+fn extract_index_member_alias(
     semantic_model: &SemanticModel,
     member_info: &LuaMemberInfo,
 ) -> Option<String> {
