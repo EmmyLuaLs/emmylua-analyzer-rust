@@ -178,6 +178,14 @@ impl LuaTypeDecl {
         }
     }
 
+    pub fn get_attribute_type(&self) -> Option<&LuaType> {
+        if let LuaTypeExtra::Attribute { typ: Some(typ) } = &self.extra {
+            Some(typ)
+        } else {
+            None
+        }
+    }
+
     pub fn merge_decl(&mut self, other: LuaTypeDecl) {
         self.locations.extend(other.locations);
     }

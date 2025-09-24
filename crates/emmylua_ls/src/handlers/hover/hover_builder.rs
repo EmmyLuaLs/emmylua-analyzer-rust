@@ -5,7 +5,7 @@ use emmylua_code_analysis::{
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxToken};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 
-use crate::handlers::hover::hover_humanize::{
+use crate::handlers::hover::humanize_types::{
     DescriptionInfo, extract_description_from_property_owner,
 };
 
