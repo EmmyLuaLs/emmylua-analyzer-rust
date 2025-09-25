@@ -786,7 +786,7 @@ fn build_node_semantic_token(
         LuaAst::LuaDocTagAttributeUse(tag_use) => {
             // 给 `@[]` 染色, @已经染色过了
             tag_use
-                .token_by_kind(LuaTokenKind::TkDocAttribute)
+                .token_by_kind(LuaTokenKind::TkDocAttributeUse)
                 .map(|token| {
                     builder.push(token.syntax(), SemanticTokenType::KEYWORD);
                 });

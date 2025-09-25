@@ -46,7 +46,7 @@ pub fn complete_types_by_prefix(
             continue;
         }
         match completion_type {
-            CompletionType::Attribute => {
+            CompletionType::AttributeUse => {
                 if let Some(decl_id) = type_decl {
                     let type_decl = builder
                         .semantic_model
@@ -79,7 +79,7 @@ pub fn complete_types_by_prefix(
 
 pub enum CompletionType {
     Type,
-    Attribute,
+    AttributeUse,
 }
 
 fn check_can_add_type_completion(builder: &CompletionBuilder) -> Option<CompletionType> {
@@ -88,7 +88,7 @@ fn check_can_add_type_completion(builder: &CompletionBuilder) -> Option<Completi
             let parent = builder.trigger_token.parent()?;
             if let Some(doc_name) = LuaDocNameType::cast(parent) {
                 if let Some(_) = doc_name.get_parent::<LuaDocAttributeUse>() {
-                    return Some(CompletionType::Attribute);
+                    return Some(CompletionType::AttributeUse);
                 }
                 return Some(CompletionType::Type);
             }
@@ -128,8 +128,8 @@ fn check_can_add_type_completion(builder: &CompletionBuilder) -> Option<Completi
 
             None
         }
-        LuaTokenKind::TkDocAttribute => {
-            return Some(CompletionType::Attribute);
+        LuaTokenKind::TkDocAttributeUse => {
+            return Some(CompletionType::AttributeUse);
         }
         _ => None,
     }

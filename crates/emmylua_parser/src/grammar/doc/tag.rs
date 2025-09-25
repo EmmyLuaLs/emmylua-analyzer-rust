@@ -58,7 +58,7 @@ fn parse_tag_detail(p: &mut LuaDocParser) -> DocParseResult {
         LuaTokenKind::TkTagExport => parse_tag_export(p),
         LuaTokenKind::TkLanguage => parse_tag_language(p),
         LuaTokenKind::TkTagAttribute => parse_tag_attribute(p),
-        LuaTokenKind::TkDocAttribute => parse_attribute_use(p),
+        LuaTokenKind::TkDocAttributeUse => parse_attribute_use(p),
 
         // simple tag
         LuaTokenKind::TkTagVisibility => parse_tag_simple(p, LuaSyntaxKind::DocTagVisibility),
