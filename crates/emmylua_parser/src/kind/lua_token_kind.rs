@@ -158,7 +158,7 @@ pub enum LuaTokenKind {
     TkDocRegion,          // region
     TkDocEndRegion,       // endregion
     TkDocSeeContent,      // see content
-    TkDocAttribute,       // '@[', used for attribute usage
+    TkDocAttributeUse,    // '@[', used for attribute usage
 }
 
 impl fmt::Display for LuaTokenKind {

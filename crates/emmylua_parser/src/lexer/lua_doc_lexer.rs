@@ -147,7 +147,7 @@ impl LuaDocLexer<'_> {
             '[' => {
                 reader.bump();
                 self.state = LuaDocLexerState::AttributeUse;
-                LuaTokenKind::TkDocAttribute
+                LuaTokenKind::TkDocAttributeUse
             }
             ch if is_name_start(ch) => {
                 reader.bump();
@@ -288,7 +288,7 @@ impl LuaDocLexer<'_> {
                 // 需要检查是否在使用 Attribute 语法
                 if reader.current_char() == '[' {
                     reader.bump();
-                    LuaTokenKind::TkDocAttribute
+                    LuaTokenKind::TkDocAttributeUse
                 } else {
                     reader.eat_while(|_| true);
                     LuaTokenKind::TkDocDetail

@@ -2911,7 +2911,7 @@ Syntax(Chunk)@0..105
       Token(TkWhitespace)@57..65 "        "
       Token(TkDocStart)@65..69 "---@"
       Syntax(DocTagAttributeUse)@69..96
-        Token(TkDocAttribute)@69..70 "["
+        Token(TkDocAttributeUse)@69..70 "["
         Syntax(DocAttributeUse)@70..74
           Syntax(TypeName)@70..74
             Token(TkName)@70..74 "Skip"
