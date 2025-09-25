@@ -88,8 +88,9 @@ pub enum LuaAst {
     LuaDocTagAs(LuaDocTagAs),
     LuaDocTagReturnCast(LuaDocTagReturnCast),
     LuaDocTagExport(LuaDocTagExport),
-    LuaDocTagAttribute(LuaDocTagAttribute),
     LuaDocTagLanguage(LuaDocTagLanguage),
+    LuaDocTagAttribute(LuaDocTagAttribute),
+    LuaDocTagAttributeUse(LuaDocTagAttributeUse),
     // doc description
     LuaDocDescription(LuaDocDescription),
 
@@ -178,6 +179,7 @@ impl LuaAstNode for LuaAst {
             LuaAst::LuaDocTagReturnCast(node) => node.syntax(),
             LuaAst::LuaDocTagExport(node) => node.syntax(),
             LuaAst::LuaDocTagAttribute(node) => node.syntax(),
+            LuaAst::LuaDocTagAttributeUse(node) => node.syntax(),
             LuaAst::LuaDocTagLanguage(node) => node.syntax(),
             LuaAst::LuaDocDescription(node) => node.syntax(),
             LuaAst::LuaDocNameType(node) => node.syntax(),
@@ -289,6 +291,7 @@ impl LuaAstNode for LuaAst {
                 | LuaSyntaxKind::TypeGeneric
                 | LuaSyntaxKind::TypeStringTemplate
                 | LuaSyntaxKind::TypeMultiLineUnion
+                | LuaSyntaxKind::DocAttributeUse
         )
     }
 
@@ -453,6 +456,9 @@ impl LuaAstNode for LuaAst {
             }
             LuaSyntaxKind::TypeMultiLineUnion => {
                 LuaDocMultiLineUnionType::cast(syntax).map(LuaAst::LuaDocMultiLineUnionType)
+            }
+            LuaSyntaxKind::DocTagAttributeUse => {
+                LuaDocTagAttributeUse::cast(syntax).map(LuaAst::LuaDocTagAttributeUse)
             }
             _ => None,
         }
