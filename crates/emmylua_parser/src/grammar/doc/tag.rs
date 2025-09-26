@@ -107,7 +107,7 @@ fn parse_tag_class(p: &mut LuaDocParser) -> DocParseResult {
 
 // (partial, global, local)
 fn parse_doc_attribute(p: &mut LuaDocParser) -> DocParseResult {
-    let m = p.mark(LuaSyntaxKind::DocAttribute);
+    let m = p.mark(LuaSyntaxKind::DocTypeFlag);
     p.bump();
     expect_token(p, LuaTokenKind::TkName)?;
     while p.current_token() == LuaTokenKind::TkComma {

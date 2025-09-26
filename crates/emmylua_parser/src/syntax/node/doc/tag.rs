@@ -8,7 +8,7 @@ use crate::{
 };
 
 use super::{
-    LuaDocAttribute, LuaDocGenericDeclList, LuaDocOpType, LuaDocType, LuaDocTypeList,
+    LuaDocGenericDeclList, LuaDocOpType, LuaDocType, LuaDocTypeFlag, LuaDocTypeList,
     description::LuaDocDetailOwner,
 };
 
@@ -264,7 +264,7 @@ impl LuaDocTagClass {
         self.child()
     }
 
-    pub fn get_attrib(&self) -> Option<LuaDocAttribute> {
+    pub fn get_attrib(&self) -> Option<LuaDocTypeFlag> {
         self.child()
     }
 }
@@ -313,7 +313,7 @@ impl LuaDocTagEnum {
         self.child()
     }
 
-    pub fn get_attrib(&self) -> Option<LuaDocAttribute> {
+    pub fn get_attrib(&self) -> Option<LuaDocTypeFlag> {
         self.child()
     }
 }
@@ -691,7 +691,7 @@ impl LuaDocTagField {
         self.token()
     }
 
-    pub fn get_attrib(&self) -> Option<LuaDocAttribute> {
+    pub fn get_attrib(&self) -> Option<LuaDocTypeFlag> {
         self.child()
     }
 }

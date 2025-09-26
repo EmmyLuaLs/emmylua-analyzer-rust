@@ -1,7 +1,7 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocAttribute, LuaDocTag, LuaDocTagAlias,
-    LuaDocTagAttribute, LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace,
-    LuaDocTagUsing,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute,
+    LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
+    LuaDocTypeFlag,
 };
 use flagset::FlagSet;
 use rowan::TextRange;
@@ -25,7 +25,7 @@ pub fn analyze_doc_tag_class(analyzer: &mut DeclAnalyzer, class: LuaDocTagClass)
 
 fn get_attrib_value(
     analyzer: &mut DeclAnalyzer,
-    attrib: Option<LuaDocAttribute>,
+    attrib: Option<LuaDocTypeFlag>,
 ) -> FlagSet<LuaTypeAttribute> {
     let mut attr: FlagSet<LuaTypeAttribute> = if analyzer.is_meta {
         LuaTypeAttribute::Meta.into()

@@ -408,11 +408,11 @@ pub enum LuaDocObjectFieldKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LuaDocAttribute {
+pub struct LuaDocTypeFlag {
     syntax: LuaSyntaxNode,
 }
 
-impl LuaAstNode for LuaDocAttribute {
+impl LuaAstNode for LuaDocTypeFlag {
     fn syntax(&self) -> &LuaSyntaxNode {
         &self.syntax
     }
@@ -421,7 +421,7 @@ impl LuaAstNode for LuaDocAttribute {
     where
         Self: Sized,
     {
-        kind == LuaSyntaxKind::DocAttribute
+        kind == LuaSyntaxKind::DocTypeFlag
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>
@@ -436,7 +436,7 @@ impl LuaAstNode for LuaDocAttribute {
     }
 }
 
-impl LuaDocAttribute {
+impl LuaDocTypeFlag {
     pub fn get_attrib_tokens(&self) -> LuaAstTokenChildren<LuaNameToken> {
         self.tokens()
     }

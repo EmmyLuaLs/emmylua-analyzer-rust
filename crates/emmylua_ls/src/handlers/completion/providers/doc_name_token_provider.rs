@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use emmylua_code_analysis::{DiagnosticCode, LuaTypeAttribute};
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocAttribute, LuaDocTag, LuaSyntaxKind,
+    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocTag, LuaDocTypeFlag, LuaSyntaxKind,
     LuaSyntaxToken, LuaTokenKind,
 };
 use lsp_types::CompletionItem;
@@ -29,7 +29,7 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         DocCompletionExpected::DiagnosticCode => {
             add_tag_diagnostic_code_completion(builder);
         }
-        DocCompletionExpected::ClassAttr(node) => {
+        DocCompletionExpected::ClassFlag(node) => {
             add_tag_class_attr_completion(builder, node);
         }
         DocCompletionExpected::Namespace => {
@@ -84,9 +84,9 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
                         LuaSyntaxKind::DocDiagnosticCodeList => {
                             Some(DocCompletionExpected::DiagnosticCode)
                         }
-                        LuaSyntaxKind::DocAttribute => {
-                            let attr = LuaDocAttribute::cast(parent.clone())?;
-                            Some(DocCompletionExpected::ClassAttr(attr))
+                        LuaSyntaxKind::DocTypeFlag => {
+                            let attr = LuaDocTypeFlag::cast(parent.clone().into())?;
+                            Some(DocCompletionExpected::ClassFlag(attr))
                         }
                         _ => None,
                     }
@@ -105,9 +105,9 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
             let parent = trigger_token.parent()?;
             match parent.kind().into() {
                 LuaSyntaxKind::DocDiagnosticCodeList => Some(DocCompletionExpected::DiagnosticCode),
-                LuaSyntaxKind::DocAttribute => {
-                    let attr = LuaDocAttribute::cast(parent.clone())?;
-                    Some(DocCompletionExpected::ClassAttr(attr))
+                LuaSyntaxKind::DocTypeFlag => {
+                    let attr = LuaDocTypeFlag::cast(parent.clone().into())?;
+                    Some(DocCompletionExpected::ClassFlag(attr))
                 }
                 _ => None,
             }
@@ -115,9 +115,9 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
         LuaTokenKind::TkLeftParen => {
             let parent = trigger_token.parent()?;
             match parent.kind().into() {
-                LuaSyntaxKind::DocAttribute => {
-                    let attr = LuaDocAttribute::cast(parent.clone())?;
-                    Some(DocCompletionExpected::ClassAttr(attr))
+                LuaSyntaxKind::DocTypeFlag => {
+                    let attr = LuaDocTypeFlag::cast(parent.clone().into())?;
+                    Some(DocCompletionExpected::ClassFlag(attr))
                 }
                 _ => None,
             }
@@ -132,7 +132,7 @@ enum DocCompletionExpected {
     Cast,
     DiagnosticAction,
     DiagnosticCode,
-    ClassAttr(LuaDocAttribute),
+    ClassFlag(LuaDocTypeFlag),
     Namespace,
     Using,
     Export,
@@ -230,7 +230,7 @@ fn add_tag_diagnostic_code_completion(builder: &mut CompletionBuilder) {
 
 fn add_tag_class_attr_completion(
     builder: &mut CompletionBuilder,
-    node: LuaDocAttribute,
+    node: LuaDocTypeFlag,
 ) -> Option<()> {
     let mut attributes = vec![(LuaTypeAttribute::Partial, "partial")];
 
