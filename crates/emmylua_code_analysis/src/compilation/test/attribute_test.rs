@@ -45,4 +45,16 @@ mod test {
         // "#,
         // );
     }
+
+    #[test]
+    fn test_generic_attribute() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic [attribute] T
+            local function f()
+            end
+        "#,
+        );
+    }
 }

@@ -15,17 +15,33 @@ use crate::{
 
 pub fn analyze_tag_attribute_use(
     analyzer: &mut DocAnalyzer,
-    attribute_use: LuaDocTagAttributeUse,
+    tag_use: LuaDocTagAttributeUse,
 ) -> Option<()> {
-    let owner = attribute_use_get_owner(analyzer, &attribute_use);
+    let owner = attribute_use_get_owner(analyzer, &tag_use);
     let owner_id = match get_owner_id(analyzer, owner, true) {
         Some(id) => id,
         None => {
-            report_orphan_tag(analyzer, &attribute_use);
+            report_orphan_tag(analyzer, &tag_use);
             return None;
         }
     };
-    let attribute_uses = attribute_use.get_attribute_uses();
+    let attribute_uses = infer_attribute_uses(analyzer, tag_use)?;
+    for attribute_use in attribute_uses {
+        analyzer.db.get_property_index_mut().add_attribute_use(
+            analyzer.file_id,
+            owner_id.clone(),
+            attribute_use,
+        );
+    }
+    Some(())
+}
+
+pub fn infer_attribute_uses(
+    analyzer: &mut DocAnalyzer,
+    tag_use: LuaDocTagAttributeUse,
+) -> Option<Vec<LuaAttributeUse>> {
+    let attribute_uses = tag_use.get_attribute_uses();
+    let mut result = Vec::new();
     for attribute_use in attribute_uses {
         let mut params = Vec::new();
         if let Some(attribute_call_arg_list) = attribute_use.get_arg_list() {
@@ -36,14 +52,10 @@ pub fn analyze_tag_attribute_use(
         }
         let attribute_type = infer_type(analyzer, LuaDocType::Name(attribute_use.get_type()?));
         if let LuaType::Ref(type_id) = attribute_type {
-            analyzer.db.get_property_index_mut().add_attribute_use(
-                analyzer.file_id,
-                owner_id.clone(),
-                LuaAttributeUse::new(type_id, params),
-            );
+            result.push(LuaAttributeUse::new(type_id, params));
         }
     }
-    Some(())
+    Some(result)
 }
 
 fn infer_attribute_arg_type(expr: LuaLiteralExpr) -> LuaType {

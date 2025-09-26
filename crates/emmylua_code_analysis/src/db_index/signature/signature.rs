@@ -11,11 +11,11 @@ use crate::{
     FileId,
     db_index::{LuaFunctionType, LuaType},
 };
-use crate::{SemanticModel, VariadicType};
+use crate::{LuaAttributeUse, SemanticModel, VariadicType};
 
 #[derive(Debug)]
 pub struct LuaSignature {
-    pub generic_params: Vec<(String, Option<LuaType>)>,
+    pub generic_params: Vec<Arc<LuaGenericParamInfo>>,
     pub overloads: Vec<Arc<LuaFunctionType>>,
     pub param_docs: HashMap<usize, LuaDocParamInfo>,
     pub params: Vec<String>,
@@ -278,4 +278,25 @@ pub enum SignatureReturnStatus {
     UnResolve,
     DocResolve,
     InferResolve,
+}
+
+#[derive(Debug, Clone)]
+pub struct LuaGenericParamInfo {
+    pub name: String,
+    pub type_constraint: Option<LuaType>,
+    pub attributes: Option<LuaAttributeUse>,
+}
+
+impl LuaGenericParamInfo {
+    pub fn new(
+        name: String,
+        type_constraint: Option<LuaType>,
+        attributes: Option<LuaAttributeUse>,
+    ) -> Self {
+        Self {
+            name,
+            type_constraint,
+            attributes,
+        }
+    }
 }
