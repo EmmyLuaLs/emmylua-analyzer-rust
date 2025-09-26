@@ -11,12 +11,16 @@ use super::{
     DocAnalyzer, infer_type::infer_type, preprocess_description, tags::find_owner_closure,
 };
 use crate::GenericParam;
+use crate::compilation::analyzer::doc::attribute_tags::infer_attribute_uses;
 use crate::compilation::analyzer::doc::tags::report_orphan_tag;
 use crate::{
     LuaTypeCache, LuaTypeDeclId,
     compilation::analyzer::common::bind_type,
-    db_index::{LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType},
+    db_index::{
+        LuaDeclId, LuaGenericParamInfo, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType,
+    },
 };
+use std::sync::Arc;
 
 pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<()> {
     let file_id = analyzer.file_id;
@@ -348,7 +352,6 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
             } else {
                 continue;
             };
-
             let type_ref = param
                 .get_type()
                 .map(|type_ref| infer_type(analyzer, type_ref));
@@ -358,7 +361,22 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
                 type_ref.clone(),
                 false,
             ));
-            param_info.push((name, type_ref));
+
+            let attributes = {
+                let mut attributes = None;
+                if let Some(attribute_use) = param.get_tag_attribute_use() {
+                    if let Some(attribute_uses) = infer_attribute_uses(analyzer, attribute_use) {
+                        for attribute_use in attribute_uses {
+                            attributes = Some(attribute_use);
+                        }
+                    }
+                }
+                attributes
+            };
+
+            param_info.push(Arc::new(LuaGenericParamInfo::new(
+                name, type_ref, attributes,
+            )));
         }
     }
 
