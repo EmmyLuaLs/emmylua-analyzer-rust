@@ -127,7 +127,7 @@ pub enum LuaSyntaxKind {
     DocGenericDeclareList,
     DocDiagnosticNameList,
     DocTypeList,
-    DocAttribute,            // (partial, global, local, ...)
+    DocTypeFlag,             // (partial, global, local, ...)
     DocAttributeUse,         // use. attribute in @[attribute1, attribute2, ...]
     DocAttributeCallArgList, // use. argument list in @[attribute_name(arg1, arg2, ...)]
     DocOpType,               // +<type>, -<type>, +?
