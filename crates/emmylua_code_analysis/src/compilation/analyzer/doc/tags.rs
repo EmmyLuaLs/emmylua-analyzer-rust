@@ -4,7 +4,10 @@ use emmylua_parser::{
 
 use crate::{
     AnalyzeError, DiagnosticCode, LuaDeclId,
-    compilation::analyzer::doc::property_tags::analyze_readonly,
+    compilation::analyzer::doc::{
+        attribute_tags::analyze_tag_attribute_use, property_tags::analyze_readonly,
+        type_def_tags::analyze_attribute,
+    },
     db_index::{LuaMemberId, LuaSemanticDeclId, LuaSignatureId},
 };
 
@@ -37,6 +40,9 @@ pub fn analyze_tag(analyzer: &mut DocAnalyzer, tag: LuaDocTag) -> Option<()> {
         }
         LuaDocTag::Alias(alias) => {
             analyze_alias(analyzer, alias)?;
+        }
+        LuaDocTag::Attribute(attribute) => {
+            analyze_attribute(analyzer, attribute)?;
         }
 
         // ref
@@ -111,6 +117,10 @@ pub fn analyze_tag(analyzer: &mut DocAnalyzer, tag: LuaDocTag) -> Option<()> {
         LuaDocTag::Readonly(readonly) => {
             analyze_readonly(analyzer, readonly)?;
         }
+        // 属性使用, 与 ---@tag 的语法不同
+        LuaDocTag::AttributeUse(attribute_use) => {
+            analyze_tag_attribute_use(analyzer, attribute_use)?;
+        }
         _ => {}
     }
 
@@ -152,11 +162,17 @@ pub fn find_owner_closure_or_report(
     }
 }
 
-pub fn get_owner_id(analyzer: &mut DocAnalyzer) -> Option<LuaSemanticDeclId> {
-    if let Some(current_type_id) = &analyzer.current_type_id {
-        return Some(LuaSemanticDeclId::TypeDecl(current_type_id.clone()));
+pub fn get_owner_id(
+    analyzer: &mut DocAnalyzer,
+    owner: Option<LuaAst>,
+    find_doc_field: bool,
+) -> Option<LuaSemanticDeclId> {
+    if !find_doc_field {
+        if let Some(current_type_id) = &analyzer.current_type_id {
+            return Some(LuaSemanticDeclId::TypeDecl(current_type_id.clone()));
+        }
     }
-    let owner = analyzer.comment.get_owner()?;
+    let owner = owner.or_else(|| analyzer.comment.get_owner())?;
     match owner {
         LuaAst::LuaAssignStat(assign) => {
             let first_var = assign.child::<LuaVarExpr>()?;
@@ -197,6 +213,10 @@ pub fn get_owner_id(analyzer: &mut DocAnalyzer) -> Option<LuaSemanticDeclId> {
         LuaAst::LuaClosureExpr(closure) => Some(LuaSemanticDeclId::Signature(
             LuaSignatureId::from_closure(analyzer.file_id, &closure),
         )),
+        LuaAst::LuaDocTagField(tag) => {
+            let member_id = LuaMemberId::new(tag.get_syntax_id(), analyzer.file_id);
+            Some(LuaSemanticDeclId::Member(member_id))
+        }
         _ => {
             let closure = find_owner_closure(analyzer)?;
             Some(LuaSemanticDeclId::Signature(LuaSignatureId::from_closure(
@@ -211,7 +231,7 @@ pub fn get_owner_id_or_report(
     analyzer: &mut DocAnalyzer,
     tag: &impl LuaAstNode,
 ) -> Option<LuaSemanticDeclId> {
-    match get_owner_id(analyzer) {
+    match get_owner_id(analyzer, None, false) {
         Some(id) => Some(id),
         None => {
             report_orphan_tag(analyzer, tag);

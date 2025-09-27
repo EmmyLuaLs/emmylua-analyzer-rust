@@ -2867,4 +2867,136 @@ Syntax(Chunk)@0..137
 
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_attribute_doc() {
+        let code = r#"
+        ---@attribute check_point(x: string, y: number)
+        ---@[Skip, check_point("a", 0)]
+        "#;
+        // print_ast(code);
+        // print_ast(r#"
+        // ---@alias a fun(x: string, y: number)
+        // check_point("a", 0)
+        // "#);
+        let result = r#"
+Syntax(Chunk)@0..105
+  Syntax(Block)@0..105
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..96
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagAttribute)@13..56
+        Token(TkTagAttribute)@13..22 "attribute"
+        Token(TkWhitespace)@22..23 " "
+        Token(TkName)@23..34 "check_point"
+        Syntax(TypeAttribute)@34..56
+          Token(TkLeftParen)@34..35 "("
+          Syntax(DocTypedParameter)@35..44
+            Token(TkName)@35..36 "x"
+            Token(TkColon)@36..37 ":"
+            Token(TkWhitespace)@37..38 " "
+            Syntax(TypeName)@38..44
+              Token(TkName)@38..44 "string"
+          Token(TkComma)@44..45 ","
+          Token(TkWhitespace)@45..46 " "
+          Syntax(DocTypedParameter)@46..55
+            Token(TkName)@46..47 "y"
+            Token(TkColon)@47..48 ":"
+            Token(TkWhitespace)@48..49 " "
+            Syntax(TypeName)@49..55
+              Token(TkName)@49..55 "number"
+          Token(TkRightParen)@55..56 ")"
+      Token(TkEndOfLine)@56..57 "\n"
+      Token(TkWhitespace)@57..65 "        "
+      Token(TkDocStart)@65..69 "---@"
+      Syntax(DocTagAttributeUse)@69..96
+        Token(TkDocAttributeUse)@69..70 "["
+        Syntax(DocAttributeUse)@70..74
+          Syntax(TypeName)@70..74
+            Token(TkName)@70..74 "Skip"
+        Token(TkComma)@74..75 ","
+        Token(TkWhitespace)@75..76 " "
+        Syntax(DocAttributeUse)@76..95
+          Syntax(TypeName)@76..87
+            Token(TkName)@76..87 "check_point"
+          Syntax(DocAttributeCallArgList)@87..95
+            Token(TkLeftParen)@87..88 "("
+            Syntax(LiteralExpr)@88..91
+              Token(TkString)@88..91 "\"a\""
+            Token(TkComma)@91..92 ","
+            Token(TkWhitespace)@92..93 " "
+            Syntax(LiteralExpr)@93..94
+              Token(TkInt)@93..94 "0"
+            Token(TkRightParen)@94..95 ")"
+        Token(TkRightBracket)@95..96 "]"
+    Token(TkEndOfLine)@96..97 "\n"
+    Token(TkWhitespace)@97..105 "        "
+        "#;
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_attribute_generic_param() {
+        let code = r#"
+        ---@generic [attribute] T, [attribute] R
+        ---@param [attribute] a number
+        "#;
+        // print_ast(code);
+        // print_ast(r#"
+        // ---@class A<[attribute] T, [attribute] R>
+        // "#);
+        let result = r#"
+Syntax(Chunk)@0..97
+  Syntax(Block)@0..97
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..88
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagGeneric)@13..49
+        Token(TkTagGeneric)@13..20 "generic"
+        Token(TkWhitespace)@20..21 " "
+        Syntax(DocGenericDeclareList)@21..49
+          Syntax(DocGenericParameter)@21..34
+            Syntax(DocTagAttributeUse)@21..32
+              Token(TkLeftBracket)@21..22 "["
+              Syntax(DocAttributeUse)@22..31
+                Syntax(TypeName)@22..31
+                  Token(TkName)@22..31 "attribute"
+              Token(TkRightBracket)@31..32 "]"
+            Token(TkWhitespace)@32..33 " "
+            Token(TkName)@33..34 "T"
+          Token(TkComma)@34..35 ","
+          Token(TkWhitespace)@35..36 " "
+          Syntax(DocGenericParameter)@36..49
+            Syntax(DocTagAttributeUse)@36..47
+              Token(TkLeftBracket)@36..37 "["
+              Syntax(DocAttributeUse)@37..46
+                Syntax(TypeName)@37..46
+                  Token(TkName)@37..46 "attribute"
+              Token(TkRightBracket)@46..47 "]"
+            Token(TkWhitespace)@47..48 " "
+            Token(TkName)@48..49 "R"
+      Token(TkEndOfLine)@49..50 "\n"
+      Token(TkWhitespace)@50..58 "        "
+      Token(TkDocStart)@58..62 "---@"
+      Syntax(DocTagParam)@62..88
+        Token(TkTagParam)@62..67 "param"
+        Token(TkWhitespace)@67..68 " "
+        Syntax(DocTagAttributeUse)@68..79
+          Token(TkLeftBracket)@68..69 "["
+          Syntax(DocAttributeUse)@69..78
+            Syntax(TypeName)@69..78
+              Token(TkName)@69..78 "attribute"
+          Token(TkRightBracket)@78..79 "]"
+        Token(TkWhitespace)@79..80 " "
+        Token(TkName)@80..81 "a"
+        Token(TkWhitespace)@81..82 " "
+        Syntax(TypeName)@82..88
+          Token(TkName)@82..88 "number"
+    Token(TkEndOfLine)@88..89 "\n"
+    Token(TkWhitespace)@89..97 "        "
+        "#;
+        assert_ast_eq!(code, result);
+    }
 }

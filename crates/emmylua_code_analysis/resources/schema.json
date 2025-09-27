@@ -430,6 +430,21 @@
           "description": "readonly",
           "type": "string",
           "const": "read-only"
+        },
+        {
+          "description": "attribute-param-type-mismatch",
+          "type": "string",
+          "const": "attribute-param-type-mismatch"
+        },
+        {
+          "description": "attribute-missing-parameter",
+          "type": "string",
+          "const": "attribute-missing-parameter"
+        },
+        {
+          "description": "attribute-redundant-parameter",
+          "type": "string",
+          "const": "attribute-redundant-parameter"
         }
       ]
     },

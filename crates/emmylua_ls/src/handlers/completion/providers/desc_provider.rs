@@ -89,7 +89,7 @@ fn add_global_completions(builder: &mut CompletionBuilder) -> Option<()> {
     }
 
     // Types in namespaces.
-    complete_types_by_prefix(builder, "", Some(&seen_types));
+    complete_types_by_prefix(builder, "", Some(&seen_types), None);
 
     // Types in current module.
     if let Some(module) = builder.semantic_model.get_module() {
@@ -170,7 +170,7 @@ fn add_by_prefix(
 
         // Modules.
         add_modules(builder, &prefix, None);
-        complete_types_by_prefix(builder, &prefix, Some(&seen_types));
+        complete_types_by_prefix(builder, &prefix, Some(&seen_types), None);
     }
 
     None

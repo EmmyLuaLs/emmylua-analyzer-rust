@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
-    LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
-    LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken,
-    LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner,
+    LuaDocFuncType, LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey,
+    LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType,
+    LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVarExpr,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
     AsyncState, DiagnosticCode, GenericTpl, InFiled, LuaAliasCallKind, LuaArrayLen, LuaArrayType,
-    LuaMultiLineUnion, LuaTupleStatus, LuaTypeDeclId, TypeOps, VariadicType,
+    LuaAttributeType, LuaMultiLineUnion, LuaTupleStatus, LuaTypeDeclId, TypeOps, VariadicType,
     db_index::{
         AnalyzeError, LuaAliasCallType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
         LuaIntersectionType, LuaObjectType, LuaStringTplType, LuaTupleType, LuaType,
@@ -107,6 +107,9 @@ pub fn infer_type(analyzer: &mut DocAnalyzer, node: LuaDocType) -> LuaType {
         }
         LuaDocType::MultiLineUnion(multi_union) => {
             return infer_multi_line_union_type(analyzer, multi_union);
+        }
+        LuaDocType::Attribute(attribute_type) => {
+            return infer_attribute_type(analyzer, attribute_type);
         }
         _ => {} // LuaDocType::Conditional(lua_doc_conditional_type) => todo!(),
     }
@@ -636,4 +639,36 @@ fn infer_multi_line_union_type(
     }
 
     LuaType::MultiLineUnion(LuaMultiLineUnion::new(union_members).into())
+}
+
+fn infer_attribute_type(
+    analyzer: &mut DocAnalyzer,
+    attribute_type: &LuaDocAttributeType,
+) -> LuaType {
+    let mut params_result = Vec::new();
+    for param in attribute_type.get_params() {
+        let name = if let Some(param) = param.get_name_token() {
+            param.get_name_text().to_string()
+        } else if param.is_dots() {
+            "...".to_string()
+        } else {
+            continue;
+        };
+
+        let nullable = param.is_nullable();
+
+        let type_ref = if let Some(type_ref) = param.get_type() {
+            let mut typ = infer_type(analyzer, type_ref);
+            if nullable && !typ.is_nullable() {
+                typ = TypeOps::Union.apply(analyzer.db, &typ, &LuaType::Nil);
+            }
+            Some(typ)
+        } else {
+            None
+        };
+
+        params_result.push((name, type_ref));
+    }
+
+    LuaType::DocAttribute(LuaAttributeType::new(params_result).into())
 }

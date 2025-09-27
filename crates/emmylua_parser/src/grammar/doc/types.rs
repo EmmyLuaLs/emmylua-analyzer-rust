@@ -314,7 +314,7 @@ fn parse_fun_return_type(p: &mut LuaDocParser) -> DocParseResult {
 // ... : <type>
 // <name>
 // ...
-fn parse_typed_param(p: &mut LuaDocParser) -> DocParseResult {
+pub fn parse_typed_param(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTypedParameter);
     match p.current_token() {
         LuaTokenKind::TkName => {
