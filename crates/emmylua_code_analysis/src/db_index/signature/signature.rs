@@ -190,6 +190,7 @@ pub struct LuaDocReturnInfo {
     pub name: Option<String>,
     pub type_ref: LuaType,
     pub description: Option<String>,
+    pub attributes: Option<Vec<LuaAttributeUse>>,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]

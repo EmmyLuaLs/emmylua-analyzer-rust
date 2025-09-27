@@ -2937,21 +2937,22 @@ Syntax(Chunk)@0..105
     }
 
     #[test]
-    fn test_attribute_generic_param() {
+    fn test_attribute_embedded() {
         let code = r#"
         ---@generic [attribute] T, [attribute] R
         ---@param [attribute] a number
+        ---@return [attribute] number, [attribute] string
         "#;
-        // print_ast(code);
+        print_ast(code);
         // print_ast(r#"
         // ---@class A<[attribute] T, [attribute] R>
         // "#);
         let result = r#"
-Syntax(Chunk)@0..97
-  Syntax(Block)@0..97
+Syntax(Chunk)@0..155
+  Syntax(Block)@0..155
     Token(TkEndOfLine)@0..1 "\n"
     Token(TkWhitespace)@1..9 "        "
-    Syntax(Comment)@9..88
+    Syntax(Comment)@9..146
       Token(TkDocStart)@9..13 "---@"
       Syntax(DocTagGeneric)@13..49
         Token(TkTagGeneric)@13..20 "generic"
@@ -2994,8 +2995,34 @@ Syntax(Chunk)@0..97
         Token(TkWhitespace)@81..82 " "
         Syntax(TypeName)@82..88
           Token(TkName)@82..88 "number"
-    Token(TkEndOfLine)@88..89 "\n"
-    Token(TkWhitespace)@89..97 "        "
+      Token(TkEndOfLine)@88..89 "\n"
+      Token(TkWhitespace)@89..97 "        "
+      Token(TkDocStart)@97..101 "---@"
+      Syntax(DocTagReturn)@101..146
+        Token(TkTagReturn)@101..107 "return"
+        Token(TkWhitespace)@107..108 " "
+        Syntax(DocTagAttributeUse)@108..119
+          Token(TkLeftBracket)@108..109 "["
+          Syntax(DocAttributeUse)@109..118
+            Syntax(TypeName)@109..118
+              Token(TkName)@109..118 "attribute"
+          Token(TkRightBracket)@118..119 "]"
+        Token(TkWhitespace)@119..120 " "
+        Syntax(TypeName)@120..126
+          Token(TkName)@120..126 "number"
+        Token(TkComma)@126..127 ","
+        Token(TkWhitespace)@127..128 " "
+        Syntax(DocTagAttributeUse)@128..139
+          Token(TkLeftBracket)@128..129 "["
+          Syntax(DocAttributeUse)@129..138
+            Syntax(TypeName)@129..138
+              Token(TkName)@129..138 "attribute"
+          Token(TkRightBracket)@138..139 "]"
+        Token(TkWhitespace)@139..140 " "
+        Syntax(TypeName)@140..146
+          Token(TkName)@140..146 "string"
+    Token(TkEndOfLine)@146..147 "\n"
+    Token(TkWhitespace)@147..155 "        "
         "#;
         assert_ast_eq!(code, result);
     }

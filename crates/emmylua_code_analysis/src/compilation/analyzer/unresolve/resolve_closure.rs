@@ -172,6 +172,7 @@ pub fn try_resolve_closure_return(
         name: None,
         type_ref: ret_type.clone(),
         description: None,
+        attributes: None,
     });
 
     signature.resolve_return = SignatureReturnStatus::DocResolve;
@@ -482,6 +483,7 @@ fn resolve_doc_function(
             name: None,
             type_ref: doc_func.get_ret().clone(),
             description: None,
+            attributes: None,
         });
     }
 

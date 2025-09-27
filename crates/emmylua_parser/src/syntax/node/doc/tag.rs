@@ -534,18 +534,26 @@ impl LuaDocTagReturn {
         self.children()
     }
 
-    pub fn get_type_and_name_list(&self) -> Vec<(LuaDocType, Option<LuaNameToken>)> {
+    pub fn get_info_list(
+        &self,
+    ) -> Vec<(
+        LuaDocType,
+        Option<LuaNameToken>,
+        Option<LuaDocTagAttributeUse>,
+    )> {
         let mut result = Vec::new();
         let mut current_type = None;
         let mut current_name = None;
+        let mut current_attribute = None;
         for child in self.syntax.children_with_tokens() {
             match child.kind() {
                 LuaKind::Token(LuaTokenKind::TkComma) => {
                     if let Some(type_) = current_type {
-                        result.push((type_, current_name));
+                        result.push((type_, current_name, current_attribute));
                     }
                     current_type = None;
                     current_name = None;
+                    current_attribute = None;
                 }
                 LuaKind::Token(LuaTokenKind::TkName) => {
                     current_name = Some(LuaNameToken::cast(child.into_token().unwrap()).unwrap());
@@ -553,13 +561,16 @@ impl LuaDocTagReturn {
                 k if LuaDocType::can_cast(k.into()) => {
                     current_type = Some(LuaDocType::cast(child.into_node().unwrap()).unwrap());
                 }
-
+                a if LuaDocTagAttributeUse::can_cast(a.into()) => {
+                    current_attribute =
+                        Some(LuaDocTagAttributeUse::cast(child.into_node().unwrap()).unwrap());
+                }
                 _ => {}
             }
         }
 
         if let Some(type_) = current_type {
-            result.push((type_, current_name));
+            result.push((type_, current_name, current_attribute));
         }
 
         result

@@ -97,6 +97,7 @@ pub fn resolve_as_any(db: &mut DbIndex, reason: &InferFailReason, loop_count: us
                     name: None,
                     type_ref: LuaType::Any,
                     description: None,
+                    attributes: None,
                 }];
                 signature.resolve_return = SignatureReturnStatus::InferResolve;
             }

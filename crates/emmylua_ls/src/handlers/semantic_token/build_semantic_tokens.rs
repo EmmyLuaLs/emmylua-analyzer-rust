@@ -371,8 +371,8 @@ fn build_node_semantic_token(
             );
         }
         LuaAst::LuaDocTagReturn(doc_return) => {
-            let type_name_list = doc_return.get_type_and_name_list();
-            for (_, name) in type_name_list {
+            let type_name_list = doc_return.get_info_list();
+            for (_, name, _) in type_name_list {
                 if let Some(name) = name {
                     builder.push(name.syntax(), SemanticTokenType::VARIABLE);
                 }

@@ -341,10 +341,14 @@ fn parse_tag_param(p: &mut LuaDocParser) -> DocParseResult {
 // ---@return number
 // ---@return number, string
 // ---@return number <name> , this just compact luals
+// ---@return [attribute] number
 fn parse_tag_return(p: &mut LuaDocParser) -> DocParseResult {
     p.set_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagReturn);
     p.bump();
+    if p.current_token() == LuaTokenKind::TkLeftBracket {
+        parse_tag_attribute_use(p, false)?;
+    }
 
     parse_type(p)?;
 
@@ -352,6 +356,9 @@ fn parse_tag_return(p: &mut LuaDocParser) -> DocParseResult {
 
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
+        if p.current_token() == LuaTokenKind::TkLeftBracket {
+            parse_tag_attribute_use(p, false)?;
+        }
         parse_type(p)?;
         if_token_bump(p, LuaTokenKind::TkName);
     }

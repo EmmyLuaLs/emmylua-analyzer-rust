@@ -234,15 +234,21 @@ pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Optio
 
     if let Some(closure) = find_owner_closure_or_report(analyzer, &tag) {
         let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
-        let returns = tag.get_type_and_name_list();
-        for (doc_type, name_token) in returns {
+        let returns = tag.get_info_list();
+        for (doc_type, name_token, attribute_use_tag) in returns {
             let name = name_token.map(|name| name.get_name_text().to_string());
 
             let type_ref = infer_type(analyzer, doc_type);
+            let attributes = if let Some(attribute) = attribute_use_tag {
+                infer_attribute_uses(analyzer, attribute)
+            } else {
+                None
+            };
             let return_info = LuaDocReturnInfo {
                 name,
                 type_ref,
                 description: description.clone(),
+                attributes,
             };
 
             let signature = analyzer
