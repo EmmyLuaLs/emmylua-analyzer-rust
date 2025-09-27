@@ -11,8 +11,9 @@ use super::{
     preprocess_description,
     tags::{find_owner_closure, get_owner_id_or_report},
 };
-use crate::compilation::analyzer::doc::tags::{
-    find_owner_closure_or_report, get_owner_id, report_orphan_tag,
+use crate::compilation::analyzer::doc::{
+    attribute_tags::infer_attribute_uses,
+    tags::{find_owner_closure_or_report, get_owner_id, report_orphan_tag},
 };
 use crate::{
     InFiled, InferFailReason, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
@@ -186,18 +187,27 @@ pub fn analyze_param(analyzer: &mut DocAnalyzer, tag: LuaDocTagParam) -> Option<
     // bind type ref to signature and param
     if let Some(closure) = find_owner_closure(analyzer) {
         let id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
+        // 绑定`attribute`标记
+        let attributes = if let Some(attribute_use) = tag.get_tag_attribute_use() {
+            infer_attribute_uses(analyzer, attribute_use)
+        } else {
+            None
+        };
+
         let signature = analyzer.db.get_signature_index_mut().get_or_create(id);
         let param_info = LuaDocParamInfo {
             name: name.clone(),
             type_ref: type_ref.clone(),
             nullable,
             description,
+            attributes,
         };
 
         let idx = signature.find_param_idx(&name)?;
 
         signature.param_docs.insert(idx, param_info);
     } else if let Some(LuaAst::LuaForRangeStat(for_range)) = analyzer.comment.get_owner() {
+        // for in 支持 @param 语法
         for it_name_token in for_range.get_var_name_list() {
             let it_name = it_name_token.get_name_text();
             if it_name == name {

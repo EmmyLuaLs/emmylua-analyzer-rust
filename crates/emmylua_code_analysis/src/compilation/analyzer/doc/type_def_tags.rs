@@ -215,13 +215,17 @@ fn get_generic_params(
         } else {
             continue;
         };
-
+        let attributes = if let Some(attribute_use) = param.get_tag_attribute_use() {
+            infer_attribute_uses(analyzer, attribute_use)
+        } else {
+            None
+        };
         let type_ref = param
             .get_type()
             .map(|type_ref| infer_type(analyzer, type_ref));
 
         let is_variadic = param.is_variadic();
-        params_result.push(GenericParam::new(name, type_ref, is_variadic));
+        params_result.push(GenericParam::new(name, type_ref, is_variadic, attributes));
     }
 
     params_result
@@ -356,24 +360,17 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
                 .get_type()
                 .map(|type_ref| infer_type(analyzer, type_ref));
 
+            let attributes = if let Some(attribute_use) = param.get_tag_attribute_use() {
+                infer_attribute_uses(analyzer, attribute_use)
+            } else {
+                None
+            };
             params_result.push(GenericParam::new(
                 SmolStr::new(name.as_str()),
                 type_ref.clone(),
                 false,
+                attributes.clone(),
             ));
-
-            let attributes = {
-                let mut attributes = None;
-                if let Some(attribute_use) = param.get_tag_attribute_use() {
-                    if let Some(attribute_uses) = infer_attribute_uses(analyzer, attribute_use) {
-                        for attribute_use in attribute_uses {
-                            attributes = Some(attribute_use);
-                        }
-                    }
-                }
-                attributes
-            };
-
             param_info.push(Arc::new(LuaGenericParamInfo::new(
                 name, type_ref, attributes,
             )));

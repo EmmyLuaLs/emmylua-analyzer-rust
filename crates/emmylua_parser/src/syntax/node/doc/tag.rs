@@ -488,6 +488,10 @@ impl LuaDocTagParam {
     pub fn get_type(&self) -> Option<LuaDocType> {
         self.child()
     }
+
+    pub fn get_tag_attribute_use(&self) -> Option<LuaDocTagAttributeUse> {
+        self.child()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
