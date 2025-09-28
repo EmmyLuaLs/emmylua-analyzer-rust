@@ -24,6 +24,11 @@ pub enum OperatorFunction {
     Func(Arc<LuaFunctionType>),
     Signature(LuaSignatureId),
     DefaultCall(LuaSignatureId),
+    DefaultClassCtor {
+        id: LuaSignatureId,
+        strip_self: bool,
+        return_self: bool,
+    },
 }
 
 impl LuaOperator {
@@ -74,6 +79,7 @@ impl LuaOperator {
             }
             // 只有 .field 才有`operand`, call 不会有这个
             OperatorFunction::DefaultCall(_) => LuaType::Unknown,
+            OperatorFunction::DefaultClassCtor { .. } => LuaType::Unknown,
         }
     }
 
@@ -114,6 +120,23 @@ impl LuaOperator {
 
                 Ok(LuaType::Any)
             }
+            OperatorFunction::DefaultClassCtor {
+                id, return_self, ..
+            } => {
+                if *return_self {
+                    return Ok(LuaType::SelfInfer);
+                }
+
+                let signature = db.get_signature_index().get(id);
+                if let Some(signature) = signature {
+                    let return_type = signature.return_docs.first();
+                    if let Some(return_type) = return_type {
+                        return Ok(return_type.type_ref.clone());
+                    }
+                }
+
+                Ok(LuaType::Any)
+            }
         }
     }
 
@@ -146,6 +169,34 @@ impl LuaOperator {
                 }
 
                 LuaType::Signature(*signature_id)
+            }
+            OperatorFunction::DefaultClassCtor {
+                id,
+                strip_self,
+                return_self,
+            } => {
+                if let Some(signature) = db.get_signature_index().get(id) {
+                    let params = signature.get_type_params();
+                    let is_colon_define = if *strip_self {
+                        false
+                    } else {
+                        signature.is_colon_define
+                    };
+                    let return_type = if *return_self {
+                        LuaType::SelfInfer
+                    } else {
+                        signature.get_return_type()
+                    };
+                    let func_type = LuaFunctionType::new(
+                        signature.async_state,
+                        is_colon_define,
+                        params,
+                        return_type,
+                    );
+                    return LuaType::DocFunction(Arc::new(func_type));
+                }
+
+                LuaType::Signature(*id)
             }
         }
     }

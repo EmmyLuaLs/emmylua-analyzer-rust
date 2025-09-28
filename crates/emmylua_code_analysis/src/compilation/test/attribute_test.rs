@@ -64,4 +64,50 @@ mod test {
         "#,
         );
     }
+
+    #[test]
+    fn test_class_ctor() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def_files(vec![
+            (
+                "init.lua",
+                r#"
+                A = meta("A")
+                "#,
+            ),
+            (
+                "meta.lua",
+                r#"
+            ---@attribute class_ctor(name: string, strip_self: boolean?, return_self: boolean?)
+
+            ---@generic T
+            ---@param [class_ctor("__init")] name `T`
+            ---@return T
+            function meta(name)
+            end
+                "#,
+            ),
+        ]);
+
+        // ws.def(
+        //     r#"
+        //     ---@attribute class_ctor(name: string, strip_self: boolean?, return_self: boolean?)
+
+        //     ---@generic T
+        //     ---@param [class_ctor("__init")] name `T`
+        //     ---@return T
+        //     function meta(name)
+        //     end
+        // "#,
+        // );
+        // ws.def(
+        //     r#"
+        //     A = meta("A")
+
+        //     function A:__init(a)
+        //     end
+        // "#,
+        // );
+    }
 }

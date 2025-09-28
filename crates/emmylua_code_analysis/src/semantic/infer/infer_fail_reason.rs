@@ -11,6 +11,7 @@ pub enum InferFailReason {
     FieldNotFound,
     UnResolveDeclType(LuaDeclId),
     UnResolveMemberType(LuaMemberId),
+    UnResolveOperatorCall,
 }
 
 impl InferFailReason {
@@ -22,6 +23,7 @@ impl InferFailReason {
                 | InferFailReason::FieldNotFound
                 | InferFailReason::UnResolveDeclType(_)
                 | InferFailReason::UnResolveMemberType(_)
+                | InferFailReason::UnResolveOperatorCall
         )
     }
 }

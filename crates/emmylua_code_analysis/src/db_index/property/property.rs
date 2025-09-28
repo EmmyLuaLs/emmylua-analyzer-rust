@@ -175,11 +175,11 @@ impl LuaPropertyId {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaAttributeUse {
     pub id: LuaTypeDeclId,
-    pub params: Vec<LuaType>,
+    pub args: Vec<LuaType>,
 }
 
 impl LuaAttributeUse {
-    pub fn new(name: LuaTypeDeclId, params: Vec<LuaType>) -> Self {
-        Self { id: name, params }
+    pub fn new(name: LuaTypeDeclId, args: Vec<LuaType>) -> Self {
+        Self { id: name, args }
     }
 }

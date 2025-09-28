@@ -221,7 +221,7 @@ pub fn check_table_expr(
             if let Some(attribute_uses) = property.attribute_uses() {
                 for attribute_use in attribute_uses.iter() {
                     if attribute_use.id.get_name() == "skip_diagnostic" {
-                        if let Some(LuaType::DocStringConst(code)) = attribute_use.params.get(0) {
+                        if let Some(LuaType::DocStringConst(code)) = attribute_use.args.get(0) {
                             if code.as_ref() == "table_field" {
                                 return Some(false);
                             }
