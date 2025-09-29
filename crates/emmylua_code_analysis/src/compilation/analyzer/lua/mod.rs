@@ -110,6 +110,7 @@ impl LuaAnalyzer<'_> {
         }
     }
 
+    #[allow(unused)]
     pub fn get_emmyrc(&self) -> &Emmyrc {
         self.db.get_emmyrc()
     }

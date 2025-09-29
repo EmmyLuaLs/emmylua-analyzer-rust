@@ -23,7 +23,6 @@ pub struct LuaOperator {
 pub enum OperatorFunction {
     Func(Arc<LuaFunctionType>),
     Signature(LuaSignatureId),
-    DefaultCall(LuaSignatureId),
     DefaultClassCtor {
         id: LuaSignatureId,
         strip_self: bool,
@@ -78,7 +77,6 @@ impl LuaOperator {
                 LuaType::Any
             }
             // 只有 .field 才有`operand`, call 不会有这个
-            OperatorFunction::DefaultCall(_) => LuaType::Unknown,
             OperatorFunction::DefaultClassCtor { .. } => LuaType::Unknown,
         }
     }
@@ -89,25 +87,6 @@ impl LuaOperator {
             OperatorFunction::Signature(signature_id) => {
                 let signature = db.get_signature_index().get(signature_id);
                 if let Some(signature) = signature {
-                    if signature.resolve_return == SignatureReturnStatus::UnResolve {
-                        return Err(InferFailReason::UnResolveSignatureReturn(*signature_id));
-                    }
-
-                    let return_type = signature.return_docs.first();
-                    if let Some(return_type) = return_type {
-                        return Ok(return_type.type_ref.clone());
-                    }
-                }
-
-                Ok(LuaType::Any)
-            }
-            OperatorFunction::DefaultCall(signature_id) => {
-                let emmyrc = db.get_emmyrc();
-                if emmyrc.runtime.class_default_call.force_return_self {
-                    return Ok(LuaType::SelfInfer);
-                }
-
-                if let Some(signature) = db.get_signature_index().get(signature_id) {
                     if signature.resolve_return == SignatureReturnStatus::UnResolve {
                         return Err(InferFailReason::UnResolveSignatureReturn(*signature_id));
                     }
@@ -144,32 +123,6 @@ impl LuaOperator {
         match &self.func {
             OperatorFunction::Func(func) => LuaType::DocFunction(func.clone()),
             OperatorFunction::Signature(signature) => LuaType::Signature(*signature),
-            OperatorFunction::DefaultCall(signature_id) => {
-                let emmyrc = db.get_emmyrc();
-
-                if let Some(signature) = db.get_signature_index().get(signature_id) {
-                    let params = signature.get_type_params();
-                    let is_colon_define = if emmyrc.runtime.class_default_call.force_non_colon {
-                        false
-                    } else {
-                        signature.is_colon_define
-                    };
-                    let return_type = if emmyrc.runtime.class_default_call.force_return_self {
-                        LuaType::SelfInfer
-                    } else {
-                        signature.get_return_type()
-                    };
-                    let func_type = LuaFunctionType::new(
-                        signature.async_state,
-                        is_colon_define,
-                        params,
-                        return_type,
-                    );
-                    return LuaType::DocFunction(Arc::new(func_type));
-                }
-
-                LuaType::Signature(*signature_id)
-            }
             OperatorFunction::DefaultClassCtor {
                 id,
                 strip_self,
