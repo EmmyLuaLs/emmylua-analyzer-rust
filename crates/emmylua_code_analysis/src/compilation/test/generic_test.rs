@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::VirtualWorkspace;
+    use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
     fn test_issue_586() {
@@ -158,4 +158,17 @@ mod test {
         assert_eq!(a_ty, LuaType::Unknown);
     }
     */
+
+    #[test]
+    fn test_issue_738() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Predicate<A: any[]> fun(...: A): boolean
+            ---@type Predicate<[string, integer, table]>
+            pred = function() end
+            "#,
+        );
+        assert!(ws.check_code_for(DiagnosticCode::ParamTypeNotMatch, r#"pred('hello', 1, {})"#));
+    }
 }

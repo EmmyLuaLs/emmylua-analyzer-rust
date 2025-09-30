@@ -161,6 +161,17 @@ pub fn instantiate_doc_function(
             },
             _ => {
                 let new_type = instantiate_type_generic(db, origin_param_type, substitutor);
+                // 如果是 rest 参数且实例化后的类型是 tuple, 那么我们将展开 tuple
+                if origin_param.0 == "..." && tpl_func_params.len() == i + 1 {
+                    if let LuaType::Tuple(tuple_type) = &new_type {
+                        let base_index = new_params.len();
+                        for (offset, tuple_element) in tuple_type.get_types().iter().enumerate() {
+                            let param_name = format!("args_{}", base_index + offset);
+                            new_params.push((param_name, Some(tuple_element.clone())));
+                        }
+                        continue;
+                    }
+                }
                 new_params.push((origin_param.0.clone(), Some(new_type)));
             }
         }
