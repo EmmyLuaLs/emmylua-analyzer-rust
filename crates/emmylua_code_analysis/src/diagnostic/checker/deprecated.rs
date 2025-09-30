@@ -50,7 +50,7 @@ fn check_name_expr(
         .get_property_index()
         .get_property(&semantic_decl)?;
     if let Some(deprecated) = property.deprecated() {
-        let depreacated_message = match deprecated {
+        let deprecated_message = match deprecated {
             LuaDeprecated::Deprecated => "deprecated".to_string(),
             LuaDeprecated::DeprecatedWithMessage(message) => message.to_string(),
         };
@@ -58,7 +58,7 @@ fn check_name_expr(
         context.add_diagnostic(
             DiagnosticCode::Deprecated,
             name_expr.get_range(),
-            depreacated_message,
+            deprecated_message,
             None,
         );
     }
@@ -85,7 +85,7 @@ fn check_index_expr(
         .get_property_index()
         .get_property(&semantic_decl)?;
     if let Some(deprecated) = property.deprecated() {
-        let depreacated_message = match deprecated {
+        let deprecated_message = match deprecated {
             LuaDeprecated::Deprecated => "deprecated".to_string(),
             LuaDeprecated::DeprecatedWithMessage(message) => message.to_string(),
         };
@@ -95,7 +95,7 @@ fn check_index_expr(
         context.add_diagnostic(
             DiagnosticCode::Deprecated,
             index_name_range,
-            depreacated_message,
+            deprecated_message,
             None,
         );
     }

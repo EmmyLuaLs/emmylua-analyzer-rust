@@ -1,4 +1,4 @@
-mod reference_seacher;
+mod reference_searcher;
 
 use crate::context::ServerContextSnapshot;
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId};
@@ -6,8 +6,8 @@ use emmylua_parser::{LuaAstNode, LuaTokenKind};
 use lsp_types::{
     ClientCapabilities, Location, OneOf, Position, ReferenceParams, ServerCapabilities,
 };
-use reference_seacher::search_references;
-pub use reference_seacher::{search_decl_references, search_member_references};
+use reference_searcher::search_references;
+pub use reference_searcher::{search_decl_references, search_member_references};
 use rowan::TokenAtOffset;
 use tokio_util::sync::CancellationToken;
 

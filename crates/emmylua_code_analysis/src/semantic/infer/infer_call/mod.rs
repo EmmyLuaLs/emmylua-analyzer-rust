@@ -346,7 +346,7 @@ fn infer_generic_type_doc_function(
                 if let LuaType::DocFunction(f) = new_f {
                     overloads.push(f.clone());
                 }
-                // todo: support oveload?
+                // todo: support overload?
             }
             _ => {}
         }
