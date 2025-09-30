@@ -67,7 +67,7 @@ fn check_param_count(
     context: &mut DiagnosticContext,
     def_params: &[(String, Option<LuaType>)],
     attribute_use: &LuaDocAttributeUse,
-    args: &Vec<LuaLiteralExpr>,
+    args: &[LuaLiteralExpr],
 ) -> Option<()> {
     let call_args_count = args.len();
     // 调用参数少于定义参数, 需要考虑可空参数
@@ -76,7 +76,7 @@ fn check_param_count(
             if def_param.0 == "..." {
                 break;
             }
-            if def_param.1.as_ref().is_some_and(|typ| is_nullable(typ)) {
+            if def_param.1.as_ref().is_some_and(is_nullable) {
                 continue;
             }
             context.add_diagnostic(

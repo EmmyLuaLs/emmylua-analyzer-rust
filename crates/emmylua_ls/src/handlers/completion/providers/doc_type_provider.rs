@@ -87,7 +87,7 @@ fn check_can_add_type_completion(builder: &CompletionBuilder) -> Option<Completi
         LuaTokenKind::TkName => {
             let parent = builder.trigger_token.parent()?;
             if let Some(doc_name) = LuaDocNameType::cast(parent) {
-                if let Some(_) = doc_name.get_parent::<LuaDocAttributeUse>() {
+                if doc_name.get_parent::<LuaDocAttributeUse>().is_some() {
                     return Some(CompletionType::AttributeUse);
                 }
                 return Some(CompletionType::Type);
@@ -128,9 +128,7 @@ fn check_can_add_type_completion(builder: &CompletionBuilder) -> Option<Completi
 
             None
         }
-        LuaTokenKind::TkDocAttributeUse => {
-            return Some(CompletionType::AttributeUse);
-        }
+        LuaTokenKind::TkDocAttributeUse => Some(CompletionType::AttributeUse),
         _ => None,
     }
 }

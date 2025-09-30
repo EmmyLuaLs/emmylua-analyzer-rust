@@ -272,7 +272,7 @@ pub fn try_resolve_class_ctor(
         .find(|attr| attr.id.get_name() == "class_ctor")
         .ok_or(InferFailReason::None)?;
     let LuaType::DocStringConst(target_signature_name) =
-        class_ctor_use.args.get(0).ok_or(InferFailReason::None)?
+        class_ctor_use.args.first().ok_or(InferFailReason::None)?
     else {
         return Err(InferFailReason::None);
     };
@@ -365,31 +365,28 @@ fn get_class_ctor_target_type(
     call_expr: LuaCallExpr,
     call_index: usize,
 ) -> Option<LuaTypeDeclId> {
-    match param_type {
-        LuaType::StrTplRef(str_tpl) => {
-            let name = {
-                let arg_expr = call_expr
-                    .get_args_list()?
-                    .get_args()
-                    .nth(call_index)?
-                    .clone();
-                let name = infer_expr(db, cache, arg_expr).ok()?;
-                match name {
-                    LuaType::StringConst(s) => s.to_string(),
-                    _ => return None,
-                }
-            };
-
-            let prefix = str_tpl.get_prefix();
-            let suffix = str_tpl.get_suffix();
-            let type_decl_id: LuaTypeDeclId =
-                LuaTypeDeclId::new(format!("{}{}{}", prefix, name, suffix).as_str());
-            let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
-            if type_decl.is_class() {
-                return Some(type_decl_id);
+    if let LuaType::StrTplRef(str_tpl) = param_type {
+        let name = {
+            let arg_expr = call_expr
+                .get_args_list()?
+                .get_args()
+                .nth(call_index)?
+                .clone();
+            let name = infer_expr(db, cache, arg_expr).ok()?;
+            match name {
+                LuaType::StringConst(s) => s.to_string(),
+                _ => return None,
             }
+        };
+
+        let prefix = str_tpl.get_prefix();
+        let suffix = str_tpl.get_suffix();
+        let type_decl_id: LuaTypeDeclId =
+            LuaTypeDeclId::new(format!("{}{}{}", prefix, name, suffix).as_str());
+        let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
+        if type_decl.is_class() {
+            return Some(type_decl_id);
         }
-        _ => {}
     }
 
     None

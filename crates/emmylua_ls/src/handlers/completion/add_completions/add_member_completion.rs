@@ -362,7 +362,7 @@ pub fn get_index_alias_name(
     let alias_label = common_property
         .find_attribute_use(LuaTypeDeclId::new("index_alias"))?
         .args
-        .get(0)
+        .first()
         .map(|param| match param {
             LuaType::DocStringConst(s) => s.as_ref(),
             _ => "",

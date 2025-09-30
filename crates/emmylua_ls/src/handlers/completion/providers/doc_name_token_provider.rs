@@ -85,7 +85,7 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
                             Some(DocCompletionExpected::DiagnosticCode)
                         }
                         LuaSyntaxKind::DocTypeFlag => {
-                            let attr = LuaDocTypeFlag::cast(parent.clone().into())?;
+                            let attr = LuaDocTypeFlag::cast(parent.clone())?;
                             Some(DocCompletionExpected::ClassFlag(attr))
                         }
                         _ => None,
@@ -106,7 +106,7 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
             match parent.kind().into() {
                 LuaSyntaxKind::DocDiagnosticCodeList => Some(DocCompletionExpected::DiagnosticCode),
                 LuaSyntaxKind::DocTypeFlag => {
-                    let attr = LuaDocTypeFlag::cast(parent.clone().into())?;
+                    let attr = LuaDocTypeFlag::cast(parent.clone())?;
                     Some(DocCompletionExpected::ClassFlag(attr))
                 }
                 _ => None,
@@ -116,7 +116,7 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
             let parent = trigger_token.parent()?;
             match parent.kind().into() {
                 LuaSyntaxKind::DocTypeFlag => {
-                    let attr = LuaDocTypeFlag::cast(parent.clone().into())?;
+                    let attr = LuaDocTypeFlag::cast(parent.clone())?;
                     Some(DocCompletionExpected::ClassFlag(attr))
                 }
                 _ => None,
