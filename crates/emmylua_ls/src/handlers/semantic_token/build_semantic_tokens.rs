@@ -371,8 +371,8 @@ fn build_node_semantic_token(
             );
         }
         LuaAst::LuaDocTagReturn(doc_return) => {
-            let type_name_list = doc_return.get_type_and_name_list();
-            for (_, name) in type_name_list {
+            let type_name_list = doc_return.get_info_list();
+            for (_, name, _) in type_name_list {
                 if let Some(name) = name {
                     builder.push(name.syntax(), SemanticTokenType::VARIABLE);
                 }
@@ -781,6 +781,15 @@ fn build_node_semantic_token(
                 && !builder.is_special_string_range(&string_token.get_range())
             {
                 fun_string_highlight(builder, semantic_model, call_expr, &string_token);
+            }
+        }
+        LuaAst::LuaDocTagAttributeUse(tag_use) => {
+            // 给 `@[]` 染色, @已经染色过了
+            if let Some(token) = tag_use.token_by_kind(LuaTokenKind::TkDocAttributeUse) {
+                builder.push(token.syntax(), SemanticTokenType::KEYWORD);
+            }
+            if let Some(token) = tag_use.syntax().last_token() {
+                builder.push(&token, SemanticTokenType::KEYWORD);
             }
         }
         _ => {}

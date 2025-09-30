@@ -18,6 +18,7 @@ pub fn check_reach_reason(
     match reason {
         InferFailReason::None
         | InferFailReason::FieldNotFound
+        | InferFailReason::UnResolveOperatorCall
         | InferFailReason::RecursiveInfer => Some(true),
         InferFailReason::UnResolveDeclType(decl_id) => {
             let decl = db.get_decl_index().get_decl(decl_id)?;
@@ -60,6 +61,7 @@ pub fn resolve_as_any(db: &mut DbIndex, reason: &InferFailReason, loop_count: us
     match reason {
         InferFailReason::None
         | InferFailReason::FieldNotFound
+        | InferFailReason::UnResolveOperatorCall
         | InferFailReason::RecursiveInfer => {
             return Some(());
         }
@@ -97,6 +99,7 @@ pub fn resolve_as_any(db: &mut DbIndex, reason: &InferFailReason, loop_count: us
                     name: None,
                     type_ref: LuaType::Any,
                     description: None,
+                    attributes: None,
                 }];
                 signature.resolve_return = SignatureReturnStatus::InferResolve;
             }

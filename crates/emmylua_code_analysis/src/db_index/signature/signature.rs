@@ -11,11 +11,11 @@ use crate::{
     FileId,
     db_index::{LuaFunctionType, LuaType},
 };
-use crate::{SemanticModel, VariadicType};
+use crate::{LuaAttributeUse, SemanticModel, VariadicType};
 
 #[derive(Debug)]
 pub struct LuaSignature {
-    pub generic_params: Vec<(String, Option<LuaType>)>,
+    pub generic_params: Vec<Arc<LuaGenericParamInfo>>,
     pub overloads: Vec<Arc<LuaFunctionType>>,
     pub param_docs: HashMap<usize, LuaDocParamInfo>,
     pub params: Vec<String>,
@@ -182,6 +182,7 @@ pub struct LuaDocParamInfo {
     pub type_ref: LuaType,
     pub nullable: bool,
     pub description: Option<String>,
+    pub attributes: Option<Vec<LuaAttributeUse>>,
 }
 
 #[derive(Debug)]
@@ -189,6 +190,7 @@ pub struct LuaDocReturnInfo {
     pub name: Option<String>,
     pub type_ref: LuaType,
     pub description: Option<String>,
+    pub attributes: Option<Vec<LuaAttributeUse>>,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
@@ -278,4 +280,25 @@ pub enum SignatureReturnStatus {
     UnResolve,
     DocResolve,
     InferResolve,
+}
+
+#[derive(Debug, Clone)]
+pub struct LuaGenericParamInfo {
+    pub name: String,
+    pub type_constraint: Option<LuaType>,
+    pub attributes: Option<Vec<LuaAttributeUse>>,
+}
+
+impl LuaGenericParamInfo {
+    pub fn new(
+        name: String,
+        type_constraint: Option<LuaType>,
+        attributes: Option<Vec<LuaAttributeUse>>,
+    ) -> Self {
+        Self {
+            name,
+            type_constraint,
+            attributes,
+        }
+    }
 }

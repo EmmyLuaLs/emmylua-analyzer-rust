@@ -251,7 +251,7 @@ fn infer_table_type_by_calleee(
             call_arg_number += 1;
         }
         (true, false) => {
-            call_arg_number -= 1;
+            call_arg_number = call_arg_number.saturating_sub(1);
         }
     }
     let typ = param_types

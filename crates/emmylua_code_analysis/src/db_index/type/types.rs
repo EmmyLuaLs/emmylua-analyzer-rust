@@ -62,6 +62,7 @@ pub enum LuaType {
     TypeGuard(Arc<LuaType>),
     ConstTplRef(Arc<GenericTpl>),
     Language(ArcIntern<SmolStr>),
+    DocAttribute(Arc<LuaAttributeType>),
 }
 
 impl PartialEq for LuaType {
@@ -111,6 +112,7 @@ impl PartialEq for LuaType {
             (LuaType::Never, LuaType::Never) => true,
             (LuaType::ConstTplRef(a), LuaType::ConstTplRef(b)) => a == b,
             (LuaType::Language(a), LuaType::Language(b)) => a == b,
+            (LuaType::DocAttribute(a), LuaType::DocAttribute(b)) => a == b,
             _ => false, // 不同变体之间不相等
         }
     }
@@ -189,6 +191,7 @@ impl Hash for LuaType {
             LuaType::Never => 45.hash(state),
             LuaType::ConstTplRef(a) => (46, a).hash(state),
             LuaType::Language(a) => (47, a).hash(state),
+            LuaType::DocAttribute(a) => (48, a).hash(state),
         }
     }
 }
@@ -1446,5 +1449,33 @@ impl LuaArrayType {
 
     pub fn contain_tpl(&self) -> bool {
         self.base.contain_tpl()
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct LuaAttributeType {
+    params: Vec<(String, Option<LuaType>)>,
+}
+
+impl TypeVisitTrait for LuaAttributeType {
+    fn visit_type<F>(&self, f: &mut F)
+    where
+        F: FnMut(&LuaType),
+    {
+        for (_, t) in &self.params {
+            if let Some(t) = t {
+                t.visit_type(f);
+            }
+        }
+    }
+}
+
+impl LuaAttributeType {
+    pub fn new(params: Vec<(String, Option<LuaType>)>) -> Self {
+        Self { params }
+    }
+
+    pub fn get_params(&self) -> &[(String, Option<LuaType>)] {
+        &self.params
     }
 }

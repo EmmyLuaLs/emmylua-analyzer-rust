@@ -792,7 +792,12 @@ fn get_tpl_ref_extend_type(builder: &CompletionBuilder, tpl_id: &GenericTplId) -
                     .get(&signature_id)?;
                 let generic_param = signature.generic_params.get(tpl_id.get_idx());
                 if let Some(generic_param) = generic_param {
-                    return Some(generic_param.1.clone().unwrap_or(LuaType::Any));
+                    return Some(
+                        generic_param
+                            .type_constraint
+                            .clone()
+                            .unwrap_or(LuaType::Any),
+                    );
                 }
             }
             None

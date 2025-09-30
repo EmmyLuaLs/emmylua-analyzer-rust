@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use googletest::prelude::*;
-    use std::{ops::Deref, sync::Arc};
 
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualInlayHint, check};
 
@@ -138,28 +137,40 @@ mod tests {
     #[gtest]
     fn test_class_call_hint() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        let mut emmyrc = ws.analysis.get_emmyrc().deref().clone();
-        emmyrc.runtime.class_default_call.function_name = "__init".to_string();
-        emmyrc.runtime.class_default_call.force_non_colon = true;
-        emmyrc.runtime.class_default_call.force_return_self = true;
-        ws.analysis.update_config(Arc::new(emmyrc));
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param [class_ctor("__init")] name `T`
+            ---@return T
+            function meta(name)
+            end
+        "#,
+        );
 
         check!(ws.check_inlay_hint(
             r#"
                 ---@class MyClass
-                local A
+                local A = meta("MyClass")
 
                 function A:__init(a)
                 end
 
                 A()
             "#,
-            vec![VirtualInlayHint {
-                label: "new".to_string(),
-                line: 7,
-                pos: 16,
-                ref_file: Some("".to_string()),
-            }]
+            vec![
+                VirtualInlayHint {
+                    label: "name:".to_string(),
+                    line: 2,
+                    pos: 31,
+                    ref_file: Some("".to_string()),
+                },
+                VirtualInlayHint {
+                    label: "new".to_string(),
+                    line: 7,
+                    pos: 16,
+                    ref_file: Some("".to_string()),
+                }
+            ]
         ));
         Ok(())
     }
@@ -167,16 +178,18 @@ mod tests {
     #[gtest]
     fn test_index_key_alias_hint() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(" ---@attribute index_alias(name: string)");
         check!(ws.check_inlay_hint(
             r#"
                 local export = {
-                    [1] = 1, -- [nameX]
+                    ---@[index_alias("nameX")]
+                    [1] = 1,
                 }
                 print(export[1])
             "#,
             vec![VirtualInlayHint {
                 label: ": nameX".to_string(),
-                line: 4,
+                line: 5,
                 pos: 30,
                 ref_file: Some("".to_string()),
             }]

@@ -1,8 +1,9 @@
 mod build_hover;
 mod find_origin;
-mod function_humanize;
 mod hover_builder;
-mod hover_humanize;
+mod humanize_function;
+mod humanize_type_decl;
+mod humanize_types;
 mod keyword_hover;
 mod std_hover;
 
@@ -16,7 +17,7 @@ use emmylua_parser::{LuaAstNode, LuaDocDescription, LuaTokenKind};
 use emmylua_parser_desc::parse_ref_target;
 pub use find_origin::{find_all_same_named_members, find_member_origin_owner};
 pub use hover_builder::HoverBuilder;
-pub use hover_humanize::infer_prefix_global_name;
+pub use humanize_types::infer_prefix_global_name;
 use keyword_hover::{hover_keyword, is_keyword};
 use lsp_types::{
     ClientCapabilities, Hover, HoverContents, HoverParams, HoverProviderCapability, MarkupContent,

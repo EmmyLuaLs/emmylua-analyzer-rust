@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod test {
-    use std::{ops::Deref, sync::Arc};
 
     use crate::{DiagnosticCode, VirtualWorkspace};
 
@@ -31,18 +30,24 @@ mod test {
     #[test]
     fn test_class_default_call() {
         let mut ws = VirtualWorkspace::new();
-        let mut emmyrc = ws.analysis.emmyrc.deref().clone();
-        emmyrc.runtime.class_default_call.function_name = "__init".to_string();
-        emmyrc.runtime.class_default_call.force_non_colon = true;
-        emmyrc.runtime.class_default_call.force_return_self = true;
-        ws.analysis.update_config(Arc::new(emmyrc));
+        ws.def(
+            r#"
+            ---@attribute class_ctor(name: string, strip_self: boolean?, return_self: boolean?)
+
+            ---@generic T
+            ---@param [class_ctor("__init")] name `T`
+            ---@return T
+            function meta(name)
+            end
+        "#,
+        );
 
         ws.def(
             r#"
         ---@class MyClass
-        local M = {}
+        local M = meta("MyClass")
 
-        function M:__init(a)
+        function M:__init()
         end
 
         A = M()

@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAstNode, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericType,
-    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
-    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
-    LuaTypeUnaryOperator,
+    LuaAstNode, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
+    LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
+    LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken,
+    LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
     AsyncState, InFiled, LuaAliasCallKind, LuaAliasCallType, LuaArrayLen, LuaArrayType,
-    LuaFunctionType, LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaMultiLineUnion,
-    LuaObjectType, LuaStringTplType, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId,
-    SemanticModel, TypeOps, VariadicType,
+    LuaAttributeType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey, LuaIntersectionType,
+    LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus, LuaTupleType, LuaType,
+    LuaTypeDeclId, SemanticModel, TypeOps, VariadicType,
 };
 
 pub fn infer_doc_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaType {
@@ -107,6 +107,9 @@ pub fn infer_doc_type(semantic_model: &SemanticModel, node: &LuaDocType) -> LuaT
         }
         LuaDocType::MultiLineUnion(multi_union) => {
             return infer_multi_line_union_type(semantic_model, multi_union);
+        }
+        LuaDocType::Attribute(attribute_type) => {
+            return infer_attribute_type(semantic_model, attribute_type);
         }
         _ => {}
     }
@@ -562,4 +565,36 @@ fn infer_multi_line_union_type(
     }
 
     LuaType::MultiLineUnion(LuaMultiLineUnion::new(union_members).into())
+}
+
+fn infer_attribute_type(
+    semantic_model: &SemanticModel,
+    attribute_type: &LuaDocAttributeType,
+) -> LuaType {
+    let mut params_result = Vec::new();
+    for param in attribute_type.get_params() {
+        let name = if let Some(param) = param.get_name_token() {
+            param.get_name_text().to_string()
+        } else if param.is_dots() {
+            "...".to_string()
+        } else {
+            continue;
+        };
+
+        let nullable = param.is_nullable();
+
+        let type_ref = if let Some(type_ref) = param.get_type() {
+            let mut typ = infer_doc_type(semantic_model, &type_ref);
+            if nullable && !typ.is_nullable() {
+                typ = TypeOps::Union.apply(semantic_model.get_db(), &typ, &LuaType::Nil);
+            }
+            Some(typ)
+        } else {
+            None
+        };
+
+        params_result.push((name, type_ref));
+    }
+
+    LuaType::DocAttribute(LuaAttributeType::new(params_result).into())
 }

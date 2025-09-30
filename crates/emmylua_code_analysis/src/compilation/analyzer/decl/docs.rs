@@ -1,6 +1,7 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocAttribute, LuaDocTag, LuaDocTagAlias,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute,
     LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
+    LuaDocTypeFlag,
 };
 use flagset::FlagSet;
 use rowan::TextRange;
@@ -24,7 +25,7 @@ pub fn analyze_doc_tag_class(analyzer: &mut DeclAnalyzer, class: LuaDocTagClass)
 
 fn get_attrib_value(
     analyzer: &mut DeclAnalyzer,
-    attrib: Option<LuaDocAttribute>,
+    attrib: Option<LuaDocTypeFlag>,
 ) -> FlagSet<LuaTypeAttribute> {
     let mut attr: FlagSet<LuaTypeAttribute> = if analyzer.is_meta {
         LuaTypeAttribute::Meta.into()
@@ -78,6 +79,26 @@ pub fn analyze_doc_tag_alias(analyzer: &mut DeclAnalyzer, alias: LuaDocTagAlias)
         &name,
         range,
         LuaDeclTypeKind::Alias,
+        LuaTypeAttribute::None.into(),
+    );
+    Some(())
+}
+
+pub fn analyze_doc_tag_attribute(
+    analyzer: &mut DeclAnalyzer,
+    attribute: LuaDocTagAttribute,
+) -> Option<()> {
+    let name_token = attribute.get_name_token()?;
+    let name = name_token.get_name_text().to_string();
+    let range = name_token.syntax().text_range();
+
+    // LuaTypeAttribute 与 LuaDocTagAttribute 完全是两个不同的概念.
+    // LuaTypeAttribute 描述类型的属性, LuaDocTagAttribute 类似于 C# 的特性, 附加了更多的信息.
+    add_type_decl(
+        analyzer,
+        &name,
+        range,
+        LuaDeclTypeKind::Attribute,
         LuaTypeAttribute::None.into(),
     );
     Some(())

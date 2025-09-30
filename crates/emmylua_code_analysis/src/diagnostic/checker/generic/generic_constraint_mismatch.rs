@@ -201,7 +201,11 @@ fn get_extend_type(
     signature: &LuaSignature,
 ) -> Option<LuaType> {
     match tpl_id {
-        GenericTplId::Func(tpl_id) => signature.generic_params.get(tpl_id as usize)?.1.clone(),
+        GenericTplId::Func(tpl_id) => signature
+            .generic_params
+            .get(tpl_id as usize)?
+            .type_constraint
+            .clone(),
         GenericTplId::Type(tpl_id) => {
             let prefix_expr = call_expr.get_prefix_expr()?;
             let semantic_decl = semantic_model.find_decl(
@@ -391,10 +395,10 @@ fn try_instantiate_arg_type(
                                     .get_db()
                                     .get_signature_index()
                                     .get(&signature_id)?;
-                                if let Some((_, param_type)) =
+                                if let Some(generic_param) =
                                     signature.generic_params.get(tpl_id as usize)
                                 {
-                                    return param_type.clone();
+                                    return generic_param.type_constraint.clone();
                                 }
                             }
                             _ => return None,

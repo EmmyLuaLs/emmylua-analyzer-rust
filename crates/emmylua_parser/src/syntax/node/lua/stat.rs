@@ -219,6 +219,7 @@ impl LuaLocalStat {
         self.children()
     }
 
+    /// 仅从`AST`分析, 并不是绝对准确的, 因为允许最后一个表达式返回多个值
     pub fn get_local_name_by_value(&self, value: LuaExpr) -> Option<LuaLocalName> {
         let local_names = self.get_local_name_list();
         let value_exprs = self.get_value_exprs().collect::<Vec<_>>();
