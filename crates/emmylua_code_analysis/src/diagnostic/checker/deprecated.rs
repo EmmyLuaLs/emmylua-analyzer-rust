@@ -10,7 +10,7 @@ use super::{Checker, DiagnosticContext};
 pub struct DeprecatedChecker;
 
 impl Checker for DeprecatedChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::Unused];
+    const CODES: &[DiagnosticCode] = &[DiagnosticCode::Unused, DiagnosticCode::Deprecated];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
         let root = semantic_model.get_root().clone();
