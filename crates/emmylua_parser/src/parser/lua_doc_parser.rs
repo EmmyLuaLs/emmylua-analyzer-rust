@@ -15,6 +15,7 @@ pub struct LuaDocParser<'a, 'b> {
     current_token: LuaTokenKind,
     current_token_range: SourceRange,
     origin_token_index: usize,
+    pub infer_depth: usize,
 }
 
 impl MarkerEventContainer for LuaDocParser<'_, '_> {
@@ -46,6 +47,7 @@ impl<'b> LuaDocParser<'_, 'b> {
             current_token: LuaTokenKind::None,
             current_token_range: SourceRange::EMPTY,
             origin_token_index: 0,
+            infer_depth: 0,
         };
 
         parser.init();
@@ -182,6 +184,10 @@ impl<'b> LuaDocParser<'_, 'b> {
 
     pub fn origin_text(&self) -> &'b str {
         self.lua_parser.origin_text()
+    }
+
+    pub fn is_infer_context(&self) -> bool {
+        self.infer_depth > 0
     }
 
     pub fn set_state(&mut self, state: LuaDocLexerState) {

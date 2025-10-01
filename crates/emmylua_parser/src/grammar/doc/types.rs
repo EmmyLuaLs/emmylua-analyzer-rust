@@ -28,9 +28,9 @@ pub fn parse_type(p: &mut LuaDocParser) -> DocParseResult {
             LuaTokenKind::TkAnd => {
                 let m = cm.precede(p, LuaSyntaxKind::TypeConditional);
                 p.bump();
-                parse_sub_type(p, 0)?;
+                parse_type(p)?;
                 expect_token(p, LuaTokenKind::TkOr)?;
-                parse_sub_type(p, 0)?;
+                parse_type(p)?;
                 cm = m.complete(p);
                 break;
             }
@@ -82,7 +82,16 @@ fn parse_sub_type(p: &mut LuaDocParser, limit: i32) -> DocParseResult {
         let m = cm.precede(p, LuaSyntaxKind::TypeBinary);
         p.bump();
         if p.current_token() != LuaTokenKind::TkDocQuestion {
-            match parse_sub_type(p, bop.get_priority().right) {
+            // infer 只有在条件类型中才能被解析为关键词
+            let parse_result = if bop == LuaTypeBinaryOperator::Extends {
+                p.infer_depth += 1;
+                let res = parse_sub_type(p, bop.get_priority().right);
+                p.infer_depth = p.infer_depth.saturating_sub(1);
+                res
+            } else {
+                parse_sub_type(p, bop.get_priority().right)
+            };
+            match parse_result {
                 Ok(_) => {}
                 Err(err) => {
                     p.push_error(LuaParseError::doc_error_from(
@@ -131,7 +140,13 @@ fn parse_primary_type(p: &mut LuaDocParser) -> DocParseResult {
         | LuaTokenKind::TkInt
         | LuaTokenKind::TkTrue
         | LuaTokenKind::TkFalse => parse_literal_type(p),
-        LuaTokenKind::TkName => parse_name_or_func_type(p),
+        LuaTokenKind::TkName => {
+            if p.is_infer_context() && p.current_token_text() == "infer" {
+                parse_infer_type(p)
+            } else {
+                parse_name_or_func_type(p)
+            }
+        }
         LuaTokenKind::TkStringTemplateType => parse_string_template_type(p),
         LuaTokenKind::TkDots => parse_vararg_type(p),
         _ => Err(LuaParseError::doc_error_from(
@@ -345,6 +360,15 @@ fn parse_typed_param(p: &mut LuaDocParser) -> DocParseResult {
 fn parse_name_type(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::TypeName);
     p.bump();
+    Ok(m.complete(p))
+}
+
+fn parse_infer_type(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::TypeInfer);
+    p.bump();
+    let param = p.mark(LuaSyntaxKind::DocGenericParameter);
+    expect_token(p, LuaTokenKind::TkName)?;
+    param.complete(p);
     Ok(m.complete(p))
 }
 

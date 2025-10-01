@@ -104,6 +104,7 @@ pub enum LuaSyntaxKind {
     TypeObject, // { a: aType, b: bType } or { [1]: aType, [2]: bType } or { a: aType, b: bType, [number]: string }
     TypeLiteral, // "string" or <integer> or true or false
     TypeName,   // name
+    TypeInfer,  // infer T
     TypeVariadic, // type...
     TypeNullable, // <Type>?
     TypeStringTemplate, // prefixName.`T`

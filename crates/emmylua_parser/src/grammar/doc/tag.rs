@@ -135,16 +135,21 @@ fn parse_generic_decl_list(p: &mut LuaDocParser, allow_angle_brackets: bool) -> 
 }
 
 // A : type
+// A extends type
 // A
 // A ...
 // A ... : type
+// A ... extends type
 fn parse_generic_param(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocGenericParameter);
     expect_token(p, LuaTokenKind::TkName)?;
     if p.current_token() == LuaTokenKind::TkDots {
         p.bump();
     }
-    if p.current_token() == LuaTokenKind::TkColon {
+    if matches!(
+        p.current_token(),
+        LuaTokenKind::TkColon | LuaTokenKind::TkDocExtends
+    ) {
         p.bump();
         parse_type(p)?;
     }
