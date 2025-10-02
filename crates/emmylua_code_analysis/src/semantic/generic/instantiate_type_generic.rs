@@ -1,12 +1,18 @@
-use std::{collections::HashMap, ops::Deref};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Deref,
+};
 
 use crate::{
-    DbIndex, GenericTpl, LuaArrayType, LuaSignatureId, LuaTupleStatus,
+    DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaSignatureId, LuaTupleStatus,
     db_index::{
-        LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
-        LuaUnionType, VariadicType,
+        LuaAliasCallKind, LuaConditionalType, LuaFunctionType, LuaGenericType, LuaIntersectionType,
+        LuaObjectType, LuaTupleType, LuaType, LuaUnionType, VariadicType,
     },
+    semantic::type_check,
 };
+
+use crate::TypeVisitTrait;
 
 use super::{
     instantiate_special_generic::instantiate_alias_call,
@@ -35,6 +41,7 @@ pub fn instantiate_type_generic(
         LuaType::Signature(sig_id) => instantiate_signature(db, sig_id, substitutor),
         LuaType::Call(alias_call) => instantiate_alias_call(db, alias_call, substitutor),
         LuaType::Variadic(variadic) => instantiate_variadic_type(db, variadic, substitutor),
+        LuaType::Conditional(conditional) => instantiate_conditional(db, conditional, substitutor),
         LuaType::SelfInfer => {
             if let Some(typ) = substitutor.get_self_type() {
                 typ.clone()
@@ -428,4 +435,184 @@ fn instantiate_variadic_type(
     }
 
     LuaType::Variadic(variadic.clone().into())
+}
+
+fn instantiate_conditional(
+    db: &DbIndex,
+    conditional: &LuaConditionalType,
+    substitutor: &TypeSubstitutor,
+) -> LuaType {
+    // 记录右侧出现的每个 infer 名称对应的具体类型
+    let mut infer_assignments: HashMap<String, LuaType> = HashMap::new();
+    let mut condition_result: Option<bool> = None;
+
+    // 仅当条件形如 T extends ... 时才尝试提前求值, 否则返回原始结构
+    if let LuaType::Call(alias_call) = conditional.get_condition()
+        && alias_call.get_call_kind() == LuaAliasCallKind::Extends
+        && alias_call.get_operands().len() == 2
+    {
+        let left = instantiate_type_generic(db, &alias_call.get_operands()[0], substitutor);
+        let right_origin = &alias_call.get_operands()[1];
+        let right = instantiate_type_generic(db, right_origin, substitutor);
+        // infer 必须位于条件语句中(right), 判断是否包含并收集
+        if contains_conditional_infer(&right)
+            && collect_infer_assignments(&left, &right, &mut infer_assignments)
+        {
+            condition_result = Some(true);
+        } else {
+            condition_result = Some(type_check::check_type_compact(db, &left, &right).is_ok());
+        }
+    }
+
+    if let Some(result) = condition_result {
+        if result {
+            let mut true_substitutor = substitutor.clone();
+            if !infer_assignments.is_empty() {
+                // 克隆替换器, 确保只有 true 分支可见这些推断结果
+                let infer_names: HashSet<String> = conditional
+                    .get_infer_params()
+                    .iter()
+                    .map(|param| param.name.to_string())
+                    .collect();
+
+                if !infer_names.is_empty() {
+                    let tpl_id_map = resolve_infer_tpl_ids(conditional, substitutor, &infer_names);
+                    for (name, ty) in infer_assignments.iter() {
+                        if let Some(tpl_id) = tpl_id_map.get(name.as_str()) {
+                            true_substitutor.insert_type(*tpl_id, ty.clone());
+                        }
+                    }
+                }
+            }
+
+            return instantiate_type_generic(db, conditional.get_true_type(), &true_substitutor);
+        } else {
+            return instantiate_type_generic(db, conditional.get_false_type(), substitutor);
+        }
+    }
+
+    let new_condition = instantiate_type_generic(db, conditional.get_condition(), substitutor);
+    let new_true = instantiate_type_generic(db, conditional.get_true_type(), substitutor);
+    let new_false = instantiate_type_generic(db, conditional.get_false_type(), substitutor);
+
+    LuaType::Conditional(
+        LuaConditionalType::new(
+            new_condition,
+            new_true,
+            new_false,
+            conditional.get_infer_params().to_vec(),
+        )
+        .into(),
+    )
+}
+
+// 遍历类型树判断是否仍存在 ConditionalInfer 占位符
+fn contains_conditional_infer(ty: &LuaType) -> bool {
+    let mut found = false;
+    ty.visit_type(&mut |inner| {
+        if matches!(inner, LuaType::ConditionalInfer(_)) {
+            found = true;
+        }
+    });
+    found
+}
+
+// 尝试将`pattern`中的每个`infer`名称映射到`source`内部对应的类型, 当结构不兼容或发现冲突的赋值时, 返回`false`
+fn collect_infer_assignments(
+    source: &LuaType,
+    pattern: &LuaType,
+    assignments: &mut HashMap<String, LuaType>,
+) -> bool {
+    match pattern {
+        LuaType::ConditionalInfer(name) => {
+            insert_infer_assignment(assignments, name.as_str(), source)
+        }
+        LuaType::DocFunction(pattern_func) => {
+            if let LuaType::DocFunction(source_func) = source {
+                // 匹配函数参数
+                let pattern_params = pattern_func.get_params();
+                let source_params = source_func.get_params();
+                if pattern_params.len() != source_params.len() {
+                    return false;
+                }
+
+                for ((_, pattern_param), (_, source_param)) in
+                    pattern_params.iter().zip(source_params.iter())
+                {
+                    match (source_param, pattern_param) {
+                        (Some(source_ty), Some(pattern_ty)) => {
+                            if !collect_infer_assignments(source_ty, pattern_ty, assignments) {
+                                return false;
+                            }
+                        }
+                        (Some(_), None) => continue,
+                        (None, Some(pattern_ty)) => {
+                            if contains_conditional_infer(pattern_ty) {
+                                return false;
+                            }
+                        }
+                        (None, None) => continue,
+                    }
+                }
+
+                // 匹配函数返回值
+                let pattern_ret = pattern_func.get_ret();
+                if contains_conditional_infer(pattern_ret) {
+                    // 如果返回值也包含 infer, 继续与来源返回值进行匹配
+                    collect_infer_assignments(source_func.get_ret(), pattern_ret, assignments)
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
+        }
+        _ => {
+            // TODO: 支持更多
+            if contains_conditional_infer(pattern) {
+                false
+            } else {
+                source == pattern
+            }
+        }
+    }
+}
+
+// 记录某个 infer 名称推断出的类型, 并保证重复匹配时保持一致
+fn insert_infer_assignment(
+    assignments: &mut HashMap<String, LuaType>,
+    name: &str,
+    ty: &LuaType,
+) -> bool {
+    if let Some(existing) = assignments.get(name) {
+        existing == ty
+    } else {
+        assignments.insert(name.to_string(), ty.clone());
+        true
+    }
+}
+
+// 定位与每个`infer`名称对应的具体模板标识符, 以便将推断出的绑定写回替换器中.
+fn resolve_infer_tpl_ids(
+    conditional: &LuaConditionalType,
+    substitutor: &TypeSubstitutor,
+    infer_names: &HashSet<String>,
+) -> HashMap<String, GenericTplId> {
+    let mut map = HashMap::new();
+    let mut visit = |ty: &LuaType| {
+        if let LuaType::TplRef(tpl) = ty {
+            if substitutor.get(tpl.get_tpl_id()).is_none() {
+                let name = tpl.get_name();
+                if infer_names.contains(name) && !map.contains_key(name) {
+                    map.insert(name.to_string(), tpl.get_tpl_id());
+                }
+            }
+        }
+    };
+
+    conditional.get_true_type().visit_type(&mut visit);
+    conditional.get_condition().visit_type(&mut visit);
+    conditional.get_false_type().visit_type(&mut visit);
+
+    map
 }

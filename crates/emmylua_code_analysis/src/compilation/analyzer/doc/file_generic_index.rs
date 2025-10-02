@@ -27,8 +27,13 @@ impl FileGenericIndex {
         is_func: bool,
     ) {
         let params_id = self.generic_params.len();
+        // 由于我们允许 infer 推断出一个虚拟泛型, 因此需要计算已声明的泛型数量确定其位置
+        let start = ranges
+            .first()
+            .and_then(|range| self.find_generic_params(range.start()))
+            .map_or(0, |params_id| params_id.len());
         self.generic_params
-            .push(TagGenericParams::new(params, is_func));
+            .push(TagGenericParams::new(params, is_func, start));
         let params_id = GenericParamId::new(params_id);
         let root_node_ids: Vec<_> = self.root_node_ids.clone();
         for range in ranges {
@@ -185,10 +190,10 @@ pub struct TagGenericParams {
 }
 
 impl TagGenericParams {
-    pub fn new(generic_params: Vec<GenericParam>, is_func: bool) -> Self {
+    pub fn new(generic_params: Vec<GenericParam>, is_func: bool, start: usize) -> Self {
         let mut params = HashMap::new();
         for (i, param) in generic_params.into_iter().enumerate() {
-            params.insert(param.name.to_string(), (i, param.is_variadic));
+            params.insert(param.name.to_string(), (start + i, param.is_variadic));
         }
         Self { params, is_func }
     }

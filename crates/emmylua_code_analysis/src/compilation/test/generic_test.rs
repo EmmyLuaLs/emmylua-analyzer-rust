@@ -195,6 +195,50 @@ mod test {
     }
 
     #[test]
+    fn test_infer_type_params() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A02<T> T extends (fun(v1: infer P)) and P or string
+
+            ---@param v fun(v1: number)
+            function f(v)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A02<number>
+            local a
+            f(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_type_params_extract() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A02<T> T extends (fun(v0: number, v1: infer P)) and P or string
+
+            ---@param v number
+            function accept(v)
+            end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A02<fun(v0: number, v1: number)>
+            local a
+            accept(a)
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_return_generic() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
