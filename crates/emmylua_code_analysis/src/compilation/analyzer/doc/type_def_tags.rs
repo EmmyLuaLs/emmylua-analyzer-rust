@@ -159,8 +159,11 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
             .generic_index
             .add_generic_scope(vec![range], generic_params, false);
     }
+    dbg!(&tag);
 
     let origin_type = infer_type(analyzer, tag.get_type()?);
+
+    dbg!(&origin_type);
 
     let alias = analyzer
         .db

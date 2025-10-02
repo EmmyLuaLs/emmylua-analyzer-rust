@@ -147,6 +147,7 @@ impl LuaDocNameType {
         self.get_name_token()
             .map(|it| it.get_name_text().to_string())
     }
+
     pub fn get_generic_param(&self) -> Option<LuaDocGenericDecl> {
         self.child()
     }
@@ -182,8 +183,12 @@ impl LuaAstNode for LuaDocInferType {
 }
 
 impl LuaDocInferType {
+    pub fn get_generic_decl(&self) -> Option<LuaDocGenericDecl> {
+        self.child()
+    }
+
     pub fn get_name_token(&self) -> Option<LuaNameToken> {
-        self.token()
+        self.get_generic_decl()?.get_name_token()
     }
 
     pub fn get_name_text(&self) -> Option<String> {
@@ -479,6 +484,12 @@ impl LuaDocConditionalType {
         let true_type = children.next()?;
         let false_type = children.next()?;
         Some((condition, true_type, false_type))
+    }
+
+    pub fn get_true_type(&self) -> Option<LuaDocType> {
+        let mut children = self.children();
+        children.next()?;
+        children.next()
     }
 }
 

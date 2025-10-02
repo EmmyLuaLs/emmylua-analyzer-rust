@@ -171,4 +171,48 @@ mod test {
         );
         assert!(ws.check_code_for(DiagnosticCode::ParamTypeNotMatch, r#"pred('hello', 1, {})"#));
     }
+
+    #[test]
+    fn test_infer_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A01<T> T extends infer P and P or unknown
+
+            ---@param v number
+            function f(v)
+            end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A01<number>
+            local a
+            f(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_return_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A01<T> T
+
+            ---@param v number
+            function f(v)
+            end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A01<number>
+            local a
+            f(a)
+            "#,
+        ));
+    }
 }
