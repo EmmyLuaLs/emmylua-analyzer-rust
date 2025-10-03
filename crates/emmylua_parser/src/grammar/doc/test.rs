@@ -3071,4 +3071,78 @@ Syntax(Chunk)@0..102
 
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_generic_in() {
+        let code: &str = r#"
+        ---@alias Pick1<T, K extends keyof T> {
+        ---    [P in K]: T[P];
+        ---}
+        "#;
+        // print_ast(code);
+        let result = r#"
+Syntax(Chunk)@0..101
+  Syntax(Block)@0..101
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..92
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagAlias)@13..92
+        Token(TkTagAlias)@13..18 "alias"
+        Token(TkWhitespace)@18..19 " "
+        Token(TkName)@19..24 "Pick1"
+        Syntax(DocGenericDeclareList)@24..46
+          Token(TkLt)@24..25 "<"
+          Syntax(DocGenericParameter)@25..26
+            Token(TkName)@25..26 "T"
+          Token(TkComma)@26..27 ","
+          Token(TkWhitespace)@27..28 " "
+          Syntax(DocGenericParameter)@28..45
+            Token(TkName)@28..29 "K"
+            Token(TkWhitespace)@29..30 " "
+            Token(TkDocExtends)@30..37 "extends"
+            Token(TkWhitespace)@37..38 " "
+            Syntax(TypeUnary)@38..45
+              Token(TkDocKeyOf)@38..43 "keyof"
+              Token(TkWhitespace)@43..44 " "
+              Syntax(TypeName)@44..45
+                Token(TkName)@44..45 "T"
+          Token(TkGt)@45..46 ">"
+        Token(TkWhitespace)@46..47 " "
+        Syntax(TypeMapped)@47..92
+          Token(TkLeftBrace)@47..48 "{"
+          Token(TkEndOfLine)@48..49 "\n"
+          Token(TkWhitespace)@49..57 "        "
+          Token(TkDocContinue)@57..64 "---    "
+          Syntax(DocMappedKey)@64..72
+            Token(TkLeftBracket)@64..65 "["
+            Syntax(TypeBinary)@65..71
+              Syntax(DocGenericParameter)@65..66
+                Token(TkName)@65..66 "P"
+              Token(TkWhitespace)@66..67 " "
+              Token(TkIn)@67..69 "in"
+              Token(TkWhitespace)@69..70 " "
+              Syntax(TypeName)@70..71
+                Token(TkName)@70..71 "K"
+            Token(TkRightBracket)@71..72 "]"
+          Token(TkColon)@72..73 ":"
+          Token(TkWhitespace)@73..74 " "
+          Syntax(TypeIndexAccess)@74..78
+            Syntax(TypeName)@74..75
+              Token(TkName)@74..75 "T"
+            Token(TkLeftBracket)@75..76 "["
+            Syntax(TypeName)@76..77
+              Token(TkName)@76..77 "P"
+            Token(TkRightBracket)@77..78 "]"
+          Token(TkSemicolon)@78..79 ";"
+          Token(TkEndOfLine)@79..80 "\n"
+          Token(TkWhitespace)@80..88 "        "
+          Token(TkDocContinue)@88..91 "---"
+          Token(TkRightBrace)@91..92 "}"
+    Token(TkEndOfLine)@92..93 "\n"
+    Token(TkWhitespace)@93..101 "        "
+"#;
+
+        assert_ast_eq!(code, result);
+    }
 }

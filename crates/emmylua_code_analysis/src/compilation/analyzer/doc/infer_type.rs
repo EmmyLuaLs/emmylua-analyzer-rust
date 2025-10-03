@@ -119,6 +119,7 @@ pub fn infer_type(analyzer: &mut DocAnalyzer, node: LuaDocType) -> LuaType {
                 return LuaType::ConditionalInfer(ArcIntern::new(SmolStr::new(&name)));
             }
         }
+        _ => (),
     }
     LuaType::Unknown
 }

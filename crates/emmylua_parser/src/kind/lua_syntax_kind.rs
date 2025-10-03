@@ -127,7 +127,7 @@ pub enum LuaSyntaxKind {
     DocTypeList,
     DocAttribute,
     DocOpType,             // +<type>, -<type>, +?
-    DocMappedKeys,         // [p in KeyType]?
+    DocMappedKey,          // <+/-readonly> [Property in <keyof> KeyType]<+/-?>
     DocEnumFieldList,      // ---| <EnumField>
     DocEnumField, // <string> # description or <integer> # description or <name> # description
     DocOneLineField, // <type> # description
