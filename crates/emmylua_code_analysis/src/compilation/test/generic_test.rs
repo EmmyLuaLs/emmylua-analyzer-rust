@@ -259,4 +259,101 @@ mod test {
             "#,
         ));
     }
+
+    #[test]
+    fn test_infer_parameters() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Parameters<T> T extends (fun(...: infer P): any) and P or unknown
+
+            ---@generic T
+            ---@param fn T
+            ---@param ... Parameters<T>
+            function f(fn, ...)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(name: string, age: number)
+            local greet
+            f(greet, "a", "b")
+            "#,
+        ));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(name: string, age: number)
+            local greet
+            f(greet, "a", 1)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_parameters_2() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A01<T> T extends (fun(a: any, b: infer P): any) and P or number
+
+            ---@alias A02 number
+
+            ---@param v number
+            function f(v)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A01<fun(a: A02, b: string)>
+            local a
+            f(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_return_parameters() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@alias ReturnType<T> T extends (fun(...: any): infer R) and R or unknown
+
+            ---@generic T
+            ---@param fn T
+            ---@return ReturnType<T>
+            function f(fn, ...)
+            end
+
+            ---@param v string
+            function accept(v)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(): number
+            local greet
+            local m = f(greet)
+            accept(m)
+            "#,
+        ));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(): string
+            local greet
+            local m = f(greet)
+            accept(m)
+            "#,
+        ));
+    }
 }
