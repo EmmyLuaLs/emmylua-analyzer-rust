@@ -4,11 +4,12 @@ use crate::{
     LuaTokenKind,
 };
 
-use super::{LuaDocObjectField, LuaDocTypeList};
+use super::{LuaDocGenericDecl, LuaDocObjectField, LuaDocTypeList};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LuaDocType {
     Name(LuaDocNameType),
+    Infer(LuaDocInferType),
     Array(LuaDocArrayType),
     Func(LuaDocFuncType),
     Object(LuaDocObjectType),
@@ -22,12 +23,15 @@ pub enum LuaDocType {
     Generic(LuaDocGenericType),
     StrTpl(LuaDocStrTplType),
     MultiLineUnion(LuaDocMultiLineUnionType),
+    Mapped(LuaDocMappedType),
+    IndexAccess(LuaDocIndexAccessType),
 }
 
 impl LuaAstNode for LuaDocType {
     fn syntax(&self) -> &LuaSyntaxNode {
         match self {
             LuaDocType::Name(it) => it.syntax(),
+            LuaDocType::Infer(it) => it.syntax(),
             LuaDocType::Array(it) => it.syntax(),
             LuaDocType::Func(it) => it.syntax(),
             LuaDocType::Object(it) => it.syntax(),
@@ -41,6 +45,8 @@ impl LuaAstNode for LuaDocType {
             LuaDocType::Generic(it) => it.syntax(),
             LuaDocType::StrTpl(it) => it.syntax(),
             LuaDocType::MultiLineUnion(it) => it.syntax(),
+            LuaDocType::Mapped(it) => it.syntax(),
+            LuaDocType::IndexAccess(it) => it.syntax(),
         }
     }
 
@@ -51,6 +57,7 @@ impl LuaAstNode for LuaDocType {
         matches!(
             kind,
             LuaSyntaxKind::TypeName
+                | LuaSyntaxKind::TypeInfer
                 | LuaSyntaxKind::TypeArray
                 | LuaSyntaxKind::TypeFun
                 | LuaSyntaxKind::TypeObject
@@ -64,6 +71,8 @@ impl LuaAstNode for LuaDocType {
                 | LuaSyntaxKind::TypeGeneric
                 | LuaSyntaxKind::TypeStringTemplate
                 | LuaSyntaxKind::TypeMultiLineUnion
+                | LuaSyntaxKind::TypeMapped
+                | LuaSyntaxKind::TypeIndexAccess
         )
     }
 
@@ -73,9 +82,14 @@ impl LuaAstNode for LuaDocType {
     {
         match syntax.kind().into() {
             LuaSyntaxKind::TypeName => Some(LuaDocType::Name(LuaDocNameType::cast(syntax)?)),
+            LuaSyntaxKind::TypeInfer => Some(LuaDocType::Infer(LuaDocInferType::cast(syntax)?)),
             LuaSyntaxKind::TypeArray => Some(LuaDocType::Array(LuaDocArrayType::cast(syntax)?)),
             LuaSyntaxKind::TypeFun => Some(LuaDocType::Func(LuaDocFuncType::cast(syntax)?)),
             LuaSyntaxKind::TypeObject => Some(LuaDocType::Object(LuaDocObjectType::cast(syntax)?)),
+            LuaSyntaxKind::TypeMapped => Some(LuaDocType::Mapped(LuaDocMappedType::cast(syntax)?)),
+            LuaSyntaxKind::TypeIndexAccess => Some(LuaDocType::IndexAccess(
+                LuaDocIndexAccessType::cast(syntax)?,
+            )),
             LuaSyntaxKind::TypeBinary => Some(LuaDocType::Binary(LuaDocBinaryType::cast(syntax)?)),
             LuaSyntaxKind::TypeUnary => Some(LuaDocType::Unary(LuaDocUnaryType::cast(syntax)?)),
             LuaSyntaxKind::TypeConditional => Some(LuaDocType::Conditional(
@@ -137,6 +151,54 @@ impl LuaAstNode for LuaDocNameType {
 impl LuaDocNameType {
     pub fn get_name_token(&self) -> Option<LuaNameToken> {
         self.token()
+    }
+
+    pub fn get_name_text(&self) -> Option<String> {
+        self.get_name_token()
+            .map(|it| it.get_name_text().to_string())
+    }
+
+    pub fn get_generic_param(&self) -> Option<LuaDocGenericDecl> {
+        self.child()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocInferType {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocInferType {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::TypeInfer
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocInferType {
+    pub fn get_generic_decl(&self) -> Option<LuaDocGenericDecl> {
+        self.child()
+    }
+
+    pub fn get_name_token(&self) -> Option<LuaNameToken> {
+        self.get_generic_decl()?.get_name_token()
     }
 
     pub fn get_name_text(&self) -> Option<String> {
@@ -432,6 +494,12 @@ impl LuaDocConditionalType {
         let true_type = children.next()?;
         let false_type = children.next()?;
         Some((condition, true_type, false_type))
+    }
+
+    pub fn get_true_type(&self) -> Option<LuaDocType> {
+        let mut children = self.children();
+        children.next()?;
+        children.next()
     }
 }
 
@@ -732,3 +800,100 @@ impl LuaDocOneLineField {
         self.child()
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocMappedType {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocMappedType {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::TypeMapped
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocMappedType {
+    pub fn get_keys(&self) -> LuaAstChildren<LuaDocMappedKeys> {
+        self.children()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocIndexAccessType {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocIndexAccessType {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::TypeIndexAccess
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocIndexAccessType {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocMappedKeys {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocMappedKeys {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocMappedKey
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocMappedKeys {}

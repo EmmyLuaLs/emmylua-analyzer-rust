@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::VirtualWorkspace;
+    use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
     fn test_issue_586() {
@@ -158,4 +158,202 @@ mod test {
         assert_eq!(a_ty, LuaType::Unknown);
     }
     */
+
+    #[test]
+    fn test_issue_738() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Predicate<A: any[]> fun(...: A): boolean
+            ---@type Predicate<[string, integer, table]>
+            pred = function() end
+            "#,
+        );
+        assert!(ws.check_code_for(DiagnosticCode::ParamTypeNotMatch, r#"pred('hello', 1, {})"#));
+    }
+
+    #[test]
+    fn test_infer_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A01<T> T extends infer P and P or unknown
+
+            ---@param v number
+            function f(v)
+            end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A01<number>
+            local a
+            f(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_type_params() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A02<T> T extends (fun(v1: infer P)) and P or string
+
+            ---@param v fun(v1: number)
+            function f(v)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A02<number>
+            local a
+            f(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_type_params_extract() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A02<T> T extends (fun(v0: number, v1: infer P)) and P or string
+
+            ---@param v number
+            function accept(v)
+            end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A02<fun(v0: number, v1: number)>
+            local a
+            accept(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_return_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A01<T> T
+
+            ---@param v number
+            function f(v)
+            end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A01<number>
+            local a
+            f(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_parameters() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Parameters<T> T extends (fun(...: infer P): any) and P or unknown
+
+            ---@generic T
+            ---@param fn T
+            ---@param ... Parameters<T>
+            function f(fn, ...)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(name: string, age: number)
+            local greet
+            f(greet, "a", "b")
+            "#,
+        ));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(name: string, age: number)
+            local greet
+            f(greet, "a", 1)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_parameters_2() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A01<T> T extends (fun(a: any, b: infer P): any) and P or number
+
+            ---@alias A02 number
+
+            ---@param v number
+            function f(v)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type A01<fun(a: A02, b: string)>
+            local a
+            f(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_infer_return_parameters() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@alias ReturnType<T> T extends (fun(...: any): infer R) and R or unknown
+
+            ---@generic T
+            ---@param fn T
+            ---@return ReturnType<T>
+            function f(fn, ...)
+            end
+
+            ---@param v string
+            function accept(v)
+            end
+            "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(): number
+            local greet
+            local m = f(greet)
+            accept(m)
+            "#,
+        ));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeNotMatch,
+            r#"
+            ---@type fun(): string
+            local greet
+            local m = f(greet)
+            accept(m)
+            "#,
+        ));
+    }
 }

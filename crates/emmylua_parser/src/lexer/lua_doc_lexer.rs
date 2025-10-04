@@ -636,6 +636,7 @@ fn to_token_or_name(text: &str) -> LuaTokenKind {
         "keyof" => LuaTokenKind::TkDocKeyOf,
         "extends" => LuaTokenKind::TkDocExtends,
         "as" => LuaTokenKind::TkDocAs,
+        "in" => LuaTokenKind::TkIn,
         "and" => LuaTokenKind::TkAnd,
         "or" => LuaTokenKind::TkOr,
         _ => LuaTokenKind::TkName,

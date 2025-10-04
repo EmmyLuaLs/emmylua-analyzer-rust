@@ -94,6 +94,7 @@ pub enum LuaAst {
 
     // doc type
     LuaDocNameType(LuaDocNameType),
+    LuaDocInferType(LuaDocInferType),
     LuaDocArrayType(LuaDocArrayType),
     LuaDocFuncType(LuaDocFuncType),
     LuaDocObjectType(LuaDocObjectType),
@@ -179,6 +180,7 @@ impl LuaAstNode for LuaAst {
             LuaAst::LuaDocTagLanguage(node) => node.syntax(),
             LuaAst::LuaDocDescription(node) => node.syntax(),
             LuaAst::LuaDocNameType(node) => node.syntax(),
+            LuaAst::LuaDocInferType(node) => node.syntax(),
             LuaAst::LuaDocArrayType(node) => node.syntax(),
             LuaAst::LuaDocFuncType(node) => node.syntax(),
             LuaAst::LuaDocObjectType(node) => node.syntax(),
@@ -274,6 +276,7 @@ impl LuaAstNode for LuaAst {
                 | LuaSyntaxKind::DocTagExport
                 | LuaSyntaxKind::DocTagLanguage
                 | LuaSyntaxKind::TypeName
+                | LuaSyntaxKind::TypeInfer
                 | LuaSyntaxKind::TypeArray
                 | LuaSyntaxKind::TypeFun
                 | LuaSyntaxKind::TypeObject
@@ -418,6 +421,7 @@ impl LuaAstNode for LuaAst {
                 LuaDocDescription::cast(syntax).map(LuaAst::LuaDocDescription)
             }
             LuaSyntaxKind::TypeName => LuaDocNameType::cast(syntax).map(LuaAst::LuaDocNameType),
+            LuaSyntaxKind::TypeInfer => LuaDocInferType::cast(syntax).map(LuaAst::LuaDocInferType),
             LuaSyntaxKind::TypeArray => LuaDocArrayType::cast(syntax).map(LuaAst::LuaDocArrayType),
             LuaSyntaxKind::TypeFun => LuaDocFuncType::cast(syntax).map(LuaAst::LuaDocFuncType),
             LuaSyntaxKind::TypeObject => {

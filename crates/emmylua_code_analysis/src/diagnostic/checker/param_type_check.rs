@@ -40,6 +40,7 @@ fn check_call_expr(
         .infer_expr_list_types(&arg_exprs, None)
         .into_iter()
         .unzip();
+    dbg!(&arg_types);
 
     let colon_call = call_expr.is_colon_call();
     let colon_define = func.is_colon_define();

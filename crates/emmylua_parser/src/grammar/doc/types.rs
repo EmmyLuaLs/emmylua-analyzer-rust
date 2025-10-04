@@ -3,7 +3,7 @@ use crate::{
     grammar::DocParseResult,
     kind::{LuaOpKind, LuaSyntaxKind, LuaTokenKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator},
     lexer::LuaDocLexerState,
-    parser::{CompleteMarker, LuaDocParser, MarkerEventContainer},
+    parser::{CompleteMarker, LuaDocParser, LuaDocParserState, MarkerEventContainer},
     parser_error::LuaParseError,
 };
 
@@ -28,9 +28,9 @@ pub fn parse_type(p: &mut LuaDocParser) -> DocParseResult {
             LuaTokenKind::TkAnd => {
                 let m = cm.precede(p, LuaSyntaxKind::TypeConditional);
                 p.bump();
-                parse_sub_type(p, 0)?;
+                parse_type(p)?;
                 expect_token(p, LuaTokenKind::TkOr)?;
-                parse_sub_type(p, 0)?;
+                parse_type(p)?;
                 cm = m.complete(p);
                 break;
             }
@@ -75,14 +75,32 @@ fn parse_sub_type(p: &mut LuaDocParser, limit: i32) -> DocParseResult {
     } else {
         parse_simple_type(p)?
     };
+    parse_binary_operator(p, &mut cm, limit)?;
 
+    Ok(cm)
+}
+
+pub fn parse_binary_operator(
+    p: &mut LuaDocParser,
+    cm: &mut CompleteMarker,
+    limit: i32,
+) -> Result<(), LuaParseError> {
     let mut bop = LuaOpKind::to_parse_binary_operator(p.current_token());
     while bop != LuaTypeBinaryOperator::None && bop.get_priority().left > limit {
         let range = p.current_token_range();
         let m = cm.precede(p, LuaSyntaxKind::TypeBinary);
         p.bump();
         if p.current_token() != LuaTokenKind::TkDocQuestion {
-            match parse_sub_type(p, bop.get_priority().right) {
+            // infer 只有在条件类型中才能被解析为关键词
+            let parse_result = if bop == LuaTypeBinaryOperator::Extends {
+                p.infer_depth += 1;
+                let res = parse_sub_type(p, bop.get_priority().right);
+                p.infer_depth = p.infer_depth.saturating_sub(1);
+                res
+            } else {
+                parse_sub_type(p, bop.get_priority().right)
+            };
+            match parse_result {
                 Ok(_) => {}
                 Err(err) => {
                     p.push_error(LuaParseError::doc_error_from(
@@ -99,11 +117,11 @@ fn parse_sub_type(p: &mut LuaDocParser, limit: i32) -> DocParseResult {
             m2.complete(p);
         }
 
-        cm = m.complete(p);
+        *cm = m.complete(p);
         bop = LuaOpKind::to_parse_binary_operator(p.current_token());
     }
 
-    Ok(cm)
+    Ok(())
 }
 
 pub fn parse_type_list(p: &mut LuaDocParser) -> DocParseResult {
@@ -124,14 +142,26 @@ fn parse_simple_type(p: &mut LuaDocParser) -> DocParseResult {
 
 fn parse_primary_type(p: &mut LuaDocParser) -> DocParseResult {
     match p.current_token() {
-        LuaTokenKind::TkLeftBrace => parse_object_or_mapped_type(p),
+        LuaTokenKind::TkLeftBrace => {
+            if is_mapped_type_start(p) {
+                parse_mapped_type(p)
+            } else {
+                parse_object_type(p)
+            }
+        }
         LuaTokenKind::TkLeftBracket => parse_tuple_type(p),
         LuaTokenKind::TkLeftParen => parse_paren_type(p),
         LuaTokenKind::TkString
         | LuaTokenKind::TkInt
         | LuaTokenKind::TkTrue
         | LuaTokenKind::TkFalse => parse_literal_type(p),
-        LuaTokenKind::TkName => parse_name_or_func_type(p),
+        LuaTokenKind::TkName => {
+            if p.is_infer_context() && p.current_token_text() == "infer" {
+                parse_infer_type(p)
+            } else {
+                parse_name_or_func_type(p)
+            }
+        }
         LuaTokenKind::TkStringTemplateType => parse_string_template_type(p),
         LuaTokenKind::TkDots => parse_vararg_type(p),
         _ => Err(LuaParseError::doc_error_from(
@@ -141,9 +171,116 @@ fn parse_primary_type(p: &mut LuaDocParser) -> DocParseResult {
     }
 }
 
+/// 判断是否是映射类型.
+///
+/// 这里与`TS`保持一致, 即第一个 key 必须为`[]` 且内部必须包含 `in`.
+fn is_mapped_type_start(p: &LuaDocParser) -> bool {
+    let text = p.origin_text();
+    let start = p.current_token_range().end_offset();
+    let rest = match text.get(start..) {
+        Some(value) => value,
+        None => return false,
+    };
+
+    let mut trimmed = rest.trim_start_matches(char::is_whitespace);
+
+    if let Some(after_dashes) = trimmed.strip_prefix("---") {
+        trimmed = after_dashes.trim_start_matches(char::is_whitespace);
+    }
+
+    if !trimmed.starts_with('[') {
+        return false;
+    }
+
+    let after_left_bracket = &trimmed[1..];
+    let rb_pos = match after_left_bracket.find(']') {
+        Some(pos) => pos,
+        None => return false,
+    };
+
+    let content = &after_left_bracket[..rb_pos];
+    let mut seen_identifier = false;
+    let mut token_start: Option<usize> = None;
+
+    for (idx, ch) in content.char_indices() {
+        if ch == '_' || ch.is_alphanumeric() {
+            if token_start.is_none() {
+                token_start = Some(idx);
+            }
+            continue;
+        }
+
+        if let Some(start_idx) = token_start.take() {
+            let token = &content[start_idx..idx];
+            if token == "in" {
+                return seen_identifier;
+            }
+            seen_identifier = true;
+        }
+    }
+
+    if let Some(start_idx) = token_start {
+        if &content[start_idx..] == "in" {
+            return seen_identifier;
+        }
+    }
+
+    false
+}
+
+// [Property in Type]: Type;
+// [Property in keyof Type]: Type;
+fn parse_mapped_type(p: &mut LuaDocParser) -> DocParseResult {
+    p.set_parser_state(LuaDocParserState::Mapped);
+    let m = p.mark(LuaSyntaxKind::TypeMapped);
+    p.bump();
+
+    if p.current_token() != LuaTokenKind::TkLeftBracket {
+        return Err(LuaParseError::doc_error_from(
+            &t!("expect mapped field"),
+            p.current_token_range(),
+        ));
+    }
+    // key
+    parse_mapped_key(p)?;
+    if p.current_token() == LuaTokenKind::TkDocQuestion {
+        p.bump();
+    }
+    expect_token(p, LuaTokenKind::TkColon)?;
+
+    // value
+    parse_type(p)?;
+
+    // end
+    expect_token(p, LuaTokenKind::TkSemicolon)?;
+    expect_token(p, LuaTokenKind::TkRightBrace)?;
+
+    p.set_parser_state(LuaDocParserState::Normal);
+    Ok(m.complete(p))
+}
+
+// [Property in Type]
+// [Property in keyof Type]
+fn parse_mapped_key(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::DocMappedKey);
+    expect_token(p, LuaTokenKind::TkLeftBracket)?;
+
+    let param = p.mark(LuaSyntaxKind::DocGenericParameter);
+    expect_token(p, LuaTokenKind::TkName)?;
+    let mut param_cm = param.complete(p);
+    parse_binary_operator(p, &mut param_cm, 0)?;
+
+    if p.current_token() == LuaTokenKind::TkDocAs {
+        p.bump();
+        parse_type(p)?;
+    }
+    expect_token(p, LuaTokenKind::TkRightBracket)?;
+    Ok(m.complete(p))
+}
+
 // { <name>: <type>, ... }
 // { <name> : <type>, ... }
-fn parse_object_or_mapped_type(p: &mut LuaDocParser) -> DocParseResult {
+fn parse_object_type(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::TypeObject);
     p.bump();
 
@@ -348,6 +485,15 @@ fn parse_name_type(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
+fn parse_infer_type(p: &mut LuaDocParser) -> DocParseResult {
+    let m = p.mark(LuaSyntaxKind::TypeInfer);
+    p.bump();
+    let param = p.mark(LuaSyntaxKind::DocGenericParameter);
+    expect_token(p, LuaTokenKind::TkName)?;
+    param.complete(p);
+    Ok(m.complete(p))
+}
+
 // `<name type>`
 fn parse_string_template_type(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::TypeStringTemplate);
@@ -376,13 +522,21 @@ fn parse_suffixed_type(p: &mut LuaDocParser, cm: CompleteMarker) -> DocParseResu
             LuaTokenKind::TkLeftBracket => {
                 let mut m = cm.precede(p, LuaSyntaxKind::TypeArray);
                 p.bump();
-                if matches!(
-                    p.current_token(),
-                    LuaTokenKind::TkString | LuaTokenKind::TkInt | LuaTokenKind::TkName
-                ) {
-                    m.set_kind(p, LuaSyntaxKind::IndexExpr);
-                    p.bump();
+                if p.state == LuaDocParserState::Mapped {
+                    if p.current_token() != LuaTokenKind::TkRightBracket {
+                        m.set_kind(p, LuaSyntaxKind::TypeIndexAccess);
+                        parse_type(p)?;
+                    }
+                } else {
+                    if matches!(
+                        p.current_token(),
+                        LuaTokenKind::TkString | LuaTokenKind::TkInt | LuaTokenKind::TkName
+                    ) {
+                        m.set_kind(p, LuaSyntaxKind::IndexExpr);
+                        p.bump();
+                    }
                 }
+
                 expect_token(p, LuaTokenKind::TkRightBracket)?;
                 cm = m.complete(p);
                 only_continue_array = true;
@@ -435,9 +589,9 @@ fn parse_one_line_type(p: &mut LuaDocParser) -> DocParseResult {
 
     parse_simple_type(p)?;
     if p.current_token() != LuaTokenKind::TkDocContinueOr {
-        p.set_state(LuaDocLexerState::Description);
+        p.set_lexer_state(LuaDocLexerState::Description);
         parse_description(p);
-        p.set_state(LuaDocLexerState::Normal);
+        p.set_lexer_state(LuaDocLexerState::Normal);
     }
 
     Ok(m.complete(p))
