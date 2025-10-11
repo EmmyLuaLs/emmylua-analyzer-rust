@@ -3,6 +3,37 @@
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
 ---
+## [0.15.0] - Unreleased
+
+### 🔧 Changed
+- **Refactor IndexAliasName**: 删除原先的索引别名实现(`-- [IndexAliasName]`), 现在使用`---@[index_alias("name")]`
+
+### ✨ Added
+- **Attribute**: 实现了新的特性`---@attribute`，用于定义附加元数据，内置三个特性：
+```lua
+--- Deprecated. Receives an optional message parameter.
+---@attribute deprecated(message: string?)
+
+--- Skip partial diagnostics, typically used to optimize diagnostic performance.
+---
+--- Receives a parameter, the options are:
+--- - `table_field` - Skip diagnostic for `table` fields
+---@attribute skip_diagnostic(code: string)
+
+--- Index field alias, will be displayed in `hint` and `completion`.
+---
+--- Receives a string parameter for the alias name.
+---@attribute index_alias(name: string)
+```
+
+使用语法为 `---@[attribute_name_1(arg...), attribute_name_2(arg...), ...]`, 可以同时使用多个特性, 示例：
+```lua
+---@class A
+---@[deprecated] # 如果特性可以省略参数, 则可以省略`()`
+---@field b string # b 此时被标记为弃用
+---@[index_alias("b")]
+---@field [1] string # 此时在提示和补全中会显示为 `b`
+```
 
 ## [0.15.0] - 2025-10-10
 

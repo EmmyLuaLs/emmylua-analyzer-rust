@@ -138,3 +138,28 @@
 ---@alias TypeGuard<T> boolean
 
 ---@alias Language<T: string> string
+
+--- attribute
+
+--- Deprecated. Receives an optional message parameter.
+---@attribute deprecated(message: string?)
+
+--- Skip partial diagnostics, typically used to optimize diagnostic performance.
+---
+--- Receives a parameter, the options are:
+--- - `table_field` - Skip diagnostic for `table` fields
+---@attribute skip_diagnostic(code: string)
+
+--- Index field alias, will be displayed in `hint` and `completion`.
+---
+--- Receives a string parameter for the alias name.
+---@attribute index_alias(name: string)
+
+--- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
+--- used to specify the default constructor of a class.
+---
+--- Parameters:
+--- - `name` - The name of the constructor
+--- - `strip_self` - Whether the `self` parameter can be omitted when calling the constructor, defaults to `true`
+--- - `return_self` - Whether the constructor is forced to return `self`, defaults to `true`
+---@attribute class_ctor(name: string, strip_self: boolean?, return_self: boolean?)

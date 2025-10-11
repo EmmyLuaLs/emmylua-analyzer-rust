@@ -245,3 +245,15 @@ tags.language: |
       INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com');
   ]]
   ```
+tags.attribute: |
+  `attribute` tag defines an attribute. Attribute is used to attach extra information to a definition.
+  Example:
+  ```lua
+  ---@attribute deprecated(message: string?)
+
+  ---@class A
+  ---@[deprecated("delete")] # `b` field is marked as deprecated
+  ---@field b string
+  ---@[deprecated] # If `attribute` allows no parameters, the parentheses can be omitted
+  ---@field c string
+  ```

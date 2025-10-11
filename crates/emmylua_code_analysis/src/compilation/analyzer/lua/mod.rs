@@ -1,3 +1,4 @@
+mod call;
 mod closure;
 mod for_range_stat;
 mod func_body;
@@ -22,7 +23,7 @@ use stats::{
 
 use crate::{
     Emmyrc, FileId, InferFailReason,
-    compilation::analyzer::AnalysisPipeline,
+    compilation::analyzer::{AnalysisPipeline, lua::call::analyze_call},
     db_index::{DbIndex, LuaType},
     profile::Profile,
     semantic::infer_expr,
@@ -81,6 +82,8 @@ fn analyze_node(analyzer: &mut LuaAnalyzer, node: LuaAst) {
         LuaAst::LuaCallExpr(call_expr) => {
             if call_expr.is_setmetatable() {
                 analyze_setmetatable(analyzer, call_expr);
+            } else {
+                analyze_call(analyzer, call_expr);
             }
         }
         _ => {}
@@ -107,6 +110,7 @@ impl LuaAnalyzer<'_> {
         }
     }
 
+    #[allow(unused)]
     pub fn get_emmyrc(&self) -> &Emmyrc {
         self.db.get_emmyrc()
     }

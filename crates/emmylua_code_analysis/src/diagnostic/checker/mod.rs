@@ -1,6 +1,7 @@
 mod access_invisible;
 mod analyze_error;
 mod assign_type_mismatch;
+mod attribute_check;
 mod await_in_sync;
 mod cast_type_mismatch;
 mod check_field;
@@ -111,6 +112,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<require_module_visibility::RequireModuleVisibilityChecker>(context, semantic_model);
     run_check::<unknown_doc_tag::UnknownDocTag>(context, semantic_model);
     run_check::<enum_value_mismatch::EnumValueMismatchChecker>(context, semantic_model);
+    run_check::<attribute_check::AttributeCheckChecker>(context, semantic_model);
 
     run_check::<code_style::non_literal_expressions_in_assert::NonLiteralExpressionsInAssertChecker>(
         context,

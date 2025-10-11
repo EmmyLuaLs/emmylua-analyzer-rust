@@ -10,7 +10,7 @@ use crate::handlers::{
     definition::extract_semantic_decl_from_signature,
     hover::{
         HoverBuilder,
-        hover_humanize::{
+        humanize_types::{
             DescriptionInfo, extract_description_from_property_owner,
             extract_owner_name_from_element, hover_humanize_type,
         },

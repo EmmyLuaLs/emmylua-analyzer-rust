@@ -245,8 +245,8 @@ fn infer_type_doc_function(
 
     let operator_index = db.get_operator_index();
     let operator_ids = operator_index
-        .get_operators(&type_id.into(), LuaOperatorMetaMethod::Call)
-        .ok_or(InferFailReason::None)?;
+        .get_operators(&type_id.clone().into(), LuaOperatorMetaMethod::Call)
+        .ok_or(InferFailReason::UnResolveOperatorCall)?;
     let mut overloads = Vec::new();
     for overload_id in operator_ids {
         let operator = operator_index

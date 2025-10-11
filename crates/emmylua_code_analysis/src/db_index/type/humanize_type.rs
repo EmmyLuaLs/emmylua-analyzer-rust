@@ -713,7 +713,7 @@ fn humanize_signature_type(
     let generics = signature
         .generic_params
         .iter()
-        .map(|(name, _)| name.to_string())
+        .map(|generic_param| generic_param.name.to_string())
         .collect::<Vec<_>>()
         .join(", ");
 
