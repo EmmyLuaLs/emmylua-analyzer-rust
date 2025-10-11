@@ -37,7 +37,7 @@ pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<
             .get_type_index_mut()
             .add_generic_params(class_decl_id.clone(), generic_params.clone());
 
-        add_generic_index(analyzer, generic_params);
+        add_generic_index(analyzer, generic_params, &tag);
     }
 
     if let Some(supers) = tag.get_supers() {
@@ -159,8 +159,11 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
             .generic_index
             .add_generic_scope(vec![range], generic_params, false);
     }
+    // dbg!(&tag);
 
     let origin_type = infer_type(analyzer, tag.get_type()?);
+
+    // dbg!(&origin_type);
 
     let alias = analyzer
         .db
@@ -197,10 +200,13 @@ fn get_generic_params(
     params_result
 }
 
-fn add_generic_index(analyzer: &mut DocAnalyzer, generic_params: Vec<GenericParam>) {
+fn add_generic_index(
+    analyzer: &mut DocAnalyzer,
+    generic_params: Vec<GenericParam>,
+    tag: &LuaDocTagClass,
+) {
     let mut ranges = Vec::new();
-    let range = analyzer.comment.get_range();
-    ranges.push(range);
+    ranges.push(tag.get_effective_range());
     if let Some(comment_owner) = analyzer.comment.get_owner() {
         let range = comment_owner.get_range();
         ranges.push(range);
@@ -330,7 +336,7 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
             params_result.push(GenericParam::new(
                 SmolStr::new(name.as_str()),
                 type_ref.clone(),
-                false,
+                param.is_variadic(),
             ));
             param_info.push((name, type_ref));
         }

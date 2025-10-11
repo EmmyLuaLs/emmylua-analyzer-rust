@@ -20,6 +20,8 @@ fn generic_tpl_pattern_match_inner(
     target: &LuaType,
     infer_guard: &InferGuardRef,
 ) -> TplPatternMatchResult {
+    dbg!(&source_generic);
+    dbg!(&target);
     match target {
         LuaType::Generic(target_generic) => {
             let base = source_generic.get_base_type_id_ref();
@@ -68,9 +70,12 @@ fn generic_tpl_pattern_match_inner(
                     if super_type.contain_tpl() {
                         let substitutor =
                             TypeSubstitutor::from_type_array(target_generic.get_params().clone());
+                        dbg!(&super_type);
+                        dbg!(&substitutor);
                         super_type =
                             instantiate_type_generic(context.db, &super_type, &substitutor);
                     }
+                    dbg!(&super_type);
 
                     generic_tpl_pattern_match_inner(
                         context,

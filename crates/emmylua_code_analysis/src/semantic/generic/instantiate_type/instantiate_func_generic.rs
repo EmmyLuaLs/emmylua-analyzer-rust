@@ -12,7 +12,7 @@ use crate::{
             instantiate_type::instantiate_doc_function,
             tpl_context::TplContext,
             tpl_pattern::{
-                multi_param_tpl_pattern_match_multi_return, tpl_pattern_match,
+                constant_decay, multi_param_tpl_pattern_match_multi_return, tpl_pattern_match,
                 variadic_tpl_pattern_match,
             },
         },
@@ -48,9 +48,9 @@ pub fn instantiate_func_generic(
     });
 
     let origin_params = func.get_params();
-    let mut func_param_types: Vec<_> = origin_params
+    let mut func_params: Vec<_> = origin_params
         .iter()
-        .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
+        .map(|(name, t)| (name.clone(), t.clone().unwrap_or(LuaType::Unknown)))
         .collect();
 
     let arg_exprs = call_expr
@@ -73,18 +73,18 @@ pub fn instantiate_func_generic(
         let colon_define = func.is_colon_define();
         match (colon_define, colon_call) {
             (true, false) => {
-                func_param_types.insert(0, LuaType::Any);
+                func_params.insert(0, ("self".to_string(), LuaType::Any));
             }
             (false, true) => {
-                if !func_param_types.is_empty() {
-                    func_param_types.remove(0);
+                if !func_params.is_empty() {
+                    func_params.remove(0);
                 }
             }
             _ => {}
         }
 
         let mut unresolve_tpls = vec![];
-        for i in 0..func_param_types.len() {
+        for i in 0..func_params.len() {
             if i >= arg_exprs.len() {
                 break;
             }
@@ -93,7 +93,7 @@ pub fn instantiate_func_generic(
                 break;
             }
 
-            let func_param_type = &func_param_types[i];
+            let (_, func_param_type) = &func_params[i];
             let call_arg_expr = &arg_exprs[i];
             if !func_param_type.contain_tpl() {
                 continue;
@@ -108,22 +108,28 @@ pub fn instantiate_func_generic(
             }
 
             let arg_type = infer_expr(db, context.cache, call_arg_expr.clone())?;
+            dbg!(&func_param_type);
+            dbg!(&arg_type);
 
             match (func_param_type, &arg_type) {
                 (LuaType::Variadic(variadic), _) => {
                     let mut arg_types = vec![];
                     for arg_expr in &arg_exprs[i..] {
                         let arg_type = infer_expr(db, context.cache, arg_expr.clone())?;
-                        arg_types.push(arg_type);
+                        arg_types.push(constant_decay(arg_type));
                     }
-
                     variadic_tpl_pattern_match(&mut context, variadic, &arg_types)?;
                     break;
                 }
                 (_, LuaType::Variadic(variadic)) => {
+                    let func_param_types = func_params[i..]
+                        .iter()
+                        .map(|(_, t)| t)
+                        .cloned()
+                        .collect::<Vec<_>>();
                     multi_param_tpl_pattern_match_multi_return(
                         &mut context,
-                        &func_param_types[i..],
+                        &func_param_types,
                         variadic,
                     )?;
                     break;
@@ -146,8 +152,12 @@ pub fn instantiate_func_generic(
     if contain_self && let Some(self_type) = infer_self_type(db, cache, &call_expr) {
         substitutor.add_self_type(self_type);
     }
+    dbg!(&substitutor);
 
     if let LuaType::DocFunction(f) = instantiate_doc_function(db, func, &substitutor) {
+        // dbg!(&call_expr);
+        dbg!(&func);
+        dbg!(&f);
         Ok(f.deref().clone())
     } else {
         Ok(func.clone())

@@ -140,6 +140,7 @@ pub enum LuaTokenKind {
     TkDocAnd,             // &
     TkDocKeyOf,           // keyof
     TkDocExtends,         // extends
+    TkDocNew,             // new
     TkDocAs,              // as
     TkDocIn,              // in
     TkDocInfer,           // infer

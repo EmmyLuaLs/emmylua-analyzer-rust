@@ -211,6 +211,7 @@ fn build_tokens_semantic_token(
         }
         LuaTokenKind::TkDocKeyOf
         | LuaTokenKind::TkDocExtends
+        | LuaTokenKind::TkDocNew
         | LuaTokenKind::TkDocAs
         | LuaTokenKind::TkDocIn
         | LuaTokenKind::TkDocInfer
