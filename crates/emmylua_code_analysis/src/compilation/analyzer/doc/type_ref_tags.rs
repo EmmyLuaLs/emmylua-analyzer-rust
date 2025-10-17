@@ -250,7 +250,11 @@ pub fn analyze_return_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturnCast)
     if let Some(LuaSemanticDeclId::Signature(signature_id)) = get_owner_id(analyzer) {
         let name_token = tag.get_name_token()?;
         let name = name_token.get_name_text();
-        let cast_op_type = tag.get_op_type()?;
+
+        let op_types: Vec<_> = tag.get_op_types().collect();
+        let cast_op_type = op_types.first()?;
+
+        // Bind the true condition type
         if let Some(node_type) = cast_op_type.get_type() {
             let typ = infer_type(analyzer, node_type.clone());
             let infiled_syntax_id = InFiled::new(analyzer.file_id, node_type.get_syntax_id());
@@ -258,11 +262,26 @@ pub fn analyze_return_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturnCast)
             bind_type(analyzer.db, type_owner, LuaTypeCache::DocType(typ));
         };
 
+        // Bind the false condition type if present
+        let fallback_cast = if op_types.len() > 1 {
+            let fallback_op_type = &op_types[1];
+            if let Some(node_type) = fallback_op_type.get_type() {
+                let typ = infer_type(analyzer, node_type.clone());
+                let infiled_syntax_id = InFiled::new(analyzer.file_id, node_type.get_syntax_id());
+                let type_owner = LuaTypeOwner::SyntaxId(infiled_syntax_id);
+                bind_type(analyzer.db, type_owner, LuaTypeCache::DocType(typ));
+            }
+            Some(fallback_op_type.to_ptr())
+        } else {
+            None
+        };
+
         analyzer.db.get_flow_index_mut().add_signature_cast(
             analyzer.file_id,
             signature_id,
             name.to_string(),
             cast_op_type.to_ptr(),
+            fallback_cast,
         );
     } else {
         report_orphan_tag(analyzer, &tag);

@@ -353,6 +353,7 @@ fn parse_tag_return(p: &mut LuaDocParser) -> DocParseResult {
 }
 
 // ---@return_cast <param name> <type>
+// ---@return_cast <param name> <true_type> else <false_type>
 fn parse_tag_return_cast(p: &mut LuaDocParser) -> DocParseResult {
     p.set_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagReturnCast);
@@ -360,6 +361,13 @@ fn parse_tag_return_cast(p: &mut LuaDocParser) -> DocParseResult {
     expect_token(p, LuaTokenKind::TkName)?;
 
     parse_op_type(p)?;
+
+    // Allow optional second type after 'else' for false condition
+    if p.current_token() == LuaTokenKind::TkDocElse {
+        p.bump();
+        parse_op_type(p)?;
+    }
+
     p.set_state(LuaDocLexerState::Description);
     parse_description(p);
     Ok(m.complete(p))

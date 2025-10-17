@@ -52,11 +52,19 @@ impl LuaFlowIndex {
         signature_id: LuaSignatureId,
         name: String,
         cast: LuaAstPtr<LuaDocOpType>,
+        fallback_cast: Option<LuaAstPtr<LuaDocOpType>>,
     ) {
         self.signature_cast_cache
             .entry(file_id)
             .or_default()
-            .insert(signature_id, LuaSignatureCast { name, cast });
+            .insert(
+                signature_id,
+                LuaSignatureCast {
+                    name,
+                    cast,
+                    fallback_cast,
+                },
+            );
     }
 }
 

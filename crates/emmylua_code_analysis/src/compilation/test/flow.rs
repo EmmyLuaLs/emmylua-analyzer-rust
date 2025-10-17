@@ -1355,4 +1355,108 @@ _2 = a[1]
             "#
         ));
     }
+
+    #[test]
+    fn test_return_cast_with_fallback() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Creature
+
+            ---@class Player: Creature
+
+            ---@class Monster: Creature
+
+            ---@return boolean
+            ---@return_cast creature Player else Monster
+            local function isPlayer(creature)
+                return true
+            end
+
+            local creature ---@type Creature
+
+            if isPlayer(creature) then
+                a = creature
+            else
+                b = creature
+            end
+            "#,
+        );
+
+        let a = ws.expr_ty("a");
+        let a_expected = ws.ty("Player");
+        assert_eq!(a, a_expected);
+
+        let b = ws.expr_ty("b");
+        let b_expected = ws.ty("Monster");
+        assert_eq!(b, b_expected);
+    }
+
+    #[test]
+    fn test_return_cast_with_fallback_self() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Creature
+
+            ---@class Player: Creature
+
+            ---@class Monster: Creature
+            local m = {}
+
+            ---@return boolean
+            ---@return_cast self Player else Monster
+            function m:isPlayer()
+            end
+
+            if m:isPlayer() then
+                a = m
+            else
+                b = m
+            end
+            "#,
+        );
+
+        let a = ws.expr_ty("a");
+        let a_expected = ws.ty("Player");
+        assert_eq!(a, a_expected);
+
+        let b = ws.expr_ty("b");
+        let b_expected = ws.ty("Monster");
+        assert_eq!(b, b_expected);
+    }
+
+    #[test]
+    fn test_return_cast_backward_compatibility() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@return boolean
+            ---@return_cast n integer
+            local function isInteger(n)
+                return true
+            end
+
+            local a ---@type integer | string
+
+            if isInteger(a) then
+                d = a
+            else
+                e = a
+            end
+            "#,
+        );
+
+        let d = ws.expr_ty("d");
+        let d_expected = ws.ty("integer");
+        assert_eq!(d, d_expected);
+
+        // Should still use the original behavior (remove integer from union)
+        let e = ws.expr_ty("e");
+        let e_expected = ws.ty("string");
+        assert_eq!(e, e_expected);
+    }
 }
