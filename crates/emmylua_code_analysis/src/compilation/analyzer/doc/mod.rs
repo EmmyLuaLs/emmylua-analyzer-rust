@@ -17,7 +17,6 @@ use crate::{
 use emmylua_parser::{LuaAstNode, LuaComment, LuaSyntaxNode};
 use file_generic_index::FileGenericIndex;
 use tags::get_owner_id;
-
 pub struct DocAnalysisPipeline;
 
 impl AnalysisPipeline for DocAnalysisPipeline {

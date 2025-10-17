@@ -135,11 +135,13 @@ pub enum LuaTokenKind {
     TkTagReturnCast, // return cast
     TkTagExport,     // export
     TkLanguage,      // language
+    TkCallGeneric,   // call generic. function_name--[[@<type>]](...)
 
     TkDocOr,              // |
     TkDocAnd,             // &
     TkDocKeyOf,           // keyof
     TkDocExtends,         // extends
+    TkDocNew,             // new
     TkDocAs,              // as
     TkDocIn,              // in
     TkDocInfer,           // infer

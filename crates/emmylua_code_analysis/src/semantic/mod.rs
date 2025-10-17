@@ -57,6 +57,8 @@ use overload_resolve::resolve_signature;
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 
+pub use infer::{DocTypeInferContext, infer_doc_type};
+
 #[derive(Debug)]
 pub struct SemanticModel<'a> {
     file_id: FileId,

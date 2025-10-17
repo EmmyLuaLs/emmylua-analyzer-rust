@@ -2,10 +2,9 @@ use emmylua_parser::{LuaAst, LuaAstNode, LuaDocTagCast};
 use rowan::TextRange;
 use std::collections::HashSet;
 
-use crate::diagnostic::checker::generic::infer_doc_type::infer_doc_type;
 use crate::{
-    DbIndex, DiagnosticCode, LuaType, LuaUnionType, SemanticModel, TypeCheckFailReason,
-    TypeCheckResult, get_real_type,
+    DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType, SemanticModel,
+    TypeCheckFailReason, TypeCheckResult, get_real_type, infer_doc_type,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -35,6 +34,8 @@ fn check_cast_tag(
         expand_type(semantic_model.get_db(), &typ).unwrap_or(typ)
     };
 
+    let doc_ctx = DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
+
     // 检查每个 cast 操作类型
     for op_type in cast_tag.get_op_types() {
         // 如果具有操作符, 则不检查
@@ -43,7 +44,7 @@ fn check_cast_tag(
         }
         if let Some(target_doc_type) = op_type.get_type() {
             let target_type = {
-                let typ = infer_doc_type(semantic_model, &target_doc_type);
+                let typ = infer_doc_type(doc_ctx, &target_doc_type);
                 expand_type(semantic_model.get_db(), &typ).unwrap_or(typ)
             };
             check_cast_compatibility(

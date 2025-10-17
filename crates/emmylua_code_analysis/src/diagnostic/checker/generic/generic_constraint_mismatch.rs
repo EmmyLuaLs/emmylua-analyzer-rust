@@ -3,12 +3,12 @@ use std::ops::Deref;
 use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaDocTagType, LuaExpr};
 use rowan::TextRange;
 
-use crate::diagnostic::checker::generic::infer_doc_type::infer_doc_type;
 use crate::diagnostic::checker::param_type_check::get_call_source_type;
 use crate::{
-    DiagnosticCode, GenericTplId, LuaDeclExtra, LuaMemberOwner, LuaSemanticDeclId, LuaSignature,
-    LuaStringTplType, LuaType, RenderLevel, SemanticDeclLevel, SemanticModel, TypeCheckFailReason,
-    TypeCheckResult, TypeOps, VariadicType, humanize_type,
+    DiagnosticCode, DocTypeInferContext, GenericTplId, LuaDeclExtra, LuaMemberOwner,
+    LuaSemanticDeclId, LuaSignature, LuaStringTplType, LuaType, RenderLevel, SemanticDeclLevel,
+    SemanticModel, TypeCheckFailReason, TypeCheckResult, TypeOps, VariadicType, humanize_type,
+    infer_doc_type,
 };
 
 use crate::diagnostic::checker::Checker;
@@ -41,8 +41,9 @@ fn check_doc_tag_type(
     doc_tag_type: LuaDocTagType,
 ) -> Option<()> {
     let type_list = doc_tag_type.get_type_list();
+    let doc_ctx = DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
     for doc_type in type_list {
-        let type_ref = infer_doc_type(semantic_model, &doc_type);
+        let type_ref = infer_doc_type(doc_ctx, &doc_type);
         let generic_type = match type_ref {
             LuaType::Generic(generic_type) => generic_type,
             _ => continue,

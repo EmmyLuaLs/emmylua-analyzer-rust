@@ -113,42 +113,6 @@ impl TypeSubstitutor {
         self.tpl_replace_map.get(&tpl_id)
     }
 
-    pub fn get_variadic(&self, start_tpl_id: GenericTplId) -> Option<Vec<LuaType>> {
-        let mut variadic_tpl_id = start_tpl_id;
-        let id = start_tpl_id.get_idx();
-        let limit = id + 255;
-
-        let mut result = Vec::new();
-        for i in id..limit {
-            variadic_tpl_id = variadic_tpl_id.with_idx(i as u32);
-            if let Some(value) = self.tpl_replace_map.get(&variadic_tpl_id) {
-                match value {
-                    SubstitutorValue::Type(ty) => {
-                        result.push(ty.clone());
-                    }
-                    SubstitutorValue::MultiTypes(types) => {
-                        result.extend_from_slice(types);
-                    }
-                    SubstitutorValue::Params(params) => {
-                        result.extend(
-                            params
-                                .iter()
-                                .map(|(_, t)| t.clone().unwrap_or(LuaType::Any)),
-                        );
-                    }
-                    // donot support this
-                    SubstitutorValue::MultiBase(base) => {
-                        result.push(base.clone());
-                    }
-                    _ => break,
-                }
-            } else {
-                break;
-            }
-        }
-        Some(result)
-    }
-
     pub fn check_recursion(&self, type_id: &LuaTypeDeclId) -> bool {
         if let Some(alias_type_id) = &self.alias_type_id
             && alias_type_id == type_id

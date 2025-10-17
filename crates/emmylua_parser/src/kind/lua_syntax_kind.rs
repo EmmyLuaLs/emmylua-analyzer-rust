@@ -92,6 +92,7 @@ pub enum LuaSyntaxKind {
     DocTagReturnCast,
     DocTagExport,
     DocTagLanguage,
+    DocTagCallGeneric,
 
     // doc Type
     TypeArray,          // baseType []
@@ -104,6 +105,7 @@ pub enum LuaSyntaxKind {
     TypeObject, // { a: aType, b: bType } or { [1]: aType, [2]: bType } or { a: aType, b: bType, [number]: string }
     TypeLiteral, // "string" or <integer> or true or false
     TypeName,   // name
+    TypeInfer,  // infer T
     TypeVariadic, // type...
     TypeNullable, // <Type>?
     TypeStringTemplate, // prefixName.`T`
@@ -126,7 +128,7 @@ pub enum LuaSyntaxKind {
     DocTypeList,
     DocAttribute,
     DocOpType,             // +<type>, -<type>, +?
-    DocMappedKeys,         // [p in KeyType]?
+    DocMappedKey,          // <+/-readonly> [Property in <keyof> KeyType]<+/-?>
     DocEnumFieldList,      // ---| <EnumField>
     DocEnumField, // <string> # description or <integer> # description or <name> # description
     DocOneLineField, // <type> # description
