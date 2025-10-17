@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::{DiagnosticCode, LuaTypeAttribute};
+use emmylua_code_analysis::{DiagnosticCode, LuaTypeFlag};
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocAttribute, LuaDocTag, LuaSyntaxKind,
+    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocTag, LuaDocTypeFlag, LuaSyntaxKind,
     LuaSyntaxToken, LuaTokenKind,
 };
 use lsp_types::CompletionItem;
@@ -29,8 +29,8 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         DocCompletionExpected::DiagnosticCode => {
             add_tag_diagnostic_code_completion(builder);
         }
-        DocCompletionExpected::ClassAttr(node) => {
-            add_tag_class_attr_completion(builder, node);
+        DocCompletionExpected::TypeFlag(node) => {
+            add_tag_type_flag_completion(builder, node);
         }
         DocCompletionExpected::Namespace => {
             add_tag_namespace_completion(builder);
@@ -84,10 +84,9 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
                         LuaSyntaxKind::DocDiagnosticCodeList => {
                             Some(DocCompletionExpected::DiagnosticCode)
                         }
-                        LuaSyntaxKind::DocAttribute => {
-                            let attr = LuaDocAttribute::cast(parent.clone())?;
-                            Some(DocCompletionExpected::ClassAttr(attr))
-                        }
+                        LuaSyntaxKind::DocTypeFlag => Some(DocCompletionExpected::TypeFlag(
+                            LuaDocTypeFlag::cast(parent.clone())?,
+                        )),
                         _ => None,
                     }
                 }
@@ -105,20 +104,18 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
             let parent = trigger_token.parent()?;
             match parent.kind().into() {
                 LuaSyntaxKind::DocDiagnosticCodeList => Some(DocCompletionExpected::DiagnosticCode),
-                LuaSyntaxKind::DocAttribute => {
-                    let attr = LuaDocAttribute::cast(parent.clone())?;
-                    Some(DocCompletionExpected::ClassAttr(attr))
-                }
+                LuaSyntaxKind::DocTypeFlag => Some(DocCompletionExpected::TypeFlag(
+                    LuaDocTypeFlag::cast(parent.clone())?,
+                )),
                 _ => None,
             }
         }
         LuaTokenKind::TkLeftParen => {
             let parent = trigger_token.parent()?;
             match parent.kind().into() {
-                LuaSyntaxKind::DocAttribute => {
-                    let attr = LuaDocAttribute::cast(parent.clone())?;
-                    Some(DocCompletionExpected::ClassAttr(attr))
-                }
+                LuaSyntaxKind::DocTypeFlag => Some(DocCompletionExpected::TypeFlag(
+                    LuaDocTypeFlag::cast(parent.clone())?,
+                )),
                 _ => None,
             }
         }
@@ -132,7 +129,7 @@ enum DocCompletionExpected {
     Cast,
     DiagnosticAction,
     DiagnosticCode,
-    ClassAttr(LuaDocAttribute),
+    TypeFlag(LuaDocTypeFlag),
     Namespace,
     Using,
     Export,
@@ -228,33 +225,33 @@ fn add_tag_diagnostic_code_completion(builder: &mut CompletionBuilder) {
     }
 }
 
-fn add_tag_class_attr_completion(
+fn add_tag_type_flag_completion(
     builder: &mut CompletionBuilder,
-    node: LuaDocAttribute,
+    node: LuaDocTypeFlag,
 ) -> Option<()> {
-    let mut attributes = vec![(LuaTypeAttribute::Partial, "partial")];
+    let mut flags = vec![(LuaTypeFlag::Partial, "partial")];
 
     match LuaDocTag::cast(node.syntax().parent()?)? {
         LuaDocTag::Alias(_) => {}
         LuaDocTag::Class(_) => {
-            attributes.push((LuaTypeAttribute::Exact, "exact"));
-            attributes.push((LuaTypeAttribute::Constructor, "constructor"));
+            flags.push((LuaTypeFlag::Exact, "exact"));
+            flags.push((LuaTypeFlag::Constructor, "constructor"));
         }
         LuaDocTag::Enum(_) => {
-            attributes.insert(0, (LuaTypeAttribute::Key, "key"));
-            attributes.push((LuaTypeAttribute::Exact, "exact"));
+            flags.insert(0, (LuaTypeFlag::Key, "key"));
+            flags.push((LuaTypeFlag::Exact, "exact"));
         }
         _ => {}
     }
     // 已存在的属性
-    let mut existing_attrs = HashSet::new();
+    let mut existing_flags = HashSet::new();
     for token in node.get_attrib_tokens() {
         let name_text = token.get_name_text().to_string();
-        existing_attrs.insert(name_text);
+        existing_flags.insert(name_text);
     }
 
-    for (_, name) in attributes.iter() {
-        if existing_attrs.contains(*name) {
+    for (_, name) in flags.iter() {
+        if existing_flags.contains(*name) {
             continue;
         }
         let completion_item = CompletionItem {

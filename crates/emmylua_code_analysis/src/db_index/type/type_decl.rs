@@ -15,10 +15,11 @@ pub enum LuaDeclTypeKind {
     Class,
     Enum,
     Alias,
+    Attribute,
 }
 
 flags! {
-    pub enum LuaTypeAttribute: u8 {
+    pub enum LuaTypeFlag: u8 {
         None,
         Key,
         Partial,
@@ -42,7 +43,7 @@ impl LuaTypeDecl {
         range: TextRange,
         name: String,
         kind: LuaDeclTypeKind,
-        attrib: FlagSet<LuaTypeAttribute>,
+        flag: FlagSet<LuaTypeFlag>,
         id: LuaTypeDeclId,
     ) -> Self {
         Self {
@@ -50,13 +51,14 @@ impl LuaTypeDecl {
             locations: vec![LuaDeclLocation {
                 file_id,
                 range,
-                attrib,
+                flag,
             }],
             id,
             extra: match kind {
                 LuaDeclTypeKind::Enum => LuaTypeExtra::Enum { base: None },
                 LuaDeclTypeKind::Class => LuaTypeExtra::Class,
                 LuaDeclTypeKind::Alias => LuaTypeExtra::Alias { origin: None },
+                LuaDeclTypeKind::Attribute => LuaTypeExtra::Attribute { typ: None },
             },
         }
     }
@@ -85,22 +87,26 @@ impl LuaTypeDecl {
         matches!(self.extra, LuaTypeExtra::Alias { .. })
     }
 
+    pub fn is_attribute(&self) -> bool {
+        matches!(self.extra, LuaTypeExtra::Attribute { .. })
+    }
+
     pub fn is_exact(&self) -> bool {
         self.locations
             .iter()
-            .any(|l| l.attrib.contains(LuaTypeAttribute::Exact))
+            .any(|l| l.flag.contains(LuaTypeFlag::Exact))
     }
 
     pub fn is_partial(&self) -> bool {
         self.locations
             .iter()
-            .any(|l| l.attrib.contains(LuaTypeAttribute::Partial))
+            .any(|l| l.flag.contains(LuaTypeFlag::Partial))
     }
 
     pub fn is_enum_key(&self) -> bool {
         self.locations
             .iter()
-            .any(|l| l.attrib.contains(LuaTypeAttribute::Key))
+            .any(|l| l.flag.contains(LuaTypeFlag::Key))
     }
 
     pub fn get_id(&self) -> LuaTypeDeclId {
@@ -163,6 +169,20 @@ impl LuaTypeDecl {
     pub fn add_enum_base(&mut self, base_type: LuaType) {
         if let LuaTypeExtra::Enum { base } = &mut self.extra {
             *base = Some(base_type);
+        }
+    }
+
+    pub fn add_attribute_type(&mut self, attribute_type: LuaType) {
+        if let LuaTypeExtra::Attribute { typ } = &mut self.extra {
+            *typ = Some(attribute_type);
+        }
+    }
+
+    pub fn get_attribute_type(&self) -> Option<&LuaType> {
+        if let LuaTypeExtra::Attribute { typ: Some(typ) } = &self.extra {
+            Some(typ)
+        } else {
+            None
         }
     }
 
@@ -301,7 +321,7 @@ impl<'de> Deserialize<'de> for LuaTypeDeclId {
 pub struct LuaDeclLocation {
     pub file_id: FileId,
     pub range: TextRange,
-    pub attrib: FlagSet<LuaTypeAttribute>,
+    pub flag: FlagSet<LuaTypeFlag>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -309,4 +329,5 @@ pub enum LuaTypeExtra {
     Enum { base: Option<LuaType> },
     Class,
     Alias { origin: Option<LuaType> },
+    Attribute { typ: Option<LuaType> },
 }

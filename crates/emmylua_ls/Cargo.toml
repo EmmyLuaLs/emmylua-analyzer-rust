@@ -39,6 +39,7 @@ serde_yml.workspace = true
 itertools.workspace = true
 dirs.workspace = true
 wax.workspace = true
+internment.workspace = true
 
 [dependencies.clap]
 workspace = true

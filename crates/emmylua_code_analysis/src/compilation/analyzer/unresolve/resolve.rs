@@ -1,15 +1,20 @@
 use std::ops::Deref;
 
-use emmylua_parser::{LuaAstNode, LuaAstToken, LuaExpr, LuaLocalStat, LuaTableExpr};
+use emmylua_parser::{
+    LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaLocalStat, LuaTableExpr,
+};
 
 use crate::{
-    InFiled, InferFailReason, LuaDeclId, LuaMember, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
-    LuaTypeCache, SignatureReturnStatus, TypeOps,
+    InFiled, InferFailReason, LuaDeclId, LuaMember, LuaMemberId, LuaMemberInfo, LuaMemberKey,
+    LuaOperator, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaTypeCache,
+    LuaTypeDeclId, OperatorFunction, SignatureReturnStatus, TypeOps,
     compilation::analyzer::{
         common::{add_member, bind_type},
         lua::{analyze_return_point, infer_for_range_iter_expr_func},
+        unresolve::UnResolveConstructor,
     },
     db_index::{DbIndex, LuaMemberOwner, LuaType},
+    find_members_with_key,
     semantic::{LuaInferCache, infer_expr},
 };
 
@@ -245,4 +250,184 @@ pub fn try_resolve_module_ref(
     };
 
     Ok(())
+}
+
+pub fn try_resolve_constructor(
+    db: &mut DbIndex,
+    cache: &mut LuaInferCache,
+    unresolve_constructor: &mut UnResolveConstructor,
+) -> ResolveResult {
+    let (param_type, target_signature_name, root_class, strip_self, return_self) = {
+        let signature = db
+            .get_signature_index()
+            .get(&unresolve_constructor.signature_id)
+            .ok_or(InferFailReason::None)?;
+        let param_info = signature
+            .get_param_info_by_id(unresolve_constructor.param_idx)
+            .ok_or(InferFailReason::None)?;
+        let constructor_use = param_info
+            .get_attribute_by_name("constructor")
+            .ok_or(InferFailReason::None)?;
+
+        // 作为构造函数的方法名
+        let target_signature_name = constructor_use
+            .get_param_by_name("name")
+            .and_then(|typ| match typ {
+                LuaType::DocStringConst(value) => Some(value.deref().clone()),
+                _ => None,
+            })
+            .ok_or(InferFailReason::None)?;
+        // 作为构造函数的根类
+        let root_class =
+            constructor_use
+                .get_param_by_name("root_class")
+                .and_then(|typ| match typ {
+                    LuaType::DocStringConst(value) => Some(value.deref().clone()),
+                    _ => None,
+                });
+        // 是否可以省略self参数
+        let strip_self = constructor_use
+            .get_param_by_name("strip_self")
+            .and_then(|typ| match typ {
+                LuaType::DocBooleanConst(value) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or(true);
+        // 是否返回self
+        let return_self = constructor_use
+            .get_param_by_name("return_self")
+            .and_then(|typ| match typ {
+                LuaType::DocBooleanConst(value) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or(true);
+
+        Ok::<_, InferFailReason>((
+            param_info.type_ref.clone(),
+            target_signature_name,
+            root_class,
+            strip_self,
+            return_self,
+        ))
+    }?;
+
+    // 需要添加构造函数的目标类型
+    let target_id = get_constructor_target_type(
+        db,
+        cache,
+        &param_type,
+        unresolve_constructor.call_expr.clone(),
+        unresolve_constructor.param_idx,
+    )
+    .ok_or(InferFailReason::None)?;
+
+    // 添加根类
+    if let Some(root_class) = root_class {
+        let root_type_id = LuaTypeDeclId::new(&root_class);
+        if let Some(type_decl) = db.get_type_index().get_type_decl(&root_type_id) {
+            if type_decl.is_class() {
+                let root_type = LuaType::Ref(root_type_id.clone());
+                db.get_type_index_mut().add_super_type(
+                    target_id.clone(),
+                    unresolve_constructor.file_id,
+                    root_type,
+                );
+            }
+        }
+    }
+
+    // 添加构造函数
+    let target_type = LuaType::Ref(target_id);
+    let member_key = LuaMemberKey::Name(target_signature_name);
+    let members =
+        find_members_with_key(db, &target_type, member_key, false).ok_or(InferFailReason::None)?;
+    let ctor_signature_member = members.first().ok_or(InferFailReason::None)?;
+
+    set_signature_to_default_call(db, cache, ctor_signature_member, strip_self, return_self)
+        .ok_or(InferFailReason::None)?;
+
+    Ok(())
+}
+
+fn set_signature_to_default_call(
+    db: &mut DbIndex,
+    cache: &mut LuaInferCache,
+    member_info: &LuaMemberInfo,
+    strip_self: bool,
+    return_self: bool,
+) -> Option<()> {
+    let LuaType::Signature(signature_id) = member_info.typ else {
+        return None;
+    };
+    let Some(LuaSemanticDeclId::Member(member_id)) = member_info.property_owner_id else {
+        return None;
+    };
+    // 我们仍然需要再做一次判断确定是否来源于`Def`类型
+    let root = db
+        .get_vfs()
+        .get_syntax_tree(&member_id.file_id)?
+        .get_red_root();
+    let index_expr = LuaIndexExpr::cast(member_id.get_syntax_id().to_node_from_root(&root)?)?;
+    let prefix_expr = index_expr.get_prefix_expr()?;
+    let prefix_type = infer_expr(db, cache, prefix_expr.clone()).ok()?;
+    let LuaType::Def(decl_id) = prefix_type else {
+        return None;
+    };
+    // 如果已经存在显式的`__call`定义, 则不添加
+    let call = db.get_operator_index().get_operators(
+        &LuaOperatorOwner::Type(decl_id.clone()),
+        LuaOperatorMetaMethod::Call,
+    );
+    if call.is_some() {
+        return None;
+    }
+
+    let operator = LuaOperator::new(
+        decl_id.into(),
+        LuaOperatorMetaMethod::Call,
+        member_id.file_id,
+        // 必须指向名称, 使用 index_expr 的完整范围不会跳转到函数上
+        index_expr.get_name_token()?.syntax().text_range(),
+        OperatorFunction::DefaultClassCtor {
+            id: signature_id,
+            strip_self,
+            return_self,
+        },
+    );
+    db.get_operator_index_mut().add_operator(operator);
+    Some(())
+}
+
+fn get_constructor_target_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    param_type: &LuaType,
+    call_expr: LuaCallExpr,
+    call_index: usize,
+) -> Option<LuaTypeDeclId> {
+    if let LuaType::StrTplRef(str_tpl) = param_type {
+        let name = {
+            let arg_expr = call_expr
+                .get_args_list()?
+                .get_args()
+                .nth(call_index)?
+                .clone();
+            let name = infer_expr(db, cache, arg_expr).ok()?;
+            match name {
+                LuaType::StringConst(s) => s.to_string(),
+                _ => return None,
+            }
+        };
+
+        let prefix = str_tpl.get_prefix();
+        let suffix = str_tpl.get_suffix();
+        let type_decl_id: LuaTypeDeclId =
+            LuaTypeDeclId::new(format!("{}{}{}", prefix, name, suffix).as_str());
+        let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
+        if type_decl.is_class() {
+            return Some(type_decl_id);
+        }
+    }
+
+    None
 }

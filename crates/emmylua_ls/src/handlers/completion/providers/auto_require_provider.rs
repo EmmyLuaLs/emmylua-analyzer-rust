@@ -12,7 +12,7 @@ use crate::{
             completion_data::CompletionData,
         },
     },
-    util::{key_name_convert, module_name_convert},
+    util::{file_name_convert, module_name_convert},
 };
 
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
@@ -136,7 +136,7 @@ fn try_add_member_completion_items(
             LuaType::TableConst(_) | LuaType::Def(_) => {
                 let member_infos = builder.semantic_model.get_member_infos(export_type)?;
                 for member_info in member_infos {
-                    let key_name = key_name_convert(
+                    let key_name = file_name_convert(
                         &member_info.key.to_path(),
                         &member_info.typ,
                         file_conversion,

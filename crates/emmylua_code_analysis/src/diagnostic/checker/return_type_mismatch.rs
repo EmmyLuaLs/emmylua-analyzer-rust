@@ -94,9 +94,9 @@ fn check_return_stat(
                         check_table_expr(
                             context,
                             semantic_model,
+                            rowan::NodeOrToken::Node(return_expr.syntax().clone()),
                             return_expr,
                             Some(check_type),
-                            Some(return_expr_type),
                         );
                     }
 
@@ -132,9 +132,9 @@ fn check_return_stat(
                     if let Some(add_diagnostic) = check_table_expr(
                         context,
                         semantic_model,
+                        rowan::NodeOrToken::Node(return_expr.syntax().clone()),
                         return_expr,
                         Some(return_type),
-                        Some(return_expr_type),
                     ) && add_diagnostic
                     {
                         return Some(());

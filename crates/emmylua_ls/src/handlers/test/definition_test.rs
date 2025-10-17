@@ -508,4 +508,50 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_accessors() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@[field_accessor]
+            ---@field age number
+            local A
+
+            ---@private
+            function A:getAge()
+            end
+
+            ---@private
+            function A:setAge(value)
+            end
+            "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                ---@type A
+                local obj
+                obj.age<??> = 1
+            "#,
+            vec![
+                Expected {
+                    file: "".to_string(),
+                    line: 3,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 7,
+                },
+                Expected {
+                    file: "".to_string(),
+                    line: 11,
+                }
+            ],
+        ));
+
+        Ok(())
+    }
 }

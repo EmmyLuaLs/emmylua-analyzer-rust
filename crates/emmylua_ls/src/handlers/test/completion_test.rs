@@ -1146,10 +1146,11 @@ mod tests {
     #[gtest]
     fn test_index_key_alias() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(" ---@attribute index_alias(name: string)");
         check!(ws.check_completion(
             r#"
                 local export = {
-                    [1] = 1, -- [nameX]
+                    [1] = 1, ---@[index_alias("nameX")]
                 }
 
                 export.<??>
@@ -1215,11 +1216,12 @@ mod tests {
 
     #[gtest]
     fn test_field_index_function() -> Result<()> {
-        let mut ws = ProviderVirtualWorkspace::new();
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
         ws.def(
             r#"
                 ---@class A<T>
-                ---@field [1] fun() # [next]
+                ---@[index_alias("next")]
+                ---@field [1] fun()
                 A = {}
             "#,
         );

@@ -32,4 +32,5 @@ pub const DOC_TAGS: &[&str] = &[
     "return_cast",
     "export",
     "language",
+    "attribute",
 ];

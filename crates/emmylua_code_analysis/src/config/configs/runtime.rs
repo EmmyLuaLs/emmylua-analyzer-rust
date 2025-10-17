@@ -24,9 +24,6 @@ pub struct EmmyrcRuntime {
     #[serde(default)]
     /// Require pattern. eg. "?.lua", "?/init.lua"
     pub require_pattern: Vec<String>,
-    #[serde(default)]
-    /// class default overload function.
-    pub class_default_call: ClassDefaultCall,
     /// Non-standard symbols.
     #[serde(default)]
     pub nonstandard_symbol: Vec<EmmyrcNonStdSymbol>,
@@ -75,20 +72,7 @@ impl EmmyrcLuaVersion {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ClassDefaultCall {
-    #[serde(default)]
-    /// class default overload function. eg. "__init".
-    pub function_name: String,
-    #[serde(default = "default_true")]
-    /// Mandatory non`:` definition. When `function_name` is not empty, it takes effect.
-    pub force_non_colon: bool,
-    /// Force to return `self`.
-    #[serde(default = "default_true")]
-    pub force_return_self: bool,
-}
-
+#[allow(unused)]
 fn default_true() -> bool {
     true
 }

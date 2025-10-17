@@ -107,6 +107,12 @@ pub enum DiagnosticCode {
     ReadOnly,
     /// Global variable defined in non-module scope
     GlobalInNonModule,
+    /// attribute-param-type-mismatch
+    AttributeParamTypeMismatch,
+    /// attribute-missing-parameter
+    AttributeMissingParameter,
+    /// attribute-redundant-parameter
+    AttributeRedundantParameter,
 
     #[serde(other)]
     None,

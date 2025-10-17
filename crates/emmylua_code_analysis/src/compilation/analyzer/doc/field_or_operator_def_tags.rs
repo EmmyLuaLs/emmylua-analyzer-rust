@@ -199,7 +199,7 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
 }
 
 fn get_visibility_from_field_attrib(tag: &LuaDocTagField) -> Option<VisibilityKind> {
-    if let Some(attrib) = tag.get_attrib() {
+    if let Some(attrib) = tag.get_type_flag() {
         for token in attrib.get_attrib_tokens() {
             let visibility = VisibilityKind::to_visibility_kind(token.get_name_text());
             if visibility.is_some() {

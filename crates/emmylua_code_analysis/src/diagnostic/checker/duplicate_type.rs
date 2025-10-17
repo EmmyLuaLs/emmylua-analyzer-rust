@@ -2,7 +2,7 @@ use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocTag, LuaDocTagAlias, LuaDocTagClass, LuaDocTagEnum,
 };
 
-use crate::{DiagnosticCode, LuaTypeAttribute, SemanticModel};
+use crate::{DiagnosticCode, LuaTypeFlag, SemanticModel};
 
 use super::{Checker, DiagnosticContext};
 
@@ -45,13 +45,13 @@ fn check_duplicate_class(context: &mut DiagnosticContext, class_tag: LuaDocTagCl
         let mut partial_times = 0;
         let mut constructor_times = 0;
         for location in locations {
-            let attrib = location.attrib;
-            if attrib.contains(LuaTypeAttribute::Meta) {
+            let flag = location.flag;
+            if flag.contains(LuaTypeFlag::Meta) {
                 continue;
             }
-            if attrib.contains(LuaTypeAttribute::Partial) {
+            if flag.contains(LuaTypeFlag::Partial) {
                 partial_times += 1;
-            } else if attrib.contains(LuaTypeAttribute::Constructor) {
+            } else if flag.contains(LuaTypeFlag::Constructor) {
                 constructor_times += 1;
             } else {
                 type_times += 1;
@@ -104,11 +104,11 @@ fn check_duplicate_enum(context: &mut DiagnosticContext, enum_tag: LuaDocTagEnum
         let mut type_times = 0;
         let mut partial_times = 0;
         for location in locations {
-            let attrib = location.attrib;
-            if attrib.contains(LuaTypeAttribute::Meta) {
+            let flag = location.flag;
+            if flag.contains(LuaTypeFlag::Meta) {
                 continue;
             }
-            if attrib.contains(LuaTypeAttribute::Partial) {
+            if flag.contains(LuaTypeFlag::Partial) {
                 partial_times += 1;
             } else {
                 type_times += 1;
@@ -148,8 +148,8 @@ fn check_duplicate_alias(context: &mut DiagnosticContext, alias_tag: LuaDocTagAl
     if locations.len() > 1 {
         let mut type_times = 0;
         for location in locations {
-            let attrib = location.attrib;
-            if !attrib.contains(LuaTypeAttribute::Meta) {
+            let flag = location.flag;
+            if !flag.contains(LuaTypeFlag::Meta) {
                 type_times += 1;
             }
         }

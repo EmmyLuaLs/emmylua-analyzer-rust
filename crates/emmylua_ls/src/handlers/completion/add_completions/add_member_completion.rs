@@ -1,5 +1,5 @@
 use emmylua_code_analysis::{
-    DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticModel,
+    DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
     try_extract_signature_id_from_field,
 };
 use emmylua_parser::{
@@ -129,8 +129,8 @@ pub fn add_member_completion(
         );
     }
 
-    // 尝试添加别名补全项, 如果添加成功, 则不添加原本 `[index]` 补全项
-    if !try_add_alias_completion_item(builder, &member_info, &completion_item, &label)
+    // 尝试添加别名补全项, 如果添加成功, 则不添加原来的 `[index]` 补全项
+    if !try_add_alias_completion_item_new(builder, &member_info, &completion_item, &label)
         .unwrap_or(false)
     {
         builder.add_completion_item(completion_item)?;
@@ -310,15 +310,13 @@ fn get_resolve_function_params_str(typ: &LuaType, display: CallDisplay) -> Optio
     }
 }
 
-/// 添加索引成员的别名补全项
-fn try_add_alias_completion_item(
+fn try_add_alias_completion_item_new(
     builder: &mut CompletionBuilder,
     member_info: &LuaMemberInfo,
     completion_item: &CompletionItem,
     label: &String,
 ) -> Option<bool> {
-    let alias_label = extract_index_member_alias(&builder.semantic_model, member_info)?;
-
+    let alias_label = get_index_alias_name(&builder.semantic_model, member_info)?;
     let mut alias_completion_item = completion_item.clone();
     alias_completion_item.label = alias_label;
     alias_completion_item.insert_text = Some(label.clone());
@@ -336,9 +334,7 @@ fn try_add_alias_completion_item(
     Some(true)
 }
 
-/// 从注释中提取索引成员的别名, 只处理整数成员.
-/// 格式为`-- [nameX]`.
-pub fn extract_index_member_alias(
+pub fn get_index_alias_name(
     semantic_model: &SemanticModel,
     member_info: &LuaMemberInfo,
 ) -> Option<String> {
@@ -351,7 +347,6 @@ pub fn extract_index_member_alias(
     let LuaSemanticDeclId::Member(member_id) = property_owner_id else {
         return None;
     };
-
     let common_property = match db.get_property_index().get_property(property_owner_id) {
         Some(common_property) => common_property,
         None => {
@@ -364,34 +359,15 @@ pub fn extract_index_member_alias(
         }
     };
 
-    let description = common_property.description()?;
-
-    // 只去掉左侧空白字符，保留右侧内容以支持后续文本
-    let left_trimmed = description.trim_start();
-    if !left_trimmed.starts_with('[') {
-        return None;
-    }
-
-    // 找到对应的右方括号
-    let close_bracket_pos = left_trimmed.find(']')?;
-
-    let content = left_trimmed[1..close_bracket_pos].trim();
-
-    if content.is_empty() {
-        return None;
-    }
-
-    let first_char = content.chars().next()?;
-    if !first_char.is_alphabetic() && first_char != '_' {
-        return None;
-    }
-
-    if !content.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return None;
-    }
-    if content.parse::<i64>().is_ok() || content.parse::<f64>().is_ok() {
-        return None;
-    }
-
-    Some(content.to_string())
+    let alias_label = common_property
+        .find_attribute_use(LuaTypeDeclId::new("index_alias"))?
+        .args
+        .first()
+        .and_then(|(_, typ)| typ.as_ref())
+        .and_then(|param| match param {
+            LuaType::DocStringConst(s) => Some(s.as_ref()),
+            _ => None,
+        })?
+        .to_string();
+    Some(alias_label)
 }

@@ -50,10 +50,10 @@ pub fn get_tpl_ref_extend_type(
                         match decl.extra {
                             LuaDeclExtra::Param { signature_id, .. } => {
                                 let signature = db.get_signature_index().get(&signature_id)?;
-                                if let Some((_, param_type)) =
+                                if let Some(generic_param) =
                                     signature.generic_params.get(tpl_id as usize)
                                 {
-                                    return param_type.clone();
+                                    return generic_param.type_constraint.clone();
                                 }
                             }
                             _ => return None,

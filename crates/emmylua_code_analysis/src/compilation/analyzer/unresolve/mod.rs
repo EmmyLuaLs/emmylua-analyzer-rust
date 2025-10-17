@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::{
     FileId, InferFailReason, LuaMemberFeature, LuaSemanticDeclId,
-    compilation::analyzer::AnalysisPipeline,
+    compilation::analyzer::{AnalysisPipeline, unresolve::resolve::try_resolve_constructor},
     db_index::{DbIndex, LuaDeclId, LuaMemberId, LuaSignatureId},
     profile::Profile,
 };
@@ -201,6 +201,9 @@ fn try_resolve(
                     UnResolve::TableField(un_resolve_table_field) => {
                         try_resolve_table_field(db, cache, un_resolve_table_field)
                     }
+                    UnResolve::ClassCtor(un_resolve_constructor) => {
+                        try_resolve_constructor(db, cache, un_resolve_constructor)
+                    }
                 };
 
                 match resolve_result {
@@ -211,6 +214,12 @@ fn try_resolve(
                     Err(InferFailReason::FieldNotFound) => {
                         if !cache.get_config().analysis_phase.is_force() {
                             retain_unresolve.push((unresolve, InferFailReason::FieldNotFound));
+                        }
+                    }
+                    Err(InferFailReason::UnResolveOperatorCall) => {
+                        if !cache.get_config().analysis_phase.is_force() {
+                            retain_unresolve
+                                .push((unresolve, InferFailReason::UnResolveOperatorCall));
                         }
                     }
                     Err(reason) => {
@@ -254,6 +263,7 @@ pub enum UnResolve {
     ClosureParentParams(Box<UnResolveParentClosureParams>),
     ModuleRef(Box<UnResolveModuleRef>),
     TableField(Box<UnResolveTableField>),
+    ClassCtor(Box<UnResolveConstructor>),
 }
 
 #[allow(dead_code)]
@@ -276,6 +286,7 @@ impl UnResolve {
             }
             UnResolve::TableField(un_resolve_table_field) => Some(un_resolve_table_field.file_id),
             UnResolve::ModuleRef(_) => None,
+            UnResolve::ClassCtor(un_resolve_constructor) => Some(un_resolve_constructor.file_id),
         }
     }
 }
@@ -420,5 +431,19 @@ pub struct UnResolveTableField {
 impl From<UnResolveTableField> for UnResolve {
     fn from(un_resolve_table_field: UnResolveTableField) -> Self {
         UnResolve::TableField(Box::new(un_resolve_table_field))
+    }
+}
+
+#[derive(Debug)]
+pub struct UnResolveConstructor {
+    pub file_id: FileId,
+    pub call_expr: LuaCallExpr,
+    pub signature_id: LuaSignatureId,
+    pub param_idx: usize,
+}
+
+impl From<UnResolveConstructor> for UnResolve {
+    fn from(un_resolve_constructor: UnResolveConstructor) -> Self {
+        UnResolve::ClassCtor(Box::new(un_resolve_constructor))
     }
 }

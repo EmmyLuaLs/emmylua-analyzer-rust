@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
 use emmylua_code_analysis::{
-    LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId,
-    LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
+    LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberInfo, LuaMemberKey, LuaMemberOwner,
+    LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaReturnStat, LuaStringToken,
@@ -11,9 +11,14 @@ use emmylua_parser::{
 use itertools::Itertools;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
-use crate::handlers::{
-    definition::goto_function::{find_function_call_origin, find_matching_function_definitions},
-    hover::{find_all_same_named_members, find_member_origin_owner},
+use crate::{
+    handlers::{
+        definition::goto_function::{
+            find_function_call_origin, find_matching_function_definitions,
+        },
+        hover::{find_all_same_named_members, find_member_origin_owner},
+    },
+    util::{to_camel_case, to_pascal_case, to_snake_case},
 };
 
 pub fn goto_def_definition(
@@ -104,6 +109,8 @@ fn handle_member_definition(
         if let LuaSemanticDeclId::Member(member_id) = member
             && let Some(location) = get_member_location(semantic_model, &member_id)
         {
+            // 尝试添加访问器的位置
+            try_set_accessor_locations(semantic_model, &member, &mut locations);
             locations.push(location);
         }
     }
@@ -420,4 +427,140 @@ fn try_extract_str_tpl_ref_locations(
         return Some(locations);
     }
     None
+}
+
+fn try_set_accessor_locations(
+    semantic_model: &SemanticModel,
+    semantic_decl_id: &LuaSemanticDeclId,
+    locations: &mut Vec<Location>,
+) -> Option<()> {
+    #[derive(Clone, Copy)]
+    enum AccessorCaseConvention {
+        CamelCase,  // camelCase
+        SnakeCase,  // snake_case
+        PascalCase, // PascalCase
+    }
+
+    impl AccessorCaseConvention {
+        fn build_name(self, prefix: &str, field_name: &str) -> Option<String> {
+            if field_name.is_empty() {
+                return None;
+            }
+            let full_name = format!("{}_{}", prefix, field_name);
+            let name = match self {
+                AccessorCaseConvention::CamelCase => to_camel_case(&full_name),
+                AccessorCaseConvention::SnakeCase => to_snake_case(&full_name),
+                AccessorCaseConvention::PascalCase => to_pascal_case(&full_name),
+            };
+            Some(name)
+        }
+    }
+
+    let member_id = match semantic_decl_id {
+        LuaSemanticDeclId::Member(id) => id,
+        _ => return None,
+    };
+    let current_owner = semantic_model
+        .get_db()
+        .get_member_index()
+        .get_current_owner(member_id)?;
+    let prefix_type = match current_owner {
+        LuaMemberOwner::Type(id) => LuaType::Ref(id.clone()),
+        _ => return None,
+    };
+    let property = semantic_model
+        .get_db()
+        .get_property_index()
+        .get_property(&semantic_decl_id)?;
+
+    let attribute_use = property.find_attribute_use(LuaTypeDeclId::new("field_accessor"))?;
+    let has_getter =
+        if let Some(LuaType::DocStringConst(getter)) = attribute_use.get_param_by_name("getter") {
+            try_add_accessor_location(
+                semantic_model,
+                &prefix_type,
+                getter.as_str().into(),
+                locations,
+            )
+        } else {
+            false
+        };
+    let has_setter =
+        if let Some(LuaType::DocStringConst(setter)) = attribute_use.get_param_by_name("setter") {
+            try_add_accessor_location(
+                semantic_model,
+                &prefix_type,
+                setter.as_str().into(),
+                locations,
+            )
+        } else {
+            false
+        };
+
+    // 显式指定了获取器与设置器, 则不需要根据规则处理
+    if has_getter && has_setter {
+        return Some(());
+    }
+    // 根据规则处理
+    // "camelCase"|"PascalCase"|"snake_case"
+    let convention = {
+        if let Some(LuaType::DocStringConst(convention)) =
+            attribute_use.get_param_by_name("convention")
+        {
+            match convention.as_str() {
+                "camelCase" => AccessorCaseConvention::CamelCase,
+                "snake_case" => AccessorCaseConvention::SnakeCase,
+                "PascalCase" => AccessorCaseConvention::PascalCase,
+                _ => AccessorCaseConvention::CamelCase,
+            }
+        } else {
+            AccessorCaseConvention::CamelCase
+        }
+    };
+
+    let Some(original_name) = semantic_model
+        .get_db()
+        .get_member_index()
+        .get_member(member_id)?
+        .get_key()
+        .get_name()
+    else {
+        return Some(());
+    };
+
+    if !has_getter {
+        if let Some(getter_name) = convention.build_name("get", original_name) {
+            try_add_accessor_location(semantic_model, &prefix_type, getter_name, locations);
+        }
+    }
+
+    if !has_setter {
+        if let Some(setter_name) = convention.build_name("set", original_name) {
+            try_add_accessor_location(semantic_model, &prefix_type, setter_name, locations);
+        }
+    }
+
+    Some(())
+}
+
+/// 尝试添加访问器位置到位置列表中
+fn try_add_accessor_location(
+    semantic_model: &SemanticModel,
+    prefix_type: &LuaType,
+    accessor_name: String,
+    locations: &mut Vec<Location>,
+) -> bool {
+    let accessor_key = LuaMemberKey::Name(accessor_name.as_str().into());
+    if let Some(member_infos) =
+        semantic_model.get_member_info_with_key(prefix_type, accessor_key, false)
+    {
+        if let Some(member_info) = member_infos.first()
+            && let Some(LuaSemanticDeclId::Member(accessor_id)) = member_info.property_owner_id
+            && let Some(location) = get_member_location(semantic_model, &accessor_id)
+        {
+            locations.push(location);
+            return true;
+        }
+    }
+    false
 }

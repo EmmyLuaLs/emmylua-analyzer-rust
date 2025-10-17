@@ -12,9 +12,7 @@ use crate::{DbIndex, FileId, InFiled};
 pub use generic_param::GenericParam;
 pub use humanize_type::{RenderLevel, format_union_type, humanize_type};
 use std::collections::{HashMap, HashSet};
-pub use type_decl::{
-    LuaDeclLocation, LuaDeclTypeKind, LuaTypeAttribute, LuaTypeDecl, LuaTypeDeclId,
-};
+pub use type_decl::{LuaDeclLocation, LuaDeclTypeKind, LuaTypeDecl, LuaTypeDeclId, LuaTypeFlag};
 pub use type_ops::TypeOps;
 pub use type_owner::{LuaTypeCache, LuaTypeOwner};
 pub use type_visit_trait::TypeVisitTrait;

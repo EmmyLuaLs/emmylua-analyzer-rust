@@ -94,6 +94,7 @@ pub fn try_resolve_call_closure_params(
                 type_ref: type_ref.clone().unwrap_or(LuaType::Any),
                 description: None,
                 nullable: false,
+                attributes: None,
             },
         );
     }
@@ -171,6 +172,7 @@ pub fn try_resolve_closure_return(
         name: None,
         type_ref: ret_type.clone(),
         description: None,
+        attributes: None,
     });
 
     signature.resolve_return = SignatureReturnStatus::DocResolve;
@@ -467,6 +469,7 @@ fn resolve_doc_function(
                 type_ref: param.1.clone().unwrap_or(LuaType::Any),
                 description: None,
                 nullable: false,
+                attributes: None,
             },
         );
     }
@@ -480,6 +483,7 @@ fn resolve_doc_function(
             name: None,
             type_ref: doc_func.get_ret().clone(),
             description: None,
+            attributes: None,
         });
     }
 

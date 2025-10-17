@@ -1,6 +1,11 @@
+use std::sync::Arc;
+
 use emmylua_parser::{LuaVersionCondition, VisibilityKind};
 
-use crate::db_index::property::decl_feature::{DeclFeatureFlag, PropertyDeclFeature};
+use crate::{
+    LuaType, LuaTypeDeclId,
+    db_index::property::decl_feature::{DeclFeatureFlag, PropertyDeclFeature},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LuaCommonProperty {
@@ -12,6 +17,7 @@ pub struct LuaCommonProperty {
     pub tag_content: Option<Box<LuaTagContent>>,
     pub export: Option<LuaExport>,
     pub decl_features: DeclFeatureFlag,
+    pub attribute_uses: Option<Arc<Vec<LuaAttributeUse>>>,
 }
 
 impl Default for LuaCommonProperty {
@@ -31,6 +37,7 @@ impl LuaCommonProperty {
             tag_content: None,
             export: None,
             decl_features: DeclFeatureFlag::new(),
+            attribute_uses: None,
         }
     }
 
@@ -90,6 +97,26 @@ impl LuaCommonProperty {
     pub fn add_decl_feature(&mut self, feature: PropertyDeclFeature) {
         self.decl_features.add_feature(feature);
     }
+
+    pub fn add_attribute_use(&mut self, attribute_use: LuaAttributeUse) {
+        Arc::make_mut(
+            self.attribute_uses
+                .get_or_insert_with(|| Arc::new(Vec::new())),
+        )
+        .push(attribute_use);
+    }
+
+    pub fn attribute_uses(&self) -> Option<&Arc<Vec<LuaAttributeUse>>> {
+        self.attribute_uses.as_ref()
+    }
+
+    pub fn find_attribute_use(&self, id: LuaTypeDeclId) -> Option<&LuaAttributeUse> {
+        self.attribute_uses.as_ref().and_then(|attribute_uses| {
+            attribute_uses
+                .iter()
+                .find(|attribute_use| attribute_use.id == id)
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,5 +169,24 @@ pub struct LuaPropertyId {
 impl LuaPropertyId {
     pub fn new(id: u32) -> Self {
         Self { id }
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct LuaAttributeUse {
+    pub id: LuaTypeDeclId,
+    pub args: Vec<(String, Option<LuaType>)>,
+}
+
+impl LuaAttributeUse {
+    pub fn new(id: LuaTypeDeclId, args: Vec<(String, Option<LuaType>)>) -> Self {
+        Self { id, args }
+    }
+
+    pub fn get_param_by_name(&self, name: &str) -> Option<&LuaType> {
+        self.args
+            .iter()
+            .find(|(n, _)| n == name)
+            .and_then(|(_, typ)| typ.as_ref())
     }
 }

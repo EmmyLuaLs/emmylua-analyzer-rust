@@ -4,7 +4,7 @@ mod test {
 
     use crate::db_index::traits::LuaIndex;
     use crate::db_index::r#type::LuaTypeIndex;
-    use crate::db_index::{LuaDeclTypeKind, LuaTypeAttribute};
+    use crate::db_index::{LuaDeclTypeKind, LuaTypeFlag};
     use crate::{FileId, LuaTypeDecl, LuaTypeDeclId};
 
     fn create_type_index() -> LuaTypeIndex {
@@ -26,7 +26,7 @@ mod test {
                 TextRange::new(0.into(), 4.into()),
                 "new_type".to_string(),
                 LuaDeclTypeKind::Alias,
-                LuaTypeAttribute::Partial.into(),
+                LuaTypeFlag::Partial.into(),
                 LuaTypeDeclId::new("test.new_type"),
             ),
         );
@@ -62,7 +62,7 @@ mod test {
                 TextRange::new(0.into(), 4.into()),
                 "new_type".to_string(),
                 LuaDeclTypeKind::Alias,
-                LuaTypeAttribute::Partial.into(),
+                LuaTypeFlag::Partial.into(),
                 LuaTypeDeclId::new("test.new_type"),
             ),
         );
@@ -92,7 +92,7 @@ mod test {
                 TextRange::new(0.into(), 4.into()),
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
-                LuaTypeAttribute::Partial.into(),
+                LuaTypeFlag::Partial.into(),
                 LuaTypeDeclId::new("new_type"),
             ),
         );
@@ -110,7 +110,7 @@ mod test {
                 TextRange::new(0.into(), 4.into()),
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
-                LuaTypeAttribute::Partial.into(),
+                LuaTypeFlag::Partial.into(),
                 LuaTypeDeclId::new(".new_type"),
             ),
         );
@@ -123,7 +123,7 @@ mod test {
                 TextRange::new(0.into(), 4.into()),
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
-                LuaTypeAttribute::Partial.into(),
+                LuaTypeFlag::Partial.into(),
                 LuaTypeDeclId::new("new_type"),
             ),
         );
@@ -150,7 +150,7 @@ mod test {
                 TextRange::new(0.into(), 4.into()),
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
-                LuaTypeAttribute::Partial.into(),
+                LuaTypeFlag::Partial.into(),
                 LuaTypeDeclId::new("test.new_type"),
             ),
         );

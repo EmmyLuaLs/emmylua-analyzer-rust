@@ -151,6 +151,7 @@ fn analyze_return(
                 type_ref: LuaType::Unknown,
                 description: None,
                 name: None,
+                attributes: None,
             }]
         }
         Err(reason) => {
@@ -236,6 +237,7 @@ pub fn analyze_return_point(
         type_ref: return_type,
         description: None,
         name: None,
+        attributes: None,
     }])
 }
 

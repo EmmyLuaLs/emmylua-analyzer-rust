@@ -138,3 +138,38 @@
 ---@alias TypeGuard<T> boolean
 
 ---@alias Language<T: string> string
+
+--- attribute
+
+--- Deprecated. Receives an optional message parameter.
+---@attribute deprecated(message: string?)
+
+--- Skip partial diagnostics, typically used to optimize diagnostic performance.
+---
+--- Receives a parameter, the options are:
+--- - `table_field` - Skip diagnostic for `table` fields. Usually attached to configuration tables that do not require actual diagnostic fields.
+---@attribute skip_diagnostic(code: string)
+
+--- Index field alias, will be displayed in `hint` and `completion`.
+---
+--- Receives a string parameter for the alias name.
+---@attribute index_alias(name: string)
+
+--- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
+--- used to specify the default constructor of a class.
+---
+--- Parameters:
+--- - `name` - The name of the method as a constructor.
+--- - `root_class` - Used to mark the root class, will implicitly inherit this class, such as `System.Object` in c#. Defaults to empty.
+--- - `strip_self` - Whether the `self` parameter can be omitted when calling the constructor, defaults to `true`
+--- - `return_self` - Whether the constructor is forced to return `self`, defaults to `true`
+---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+
+--- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,
+--- and the target methods must reside within the same class.
+---
+--- Parameters:
+--- - convention: Naming convention, defaults to `camelCase`. Implicitly adds `get` and `set` prefixes. eg: `_age` -> `getAge`, `setAge`.
+--- - getter: Getter method name. Takes precedence over `convention`.
+--- - setter: Setter method name. Takes precedence over `convention`.
+---@attribute field_accessor(convention: "camelCase"|"PascalCase"|"snake_case"|nil, getter: string?, setter: string?)

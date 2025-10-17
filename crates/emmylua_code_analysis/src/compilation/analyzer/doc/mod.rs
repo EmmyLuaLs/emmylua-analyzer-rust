@@ -1,3 +1,4 @@
+mod attribute_tags;
 mod diagnostic_tags;
 mod field_or_operator_def_tags;
 mod file_generic_index;
@@ -48,7 +49,7 @@ fn analyze_comment(analyzer: &mut DocAnalyzer) -> Option<()> {
         tags::analyze_tag(analyzer, tag);
     }
 
-    let owenr = get_owner_id(analyzer)?;
+    let owenr = get_owner_id(analyzer, None, false)?;
     let comment_description = preprocess_description(
         &comment.get_description()?.get_description_text(),
         Some(&owenr),
