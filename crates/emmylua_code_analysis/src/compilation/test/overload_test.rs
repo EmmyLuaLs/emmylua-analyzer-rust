@@ -87,6 +87,8 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("foo('a')"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("foo('a', 'b')"), ws.ty("unknown"));
         assert_eq!(ws.expr_ty("foo(1, 2)"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("foo(1)"), ws.ty("unknown"));
     }
 }
