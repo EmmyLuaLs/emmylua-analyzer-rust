@@ -67,4 +67,26 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_meta_global_overload() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        --- @meta
+
+        --- @param a string
+        --- @return string
+        function foo(a) end
+
+        --- @param a integer
+        --- @param b integer
+        --- @return integer
+        function foo(a, b) end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("foo('a')"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("foo(1, 2)"), ws.ty("integer"));
+    }
 }
