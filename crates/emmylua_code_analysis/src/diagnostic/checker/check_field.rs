@@ -8,7 +8,7 @@ use emmylua_parser::{
 
 use crate::{
     DiagnosticCode, InferFailReason, LuaMemberKey, LuaSemanticDeclId, LuaType, ModuleInfo,
-    SemanticModel, enum_variable_is_param, parse_require_module_info,
+    SemanticDeclLevel, SemanticModel, enum_variable_is_param, parse_require_module_info,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -64,19 +64,18 @@ fn check_index_expr(
     let prefix_typ = semantic_model
         .infer_expr(index_expr.get_prefix_expr()?)
         .unwrap_or(LuaType::Unknown);
-    let module_info = None;
+    let mut module_info = None;
 
     if is_invalid_prefix_type(&prefix_typ) {
-        // if matches!(prefix_typ, LuaType::TableConst(_)) {
-        //     // 如果导入了被 @export 标记的表常量, 那么不应该跳过检查
-        //     module_info = check_require_table_const_with_export(semantic_model, index_expr);
-        //     if module_info.is_none() {
-        //         return Some(());
-        //     }
-        // } else {
-        //     return Some(());
-        // }
-        return Some(());
+        if matches!(prefix_typ, LuaType::TableConst(_)) {
+            // 如果导入了被 @export 标记的表常量, 那么不应该跳过检查
+            module_info = check_require_table_const_with_export(semantic_model, index_expr);
+            if module_info.is_none() {
+                return Some(());
+            }
+        } else {
+            return Some(());
+        }
     }
 
     let index_key = index_expr.get_index_key()?;
@@ -480,7 +479,6 @@ fn check_enum_is_param(
     )
 }
 
-#[allow(unused)]
 /// 检查导入的表常量
 fn check_require_table_const_with_export<'a>(
     semantic_model: &'a SemanticModel,
@@ -495,10 +493,12 @@ fn check_require_table_const_with_export<'a>(
         }
     }
 
-    let semantic_info = semantic_model.get_semantic_info(prefix_expr.syntax().clone().into())?;
-
+    let semantic_decl_id = semantic_model.find_decl(
+        prefix_expr.syntax().clone().into(),
+        SemanticDeclLevel::NoTrace,
+    )?;
     // 检查是否是声明引用
-    let decl_id = match semantic_info.semantic_decl? {
+    let decl_id = match semantic_decl_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => decl_id,
         _ => return None,
     };
@@ -509,14 +509,13 @@ fn check_require_table_const_with_export<'a>(
         .get_decl_index()
         .get_decl(&decl_id)?;
 
-    let module_info = parse_require_module_info(semantic_model, decl)?;
+    let module_info = parse_require_module_info(semantic_model, &decl)?;
     if module_info.is_export(semantic_model.get_db()) {
         return Some(module_info);
     }
     None
 }
 
-#[allow(unused)]
 pub fn parse_require_expr_module_info<'a>(
     semantic_model: &'a SemanticModel,
     call_expr: &LuaCallExpr,
