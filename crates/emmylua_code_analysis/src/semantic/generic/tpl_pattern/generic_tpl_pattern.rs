@@ -1,6 +1,6 @@
 use crate::{
     InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaType, TplContext,
-    TypeSubstitutor, instantiate_type_generic,
+    TypeSubstitutor, instantiate_generic, instantiate_type_generic,
     semantic::generic::tpl_pattern::{
         TplPatternMatchResult, tpl_pattern_match, variadic_tpl_pattern_match,
     },
@@ -121,7 +121,15 @@ fn generic_tpl_pattern_match_inner(
                 )?;
             }
         }
-        _ => {}
+        _ => {
+            // 对于 @alias 类型, 我们能拿到的 target 实际上很有可能是实例化后的类型, 因此我们需要实例化后再进行匹配
+            let substitutor = TypeSubstitutor::new();
+            let typ = instantiate_generic(context.db, source_generic, &substitutor);
+            if LuaType::from(source_generic.clone()) != typ {
+                tpl_pattern_match(context, &typ, target)?;
+            }
+        }
     }
+
     Ok(())
 }

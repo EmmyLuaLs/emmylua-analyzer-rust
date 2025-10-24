@@ -1,5 +1,6 @@
 use crate::{
-    LuaAstToken, LuaIndexToken, LuaLiteralToken, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
+    LuaAstToken, LuaComment, LuaDocTagCallGeneric, LuaDocTypeList, LuaIndexToken, LuaKind,
+    LuaLiteralToken, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind,
     kind::LuaSyntaxKind,
     syntax::{
         node::{LuaBinaryOpToken, LuaNameToken, LuaUnaryOpToken},
@@ -423,6 +424,27 @@ impl LuaCallExpr {
 
     pub fn is_setmetatable(&self) -> bool {
         self.syntax().kind() == LuaSyntaxKind::SetmetatableCallExpr.into()
+    }
+
+    pub fn get_call_generic_type_list(&self) -> Option<LuaDocTypeList> {
+        let mut current_node = self.syntax().first_child()?.next_sibling();
+
+        while let Some(node) = &current_node {
+            match node.kind() {
+                LuaKind::Syntax(LuaSyntaxKind::Comment) => {
+                    let comment = LuaComment::cast(node.clone())?;
+                    let call_generic = comment.child::<LuaDocTagCallGeneric>()?;
+                    return call_generic.get_type_list();
+                }
+                LuaKind::Syntax(LuaSyntaxKind::CallArgList) => {
+                    return None;
+                }
+                _ => {}
+            }
+            current_node = node.next_sibling();
+        }
+
+        None
     }
 }
 

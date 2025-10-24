@@ -1,18 +1,21 @@
 use std::{collections::HashSet, ops::Deref, sync::Arc};
 
+use emmylua_parser::LuaDocTypeList;
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use internment::ArcIntern;
 
 use crate::{
-    GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType, TypeVisitTrait,
+    DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
+    TypeVisitTrait,
     db_index::{DbIndex, LuaType},
+    infer_doc_type,
     semantic::{
         LuaInferCache,
         generic::{
             instantiate_type::instantiate_doc_function,
             tpl_context::TplContext,
             tpl_pattern::{
-                multi_param_tpl_pattern_match_multi_return, tpl_pattern_match,
+                constant_decay, multi_param_tpl_pattern_match_multi_return, tpl_pattern_match,
                 variadic_tpl_pattern_match,
             },
         },
@@ -29,6 +32,7 @@ pub fn instantiate_func_generic(
     func: &LuaFunctionType,
     call_expr: LuaCallExpr,
 ) -> Result<LuaFunctionType, InferFailReason> {
+    let file_id = cache.get_file_id().clone();
     let mut generic_tpls = HashSet::new();
     let mut contain_self = false;
     func.visit_type(&mut |t| match t {
@@ -48,9 +52,9 @@ pub fn instantiate_func_generic(
     });
 
     let origin_params = func.get_params();
-    let mut func_param_types: Vec<_> = origin_params
+    let mut func_params: Vec<_> = origin_params
         .iter()
-        .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
+        .map(|(name, t)| (name.clone(), t.clone().unwrap_or(LuaType::Unknown)))
         .collect();
 
     let arg_exprs = call_expr
@@ -68,77 +72,18 @@ pub fn instantiate_func_generic(
     if !generic_tpls.is_empty() {
         context.substitutor.add_need_infer_tpls(generic_tpls);
 
-        let colon_call = call_expr.is_colon_call();
-        let colon_define = func.is_colon_define();
-        match (colon_define, colon_call) {
-            (true, false) => {
-                func_param_types.insert(0, LuaType::Any);
-            }
-            (false, true) => {
-                if !func_param_types.is_empty() {
-                    func_param_types.remove(0);
-                }
-            }
-            _ => {}
-        }
-
-        let mut unresolve_tpls = vec![];
-        for i in 0..func_param_types.len() {
-            if i >= arg_exprs.len() {
-                break;
-            }
-
-            if context.substitutor.is_infer_all_tpl() {
-                break;
-            }
-
-            let func_param_type = &func_param_types[i];
-            let call_arg_expr = &arg_exprs[i];
-            if !func_param_type.contain_tpl() {
-                continue;
-            }
-
-            if !func_param_type.is_variadic()
-                && check_expr_can_later_infer(&mut context, func_param_type, call_arg_expr)?
-            {
-                // If the argument cannot be inferred later, we will handle it later.
-                unresolve_tpls.push((func_param_type.clone(), call_arg_expr.clone()));
-                continue;
-            }
-
-            let arg_type = infer_expr(db, context.cache, call_arg_expr.clone())?;
-
-            match (func_param_type, &arg_type) {
-                (LuaType::Variadic(variadic), _) => {
-                    let mut arg_types = vec![];
-                    for arg_expr in &arg_exprs[i..] {
-                        let arg_type = infer_expr(db, context.cache, arg_expr.clone())?;
-                        arg_types.push(arg_type);
-                    }
-
-                    variadic_tpl_pattern_match(&mut context, variadic, &arg_types)?;
-                    break;
-                }
-                (_, LuaType::Variadic(variadic)) => {
-                    multi_param_tpl_pattern_match_multi_return(
-                        &mut context,
-                        &func_param_types[i..],
-                        variadic,
-                    )?;
-                    break;
-                }
-                _ => {
-                    tpl_pattern_match(&mut context, func_param_type, &arg_type)?;
-                }
-            }
-        }
-
-        if !context.substitutor.is_infer_all_tpl() {
-            for (func_param_type, call_arg_expr) in unresolve_tpls {
-                let closure_type = infer_expr(db, context.cache, call_arg_expr)?;
-
-                tpl_pattern_match(&mut context, &func_param_type, &closure_type)?;
-            }
+        // 判断是否指定了泛型
+        if let Some(type_list) = call_expr.get_call_generic_type_list() {
+            apply_call_generic_type_list(db, file_id, &mut context, &type_list);
+        } else {
+            infer_generic_types_from_call(
+                db,
+                &mut context,
+                func,
+                &call_expr,
+                &mut func_params,
+                &arg_exprs,
+            )?;
         }
     }
 
@@ -153,6 +98,105 @@ pub fn instantiate_func_generic(
     }
 }
 
+fn apply_call_generic_type_list(
+    db: &DbIndex,
+    file_id: FileId,
+    context: &mut TplContext,
+    type_list: &LuaDocTypeList,
+) {
+    let doc_ctx = DocTypeInferContext::new(db, file_id);
+    for (i, doc_type) in type_list.get_types().enumerate() {
+        let typ = infer_doc_type(doc_ctx, &doc_type);
+        context
+            .substitutor
+            .insert_type(GenericTplId::Func(i as u32), typ);
+    }
+}
+
+fn infer_generic_types_from_call(
+    db: &DbIndex,
+    context: &mut TplContext,
+    func: &LuaFunctionType,
+    call_expr: &LuaCallExpr,
+    func_params: &mut Vec<(String, LuaType)>,
+    arg_exprs: &[LuaExpr],
+) -> Result<(), InferFailReason> {
+    let colon_call = call_expr.is_colon_call();
+    let colon_define = func.is_colon_define();
+    match (colon_define, colon_call) {
+        (true, false) => {
+            func_params.insert(0, ("self".to_string(), LuaType::Any));
+        }
+        (false, true) => {
+            if !func_params.is_empty() {
+                func_params.remove(0);
+            }
+        }
+        _ => {}
+    }
+
+    let mut unresolve_tpls = vec![];
+    for i in 0..func_params.len() {
+        if i >= arg_exprs.len() {
+            break;
+        }
+
+        if context.substitutor.is_infer_all_tpl() {
+            break;
+        }
+
+        let (_, func_param_type) = &func_params[i];
+        let call_arg_expr = &arg_exprs[i];
+        if !func_param_type.contain_tpl() {
+            continue;
+        }
+
+        if !func_param_type.is_variadic()
+            && check_expr_can_later_infer(context, func_param_type, call_arg_expr)?
+        {
+            // If the argument cannot be inferred later, we will handle it later.
+            unresolve_tpls.push((func_param_type.clone(), call_arg_expr.clone()));
+            continue;
+        }
+
+        let arg_type = infer_expr(db, context.cache, call_arg_expr.clone())?;
+
+        match (func_param_type, &arg_type) {
+            (LuaType::Variadic(variadic), _) => {
+                let mut arg_types = vec![];
+                for arg_expr in &arg_exprs[i..] {
+                    let arg_type = infer_expr(db, context.cache, arg_expr.clone())?;
+                    arg_types.push(constant_decay(arg_type));
+                }
+                variadic_tpl_pattern_match(context, variadic, &arg_types)?;
+                break;
+            }
+            (_, LuaType::Variadic(variadic)) => {
+                let func_param_types = func_params[i..]
+                    .iter()
+                    .map(|(_, t)| t)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                multi_param_tpl_pattern_match_multi_return(context, &func_param_types, variadic)?;
+                break;
+            }
+            _ => {
+                tpl_pattern_match(context, func_param_type, &arg_type)?;
+            }
+        }
+    }
+
+    if !context.substitutor.is_infer_all_tpl() {
+        for (func_param_type, call_arg_expr) in unresolve_tpls {
+            let closure_type = infer_expr(db, context.cache, call_arg_expr)?;
+
+            tpl_pattern_match(context, &func_param_type, &closure_type)?;
+        }
+    }
+
+    Ok(())
+}
+
 pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
     match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
@@ -165,7 +209,6 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
                         params.push(LuaType::TplRef(Arc::new(GenericTpl::new(
                             GenericTplId::Type(i as u32),
                             ArcIntern::new(generic_param.name.clone()),
-                            generic_param.is_variadic,
                         ))));
                     }
                 }

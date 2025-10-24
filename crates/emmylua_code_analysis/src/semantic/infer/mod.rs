@@ -1,5 +1,6 @@
 mod infer_binary;
 mod infer_call;
+mod infer_doc_type;
 mod infer_fail_reason;
 mod infer_index;
 mod infer_name;
@@ -17,6 +18,7 @@ use emmylua_parser::{
 use infer_binary::infer_binary_expr;
 use infer_call::infer_call_expr;
 pub use infer_call::infer_call_expr_func;
+pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
 pub use infer_fail_reason::InferFailReason;
 pub use infer_index::infer_index_expr;
 use infer_name::infer_name_expr;

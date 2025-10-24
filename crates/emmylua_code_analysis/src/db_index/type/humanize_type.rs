@@ -127,13 +127,7 @@ fn humanize_def_type(db: &DbIndex, id: &LuaTypeDeclId, level: RenderLevel) -> St
 
     let generic_names = generic
         .iter()
-        .map(|it| {
-            if it.is_variadic {
-                format!("{}...", it.name)
-            } else {
-                it.name.to_string()
-            }
-        })
+        .map(|it| it.name.to_string())
         .collect::<Vec<_>>()
         .join(", ");
     format!("{}<{}>", full_name, generic_names)

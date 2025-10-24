@@ -267,6 +267,30 @@ impl LuaDocTagClass {
     pub fn get_type_flag(&self) -> Option<LuaDocTypeFlag> {
         self.child()
     }
+
+    pub fn get_effective_range(&self) -> rowan::TextRange {
+        let mut range = self.syntax().text_range();
+
+        let mut next = self.syntax().next_sibling();
+        while let Some(sibling) = next {
+            if let LuaKind::Syntax(kind) = sibling.kind() {
+                if matches!(
+                    kind,
+                    LuaSyntaxKind::DocTagClass
+                        | LuaSyntaxKind::DocTagAlias
+                        | LuaSyntaxKind::DocTagEnum
+                        | LuaSyntaxKind::DocTagType
+                ) {
+                    break;
+                }
+            }
+
+            range = range.cover(sibling.text_range());
+            next = sibling.next_sibling();
+        }
+
+        range
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

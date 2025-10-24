@@ -8,6 +8,13 @@ use crate::{
 
 use super::{LuaParser, MarkEvent, MarkerEventContainer};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LuaDocParserState {
+    Normal,
+    Mapped,
+    Extends,
+}
+
 pub struct LuaDocParser<'a, 'b> {
     lua_parser: &'a mut LuaParser<'b>,
     tokens: &'a [LuaTokenData],
@@ -15,6 +22,7 @@ pub struct LuaDocParser<'a, 'b> {
     current_token: LuaTokenKind,
     current_token_range: SourceRange,
     origin_token_index: usize,
+    pub state: LuaDocParserState,
 }
 
 impl MarkerEventContainer for LuaDocParser<'_, '_> {
@@ -46,6 +54,7 @@ impl<'b> LuaDocParser<'_, 'b> {
             current_token: LuaTokenKind::None,
             current_token_range: SourceRange::EMPTY,
             origin_token_index: 0,
+            state: LuaDocParserState::Normal,
         };
 
         parser.init();
@@ -81,7 +90,10 @@ impl<'b> LuaDocParser<'_, 'b> {
         }
 
         match self.lexer.state {
-            LuaDocLexerState::Normal | LuaDocLexerState::Version => {
+            LuaDocLexerState::Normal
+            | LuaDocLexerState::Version
+            | LuaDocLexerState::Mapped
+            | LuaDocLexerState::Extends => {
                 while matches!(
                     self.current_token,
                     LuaTokenKind::TkDocContinue
@@ -187,7 +199,7 @@ impl<'b> LuaDocParser<'_, 'b> {
         self.lua_parser.origin_text()
     }
 
-    pub fn set_state(&mut self, state: LuaDocLexerState) {
+    pub fn set_lexer_state(&mut self, state: LuaDocLexerState) {
         match state {
             LuaDocLexerState::Description => {
                 if !matches!(
@@ -272,14 +284,18 @@ impl<'b> LuaDocParser<'_, 'b> {
     }
 
     pub fn bump_to_end(&mut self) {
-        self.set_state(LuaDocLexerState::Trivia);
+        self.set_lexer_state(LuaDocLexerState::Trivia);
         self.eat_current_and_lex_next();
-        self.set_state(LuaDocLexerState::Init);
+        self.set_lexer_state(LuaDocLexerState::Init);
         self.bump();
     }
 
     pub fn push_error(&mut self, error: LuaParseError) {
         self.lua_parser.errors.push(error);
+    }
+
+    pub fn set_parser_state(&mut self, state: LuaDocParserState) {
+        self.state = state;
     }
 }
 

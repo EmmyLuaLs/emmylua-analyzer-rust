@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use crate::{
-    DiagnosticCode, LuaType, SemanticModel, TypeCheckFailReason, TypeCheckResult,
-    diagnostic::checker::{generic::infer_doc_type::infer_doc_type, humanize_lint_type},
+    DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeCheckFailReason,
+    TypeCheckResult, diagnostic::checker::humanize_lint_type, infer_doc_type,
 };
 use emmylua_parser::{
     LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaLiteralExpr,
@@ -35,8 +35,10 @@ fn check_attribute_use(
     semantic_model: &SemanticModel,
     attribute_use: &LuaDocAttributeUse,
 ) -> Option<()> {
-    let attribute_type =
-        infer_doc_type(semantic_model, &LuaDocType::Name(attribute_use.get_type()?));
+    let attribute_type = infer_doc_type(
+        DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id()),
+        &LuaDocType::Name(attribute_use.get_type()?),
+    );
     let LuaType::Ref(type_id) = attribute_type else {
         return None;
     };

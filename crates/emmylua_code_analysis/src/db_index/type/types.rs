@@ -15,7 +15,7 @@ use crate::{
     first_param_may_not_self,
 };
 
-use super::{TypeOps, type_decl::LuaTypeDeclId};
+use super::{GenericParam, TypeOps, type_decl::LuaTypeDeclId};
 
 #[derive(Debug, Clone)]
 pub enum LuaType {
@@ -65,6 +65,9 @@ pub enum LuaType {
     Language(ArcIntern<SmolStr>),
     ModuleRef(FileId),
     DocAttribute(Arc<LuaAttributeType>),
+    Conditional(Arc<LuaConditionalType>),
+    ConditionalInfer(ArcIntern<SmolStr>),
+    Mapped(Arc<LuaMappedType>),
 }
 
 impl PartialEq for LuaType {
@@ -116,6 +119,9 @@ impl PartialEq for LuaType {
             (LuaType::Language(a), LuaType::Language(b)) => a == b,
             (LuaType::ModuleRef(a), LuaType::ModuleRef(b)) => a == b,
             (LuaType::DocAttribute(a), LuaType::DocAttribute(b)) => a == b,
+            (LuaType::Conditional(a), LuaType::Conditional(b)) => a == b,
+            (LuaType::ConditionalInfer(a), LuaType::ConditionalInfer(b)) => a == b,
+            (LuaType::Mapped(a), LuaType::Mapped(b)) => a == b,
             _ => false, // 不同变体之间不相等
         }
     }
@@ -195,6 +201,15 @@ impl Hash for LuaType {
             LuaType::ConstTplRef(a) => (46, a).hash(state),
             LuaType::Language(a) => (47, a).hash(state),
             LuaType::ModuleRef(a) => (48, a).hash(state),
+            LuaType::Conditional(a) => {
+                let ptr = Arc::as_ptr(a);
+                (49, ptr).hash(state)
+            }
+            LuaType::ConditionalInfer(a) => (50, a).hash(state),
+            LuaType::Mapped(a) => {
+                let ptr = Arc::as_ptr(a);
+                (51, ptr).hash(state)
+            }
             LuaType::DocAttribute(a) => (52, a).hash(state),
         }
     }
@@ -420,6 +435,8 @@ impl LuaType {
             LuaType::SelfInfer => true,
             LuaType::MultiLineUnion(inner) => inner.contain_tpl(),
             LuaType::TypeGuard(inner) => inner.contain_tpl(),
+            LuaType::Conditional(inner) => inner.contain_tpl(),
+            LuaType::Mapped(_) => true,
             _ => false,
         }
     }
@@ -500,6 +517,7 @@ impl TypeVisitTrait for LuaType {
             }
             LuaType::MultiLineUnion(inner) => inner.visit_type(f),
             LuaType::TypeGuard(inner) => inner.visit_type(f),
+            LuaType::Conditional(inner) => inner.visit_type(f),
             _ => {}
         }
     }
@@ -1322,16 +1340,11 @@ impl GenericTplId {
 pub struct GenericTpl {
     tpl_id: GenericTplId,
     name: ArcIntern<SmolStr>,
-    is_variadic: bool,
 }
 
 impl GenericTpl {
-    pub fn new(tpl_id: GenericTplId, name: ArcIntern<SmolStr>, is_variadic: bool) -> Self {
-        Self {
-            tpl_id,
-            name,
-            is_variadic,
-        }
+    pub fn new(tpl_id: GenericTplId, name: ArcIntern<SmolStr>) -> Self {
+        Self { tpl_id, name }
     }
 
     pub fn get_tpl_id(&self) -> GenericTplId {
@@ -1340,10 +1353,6 @@ impl GenericTpl {
 
     pub fn get_name(&self) -> &str {
         &self.name
-    }
-
-    pub fn is_variadic(&self) -> bool {
-        self.is_variadic
     }
 }
 
@@ -1492,5 +1501,96 @@ impl LuaAttributeType {
 
     pub fn get_params(&self) -> &[(String, Option<LuaType>)] {
         &self.params
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct LuaConditionalType {
+    condition: LuaType,
+    true_type: LuaType,
+    false_type: LuaType,
+    /// infer 参数声明, 这些参数只在 true_type 的作用域内可见
+    infer_params: Vec<GenericParam>,
+    pub has_new: bool,
+}
+
+impl TypeVisitTrait for LuaConditionalType {
+    fn visit_type<F>(&self, f: &mut F)
+    where
+        F: FnMut(&LuaType),
+    {
+        self.condition.visit_type(f);
+        self.true_type.visit_type(f);
+        self.false_type.visit_type(f);
+    }
+}
+
+impl LuaConditionalType {
+    pub fn new(
+        condition: LuaType,
+        true_type: LuaType,
+        false_type: LuaType,
+        infer_params: Vec<GenericParam>,
+        has_new: bool,
+    ) -> Self {
+        Self {
+            condition,
+            true_type,
+            false_type,
+            infer_params,
+            has_new,
+        }
+    }
+
+    pub fn get_condition(&self) -> &LuaType {
+        &self.condition
+    }
+
+    pub fn get_true_type(&self) -> &LuaType {
+        &self.true_type
+    }
+
+    pub fn get_false_type(&self) -> &LuaType {
+        &self.false_type
+    }
+
+    pub fn get_infer_params(&self) -> &[GenericParam] {
+        &self.infer_params
+    }
+
+    pub fn contain_tpl(&self) -> bool {
+        self.condition.contain_tpl()
+            || self.true_type.contain_tpl()
+            || self.false_type.contain_tpl()
+    }
+}
+
+impl From<LuaConditionalType> for LuaType {
+    fn from(t: LuaConditionalType) -> Self {
+        LuaType::Conditional(Arc::new(t))
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct LuaMappedType {
+    pub param: (GenericTplId, GenericParam),
+    pub value: LuaType,
+    pub is_readonly: bool,
+    pub is_optional: bool,
+}
+
+impl LuaMappedType {
+    pub fn new(
+        param: (GenericTplId, GenericParam),
+        value: LuaType,
+        is_readonly: bool,
+        is_optional: bool,
+    ) -> Self {
+        Self {
+            param,
+            value,
+            is_readonly,
+            is_optional,
+        }
     }
 }
