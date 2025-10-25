@@ -149,7 +149,7 @@ fn pre_process_path(path: &str, workspace: &Path) -> String {
                 return path;
             }
         };
-        path = home_dir.join(&path[1..]).to_string_lossy().to_string();
+        path = home_dir.join(&path[2..]).to_string_lossy().to_string();
     } else if path.starts_with("./") {
         path = workspace.join(&path[2..]).to_string_lossy().to_string();
     } else if PathBuf::from(&path).is_absolute() {
