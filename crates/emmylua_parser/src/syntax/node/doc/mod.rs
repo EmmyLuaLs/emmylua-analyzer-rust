@@ -561,3 +561,38 @@ impl LuaDocAttributeCallArgList {
         self.children()
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocTagCallGeneric {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocTagCallGeneric {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocTagCallGeneric
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocTagCallGeneric {
+    pub fn get_type_list(&self) -> Option<LuaDocTypeList> {
+        self.child()
+    }
+}

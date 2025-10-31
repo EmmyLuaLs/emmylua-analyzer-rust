@@ -165,7 +165,7 @@ pub fn tpl_pattern_match(
     Ok(())
 }
 
-fn constant_decay(typ: LuaType) -> LuaType {
+pub fn constant_decay(typ: LuaType) -> LuaType {
     match &typ {
         LuaType::FloatConst(_) => LuaType::Number,
         LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_) => LuaType::Integer,

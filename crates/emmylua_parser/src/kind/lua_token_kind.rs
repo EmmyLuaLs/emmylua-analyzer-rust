@@ -136,11 +136,13 @@ pub enum LuaTokenKind {
     TkTagExport,     // export
     TkLanguage,      // language
     TkTagAttribute,  // attribute
+    TkCallGeneric,   // call generic. function_name--[[@<type>]](...)
 
     TkDocOr,              // |
     TkDocAnd,             // &
     TkDocKeyOf,           // keyof
     TkDocExtends,         // extends
+    TkDocNew,             // new
     TkDocAs,              // as
     TkDocIn,              // in
     TkDocInfer,           // infer

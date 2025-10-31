@@ -8,7 +8,10 @@ use super::{Checker, DiagnosticContext};
 pub struct UnknownDocTag;
 
 impl Checker for UnknownDocTag {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::UndefinedDocParam];
+    const CODES: &[DiagnosticCode] = &[
+        DiagnosticCode::UndefinedDocParam,
+        DiagnosticCode::UnknownDocTag,
+    ];
 
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
         let known_tags: HashSet<_> = semantic_model

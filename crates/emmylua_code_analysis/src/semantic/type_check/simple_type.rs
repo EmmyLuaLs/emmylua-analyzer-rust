@@ -2,7 +2,10 @@ use std::ops::Deref;
 
 use crate::{
     DbIndex, LuaType, LuaTypeDeclId, VariadicType,
-    semantic::type_check::{is_sub_type_of, type_check_context::TypeCheckContext},
+    semantic::type_check::{
+        is_sub_type_of,
+        type_check_context::{TypeCheckCheckLevel, TypeCheckContext},
+    },
 };
 
 use super::{
@@ -69,12 +72,39 @@ pub fn check_simple_type_compact(
                 return Ok(());
             }
         }
-        LuaType::String | LuaType::StringConst(_) => match compact_type {
+        LuaType::String => match compact_type {
             LuaType::String
             | LuaType::StringConst(_)
             | LuaType::DocStringConst(_)
             | LuaType::StrTplRef(_)
             | LuaType::Language(_) => {
+                return Ok(());
+            }
+            LuaType::Ref(_) => {
+                match check_base_type_for_ref_compact(context, source, compact_type, check_guard) {
+                    Ok(_) => return Ok(()),
+                    Err(err) if err.is_type_not_match() => {}
+                    Err(err) => return Err(err),
+                }
+            }
+            LuaType::Def(id) => {
+                if id.get_name() == "string" {
+                    return Ok(());
+                }
+            }
+            _ => {}
+        },
+        LuaType::StringConst(s1) => match compact_type {
+            LuaType::String
+            | LuaType::StringConst(_)
+            | LuaType::StrTplRef(_)
+            | LuaType::Language(_) => {
+                return Ok(());
+            }
+            LuaType::DocStringConst(s2) => {
+                if context.level == TypeCheckCheckLevel::GenericConditional && s1 != s2 {
+                    return Err(TypeCheckFailReason::TypeNotMatch);
+                }
                 return Ok(());
             }
             LuaType::Ref(_) => {

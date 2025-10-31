@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 pub use super::checker::DiagnosticContext;
 use super::{checker::check_file, lua_diagnostic_config::LuaDiagnosticConfig};
-use crate::{Emmyrc, FileId, LuaCompilation};
+use crate::{DiagnosticCode, Emmyrc, FileId, LuaCompilation};
 use lsp_types::Diagnostic;
 use tokio_util::sync::CancellationToken;
 
@@ -28,6 +28,18 @@ impl LuaDiagnostic {
 
     pub fn update_config(&mut self, emmyrc: Arc<Emmyrc>) {
         self.enable = emmyrc.diagnostics.enable;
+        self.config = LuaDiagnosticConfig::new(&emmyrc).into();
+    }
+
+    // 只开启指定的诊断
+    pub fn enable_only(&mut self, code: DiagnosticCode) {
+        let mut emmyrc = Emmyrc::default();
+        emmyrc.diagnostics.enables.push(code);
+        for diagnostic_code in DiagnosticCode::all().iter() {
+            if *diagnostic_code != code {
+                emmyrc.diagnostics.disable.push(*diagnostic_code);
+            }
+        }
         self.config = LuaDiagnosticConfig::new(&emmyrc).into();
     }
 

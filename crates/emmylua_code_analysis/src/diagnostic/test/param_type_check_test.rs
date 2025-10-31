@@ -1141,7 +1141,7 @@ mod test {
         ws.def(
             r#"
                 ---@class ObserverParams<T>
-                ---@field next fun( value: T)
+                ---@field next fun(value: T)
                 ---@field errorResume? fun(error: any)
 
 

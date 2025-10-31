@@ -139,6 +139,15 @@
 
 ---@alias Language<T: string> string
 
+--- Get the parameters of a function as a tuple
+---@alias Parameters<T extends function> T extends (fun(...: infer P): any) and P or never
+
+--- Get the parameters of a constructor as a tuple
+---@alias ConstructorParameters<T> T extends new (fun(...: infer P): any) and P or never
+
+--- Make all properties in T optional
+---@alias Partial<T> { [P in keyof T]?: T[P]; }
+
 --- attribute
 
 --- Deprecated. Receives an optional message parameter.

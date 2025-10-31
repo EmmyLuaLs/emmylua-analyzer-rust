@@ -12,8 +12,9 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaDocFieldKey,
-    LuaDocObjectFieldKey, LuaDocType, LuaExpr, LuaGeneralToken, LuaKind, LuaLiteralToken,
-    LuaNameToken, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
+    LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocObjectFieldKey, LuaDocType, LuaExpr,
+    LuaGeneralToken, LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode,
+    LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
 use emmylua_parser_desc::{CodeBlockHighlightKind, DescItem, DescItemKind};
 use lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
@@ -212,6 +213,7 @@ fn build_tokens_semantic_token(
         }
         LuaTokenKind::TkDocKeyOf
         | LuaTokenKind::TkDocExtends
+        | LuaTokenKind::TkDocNew
         | LuaTokenKind::TkDocAs
         | LuaTokenKind::TkDocIn
         | LuaTokenKind::TkDocInfer
@@ -313,15 +315,7 @@ fn build_node_semantic_token(
                 }
             }
             if let Some(generic_list) = doc_class.get_generic_decl() {
-                for generic_decl in generic_list.get_generic_decl() {
-                    if let Some(name) = generic_decl.get_name_token() {
-                        builder.push_with_modifier(
-                            name.syntax(),
-                            SemanticTokenType::CLASS,
-                            SemanticTokenModifier::DECLARATION,
-                        );
-                    }
-                }
+                render_type_parameter_list(builder, &generic_list);
             }
         }
         LuaAst::LuaDocTagEnum(doc_enum) => {
@@ -344,6 +338,9 @@ fn build_node_semantic_token(
                 SemanticTokenType::TYPE,
                 SemanticTokenModifier::DECLARATION,
             );
+            if let Some(generic_decl_list) = doc_alias.get_generic_decl_list() {
+                render_type_parameter_list(builder, &generic_decl_list);
+            }
         }
         LuaAst::LuaDocTagField(doc_field) => {
             if let Some(LuaDocFieldKey::Name(name)) = doc_field.get_field_key() {
@@ -416,15 +413,7 @@ fn build_node_semantic_token(
         }
         LuaAst::LuaDocTagGeneric(doc_generic) => {
             let type_parameter_list = doc_generic.get_generic_decl_list()?;
-            for type_decl in type_parameter_list.get_generic_decl() {
-                if let Some(name) = type_decl.get_name_token() {
-                    builder.push_with_modifier(
-                        name.syntax(),
-                        SemanticTokenType::TYPE,
-                        SemanticTokenModifier::DECLARATION,
-                    );
-                }
-            }
+            render_type_parameter_list(builder, &type_parameter_list);
         }
         LuaAst::LuaDocTagNamespace(doc_namespace) => {
             let name = doc_namespace.get_name_token()?;
@@ -823,6 +812,18 @@ fn build_node_semantic_token(
                 }
             }
         }
+        LuaAst::LuaDocInferType(infer_type) => {
+            // 推断出的泛型定义
+            if let Some(gen_decl) = infer_type.get_generic_decl() {
+                render_type_parameter(builder, &gen_decl);
+            }
+            if let Some(name) = infer_type.token::<LuaNameToken>() {
+                // 应该单独设置颜色
+                if name.get_name_text() == "infer" {
+                    builder.push(name.syntax(), SemanticTokenType::COMMENT);
+                }
+            }
+        }
         _ => {}
     }
 
@@ -1197,4 +1198,23 @@ fn check_require_decl(semantic_model: &SemanticModel, decl: &LuaDecl) -> Option<
         return Some(true);
     }
     None
+}
+
+fn render_type_parameter_list(
+    builder: &mut SemanticBuilder,
+    type_parameter_list: &LuaDocGenericDeclList,
+) {
+    for type_decl in type_parameter_list.get_generic_decl() {
+        render_type_parameter(builder, &type_decl);
+    }
+}
+
+fn render_type_parameter(builder: &mut SemanticBuilder, type_decl: &LuaDocGenericDecl) {
+    if let Some(name) = type_decl.get_name_token() {
+        builder.push_with_modifier(
+            name.syntax(),
+            SemanticTokenType::TYPE,
+            SemanticTokenModifier::DECLARATION,
+        );
+    }
 }
