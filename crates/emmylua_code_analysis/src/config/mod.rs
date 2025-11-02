@@ -227,15 +227,15 @@ fn normalize_path(path: &Path) -> PathBuf {
                 // skip
             }
             Component::ParentDir => {
-                if let Some(_last) = out.pop() {
-                    // popped a normal component
-                } else {
-                    // nothing to pop:
-                    // - if path is absolute (has_root or prefix), ignore leading ".." (can't go above root)
-                    // - if relative, keep ".."
-                    if !has_root && prefix.is_none() {
-                        out.push(OsString::from(".."));
+                if let Some(last) = out.last() {
+                    if last != std::ffi::OsStr::new("..") {
+                        out.pop();
+                        continue;
                     }
+                }
+
+                if !has_root && prefix.is_none() {
+                    out.push(OsString::from(".."));
                 }
             }
             Component::Normal(n) => {
