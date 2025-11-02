@@ -4,7 +4,7 @@ mod flatten_config;
 
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::{Path, PathBuf, Component},
 };
 
 pub use config_loader::{load_configs, load_configs_raw};
@@ -141,7 +141,8 @@ fn pre_process_path(path: &str, workspace: &Path) -> String {
 
     path = replace_placeholders(&path, workspace_str);
 
-    if path.starts_with('~') {
+    // Compute a PathBuf result first, then lexical-normalize it before producing final String.
+    let result_buf: PathBuf = if path.starts_with('~') {
         let home_dir = match dirs::home_dir() {
             Some(path) => path,
             None => {
@@ -149,16 +150,18 @@ fn pre_process_path(path: &str, workspace: &Path) -> String {
                 return path;
             }
         };
-        path = home_dir.join(&path[1..]).to_string_lossy().to_string();
+        home_dir.join(&path[1..])
     } else if path.starts_with("./") {
-        path = workspace.join(&path[2..]).to_string_lossy().to_string();
+        workspace.join(&path[2..])
     } else if PathBuf::from(&path).is_absolute() {
-        path = path.to_string();
+        PathBuf::from(&path)
     } else {
-        path = workspace.join(&path).to_string_lossy().to_string();
-    }
+        workspace.join(&path)
+    };
 
-    path
+    // lexical normalize (fold "." and ".." without filesystem access)
+    let normalized = normalize_path(&result_buf);
+    normalized.to_string_lossy().to_string()
 }
 
 // compact luals
@@ -199,4 +202,67 @@ fn replace_placeholders(input: &str, workspace_folder: &str) -> String {
         }
     })
     .to_string()
+}
+
+/// Lexical normalization of a path: remove "." and correctly apply ".." components
+/// without hitting the filesystem. Preserves drive/prefix and absolute/root characteristics.
+/// This is intentionally lexical and will not resolve symlinks.
+fn normalize_path(path: &Path) -> PathBuf {
+    use std::ffi::OsString;
+
+    let mut comps = path.components().peekable();
+    let mut out: Vec<OsString> = Vec::new();
+    let mut prefix: Option<OsString> = None;
+    let mut has_root = false;
+
+    for comp in comps {
+        match comp {
+            Component::Prefix(p) => {
+                prefix = Some(p.as_os_str().to_os_string());
+            }
+            Component::RootDir => {
+                has_root = true;
+            }
+            Component::CurDir => {
+                // skip
+            }
+            Component::ParentDir => {
+                if let Some(_last) = out.pop() {
+                    // popped a normal component
+                } else {
+                    // nothing to pop:
+                    // - if path is absolute (has_root or prefix), ignore leading ".." (can't go above root)
+                    // - if relative, keep ".."
+                    if !has_root && prefix.is_none() {
+                        out.push(OsString::from(".."));
+                    }
+                }
+            }
+            Component::Normal(n) => {
+                out.push(n.to_os_string());
+            }
+        }
+    }
+
+    let mut result = PathBuf::new();
+    if let Some(p) = prefix {
+        result.push(p);
+    }
+    if has_root {
+        // push root separator
+        // pushing an empty OsStr won't work, so push a Path built from root separator.
+        #[cfg(windows)]
+        {
+            // On Windows pushing "\" is fine to indicate root after prefix (e.g. "C:\")
+            result.push(std::path::Path::new("\\"));
+        }
+        #[cfg(not(windows))]
+        {
+            result.push(std::path::Path::new("/"));
+        }
+    }
+    for component in out {
+        result.push(component);
+    }
+    result
 }
