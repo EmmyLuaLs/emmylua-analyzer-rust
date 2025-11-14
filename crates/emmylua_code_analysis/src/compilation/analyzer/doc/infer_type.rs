@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaDocAttributeType, LuaDocBinaryType, LuaDocConditionalType,
-    LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericDecl, LuaDocGenericType,
-    LuaDocIndexAccessType, LuaDocInferType, LuaDocMappedType, LuaDocMultiLineUnionType,
-    LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType,
-    LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericDecl, LuaDocGenericDeclList,
+    LuaDocGenericType, LuaDocIndexAccessType, LuaDocInferType, LuaDocMappedType,
+    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
+    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
     LuaTypeUnaryOperator, LuaVarExpr,
 };
 use internment::ArcIntern;
@@ -469,6 +469,10 @@ fn infer_unary_type(analyzer: &mut DocAnalyzer, unary_type: &LuaDocUnaryType) ->
 }
 
 fn infer_func_type(analyzer: &mut DocAnalyzer, func: &LuaDocFuncType) -> LuaType {
+    if let Some(generic_list) = func.get_generic_decl_list() {
+        register_inline_func_generics(analyzer, func, generic_list);
+    }
+
     let mut params_result = Vec::new();
     for param in func.get_params() {
         let name = if let Some(param) = param.get_name_token() {
@@ -542,6 +546,33 @@ fn infer_func_type(analyzer: &mut DocAnalyzer, func: &LuaDocFuncType) -> LuaType
     LuaType::DocFunction(
         LuaFunctionType::new(async_state, is_colon, params_result, return_type).into(),
     )
+}
+
+fn register_inline_func_generics(
+    analyzer: &mut DocAnalyzer,
+    func: &LuaDocFuncType,
+    generic_list: LuaDocGenericDeclList,
+) {
+    let mut generics = Vec::new();
+    for param in generic_list.get_generic_decl() {
+        let Some(name_token) = param.get_name_token() else {
+            continue;
+        };
+
+        let constraint = param.get_type().map(|ty| infer_type(analyzer, ty));
+        generics.push(GenericParam::new(
+            SmolStr::new(name_token.get_name_text()),
+            constraint,
+            None,
+        ));
+    }
+    if generics.is_empty() {
+        return;
+    }
+
+    analyzer
+        .generic_index
+        .add_generic_scope(vec![func.get_range()], generics, true);
 }
 
 fn get_colon_define(analyzer: &mut DocAnalyzer) -> Option<bool> {

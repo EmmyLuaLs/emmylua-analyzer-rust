@@ -5,6 +5,7 @@ use emmylua_code_analysis::{
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaExpr, LuaLiteralToken, LuaSyntaxToken, LuaTokenKind,
 };
+use lsp_types::GotoDefinitionResponse;
 use rowan::{NodeOrToken, TokenAtOffset};
 use std::sync::Arc;
 
@@ -301,4 +302,13 @@ pub fn compare_function_types(
     } else {
         Some(call_function == func.as_ref())
     }
+}
+
+pub fn goto_overload_function(
+    semantic_model: &SemanticModel,
+    trigger_token: &LuaSyntaxToken,
+) -> Option<GotoDefinitionResponse> {
+    let document = semantic_model.get_document_by_file_id(semantic_model.get_file_id())?;
+    let location = document.to_lsp_location(trigger_token.text_range())?;
+    Some(GotoDefinitionResponse::Scalar(location))
 }

@@ -46,7 +46,7 @@ fn infer_raw_member_type_guard(
             infer_custom_type_raw_member_type(db, type_id, member_key, infer_guard)
         }
         LuaType::Tuple(tuple) => infer_tuple_raw_member_type(tuple, member_key),
-        LuaType::Object(object) => infer_object_raw_member_type(object, member_key),
+        LuaType::Object(object) => infer_object_raw_member_type(db, object, member_key),
         LuaType::Array(array_type) => {
             infer_array_raw_member_type(db, array_type.get_base(), member_key)
         }
@@ -131,6 +131,7 @@ fn infer_tuple_raw_member_type(
 }
 
 fn infer_object_raw_member_type(
+    db: &DbIndex,
     object: &LuaObjectType,
     member_key: &LuaMemberKey,
 ) -> RawGetMemberTypeResult {
@@ -138,20 +139,19 @@ fn infer_object_raw_member_type(
         return Ok(member_type.clone());
     }
 
-    // donot support now
-    // let index_accesses = object.get_index_access();
-    // for (key, value) in index_accesses {
-    //     let result = infer_index_metamethod(db, &member_key, &key, value);
-    //     match result {
-    //         Ok(typ) => {
-    //             return Ok(typ);
-    //         }
-    //         Err(InferFailReason::FieldNotFound) => {}
-    //         Err(err) => {
-    //             return Err(err);
-    //         }
-    //     }
-    // }
+    let index_accesses = object.get_index_access();
+    for (key, value) in index_accesses {
+        let access_key_type = match &member_key {
+            LuaMemberKey::Name(name) => LuaType::StringConst(name.clone().into()),
+            LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
+            LuaMemberKey::ExprType(lua_type) => lua_type.clone(),
+            LuaMemberKey::None => continue,
+        };
+
+        if check_type_compact(db, key, &access_key_type).is_ok() {
+            return Ok(value.clone());
+        }
+    }
 
     Err(InferFailReason::FieldNotFound)
 }

@@ -717,8 +717,11 @@ impl LuaFunctionType {
                             {
                                 return false;
                             }
-
-                            semantic_model.type_check(owner_type, t).is_ok()
+                            if semantic_model.type_check(owner_type, t).is_ok() {
+                                return true;
+                            }
+                            // 如果名称是`self`, 则做更宽泛的检查
+                            name == "self" && semantic_model.type_check(t, owner_type).is_ok()
                         }
                         None => name == "self",
                     }

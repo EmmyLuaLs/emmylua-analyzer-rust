@@ -554,4 +554,30 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_intersection() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Matchers
+        ---@field toBe fun(expected: any)
+
+        ---@class Inverse
+        ---@field negate number
+        "#,
+        );
+        check!(ws.check_definition(
+            r#"
+            ---@type Matchers & Inverse
+            local a
+            a.ne<??>gate = 0
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 5,
+            },],
+        ));
+        Ok(())
+    }
 }

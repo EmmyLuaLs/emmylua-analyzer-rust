@@ -966,4 +966,26 @@ return t
         "#
         ));
     }
+
+    #[test]
+    fn test_object_table() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@alias A {[string]: string}
+
+        ---@param matchers A
+        function name(matchers)
+        end
+        "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            name({
+                toBe = 1,
+            })
+        "#
+        ));
+    }
 }

@@ -7,6 +7,7 @@ use crate::{
     parser_error::LuaParseError,
 };
 
+use super::tag::parse_generic_decl_list;
 use super::{expect_token, if_token_bump, parse_description};
 
 pub fn parse_type(p: &mut LuaDocParser) -> DocParseResult {
@@ -374,6 +375,7 @@ fn parse_name_or_func_type(p: &mut LuaDocParser) -> DocParseResult {
 
 // fun ( <name>: <type>, ... ): <type>, ...
 // async fun ( <name>: <type>, ... ) <type>, ...
+// fun <T>( <name>: <type>, ... ): <type>, ...
 pub fn parse_fun_type(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::TypeFun);
     if matches!(p.current_token_text(), "async" | "sync") {
@@ -388,6 +390,11 @@ pub fn parse_fun_type(p: &mut LuaDocParser) -> DocParseResult {
     }
 
     p.bump();
+
+    if p.current_token() == LuaTokenKind::TkLt {
+        parse_generic_decl_list(p, true)?;
+    }
+
     expect_token(p, LuaTokenKind::TkLeftParen)?;
 
     if p.current_token() != LuaTokenKind::TkRightParen {

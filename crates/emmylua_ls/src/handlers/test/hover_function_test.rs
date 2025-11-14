@@ -644,4 +644,27 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_intersection_type() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class Matchers<T>
+                ---@field toBe fun(self: self, expected: any)
+
+                ---@class Assertions<T>: Matchers<T> & number
+                Assertions = {}
+        "#,
+        );
+        check!(ws.check_hover(
+            r#"
+            Assertions:to<??>Be(1)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(method) Matchers:toBe(expected: any)\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }

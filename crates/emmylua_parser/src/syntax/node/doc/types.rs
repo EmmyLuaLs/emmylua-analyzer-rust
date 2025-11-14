@@ -6,7 +6,7 @@ use crate::{
 
 use rowan::SyntaxElement;
 
-use super::{LuaDocGenericDecl, LuaDocObjectField, LuaDocTypeList};
+use super::{LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocObjectField, LuaDocTypeList};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LuaDocType {
@@ -293,6 +293,10 @@ impl LuaDocFuncType {
 
     pub fn get_params(&self) -> LuaAstChildren<LuaDocTypeParam> {
         self.children()
+    }
+
+    pub fn get_generic_decl_list(&self) -> Option<LuaDocGenericDeclList> {
+        self.child()
     }
 
     pub fn get_return_type_list(&self) -> Option<LuaDocTypeList> {

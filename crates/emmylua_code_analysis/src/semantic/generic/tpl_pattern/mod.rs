@@ -509,11 +509,24 @@ fn union_tpl_pattern_match(
     union: &LuaUnionType,
     target: &LuaType,
 ) -> TplPatternMatchResult {
+    let mut error_count = 0;
+    let mut last_error = InferFailReason::None;
     for u in union.into_vec() {
-        tpl_pattern_match(context, &u, target)?;
+        match tpl_pattern_match(context, &u, target) {
+            // 返回 ok 时并不一定匹配成功, 仅表示没有发生错误
+            Ok(_) => {}
+            Err(e) => {
+                error_count += 1;
+                last_error = e;
+            }
+        }
     }
 
-    Ok(())
+    if error_count == union.into_vec().len() {
+        Err(last_error)
+    } else {
+        Ok(())
+    }
 }
 
 fn func_tpl_pattern_match(

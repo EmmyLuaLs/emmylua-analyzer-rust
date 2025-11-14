@@ -550,7 +550,7 @@ fn set_meta_call_part(
         ("new".to_string(), call_expr.get_range(), Some(true))
     } else {
         (
-            "⚡".to_string(),
+            ":call".to_string(),
             call_expr.get_prefix_expr()?.get_range(),
             None,
         )

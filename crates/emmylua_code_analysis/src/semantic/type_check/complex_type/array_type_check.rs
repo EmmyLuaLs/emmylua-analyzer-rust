@@ -13,7 +13,11 @@ pub fn check_array_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let source_base = TypeOps::Union.apply(context.db, source_base, &LuaType::Nil);
+    let source_base = if context.db.get_emmyrc().strict.array_index {
+        TypeOps::Union.apply(context.db, source_base, &LuaType::Nil)
+    } else {
+        source_base.clone()
+    };
 
     match compact_type {
         LuaType::Array(compact_array_type) => {

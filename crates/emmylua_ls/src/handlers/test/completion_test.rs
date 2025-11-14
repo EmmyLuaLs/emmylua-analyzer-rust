@@ -2192,4 +2192,55 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_intersection_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Matchers<T>
+
+            ---@class Inverse<T>
+            ---@field negate T
+
+            ---@class Assertions<T>: Matchers<T> & Inverse<T>
+        "#,
+        );
+        check!(ws.check_completion(
+            r#"
+            ---@type Assertions<number>
+            local t
+            t.<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "negate".to_string(),
+                kind: CompletionItemKind::VARIABLE,
+                ..Default::default()
+            },],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_super_generic() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_completion(
+            r#"
+            ---@class box<T>: T
+
+            ---@class AAA
+            ---@field a number
+
+            ---@type box<AAA>
+            local a = {}
+            a.<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "a".to_string(),
+                kind: CompletionItemKind::VARIABLE,
+                ..Default::default()
+            },],
+        ));
+        Ok(())
+    }
 }

@@ -121,7 +121,10 @@ fn parse_doc_type_flag(p: &mut LuaDocParser) -> DocParseResult {
 }
 
 // <T, R, C: AAA>
-fn parse_generic_decl_list(p: &mut LuaDocParser, allow_angle_brackets: bool) -> DocParseResult {
+pub(super) fn parse_generic_decl_list(
+    p: &mut LuaDocParser,
+    allow_angle_brackets: bool,
+) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocGenericDeclareList);
     if allow_angle_brackets {
         expect_token(p, LuaTokenKind::TkLt)?;

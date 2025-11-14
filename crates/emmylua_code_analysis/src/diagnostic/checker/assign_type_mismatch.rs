@@ -288,6 +288,7 @@ fn check_table_expr_content(
         let Some(member_key) = semantic_model.get_member_key(&field_key) else {
             continue;
         };
+
         let source_type = match semantic_model.infer_member_type(table_type, &member_key) {
             Ok(typ) => typ,
             Err(_) => {

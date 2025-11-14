@@ -23,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::RegisterCapabilities;
 use crate::context::ServerContextSnapshot;
+use crate::handlers::definition::goto_function::goto_overload_function;
 use crate::handlers::definition::goto_path::goto_path;
 use crate::util::find_ref_at;
 
@@ -116,6 +117,8 @@ pub fn definition(
         )?;
 
         return goto_path(&semantic_model, &analysis.compilation, &path, &token);
+    } else if token.kind() == LuaTokenKind::TkTagOverload.into() {
+        return goto_overload_function(&semantic_model, &token);
     }
 
     None

@@ -9,6 +9,8 @@ mod type_check_context;
 mod type_check_fail_reason;
 mod type_check_guard;
 
+use std::ops::Deref;
+
 use complex_type::check_complex_type_compact;
 use func_type::{check_doc_func_type_compact, check_sig_type_compact};
 use generic_type::check_generic_type_compact;
@@ -18,6 +20,7 @@ pub use type_check_fail_reason::TypeCheckFailReason;
 use type_check_guard::TypeCheckGuard;
 
 use crate::{
+    LuaUnionType,
     db_index::{DbIndex, LuaType},
     semantic::type_check::type_check_context::TypeCheckContext,
 };
@@ -199,6 +202,12 @@ fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
         | (LuaType::Unknown, LuaType::Unknown)
         | (LuaType::Any, LuaType::Any) => true,
         (LuaType::Ref(type_id_left), LuaType::Ref(type_id_right)) => type_id_left == type_id_right,
+        (LuaType::Union(u), LuaType::Ref(type_id_right)) => {
+            if let LuaUnionType::Nullable(LuaType::Ref(type_id_left)) = u.deref() {
+                return type_id_left == type_id_right;
+            }
+            false
+        }
         _ => false,
     }
 }

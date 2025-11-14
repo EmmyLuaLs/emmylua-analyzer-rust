@@ -631,4 +631,51 @@ mod test {
             "#,
         ));
     }
+
+    #[test]
+    fn test_issue_846() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@alias Parameters<T extends function> T extends (fun(...: infer P): any) and P or never
+
+            ---@param x number
+            ---@param y number
+            ---@return number
+            function pow(x, y) end
+
+            ---@generic F
+            ---@param f F
+            ---@return Parameters<F>
+            function return_params(f) end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            result = return_params(pow)
+            "#,
+        ));
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "(number,number)");
+    }
+
+    #[test]
+    fn test_overload() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@class Expect
+            ---@overload fun<T>(actual: T): T
+            local expect = {}
+
+            result = expect("")
+            "#,
+        ));
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "string");
+    }
 }

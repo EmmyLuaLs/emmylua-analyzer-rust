@@ -74,13 +74,6 @@ fn instantiate_tuple(db: &DbIndex, tuple: &LuaTupleType, substitutor: &TypeSubst
             match inner.deref() {
                 VariadicType::Base(base) => {
                     if let LuaType::TplRef(tpl) = base {
-                        // if tpl.is_variadic() {
-                        //     if let Some(generics) = substitutor.get_variadic(tpl.get_tpl_id()) {
-                        //         new_types.extend_from_slice(&generics);
-                        //     }
-                        //     break;
-                        // }
-
                         if let Some(value) = substitutor.get(tpl.get_tpl_id()) {
                             match value {
                                 SubstitutorValue::None => {}
@@ -283,17 +276,6 @@ pub fn instantiate_generic(
     let mut new_params = Vec::new();
     for param in generic_params {
         let new_param = instantiate_type_generic(db, param, substitutor);
-        // if let LuaType::Variadic(variadic) = &new_param {
-        //     match variadic.deref() {
-        //         VariadicType::Base(_) => {}
-        //         VariadicType::Multi(types) => {
-        //             for typ in types {
-        //                 new_params.push(typ.clone());
-        //             }
-        //             continue;
-        //         }
-        //     }
-        // }
         new_params.push(new_param);
     }
 
@@ -332,29 +314,12 @@ fn instantiate_table_generic(
 }
 
 fn instantiate_tpl_ref(_: &DbIndex, tpl: &GenericTpl, substitutor: &TypeSubstitutor) -> LuaType {
-    // if tpl.is_variadic() {
-    //     if let Some(generics) = substitutor.get_variadic(tpl.get_tpl_id()) {
-    //         match generics.len() {
-    //             1 => return generics[0].clone(),
-    //             _ => {
-    //                 return LuaType::Variadic(VariadicType::Multi(generics.clone()).into());
-    //                 // return LuaType::Tuple(
-    //                 //     LuaTupleType::new(generics.clone(), LuaTupleStatus::DocResolve).into(),
-    //                 // );
-    //             }
-    //         }
-    //     } else {
-    //         return LuaType::Never;
-    //     }
-    // }
-
     if let Some(value) = substitutor.get(tpl.get_tpl_id()) {
         match value {
             SubstitutorValue::None => {}
             SubstitutorValue::Type(ty) => return ty.clone(),
             SubstitutorValue::MultiTypes(types) => {
                 return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
-                // return types.first().unwrap_or(&LuaType::Unknown).clone();
             }
             SubstitutorValue::Params(params) => {
                 return params
@@ -615,91 +580,116 @@ fn collect_infer_assignments(
             }
         }
         LuaType::DocFunction(pattern_func) => {
-            if let LuaType::DocFunction(source_func) = source {
-                // 匹配函数参数
-                let pattern_params = pattern_func.get_params();
-                let source_params = source_func.get_params();
-                let has_variadic = pattern_params.last().is_some_and(|(name, ty)| {
-                    name == "..." || ty.as_ref().is_some_and(|ty| ty.is_variadic())
-                });
-                let normal_param_len = if has_variadic {
-                    pattern_params.len().saturating_sub(1)
-                } else {
-                    pattern_params.len()
-                };
+            match source {
+                LuaType::DocFunction(source_func) => {
+                    // 匹配函数参数
+                    let pattern_params = pattern_func.get_params();
+                    let source_params = source_func.get_params();
+                    let has_variadic = pattern_params.last().is_some_and(|(name, ty)| {
+                        name == "..." || ty.as_ref().is_some_and(|ty| ty.is_variadic())
+                    });
+                    let normal_param_len = if has_variadic {
+                        pattern_params.len().saturating_sub(1)
+                    } else {
+                        pattern_params.len()
+                    };
 
-                if !has_variadic && source_params.len() > normal_param_len {
-                    return false;
-                }
+                    if !has_variadic && source_params.len() > normal_param_len {
+                        return false;
+                    }
 
-                for (i, (_, pattern_param)) in
-                    pattern_params.iter().take(normal_param_len).enumerate()
-                {
-                    if let Some((_, source_param)) = source_params.get(i) {
-                        match (source_param, pattern_param) {
-                            (Some(source_ty), Some(pattern_ty)) => {
+                    for (i, (_, pattern_param)) in
+                        pattern_params.iter().take(normal_param_len).enumerate()
+                    {
+                        if let Some((_, source_param)) = source_params.get(i) {
+                            match (source_param, pattern_param) {
+                                (Some(source_ty), Some(pattern_ty)) => {
+                                    if !collect_infer_assignments(
+                                        db,
+                                        source_ty,
+                                        pattern_ty,
+                                        assignments,
+                                    ) {
+                                        return false;
+                                    }
+                                }
+                                (Some(_), None) => continue,
+                                (None, Some(pattern_ty)) => {
+                                    if contains_conditional_infer(pattern_ty) {
+                                        return false;
+                                    }
+                                }
+                                (None, None) => continue,
+                            }
+                        } else if let Some(pattern_ty) = pattern_param {
+                            if contains_conditional_infer(pattern_ty)
+                                || !is_optional_param_type(db, pattern_ty)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+
+                    if has_variadic && let Some((_, variadic_param)) = pattern_params.last() {
+                        if let Some(pattern_ty) = variadic_param {
+                            if contains_conditional_infer(pattern_ty) {
+                                let rest = if normal_param_len < source_params.len() {
+                                    &source_params[normal_param_len..]
+                                } else {
+                                    &[]
+                                };
+                                let mut rest_types = Vec::with_capacity(rest.len());
+                                for (_, source_param) in rest {
+                                    let Some(source_ty) = source_param.as_ref() else {
+                                        return false;
+                                    };
+                                    rest_types.push(source_ty.clone());
+                                }
+
+                                let tuple_ty = LuaType::Tuple(
+                                    LuaTupleType::new(rest_types, LuaTupleStatus::InferResolve)
+                                        .into(),
+                                );
                                 if !collect_infer_assignments(
                                     db,
-                                    source_ty,
+                                    &tuple_ty,
                                     pattern_ty,
                                     assignments,
                                 ) {
                                     return false;
                                 }
                             }
-                            (Some(_), None) => continue,
-                            (None, Some(pattern_ty)) => {
-                                if contains_conditional_infer(pattern_ty) {
-                                    return false;
-                                }
-                            }
-                            (None, None) => continue,
-                        }
-                    } else if let Some(pattern_ty) = pattern_param {
-                        if contains_conditional_infer(pattern_ty)
-                            || !is_optional_param_type(db, pattern_ty)
-                        {
-                            return false;
                         }
                     }
-                }
 
-                if has_variadic && let Some((_, variadic_param)) = pattern_params.last() {
-                    if let Some(pattern_ty) = variadic_param {
-                        if contains_conditional_infer(pattern_ty) {
-                            let rest = if normal_param_len < source_params.len() {
-                                &source_params[normal_param_len..]
-                            } else {
-                                &[]
-                            };
-                            let mut rest_types = Vec::with_capacity(rest.len());
-                            for (_, source_param) in rest {
-                                let Some(source_ty) = source_param.as_ref() else {
-                                    return false;
-                                };
-                                rest_types.push(source_ty.clone());
-                            }
-
-                            let tuple_ty = LuaType::Tuple(
-                                LuaTupleType::new(rest_types, LuaTupleStatus::InferResolve).into(),
-                            );
-                            if !collect_infer_assignments(db, &tuple_ty, pattern_ty, assignments) {
-                                return false;
-                            }
-                        }
+                    // 匹配函数返回值
+                    let pattern_ret = pattern_func.get_ret();
+                    if contains_conditional_infer(pattern_ret) {
+                        // 如果返回值也包含 infer, 继续与来源返回值进行匹配
+                        collect_infer_assignments(
+                            db,
+                            source_func.get_ret(),
+                            pattern_ret,
+                            assignments,
+                        )
+                    } else {
+                        true
                     }
                 }
-
-                // 匹配函数返回值
-                let pattern_ret = pattern_func.get_ret();
-                if contains_conditional_infer(pattern_ret) {
-                    // 如果返回值也包含 infer, 继续与来源返回值进行匹配
-                    collect_infer_assignments(db, source_func.get_ret(), pattern_ret, assignments)
-                } else {
-                    true
+                LuaType::Signature(id) => {
+                    if let Some(signature) = db.get_signature_index().get(id) {
+                        let source_func = signature.to_doc_func_type();
+                        collect_infer_assignments(
+                            db,
+                            &LuaType::DocFunction(source_func),
+                            pattern,
+                            assignments,
+                        )
+                    } else {
+                        false
+                    }
                 }
-            } else {
-                false
+                _ => false,
             }
         }
         LuaType::Array(array) => {

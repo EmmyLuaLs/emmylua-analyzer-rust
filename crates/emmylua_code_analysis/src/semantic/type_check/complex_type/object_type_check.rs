@@ -101,8 +101,10 @@ fn check_object_type_compact_member_owner(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     let member_index = context.db.get_member_index();
+    let source_fields = source_object.get_fields();
 
-    for (key, source_type) in source_object.get_fields() {
+    // 检查名称字段
+    for (key, source_type) in source_fields {
         let member_item = match member_index.get_member_item(&member_owner, key) {
             Some(member_item) => member_item,
             None => {
@@ -142,6 +144,82 @@ fn check_object_type_compact_member_owner(
             }
             Err(e) => {
                 return Err(e);
+            }
+        }
+    }
+
+    // 检查索引访问字段
+    let members = member_index.get_members(&member_owner).unwrap_or_default();
+    for (key_type, source_type) in source_object.get_index_access() {
+        for member in &members {
+            let member = *member;
+            if source_fields.contains_key(member.get_key()) {
+                continue;
+            }
+            let member_key_type = match member.get_key() {
+                LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
+                LuaMemberKey::Name(name) => LuaType::StringConst(name.clone().into()),
+                LuaMemberKey::ExprType(typ) => typ.clone(),
+                LuaMemberKey::None => continue,
+            };
+
+            let key_match = match check_general_type_compact(
+                context,
+                key_type,
+                &member_key_type,
+                check_guard.next_level()?,
+            ) {
+                Ok(_) => true,
+                Err(err) => {
+                    if err.is_type_not_match() {
+                        false
+                    } else {
+                        return Err(err);
+                    }
+                }
+            };
+
+            if !key_match {
+                continue;
+            }
+
+            let member_type = match context
+                .db
+                .get_type_index()
+                .get_type_cache(&member.get_id().into())
+            {
+                Some(cache) => cache.as_type().clone(),
+                None => continue,
+            };
+
+            match check_general_type_compact(
+                context,
+                source_type,
+                &member_type,
+                check_guard.next_level()?,
+            ) {
+                Ok(_) => {
+                    break;
+                }
+                Err(TypeCheckFailReason::TypeNotMatch) => {
+                    let mut key_display = member.get_key().to_path();
+                    if key_display.is_empty() {
+                        key_display =
+                            humanize_type(context.db, &member_key_type, RenderLevel::Simple);
+                    }
+                    return Err(TypeCheckFailReason::TypeNotMatchWithReason(
+                        t!(
+                            "member %{key} not match, expect %{typ}, but got %{got}",
+                            key = key_display,
+                            typ = humanize_type(context.db, source_type, RenderLevel::Simple),
+                            got = humanize_type(context.db, &member_type, RenderLevel::Simple)
+                        )
+                        .to_string(),
+                    ));
+                }
+                Err(err) => {
+                    return Err(err);
+                }
             }
         }
     }

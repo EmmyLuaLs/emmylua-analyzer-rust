@@ -264,6 +264,9 @@ fn infer_type_doc_function(
                     {
                         overloads.push(f);
                     }
+                } else if f.contain_tpl() {
+                    let result = instantiate_func_generic(db, cache, &f, call_expr.clone())?;
+                    overloads.push(Arc::new(result));
                 } else {
                     overloads.push(f.clone());
                 }
