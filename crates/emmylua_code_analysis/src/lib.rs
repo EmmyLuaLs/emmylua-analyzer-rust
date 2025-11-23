@@ -156,6 +156,37 @@ impl EmmyLuaAnalysis {
         updated_files
     }
 
+    pub fn update_files_by_uri_with_progress<T: Fn(usize, usize)>(
+        &mut self,
+        files: Vec<(Uri, Option<String>)>,
+        progress_callback: T,
+    ) -> Vec<FileId> {
+        let mut removed_files = HashSet::new();
+        let mut updated_files = HashSet::new();
+        let total_count = files.len();
+        {
+            let _p = Profile::new("update files");
+            for (idx, (uri, text)) in files.iter().enumerate() {
+                let is_new_text = text.is_some();
+                let file_id = self
+                    .compilation
+                    .get_db_mut()
+                    .get_vfs_mut()
+                    .set_file_content(&uri, text.clone());
+                removed_files.insert(file_id);
+                if is_new_text {
+                    updated_files.insert(file_id);
+                }
+                progress_callback(idx, total_count)
+            }
+        }
+        self.compilation
+            .remove_index(removed_files.into_iter().collect());
+        let updated_files: Vec<FileId> = updated_files.into_iter().collect();
+        self.compilation.update_index(updated_files.clone());
+        updated_files
+    }
+
     #[allow(unused)]
     pub(crate) fn update_files_by_uri_sorted(
         &mut self,

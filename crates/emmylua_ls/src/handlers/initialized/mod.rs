@@ -20,8 +20,8 @@ use crate::{
 pub use client_config::{ClientConfig, get_client_config};
 use codestyle::load_editorconfig;
 use collect_files::collect_files;
-use emmylua_code_analysis::{EmmyLuaAnalysis, Emmyrc, uri_to_file_path};
-use lsp_types::InitializeParams;
+use emmylua_code_analysis::{EmmyLuaAnalysis, Emmyrc, file_path_to_uri, uri_to_file_path};
+use lsp_types::{InitializeParams, Uri};
 use tokio::sync::RwLock;
 
 pub async fn initialized_handler(
@@ -150,18 +150,25 @@ pub async fn init_analysis(
     );
 
     // load files
-    let files = collect_files(&workspace_folders, &emmyrc);
-    let files: Vec<(PathBuf, Option<String>)> =
-        files.into_iter().map(|file| file.into_tuple()).collect();
+    let files: Vec<emmylua_code_analysis::LuaFileInfo> = collect_files(&workspace_folders, &emmyrc);
+    let files: Vec<(Uri, Option<String>)> = files
+        .into_iter()
+        .filter_map(|file| {
+            let (path, text) = file.into_tuple();
+            let uri = file_path_to_uri(&path)?;
+            Some((uri, text))
+        })
+        .collect();
     let file_count = files.len();
     if file_count != 0 {
-        status_bar.update_progress_task(
-            ProgressTask::LoadWorkspace,
-            None,
-            Some(format!("Indexing {} files", file_count)),
-        );
-
-        mut_analysis.update_files_by_path(files);
+        mut_analysis.update_files_by_uri_with_progress(files, |idx, total_count| {
+            let percentage = (idx as u32) * 100 / (total_count as u32) + 1;
+            status_bar.update_progress_task(
+                ProgressTask::LoadWorkspace,
+                Some(percentage.clamp(0, 100)),
+                Some(format!("Indexing {} files", total_count)),
+            );
+        });
     }
 
     status_bar.update_progress_task(
