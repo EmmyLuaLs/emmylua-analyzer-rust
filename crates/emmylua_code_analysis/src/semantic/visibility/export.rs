@@ -9,7 +9,7 @@ pub fn check_export_visibility(
 ) -> Option<bool> {
     // 检查模块是否有 export 标记
     let Some(export) = module_info.get_export(semantic_model.get_db()) else {
-        return Some(true);
+        return check_default_export_visibility(semantic_model, module_info);
     };
 
     match export.scope {
@@ -35,10 +35,31 @@ pub fn check_export_visibility(
                 return Some(true);
             }
         }
-        _ => {
+        LuaExportScope::Global => {
             return Some(true);
+        }
+        LuaExportScope::Default => {
+            return check_default_export_visibility(semantic_model, module_info);
         }
     }
 
     Some(false)
+}
+
+/// 检查默认导出作用域下的可见性
+///
+/// 默认情况下, 如果被声明为库文件, 则我们不认为是可见的.
+/// 否则认为是可见的.
+fn check_default_export_visibility(
+    semantic_model: &SemanticModel,
+    module_info: &ModuleInfo,
+) -> Option<bool> {
+    if semantic_model
+        .db
+        .get_module_index()
+        .is_library(&module_info.file_id)
+    {
+        return Some(false);
+    }
+    Some(true)
 }

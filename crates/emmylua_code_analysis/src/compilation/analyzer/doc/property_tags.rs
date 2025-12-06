@@ -11,7 +11,7 @@ use crate::compilation::analyzer::doc::tags::report_orphan_tag;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaDocDescriptionOwner, LuaDocTagAsync, LuaDocTagDeprecated,
     LuaDocTagExport, LuaDocTagNodiscard, LuaDocTagReadonly, LuaDocTagSource, LuaDocTagVersion,
-    LuaDocTagVisibility, LuaTableExpr,
+    LuaDocTagVisibility, LuaExpr,
 };
 
 pub fn analyze_visibility(
@@ -121,11 +121,27 @@ pub fn analyze_export(analyzer: &mut DocAnalyzer, tag: LuaDocTagExport) -> Optio
     };
     let owner_id = match owner {
         LuaAst::LuaReturnStat(return_stat) => {
-            let return_table_expr = return_stat.child::<LuaTableExpr>()?;
-            LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
-                analyzer.file_id,
-                return_table_expr.get_position(),
-            ))
+            let expr = return_stat.child::<LuaExpr>()?;
+            match expr {
+                LuaExpr::NameExpr(name_expr) => {
+                    let name = name_expr.get_name_text()?;
+                    let tree = analyzer
+                        .db
+                        .get_decl_index()
+                        .get_decl_tree(&analyzer.file_id)?;
+                    let decl = tree.find_local_decl(&name, name_expr.get_position())?;
+
+                    Some(LuaSemanticDeclId::LuaDecl(decl.get_id()))
+                }
+                LuaExpr::ClosureExpr(closure) => Some(LuaSemanticDeclId::Signature(
+                    LuaSignatureId::from_closure(analyzer.file_id, &closure),
+                )),
+                LuaExpr::TableExpr(table_expr) => Some(LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
+                    analyzer.file_id,
+                    table_expr.get_position(),
+                ))),
+                _ => None,
+            }?
         }
         _ => get_owner_id_or_report(analyzer, &tag)?,
     };
@@ -134,10 +150,10 @@ pub fn analyze_export(analyzer: &mut DocAnalyzer, tag: LuaDocTagExport) -> Optio
         match scope_text.as_str() {
             "namespace" => LuaExportScope::Namespace,
             "global" => LuaExportScope::Global,
-            _ => LuaExportScope::Global, // 默认为 global
+            _ => LuaExportScope::Default,
         }
     } else {
-        LuaExportScope::Global // 没有参数时默认为 global
+        LuaExportScope::Default
     };
 
     let export = LuaExport {
