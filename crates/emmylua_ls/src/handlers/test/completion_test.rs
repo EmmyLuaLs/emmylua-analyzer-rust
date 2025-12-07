@@ -2339,4 +2339,38 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_function_generic_value_is_nil() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Expect
+            ---@overload fun<T>(actual: T): Assertion<T>
+
+            ---@class Assertion<T>
+            ---@field toBe fun(self: self)
+
+            ---@type table
+            GTable = {}
+            "#,
+        );
+
+        check!(ws.check_completion_with_kind(
+            r#"
+            ---@type Expect
+            local expect = {}
+
+            expect(GTable["a"]):<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "toBe".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                label_detail: Some("()".to_string()),
+            },],
+            CompletionTriggerKind::TRIGGER_CHARACTER
+        ));
+
+        Ok(())
+    }
 }
