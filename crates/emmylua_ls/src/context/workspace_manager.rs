@@ -24,20 +24,23 @@ pub enum WorkspaceImport {
 pub struct WorkspaceFolder {
     pub root: PathBuf,
     pub import: WorkspaceImport,
+    pub is_library: bool,
 }
 
 impl WorkspaceFolder {
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, is_library: bool) -> Self {
         Self {
             root,
             import: WorkspaceImport::All,
+            is_library,
         }
     }
 
-    pub fn with_sub_paths(root: PathBuf, sub_paths: Vec<PathBuf>) -> Self {
+    pub fn with_sub_paths(root: PathBuf, sub_paths: Vec<PathBuf>, is_library: bool) -> Self {
         Self {
             root,
             import: WorkspaceImport::SubPaths(sub_paths),
+            is_library,
         }
     }
 }

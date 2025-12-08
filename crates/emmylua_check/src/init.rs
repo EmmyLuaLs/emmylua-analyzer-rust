@@ -60,7 +60,7 @@ pub fn setup_logger(verbose: bool) {
 
 pub fn load_workspace(
     main_path: PathBuf,
-    mut workspace_folders: Vec<PathBuf>,
+    workspace_folders: Vec<PathBuf>,
     config_paths: Option<Vec<PathBuf>>,
     ignore: Option<Vec<String>>,
 ) -> Option<EmmyLuaAnalysis> {
@@ -93,9 +93,10 @@ pub fn load_workspace(
     let mut analysis = EmmyLuaAnalysis::new();
     analysis.update_config(emmyrc.clone().into());
     analysis.init_std_lib(None);
-
+    let mut workspace_infos = vec![];
     for path in &workspace_folders {
         analysis.add_main_workspace(path.clone());
+        workspace_infos.push((path.clone(), false));
     }
 
     for root in &emmyrc.workspace.workspace_roots {
@@ -104,10 +105,10 @@ pub fn load_workspace(
 
     for lib in &emmyrc.workspace.library {
         analysis.add_library_workspace(PathBuf::from(lib));
-        workspace_folders.push(PathBuf::from(lib));
+        workspace_infos.push((PathBuf::from(lib), true));
     }
 
-    let file_infos = collect_files(&workspace_folders, &analysis.emmyrc, ignore);
+    let file_infos = collect_files(&workspace_infos, &analysis.emmyrc, ignore);
     let files = file_infos
         .into_iter()
         .filter_map(|file| {
@@ -134,7 +135,7 @@ pub fn load_workspace(
 }
 
 pub fn collect_files(
-    workspaces: &Vec<PathBuf>,
+    workspaces: &Vec<(PathBuf, bool)>,
     emmyrc: &Emmyrc,
     ignore: Option<Vec<String>>,
 ) -> Vec<LuaFileInfo> {
@@ -143,15 +144,19 @@ pub fn collect_files(
 
     let encoding = &emmyrc.workspace.encoding;
 
-    for workspace in workspaces {
-        let loaded = load_workspace_files(
-            workspace,
-            &match_pattern,
-            &exclude,
-            &exclude_dir,
-            Some(encoding),
-        )
-        .ok();
+    for (workspace, is_lib) in workspaces {
+        let loaded = if *is_lib {
+            load_workspace_files(workspace, &match_pattern, &[], &[], Some(encoding)).ok()
+        } else {
+            load_workspace_files(
+                workspace,
+                &match_pattern,
+                &exclude,
+                &exclude_dir,
+                Some(encoding),
+            )
+            .ok()
+        };
         if let Some(loaded) = loaded {
             files.extend(loaded);
         }

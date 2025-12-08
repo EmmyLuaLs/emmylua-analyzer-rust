@@ -18,14 +18,19 @@ pub fn collect_files(workspaces: &Vec<WorkspaceFolder>, emmyrc: &Emmyrc) -> Vec<
     for workspace in workspaces {
         match &workspace.import {
             WorkspaceImport::All => {
-                let loaded = load_workspace_files(
-                    &workspace.root,
-                    &match_pattern,
-                    &exclude,
-                    &exclude_dir,
-                    Some(encoding),
-                )
-                .ok();
+                let loaded = if workspace.is_library {
+                    load_workspace_files(&workspace.root, &match_pattern, &[], &[], Some(encoding))
+                        .ok()
+                } else {
+                    load_workspace_files(
+                        &workspace.root,
+                        &match_pattern,
+                        &exclude,
+                        &exclude_dir,
+                        Some(encoding),
+                    )
+                    .ok()
+                };
                 if let Some(loaded) = loaded {
                     files.extend(loaded);
                 }
@@ -33,14 +38,18 @@ pub fn collect_files(workspaces: &Vec<WorkspaceFolder>, emmyrc: &Emmyrc) -> Vec<
             WorkspaceImport::SubPaths(paths) => {
                 for sub in paths {
                     let target = workspace.root.join(sub);
-                    let loaded = load_workspace_files(
-                        &target,
-                        &match_pattern,
-                        &exclude,
-                        &exclude_dir,
-                        Some(encoding),
-                    )
-                    .ok();
+                    let loaded = if workspace.is_library {
+                        load_workspace_files(&target, &match_pattern, &[], &[], Some(encoding)).ok()
+                    } else {
+                        load_workspace_files(
+                            &target,
+                            &match_pattern,
+                            &exclude,
+                            &exclude_dir,
+                            Some(encoding),
+                        )
+                        .ok()
+                    };
                     if let Some(loaded) = loaded {
                         files.extend(loaded);
                     }

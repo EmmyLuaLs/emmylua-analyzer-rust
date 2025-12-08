@@ -136,14 +136,13 @@ pub async fn init_analysis(
         log::info!("add workspace root: {:?}", workspace_root);
         let root_path = PathBuf::from(workspace_root);
         mut_analysis.add_main_workspace(root_path.clone());
-        workspace_folders.push(WorkspaceFolder::new(root_path));
     }
 
     for lib in &emmyrc.workspace.library {
         log::info!("add library: {:?}", lib);
         let lib_path = PathBuf::from(lib);
         mut_analysis.add_library_workspace(lib_path.clone());
-        workspace_folders.push(WorkspaceFolder::new(lib_path));
+        workspace_folders.push(WorkspaceFolder::new(lib_path, true));
     }
 
     for package_dir in &emmyrc.workspace.package_dirs {
@@ -160,6 +159,7 @@ pub async fn init_analysis(
                 workspace_folders.push(WorkspaceFolder::with_sub_paths(
                     parent_path,
                     vec![PathBuf::from(name)],
+                    true,
                 ));
             } else {
                 log::warn!("package dir {:?} has no file name", package_path);
@@ -214,7 +214,7 @@ pub fn get_workspace_folders(params: &InitializeParams) -> Vec<WorkspaceFolder> 
     if let Some(workspaces) = &params.workspace_folders {
         for workspace in workspaces {
             if let Some(path) = uri_to_file_path(&workspace.uri) {
-                workspace_folders.push(WorkspaceFolder::new(path));
+                workspace_folders.push(WorkspaceFolder::new(path, false));
             }
         }
     }
@@ -225,7 +225,7 @@ pub fn get_workspace_folders(params: &InitializeParams) -> Vec<WorkspaceFolder> 
         if let Some(uri) = &params.root_uri {
             let root_workspace = uri_to_file_path(uri);
             if let Some(path) = root_workspace {
-                workspace_folders.push(WorkspaceFolder::new(path));
+                workspace_folders.push(WorkspaceFolder::new(path, false));
             }
         }
     }
