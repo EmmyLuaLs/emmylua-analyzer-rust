@@ -24,6 +24,24 @@ fn generic_tpl_pattern_match_inner(
         LuaType::Generic(target_generic) => {
             let base = source_generic.get_base_type_id_ref();
             let target_base = target_generic.get_base_type_id_ref();
+            if base == target_base {
+                let params = source_generic.get_params();
+                let target_params = target_generic.get_params();
+                let min_len = params.len().min(target_params.len());
+                for i in 0..min_len {
+                    match (&params[i], &target_params[i]) {
+                        (LuaType::Variadic(variadict), _) => {
+                            variadic_tpl_pattern_match(context, variadict, &target_params[i..])?;
+                            break;
+                        }
+                        _ => {
+                            tpl_pattern_match(context, &params[i], &target_params[i])?;
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
             let target_decl = context
                 .db
                 .get_type_index()
@@ -43,23 +61,6 @@ fn generic_tpl_pattern_match_inner(
                         &origin_type,
                         infer_guard,
                     );
-                }
-            }
-
-            if base == target_base {
-                let params = source_generic.get_params();
-                let target_params = target_generic.get_params();
-                let min_len = params.len().min(target_params.len());
-                for i in 0..min_len {
-                    match (&params[i], &target_params[i]) {
-                        (LuaType::Variadic(variadict), _) => {
-                            variadic_tpl_pattern_match(context, variadict, &target_params[i..])?;
-                            break;
-                        }
-                        _ => {
-                            tpl_pattern_match(context, &params[i], &target_params[i])?;
-                        }
-                    }
                 }
             } else if let Some(super_types) =
                 context.db.get_type_index().get_super_types(target_base)

@@ -10,7 +10,10 @@ use object_type_check::check_object_type_compact;
 use table_generic_check::check_table_generic_type_compact;
 use tuple_type_check::check_tuple_type_compact;
 
-use crate::{LuaType, LuaUnionType, semantic::type_check::type_check_context::TypeCheckContext};
+use crate::{
+    LuaType, LuaUnionType, TypeSubstitutor,
+    semantic::type_check::type_check_context::TypeCheckContext,
+};
 
 use super::{
     TypeCheckResult, check_general_type_compact, type_check_fail_reason::TypeCheckFailReason,
@@ -24,6 +27,28 @@ pub fn check_complex_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
+    // TODO: 缓存以提高性能
+    // 如果是泛型+不包含模板参数+alias, 那么尝试实例化再检查
+    if let LuaType::Generic(generic) = compact_type {
+        if !generic.contain_tpl() {
+            let base_id = generic.get_base_type_id();
+            if let Some(decl) = context.db.get_type_index().get_type_decl(&base_id)
+                && decl.is_alias()
+            {
+                let substitutor =
+                    TypeSubstitutor::from_alias(generic.get_params().clone(), base_id.clone());
+                if let Some(alias_origin) = decl.get_alias_origin(context.db, Some(&substitutor)) {
+                    return check_general_type_compact(
+                        context,
+                        source,
+                        &alias_origin,
+                        check_guard.next_level()?,
+                    );
+                }
+            }
+        }
+    }
+
     match source {
         LuaType::Array(source_array_type) => {
             match check_array_type_compact(
@@ -94,7 +119,6 @@ pub fn check_complex_type_compact(
 
             return Err(TypeCheckFailReason::TypeNotMatch);
         }
-        // need check later
         LuaType::Generic(_) => {
             return Ok(());
         }

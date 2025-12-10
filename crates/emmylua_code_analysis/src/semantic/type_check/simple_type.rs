@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::{
-    DbIndex, LuaType, LuaTypeDeclId, VariadicType,
+    DbIndex, LuaType, LuaTypeDeclId, TypeSubstitutor, VariadicType,
     semantic::type_check::{
         is_sub_type_of,
         type_check_context::{TypeCheckCheckLevel, TypeCheckContext},
@@ -288,20 +288,44 @@ pub fn check_simple_type_compact(
         _ => {}
     }
 
-    if let LuaType::Union(union) = compact_type {
-        for sub_compact in union.into_vec() {
-            match check_simple_type_compact(
-                context,
-                source,
-                &sub_compact,
-                check_guard.next_level()?,
-            ) {
-                Ok(_) => {}
-                Err(err) => return Err(err),
+    match compact_type {
+        LuaType::Union(union) => {
+            for sub_compact in union.into_vec() {
+                match check_simple_type_compact(
+                    context,
+                    source,
+                    &sub_compact,
+                    check_guard.next_level()?,
+                ) {
+                    Ok(_) => {}
+                    Err(err) => return Err(err),
+                }
+            }
+
+            return Ok(());
+        }
+        LuaType::Generic(generic) => {
+            if !generic.contain_tpl() {
+                let base_id = generic.get_base_type_id();
+                if let Some(decl) = context.db.get_type_index().get_type_decl(&base_id)
+                    && decl.is_alias()
+                {
+                    let substitutor =
+                        TypeSubstitutor::from_alias(generic.get_params().clone(), base_id.clone());
+                    if let Some(alias_origin) =
+                        decl.get_alias_origin(context.db, Some(&substitutor))
+                    {
+                        return check_general_type_compact(
+                            context,
+                            source,
+                            &alias_origin,
+                            check_guard.next_level()?,
+                        );
+                    }
+                }
             }
         }
-
-        return Ok(());
+        _ => {}
     }
 
     // complex infer

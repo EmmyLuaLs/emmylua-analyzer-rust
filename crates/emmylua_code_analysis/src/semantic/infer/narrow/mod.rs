@@ -6,7 +6,7 @@ mod var_ref_id;
 
 use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowTree, InferFailReason,
-    LuaInferCache, LuaType, LuaTypeCache, TypeSubstitutor, infer_param, instantiate_type_generic,
+    LuaInferCache, LuaType, infer_param,
     semantic::infer::{
         InferResult,
         infer_name::{find_decl_member_type, infer_global_type},
@@ -49,11 +49,7 @@ fn get_var_ref_type(db: &DbIndex, cache: &mut LuaInferCache, var_ref_id: &VarRef
         }
 
         if let Some(type_cache) = db.get_type_index().get_type_cache(&decl.get_id().into()) {
-            if let LuaTypeCache::DocType(ty) = type_cache {
-                if matches!(ty, LuaType::Generic(_)) {
-                    return Ok(instantiate_type_generic(db, ty, &TypeSubstitutor::new()));
-                }
-            }
+            // 不要在此阶段展开泛型别名, 必须让后续的泛型匹配阶段基于声明形态完成推断
             return Ok(type_cache.as_type().clone());
         }
 
