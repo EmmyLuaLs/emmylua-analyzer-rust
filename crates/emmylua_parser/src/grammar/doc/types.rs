@@ -590,7 +590,7 @@ fn parse_multi_line_union_type(p: &mut LuaDocParser) -> DocParseResult {
 fn parse_one_line_type(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocOneLineField);
 
-    parse_simple_type(p)?;
+    parse_sub_type(p, 1)?;
     if p.current_token() != LuaTokenKind::TkDocContinueOr {
         p.set_lexer_state(LuaDocLexerState::Description);
         parse_description(p);

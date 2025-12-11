@@ -3383,4 +3383,45 @@ Syntax(Chunk)@0..64
 
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_ne_integer() {
+        let code = r#"
+        ---@alias Dir
+        ---|-1
+        ---|1
+        "#;
+
+        let result = r#"
+Syntax(Chunk)@0..60
+  Syntax(Block)@0..60
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..51
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagAlias)@13..51
+        Token(TkTagAlias)@13..18 "alias"
+        Token(TkWhitespace)@18..19 " "
+        Token(TkName)@19..22 "Dir"
+        Token(TkEndOfLine)@22..23 "\n"
+        Token(TkWhitespace)@23..31 "        "
+        Syntax(TypeMultiLineUnion)@31..51
+          Token(TkDocContinueOr)@31..35 "---|"
+          Syntax(DocOneLineField)@35..37
+            Syntax(TypeUnary)@35..37
+              Token(TkMinus)@35..36 "-"
+              Syntax(TypeLiteral)@36..37
+                Token(TkInt)@36..37 "1"
+          Token(TkEndOfLine)@37..38 "\n"
+          Token(TkWhitespace)@38..46 "        "
+          Token(TkDocContinueOr)@46..50 "---|"
+          Syntax(DocOneLineField)@50..51
+            Syntax(TypeLiteral)@50..51
+              Token(TkInt)@50..51 "1"
+    Token(TkEndOfLine)@51..52 "\n"
+    Token(TkWhitespace)@52..60 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
 }
