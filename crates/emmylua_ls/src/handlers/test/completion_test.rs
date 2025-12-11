@@ -2373,4 +2373,33 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_modle_return_signature() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "test.lua",
+            r#"
+            ---@export global
+            local function processError()
+                return 1
+            end
+            return processError
+            "#,
+        );
+
+        check!(ws.check_completion_with_kind(
+            r#"
+            processError<??>
+            "#,
+            vec![VirtualCompletionItem {
+                label: "processError".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                label_detail: Some("    (in test)".to_string()),
+            }],
+            CompletionTriggerKind::INVOKED
+        ));
+
+        Ok(())
+    }
 }

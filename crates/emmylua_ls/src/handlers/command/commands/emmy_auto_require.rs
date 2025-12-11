@@ -5,10 +5,7 @@ use emmylua_parser::{LuaAstNode, LuaExpr, LuaStat};
 use lsp_types::{ApplyWorkspaceEditParams, Command, Position, TextEdit, WorkspaceEdit};
 use serde_json::Value;
 
-use crate::{
-    context::ServerContextSnapshot,
-    util::{module_name_convert, time_cancel_token},
-};
+use crate::{context::ServerContextSnapshot, util::time_cancel_token};
 
 use super::CommandSpec;
 
@@ -21,7 +18,8 @@ impl CommandSpec for AutoRequireCommand {
         let add_to: FileId = serde_json::from_value(args.first()?.clone()).ok()?;
         let need_require_file_id: FileId = serde_json::from_value(args.get(1)?.clone()).ok()?;
         let position: Position = serde_json::from_value(args.get(2)?.clone()).ok()?;
-        let member_name: String = serde_json::from_value(args.get(3)?.clone()).ok()?;
+        let local_name: String = serde_json::from_value(args.get(3)?.clone()).ok()?;
+        let member_name: String = serde_json::from_value(args.get(4)?.clone()).ok()?;
 
         let analysis = context.analysis().read().await;
         let semantic_model = analysis.compilation.get_semantic_model(add_to)?;
@@ -32,8 +30,6 @@ impl CommandSpec for AutoRequireCommand {
         let emmyrc = semantic_model.get_emmyrc();
         let require_like_func = &emmyrc.runtime.require_like_function;
         let auto_require_func = emmyrc.completion.auto_require_function.clone();
-        let file_conversion = emmyrc.completion.auto_require_naming_convention;
-        let local_name = module_name_convert(module_info, file_conversion);
         let require_separator = emmyrc.completion.auto_require_separator.clone();
         let full_module_path = match require_separator.as_str() {
             "." | "" => module_info.full_module_name.clone(),
@@ -196,12 +192,14 @@ pub fn make_auto_require(
     add_to: FileId,
     need_require_file_id: FileId,
     position: Position,
-    member_name: Option<String>,
+    local_name: String,          // 导入时使用的名称
+    member_name: Option<String>, // 导入的成员名, 不要包含前缀`.`号, 它将拼接到 `require` 后面. 例如 require("a").member
 ) -> Command {
     let args = vec![
         serde_json::to_value(add_to).unwrap(),
         serde_json::to_value(need_require_file_id).unwrap(),
         serde_json::to_value(position).unwrap(),
+        serde_json::to_value(local_name).unwrap(),
         serde_json::to_value(member_name.unwrap_or_default()).unwrap(),
     ];
 
