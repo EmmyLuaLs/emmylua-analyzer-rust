@@ -36,7 +36,7 @@ function ffi.cdef(def, params, ...) end
 ---@nodiscard
 function ffi.load(name, global) end
 
----@overload fun(ct: ffi.ct*, init: any, ...)
+---@overload fun(ct: ffi.ct*, init: any, ...): ffi.cdata*
 ---@param ct     ffi.ct*
 ---@param nelem? integer
 ---@param init?  any
