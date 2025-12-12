@@ -43,6 +43,7 @@ end
             None,
             HashMap::new(),
             LuaNonStdSymbolSet::new(),
+            false,
         );
         let tree = LuaParser::parse(code, parse_config);
         assert_eq!(tree.get_errors().len(), 0);
@@ -85,5 +86,24 @@ local t
         "#;
 
         let _ = LuaParser::parse(code, ParserConfig::default());
+    }
+
+    #[test]
+    fn test_without_emmylua() {
+        let code = r#"
+        ---@param key string
+        ---@return boolean
+        local t
+        "#;
+
+        let c = ParserConfig::new(
+            LuaLanguageLevel::Lua54,
+            None,
+            HashMap::new(),
+            LuaNonStdSymbolSet::new(),
+            false,
+        );
+        let t = LuaParser::parse(code, c);
+        println!("{:#?}", t.get_red_root());
     }
 }

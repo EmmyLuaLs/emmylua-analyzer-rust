@@ -9,6 +9,7 @@ pub struct ParserConfig<'cache> {
     lexer_config: LexerConfig,
     node_cache: Option<&'cache mut NodeCache>,
     special_like: HashMap<String, SpecialFunction>,
+    pub enable_emmylua_doc: bool,
 }
 
 impl<'cache> ParserConfig<'cache> {
@@ -17,6 +18,7 @@ impl<'cache> ParserConfig<'cache> {
         node_cache: Option<&'cache mut NodeCache>,
         special_like: HashMap<String, SpecialFunction>,
         non_std_symbols: LuaNonStdSymbolSet,
+        enable_emmylua_doc: bool,
     ) -> Self {
         Self {
             level,
@@ -26,6 +28,7 @@ impl<'cache> ParserConfig<'cache> {
             },
             node_cache,
             special_like,
+            enable_emmylua_doc,
         }
     }
 
@@ -35,6 +38,10 @@ impl<'cache> ParserConfig<'cache> {
 
     pub fn support_local_attrib(&self) -> bool {
         self.level >= LuaLanguageLevel::Lua54
+    }
+
+    pub fn support_emmylua_doc(&self) -> bool {
+        self.enable_emmylua_doc
     }
 
     pub fn node_cache(&mut self) -> Option<&mut NodeCache> {
@@ -64,6 +71,7 @@ impl<'cache> ParserConfig<'cache> {
             },
             node_cache: None,
             special_like: HashMap::new(),
+            enable_emmylua_doc: true,
         }
     }
 }
@@ -78,6 +86,7 @@ impl Default for ParserConfig<'_> {
             },
             node_cache: None,
             special_like: HashMap::new(),
+            enable_emmylua_doc: true,
         }
     }
 }

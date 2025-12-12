@@ -88,6 +88,7 @@ impl Emmyrc {
             Some(node_cache),
             special_like,
             non_std_symbols,
+            true,
         )
     }
 

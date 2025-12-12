@@ -44,7 +44,6 @@ impl MarkerEventContainer for LuaParser<'_> {
 }
 
 impl<'a> LuaParser<'a> {
-    #[allow(unused)]
     pub fn parse(text: &'a str, config: ParserConfig) -> LuaSyntaxTree {
         let mut errors: Vec<LuaParseError> = Vec::new();
         let tokens = {
@@ -279,6 +278,16 @@ impl<'a> LuaParser<'a> {
     }
 
     fn parse_comments(&mut self, comment_tokens: &[LuaTokenData]) {
+        if !self.parse_config.support_emmylua_doc() {
+            for token in comment_tokens {
+                self.events.push(MarkEvent::EatToken {
+                    kind: token.kind,
+                    range: token.range,
+                });
+            }
+            return;
+        }
+
         let mut trivia_token_start = comment_tokens.len();
         // Reverse iterate over comment_tokens, removing whitespace and end-of-line tokens
         for i in (0..comment_tokens.len()).rev() {
