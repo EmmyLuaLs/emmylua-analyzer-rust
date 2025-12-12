@@ -1,6 +1,6 @@
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaKind, LuaLiteralExpr,
-    LuaLiteralToken, LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind,
+    LuaLiteralToken, LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind, NumberResult,
 };
 use smol_str::SmolStr;
 
@@ -110,8 +110,8 @@ fn infer_attribute_arg_type(expr: LuaLiteralExpr) -> LuaType {
                 return LuaType::DocStringConst(SmolStr::new(str_token.get_value()).into());
             }
             LuaLiteralToken::Number(number_token) => {
-                if number_token.is_int() {
-                    return LuaType::DocIntegerConst(number_token.get_int_value());
+                if let NumberResult::Int(i) = number_token.get_number_value() {
+                    return LuaType::DocIntegerConst(i);
                 } else {
                     return LuaType::Number;
                 }

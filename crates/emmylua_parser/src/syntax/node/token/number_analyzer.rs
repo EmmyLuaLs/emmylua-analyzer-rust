@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{
     LuaSyntaxToken,
     parser_error::{LuaParseError, LuaParseErrorKind},
@@ -86,30 +88,45 @@ enum IntegerRepr {
     Bin,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntegerOrUnsigned {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NumberResult {
     Int(i64),
     Uint(u64),
+    Float(f64),
 }
 
-impl IntegerOrUnsigned {
+impl NumberResult {
     pub fn is_unsigned(&self) -> bool {
-        matches!(self, IntegerOrUnsigned::Uint(_))
+        matches!(self, NumberResult::Uint(_))
     }
 
     pub fn is_signed(&self) -> bool {
-        matches!(self, IntegerOrUnsigned::Int(_))
+        matches!(self, NumberResult::Int(_))
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, NumberResult::Float(_))
     }
 
     pub fn as_integer(&self) -> Option<i64> {
         match self {
-            IntegerOrUnsigned::Int(value) => Some(*value),
-            IntegerOrUnsigned::Uint(_) => None,
+            NumberResult::Int(v) => Some(*v),
+            _ => None,
         }
     }
 }
 
-pub fn int_token_value(token: &LuaSyntaxToken) -> Result<IntegerOrUnsigned, LuaParseError> {
+impl Display for NumberResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NumberResult::Int(v) => write!(f, "{}", v),
+            NumberResult::Uint(v) => write!(f, "{}", v),
+            NumberResult::Float(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+pub fn int_token_value(token: &LuaSyntaxToken) -> Result<NumberResult, LuaParseError> {
     let text = token.text();
     let repr = if text.starts_with("0x") || text.starts_with("0X") {
         IntegerRepr::Hex
@@ -120,11 +137,11 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<IntegerOrUnsigned, LuaP
     };
 
     // 检查是否有无符号后缀并去除后缀
-    let mut is_unsigned = false;
+    let mut is_luajit_unsigned = false;
     let mut suffix_count = 0;
     for c in text.chars().rev() {
         if c == 'u' || c == 'U' {
-            is_unsigned = true;
+            is_luajit_unsigned = true;
             suffix_count += 1;
         } else if c == 'l' || c == 'L' {
             suffix_count += 1;
@@ -149,12 +166,12 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<IntegerOrUnsigned, LuaP
     };
 
     match signed_value {
-        Ok(value) => Ok(IntegerOrUnsigned::Int(value)),
+        Ok(value) => Ok(NumberResult::Int(value)),
         Err(e) => {
             let range = token.text_range();
 
             // 如果是溢出错误，尝试解析为无符号整数
-            if *e.kind() == std::num::IntErrorKind::PosOverflow && is_unsigned {
+            if *e.kind() == std::num::IntErrorKind::PosOverflow && is_luajit_unsigned {
                 let unsigned_value = match repr {
                     IntegerRepr::Hex => {
                         let text = &text[2..];
@@ -168,7 +185,7 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<IntegerOrUnsigned, LuaP
                 };
 
                 match unsigned_value {
-                    Ok(value) => Ok(IntegerOrUnsigned::Uint(value)),
+                    Ok(value) => Ok(NumberResult::Uint(value)),
                     Err(_) => Err(LuaParseError::new(
                         LuaParseErrorKind::SyntaxError,
                         &t!(
@@ -182,10 +199,14 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<IntegerOrUnsigned, LuaP
                 *e.kind(),
                 std::num::IntErrorKind::NegOverflow | std::num::IntErrorKind::PosOverflow
             ) {
+                if let Ok(f) = text.parse::<f64>() {
+                    return Ok(NumberResult::Float(f));
+                }
+
                 Err(LuaParseError::new(
                     LuaParseErrorKind::SyntaxError,
                     &t!(
-                        "The integer literal '%{text}' is too large to be represented in type 'long'",
+                        "The integer literal '%{text}' is too large to be represented in type 'float'",
                         text = token.text()
                     ),
                     range,

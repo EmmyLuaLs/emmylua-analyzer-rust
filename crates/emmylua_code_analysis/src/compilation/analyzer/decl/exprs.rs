@@ -1,7 +1,7 @@
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaDocTagCast, LuaExpr,
     LuaFuncStat, LuaIndexExpr, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr,
-    LuaTableExpr, LuaVarExpr,
+    LuaTableExpr, LuaVarExpr, NumberResult,
 };
 
 use crate::{
@@ -58,8 +58,8 @@ pub fn analyze_index_expr(analyzer: &mut DeclAnalyzer, index_expr: LuaIndexExpr)
     let key = match index_key {
         LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().to_string().into()),
         LuaIndexKey::Integer(int) => {
-            if int.is_int() {
-                LuaMemberKey::Integer(int.get_int_value())
+            if let NumberResult::Int(i) = int.get_number_value() {
+                LuaMemberKey::Integer(i)
             } else {
                 return None;
             }
@@ -232,7 +232,13 @@ pub fn analyze_table_expr(analyzer: &mut DeclAnalyzer, table_expr: LuaTableExpr)
                 let key: LuaMemberKey = match field_key {
                     LuaIndexKey::Name(name) => LuaMemberKey::Name(name.get_name_text().into()),
                     LuaIndexKey::String(str) => LuaMemberKey::Name(str.get_value().into()),
-                    LuaIndexKey::Integer(i) => LuaMemberKey::Integer(i.get_int_value()),
+                    LuaIndexKey::Integer(i) => {
+                        if let NumberResult::Int(idx) = i.get_number_value() {
+                            LuaMemberKey::Integer(idx)
+                        } else {
+                            continue;
+                        }
+                    }
                     LuaIndexKey::Idx(idx) => LuaMemberKey::Integer(idx as i64),
                     LuaIndexKey::Expr(field_expr) => {
                         let unresolve_member = UnResolveTableField {

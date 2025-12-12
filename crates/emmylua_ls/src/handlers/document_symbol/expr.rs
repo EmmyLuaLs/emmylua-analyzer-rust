@@ -108,7 +108,7 @@ pub fn build_table_symbol(
             let str_key = match key {
                 LuaIndexKey::String(key) => key.get_value(),
                 LuaIndexKey::Name(key) => key.get_name_text().to_string(),
-                LuaIndexKey::Integer(i) => i.get_int_value().to_string(),
+                LuaIndexKey::Integer(i) => i.get_number_value().to_string(),
                 _ => continue,
             };
 

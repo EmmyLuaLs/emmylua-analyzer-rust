@@ -382,7 +382,7 @@ impl LuaIndexKey {
             LuaIndexKey::String(s) => s.get_value(),
             LuaIndexKey::Name(name) => name.get_name_text().to_string(),
             LuaIndexKey::Integer(i) => {
-                format!("[{}]", i.get_int_value())
+                format!("[{}]", i.get_number_value())
             }
             LuaIndexKey::Expr(expr) => {
                 format!("[{}]", expr.syntax().text())

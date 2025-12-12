@@ -1,4 +1,4 @@
-use emmylua_parser::{LuaAstNode, LuaIndexKey, LuaIndexMemberExpr};
+use emmylua_parser::{LuaAstNode, LuaIndexKey, LuaIndexMemberExpr, NumberResult};
 use rowan::TextRange;
 use smol_str::SmolStr;
 
@@ -304,7 +304,13 @@ fn find_index_metamethod(
     let access_key_type = match &index_key {
         LuaIndexKey::Name(name) => LuaType::StringConst(SmolStr::new(name.get_name_text()).into()),
         LuaIndexKey::String(s) => LuaType::StringConst(SmolStr::new(s.get_value()).into()),
-        LuaIndexKey::Integer(i) => LuaType::IntegerConst(i.get_int_value()),
+        LuaIndexKey::Integer(i) => {
+            if let NumberResult::Int(idx) = i.get_number_value() {
+                LuaType::IntegerConst(idx)
+            } else {
+                return Err(InferFailReason::FieldNotFound);
+            }
+        }
         LuaIndexKey::Idx(i) => LuaType::IntegerConst(*i as i64),
         LuaIndexKey::Expr(expr) => infer_expr(db, cache, expr.clone())?,
     };

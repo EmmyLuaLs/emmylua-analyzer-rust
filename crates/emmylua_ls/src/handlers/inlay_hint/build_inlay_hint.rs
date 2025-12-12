@@ -757,7 +757,7 @@ fn process_enum_hint_for_arg(
                     }
                     LuaLiteralToken::Number(number_token) => {
                         if number_token.is_int() {
-                            let number_value = format!("[{}]", number_token.get_int_value());
+                            let number_value = format!("[{}]", number_token.get_number_value());
                             if number_value == member_name {
                                 return None;
                             }

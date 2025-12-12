@@ -6,7 +6,7 @@ use emmylua_parser::{
     LuaDocGenericType, LuaDocIndexAccessType, LuaDocInferType, LuaDocMappedType,
     LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
     LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
-    LuaTypeUnaryOperator, LuaVarExpr,
+    LuaTypeUnaryOperator, LuaVarExpr, NumberResult,
 };
 use internment::ArcIntern;
 use rowan::TextRange;
@@ -62,8 +62,8 @@ pub fn infer_type(analyzer: &mut DocAnalyzer, node: LuaDocType) -> LuaType {
                         return LuaType::DocStringConst(SmolStr::new(str_token.get_value()).into());
                     }
                     LuaLiteralToken::Number(number_token) => {
-                        if number_token.is_int() {
-                            return LuaType::DocIntegerConst(number_token.get_int_value());
+                        if let NumberResult::Int(i) = number_token.get_number_value() {
+                            return LuaType::DocIntegerConst(i);
                         } else {
                             return LuaType::Number;
                         }
@@ -601,7 +601,11 @@ fn infer_object_type(analyzer: &mut DocAnalyzer, object_type: &LuaDocObjectType)
                     LuaIndexAccessKey::String(name.get_name_text().to_string().into())
                 }
                 LuaDocObjectFieldKey::Integer(int) => {
-                    LuaIndexAccessKey::Integer(int.get_int_value())
+                    if let NumberResult::Int(i) = int.get_number_value() {
+                        LuaIndexAccessKey::Integer(i)
+                    } else {
+                        continue;
+                    }
                 }
                 LuaDocObjectFieldKey::String(str) => {
                     LuaIndexAccessKey::String(str.get_value().to_string().into())

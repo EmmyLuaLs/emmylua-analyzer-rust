@@ -13,7 +13,7 @@ use std::ops::Deref;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken,
-    LuaTableExpr, LuaVarExpr,
+    LuaTableExpr, LuaVarExpr, NumberResult,
 };
 use infer_binary::infer_binary_expr;
 use infer_call::infer_call_expr;
@@ -115,15 +115,11 @@ fn infer_literal_expr(db: &DbIndex, config: &LuaInferCache, expr: LuaLiteralExpr
     match expr.get_literal().ok_or(InferFailReason::None)? {
         LuaLiteralToken::Nil(_) => Ok(LuaType::Nil),
         LuaLiteralToken::Bool(bool) => Ok(LuaType::BooleanConst(bool.is_true())),
-        LuaLiteralToken::Number(num) => {
-            if num.is_int() {
-                Ok(LuaType::IntegerConst(num.get_int_value()))
-            } else if num.is_float() {
-                Ok(LuaType::FloatConst(num.get_float_value()))
-            } else {
-                Ok(LuaType::Number)
-            }
-        }
+        LuaLiteralToken::Number(num) => match num.get_number_value() {
+            NumberResult::Int(i) => Ok(LuaType::IntegerConst(i)),
+            NumberResult::Float(f) => Ok(LuaType::FloatConst(f)),
+            _ => Ok(LuaType::Number),
+        },
         LuaLiteralToken::String(str) => {
             Ok(LuaType::StringConst(SmolStr::new(str.get_value()).into()))
         }

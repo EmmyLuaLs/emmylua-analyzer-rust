@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use emmylua_parser::{
-    LuaAstNode, LuaExpr, LuaForStat, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, PathTrait,
-    UnaryOperator,
+    LuaAstNode, LuaExpr, LuaForStat, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult,
+    PathTrait, UnaryOperator,
 };
 use internment::ArcIntern;
 use rowan::TextRange;
@@ -240,9 +240,10 @@ fn infer_array_member(
             match array_type.get_len() {
                 LuaArrayLen::None => {}
                 LuaArrayLen::Max(max_len) => {
-                    let index_value = i.get_int_value();
-                    if index_value > 0 && index_value <= *max_len {
-                        return Ok(base_type.clone());
+                    if let NumberResult::Int(index_value) = i.get_number_value() {
+                        if index_value > 0 && index_value <= *max_len {
+                            return Ok(base_type.clone());
+                        }
                     }
                 }
             }
@@ -648,7 +649,13 @@ fn infer_index_metamethod(
     let access_key_type = match &index_key {
         LuaIndexKey::Name(name) => LuaType::StringConst(SmolStr::new(name.get_name_text()).into()),
         LuaIndexKey::String(s) => LuaType::StringConst(SmolStr::new(s.get_value()).into()),
-        LuaIndexKey::Integer(i) => LuaType::IntegerConst(i.get_int_value()),
+        LuaIndexKey::Integer(i) => {
+            if let NumberResult::Int(index_value) = i.get_number_value() {
+                LuaType::IntegerConst(index_value)
+            } else {
+                return Err(InferFailReason::FieldNotFound);
+            }
+        }
         LuaIndexKey::Idx(i) => LuaType::IntegerConst(*i as i64),
         LuaIndexKey::Expr(expr) => infer_expr(db, cache, expr.clone())?,
     };

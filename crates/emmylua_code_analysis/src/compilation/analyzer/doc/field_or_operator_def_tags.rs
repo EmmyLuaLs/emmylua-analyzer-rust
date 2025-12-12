@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocDescriptionOwner, LuaDocFieldKey, LuaDocTagField,
-    LuaDocTagOperator, LuaDocType, VisibilityKind,
+    LuaDocTagOperator, LuaDocType, NumberResult, VisibilityKind,
 };
 
 use crate::{
@@ -79,7 +79,13 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
             LuaMemberKey::Name(name_token.get_name_text().to_string().into())
         }
         LuaDocFieldKey::String(string_token) => LuaMemberKey::Name(string_token.get_value().into()),
-        LuaDocFieldKey::Integer(int_token) => LuaMemberKey::Integer(int_token.get_int_value()),
+        LuaDocFieldKey::Integer(int_token) => {
+            if let NumberResult::Int(idx) = int_token.get_number_value() {
+                LuaMemberKey::Integer(idx)
+            } else {
+                return None;
+            }
+        }
         LuaDocFieldKey::Type(doc_type) => {
             let range = doc_type.get_range();
             let key_type_ref = infer_type(analyzer, doc_type);

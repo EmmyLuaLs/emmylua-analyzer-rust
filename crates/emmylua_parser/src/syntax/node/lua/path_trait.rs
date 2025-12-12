@@ -31,7 +31,7 @@ pub trait PathTrait: LuaAstNode {
                             paths.push(name.get_name_text().to_string());
                         }
                         LuaIndexKey::Integer(i) => {
-                            paths.push(i.get_int_value().to_string());
+                            paths.push(i.get_number_value().to_string());
                         }
                         LuaIndexKey::Expr(expr) => {
                             let text = format!("[{}]", expr.syntax().text());

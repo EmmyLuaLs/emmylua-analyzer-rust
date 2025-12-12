@@ -2,7 +2,7 @@ use crate::{
     LuaOpKind, LuaSyntaxToken, LuaTypeBinaryOperator, LuaTypeUnaryOperator, LuaVersionNumber,
     VisibilityKind,
     kind::{BinaryOperator, LuaTokenKind, UnaryOperator},
-    syntax::traits::LuaAstToken,
+    syntax::{node::token::number_analyzer::NumberResult, traits::LuaAstToken},
 };
 
 use super::{float_token_value, int_token_value, string_token_value};
@@ -140,20 +140,13 @@ impl LuaNumberToken {
         self.token.kind() == LuaTokenKind::TkInt.into()
     }
 
-    pub fn get_float_value(&self) -> f64 {
-        if !self.is_float() {
-            return 0.0;
-        }
-        float_token_value(&self.token).unwrap_or(0.0)
-    }
-
-    pub fn get_int_value(&self) -> i64 {
-        if !self.is_int() {
-            return 0;
-        }
-        match int_token_value(&self.token) {
-            Ok(value) => value.as_integer().unwrap_or(0),
-            Err(_) => 0,
+    pub fn get_number_value(&self) -> NumberResult {
+        match self.token.kind().into() {
+            LuaTokenKind::TkFloat => float_token_value(&self.token)
+                .map(NumberResult::Float)
+                .unwrap_or(NumberResult::Float(0.0)),
+            LuaTokenKind::TkInt => int_token_value(&self.token).unwrap_or(NumberResult::Int(0)),
+            _ => NumberResult::Int(0),
         }
     }
 }

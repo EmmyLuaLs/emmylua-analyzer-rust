@@ -110,7 +110,7 @@ fn get_call_expr_var_ref_id(
                         access_path.push_str(string_token.get_value().as_str());
                     }
                     LuaLiteralToken::Number(number_token) => {
-                        access_path.push_str(number_token.get_int_value().to_string().as_str());
+                        access_path.push_str(number_token.get_number_value().to_string().as_str());
                     }
                     _ => return None,
                 },
