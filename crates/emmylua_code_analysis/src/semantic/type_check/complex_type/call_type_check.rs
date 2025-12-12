@@ -32,10 +32,10 @@ pub fn check_call_type_compact(
                     }
 
                     let source_key_types = LuaType::Union(Arc::new(LuaUnionType::from_vec(
-                        get_key_of_keys(context, &source_operands[0]),
+                        get_keyof_keys(context, &source_operands[0]),
                     )));
                     let compact_key_types = LuaType::Union(Arc::new(LuaUnionType::from_vec(
-                        get_key_of_keys(context, &compact_operands[0]),
+                        get_keyof_keys(context, &compact_operands[0]),
                     )));
                     return check_general_type_compact(
                         context,
@@ -46,7 +46,7 @@ pub fn check_call_type_compact(
                 }
             }
             _ => {
-                let key_types = get_key_of_keys(context, &source_operands[0]);
+                let key_types = get_keyof_keys(context, &source_operands[0]);
                 for key_type in &key_types {
                     match check_general_type_compact(
                         context,
@@ -68,7 +68,7 @@ pub fn check_call_type_compact(
     Ok(())
 }
 
-fn get_key_of_keys(context: &TypeCheckContext, prefix_type: &LuaType) -> Vec<LuaType> {
+fn get_keyof_keys(context: &TypeCheckContext, prefix_type: &LuaType) -> Vec<LuaType> {
     let members = get_keyof_members(context.db, prefix_type).unwrap_or_default();
     let key_types = members
         .iter()

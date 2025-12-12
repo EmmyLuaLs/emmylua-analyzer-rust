@@ -388,7 +388,7 @@ fn get_key_types(db: &DbIndex, typ: &LuaType) -> HashSet<LuaType> {
                 type_set.insert(current_type);
             }
             LuaType::Call(alias_call) => {
-                if let Some(key_types) = get_key_of_keys(db, alias_call) {
+                if let Some(key_types) = get_keyof_keys(db, alias_call) {
                     for t in key_types {
                         stack.push(t.clone());
                     }
@@ -547,7 +547,7 @@ pub fn parse_require_expr_module_info<'a>(
         .find_module(&module_path)
 }
 
-fn get_key_of_keys(db: &DbIndex, alias_call: &LuaAliasCallType) -> Option<Vec<LuaType>> {
+fn get_keyof_keys(db: &DbIndex, alias_call: &LuaAliasCallType) -> Option<Vec<LuaType>> {
     if alias_call.get_call_kind() != LuaAliasCallKind::KeyOf {
         return None;
     }

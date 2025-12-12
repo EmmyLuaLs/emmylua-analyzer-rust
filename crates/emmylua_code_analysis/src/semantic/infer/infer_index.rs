@@ -9,13 +9,13 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
-    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaArrayLen, LuaArrayType, LuaDeclOrMemberId,
-    LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
+    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaArrayLen, LuaArrayType,
+    LuaDeclOrMemberId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    enum_variable_is_param, get_tpl_ref_extend_type,
+    enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -420,26 +420,9 @@ fn infer_custom_type_member(
         return member_item.resolve_type(db);
     }
 
-    if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(&prefix_type_id)
-    {
-        for super_type in super_types {
-            let result =
-                infer_member_by_member_key(db, cache, &super_type, index_expr.clone(), infer_guard);
-
-            match result {
-                Ok(member_type) => {
-                    return Ok(member_type);
-                }
-                Err(InferFailReason::FieldNotFound) => {}
-                Err(err) => return Err(err),
-            }
-        }
-    }
-
     // 解决`key`为表达式的情况
     if let LuaIndexKey::Expr(expr) = index_key
-        && let Some(keys) = expr_to_member_key(db, cache, &expr)
+        && let Some(keys) = get_expr_member_key(db, cache, &expr)
     {
         let mut result_types = Vec::new();
         for key in keys {
@@ -459,6 +442,23 @@ fn infer_custom_type_member(
             [] => {}
             [first] => return Ok(first.clone()),
             _ => return Ok(LuaType::from_vec(result_types)),
+        }
+    }
+
+    if type_decl.is_class()
+        && let Some(super_types) = type_index.get_super_types(&prefix_type_id)
+    {
+        for super_type in super_types {
+            let result =
+                infer_member_by_member_key(db, cache, &super_type, index_expr.clone(), infer_guard);
+
+            match result {
+                Ok(member_type) => {
+                    return Ok(member_type);
+                }
+                Err(InferFailReason::FieldNotFound) => {}
+                Err(err) => return Err(err),
+            }
         }
     }
 
@@ -1233,46 +1233,76 @@ fn infer_namespace_member(
     ))
 }
 
-fn expr_to_member_key(
+fn get_expr_member_key(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     expr: &LuaExpr,
-) -> Option<HashSet<LuaMemberKey>> {
+) -> Option<Vec<LuaMemberKey>> {
     let expr_type = infer_expr(db, cache, expr.clone()).ok()?;
     let mut keys: HashSet<LuaMemberKey> = HashSet::new();
     let mut stack = vec![expr_type.clone()];
     let mut visited = HashSet::new();
 
     while let Some(current_type) = stack.pop() {
-        if visited.contains(&current_type) {
+        if !visited.insert(current_type.clone()) {
             continue;
         }
-        visited.insert(current_type.clone());
         match &current_type {
             LuaType::StringConst(name) | LuaType::DocStringConst(name) => {
-                keys.insert(name.as_ref().to_string().into());
+                keys.insert(LuaMemberKey::Name((**name).clone()));
             }
             LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i) => {
-                keys.insert((*i).into());
+                keys.insert(LuaMemberKey::Integer(*i));
+            }
+            LuaType::Call(alias_call) => {
+                if alias_call.get_call_kind() == LuaAliasCallKind::KeyOf {
+                    let operands = alias_call.get_operands();
+                    if operands.len() == 1 {
+                        if let Some(members) = get_keyof_members(db, &operands[0]) {
+                            keys.extend(members.into_iter().map(|member| member.key));
+                        }
+                    }
+                }
+            }
+            LuaType::MultiLineUnion(multi_union) => {
+                for (typ, _) in multi_union.get_unions() {
+                    if !visited.contains(typ) {
+                        stack.push(typ.clone());
+                    }
+                }
             }
             LuaType::Union(union_typ) => {
                 for t in union_typ.into_vec() {
-                    stack.push(t.clone());
+                    if !visited.contains(&t) {
+                        stack.push(t.clone());
+                    }
                 }
             }
             LuaType::TableConst(_) | LuaType::Tuple(_) => {
-                keys.insert(LuaMemberKey::ExprType(expr_type.clone()));
+                keys.insert(LuaMemberKey::ExprType(current_type.clone()));
             }
             LuaType::Ref(id) => {
-                if let Some(type_decl) = db.get_type_index().get_type_decl(id)
-                    && (type_decl.is_enum() || type_decl.is_alias())
-                {
-                    keys.insert(LuaMemberKey::ExprType(current_type.clone()));
+                if let Some(type_decl) = db.get_type_index().get_type_decl(id) {
+                    if type_decl.is_alias() {
+                        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+                            if !visited.contains(&origin_type) {
+                                stack.push(origin_type);
+                            }
+                            continue;
+                        }
+                    }
+                    if type_decl.is_enum() || type_decl.is_alias() {
+                        keys.insert(LuaMemberKey::ExprType(current_type.clone()));
+                    }
                 }
             }
             _ => {}
         }
     }
+
+    // 转换为 Vec 并排序以确保顺序确定性
+    let mut keys: Vec<_> = keys.into_iter().collect();
+    keys.sort();
     Some(keys)
 }
 
