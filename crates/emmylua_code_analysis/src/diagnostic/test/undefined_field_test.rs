@@ -762,6 +762,20 @@ mod test {
             local a = require("a").ABC
             "#,
         ));
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+
+            ---@export
+            local export = {}
+
+            export.aaa()
+
+            return export
+
+            "#,
+        ));
     }
 
     #[test]
