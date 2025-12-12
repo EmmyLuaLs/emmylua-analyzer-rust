@@ -7,8 +7,9 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DiagnosticCode, InferFailReason, LuaMemberKey, LuaSemanticDeclId, LuaType, ModuleInfo,
-    SemanticDeclLevel, SemanticModel, enum_variable_is_param, parse_require_module_info,
+    DbIndex, DiagnosticCode, InferFailReason, LuaAliasCallKind, LuaAliasCallType, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, ModuleInfo, SemanticDeclLevel, SemanticModel,
+    enum_variable_is_param, get_keyof_members, parse_require_module_info,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -262,7 +263,7 @@ fn is_valid_member(
             local field
             local a = Class[field]
     */
-    let key_types = get_key_types(&key_type);
+    let key_types = get_key_types(&semantic_model.get_db(), &key_type);
     if key_types.is_empty() {
         return None;
     }
@@ -358,7 +359,7 @@ fn get_prefix_types(prefix_typ: &LuaType) -> HashSet<LuaType> {
     type_set
 }
 
-fn get_key_types(typ: &LuaType) -> HashSet<LuaType> {
+fn get_key_types(db: &DbIndex, typ: &LuaType) -> HashSet<LuaType> {
     let mut type_set = HashSet::new();
     let mut stack = vec![typ.clone()];
     let mut visited = HashSet::new();
@@ -382,6 +383,16 @@ fn get_key_types(typ: &LuaType) -> HashSet<LuaType> {
             }
             LuaType::StrTplRef(_) | LuaType::Ref(_) => {
                 type_set.insert(current_type);
+            }
+            LuaType::DocStringConst(_) | LuaType::DocIntegerConst(_) => {
+                type_set.insert(current_type);
+            }
+            LuaType::Call(alias_call) => {
+                if let Some(key_types) = get_key_of_keys(db, alias_call) {
+                    for t in key_types {
+                        stack.push(t.clone());
+                    }
+                }
             }
             _ => {}
         }
@@ -534,4 +545,24 @@ pub fn parse_require_expr_module_info<'a>(
         .get_db()
         .get_module_index()
         .find_module(&module_path)
+}
+
+fn get_key_of_keys(db: &DbIndex, alias_call: &LuaAliasCallType) -> Option<Vec<LuaType>> {
+    if alias_call.get_call_kind() != LuaAliasCallKind::KeyOf {
+        return None;
+    }
+    let source_operands = alias_call.get_operands().iter().collect::<Vec<_>>();
+    if source_operands.len() != 1 {
+        return None;
+    }
+    let members = get_keyof_members(db, &source_operands[0]).unwrap_or_default();
+    let key_types = members
+        .iter()
+        .filter_map(|m| match &m.key {
+            LuaMemberKey::Integer(i) => Some(LuaType::DocIntegerConst(*i)),
+            LuaMemberKey::Name(s) => Some(LuaType::DocStringConst(s.clone().into())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    Some(key_types)
 }
