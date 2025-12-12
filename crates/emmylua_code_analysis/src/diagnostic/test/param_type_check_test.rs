@@ -1418,4 +1418,40 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_key_of() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class SuiteHooks
+            ---@field beforeAll string
+            ---@field afterAll string
+
+            ---@param name keyof SuiteHooks
+            function test(name)
+            end
+        "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            test("a")
+        "#,
+        ));
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            test("beforeAll")
+        "#,
+        ));
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type keyof SuiteHooks
+            local name
+            test(name)
+        "#,
+        ));
+    }
 }

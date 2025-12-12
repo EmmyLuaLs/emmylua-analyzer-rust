@@ -1,10 +1,12 @@
 mod array_type_check;
+mod call_type_check;
 mod intersection_type_check;
 mod object_type_check;
 mod table_generic_check;
 mod tuple_type_check;
 
 use array_type_check::check_array_type_compact;
+use call_type_check::check_call_type_compact;
 use intersection_type_check::check_intersection_type_compact;
 use object_type_check::check_object_type_compact;
 use table_generic_check::check_table_generic_type_compact;
@@ -121,6 +123,9 @@ pub fn check_complex_type_compact(
         }
         LuaType::Generic(_) => {
             return Ok(());
+        }
+        LuaType::Call(alias_call) => {
+            return check_call_type_compact(context, alias_call, compact_type, check_guard);
         }
         LuaType::MultiLineUnion(multi_union) => {
             let union = multi_union.to_union();

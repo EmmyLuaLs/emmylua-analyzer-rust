@@ -2375,7 +2375,7 @@ mod tests {
     }
 
     #[gtest]
-    fn test_modle_return_signature() -> Result<()> {
+    fn test_module_return_signature() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def_file(
             "test.lua",

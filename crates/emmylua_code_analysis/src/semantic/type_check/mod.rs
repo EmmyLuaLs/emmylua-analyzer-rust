@@ -137,12 +137,10 @@ fn check_general_type_compact(
         | LuaType::Union(_)
         | LuaType::Intersection(_)
         | LuaType::TableGeneric(_)
+        | LuaType::Call(_)
         | LuaType::MultiLineUnion(_) => {
             check_complex_type_compact(context, &source, &compact_type, check_guard)
         }
-
-        // need think how to do that
-        LuaType::Call(_) => Ok(()),
 
         // generic type
         LuaType::Generic(generic) => {
