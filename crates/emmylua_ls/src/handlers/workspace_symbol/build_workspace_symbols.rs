@@ -2,6 +2,15 @@ use emmylua_code_analysis::{DbIndex, LuaCompilation, LuaSemanticDeclId, LuaType}
 use lsp_types::{OneOf, SymbolKind, SymbolTag, WorkspaceSymbol, WorkspaceSymbolResponse};
 use tokio_util::sync::CancellationToken;
 
+/// if query contains uppercase, do case-sensitive match; otherwise, ignore case
+fn match_symbol(text: &str, query: &str) -> bool {
+    if query.chars().any(|c| c.is_uppercase()) {
+        text.contains(query)
+    } else {
+        text.to_lowercase().contains(&query.to_lowercase())
+    }
+}
+
 pub fn build_workspace_symbols(
     compilation: &LuaCompilation,
     query: String,
@@ -32,7 +41,7 @@ fn add_global_variable_symbols(
             return None;
         }
 
-        if decl.get_name().contains(query) {
+        if match_symbol(decl.get_name(), query) {
             let typ = db
                 .get_type_index()
                 .get_type_cache(&decl_id.into())
@@ -78,7 +87,7 @@ fn add_type_symbols(
             return None;
         }
 
-        if typ.get_full_name().contains(query) {
+        if match_symbol(typ.get_full_name(), query) {
             let property_owner_id = LuaSemanticDeclId::TypeDecl(typ.get_id());
             let location = typ.get_locations().first()?;
             let document = db.get_vfs().get_document(&location.file_id)?;
