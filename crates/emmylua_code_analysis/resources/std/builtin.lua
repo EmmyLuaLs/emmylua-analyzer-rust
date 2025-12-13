@@ -116,6 +116,7 @@
 
 ---@alias std.Nullable<T> T + ?
 
+---
 --- built-in type for Select function
 ---@alias std.Select<T, StartOrLen> unknown
 
@@ -143,22 +144,28 @@
 
 ---@alias Language<T: string> string
 
+---
 --- Get the parameters of a function as a tuple
 ---@alias Parameters<T extends function> T extends (fun(...: infer P): any) and P or never
 
+---
 --- Get the parameters of a constructor as a tuple
 ---@alias ConstructorParameters<T> T extends new (fun(...: infer P): any) and P or never
 
+---
 ---@alias ReturnType<T extends function> T extends (fun(...: any): infer R) and R or any
 
+---
 --- Make all properties in T optional
 ---@alias Partial<T> { [P in keyof T]?: T[P]; }
 
 --- attribute
 
+---
 --- Deprecated. Receives an optional message parameter.
 ---@attribute deprecated(message: string?)
 
+---
 --- Language Server Optimization Items.
 ---
 --- Parameters:
@@ -167,11 +174,13 @@
 ---    Only valid for `local` declarations with no initial value.
 ---@attribute lsp_optimization(code: "check_table_field"|"delayed_definition")
 
+---
 --- Index field alias, will be displayed in `hint` and `completion`.
 ---
 --- Receives a string parameter for the alias name.
 ---@attribute index_alias(name: string)
 
+---
 --- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
 --- used to specify the default constructor of a class.
 ---
@@ -182,6 +191,7 @@
 --- - `return_self`: Whether the constructor is forced to return `self`, defaults to `true`
 ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
 
+---
 --- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,
 --- and the target methods must reside within the same class.
 ---

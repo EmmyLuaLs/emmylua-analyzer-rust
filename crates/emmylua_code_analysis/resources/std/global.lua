@@ -164,7 +164,6 @@ function load(chunk, chunkname, mode, env) end
 ---
 ---Loads a chunk from the given string.
 ---
----
 ---@version 5.1, JIT
 ---@param text       Language<"Lua">
 ---@param chunkname? string
@@ -237,6 +236,7 @@ function next(table, index) end
 ---@param t table<K, V> | V[] | {[K]: V}
 ---@return fun(tbl: any):K, V
 function pairs(t) end
+
 ---
 --- Calls function `f` with the given arguments in *protected mode*. This
 --- means that any error inside `f` is not propagated; instead, `pcall` catches
@@ -336,7 +336,6 @@ function require(modname) end
 ---@param ... T...
 ---@return std.Select<T..., Num>
 function select(index, ...) end
-
 
 ---@class std.metatable
 ---@field __mode? 'v'|'k'|'kv'
@@ -450,6 +449,7 @@ _VERSION = "Lua 5.4"
 function xpcall(f, msgh, ...) end
 
 ---@version 5.1, JIT
+---
 ---@generic T, Start: integer, End: integer
 ---@param i? std.ConstTpl<Start>
 ---@param j? std.ConstTpl<End>
@@ -458,6 +458,7 @@ function xpcall(f, msgh, ...) end
 function unpack(list, i, j) end
 
 ---@version > 5.4
+---
 ---@param message string
 function warn(message) end
 
@@ -472,12 +473,14 @@ _ENV = {}
 
 
 ---@version 5.1, JIT
+---
 --- Sets the environment for the specified function.
 ---@param f function|integer The function for which the environment is to be set.
 ---@param env table The environment table to assign to the function.
 function setfenv(f, env) end
 
 ---@version 5.1, JIT
+---
 --- Retrieves the environment table of the specified function.
 ---@param f function|integer The function whose environment is to be retrieved.
 ---@return table The environment table associated with the given function.

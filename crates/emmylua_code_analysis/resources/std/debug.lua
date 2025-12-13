@@ -64,13 +64,13 @@ function debug.gethook(thread) end
 ---@field activelines     table
 
 ---@alias debuglib.InfoWhat
----|+"n"     # `name` 和 `namewhat`
----|+"S"     # `source`，`short_src`，`linedefined`，`lalinedefined`，和 `what`
+---|+"n"     # `name`, `namewhat`
+---|+"S"     # `source`, `short_src`, `linedefined`, `lalinedefined`, `what`
 ---|+"l"     # `currentline`
 ---|+"t"     # `istailcall`
----|+"u"     # `nups`、`nparams` 和 `isvararg`
+---|+"u"     # `nups`, `nparams`, `isvararg`
 ---|+"f"     # `func`
----|+"r"     # `ftransfer` 和 `ntransfer`
+---|+"r"     # `ftransfer`, `ntransfer`
 ---|+"L"     # `activelines`
 ---| string
 
@@ -102,7 +102,7 @@ function debug.gethook(thread) end
 ---@nodiscard
 function debug.getinfo(thread, f, what) end
 
---- @version >5.2, JIT
+---@version >5.2, JIT
 ---
 --- This function returns the name and the value of the local variable with
 --- index `local` of the function at level `level f` of the stack. This function
@@ -134,7 +134,7 @@ function debug.getinfo(thread, f, what) end
 --- @nodiscard
 function debug.getlocal(thread, f, index) end
 
---- @version 5.1
+---@version 5.1
 ---
 --- This function returns the name and the value of the local variable with
 --- index `index` of the function at level `level` of the stack. (The first
@@ -203,6 +203,7 @@ function debug.getuservalue(u, n) end
 ---@param limit integer
 ---@return integer|boolean
 function debug.setcstacklimit(limit) end
+
 ---
 ---Sets the environment of the given `object` to the given `table` .
 ---
@@ -307,7 +308,6 @@ function debug.setuservalue(udata, value, n) end
 ---@return string
 function debug.traceback(thread, message, level) end
 
-
 --- Returns a unique identifier (as a light userdata) for the upvalue numbered
 --- `n` from the given function.
 ---
@@ -321,7 +321,6 @@ function debug.traceback(thread, message, level) end
 ---@return lightuserdata id
 ---@nodiscard
 function debug.upvalueid(f, n) end
-
 
 ---
 --- Make the `n1`-th upvalue of the Lua closure f1 refer to the `n2`-th upvalue

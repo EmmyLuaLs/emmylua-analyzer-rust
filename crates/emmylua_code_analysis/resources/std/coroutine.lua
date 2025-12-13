@@ -34,17 +34,14 @@ function coroutine.create(f) end
 ---@nodiscard
 function coroutine.isyieldable() end
 
-
-
+---@version > 5.4
 ---
 ---Closes coroutine `co` , closing all its pending to-be-closed variables and putting the coroutine in a dead state.
 ---
----@version > 5.4
 ---@param co thread
 ---@return boolean noerror
 ---@return any errorobject
 function coroutine.close(co) end
-
 
 ---
 --- Starts or continues the execution of coroutine `co`. The first time you

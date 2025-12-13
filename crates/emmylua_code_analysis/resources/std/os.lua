@@ -81,7 +81,7 @@ function os.date(format, time) end
 ---@return number
 function os.difftime(t2, t1) end
 
---- @version > 5.2
+---@version > 5.2
 ---
 --- This function is equivalent to the C function `system`. It passes `command`
 --- to be executed by an operating system shell. Its first result is **true** if
@@ -102,7 +102,7 @@ function os.difftime(t2, t1) end
 --- @return integer
 function os.execute(command) end
 
---- @version 5.1, JIT
+---@version 5.1, JIT
 ---
 --- This function is equivalent to the C function system. It passes command to
 --- be executed by an operating system shell. It returns a status code, which is
@@ -112,7 +112,7 @@ function os.execute(command) end
 --- @return integer
 function os.execute(command) end
 
---- @version > 5.2, JIT
+---@version > 5.2, JIT
 ---
 --- Calls the ISO C function `exit` to terminate the host program. If `code` is
 --- **true**, the returned status is `EXIT_SUCCESS`; if `code` is **false**, the
@@ -126,7 +126,7 @@ function os.execute(command) end
 ---@return integer
 function os.exit(code, close) end
 
---- @version 5.1
+---@version 5.1
 ---
 --- Calls the C function exit, with an optional `code`, to terminate the host
 --- program. The default value for `code` is the success code.
