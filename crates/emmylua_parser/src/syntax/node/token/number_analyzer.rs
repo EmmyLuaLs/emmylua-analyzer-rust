@@ -168,58 +168,90 @@ pub fn int_token_value(token: &LuaSyntaxToken) -> Result<NumberResult, LuaParseE
     match signed_value {
         Ok(value) => Ok(NumberResult::Int(value)),
         Err(e) => {
-            let range = token.text_range();
-
-            // 如果是溢出错误，尝试解析为无符号整数
-            if *e.kind() == std::num::IntErrorKind::PosOverflow && is_luajit_unsigned {
-                let unsigned_value = match repr {
-                    IntegerRepr::Hex => {
-                        let text = &text[2..];
-                        u64::from_str_radix(text, 16)
-                    }
-                    IntegerRepr::Bin => {
-                        let text = &text[2..];
-                        u64::from_str_radix(text, 2)
-                    }
-                    IntegerRepr::Normal => text.parse::<u64>(),
-                };
-
-                match unsigned_value {
-                    Ok(value) => Ok(NumberResult::Uint(value)),
-                    Err(_) => Err(LuaParseError::new(
-                        LuaParseErrorKind::SyntaxError,
-                        &t!(
-                            "The integer literal '%{text}' is too large to be represented",
-                            text = token.text()
-                        ),
-                        range,
-                    )),
-                }
-            } else if matches!(
+            // 按照Lua的行为：如果整数溢出，尝试解析为浮点数
+            if matches!(
                 *e.kind(),
                 std::num::IntErrorKind::NegOverflow | std::num::IntErrorKind::PosOverflow
             ) {
-                if let Ok(f) = text.parse::<f64>() {
-                    return Ok(NumberResult::Float(f));
+                // 如果是luajit无符号整数，尝试解析为u64
+                if is_luajit_unsigned {
+                    let unsigned_value = match repr {
+                        IntegerRepr::Hex => {
+                            let text = &text[2..];
+                            u64::from_str_radix(text, 16)
+                        }
+                        IntegerRepr::Bin => {
+                            let text = &text[2..];
+                            u64::from_str_radix(text, 2)
+                        }
+                        IntegerRepr::Normal => text.parse::<u64>(),
+                    };
+
+                    if let Ok(value) = unsigned_value {
+                        return Ok(NumberResult::Uint(value));
+                    }
+                } else {
+                    // Lua 5.4行为：对于十六进制/二进制整数溢出，解析为u64然后reinterpret为i64
+                    // 例如：0xFFFFFFFFFFFFFFFF = -1
+                    if matches!(repr, IntegerRepr::Hex | IntegerRepr::Bin) {
+                        let unsigned_value = match repr {
+                            IntegerRepr::Hex => {
+                                let text = &text[2..];
+                                u64::from_str_radix(text, 16)
+                            }
+                            IntegerRepr::Bin => {
+                                let text = &text[2..];
+                                u64::from_str_radix(text, 2)
+                            }
+                            _ => unreachable!(),
+                        };
+
+                        if let Ok(value) = unsigned_value {
+                            // Reinterpret u64 as i64 (补码转换)
+                            return Ok(NumberResult::Int(value as i64));
+                        } else {
+                            // 超过64位，转换为浮点数
+                            // 例如：0x13121110090807060504030201
+                            let hex_str = match repr {
+                                IntegerRepr::Hex => &text[2..],
+                                IntegerRepr::Bin => &text[2..],
+                                _ => unreachable!(),
+                            };
+
+                            // 手动将十六进制转为浮点数
+                            let base = if matches!(repr, IntegerRepr::Hex) {
+                                16.0
+                            } else {
+                                2.0
+                            };
+                            let mut result = 0.0f64;
+                            for c in hex_str.chars() {
+                                if let Some(digit) = c.to_digit(base as u32) {
+                                    result = result * base + (digit as f64);
+                                }
+                            }
+                            return Ok(NumberResult::Float(result));
+                        }
+                    } else if let Ok(f) = text.parse::<f64>() {
+                        // 十进制整数溢出，解析为浮点数
+                        return Ok(NumberResult::Float(f));
+                    }
                 }
 
                 Err(LuaParseError::new(
                     LuaParseErrorKind::SyntaxError,
-                    &t!(
-                        "The integer literal '%{text}' is too large to be represented in type 'float'",
-                        text = token.text()
-                    ),
-                    range,
+                    &t!("malformed number"),
+                    token.text_range(),
                 ))
             } else {
                 Err(LuaParseError::new(
                     LuaParseErrorKind::SyntaxError,
                     &t!(
-                        "The integer literal '%{text}' is invalid, %{err}",
+                        "Failed to parse integer literal %{text}: %{err}",
                         text = token.text(),
                         err = e
                     ),
-                    range,
+                    token.text_range(),
                 ))
             }
         }
