@@ -154,6 +154,83 @@ pub fn get_detail(
     }
 }
 
+pub fn get_function_snippet(
+    builder: &CompletionBuilder,
+    label: &str,
+    typ: &LuaType,
+    display: CallDisplay,
+) -> Option<String> {
+    match typ {
+        LuaType::Signature(signature_id) => {
+            let signature = builder
+                .semantic_model
+                .get_db()
+                .get_signature_index()
+                .get(signature_id)?;
+
+            let mut params_str = signature
+                .get_type_params()
+                .iter()
+                .map(|param| param.0.clone())
+                .collect::<Vec<_>>();
+
+            match display {
+                CallDisplay::AddSelf => {
+                    params_str.insert(0, "self".to_string());
+                }
+                CallDisplay::RemoveFirst => {
+                    if !params_str.is_empty() {
+                        params_str.remove(0);
+                    }
+                }
+                _ => {}
+            }
+
+            Some(format!(
+                "{}({})",
+                label,
+                params_str
+                    .iter()
+                    .enumerate()
+                    .map(|(i, name)| format!("${{{}:{}}}", i + 1, name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        }
+        LuaType::DocFunction(f) => {
+            let mut params_str = f
+                .get_params()
+                .iter()
+                .map(|param| param.0.clone())
+                .collect::<Vec<_>>();
+
+            match display {
+                CallDisplay::AddSelf => {
+                    params_str.insert(0, "self".to_string());
+                }
+                CallDisplay::RemoveFirst => {
+                    if !params_str.is_empty() {
+                        params_str.remove(0);
+                    }
+                }
+                _ => {}
+            }
+
+            Some(format!(
+                "{}({})",
+                label,
+                params_str
+                    .iter()
+                    .enumerate()
+                    .map(|(i, name)| format!("${{{}:{}}}", i + 1, name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        }
+        _ => None,
+    }
+}
+
 #[allow(unused)]
 fn truncate_with_ellipsis(s: &str, max_len: usize) -> String {
     if s.chars().count() > max_len {

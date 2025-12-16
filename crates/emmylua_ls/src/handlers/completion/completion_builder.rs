@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use emmylua_code_analysis::SemanticModel;
+use emmylua_code_analysis::{LuaType, SemanticModel};
 use emmylua_parser::LuaSyntaxToken;
 use lsp_types::{CompletionItem, CompletionTriggerKind};
 use rowan::TextSize;
@@ -75,5 +75,15 @@ impl<'a> CompletionBuilder<'a> {
     /// 主动补全
     pub fn is_invoked(&self) -> bool {
         self.trigger_kind == CompletionTriggerKind::INVOKED
+    }
+
+    pub fn support_snippets(&self, ty: &LuaType) -> bool {
+        ty.is_function()
+            && self
+                .semantic_model
+                .get_db()
+                .get_emmyrc()
+                .completion
+                .call_snippet
     }
 }
