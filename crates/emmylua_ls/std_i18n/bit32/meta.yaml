@@ -1,0 +1,551 @@
+version: 1
+line_base: 0
+col_base: 0
+file: bit32.lua
+entries:
+- key: bit32lib
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 6
+      col: 0
+    end:
+      line: 11
+      col: 0
+  hash: fnv1a64:b18b7281aaaec493
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.arshift
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 14
+      col: 0
+    end:
+      line: 22
+      col: 0
+  hash: fnv1a64:ed2a88c4920f6d8c
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.arshift.param.x
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 22
+      col: 22
+    end:
+      line: 22
+      col: 22
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:178d3ac4117a5973
+- key: bit32lib.arshift.param.disp
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 23
+      col: 22
+    end:
+      line: 23
+      col: 22
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:aa940a5c16855873
+- key: bit32lib.arshift.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 24
+      col: 18
+    end:
+      line: 24
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.band
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 28
+      col: 0
+    end:
+      line: 33
+      col: 0
+  hash: fnv1a64:eda2ba432394c515
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.band.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 33
+      col: 18
+    end:
+      line: 33
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.bnot
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 37
+      col: 0
+    end:
+      line: 48
+      col: 0
+  hash: fnv1a64:c7a8cb7786df2b1c
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.bnot.param.x
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 48
+      col: 19
+    end:
+      line: 48
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:103e38996e76bfa9
+- key: bit32lib.bnot.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 49
+      col: 18
+    end:
+      line: 49
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.bor
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 53
+      col: 0
+    end:
+      line: 58
+      col: 0
+  hash: fnv1a64:1d8f054ce3d49bb3
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.bor.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 58
+      col: 18
+    end:
+      line: 58
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.btest
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 62
+      col: 0
+    end:
+      line: 67
+      col: 0
+  hash: fnv1a64:2278c16008c2f0db
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.btest.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 67
+      col: 18
+    end:
+      line: 67
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:8c634c305d7ac2d0
+- key: bit32lib.bxor
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 71
+      col: 0
+    end:
+      line: 76
+      col: 0
+  hash: fnv1a64:67aa98324af03d6d
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.bxor.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 76
+      col: 18
+    end:
+      line: 76
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.extract
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 80
+      col: 0
+    end:
+      line: 85
+      col: 0
+  hash: fnv1a64:124c816100c12d49
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.extract.param.n
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 85
+      col: 24
+    end:
+      line: 85
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1407080302d9c57d
+- key: bit32lib.extract.param.field
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 86
+      col: 24
+    end:
+      line: 86
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:33fc09a3c21d4e6b
+- key: bit32lib.extract.param.width
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 87
+      col: 24
+    end:
+      line: 87
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9091afabaa2a8846
+- key: bit32lib.extract.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 88
+      col: 18
+    end:
+      line: 88
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.replace
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 92
+      col: 0
+    end:
+      line: 97
+      col: 0
+  hash: fnv1a64:08d8a168ba912d23
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.replace.param.n
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 97
+      col: 19
+    end:
+      line: 97
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3e015a3fb469a05f
+- key: bit32lib.replace.param.v
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 98
+      col: 19
+    end:
+      line: 98
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:60f423a6f90eff67
+- key: bit32lib.replace.param.field
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 99
+      col: 24
+    end:
+      line: 99
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:33fc09a3c21d4e6b
+- key: bit32lib.replace.param.width
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 100
+      col: 24
+    end:
+      line: 100
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9091afabaa2a8846
+- key: bit32lib.lrotate
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 104
+      col: 0
+    end:
+      line: 109
+      col: 0
+  hash: fnv1a64:72c73581e540b235
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.lrotate.param.x
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 109
+      col: 23
+    end:
+      line: 109
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3c64ffc87bce19
+- key: bit32lib.lrotate.param.distp
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 110
+      col: 23
+    end:
+      line: 110
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7ebb76985a866df5
+- key: bit32lib.lrotate.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 111
+      col: 18
+    end:
+      line: 111
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.lshift
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 115
+      col: 0
+    end:
+      line: 126
+      col: 0
+  hash: fnv1a64:8d2fb4426479558e
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.lshift.param.x
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 126
+      col: 23
+    end:
+      line: 126
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3c64ffc87bce19
+- key: bit32lib.lshift.param.distp
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 127
+      col: 23
+    end:
+      line: 127
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7ebb76985a866df5
+- key: bit32lib.lshift.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 128
+      col: 18
+    end:
+      line: 128
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.rrotate
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 132
+      col: 0
+    end:
+      line: 137
+      col: 0
+  hash: fnv1a64:aacf9ee540de85b3
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.rrotate.param.x
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 137
+      col: 23
+    end:
+      line: 137
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3c64ffc87bce19
+- key: bit32lib.rrotate.param.distp
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 138
+      col: 23
+    end:
+      line: 138
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7ebb76985a866df5
+- key: bit32lib.rrotate.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 139
+      col: 18
+    end:
+      line: 139
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: bit32lib.rshift
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 143
+      col: 0
+    end:
+      line: 154
+      col: 0
+  hash: fnv1a64:abecff6d17e2eaf9
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: bit32lib.rshift.param.x
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 154
+      col: 23
+    end:
+      line: 154
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3c64ffc87bce19
+- key: bit32lib.rshift.param.distp
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 155
+      col: 23
+    end:
+      line: 155
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7ebb76985a866df5
+- key: bit32lib.rshift.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 156
+      col: 18
+    end:
+      line: 156
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde

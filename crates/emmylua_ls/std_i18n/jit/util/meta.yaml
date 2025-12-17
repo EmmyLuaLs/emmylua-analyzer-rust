@@ -1,0 +1,720 @@
+version: 1
+line_base: 0
+col_base: 0
+file: jit/util.lua
+entries:
+- key: Trace
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 4
+      col: 0
+    end:
+      line: 4
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:0f8c35f37a9145db
+- key: funcinfo
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 9
+      col: 0
+    end:
+      line: 9
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:613cbfd957d4d5f7
+- key: funcinfo2
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 28
+      col: 0
+    end:
+      line: 28
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:d6e2c289df5b428c
+- key: util.funcinfo
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 36
+      col: 0
+    end:
+      line: 36
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funcinfo.param.func
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 36
+      col: 23
+    end:
+      line: 36
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funcinfo.param.pc
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 37
+      col: 21
+    end:
+      line: 37
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4b3128c15a9f7bef
+- key: util.funcinfo.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 38
+      col: 47
+    end:
+      line: 38
+      col: 47
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:380b9555269e7c41
+- key: util.funcbc
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 42
+      col: 0
+    end:
+      line: 42
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funcbc.param.func
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 42
+      col: 23
+    end:
+      line: 42
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funcbc.param.pc
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 43
+      col: 20
+    end:
+      line: 43
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:ed7dc4e351bba852
+- key: util.funcbc.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 44
+      col: 23
+    end:
+      line: 44
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:68c4c5ec68c4a4fb
+- key: util.funcbc.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 45
+      col: 21
+    end:
+      line: 45
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:10f8260e7b8861cc
+- key: util.funck
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 49
+      col: 0
+    end:
+      line: 49
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funck.param.func
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 49
+      col: 23
+    end:
+      line: 49
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funck.param.idx
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 50
+      col: 21
+    end:
+      line: 50
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3482e3265890ae
+- key: util.funck.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 51
+      col: 17
+    end:
+      line: 51
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7b6a2a212cf59ce6
+- key: util.funcuvname
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 55
+      col: 0
+    end:
+      line: 55
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funcuvname.param.func
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 55
+      col: 23
+    end:
+      line: 55
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: util.funcuvname.param.idx
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 56
+      col: 21
+    end:
+      line: 56
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3482e3265890ae
+- key: util.funcuvname.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 57
+      col: 23
+    end:
+      line: 57
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9e374f89402f8381
+- key: traceinfo
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 61
+      col: 0
+    end:
+      line: 61
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:0d948c42d211d1be
+- key: util.traceinfo
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 70
+      col: 0
+    end:
+      line: 70
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.traceinfo.param.tr
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 70
+      col: 18
+    end:
+      line: 70
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.traceinfo.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 71
+      col: 30
+    end:
+      line: 71
+      col: 30
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:20b017b39df9dfbf
+- key: util.traceir
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 75
+      col: 0
+    end:
+      line: 75
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.traceir.param.tr
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 75
+      col: 18
+    end:
+      line: 75
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.traceir.param.ref
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 76
+      col: 21
+    end:
+      line: 76
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a1c74334537151b4
+- key: util.traceir.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 77
+      col: 21
+    end:
+      line: 77
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:10f8260e7b8861cc
+- key: util.traceir.return.2
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 78
+      col: 25
+    end:
+      line: 78
+      col: 50
+  hash: fnv1a64:0fccc55e3f2e66e3
+  context_hash: fnv1a64:1fc12a68a2da7f94
+- key: util.traceir.return.3
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 79
+      col: 23
+    end:
+      line: 79
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9b7e75ec8525a415
+- key: util.traceir.return.4
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 80
+      col: 23
+    end:
+      line: 80
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9b7e72ec85259efc
+- key: util.traceir.return.5
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 81
+      col: 24
+    end:
+      line: 81
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:d6e1628226fb6454
+- key: util.tracek
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 85
+      col: 0
+    end:
+      line: 85
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.tracek.param.tr
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 85
+      col: 18
+    end:
+      line: 85
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.tracek.param.idx
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 86
+      col: 21
+    end:
+      line: 86
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3482e3265890ae
+- key: util.tracek.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 87
+      col: 17
+    end:
+      line: 87
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7b6a2a212cf59ce6
+- key: util.tracek.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 88
+      col: 21
+    end:
+      line: 88
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:10f83f0e7b888c47
+- key: util.tracek.return.3
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 89
+      col: 24
+    end:
+      line: 89
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:006c328d0f59a8cd
+- key: jit.snap
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 93
+      col: 0
+    end:
+      line: 93
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9502411862adcb75
+- key: util.tracesnap
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 95
+      col: 0
+    end:
+      line: 95
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.tracesnap.param.tr
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 95
+      col: 18
+    end:
+      line: 95
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.tracesnap.param.sn
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 96
+      col: 20
+    end:
+      line: 96
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:480667824958b7aa
+- key: util.tracesnap.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 97
+      col: 25
+    end:
+      line: 97
+      col: 25
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:34b976bdcd99c810
+- key: util.tracemc
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 101
+      col: 0
+    end:
+      line: 101
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.tracemc.param.tr
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 101
+      col: 18
+    end:
+      line: 101
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.tracemc.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 102
+      col: 24
+    end:
+      line: 102
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1cdfa39fac4ebbc4
+- key: util.tracemc.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 103
+      col: 24
+    end:
+      line: 103
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:75a9ddf887fc45e6
+- key: util.tracemc.return.3
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 104
+      col: 24
+    end:
+      line: 104
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:724a28db7a5b3847
+- key: util.traceexitstub
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 108
+      col: 0
+    end:
+      line: 108
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:99090ef819d77709
+- key: util.traceexitstub.param.tr
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 109
+      col: 18
+    end:
+      line: 109
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4cdc0490894b4126
+- key: util.traceexitstub.param.exitno
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 110
+      col: 24
+    end:
+      line: 110
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:005158f805d719f4
+- key: util.traceexitstub.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 111
+      col: 24
+    end:
+      line: 111
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:75a9ddf887fc45e6
+- key: util.ircalladdr
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 115
+      col: 0
+    end:
+      line: 115
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3482e3265890ae
+- key: util.ircalladdr.param.idx
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 115
+      col: 21
+    end:
+      line: 115
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2f3482e3265890ae
+- key: util.ircalladdr.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 116
+      col: 24
+    end:
+      line: 116
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:75a9ddf887fc45e6

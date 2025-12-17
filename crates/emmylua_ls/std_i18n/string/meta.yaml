@@ -1,0 +1,980 @@
+version: 1
+line_base: 0
+col_base: 0
+file: string.lua
+entries:
+- key: string
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 15
+      col: 0
+    end:
+      line: 20
+      col: 0
+  hash: fnv1a64:7d45b1fdfe103330
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.byte
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 23
+      col: 0
+    end:
+      line: 30
+      col: 0
+  hash: fnv1a64:23728f6e2128c3d8
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.byte.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 30
+      col: 18
+    end:
+      line: 30
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.byte.param.i
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 31
+      col: 20
+    end:
+      line: 31
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:cd48d56e54894de7
+- key: string.byte.param.j
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 32
+      col: 20
+    end:
+      line: 32
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:06e0e2a1e93c84d0
+- key: string.byte.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 33
+      col: 18
+    end:
+      line: 33
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: string.char
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 36
+      col: 0
+    end:
+      line: 42
+      col: 0
+  hash: fnv1a64:466e7ba52bffb517
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.char.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 43
+      col: 17
+    end:
+      line: 43
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.dump
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 46
+      col: 0
+    end:
+      line: 57
+      col: 0
+  hash: fnv1a64:fd900fe0438a893d
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.dump.param.func
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 57
+      col: 23
+    end:
+      line: 57
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a621cd9bb638251d
+- key: string.dump.param.strip
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 58
+      col: 24
+    end:
+      line: 58
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:fa91c69da96842b2
+- key: string.dump.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 59
+      col: 17
+    end:
+      line: 59
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.find
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 62
+      col: 0
+    end:
+      line: 75
+      col: 0
+  hash: fnv1a64:cdd72941a616aba1
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.find.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 75
+      col: 31
+    end:
+      line: 75
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2ca00ec5556122a8
+- key: string.find.param.pattern
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 76
+      col: 31
+    end:
+      line: 76
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:8fda0e6650d1c94f
+- key: string.find.param.init
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 77
+      col: 25
+    end:
+      line: 77
+      col: 25
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e512e41b4d61b862
+- key: string.find.param.plain
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 78
+      col: 25
+    end:
+      line: 78
+      col: 25
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:92d3b270f2664470
+- key: string.find.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 79
+      col: 25
+    end:
+      line: 79
+      col: 25
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a7f1dd76aa06dfcb
+- key: string.find.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 80
+      col: 23
+    end:
+      line: 80
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:ce0ec6eca162fcae
+- key: string.find.return.3
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 81
+      col: 30
+    end:
+      line: 81
+      col: 30
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:dcbd39d6dd537c16
+- key: string.format
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 85
+      col: 0
+    end:
+      line: 114
+      col: 0
+  hash: fnv1a64:556ac751926488c5
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.format.param.fmt
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 114
+      col: 20
+    end:
+      line: 114
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1621f66f9a502d55
+- key: string.format.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 116
+      col: 17
+    end:
+      line: 116
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.gmatch
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 120
+      col: 0
+    end:
+      line: 144
+      col: 0
+  hash: fnv1a64:1c47a85ca663737b
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.gmatch.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 144
+      col: 18
+    end:
+      line: 144
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.gmatch.param.pattern
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 145
+      col: 24
+    end:
+      line: 145
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:6134e94d26ffb42a
+- key: string.gmatch.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 146
+      col: 27
+    end:
+      line: 146
+      col: 27
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:cff754d6159b4800
+- key: string.gsub
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 149
+      col: 0
+    end:
+      line: 192
+      col: 0
+  hash: fnv1a64:b77b36d17a4f8e02
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.gsub.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 192
+      col: 31
+    end:
+      line: 192
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2ca00ec5556122a8
+- key: string.gsub.param.pattern
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 193
+      col: 31
+    end:
+      line: 193
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:8fda0e6650d1c94f
+- key: string.gsub.param.repl
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 194
+      col: 52
+    end:
+      line: 194
+      col: 52
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:412776b08b7e1e80
+- key: string.gsub.param.n
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 195
+      col: 20
+    end:
+      line: 195
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:62a4e339dcb2afa4
+- key: string.gsub.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 196
+      col: 17
+    end:
+      line: 196
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.gsub.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 197
+      col: 24
+    end:
+      line: 197
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:04ea3e4083a6a3b1
+- key: string.len
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 200
+      col: 0
+    end:
+      line: 203
+      col: 0
+  hash: fnv1a64:d1ec499f5425418f
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.len.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 203
+      col: 18
+    end:
+      line: 203
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.len.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 204
+      col: 18
+    end:
+      line: 204
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: string.lower
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 207
+      col: 0
+    end:
+      line: 211
+      col: 0
+  hash: fnv1a64:22f67fb9bd5cd794
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.lower.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 211
+      col: 18
+    end:
+      line: 211
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.lower.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 212
+      col: 17
+    end:
+      line: 212
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.match
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 215
+      col: 0
+    end:
+      line: 221
+      col: 0
+  hash: fnv1a64:0e062e6519cf2d1c
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.match.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 221
+      col: 18
+    end:
+      line: 221
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.match.param.pattern
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 222
+      col: 24
+    end:
+      line: 222
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:6134e94d26ffb42a
+- key: string.match.param.init
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 223
+      col: 23
+    end:
+      line: 223
+      col: 23
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:545a444141bd1662
+- key: string.match.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 224
+      col: 21
+    end:
+      line: 224
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:eaf6fb07337c017c
+- key: string.pack
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 228
+      col: 0
+    end:
+      line: 231
+      col: 0
+  hash: fnv1a64:e64055d51fc2dd11
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.pack.param.fmt
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 231
+      col: 20
+    end:
+      line: 231
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1621f66f9a502d55
+- key: string.pack.param.v1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 232
+      col: 19
+    end:
+      line: 232
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:aa256a0f9f33ce0d
+- key: string.pack.param.v2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 233
+      col: 20
+    end:
+      line: 233
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:fa5e8f50931296cb
+- key: string.pack.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 235
+      col: 17
+    end:
+      line: 235
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.packsize
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 239
+      col: 0
+    end:
+      line: 243
+      col: 0
+  hash: fnv1a64:d0c02d546b981c9d
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.packsize.param.fmt
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 243
+      col: 20
+    end:
+      line: 243
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1621f66f9a502d55
+- key: string.packsize.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 244
+      col: 18
+    end:
+      line: 244
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: string.rep
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 247
+      col: 0
+    end:
+      line: 255
+      col: 0
+  hash: fnv1a64:60de02d42aa83f5c
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.rep.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 255
+      col: 18
+    end:
+      line: 255
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.rep.param.n
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 256
+      col: 19
+    end:
+      line: 256
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3e015a3fb469a05f
+- key: string.rep.param.sep
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 257
+      col: 21
+    end:
+      line: 257
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:f7680e452640043d
+- key: string.rep.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 258
+      col: 17
+    end:
+      line: 258
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.reverse
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 261
+      col: 0
+    end:
+      line: 263
+      col: 0
+  hash: fnv1a64:5e3925d65b609ff2
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.reverse.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 263
+      col: 18
+    end:
+      line: 263
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.reverse.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 264
+      col: 17
+    end:
+      line: 264
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.sub
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 267
+      col: 0
+    end:
+      line: 279
+      col: 0
+  hash: fnv1a64:3523053a2ef82144
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.sub.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 279
+      col: 26
+    end:
+      line: 279
+      col: 26
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c17de57664b2b084
+- key: string.sub.param.i
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 280
+      col: 20
+    end:
+      line: 280
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1120815056f575aa
+- key: string.sub.param.j
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 281
+      col: 20
+    end:
+      line: 281
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:06e0e2a1e93c84d0
+- key: string.sub.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 282
+      col: 17
+    end:
+      line: 282
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: string.unpack
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 287
+      col: 0
+    end:
+      line: 292
+      col: 0
+  hash: fnv1a64:b7f21ca278df908f
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.unpack.param.fmt
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 292
+      col: 20
+    end:
+      line: 292
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1621f66f9a502d55
+- key: string.unpack.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 293
+      col: 18
+    end:
+      line: 293
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.unpack.param.pos
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 294
+      col: 22
+    end:
+      line: 294
+      col: 22
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:5fd589787e39f93c
+- key: string.unpack.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 295
+      col: 18
+    end:
+      line: 295
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9817c7510d68b748
+- key: string.unpack.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 296
+      col: 25
+    end:
+      line: 296
+      col: 25
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:20250b5a52cfc4cd
+- key: string.upper
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 299
+      col: 0
+    end:
+      line: 303
+      col: 0
+  hash: fnv1a64:6908766e93c8de31
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: string.upper.param.s
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 303
+      col: 18
+    end:
+      line: 303
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:108d6666991458f3
+- key: string.upper.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 304
+      col: 17
+    end:
+      line: 304
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035

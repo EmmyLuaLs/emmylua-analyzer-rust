@@ -1,0 +1,505 @@
+assert: |
+  如果参数 `v` 的值为假（即 **nil** 或 **false**），则调用 error；
+  否则，返回所有参数。在出错的情况下，`message` 是错误对象；
+  如果省略，默认为 "assertion failed!"。
+
+assert.param.v: ""
+
+assert.return.1: ""
+
+std.collectgarbage_opt: ""
+
+std.collectgarbage_opt.item.collect: |
+  执行完整的垃圾收集循环。这是默认选项。
+
+std.collectgarbage_opt.item.stop: |
+  停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，直到调用 restart。
+
+std.collectgarbage_opt.item.restart: |
+  重启垃圾收集器的自动执行。
+
+std.collectgarbage_opt.item.count: |
+  以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
+
+std.collectgarbage_opt.item.step: |
+  执行垃圾收集步进。步进 "size" 由 `arg` 控制。如果值为 0，
+  收集器将执行一个基本（不可分割）步进。对于非零值，收集器将执行
+  相当于 Lua 分配了该数量内存（以 KBytes 为单位）的操作。
+  如果步进完成了一个收集循环，则返回 true。
+
+std.collectgarbage_opt.item.setpause: |
+  将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。返回 *pause* 的前一个值。
+
+std.collectgarbage_opt.item.setstepmul: |
+  将 `arg` 设置为收集器 *step multiplier* （参见 §2.5）的新值。返回 *step* 的前一个值。
+
+std.collectgarbage_opt.item.incremental: |
+  将收集器模式更改为增量模式。此选项后面可以跟三个数字：垃圾收集器暂停、步进倍率和步进大小。
+
+std.collectgarbage_opt.item.generational: |
+  将收集器模式更改为分代模式。此选项后面可以跟两个数字：垃圾收集器次要倍率和主要倍率。
+
+std.collectgarbage_opt.item.isrunning: |
+  返回一个布尔值，指示收集器是否正在运行（即未停止）。
+
+collectgarbage: |
+  此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
+
+  ### opt
+
+  - **"collect"**: 执行完整的垃圾收集循环。这是默认选项。
+
+  - **"stop"**: 停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，
+  直到调用 restart。
+
+  - **"restart"**: 重启垃圾收集器的自动执行。
+
+  - **"count"**: 以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，
+  乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
+
+  - **"step"**: 执行垃圾收集步进。步进 "size" 由 `arg` 控制。如果值为 0，
+  收集器将执行一个基本（不可分割）步进。对于非零值，收集器将执行
+  相当于 Lua 分配了该数量内存（以 KBytes 为单位）的操作。
+  如果步进完成了一个收集循环，则返回 **true**。
+
+  - **"setpause"**: 将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。
+  返回 *pause* 的前一个值。
+
+  - **"incremental"**: 将收集器模式更改为增量模式。此选项后面可以跟三个数字：
+  垃圾收集器暂停、步进倍率和步进大小。
+
+  - **"generational"**: 将收集器模式更改为分代模式。此选项后面可以跟两个数字：
+  垃圾收集器次要倍率和主要倍率。
+
+  - **"isrunning"**: 返回一个布尔值，指示收集器是否正在运行（即未停止）。
+
+collectgarbage.param.opt: ""
+
+collectgarbage.return.1: ""
+
+dofile: |
+  打开指定的文件并将其内容作为 Lua 代码块执行。不带参数调用时，
+  `dofile` 执行标准输入（`stdin`）的内容。返回代码块返回的所有值。
+  如果发生错误，`dofile` 将错误传播给调用者（即 `dofile` 不在保护模式下运行）。
+
+dofile.param.filename: ""
+
+dofile.return.1: ""
+
+error: |
+  终止最后调用的受保护函数，并将 `message` 作为错误对象返回。
+  Function `error` 永远不会返回。通常，如果消息是字符串，`error`
+  会在消息开头添加一些关于错误位置的信息。`level` 参数指定如何获取
+  错误位置。使用 level 1（默认值），错误位置是调用 `error` 函数的位置。
+  Level 2 将错误指向调用 `error` 的函数的调用位置；依此类推。
+  传递 level 0 可以避免向消息添加错误位置信息。
+
+error.param.message: ""
+
+error.param.level: ""
+
+_G: |
+  一个保存全局环境的全局变量（不是函数）。Lua 本身不使用此变量；
+  更改其值不会影响任何环境，反之亦然。
+
+getmetatable: |
+  如果 `object` 没有元表，则返回 **nil**。否则，如果对象的元表
+  具有 `"__metatable"` 字段，则返回关联的值。否则，返回给定对象的元表。
+
+getmetatable.param.object: ""
+
+getmetatable.return.1: ""
+
+ipairs: |
+  返回三个值（一个迭代器函数、表 `t` 和 0），以便构造
+  > `for i,v in ipairs(t) do` *body* `end`
+  将遍历键值对 (1,`t[1]`), (2,`t[2]`), ...，直到第一个不存在的索引。
+
+ipairs.param.t: ""
+
+ipairs.return.1: ""
+
+std.loadmode: ""
+
+std.loadmode.item.b: |
+  仅二进制块
+
+std.loadmode.item.t: |
+  仅文本块
+
+std.loadmode.item.bt: |
+  二进制和文本块
+
+load: |
+  加载一个代码块。
+  如果 `chunk` 是字符串，则代码块就是该字符串。如果 `chunk` 是函数，
+  `load` 会重复调用它以获取代码块片段。每次调用 `chunk` 必须返回
+  一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
+
+  如果没有语法错误，则将编译后的代码块作为函数返回；
+  否则，返回 **nil** 加上错误消息。
+
+  如果生成的函数有上值，则第一个上值设置为 `env` 的值（如果给定了该参数），
+  或者设置为全局环境的值。其他上值初始化为 **nil**。（当你加载主代码块时，
+  生成的函数将始终只有一个上值，即 _ENV 变量。但是，当你加载从函数创建的
+  二进制代码块时（参见 string.dump），生成的函数可以有任意数量的上值。）
+  所有上值都是新的，即它们不与任何其他函数共享。
+
+  `chunkname` 用作错误消息和调试信息的代码块名称。如果省略，
+  由于 `chunk` 是字符串，默认为 `chunk`，否则默认为 "=(load)"。
+
+  字符串 `mode` 控制代码块是文本还是二进制（即预编译代码块）。
+  它可以是字符串 "b"（仅二进制代码块）、"t"（仅文本代码块）
+  或 "bt"（二进制和文本）。默认为 "bt"。
+
+  Lua 不检查二进制代码块的一致性。恶意构造的二进制代码块可能会导致解释器崩溃。
+
+load.param.chunk: ""
+
+load.param.chunkname: ""
+
+load.param.mode: ""
+
+load.param.env: ""
+
+load.return.1: ""
+
+load.return.2: ""
+
+loadstring: |
+  从给定字符串加载代码块。
+
+loadstring.param.text: ""
+
+loadstring.param.chunkname: ""
+
+loadstring.return.1: ""
+
+loadstring.return.2: ""
+
+loadfile: |
+  类似于 `load`，但从文件 `filename` 获取代码块，或者如果没有给出文件名，
+  则从标准输入获取。
+
+loadfile.param.filename: ""
+
+loadfile.param.mode: ""
+
+loadfile.param.env: ""
+
+loadfile.return.1: ""
+
+loadfile.return.2: ""
+
+newproxy: ""
+
+newproxy.param.proxy: ""
+
+newproxy.return.1: ""
+
+module: |
+  创建一个模块。
+
+module.param.name: ""
+
+next: |
+  允许程序遍历表的所有字段。它的第一个参数是一个表，第二个参数是
+  表中的一个索引。`next` 返回表的下一个索引及其关联的值。当使用 **nil**
+  作为第二个参数调用时，`next` 返回初始索引及其关联的值。当使用最后一个索引
+  调用，或者在空表中使用 **nil** 调用时，`next` 返回 **nil**。
+  如果省略第二个参数，则将其解释为 **nil**。特别是，你可以使用 `next(t)`
+  来检查表是否为空。
+
+  索引枚举的顺序未指定，*即使对于数字索引也是如此*。（要按数字顺序
+  遍历表，请使用数字 **for**。）
+
+  如果在遍历过程中将任何值赋给表中不存在的字段，则 `next` 的行为未定义。
+  但是，你可以修改现有字段。特别是，你可以将现有字段设置为 nil。
+
+next.param.table: ""
+
+next.param.index: ""
+
+next.return.1: ""
+
+pairs: |
+  如果 `t` 有元方法 `__pairs`，则以 `t` 为参数调用它并返回调用的前三个结果。
+
+  否则，返回三个值：`next` 函数、表 `t` 和 **nil**，以便构造
+  `for k,v in pairs(t) do *body* end`
+  将遍历表 `t` 的所有键值对。
+
+  关于在遍历期间修改表的注意事项，请参见函数 `next`。
+
+pairs.param.t: ""
+
+pairs.return.1: ""
+
+pcall: |
+  以 *保护模式* 调用给定参数的函数 `f`。这意味着 `f` 内部的任何错误
+  都不会传播；相反，`pcall` 会捕获错误并返回状态码。它的第一个结果是
+  状态码（一个布尔值），如果调用成功且没有错误，则为 true。在这种情况下，
+  `pcall` 还会返回调用后的所有结果。如果发生任何错误，`pcall` 返回
+  **false** 加上错误消息。
+
+pcall.param.f: ""
+
+pcall.return.1: ""
+
+print: |
+  接收任意数量的参数，并使用 `tostring` 函数将它们转换为字符串，
+  然后将它们的值打印到 `stdout`。`print` 不用于格式化输出，
+  仅作为显示值的快速方式，例如用于调试。为了完全控制输出，
+  请使用 `string.format` 和 `io.write`。
+
+rawequal: |
+  检查 `v1` 是否等于 `v2`，不调用 `__eq` 元方法。返回布尔值。
+
+rawequal.param.v1: ""
+
+rawequal.param.v2: ""
+
+rawequal.return.1: ""
+
+rawget: |
+  获取 `table[index]` 的实际值，不调用 `__index` 元方法。`table`
+  必须是一个表；`index` 可以是任何值。
+
+rawget.param.table: ""
+
+rawget.param.index: ""
+
+rawget.return.1: ""
+
+rawlen: |
+  返回对象 `v` 的长度，该对象必须是表或字符串，不调用任何元方法。返回一个整数。
+
+rawlen.param.v: ""
+
+rawlen.return.1: ""
+
+rawset: |
+  将 `table[index]` 的实际值设置为 `value`，不调用 `__newindex` 元方法。
+  `table` 必须是一个表，`index` 是除 **nil** 和 NaN 之外的任何值，
+  `value` 是任何 Lua 值。
+
+rawset.param.table: ""
+
+rawset.param.index: ""
+
+rawset.param.value: ""
+
+require: |
+  加载给定的模块。该函数首先在 'package.loaded' 表中查找 `modname`
+  是否这就加载。如果是，则 `require` 返回存储在 `package.loaded[modname]`
+  中的值。否则，它尝试为模块查找 *加载器*。
+
+  为了查找加载器，`require` 由 `package.searchers` 序列引导。
+  通过更改此序列，我们可以改变 `require` 查找模块的方式。
+  以下解释基于 `package.searchers` 的默认配置。
+
+  首先 `require` 查询 `package.preload[modname]`。如果它有值，
+  该值（应该是一个函数）就是加载器。否则 `require` 使用存储在
+  `package.path` 中的路径搜索 Lua 加载器。如果这也失败，它使用
+  存储在 `package.cpath` 中的路径搜索 C 加载器。如果这也失败，
+  它尝试 *一体化* 加载器（参见 `package.loaders`）。
+
+  一旦找到加载器，`require` 就会使用两个参数调用加载器：`modname`
+  和一个取决于它如何获取加载器的额外值。（如果加载器来自文件，
+  这个额外值就是文件名。）如果加载器返回任何非 nil 值，require
+  将返回的值赋值给 `package.loaded[modname]`。如果加载器没有返回
+  非 nil 值并且没有给 `package.loaded[modname]` 赋值，则 `require`
+  将 true 赋值给该条目。在任何情况下，require 返回
+  `package.loaded[modname]` 的最终值。
+
+  如果加载或运行模块时出现任何错误，或者找不到模块的任何加载器，
+  则 `require` 引发错误。
+
+require.param.modname: ""
+
+require.return.1: ""
+
+select: |
+  如果 `index` 是数字，则返回参数编号 `index` 之后的所有参数；
+  负数从末尾开始索引（-1 是最后一个参数）。
+  否则，`index` 必须是字符串 "#"，`select` 返回接收到的额外参数的总数。
+
+select.param.index: ""
+
+select.return.1: ""
+
+std.metatable: ""
+
+std.metatable.field.__mode: ""
+
+std.metatable.field.__metatable: ""
+
+std.metatable.field.__tostring: ""
+
+std.metatable.field.__gc: ""
+
+std.metatable.field.__add: ""
+
+std.metatable.field.__sub: ""
+
+std.metatable.field.__mul: ""
+
+std.metatable.field.__div: ""
+
+std.metatable.field.__mod: ""
+
+std.metatable.field.__pow: ""
+
+std.metatable.field.__unm: ""
+
+std.metatable.field.__idiv: ""
+
+std.metatable.field.__band: ""
+
+std.metatable.field.__bor: ""
+
+std.metatable.field.__bxor: ""
+
+std.metatable.field.__bnot: ""
+
+std.metatable.field.__shl: ""
+
+std.metatable.field.__shr: ""
+
+std.metatable.field.__concat: ""
+
+std.metatable.field.__len: ""
+
+std.metatable.field.__eq: ""
+
+std.metatable.field.__lt: ""
+
+std.metatable.field.__le: ""
+
+std.metatable.field.__index: ""
+
+std.metatable.field.__newindex: ""
+
+std.metatable.field.__call: ""
+
+std.metatable.field.__pairs: ""
+
+std.metatable.field.__close: ""
+
+setmetatable: |
+  为给定表设置元表。（要从 Lua 代码更改其他类型的元表，必须使用调试库。）
+  如果 `metatable` 为 **nil**，则移除给定表的元表。如果原始元表
+  具有 `"__metatable"` 字段，则引发错误。
+
+  此函数返回 `table`。
+
+setmetatable.param.table: ""
+
+setmetatable.param.metatable: ""
+
+setmetatable.return.1: ""
+
+tonumber: |
+  当不带 `base` 调用时，`tonumber` 尝试将其参数转换为数字。
+  如果参数已经是数字或可转换为数字的字符串，则 `tonumber` 返回该数字；
+  否则，返回 **nil**。
+
+  字符串的转换可以根据 Lua 的词法约定产生整数或浮点数。（字符串可以有
+  前导和尾随空格以及符号。）
+
+  当带 `base` 调用时，e 必须是一个字符串，被解释为该进制的整数。
+  进制可以是 2 到 36 之间的任何整数（含）。在 10 以上的进制中，
+  字母 'A'（大写或小写）表示 10，'B' 表示 11，依此类推，'Z' 表示 35。
+  如果字符串 `e` 不是给定进制的有效数字，则函数返回 **nil**。
+
+tonumber.param.e: ""
+
+tonumber.return.1: ""
+
+tostring: |
+  接收任何类型的值并将其转换为人类可读格式的字符串。（为了完全控制
+  数字的转换方式，请使用 `string.format`）。
+
+  如果 `v` 的元表具有 `__tostring` 字段，则 `tostring` 使用 `v`
+  作为参数调用相应的值，并将调用的结果作为其结果。
+
+tostring.param.v: ""
+
+tostring.return.1: ""
+
+std.type: ""
+
+std.type.item.nil: ""
+
+std.type.item.number: ""
+
+std.type.item.string: ""
+
+std.type.item.boolean: ""
+
+std.type.item.table: ""
+
+std.type.item.function: ""
+
+std.type.item.thread: ""
+
+std.type.item.userdata: ""
+
+type: |
+  返回其唯一参数的类型，编码为字符串。此函数的可能结果是 "`nil`"
+  （字符串，不是值 **nil**）、"`number`"、"`string`"、"`boolean`"、
+  "`table`"、"`function`"、"`thread`" 和 "`userdata`"。
+
+type.param.v: ""
+
+type.return.1: ""
+
+_VERSION: |
+  一个保存包含运行 Lua 版本字符串的全局变量（不是函数）。
+  此变量的当前值是 "`Lua 5.4`"。
+
+xpcall: |
+  此函数类似于 `pcall`，只是它设置了一个新的消息处理程序 `msgh`。
+
+xpcall.param.f: ""
+
+xpcall.param.msgh: ""
+
+xpcall.return.1: ""
+
+unpack: ""
+
+unpack.param.i: ""
+
+unpack.param.j: ""
+
+unpack.param.list: ""
+
+unpack.return.1: ""
+
+warn: ""
+
+warn.param.message: ""
+
+arg: ""
+
+_ENV: |
+  这是一个不正确的注解，但真正支持 _ENV 会完全破坏变量分析路径；目前将其视为一个全局变量。
+
+setfenv: |
+  设置指定函数的环境。
+
+setfenv.param.f: |
+  要设置环境的函数。
+
+setfenv.param.env: |
+  要分配给函数的环境表。
+
+getfenv: |
+  检索指定函数的环境表。
+
+getfenv.param.f: |
+  要检索环境的函数。
+
+getfenv.return.1: |
+  与给定函数关联的环境表。

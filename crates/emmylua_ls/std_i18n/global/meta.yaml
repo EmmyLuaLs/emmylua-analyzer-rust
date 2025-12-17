@@ -1,0 +1,2085 @@
+version: 1
+line_base: 0
+col_base: 0
+file: global.lua
+entries:
+- key: assert
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 15
+      col: 0
+    end:
+      line: 20
+      col: 0
+  hash: fnv1a64:a04606caad8dd4b1
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: assert.param.v
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 21
+      col: 13
+    end:
+      line: 21
+      col: 13
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:5729f0d7cdf67949
+- key: assert.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 23
+      col: 32
+    end:
+      line: 23
+      col: 32
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:812e07743e11fd0e
+- key: std.collectgarbage_opt
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 26
+      col: 0
+    end:
+      line: 26
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:77ed3c765618ae80
+- key: std.collectgarbage_opt.item.collect
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 27
+      col: 16
+    end:
+      line: 27
+      col: 86
+  hash: fnv1a64:229e8488ba07e8ea
+  context_hash: fnv1a64:2a8e36ec8d36c53c
+- key: std.collectgarbage_opt.item.stop
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 28
+      col: 13
+    end:
+      line: 28
+      col: 146
+  hash: fnv1a64:96adf3b32ca6e135
+  context_hash: fnv1a64:e123261b824452c7
+- key: std.collectgarbage_opt.item.restart
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 29
+      col: 16
+    end:
+      line: 29
+      col: 71
+  hash: fnv1a64:b48fe98ac44cdf12
+  context_hash: fnv1a64:baca979775fae0df
+- key: std.collectgarbage_opt.item.count
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 30
+      col: 14
+    end:
+      line: 30
+      col: 197
+  hash: fnv1a64:177a9a4fd31e4486
+  context_hash: fnv1a64:d8e5af7a88d3b8ff
+- key: std.collectgarbage_opt.item.step
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 31
+      col: 13
+    end:
+      line: 31
+      col: 326
+  hash: fnv1a64:b4f96b76a038d88b
+  context_hash: fnv1a64:15f7c492d32e7ef7
+- key: std.collectgarbage_opt.item.setpause
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 32
+      col: 17
+    end:
+      line: 32
+      col: 131
+  hash: fnv1a64:3727b48717039660
+  context_hash: fnv1a64:3531792cf8357d54
+- key: std.collectgarbage_opt.item.setstepmul
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 33
+      col: 19
+    end:
+      line: 33
+      col: 142
+  hash: fnv1a64:8a91801d3f89e5cb
+  context_hash: fnv1a64:b97374f2edd288c9
+- key: std.collectgarbage_opt.item.incremental
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 34
+      col: 20
+    end:
+      line: 34
+      col: 177
+  hash: fnv1a64:b74ab58b9c276d37
+  context_hash: fnv1a64:f40f73f844e18fe1
+- key: std.collectgarbage_opt.item.generational
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 35
+      col: 21
+    end:
+      line: 35
+      col: 173
+  hash: fnv1a64:6f28b79368adc435
+  context_hash: fnv1a64:3c71032e0436c962
+- key: std.collectgarbage_opt.item.isrunning
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 36
+      col: 18
+    end:
+      line: 36
+      col: 101
+  hash: fnv1a64:ffcec93fe4c3260d
+  context_hash: fnv1a64:e728581e6d3b89a0
+- key: collectgarbage
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 38
+      col: 0
+    end:
+      line: 65
+      col: 0
+  hash: fnv1a64:d70cd5b9039fa128
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: collectgarbage.param.opt
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 65
+      col: 37
+    end:
+      line: 65
+      col: 37
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a188c5a22ea0a853
+- key: collectgarbage.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 67
+      col: 14
+    end:
+      line: 67
+      col: 14
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e571c1d98ef7385e
+- key: dofile
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 70
+      col: 0
+    end:
+      line: 76
+      col: 0
+  hash: fnv1a64:c825642b6b44c7c5
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: dofile.param.filename
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 76
+      col: 26
+    end:
+      line: 76
+      col: 26
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:308520bd7e993d7e
+- key: dofile.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 77
+      col: 16
+    end:
+      line: 77
+      col: 16
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:0c4bb34d077b2108
+- key: error
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 80
+      col: 0
+    end:
+      line: 89
+      col: 0
+  hash: fnv1a64:81879d09ef03c7c5
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: error.param.message
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 89
+      col: 21
+    end:
+      line: 89
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:14a82e2c2c82d0aa
+- key: error.param.level
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 90
+      col: 24
+    end:
+      line: 90
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9ca976adfc914a18
+- key: _G
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 93
+      col: 0
+    end:
+      line: 97
+      col: 0
+  hash: fnv1a64:bdd640b6033d9688
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: getmetatable
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 100
+      col: 0
+    end:
+      line: 104
+      col: 0
+  hash: fnv1a64:c0aa4bd98f53dd45
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: getmetatable.param.object
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 104
+      col: 20
+    end:
+      line: 104
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:ad91c8d35ea21b64
+- key: getmetatable.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 105
+      col: 14
+    end:
+      line: 105
+      col: 14
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e571c1d98ef7385e
+- key: ipairs
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 108
+      col: 0
+    end:
+      line: 114
+      col: 0
+  hash: fnv1a64:f7e9dd303f83d75c
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: ipairs.param.t
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 115
+      col: 44
+    end:
+      line: 115
+      col: 44
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:5a95c1fb586e128d
+- key: ipairs.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 116
+      col: 31
+    end:
+      line: 116
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:dc3652e87442f4bb
+- key: std.loadmode
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 119
+      col: 0
+    end:
+      line: 119
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7c822b04ef27be30
+- key: std.loadmode.item.b
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 120
+      col: 10
+    end:
+      line: 120
+      col: 29
+  hash: fnv1a64:a7b23db765875ab4
+  context_hash: fnv1a64:d05225bac089de1c
+- key: std.loadmode.item.t
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 121
+      col: 10
+    end:
+      line: 121
+      col: 27
+  hash: fnv1a64:3f888b84d5ff9cb6
+  context_hash: fnv1a64:4c16fff1406dca0c
+- key: std.loadmode.item.bt
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 122
+      col: 11
+    end:
+      line: 122
+      col: 32
+  hash: fnv1a64:6281255a2e74d843
+  context_hash: fnv1a64:36a85bed624ee77b
+- key: load
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 124
+      col: 0
+    end:
+      line: 153
+      col: 0
+  hash: fnv1a64:9b1f3f8370f55492
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: load.param.chunk
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 153
+      col: 55
+    end:
+      line: 153
+      col: 55
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a91f67f0655b5460
+- key: load.param.chunkname
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 154
+      col: 27
+    end:
+      line: 154
+      col: 27
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c14e8cb4d276d31b
+- key: load.param.mode
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 155
+      col: 28
+    end:
+      line: 155
+      col: 28
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e3252eaaf54bf4e7
+- key: load.param.env
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 156
+      col: 20
+    end:
+      line: 156
+      col: 20
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:bb8cf82cf1b24061
+- key: load.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 157
+      col: 26
+    end:
+      line: 157
+      col: 26
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:80faec8886ec22e8
+- key: load.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 158
+      col: 34
+    end:
+      line: 158
+      col: 34
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2ca5a0618a9dc020
+- key: loadstring
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 163
+      col: 0
+    end:
+      line: 166
+      col: 0
+  hash: fnv1a64:94e585d72018ef76
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: loadstring.param.text
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 167
+      col: 36
+    end:
+      line: 167
+      col: 36
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:59f0a717ab20c658
+- key: loadstring.param.chunkname
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 168
+      col: 27
+    end:
+      line: 168
+      col: 27
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c14e8cb4d276d31b
+- key: loadstring.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 169
+      col: 26
+    end:
+      line: 169
+      col: 26
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:80faec8886ec22e8
+- key: loadstring.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 170
+      col: 34
+    end:
+      line: 170
+      col: 34
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2ca5a0618a9dc020
+- key: loadfile
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 174
+      col: 0
+    end:
+      line: 177
+      col: 0
+  hash: fnv1a64:f973f805658a8a32
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: loadfile.param.filename
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 178
+      col: 25
+    end:
+      line: 178
+      col: 25
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:95f256ff5a5d29f5
+- key: loadfile.param.mode
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 179
+      col: 22
+    end:
+      line: 179
+      col: 22
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:bb513d206af6cbcc
+- key: loadfile.param.env
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 180
+      col: 18
+    end:
+      line: 180
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:5a6a3558ee3b9f4f
+- key: loadfile.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 181
+      col: 26
+    end:
+      line: 181
+      col: 26
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:80faec8886ec22e8
+- key: loadfile.return.2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 182
+      col: 32
+    end:
+      line: 182
+      col: 32
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e16fbd0d691002f0
+- key: newproxy
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 185
+      col: 0
+    end:
+      line: 185
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e43228e0bb6d9277
+- key: newproxy.param.proxy
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 186
+      col: 38
+    end:
+      line: 186
+      col: 38
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9d1df7a9d87b5a02
+- key: newproxy.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 187
+      col: 19
+    end:
+      line: 187
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:738184d4502b18df
+- key: module
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 191
+      col: 0
+    end:
+      line: 195
+      col: 0
+  hash: fnv1a64:6614bca90915024f
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: module.param.name
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 195
+      col: 21
+    end:
+      line: 195
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:fce1a0e915f84f67
+- key: next
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 199
+      col: 0
+    end:
+      line: 216
+      col: 0
+  hash: fnv1a64:431cf1e327403b46
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: next.param.table
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 218
+      col: 44
+    end:
+      line: 218
+      col: 44
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:6da47314bfb4b8ad
+- key: next.param.index
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 219
+      col: 18
+    end:
+      line: 219
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:86214d40fd8f5341
+- key: next.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 220
+      col: 17
+    end:
+      line: 220
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3a49ac2bdc60a031
+- key: pairs
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 223
+      col: 0
+    end:
+      line: 234
+      col: 0
+  hash: fnv1a64:1a7f95aa4362e930
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: pairs.param.t
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 235
+      col: 40
+    end:
+      line: 235
+      col: 40
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:5512062d191deda9
+- key: pairs.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 236
+      col: 29
+    end:
+      line: 236
+      col: 29
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:ea8de2012f677a2b
+- key: pcall
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 239
+      col: 0
+    end:
+      line: 246
+      col: 0
+  hash: fnv1a64:1f340e7d3461d4ae
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: pcall.param.f
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 247
+      col: 41
+    end:
+      line: 247
+      col: 41
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:33052d5d0d94c195
+- key: pcall.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 249
+      col: 35
+    end:
+      line: 249
+      col: 35
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1fb224494ef5c24a
+- key: print
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 252
+      col: 0
+    end:
+      line: 257
+      col: 35
+  hash: fnv1a64:64fc74d7af730bec
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: rawequal
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 260
+      col: 0
+    end:
+      line: 263
+      col: 0
+  hash: fnv1a64:0cec4f0b3fdbc099
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: rawequal.param.v1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 263
+      col: 16
+    end:
+      line: 263
+      col: 16
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3e074da3fb0ed2a6
+- key: rawequal.param.v2
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 264
+      col: 16
+    end:
+      line: 264
+      col: 16
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:52024323688aa897
+- key: rawequal.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 265
+      col: 18
+    end:
+      line: 265
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:8c634c305d7ac2d0
+- key: rawget
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 268
+      col: 0
+    end:
+      line: 271
+      col: 0
+  hash: fnv1a64:44a4244f6dfbe0ee
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: rawget.param.table
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 272
+      col: 17
+    end:
+      line: 272
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:fdd1da815a0f51c7
+- key: rawget.param.index
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 273
+      col: 31
+    end:
+      line: 273
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c3e388dd00980932
+- key: rawget.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 274
+      col: 27
+    end:
+      line: 274
+      col: 27
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:8eecc2b61720ec72
+- key: rawlen
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 278
+      col: 0
+    end:
+      line: 281
+      col: 0
+  hash: fnv1a64:07f69e94e4daa054
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: rawlen.param.v
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 281
+      col: 24
+    end:
+      line: 281
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7ad2dbfdda6f6f9e
+- key: rawlen.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 282
+      col: 18
+    end:
+      line: 282
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2b1879e467c17cde
+- key: rawset
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 285
+      col: 0
+    end:
+      line: 289
+      col: 0
+  hash: fnv1a64:16e809b0963bd346
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: rawset.param.table
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 289
+      col: 21
+    end:
+      line: 289
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c70a5794450ce9c3
+- key: rawset.param.index
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 290
+      col: 19
+    end:
+      line: 290
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:fc004a67b9bb0eb5
+- key: rawset.param.value
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 291
+      col: 19
+    end:
+      line: 291
+      col: 19
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3ebda6d00cf3f414
+- key: require
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 294
+      col: 0
+    end:
+      line: 324
+      col: 0
+  hash: fnv1a64:f661cf52fac913b3
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: require.param.modname
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 324
+      col: 24
+    end:
+      line: 324
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9108b9a78435335d
+- key: require.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 325
+      col: 14
+    end:
+      line: 325
+      col: 14
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e571c1d98ef7385e
+- key: select
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 328
+      col: 0
+    end:
+      line: 333
+      col: 0
+  hash: fnv1a64:721ecd0e987e2ba7
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: select.param.index
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 334
+      col: 33
+    end:
+      line: 334
+      col: 33
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:138c1746d5a3c7bd
+- key: select.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 336
+      col: 32
+    end:
+      line: 336
+      col: 32
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c0cb14f3de867273
+- key: std.metatable
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 339
+      col: 0
+    end:
+      line: 339
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:ba2916cdb77830d2
+- key: std.metatable.field.__mode
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 340
+      col: 30
+    end:
+      line: 340
+      col: 30
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e3a27173172ed08a
+- key: std.metatable.field.__metatable
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 341
+      col: 26
+    end:
+      line: 341
+      col: 26
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c3e864f1c07ff612
+- key: std.metatable.field.__tostring
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 342
+      col: 37
+    end:
+      line: 342
+      col: 37
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e7f93b192429921b
+- key: std.metatable.field.__gc
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 343
+      col: 22
+    end:
+      line: 343
+      col: 22
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:d062a5dc2d770309
+- key: std.metatable.field.__add
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 344
+      col: 31
+    end:
+      line: 344
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:a3e7bbbbce481735
+- key: std.metatable.field.__sub
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 345
+      col: 31
+    end:
+      line: 345
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:b1883af8c67f2e38
+- key: std.metatable.field.__mul
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 346
+      col: 31
+    end:
+      line: 346
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c247c7a0b63adbe4
+- key: std.metatable.field.__div
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 347
+      col: 31
+    end:
+      line: 347
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:692d32f0cc3f15ed
+- key: std.metatable.field.__mod
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 348
+      col: 31
+    end:
+      line: 348
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3c24a3273d96192a
+- key: std.metatable.field.__pow
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 349
+      col: 31
+    end:
+      line: 349
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3bcf8083399a7b44
+- key: std.metatable.field.__unm
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 350
+      col: 27
+    end:
+      line: 350
+      col: 27
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:63e2d0de388cca89
+- key: std.metatable.field.__idiv
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 351
+      col: 32
+    end:
+      line: 351
+      col: 32
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:fe1444e71ed4eb34
+- key: std.metatable.field.__band
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 352
+      col: 32
+    end:
+      line: 352
+      col: 32
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:d60fb3363ac53f41
+- key: std.metatable.field.__bor
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 353
+      col: 31
+    end:
+      line: 353
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c3bdccf0eaf1f63d
+- key: std.metatable.field.__bxor
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 354
+      col: 32
+    end:
+      line: 354
+      col: 32
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:accd0d676a505149
+- key: std.metatable.field.__bnot
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 355
+      col: 28
+    end:
+      line: 355
+      col: 28
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:6f1368788eeaf3e0
+- key: std.metatable.field.__shl
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 356
+      col: 31
+    end:
+      line: 356
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:f47748997108e5ef
+- key: std.metatable.field.__shr
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 357
+      col: 31
+    end:
+      line: 357
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:406ce14ece752035
+- key: std.metatable.field.__concat
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 358
+      col: 34
+    end:
+      line: 358
+      col: 34
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:02de4566b0e3c7ae
+- key: std.metatable.field.__len
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 359
+      col: 31
+    end:
+      line: 359
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:267e3655477618cc
+- key: std.metatable.field.__eq
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 360
+      col: 34
+    end:
+      line: 360
+      col: 34
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:e9c3a5b683907986
+- key: std.metatable.field.__lt
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 361
+      col: 34
+    end:
+      line: 361
+      col: 34
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:40392c08279ea4b8
+- key: std.metatable.field.__le
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 362
+      col: 34
+    end:
+      line: 362
+      col: 34
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:831066955a0f3d37
+- key: std.metatable.field.__index
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 363
+      col: 37
+    end:
+      line: 363
+      col: 37
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:614a912bdbf612c8
+- key: std.metatable.field.__newindex
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 364
+      col: 38
+    end:
+      line: 364
+      col: 38
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:0b48ce09588500cc
+- key: std.metatable.field.__call
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 365
+      col: 36
+    end:
+      line: 365
+      col: 36
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1e905f8725444e6f
+- key: std.metatable.field.__pairs
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 366
+      col: 56
+    end:
+      line: 366
+      col: 56
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:583908ab2d3e8ec1
+- key: std.metatable.field.__close
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 367
+      col: 36
+    end:
+      line: 367
+      col: 36
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:8bec955df32e8c67
+- key: setmetatable
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 371
+      col: 0
+    end:
+      line: 378
+      col: 0
+  hash: fnv1a64:25474b66521bebe3
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: setmetatable.param.table
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 378
+      col: 21
+    end:
+      line: 378
+      col: 21
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c70a5794450ce9c3
+- key: setmetatable.param.metatable
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 379
+      col: 43
+    end:
+      line: 379
+      col: 43
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9b54a5f2ebfde93f
+- key: setmetatable.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 380
+      col: 16
+    end:
+      line: 380
+      col: 16
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:0c4bb34d077b2108
+- key: tonumber
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 383
+      col: 0
+    end:
+      line: 398
+      col: 0
+  hash: fnv1a64:5d06a5a2b00378b0
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: tonumber.param.e
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 399
+      col: 15
+    end:
+      line: 399
+      col: 15
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:5516355f410658f6
+- key: tonumber.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 400
+      col: 18
+    end:
+      line: 400
+      col: 18
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:7d757519654b21ee
+- key: tostring
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 404
+      col: 0
+    end:
+      line: 412
+      col: 0
+  hash: fnv1a64:eb7a0cd064f9b7a3
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: tostring.param.v
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 412
+      col: 15
+    end:
+      line: 412
+      col: 15
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4e21161edb0147d7
+- key: tostring.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 413
+      col: 17
+    end:
+      line: 413
+      col: 17
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:c975e72970aca035
+- key: std.type
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 416
+      col: 0
+    end:
+      line: 416
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:9504935a45451c07
+- key: std.type.item.nil
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 417
+      col: 10
+    end:
+      line: 417
+      col: 10
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:8dc5cffad49ae9ff
+- key: std.type.item.number
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 418
+      col: 13
+    end:
+      line: 418
+      col: 13
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:22dec5c129692971
+- key: std.type.item.string
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 419
+      col: 13
+    end:
+      line: 419
+      col: 13
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:3fab9891ac8a2859
+- key: std.type.item.boolean
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 420
+      col: 14
+    end:
+      line: 420
+      col: 14
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:b807d9b993899832
+- key: std.type.item.table
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 421
+      col: 12
+    end:
+      line: 421
+      col: 12
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:77a28b4b5020a6fa
+- key: std.type.item.function
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 422
+      col: 15
+    end:
+      line: 422
+      col: 15
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:43415eaf86236ea6
+- key: std.type.item.thread
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 423
+      col: 13
+    end:
+      line: 423
+      col: 13
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:1266ebf997656c0e
+- key: std.type.item.userdata
+  kind:
+    type: line_tail
+    prefix: ' # '
+  range:
+    start:
+      line: 424
+      col: 15
+    end:
+      line: 424
+      col: 15
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:5ac69ba3adfb8a73
+- key: type
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 426
+      col: 0
+    end:
+      line: 431
+      col: 0
+  hash: fnv1a64:495411a7e8486c06
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: type.param.v
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 431
+      col: 15
+    end:
+      line: 431
+      col: 15
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:4e21161edb0147d7
+- key: type.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 432
+      col: 24
+    end:
+      line: 432
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:0f44c38fd118ce63
+- key: _VERSION
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 435
+      col: 0
+    end:
+      line: 437
+      col: 75
+  hash: fnv1a64:5ebfbf79a1551aa8
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: xpcall
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 440
+      col: 0
+    end:
+      line: 443
+      col: 0
+  hash: fnv1a64:dc8a1c68d79dae75
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: xpcall.param.f
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 444
+      col: 36
+    end:
+      line: 444
+      col: 36
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:069e5a38547ff582
+- key: xpcall.param.msgh
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 445
+      col: 31
+    end:
+      line: 445
+      col: 31
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:b93700b05990adab
+- key: xpcall.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 447
+      col: 24
+    end:
+      line: 447
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:f7ce5f83f5e38378
+- key: unpack
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 451
+      col: 0
+    end:
+      line: 452
+      col: 0
+  hash: fnv1a64:2933808e68367724
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: unpack.param.i
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 453
+      col: 32
+    end:
+      line: 453
+      col: 32
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:cc017c2ff7df743f
+- key: unpack.param.j
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 454
+      col: 30
+    end:
+      line: 454
+      col: 30
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:af91636fac75dfbb
+- key: unpack.param.list
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 455
+      col: 16
+    end:
+      line: 455
+      col: 16
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:11b9e50e0ab29051
+- key: unpack.return.1
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 456
+      col: 36
+    end:
+      line: 456
+      col: 36
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:75c0ba8ebcceddec
+- key: warn
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 460
+      col: 0
+    end:
+      line: 461
+      col: 0
+  hash: fnv1a64:2933808e68367724
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: warn.param.message
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 461
+      col: 24
+    end:
+      line: 461
+      col: 24
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:6f139d86c2764b19
+- key: arg
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 464
+      col: 0
+    end:
+      line: 464
+      col: 0
+  hash: fnv1a64:cbf29ce484222325
+  context_hash: fnv1a64:2daac1c3ab192efb
+- key: _ENV
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 467
+      col: 0
+    end:
+      line: 469
+      col: 0
+  hash: fnv1a64:0e721e4ff07c6e6b
+  context_hash: fnv1a64:ff924cd5098e706f
+- key: setfenv
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 475
+      col: 0
+    end:
+      line: 477
+      col: 0
+  hash: fnv1a64:d6216fe88e8cd676
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: setfenv.param.f
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 477
+      col: 29
+    end:
+      line: 477
+      col: 81
+  hash: fnv1a64:45534d1ea636fab4
+  context_hash: fnv1a64:d75ed448e13441d6
+- key: setfenv.param.env
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 478
+      col: 20
+    end:
+      line: 478
+      col: 68
+  hash: fnv1a64:405f4286ea2c7329
+  context_hash: fnv1a64:152a311703ac5ea8
+- key: getfenv
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 482
+      col: 0
+    end:
+      line: 484
+      col: 0
+  hash: fnv1a64:7ec4ca6b1f97e9ee
+  context_hash: fnv1a64:de7cc417de1b3246
+- key: getfenv.param.f
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 484
+      col: 29
+    end:
+      line: 484
+      col: 79
+  hash: fnv1a64:61d794dd7c91d37d
+  context_hash: fnv1a64:467b302d8fefaf8f
+- key: getfenv.return.1
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 485
+      col: 21
+    end:
+      line: 485
+      col: 74
+  hash: fnv1a64:41910412fe03bad4
+  context_hash: fnv1a64:570039d3c1c43398

@@ -1,0 +1,92 @@
+bitlib: ""
+
+bitlib.tobit: ""
+
+bitlib.tobit.param.x: ""
+
+bitlib.tobit.return.1: ""
+
+bitlib.tohex: ""
+
+bitlib.tohex.param.x: ""
+
+bitlib.tohex.param.n: ""
+
+bitlib.tohex.return.1: ""
+
+bitlib.bnot: ""
+
+bitlib.bnot.param.x: ""
+
+bitlib.bnot.return.1: ""
+
+bitlib.bor: ""
+
+bitlib.bor.param.x: ""
+
+bitlib.bor.param.x2: ""
+
+bitlib.bor.return.1: ""
+
+bitlib.band: ""
+
+bitlib.band.param.x: ""
+
+bitlib.band.param.x2: ""
+
+bitlib.band.return.1: ""
+
+bitlib.bxor: ""
+
+bitlib.bxor.param.x: ""
+
+bitlib.bxor.param.x2: ""
+
+bitlib.bxor.return.1: ""
+
+bitlib.lshift: ""
+
+bitlib.lshift.param.x: ""
+
+bitlib.lshift.param.n: ""
+
+bitlib.lshift.return.1: ""
+
+bitlib.rshift: ""
+
+bitlib.rshift.param.x: ""
+
+bitlib.rshift.param.n: ""
+
+bitlib.rshift.return.1: ""
+
+bitlib.arshift: ""
+
+bitlib.arshift.param.x: ""
+
+bitlib.arshift.param.n: ""
+
+bitlib.arshift.return.1: ""
+
+bitlib.rol: ""
+
+bitlib.rol.param.x: ""
+
+bitlib.rol.param.n: ""
+
+bitlib.rol.return.1: ""
+
+bitlib.ror: ""
+
+bitlib.ror.param.x: ""
+
+bitlib.ror.param.n: ""
+
+bitlib.ror.return.1: ""
+
+bitlib.bswap: ""
+
+bitlib.bswap.param.x: ""
+
+bitlib.bswap.return.1: ""
+

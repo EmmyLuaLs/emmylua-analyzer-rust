@@ -1,0 +1,323 @@
+debuglib: ""
+
+debuglib.debug: |
+  进入与用户的交互模式，运行用户输入的每个字符串。使用简单的命令和
+  其他调试工具，用户可以检查全局和局部变量、更改它们的值、计算表达式
+  等等。仅包含单词 `cont` 的行会结束此函数，使调用者继续执行。
+
+  注意，`debug.debug` 的命令在词法上不嵌套在任何函数内，因此无法
+  直接访问局部变量。
+
+debuglib.getfenv: |
+  返回对象 `o` 的环境。
+
+debuglib.getfenv.param.o: ""
+
+debuglib.getfenv.return.1: ""
+
+debuglib.gethook: |
+  以三个值返回线程的当前钩子设置：当前钩子函数、当前钩子掩码和当前
+  钩子计数（由 `debug.sethook` 函数设置）。
+
+debuglib.gethook.param.thread: ""
+
+debuglib.gethook.return.1: ""
+
+debuglib.DebugInfo: ""
+
+debuglib.DebugInfo.field.name: ""
+
+debuglib.DebugInfo.field.namewhat: ""
+
+debuglib.DebugInfo.field.source: ""
+
+debuglib.DebugInfo.field.short_src: ""
+
+debuglib.DebugInfo.field.linedefined: ""
+
+debuglib.DebugInfo.field.lastlinedefined: ""
+
+debuglib.DebugInfo.field.what: ""
+
+debuglib.DebugInfo.field.currentline: ""
+
+debuglib.DebugInfo.field.istailcall: ""
+
+debuglib.DebugInfo.field.nups: ""
+
+debuglib.DebugInfo.field.nparams: ""
+
+debuglib.DebugInfo.field.isvararg: ""
+
+debuglib.DebugInfo.field.func: ""
+
+debuglib.DebugInfo.field.ftransfer: ""
+
+debuglib.DebugInfo.field.ntransfer: ""
+
+debuglib.DebugInfo.field.activelines: ""
+
+debuglib.InfoWhat: ""
+
+debuglib.InfoWhat.item.n: |
+  `name`、`namewhat`
+
+debuglib.InfoWhat.item.S: |
+  `source`、`short_src`、`linedefined`、`lastlinedefined`、`what`
+
+debuglib.InfoWhat.item.l: |
+  `currentline`
+
+debuglib.InfoWhat.item.t: |
+  `istailcall`
+
+debuglib.InfoWhat.item.u: |
+  `nups`、`nparams`、`isvararg`
+
+debuglib.InfoWhat.item.f: |
+  `func`
+
+debuglib.InfoWhat.item.r: |
+  `ftransfer`、`ntransfer`
+
+debuglib.InfoWhat.item.L: |
+  `activelines`
+
+debuglib.getinfo: |
+  返回一个包含函数信息的表。你可以直接给出函数，或者给 `f` 一个数字值，
+  表示在给定线程的调用栈中第 `f` 层运行的函数：第0层是当前函数
+  （`getinfo` 本身）；第1层是调用 `getinfo` 的函数（尾调用除外，
+  它们不计入栈）；依此类推。如果 `f` 是一个大于活动函数数量的数字，
+  则 `getinfo` 返回 **nil**。
+
+  返回的表可以包含 `lua_getinfo` 返回的所有字段，字符串 `what` 描述
+  要填充哪些字段。`what` 的默认值是获取所有可用信息，但不包括有效行的表。
+  如果存在选项 '`f`'，则添加一个名为 `func` 的字段，包含函数本身。
+  如果存在选项 '`L`'，则添加一个名为 `activelines` 的字段，包含有效行的表。
+
+  例如，表达式 `debug.getinfo(1,"n").name` 返回一个包含当前函数名称的表
+  （如果能找到合理的名称），表达式 `debug.getinfo(print)` 返回一个包含
+  关于 `print` 函数所有可用信息的表。
+
+debuglib.getinfo.param.thread: ""
+
+debuglib.getinfo.param.f: ""
+
+debuglib.getinfo.param.what: ""
+
+debuglib.getinfo.return.1: ""
+
+debuglib.getlocal: |
+  此函数返回栈中第 `level` 层函数的索引为 `local` 的局部变量的名称和值。
+  此函数不仅访问显式的局部变量，还包括参数、临时变量等。
+
+  第一个参数或局部变量的索引为1，依此类推，按照它们在代码中声明的顺序，
+  仅计算函数当前作用域中活动的变量。负索引指向可变参数；-1 是第一个
+  可变参数。如果给定索引没有变量，函数返回 **nil**，当调用时层级超出
+  范围则引发错误。（你可以调用 `debug.getinfo` 来检查层级是否有效。）
+
+  以 '(' （左括号）开头的变量名表示没有已知名称的变量（内部变量，如循环
+  控制变量和保存时没有调试信息的代码块中的变量）。
+
+  参数 `f` 也可以是一个函数。在这种情况下，`getlocal` 仅返回函数参数的名称。
+
+debuglib.getlocal.param.thread: ""
+
+debuglib.getlocal.param.f: ""
+
+debuglib.getlocal.param.index: ""
+
+debuglib.getlocal.return.1: ""
+
+debuglib.getlocal.return.2: ""
+
+debuglib.getlocal.param.lvl: ""
+
+debuglib.getmetatable: |
+  返回给定 `value` 的元表，如果它没有元表则返回 **nil**。
+
+debuglib.getmetatable.param.object: ""
+
+debuglib.getmetatable.return.1: ""
+
+debuglib.getregistry: |
+  返回注册表。
+
+debuglib.getregistry.return.1: ""
+
+debuglib.getupvalue: |
+  此函数返回函数 `f` 的索引为 `up` 的上值的名称和值。如果给定索引没有
+  上值，函数返回 **nil**。
+
+  以 '(' （左括号）开头的变量名表示没有已知名称的变量（来自保存时没有
+  调试信息的代码块的变量）。
+
+debuglib.getupvalue.param.f: ""
+
+debuglib.getupvalue.param.up: ""
+
+debuglib.getupvalue.return.1: ""
+
+debuglib.getupvalue.return.2: ""
+
+debuglib.getuservalue: |
+  返回与 userdata `u` 关联的第 `n` 个用户值以及一个布尔值，
+  如果 userdata 没有该值则为 **false**。
+
+debuglib.getuservalue.param.u: ""
+
+debuglib.getuservalue.param.n: ""
+
+debuglib.getuservalue.return.1: ""
+
+debuglib.getuservalue.return.2: ""
+
+debuglib.setcstacklimit: |
+  ### **在 `Lua 5.4.2` 中已弃用**
+
+  为 C 栈设置新的限制。此限制控制 Lua 中嵌套调用的深度，目的是避免栈溢出。
+
+  成功时，此函数返回旧的限制。出错时，返回 `false`。
+
+debuglib.setcstacklimit.param.limit: ""
+
+debuglib.setcstacklimit.return.1: ""
+
+debuglib.setfenv: |
+  将给定 `object` 的环境设置为给定的 `table`。
+
+debuglib.setfenv.param.object: ""
+
+debuglib.setfenv.param.env: ""
+
+debuglib.setfenv.return.1: ""
+
+debuglib.Hookmask: ""
+
+debuglib.Hookmask.item.c: |
+  当 Lua 调用函数时调用钩子。
+
+debuglib.Hookmask.item.r: |
+  当 Lua 从函数返回时调用钩子。
+
+debuglib.Hookmask.item.l: |
+  当 Lua 进入新的代码行时调用钩子。
+
+debuglib.sethook: |
+  将给定函数设置为钩子。字符串 `mask` 和数字 `count` 描述何时调用钩子。
+  字符串掩码可以是以下字符的任意组合，具有以下含义：
+
+  * `"c"`：每次 Lua 调用函数时调用钩子；
+  * `"r"`：每次 Lua 从函数返回时调用钩子；
+  * `"l"`：每次 Lua 进入新的代码行时调用钩子。
+
+  此外，当 `count` 不为零时，钩子在每 `count` 条指令后被调用。
+
+  不带参数调用时，`debug.sethook` 关闭钩子。
+
+  调用钩子时，其第一个参数是描述触发调用的事件的字符串：`"call"`
+  （或 `"tail call"`）、`"return"`、`"line"` 和 `"count"`。对于行事件，
+  钩子还会获得新行号作为其第二个参数。在钩子内部，你可以用层级2调用
+  `getinfo` 来获取关于正在运行的函数的更多信息（层级0是 `getinfo` 函数，
+  层级1是钩子函数）。
+
+debuglib.sethook.param.thread: ""
+
+debuglib.sethook.param.hook: ""
+
+debuglib.sethook.param.mask: ""
+
+debuglib.sethook.param.count: ""
+
+debuglib.setlocal: |
+  此函数将值 `value` 赋给栈中第 `level` 层函数的索引为 `local` 的局部变量。
+  如果给定索引没有局部变量，函数返回 **nil**，当调用时 `level` 超出范围
+  则引发错误。（你可以调用 `getinfo` 来检查层级是否有效。）否则，返回
+  局部变量的名称。
+
+debuglib.setlocal.param.thread: ""
+
+debuglib.setlocal.param.level: ""
+
+debuglib.setlocal.param.var: ""
+
+debuglib.setlocal.param.value: ""
+
+debuglib.setlocal.return.1: ""
+
+debuglib.setmetatable: |
+  将给定 `object` 的元表设置为给定的 `table`（可以是 **nil**）。返回值。
+
+debuglib.setmetatable.param.value: ""
+
+debuglib.setmetatable.param.meta: ""
+
+debuglib.setmetatable.return.1: ""
+
+debuglib.setupvalue: |
+  此函数将值 `value` 赋给函数 `f` 的索引为 `up` 的上值。如果给定索引
+  没有上值，函数返回 **nil**。否则，返回上值的名称。
+
+debuglib.setupvalue.param.f: ""
+
+debuglib.setupvalue.param.up: ""
+
+debuglib.setupvalue.param.value: ""
+
+debuglib.setupvalue.return.1: ""
+
+debuglib.setuservalue: |
+  将给定的 `value` 设置为与给定 `udata` 关联的第 `n` 个值。
+  `udata` 必须是完全 userdata。
+
+  返回 `udata`，如果 userdata 没有该值则返回 **nil**。
+
+debuglib.setuservalue.param.udata: ""
+
+debuglib.setuservalue.param.value: ""
+
+debuglib.setuservalue.param.n: ""
+
+debuglib.setuservalue.return.1: ""
+
+debuglib.traceback: |
+  生成调用栈的回溯信息。
+  不带参数调用时，返回当前线程的回溯。
+  当第一个参数是线程时，为该线程生成回溯；可选的第二个参数（如果是字符串）
+  会添加到回溯前面，可选的第三个参数设置回溯开始的层级（默认为1）。
+  当第一个参数不是线程且不是 nil 时，它被视为可选消息。在这种情况下，
+  为当前线程生成回溯，如果提供了第二个参数，则指定起始层级。
+
+debuglib.traceback.param.thread: |
+  可选的线程或 nil。如果不是线程，则被解释为消息。
+
+debuglib.traceback.param.message: |
+  添加到回溯前面的可选消息。如果不是字符串（或 nil），则原样返回。
+
+debuglib.traceback.param.level: |
+  开始回溯的可选层级（默认为1）。
+
+debuglib.traceback.return.1: ""
+
+debuglib.upvalueid: |
+  返回给定函数中编号为 `n` 的上值的唯一标识符（作为轻量 userdata）。
+
+  这些唯一标识符允许程序检查不同的闭包是否共享上值。共享上值的 Lua 闭包
+  （即访问同一外部局部变量的闭包）将为那些上值索引返回相同的 id。
+
+debuglib.upvalueid.param.f: ""
+
+debuglib.upvalueid.param.n: ""
+
+debuglib.upvalueid.return.1: ""
+
+debuglib.upvaluejoin: |
+  使 Lua 闭包 f1 的第 `n1` 个上值引用 Lua 闭包 f2 的第 `n2` 个上值。
+
+debuglib.upvaluejoin.param.f1: ""
+
+debuglib.upvaluejoin.param.n1: ""
+
+debuglib.upvaluejoin.param.f2: ""
+
+debuglib.upvaluejoin.param.n2: ""
