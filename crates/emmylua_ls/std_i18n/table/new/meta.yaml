@@ -3,55 +3,55 @@ line_base: 0
 col_base: 0
 file: table/new.lua
 entries:
-- key: new
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 5
-      col: 0
-    end:
-      line: 14
-      col: 0
-  hash: fnv1a64:9eab27b4cb7ecc47
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: new.param.narray
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 14
-      col: 24
-    end:
-      line: 14
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:0d167fa48046ce3c
-- key: new.param.nhash
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 15
-      col: 23
-    end:
-      line: 15
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fd58c988c6b95aa3
-- key: new.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 16
-      col: 16
-    end:
-      line: 16
-      col: 16
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:0c4bb34d077b2108
+  - key: new
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 5
+        col: 0
+      end:
+        line: 14
+        col: 0
+    hash: fnv1a64:9eab27b4cb7ecc47
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: new.param.narray
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 14
+        col: 24
+      end:
+        line: 14
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:0d167fa48046ce3c
+  - key: new.param.nhash
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 15
+        col: 23
+      end:
+        line: 15
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fd58c988c6b95aa3
+  - key: new.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 16
+        col: 16
+      end:
+        line: 16
+        col: 16
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:0c4bb34d077b2108

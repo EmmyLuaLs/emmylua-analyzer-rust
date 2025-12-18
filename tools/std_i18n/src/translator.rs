@@ -1,5 +1,6 @@
 use crate::comment_syntax::{
-    build_tag_line_indexes, normalize_optional_name, split_lines_with_offsets, LineInfo,
+    build_tag_line_indexes, is_doc_tag_line, normalize_optional_name, split_lines_with_offsets,
+    LineInfo,
 };
 use crate::extractor::analyze_lua_doc_file;
 use crate::model::{ExtractedEntry, ExtractedKind, SourceSpan};
@@ -259,7 +260,7 @@ fn attached_doc_block_target_after(
     let mut end = start;
     while end < ctx.lines.len() {
         let t = ctx.lines[end].trim_start_text(&ctx.raw);
-        if t.starts_with("---@") || t.starts_with("---|") {
+        if is_doc_tag_line(t) || t.starts_with("---|") {
             break;
         }
         if t.starts_with("---") {

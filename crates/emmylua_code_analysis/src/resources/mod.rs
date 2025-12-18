@@ -60,17 +60,20 @@ pub fn load_resource_std(
 }
 
 fn remove_jit_resource(files: &mut Vec<LuaFileInfo>) {
+    const JIT_FILES_TO_REMOVE: &[&str] = &[
+        "jit.lua",
+        "jit/profile.lua",
+        "jit/util.lua",
+        "string/buffer.lua",
+        "table/clear.lua",
+        "table/new.lua",
+        "ffi.lua",
+    ];
     files.retain(|file| {
         let path = Path::new(&file.path);
-        let should_remove = path.ends_with("jit.lua")
-            || path.ends_with("jit/profile.lua")
-            || path.ends_with("jit/util.lua")
-            || path.ends_with("string/buffer.lua")
-            || path.ends_with("table/clear.lua")
-            || path.ends_with("table/new.lua")
-            || path.ends_with("ffi.lua");
-
-        !should_remove
+        !JIT_FILES_TO_REMOVE
+            .iter()
+            .any(|suffix| path.ends_with(suffix))
     });
 }
 
@@ -177,7 +180,11 @@ fn walk_resource_dir(dir: &Dir, files: &mut Vec<LuaFileInfo>) {
 // 优先使用当前语言环境的 std-{locale} 目录, 否则回退到默认的 std 目录
 fn get_std_dir(resources_dir: &Path) -> PathBuf {
     let locale = get_locale_code(&rust_i18n::locale());
-    Some(resources_dir.join(format!("std-{locale}")))
-        .filter(|p| locale != "en" && p.exists())
-        .unwrap_or_else(|| resources_dir.join("std"))
+    if locale != "en" {
+        let locale_dir = resources_dir.join(format!("std-{locale}"));
+        if locale_dir.exists() {
+            return locale_dir;
+        }
+    }
+    resources_dir.join("std")
 }

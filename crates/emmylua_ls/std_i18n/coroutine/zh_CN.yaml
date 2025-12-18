@@ -10,7 +10,7 @@ coroutinelib.create.return.1: ""
 
 coroutinelib.isyieldable: |
   当正在运行的协程可以让出时返回 true。
-  
+
   如果正在运行的协程不是主线程且不在不可让出的 C 函数中，
   则该协程是可让出的。
 
@@ -31,7 +31,7 @@ coroutinelib.resume: |
   开始或继续执行协程 `co`。第一次恢复协程时，它开始运行其主体函数。
   值 `val1`, ... 作为参数传递给主体函数。如果协程已让出，`resume`
   会重新启动它；值 `val1`, ... 作为 yield 的返回结果传递。
-  
+
   如果协程运行时没有任何错误，`resume` 返回 **true** 加上传递给
   `yield` 的任何值（当协程让出时）或主体函数返回的任何值（当协程
   终止时）。如果有任何错误，`resume` 返回 **false** 加上错误消息。
@@ -87,4 +87,3 @@ coroutinelib.yield: |
   传递给 `resume`。
 
 coroutinelib.yield.return.1: ""
-

@@ -3,1381 +3,1381 @@ line_base: 0
 col_base: 0
 file: math.lua
 entries:
-- key: mathlib
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 15
-      col: 0
-    end:
-      line: 15
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f4cd3ceb55dc202b
-- key: mathlib.abs
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 20
-      col: 0
-  hash: fnv1a64:c58920ed7e19d04e
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.abs.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 21
-      col: 18
-    end:
-      line: 21
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.abs.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 22
-      col: 17
-    end:
-      line: 22
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.acos
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 25
-      col: 0
-    end:
-      line: 27
-      col: 0
-  hash: fnv1a64:a5dd11d2e52d92bb
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.acos.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 27
-      col: 18
-    end:
-      line: 27
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.acos.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 28
-      col: 17
-    end:
-      line: 28
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.asin
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 31
-      col: 0
-    end:
-      line: 33
-      col: 0
-  hash: fnv1a64:a66e0fb56f556f39
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.asin.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 33
-      col: 18
-    end:
-      line: 33
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.asin.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 34
-      col: 17
-    end:
-      line: 34
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.atan
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 37
-      col: 0
-    end:
-      line: 44
-      col: 0
-  hash: fnv1a64:eb7d38ca6a36d7e4
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.atan.param.y
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 44
-      col: 18
-    end:
-      line: 44
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6b86e77cfe1a0b51
-- key: mathlib.atan.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 45
-      col: 19
-    end:
-      line: 45
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3af799bdd8d3effd
-- key: mathlib.atan.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 46
-      col: 17
-    end:
-      line: 46
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.ceil
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 49
-      col: 0
-    end:
-      line: 51
-      col: 0
-  hash: fnv1a64:27f3c017a9d3c924
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.ceil.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 51
-      col: 18
-    end:
-      line: 51
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.ceil.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 52
-      col: 18
-    end:
-      line: 52
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2b1879e467c17cde
-- key: mathlib.cos
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 55
-      col: 0
-    end:
-      line: 57
-      col: 0
-  hash: fnv1a64:3dcf75884877dfdf
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.cos.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 57
-      col: 18
-    end:
-      line: 57
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.cos.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 58
-      col: 17
-    end:
-      line: 58
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.deg
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 61
-      col: 0
-    end:
-      line: 63
-      col: 0
-  hash: fnv1a64:f054a9819e67ad41
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.deg.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 63
-      col: 18
-    end:
-      line: 63
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.deg.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 64
-      col: 17
-    end:
-      line: 64
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.exp
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 67
-      col: 0
-    end:
-      line: 69
-      col: 0
-  hash: fnv1a64:0ba32fcbfe06e7ac
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.exp.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 69
-      col: 18
-    end:
-      line: 69
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.exp.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 70
-      col: 17
-    end:
-      line: 70
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.floor
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 73
-      col: 0
-    end:
-      line: 75
-      col: 0
-  hash: fnv1a64:0217672176f9061c
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.floor.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 75
-      col: 18
-    end:
-      line: 75
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.floor.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 76
-      col: 18
-    end:
-      line: 76
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2b1879e467c17cde
-- key: mathlib.fmod
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 79
-      col: 0
-    end:
-      line: 82
-      col: 0
-  hash: fnv1a64:af18ff844942e1a1
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.fmod.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 82
-      col: 18
-    end:
-      line: 82
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.fmod.param.y
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 83
-      col: 18
-    end:
-      line: 83
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6b86e77cfe1a0b51
-- key: mathlib.fmod.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 84
-      col: 17
-    end:
-      line: 84
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.huge
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 87
-      col: 0
-    end:
-      line: 90
-      col: 0
-  hash: fnv1a64:b6cee43c3c9752e4
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.log
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 93
-      col: 0
-    end:
-      line: 96
-      col: 0
-  hash: fnv1a64:4c3d322fa253de6d
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.log.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 96
-      col: 18
-    end:
-      line: 96
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.log.param.base
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 97
-      col: 22
-    end:
-      line: 97
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:aaf06293c46b1272
-- key: mathlib.log.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 98
-      col: 17
-    end:
-      line: 98
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.max
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 101
-      col: 0
-    end:
-      line: 104
-      col: 0
-  hash: fnv1a64:03a9e9e4fef2c659
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.max.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 105
-      col: 18
-    end:
-      line: 105
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.max.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 107
-      col: 17
-    end:
-      line: 107
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.maxinteger
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 111
-      col: 0
-    end:
-      line: 113
-      col: 0
-  hash: fnv1a64:28ba2ba24ff4a272
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.min
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 116
-      col: 0
-    end:
-      line: 119
-      col: 0
-  hash: fnv1a64:b3b85d0ea6475cef
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.min.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 120
-      col: 18
-    end:
-      line: 120
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.min.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 122
-      col: 17
-    end:
-      line: 122
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.mininteger
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 126
-      col: 0
-    end:
-      line: 128
-      col: 0
-  hash: fnv1a64:a57b428c91d0e758
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.modf
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 131
-      col: 0
-    end:
-      line: 134
-      col: 0
-  hash: fnv1a64:91b7162d1bad4494
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.modf.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 134
-      col: 18
-    end:
-      line: 134
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.modf.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 135
-      col: 18
-    end:
-      line: 135
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2b1879e467c17cde
-- key: mathlib.modf.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 136
-      col: 17
-    end:
-      line: 136
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.pi
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 139
-      col: 0
-    end:
-      line: 140
-      col: 20
-  hash: fnv1a64:a3cd679841b59bc3
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.rad
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 143
-      col: 0
-    end:
-      line: 145
-      col: 0
-  hash: fnv1a64:d221083d438800ff
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.rad.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 145
-      col: 18
-    end:
-      line: 145
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.rad.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 146
-      col: 17
-    end:
-      line: 146
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.random
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 149
-      col: 0
-    end:
-      line: 155
-      col: 0
-  hash: fnv1a64:b1cc3cd05011681a
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.random.param.m
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 157
-      col: 19
-    end:
-      line: 157
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2791c6da7b26901e
-- key: mathlib.random.param.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 158
-      col: 19
-    end:
-      line: 158
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3e015a3fb469a05f
-- key: mathlib.random.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 159
-      col: 18
-    end:
-      line: 159
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2b1879e467c17cde
-- key: mathlib.randomseed
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 162
-      col: 0
-    end:
-      line: 165
-      col: 0
-  hash: fnv1a64:93e6af65e993e003
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.randomseed.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 165
-      col: 19
-    end:
-      line: 165
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:103e38996e76bfa9
-- key: mathlib.sin
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 168
-      col: 0
-    end:
-      line: 170
-      col: 0
-  hash: fnv1a64:f3156b9eee524b75
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.sin.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 170
-      col: 18
-    end:
-      line: 170
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.sin.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 171
-      col: 17
-    end:
-      line: 171
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.sqrt
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 174
-      col: 0
-    end:
-      line: 177
-      col: 0
-  hash: fnv1a64:9c47f0e74f561c41
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.sqrt.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 177
-      col: 18
-    end:
-      line: 177
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.sqrt.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 178
-      col: 17
-    end:
-      line: 178
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.tan
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 181
-      col: 0
-    end:
-      line: 183
-      col: 0
-  hash: fnv1a64:4e92d05f5d7eea2f
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.tan.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 183
-      col: 18
-    end:
-      line: 183
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.tan.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 184
-      col: 17
-    end:
-      line: 184
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.tointeger
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 188
-      col: 0
-    end:
-      line: 191
-      col: 0
-  hash: fnv1a64:e006425ac24cd772
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.tointeger.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 191
-      col: 15
-    end:
-      line: 191
-      col: 15
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f04c01ce73cd9221
-- key: mathlib.tointeger.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 192
-      col: 19
-    end:
-      line: 192
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fc14001c4dc73253
-- key: mathlib.type
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 196
-      col: 0
-    end:
-      line: 199
-      col: 0
-  hash: fnv1a64:963bb5a28f874620
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.type.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 199
-      col: 15
-    end:
-      line: 199
-      col: 15
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f04c01ce73cd9221
-- key: mathlib.type.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 200
-      col: 34
-    end:
-      line: 200
-      col: 34
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ba3d9cdf3f2d6bf9
-- key: mathlib.ult
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 204
-      col: 0
-    end:
-      line: 207
-      col: 0
-  hash: fnv1a64:2fa6304df1df9a20
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.ult.param.m
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 207
-      col: 18
-    end:
-      line: 207
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:33031ef82fd45aa5
-- key: mathlib.ult.param.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 208
-      col: 18
-    end:
-      line: 208
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ffdf683743c2062e
-- key: mathlib.ult.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 209
-      col: 18
-    end:
-      line: 209
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8c634c305d7ac2d0
-- key: mathlib.pow
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 213
-      col: 0
-    end:
-      line: 215
-      col: 0
-  hash: fnv1a64:42724ba1a56090e7
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.pow.param.x
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 215
-      col: 19
-    end:
-      line: 215
-      col: 27
-  hash: fnv1a64:fa1421b96f3eabc1
-  context_hash: fnv1a64:a43ffd9c02dc61f0
-- key: mathlib.pow.param.y
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 216
-      col: 19
-    end:
-      line: 216
-      col: 31
-  hash: fnv1a64:5e06156f6c04648b
-  context_hash: fnv1a64:7d56446027d998a5
-- key: mathlib.pow.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 217
-      col: 17
-    end:
-      line: 217
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.atan2
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 221
-      col: 0
-    end:
-      line: 227
-      col: 0
-  hash: fnv1a64:97077dd764611e12
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.atan2.param.y
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 227
-      col: 18
-    end:
-      line: 227
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6b86e77cfe1a0b51
-- key: mathlib.atan2.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 228
-      col: 18
-    end:
-      line: 228
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.atan2.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 229
-      col: 17
-    end:
-      line: 229
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.log10
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 233
-      col: 0
-    end:
-      line: 235
-      col: 0
-  hash: fnv1a64:7eeb848cac8c5c80
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.log10.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 235
-      col: 18
-    end:
-      line: 235
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.log10.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 236
-      col: 17
-    end:
-      line: 236
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.cosh
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 240
-      col: 0
-    end:
-      line: 242
-      col: 0
-  hash: fnv1a64:3f0d7a29939c3308
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.cosh.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 242
-      col: 18
-    end:
-      line: 242
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.cosh.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 243
-      col: 17
-    end:
-      line: 243
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.sinh
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 247
-      col: 0
-    end:
-      line: 249
-      col: 0
-  hash: fnv1a64:16630a06699d002a
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.sinh.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 249
-      col: 18
-    end:
-      line: 249
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.sinh.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 250
-      col: 17
-    end:
-      line: 250
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.tanh
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 254
-      col: 0
-    end:
-      line: 256
-      col: 0
-  hash: fnv1a64:05129308e84b8d36
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.tanh.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 256
-      col: 18
-    end:
-      line: 256
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.tanh.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 257
-      col: 17
-    end:
-      line: 257
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
-- key: mathlib.frexp
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 261
-      col: 0
-    end:
-      line: 264
-      col: 0
-  hash: fnv1a64:03448afbb8de9e62
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.frexp.param.x
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 264
-      col: 18
-    end:
-      line: 264
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:867952b06f8eda94
-- key: mathlib.frexp.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 265
-      col: 26
-    end:
-      line: 265
-      col: 26
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:bb81f9d302b15681
-- key: mathlib.ldexp
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 269
-      col: 0
-    end:
-      line: 271
-      col: 0
-  hash: fnv1a64:fdabbcfb70f65661
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: mathlib.ldexp.param.m
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 271
-      col: 18
-    end:
-      line: 271
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:33031ef82fd45aa5
-- key: mathlib.ldexp.param.e
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 272
-      col: 19
-    end:
-      line: 272
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:4be914e05b219c76
-- key: mathlib.ldexp.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 273
-      col: 17
-    end:
-      line: 273
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 15
+        col: 0
+      end:
+        line: 15
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f4cd3ceb55dc202b
+  - key: mathlib.abs
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 18
+        col: 0
+      end:
+        line: 20
+        col: 0
+    hash: fnv1a64:c58920ed7e19d04e
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.abs.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 21
+        col: 18
+      end:
+        line: 21
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.abs.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 22
+        col: 17
+      end:
+        line: 22
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.acos
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 25
+        col: 0
+      end:
+        line: 27
+        col: 0
+    hash: fnv1a64:a5dd11d2e52d92bb
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.acos.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 27
+        col: 18
+      end:
+        line: 27
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.acos.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 28
+        col: 17
+      end:
+        line: 28
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.asin
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 31
+        col: 0
+      end:
+        line: 33
+        col: 0
+    hash: fnv1a64:a66e0fb56f556f39
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.asin.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 33
+        col: 18
+      end:
+        line: 33
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.asin.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 34
+        col: 17
+      end:
+        line: 34
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.atan
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 37
+        col: 0
+      end:
+        line: 44
+        col: 0
+    hash: fnv1a64:eb7d38ca6a36d7e4
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.atan.param.y
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 44
+        col: 18
+      end:
+        line: 44
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6b86e77cfe1a0b51
+  - key: mathlib.atan.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 45
+        col: 19
+      end:
+        line: 45
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3af799bdd8d3effd
+  - key: mathlib.atan.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 46
+        col: 17
+      end:
+        line: 46
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.ceil
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 49
+        col: 0
+      end:
+        line: 51
+        col: 0
+    hash: fnv1a64:27f3c017a9d3c924
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.ceil.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 51
+        col: 18
+      end:
+        line: 51
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.ceil.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 52
+        col: 18
+      end:
+        line: 52
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2b1879e467c17cde
+  - key: mathlib.cos
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 55
+        col: 0
+      end:
+        line: 57
+        col: 0
+    hash: fnv1a64:3dcf75884877dfdf
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.cos.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 57
+        col: 18
+      end:
+        line: 57
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.cos.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 58
+        col: 17
+      end:
+        line: 58
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.deg
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 61
+        col: 0
+      end:
+        line: 63
+        col: 0
+    hash: fnv1a64:f054a9819e67ad41
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.deg.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 63
+        col: 18
+      end:
+        line: 63
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.deg.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 64
+        col: 17
+      end:
+        line: 64
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.exp
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 67
+        col: 0
+      end:
+        line: 69
+        col: 0
+    hash: fnv1a64:0ba32fcbfe06e7ac
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.exp.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 69
+        col: 18
+      end:
+        line: 69
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.exp.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 70
+        col: 17
+      end:
+        line: 70
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.floor
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 73
+        col: 0
+      end:
+        line: 75
+        col: 0
+    hash: fnv1a64:0217672176f9061c
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.floor.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 75
+        col: 18
+      end:
+        line: 75
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.floor.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 76
+        col: 18
+      end:
+        line: 76
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2b1879e467c17cde
+  - key: mathlib.fmod
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 79
+        col: 0
+      end:
+        line: 82
+        col: 0
+    hash: fnv1a64:af18ff844942e1a1
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.fmod.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 82
+        col: 18
+      end:
+        line: 82
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.fmod.param.y
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 83
+        col: 18
+      end:
+        line: 83
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6b86e77cfe1a0b51
+  - key: mathlib.fmod.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 84
+        col: 17
+      end:
+        line: 84
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.huge
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 87
+        col: 0
+      end:
+        line: 90
+        col: 0
+    hash: fnv1a64:b6cee43c3c9752e4
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.log
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 93
+        col: 0
+      end:
+        line: 96
+        col: 0
+    hash: fnv1a64:4c3d322fa253de6d
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.log.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 96
+        col: 18
+      end:
+        line: 96
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.log.param.base
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 97
+        col: 22
+      end:
+        line: 97
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:aaf06293c46b1272
+  - key: mathlib.log.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 98
+        col: 17
+      end:
+        line: 98
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.max
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 101
+        col: 0
+      end:
+        line: 104
+        col: 0
+    hash: fnv1a64:03a9e9e4fef2c659
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.max.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 105
+        col: 18
+      end:
+        line: 105
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.max.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 107
+        col: 17
+      end:
+        line: 107
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.maxinteger
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 111
+        col: 0
+      end:
+        line: 113
+        col: 0
+    hash: fnv1a64:28ba2ba24ff4a272
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.min
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 116
+        col: 0
+      end:
+        line: 119
+        col: 0
+    hash: fnv1a64:b3b85d0ea6475cef
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.min.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 120
+        col: 18
+      end:
+        line: 120
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.min.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 122
+        col: 17
+      end:
+        line: 122
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.mininteger
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 126
+        col: 0
+      end:
+        line: 128
+        col: 0
+    hash: fnv1a64:a57b428c91d0e758
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.modf
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 131
+        col: 0
+      end:
+        line: 134
+        col: 0
+    hash: fnv1a64:91b7162d1bad4494
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.modf.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 134
+        col: 18
+      end:
+        line: 134
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.modf.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 135
+        col: 18
+      end:
+        line: 135
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2b1879e467c17cde
+  - key: mathlib.modf.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 136
+        col: 17
+      end:
+        line: 136
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.pi
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 139
+        col: 0
+      end:
+        line: 140
+        col: 20
+    hash: fnv1a64:a3cd679841b59bc3
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.rad
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 143
+        col: 0
+      end:
+        line: 145
+        col: 0
+    hash: fnv1a64:d221083d438800ff
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.rad.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 145
+        col: 18
+      end:
+        line: 145
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.rad.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 146
+        col: 17
+      end:
+        line: 146
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.random
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 149
+        col: 0
+      end:
+        line: 155
+        col: 0
+    hash: fnv1a64:b1cc3cd05011681a
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.random.param.m
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 157
+        col: 19
+      end:
+        line: 157
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2791c6da7b26901e
+  - key: mathlib.random.param.n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 158
+        col: 19
+      end:
+        line: 158
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3e015a3fb469a05f
+  - key: mathlib.random.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 159
+        col: 18
+      end:
+        line: 159
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2b1879e467c17cde
+  - key: mathlib.randomseed
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 162
+        col: 0
+      end:
+        line: 165
+        col: 0
+    hash: fnv1a64:93e6af65e993e003
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.randomseed.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 165
+        col: 19
+      end:
+        line: 165
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:103e38996e76bfa9
+  - key: mathlib.sin
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 168
+        col: 0
+      end:
+        line: 170
+        col: 0
+    hash: fnv1a64:f3156b9eee524b75
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.sin.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 170
+        col: 18
+      end:
+        line: 170
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.sin.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 171
+        col: 17
+      end:
+        line: 171
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.sqrt
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 174
+        col: 0
+      end:
+        line: 177
+        col: 0
+    hash: fnv1a64:9c47f0e74f561c41
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.sqrt.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 177
+        col: 18
+      end:
+        line: 177
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.sqrt.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 178
+        col: 17
+      end:
+        line: 178
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.tan
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 181
+        col: 0
+      end:
+        line: 183
+        col: 0
+    hash: fnv1a64:4e92d05f5d7eea2f
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.tan.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 183
+        col: 18
+      end:
+        line: 183
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.tan.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 184
+        col: 17
+      end:
+        line: 184
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.tointeger
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 188
+        col: 0
+      end:
+        line: 191
+        col: 0
+    hash: fnv1a64:e006425ac24cd772
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.tointeger.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 191
+        col: 15
+      end:
+        line: 191
+        col: 15
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f04c01ce73cd9221
+  - key: mathlib.tointeger.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 192
+        col: 19
+      end:
+        line: 192
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fc14001c4dc73253
+  - key: mathlib.type
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 196
+        col: 0
+      end:
+        line: 199
+        col: 0
+    hash: fnv1a64:963bb5a28f874620
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.type.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 199
+        col: 15
+      end:
+        line: 199
+        col: 15
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f04c01ce73cd9221
+  - key: mathlib.type.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 200
+        col: 34
+      end:
+        line: 200
+        col: 34
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ba3d9cdf3f2d6bf9
+  - key: mathlib.ult
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 204
+        col: 0
+      end:
+        line: 207
+        col: 0
+    hash: fnv1a64:2fa6304df1df9a20
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.ult.param.m
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 207
+        col: 18
+      end:
+        line: 207
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:33031ef82fd45aa5
+  - key: mathlib.ult.param.n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 208
+        col: 18
+      end:
+        line: 208
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ffdf683743c2062e
+  - key: mathlib.ult.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 209
+        col: 18
+      end:
+        line: 209
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8c634c305d7ac2d0
+  - key: mathlib.pow
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 213
+        col: 0
+      end:
+        line: 215
+        col: 0
+    hash: fnv1a64:42724ba1a56090e7
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.pow.param.x
+    kind:
+      type: line_tail
+      prefix: ""
+    range:
+      start:
+        line: 215
+        col: 19
+      end:
+        line: 215
+        col: 27
+    hash: fnv1a64:fa1421b96f3eabc1
+    context_hash: fnv1a64:a43ffd9c02dc61f0
+  - key: mathlib.pow.param.y
+    kind:
+      type: line_tail
+      prefix: ""
+    range:
+      start:
+        line: 216
+        col: 19
+      end:
+        line: 216
+        col: 31
+    hash: fnv1a64:5e06156f6c04648b
+    context_hash: fnv1a64:7d56446027d998a5
+  - key: mathlib.pow.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 217
+        col: 17
+      end:
+        line: 217
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.atan2
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 221
+        col: 0
+      end:
+        line: 227
+        col: 0
+    hash: fnv1a64:97077dd764611e12
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.atan2.param.y
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 227
+        col: 18
+      end:
+        line: 227
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6b86e77cfe1a0b51
+  - key: mathlib.atan2.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 228
+        col: 18
+      end:
+        line: 228
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.atan2.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 229
+        col: 17
+      end:
+        line: 229
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.log10
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 233
+        col: 0
+      end:
+        line: 235
+        col: 0
+    hash: fnv1a64:7eeb848cac8c5c80
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.log10.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 235
+        col: 18
+      end:
+        line: 235
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.log10.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 236
+        col: 17
+      end:
+        line: 236
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.cosh
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 240
+        col: 0
+      end:
+        line: 242
+        col: 0
+    hash: fnv1a64:3f0d7a29939c3308
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.cosh.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 242
+        col: 18
+      end:
+        line: 242
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.cosh.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 243
+        col: 17
+      end:
+        line: 243
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.sinh
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 247
+        col: 0
+      end:
+        line: 249
+        col: 0
+    hash: fnv1a64:16630a06699d002a
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.sinh.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 249
+        col: 18
+      end:
+        line: 249
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.sinh.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 250
+        col: 17
+      end:
+        line: 250
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.tanh
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 254
+        col: 0
+      end:
+        line: 256
+        col: 0
+    hash: fnv1a64:05129308e84b8d36
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.tanh.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 256
+        col: 18
+      end:
+        line: 256
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.tanh.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 257
+        col: 17
+      end:
+        line: 257
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365
+  - key: mathlib.frexp
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 261
+        col: 0
+      end:
+        line: 264
+        col: 0
+    hash: fnv1a64:03448afbb8de9e62
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.frexp.param.x
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 264
+        col: 18
+      end:
+        line: 264
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:867952b06f8eda94
+  - key: mathlib.frexp.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 265
+        col: 26
+      end:
+        line: 265
+        col: 26
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:bb81f9d302b15681
+  - key: mathlib.ldexp
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 269
+        col: 0
+      end:
+        line: 271
+        col: 0
+    hash: fnv1a64:fdabbcfb70f65661
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: mathlib.ldexp.param.m
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 271
+        col: 18
+      end:
+        line: 271
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:33031ef82fd45aa5
+  - key: mathlib.ldexp.param.e
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 272
+        col: 19
+      end:
+        line: 272
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:4be914e05b219c76
+  - key: mathlib.ldexp.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 273
+        col: 17
+      end:
+        line: 273
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3d3a56eb28cd365

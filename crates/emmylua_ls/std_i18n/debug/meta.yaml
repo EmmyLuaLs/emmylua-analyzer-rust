@@ -3,1511 +3,1511 @@ line_base: 0
 col_base: 0
 file: debug.lua
 entries:
-- key: debuglib
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 15
-      col: 0
-    end:
-      line: 15
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c27341e0f34edb28
-- key: debuglib.debug
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 26
-      col: 62
-  hash: fnv1a64:0fe4e22e6bd16e8b
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getfenv
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 30
-      col: 0
-    end:
-      line: 33
-      col: 0
-  hash: fnv1a64:e319ed191ab2753e
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getfenv.param.o
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 33
-      col: 15
-    end:
-      line: 33
-      col: 15
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8b43684715c79458
-- key: debuglib.getfenv.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 34
-      col: 16
-    end:
-      line: 34
-      col: 16
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:0c4bb34d077b2108
-- key: debuglib.gethook
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 38
-      col: 0
-    end:
-      line: 42
-      col: 0
-  hash: fnv1a64:49af4e4a2801028a
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.gethook.param.thread
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 43
-      col: 23
-    end:
-      line: 43
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fe05fb9dbb2efbf7
-- key: debuglib.gethook.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 44
-      col: 17
-    end:
-      line: 44
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e0cda2bf977ba98c
-- key: debuglib.DebugInfo
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 47
-      col: 0
-    end:
-      line: 47
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:69ee42e6c72c6075
-- key: debuglib.DebugInfo.field.name
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 48
-      col: 32
-    end:
-      line: 48
-      col: 32
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:752ea89f7607e9d4
-- key: debuglib.DebugInfo.field.namewhat
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 49
-      col: 32
-    end:
-      line: 49
-      col: 32
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2a00c9b1522f9436
-- key: debuglib.DebugInfo.field.source
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 50
-      col: 32
-    end:
-      line: 50
-      col: 32
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c79df1f2a5db59c2
-- key: debuglib.DebugInfo.field.short_src
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 51
-      col: 32
-    end:
-      line: 51
-      col: 32
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:369889fc0c444f1a
-- key: debuglib.DebugInfo.field.linedefined
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 52
-      col: 33
-    end:
-      line: 52
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:01d6e5a9ebf0b197
-- key: debuglib.DebugInfo.field.lastlinedefined
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 53
-      col: 33
-    end:
-      line: 53
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:816af6edb0e35533
-- key: debuglib.DebugInfo.field.what
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 54
-      col: 32
-    end:
-      line: 54
-      col: 32
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fa4a7587b1377c11
-- key: debuglib.DebugInfo.field.currentline
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 55
-      col: 33
-    end:
-      line: 55
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:74dace74dbf239fb
-- key: debuglib.DebugInfo.field.istailcall
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 56
-      col: 33
-    end:
-      line: 56
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:72511d6c69e52ed4
-- key: debuglib.DebugInfo.field.nups
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 57
-      col: 33
-    end:
-      line: 57
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a60639c8fbc0d388
-- key: debuglib.DebugInfo.field.nparams
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 58
-      col: 33
-    end:
-      line: 58
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9b0245f88e05b2b0
-- key: debuglib.DebugInfo.field.isvararg
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 59
-      col: 33
-    end:
-      line: 59
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e3a86fae9b27129b
-- key: debuglib.DebugInfo.field.func
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 60
-      col: 34
-    end:
-      line: 60
-      col: 34
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:24bd035915f4b1ec
-- key: debuglib.DebugInfo.field.ftransfer
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 61
-      col: 33
-    end:
-      line: 61
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:48dea7b18712c3f5
-- key: debuglib.DebugInfo.field.ntransfer
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 62
-      col: 33
-    end:
-      line: 62
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:da797b4f3213e4bd
-- key: debuglib.DebugInfo.field.activelines
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 63
-      col: 31
-    end:
-      line: 63
-      col: 31
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:be96a90157ef2c57
-- key: debuglib.InfoWhat
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 65
-      col: 0
-    end:
-      line: 65
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:231fa171d5ae9fb4
-- key: debuglib.InfoWhat.item.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 66
-      col: 14
-    end:
-      line: 66
-      col: 33
-  hash: fnv1a64:f607d8295ab10b09
-  context_hash: fnv1a64:c7d6e0f1e9125070
-- key: debuglib.InfoWhat.item.S
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 67
-      col: 14
-    end:
-      line: 67
-      col: 76
-  hash: fnv1a64:4d8757c3d65e5316
-  context_hash: fnv1a64:85c11923def6a850
-- key: debuglib.InfoWhat.item.l
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 68
-      col: 14
-    end:
-      line: 68
-      col: 28
-  hash: fnv1a64:3b4abcf26c63da90
-  context_hash: fnv1a64:15b102f5e1274acd
-- key: debuglib.InfoWhat.item.t
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 69
-      col: 14
-    end:
-      line: 69
-      col: 27
-  hash: fnv1a64:0d74d35018965521
-  context_hash: fnv1a64:105f4cd2d7e8614a
-- key: debuglib.InfoWhat.item.u
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 70
-      col: 14
-    end:
-      line: 70
-      col: 44
-  hash: fnv1a64:234b4c0d79270024
-  context_hash: fnv1a64:ccbf703eca4a4f14
-- key: debuglib.InfoWhat.item.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 71
-      col: 14
-    end:
-      line: 71
-      col: 21
-  hash: fnv1a64:075b011e6d60a10d
-  context_hash: fnv1a64:88bf6438b8c0adf8
-- key: debuglib.InfoWhat.item.r
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 72
-      col: 14
-    end:
-      line: 72
-      col: 39
-  hash: fnv1a64:661489bb7eb64c19
-  context_hash: fnv1a64:5a95e7316013239c
-- key: debuglib.InfoWhat.item.L
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 73
-      col: 14
-    end:
-      line: 73
-      col: 28
-  hash: fnv1a64:a1993e3f27753996
-  context_hash: fnv1a64:82805f0c17b3057b
-- key: debuglib.getinfo
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 76
-      col: 0
-    end:
-      line: 96
-      col: 0
-  hash: fnv1a64:7980d3ed291cc366
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getinfo.param.thread
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 97
-      col: 23
-    end:
-      line: 97
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fe05fb9dbb2efbf7
-- key: debuglib.getinfo.param.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 98
-      col: 28
-    end:
-      line: 98
-      col: 28
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d6570b5cfc45a2b5
-- key: debuglib.getinfo.param.what
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 99
-      col: 33
-    end:
-      line: 99
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3a29a91f777de38a
-- key: debuglib.getinfo.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 100
-      col: 29
-    end:
-      line: 100
-      col: 29
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fda1a39e0913db3f
-- key: debuglib.getlocal
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 105
-      col: 0
-    end:
-      line: 133
-      col: 14
-  hash: fnv1a64:e89d131112b5cf0c
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getlocal.param.thread
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 128
-      col: 24
-    end:
-      line: 128
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1ee979508970775b
-- key: debuglib.getlocal.param.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 129
-      col: 20
-    end:
-      line: 129
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:41f139265960290b
-- key: debuglib.getlocal.param.index
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 130
-      col: 24
-    end:
-      line: 130
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ac1cec9bf544fdf1
-- key: debuglib.getlocal.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 131
-      col: 24
-    end:
-      line: 131
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:aa7d58a98ea93c05
-- key: debuglib.getlocal.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 132
-      col: 22
-    end:
-      line: 132
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2d3fc065d614b7f2
-- key: debuglib.getlocal
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 137
-      col: 0
-    end:
-      line: 153
-      col: 14
-  hash: fnv1a64:6e78bee4ce7ab0e2
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getlocal.param.thread
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 148
-      col: 24
-    end:
-      line: 148
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1ee979508970775b
-- key: debuglib.getlocal.param.lvl
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 149
-      col: 22
-    end:
-      line: 149
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9799ce0a2eaca463
-- key: debuglib.getlocal.param.index
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 150
-      col: 24
-    end:
-      line: 150
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ac1cec9bf544fdf1
-- key: debuglib.getlocal.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 151
-      col: 24
-    end:
-      line: 151
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:aa7d58a98ea93c05
-- key: debuglib.getlocal.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 152
-      col: 22
-    end:
-      line: 152
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2d3fc065d614b7f2
-- key: debuglib.getmetatable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 156
-      col: 0
-    end:
-      line: 159
-      col: 0
-  hash: fnv1a64:301cc1a982007cb9
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getmetatable.param.object
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 159
-      col: 20
-    end:
-      line: 159
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ad91c8d35ea21b64
-- key: debuglib.getmetatable.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 160
-      col: 17
-    end:
-      line: 160
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5fc2e2e3b6397075
-- key: debuglib.getregistry
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 164
-      col: 0
-    end:
-      line: 166
-      col: 0
-  hash: fnv1a64:ad4fd6b084028bec
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getregistry.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 166
-      col: 16
-    end:
-      line: 166
-      col: 16
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:0c4bb34d077b2108
-- key: debuglib.getupvalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 170
-      col: 0
-    end:
-      line: 177
-      col: 0
-  hash: fnv1a64:0ed79123390e675c
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getupvalue.param.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 177
-      col: 20
-    end:
-      line: 177
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b5621f4a3bb65cf7
-- key: debuglib.getupvalue.param.up
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 178
-      col: 20
-    end:
-      line: 178
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f4e34c5be761631e
-- key: debuglib.getupvalue.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 179
-      col: 22
-    end:
-      line: 179
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9d689e23e989a4ec
-- key: debuglib.getupvalue.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 180
-      col: 23
-    end:
-      line: 180
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:58447c5085d9a15f
-- key: debuglib.getuservalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 184
-      col: 0
-    end:
-      line: 187
-      col: 0
-  hash: fnv1a64:8f1463c1c4d29816
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.getuservalue.param.u
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 187
-      col: 20
-    end:
-      line: 187
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b48f64e9f90ab017
-- key: debuglib.getuservalue.param.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 188
-      col: 19
-    end:
-      line: 188
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3e015a3fb469a05f
-- key: debuglib.getuservalue.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 189
-      col: 14
-    end:
-      line: 189
-      col: 14
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e571c1d98ef7385e
-- key: debuglib.getuservalue.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 190
-      col: 18
-    end:
-      line: 190
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8c634c305d7ac2d0
-- key: debuglib.setcstacklimit
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 193
-      col: 0
-    end:
-      line: 201
-      col: 0
-  hash: fnv1a64:dd787cc43dc8df6e
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.setcstacklimit.param.limit
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 202
-      col: 23
-    end:
-      line: 202
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d8c3a953922c4242
-- key: debuglib.setcstacklimit.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 203
-      col: 26
-    end:
-      line: 203
-      col: 26
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:bb899862579f908e
-- key: debuglib.setfenv
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 206
-      col: 0
-    end:
-      line: 209
-      col: 0
-  hash: fnv1a64:0b8d594813fd815a
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.setfenv.param.object
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 211
-      col: 18
-    end:
-      line: 211
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ac3c36e3d2645702
-- key: debuglib.setfenv.param.env
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 212
-      col: 22
-    end:
-      line: 212
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1209fa04d7e4744c
-- key: debuglib.setfenv.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 213
-      col: 19
-    end:
-      line: 213
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5ad68af7c7b2b717
-- key: debuglib.Hookmask
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 216
-      col: 0
-    end:
-      line: 216
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:db66b769d3923495
-- key: debuglib.Hookmask.item.c
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 217
-      col: 10
-    end:
-      line: 217
-      col: 48
-  hash: fnv1a64:2a465f3164fdfca7
-  context_hash: fnv1a64:4f1a28807fd9c99d
-- key: debuglib.Hookmask.item.r
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 218
-      col: 10
-    end:
-      line: 218
-      col: 55
-  hash: fnv1a64:d2998a5af84ab995
-  context_hash: fnv1a64:8f1344163909f994
-- key: debuglib.Hookmask.item.l
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 219
-      col: 10
-    end:
-      line: 219
-      col: 57
-  hash: fnv1a64:cc3f0aa2749ba739
-  context_hash: fnv1a64:4a1e231682598e4a
-- key: debuglib.sethook
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 221
-      col: 0
-    end:
-      line: 242
-      col: 0
-  hash: fnv1a64:30b0a0a8d96678be
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.sethook.param.thread
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 243
-      col: 23
-    end:
-      line: 243
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fe05fb9dbb2efbf7
-- key: debuglib.sethook.param.hook
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 244
-      col: 24
-    end:
-      line: 244
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b16e5528b08e5104
-- key: debuglib.sethook.param.mask
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 245
-      col: 33
-    end:
-      line: 245
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ed899202b4d00e55
-- key: debuglib.sethook.param.count
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 246
-      col: 24
-    end:
-      line: 246
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:45f1005b0d3e29d7
-- key: debuglib.setlocal
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 249
-      col: 0
-    end:
-      line: 256
-      col: 0
-  hash: fnv1a64:74eff9cb66dcfec3
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.setlocal.param.thread
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 257
-      col: 23
-    end:
-      line: 257
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fe05fb9dbb2efbf7
-- key: debuglib.setlocal.param.level
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 258
-      col: 23
-    end:
-      line: 258
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:67d4b7811e38dcf3
-- key: debuglib.setlocal.param.var
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 259
-      col: 20
-    end:
-      line: 259
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a7acd2d2f7e452e7
-- key: debuglib.setlocal.param.value
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 260
-      col: 19
-    end:
-      line: 260
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3ebda6d00cf3f414
-- key: debuglib.setlocal.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 261
-      col: 17
-    end:
-      line: 261
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c975e72970aca035
-- key: debuglib.setmetatable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 264
-      col: 0
-    end:
-      line: 267
-      col: 0
-  hash: fnv1a64:241d133343fed058
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.setmetatable.param.value
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 268
-      col: 17
-    end:
-      line: 268
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:05f26bca31af5df2
-- key: debuglib.setmetatable.param.meta
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 269
-      col: 21
-    end:
-      line: 269
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:14b644ebe7560ea5
-- key: debuglib.setmetatable.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 270
-      col: 18
-    end:
-      line: 270
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e3de101ffac46751
-- key: debuglib.setupvalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 274
-      col: 0
-    end:
-      line: 278
-      col: 0
-  hash: fnv1a64:c4902d4d7ac0710a
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.setupvalue.param.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 278
-      col: 21
-    end:
-      line: 278
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2e99956ff6451d27
-- key: debuglib.setupvalue.param.up
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 279
-      col: 20
-    end:
-      line: 279
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f4e34c5be761631e
-- key: debuglib.setupvalue.param.value
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 280
-      col: 19
-    end:
-      line: 280
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3ebda6d00cf3f414
-- key: debuglib.setupvalue.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 281
-      col: 17
-    end:
-      line: 281
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c975e72970aca035
-- key: debuglib.setuservalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 284
-      col: 0
-    end:
-      line: 288
-      col: 0
-  hash: fnv1a64:cdc0c0b3d876bc8a
-  context_hash: fnv1a64:db5e2c86b41bac5c
-- key: debuglib.setuservalue.param.udata
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 288
-      col: 24
-    end:
-      line: 288
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3b9de500613499ef
-- key: debuglib.setuservalue.param.value
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 289
-      col: 19
-    end:
-      line: 289
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3ebda6d00cf3f414
-- key: debuglib.setuservalue.param.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 290
-      col: 19
-    end:
-      line: 290
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3e015a3fb469a05f
-- key: debuglib.setuservalue.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 291
-      col: 19
-    end:
-      line: 291
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:738184d4502b18df
-- key: debuglib.traceback
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 294
-      col: 0
-    end:
-      line: 302
-      col: 0
-  hash: fnv1a64:eae2c98c3517346d
-  context_hash: fnv1a64:75684757332beac5
-- key: debuglib.traceback.param.thread
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 304
-      col: 34
-    end:
-      line: 304
-      col: 108
-  hash: fnv1a64:d8583bff49e75935
-  context_hash: fnv1a64:b4d473f240caabc8
-- key: debuglib.traceback.param.message
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 305
-      col: 26
-    end:
-      line: 305
-      col: 119
-  hash: fnv1a64:e64a956566b2b220
-  context_hash: fnv1a64:a234ab6651e02e11
-- key: debuglib.traceback.param.level
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 306
-      col: 26
-    end:
-      line: 306
-      col: 90
-  hash: fnv1a64:533f667ee00e6b33
-  context_hash: fnv1a64:76d3857147ea882a
-- key: debuglib.traceback.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 307
-      col: 17
-    end:
-      line: 307
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c975e72970aca035
-- key: debuglib.upvalueid
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 310
-      col: 0
-    end:
-      line: 317
-      col: 0
-  hash: fnv1a64:94420ce99695ae21
-  context_hash: fnv1a64:a9890306a2dd729d
-- key: debuglib.upvalueid.param.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 318
-      col: 20
-    end:
-      line: 318
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b5621f4a3bb65cf7
-- key: debuglib.upvalueid.param.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 319
-      col: 19
-    end:
-      line: 319
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3e015a3fb469a05f
-- key: debuglib.upvalueid.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 320
-      col: 27
-    end:
-      line: 320
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9e615bf37825091c
-- key: debuglib.upvaluejoin
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 324
-      col: 0
-    end:
-      line: 327
-      col: 0
-  hash: fnv1a64:8fdc4bfee2b1f0d9
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: debuglib.upvaluejoin.param.f1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 328
-      col: 22
-    end:
-      line: 328
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1feb14d49c467ee2
-- key: debuglib.upvaluejoin.param.n1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 329
-      col: 20
-    end:
-      line: 329
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:42c1971ea7fc314e
-- key: debuglib.upvaluejoin.param.f2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 330
-      col: 22
-    end:
-      line: 330
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9d4467bd630b4827
-- key: debuglib.upvaluejoin.param.n2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 331
-      col: 20
-    end:
-      line: 331
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:344aef3c13b8b58f
+  - key: debuglib
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 15
+        col: 0
+      end:
+        line: 15
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c27341e0f34edb28
+  - key: debuglib.debug
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 18
+        col: 0
+      end:
+        line: 26
+        col: 62
+    hash: fnv1a64:0fe4e22e6bd16e8b
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getfenv
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 30
+        col: 0
+      end:
+        line: 33
+        col: 0
+    hash: fnv1a64:e319ed191ab2753e
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getfenv.param.o
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 33
+        col: 15
+      end:
+        line: 33
+        col: 15
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8b43684715c79458
+  - key: debuglib.getfenv.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 34
+        col: 16
+      end:
+        line: 34
+        col: 16
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:0c4bb34d077b2108
+  - key: debuglib.gethook
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 38
+        col: 0
+      end:
+        line: 42
+        col: 0
+    hash: fnv1a64:49af4e4a2801028a
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.gethook.param.thread
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 43
+        col: 23
+      end:
+        line: 43
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fe05fb9dbb2efbf7
+  - key: debuglib.gethook.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 44
+        col: 17
+      end:
+        line: 44
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e0cda2bf977ba98c
+  - key: debuglib.DebugInfo
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 47
+        col: 0
+      end:
+        line: 47
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:69ee42e6c72c6075
+  - key: debuglib.DebugInfo.field.name
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 48
+        col: 32
+      end:
+        line: 48
+        col: 32
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:752ea89f7607e9d4
+  - key: debuglib.DebugInfo.field.namewhat
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 49
+        col: 32
+      end:
+        line: 49
+        col: 32
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2a00c9b1522f9436
+  - key: debuglib.DebugInfo.field.source
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 50
+        col: 32
+      end:
+        line: 50
+        col: 32
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c79df1f2a5db59c2
+  - key: debuglib.DebugInfo.field.short_src
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 51
+        col: 32
+      end:
+        line: 51
+        col: 32
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:369889fc0c444f1a
+  - key: debuglib.DebugInfo.field.linedefined
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 52
+        col: 33
+      end:
+        line: 52
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:01d6e5a9ebf0b197
+  - key: debuglib.DebugInfo.field.lastlinedefined
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 53
+        col: 33
+      end:
+        line: 53
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:816af6edb0e35533
+  - key: debuglib.DebugInfo.field.what
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 54
+        col: 32
+      end:
+        line: 54
+        col: 32
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fa4a7587b1377c11
+  - key: debuglib.DebugInfo.field.currentline
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 55
+        col: 33
+      end:
+        line: 55
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:74dace74dbf239fb
+  - key: debuglib.DebugInfo.field.istailcall
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 56
+        col: 33
+      end:
+        line: 56
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:72511d6c69e52ed4
+  - key: debuglib.DebugInfo.field.nups
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 57
+        col: 33
+      end:
+        line: 57
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a60639c8fbc0d388
+  - key: debuglib.DebugInfo.field.nparams
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 58
+        col: 33
+      end:
+        line: 58
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9b0245f88e05b2b0
+  - key: debuglib.DebugInfo.field.isvararg
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 59
+        col: 33
+      end:
+        line: 59
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e3a86fae9b27129b
+  - key: debuglib.DebugInfo.field.func
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 60
+        col: 34
+      end:
+        line: 60
+        col: 34
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:24bd035915f4b1ec
+  - key: debuglib.DebugInfo.field.ftransfer
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 61
+        col: 33
+      end:
+        line: 61
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:48dea7b18712c3f5
+  - key: debuglib.DebugInfo.field.ntransfer
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 62
+        col: 33
+      end:
+        line: 62
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:da797b4f3213e4bd
+  - key: debuglib.DebugInfo.field.activelines
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 63
+        col: 31
+      end:
+        line: 63
+        col: 31
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:be96a90157ef2c57
+  - key: debuglib.InfoWhat
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 65
+        col: 0
+      end:
+        line: 65
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:231fa171d5ae9fb4
+  - key: debuglib.InfoWhat.item.n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 66
+        col: 14
+      end:
+        line: 66
+        col: 33
+    hash: fnv1a64:f607d8295ab10b09
+    context_hash: fnv1a64:c7d6e0f1e9125070
+  - key: debuglib.InfoWhat.item.S
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 67
+        col: 14
+      end:
+        line: 67
+        col: 76
+    hash: fnv1a64:4d8757c3d65e5316
+    context_hash: fnv1a64:85c11923def6a850
+  - key: debuglib.InfoWhat.item.l
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 68
+        col: 14
+      end:
+        line: 68
+        col: 28
+    hash: fnv1a64:3b4abcf26c63da90
+    context_hash: fnv1a64:15b102f5e1274acd
+  - key: debuglib.InfoWhat.item.t
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 69
+        col: 14
+      end:
+        line: 69
+        col: 27
+    hash: fnv1a64:0d74d35018965521
+    context_hash: fnv1a64:105f4cd2d7e8614a
+  - key: debuglib.InfoWhat.item.u
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 70
+        col: 14
+      end:
+        line: 70
+        col: 44
+    hash: fnv1a64:234b4c0d79270024
+    context_hash: fnv1a64:ccbf703eca4a4f14
+  - key: debuglib.InfoWhat.item.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 71
+        col: 14
+      end:
+        line: 71
+        col: 21
+    hash: fnv1a64:075b011e6d60a10d
+    context_hash: fnv1a64:88bf6438b8c0adf8
+  - key: debuglib.InfoWhat.item.r
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 72
+        col: 14
+      end:
+        line: 72
+        col: 39
+    hash: fnv1a64:661489bb7eb64c19
+    context_hash: fnv1a64:5a95e7316013239c
+  - key: debuglib.InfoWhat.item.L
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 73
+        col: 14
+      end:
+        line: 73
+        col: 28
+    hash: fnv1a64:a1993e3f27753996
+    context_hash: fnv1a64:82805f0c17b3057b
+  - key: debuglib.getinfo
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 76
+        col: 0
+      end:
+        line: 96
+        col: 0
+    hash: fnv1a64:7980d3ed291cc366
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getinfo.param.thread
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 97
+        col: 23
+      end:
+        line: 97
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fe05fb9dbb2efbf7
+  - key: debuglib.getinfo.param.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 98
+        col: 28
+      end:
+        line: 98
+        col: 28
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d6570b5cfc45a2b5
+  - key: debuglib.getinfo.param.what
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 99
+        col: 33
+      end:
+        line: 99
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3a29a91f777de38a
+  - key: debuglib.getinfo.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 100
+        col: 29
+      end:
+        line: 100
+        col: 29
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fda1a39e0913db3f
+  - key: debuglib.getlocal@>5.2,JIT
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 105
+        col: 0
+      end:
+        line: 125
+        col: 0
+    hash: fnv1a64:4b73d2bc58010347
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getlocal@>5.2,JIT.param.thread
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 128
+        col: 24
+      end:
+        line: 128
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1ee979508970775b
+  - key: debuglib.getlocal@>5.2,JIT.param.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 129
+        col: 20
+      end:
+        line: 129
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:41f139265960290b
+  - key: debuglib.getlocal@>5.2,JIT.param.index
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 130
+        col: 24
+      end:
+        line: 130
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ac1cec9bf544fdf1
+  - key: debuglib.getlocal@>5.2,JIT.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 131
+        col: 24
+      end:
+        line: 131
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:aa7d58a98ea93c05
+  - key: debuglib.getlocal@>5.2,JIT.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 132
+        col: 22
+      end:
+        line: 132
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2d3fc065d614b7f2
+  - key: debuglib.getlocal@5.1
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 137
+        col: 0
+      end:
+        line: 147
+        col: 0
+    hash: fnv1a64:2c536048630738b5
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getlocal@5.1.param.thread
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 148
+        col: 24
+      end:
+        line: 148
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1ee979508970775b
+  - key: debuglib.getlocal@5.1.param.lvl
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 149
+        col: 22
+      end:
+        line: 149
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9799ce0a2eaca463
+  - key: debuglib.getlocal@5.1.param.index
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 150
+        col: 24
+      end:
+        line: 150
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ac1cec9bf544fdf1
+  - key: debuglib.getlocal@5.1.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 151
+        col: 24
+      end:
+        line: 151
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:aa7d58a98ea93c05
+  - key: debuglib.getlocal@5.1.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 152
+        col: 22
+      end:
+        line: 152
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2d3fc065d614b7f2
+  - key: debuglib.getmetatable
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 156
+        col: 0
+      end:
+        line: 159
+        col: 0
+    hash: fnv1a64:301cc1a982007cb9
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getmetatable.param.object
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 159
+        col: 20
+      end:
+        line: 159
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ad91c8d35ea21b64
+  - key: debuglib.getmetatable.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 160
+        col: 17
+      end:
+        line: 160
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5fc2e2e3b6397075
+  - key: debuglib.getregistry
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 164
+        col: 0
+      end:
+        line: 166
+        col: 0
+    hash: fnv1a64:ad4fd6b084028bec
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getregistry.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 166
+        col: 16
+      end:
+        line: 166
+        col: 16
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:0c4bb34d077b2108
+  - key: debuglib.getupvalue
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 170
+        col: 0
+      end:
+        line: 177
+        col: 0
+    hash: fnv1a64:0ed79123390e675c
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getupvalue.param.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 177
+        col: 20
+      end:
+        line: 177
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b5621f4a3bb65cf7
+  - key: debuglib.getupvalue.param.up
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 178
+        col: 20
+      end:
+        line: 178
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f4e34c5be761631e
+  - key: debuglib.getupvalue.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 179
+        col: 22
+      end:
+        line: 179
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9d689e23e989a4ec
+  - key: debuglib.getupvalue.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 180
+        col: 23
+      end:
+        line: 180
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:58447c5085d9a15f
+  - key: debuglib.getuservalue
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 184
+        col: 0
+      end:
+        line: 187
+        col: 0
+    hash: fnv1a64:8f1463c1c4d29816
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.getuservalue.param.u
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 187
+        col: 20
+      end:
+        line: 187
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b48f64e9f90ab017
+  - key: debuglib.getuservalue.param.n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 188
+        col: 19
+      end:
+        line: 188
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3e015a3fb469a05f
+  - key: debuglib.getuservalue.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 189
+        col: 14
+      end:
+        line: 189
+        col: 14
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e571c1d98ef7385e
+  - key: debuglib.getuservalue.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 190
+        col: 18
+      end:
+        line: 190
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8c634c305d7ac2d0
+  - key: debuglib.setcstacklimit
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 193
+        col: 0
+      end:
+        line: 201
+        col: 0
+    hash: fnv1a64:dd787cc43dc8df6e
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.setcstacklimit.param.limit
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 202
+        col: 23
+      end:
+        line: 202
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d8c3a953922c4242
+  - key: debuglib.setcstacklimit.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 203
+        col: 26
+      end:
+        line: 203
+        col: 26
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:bb899862579f908e
+  - key: debuglib.setfenv
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 206
+        col: 0
+      end:
+        line: 209
+        col: 0
+    hash: fnv1a64:0b8d594813fd815a
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.setfenv.param.object
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 211
+        col: 18
+      end:
+        line: 211
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ac3c36e3d2645702
+  - key: debuglib.setfenv.param.env
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 212
+        col: 22
+      end:
+        line: 212
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1209fa04d7e4744c
+  - key: debuglib.setfenv.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 213
+        col: 19
+      end:
+        line: 213
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5ad68af7c7b2b717
+  - key: debuglib.Hookmask
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 216
+        col: 0
+      end:
+        line: 216
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:db66b769d3923495
+  - key: debuglib.Hookmask.item.c
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 217
+        col: 10
+      end:
+        line: 217
+        col: 48
+    hash: fnv1a64:2a465f3164fdfca7
+    context_hash: fnv1a64:4f1a28807fd9c99d
+  - key: debuglib.Hookmask.item.r
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 218
+        col: 10
+      end:
+        line: 218
+        col: 55
+    hash: fnv1a64:d2998a5af84ab995
+    context_hash: fnv1a64:8f1344163909f994
+  - key: debuglib.Hookmask.item.l
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 219
+        col: 10
+      end:
+        line: 219
+        col: 57
+    hash: fnv1a64:cc3f0aa2749ba739
+    context_hash: fnv1a64:4a1e231682598e4a
+  - key: debuglib.sethook
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 221
+        col: 0
+      end:
+        line: 242
+        col: 0
+    hash: fnv1a64:30b0a0a8d96678be
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.sethook.param.thread
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 243
+        col: 23
+      end:
+        line: 243
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fe05fb9dbb2efbf7
+  - key: debuglib.sethook.param.hook
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 244
+        col: 24
+      end:
+        line: 244
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b16e5528b08e5104
+  - key: debuglib.sethook.param.mask
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 245
+        col: 33
+      end:
+        line: 245
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ed899202b4d00e55
+  - key: debuglib.sethook.param.count
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 246
+        col: 24
+      end:
+        line: 246
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:45f1005b0d3e29d7
+  - key: debuglib.setlocal
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 249
+        col: 0
+      end:
+        line: 256
+        col: 0
+    hash: fnv1a64:74eff9cb66dcfec3
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.setlocal.param.thread
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 257
+        col: 23
+      end:
+        line: 257
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fe05fb9dbb2efbf7
+  - key: debuglib.setlocal.param.level
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 258
+        col: 23
+      end:
+        line: 258
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:67d4b7811e38dcf3
+  - key: debuglib.setlocal.param.var
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 259
+        col: 20
+      end:
+        line: 259
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a7acd2d2f7e452e7
+  - key: debuglib.setlocal.param.value
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 260
+        col: 19
+      end:
+        line: 260
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3ebda6d00cf3f414
+  - key: debuglib.setlocal.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 261
+        col: 17
+      end:
+        line: 261
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c975e72970aca035
+  - key: debuglib.setmetatable
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 264
+        col: 0
+      end:
+        line: 267
+        col: 0
+    hash: fnv1a64:241d133343fed058
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.setmetatable.param.value
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 268
+        col: 17
+      end:
+        line: 268
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:05f26bca31af5df2
+  - key: debuglib.setmetatable.param.meta
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 269
+        col: 21
+      end:
+        line: 269
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:14b644ebe7560ea5
+  - key: debuglib.setmetatable.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 270
+        col: 18
+      end:
+        line: 270
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e3de101ffac46751
+  - key: debuglib.setupvalue
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 274
+        col: 0
+      end:
+        line: 278
+        col: 0
+    hash: fnv1a64:c4902d4d7ac0710a
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.setupvalue.param.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 278
+        col: 21
+      end:
+        line: 278
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2e99956ff6451d27
+  - key: debuglib.setupvalue.param.up
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 279
+        col: 20
+      end:
+        line: 279
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f4e34c5be761631e
+  - key: debuglib.setupvalue.param.value
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 280
+        col: 19
+      end:
+        line: 280
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3ebda6d00cf3f414
+  - key: debuglib.setupvalue.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 281
+        col: 17
+      end:
+        line: 281
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c975e72970aca035
+  - key: debuglib.setuservalue
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 284
+        col: 0
+      end:
+        line: 288
+        col: 0
+    hash: fnv1a64:cdc0c0b3d876bc8a
+    context_hash: fnv1a64:db5e2c86b41bac5c
+  - key: debuglib.setuservalue.param.udata
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 288
+        col: 24
+      end:
+        line: 288
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3b9de500613499ef
+  - key: debuglib.setuservalue.param.value
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 289
+        col: 19
+      end:
+        line: 289
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3ebda6d00cf3f414
+  - key: debuglib.setuservalue.param.n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 290
+        col: 19
+      end:
+        line: 290
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3e015a3fb469a05f
+  - key: debuglib.setuservalue.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 291
+        col: 19
+      end:
+        line: 291
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:738184d4502b18df
+  - key: debuglib.traceback
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 294
+        col: 0
+      end:
+        line: 302
+        col: 0
+    hash: fnv1a64:eae2c98c3517346d
+    context_hash: fnv1a64:75684757332beac5
+  - key: debuglib.traceback.param.thread
+    kind:
+      type: line_tail
+      prefix: ""
+    range:
+      start:
+        line: 304
+        col: 34
+      end:
+        line: 304
+        col: 108
+    hash: fnv1a64:d8583bff49e75935
+    context_hash: fnv1a64:b4d473f240caabc8
+  - key: debuglib.traceback.param.message
+    kind:
+      type: line_tail
+      prefix: ""
+    range:
+      start:
+        line: 305
+        col: 26
+      end:
+        line: 305
+        col: 119
+    hash: fnv1a64:e64a956566b2b220
+    context_hash: fnv1a64:a234ab6651e02e11
+  - key: debuglib.traceback.param.level
+    kind:
+      type: line_tail
+      prefix: ""
+    range:
+      start:
+        line: 306
+        col: 26
+      end:
+        line: 306
+        col: 90
+    hash: fnv1a64:533f667ee00e6b33
+    context_hash: fnv1a64:76d3857147ea882a
+  - key: debuglib.traceback.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 307
+        col: 17
+      end:
+        line: 307
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c975e72970aca035
+  - key: debuglib.upvalueid
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 310
+        col: 0
+      end:
+        line: 317
+        col: 0
+    hash: fnv1a64:94420ce99695ae21
+    context_hash: fnv1a64:a9890306a2dd729d
+  - key: debuglib.upvalueid.param.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 318
+        col: 20
+      end:
+        line: 318
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b5621f4a3bb65cf7
+  - key: debuglib.upvalueid.param.n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 319
+        col: 19
+      end:
+        line: 319
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3e015a3fb469a05f
+  - key: debuglib.upvalueid.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 320
+        col: 27
+      end:
+        line: 320
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9e615bf37825091c
+  - key: debuglib.upvaluejoin
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 324
+        col: 0
+      end:
+        line: 327
+        col: 0
+    hash: fnv1a64:8fdc4bfee2b1f0d9
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: debuglib.upvaluejoin.param.f1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 328
+        col: 22
+      end:
+        line: 328
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1feb14d49c467ee2
+  - key: debuglib.upvaluejoin.param.n1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 329
+        col: 20
+      end:
+        line: 329
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:42c1971ea7fc314e
+  - key: debuglib.upvaluejoin.param.f2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 330
+        col: 22
+      end:
+        line: 330
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9d4467bd630b4827
+  - key: debuglib.upvaluejoin.param.n2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 331
+        col: 20
+      end:
+        line: 331
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:344aef3c13b8b58f

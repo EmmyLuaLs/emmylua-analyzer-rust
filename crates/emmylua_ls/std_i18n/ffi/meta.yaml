@@ -3,913 +3,913 @@ line_base: 0
 col_base: 0
 file: ffi.lua
 entries:
-- key: ffi.namespace*
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 5
-      col: 0
-    end:
-      line: 5
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1380250868901d30
-- key: ctype
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 8
-      col: 0
-    end:
-      line: 8
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ae076a42825b18dd
-- key: cb
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 13
-      col: 0
-    end:
-      line: 13
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:291624cd7db7f7fb
-- key: ffi.VLA*
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 18
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:18226f75a10ef695
-- key: ffi
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 21
-      col: 0
-    end:
-      line: 21
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:be4758efbb74f33d
-- key: ffi.cdef
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 28
-      col: 0
-    end:
-      line: 28
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:377b027cc2795ec9
-- key: ffi.cdef.param.def
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 28
-      col: 24
-    end:
-      line: 28
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:377b027cc2795ec9
-- key: ffi.cdef.param.params
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 29
-      col: 21
-    end:
-      line: 29
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b7e3470c71822a1a
-- key: ffi.load
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 32
-      col: 0
-    end:
-      line: 32
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:dc7e647ef7e3700b
-- key: ffi.load.param.name
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 32
-      col: 24
-    end:
-      line: 32
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:dc7e647ef7e3700b
-- key: ffi.load.param.global
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 33
-      col: 25
-    end:
-      line: 33
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5629c0f8d1d86b2f
-- key: ffi.load.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 34
-      col: 30
-    end:
-      line: 34
-      col: 30
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8d339cd922d80b08
-- key: ffi.new
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 38
-      col: 0
-    end:
-      line: 38
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9b5b85b217c9cf37
-- key: ffi.new.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 39
-      col: 24
-    end:
-      line: 39
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6db7e4fa1607cedc
-- key: ffi.new.param.nelem
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 40
-      col: 24
-    end:
-      line: 40
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f9711e0f8d95760d
-- key: ffi.new.param.init
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 41
-      col: 20
-    end:
-      line: 41
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:bb97c92d45337372
-- key: ffi.new.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 42
-      col: 27
-    end:
-      line: 42
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:4159b9aef3a7c697
-- key: ffi.typeof
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 46
-      col: 0
-    end:
-      line: 46
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b8377f6baf42fc58
-- key: ffi.typeof.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 46
-      col: 25
-    end:
-      line: 46
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b8377f6baf42fc58
-- key: ffi.typeof.param.params
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 47
-      col: 21
-    end:
-      line: 47
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b7e3470c71822a1a
-- key: ffi.typeof.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 48
-      col: 27
-    end:
-      line: 48
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f0ad14de24de28b7
-- key: ffi.cast
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 52
-      col: 0
-    end:
-      line: 52
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:93072bdf6b5822cc
-- key: ffi.cast.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 52
-      col: 22
-    end:
-      line: 52
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:93072bdf6b5822cc
-- key: ffi.cast.param.init
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 53
-      col: 18
-    end:
-      line: 53
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:bb4f32d3eca4610d
-- key: ffi.cast.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 54
-      col: 27
-    end:
-      line: 54
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:4159b9aef3a7c697
-- key: ffi.metatype
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 58
-      col: 0
-    end:
-      line: 58
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e8012e049fc88e48
-- key: ffi.metatype.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 58
-      col: 27
-    end:
-      line: 58
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e8012e049fc88e48
-- key: ffi.metatype.param.metatable
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 59
-      col: 25
-    end:
-      line: 59
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:aa9d92d4188ea09c
-- key: ffi.metatype.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 60
-      col: 27
-    end:
-      line: 60
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f0ad14de24de28b7
-- key: ffi.gc
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 63
-      col: 0
-    end:
-      line: 63
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d33855e14792913c
-- key: ffi.gc.param.cdata
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 63
-      col: 30
-    end:
-      line: 63
-      col: 30
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d33855e14792913c
-- key: ffi.gc.param.finalizer
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 64
-      col: 29
-    end:
-      line: 64
-      col: 29
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:69f98baa5ffd9b24
-- key: ffi.gc.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 65
-      col: 27
-    end:
-      line: 65
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:4159b9aef3a7c697
-- key: ffi.sizeof
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 68
-      col: 0
-    end:
-      line: 68
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6db7e4fa1607cedc
-- key: ffi.sizeof.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 68
-      col: 24
-    end:
-      line: 68
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6db7e4fa1607cedc
-- key: ffi.sizeof.param.nelem
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 69
-      col: 24
-    end:
-      line: 69
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f9711e0f8d95760d
-- key: ffi.sizeof.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 70
-      col: 27
-    end:
-      line: 70
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:cb9b92c6ba4b6a9e
-- key: ffi.alignof
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 74
-      col: 0
-    end:
-      line: 74
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:bcd97335e351d03c
-- key: ffi.alignof.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 74
-      col: 20
-    end:
-      line: 74
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:bcd97335e351d03c
-- key: ffi.alignof.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 75
-      col: 24
-    end:
-      line: 75
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b68cf3332b5fa66b
-- key: ffi.offsetof
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 79
-      col: 0
-    end:
-      line: 79
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f54d8f9f40cbe3a8
-- key: ffi.offsetof.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 79
-      col: 23
-    end:
-      line: 79
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f54d8f9f40cbe3a8
-- key: ffi.offsetof.param.field
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 80
-      col: 22
-    end:
-      line: 80
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a46bdd05876c20e4
-- key: ffi.offsetof.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 81
-      col: 23
-    end:
-      line: 81
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:332fcbc0338fc034
-- key: ffi.offsetof.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 82
-      col: 24
-    end:
-      line: 82
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:7c77750fed332805
-- key: ffi.offsetof.return.3
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 83
-      col: 25
-    end:
-      line: 83
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a5e4201ad74f79c0
-- key: ffi.istype
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 87
-      col: 0
-    end:
-      line: 87
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8a5da04b968c0e38
-- key: ffi.istype.param.ct
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 87
-      col: 21
-    end:
-      line: 87
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8a5da04b968c0e38
-- key: ffi.istype.param.obj
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 88
-      col: 17
-    end:
-      line: 88
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f028a7af7c4db0ec
-- key: ffi.istype.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 89
-      col: 25
-    end:
-      line: 89
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:53c0f284cf1f3772
-- key: ffi.errno
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 93
-      col: 0
-    end:
-      line: 93
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6b4841ec33d817ab
-- key: ffi.errno.param.newerr
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 93
-      col: 25
-    end:
-      line: 93
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6b4841ec33d817ab
-- key: ffi.errno.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 94
-      col: 22
-    end:
-      line: 94
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d446368f005822cd
-- key: ffi.string
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 98
-      col: 0
-    end:
-      line: 98
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:88f58f9366a1a9fd
-- key: ffi.string.param.ptr
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 98
-      col: 18
-    end:
-      line: 98
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:88f58f9366a1a9fd
-- key: ffi.string.param.len
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 99
-      col: 22
-    end:
-      line: 99
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:affa96f941686da7
-- key: ffi.string.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 100
-      col: 21
-    end:
-      line: 100
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:de876464a5e03316
-- key: ffi.copy
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 103
-      col: 0
-    end:
-      line: 103
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9b1c51bc856b0fc1
-- key: ffi.copy.param.dst
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 104
-      col: 17
-    end:
-      line: 104
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ee3fb05b1cb9ea72
-- key: ffi.copy.param.src
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 105
-      col: 17
-    end:
-      line: 105
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:27e9c061664e987f
-- key: ffi.copy.param.len
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 106
-      col: 21
-    end:
-      line: 106
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:50ae5da76f78146a
-- key: ffi.fill
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 109
-      col: 0
-    end:
-      line: 109
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ee3fb05b1cb9ea72
-- key: ffi.fill.param.dst
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 109
-      col: 17
-    end:
-      line: 109
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ee3fb05b1cb9ea72
-- key: ffi.fill.param.len
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 110
-      col: 21
-    end:
-      line: 110
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:50ae5da76f78146a
-- key: ffi.fill.param.c
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 111
-      col: 17
-    end:
-      line: 111
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:4984f27089a9e23b
-- key: ffi.abi
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 114
-      col: 0
-    end:
-      line: 114
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8f561a030807961b
-- key: ffi.abi.param.param
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 114
-      col: 22
-    end:
-      line: 114
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8f561a030807961b
-- key: ffi.abi.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 115
-      col: 25
-    end:
-      line: 115
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:53c0f284cf1f3772
-- key: cb.set
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 120
-      col: 0
-    end:
-      line: 120
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a621cd9bb638251d
-- key: cb.set.param.func
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 120
-      col: 23
-    end:
-      line: 120
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a621cd9bb638251d
+  - key: ffi.namespace*
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 5
+        col: 0
+      end:
+        line: 5
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1380250868901d30
+  - key: ctype
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 8
+        col: 0
+      end:
+        line: 8
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ae076a42825b18dd
+  - key: cb
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 13
+        col: 0
+      end:
+        line: 13
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:291624cd7db7f7fb
+  - key: ffi.VLA*
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 18
+        col: 0
+      end:
+        line: 18
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:18226f75a10ef695
+  - key: ffi
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 21
+        col: 0
+      end:
+        line: 21
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:be4758efbb74f33d
+  - key: ffi.cdef
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 28
+        col: 0
+      end:
+        line: 28
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:377b027cc2795ec9
+  - key: ffi.cdef.param.def
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 28
+        col: 24
+      end:
+        line: 28
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:377b027cc2795ec9
+  - key: ffi.cdef.param.params
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 29
+        col: 21
+      end:
+        line: 29
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b7e3470c71822a1a
+  - key: ffi.load
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 32
+        col: 0
+      end:
+        line: 32
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:dc7e647ef7e3700b
+  - key: ffi.load.param.name
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 32
+        col: 24
+      end:
+        line: 32
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:dc7e647ef7e3700b
+  - key: ffi.load.param.global
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 33
+        col: 25
+      end:
+        line: 33
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5629c0f8d1d86b2f
+  - key: ffi.load.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 34
+        col: 30
+      end:
+        line: 34
+        col: 30
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8d339cd922d80b08
+  - key: ffi.new
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 38
+        col: 0
+      end:
+        line: 38
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9b5b85b217c9cf37
+  - key: ffi.new.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 39
+        col: 24
+      end:
+        line: 39
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6db7e4fa1607cedc
+  - key: ffi.new.param.nelem
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 40
+        col: 24
+      end:
+        line: 40
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f9711e0f8d95760d
+  - key: ffi.new.param.init
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 41
+        col: 20
+      end:
+        line: 41
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:bb97c92d45337372
+  - key: ffi.new.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 42
+        col: 27
+      end:
+        line: 42
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:4159b9aef3a7c697
+  - key: ffi.typeof
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 46
+        col: 0
+      end:
+        line: 46
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b8377f6baf42fc58
+  - key: ffi.typeof.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 46
+        col: 25
+      end:
+        line: 46
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b8377f6baf42fc58
+  - key: ffi.typeof.param.params
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 47
+        col: 21
+      end:
+        line: 47
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b7e3470c71822a1a
+  - key: ffi.typeof.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 48
+        col: 27
+      end:
+        line: 48
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f0ad14de24de28b7
+  - key: ffi.cast
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 52
+        col: 0
+      end:
+        line: 52
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:93072bdf6b5822cc
+  - key: ffi.cast.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 52
+        col: 22
+      end:
+        line: 52
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:93072bdf6b5822cc
+  - key: ffi.cast.param.init
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 53
+        col: 18
+      end:
+        line: 53
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:bb4f32d3eca4610d
+  - key: ffi.cast.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 54
+        col: 27
+      end:
+        line: 54
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:4159b9aef3a7c697
+  - key: ffi.metatype
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 58
+        col: 0
+      end:
+        line: 58
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e8012e049fc88e48
+  - key: ffi.metatype.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 58
+        col: 27
+      end:
+        line: 58
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e8012e049fc88e48
+  - key: ffi.metatype.param.metatable
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 59
+        col: 25
+      end:
+        line: 59
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:aa9d92d4188ea09c
+  - key: ffi.metatype.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 60
+        col: 27
+      end:
+        line: 60
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f0ad14de24de28b7
+  - key: ffi.gc
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 63
+        col: 0
+      end:
+        line: 63
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d33855e14792913c
+  - key: ffi.gc.param.cdata
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 63
+        col: 30
+      end:
+        line: 63
+        col: 30
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d33855e14792913c
+  - key: ffi.gc.param.finalizer
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 64
+        col: 29
+      end:
+        line: 64
+        col: 29
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:69f98baa5ffd9b24
+  - key: ffi.gc.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 65
+        col: 27
+      end:
+        line: 65
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:4159b9aef3a7c697
+  - key: ffi.sizeof
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 68
+        col: 0
+      end:
+        line: 68
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6db7e4fa1607cedc
+  - key: ffi.sizeof.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 68
+        col: 24
+      end:
+        line: 68
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6db7e4fa1607cedc
+  - key: ffi.sizeof.param.nelem
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 69
+        col: 24
+      end:
+        line: 69
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f9711e0f8d95760d
+  - key: ffi.sizeof.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 70
+        col: 27
+      end:
+        line: 70
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:cb9b92c6ba4b6a9e
+  - key: ffi.alignof
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 74
+        col: 0
+      end:
+        line: 74
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:bcd97335e351d03c
+  - key: ffi.alignof.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 74
+        col: 20
+      end:
+        line: 74
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:bcd97335e351d03c
+  - key: ffi.alignof.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 75
+        col: 24
+      end:
+        line: 75
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b68cf3332b5fa66b
+  - key: ffi.offsetof
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 79
+        col: 0
+      end:
+        line: 79
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f54d8f9f40cbe3a8
+  - key: ffi.offsetof.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 79
+        col: 23
+      end:
+        line: 79
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f54d8f9f40cbe3a8
+  - key: ffi.offsetof.param.field
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 80
+        col: 22
+      end:
+        line: 80
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a46bdd05876c20e4
+  - key: ffi.offsetof.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 81
+        col: 23
+      end:
+        line: 81
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:332fcbc0338fc034
+  - key: ffi.offsetof.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 82
+        col: 24
+      end:
+        line: 82
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:7c77750fed332805
+  - key: ffi.offsetof.return.3
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 83
+        col: 25
+      end:
+        line: 83
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a5e4201ad74f79c0
+  - key: ffi.istype
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 87
+        col: 0
+      end:
+        line: 87
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8a5da04b968c0e38
+  - key: ffi.istype.param.ct
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 87
+        col: 21
+      end:
+        line: 87
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8a5da04b968c0e38
+  - key: ffi.istype.param.obj
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 88
+        col: 17
+      end:
+        line: 88
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f028a7af7c4db0ec
+  - key: ffi.istype.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 89
+        col: 25
+      end:
+        line: 89
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:53c0f284cf1f3772
+  - key: ffi.errno
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 93
+        col: 0
+      end:
+        line: 93
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6b4841ec33d817ab
+  - key: ffi.errno.param.newerr
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 93
+        col: 25
+      end:
+        line: 93
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6b4841ec33d817ab
+  - key: ffi.errno.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 94
+        col: 22
+      end:
+        line: 94
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d446368f005822cd
+  - key: ffi.string
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 98
+        col: 0
+      end:
+        line: 98
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:88f58f9366a1a9fd
+  - key: ffi.string.param.ptr
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 98
+        col: 18
+      end:
+        line: 98
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:88f58f9366a1a9fd
+  - key: ffi.string.param.len
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 99
+        col: 22
+      end:
+        line: 99
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:affa96f941686da7
+  - key: ffi.string.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 100
+        col: 21
+      end:
+        line: 100
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:de876464a5e03316
+  - key: ffi.copy
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 103
+        col: 0
+      end:
+        line: 103
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9b1c51bc856b0fc1
+  - key: ffi.copy.param.dst
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 104
+        col: 17
+      end:
+        line: 104
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ee3fb05b1cb9ea72
+  - key: ffi.copy.param.src
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 105
+        col: 17
+      end:
+        line: 105
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:27e9c061664e987f
+  - key: ffi.copy.param.len
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 106
+        col: 21
+      end:
+        line: 106
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:50ae5da76f78146a
+  - key: ffi.fill
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 109
+        col: 0
+      end:
+        line: 109
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ee3fb05b1cb9ea72
+  - key: ffi.fill.param.dst
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 109
+        col: 17
+      end:
+        line: 109
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ee3fb05b1cb9ea72
+  - key: ffi.fill.param.len
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 110
+        col: 21
+      end:
+        line: 110
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:50ae5da76f78146a
+  - key: ffi.fill.param.c
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 111
+        col: 17
+      end:
+        line: 111
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:4984f27089a9e23b
+  - key: ffi.abi
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 114
+        col: 0
+      end:
+        line: 114
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8f561a030807961b
+  - key: ffi.abi.param.param
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 114
+        col: 22
+      end:
+        line: 114
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8f561a030807961b
+  - key: ffi.abi.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 115
+        col: 25
+      end:
+        line: 115
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:53c0f284cf1f3772
+  - key: cb.set
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 120
+        col: 0
+      end:
+        line: 120
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a621cd9bb638251d
+  - key: cb.set.param.func
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 120
+        col: 23
+      end:
+        line: 120
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a621cd9bb638251d

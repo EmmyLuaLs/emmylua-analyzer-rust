@@ -3,406 +3,406 @@ line_base: 0
 col_base: 0
 file: builtin.lua
 entries:
-- key: 'nil'
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 22
-      col: 0
-  hash: fnv1a64:e0061e5c045df64a
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: boolean
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 24
-      col: 0
-    end:
-      line: 27
-      col: 0
-  hash: fnv1a64:31cc8159cccf97f7
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: number
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 29
-      col: 0
-    end:
-      line: 41
-      col: 0
-  hash: fnv1a64:fa4ea32a81d5aed9
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: integer
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 43
-      col: 0
-    end:
-      line: 43
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c467d3619b6e6350
-- key: userdata
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 45
-      col: 0
-    end:
-      line: 55
-      col: 0
-  hash: fnv1a64:e3cc299bfe56ad03
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: lightuserdata
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 57
-      col: 0
-    end:
-      line: 57
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:497ee88286e8968d
-- key: thread
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 59
-      col: 0
-    end:
-      line: 64
-      col: 0
-  hash: fnv1a64:a0216db4b0f8ba68
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: table
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 66
-      col: 0
-    end:
-      line: 96
-      col: 0
-  hash: fnv1a64:8c15b89f8cf799f8
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: any
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 98
-      col: 0
-    end:
-      line: 98
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:418ef1b6e76f5bf8
-- key: void
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 100
-      col: 0
-    end:
-      line: 100
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6ffb2d1403b67098
-- key: unknown
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 102
-      col: 0
-    end:
-      line: 102
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:27f13a15491d078c
-- key: never
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 104
-      col: 0
-    end:
-      line: 104
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fedf9a70f351ec60
-- key: self
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 106
-      col: 0
-    end:
-      line: 106
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e0e5b93d4f28f8b0
-- key: int
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 108
-      col: 0
-    end:
-      line: 108
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f3008af9e015e979
-- key: namespace
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 110
-      col: 0
-    end:
-      line: 110
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:fbb1aaf852c716dc
-- key: function
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 112
-      col: 0
-    end:
-      line: 112
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d7a2065d10e12b1a
-- key: std.NotNull
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 114
-      col: 0
-    end:
-      line: 114
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:27f15dff707f3e27
-- key: std.Nullable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 116
-      col: 0
-    end:
-      line: 116
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f1356de41a2fa008
-- key: std.Select
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 118
-      col: 0
-    end:
-      line: 120
-      col: 0
-  hash: fnv1a64:b508ab78f8d1bc46
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: std.Unpack
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 122
-      col: 0
-    end:
-      line: 124
-      col: 0
-  hash: fnv1a64:c7ad7bb74235dc8c
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: std.RawGet
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 126
-      col: 0
-    end:
-      line: 128
-      col: 0
-  hash: fnv1a64:7327558f3445dea6
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: std.ConstTpl
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 130
-      col: 0
-    end:
-      line: 132
-      col: 0
-  hash: fnv1a64:0e263d1e0caa6b3b
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: type
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 136
-      col: 0
-    end:
-      line: 136
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c45ab48f8a45a7c3
-- key: collectgarbage_opt
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 138
-      col: 0
-    end:
-      line: 138
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b2273bc204391da9
-- key: metatable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 140
-      col: 0
-    end:
-      line: 140
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:94b9460b2c07f7c9
-- key: TypeGuard
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 142
-      col: 0
-    end:
-      line: 142
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2b206e1f62499ce7
-- key: Language
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 144
-      col: 0
-    end:
-      line: 144
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d3a08fe15d6aad10
-- key: Parameters
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 146
-      col: 0
-    end:
-      line: 148
-      col: 0
-  hash: fnv1a64:71b070c2fa27cbf9
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: ConstructorParameters
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 150
-      col: 0
-    end:
-      line: 152
-      col: 0
-  hash: fnv1a64:2f4bebd14d7824cb
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: ReturnType
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 154
-      col: 0
-    end:
-      line: 155
-      col: 0
-  hash: fnv1a64:38f739fb1489a001
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: Partial
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 157
-      col: 0
-    end:
-      line: 159
-      col: 0
-  hash: fnv1a64:5e4213a7c3937182
-  context_hash: fnv1a64:de7cc417de1b3246
+  - key: "nil"
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 18
+        col: 0
+      end:
+        line: 22
+        col: 0
+    hash: fnv1a64:e0061e5c045df64a
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: boolean
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 24
+        col: 0
+      end:
+        line: 27
+        col: 0
+    hash: fnv1a64:31cc8159cccf97f7
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: number
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 29
+        col: 0
+      end:
+        line: 41
+        col: 0
+    hash: fnv1a64:fa4ea32a81d5aed9
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: integer
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 43
+        col: 0
+      end:
+        line: 43
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c467d3619b6e6350
+  - key: userdata
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 45
+        col: 0
+      end:
+        line: 55
+        col: 0
+    hash: fnv1a64:e3cc299bfe56ad03
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: lightuserdata
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 57
+        col: 0
+      end:
+        line: 57
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:497ee88286e8968d
+  - key: thread
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 59
+        col: 0
+      end:
+        line: 64
+        col: 0
+    hash: fnv1a64:a0216db4b0f8ba68
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: table
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 66
+        col: 0
+      end:
+        line: 96
+        col: 0
+    hash: fnv1a64:8c15b89f8cf799f8
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: any
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 98
+        col: 0
+      end:
+        line: 98
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:418ef1b6e76f5bf8
+  - key: void
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 100
+        col: 0
+      end:
+        line: 100
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6ffb2d1403b67098
+  - key: unknown
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 102
+        col: 0
+      end:
+        line: 102
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:27f13a15491d078c
+  - key: never
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 104
+        col: 0
+      end:
+        line: 104
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fedf9a70f351ec60
+  - key: self
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 106
+        col: 0
+      end:
+        line: 106
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e0e5b93d4f28f8b0
+  - key: int
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 108
+        col: 0
+      end:
+        line: 108
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f3008af9e015e979
+  - key: namespace
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 110
+        col: 0
+      end:
+        line: 110
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:fbb1aaf852c716dc
+  - key: function
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 112
+        col: 0
+      end:
+        line: 112
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d7a2065d10e12b1a
+  - key: std.NotNull
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 114
+        col: 0
+      end:
+        line: 114
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:27f15dff707f3e27
+  - key: std.Nullable
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 116
+        col: 0
+      end:
+        line: 116
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f1356de41a2fa008
+  - key: std.Select
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 118
+        col: 0
+      end:
+        line: 120
+        col: 0
+    hash: fnv1a64:b508ab78f8d1bc46
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: std.Unpack
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 122
+        col: 0
+      end:
+        line: 124
+        col: 0
+    hash: fnv1a64:c7ad7bb74235dc8c
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: std.RawGet
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 126
+        col: 0
+      end:
+        line: 128
+        col: 0
+    hash: fnv1a64:7327558f3445dea6
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: std.ConstTpl
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 130
+        col: 0
+      end:
+        line: 132
+        col: 0
+    hash: fnv1a64:0e263d1e0caa6b3b
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: type
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 136
+        col: 0
+      end:
+        line: 136
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c45ab48f8a45a7c3
+  - key: collectgarbage_opt
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 138
+        col: 0
+      end:
+        line: 138
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b2273bc204391da9
+  - key: metatable
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 140
+        col: 0
+      end:
+        line: 140
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:94b9460b2c07f7c9
+  - key: TypeGuard
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 142
+        col: 0
+      end:
+        line: 142
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2b206e1f62499ce7
+  - key: Language
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 144
+        col: 0
+      end:
+        line: 144
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d3a08fe15d6aad10
+  - key: Parameters
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 146
+        col: 0
+      end:
+        line: 148
+        col: 0
+    hash: fnv1a64:71b070c2fa27cbf9
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: ConstructorParameters
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 150
+        col: 0
+      end:
+        line: 152
+        col: 0
+    hash: fnv1a64:2f4bebd14d7824cb
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: ReturnType
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 154
+        col: 0
+      end:
+        line: 155
+        col: 0
+    hash: fnv1a64:38f739fb1489a001
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: Partial
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 157
+        col: 0
+      end:
+        line: 159
+        col: 0
+    hash: fnv1a64:5e4213a7c3937182
+    context_hash: fnv1a64:de7cc417de1b3246

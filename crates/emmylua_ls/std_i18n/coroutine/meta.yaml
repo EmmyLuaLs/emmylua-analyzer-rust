@@ -3,393 +3,393 @@ line_base: 0
 col_base: 0
 file: coroutine.lua
 entries:
-- key: coroutinelib
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 15
-      col: 0
-    end:
-      line: 15
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1d612a0aa5c88b1f
-- key: coroutinelib.create
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 21
-      col: 0
-  hash: fnv1a64:1f3f260a67000226
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.create.param.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 21
-      col: 33
-    end:
-      line: 21
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a07f29b5f072d861
-- key: coroutinelib.create.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 22
-      col: 17
-    end:
-      line: 22
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e0cda2bf977ba98c
-- key: coroutinelib.isyieldable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 26
-      col: 0
-    end:
-      line: 31
-      col: 0
-  hash: fnv1a64:362633ff752f9974
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.isyieldable.param.co
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 31
-      col: 20
-    end:
-      line: 31
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ff072f8e24094454
-- key: coroutinelib.isyieldable.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 32
-      col: 18
-    end:
-      line: 32
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8c634c305d7ac2d0
-- key: coroutinelib.close
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 37
-      col: 0
-    end:
-      line: 40
-      col: 0
-  hash: fnv1a64:e4a9c56b899d7f35
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.close.param.co
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 40
-      col: 19
-    end:
-      line: 40
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e9636cdec00e207d
-- key: coroutinelib.close.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 41
-      col: 26
-    end:
-      line: 41
-      col: 26
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:62c0be7bc284bebf
-- key: coroutinelib.close.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 42
-      col: 26
-    end:
-      line: 42
-      col: 26
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:234bfe0cf60d8c2b
-- key: coroutinelib.resume
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 45
-      col: 0
-    end:
-      line: 56
-      col: 0
-  hash: fnv1a64:f66e7ece974f2146
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.resume.param.co
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 56
-      col: 19
-    end:
-      line: 56
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e9636cdec00e207d
-- key: coroutinelib.resume.param.val1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 57
-      col: 19
-    end:
-      line: 57
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1700f30aee07dc0e
-- key: coroutinelib.resume.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 59
-      col: 26
-    end:
-      line: 59
-      col: 26
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:b1a2e66466450ad3
-- key: coroutinelib.resume.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 60
-      col: 18
-    end:
-      line: 60
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9817c7510d68b748
-- key: coroutinelib.running
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 63
-      col: 0
-    end:
-      line: 66
-      col: 0
-  hash: fnv1a64:5586d0268eacaa38
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.running.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 66
-      col: 25
-    end:
-      line: 66
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c458248549dace09
-- key: coroutinelib.status
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 70
-      col: 0
-    end:
-      line: 77
-      col: 0
-  hash: fnv1a64:d9bdbdaac77cb29d
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.status.param.co
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 77
-      col: 19
-    end:
-      line: 77
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e9636cdec00e207d
-- key: coroutinelib.status.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 78
-      col: 10
-    end:
-      line: 78
-      col: 10
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:52edd3b55082b5fc
-- key: coroutinelib.status.return.1.running
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 79
-      col: 18
-    end:
-      line: 79
-      col: 30
-  hash: fnv1a64:c82a37900965429a
-  context_hash: fnv1a64:6e48d348e70f84c9
-- key: coroutinelib.status.return.1.suspended
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 80
-      col: 18
-    end:
-      line: 80
-      col: 47
-  hash: fnv1a64:fa936af8644ed8c3
-  context_hash: fnv1a64:71a22165c82844bc
-- key: coroutinelib.status.return.1.normal
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 81
-      col: 18
-    end:
-      line: 81
-      col: 45
-  hash: fnv1a64:a13ab0138fac6604
-  context_hash: fnv1a64:e8d5ba7a0e9a3e13
-- key: coroutinelib.status.return.1.dead
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 82
-      col: 18
-    end:
-      line: 82
-      col: 57
-  hash: fnv1a64:72fe2d58f456cb94
-  context_hash: fnv1a64:768b9a36fcce3a9c
-- key: coroutinelib.wrap
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 86
-      col: 0
-    end:
-      line: 92
-      col: 0
-  hash: fnv1a64:9d2166681f056344
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.wrap.param.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 92
-      col: 33
-    end:
-      line: 92
-      col: 33
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a07f29b5f072d861
-- key: coroutinelib.wrap.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 93
-      col: 26
-    end:
-      line: 93
-      col: 26
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:92b6a9de45691fc4
-- key: coroutinelib.yield
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 97
-      col: 0
-    end:
-      line: 100
-      col: 0
-  hash: fnv1a64:e6bb9bfdfef14140
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: coroutinelib.yield.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 102
-      col: 18
-    end:
-      line: 102
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9817c7510d68b748
+  - key: coroutinelib
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 15
+        col: 0
+      end:
+        line: 15
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1d612a0aa5c88b1f
+  - key: coroutinelib.create
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 18
+        col: 0
+      end:
+        line: 21
+        col: 0
+    hash: fnv1a64:1f3f260a67000226
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.create.param.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 21
+        col: 33
+      end:
+        line: 21
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a07f29b5f072d861
+  - key: coroutinelib.create.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 22
+        col: 17
+      end:
+        line: 22
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e0cda2bf977ba98c
+  - key: coroutinelib.isyieldable
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 26
+        col: 0
+      end:
+        line: 31
+        col: 0
+    hash: fnv1a64:362633ff752f9974
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.isyieldable.param.co
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 31
+        col: 20
+      end:
+        line: 31
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ff072f8e24094454
+  - key: coroutinelib.isyieldable.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 32
+        col: 18
+      end:
+        line: 32
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8c634c305d7ac2d0
+  - key: coroutinelib.close
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 37
+        col: 0
+      end:
+        line: 40
+        col: 0
+    hash: fnv1a64:e4a9c56b899d7f35
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.close.param.co
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 40
+        col: 19
+      end:
+        line: 40
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e9636cdec00e207d
+  - key: coroutinelib.close.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 41
+        col: 26
+      end:
+        line: 41
+        col: 26
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:62c0be7bc284bebf
+  - key: coroutinelib.close.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 42
+        col: 26
+      end:
+        line: 42
+        col: 26
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:234bfe0cf60d8c2b
+  - key: coroutinelib.resume
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 45
+        col: 0
+      end:
+        line: 56
+        col: 0
+    hash: fnv1a64:f66e7ece974f2146
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.resume.param.co
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 56
+        col: 19
+      end:
+        line: 56
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e9636cdec00e207d
+  - key: coroutinelib.resume.param.val1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 57
+        col: 19
+      end:
+        line: 57
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1700f30aee07dc0e
+  - key: coroutinelib.resume.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 59
+        col: 26
+      end:
+        line: 59
+        col: 26
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:b1a2e66466450ad3
+  - key: coroutinelib.resume.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 60
+        col: 18
+      end:
+        line: 60
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9817c7510d68b748
+  - key: coroutinelib.running
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 63
+        col: 0
+      end:
+        line: 66
+        col: 0
+    hash: fnv1a64:5586d0268eacaa38
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.running.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 66
+        col: 25
+      end:
+        line: 66
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c458248549dace09
+  - key: coroutinelib.status
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 70
+        col: 0
+      end:
+        line: 77
+        col: 0
+    hash: fnv1a64:d9bdbdaac77cb29d
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.status.param.co
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 77
+        col: 19
+      end:
+        line: 77
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e9636cdec00e207d
+  - key: coroutinelib.status.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 78
+        col: 10
+      end:
+        line: 78
+        col: 10
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:52edd3b55082b5fc
+  - key: coroutinelib.status.return.1.running
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 79
+        col: 18
+      end:
+        line: 79
+        col: 30
+    hash: fnv1a64:c82a37900965429a
+    context_hash: fnv1a64:6e48d348e70f84c9
+  - key: coroutinelib.status.return.1.suspended
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 80
+        col: 18
+      end:
+        line: 80
+        col: 47
+    hash: fnv1a64:fa936af8644ed8c3
+    context_hash: fnv1a64:71a22165c82844bc
+  - key: coroutinelib.status.return.1.normal
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 81
+        col: 18
+      end:
+        line: 81
+        col: 45
+    hash: fnv1a64:a13ab0138fac6604
+    context_hash: fnv1a64:e8d5ba7a0e9a3e13
+  - key: coroutinelib.status.return.1.dead
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 82
+        col: 18
+      end:
+        line: 82
+        col: 57
+    hash: fnv1a64:72fe2d58f456cb94
+    context_hash: fnv1a64:768b9a36fcce3a9c
+  - key: coroutinelib.wrap
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 86
+        col: 0
+      end:
+        line: 92
+        col: 0
+    hash: fnv1a64:9d2166681f056344
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.wrap.param.f
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 92
+        col: 33
+      end:
+        line: 92
+        col: 33
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a07f29b5f072d861
+  - key: coroutinelib.wrap.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 93
+        col: 26
+      end:
+        line: 93
+        col: 26
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:92b6a9de45691fc4
+  - key: coroutinelib.yield
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 97
+        col: 0
+      end:
+        line: 100
+        col: 0
+    hash: fnv1a64:e6bb9bfdfef14140
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: coroutinelib.yield.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 102
+        col: 18
+      end:
+        line: 102
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9817c7510d68b748

@@ -34,7 +34,7 @@ utf8lib.codepoint.return.1: ""
 utf8lib.len: |
   返回字符串 `s` 中从位置 `i` 到 `j`（两端都包含）开始的 UTF-8 字符数量。
   `i` 的默认值为 1，`j` 的默认值为 -1。
-  
+
   如果发现任何无效的字节序列，则返回 `false` 以及第一个无效字节的位置。
 
 utf8lib.len.param.s: ""
@@ -52,13 +52,13 @@ utf8lib.len.return.2: ""
 utf8lib.offset: |
   返回 `s` 中第 `n` 个字符的编码起始位置（按字节计）（从位置 `i` 开始计数）。
   负的 `n` 表示取 `i` 之前的字符。
-  
+
   `n` 非负时，`i` 的默认值为 1；否则 `i` 的默认值为 `#s + 1`，因此
   `utf8.offset(s, -n)` 可获得从字符串末尾数第 `n` 个字符的偏移。
-  
+
   如果指定字符既不在字符串中也不在其末尾紧接处，则函数返回 nil。
   特殊情况：当 `n` 为 0 时，函数返回包含 `s` 的第 `i` 个字节的那个字符的编码起始位置。
-  
+
   此函数假定 `s` 是合法的 UTF-8 字符串。
 
 utf8lib.offset.param.s: ""
@@ -68,4 +68,3 @@ utf8lib.offset.param.n: ""
 utf8lib.offset.param.i: ""
 
 utf8lib.offset.return.1: ""
-

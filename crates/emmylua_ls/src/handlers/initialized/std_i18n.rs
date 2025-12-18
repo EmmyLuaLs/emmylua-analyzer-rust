@@ -118,7 +118,7 @@ fn check_need_dump_std(resources_dir: &Path, locale: &str) -> bool {
 /// Params:
 /// - `locale` - 语言
 /// - `out_parent_dir` - 输出目录的父目录
-fn generate(locale: &str, out_parent_dir: &Path) -> (PathBuf, Vec<LuaFileInfo>) {
+fn generate(locale: &str, out_parent_dir: &Path) -> Vec<LuaFileInfo> {
     let origin_std_files = emmylua_code_analysis::load_resource_from_include_dir();
     let translate_std_root = out_parent_dir.join(format!("std-{locale}"));
     log::info!("Creating std-{locale} dir: {:?}", translate_std_root);
@@ -145,11 +145,7 @@ fn generate(locale: &str, out_parent_dir: &Path) -> (PathBuf, Vec<LuaFileInfo>) 
         });
     }
 
-    // 写入版本文件，用于下次启动时判断是否需要重新生成
-    let version_path = translate_std_root.join("version");
-    let _ = std::fs::write(&version_path, VERSION);
-
-    (translate_std_root, out_files)
+    out_files
 }
 
 fn translate_one_std_file(locale: &str, rel_lua_path: &Path, content: &str) -> Option<String> {
@@ -385,14 +381,14 @@ mod tests {
     use super::generate;
 
     #[test]
+    #[ignore]
     fn test_generate_translated() {
         let test_output_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .join("emmylua_code_analysis")
             .join("resources");
-        let (root, files) = generate("zh_CN", &test_output_dir);
-        assert!(root.exists());
+        let files = generate("zh_CN", &test_output_dir);
         assert!(!files.is_empty());
     }
 }

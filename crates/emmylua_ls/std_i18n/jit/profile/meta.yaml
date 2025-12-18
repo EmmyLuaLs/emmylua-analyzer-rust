@@ -3,81 +3,81 @@ line_base: 0
 col_base: 0
 file: jit/profile.lua
 entries:
-- key: profile.start
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 6
-      col: 0
-    end:
-      line: 6
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:242cf0191e1dc83b
-- key: profile.start.param.mode
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 6
-      col: 21
-    end:
-      line: 6
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:242cf0191e1dc83b
-- key: profile.start.param.func
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 7
-      col: 61
-    end:
-      line: 7
-      col: 61
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:27e6c20edb87239f
-- key: profile.dumpstack
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 14
-      col: 0
-    end:
-      line: 14
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:2b236537305e69c3
-- key: profile.dumpstack.param.fmt
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 15
-      col: 20
-    end:
-      line: 15
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1621f66f9a502d55
-- key: profile.dumpstack.param.depth
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 16
-      col: 23
-    end:
-      line: 16
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:df4cbe98fa6ef0a4
+  - key: profile.start
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 6
+        col: 0
+      end:
+        line: 6
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:242cf0191e1dc83b
+  - key: profile.start.param.mode
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 6
+        col: 21
+      end:
+        line: 6
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:242cf0191e1dc83b
+  - key: profile.start.param.func
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 7
+        col: 61
+      end:
+        line: 7
+        col: 61
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:27e6c20edb87239f
+  - key: profile.dumpstack
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 14
+        col: 0
+      end:
+        line: 14
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:2b236537305e69c3
+  - key: profile.dumpstack.param.fmt
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 15
+        col: 20
+      end:
+        line: 15
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1621f66f9a502d55
+  - key: profile.dumpstack.param.depth
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 16
+        col: 23
+      end:
+        line: 16
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:df4cbe98fa6ef0a4

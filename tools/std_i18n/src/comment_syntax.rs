@@ -87,11 +87,20 @@ pub fn parse_field_name_from_line(trimmed: &str) -> Option<String> {
     Some(normalize_optional_name(&normalize_field_key_token(token)))
 }
 
+pub fn is_doc_tag_line(line_trim_start: &str) -> bool {
+    let t = line_trim_start.trim_start();
+    let Some(after) = t.strip_prefix("---") else {
+        return false;
+    };
+    let after = after.trim_start();
+    after.starts_with('@')
+}
+
 pub fn find_desc_block_line_range(raw: &str, lines: &[LineInfo]) -> Option<(usize, usize)> {
     let mut start_idx: Option<usize> = None;
     for (i, li) in lines.iter().enumerate() {
         let t = li.trim_start_text(raw);
-        if t.starts_with("---@") || t.starts_with("---|") {
+        if is_doc_tag_line(t) || t.starts_with("---|") {
             continue;
         }
         if t.starts_with("---") {
@@ -104,7 +113,7 @@ pub fn find_desc_block_line_range(raw: &str, lines: &[LineInfo]) -> Option<(usiz
     let mut end = start;
     while end < lines.len() {
         let t = lines[end].trim_start_text(raw);
-        if t.starts_with("---@") || t.starts_with("---|") {
+        if is_doc_tag_line(t) || t.starts_with("---|") {
             break;
         }
         if t.starts_with("---") {

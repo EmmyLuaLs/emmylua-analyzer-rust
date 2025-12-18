@@ -3,952 +3,952 @@ line_base: 0
 col_base: 0
 file: io.lua
 entries:
-- key: iolib
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 15
-      col: 0
-    end:
-      line: 15
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f5a1c82930da0465
-- key: iolib.close
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 21
-      col: 0
-  hash: fnv1a64:44b6d4a010496577
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.close.param.file
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 21
-      col: 20
-    end:
-      line: 21
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:a9dea519c32100b6
-- key: iolib.flush
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 24
-      col: 0
-    end:
-      line: 25
-      col: 40
-  hash: fnv1a64:f24fea5b44d0e6cd
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.input
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 28
-      col: 0
-    end:
-      line: 36
-      col: 0
-  hash: fnv1a64:ae460a87629bf10c
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.input.param.file
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 36
-      col: 29
-    end:
-      line: 36
-      col: 29
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:deee679ba3f55edf
-- key: iolib.input.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 37
-      col: 15
-    end:
-      line: 37
-      col: 15
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:40817c91aefbf5e2
-- key: iolib.lines
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 40
-      col: 0
-    end:
-      line: 53
-      col: 0
-  hash: fnv1a64:b5a3c25c8f6d6c53
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.lines.param.filename
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 53
-      col: 26
-    end:
-      line: 53
-      col: 26
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:308520bd7e993d7e
-- key: iolib.lines.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 54
-      col: 20
-    end:
-      line: 54
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8d20c60653cbc06a
-- key: iolib.OpenMode
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 57
-      col: 0
-    end:
-      line: 57
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:16484d00cc9aa599
-- key: iolib.open
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 59
-      col: 0
-    end:
-      line: 74
-      col: 0
-  hash: fnv1a64:a9dd6e1f359cad88
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.open.param.filename
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 74
-      col: 25
-    end:
-      line: 74
-      col: 25
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:95f256ff5a5d29f5
-- key: iolib.open.param.mode
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 75
-      col: 30
-    end:
-      line: 75
-      col: 30
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6f9f609c9f7fbf0d
-- key: iolib.open.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 76
-      col: 16
-    end:
-      line: 76
-      col: 16
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:97fc888c5622c687
-- key: iolib.open.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 77
-      col: 22
-    end:
-      line: 77
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:594520b2400b62ed
-- key: iolib.output
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 80
-      col: 0
-    end:
-      line: 82
-      col: 0
-  hash: fnv1a64:e615c6164764f06a
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.output.param.file
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 82
-      col: 29
-    end:
-      line: 82
-      col: 29
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:deee679ba3f55edf
-- key: iolib.output.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 83
-      col: 15
-    end:
-      line: 83
-      col: 15
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:40817c91aefbf5e2
-- key: iolib.popen
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 86
-      col: 0
-    end:
-      line: 92
-      col: 0
-  hash: fnv1a64:ed9fe53d586ce4f7
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.popen.param.prog
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 92
-      col: 21
-    end:
-      line: 92
-      col: 21
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:8aaba4a0ddb104f6
-- key: iolib.popen.param.mode
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 93
-      col: 34
-    end:
-      line: 93
-      col: 34
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:6f4ae00aefe46221
-- key: iolib.popen.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 94
-      col: 15
-    end:
-      line: 94
-      col: 15
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:40817c91aefbf5e2
-- key: std.readmode
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 97
-      col: 0
-    end:
-      line: 97
-      col: 0
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:f1cdbd8b51e5f1cc
-- key: std.readmode.item.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 100
-      col: 12
-    end:
-      line: 100
-      col: 92
-  hash: fnv1a64:09724402d824ca77
-  context_hash: fnv1a64:140a64161cb92d4b
-- key: std.readmode.item.a
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 101
-      col: 12
-    end:
-      line: 101
-      col: 70
-  hash: fnv1a64:0b0543502b6fe843
-  context_hash: fnv1a64:90ef6cfb35c6bcdc
-- key: std.readmode.item.l
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 102
-      col: 12
-    end:
-      line: 102
-      col: 61
-  hash: fnv1a64:2232740e3160cdc8
-  context_hash: fnv1a64:df058106ca067ce2
-- key: std.readmode.item.L
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 103
-      col: 12
-    end:
-      line: 103
-      col: 63
-  hash: fnv1a64:4942667b1190a4de
-  context_hash: fnv1a64:fd41ede7cf5b3288
-- key: std.readmode.item.*n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 104
-      col: 12
-    end:
-      line: 104
-      col: 92
-  hash: fnv1a64:09724402d824ca77
-  context_hash: fnv1a64:2a0d1282b2a177ad
-- key: std.readmode.item.*a
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 105
-      col: 12
-    end:
-      line: 105
-      col: 70
-  hash: fnv1a64:0b0543502b6fe843
-  context_hash: fnv1a64:eaa243d8bc090b70
-- key: std.readmode.item.*l
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 106
-      col: 12
-    end:
-      line: 106
-      col: 61
-  hash: fnv1a64:2232740e3160cdc8
-  context_hash: fnv1a64:83f5df8702ad7b68
-- key: std.readmode.item.*L
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 107
-      col: 12
-    end:
-      line: 107
-      col: 63
-  hash: fnv1a64:4942667b1190a4de
-  context_hash: fnv1a64:b3bd56472aa2dd1e
-- key: iolib.read
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 109
-      col: 0
-    end:
-      line: 111
-      col: 0
-  hash: fnv1a64:54506e4af4c5171d
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.read.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 112
-      col: 14
-    end:
-      line: 112
-      col: 14
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e571c1d98ef7385e
-- key: iolib.read.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 113
-      col: 18
-    end:
-      line: 113
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9817c7510d68b748
-- key: iolib.tmpfile
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 117
-      col: 0
-    end:
-      line: 120
-      col: 16
-  hash: fnv1a64:827344117e46f1db
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.tmpfile.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 120
-      col: 16
-    end:
-      line: 120
-      col: 16
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5548e76b12257fb6
-- key: iolib.type
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 123
-      col: 0
-    end:
-      line: 127
-      col: 0
-  hash: fnv1a64:0c2c9cc2436170fc
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.type.param.obj
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 127
-      col: 18
-    end:
-      line: 127
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:ad74d1373c0543dc
-- key: iolib.type.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 128
-      col: 39
-    end:
-      line: 128
-      col: 39
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3dab124e5e885625
-- key: iolib.write
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 131
-      col: 0
-    end:
-      line: 135
-      col: 23
-  hash: fnv1a64:0629a9747818290d
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: iolib.write.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 134
-      col: 17
-    end:
-      line: 134
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1060c3efd5b7b5cb
-- key: iolib.write.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 135
-      col: 23
-    end:
-      line: 135
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5df91bda0a588d79
-- key: file
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 138
-      col: 0
-    end:
-      line: 139
-      col: 0
-  hash: fnv1a64:045bdb188ddcd0b3
-  context_hash: fnv1a64:6b5eb10d9792750b
-- key: file.close
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 143
-      col: 0
-    end:
-      line: 152
-      col: 19
-  hash: fnv1a64:9154cc24d038abbc
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.close.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 150
-      col: 20
-    end:
-      line: 150
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:cfb38283db200bc3
-- key: file.close.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 151
-      col: 27
-    end:
-      line: 151
-      col: 27
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:4825f8f81da91b94
-- key: file.close.return.3
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 152
-      col: 19
-    end:
-      line: 152
-      col: 19
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:743c11d628d947ba
-- key: file.close
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 156
-      col: 0
-    end:
-      line: 161
-      col: 23
-  hash: fnv1a64:338ed03603732be6
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.close.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 160
-      col: 20
-    end:
-      line: 160
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:cfb38283db200bc3
-- key: file.close.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 161
-      col: 23
-    end:
-      line: 161
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5df91bda0a588d79
-- key: file.flush
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 164
-      col: 0
-    end:
-      line: 167
-      col: 23
-  hash: fnv1a64:a5298a94416c2ee9
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.flush.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 166
-      col: 20
-    end:
-      line: 166
-      col: 20
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:cfb38283db200bc3
-- key: file.flush.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 167
-      col: 23
-    end:
-      line: 167
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5df91bda0a588d79
-- key: file.lines
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 170
-      col: 0
-    end:
-      line: 181
-      col: 0
-  hash: fnv1a64:508dc2e1535ff268
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.lines.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 181
-      col: 39
-    end:
-      line: 181
-      col: 39
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:d84d41d10a6755d8
-- key: file.read
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 186
-      col: 0
-    end:
-      line: 210
-      col: 0
-  hash: fnv1a64:7a2d6af1f2bbe438
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.read.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 211
-      col: 14
-    end:
-      line: 211
-      col: 14
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:e571c1d98ef7385e
-- key: file.read.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 212
-      col: 18
-    end:
-      line: 212
-      col: 18
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:9817c7510d68b748
-- key: file.seek
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 216
-      col: 0
-    end:
-      line: 233
-      col: 0
-  hash: fnv1a64:5c24a5255775d005
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.seek.param.whence
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 234
-      col: 47
-    end:
-      line: 234
-      col: 47
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c00c69ff09942bbb
-- key: file.seek.param.offset
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 235
-      col: 24
-    end:
-      line: 235
-      col: 24
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:24323c6687c018ac
-- key: file.seek.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 236
-      col: 23
-    end:
-      line: 236
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:3e7dceece10552fd
-- key: file.seek.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 237
-      col: 22
-    end:
-      line: 237
-      col: 22
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:594520b2400b62ed
-- key: file.setvbuf
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 240
-      col: 0
-    end:
-      line: 252
-      col: 0
-  hash: fnv1a64:a3b3e8e9502ee3dd
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.setvbuf.param.mode
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 252
-      col: 46
-    end:
-      line: 252
-      col: 46
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1091a9037d44e7a9
-- key: file.setvbuf.param.size
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 253
-      col: 23
-    end:
-      line: 253
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:c8b41dcd1372f29f
-- key: file.write
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 256
-      col: 0
-    end:
-      line: 264
-      col: 23
-  hash: fnv1a64:eedd45da049efc00
-  context_hash: fnv1a64:de7cc417de1b3246
-- key: file.write.return.1
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 263
-      col: 17
-    end:
-      line: 263
-      col: 17
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:1060c3efd5b7b5cb
-- key: file.write.return.2
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 264
-      col: 23
-    end:
-      line: 264
-      col: 23
-  hash: fnv1a64:cbf29ce484222325
-  context_hash: fnv1a64:5df91bda0a588d79
-- key: iolib.stderr
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 267
-      col: 0
-    end:
-      line: 268
-      col: 0
-  hash: fnv1a64:310160a514fa3aa7
-  context_hash: fnv1a64:241ad9d43dd76137
-- key: iolib.stdin
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 271
-      col: 0
-    end:
-      line: 272
-      col: 0
-  hash: fnv1a64:e4e095bc73c9bfa6
-  context_hash: fnv1a64:aa04d03ab1feb2c8
-- key: iolib.stdout
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 275
-      col: 0
-    end:
-      line: 276
-      col: 0
-  hash: fnv1a64:499f9ffe429f1468
-  context_hash: fnv1a64:d5100f194d3f55f2
+  - key: iolib
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 15
+        col: 0
+      end:
+        line: 15
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f5a1c82930da0465
+  - key: iolib.close
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 18
+        col: 0
+      end:
+        line: 21
+        col: 0
+    hash: fnv1a64:44b6d4a010496577
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.close.param.file
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 21
+        col: 20
+      end:
+        line: 21
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:a9dea519c32100b6
+  - key: iolib.flush
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 24
+        col: 0
+      end:
+        line: 25
+        col: 40
+    hash: fnv1a64:f24fea5b44d0e6cd
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.input
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 28
+        col: 0
+      end:
+        line: 36
+        col: 0
+    hash: fnv1a64:ae460a87629bf10c
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.input.param.file
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 36
+        col: 29
+      end:
+        line: 36
+        col: 29
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:deee679ba3f55edf
+  - key: iolib.input.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 37
+        col: 15
+      end:
+        line: 37
+        col: 15
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:40817c91aefbf5e2
+  - key: iolib.lines
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 40
+        col: 0
+      end:
+        line: 53
+        col: 0
+    hash: fnv1a64:b5a3c25c8f6d6c53
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.lines.param.filename
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 53
+        col: 26
+      end:
+        line: 53
+        col: 26
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:308520bd7e993d7e
+  - key: iolib.lines.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 54
+        col: 20
+      end:
+        line: 54
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8d20c60653cbc06a
+  - key: iolib.OpenMode
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 57
+        col: 0
+      end:
+        line: 57
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:16484d00cc9aa599
+  - key: iolib.open
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 59
+        col: 0
+      end:
+        line: 74
+        col: 0
+    hash: fnv1a64:a9dd6e1f359cad88
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.open.param.filename
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 74
+        col: 25
+      end:
+        line: 74
+        col: 25
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:95f256ff5a5d29f5
+  - key: iolib.open.param.mode
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 75
+        col: 30
+      end:
+        line: 75
+        col: 30
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6f9f609c9f7fbf0d
+  - key: iolib.open.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 76
+        col: 16
+      end:
+        line: 76
+        col: 16
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:97fc888c5622c687
+  - key: iolib.open.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 77
+        col: 22
+      end:
+        line: 77
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:594520b2400b62ed
+  - key: iolib.output
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 80
+        col: 0
+      end:
+        line: 82
+        col: 0
+    hash: fnv1a64:e615c6164764f06a
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.output.param.file
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 82
+        col: 29
+      end:
+        line: 82
+        col: 29
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:deee679ba3f55edf
+  - key: iolib.output.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 83
+        col: 15
+      end:
+        line: 83
+        col: 15
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:40817c91aefbf5e2
+  - key: iolib.popen
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 86
+        col: 0
+      end:
+        line: 92
+        col: 0
+    hash: fnv1a64:ed9fe53d586ce4f7
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.popen.param.prog
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 92
+        col: 21
+      end:
+        line: 92
+        col: 21
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:8aaba4a0ddb104f6
+  - key: iolib.popen.param.mode
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 93
+        col: 34
+      end:
+        line: 93
+        col: 34
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:6f4ae00aefe46221
+  - key: iolib.popen.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 94
+        col: 15
+      end:
+        line: 94
+        col: 15
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:40817c91aefbf5e2
+  - key: std.readmode
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 97
+        col: 0
+      end:
+        line: 97
+        col: 0
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:f1cdbd8b51e5f1cc
+  - key: std.readmode.item.n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 100
+        col: 12
+      end:
+        line: 100
+        col: 92
+    hash: fnv1a64:09724402d824ca77
+    context_hash: fnv1a64:140a64161cb92d4b
+  - key: std.readmode.item.a
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 101
+        col: 12
+      end:
+        line: 101
+        col: 70
+    hash: fnv1a64:0b0543502b6fe843
+    context_hash: fnv1a64:90ef6cfb35c6bcdc
+  - key: std.readmode.item.l
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 102
+        col: 12
+      end:
+        line: 102
+        col: 61
+    hash: fnv1a64:2232740e3160cdc8
+    context_hash: fnv1a64:df058106ca067ce2
+  - key: std.readmode.item.L
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 103
+        col: 12
+      end:
+        line: 103
+        col: 63
+    hash: fnv1a64:4942667b1190a4de
+    context_hash: fnv1a64:fd41ede7cf5b3288
+  - key: std.readmode.item.*n
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 104
+        col: 12
+      end:
+        line: 104
+        col: 92
+    hash: fnv1a64:09724402d824ca77
+    context_hash: fnv1a64:2a0d1282b2a177ad
+  - key: std.readmode.item.*a
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 105
+        col: 12
+      end:
+        line: 105
+        col: 70
+    hash: fnv1a64:0b0543502b6fe843
+    context_hash: fnv1a64:eaa243d8bc090b70
+  - key: std.readmode.item.*l
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 106
+        col: 12
+      end:
+        line: 106
+        col: 61
+    hash: fnv1a64:2232740e3160cdc8
+    context_hash: fnv1a64:83f5df8702ad7b68
+  - key: std.readmode.item.*L
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 107
+        col: 12
+      end:
+        line: 107
+        col: 63
+    hash: fnv1a64:4942667b1190a4de
+    context_hash: fnv1a64:b3bd56472aa2dd1e
+  - key: iolib.read
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 109
+        col: 0
+      end:
+        line: 111
+        col: 0
+    hash: fnv1a64:54506e4af4c5171d
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.read.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 112
+        col: 14
+      end:
+        line: 112
+        col: 14
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e571c1d98ef7385e
+  - key: iolib.read.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 113
+        col: 18
+      end:
+        line: 113
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9817c7510d68b748
+  - key: iolib.tmpfile
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 117
+        col: 0
+      end:
+        line: 120
+        col: 0
+    hash: fnv1a64:c32f01b42c8a68a4
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.tmpfile.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 120
+        col: 16
+      end:
+        line: 120
+        col: 16
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5548e76b12257fb6
+  - key: iolib.type
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 123
+        col: 0
+      end:
+        line: 127
+        col: 0
+    hash: fnv1a64:0c2c9cc2436170fc
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.type.param.obj
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 127
+        col: 18
+      end:
+        line: 127
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:ad74d1373c0543dc
+  - key: iolib.type.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 128
+        col: 39
+      end:
+        line: 128
+        col: 39
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3dab124e5e885625
+  - key: iolib.write
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 131
+        col: 0
+      end:
+        line: 133
+        col: 0
+    hash: fnv1a64:cddfb7fad90f9885
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: iolib.write.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 134
+        col: 17
+      end:
+        line: 134
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1060c3efd5b7b5cb
+  - key: iolib.write.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 135
+        col: 23
+      end:
+        line: 135
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5df91bda0a588d79
+  - key: file
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 138
+        col: 0
+      end:
+        line: 139
+        col: 0
+    hash: fnv1a64:045bdb188ddcd0b3
+    context_hash: fnv1a64:6b5eb10d9792750b
+  - key: file.close@>5.2
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 143
+        col: 0
+      end:
+        line: 150
+        col: 0
+    hash: fnv1a64:925e9a7d74c51050
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.close@>5.2.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 150
+        col: 20
+      end:
+        line: 150
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:cfb38283db200bc3
+  - key: file.close@>5.2.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 151
+        col: 27
+      end:
+        line: 151
+        col: 27
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:4825f8f81da91b94
+  - key: file.close@>5.2.return.3
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 152
+        col: 19
+      end:
+        line: 152
+        col: 19
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:743c11d628d947ba
+  - key: file.close@5.1,JIT
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 156
+        col: 0
+      end:
+        line: 160
+        col: 0
+    hash: fnv1a64:0564fc98d5b21d64
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.close@5.1,JIT.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 160
+        col: 20
+      end:
+        line: 160
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:cfb38283db200bc3
+  - key: file.close@5.1,JIT.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 161
+        col: 23
+      end:
+        line: 161
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5df91bda0a588d79
+  - key: file.flush
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 164
+        col: 0
+      end:
+        line: 166
+        col: 0
+    hash: fnv1a64:f7013005b20a614b
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.flush.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 166
+        col: 20
+      end:
+        line: 166
+        col: 20
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:cfb38283db200bc3
+  - key: file.flush.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 167
+        col: 23
+      end:
+        line: 167
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5df91bda0a588d79
+  - key: file.lines
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 170
+        col: 0
+      end:
+        line: 181
+        col: 0
+    hash: fnv1a64:508dc2e1535ff268
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.lines.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 181
+        col: 39
+      end:
+        line: 181
+        col: 39
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:d84d41d10a6755d8
+  - key: file.read
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 186
+        col: 0
+      end:
+        line: 210
+        col: 0
+    hash: fnv1a64:7a2d6af1f2bbe438
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.read.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 211
+        col: 14
+      end:
+        line: 211
+        col: 14
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:e571c1d98ef7385e
+  - key: file.read.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 212
+        col: 18
+      end:
+        line: 212
+        col: 18
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:9817c7510d68b748
+  - key: file.seek
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 216
+        col: 0
+      end:
+        line: 233
+        col: 0
+    hash: fnv1a64:5c24a5255775d005
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.seek.param.whence
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 234
+        col: 47
+      end:
+        line: 234
+        col: 47
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c00c69ff09942bbb
+  - key: file.seek.param.offset
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 235
+        col: 24
+      end:
+        line: 235
+        col: 24
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:24323c6687c018ac
+  - key: file.seek.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 236
+        col: 23
+      end:
+        line: 236
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:3e7dceece10552fd
+  - key: file.seek.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 237
+        col: 22
+      end:
+        line: 237
+        col: 22
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:594520b2400b62ed
+  - key: file.setvbuf
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 240
+        col: 0
+      end:
+        line: 252
+        col: 0
+    hash: fnv1a64:a3b3e8e9502ee3dd
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.setvbuf.param.mode
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 252
+        col: 46
+      end:
+        line: 252
+        col: 46
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1091a9037d44e7a9
+  - key: file.setvbuf.param.size
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 253
+        col: 23
+      end:
+        line: 253
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:c8b41dcd1372f29f
+  - key: file.write
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 256
+        col: 0
+      end:
+        line: 262
+        col: 0
+    hash: fnv1a64:4ce76ceb7010e8d4
+    context_hash: fnv1a64:de7cc417de1b3246
+  - key: file.write.return.1
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 263
+        col: 17
+      end:
+        line: 263
+        col: 17
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:1060c3efd5b7b5cb
+  - key: file.write.return.2
+    kind:
+      type: line_tail
+      prefix: " "
+    range:
+      start:
+        line: 264
+        col: 23
+      end:
+        line: 264
+        col: 23
+    hash: fnv1a64:cbf29ce484222325
+    context_hash: fnv1a64:5df91bda0a588d79
+  - key: iolib.stderr
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 267
+        col: 0
+      end:
+        line: 268
+        col: 0
+    hash: fnv1a64:310160a514fa3aa7
+    context_hash: fnv1a64:241ad9d43dd76137
+  - key: iolib.stdin
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 271
+        col: 0
+      end:
+        line: 272
+        col: 0
+    hash: fnv1a64:e4e095bc73c9bfa6
+    context_hash: fnv1a64:aa04d03ab1feb2c8
+  - key: iolib.stdout
+    kind:
+      type: doc_block
+      indent: ""
+    range:
+      start:
+        line: 275
+        col: 0
+      end:
+        line: 276
+        col: 0
+    hash: fnv1a64:499f9ffe429f1468
+    context_hash: fnv1a64:d5100f194d3f55f2
