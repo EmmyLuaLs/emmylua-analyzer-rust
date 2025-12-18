@@ -1,7 +1,6 @@
-use super::std_hover::{hover_std_description, is_std};
 use emmylua_code_analysis::{
-    DbIndex, InFiled, LuaMember, LuaMemberOwner, LuaMultiLineUnion, LuaSemanticDeclId, LuaType,
-    LuaUnionType, RenderLevel, SemanticDeclLevel, SemanticModel, format_union_type,
+    DbIndex, InFiled, LuaMember, LuaMultiLineUnion, LuaSemanticDeclId, LuaType, LuaUnionType,
+    RenderLevel, SemanticDeclLevel, SemanticModel, format_union_type,
 };
 
 use emmylua_code_analysis::humanize_type;
@@ -167,38 +166,7 @@ pub fn extract_description_from_property_owner(
     let mut result = DescriptionInfo::new();
 
     if let Some(detail) = property.description() {
-        let mut description = detail.to_string();
-
-        match property_owner {
-            LuaSemanticDeclId::Member(id) => {
-                if let Some(member) = semantic_model.get_db().get_member_index().get_member(id)
-                    && let Some(LuaMemberOwner::Type(ty)) = semantic_model
-                        .get_db()
-                        .get_member_index()
-                        .get_current_owner(id)
-                    && is_std(semantic_model.get_db(), member.get_file_id())
-                {
-                    let std_desc =
-                        hover_std_description(ty.get_name(), member.get_key().get_name());
-                    if !std_desc.is_empty() {
-                        description = std_desc;
-                    }
-                }
-            }
-            LuaSemanticDeclId::LuaDecl(id) => {
-                if let Some(decl) = semantic_model.get_db().get_decl_index().get_decl(id)
-                    && is_std(semantic_model.get_db(), decl.get_file_id())
-                {
-                    let std_desc = hover_std_description(decl.get_name(), None);
-                    if !std_desc.is_empty() {
-                        description = std_desc;
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        result.description = Some(description);
+        result.description = Some(detail.to_string());
     }
 
     if let Some(tag_content) = property.tag_content() {
