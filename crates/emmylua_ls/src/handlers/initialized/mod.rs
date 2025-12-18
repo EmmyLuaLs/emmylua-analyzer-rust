@@ -2,6 +2,7 @@ mod client_config;
 mod codestyle;
 mod collect_files;
 mod locale;
+mod std_i18n;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -12,7 +13,9 @@ use crate::{
         WorkspaceFileMatcher, WorkspaceFolder, get_client_id, load_emmy_config,
     },
     handlers::{
-        initialized::collect_files::calculate_include_and_exclude,
+        initialized::{
+            collect_files::calculate_include_and_exclude, std_i18n::try_generate_translated_std,
+        },
         text_document::register_files_watch,
     },
     logger::init_logger,
@@ -246,6 +249,7 @@ pub async fn init_std_lib(
     if cmd_args.load_stdlib.0 {
         // double update config
         analysis.update_config(emmyrc);
+        try_generate_translated_std();
         analysis.init_std_lib(cmd_args.resources_path.0.clone());
     }
 

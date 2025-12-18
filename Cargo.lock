@@ -629,6 +629,7 @@ dependencies = [
  "fern",
  "glob",
  "googletest",
+ "include_dir",
  "internment",
  "itertools 0.14.0",
  "log",

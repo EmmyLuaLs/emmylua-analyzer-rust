@@ -27,6 +27,8 @@ pub use emmylua_codestyle::*;
 pub use locale::get_locale_code;
 use lsp_types::Uri;
 pub use profile::Profile;
+pub use resources::get_best_resources_dir;
+pub use resources::load_resource_from_include_dir;
 use resources::load_resource_std;
 pub use semantic::*;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
