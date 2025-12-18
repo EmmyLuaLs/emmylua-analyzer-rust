@@ -4,7 +4,7 @@ debuglib.debug: |
   进入与用户的交互模式，运行用户输入的每个字符串。使用简单的命令和
   其他调试工具，用户可以检查全局和局部变量、更改它们的值、计算表达式
   等等。仅包含单词 `cont` 的行会结束此函数，使调用者继续执行。
-
+  
   注意，`debug.debug` 的命令在词法上不嵌套在任何函数内，因此无法
   直接访问局部变量。
 
@@ -89,12 +89,12 @@ debuglib.getinfo: |
   （`getinfo` 本身）；第1层是调用 `getinfo` 的函数（尾调用除外，
   它们不计入栈）；依此类推。如果 `f` 是一个大于活动函数数量的数字，
   则 `getinfo` 返回 **nil**。
-
+  
   返回的表可以包含 `lua_getinfo` 返回的所有字段，字符串 `what` 描述
   要填充哪些字段。`what` 的默认值是获取所有可用信息，但不包括有效行的表。
   如果存在选项 '`f`'，则添加一个名为 `func` 的字段，包含函数本身。
   如果存在选项 '`L`'，则添加一个名为 `activelines` 的字段，包含有效行的表。
-
+  
   例如，表达式 `debug.getinfo(1,"n").name` 返回一个包含当前函数名称的表
   （如果能找到合理的名称），表达式 `debug.getinfo(print)` 返回一个包含
   关于 `print` 函数所有可用信息的表。
@@ -110,15 +110,15 @@ debuglib.getinfo.return.1: ""
 debuglib.getlocal: |
   此函数返回栈中第 `level` 层函数的索引为 `local` 的局部变量的名称和值。
   此函数不仅访问显式的局部变量，还包括参数、临时变量等。
-
+  
   第一个参数或局部变量的索引为1，依此类推，按照它们在代码中声明的顺序，
   仅计算函数当前作用域中活动的变量。负索引指向可变参数；-1 是第一个
   可变参数。如果给定索引没有变量，函数返回 **nil**，当调用时层级超出
   范围则引发错误。（你可以调用 `debug.getinfo` 来检查层级是否有效。）
-
+  
   以 '(' （左括号）开头的变量名表示没有已知名称的变量（内部变量，如循环
   控制变量和保存时没有调试信息的代码块中的变量）。
-
+  
   参数 `f` 也可以是一个函数。在这种情况下，`getlocal` 仅返回函数参数的名称。
 
 debuglib.getlocal.param.thread: ""
@@ -148,7 +148,7 @@ debuglib.getregistry.return.1: ""
 debuglib.getupvalue: |
   此函数返回函数 `f` 的索引为 `up` 的上值的名称和值。如果给定索引没有
   上值，函数返回 **nil**。
-
+  
   以 '(' （左括号）开头的变量名表示没有已知名称的变量（来自保存时没有
   调试信息的代码块的变量）。
 
@@ -174,9 +174,9 @@ debuglib.getuservalue.return.2: ""
 
 debuglib.setcstacklimit: |
   ### **在 `Lua 5.4.2` 中已弃用**
-
+  
   为 C 栈设置新的限制。此限制控制 Lua 中嵌套调用的深度，目的是避免栈溢出。
-
+  
   成功时，此函数返回旧的限制。出错时，返回 `false`。
 
 debuglib.setcstacklimit.param.limit: ""
@@ -206,15 +206,15 @@ debuglib.Hookmask.item.l: |
 debuglib.sethook: |
   将给定函数设置为钩子。字符串 `mask` 和数字 `count` 描述何时调用钩子。
   字符串掩码可以是以下字符的任意组合，具有以下含义：
-
+  
   * `"c"`：每次 Lua 调用函数时调用钩子；
   * `"r"`：每次 Lua 从函数返回时调用钩子；
   * `"l"`：每次 Lua 进入新的代码行时调用钩子。
-
+  
   此外，当 `count` 不为零时，钩子在每 `count` 条指令后被调用。
-
+  
   不带参数调用时，`debug.sethook` 关闭钩子。
-
+  
   调用钩子时，其第一个参数是描述触发调用的事件的字符串：`"call"`
   （或 `"tail call"`）、`"return"`、`"line"` 和 `"count"`。对于行事件，
   钩子还会获得新行号作为其第二个参数。在钩子内部，你可以用层级2调用
@@ -269,7 +269,7 @@ debuglib.setupvalue.return.1: ""
 debuglib.setuservalue: |
   将给定的 `value` 设置为与给定 `udata` 关联的第 `n` 个值。
   `udata` 必须是完全 userdata。
-
+  
   返回 `udata`，如果 userdata 没有该值则返回 **nil**。
 
 debuglib.setuservalue.param.udata: ""
@@ -301,7 +301,7 @@ debuglib.traceback.return.1: ""
 
 debuglib.upvalueid: |
   返回给定函数中编号为 `n` 的上值的唯一标识符（作为轻量 userdata）。
-
+  
   这些唯一标识符允许程序检查不同的闭包是否共享上值。共享上值的 Lua 闭包
   （即访问同一外部局部变量的闭包）将为那些上值索引返回相同的 id。
 
@@ -321,3 +321,4 @@ debuglib.upvaluejoin.param.n1: ""
 debuglib.upvaluejoin.param.f2: ""
 
 debuglib.upvaluejoin.param.n2: ""
+
