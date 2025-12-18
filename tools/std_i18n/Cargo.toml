@@ -1,0 +1,13 @@
+[package]
+name = "std_i18n"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# local
+emmylua_parser.workspace = true
+
+# external
+serde.workspace = true
+serde_yml.workspace = true
+walkdir.workspace = true
