@@ -8,21 +8,11 @@ string.byte: |
 
   注意：这些数值码并不一定能跨平台移植。
 
-string.byte.param.s: ""
-
-string.byte.param.i: ""
-
-string.byte.param.j: ""
-
-string.byte.return.1: ""
-
 string.char: |
   接收零个或多个整数。返回一个长度等于参数个数的字符串，其中每个字符的内部数值码
   等于其对应的参数。
 
   注意：这些数值码并不一定能跨平台移植。
-
-string.char.return.1: ""
 
 string.dump: |
   返回一个字符串，包含给定函数的二进制表示（*二进制块*）。之后对该字符串调用 `load`，
@@ -31,12 +21,6 @@ string.dump: |
 
   对于带上值的函数，只会保存上值的数量；（重新）加载后，这些上值会变成包含 **nil**
   的新实例。（你可以使用 debug 库按需序列化并恢复函数的上值。）
-
-string.dump.param.func: ""
-
-string.dump.param.strip: ""
-
-string.dump.return.1: ""
 
 string.find: |
   在字符串 `s` 中查找 `pattern` 的第一次匹配。如果找到，则返回该匹配在 `s` 中的起始与结束索引；
@@ -47,20 +31,6 @@ string.find: |
   此时 `pattern` 中不会有任何字符被视为具有特殊含义的“魔法字符”。注意：如果提供了 `plain`，则也必须提供 `init`。
 
   如果 `pattern` 含有捕获，则匹配成功时也会在两个索引之后返回捕获到的值。
-
-string.find.param.s: ""
-
-string.find.param.pattern: ""
-
-string.find.param.init: ""
-
-string.find.param.plain: ""
-
-string.find.return.1: ""
-
-string.find.return.2: ""
-
-string.find.return.3: ""
 
 string.format: |
   按第一个参数（必须是字符串）中的描述，对后续可变数量的参数进行格式化，并返回格式化后的字符串。
@@ -87,10 +57,6 @@ string.format: |
   选项 `s` 需要一个字符串；若参数不是字符串，则按与 `tostring` 相同的规则转换为字符串。
   如果 `s` 选项带有任何修饰符（标志、宽度、长度），则字符串参数不应包含嵌入的零字节。
 
-string.format.param.fmt: ""
-
-string.format.return.1: ""
-
 string.gmatch: |
   返回一个迭代器函数：每次调用时，它都会在字符串 `s` 上返回 `pattern` 的下一组捕获结果。
   若 `pattern` 未指定捕获，则每次返回整个匹配内容。
@@ -115,12 +81,6 @@ string.gmatch: |
   ```
 
   注意：对该函数而言，模式开头的插入符 '`^`' 不会作为锚点使用，因为那会阻止迭代。
-
-string.gmatch.param.s: ""
-
-string.gmatch.param.pattern: ""
-
-string.gmatch.return.1: ""
 
 string.gsub: |
   返回 `s` 的一个副本，其中所有（或前 `n` 个，如果给出）匹配 `pattern` 的内容都会被 `repl` 替换。
@@ -154,64 +114,24 @@ string.gsub: |
   -- > x="lua-5.3.tar.gz"
   ```
 
-string.gsub.param.s: ""
-
-string.gsub.param.pattern: ""
-
-string.gsub.param.repl: ""
-
-string.gsub.param.n: ""
-
-string.gsub.return.1: ""
-
-string.gsub.return.2: ""
-
 string.len: |
   接收一个字符串并返回其长度。空字符串 `""` 的长度为 0。
   嵌入的零字节也会计入长度，因此 `"a\000bc\000"` 的长度为 5。
-
-string.len.param.s: ""
-
-string.len.return.1: ""
 
 string.lower: |
   接收一个字符串并返回该字符串的副本，将其中所有大写字母转换为小写；其余字符保持不变。
   什么算作大写字母取决于当前的区域设置。
 
-string.lower.param.s: ""
-
-string.lower.return.1: ""
-
 string.match: |
   在字符串 `s` 中查找 `pattern` 的第一次*匹配*。如果匹配成功，则返回模式中的捕获；否则返回 **nil**。
   如果 `pattern` 没有捕获，则返回整个匹配内容。可选的第三个数字参数 `init` 指定从哪里开始搜索；默认值为 1，可为负数。
 
-string.match.param.s: ""
-
-string.match.param.pattern: ""
-
-string.match.param.init: ""
-
-string.match.return.1: ""
-
 string.pack: |
   按格式字符串 `fmt` 将 `v1`、`v2` 等值打包（即以二进制形式序列化），并返回得到的二进制字符串。
-
-string.pack.param.fmt: ""
-
-string.pack.param.v1: ""
-
-string.pack.param.v2: ""
-
-string.pack.return.1: ""
 
 string.packsize: |
   返回使用给定格式调用 `string.pack` 时生成的字符串大小。
   格式字符串不能包含变长选项 '`s`' 或 '`z`'。
-
-string.packsize.param.fmt: ""
-
-string.packsize.return.1: ""
 
 string.rep: |
   返回 `n` 个以字符串 `sep` 为分割符连在一起的字符串。
@@ -219,20 +139,8 @@ string.rep: |
 
   请注意，单次调用此函数极易耗尽机器的内存。
 
-string.rep.param.s: ""
-
-string.rep.param.n: ""
-
-string.rep.param.sep: ""
-
-string.rep.return.1: ""
-
 string.reverse: |
   返回将字符串 `s` 反转后的新字符串。
-
-string.reverse.param.s: ""
-
-string.reverse.return.1: ""
 
 string.sub: |
   返回 `s` 的子串：从 `i` 开始直到 `j` 结束（包含两端）。`i` 与 `j` 均可为负数。
@@ -244,33 +152,11 @@ string.sub: |
   将负索引换算后，若 `i` 小于 1，则修正为 1；若 `j` 大于字符串长度，则修正为该长度。
   若修正后 `i` 大于 `j`，则返回空字符串。
 
-string.sub.param.s: ""
-
-string.sub.param.i: ""
-
-string.sub.param.j: ""
-
-string.sub.return.1: ""
-
 string.unpack: |
   按格式字符串 `fmt` 从字符串 `s` 中解包并返回其中的值。
   可选参数 `pos` 指定从 `s` 的哪个位置开始读取（默认值为 1）。
   除了解包得到的值之外，本函数还会返回 `s` 中第一个未读字节的索引。
 
-string.unpack.param.fmt: ""
-
-string.unpack.param.s: ""
-
-string.unpack.param.pos: ""
-
-string.unpack.return.1: ""
-
-string.unpack.return.2: ""
-
 string.upper: |
   接收一个字符串并返回该字符串的副本，将其中所有小写字母转换为大写；其余字符保持不变。
   什么算作小写字母取决于当前的区域设置。
-
-string.upper.param.s: ""
-
-string.upper.return.1: ""

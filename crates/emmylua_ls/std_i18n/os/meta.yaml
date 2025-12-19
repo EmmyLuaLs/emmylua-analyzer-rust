@@ -3,874 +3,406 @@ line_base: 0
 col_base: 0
 file: os.lua
 entries:
-  - key: oslib
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 15
-        col: 0
-      end:
-        line: 15
-        col: 0
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:3f1073b04dec8e07
-  - key: oslib.clock
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 18
-        col: 0
-      end:
-        line: 21
-        col: 0
-    hash: fnv1a64:f356cf9741f325d8
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.clock.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 21
-        col: 17
-      end:
-        line: 21
-        col: 17
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:d3d3a56eb28cd365
-  - key: std.osdate
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 24
-        col: 0
-      end:
-        line: 24
-        col: 0
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:44dcb48f2fffad29
-  - key: std.osdate.field.year
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 25
-        col: 30
-      end:
-        line: 25
-        col: 41
-    hash: fnv1a64:30212e7efed3b741
-    context_hash: fnv1a64:0a791cb2212aaf50
-  - key: std.osdate.field.month
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 26
-        col: 31
-      end:
-        line: 26
-        col: 35
-    hash: fnv1a64:38cea8f11113c9ac
-    context_hash: fnv1a64:df63c840e75bc2b4
-  - key: std.osdate.field.day
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 27
-        col: 29
-      end:
-        line: 27
-        col: 33
-    hash: fnv1a64:38c79ff1110d9bb3
-    context_hash: fnv1a64:c7ee7b25b9a1b737
-  - key: std.osdate.field.hour
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 28
-        col: 30
-      end:
-        line: 28
-        col: 34
-    hash: fnv1a64:c772bdf95d76417d
-    context_hash: fnv1a64:7a266681ff6b0381
-  - key: std.osdate.field.min
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 29
-        col: 29
-      end:
-        line: 29
-        col: 33
-    hash: fnv1a64:c76fabf95d73ed10
-    context_hash: fnv1a64:7e16ebb1362bff6e
-  - key: std.osdate.field.sec
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 30
-        col: 29
-      end:
-        line: 30
-        col: 54
-    hash: fnv1a64:7de6ed0043babdcb
-    context_hash: fnv1a64:7086cca1b94085fe
-  - key: std.osdate.field.wday
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 31
-        col: 30
-      end:
-        line: 31
-        col: 46
-    hash: fnv1a64:d3245cd249132d0f
-    context_hash: fnv1a64:a5762a773c0510d8
-  - key: std.osdate.field.yday
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 32
-        col: 30
-      end:
-        line: 32
-        col: 35
-    hash: fnv1a64:88e1499ffa2db2cc
-    context_hash: fnv1a64:6f5f168e7a2ba7fb
-  - key: std.osdate.field.isdst
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 33
-        col: 24
-      end:
-        line: 33
-        col: 56
-    hash: fnv1a64:0dca085c7f2cce30
-    context_hash: fnv1a64:7a31b4e4dcf538ee
-  - key: oslib.date
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 35
-        col: 0
-      end:
-        line: 67
-        col: 0
-    hash: fnv1a64:7d09adea10d81f1c
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.date.param.format
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 69
-        col: 23
-      end:
-        line: 69
-        col: 23
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:18a305db07b1737b
-  - key: oslib.date.param.time
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 70
-        col: 22
-      end:
-        line: 70
-        col: 22
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:86a8ebbae22878e6
-  - key: oslib.date.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 71
-        col: 28
-      end:
-        line: 71
-        col: 28
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:d17cb80bb8706990
-  - key: oslib.difftime
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 74
-        col: 0
-      end:
-        line: 78
-        col: 0
-    hash: fnv1a64:43413a584706c19f
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.difftime.param.t2
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 78
-        col: 19
-      end:
-        line: 78
-        col: 19
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:2cc3dfad65b7a8a8
-  - key: oslib.difftime.param.t1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 79
-        col: 19
-      end:
-        line: 79
-        col: 19
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:9e364262a0c28c83
-  - key: oslib.difftime.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 80
-        col: 17
-      end:
-        line: 80
-        col: 17
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:d3d3a56eb28cd365
-  - key: oslib.execute@>5.2
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 84
-        col: 0
-      end:
-        line: 97
-        col: 0
-    hash: fnv1a64:048fc98673135403
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.execute@>5.2.param.command
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 98
-        col: 25
-      end:
-        line: 98
-        col: 25
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:ac3cb8cc6a9dd977
-  - key: oslib.execute@>5.2.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 99
-        col: 20
-      end:
-        line: 99
-        col: 20
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:cfb38283db200bc3
-  - key: oslib.execute@>5.2.return.2
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 100
-        col: 27
-      end:
-        line: 100
-        col: 27
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:4825f8f81da91b94
-  - key: oslib.execute@>5.2.return.3
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 101
-        col: 19
-      end:
-        line: 101
-        col: 19
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:743c11d628d947ba
-  - key: oslib.execute@5.1,JIT
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 105
-        col: 0
-      end:
-        line: 110
-        col: 0
-    hash: fnv1a64:591ce990cca64597
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.execute@5.1,JIT.param.command
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 110
-        col: 25
-      end:
-        line: 110
-        col: 25
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:ac3cb8cc6a9dd977
-  - key: oslib.execute@5.1,JIT.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 111
-        col: 19
-      end:
-        line: 111
-        col: 19
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:743c11d628d947ba
-  - key: oslib.exit@>5.2,JIT
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 115
-        col: 0
-      end:
-        line: 123
-        col: 0
-    hash: fnv1a64:959a0fc368af4eeb
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.exit@>5.2,JIT.param.code
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 123
-        col: 22
-      end:
-        line: 123
-        col: 22
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:8c4a17497f984aca
-  - key: oslib.exit@>5.2,JIT.param.close
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 124
-        col: 24
-      end:
-        line: 124
-        col: 24
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:6fa6d061f45f6434
-  - key: oslib.exit@>5.2,JIT.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 125
-        col: 18
-      end:
-        line: 125
-        col: 18
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:2b1879e467c17cde
-  - key: oslib.exit@5.1
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 129
-        col: 0
-      end:
-        line: 132
-        col: 0
-    hash: fnv1a64:0737442ecb98fb28
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.exit@5.1.param.code
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 132
-        col: 22
-      end:
-        line: 132
-        col: 22
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:8c4a17497f984aca
-  - key: oslib.exit@5.1.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 133
-        col: 18
-      end:
-        line: 133
-        col: 18
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:2b1879e467c17cde
-  - key: oslib.getenv
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 136
-        col: 0
-      end:
-        line: 139
-        col: 0
-    hash: fnv1a64:86d5390aaead2953
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.getenv.param.varname
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 139
-        col: 24
-      end:
-        line: 139
-        col: 24
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:9a4ded8ad241b07e
-  - key: oslib.getenv.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 140
-        col: 18
-      end:
-        line: 140
-        col: 18
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:fff7d56a7553f0fe
-  - key: oslib.remove
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 143
-        col: 0
-      end:
-        line: 147
-        col: 0
-    hash: fnv1a64:f885cf84385d6f76
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.remove.param.filename
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 147
-        col: 25
-      end:
-        line: 147
-        col: 25
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:95f256ff5a5d29f5
-  - key: oslib.remove.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 148
-        col: 26
-      end:
-        line: 148
-        col: 26
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:227ef4ff59b56be4
-  - key: oslib.remove.return.2
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 149
-        col: 21
-      end:
-        line: 149
-        col: 21
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:437d8a644e4fb522
-  - key: oslib.rename
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 152
-        col: 0
-      end:
-        line: 156
-        col: 0
-    hash: fnv1a64:6ba16cc17d958c2d
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.rename.param.oldname
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 156
-        col: 24
-      end:
-        line: 156
-        col: 24
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:ca4eff61a373e726
-  - key: oslib.rename.param.newname
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 157
-        col: 24
-      end:
-        line: 157
-        col: 24
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:adeaf1336b148b8b
-  - key: oslib.rename.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 158
-        col: 26
-      end:
-        line: 158
-        col: 26
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:227ef4ff59b56be4
-  - key: oslib.rename.return.2
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 159
-        col: 21
-      end:
-        line: 159
-        col: 21
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:437d8a644e4fb522
-  - key: oslib.setlocale
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 162
-        col: 0
-      end:
-        line: 179
-        col: 0
-    hash: fnv1a64:daf3f33062f25c95
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.setlocale.param.locale
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 179
-        col: 23
-      end:
-        line: 179
-        col: 23
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:57bb2809beee81ac
-  - key: oslib.setlocale.param.category
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 180
-        col: 26
-      end:
-        line: 180
-        col: 26
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:a53e70fd9f491413
-  - key: oslib.setlocale.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 181
-        col: 21
-      end:
-        line: 181
-        col: 21
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:e51611170724d7ea
-  - key: std.osdateparam
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 184
-        col: 0
-      end:
-        line: 184
-        col: 0
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:d63e08654067ec46
-  - key: std.osdateparam.field.year
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 185
-        col: 30
-      end:
-        line: 185
-        col: 41
-    hash: fnv1a64:30212e7efed3b741
-    context_hash: fnv1a64:0a791cb2212aaf50
-  - key: std.osdateparam.field.month
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 186
-        col: 31
-      end:
-        line: 186
-        col: 35
-    hash: fnv1a64:38cea8f11113c9ac
-    context_hash: fnv1a64:df63c840e75bc2b4
-  - key: std.osdateparam.field.day
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 187
-        col: 29
-      end:
-        line: 187
-        col: 33
-    hash: fnv1a64:38c79ff1110d9bb3
-    context_hash: fnv1a64:c7ee7b25b9a1b737
-  - key: std.osdateparam.field.hour
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 188
-        col: 33
-      end:
-        line: 188
-        col: 37
-    hash: fnv1a64:c772bdf95d76417d
-    context_hash: fnv1a64:1e3e8ce1df18ca99
-  - key: std.osdateparam.field.min
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 189
-        col: 32
-      end:
-        line: 189
-        col: 36
-    hash: fnv1a64:c76fabf95d73ed10
-    context_hash: fnv1a64:a3b24a481fcf318e
-  - key: std.osdateparam.field.sec
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 190
-        col: 32
-      end:
-        line: 190
-        col: 57
-    hash: fnv1a64:7de6ed0043babdcb
-    context_hash: fnv1a64:20d6a60fad2254b4
-  - key: std.osdateparam.field.wday
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 191
-        col: 33
-      end:
-        line: 191
-        col: 49
-    hash: fnv1a64:d3245cd249132d0f
-    context_hash: fnv1a64:6fffb0e100303b1e
-  - key: std.osdateparam.field.yday
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 192
-        col: 33
-      end:
-        line: 192
-        col: 38
-    hash: fnv1a64:88e1499ffa2db2cc
-    context_hash: fnv1a64:e6bdbe72de1add39
-  - key: std.osdateparam.field.isdst
-    kind:
-      type: line_tail
-      prefix: ""
-    range:
-      start:
-        line: 193
-        col: 25
-      end:
-        line: 193
-        col: 57
-    hash: fnv1a64:0dca085c7f2cce30
-    context_hash: fnv1a64:6c5109bc12943f87
-  - key: oslib.time
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 195
-        col: 0
-      end:
-        line: 217
-        col: 0
-    hash: fnv1a64:06fbd3c08f3140b4
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.time.param.date
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 217
-        col: 31
-      end:
-        line: 217
-        col: 31
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:157c5ed154f1b1e2
-  - key: oslib.time.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 218
-        col: 18
-      end:
-        line: 218
-        col: 18
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:2b1879e467c17cde
-  - key: oslib.tmpname
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 221
-        col: 0
-      end:
-        line: 234
-        col: 0
-    hash: fnv1a64:f2fe09d004acaf8d
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: oslib.tmpname.return.1
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 234
-        col: 17
-      end:
-        line: 234
-        col: 17
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:c975e72970aca035
+- key: oslib.clock
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 21
+      col: 0
+  hash: '9b2a917ccb76530b'
+  context_hash: de7cc417de1b3246
+- key: std.osdate.field.year
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 25
+      col: 30
+    end:
+      line: 25
+      col: 41
+  hash: '30212e7efed3b741'
+  context_hash: '0a791cb2212aaf50'
+- key: std.osdate.field.month
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 26
+      col: 31
+    end:
+      line: 26
+      col: 35
+  hash: '38cea8f11113c9ac'
+  context_hash: df63c840e75bc2b4
+- key: std.osdate.field.day
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 27
+      col: 29
+    end:
+      line: 27
+      col: 33
+  hash: '38c79ff1110d9bb3'
+  context_hash: c7ee7b25b9a1b737
+- key: std.osdate.field.hour
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 28
+      col: 30
+    end:
+      line: 28
+      col: 34
+  hash: c772bdf95d76417d
+  context_hash: '7a266681ff6b0381'
+- key: std.osdate.field.min
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 29
+      col: 29
+    end:
+      line: 29
+      col: 33
+  hash: c76fabf95d73ed10
+  context_hash: '7e16ebb1362bff6e'
+- key: std.osdate.field.sec
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 30
+      col: 29
+    end:
+      line: 30
+      col: 54
+  hash: '7de6ed0043babdcb'
+  context_hash: '7086cca1b94085fe'
+- key: std.osdate.field.wday
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 31
+      col: 30
+    end:
+      line: 31
+      col: 46
+  hash: d3245cd249132d0f
+  context_hash: a5762a773c0510d8
+- key: std.osdate.field.yday
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 32
+      col: 30
+    end:
+      line: 32
+      col: 35
+  hash: '88e1499ffa2db2cc'
+  context_hash: '6f5f168e7a2ba7fb'
+- key: std.osdate.field.isdst
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 33
+      col: 24
+    end:
+      line: 33
+      col: 56
+  hash: '0dca085c7f2cce30'
+  context_hash: '7a31b4e4dcf538ee'
+- key: oslib.date
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 35
+      col: 0
+    end:
+      line: 67
+      col: 0
+  hash: '74c81b78019554e4'
+  context_hash: de7cc417de1b3246
+- key: oslib.difftime
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 74
+      col: 0
+    end:
+      line: 78
+      col: 0
+  hash: '6a0b703ea28839f7'
+  context_hash: de7cc417de1b3246
+- key: oslib.execute@>5.2
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 84
+      col: 0
+    end:
+      line: 97
+      col: 0
+  hash: '534ea24d2e6da6c0'
+  context_hash: de7cc417de1b3246
+- key: oslib.execute@5.1,JIT
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 105
+      col: 0
+    end:
+      line: 110
+      col: 0
+  hash: cfd1f1e32f605f58
+  context_hash: de7cc417de1b3246
+- key: oslib.exit@>5.2,JIT
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 115
+      col: 0
+    end:
+      line: 123
+      col: 0
+  hash: '4fda0e69acf947bb'
+  context_hash: de7cc417de1b3246
+- key: oslib.exit@5.1
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 129
+      col: 0
+    end:
+      line: 132
+      col: 0
+  hash: ef5d094abaa551fd
+  context_hash: de7cc417de1b3246
+- key: oslib.getenv
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 136
+      col: 0
+    end:
+      line: 139
+      col: 0
+  hash: '101bdb2422c380c0'
+  context_hash: de7cc417de1b3246
+- key: oslib.remove
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 143
+      col: 0
+    end:
+      line: 147
+      col: 0
+  hash: c3e36a31c22ce5ea
+  context_hash: de7cc417de1b3246
+- key: oslib.rename
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 152
+      col: 0
+    end:
+      line: 156
+      col: 0
+  hash: '400a03f66b702215'
+  context_hash: de7cc417de1b3246
+- key: oslib.setlocale
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 162
+      col: 0
+    end:
+      line: 179
+      col: 0
+  hash: d4332152c62608ba
+  context_hash: de7cc417de1b3246
+- key: std.osdateparam.field.year
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 185
+      col: 30
+    end:
+      line: 185
+      col: 41
+  hash: '30212e7efed3b741'
+  context_hash: '0a791cb2212aaf50'
+- key: std.osdateparam.field.month
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 186
+      col: 31
+    end:
+      line: 186
+      col: 35
+  hash: '38cea8f11113c9ac'
+  context_hash: df63c840e75bc2b4
+- key: std.osdateparam.field.day
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 187
+      col: 29
+    end:
+      line: 187
+      col: 33
+  hash: '38c79ff1110d9bb3'
+  context_hash: c7ee7b25b9a1b737
+- key: std.osdateparam.field.hour
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 188
+      col: 33
+    end:
+      line: 188
+      col: 37
+  hash: c772bdf95d76417d
+  context_hash: '1e3e8ce1df18ca99'
+- key: std.osdateparam.field.min
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 189
+      col: 32
+    end:
+      line: 189
+      col: 36
+  hash: c76fabf95d73ed10
+  context_hash: a3b24a481fcf318e
+- key: std.osdateparam.field.sec
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 190
+      col: 32
+    end:
+      line: 190
+      col: 57
+  hash: '7de6ed0043babdcb'
+  context_hash: '20d6a60fad2254b4'
+- key: std.osdateparam.field.wday
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 191
+      col: 33
+    end:
+      line: 191
+      col: 49
+  hash: d3245cd249132d0f
+  context_hash: '6fffb0e100303b1e'
+- key: std.osdateparam.field.yday
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 192
+      col: 33
+    end:
+      line: 192
+      col: 38
+  hash: '88e1499ffa2db2cc'
+  context_hash: e6bdbe72de1add39
+- key: std.osdateparam.field.isdst
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 193
+      col: 25
+    end:
+      line: 193
+      col: 57
+  hash: '0dca085c7f2cce30'
+  context_hash: '6c5109bc12943f87'
+- key: oslib.time
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 195
+      col: 0
+    end:
+      line: 217
+      col: 0
+  hash: fcaa6c7521e56af4
+  context_hash: de7cc417de1b3246
+- key: oslib.tmpname
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 221
+      col: 0
+    end:
+      line: 234
+      col: 0
+  hash: '7d4f7ce2378cf7da'
+  context_hash: de7cc417de1b3246

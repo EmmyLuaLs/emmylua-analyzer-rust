@@ -1,12 +1,6 @@
-coroutinelib: ""
-
 coroutinelib.create: |
   创建一个新的协程，主体函数为 `f`。`f` 必须是一个 Lua 函数。
   返回这个新协程，一个类型为 `"thread"` 的对象。
-
-coroutinelib.create.param.f: ""
-
-coroutinelib.create.return.1: ""
 
 coroutinelib.isyieldable: |
   当正在运行的协程可以让出时返回 true。
@@ -14,18 +8,8 @@ coroutinelib.isyieldable: |
   如果正在运行的协程不是主线程且不在不可让出的 C 函数中，
   则该协程是可让出的。
 
-coroutinelib.isyieldable.param.co: ""
-
-coroutinelib.isyieldable.return.1: ""
-
 coroutinelib.close: |
   关闭协程 `co`，关闭其所有待关闭的变量，并将协程置于死亡状态。
-
-coroutinelib.close.param.co: ""
-
-coroutinelib.close.return.1: ""
-
-coroutinelib.close.return.2: ""
 
 coroutinelib.resume: |
   开始或继续执行协程 `co`。第一次恢复协程时，它开始运行其主体函数。
@@ -36,18 +20,8 @@ coroutinelib.resume: |
   `yield` 的任何值（当协程让出时）或主体函数返回的任何值（当协程
   终止时）。如果有任何错误，`resume` 返回 **false** 加上错误消息。
 
-coroutinelib.resume.param.co: ""
-
-coroutinelib.resume.param.val1: ""
-
-coroutinelib.resume.return.1: ""
-
-coroutinelib.resume.return.2: ""
-
 coroutinelib.running: |
   返回正在运行的协程加上一个布尔值，当正在运行的协程是主协程时为 true。
-
-coroutinelib.running.return.1: ""
 
 coroutinelib.status: |
   以字符串形式返回协程 `co` 的状态："`running`"，如果协程正在运行
@@ -55,10 +29,6 @@ coroutinelib.status: |
   时挂起，或者尚未开始运行；"`normal`"，如果协程处于活动状态但未
   运行（即它已恢复另一个协程）；"`dead`"，如果协程已完成其主体函数，
   或者因错误而停止。
-
-coroutinelib.status.param.co: ""
-
-coroutinelib.status.return.1: ""
 
 coroutinelib.status.return.1.running: |
   正在运行
@@ -78,12 +48,6 @@ coroutinelib.wrap: |
   参数都作为 `resume` 的额外参数。返回与 `resume` 相同的值，
   但不包括第一个布尔值。如果发生错误，则传播该错误。
 
-coroutinelib.wrap.param.f: ""
-
-coroutinelib.wrap.return.1: ""
-
 coroutinelib.yield: |
   挂起调用协程的执行。传递给 `yield` 的任何参数都作为额外结果
   传递给 `resume`。
-
-coroutinelib.yield.return.1: ""

@@ -8,18 +8,10 @@ bit32lib.arshift: |
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.arshift"])
 
-bit32lib.arshift.param.x: ""
-
-bit32lib.arshift.param.disp: ""
-
-bit32lib.arshift.return.1: ""
-
 bit32lib.band: |
   返回其操作数的按位与（AND）结果。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.band"])
-
-bit32lib.band.return.1: ""
 
 bit32lib.bnot: |
   返回 `x` 的按位取反结果。
@@ -31,67 +23,35 @@ bit32lib.bnot: |
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bnot"])
 
-bit32lib.bnot.param.x: ""
-
-bit32lib.bnot.return.1: ""
-
 bit32lib.bor: |
   返回其操作数的按位或（OR）结果。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bor"])
-
-bit32lib.bor.return.1: ""
 
 bit32lib.btest: |
   返回一个布尔值，表示其操作数的按位与（AND）结果是否不为零。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.btest"])
 
-bit32lib.btest.return.1: ""
-
 bit32lib.bxor: |
   返回其操作数的按位异或（XOR）结果。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.bxor"])
-
-bit32lib.bxor.return.1: ""
 
 bit32lib.extract: |
   返回由 `n` 的第 `field` 位到第 `field + width - 1` 位构成的无符号数。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.extract"])
 
-bit32lib.extract.param.n: ""
-
-bit32lib.extract.param.field: ""
-
-bit32lib.extract.param.width: ""
-
-bit32lib.extract.return.1: ""
-
 bit32lib.replace: |
   返回 `n` 的一个副本，并将第 `field` 位到第 `field + width - 1` 位替换为 `v` 的值。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.replace"])
 
-bit32lib.replace.param.n: ""
-
-bit32lib.replace.param.v: ""
-
-bit32lib.replace.param.field: ""
-
-bit32lib.replace.param.width: ""
-
 bit32lib.lrotate: |
   返回 `x` 向左旋转 `disp` 位的结果。`disp` 为负时向右旋转。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.lrotate"])
-
-bit32lib.lrotate.param.x: ""
-
-bit32lib.lrotate.param.distp: ""
-
-bit32lib.lrotate.return.1: ""
 
 bit32lib.lshift: |
   返回 `x` 向左位移 `disp` 位的结果。`disp` 为负时向右位移。无论方向如何，空位都用 `0` 填充。
@@ -103,22 +63,10 @@ bit32lib.lshift: |
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.lshift"])
 
-bit32lib.lshift.param.x: ""
-
-bit32lib.lshift.param.distp: ""
-
-bit32lib.lshift.return.1: ""
-
 bit32lib.rrotate: |
   返回 `x` 向右旋转 `disp` 位的结果。`disp` 为负时向左旋转。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.rrotate"])
-
-bit32lib.rrotate.param.x: ""
-
-bit32lib.rrotate.param.distp: ""
-
-bit32lib.rrotate.return.1: ""
 
 bit32lib.rshift: |
   返回 `x` 向右位移 `disp` 位的结果。`disp` 为负时向左位移。无论方向如何，空位都用 `0` 填充。
@@ -129,9 +77,3 @@ bit32lib.rshift: |
   ```
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-bit32.rshift"])
-
-bit32lib.rshift.param.x: ""
-
-bit32lib.rshift.param.distp: ""
-
-bit32lib.rshift.return.1: ""

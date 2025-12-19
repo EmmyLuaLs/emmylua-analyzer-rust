@@ -1,9 +1,5 @@
-utf8lib: ""
-
 utf8lib.char: |
   接收零个或多个整数，将每个整数转换为对应的 UTF-8 字节序列，并返回将这些序列连接在一起的字符串。
-
-utf8lib.char.return.1: ""
 
 utf8lib.charpattern: |
   模式（一个字符串，而非函数）`[\0-\x7F\xC2-\xF4][\x80-\xBF]*`，
@@ -15,39 +11,15 @@ utf8lib.codes: |
   能遍历字符串 `s` 中的所有字符，其中 `p` 为位置（按字节计），`c` 为每个字符的码点。
   如果遇到任何无效的字节序列，会抛出错误。
 
-utf8lib.codes.param.s: ""
-
-utf8lib.codes.return.1: ""
-
 utf8lib.codepoint: |
   以整数形式返回 `s` 中从字节位置 `i` 到 `j`（两端都包含）开始的所有字符的码点。
   `i` 的默认值为 1，`j` 的默认值为 `i`。如果遇到任何无效的字节序列，会抛出错误。
-
-utf8lib.codepoint.param.s: ""
-
-utf8lib.codepoint.param.i: ""
-
-utf8lib.codepoint.param.j: ""
-
-utf8lib.codepoint.return.1: ""
 
 utf8lib.len: |
   返回字符串 `s` 中从位置 `i` 到 `j`（两端都包含）开始的 UTF-8 字符数量。
   `i` 的默认值为 1，`j` 的默认值为 -1。
 
   如果发现任何无效的字节序列，则返回 `false` 以及第一个无效字节的位置。
-
-utf8lib.len.param.s: ""
-
-utf8lib.len.param.i: ""
-
-utf8lib.len.param.j: ""
-
-utf8lib.len.param.lax: ""
-
-utf8lib.len.return.1: ""
-
-utf8lib.len.return.2: ""
 
 utf8lib.offset: |
   返回 `s` 中第 `n` 个字符的编码起始位置（按字节计）（从位置 `i` 开始计数）。
@@ -60,11 +32,3 @@ utf8lib.offset: |
   特殊情况：当 `n` 为 0 时，函数返回包含 `s` 的第 `i` 个字节的那个字符的编码起始位置。
 
   此函数假定 `s` 是合法的 UTF-8 字符串。
-
-utf8lib.offset.param.s: ""
-
-utf8lib.offset.param.n: ""
-
-utf8lib.offset.param.i: ""
-
-utf8lib.offset.return.1: ""

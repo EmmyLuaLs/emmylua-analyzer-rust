@@ -17,8 +17,12 @@ pub(crate) struct ReplaceTarget {
 /// 基于 analyzer 的精确 span，为单文件计算“可替换的目标列表”。
 ///
 /// 注意：这里不关心具体翻译文本，仅计算每个 key 对应的替换范围和替换策略。
-pub(crate) fn compute_replace_targets(content: &str, file_name: &str) -> Vec<ReplaceTarget> {
-    let analyzed = analyze_lua_doc_file(file_name, content, true);
+pub(crate) fn compute_replace_targets(
+    content: &str,
+    file_name: &str,
+    include_empty: bool,
+) -> Vec<ReplaceTarget> {
+    let analyzed = analyze_lua_doc_file(file_name, content, include_empty);
 
     let mut targets: Vec<ReplaceTarget> = Vec::new();
     let mut used_spans: HashSet<(usize, usize)> = HashSet::new();

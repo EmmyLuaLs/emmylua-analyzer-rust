@@ -15,8 +15,6 @@ number: |
   和/或单精度（32位）浮点数。对于小型机器和嵌入式系统，整数和浮点数
   都使用32位的选项特别有吸引力。（参见 luaconf.h 文件中的宏 LUA_32BITS。）
 
-integer: ""
-
 userdata: |
   *userdata* 类型用于允许将任意 C 数据存储在 Lua 变量中。userdata 值
   表示一块原始内存。有两种 userdata：*完全 userdata*，是一个由 Lua
@@ -24,8 +22,6 @@ userdata: |
   Lua 中没有预定义的操作，除了赋值和身份测试。通过使用 *元表*，程序员
   可以为完全 userdata 值定义操作。userdata 值不能在 Lua 中创建或修改，
   只能通过 C API 进行。这保证了宿主程序所拥有数据的完整性。
-
-lightuserdata: ""
 
 thread: |
   *thread* 类型表示独立的执行线程，用于实现协程。Lua 线程与操作系统
@@ -53,26 +49,6 @@ table: |
   插入表中的实际键将是整数 `2`。（另一方面，2 和 "`2`" 是不同的 Lua 值，
   因此表示不同的表条目。）
 
-any: ""
-
-void: ""
-
-unknown: ""
-
-never: ""
-
-self: ""
-
-int: ""
-
-namespace: ""
-
-function: ""
-
-std.NotNull: ""
-
-std.Nullable: ""
-
 std.Select: |
   Select 函数的内置类型
 
@@ -85,23 +61,11 @@ std.RawGet: |
 std.ConstTpl: |
   泛型模板的内置类型，用于匹配整数常量和 true/false
 
-type: ""
-
-collectgarbage_opt: ""
-
-metatable: ""
-
-TypeGuard: ""
-
-Language: ""
-
 Parameters: |
   以元组形式获取函数的参数
 
 ConstructorParameters: |
   以元组形式获取构造函数的参数
-
-ReturnType: ""
 
 Partial: |
   使 T 中的所有属性变为可选

@@ -12,5 +12,3 @@ clear: |
   注意：此函数仅适用于非常特定的场景。多数情况下，更好的做法是用一个新表替换（通常唯一的）引用，并让 GC 自行回收旧表。
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.clear"])
-
-clear.param.tab: ""

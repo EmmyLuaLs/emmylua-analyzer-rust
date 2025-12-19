@@ -1,5 +1,3 @@
-packagelib: ""
-
 packagelib.config: |
   一个字符串，用于描述一些与包相关的编译期配置。该字符串由多行组成：
 
@@ -37,12 +35,6 @@ packagelib.loadlib: |
   标准 C 不支持此函数，因此它仅在部分平台可用（Windows、Linux、Mac OS X、Solaris、BSD，
   以及其他支持 `dlfcn` 标准的 Unix 系统）。
 
-packagelib.loadlib.param.libname: ""
-
-packagelib.loadlib.param.funcname: ""
-
-packagelib.loadlib.return.1: ""
-
 packagelib.path: |
   `require` 用于搜索 Lua 加载器的路径。
 
@@ -53,8 +45,6 @@ packagelib.preload: |
   一个表，用于存放特定模块的加载器（参见 `require`）。
 
   该变量只是对真实表的引用；对该变量赋值不会改变 `require` 使用的表。
-
-packagelib.loaders: ""
 
 packagelib.searchers: |
   `require` 用于控制如何加载模块的表。
@@ -88,18 +78,6 @@ packagelib.searchpath: |
   返回第一个能够以只读模式打开的文件（在关闭文件后）的最终文件名；如果都失败，则返回 **nil** 以及错误消息
   （错误消息会列出所有尝试打开的文件名）。
 
-packagelib.searchpath.param.name: ""
-
-packagelib.searchpath.param.path: ""
-
-packagelib.searchpath.param.sep: ""
-
-packagelib.searchpath.param.rep: ""
-
-packagelib.searchpath.return.1: ""
-
 packagelib.seeall: |
   为 `module` 设置一个元表，其 `__index` 字段指向全局环境，使该模块从全局环境继承值。
   用作 `module` 函数的一个选项。
-
-packagelib.seeall.param.module: ""

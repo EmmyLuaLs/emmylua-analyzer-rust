@@ -10,9 +10,3 @@ new: |
   ```
 
   [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.new"])
-
-new.param.narray: ""
-
-new.param.nhash: ""
-
-new.return.1: ""

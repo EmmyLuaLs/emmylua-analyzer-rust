@@ -534,7 +534,7 @@ fn push_entry(
     entry: ExtractedEntry,
     include_empty: bool,
 ) {
-    if entry.value.is_empty() && !include_empty {
+    if entry.value.trim().is_empty() && !include_empty {
         return;
     }
     if !seen.insert(entry.locale_key.clone()) {

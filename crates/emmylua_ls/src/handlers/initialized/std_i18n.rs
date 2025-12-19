@@ -371,7 +371,7 @@ fn fnv1a64_hex(s: &str) -> String {
         hash ^= *b as u64;
         hash = hash.wrapping_mul(0x00000100000001B3);
     }
-    format!("fnv1a64:{hash:016x}")
+    format!("{hash:016x}")
 }
 
 #[cfg(test)]

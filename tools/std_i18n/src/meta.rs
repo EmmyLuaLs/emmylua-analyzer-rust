@@ -51,6 +51,7 @@ pub struct MetaPos {
 pub fn write_std_meta_yaml(
     std_dir: &Path,
     out_root: &Path,
+    full_output: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut files: Vec<PathBuf> = WalkDir::new(std_dir)
         .min_depth(1)
@@ -78,7 +79,7 @@ pub fn write_std_meta_yaml(
             .to_string();
         let content = fs::read_to_string(&full_path)?;
 
-        let targets = compute_replace_targets(&content, &file_name);
+        let targets = compute_replace_targets(&content, &file_name, full_output);
         let line_starts = build_line_start_offsets(&content);
 
         let mut entries: Vec<MetaEntry> = Vec::with_capacity(targets.len());
@@ -183,5 +184,5 @@ fn fnv1a64_hex(s: &str) -> String {
         hash ^= *b as u64;
         hash = hash.wrapping_mul(0x00000100000001B3);
     }
-    format!("fnv1a64:{hash:016x}")
+    format!("{hash:016x}")
 }

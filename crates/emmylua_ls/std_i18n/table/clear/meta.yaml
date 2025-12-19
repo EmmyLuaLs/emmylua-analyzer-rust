@@ -3,29 +3,16 @@ line_base: 0
 col_base: 0
 file: table/clear.lua
 entries:
-  - key: clear
-    kind:
-      type: doc_block
-      indent: ""
-    range:
-      start:
-        line: 5
-        col: 0
-      end:
-        line: 15
-        col: 0
-    hash: fnv1a64:95aff6d9fd7ac7bc
-    context_hash: fnv1a64:de7cc417de1b3246
-  - key: clear.param.tab
-    kind:
-      type: line_tail
-      prefix: " "
-    range:
-      start:
-        line: 15
-        col: 19
-      end:
-        line: 15
-        col: 19
-    hash: fnv1a64:cbf29ce484222325
-    context_hash: fnv1a64:bf81d284521eba84
+- key: clear
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 5
+      col: 0
+    end:
+      line: 15
+      col: 0
+  hash: '95aff6d9fd7ac7bc'
+  context_hash: de7cc417de1b3246

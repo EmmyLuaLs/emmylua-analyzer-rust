@@ -18,11 +18,12 @@ pub fn write_std_locales_yaml(
     std_dir: &Path,
     locale: &str,
     out_root: &Path,
-    include_empty: bool,
+    full_output: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let files = crate::extractor::extract_std_dir(std_dir, include_empty)?;
+    // `full_output=false` 时，extractor 会过滤掉不包含原文（value 为空）的条目。
+    let files = crate::extractor::extract_std_dir(std_dir, full_output)?;
     for file in files {
-        write_one_file(out_root, &file, locale, include_empty)?;
+        write_one_file(out_root, &file, locale)?;
     }
 
     Ok(())
@@ -32,7 +33,6 @@ fn write_one_file(
     out_root: &Path,
     file: &ExtractedFile,
     locale: &str,
-    include_empty: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 输出目录：去掉 `.lua` 扩展名作为目录名（支持子目录）
     let mut dir_rel = file.path.clone();
@@ -54,9 +54,6 @@ fn write_one_file(
             continue;
         }
         let translated = existing.get(&yaml_key).cloned().unwrap_or_default();
-        if translated.is_empty() && !include_empty {
-            continue;
-        }
         ordered.push(YamlOutEntry {
             key: yaml_key,
             translated,
