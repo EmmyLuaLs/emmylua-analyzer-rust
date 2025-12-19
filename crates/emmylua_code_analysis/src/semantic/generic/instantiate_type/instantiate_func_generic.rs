@@ -1,6 +1,6 @@
 use std::{collections::HashSet, ops::Deref, sync::Arc};
 
-use emmylua_parser::LuaDocTypeList;
+use emmylua_parser::{LuaAstNode, LuaDocTypeList};
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use internment::ArcIntern;
 
@@ -23,6 +23,7 @@ use crate::{
         infer_expr,
     },
 };
+use crate::{LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl};
 
 use super::TypeSubstitutor;
 
@@ -231,16 +232,32 @@ pub fn infer_self_type(
     cache: &mut LuaInferCache,
     call_expr: &LuaCallExpr,
 ) -> Option<LuaType> {
-    let prefix_expr = call_expr.get_prefix_expr();
-    if let Some(prefix_expr) = prefix_expr
-        && let LuaExpr::IndexExpr(index) = prefix_expr
-    {
-        let self_expr = index.get_prefix_expr();
-        if let Some(self_expr) = self_expr {
+    let prefix_expr = call_expr.get_prefix_expr()?;
+    match prefix_expr {
+        LuaExpr::IndexExpr(index) => {
+            let self_expr = index.get_prefix_expr()?;
             let self_type = infer_expr(db, cache, self_expr).ok()?;
             let self_type = build_self_type(db, &self_type);
             return Some(self_type);
         }
+        LuaExpr::NameExpr(name) => {
+            let semantic_decl_id = infer_node_semantic_decl(
+                db,
+                cache,
+                name.syntax().clone(),
+                SemanticDeclLevel::default(),
+            )?;
+            if let LuaSemanticDeclId::Member(member_id) = semantic_decl_id {
+                let owner = db.get_member_index().get_current_owner(&member_id)?;
+                if let LuaMemberOwner::Type(id) = owner {
+                    let typ = LuaType::Ref(id.clone());
+                    let self_type = build_self_type(db, &typ);
+                    return Some(self_type);
+                }
+                return None;
+            }
+        }
+        _ => {}
     }
 
     None

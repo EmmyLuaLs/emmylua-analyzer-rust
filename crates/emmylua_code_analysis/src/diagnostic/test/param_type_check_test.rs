@@ -1420,7 +1420,7 @@ mod test {
     }
 
     #[test]
-    fn test_key_of() {
+    fn test_keyof() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
@@ -1451,6 +1451,30 @@ mod test {
             ---@type keyof SuiteHooks
             local name
             test(name)
+        "#,
+        ));
+    }
+
+    #[test]
+    fn test_origin_self() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Runner
+            ---@field onCollectStart? fun(self:self)
+
+            ---@type Runner
+            runner = {}
+
+        "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            local originOnCollectStart = runner.onCollectStart
+            runner.onCollectStart = function(self)
+                originOnCollectStart(self)
+            end
         "#,
         ));
     }
