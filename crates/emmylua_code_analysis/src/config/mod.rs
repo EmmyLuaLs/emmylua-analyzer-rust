@@ -204,3 +204,13 @@ fn replace_placeholders(input: &str, workspace_folder: &str) -> String {
     })
     .to_string()
 }
+
+#[cfg(test)]
+mod test {
+    use super::pre_process_path;
+
+    #[test]
+    fn pre_proc_path() {
+        panic!()
+    }
+}
