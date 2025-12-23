@@ -159,6 +159,35 @@ fn parse_variable_name_list(p: &mut LuaParser, support_attrib: bool) -> ParseRes
     Ok(CompleteMarker::empty())
 }
 
+fn parse_global_name_list(p: &mut LuaParser) -> ParseResult {
+    parse_local_name(p, true)?;
+
+    while p.current_token() == LuaTokenKind::TkComma {
+        p.bump();
+        match parse_local_name(p, true) {
+            Ok(_) => {}
+            Err(_) => {
+                p.push_error(LuaParseError::syntax_error_from(
+                    &t!("expected variable name after ','"),
+                    p.current_token_range(),
+                ));
+            }
+        }
+    }
+
+    if p.current_token() == LuaTokenKind::TkEq {
+        p.bump();
+        match parse_expr_list_impl(p) {
+            Ok(_) => {}
+            Err(_) => {
+                push_expr_error_lazy(p, || t!("expected expression after '='"));
+            }
+        }
+    }
+
+    Ok(CompleteMarker::empty())
+}
+
 pub fn parse_stats(p: &mut LuaParser) {
     while !block_follow(p) {
         let level = p.get_mark_level();
@@ -731,18 +760,44 @@ fn parse_empty_stat(p: &mut LuaParser) -> ParseResult {
 }
 
 fn try_parse_global_stat(p: &mut LuaParser) -> ParseResult {
-    let m = p.mark(LuaSyntaxKind::GlobalStat);
+    let mut m = p.mark(LuaSyntaxKind::GlobalStat);
     match p.peek_next_token() {
         LuaTokenKind::TkName => {
             p.set_current_token_kind(LuaTokenKind::TkGlobal);
             p.bump();
-            parse_variable_name_list(p, true)?;
+            parse_global_name_list(p)?;
         }
         LuaTokenKind::TkLt => {
             p.set_current_token_kind(LuaTokenKind::TkGlobal);
             p.bump();
             parse_attrib(p)?;
-            parse_variable_name_list(p, true)?;
+            parse_global_name_list(p)?;
+        }
+        // global function
+        LuaTokenKind::TkFunction => {
+            p.set_current_token_kind(LuaTokenKind::TkGlobal);
+            p.bump(); // consume 'global'
+            m.set_kind(p, LuaSyntaxKind::FuncStat);
+            p.bump(); // consume 'function'
+            let m2 = p.mark(LuaSyntaxKind::NameExpr);
+            match expect_token(p, LuaTokenKind::TkName) {
+                Ok(_) => {}
+                Err(_) => {
+                    p.push_error(LuaParseError::syntax_error_from(
+                        &t!("expected function name after 'global function'"),
+                        p.current_token_range(),
+                    ));
+                    return Err(ParseFailReason::UnexpectedToken);
+                }
+            }
+            m2.complete(p);
+            parse_closure_expr(p)?;
+        }
+        // global *
+        LuaTokenKind::TkMul => {
+            p.set_current_token_kind(LuaTokenKind::TkGlobal);
+            p.bump(); // consume 'global'
+            p.bump(); // consume '*'
         }
         _ => {
             return Ok(m.undo(p));

@@ -115,6 +115,7 @@ pub fn instantiate_doc_function(
     let tpl_ret = doc_func.get_ret();
     let async_state = doc_func.get_async_state();
     let colon_define = doc_func.is_colon_define();
+    let mut is_variadic = doc_func.is_variadic();
 
     let mut new_params = Vec::new();
     for origin_param in tpl_func_params.iter() {
@@ -142,6 +143,7 @@ pub fn instantiate_doc_function(
                                         }
                                         continue;
                                     }
+                                    is_variadic = true;
                                     new_params.push((
                                         "...".to_string(),
                                         Some(LuaType::Variadic(
@@ -150,7 +152,8 @@ pub fn instantiate_doc_function(
                                     ));
                                 }
                                 SubstitutorValue::Params(params) => {
-                                    for param in params {
+                                    for (i, param) in params.iter().enumerate() {
+                                        is_variadic = i + 1 == params.len() && param.0 == "...";
                                         new_params.push(param.clone());
                                     }
                                 }
@@ -161,6 +164,7 @@ pub fn instantiate_doc_function(
                                     }
                                 }
                                 _ => {
+                                    is_variadic = true;
                                     new_params.push((
                                         "...".to_string(),
                                         Some(LuaType::Variadic(
@@ -212,7 +216,14 @@ pub fn instantiate_doc_function(
     }
 
     LuaType::DocFunction(
-        LuaFunctionType::new(async_state, colon_define, new_params, inst_ret_type).into(),
+        LuaFunctionType::new(
+            async_state,
+            colon_define,
+            is_variadic,
+            new_params,
+            inst_ret_type,
+        )
+        .into(),
     )
 }
 

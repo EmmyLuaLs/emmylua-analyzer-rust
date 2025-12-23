@@ -476,10 +476,12 @@ fn infer_func_type(analyzer: &mut DocAnalyzer, func: &LuaDocFuncType) -> LuaType
     }
 
     let mut params_result = Vec::new();
+    let mut is_variadic = false;
     for param in func.get_params() {
         let name = if let Some(param) = param.get_name_token() {
             param.get_name_text().to_string()
         } else if param.is_dots() {
+            is_variadic = true;
             "...".to_string()
         } else {
             continue;
@@ -546,7 +548,14 @@ fn infer_func_type(analyzer: &mut DocAnalyzer, func: &LuaDocFuncType) -> LuaType
     };
 
     LuaType::DocFunction(
-        LuaFunctionType::new(async_state, is_colon, params_result, return_type).into(),
+        LuaFunctionType::new(
+            async_state,
+            is_colon,
+            is_variadic,
+            params_result,
+            return_type,
+        )
+        .into(),
     )
 }
 

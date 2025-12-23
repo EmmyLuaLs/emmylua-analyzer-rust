@@ -101,6 +101,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
                 OperatorFunction::Func(Arc::new(LuaFunctionType::new(
                     AsyncState::None,
                     false,
+                    false,
                     vec![
                         (
                             "self".to_string(),
@@ -193,6 +194,7 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
         name_token.get_range(),
         OperatorFunction::Func(Arc::new(LuaFunctionType::new(
             AsyncState::None,
+            false,
             false,
             operands,
             return_type,

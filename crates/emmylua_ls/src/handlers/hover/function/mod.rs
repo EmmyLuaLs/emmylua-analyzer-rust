@@ -228,6 +228,7 @@ fn process_function_type(
             let fake_doc_function = Arc::new(LuaFunctionType::new(
                 signature.async_state,
                 signature.is_colon_define,
+                signature.is_vararg,
                 signature.get_type_params(),
                 signature.get_return_type(),
             ));

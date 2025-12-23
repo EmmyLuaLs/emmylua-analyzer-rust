@@ -24,6 +24,13 @@ mod tests {
     }
 
     #[allow(unused)]
+    fn print_ast_level(lua_code: &str, level: LuaLanguageLevel) {
+        let config = ParserConfig::new(level, None, Default::default(), Default::default(), false);
+        let tree = LuaParser::parse(lua_code, config);
+        println!("{:#?}", tree.get_red_root());
+    }
+
+    #[allow(unused)]
     fn print_ast_config(lua_code: &str, config: ParserConfig) {
         let tree = LuaParser::parse(lua_code, config);
         println!("{:#?}", tree.get_red_root());
@@ -1274,6 +1281,53 @@ Syntax(Chunk)@0..32
       Token(TkWhitespace)@30..31 " "
       Syntax(LiteralExpr)@31..32
         Token(TkInt)@31..32 "2"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::Lua55)
+        );
+    }
+
+    #[test]
+    fn test_lua55_named_var_args_grammar() {
+        let code = r#"
+        local function foo(a, b, ...c)
+        end
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..60
+  Syntax(Block)@0..60
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(LocalFuncStat)@9..51
+      Token(TkLocal)@9..14 "local"
+      Token(TkWhitespace)@14..15 " "
+      Token(TkFunction)@15..23 "function"
+      Token(TkWhitespace)@23..24 " "
+      Syntax(LocalName)@24..27
+        Token(TkName)@24..27 "foo"
+      Syntax(ClosureExpr)@27..51
+        Syntax(ParamList)@27..39
+          Token(TkLeftParen)@27..28 "("
+          Syntax(ParamName)@28..29
+            Token(TkName)@28..29 "a"
+          Token(TkComma)@29..30 ","
+          Token(TkWhitespace)@30..31 " "
+          Syntax(ParamName)@31..32
+            Token(TkName)@31..32 "b"
+          Token(TkComma)@32..33 ","
+          Token(TkWhitespace)@33..34 " "
+          Syntax(ParamName)@34..38
+            Token(TkDots)@34..37 "..."
+            Token(TkName)@37..38 "c"
+          Token(TkRightParen)@38..39 ")"
+        Token(TkEndOfLine)@39..40 "\n"
+        Token(TkWhitespace)@40..48 "        "
+        Token(TkEnd)@48..51 "end"
+    Token(TkEndOfLine)@51..52 "\n"
+    Token(TkWhitespace)@52..60 "        "
         "#;
 
         assert_ast_eq!(

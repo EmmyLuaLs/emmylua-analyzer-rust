@@ -635,6 +635,7 @@ impl From<LuaTupleType> for LuaType {
 pub struct LuaFunctionType {
     async_state: AsyncState,
     is_colon_define: bool,
+    is_variadic: bool,
     params: Vec<(String, Option<LuaType>)>,
     ret: LuaType,
 }
@@ -657,12 +658,14 @@ impl LuaFunctionType {
     pub fn new(
         async_state: AsyncState,
         is_colon_define: bool,
+        is_variadic: bool,
         params: Vec<(String, Option<LuaType>)>,
         ret: LuaType,
     ) -> Self {
         Self {
             async_state,
             is_colon_define,
+            is_variadic,
             params,
             ret,
         }
@@ -682,6 +685,10 @@ impl LuaFunctionType {
 
     pub fn get_ret(&self) -> &LuaType {
         &self.ret
+    }
+
+    pub fn is_variadic(&self) -> bool {
+        self.is_variadic
     }
 
     pub fn get_variadic_ret(&self) -> VariadicType {

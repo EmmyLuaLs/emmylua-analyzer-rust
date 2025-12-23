@@ -106,6 +106,7 @@ pub fn infer_call_expr_func(
                 LuaFunctionType::new(
                     func_ty.get_async_state(),
                     func_ty.is_colon_define(),
+                    func_ty.is_variadic(),
                     func_ty.get_params().to_vec(),
                     new_ret,
                 )
@@ -185,6 +186,7 @@ fn infer_signature_doc_function(
         let mut fake_doc_function = LuaFunctionType::new(
             signature.async_state,
             signature.is_colon_define,
+            signature.is_vararg,
             signature.get_type_params(),
             signature.get_return_type(),
         );
@@ -198,6 +200,7 @@ fn infer_signature_doc_function(
         let fake_doc_function = Arc::new(LuaFunctionType::new(
             signature.async_state,
             signature.is_colon_define,
+            signature.is_vararg,
             signature.get_type_params(),
             signature.get_return_type(),
         ));
@@ -458,6 +461,7 @@ fn infer_union(
                     let mut fake_doc_function = LuaFunctionType::new(
                         signature.async_state,
                         signature.is_colon_define,
+                        signature.is_vararg,
                         signature.get_type_params(),
                         signature.get_return_type(),
                     );

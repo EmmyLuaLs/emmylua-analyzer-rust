@@ -199,10 +199,16 @@ fn parse_param_list(p: &mut LuaParser) -> ParseResult {
 
 fn parse_param_name(p: &mut LuaParser) -> ParseResult {
     let m = p.mark(LuaSyntaxKind::ParamName);
-
-    match p.current_token() {
+    let token = p.current_token();
+    match token {
         LuaTokenKind::TkName | LuaTokenKind::TkDots => {
             p.bump();
+            if token == LuaTokenKind::TkDots
+                && p.parse_config.support_named_var_args()
+                && p.current_token() == LuaTokenKind::TkName
+            {
+                p.bump();
+            }
         }
         _ => {
             p.push_error(LuaParseError::syntax_error_from(

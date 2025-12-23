@@ -143,6 +143,7 @@ impl LuaOperator {
                     let func_type = LuaFunctionType::new(
                         signature.async_state,
                         is_colon_define,
+                        signature.is_vararg,
                         params,
                         return_type,
                     );

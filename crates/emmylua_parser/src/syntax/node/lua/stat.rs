@@ -1,5 +1,5 @@
 use crate::{
-    LuaAstToken, LuaGeneralToken, LuaLocalAttribute, LuaSyntaxNode,
+    LuaAstToken, LuaGeneralToken, LuaLocalAttribute, LuaSyntaxNode, LuaTokenKind,
     kind::LuaSyntaxKind,
     syntax::{
         LuaCommentOwner,
@@ -381,6 +381,10 @@ impl LuaFuncStat {
 
     pub fn get_closure(&self) -> Option<LuaClosureExpr> {
         self.child()
+    }
+
+    pub fn is_global(&self) -> bool {
+        self.token_by_kind(LuaTokenKind::TkGlobal).is_some()
     }
 }
 
@@ -1033,5 +1037,9 @@ impl LuaGlobalStat {
 
     pub fn get_attrib(&self) -> Option<LuaLocalAttribute> {
         self.child()
+    }
+
+    pub fn is_any_global(&self) -> bool {
+        self.token_by_kind(LuaTokenKind::TkMul).is_some()
     }
 }

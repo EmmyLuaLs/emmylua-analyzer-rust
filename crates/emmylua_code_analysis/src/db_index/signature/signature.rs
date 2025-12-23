@@ -24,6 +24,7 @@ pub struct LuaSignature {
     pub is_colon_define: bool,
     pub async_state: AsyncState,
     pub nodiscard: Option<LuaNoDiscard>,
+    pub is_vararg: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +51,7 @@ impl LuaSignature {
             is_colon_define: false,
             async_state: AsyncState::None,
             nodiscard: None,
+            is_vararg: false,
         }
     }
 
@@ -157,8 +159,14 @@ impl LuaSignature {
     pub fn to_doc_func_type(&self) -> Arc<LuaFunctionType> {
         let params = self.get_type_params();
         let return_type = self.get_return_type();
-        let func_type =
-            LuaFunctionType::new(self.async_state, self.is_colon_define, params, return_type);
+        let is_vararg = self.is_vararg;
+        let func_type = LuaFunctionType::new(
+            self.async_state,
+            self.is_colon_define,
+            is_vararg,
+            params,
+            return_type,
+        );
         Arc::new(func_type)
     }
 
@@ -169,7 +177,8 @@ impl LuaSignature {
         }
 
         let return_type = self.get_return_type();
-        let func_type = LuaFunctionType::new(self.async_state, false, params, return_type);
+        let func_type =
+            LuaFunctionType::new(self.async_state, false, self.is_vararg, params, return_type);
         Arc::new(func_type)
     }
 }

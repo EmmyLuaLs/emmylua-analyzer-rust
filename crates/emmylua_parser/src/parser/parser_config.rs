@@ -44,6 +44,10 @@ impl<'cache> ParserConfig<'cache> {
         self.enable_emmylua_doc
     }
 
+    pub fn support_named_var_args(&self) -> bool {
+        self.level >= LuaLanguageLevel::Lua55
+    }
+
     pub fn node_cache(&mut self) -> Option<&mut NodeCache> {
         self.node_cache.as_deref_mut()
     }

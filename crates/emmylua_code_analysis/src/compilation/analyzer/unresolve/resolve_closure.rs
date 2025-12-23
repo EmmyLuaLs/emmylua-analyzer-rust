@@ -395,6 +395,7 @@ fn resolve_closure_member_type(
                 &LuaFunctionType::new(
                     signature.async_state,
                     signature.is_colon_define,
+                    signature.is_vararg,
                     final_params,
                     final_ret,
                 ),

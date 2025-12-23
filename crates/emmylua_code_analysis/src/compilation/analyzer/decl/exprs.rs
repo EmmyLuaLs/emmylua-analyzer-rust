@@ -199,7 +199,12 @@ fn analyze_closure_params(
         .get_signature_index_mut()
         .get_or_create(*signature_id);
     let params = closure.get_params_list()?.get_params();
+    let mut is_vararg = false;
     for param in params {
+        if param.is_dots() {
+            is_vararg = true;
+        }
+
         let name = if let Some(name_token) = param.get_name_token() {
             name_token.get_name_text().to_string()
         } else if param.is_dots() {
@@ -210,6 +215,8 @@ fn analyze_closure_params(
 
         signature.params.push(name);
     }
+
+    signature.is_vararg = is_vararg;
 
     Some(())
 }
