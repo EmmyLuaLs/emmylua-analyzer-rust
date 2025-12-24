@@ -1478,4 +1478,40 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_issue_896() {
+        let mut ws = VirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.strict.array_index = false;
+        ws.update_emmyrc(emmyrc);
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@alias MyFnA fun(): number
+            ---@alias MyFnB<T> fun(): T
+            ---@alias MyFnC<T> fun(): number
+
+            local aaa ---@type MyFnA[]
+            ---@param aaa MyFnA[]
+            local function AAA(aaa) return aaa end
+            local _ = AAA(aaa)
+
+            local bbb1 ---@type (MyFnB<number>)[]
+            local bbb2 = { function() return 1 end } ---@type (MyFnB<number>)[]
+            ---@param bbb (MyFnB<number>)[]
+            local function BBB(bbb) return bbb end
+            local _ = BBB(bbb1)
+            local _ = BBB(bbb2)
+
+            local ccc1 ---@type (MyFnC<number>)[]
+            local ccc2 = { function() return 1 end } ---@type (MyFnC<number>)[]
+            ---@param ccc (MyFnC<number>)[]
+            local function CCC(ccc) return ccc end
+            local _ = CCC(ccc1)
+            local _ = CCC(ccc2)
+        "#,
+        ));
+    }
 }
