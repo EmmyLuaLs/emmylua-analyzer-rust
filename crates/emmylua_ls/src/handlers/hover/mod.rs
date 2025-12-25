@@ -5,7 +5,6 @@ mod hover_builder;
 mod humanize_type_decl;
 mod humanize_types;
 mod keyword_hover;
-mod std_hover;
 
 use super::RegisterCapabilities;
 use crate::context::ServerContextSnapshot;
@@ -24,7 +23,6 @@ use lsp_types::{
     Position, ServerCapabilities,
 };
 use rowan::TokenAtOffset;
-pub use std_hover::{hover_std_description, is_std};
 use tokio_util::sync::CancellationToken;
 
 pub async fn on_hover(

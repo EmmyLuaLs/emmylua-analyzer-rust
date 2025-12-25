@@ -1,0 +1,174 @@
+version: 1
+line_base: 0
+col_base: 0
+file: builtin.lua
+entries:
+- key: 'nil'
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 22
+      col: 0
+  hash: e0061e5c045df64a
+  context_hash: de7cc417de1b3246
+- key: boolean
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 24
+      col: 0
+    end:
+      line: 27
+      col: 0
+  hash: '31cc8159cccf97f7'
+  context_hash: de7cc417de1b3246
+- key: number
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 29
+      col: 0
+    end:
+      line: 41
+      col: 0
+  hash: fa4ea32a81d5aed9
+  context_hash: de7cc417de1b3246
+- key: userdata
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 45
+      col: 0
+    end:
+      line: 55
+      col: 0
+  hash: e3cc299bfe56ad03
+  context_hash: de7cc417de1b3246
+- key: thread
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 59
+      col: 0
+    end:
+      line: 64
+      col: 0
+  hash: a0216db4b0f8ba68
+  context_hash: de7cc417de1b3246
+- key: table
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 66
+      col: 0
+    end:
+      line: 96
+      col: 0
+  hash: '8c15b89f8cf799f8'
+  context_hash: de7cc417de1b3246
+- key: std.Select
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 118
+      col: 0
+    end:
+      line: 119
+      col: 0
+  hash: '38c2701334822d7a'
+  context_hash: c1905bc5fdb3a411
+- key: std.Unpack
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 121
+      col: 0
+    end:
+      line: 123
+      col: 0
+  hash: c7ad7bb74235dc8c
+  context_hash: de7cc417de1b3246
+- key: std.RawGet
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 125
+      col: 0
+    end:
+      line: 127
+      col: 0
+  hash: '7327558f3445dea6'
+  context_hash: de7cc417de1b3246
+- key: std.ConstTpl
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 129
+      col: 0
+    end:
+      line: 131
+      col: 0
+  hash: '0e263d1e0caa6b3b'
+  context_hash: de7cc417de1b3246
+- key: Parameters
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 145
+      col: 0
+    end:
+      line: 146
+      col: 0
+  hash: d949231b3fc3363d
+  context_hash: ea58ce70c1a97a2a
+- key: ConstructorParameters
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 148
+      col: 0
+    end:
+      line: 149
+      col: 0
+  hash: '6537def67aeb8537'
+  context_hash: d32380b12ad01070
+- key: Partial
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 153
+      col: 0
+    end:
+      line: 154
+      col: 0
+  hash: caabe7bd856c5ea6
+  context_hash: '7f3cfe2b87b6d515'

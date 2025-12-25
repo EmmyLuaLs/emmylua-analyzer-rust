@@ -1,0 +1,83 @@
+version: 1
+line_base: 0
+col_base: 0
+file: utf8.lua
+entries:
+- key: utf8lib.char
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 21
+      col: 0
+    end:
+      line: 25
+      col: 0
+  hash: '88878a5370a61cb8'
+  context_hash: de7cc417de1b3246
+- key: utf8lib.charpattern
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 28
+      col: 0
+    end:
+      line: 32
+      col: 0
+  hash: ddecbf83d65e8850
+  context_hash: de7cc417de1b3246
+- key: utf8lib.codes
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 35
+      col: 0
+    end:
+      line: 41
+      col: 0
+  hash: '59ccd595ffa9ef53'
+  context_hash: de7cc417de1b3246
+- key: utf8lib.codepoint
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 45
+      col: 0
+    end:
+      line: 50
+      col: 0
+  hash: '3c9502ab0dd4907a'
+  context_hash: de7cc417de1b3246
+- key: utf8lib.len
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 57
+      col: 0
+    end:
+      line: 62
+      col: 0
+  hash: '02bcfb79f2709c26'
+  context_hash: de7cc417de1b3246
+- key: utf8lib.offset
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 71
+      col: 0
+    end:
+      line: 83
+      col: 0
+  hash: '021a0690a3ca0f56'
+  context_hash: de7cc417de1b3246

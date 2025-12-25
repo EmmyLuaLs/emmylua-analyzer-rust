@@ -1,0 +1,161 @@
+version: 1
+line_base: 0
+col_base: 0
+file: coroutine.lua
+entries:
+- key: coroutinelib.create
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 21
+      col: 0
+  hash: f783b853bcc6436b
+  context_hash: de7cc417de1b3246
+- key: coroutinelib.isyieldable
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 26
+      col: 0
+    end:
+      line: 31
+      col: 0
+  hash: '20f67ae45ee960e5'
+  context_hash: de7cc417de1b3246
+- key: coroutinelib.close
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 38
+      col: 0
+    end:
+      line: 41
+      col: 0
+  hash: ed170c5fa338cd96
+  context_hash: de7cc417de1b3246
+- key: coroutinelib.resume
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 48
+      col: 0
+    end:
+      line: 59
+      col: 0
+  hash: c68b5b72b7f9a791
+  context_hash: de7cc417de1b3246
+- key: coroutinelib.running
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 66
+      col: 0
+    end:
+      line: 69
+      col: 0
+  hash: '3b9508453c78ef79'
+  context_hash: de7cc417de1b3246
+- key: coroutinelib.status
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 73
+      col: 0
+    end:
+      line: 80
+      col: 0
+  hash: '2c49c377233084fa'
+  context_hash: de7cc417de1b3246
+- key: coroutinelib.status.return.1.running
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 82
+      col: 18
+    end:
+      line: 82
+      col: 30
+  hash: c82a37900965429a
+  context_hash: '6e48d348e70f84c9'
+- key: coroutinelib.status.return.1.suspended
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 83
+      col: 18
+    end:
+      line: 83
+      col: 47
+  hash: fa936af8644ed8c3
+  context_hash: '71a22165c82844bc'
+- key: coroutinelib.status.return.1.normal
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 84
+      col: 18
+    end:
+      line: 84
+      col: 45
+  hash: a13ab0138fac6604
+  context_hash: e8d5ba7a0e9a3e13
+- key: coroutinelib.status.return.1.dead
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 85
+      col: 18
+    end:
+      line: 85
+      col: 57
+  hash: '72fe2d58f456cb94'
+  context_hash: '768b9a36fcce3a9c'
+- key: coroutinelib.wrap
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 89
+      col: 0
+    end:
+      line: 95
+      col: 0
+  hash: '980a35b924ee089e'
+  context_hash: de7cc417de1b3246
+- key: coroutinelib.yield
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 100
+      col: 0
+    end:
+      line: 103
+      col: 0
+  hash: '25ba6e8d8cf7cc0d'
+  context_hash: de7cc417de1b3246

@@ -1,0 +1,12 @@
+new: |
+  创建一个预设大小的表，等价于 C API 的 `lua_createtable()`。
+
+  当需要创建大表且已知最终表大小、而自动扩容开销过高时，这很有用。
+  参数 `narray` 指定类数组部分的元素数量，参数 `nhash` 指定类哈希部分的元素数量。
+  使用前需要先 require：
+
+  ```lua
+  require("table.new")
+  ```
+
+  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.new"])

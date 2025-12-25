@@ -1,14 +1,11 @@
 use emmylua_code_analysis::{
-    FileId, LuaCompilation, LuaMemberOwner, LuaSemanticDeclId, LuaType, SemanticDeclLevel,
-    SemanticModel,
+    LuaCompilation, LuaMemberOwner, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr};
 use lsp_types::{Documentation, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel};
 use rowan::NodeOrToken;
 
-use crate::handlers::hover::{
-    find_member_origin_owner, hover_std_description, infer_prefix_global_name, is_std,
-};
+use crate::handlers::hover::{find_member_origin_owner, infer_prefix_global_name};
 
 use super::build_signature_helper::{build_function_label, generate_param_label};
 
@@ -110,38 +107,17 @@ impl<'a> SignatureHelperBuilder<'a> {
                         name.push_str(ty.get_simple_name());
                     }
                     self.prefix_name = Some(name);
-
-                    // i18n
-                    self.set_std_function_description(
-                        member.get_file_id(),
-                        ty.get_name(),
-                        member.get_key().get_name(),
-                    );
                 }
                 self.function_name = member.get_key().to_path().to_string();
             }
             LuaSemanticDeclId::LuaDecl(decl_id) => {
                 let decl = db.get_decl_index().get_decl(decl_id)?;
                 self.function_name = decl.get_name().to_string();
-                self.set_std_function_description(decl.get_file_id(), decl.get_name(), None);
+                // self.set_std_function_description(decl.get_file_id(), decl.get_name(), None);
             }
             _ => {}
         }
         Some(())
-    }
-
-    fn set_std_function_description(
-        &mut self,
-        file_id: FileId,
-        type_name: &str,
-        member_name: Option<&str>,
-    ) {
-        if is_std(self.semantic_model.get_db(), file_id) {
-            let std_desc = hover_std_description(type_name, member_name);
-            if !std_desc.is_empty() {
-                self.set_description(std_desc);
-            }
-        }
     }
 
     fn set_description(&mut self, description: String) {

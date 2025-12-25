@@ -1,0 +1,161 @@
+version: 1
+line_base: 0
+col_base: 0
+file: table.lua
+entries:
+- key: tablelib.concat
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 23
+      col: 0
+  hash: '504e6d9e125a441e'
+  context_hash: de7cc417de1b3246
+- key: tablelib.insert
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 31
+      col: 0
+    end:
+      line: 36
+      col: 0
+  hash: '3f149377193529ce'
+  context_hash: de7cc417de1b3246
+- key: tablelib.move
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 44
+      col: 0
+    end:
+      line: 51
+      col: 0
+  hash: '4eaddc2518d941b3'
+  context_hash: de7cc417de1b3246
+- key: tablelib.maxn
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 61
+      col: 0
+    end:
+      line: 64
+      col: 0
+  hash: a28a3f83a36c528d
+  context_hash: de7cc417de1b3246
+- key: tablelib.remove
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 69
+      col: 0
+    end:
+      line: 79
+      col: 0
+  hash: a7e87624e3fd9616
+  context_hash: de7cc417de1b3246
+- key: tablelib.sort
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 85
+      col: 0
+    end:
+      line: 99
+      col: 0
+  hash: b11a809b5964de0f
+  context_hash: de7cc417de1b3246
+- key: tablelib.unpack
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 106
+      col: 0
+    end:
+      line: 109
+      col: 0
+  hash: c083f5e2d51f7a86
+  context_hash: d18f5e17eb4ed8be
+- key: tablelib.pack
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 117
+      col: 0
+    end:
+      line: 120
+      col: 0
+  hash: c6fe784fff53117d
+  context_hash: de7cc417de1b3246
+- key: tablelib.foreach
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 127
+      col: 0
+    end:
+      line: 131
+      col: 0
+  hash: '8a83776ff1bb2be4'
+  context_hash: de7cc417de1b3246
+- key: tablelib.foreachi
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 139
+      col: 0
+    end:
+      line: 142
+      col: 0
+  hash: ed156847af70b07b
+  context_hash: de7cc417de1b3246
+- key: tablelib.getn
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 151
+      col: 0
+    end:
+      line: 155
+      col: 0
+  hash: a33b9ea6feb84cdb
+  context_hash: de7cc417de1b3246
+- key: tablelib.create
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 164
+      col: 0
+    end:
+      line: 168
+      col: 0
+  hash: b4aa98c172166a6d
+  context_hash: '32106038437480b2'

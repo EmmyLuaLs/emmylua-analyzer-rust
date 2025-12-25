@@ -1,0 +1,486 @@
+version: 1
+line_base: 0
+col_base: 0
+file: math.lua
+entries:
+- key: mathlib.abs
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 20
+      col: 0
+  hash: c58920ed7e19d04e
+  context_hash: de7cc417de1b3246
+- key: mathlib.acos
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 25
+      col: 0
+    end:
+      line: 27
+      col: 0
+  hash: a5dd11d2e52d92bb
+  context_hash: de7cc417de1b3246
+- key: mathlib.asin
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 31
+      col: 0
+    end:
+      line: 33
+      col: 0
+  hash: a66e0fb56f556f39
+  context_hash: de7cc417de1b3246
+- key: mathlib.atan
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 37
+      col: 0
+    end:
+      line: 44
+      col: 0
+  hash: eb7d38ca6a36d7e4
+  context_hash: de7cc417de1b3246
+- key: mathlib.ceil
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 49
+      col: 0
+    end:
+      line: 51
+      col: 0
+  hash: '27f3c017a9d3c924'
+  context_hash: de7cc417de1b3246
+- key: mathlib.cos
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 55
+      col: 0
+    end:
+      line: 57
+      col: 0
+  hash: '3dcf75884877dfdf'
+  context_hash: de7cc417de1b3246
+- key: mathlib.deg
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 61
+      col: 0
+    end:
+      line: 63
+      col: 0
+  hash: f054a9819e67ad41
+  context_hash: de7cc417de1b3246
+- key: mathlib.exp
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 67
+      col: 0
+    end:
+      line: 69
+      col: 0
+  hash: '0ba32fcbfe06e7ac'
+  context_hash: de7cc417de1b3246
+- key: mathlib.floor
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 73
+      col: 0
+    end:
+      line: 75
+      col: 0
+  hash: '0217672176f9061c'
+  context_hash: de7cc417de1b3246
+- key: mathlib.fmod
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 79
+      col: 0
+    end:
+      line: 82
+      col: 0
+  hash: af18ff844942e1a1
+  context_hash: de7cc417de1b3246
+- key: mathlib.huge
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 87
+      col: 0
+    end:
+      line: 90
+      col: 0
+  hash: b6cee43c3c9752e4
+  context_hash: de7cc417de1b3246
+- key: mathlib.log
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 93
+      col: 0
+    end:
+      line: 96
+      col: 0
+  hash: '4c3d322fa253de6d'
+  context_hash: de7cc417de1b3246
+- key: mathlib.max
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 101
+      col: 0
+    end:
+      line: 104
+      col: 0
+  hash: '03a9e9e4fef2c659'
+  context_hash: de7cc417de1b3246
+- key: mathlib.maxinteger
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 111
+      col: 0
+    end:
+      line: 113
+      col: 0
+  hash: '28ba2ba24ff4a272'
+  context_hash: de7cc417de1b3246
+- key: mathlib.min
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 116
+      col: 0
+    end:
+      line: 119
+      col: 0
+  hash: b3b85d0ea6475cef
+  context_hash: de7cc417de1b3246
+- key: mathlib.mininteger
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 126
+      col: 0
+    end:
+      line: 128
+      col: 0
+  hash: a57b428c91d0e758
+  context_hash: de7cc417de1b3246
+- key: mathlib.modf
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 131
+      col: 0
+    end:
+      line: 134
+      col: 0
+  hash: '91b7162d1bad4494'
+  context_hash: de7cc417de1b3246
+- key: mathlib.pi
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 139
+      col: 0
+    end:
+      line: 140
+      col: 20
+  hash: a3cd679841b59bc3
+  context_hash: de7cc417de1b3246
+- key: mathlib.rad
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 143
+      col: 0
+    end:
+      line: 145
+      col: 0
+  hash: d221083d438800ff
+  context_hash: de7cc417de1b3246
+- key: mathlib.random
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 149
+      col: 0
+    end:
+      line: 155
+      col: 0
+  hash: b1cc3cd05011681a
+  context_hash: de7cc417de1b3246
+- key: mathlib.randomseed
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 162
+      col: 0
+    end:
+      line: 165
+      col: 0
+  hash: '93e6af65e993e003'
+  context_hash: de7cc417de1b3246
+- key: mathlib.sin
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 168
+      col: 0
+    end:
+      line: 170
+      col: 0
+  hash: f3156b9eee524b75
+  context_hash: de7cc417de1b3246
+- key: mathlib.sqrt
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 174
+      col: 0
+    end:
+      line: 177
+      col: 0
+  hash: '9c47f0e74f561c41'
+  context_hash: de7cc417de1b3246
+- key: mathlib.tan
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 181
+      col: 0
+    end:
+      line: 183
+      col: 0
+  hash: '4e92d05f5d7eea2f'
+  context_hash: de7cc417de1b3246
+- key: mathlib.tointeger
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 188
+      col: 0
+    end:
+      line: 191
+      col: 0
+  hash: e006425ac24cd772
+  context_hash: de7cc417de1b3246
+- key: mathlib.type
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 196
+      col: 0
+    end:
+      line: 199
+      col: 0
+  hash: '963bb5a28f874620'
+  context_hash: de7cc417de1b3246
+- key: mathlib.ult
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 204
+      col: 0
+    end:
+      line: 207
+      col: 0
+  hash: '2fa6304df1df9a20'
+  context_hash: de7cc417de1b3246
+- key: mathlib.pow
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 213
+      col: 0
+    end:
+      line: 215
+      col: 0
+  hash: '42724ba1a56090e7'
+  context_hash: de7cc417de1b3246
+- key: mathlib.pow.param.x
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 215
+      col: 19
+    end:
+      line: 215
+      col: 27
+  hash: fa1421b96f3eabc1
+  context_hash: a43ffd9c02dc61f0
+- key: mathlib.pow.param.y
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 216
+      col: 19
+    end:
+      line: 216
+      col: 31
+  hash: '5e06156f6c04648b'
+  context_hash: '7d56446027d998a5'
+- key: mathlib.atan2
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 221
+      col: 0
+    end:
+      line: 227
+      col: 0
+  hash: '97077dd764611e12'
+  context_hash: de7cc417de1b3246
+- key: mathlib.log10
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 233
+      col: 0
+    end:
+      line: 235
+      col: 0
+  hash: '7eeb848cac8c5c80'
+  context_hash: de7cc417de1b3246
+- key: mathlib.cosh
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 240
+      col: 0
+    end:
+      line: 242
+      col: 0
+  hash: '3f0d7a29939c3308'
+  context_hash: de7cc417de1b3246
+- key: mathlib.sinh
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 247
+      col: 0
+    end:
+      line: 249
+      col: 0
+  hash: '16630a06699d002a'
+  context_hash: de7cc417de1b3246
+- key: mathlib.tanh
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 254
+      col: 0
+    end:
+      line: 256
+      col: 0
+  hash: '05129308e84b8d36'
+  context_hash: de7cc417de1b3246
+- key: mathlib.frexp
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 261
+      col: 0
+    end:
+      line: 264
+      col: 0
+  hash: '03448afbb8de9e62'
+  context_hash: de7cc417de1b3246
+- key: mathlib.ldexp
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 269
+      col: 0
+    end:
+      line: 271
+      col: 0
+  hash: fdabbcfb70f65661
+  context_hash: de7cc417de1b3246

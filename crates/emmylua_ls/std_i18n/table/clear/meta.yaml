@@ -1,0 +1,18 @@
+version: 1
+line_base: 0
+col_base: 0
+file: table/clear.lua
+entries:
+- key: clear
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 5
+      col: 0
+    end:
+      line: 15
+      col: 0
+  hash: '95aff6d9fd7ac7bc'
+  context_hash: de7cc417de1b3246

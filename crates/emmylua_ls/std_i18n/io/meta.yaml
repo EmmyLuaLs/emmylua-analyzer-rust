@@ -1,0 +1,408 @@
+version: 1
+line_base: 0
+col_base: 0
+file: io.lua
+entries:
+- key: iolib.close
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 21
+      col: 0
+  hash: '9fd22cd41017890e'
+  context_hash: de7cc417de1b3246
+- key: iolib.flush
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 24
+      col: 0
+    end:
+      line: 25
+      col: 40
+  hash: '77b68d0b81e2a6ec'
+  context_hash: de7cc417de1b3246
+- key: iolib.input
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 28
+      col: 0
+    end:
+      line: 36
+      col: 0
+  hash: '30a4cb7aed17b4e2'
+  context_hash: de7cc417de1b3246
+- key: iolib.lines
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 40
+      col: 0
+    end:
+      line: 53
+      col: 0
+  hash: '6bf53c14d9a3e328'
+  context_hash: de7cc417de1b3246
+- key: iolib.open
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 58
+      col: 0
+    end:
+      line: 73
+      col: 0
+  hash: df02368e03dde439
+  context_hash: de7cc417de1b3246
+- key: iolib.output
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 79
+      col: 0
+    end:
+      line: 81
+      col: 0
+  hash: '4e45ea3c8fb9457c'
+  context_hash: de7cc417de1b3246
+- key: iolib.popen
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 85
+      col: 0
+    end:
+      line: 91
+      col: 0
+  hash: be397ad0e73d2933
+  context_hash: de7cc417de1b3246
+- key: std.readmode.item.n
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 99
+      col: 12
+    end:
+      line: 99
+      col: 92
+  hash: '09724402d824ca77'
+  context_hash: '140a64161cb92d4b'
+- key: std.readmode.item.a
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 100
+      col: 12
+    end:
+      line: 100
+      col: 70
+  hash: '0b0543502b6fe843'
+  context_hash: '90ef6cfb35c6bcdc'
+- key: std.readmode.item.l
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 101
+      col: 12
+    end:
+      line: 101
+      col: 61
+  hash: '2232740e3160cdc8'
+  context_hash: df058106ca067ce2
+- key: std.readmode.item.L
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 102
+      col: 12
+    end:
+      line: 102
+      col: 63
+  hash: '4942667b1190a4de'
+  context_hash: fd41ede7cf5b3288
+- key: std.readmode.item.*n
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 103
+      col: 12
+    end:
+      line: 103
+      col: 92
+  hash: '09724402d824ca77'
+  context_hash: '2a0d1282b2a177ad'
+- key: std.readmode.item.*a
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 104
+      col: 12
+    end:
+      line: 104
+      col: 70
+  hash: '0b0543502b6fe843'
+  context_hash: eaa243d8bc090b70
+- key: std.readmode.item.*l
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 105
+      col: 12
+    end:
+      line: 105
+      col: 61
+  hash: '2232740e3160cdc8'
+  context_hash: '83f5df8702ad7b68'
+- key: std.readmode.item.*L
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 106
+      col: 12
+    end:
+      line: 106
+      col: 63
+  hash: '4942667b1190a4de'
+  context_hash: b3bd56472aa2dd1e
+- key: iolib.read
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 108
+      col: 0
+    end:
+      line: 110
+      col: 0
+  hash: '771eb15e50f555d7'
+  context_hash: de7cc417de1b3246
+- key: iolib.tmpfile
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 116
+      col: 0
+    end:
+      line: 119
+      col: 0
+  hash: '8c5fee923fff7b7d'
+  context_hash: de7cc417de1b3246
+- key: iolib.type
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 122
+      col: 0
+    end:
+      line: 126
+      col: 0
+  hash: a9422cffda6cfcf8
+  context_hash: de7cc417de1b3246
+- key: iolib.write
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 130
+      col: 0
+    end:
+      line: 132
+      col: 0
+  hash: '2a7a93b6b492d6e7'
+  context_hash: de7cc417de1b3246
+- key: file
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 137
+      col: 0
+    end:
+      line: 138
+      col: 0
+  hash: '44f701b90e451a28'
+  context_hash: '6b5eb10d9792750b'
+- key: file.close@>5.2
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 142
+      col: 0
+    end:
+      line: 149
+      col: 0
+  hash: '506043bf254a978d'
+  context_hash: de7cc417de1b3246
+- key: file.close@5.1,JIT
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 155
+      col: 0
+    end:
+      line: 159
+      col: 0
+  hash: '8b2730ffb16aacd6'
+  context_hash: de7cc417de1b3246
+- key: file.flush
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 163
+      col: 0
+    end:
+      line: 165
+      col: 0
+  hash: cb93f3d56af1b6ff
+  context_hash: de7cc417de1b3246
+- key: file.lines
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 169
+      col: 0
+    end:
+      line: 180
+      col: 0
+  hash: '2f9df86b5b29e9c5'
+  context_hash: de7cc417de1b3246
+- key: file.read
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 185
+      col: 0
+    end:
+      line: 209
+      col: 0
+  hash: '6748446b86c12534'
+  context_hash: de7cc417de1b3246
+- key: file.seek
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 215
+      col: 0
+    end:
+      line: 232
+      col: 0
+  hash: bb0f0c4d8ca400b2
+  context_hash: de7cc417de1b3246
+- key: file.setvbuf
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 239
+      col: 0
+    end:
+      line: 251
+      col: 0
+  hash: b023f23bc1af6ca7
+  context_hash: de7cc417de1b3246
+- key: file.write
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 255
+      col: 0
+    end:
+      line: 261
+      col: 0
+  hash: '868914df6d494b96'
+  context_hash: de7cc417de1b3246
+- key: iolib.stderr
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 266
+      col: 0
+    end:
+      line: 267
+      col: 0
+  hash: '3f87a382a528ef4c'
+  context_hash: '241ad9d43dd76137'
+- key: iolib.stdin
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 270
+      col: 0
+    end:
+      line: 271
+      col: 0
+  hash: b3683d38bfd93f8f
+  context_hash: aa04d03ab1feb2c8
+- key: iolib.stdout
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 274
+      col: 0
+    end:
+      line: 275
+      col: 0
+  hash: b969090b3463d8a5
+  context_hash: d5100f194d3f55f2

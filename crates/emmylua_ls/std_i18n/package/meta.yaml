@@ -1,0 +1,122 @@
+version: 1
+line_base: 0
+col_base: 0
+file: package.lua
+entries:
+- key: packagelib.config
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 31
+      col: 43
+  hash: '99dcc3d5945c2f62'
+  context_hash: de7cc417de1b3246
+- key: packagelib.cpath
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 39
+      col: 0
+    end:
+      line: 45
+      col: 16
+  hash: e9dcc7a0e4b7131c
+  context_hash: de7cc417de1b3246
+- key: packagelib.loaded
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 49
+      col: 0
+    end:
+      line: 55
+      col: 55
+  hash: '43e40c3e74a6b5b1'
+  context_hash: de7cc417de1b3246
+- key: packagelib.loadlib
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 58
+      col: 0
+    end:
+      line: 77
+      col: 0
+  hash: '3ba962f5ba70f54e'
+  context_hash: de7cc417de1b3246
+- key: packagelib.path
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 82
+      col: 0
+    end:
+      line: 89
+      col: 21
+  hash: '71bb304c9691ddb4'
+  context_hash: de7cc417de1b3246
+- key: packagelib.preload
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 92
+      col: 0
+    end:
+      line: 96
+      col: 55
+  hash: '32d7fb054c43a96e'
+  context_hash: de7cc417de1b3246
+- key: packagelib.searchers
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 103
+      col: 0
+    end:
+      line: 144
+      col: 46
+  hash: '5d05ce176360e899'
+  context_hash: '1ba0fbf0ba11e4b2'
+- key: packagelib.searchpath
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 148
+      col: 0
+    end:
+      line: 165
+      col: 0
+  hash: e3a24a24ba7ced35
+  context_hash: de7cc417de1b3246
+- key: packagelib.seeall
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 172
+      col: 0
+    end:
+      line: 175
+      col: 0
+  hash: dac20d6d3e907ba3
+  context_hash: de7cc417de1b3246

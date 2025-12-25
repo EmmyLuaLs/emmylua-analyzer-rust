@@ -1,0 +1,330 @@
+version: 1
+line_base: 0
+col_base: 0
+file: string/buffer.lua
+entries:
+- key: buffer
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 5
+      col: 0
+    end:
+      line: 119
+      col: 464
+  hash: '3f1fb290916e15e3'
+  context_hash: '0ffffd55da93e0dd'
+- key: buf
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 122
+      col: 0
+    end:
+      line: 130
+      col: 0
+  hash: b876ec9e1fe5d76e
+  context_hash: '1cdc5f30a0bc1868'
+- key: string.buffer.data
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 134
+      col: 0
+    end:
+      line: 136
+      col: 0
+  hash: '4921c42ac9b4e6ba'
+  context_hash: bf68051f04c19a9f
+- key: buf.put
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 139
+      col: 0
+    end:
+      line: 143
+      col: 0
+  hash: '6759e329f138d41c'
+  context_hash: '7f31a0cf523f80b6'
+- key: buf.putf
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 149
+      col: 0
+    end:
+      line: 151
+      col: 0
+  hash: '134720a52ebbce50'
+  context_hash: b7465420402bad59
+- key: buf.putcdata
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 157
+      col: 0
+    end:
+      line: 159
+      col: 0
+  hash: '8d9ba1e277b6ffd1'
+  context_hash: '05d9961b521b6552'
+- key: buf.set
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 165
+      col: 0
+    end:
+      line: 173
+      col: 0
+  hash: baf4bbe32512a07f
+  context_hash: a1772f562f581e13
+- key: buf.reset
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 178
+      col: 0
+    end:
+      line: 179
+      col: 0
+  hash: '6383ef1d75c1fbd4'
+  context_hash: '4e35a14b657e62d6'
+- key: buf.free
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 183
+      col: 0
+    end:
+      line: 185
+      col: 222
+  hash: b79f21749a622ecf
+  context_hash: a267daf18bd68655
+- key: buf.reserve
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 189
+      col: 0
+    end:
+      line: 207
+      col: 0
+  hash: '5b5a385de244ace2'
+  context_hash: '18f3e3808bf6d879'
+- key: buf.reserve.return.1
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 208
+      col: 26
+    end:
+      line: 208
+      col: 84
+  hash: '606a76765af0a5fe'
+  context_hash: '8e6f550d60044373'
+- key: buf.reserve.return.2
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 209
+      col: 26
+    end:
+      line: 209
+      col: 52
+  hash: c9ff7b760da02fe1
+  context_hash: '7058075639983595'
+- key: buf.commit
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 213
+      col: 0
+    end:
+      line: 214
+      col: 0
+  hash: '6f6b683663e06a74'
+  context_hash: '294d8a1b3240a9b6'
+- key: buf.skip
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 219
+      col: 0
+    end:
+      line: 220
+      col: 0
+  hash: '2baf988594a98193'
+  context_hash: c65bbb20161dd0ab
+- key: buf.get
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 224
+      col: 0
+    end:
+      line: 228
+      col: 0
+  hash: b695a85360eb9976
+  context_hash: dfe1b276c890bc83
+- key: buf.tostring
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 233
+      col: 0
+    end:
+      line: 236
+      col: 0
+  hash: be09e35cc640a966
+  context_hash: '23d9f8a403da35b3'
+- key: buf.ref
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 240
+      col: 0
+    end:
+      line: 258
+      col: 0
+  hash: ec59ac6395339033
+  context_hash: '1f64bfaedf7538d6'
+- key: buf.ref.return.1
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 258
+      col: 26
+    end:
+      line: 258
+      col: 90
+  hash: '14518ff520084405'
+  context_hash: '0b00828802cffd98'
+- key: buf.ref.return.2
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 259
+      col: 23
+    end:
+      line: 259
+      col: 59
+  hash: afbd7c3182b59c06
+  context_hash: ccd63ba92ed9427c
+- key: buf.encode
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 262
+      col: 0
+    end:
+      line: 265
+      col: 0
+  hash: a38b8742aae7dbe7
+  context_hash: c397c8c88a124c49
+- key: buf.decode
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 270
+      col: 0
+    end:
+      line: 280
+      col: 0
+  hash: '4e30c26d847cb8a9'
+  context_hash: '1f16a1deba621209'
+- key: buffer.encode
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 284
+      col: 0
+    end:
+      line: 287
+      col: 0
+  hash: cc0765fe93da76b2
+  context_hash: a78581f832d11af0
+- key: buffer.decode
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 291
+      col: 0
+    end:
+      line: 300
+      col: 0
+  hash: '33e0c0c0e0812524'
+  context_hash: '4247bd38d3781068'
+- key: buffer.new
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 307
+      col: 0
+    end:
+      line: 313
+      col: 0
+  hash: '570e5bee37744a67'
+  context_hash: '2a2cd9d61df2a763'
+- key: string.buffer.serialization.opts
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 318
+      col: 0
+    end:
+      line: 349
+      col: 0
+  hash: e021fbee65992fe5
+  context_hash: '556dcc131bdfaac4'

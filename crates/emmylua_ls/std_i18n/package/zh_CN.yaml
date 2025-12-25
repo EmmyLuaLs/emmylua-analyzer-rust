@@ -1,0 +1,83 @@
+packagelib.config: |
+  一个字符串，用于描述一些与包相关的编译期配置。该字符串由多行组成：
+
+  - 第一行：目录分隔符字符串。Windows 默认为 `\`，其他系统默认为 `/`。
+  - 第二行：路径中分隔模板的字符。默认为 `;`。
+  - 第三行：标记模板中替换点的字符串。默认为 `?`。
+  - 第四行：在 Windows 的路径中，会被替换为可执行文件目录的字符串。默认为 `!`。
+  - 第五行：在构建 `luaopen_` 函数名时，用于忽略其后的所有文本的标记。默认为 `-`。
+
+packagelib.cpath: |
+  `require` 用于搜索 C 加载器的路径。
+
+  Lua 初始化 `package.cpath` 的方式与初始化 Lua 路径 `package.path` 类似：使用环境变量
+  `LUA_CPATH_5_4` 或 `LUA_CPATH`，或者使用 `luaconf.h` 中定义的默认路径。
+
+packagelib.loaded: |
+  一个表，供 `require` 用于控制哪些模块已经被加载。
+
+  当你 `require` 模块 `modname` 且 `package.loaded[modname]` 不为 false 时，
+  `require` 会直接返回其中存储的值。
+
+  该变量只是对真实表的引用；对该变量赋值不会改变 `require` 使用的表。
+
+packagelib.loadlib: |
+  将宿主程序与 C 库 `libname` 进行动态链接。
+
+  如果 `funcname` 为 `"*"`，则只链接该库，使库导出的符号可供其他动态链接库使用。
+  否则，它会在库中查找函数 `funcname`，并以 C 函数形式返回该函数。因此，`funcname`
+  必须符合 `lua_CFunction` 原型（参见 `lua_CFunction`）。
+
+  这是一个底层函数，它完全绕过包与模块系统。与 `require` 不同，它不会执行任何路径搜索，
+  也不会自动添加扩展名。`libname` 必须是 C 库的完整文件名（必要时包含路径与扩展名）。
+  `funcname` 必须是该 C 库导出的精确名称（可能依赖所使用的 C 编译器与链接器）。
+
+  标准 C 不支持此函数，因此它仅在部分平台可用（Windows、Linux、Mac OS X、Solaris、BSD，
+  以及其他支持 `dlfcn` 标准的 Unix 系统）。
+
+packagelib.path: |
+  `require` 用于搜索 Lua 加载器的路径。
+
+  启动时，如果环境变量已定义，Lua 会用环境变量 `LUA_PATH_5_4` 或 `LUA_PATH` 的值来初始化该变量；
+  否则使用 `luaconf.h` 中定义的默认路径。环境变量值中的任何 ";;" 都会被替换为默认路径。
+
+packagelib.preload: |
+  一个表，用于存放特定模块的加载器（参见 `require`）。
+
+  该变量只是对真实表的引用；对该变量赋值不会改变 `require` 使用的表。
+
+packagelib.searchers: |
+  `require` 用于控制如何加载模块的表。
+
+  该表中的每个条目都是一个 *搜索器函数*。查找模块时，`require` 会按升序依次调用这些搜索器，
+  并将模块名（传给 `require` 的参数）作为唯一参数。搜索器可以返回另一个函数（模块 *加载器*）
+  以及一个会传给该加载器的额外值；或者返回一个字符串来解释为什么没有找到该模块（如果无话可说则返回 **nil**）。
+
+  Lua 会用四个搜索器初始化该表：
+  - 第一个搜索器：在 `package.preload` 表中查找加载器。
+  - 第二个搜索器：使用 `package.path`，按 `package.searchpath` 的规则将模块作为 Lua 库进行查找。
+  - 第三个搜索器：使用 `package.cpath`，按 `package.searchpath` 的规则将模块作为 C 库进行查找；
+    找到 C 库后先进行动态链接，然后按规则构造并查找 `luaopen_...` 的 C 函数作为加载器。
+  - 第四个搜索器：尝试 *一体化加载器*；在 C 路径中查找给定模块根名的库（例如 `a.b.c` 会查找 `a`），
+    若找到则在其中查找子模块的 open 函数（例如 `luaopen_a_b_c`）。
+
+  除第一个（preload）外，其他搜索器都会把 `package.searchpath` 返回的“模块被找到的文件名”作为额外值返回；
+  第一个搜索器不返回额外值。
+
+packagelib.searchpath: |
+  在给定路径中搜索指定名称。
+
+  路径是一个字符串，其中包含一系列由分号分隔的 *模板*。对每个模板，本函数会将模板中的每个问号（如有）
+  替换为名称的一个副本，并将其中所有出现的 `sep`（默认是点号 `.`）替换为 `rep`
+  （默认是系统的目录分隔符），然后尝试打开得到的文件名。
+
+  例如，如果路径为
+  > "`./?.lua;./?.lc;/usr/local/?/init.lua`"
+  搜索名称 `foo.a` 时会按顺序尝试打开 `./foo/a.lua`、`./foo/a.lc`、`/usr/local/foo/a/init.lua`。
+
+  返回第一个能够以只读模式打开的文件（在关闭文件后）的最终文件名；如果都失败，则返回 **nil** 以及错误消息
+  （错误消息会列出所有尝试打开的文件名）。
+
+packagelib.seeall: |
+  为 `module` 设置一个元表，其 `__index` 字段指向全局环境，使该模块从全局环境继承值。
+  用作 `module` 函数的一个选项。

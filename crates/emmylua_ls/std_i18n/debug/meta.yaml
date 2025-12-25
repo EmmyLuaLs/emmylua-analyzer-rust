@@ -1,0 +1,447 @@
+version: 1
+line_base: 0
+col_base: 0
+file: debug.lua
+entries:
+- key: debuglib.debug
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 18
+      col: 0
+    end:
+      line: 26
+      col: 62
+  hash: '5728b52db9e5f2ff'
+  context_hash: de7cc417de1b3246
+- key: debuglib.getfenv
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 30
+      col: 0
+    end:
+      line: 33
+      col: 0
+  hash: '91e912d2bf6683e5'
+  context_hash: de7cc417de1b3246
+- key: debuglib.gethook
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 38
+      col: 0
+    end:
+      line: 42
+      col: 0
+  hash: df523859e51a83d8
+  context_hash: de7cc417de1b3246
+- key: debuglib.InfoWhat.item.n
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 66
+      col: 14
+    end:
+      line: 66
+      col: 36
+  hash: '0ca990f434e94e02'
+  context_hash: ae3fa693719d114d
+- key: debuglib.InfoWhat.item.S
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 67
+      col: 14
+    end:
+      line: 67
+      col: 84
+  hash: '2b479db10dcf34cb'
+  context_hash: '73f190f384c3c951'
+- key: debuglib.InfoWhat.item.l
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 68
+      col: 14
+    end:
+      line: 68
+      col: 28
+  hash: '3b4abcf26c63da90'
+  context_hash: '15b102f5e1274acd'
+- key: debuglib.InfoWhat.item.t
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 69
+      col: 14
+    end:
+      line: 69
+      col: 27
+  hash: '0d74d35018965521'
+  context_hash: '105f4cd2d7e8614a'
+- key: debuglib.InfoWhat.item.u
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 70
+      col: 14
+    end:
+      line: 70
+      col: 48
+  hash: d3bff55cd0bcf6a1
+  context_hash: '7654b2d8051653b1'
+- key: debuglib.InfoWhat.item.f
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 71
+      col: 14
+    end:
+      line: 71
+      col: 21
+  hash: '075b011e6d60a10d'
+  context_hash: '88bf6438b8c0adf8'
+- key: debuglib.InfoWhat.item.r
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 72
+      col: 14
+    end:
+      line: 72
+      col: 42
+  hash: '05e49118be828444'
+  context_hash: '017b749f4bff0ee3'
+- key: debuglib.InfoWhat.item.L
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 73
+      col: 14
+    end:
+      line: 73
+      col: 28
+  hash: a1993e3f27753996
+  context_hash: '82805f0c17b3057b'
+- key: debuglib.getinfo
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 76
+      col: 0
+    end:
+      line: 96
+      col: 0
+  hash: a340fa432951e50a
+  context_hash: de7cc417de1b3246
+- key: debuglib.getlocal@>5.2,JIT
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 105
+      col: 0
+    end:
+      line: 125
+      col: 0
+  hash: defd75cacb5f645b
+  context_hash: de7cc417de1b3246
+- key: debuglib.getlocal@5.1
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 137
+      col: 0
+    end:
+      line: 147
+      col: 0
+  hash: '07f5462f1e8865d3'
+  context_hash: de7cc417de1b3246
+- key: debuglib.getmetatable
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 156
+      col: 0
+    end:
+      line: 159
+      col: 0
+  hash: '410e3c69b1af1d28'
+  context_hash: de7cc417de1b3246
+- key: debuglib.getregistry
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 164
+      col: 0
+    end:
+      line: 166
+      col: 0
+  hash: '8976bf1110d1f1ea'
+  context_hash: de7cc417de1b3246
+- key: debuglib.getupvalue
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 170
+      col: 0
+    end:
+      line: 177
+      col: 0
+  hash: '982c779504f348a1'
+  context_hash: de7cc417de1b3246
+- key: debuglib.getuservalue
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 184
+      col: 0
+    end:
+      line: 187
+      col: 0
+  hash: '139b3595baa85765'
+  context_hash: de7cc417de1b3246
+- key: debuglib.setcstacklimit
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 193
+      col: 0
+    end:
+      line: 201
+      col: 0
+  hash: '026fa4d8ce9ac37a'
+  context_hash: de7cc417de1b3246
+- key: debuglib.setfenv
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 205
+      col: 0
+    end:
+      line: 208
+      col: 0
+  hash: '0cd7bfb647fe6ac9'
+  context_hash: de7cc417de1b3246
+- key: debuglib.Hookmask.item.c
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 216
+      col: 10
+    end:
+      line: 216
+      col: 48
+  hash: '2a465f3164fdfca7'
+  context_hash: '4f1a28807fd9c99d'
+- key: debuglib.Hookmask.item.r
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 217
+      col: 10
+    end:
+      line: 217
+      col: 55
+  hash: d2998a5af84ab995
+  context_hash: '8f1344163909f994'
+- key: debuglib.Hookmask.item.l
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 218
+      col: 10
+    end:
+      line: 218
+      col: 57
+  hash: cc3f0aa2749ba739
+  context_hash: '4a1e231682598e4a'
+- key: debuglib.sethook
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 220
+      col: 0
+    end:
+      line: 241
+      col: 0
+  hash: baa9120640597b69
+  context_hash: de7cc417de1b3246
+- key: debuglib.setlocal
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 248
+      col: 0
+    end:
+      line: 255
+      col: 0
+  hash: '6b7612b243606250'
+  context_hash: de7cc417de1b3246
+- key: debuglib.setmetatable
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 263
+      col: 0
+    end:
+      line: 266
+      col: 0
+  hash: '441c3f569ab9675b'
+  context_hash: de7cc417de1b3246
+- key: debuglib.setupvalue
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 273
+      col: 0
+    end:
+      line: 277
+      col: 0
+  hash: ad4178b7dc4b78b6
+  context_hash: de7cc417de1b3246
+- key: debuglib.setuservalue
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 283
+      col: 0
+    end:
+      line: 287
+      col: 0
+  hash: '23156e0556f56b1a'
+  context_hash: db5e2c86b41bac5c
+- key: debuglib.traceback
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 293
+      col: 0
+    end:
+      line: 301
+      col: 0
+  hash: '7295f50d331bbd1f'
+  context_hash: '75684757332beac5'
+- key: debuglib.traceback.param.thread
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 303
+      col: 34
+    end:
+      line: 303
+      col: 108
+  hash: d8583bff49e75935
+  context_hash: b4d473f240caabc8
+- key: debuglib.traceback.param.message
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 304
+      col: 26
+    end:
+      line: 304
+      col: 119
+  hash: e64a956566b2b220
+  context_hash: a234ab6651e02e11
+- key: debuglib.traceback.param.level
+  kind:
+    type: line_tail
+    prefix: ''
+  range:
+    start:
+      line: 305
+      col: 26
+    end:
+      line: 305
+      col: 90
+  hash: '533f667ee00e6b33'
+  context_hash: '76d3857147ea882a'
+- key: debuglib.upvalueid
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 310
+      col: 0
+    end:
+      line: 317
+      col: 0
+  hash: b28a436780522b2e
+  context_hash: a9890306a2dd729d
+- key: debuglib.upvaluejoin
+  kind:
+    type: doc_block
+    indent: ''
+  range:
+    start:
+      line: 325
+      col: 0
+    end:
+      line: 328
+      col: 0
+  hash: '8bcd6fd7914cb62e'
+  context_hash: de7cc417de1b3246
