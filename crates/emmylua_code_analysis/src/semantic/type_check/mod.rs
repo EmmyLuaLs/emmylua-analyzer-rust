@@ -37,7 +37,6 @@ pub fn check_type_compact(
     check_general_type_compact(&mut context, source, compact_type, TypeCheckGuard::new())
 }
 
-#[allow(unused)]
 pub fn check_type_compact_detail(
     db: &DbIndex,
     source: &LuaType,
@@ -109,26 +108,26 @@ fn check_general_type_compact(
         | LuaType::Namespace(_)
         | LuaType::Variadic(_)
         | LuaType::Language(_) => {
-            check_simple_type_compact(context, source, compact_type, check_guard)
+            check_simple_type_compact(context, &source, &compact_type, check_guard)
         }
 
         // type ref
         LuaType::Ref(type_decl_id) => {
-            check_ref_type_compact(context, type_decl_id, compact_type, check_guard)
+            check_ref_type_compact(context, type_decl_id, &compact_type, check_guard)
         }
         LuaType::Def(type_decl_id) => {
-            check_ref_type_compact(context, type_decl_id, compact_type, check_guard)
+            check_ref_type_compact(context, type_decl_id, &compact_type, check_guard)
         }
         // invaliad source type
         // LuaType::Module(arc_intern) => todo!(),
 
         // function type
         LuaType::DocFunction(doc_func) => {
-            check_doc_func_type_compact(context, doc_func, compact_type, check_guard)
+            check_doc_func_type_compact(context, doc_func, &compact_type, check_guard)
         }
         // signature type
         LuaType::Signature(sig_id) => {
-            check_sig_type_compact(context, sig_id, compact_type, check_guard)
+            check_sig_type_compact(context, sig_id, &compact_type, check_guard)
         }
 
         // complex type
@@ -138,23 +137,21 @@ fn check_general_type_compact(
         | LuaType::Union(_)
         | LuaType::Intersection(_)
         | LuaType::TableGeneric(_)
+        | LuaType::Call(_)
         | LuaType::MultiLineUnion(_) => {
-            check_complex_type_compact(context, source, compact_type, check_guard)
+            check_complex_type_compact(context, &source, &compact_type, check_guard)
         }
-
-        // need think how to do that
-        LuaType::Call(_) => Ok(()),
 
         // generic type
         LuaType::Generic(generic) => {
-            check_generic_type_compact(context, generic, compact_type, check_guard)
+            check_generic_type_compact(context, generic, &compact_type, check_guard)
         }
         // invalid source type
         // LuaType::MemberPathExist(_) |
         LuaType::Instance(instantiate) => check_general_type_compact(
             context,
             instantiate.get_base(),
-            compact_type,
+            &compact_type,
             check_guard.next_level()?,
         ),
         LuaType::TypeGuard(_) => {

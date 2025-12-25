@@ -102,4 +102,28 @@ mod test {
         assert_eq!(e_ty, LuaType::Integer);
         assert_eq!(f_ty, LuaType::Integer);
     }
+
+    #[test]
+    fn test_keyof() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class SuiteHooks
+        ---@field beforeAll string
+        ---@field afterAll number
+
+        ---@type SuiteHooks
+        local hooks = {}
+
+        ---@type keyof SuiteHooks
+        local name = "beforeAll"
+
+        A = hooks[name]
+        "#,
+        );
+
+        let ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(ty), "(number|string)");
+    }
 }

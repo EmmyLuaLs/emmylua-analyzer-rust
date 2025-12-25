@@ -4,6 +4,7 @@ mod assign_type_mismatch;
 mod attribute_check;
 mod await_in_sync;
 mod cast_type_mismatch;
+mod check_export;
 mod check_field;
 mod check_param_count;
 mod check_return_count;
@@ -93,6 +94,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<return_type_mismatch::ReturnTypeMismatch>(context, semantic_model);
     run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, semantic_model);
     run_check::<redefined_local::RedefinedLocalChecker>(context, semantic_model);
+    run_check::<check_export::CheckExportChecker>(context, semantic_model);
     run_check::<check_field::CheckFieldChecker>(context, semantic_model);
     run_check::<circle_doc_class::CircleDocClassChecker>(context, semantic_model);
     run_check::<incomplete_signature_doc::IncompleteSignatureDocChecker>(context, semantic_model);

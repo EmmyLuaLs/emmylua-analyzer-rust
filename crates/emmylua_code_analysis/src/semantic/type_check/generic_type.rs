@@ -17,28 +17,27 @@ pub fn check_generic_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    // 不检查尚未实例化的泛型类
-    let is_tpl = source_generic.contain_tpl();
-
-    let source_base_id = source_generic.get_base_type_id();
-    let type_decl = context
+    let base_id = source_generic.get_base_type_id();
+    if let Some(decl) = context
         .db
         .get_type_index()
-        .get_type_decl(&source_base_id)
-        .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-
-    if type_decl.is_alias() {
-        let type_params = source_generic.get_params();
-        let substitutor = TypeSubstitutor::from_alias(type_params.clone(), source_base_id);
-        if let Some(origin_type) = type_decl.get_alias_origin(context.db, Some(&substitutor)) {
+        .get_type_decl(&source_generic.get_base_type_id())
+        && decl.is_alias()
+    {
+        let substitutor =
+            TypeSubstitutor::from_alias(source_generic.get_params().clone(), base_id.clone());
+        if let Some(alias_origin) = decl.get_alias_origin(context.db, Some(&substitutor)) {
             return check_general_type_compact(
                 context,
-                &origin_type,
+                &alias_origin,
                 compact_type,
                 check_guard.next_level()?,
             );
         }
     }
+
+    // 不检查尚未实例化的泛型类
+    let is_tpl = source_generic.contain_tpl();
 
     match compact_type {
         LuaType::Generic(compact_generic) => {
@@ -111,25 +110,6 @@ fn check_generic_type_compact_generic(
 ) -> TypeCheckResult {
     let source_base_id = source_generic.get_base_type_id();
     let compact_base_id = compact_generic.get_base_type_id();
-    let compact_decl = context
-        .db
-        .get_type_index()
-        .get_type_decl(&compact_base_id)
-        .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-    if compact_decl.is_alias() {
-        let substitutor = TypeSubstitutor::from_alias(
-            compact_generic.get_params().clone(),
-            compact_base_id.clone(),
-        );
-        if let Some(origin_type) = compact_decl.get_alias_origin(context.db, Some(&substitutor)) {
-            return check_generic_type_compact(
-                context,
-                source_generic,
-                &origin_type,
-                check_guard.next_level()?,
-            );
-        }
-    }
     if compact_base_id != source_base_id {
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
@@ -167,7 +147,7 @@ fn check_generic_type_compact_table(
         })
         .unwrap_or_default();
 
-    // 获取泛型类型的成员，使用 find_members 来获取包括继承的所有成员
+    // 获取泛型类型的成员, 使用 find_members 来获取包括继承的所有成员
     let source_type = LuaType::Generic(Arc::new(source_generic.clone()));
     let Some(source_type_members) = find_members(context.db, &source_type) else {
         return Ok(()); // 空成员无需检查

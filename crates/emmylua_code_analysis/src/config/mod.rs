@@ -20,6 +20,7 @@ use regex::Regex;
 use rowan::NodeCache;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -198,9 +199,26 @@ fn replace_placeholders(input: &str, workspace_folder: &str) -> String {
             workspace_folder.to_string()
         } else if let Some(env_name) = key.strip_prefix("env:") {
             std::env::var(env_name).unwrap_or_default()
+        } else if key == "luarocks" {
+            get_luarocks_deploy_dir()
         } else {
             caps[0].to_string()
         }
     })
     .to_string()
+}
+
+fn get_luarocks_deploy_dir() -> String {
+    Command::new("luarocks")
+        .args(["config", "deploy_lua_dir"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
 }

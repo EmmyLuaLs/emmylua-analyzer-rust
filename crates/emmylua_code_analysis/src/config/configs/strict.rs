@@ -27,6 +27,11 @@ pub struct EmmyrcStrict {
     /// Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.
     #[serde(default = "default_false")]
     pub doc_base_const_match_base_type: bool,
+    /// This option limits the visibility of third-party libraries.
+    ///
+    /// When enabled, third-party libraries must use `---@export global` annotation to be importable (i.e., no diagnostic errors and visible in auto-import).
+    #[serde(default = "default_false")]
+    pub require_export_global: bool,
 }
 
 impl Default for EmmyrcStrict {
@@ -37,6 +42,7 @@ impl Default for EmmyrcStrict {
             array_index: true,
             meta_override_file_define: true,
             doc_base_const_match_base_type: true,
+            require_export_global: false,
         }
     }
 }

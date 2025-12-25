@@ -77,7 +77,8 @@ fn add_module_completion_item(
 
     let completion_name = module_name_convert(module_info, file_conversion);
     if !completion_name.to_lowercase().starts_with(prefix) {
-        try_add_member_completion_items(
+        // 如果模块名不匹配, 则根据导出类型添加完成项
+        add_completion_item_by_type(
             builder,
             prefix,
             module_info,
@@ -98,7 +99,7 @@ fn add_module_completion_item(
         None
     };
     let completion_item = CompletionItem {
-        label: completion_name,
+        label: completion_name.clone(),
         kind: Some(lsp_types::CompletionItemKind::MODULE),
         label_details: Some(lsp_types::CompletionItemLabelDetails {
             detail: Some(format!("    (in {})", module_info.full_module_name)),
@@ -109,6 +110,7 @@ fn add_module_completion_item(
             builder.semantic_model.get_file_id(),
             module_info.file_id,
             position,
+            completion_name,
             None,
         )),
         data,
@@ -120,7 +122,7 @@ fn add_module_completion_item(
     Some(())
 }
 
-fn try_add_member_completion_items(
+fn add_completion_item_by_type(
     builder: &CompletionBuilder,
     prefix: &str,
     module_info: &ModuleInfo,
@@ -192,7 +194,7 @@ fn try_add_member_completion_items(
                         };
 
                         let completion_item = CompletionItem {
-                            label: key_name,
+                            label: key_name.clone(),
                             kind: Some(get_completion_kind(&member_info.typ)),
                             label_details: Some(lsp_types::CompletionItemLabelDetails {
                                 detail: Some(format!("    (in {})", module_info.full_module_name)),
@@ -203,9 +205,46 @@ fn try_add_member_completion_items(
                                 builder.semantic_model.get_file_id(),
                                 module_info.file_id,
                                 position,
+                                key_name,
                                 Some(member_info.key.to_path().to_string()),
                             )),
                             data,
+                            ..Default::default()
+                        };
+
+                        completions.push(completion_item);
+                    }
+                }
+            }
+            LuaType::Signature(_) => {
+                let semantic_id = module_info.semantic_id.as_ref()?;
+                if let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_id {
+                    let decl = builder
+                        .semantic_model
+                        .get_db()
+                        .get_decl_index()
+                        .get_decl(&decl_id)?;
+                    let name = decl.get_name();
+                    if name.to_lowercase().starts_with(prefix) {
+                        if builder.env_duplicate_name.contains(name) {
+                            return None;
+                        }
+
+                        let completion_item = CompletionItem {
+                            label: name.to_string(),
+                            kind: Some(get_completion_kind(&export_type)),
+                            label_details: Some(lsp_types::CompletionItemLabelDetails {
+                                detail: Some(format!("    (in {})", module_info.full_module_name)),
+                                ..Default::default()
+                            }),
+                            command: Some(make_auto_require(
+                                "",
+                                builder.semantic_model.get_file_id(),
+                                module_info.file_id,
+                                position,
+                                name.to_string(),
+                                None,
+                            )),
                             ..Default::default()
                         };
 

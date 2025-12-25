@@ -1,6 +1,6 @@
 use std::{collections::HashSet, ops::Deref, sync::Arc};
 
-use emmylua_parser::LuaDocTypeList;
+use emmylua_parser::{LuaAstNode, LuaDocTypeList};
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use internment::ArcIntern;
 
@@ -23,6 +23,7 @@ use crate::{
         infer_expr,
     },
 };
+use crate::{LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl};
 
 use super::TypeSubstitutor;
 
@@ -72,11 +73,11 @@ pub fn instantiate_func_generic(
     if !generic_tpls.is_empty() {
         context.substitutor.add_need_infer_tpls(generic_tpls);
 
-        // 判断是否指定了泛型
         if let Some(type_list) = call_expr.get_call_generic_type_list() {
+            // 如果使用了`obj:abc--[[@<string>]]("abc")`强制指定了泛型, 那么我们只需要直接应用
             apply_call_generic_type_list(db, file_id, &mut context, &type_list);
         } else {
-            // 没有指定泛型, 从调用参数中推断
+            // 如果没有指定泛型, 则需要从调用参数中推断
             infer_generic_types_from_call(
                 db,
                 &mut context,
@@ -155,12 +156,16 @@ fn infer_generic_types_from_call(
         if !func_param_type.is_variadic()
             && check_expr_can_later_infer(context, func_param_type, call_arg_expr)?
         {
-            // If the argument cannot be inferred later, we will handle it later.
+            // 如果参数不能被后续推断, 那么我们先不处理
             unresolve_tpls.push((func_param_type.clone(), call_arg_expr.clone()));
             continue;
         }
 
-        let arg_type = infer_expr(db, context.cache, call_arg_expr.clone())?;
+        let arg_type = match infer_expr(db, context.cache, call_arg_expr.clone()) {
+            Ok(t) => t,
+            Err(InferFailReason::FieldNotFound) => LuaType::Nil, // 对于未找到的字段, 我们认为是 nil 以执行后续推断
+            Err(e) => return Err(e),
+        };
         match (func_param_type, &arg_type) {
             (LuaType::Variadic(variadic), _) => {
                 let mut arg_types = vec![];
@@ -227,16 +232,32 @@ pub fn infer_self_type(
     cache: &mut LuaInferCache,
     call_expr: &LuaCallExpr,
 ) -> Option<LuaType> {
-    let prefix_expr = call_expr.get_prefix_expr();
-    if let Some(prefix_expr) = prefix_expr
-        && let LuaExpr::IndexExpr(index) = prefix_expr
-    {
-        let self_expr = index.get_prefix_expr();
-        if let Some(self_expr) = self_expr {
+    let prefix_expr = call_expr.get_prefix_expr()?;
+    match prefix_expr {
+        LuaExpr::IndexExpr(index) => {
+            let self_expr = index.get_prefix_expr()?;
             let self_type = infer_expr(db, cache, self_expr).ok()?;
             let self_type = build_self_type(db, &self_type);
             return Some(self_type);
         }
+        LuaExpr::NameExpr(name) => {
+            let semantic_decl_id = infer_node_semantic_decl(
+                db,
+                cache,
+                name.syntax().clone(),
+                SemanticDeclLevel::default(),
+            )?;
+            if let LuaSemanticDeclId::Member(member_id) = semantic_decl_id {
+                let owner = db.get_member_index().get_current_owner(&member_id)?;
+                if let LuaMemberOwner::Type(id) = owner {
+                    let typ = LuaType::Ref(id.clone());
+                    let self_type = build_self_type(db, &typ);
+                    return Some(self_type);
+                }
+                return None;
+            }
+        }
+        _ => {}
     }
 
     None

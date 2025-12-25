@@ -6,7 +6,7 @@ use emmylua_parser::{
 use crate::{
     DbIndex, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType, LuaIntersectionType,
     LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType, LuaTypeCache,
-    LuaTypeDeclId, LuaUnionType,
+    LuaTypeDeclId, LuaUnionType, TypeOps,
     semantic::{
         infer::find_self_decl_or_member_id, member::get_buildin_type_map_type_id,
         semantic_info::resolve_global_decl_id,
@@ -78,7 +78,8 @@ fn infer_name_expr_semantic_decl(
         .get_type_index()
         .get_type_cache(&decl_id.into())
         .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
-    let is_ref_object = decl_type.is_function() || decl_type.is_table();
+    let remove_nil_type = TypeOps::Remove.apply(db, &decl_type, &LuaType::Nil);
+    let is_ref_object = remove_nil_type.is_function() || remove_nil_type.is_table();
     if decl.is_local() && !is_ref_object {
         return Some(LuaSemanticDeclId::LuaDecl(decl_id));
     }
@@ -89,7 +90,7 @@ fn infer_name_expr_semantic_decl(
 
     if let Some(value_expr_id) = decl.get_value_syntax_id() {
         match value_expr_id.get_kind() {
-            LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr if decl_type.is_function() => {
+            LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr if remove_nil_type.is_function() => {
                 let file_id = decl.get_file_id();
                 let tree = db.get_vfs().get_syntax_tree(&file_id)?;
                 // second infer

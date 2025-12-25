@@ -56,6 +56,7 @@ function io.input(file) end
 function io.lines(filename, ...) end
 
 ---@alias iolib.OpenMode "r" | "w" | "a" | "r+" | "w+" | "a+" | "rb" | "wb" | "ab" | "rb+" | "wb+" | "ab+" | "r+b" | "w+b" | "a+b"
+
 ---
 --- This function opens a file, in the mode specified in the string `mode`.  In
 --- case of success, it returns a new file handle. The `mode` string can be
@@ -139,7 +140,7 @@ function io.write(...) end
 ---@class file
 local file = {}
 
---- @version > 5.2
+---@version > 5.2
 ---
 --- Closes `file`. Note that files are automatically closed when their
 --- handles are garbage collected, but that takes an unpredictable amount of
@@ -152,7 +153,7 @@ local file = {}
 --- @return integer
 function file:close() end
 
---- @version 5.1, JIT
+---@version 5.1, JIT
 ---
 --- Closes `file`. Note that files are automatically closed when their
 --- handles are garbage collected, but that takes an unpredictable amount of

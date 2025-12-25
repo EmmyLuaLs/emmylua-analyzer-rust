@@ -101,6 +101,7 @@ package.preload = {}
 package.loaders = {}
 
 ---@version > 5.2
+---
 --- A table used by require to control how to load modules.
 ---
 --- Each entry in this table is a *searcher function*. When looking for a
@@ -170,10 +171,10 @@ package.searchers = {}
 ---@return string
 function package.searchpath(name, path, sep, rep) end
 
+---@version 5.1, JIT
 ---
 ---Sets a metatable for `module` with its `__index` field referring to the global environment, so that this module inherits values from the global environment. To be used as an option to function `module` .
 ---
----@version 5.1, JIT
 ---@param module table
 function package.seeall(module) end
 

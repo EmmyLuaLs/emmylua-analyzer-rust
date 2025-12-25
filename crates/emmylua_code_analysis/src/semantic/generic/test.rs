@@ -227,4 +227,62 @@ result = {
         "#,
         ));
     }
+
+    #[test]
+    fn test_generic_alias_instantiation() {
+        let mut ws = crate::VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Arrayable<T> T | T[]
+
+            ---@class Suite
+
+            ---@generic T
+            ---@param value Arrayable<T>
+            ---@return T[]
+            function toArray(value)
+            end
+        "#,
+        );
+
+        ws.def(
+            r#"
+            ---@type Arrayable<Suite>
+            local suite
+
+            arraySuites = toArray(suite)
+        "#,
+        );
+
+        let a = ws.expr_ty("arraySuites");
+        let expected = ws.ty("Suite[]");
+        assert_eq!(a, expected);
+    }
+
+    #[test]
+    fn test_generic_alias_instantiation2() {
+        let mut ws = crate::VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Arrayable<T> T | T[]
+
+            ---@class Suite
+
+            ---@param value Arrayable<Suite>
+            function toArray(value)
+
+            end
+        "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+
+            ---@type Suite
+            local suite
+
+            local arraySuites = toArray(suite)
+            "#
+        ));
+    }
 }

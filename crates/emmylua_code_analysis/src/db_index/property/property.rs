@@ -127,6 +127,7 @@ pub enum LuaDeprecated {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LuaExportScope {
+    Default, // 默认声明, 会根据配置文件作不同的处理.
     Global,
     Namespace,
 }

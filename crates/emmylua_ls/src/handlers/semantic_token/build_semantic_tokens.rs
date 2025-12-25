@@ -738,6 +738,17 @@ fn build_node_semantic_token(
                 }
                 return None;
             }
+            // 如果文档的开始是 #, 则需要将其渲染为注释而不是文档
+            if let Some(start_token) = description.tokens::<LuaGeneralToken>().next() {
+                if start_token.get_text().starts_with('#') {
+                    builder.push_at_position(
+                        start_token.get_range().start(),
+                        1,
+                        SemanticTokenType::COMMENT,
+                        None,
+                    );
+                }
+            }
 
             let desc_range = description.get_range();
             let document = semantic_model.get_document();

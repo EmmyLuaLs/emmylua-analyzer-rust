@@ -37,6 +37,31 @@ impl RenderLevel {
     }
 }
 
+fn hover_escape_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{1b}' => out.push_str("\\27"),
+            ch if ch.is_control() => {
+                let code = ch as u32;
+                if code <= 0xFF {
+                    out.push_str(&format!("\\x{code:02X}"));
+                } else {
+                    out.push_str(&format!("\\u{{{code:X}}}"));
+                }
+            }
+            _ => out.push(ch),
+        }
+    }
+
+    out
+}
+
 pub fn humanize_type(db: &DbIndex, ty: &LuaType, level: RenderLevel) -> String {
     match ty {
         LuaType::Any => "any".to_string(),
@@ -71,8 +96,8 @@ pub fn humanize_type(db: &DbIndex, ty: &LuaType, level: RenderLevel) -> String {
         LuaType::Io => "io".to_string(),
         LuaType::SelfInfer => "self".to_string(),
         LuaType::BooleanConst(b) => b.to_string(),
-        LuaType::StringConst(s) => format!("\"{}\"", s),
-        LuaType::DocStringConst(s) => format!("\"{}\"", s),
+        LuaType::StringConst(s) => format!("\"{}\"", hover_escape_string(s)),
+        LuaType::DocStringConst(s) => format!("\"{}\"", hover_escape_string(s)),
         LuaType::DocIntegerConst(i) => i.to_string(),
         LuaType::DocBooleanConst(b) => b.to_string(),
         LuaType::Ref(id) => {

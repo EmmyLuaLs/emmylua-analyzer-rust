@@ -138,6 +138,7 @@
         "arrayIndex": true,
         "docBaseConstMatchBaseType": true,
         "metaOverrideFileDefine": true,
+        "requireExportGlobal": false,
         "requirePath": false,
         "typeCall": false
       }
@@ -1043,6 +1044,11 @@
           "description": "meta define overrides file define",
           "type": "boolean",
           "default": true
+        },
+        "requireExportGlobal": {
+          "description": "This option limits the visibility of third-party libraries.\n\nWhen enabled, third-party libraries must use `---@export global` annotation to be importable (i.e., no diagnostic errors and visible in auto-import).",
+          "type": "boolean",
+          "default": false
         },
         "requirePath": {
           "description": "Whether to enable strict mode require path.",
