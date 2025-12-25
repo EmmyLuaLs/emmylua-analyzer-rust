@@ -159,4 +159,20 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_issue_894() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            _nop = function() end
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::RedundantParameter,
+            r#"
+            function a(...) _nop(...) end
+        "#
+        ));
+    }
 }
