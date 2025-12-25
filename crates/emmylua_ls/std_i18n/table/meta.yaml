@@ -90,20 +90,20 @@ entries:
       line: 106
       col: 0
     end:
-      line: 109
+      line: 110
       col: 0
-  hash: c083f5e2d51f7a86
-  context_hash: d18f5e17eb4ed8be
+  hash: ae6b75e5905939b2
+  context_hash: de7cc417de1b3246
 - key: tablelib.pack
   kind:
     type: doc_block
     indent: ''
   range:
     start:
-      line: 117
+      line: 118
       col: 0
     end:
-      line: 120
+      line: 121
       col: 0
   hash: c6fe784fff53117d
   context_hash: de7cc417de1b3246
@@ -113,10 +113,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 127
+      line: 128
       col: 0
     end:
-      line: 131
+      line: 132
       col: 0
   hash: '8a83776ff1bb2be4'
   context_hash: de7cc417de1b3246
@@ -126,10 +126,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 139
+      line: 140
       col: 0
     end:
-      line: 142
+      line: 143
       col: 0
   hash: ed156847af70b07b
   context_hash: de7cc417de1b3246
@@ -152,10 +152,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 164
+      line: 162
       col: 0
     end:
-      line: 168
+      line: 166
       col: 0
   hash: b4aa98c172166a6d
   context_hash: '32106038437480b2'
