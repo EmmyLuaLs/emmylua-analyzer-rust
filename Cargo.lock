@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_check"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "ansi_term",
  "clap",
@@ -533,7 +533,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_code_analysis"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "dirs",
  "emmy_lsp_types",
@@ -577,9 +577,9 @@ dependencies = [
 
 [[package]]
 name = "emmylua_codestyle"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b314bbea2641a6012ab45f480fefa2eaac123e7d8ed2bc736d4772453cd20d2"
+checksum = "c2fb179dd808be6e4da3dfc7dcbb058a9f3ee840e238e1bce62d317d0afdfca8"
 dependencies = [
  "cc",
  "glob",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_doc_cli"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "clap",
  "emmy_lsp_types",
@@ -617,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_ls"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "chrono",
  "clap",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "rowan",
  "rust-i18n",
@@ -658,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser_desc"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "emmylua_parser",
  "googletest",
