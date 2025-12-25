@@ -67,16 +67,13 @@ debuglib.getlocal@>5.2,JIT: |
 
   参数 `f` 也可以是一个函数。在这种情况下，`getlocal` 仅返回函数参数的名称。
 
-# This function returns the name and the value of the local variable with
-#  index `index` of the function at level `level` of the stack. (The first
-#  parameter or local variable has index 1, and so on, until the last active
-#  local variable). The function returns **nil** if there is no local variable
-#  with the given index, and raises an error when called with a level out of
-#  range. (You can call `debug.getinfo` to check whether the level is valid.)
-#
-#  Variable names starting with `'('` (open parentheses) represent internal
-#  variables (loop control variables, temporaries, and C function locals).
-debuglib.getlocal@5.1: ""
+debuglib.getlocal@5.1: |
+  此函数返回栈中第 `level` 层函数的索引为 `index` 的局部变量的名称和值。
+  第一个参数或局部变量的索引为 1，依此类推，直到最后一个活跃的局部变量。
+  如果不存在给定索引的局部变量，函数将返回 **nil**；如果调用的 `level` 超出范围，则会引发错误。
+  （你可以调用 `debug.getinfo` 来检查 level 是否有效。）
+
+  以左括号 '(' 开头的变量名表示内部变量（循环控制变量、临时变量以及 C 函数的局部变量）。
 
 debuglib.getmetatable: |
   返回给定 `value` 的元表，如果它没有元表则返回 **nil**。

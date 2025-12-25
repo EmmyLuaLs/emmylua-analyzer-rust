@@ -90,20 +90,20 @@ entries:
       line: 103
       col: 0
     end:
-      line: 144
+      line: 145
       col: 46
-  hash: '5d05ce176360e899'
-  context_hash: '1ba0fbf0ba11e4b2'
+  hash: '9715fac064e1ab65'
+  context_hash: de7cc417de1b3246
 - key: packagelib.searchpath
   kind:
     type: doc_block
     indent: ''
   range:
     start:
-      line: 148
+      line: 149
       col: 0
     end:
-      line: 165
+      line: 166
       col: 0
   hash: e3a24a24ba7ced35
   context_hash: de7cc417de1b3246
@@ -113,10 +113,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 172
+      line: 174
       col: 0
     end:
-      line: 175
+      line: 177
       col: 0
   hash: dac20d6d3e907ba3
   context_hash: de7cc417de1b3246

@@ -62,8 +62,6 @@ tablelib.foreachi: |
 tablelib.getn: |
   返回表中的元素数量。该函数等价于 `#list`。
 
-  [查看文档](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.getn"])
-
 tablelib.create: |
   创建一个新的空表，并预分配内存。当你事先知道表会包含多少元素时，这种预分配可能有助于提升性能并节省内存。
 

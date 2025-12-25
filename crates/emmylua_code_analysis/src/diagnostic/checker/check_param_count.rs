@@ -96,6 +96,7 @@ fn check_call_expr(
     let mut fake_params = func.get_params().to_vec();
     let call_args = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
     let mut call_args_count = call_args.len();
+    let last_arg_is_dots = call_args.last().is_some_and(is_dots_expr);
     // 根据冒号定义与冒号调用的情况来调整调用参数的数量
     let colon_call = call_expr.is_colon_call();
     let colon_define = func.is_colon_define();
@@ -171,7 +172,16 @@ fn check_call_expr(
         }
     }
     // Check for redundant parameters
-    else if call_args_count > fake_params.len() {
+    else {
+        let mut min_call_args_count = call_args_count;
+        if last_arg_is_dots {
+            min_call_args_count = min_call_args_count.saturating_sub(1);
+        }
+
+        if min_call_args_count <= fake_params.len() {
+            return Some(());
+        }
+
         // 参数定义中最后一个参数是 `...`
         if fake_params.last().is_some_and(|(name, typ)| {
             name == "..." || typ.as_ref().is_some_and(|typ| typ.is_variadic())
@@ -185,6 +195,10 @@ fn check_call_expr(
         }
 
         for (i, arg) in call_args.iter().enumerate() {
+            if last_arg_is_dots && i + 1 == call_args.len() {
+                continue;
+            }
+
             let param_index = i as isize + adjusted_index;
 
             if param_index < 0 || param_index < fake_params.len() as isize {
@@ -197,7 +211,7 @@ fn check_call_expr(
                 t!(
                     "expected %{num} parameters but found %{found_num}",
                     num = fake_params.len(),
-                    found_num = call_args_count,
+                    found_num = min_call_args_count,
                 )
                 .to_string(),
                 None,
@@ -206,6 +220,15 @@ fn check_call_expr(
     }
 
     Some(())
+}
+
+fn is_dots_expr(expr: &LuaExpr) -> bool {
+    if let LuaExpr::LiteralExpr(literal_expr) = expr
+        && let Some(LuaLiteralToken::Dots(_)) = literal_expr.get_literal()
+    {
+        return true;
+    }
+    false
 }
 
 fn get_params_len(params: &[(String, Option<LuaType>)]) -> Option<usize> {

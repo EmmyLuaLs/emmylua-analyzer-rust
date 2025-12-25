@@ -1,10 +1,9 @@
 use std::{collections::HashSet, sync::Arc, vec};
 
 use emmylua_code_analysis::{
-    AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberKey,
-    LuaMemberOwner, LuaSemanticDeclId, LuaType, RenderLevel, TypeSubstitutor, VariadicType,
-    humanize_type, infer_call_expr_func, instantiate_doc_function,
-    try_extract_signature_id_from_field,
+    AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberOwner,
+    LuaSemanticDeclId, LuaType, RenderLevel, TypeSubstitutor, VariadicType, humanize_type,
+    infer_call_expr_func, instantiate_doc_function, try_extract_signature_id_from_field,
 };
 
 use crate::handlers::hover::{
@@ -289,77 +288,69 @@ fn hover_doc_function_type(
         _ => "",
     };
     let mut is_method = func.is_colon_define();
-    let mut type_label = "function ";
+    let mut type_label = if is_local && owner_member.is_none() {
+        "local function "
+    } else {
+        "function "
+    };
+
     // 有可能来源于类. 例如: `local add = class.add`, `add()`应被视为类方法
     let full_name = if let Some(owner_member) = owner_member {
-        let mut name = String::new();
+        if is_field {
+            type_label = "(field) ";
+        }
+
+        let member_key = owner_member.get_key().to_path();
+        let mut name = String::with_capacity(member_key.len() + 16);
+
+        let mut push_typed_owner_prefix = |prefix: &str, type_decl_id| {
+            name.push_str(prefix);
+            let owner_ty = LuaType::Ref(type_decl_id);
+            is_method = func.is_method(builder.semantic_model, Some(&owner_ty));
+            if is_method {
+                type_label = "(method) ";
+            }
+            name.push(if is_method { ':' } else { '.' });
+        };
+
         let parent_owner = db
             .get_member_index()
             .get_current_owner(&owner_member.get_id());
         if let Some(parent_owner) = parent_owner {
             match parent_owner {
                 LuaMemberOwner::Type(type_decl_id) => {
-                    let global_name =
-                        infer_prefix_global_name(builder.semantic_model, owner_member);
-                    // 如果是全局定义, 则使用定义时的名称
-                    if let Some(global_name) = global_name {
-                        name.push_str(global_name);
-                    } else {
-                        name.push_str(type_decl_id.get_simple_name());
-                    }
-                    if is_field {
-                        type_label = "(field) ";
-                    }
-                    is_method = func.is_method(
-                        builder.semantic_model,
-                        Some(&LuaType::Ref(type_decl_id.clone())),
-                    );
-                    if is_method {
-                        type_label = "(method) ";
-                        name.push(':');
-                    } else {
-                        name.push('.');
-                    }
+                    let prefix = infer_prefix_global_name(builder.semantic_model, owner_member)
+                        .unwrap_or_else(|| type_decl_id.get_simple_name());
+                    push_typed_owner_prefix(prefix, type_decl_id.clone());
                 }
                 LuaMemberOwner::Element(element_id) => {
                     if let Some(LuaType::Ref(type_decl_id) | LuaType::Def(type_decl_id)) =
                         extract_parent_type_from_element(builder.semantic_model, element_id)
                     {
-                        name.push_str(type_decl_id.get_simple_name());
-                        if is_field {
-                            type_label = "(field) ";
-                        }
-                        is_method = func.is_method(
-                            builder.semantic_model,
-                            Some(&LuaType::Ref(type_decl_id.clone())),
+                        push_typed_owner_prefix(
+                            type_decl_id.get_simple_name(),
+                            type_decl_id.clone(),
                         );
-                        if is_method {
-                            type_label = "(method) ";
-                            name.push(':');
-                        } else {
-                            name.push('.');
-                        }
                     } else if let Some(owner_name) =
                         extract_owner_name_from_element(builder.semantic_model, element_id)
                     {
                         name.push_str(&owner_name);
-                        name.push('.');
+                        if is_method {
+                            type_label = "(method) ";
+                        }
+                        name.push(if is_method { ':' } else { '.' });
                     }
                 }
                 _ => {}
             }
         }
 
-        if let LuaMemberKey::Name(n) = owner_member.get_key() {
-            name.push_str(n.as_str());
-        }
+        name.push_str(&member_key);
         name
     } else {
-        if is_local {
-            type_label = "local function ";
-        }
         func_name.to_string()
     };
+
     let params = func
         .get_params()
         .iter()
