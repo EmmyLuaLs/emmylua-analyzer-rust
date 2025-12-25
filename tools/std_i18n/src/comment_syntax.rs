@@ -181,10 +181,10 @@ pub fn build_tag_line_indexes(raw: &str, lines: &[LineInfo]) -> TagLineIndexes {
             return_lines.push(i);
             continue;
         }
-        if t.starts_with("---|") {
-            if let Some(value) = parse_union_item_value_from_line_trim(t) {
-                union_line.entry(value).or_insert(i);
-            }
+        if t.starts_with("---|")
+            && let Some(value) = parse_union_item_value_from_line_trim(t)
+        {
+            union_line.entry(value).or_insert(i);
         }
     }
 

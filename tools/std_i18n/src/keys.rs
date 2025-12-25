@@ -57,10 +57,10 @@ pub fn map_symbol_for_locale_key(symbol: &str, module_map: &HashMap<String, Stri
     if let Some(class) = module_map.get(symbol) {
         s = class.clone();
     }
-    if let Some((first, rest)) = s.split_once('.') {
-        if let Some(class) = module_map.get(first) {
-            s = format!("{class}.{rest}");
-        }
+    if let Some((first, rest)) = s.split_once('.')
+        && let Some(class) = module_map.get(first)
+    {
+        s = format!("{class}.{rest}");
     }
     s.replace(':', ".")
 }

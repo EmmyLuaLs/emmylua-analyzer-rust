@@ -1,6 +1,6 @@
 use crate::comment_syntax::{
-    build_tag_line_indexes, is_doc_tag_line, normalize_optional_name, split_lines_with_offsets,
-    LineInfo,
+    LineInfo, build_tag_line_indexes, is_doc_tag_line, normalize_optional_name,
+    split_lines_with_offsets,
 };
 use crate::extractor::analyze_lua_doc_file;
 use crate::model::{ExtractedEntry, ExtractedKind, SourceSpan};
@@ -193,10 +193,10 @@ fn tag_attached_replace_target_after(
         return Some(inline);
     }
 
-    if raw_desc.trim().is_empty() {
-        if let Some(insert) = inline_tag_description_insert_target(ctx, comment_span, tag_idx) {
-            return Some(insert);
-        }
+    if raw_desc.trim().is_empty()
+        && let Some(insert) = inline_tag_description_insert_target(ctx, comment_span, tag_idx)
+    {
+        return Some(insert);
     }
 
     attached_doc_block_target_after(ctx, comment_span, tag_idx, file_content)

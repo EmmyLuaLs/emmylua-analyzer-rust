@@ -110,12 +110,12 @@ pub fn analyze_lua_doc_file(
         let has_owner = comment.get_owner().is_some();
 
         let mut effective_version = direct_version.clone();
-        if effective_version.is_none() {
-            if let Some((pending, pending_end)) = pending_version.as_ref() {
-                if has_owner && is_whitespace_between(content, *pending_end, start) {
-                    effective_version = Some(pending.clone());
-                }
-            }
+        if effective_version.is_none()
+            && let Some((pending, pending_end)) = pending_version.as_ref()
+            && has_owner
+            && is_whitespace_between(content, *pending_end, start)
+        {
+            effective_version = Some(pending.clone());
         }
 
         for symbol in root_symbols_for_comment(&comment, &raw_comment) {
@@ -687,10 +687,10 @@ fn preprocess_description(description: &str) -> String {
 
         if let Some(true) = start_with_one_space {
             let mut chars = line.chars();
-            if let Some(first) = chars.next() {
-                if first.is_whitespace() {
-                    line = chars.as_str();
-                }
+            if let Some(first) = chars.next()
+                && first.is_whitespace()
+            {
+                line = chars.as_str();
             }
         }
 
@@ -706,11 +706,11 @@ fn extract_version_suffix(comment: &LuaComment, raw_comment: &str) -> Option<Str
     for tag in comment.get_doc_tags() {
         if let LuaDocTag::Version(version_tag) = tag {
             let raw = version_tag.syntax().text().to_string();
-            if let Some(remainder) = extract_version_remainder(&raw) {
-                if !remainder.is_empty() {
-                    let compact = remainder.split_whitespace().collect::<String>();
-                    return Some(format!("@{compact}"));
-                }
+            if let Some(remainder) = extract_version_remainder(&raw)
+                && !remainder.is_empty()
+            {
+                let compact = remainder.split_whitespace().collect::<String>();
+                return Some(format!("@{compact}"));
             }
         }
     }
