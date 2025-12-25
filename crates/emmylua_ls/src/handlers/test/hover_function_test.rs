@@ -667,4 +667,24 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_table_const_method() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            local M = {}
+
+            ---@param x number
+            function M:abc<??>d(x)
+            end
+
+            M:abcd(1)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(method) M:abcd(x: number)\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }
