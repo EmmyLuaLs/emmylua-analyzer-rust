@@ -1,4 +1,4 @@
-use crate::translator::{compute_replace_targets, ReplaceStrategy};
+use crate::translator::{ReplaceStrategy, compute_replace_targets};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
