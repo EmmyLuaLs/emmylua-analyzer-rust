@@ -859,39 +859,42 @@ fn handle_name_node(
         return Some(());
     }
 
-    // 检查是否是 Lua 内置全局变量
-    if matches!(
-        name_text,
-        "_G" | "_ENV"
-            | "_VERSION"
-            | "arg"
-            | "package"
-            | "require"
-            | "load"
-            | "loadfile"
-            | "dofile"
-            | "print"
-            | "assert"
-            | "error"
-            | "warn"
-            | "type"
-            | "getmetatable"
-            | "setmetatable"
-            | "rawget"
-            | "rawset"
-            | "rawequal"
-            | "rawlen"
-            | "next"
-            | "pairs"
-            | "ipairs"
-            | "tostring"
-            | "tonumber"
-            | "select"
-            | "unpack"
-            | "pcall"
-            | "xpcall"
-            | "collectgarbage"
-    ) {
+    // 先查找声明，如果找不到声明再检查是否是 Lua 内置全局变量
+    let semantic_decl = semantic_model.find_decl(node.clone().into(), SemanticDeclLevel::default());
+    if semantic_decl.is_none()
+        && matches!(
+            name_text,
+            "_G" | "_ENV"
+                | "_VERSION"
+                | "arg"
+                | "package"
+                | "require"
+                | "load"
+                | "loadfile"
+                | "dofile"
+                | "print"
+                | "assert"
+                | "error"
+                | "warn"
+                | "type"
+                | "getmetatable"
+                | "setmetatable"
+                | "rawget"
+                | "rawset"
+                | "rawequal"
+                | "rawlen"
+                | "next"
+                | "pairs"
+                | "ipairs"
+                | "tostring"
+                | "tonumber"
+                | "select"
+                | "unpack"
+                | "pcall"
+                | "xpcall"
+                | "collectgarbage"
+        )
+    {
         builder.push_with_modifiers(
             name_token.syntax(),
             SemanticTokenType::FUNCTION,
@@ -902,9 +905,7 @@ fn handle_name_node(
         );
         return Some(());
     }
-
-    let semantic_decl =
-        semantic_model.find_decl(node.clone().into(), SemanticDeclLevel::default())?;
+    let semantic_decl = semantic_decl?;
     match semantic_decl {
         LuaSemanticDeclId::Member(member_id) => {
             let decl_type = semantic_model.get_type(member_id.into());
