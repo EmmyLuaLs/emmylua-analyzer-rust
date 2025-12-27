@@ -988,4 +988,23 @@ return t
         "#
         ));
     }
+
+    #[test]
+    fn test_generic_array_alias_tuple() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias array<T> T[]
+        "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type array<number>
+            local list = {
+                "2",
+            }
+        "#
+        ));
+    }
 }

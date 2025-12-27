@@ -3,13 +3,14 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaMemberKey, LuaMemberOwner,
-    LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, check_type_compact,
+    DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
+    LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
+    check_type_compact,
+    semantic::generic::{TypeSubstitutor, instantiate_type_generic},
 };
 
 use super::{RawGetMemberTypeResult, get_buildin_type_map_type_id};
 
-#[allow(unused)]
 pub fn infer_raw_member_type(
     db: &DbIndex,
     prefix_type: &LuaType,
@@ -52,6 +53,9 @@ fn infer_raw_member_type_guard(
         }
         LuaType::TableGeneric(table_generic) => {
             infer_table_generic_raw_member_type(db, table_generic, member_key)
+        }
+        LuaType::Generic(generic_type) => {
+            infer_generic_raw_member_type(db, generic_type, member_key)
         }
         // other do not support now
         _ => Err(InferFailReason::None),
@@ -200,4 +204,27 @@ fn infer_table_generic_raw_member_type(
     }
 
     Err(InferFailReason::FieldNotFound)
+}
+
+fn infer_generic_raw_member_type(
+    db: &DbIndex,
+    generic_type: &LuaGenericType,
+    member_key: &LuaMemberKey,
+) -> RawGetMemberTypeResult {
+    let base_ref_id = generic_type.get_base_type_id_ref();
+    let generic_params = generic_type.get_params();
+    let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
+    let type_decl = db
+        .get_type_index()
+        .get_type_decl(&base_ref_id)
+        .ok_or(InferFailReason::None)?;
+
+    if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+        return infer_raw_member_type(db, &origin, member_key);
+    }
+
+    let base_ref_type = LuaType::Ref(base_ref_id.clone());
+    let infer_guard = InferGuard::new();
+    let result = infer_raw_member_type_guard(db, &base_ref_type, member_key, &infer_guard)?;
+    Ok(instantiate_type_generic(db, &result, &substitutor))
 }
