@@ -93,8 +93,9 @@ pub fn get_type_at_call_expr(
                 return Ok(ResultTypeOrContinue::Continue);
             };
 
-            match signature_cast.name.as_str() {
-                "self" => get_type_at_call_expr_by_signature_self(
+            // Check if name starts with "self." for multi-level field access
+            if signature_cast.name.starts_with("self.") {
+                get_type_at_call_expr_by_signature_self_field(
                     db,
                     tree,
                     cache,
@@ -105,20 +106,35 @@ pub fn get_type_at_call_expr(
                     signature_cast,
                     signature_id,
                     condition_flow,
-                ),
-                name => get_type_at_call_expr_by_signature_param_name(
-                    db,
-                    tree,
-                    cache,
-                    root,
-                    var_ref_id,
-                    flow_node,
-                    call_expr,
-                    signature_cast,
-                    signature_id,
-                    name,
-                    condition_flow,
-                ),
+                )
+            } else {
+                match signature_cast.name.as_str() {
+                    "self" => get_type_at_call_expr_by_signature_self(
+                        db,
+                        tree,
+                        cache,
+                        root,
+                        var_ref_id,
+                        flow_node,
+                        prefix_expr,
+                        signature_cast,
+                        signature_id,
+                        condition_flow,
+                    ),
+                    name => get_type_at_call_expr_by_signature_param_name(
+                        db,
+                        tree,
+                        cache,
+                        root,
+                        var_ref_id,
+                        flow_node,
+                        call_expr,
+                        signature_cast,
+                        signature_id,
+                        name,
+                        condition_flow,
+                    ),
+                }
             }
         }
         _ => {
@@ -217,6 +233,128 @@ fn get_type_at_call_expr_by_signature_self(
     };
 
     if name_var_ref_id != *var_ref_id {
+        return Ok(ResultTypeOrContinue::Continue);
+    }
+
+    let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
+    let antecedent_type = get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
+
+    let Some(syntax_tree) = db.get_vfs().get_syntax_tree(&signature_id.get_file_id()) else {
+        return Ok(ResultTypeOrContinue::Continue);
+    };
+
+    let signature_root = syntax_tree.get_chunk_node();
+
+    // Choose the appropriate cast based on condition_flow and whether fallback exists
+    let result_type = match condition_flow {
+        InferConditionFlow::TrueCondition => {
+            let Some(cast_op_type) = signature_cast.cast.to_node(&signature_root) else {
+                return Ok(ResultTypeOrContinue::Continue);
+            };
+            cast_type(
+                db,
+                signature_id.get_file_id(),
+                cast_op_type,
+                antecedent_type,
+                condition_flow,
+            )?
+        }
+        InferConditionFlow::FalseCondition => {
+            // Use fallback_cast if available, otherwise use the default behavior
+            if let Some(fallback_cast_ptr) = &signature_cast.fallback_cast {
+                let Some(fallback_op_type) = fallback_cast_ptr.to_node(&signature_root) else {
+                    return Ok(ResultTypeOrContinue::Continue);
+                };
+                cast_type(
+                    db,
+                    signature_id.get_file_id(),
+                    fallback_op_type,
+                    antecedent_type.clone(),
+                    InferConditionFlow::TrueCondition, // Apply fallback as force cast
+                )?
+            } else {
+                // Original behavior: remove the true type from antecedent
+                let Some(cast_op_type) = signature_cast.cast.to_node(&signature_root) else {
+                    return Ok(ResultTypeOrContinue::Continue);
+                };
+                cast_type(
+                    db,
+                    signature_id.get_file_id(),
+                    cast_op_type,
+                    antecedent_type,
+                    condition_flow,
+                )?
+            }
+        }
+    };
+
+    Ok(ResultTypeOrContinue::Result(result_type))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn get_type_at_call_expr_by_signature_self_field(
+    db: &DbIndex,
+    tree: &FlowTree,
+    cache: &mut LuaInferCache,
+    root: &LuaChunk,
+    var_ref_id: &VarRefId,
+    flow_node: &FlowNode,
+    call_prefix: LuaExpr,
+    signature_cast: &LuaSignatureCast,
+    signature_id: LuaSignatureId,
+    condition_flow: InferConditionFlow,
+) -> Result<ResultTypeOrContinue, InferFailReason> {
+    // Extract the field path after "self." (e.g., "self.xxx" -> "xxx")
+    let field_path = signature_cast.name.strip_prefix("self.").unwrap_or("");
+    if field_path.is_empty() {
+        return Ok(ResultTypeOrContinue::Continue);
+    }
+
+    let LuaExpr::IndexExpr(call_prefix_index) = call_prefix else {
+        return Ok(ResultTypeOrContinue::Continue);
+    };
+
+    let Some(self_expr) = call_prefix_index.get_prefix_expr() else {
+        return Ok(ResultTypeOrContinue::Continue);
+    };
+
+    // Get the var_ref_id of the self expression (e.g., "obj")
+    let Some(self_var_ref_id) = get_var_expr_var_ref_id(db, cache, self_expr) else {
+        return Ok(ResultTypeOrContinue::Continue);
+    };
+
+    // Check if the tracked variable matches the pattern "self.field"
+    // For example, if we're tracking "obj.value", we check:
+    // 1. Does it start with "obj" (self_var_ref_id)?
+    // 2. Does the path end with ".value" (field_path)?
+    let matches = match var_ref_id {
+        VarRefId::IndexRef(decl_or_member, path) => {
+            // Check if the base matches
+            let base_matches = match &self_var_ref_id {
+                VarRefId::VarRef(self_decl_id) => {
+                    decl_or_member.as_decl_id() == Some(*self_decl_id)
+                }
+                VarRefId::SelfRef(self_decl_or_member) => {
+                    decl_or_member == self_decl_or_member
+                }
+                VarRefId::IndexRef(self_decl_or_member, _) => {
+                    decl_or_member == self_decl_or_member
+                }
+            };
+
+            if !base_matches {
+                return Ok(ResultTypeOrContinue::Continue);
+            }
+
+            // Check if the path ends with the field_path
+            // path might be "obj.value" or "something.obj.value"
+            // field_path is "value"
+            path.ends_with(field_path)
+        }
+        _ => false,
+    };
+
+    if !matches {
         return Ok(ResultTypeOrContinue::Continue);
     }
 
