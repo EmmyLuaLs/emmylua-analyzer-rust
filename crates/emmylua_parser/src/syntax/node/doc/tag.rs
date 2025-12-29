@@ -1500,6 +1500,10 @@ impl LuaDocTagReturnCast {
     pub fn get_name_token(&self) -> Option<LuaNameToken> {
         self.token()
     }
+
+    pub fn get_key_expr(&self) -> Option<LuaExpr> {
+        self.child()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

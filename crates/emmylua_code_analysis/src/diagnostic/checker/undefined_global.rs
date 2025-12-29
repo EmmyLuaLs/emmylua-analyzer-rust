@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaNameExpr};
+use emmylua_parser::{
+    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocTagReturnCast, LuaNameExpr,
+};
 use rowan::TextRange;
 
 use crate::{DiagnosticCode, LuaSignatureId, SemanticModel};
@@ -94,6 +96,7 @@ fn check_name_expr(
 }
 
 fn check_self_name(semantic_model: &SemanticModel, name_expr: LuaNameExpr) -> Option<()> {
+    // Check if self is in a method context (regular Lua code)
     let closure_expr = name_expr.ancestors::<LuaClosureExpr>();
     for closure_expr in closure_expr {
         let signature_id =
@@ -105,6 +108,47 @@ fn check_self_name(semantic_model: &SemanticModel, name_expr: LuaNameExpr) -> Op
         if signature.is_method(semantic_model, None) {
             return Some(());
         }
+
+        // Check if self is a parameter of this function (from @param self)
+        if signature.find_param_idx("self").is_some() {
+            return Some(());
+        }
     }
+
+    // Check if self is in @return_cast tag
+    // The name_expr might be inside a doc comment, not inside actual Lua code
+    for ancestor in name_expr.syntax().ancestors() {
+        if let Some(return_cast_tag) = LuaDocTagReturnCast::cast(ancestor.clone()) {
+            // Find the LuaComment that contains this tag
+            for comment_ancestor in return_cast_tag.syntax().ancestors() {
+                if let Some(comment) = LuaComment::cast(comment_ancestor) {
+                    // Get the owner (function) of this comment
+                    if let Some(owner) = comment.get_owner() {
+                        if let LuaAst::LuaClosureExpr(closure) = owner {
+                            let sig_id = LuaSignatureId::from_closure(
+                                semantic_model.get_file_id(),
+                                &closure,
+                            );
+                            if let Some(sig) =
+                                semantic_model.get_db().get_signature_index().get(&sig_id)
+                            {
+                                // Check if the owner function is a method
+                                if sig.is_method(semantic_model, None) {
+                                    return Some(());
+                                }
+                                // Check if self is a parameter
+                                if sig.find_param_idx("self").is_some() {
+                                    return Some(());
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
     None
 }
