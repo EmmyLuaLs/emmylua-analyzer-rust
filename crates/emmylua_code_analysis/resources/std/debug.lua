@@ -94,11 +94,11 @@ function debug.gethook(thread) end
 --- with a name for the current function, if a reasonable name can be found,
 --- and the expression `debug.getinfo(print)` returns a table with all available
 --- information about the `print` function.
----@overload fun(f: int|function, what?: debuglib.InfoWhat):debuglib.DebugInfo
+---@overload fun(f: int|function, what?: debuglib.InfoWhat):debuglib.DebugInfo?
 ---@param thread thread
 ---@param f integer|function
 ---@param what? debuglib.InfoWhat
----@return debuglib.DebugInfo
+---@return debuglib.DebugInfo?
 ---@nodiscard
 function debug.getinfo(thread, f, what) end
 

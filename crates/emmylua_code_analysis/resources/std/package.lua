@@ -77,7 +77,7 @@ package.loaded = {}
 --- systems that support the `dlfcn` standard).
 ---@param libname string
 ---@param funcname string
----@return fun():nil
+---@return function?, string?
 function package.loadlib(libname, funcname) end
 
 ---
