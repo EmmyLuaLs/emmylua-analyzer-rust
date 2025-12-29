@@ -77,4 +77,47 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_issue_895_891() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+        local t = {
+        123,
+        234,
+        345,
+        }
+
+        ---@param id number
+        function test(id) end
+
+        for i = 1, #t do
+            test(t[i]) -- expected 'number' but found (123|234|345)?
+        end
+        "#,
+        ));
+    }
+
+    #[test]
+    fn test_issue_886() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+        ---@type string[]
+        local a = {}
+
+        -- if #a == 0 then return end
+        if not a[1] then return end
+
+        -- ---@type string
+        -- local s = a[1]
+
+        ---@type string
+        local s = a[#a]
+        "#,
+        ));
+    }
 }

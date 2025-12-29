@@ -1,16 +1,17 @@
+mod infer_array;
+
 use std::collections::HashSet;
 
 use emmylua_parser::{
-    LuaAstNode, LuaExpr, LuaForStat, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult,
-    PathTrait, UnaryOperator,
+    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult, PathTrait,
 };
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
-    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaArrayLen, LuaArrayType,
-    LuaDeclOrMemberId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
+    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
+    LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
@@ -21,8 +22,9 @@ use crate::{
         generic::{TypeSubstitutor, instantiate_type_generic},
         infer::{
             VarRefId,
+            infer_index::infer_array::{check_iter_var_range, infer_array_member},
             infer_name::get_name_expr_var_ref_id,
-            narrow::{get_var_expr_var_ref_id, infer_expr_narrow_type},
+            narrow::infer_expr_narrow_type,
         },
         member::get_buildin_type_map_type_id,
         type_check::{self, check_type_compact},
@@ -210,157 +212,6 @@ pub fn infer_member_by_member_key(
         }
         _ => Err(InferFailReason::FieldNotFound),
     }
-}
-
-fn infer_array_member(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    array_type: &LuaArrayType,
-    index_member_expr: LuaIndexMemberExpr,
-) -> Result<LuaType, InferFailReason> {
-    let key = index_member_expr
-        .get_index_key()
-        .ok_or(InferFailReason::None)?;
-    let index_prefix_expr = match index_member_expr {
-        LuaIndexMemberExpr::TableField(_) => {
-            return Ok(array_type.get_base().clone());
-        }
-        _ => index_member_expr
-            .get_prefix_expr()
-            .ok_or(InferFailReason::None)?,
-    };
-
-    match key {
-        LuaIndexKey::Integer(i) => {
-            if !db.get_emmyrc().strict.array_index {
-                return Ok(array_type.get_base().clone());
-            }
-
-            let base_type = array_type.get_base();
-            match array_type.get_len() {
-                LuaArrayLen::None => {}
-                LuaArrayLen::Max(max_len) => {
-                    if let NumberResult::Int(index_value) = i.get_number_value() {
-                        if index_value > 0 && index_value <= *max_len {
-                            return Ok(base_type.clone());
-                        }
-                    }
-                }
-            }
-
-            let result_type = match &base_type {
-                LuaType::Any | LuaType::Unknown => base_type.clone(),
-                _ => TypeOps::Union.apply(db, base_type, &LuaType::Nil),
-            };
-
-            Ok(result_type)
-        }
-        LuaIndexKey::Expr(expr) => {
-            let expr_type = infer_expr(db, cache, expr.clone())?;
-            if expr_type.is_integer() {
-                let base_type = array_type.get_base();
-                match (array_type.get_len(), expr_type) {
-                    (
-                        LuaArrayLen::Max(max_len),
-                        LuaType::IntegerConst(index_value) | LuaType::DocIntegerConst(index_value),
-                    ) => {
-                        if index_value > 0 && index_value <= *max_len {
-                            return Ok(base_type.clone());
-                        }
-                    }
-                    _ => {
-                        if check_iter_var_range(db, cache, &expr, index_prefix_expr)
-                            .unwrap_or(false)
-                        {
-                            return Ok(base_type.clone());
-                        }
-                    }
-                }
-
-                let result_type = match &base_type {
-                    LuaType::Any | LuaType::Unknown => base_type.clone(),
-                    _ => {
-                        if db.get_emmyrc().strict.array_index {
-                            TypeOps::Union.apply(db, base_type, &LuaType::Nil)
-                        } else {
-                            base_type.clone()
-                        }
-                    }
-                };
-
-                Ok(result_type)
-            } else {
-                Err(InferFailReason::FieldNotFound)
-            }
-        }
-        _ => Err(InferFailReason::FieldNotFound),
-    }
-}
-
-fn check_iter_var_range(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    may_iter_var: &LuaExpr,
-    prefix_expr: LuaExpr,
-) -> Option<bool> {
-    let LuaExpr::NameExpr(name_expr) = may_iter_var else {
-        return None;
-    };
-
-    let decl_id = db
-        .get_reference_index()
-        .get_var_reference_decl(&cache.get_file_id(), name_expr.get_range())?;
-
-    let decl = db.get_decl_index().get_decl(&decl_id)?;
-    let decl_syntax_id = decl.get_syntax_id();
-    if !decl_syntax_id.is_token() {
-        return None;
-    }
-
-    let root = prefix_expr.get_root();
-    let token = decl_syntax_id.to_token_from_root(&root)?;
-    let parent_node = token.parent()?;
-    let for_stat = LuaForStat::cast(parent_node)?;
-    let iter_exprs = for_stat.get_iter_expr().collect::<Vec<_>>();
-    let test_len_expr = match iter_exprs.len() {
-        2 => {
-            let LuaExpr::UnaryExpr(unary_expr) = iter_exprs[1].clone() else {
-                return None;
-            };
-            unary_expr
-        }
-        3 => {
-            let step_type = infer_expr(db, cache, iter_exprs[2].clone()).ok()?;
-            let LuaType::IntegerConst(step_value) = step_type else {
-                return None;
-            };
-            if step_value > 0 {
-                let LuaExpr::UnaryExpr(unary_expr) = iter_exprs[1].clone() else {
-                    return None;
-                };
-                unary_expr
-            } else if step_value < 0 {
-                let LuaExpr::UnaryExpr(unary_expr) = iter_exprs[0].clone() else {
-                    return None;
-                };
-                unary_expr
-            } else {
-                return None;
-            }
-        }
-        _ => return None,
-    };
-
-    let op = test_len_expr.get_op_token()?;
-    if op.get_op() != UnaryOperator::OpLen {
-        return None;
-    }
-
-    let len_expr = test_len_expr.get_expr()?;
-    let len_expr_var_ref_id = get_var_expr_var_ref_id(db, cache, len_expr)?;
-    let prefix_expr_var_ref_id = get_var_expr_var_ref_id(db, cache, prefix_expr)?;
-
-    Some(len_expr_var_ref_id == prefix_expr_var_ref_id)
 }
 
 fn infer_table_member(
@@ -598,6 +449,23 @@ fn infer_tuple_member(
                 for typ in tuple_type.get_types() {
                     result = TypeOps::Union.apply(db, &result, typ);
                 }
+
+                let index_prefix_expr = match index_expr {
+                    LuaIndexMemberExpr::TableField(_) => {
+                        return Ok(result);
+                    }
+                    _ => index_expr.get_prefix_expr().ok_or(InferFailReason::None)?,
+                };
+                let maybe_iter_var = match &index_key {
+                    LuaIndexKey::Expr(expr) => expr,
+                    _ => return Ok(result),
+                };
+                if check_iter_var_range(db, cache, &maybe_iter_var, index_prefix_expr)
+                    .unwrap_or(false)
+                {
+                    return Ok(result);
+                }
+
                 result = TypeOps::Union.apply(db, &result, &LuaType::Nil);
                 return Ok(result);
             }
