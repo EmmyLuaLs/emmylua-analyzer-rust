@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaLocalStat,
-    LuaSyntaxKind,
+    LuaAst, LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaLocalStat, LuaSyntaxKind, PathTrait,
 };
 use rowan::{NodeOrToken, TextRange};
 use serde_json::json;
@@ -82,14 +81,11 @@ fn collect_local_alias(
                 continue;
             }
 
-            let name = match value_expr {
-                LuaExpr::IndexExpr(index_expr) => {
-                    let index_key = index_expr.get_index_key()?;
-                    match index_key {
-                        LuaIndexKey::Name(name_token) => name_token.get_name_text().to_string(),
-                        _ => continue,
-                    }
-                }
+            let access_path = match value_expr {
+                LuaExpr::IndexExpr(index_expr) => match index_expr.get_access_path() {
+                    Some(p) => p,
+                    None => continue,
+                },
                 _ => continue,
             };
             let node_or_token = NodeOrToken::Node(value_expr.syntax().clone());
@@ -103,7 +99,12 @@ fn collect_local_alias(
                     None => continue,
                 };
 
-                local_alias_set.insert(name, preferred_name.to_string(), semantic_id, ref_var);
+                local_alias_set.insert(
+                    access_path,
+                    preferred_name.to_string(),
+                    semantic_id,
+                    ref_var,
+                );
                 local_alias_set.add_disable_check(value_expr.get_range());
             }
         }
@@ -199,14 +200,14 @@ impl LocalAliasSet {
 
     fn insert(
         &mut self,
-        name: String,
+        access_path: String,
         preferred_name: String,
         decl_id: LuaSemanticDeclId,
         ref_var: LuaSemanticDeclId,
     ) {
         if let Some(map) = self.local_alias_stack.last_mut() {
             map.insert(
-                name,
+                access_path,
                 LocalAliasInfo {
                     ref_var,
                     ref_field: decl_id,
@@ -217,9 +218,9 @@ impl LocalAliasSet {
         }
     }
 
-    fn get(&mut self, name: &str) -> Option<&mut LocalAliasInfo> {
+    fn get(&mut self, access_path: &str) -> Option<&mut LocalAliasInfo> {
         for map in self.local_alias_stack.iter_mut().rev() {
-            if let Some(item) = map.get_mut(name) {
+            if let Some(item) = map.get_mut(access_path) {
                 return Some(item);
             }
         }
@@ -265,13 +266,9 @@ fn check_index_expr_preference(
         _ => {}
     }
 
-    let index_key = index_expr.get_index_key()?;
-    let name = match index_key {
-        LuaIndexKey::Name(name_token) => name_token.get_name_text().to_string(),
-        _ => return Some(()),
-    };
+    let access_path = index_expr.get_access_path()?;
 
-    let alias_info = local_alias_set.get(&name)?;
+    let alias_info = local_alias_set.get(&access_path)?;
     if alias_info.invalid {
         return Some(());
     }
