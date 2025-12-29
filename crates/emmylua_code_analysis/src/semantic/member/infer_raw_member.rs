@@ -55,7 +55,7 @@ fn infer_raw_member_type_guard(
             infer_table_generic_raw_member_type(db, table_generic, member_key)
         }
         LuaType::Generic(generic_type) => {
-            infer_generic_raw_member_type(db, generic_type, member_key)
+            infer_generic_raw_member_type(db, generic_type, member_key, infer_guard)
         }
         // other do not support now
         _ => Err(InferFailReason::None),
@@ -210,6 +210,7 @@ fn infer_generic_raw_member_type(
     db: &DbIndex,
     generic_type: &LuaGenericType,
     member_key: &LuaMemberKey,
+    infer_guard: &InferGuardRef,
 ) -> RawGetMemberTypeResult {
     let base_ref_id = generic_type.get_base_type_id_ref();
     let generic_params = generic_type.get_params();
@@ -224,7 +225,6 @@ fn infer_generic_raw_member_type(
     }
 
     let base_ref_type = LuaType::Ref(base_ref_id.clone());
-    let infer_guard = InferGuard::new();
-    let result = infer_raw_member_type_guard(db, &base_ref_type, member_key, &infer_guard)?;
+    let result = infer_raw_member_type_guard(db, &base_ref_type, member_key, infer_guard)?;
     Ok(instantiate_type_generic(db, &result, &substitutor))
 }
