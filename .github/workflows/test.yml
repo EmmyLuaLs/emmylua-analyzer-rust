@@ -35,7 +35,7 @@ jobs:
     - name: Install pre-commit
       run: pip install pre-commit
     - name: Run style check
-      run: pre-commit run --all
+      run: pre-commit run --all --hook-stage manual
 
   clippy:
     name: Clippy Lint Check

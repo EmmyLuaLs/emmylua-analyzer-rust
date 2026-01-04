@@ -152,6 +152,33 @@ impl ProviderVirtualWorkspace {
             .unwrap()
     }
 
+    pub fn def_files(&mut self, files: Vec<(&str, &str)>) -> Vec<FileId> {
+        let mut removed_files = HashSet::new();
+        let mut updated_files = HashSet::new();
+
+        for (file_name, content) in files {
+            let uri = self.virtual_url_generator.new_uri(file_name);
+            let file_id = self
+                .analysis
+                .compilation
+                .get_db_mut()
+                .get_vfs_mut()
+                .set_file_content(&uri, Some(content.to_string()));
+            removed_files.insert(file_id);
+            updated_files.insert(file_id);
+        }
+
+        self.analysis
+            .compilation
+            .remove_index(removed_files.into_iter().collect());
+
+        let mut file_ids: Vec<FileId> = updated_files.into_iter().collect();
+        file_ids.sort();
+        self.analysis.compilation.update_index(file_ids.clone());
+
+        file_ids
+    }
+
     pub fn get_emmyrc(&self) -> Emmyrc {
         self.analysis.emmyrc.deref().clone()
     }
@@ -161,13 +188,22 @@ impl ProviderVirtualWorkspace {
     }
 
     /// 处理文件内容
-    fn handle_file_content(content: &str) -> Result<(String, Position)> {
-        let content = content.to_string();
-        let cursor_byte_pos = content
-            .find("<??>")
-            .ok_or("module content should include <??>")
-            .or_fail()?;
-        if content.matches("<??>").count() > 1 {
+    pub fn handle_file_content(content: &str) -> Result<(String, Position)> {
+        let (content, position) = Self::handle_file_content_option(content)?;
+        Ok((
+            content,
+            position
+                .ok_or("module content should include <??>")
+                .or_fail()?,
+        ))
+    }
+
+    fn handle_file_content_option(content: &str) -> Result<(String, Option<Position>)> {
+        let cursor_byte_pos = match content.find("<??>") {
+            Some(pos) => pos,
+            None => return Ok((content.to_string(), None)),
+        };
+        if content[cursor_byte_pos + "<??>".len()..].contains("<??>") {
             return Err("found multiple <??>").or_fail();
         }
 
@@ -187,7 +223,7 @@ impl ProviderVirtualWorkspace {
         }
 
         let new_content = content.replace("<??>", "");
-        Ok((new_content, Position::new(line as u32, column as u32)))
+        Ok((new_content, Some(Position::new(line as u32, column as u32))))
     }
 
     pub fn check_hover(&mut self, block_str: &str, expected: VirtualHoverResult) -> Result<()> {
@@ -338,7 +374,10 @@ impl ProviderVirtualWorkspace {
         Self::assert_locations(items, expected)
     }
 
-    fn assert_locations(result: Vec<Location>, mut expected: Vec<VirtualLocation>) -> Result<()> {
+    pub fn assert_locations(
+        result: Vec<Location>,
+        mut expected: Vec<VirtualLocation>,
+    ) -> Result<()> {
         let mut items = result
             .iter()
             .map(|l| VirtualLocation {
@@ -611,11 +650,30 @@ impl ProviderVirtualWorkspace {
 
     pub fn check_references(
         &mut self,
-        block_str: &str,
+        main_block_str: &str,
+        other_files: Vec<(&str, &str)>,
         expected: Vec<VirtualLocation>,
     ) -> Result<()> {
-        let (content, position) = Self::handle_file_content(block_str)?;
-        let file_id = self.def(&content);
+        let (main_content, position) = Self::handle_file_content(main_block_str)?;
+        let file_id = self.def(&main_content);
+
+        let processed_other_files = other_files
+            .into_iter()
+            .map(|(file_name, content)| {
+                let (content, position) = Self::handle_file_content_option(content)?;
+                if position.is_some() {
+                    return Err("found multiple <??>").or_fail();
+                }
+                Ok((file_name.to_string(), content))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        self.def_files(
+            processed_other_files
+                .iter()
+                .map(|(file_name, content)| (file_name.as_str(), content.as_str()))
+                .collect(),
+        );
         let result = references(&self.analysis, file_id, position)
             .ok_or("failed to get references")
             .or_fail()?;

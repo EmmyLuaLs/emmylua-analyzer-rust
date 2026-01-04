@@ -6,13 +6,6 @@ mod tests {
     #[gtest]
     fn test_function_references() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.def_file(
-            "1.lua",
-            r#"
-                local flush = require("virtual_0").flush
-                flush()
-            "#,
-        );
         check!(ws.check_references(
             r#"
                 local export = {}
@@ -21,6 +14,13 @@ mod tests {
                 export.flush = flush
                 return export
             "#,
+            vec![(
+                "1.lua",
+                r#"
+                    local flush = require("virtual_0").flush
+                    flush()
+                "#,
+            )],
             vec![
                 VirtualLocation {
                     file: "".to_string(),
@@ -58,13 +58,6 @@ mod tests {
     #[gtest]
     fn test_function_references_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.def_file(
-            "1.lua",
-            r#"
-                local flush = require("virtual_0").flush
-                flush()
-            "#,
-        );
         check!(ws.check_references(
             r#"
                 local function fl<??>ush()
@@ -73,6 +66,13 @@ mod tests {
                     flush = flush,
                 }
             "#,
+            vec![(
+                "1.lua",
+                r#"
+                    local flush = require("virtual_0").flush
+                    flush()
+                "#,
+            )],
             vec![
                 VirtualLocation {
                     file: "".to_string(),
@@ -103,6 +103,45 @@ mod tests {
                     line: 4,
                 },
             ]
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_module_return() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+
+        check!(ws.check_references(
+            r#"
+                local function init()
+                end
+                return in<??>it
+            "#,
+            vec![(
+                "a.lua",
+                r#"
+                local init = require("virtual_0")
+                init()
+            "#,
+            )],
+            vec![
+                VirtualLocation {
+                    file: "virtual_0.lua".to_string(),
+                    line: 1,
+                },
+                VirtualLocation {
+                    file: "a.lua".to_string(),
+                    line: 1,
+                },
+                VirtualLocation {
+                    file: "a.lua".to_string(),
+                    line: 2,
+                },
+                VirtualLocation {
+                    file: "virtual_0.lua".to_string(),
+                    line: 3,
+                },
+            ],
         ));
         Ok(())
     }

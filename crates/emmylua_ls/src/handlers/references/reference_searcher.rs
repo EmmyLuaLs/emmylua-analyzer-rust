@@ -1,14 +1,19 @@
 use std::collections::{HashMap, HashSet};
 
 use emmylua_code_analysis::{
-    DeclReferenceCell, LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
-    LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
+    DeclReferenceCell, FileId, LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaNameToken, LuaStringToken, LuaSyntaxNode,
-    LuaSyntaxToken, LuaTableField,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaNameToken, LuaStringToken,
+    LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
 };
 use lsp_types::Location;
+
+#[derive(Default)]
+struct ReferenceSearchContext {
+    visited_module_exports: HashSet<FileId>,
+}
 
 pub fn search_references(
     semantic_model: &SemanticModel,
@@ -50,6 +55,17 @@ pub fn search_decl_references(
     decl_id: LuaDeclId,
     result: &mut Vec<Location>,
 ) -> Option<()> {
+    let mut ctx = ReferenceSearchContext::default();
+    search_decl_references_with_ctx(&mut ctx, semantic_model, compilation, decl_id, result)
+}
+
+fn search_decl_references_with_ctx(
+    ctx: &mut ReferenceSearchContext,
+    semantic_model: &SemanticModel,
+    compilation: &LuaCompilation,
+    decl_id: LuaDeclId,
+    result: &mut Vec<Location>,
+) -> Option<()> {
     let decl = semantic_model
         .get_db()
         .get_decl_index()
@@ -65,15 +81,24 @@ pub fn search_decl_references(
             result.push(location);
         }
         let typ = semantic_model.get_type(decl.get_id().into());
-        let is_signature = typ.is_signature();
+        let should_follow_value_alias = matches!(
+            typ,
+            LuaType::Signature(_)
+                | LuaType::Table
+                | LuaType::TableConst(_)
+                | LuaType::Ref(_)
+                | LuaType::Def(_)
+        );
 
         for decl_ref in &decl_refs.cells {
             let location = document.to_lsp_location(decl_ref.range)?;
             result.push(location);
-            if is_signature {
-                get_signature_decl_member_references(semantic_model, compilation, result, decl_ref);
+            if should_follow_value_alias {
+                get_references(ctx, semantic_model, compilation, result, decl_ref);
             }
         }
+
+        extend_module_return_value_references(ctx, semantic_model, compilation, decl_id, result);
 
         return Some(());
     } else {
@@ -93,6 +118,17 @@ pub fn search_decl_references(
 }
 
 pub fn search_member_references(
+    semantic_model: &SemanticModel,
+    compilation: &LuaCompilation,
+    member_id: LuaMemberId,
+    result: &mut Vec<Location>,
+) -> Option<()> {
+    let mut ctx = ReferenceSearchContext::default();
+    search_member_references_with_ctx(&mut ctx, semantic_model, compilation, member_id, result)
+}
+
+fn search_member_references_with_ctx(
+    ctx: &mut ReferenceSearchContext,
     semantic_model: &SemanticModel,
     compilation: &LuaCompilation,
     member_id: LuaMemberId,
@@ -131,7 +167,7 @@ pub fn search_member_references(
             let range = in_filed_syntax_id.value.get_range();
             let location = document.to_lsp_location(range)?;
             result.push(location);
-            search_member_secondary_references(semantic_model, compilation, node, result);
+            search_member_secondary_references(ctx, semantic_model, compilation, node, result);
         }
     }
 
@@ -139,6 +175,7 @@ pub fn search_member_references(
 }
 
 fn search_member_secondary_references(
+    ctx: &mut ReferenceSearchContext,
     semantic_model: &SemanticModel,
     compilation: &LuaCompilation,
     node: LuaSyntaxNode,
@@ -154,7 +191,7 @@ fn search_member_secondary_references(
                 .position(|value| value.get_position() == position)?;
             let var = vars.get(idx)?;
             let decl_id = LuaDeclId::new(semantic_model.get_file_id(), var.get_position());
-            search_decl_references(semantic_model, compilation, decl_id, result);
+            search_decl_references_with_ctx(ctx, semantic_model, compilation, decl_id, result);
             let document = semantic_model.get_document();
             let range = document.to_lsp_location(var.get_range())?;
             result.push(range);
@@ -165,7 +202,7 @@ fn search_member_secondary_references(
             let idx = values.position(|value| value.get_position() == position)?;
             let name = local_names.get(idx)?;
             let decl_id = LuaDeclId::new(semantic_model.get_file_id(), name.get_position());
-            search_decl_references(semantic_model, compilation, decl_id, result);
+            search_decl_references_with_ctx(ctx, semantic_model, compilation, decl_id, result);
             let document = semantic_model.get_document();
             let range = document.to_lsp_location(name.get_range())?;
             result.push(range);
@@ -255,7 +292,8 @@ fn search_type_decl_references(
     Some(())
 }
 
-fn get_signature_decl_member_references(
+fn get_references(
+    ctx: &mut ReferenceSearchContext,
     semantic_model: &SemanticModel,
     compilation: &LuaCompilation,
     result: &mut Vec<Location>,
@@ -277,7 +315,13 @@ fn get_signature_decl_member_references(
             let decl_id = semantic_model
                 .find_decl(var.syntax().clone().into(), SemanticDeclLevel::default())?;
             if let LuaSemanticDeclId::Member(member_id) = decl_id {
-                search_member_references(semantic_model, compilation, member_id, result);
+                search_member_references_with_ctx(
+                    ctx,
+                    semantic_model,
+                    compilation,
+                    member_id,
+                    result,
+                );
             }
         }
         table_field_node if LuaTableField::can_cast(table_field_node.kind().into()) => {
@@ -287,11 +331,173 @@ fn get_signature_decl_member_references(
                 SemanticDeclLevel::default(),
             )?;
             if let LuaSemanticDeclId::Member(member_id) = decl_id {
-                search_member_references(semantic_model, compilation, member_id, result);
+                search_member_references_with_ctx(
+                    ctx,
+                    semantic_model,
+                    compilation,
+                    member_id,
+                    result,
+                );
             }
         }
         _ => {}
     }
+    None
+}
+
+fn extend_module_return_value_references(
+    ctx: &mut ReferenceSearchContext,
+    semantic_model: &SemanticModel,
+    compilation: &LuaCompilation,
+    decl_id: LuaDeclId,
+    result: &mut Vec<Location>,
+) -> Option<()> {
+    let module_file_id = decl_id.file_id;
+    let module_info = semantic_model
+        .get_db()
+        .get_module_index()
+        .get_module(module_file_id)?;
+    if module_info.semantic_id.as_ref() != Some(&LuaSemanticDeclId::LuaDecl(decl_id)) {
+        return Some(());
+    }
+
+    if !ctx.visited_module_exports.insert(module_file_id) {
+        return Some(());
+    }
+
+    let file_dependency = semantic_model
+        .get_db()
+        .get_file_dependencies_index()
+        .get_file_dependencies();
+    let mut dependents = file_dependency.collect_file_dependents(vec![module_file_id]);
+    dependents.sort();
+
+    let mut semantic_cache: HashMap<FileId, SemanticModel> = HashMap::new();
+    let mut visited_bindings: HashSet<LuaSemanticDeclId> = HashSet::new();
+
+    for dependent_file_id in dependents {
+        let dependent_semantic_model =
+            if let Some(semantic_model) = semantic_cache.get_mut(&dependent_file_id) {
+                semantic_model
+            } else {
+                let semantic_model = compilation.get_semantic_model(dependent_file_id)?;
+                semantic_cache.insert(dependent_file_id, semantic_model);
+                semantic_cache.get_mut(&dependent_file_id)?
+            };
+
+        let root = dependent_semantic_model.get_root();
+        for node in root.descendants::<LuaAst>() {
+            let LuaAst::LuaCallExpr(call_expr) = node else {
+                continue;
+            };
+
+            if !call_expr.is_require() {
+                continue;
+            }
+
+            if resolve_require_target_file_id(dependent_semantic_model, &call_expr)
+                != Some(module_file_id)
+            {
+                continue;
+            }
+
+            if let Some(binding_semantic) =
+                find_require_call_binding_semantic(dependent_semantic_model, &call_expr)
+            {
+                if !visited_bindings.insert(binding_semantic.clone()) {
+                    continue;
+                }
+
+                match binding_semantic {
+                    LuaSemanticDeclId::LuaDecl(decl_id) => {
+                        search_decl_references_with_ctx(
+                            ctx,
+                            dependent_semantic_model,
+                            compilation,
+                            decl_id,
+                            result,
+                        );
+                    }
+                    LuaSemanticDeclId::Member(member_id) => {
+                        search_member_references_with_ctx(
+                            ctx,
+                            dependent_semantic_model,
+                            compilation,
+                            member_id,
+                            result,
+                        );
+                    }
+                    _ => {}
+                }
+            } else {
+                let document = dependent_semantic_model.get_document();
+                let location = document.to_lsp_location(call_expr.get_range())?;
+                result.push(location);
+            }
+        }
+    }
+
+    Some(())
+}
+
+fn resolve_require_target_file_id(
+    semantic_model: &SemanticModel,
+    call_expr: &LuaCallExpr,
+) -> Option<FileId> {
+    let args = call_expr.get_args_list()?;
+    let first_arg = args.get_args().next()?;
+    let require_path_type = semantic_model.infer_expr(first_arg).ok()?;
+    let module_path: String = match &require_path_type {
+        LuaType::StringConst(module_path) => module_path.as_ref().to_string(),
+        _ => return None,
+    };
+
+    let module_info = semantic_model
+        .get_db()
+        .get_module_index()
+        .find_module(&module_path)?;
+    Some(module_info.file_id)
+}
+
+fn find_require_call_binding_semantic(
+    semantic_model: &SemanticModel,
+    call_expr: &LuaCallExpr,
+) -> Option<LuaSemanticDeclId> {
+    let position = call_expr.get_position();
+
+    let mut current = call_expr.syntax().parent();
+    while let Some(node) = current {
+        let Some(parent) = LuaAst::cast(node.clone()) else {
+            current = node.parent();
+            continue;
+        };
+
+        match parent {
+            LuaAst::LuaLocalStat(local_stat) => {
+                let local_names = local_stat.get_local_name_list().collect::<Vec<_>>();
+                let mut values = local_stat.get_value_exprs();
+                let idx = values.position(|value| value.get_position() == position)?;
+                let name = local_names.get(idx)?;
+                return Some(LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
+                    semantic_model.get_file_id(),
+                    name.get_position(),
+                )));
+            }
+            LuaAst::LuaAssignStat(assign_stat) => {
+                let (vars, values) = assign_stat.get_var_and_expr_list();
+                let idx = values
+                    .iter()
+                    .position(|value| value.get_position() == position)?;
+                let var = vars.get(idx)?;
+                return semantic_model
+                    .find_decl(var.syntax().clone().into(), SemanticDeclLevel::default());
+            }
+            _ => {}
+        }
+
+        current = node.parent();
+    }
+
     None
 }
 

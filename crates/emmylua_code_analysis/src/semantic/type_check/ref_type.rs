@@ -419,25 +419,38 @@ fn check_ref_type_compact_tuple(
         if context.is_key_checked(&key) {
             continue;
         }
+        match &key {
+            LuaMemberKey::Integer(index) => {
+                // 在 lua 中数组索引从 1 开始, 当数组被解析为元组时也必然从 1 开始
+                if *index <= 0 {
+                    return Err(TypeCheckFailReason::TypeNotMatch);
+                }
 
-        if let LuaMemberKey::Integer(index) = &key {
-            // 在 lua 中数组索引从 1 开始, 当数组被解析为元组时也必然从 1 开始
-            if *index <= 0 {
+                let Some(tuple_type) = tuple_types.get(*index as usize - 1) else {
+                    return Err(TypeCheckFailReason::TypeNotMatch);
+                };
+
+                check_general_type_compact(
+                    context,
+                    &member.typ,
+                    tuple_type,
+                    check_guard.next_level()?,
+                )?;
+            }
+            LuaMemberKey::ExprType(LuaType::Integer) => {
+                // 遍历元组确定所有内容是否匹配
+                for tuple_type in tuple_types {
+                    check_general_type_compact(
+                        context,
+                        &member.typ,
+                        tuple_type,
+                        check_guard.next_level()?,
+                    )?;
+                }
+            }
+            _ => {
                 return Err(TypeCheckFailReason::TypeNotMatch);
             }
-
-            let Some(tuple_type) = tuple_types.get(*index as usize - 1) else {
-                return Err(TypeCheckFailReason::TypeNotMatch);
-            };
-
-            check_general_type_compact(
-                context,
-                &member.typ,
-                tuple_type,
-                check_guard.next_level()?,
-            )?;
-        } else {
-            return Err(TypeCheckFailReason::TypeNotMatch);
         }
 
         context.mark_key_checked(key);
