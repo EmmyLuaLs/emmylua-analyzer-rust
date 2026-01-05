@@ -145,4 +145,38 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_module_return_2() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "a.lua",
+            r#"
+            local function getA()
+            end
+            return {
+                getA = getA
+            }
+        "#,
+        );
+
+        check!(ws.check_references(
+            r#"
+                local AModule = require("a")
+                AMo<??>dule.getA()
+            "#,
+            vec![],
+            vec![
+                VirtualLocation {
+                    file: "virtual_0.lua".to_string(),
+                    line: 1,
+                },
+                VirtualLocation {
+                    file: "virtual_0.lua".to_string(),
+                    line: 2,
+                },
+            ],
+        ));
+        Ok(())
+    }
 }

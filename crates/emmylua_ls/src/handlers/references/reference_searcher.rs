@@ -21,12 +21,19 @@ pub fn search_references(
     token: LuaSyntaxToken,
 ) -> Option<Vec<Location>> {
     let mut result = Vec::new();
+    dbg!(semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default()));
     if let Some(semantic_decl) =
         semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default())
     {
         match semantic_decl {
             LuaSemanticDeclId::LuaDecl(decl_id) => {
-                search_decl_references(semantic_model, compilation, decl_id, &mut result);
+                search_decl_references_with_token(
+                    semantic_model,
+                    compilation,
+                    decl_id,
+                    token,
+                    &mut result,
+                );
             }
             LuaSemanticDeclId::Member(member_id) => {
                 search_member_references(semantic_model, compilation, member_id, &mut result);
@@ -47,6 +54,39 @@ pub fn search_references(
     // Some(filtered_result)
 
     Some(result)
+}
+
+pub fn search_decl_references_with_token(
+    semantic_model: &SemanticModel,
+    compilation: &LuaCompilation,
+    decl_id: LuaDeclId,
+    token: LuaSyntaxToken,
+    result: &mut Vec<Location>,
+) -> Option<()> {
+    let mut ctx = ReferenceSearchContext::default();
+    let previous_result = result.len();
+    let ret =
+        search_decl_references_with_ctx(&mut ctx, semantic_model, compilation, decl_id, result);
+    // 如果不等于当前文件, 那么我们可能是引用了其他文件的导出
+    if ret.is_none()
+        && previous_result == result.len()
+        && decl_id.file_id != semantic_model.get_file_id()
+    {
+        if let Some(semantic_decl) =
+            semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::NoTrace)
+        {
+            if let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl {
+                return search_decl_references_with_ctx(
+                    &mut ctx,
+                    semantic_model,
+                    compilation,
+                    decl_id,
+                    result,
+                );
+            }
+        }
+    }
+    ret
 }
 
 pub fn search_decl_references(
@@ -345,6 +385,7 @@ fn get_references(
     None
 }
 
+/// 如果是模块导出, 那么我们需要找到所有引用了这个模块的变量
 fn extend_module_return_value_references(
     ctx: &mut ReferenceSearchContext,
     semantic_model: &SemanticModel,
