@@ -4,9 +4,8 @@ use itertools::Itertools;
 use lsp_types::{
     CodeActionOrCommand, CompletionItem, CompletionItemKind, CompletionResponse,
     CompletionTriggerKind, Documentation, GotoDefinitionResponse, Hover, HoverContents,
-    InlayHintLabel, Location, MarkupContent, Position, SemanticTokenModifier, SemanticTokenType,
-    SemanticTokensResult, SignatureHelpContext, SignatureHelpTriggerKind, SignatureInformation,
-    TextEdit,
+    InlayHintLabel, Location, MarkupContent, Position, SemanticToken, SemanticTokensResult,
+    SignatureHelpContext, SignatureHelpTriggerKind, SignatureInformation, TextEdit,
 };
 use std::collections::HashSet;
 use std::{ops::Deref, sync::Arc};
@@ -25,7 +24,6 @@ use crate::{
 };
 
 use super::{hover::hover, implementation::implementation, references::references};
-use crate::handlers::semantic_token::{SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES};
 
 /// Calling this macro on a [`Result`] is equivalent to `result?`,
 /// but adds info about current location to the error message.
@@ -100,15 +98,6 @@ pub struct VirtualInlayHint {
 #[derive(Debug)]
 pub struct VirtualCodeAction {
     pub title: String,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct VirtualSemanticToken {
-    pub line: u32,
-    pub start: u32,
-    pub length: u32,
-    pub token_type: SemanticTokenType,
-    pub token_modifier: HashSet<SemanticTokenModifier>,
 }
 
 #[allow(unused)]
@@ -550,64 +539,42 @@ impl ProviderVirtualWorkspace {
         )
     }
 
-    pub fn check_semantic_token(
-        &mut self,
-        block_str: &str,
-        expected: Vec<VirtualSemanticToken>,
-    ) -> Result<()> {
+    pub fn check_semantic_token(&mut self, block_str: &str, expected: Vec<u32>) -> Result<()> {
+        let result_data = self.get_semantic_token_data(block_str)?;
+        verify_eq!(result_data, expected)
+    }
+
+    pub fn get_semantic_token_data(&mut self, block_str: &str) -> Result<Vec<u32>> {
         let file_id = self.def(block_str);
+        self.get_semantic_token_data_for_file(file_id)
+    }
+
+    pub fn get_semantic_token_data_for_file(&mut self, file_id: FileId) -> Result<Vec<u32>> {
         let result = semantic_token(&self.analysis, file_id, true, ClientId::VSCode)
             .ok_or("failed to get semantic tokens")
             .or_fail()?;
         let SemanticTokensResult::Tokens(result) = result else {
-            return fail!("expected SemanticTokensResult::Tokens, got {result:?}");
+            return Err(format!(
+                "expected SemanticTokensResult::Tokens, got {result:?}"
+            ))
+            .or_fail();
         };
 
-        fn type_index_to_type(index: u32) -> Result<SemanticTokenType> {
-            SEMANTIC_TOKEN_TYPES
-                .get(index as usize)
-                .cloned()
-                .ok_or_else(|| format!("unknown semantic token {index}"))
-                .or_fail()
-        }
+        let result_data: Vec<u32> = result
+            .data
+            .into_iter()
+            .flat_map(|token: SemanticToken| {
+                [
+                    token.delta_line,
+                    token.delta_start,
+                    token.length,
+                    token.token_type,
+                    token.token_modifiers_bitset,
+                ]
+            })
+            .collect();
 
-        fn modifier_bitmap_to_modifiers(bitmap: u32) -> Result<HashSet<SemanticTokenModifier>> {
-            (0..32)
-                .filter_map(|i| {
-                    if bitmap & (1 << i) != 0 {
-                        Some(
-                            SEMANTIC_TOKEN_MODIFIERS
-                                .get(i as usize)
-                                .cloned()
-                                .ok_or_else(|| format!("unknown semantic token modifier {i}"))
-                                .or_fail(),
-                        )
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        }
-
-        let mut virtual_result = Vec::new();
-        let mut line = 0;
-        let mut start = 0;
-        for token in result.data {
-            if token.delta_line > 0 {
-                line += token.delta_line;
-                start = 0;
-            }
-            start += token.delta_start;
-            virtual_result.push(VirtualSemanticToken {
-                line,
-                start,
-                length: token.length,
-                token_type: type_index_to_type(token.token_type)?,
-                token_modifier: modifier_bitmap_to_modifiers(token.token_modifiers_bitset)?,
-            });
-        }
-
-        verify_eq!(virtual_result, expected)
+        Ok(result_data)
     }
 
     pub fn check_rename(

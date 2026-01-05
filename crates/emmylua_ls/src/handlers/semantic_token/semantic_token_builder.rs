@@ -300,4 +300,12 @@ impl<'a> SemanticBuilder<'a> {
     pub fn is_special_string_range(&self, range: &TextRange) -> bool {
         self.string_special_range.contains(range)
     }
+
+    pub fn contains_position(&self, position: TextSize) -> bool {
+        self.data.contains_key(&position)
+    }
+
+    pub fn contains_token(&self, token: &LuaSyntaxToken) -> bool {
+        self.contains_position(token.text_range().start())
+    }
 }
