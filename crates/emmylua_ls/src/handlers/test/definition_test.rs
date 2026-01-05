@@ -237,6 +237,35 @@ mod tests {
     }
 
     #[gtest]
+    fn test_goto_require_return_table_fallback() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def_file(
+            "reported-tasks.lua",
+            r#"
+            ---@class TestModule
+            local TestModule = {}
+            function TestModule:getA()
+            end
+            return {
+                TestModule = TestModule,
+            }
+        "#,
+        );
+
+        check!(ws.check_definition(
+            r#"
+                local reportedTasks = require("reported-tasks")
+                reported<??>Tasks.TestModule:getA()
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 1,
+            }]
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_goto_generic_type() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def_file(

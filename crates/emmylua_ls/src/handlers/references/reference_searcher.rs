@@ -21,7 +21,6 @@ pub fn search_references(
     token: LuaSyntaxToken,
 ) -> Option<Vec<Location>> {
     let mut result = Vec::new();
-    dbg!(semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default()));
     if let Some(semantic_decl) =
         semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default())
     {
