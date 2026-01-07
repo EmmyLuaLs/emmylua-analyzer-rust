@@ -1,5 +1,8 @@
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
+    use crate::handlers::references::references;
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualLocation, check};
     use googletest::prelude::*;
 
@@ -177,6 +180,31 @@ mod tests {
                 },
             ],
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_member_references_alias_cycle_does_not_stack_overflow() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+
+        let (main_content, position) = check!(ProviderVirtualWorkspace::handle_file_content(
+            r#"
+                local t = {}
+                t.m<??> = function() end
+                local x = t.m
+                t.m = x
+            "#,
+        ));
+        let file_id = ws.def(&main_content);
+
+        let result = references(&ws.analysis, file_id, position)
+            .ok_or("failed to get references")
+            .or_fail()?;
+
+        let lines: HashSet<u32> = result.iter().map(|l| l.range.start.line).collect();
+        assert!(lines.contains(&2));
+        assert!(lines.contains(&3));
+        assert!(lines.contains(&4));
         Ok(())
     }
 }
