@@ -22,7 +22,18 @@ os = {}
 ---@return number
 function os.clock() end
 
----@class std.osdate
+---@class std.osdateparam
+---@field year integer|string four digits
+---@field month integer|string 1-12
+---@field day integer|string 1-31
+---@field hour (integer|string)? 0-23
+---@field min (integer|string)? 0-59
+---@field sec (integer|string)? 0-61, due to leap seconds
+---@field wday (integer|string)? 1-7, Sunday is 1
+---@field yday (integer|string)? 1-366
+---@field isdst boolean? daylight saving flag, a boolean.
+
+---@class std.osdate : std.osdateparam
 ---@field year integer|string four digits
 ---@field month integer|string 1-12
 ---@field day integer|string 1-31
@@ -65,11 +76,11 @@ function os.clock() end
 ---
 --- On non-POSIX systems, this function may be not thread safe because of its
 --- reliance on C function `gmtime` and C function `localtime`.
----@overload fun(fmt:"*t", time: number):table
----@overload fun(fmt:"!*t", time: number):table
+---@overload fun(fmt:"*t", time: number):std.osdate
+---@overload fun(fmt:"!*t", time: number):std.osdate
 ---@param format string
 ---@param time? number
----@return string|std.osdate
+---@return string
 function os.date(format, time) end
 
 ---
@@ -181,17 +192,6 @@ function os.rename(oldname, newname) end
 ---@param category? string
 ---@return string|nil
 function os.setlocale(locale, category) end
-
----@class std.osdateparam
----@field year integer|string four digits
----@field month integer|string 1-12
----@field day integer|string 1-31
----@field hour (integer|string)? 0-23
----@field min (integer|string)? 0-59
----@field sec (integer|string)? 0-61, due to leap seconds
----@field wday (integer|string)? 1-7, Sunday is 1
----@field yday (integer|string)? 1-366
----@field isdst boolean? daylight saving flag, a boolean.
 
 ---
 --- Returns the current time when called without arguments, or a time
