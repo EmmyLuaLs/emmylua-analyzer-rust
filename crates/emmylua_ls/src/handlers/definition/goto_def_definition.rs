@@ -69,15 +69,27 @@ fn handle_decl_definition(
         find_function_call_origin(semantic_model, compilation, trigger_token, property_owner)
         && let LuaSemanticDeclId::LuaDecl(matched_decl_id) = match_semantic_decl
     {
-        return Some(GotoDefinitionResponse::Scalar(get_decl_location(
-            semantic_model,
-            &matched_decl_id,
-        )?));
+        if let Some(location) = get_decl_location(semantic_model, &matched_decl_id) {
+            return Some(GotoDefinitionResponse::Scalar(location));
+        }
     }
 
     // 返回声明的位置
-    let location = get_decl_location(semantic_model, decl_id)?;
-    Some(GotoDefinitionResponse::Scalar(location))
+    if let Some(location) = get_decl_location(semantic_model, decl_id) {
+        return Some(GotoDefinitionResponse::Scalar(location));
+    }
+
+    // 如果不等于当前文件, 那么我们可能是引用了其他文件的导出
+    if decl_id.file_id != semantic_model.get_file_id()
+        && let Some(semantic_decl) =
+            semantic_model.find_decl(trigger_token.clone().into(), SemanticDeclLevel::NoTrace)
+        && let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl
+        && let Some(location) = get_decl_location(semantic_model, &decl_id)
+    {
+        return Some(GotoDefinitionResponse::Scalar(location));
+    }
+
+    None
 }
 
 fn handle_member_definition(
