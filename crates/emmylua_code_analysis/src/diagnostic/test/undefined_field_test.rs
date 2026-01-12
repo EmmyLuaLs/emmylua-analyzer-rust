@@ -83,6 +83,24 @@ mod test {
     }
 
     #[test]
+    fn test_issue_917() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@alias Required917<T> { [K in keyof T]: T[K]; }
+
+                ---@alias SomeMap917 { some_int?: integer, some_str?: string }
+
+                ---@type Required917<SomeMap917>
+                local a
+
+                local _ = a.some_int
+            "#
+        ));
+    }
+
+    #[test]
     fn test_any_key() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         assert!(ws.check_code_for(

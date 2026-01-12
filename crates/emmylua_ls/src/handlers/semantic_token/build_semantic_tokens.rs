@@ -7,8 +7,7 @@ use crate::util::parse_desc;
 use crate::{context::ClientId, handlers::semantic_token::language_injector::inject_language};
 use emmylua_code_analysis::{
     Emmyrc, LuaDecl, LuaDeclExtra, LuaMemberId, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    LuaTypeDeclId, SemanticDeclLevel, SemanticModel, WorkspaceId, check_export_visibility,
-    parse_require_module_info,
+    LuaTypeDeclId, SemanticDeclLevel, SemanticModel, WorkspaceId, parse_require_module_info,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaDocFieldKey,
@@ -437,28 +436,31 @@ fn build_node_semantic_token(
         }
         LuaAst::LuaParamName(param_name) => {
             let name_token = param_name.get_name_token()?;
+            if builder.contains_token(name_token.syntax()) {
+                return Some(());
+            }
             handle_name_node(semantic_model, builder, param_name.syntax(), &name_token);
         }
         LuaAst::LuaLocalName(local_name) => {
-            handle_name_node(
-                semantic_model,
-                builder,
-                local_name.syntax(),
-                &local_name.get_name_token()?,
-            );
+            let name_token = local_name.get_name_token()?;
+            if builder.contains_token(name_token.syntax()) {
+                return Some(());
+            }
+            handle_name_node(semantic_model, builder, local_name.syntax(), &name_token);
         }
         LuaAst::LuaNameExpr(name_expr) => {
             let name_token = name_expr.get_name_token()?;
+            if builder.contains_token(name_token.syntax()) {
+                return Some(());
+            }
             handle_name_node(semantic_model, builder, name_expr.syntax(), &name_token)
                 .unwrap_or_else(|| {
                     // 改进：为未知名称提供更好的默认分类
                     let name_text = name_token.get_name_text();
-                    if name_text.chars().next().is_some_and(|c| c.is_uppercase()) {
-                        // 首字母大写可能是类或常量
-                        builder.push(name_token.syntax(), SemanticTokenType::CLASS);
-                    } else {
-                        builder.push(name_token.syntax(), SemanticTokenType::VARIABLE);
-                    }
+                    builder.push(
+                        name_token.syntax(),
+                        default_identifier_token_type(name_text),
+                    );
                 });
         }
         LuaAst::LuaForRangeStat(for_range_stat) => {
@@ -612,7 +614,27 @@ fn build_node_semantic_token(
             }
         }
         LuaAst::LuaIndexExpr(index_expr) => {
+            // 处理模块前缀
+            if let Some(LuaExpr::NameExpr(prefix_name_expr)) = index_expr.get_prefix_expr()
+                && let Some(prefix_name) = prefix_name_expr.get_name_token()
+                && !builder.contains_token(prefix_name.syntax())
+                && let Some(LuaSemanticDeclId::LuaDecl(prefix_decl_id)) = semantic_model.find_decl(
+                    prefix_name_expr.syntax().clone().into(),
+                    SemanticDeclLevel::NoTrace,
+                )
+                && let Some(prefix_decl) = semantic_model
+                    .get_db()
+                    .get_decl_index()
+                    .get_decl(&prefix_decl_id)
+                && is_require_decl(semantic_model, prefix_decl)
+            {
+                builder.push(prefix_name.syntax(), SemanticTokenType::NAMESPACE);
+            }
+
             let name = index_expr.get_name_token()?;
+            if builder.contains_token(name.syntax()) {
+                return Some(());
+            }
             let semantic_decl = semantic_model
                 .find_decl(name.syntax().clone().into(), SemanticDeclLevel::default());
             if let Some(property_owner) = semantic_decl
@@ -921,8 +943,13 @@ fn handle_name_node(
                 .get_decl_index()
                 .get_decl(&decl_id)?;
             let decl_type = semantic_model.get_type(decl_id.into());
+            let base_type = if decl.is_param() {
+                SemanticTokenType::PARAMETER
+            } else {
+                SemanticTokenType::VARIABLE
+            };
 
-            if let Some(true) = check_require_decl(semantic_model, decl) {
+            if is_require_decl(semantic_model, decl) {
                 builder.push_with_modifier(
                     name_token.syntax(),
                     SemanticTokenType::CLASS,
@@ -934,29 +961,12 @@ fn handle_name_node(
             let (token_type, mut modifier) = match decl_type {
                 LuaType::Def(_) => (SemanticTokenType::CLASS, None),
                 LuaType::Ref(ref_id) => {
-                    if let Some(is_require) =
-                        check_ref_is_require_def(semantic_model, decl, &ref_id)
-                    {
-                        if is_require {
-                            (
-                                SemanticTokenType::CLASS,
-                                Some(SemanticTokenModifier::READONLY),
-                            )
-                        } else {
-                            // 改进：根据声明类型选择更准确的token类型
-                            let base_type = if decl.is_param() {
-                                SemanticTokenType::PARAMETER
-                            } else {
-                                SemanticTokenType::VARIABLE
-                            };
-                            (base_type, None)
-                        }
+                    if check_ref_is_require_def(semantic_model, decl, &ref_id).unwrap_or(false) {
+                        (
+                            SemanticTokenType::CLASS,
+                            Some(SemanticTokenModifier::READONLY),
+                        )
                     } else {
-                        let base_type = if decl.is_param() {
-                            SemanticTokenType::PARAMETER
-                        } else {
-                            SemanticTokenType::VARIABLE
-                        };
                         (base_type, None)
                     }
                 }
@@ -975,11 +985,6 @@ fn handle_name_node(
                     if union.into_vec().iter().any(|typ| typ.is_function()) {
                         (SemanticTokenType::FUNCTION, None)
                     } else {
-                        let base_type = if decl.is_param() {
-                            SemanticTokenType::PARAMETER
-                        } else {
-                            SemanticTokenType::VARIABLE
-                        };
                         (base_type, None)
                     }
                 }
@@ -1002,13 +1007,7 @@ fn handle_name_node(
                                 SemanticTokenType::PARAMETER
                             }
                         }
-                        _ => {
-                            if decl.is_param() {
-                                SemanticTokenType::PARAMETER
-                            } else {
-                                SemanticTokenType::VARIABLE
-                            }
-                        }
+                        _ => base_type,
                     };
 
                     (token_type, None)
@@ -1061,14 +1060,20 @@ fn handle_name_node(
     }
 
     // 默认情况：如果不能确定类型，根据名称约定推断
-    let default_type = if name_text.chars().next().is_some_and(|c| c.is_uppercase()) {
+    builder.push(
+        name_token.syntax(),
+        default_identifier_token_type(name_text),
+    );
+    Some(())
+}
+
+fn default_identifier_token_type(name_text: &str) -> SemanticTokenType {
+    if name_text.chars().next().is_some_and(|c| c.is_uppercase()) {
+        // 首字母大写可能是类或常量
         SemanticTokenType::CLASS
     } else {
         SemanticTokenType::VARIABLE
-    };
-
-    builder.push(name_token.syntax(), default_type);
-    Some(())
+    }
 }
 
 fn render_doc_at(builder: &mut SemanticBuilder, token: &LuaSyntaxToken) {
@@ -1203,13 +1208,9 @@ fn check_ref_is_require_def(
     }
 }
 
-/// 检查是否是导入语句
-fn check_require_decl(semantic_model: &SemanticModel, decl: &LuaDecl) -> Option<bool> {
-    let module_info = parse_require_module_info(semantic_model, decl)?;
-    if check_export_visibility(semantic_model, module_info).unwrap_or(false) {
-        return Some(true);
-    }
-    None
+/// 是否为 `local x = require(...)` 的导入别名
+fn is_require_decl(semantic_model: &SemanticModel, decl: &LuaDecl) -> bool {
+    parse_require_module_info(semantic_model, decl).is_some()
 }
 
 fn render_type_parameter_list(
