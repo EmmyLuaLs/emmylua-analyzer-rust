@@ -422,7 +422,7 @@ mod tests {
                 end)
             "#,
             VirtualHoverResult {
-                value: "```lua\n(method) Observable:select(selector: fun(value: integer, index: integer?) -> any)\n```".to_string(),
+                value: "```lua\n(method) Observable:select(selector: fun(value: integer, index: integer?) -> integer)\n```".to_string(),
             },
         ));
         Ok(())
