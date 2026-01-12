@@ -106,6 +106,26 @@ pub fn multi_param_tpl_pattern_match_multi_return(
     Ok(())
 }
 
+fn get_str_tpl_infer_type(name: &str) -> LuaType {
+    match name {
+        "unknown" => LuaType::Unknown,
+        "never" => LuaType::Never,
+        "nil" | "void" => LuaType::Nil,
+        "any" => LuaType::Any,
+        "userdata" => LuaType::Userdata,
+        "thread" => LuaType::Thread,
+        "boolean" | "bool" => LuaType::Boolean,
+        "string" => LuaType::String,
+        "integer" | "int" => LuaType::Integer,
+        "number" => LuaType::Number,
+        "io" => LuaType::Io,
+        "self" => LuaType::SelfInfer,
+        "global" => LuaType::Global,
+        "function" => LuaType::Function,
+        _ => LuaType::Ref(LuaTypeDeclId::global(&name)),
+    }
+}
+
 pub fn tpl_pattern_match(
     context: &mut TplContext,
     pattern: &LuaType,
@@ -138,7 +158,7 @@ pub fn tpl_pattern_match(
                 let type_name = SmolStr::new(format!("{}{}{}", prefix, s, suffix));
                 context.substitutor.insert_type(
                     str_tpl.get_tpl_id(),
-                    LuaType::Ref(LuaTypeDeclId::global(&type_name)),
+                    get_str_tpl_infer_type(&type_name),
                     true,
                 );
             }

@@ -238,7 +238,7 @@ impl LuaTypeDecl {
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum LuaTypeIdentifier {
     Global(SmolStr),
-    Local(FileId, SmolStr),
+    Local(FileId, SmolStr)
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
