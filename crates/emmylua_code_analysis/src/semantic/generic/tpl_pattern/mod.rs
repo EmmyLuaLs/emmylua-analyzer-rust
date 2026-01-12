@@ -1,4 +1,5 @@
 mod generic_tpl_pattern;
+mod lambda_tpl_pattern;
 
 use std::{ops::Deref, sync::Arc};
 
@@ -9,7 +10,7 @@ use smol_str::SmolStr;
 
 use crate::{
     InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType,
-    LuaSemanticDeclId, LuaTupleType, LuaUnionType, SemanticDeclLevel, VariadicType,
+    LuaSemanticDeclId, LuaTupleType, LuaTypeDeclId, LuaUnionType, SemanticDeclLevel, VariadicType,
     check_type_compact,
     db_index::{DbIndex, LuaGenericType, LuaType},
     infer_node_semantic_decl,
@@ -135,9 +136,11 @@ pub fn tpl_pattern_match(
                 let prefix = str_tpl.get_prefix();
                 let suffix = str_tpl.get_suffix();
                 let type_name = SmolStr::new(format!("{}{}{}", prefix, s, suffix));
-                context
-                    .substitutor
-                    .insert_type(str_tpl.get_tpl_id(), type_name.into(), true);
+                context.substitutor.insert_type(
+                    str_tpl.get_tpl_id(),
+                    LuaType::Ref(LuaTypeDeclId::global(&type_name)),
+                    true,
+                );
             }
         }
         LuaType::Array(array_type) => {
@@ -547,7 +550,11 @@ fn func_tpl_pattern_match(
                 .get(signature_id)
                 .ok_or(InferFailReason::None)?;
             if !signature.is_resolve_return() {
-                return Err(InferFailReason::UnResolveSignatureReturn(*signature_id));
+                return lambda_tpl_pattern::check_lambda_tpl_pattern(
+                    context,
+                    tpl_func,
+                    *signature_id,
+                );
             }
             let fake_doc_func = signature.to_doc_func_type();
             func_tpl_pattern_match_doc_func(context, tpl_func, &fake_doc_func)?;

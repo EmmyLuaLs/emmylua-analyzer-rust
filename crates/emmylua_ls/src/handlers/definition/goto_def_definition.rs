@@ -413,7 +413,7 @@ fn try_extract_str_tpl_ref_locations(
     if let Some(LuaType::StrTplRef(str_tpl)) = param_type {
         let prefix = str_tpl.get_prefix();
         let suffix = str_tpl.get_suffix();
-        let type_decl_id = LuaTypeDeclId::new(format!("{}{}{}", prefix, name, suffix).as_str());
+        let type_decl_id = LuaTypeDeclId::global(format!("{}{}{}", prefix, name, suffix).as_str());
         let type_decl = semantic_model
             .get_db()
             .get_type_index()

@@ -154,7 +154,7 @@ pub async fn on_emmy_gutter_detail_handler(
     let type_index = db.get_type_index();
 
     // Find the type declaration
-    let type_id = emmylua_code_analysis::LuaTypeDeclId::new(&type_name);
+    let type_id = emmylua_code_analysis::LuaTypeDeclId::global(&type_name);
     type_index.get_type_decl(&type_id)?;
 
     // Get all subclasses

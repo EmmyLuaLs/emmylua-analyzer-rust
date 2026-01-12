@@ -42,14 +42,14 @@ fn get_type_flag_value(
                 "key" => {
                     attr |= LuaTypeFlag::Key;
                 }
-                // "global" => {
-                //     attr |= LuaTypeAttribute::Global;
-                // }
                 "exact" => {
                     attr |= LuaTypeFlag::Exact;
                 }
                 "constructor" => {
                     attr |= LuaTypeFlag::Constructor;
+                }
+                "private" => {
+                    attr |= LuaTypeFlag::Private;
                 }
                 _ => {}
             }
@@ -196,7 +196,11 @@ fn add_type_decl(
     let full_name = option_namespace
         .map(|ns| format!("{}.{}", ns, basic_name))
         .unwrap_or(basic_name.to_string());
-    let id = LuaTypeDeclId::new(&full_name);
+    let id = if flag.contains(LuaTypeFlag::Private) {
+        LuaTypeDeclId::local(file_id, &full_name)
+    } else {
+        LuaTypeDeclId::global(&full_name)
+    };
     let simple_name = id.get_simple_name();
     type_index.add_type_decl(
         file_id,

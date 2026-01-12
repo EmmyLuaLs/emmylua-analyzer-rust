@@ -25,8 +25,8 @@ pub fn get_buildin_type_map_type_id(type_: &LuaType) -> Option<LuaTypeDeclId> {
         LuaType::String
         | LuaType::StringConst(_)
         | LuaType::DocStringConst(_)
-        | LuaType::Language(_) => Some(LuaTypeDeclId::new("string")),
-        LuaType::Io => Some(LuaTypeDeclId::new("io")),
+        | LuaType::Language(_) => Some(LuaTypeDeclId::global("string")),
+        LuaType::Io => Some(LuaTypeDeclId::global("io")),
         _ => None,
     }
 }

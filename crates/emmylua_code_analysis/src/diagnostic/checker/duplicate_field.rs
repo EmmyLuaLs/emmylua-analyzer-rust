@@ -72,7 +72,7 @@ fn get_decl_set(semantic_model: &SemanticModel) -> Option<HashSet<DeclInfo>> {
     for tag_class in root.descendants::<LuaDocTagClass>() {
         if let Some(class_name) = tag_class.get_name_token() {
             type_decl_id_set.insert(DeclInfo {
-                id: LuaTypeDeclId::new(class_name.get_name_text()),
+                id: LuaTypeDeclId::global(class_name.get_name_text()),
                 is_require: false,
             });
         }

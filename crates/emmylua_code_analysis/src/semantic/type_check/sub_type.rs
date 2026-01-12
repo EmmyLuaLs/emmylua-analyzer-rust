@@ -75,29 +75,29 @@ fn check_sub_type_of_iterative(
 pub fn get_base_type_id(typ: &LuaType) -> Option<LuaTypeDeclId> {
     match typ {
         LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
-            Some(LuaTypeDeclId::new("integer"))
+            Some(LuaTypeDeclId::global("integer"))
         }
-        LuaType::Number | LuaType::FloatConst(_) => Some(LuaTypeDeclId::new("number")),
+        LuaType::Number | LuaType::FloatConst(_) => Some(LuaTypeDeclId::global("number")),
         LuaType::Boolean | LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_) => {
-            Some(LuaTypeDeclId::new("boolean"))
+            Some(LuaTypeDeclId::global("boolean"))
         }
         LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
-            Some(LuaTypeDeclId::new("string"))
+            Some(LuaTypeDeclId::global("string"))
         }
         LuaType::Table
         | LuaType::TableGeneric(_)
         | LuaType::TableConst(_)
         | LuaType::Tuple(_)
-        | LuaType::Array(_) => Some(LuaTypeDeclId::new("table")),
+        | LuaType::Array(_) => Some(LuaTypeDeclId::global("table")),
         LuaType::DocFunction(_) | LuaType::Function | LuaType::Signature(_) => {
-            Some(LuaTypeDeclId::new("function"))
+            Some(LuaTypeDeclId::global("function"))
         }
-        LuaType::Thread => Some(LuaTypeDeclId::new("thread")),
-        LuaType::Userdata => Some(LuaTypeDeclId::new("userdata")),
-        LuaType::Io => Some(LuaTypeDeclId::new("io")),
-        LuaType::Global => Some(LuaTypeDeclId::new("global")),
-        LuaType::SelfInfer => Some(LuaTypeDeclId::new("self")),
-        LuaType::Nil => Some(LuaTypeDeclId::new("nil")),
+        LuaType::Thread => Some(LuaTypeDeclId::global("thread")),
+        LuaType::Userdata => Some(LuaTypeDeclId::global("userdata")),
+        LuaType::Io => Some(LuaTypeDeclId::global("io")),
+        LuaType::Global => Some(LuaTypeDeclId::global("global")),
+        LuaType::SelfInfer => Some(LuaTypeDeclId::global("self")),
+        LuaType::Nil => Some(LuaTypeDeclId::global("nil")),
         _ => None,
     }
 }

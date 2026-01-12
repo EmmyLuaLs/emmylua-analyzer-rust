@@ -420,7 +420,7 @@ fn push_function_overloads_param(
                 LuaType::Signature(_) | LuaType::DocFunction(_) => Some(vec![typ.clone()]),
                 _ => {
                     let key = decl.get_name();
-                    let type_id = LuaTypeDeclId::new(decl.get_name());
+                    let type_id = LuaTypeDeclId::global(decl.get_name());
                     let members = member_index.get_members(&LuaMemberOwner::Type(type_id))?;
                     let functions = filter_function_members(
                         builder.semantic_model.get_db(),

@@ -27,7 +27,7 @@ mod test {
                 "new_type".to_string(),
                 LuaDeclTypeKind::Alias,
                 LuaTypeFlag::Partial.into(),
-                LuaTypeDeclId::new("test.new_type"),
+                LuaTypeDeclId::global("test.new_type"),
             ),
         );
 
@@ -63,7 +63,7 @@ mod test {
                 "new_type".to_string(),
                 LuaDeclTypeKind::Alias,
                 LuaTypeFlag::Partial.into(),
-                LuaTypeDeclId::new("test.new_type"),
+                LuaTypeDeclId::global("test.new_type"),
             ),
         );
 
@@ -93,7 +93,7 @@ mod test {
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
-                LuaTypeDeclId::new("new_type"),
+                LuaTypeDeclId::global("new_type"),
             ),
         );
 
@@ -111,7 +111,7 @@ mod test {
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
-                LuaTypeDeclId::new(".new_type"),
+                LuaTypeDeclId::global(".new_type"),
             ),
         );
 
@@ -124,7 +124,7 @@ mod test {
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
-                LuaTypeDeclId::new("new_type"),
+                LuaTypeDeclId::global("new_type"),
             ),
         );
 
@@ -151,7 +151,7 @@ mod test {
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
-                LuaTypeDeclId::new("test.new_type"),
+                LuaTypeDeclId::global("test.new_type"),
             ),
         );
 

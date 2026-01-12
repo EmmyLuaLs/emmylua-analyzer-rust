@@ -1091,7 +1091,7 @@ fn infer_namespace_member(
     };
 
     let namespace_or_type_id = format!("{}.{}", ns, member_key);
-    let type_id = LuaTypeDeclId::new(&namespace_or_type_id);
+    let type_id = LuaTypeDeclId::global(&namespace_or_type_id);
     if db.get_type_index().get_type_decl(&type_id).is_some() {
         return Ok(LuaType::Def(type_id));
     }

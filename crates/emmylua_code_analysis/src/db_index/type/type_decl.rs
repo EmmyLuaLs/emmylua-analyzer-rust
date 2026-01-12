@@ -1,3 +1,5 @@
+use std::fmt;
+
 use flagset::{FlagSet, flags};
 use internment::ArcIntern;
 use rowan::TextRange;
@@ -26,6 +28,7 @@ flags! {
         Exact,
         Meta,
         Constructor,
+        Private
     }
 }
 
@@ -233,23 +236,38 @@ impl LuaTypeDecl {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub enum LuaTypeIdentifier {
+    Global(SmolStr),
+    Local(FileId, SmolStr),
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct LuaTypeDeclId {
-    id: ArcIntern<SmolStr>,
+    id: ArcIntern<LuaTypeIdentifier>,
 }
 
 impl LuaTypeDeclId {
-    pub fn new_by_id(id: ArcIntern<SmolStr>) -> Self {
-        Self { id }
-    }
-
-    pub fn new(str: &str) -> Self {
+    pub fn global(str: &str) -> Self {
         Self {
-            id: ArcIntern::new(SmolStr::new(str)),
+            id: ArcIntern::new(LuaTypeIdentifier::Global(SmolStr::new(str))),
         }
     }
 
+    pub fn local(file_id: FileId, str: &str) -> Self {
+        Self {
+            id: ArcIntern::new(LuaTypeIdentifier::Local(file_id, SmolStr::new(str))),
+        }
+    }
+
+    pub fn get_id(&self) -> &LuaTypeIdentifier {
+        self.id.as_ref()
+    }
+
     pub fn get_name(&self) -> &str {
-        &self.id
+        match self.id.as_ref() {
+            LuaTypeIdentifier::Global(name) => name.as_ref(),
+            LuaTypeIdentifier::Local(_, name) => name.as_ref(),
+        }
     }
 
     pub fn get_simple_name(&self) -> &str {
@@ -301,7 +319,13 @@ impl Serialize for LuaTypeDeclId {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&self.id)
+        match self.id.as_ref() {
+            LuaTypeIdentifier::Global(name) => serializer.serialize_str(name.as_ref()),
+            LuaTypeIdentifier::Local(file_id, name) => {
+                let s = format!("{}|{}", file_id.id, &name);
+                serializer.serialize_str(&s)
+            }
+        }
     }
 }
 
@@ -310,10 +334,29 @@ impl<'de> Deserialize<'de> for LuaTypeDeclId {
     where
         D: Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
-        Ok(LuaTypeDeclId {
-            id: ArcIntern::new(SmolStr::new(s)),
-        })
+        struct LuaTypeDeclIdVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for LuaTypeDeclIdVisitor {
+            type Value = LuaTypeDeclId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string representing LuaTypeDeclId")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if let Some((file_id_str, name)) = value.split_once('|') {
+                    let file_id = file_id_str.parse::<u32>().map_err(E::custom)?;
+                    Ok(LuaTypeDeclId::local(FileId { id: file_id }, name))
+                } else {
+                    Ok(LuaTypeDeclId::global(value))
+                }
+            }
+        }
+
+        deserializer.deserialize_str(LuaTypeDeclIdVisitor)
     }
 }
 

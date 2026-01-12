@@ -8,7 +8,7 @@ mod type_visit_trait;
 mod types;
 
 use super::traits::LuaIndex;
-use crate::{DbIndex, FileId, InFiled};
+use crate::{DbIndex, FileId, InFiled, db_index::r#type::type_decl::LuaTypeIdentifier};
 pub use generic_param::GenericParam;
 pub use humanize_type::{RenderLevel, format_union_type, humanize_type};
 use std::collections::{HashMap, HashSet};
@@ -83,22 +83,27 @@ impl LuaTypeIndex {
 
     pub fn find_type_decl(&self, file_id: FileId, name: &str) -> Option<&LuaTypeDecl> {
         if let Some(ns) = self.get_file_namespace(&file_id) {
-            let full_name = LuaTypeDeclId::new(&format!("{}.{}", ns, name));
+            let full_name = LuaTypeDeclId::global(&format!("{}.{}", ns, name));
             if let Some(decl) = self.full_name_type_map.get(&full_name) {
                 return Some(decl);
             }
         }
         if let Some(usings) = self.get_file_using_namespace(&file_id) {
             for ns in usings {
-                let full_name = LuaTypeDeclId::new(&format!("{}.{}", ns, name));
+                let full_name = LuaTypeDeclId::global(&format!("{}.{}", ns, name));
                 if let Some(decl) = self.full_name_type_map.get(&full_name) {
                     return Some(decl);
                 }
             }
         }
 
-        let id = LuaTypeDeclId::new(name);
-        self.full_name_type_map.get(&id)
+        let local_id = LuaTypeDeclId::local(file_id, name);
+        if let Some(decl) = self.full_name_type_map.get(&local_id) {
+            return Some(decl);
+        }
+
+        let global_id = LuaTypeDeclId::global(name);
+        self.full_name_type_map.get(&global_id)
     }
 
     pub fn find_type_decls(
@@ -143,7 +148,15 @@ impl LuaTypeIndex {
         }
 
         for id in all_type_ids {
-            let id_name = id.get_name();
+            let id_name = match id.get_id() {
+                LuaTypeIdentifier::Local(f_id, name) => {
+                    if f_id != &file_id {
+                        continue;
+                    }
+                    name
+                }
+                LuaTypeIdentifier::Global(name) => name,
+            };
             if id_name.starts_with(prefix)
                 && let Some(rest_name) = id_name.strip_prefix(prefix)
             {

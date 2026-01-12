@@ -323,7 +323,7 @@ pub fn try_resolve_constructor(
 
     // 添加根类
     if let Some(root_class) = root_class {
-        let root_type_id = LuaTypeDeclId::new(&root_class);
+        let root_type_id = LuaTypeDeclId::global(&root_class);
         if let Some(type_decl) = db.get_type_index().get_type_decl(&root_type_id) {
             if type_decl.is_class() {
                 let root_type = LuaType::Ref(root_type_id.clone());
@@ -422,7 +422,7 @@ fn get_constructor_target_type(
         let prefix = str_tpl.get_prefix();
         let suffix = str_tpl.get_suffix();
         let type_decl_id: LuaTypeDeclId =
-            LuaTypeDeclId::new(format!("{}{}{}", prefix, name, suffix).as_str());
+            LuaTypeDeclId::global(format!("{}{}{}", prefix, name, suffix).as_str());
         let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
         if type_decl.is_class() {
             return Some(type_decl_id);

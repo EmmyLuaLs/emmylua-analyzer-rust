@@ -145,7 +145,7 @@ mod tests {
         assert!(!child.has_allocated(), "Fork should not allocate memory");
 
         // Check on child should allocate
-        let type_b = LuaTypeDeclId::new("TestTypeB");
+        let type_b = LuaTypeDeclId::global("TestTypeB");
         child.check(&type_b).unwrap();
         assert!(
             child.has_allocated(),
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn test_fork_without_write() {
         let root = InferGuard::new();
-        let type_a = LuaTypeDeclId::new("TestTypeA");
+        let type_a = LuaTypeDeclId::global("TestTypeA");
         root.check(&type_a).unwrap();
 
         // Create multiple forks
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn test_recursive_detection() {
         let root = InferGuard::new();
-        let type_a = LuaTypeDeclId::new("TestTypeA");
+        let type_a = LuaTypeDeclId::global("TestTypeA");
 
         // First check should succeed
         assert!(root.check(&type_a).is_ok());
@@ -191,8 +191,8 @@ mod tests {
     #[test]
     fn test_parent_chain_detection() {
         let root = InferGuard::new();
-        let type_a = LuaTypeDeclId::new("TestTypeA");
-        let type_b = LuaTypeDeclId::new("TestTypeB");
+        let type_a = LuaTypeDeclId::global("TestTypeA");
+        let type_b = LuaTypeDeclId::global("TestTypeB");
 
         root.check(&type_a).unwrap();
 
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_memory_efficiency() {
         let root = InferGuard::new();
-        let type_a = LuaTypeDeclId::new("TestTypeA");
+        let type_a = LuaTypeDeclId::global("TestTypeA");
         root.check(&type_a).unwrap();
 
         // Create a deep fork chain

@@ -182,7 +182,7 @@ fn infer_buildin_or_ref_type(
                 founded = true;
                 name_type_decl.get_id()
             } else {
-                LuaTypeDeclId::new(name)
+                LuaTypeDeclId::global(name)
             };
 
             if !founded {

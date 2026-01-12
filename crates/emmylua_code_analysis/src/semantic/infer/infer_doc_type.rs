@@ -157,7 +157,7 @@ fn infer_buildin_or_ref_type(
             {
                 name_type_decl.get_id()
             } else {
-                LuaTypeDeclId::new(name)
+                LuaTypeDeclId::global(name)
             };
 
             LuaType::Ref(type_id)
