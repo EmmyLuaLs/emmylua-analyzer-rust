@@ -266,8 +266,16 @@ pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Optio
 
 pub fn analyze_return_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturnCast) -> Option<()> {
     if let Some(LuaSemanticDeclId::Signature(signature_id)) = get_owner_id(analyzer, None, false) {
-        let name_token = tag.get_name_token()?;
-        let name = name_token.get_name_text();
+        // Extract name from either name_token or key_expr
+        let name = if let Some(key_expr) = tag.get_key_expr() {
+            // Handle multi-level expressions like self.xxx
+            extract_name_from_expr(&key_expr)
+        } else if let Some(name_token) = tag.get_name_token() {
+            // Fallback to simple name token
+            name_token.get_name_text().to_string()
+        } else {
+            return None;
+        };
 
         let op_types: Vec<_> = tag.get_op_types().collect();
         let cast_op_type = op_types.first()?;
@@ -297,7 +305,7 @@ pub fn analyze_return_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturnCast)
         analyzer.db.get_flow_index_mut().add_signature_cast(
             analyzer.file_id,
             signature_id,
-            name.to_string(),
+            name,
             cast_op_type.to_ptr(),
             fallback_cast,
         );
@@ -306,6 +314,45 @@ pub fn analyze_return_cast(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturnCast)
     }
 
     Some(())
+}
+
+// Helper function to extract name string from expression
+fn extract_name_from_expr(expr: &LuaExpr) -> String {
+    match expr {
+        LuaExpr::NameExpr(name_expr) => {
+            if let Some(token) = name_expr.get_name_token() {
+                token.get_name_text().to_string()
+            } else {
+                String::new()
+            }
+        }
+        LuaExpr::IndexExpr(index_expr) => {
+            // Recursively build the path like "self.xxx" or "self.a.b"
+            let prefix = if let Some(prefix_expr) = index_expr.get_prefix_expr() {
+                extract_name_from_expr(&prefix_expr)
+            } else {
+                String::new()
+            };
+
+            let suffix = if let Some(key) = index_expr.get_index_key() {
+                match key {
+                    emmylua_parser::LuaIndexKey::Name(name_token) => name_token.get_name_text().to_string(),
+                    _ => String::new(),
+                }
+            } else {
+                String::new()
+            };
+
+            if prefix.is_empty() {
+                suffix
+            } else if suffix.is_empty() {
+                prefix
+            } else {
+                format!("{}.{}", prefix, suffix)
+            }
+        }
+        _ => String::new(),
+    }
 }
 
 pub fn analyze_overload(analyzer: &mut DocAnalyzer, tag: LuaDocTagOverload) -> Option<()> {

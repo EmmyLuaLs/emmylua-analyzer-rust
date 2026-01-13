@@ -1476,4 +1476,135 @@ _2 = a[1]
             "#,
         );
     }
+
+    #[test]
+    fn test_return_cast_self_field() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class MyClass
+            ---@field value string|number
+            local MyClass = {}
+
+            ---Check if value field is string
+            ---@param self MyClass
+            ---@return_cast self.value string
+            function MyClass:check_string()
+                return type(self.value) == "string"
+            end
+
+            ---@param obj MyClass
+            function test(obj)
+                if obj:check_string() then
+                    a = obj.value
+                else
+                    b = obj.value
+                end
+            end
+            "#,
+        );
+
+        let a = ws.expr_ty("a");
+        let a_expected = ws.ty("string");
+        assert_eq!(a, a_expected);
+
+        let b = ws.expr_ty("b");
+        let b_expected = ws.ty("number");
+        assert_eq!(b, b_expected);
+    }
+
+    #[test]
+    fn test_return_cast_self_field_with_fallback() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class MyClass
+            ---@field data table|nil
+            local MyClass = {}
+
+            ---Check if data exists
+            ---@param self MyClass
+            ---@return_cast self.data table else nil
+            function MyClass:has_data()
+                return self.data ~= nil
+            end
+
+            ---@param obj MyClass
+            function test(obj)
+                if obj:has_data() then
+                    c = obj.data
+                else
+                    d = obj.data
+                end
+            end
+            "#,
+        );
+
+        let c = ws.expr_ty("c");
+        let c_str = ws.humanize_type(c);
+        assert_eq!(c_str, "table");
+
+        let d = ws.expr_ty("d");
+        let d_expected = ws.ty("nil");
+        assert_eq!(d, d_expected);
+    }
+
+    #[test]
+    fn test_return_cast_self_field_complex() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Vehicle
+            ---@field type "car"|"bike"|"truck"
+            ---@field engine string|nil
+            local Vehicle = {}
+
+            ---@param self Vehicle
+            ---@return_cast self.type "car"
+            function Vehicle:is_car()
+                return self.type == "car"
+            end
+
+            ---@param self Vehicle
+            ---@return_cast self.engine string else nil
+            function Vehicle:has_engine()
+                return self.engine ~= nil
+            end
+
+            ---@param v Vehicle
+            function test(v)
+                if v:is_car() then
+                    e = v.type
+                else
+                    f = v.type
+                end
+
+                if v:has_engine() then
+                    g = v.engine
+                else
+                    h = v.engine
+                end
+            end
+            "#,
+        );
+
+        let e = ws.expr_ty("e");
+        let e_expected = ws.ty("\"car\"");
+        assert_eq!(e, e_expected);
+
+        let f = ws.expr_ty("f");
+        let f_expected = ws.ty("\"bike\"|\"truck\"");
+        assert_eq!(f, f_expected);
+
+        let g = ws.expr_ty("g");
+        let g_expected = ws.ty("string");
+        assert_eq!(g, g_expected);
+
+        let h = ws.expr_ty("h");
+        let h_expected = ws.ty("nil");
+        assert_eq!(h, h_expected);
+    }
 }
