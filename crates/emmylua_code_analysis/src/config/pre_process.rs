@@ -73,24 +73,18 @@ impl PreProcessContext {
 
         path = self.replace_placeholders(&path, workspace_str);
 
-        if path.starts_with('~') {
+        if let Some(suffix) = path.strip_prefix("~/") {
             let home_dir = match dirs::home_dir() {
-                Some(path) => path,
+                Some(h) => h,
                 None => {
                     log::error!("Warning: Home directory not found");
                     return path;
                 }
             };
-            path = home_dir.join(&path[2..]).to_string_lossy().to_string();
-        } else if path.starts_with("./") {
-            path = self
-                .workspace
-                .join(&path[2..])
-                .to_string_lossy()
-                .to_string();
-        } else if PathBuf::from(&path).is_absolute() {
-            path = path.to_string();
-        } else {
+            path = home_dir.join(suffix).to_string_lossy().to_string();
+        } else if let Some(suffix) = path.strip_prefix("./") {
+            path = self.workspace.join(suffix).to_string_lossy().to_string();
+        } else if !PathBuf::from(&path).is_absolute() {
             path = self.workspace.join(&path).to_string_lossy().to_string();
         }
 
