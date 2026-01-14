@@ -222,3 +222,13 @@ fn get_luarocks_deploy_dir() -> String {
         })
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod test {
+    use super::pre_process_path;
+
+    #[test]
+    fn pre_proc_path() {
+        panic!()
+    }
+}
