@@ -427,6 +427,11 @@
           "description": "attribute-redundant-parameter",
           "type": "string",
           "const": "attribute-redundant-parameter"
+        },
+        {
+          "description": "invert-if",
+          "type": "string",
+          "const": "invert-if"
         }
       ]
     },

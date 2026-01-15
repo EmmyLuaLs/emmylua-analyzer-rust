@@ -45,10 +45,8 @@ use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
 use rowan::TextRange;
 use std::sync::Arc;
 
-#[allow(unused)]
 use crate::{
-    FileId, LuaType, Profile, RenderLevel, db_index::DbIndex, humanize_type,
-    semantic::SemanticModel,
+    FileId, LuaType, RenderLevel, db_index::DbIndex, humanize_type, semantic::SemanticModel,
 };
 
 use super::{
@@ -124,6 +122,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
         context,
         semantic_model,
     );
+    run_check::<code_style::invert_if::InvertIfChecker>(context, semantic_model);
     run_check::<readonly_check::ReadOnlyChecker>(context, semantic_model);
     run_check::<global_non_module::GlobalInNonModuleChecker>(context, semantic_model);
     Some(())

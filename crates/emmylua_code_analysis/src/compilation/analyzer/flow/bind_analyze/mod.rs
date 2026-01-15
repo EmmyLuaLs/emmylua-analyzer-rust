@@ -23,7 +23,6 @@ use crate::{
 };
 pub use check_goto::check_goto_label;
 
-#[allow(unused)]
 pub fn bind_analyze(binder: &mut FlowBinder, chunk: LuaChunk) -> Option<()> {
     let block = chunk.get_block()?;
     let start = binder.start;

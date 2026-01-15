@@ -113,7 +113,8 @@ pub enum DiagnosticCode {
     AttributeMissingParameter,
     /// attribute-redundant-parameter
     AttributeRedundantParameter,
-
+    /// invert-if
+    InvertIf,
     #[serde(other)]
     None,
 }
