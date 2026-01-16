@@ -1,6 +1,4 @@
-use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaIfStat, LuaStat, LuaTokenKind,
-};
+use emmylua_parser::{LuaAstNode, LuaAstToken, LuaBlock, LuaIfStat, LuaStat, LuaTokenKind};
 
 use crate::{
     DiagnosticCode, SemanticModel,
@@ -91,16 +89,16 @@ fn check_nested_if_depth(context: &mut DiagnosticContext, if_statement: LuaIfSta
     // Calculate nesting depth
     let depth = calculate_if_nesting_depth(&if_statement);
 
-    if depth > MAX_NESTING_DEPTH {
+    if depth >= MAX_NESTING_DEPTH {
         if let Some(if_token) = if_statement.token_by_kind(LuaTokenKind::TkIf) {
-            let message = format!(
-                "Deep nesting detected (level {}). Consider using early returns to reduce complexity",
-                depth
+            let message = t!(
+                "Deep nesting detected (level %{level}). Consider using early returns to reduce complexity",
+                level = depth
             );
             context.add_diagnostic(
                 DiagnosticCode::InvertIf,
                 if_token.get_range(),
-                message,
+                message.to_string(),
                 None,
             );
         }
@@ -110,29 +108,21 @@ fn check_nested_if_depth(context: &mut DiagnosticContext, if_statement: LuaIfSta
 /// Calculate the nesting depth of an if statement
 /// Returns the number of nested if statements from the function/file root
 fn calculate_if_nesting_depth(if_statement: &LuaIfStat) -> usize {
-    let mut depth = 0;
-    let mut current = if_statement.syntax().parent();
-
-    while let Some(node) = current {
-        // Count parent if statements
-        if LuaIfStat::can_cast(node.kind().into()) {
-            depth += 1;
-        }
-
-        // Stop at function boundaries (don't count across functions)
-        if let Some(stat) = LuaStat::cast(node.clone()) {
-            match stat {
-                LuaStat::FuncStat(_) | LuaStat::LocalFuncStat(_) => break,
-                _ => {}
-            }
-        }
-
-        // Also check for closure expressions
-        if LuaClosureExpr::can_cast(node.kind().into()) {
+    let mut depth = 1;
+    let mut current_if = if_statement.clone();
+    loop {
+        let prev_stat: Option<LuaStat> = current_if.syntax().prev_sibling().and_then(LuaStat::cast);
+        if prev_stat.is_some() {
             break;
         }
-
-        current = node.parent();
+        depth += 1;
+        let Some(parent_block) = current_if.get_parent::<LuaBlock>() else {
+            return depth;
+        };
+        current_if = match parent_block.get_parent::<LuaIfStat>() {
+            Some(parent) => parent,
+            None => return depth,
+        };
     }
 
     depth

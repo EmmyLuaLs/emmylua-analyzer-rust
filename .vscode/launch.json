@@ -13,6 +13,7 @@
                     "build",
                     "--bin=emmylua_ls",
                     "--package=emmylua_ls",
+                    "--target=x86_64-pc-windows-gnu",
                 ],
                 "filter": {
                     "name": "emmylua_ls",
@@ -25,7 +26,7 @@
                 "--port",
                 "5007",
                 "--log-level",
-                "debug"
+                "debug",
             ],
             "cwd": "${workspaceFolder}"
         },
