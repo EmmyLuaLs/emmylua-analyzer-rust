@@ -1,0 +1,51 @@
+use emmylua_parser::LuaExpr;
+
+use crate::{DbIndex, LuaType, TypeOps, semantic::infer::narrow::narrow_false_or_nil};
+
+/// Special handling for `and` operator with specific patterns
+///
+/// For `x and y` where `x` is nullable:
+/// - If x is truthy, result is y
+/// - If x is falsy (nil or false), result is the falsy value
+///
+/// Examples:
+/// - `string? and 'value'` -> `'value' | nil` (string is truthy, nil is falsy)
+/// - `boolean? and 'value'` -> `'value' | false | nil` (true is truthy, false/nil are falsy)
+pub fn special_and_rule(
+    db: &DbIndex,
+    left_type: &LuaType,
+    right_type: &LuaType,
+    _left_expr: LuaExpr,
+    right_expr: LuaExpr,
+) -> Option<LuaType> {
+    // Check if we have a specific value on the right (table, literal, etc.)
+    match right_expr {
+        LuaExpr::TableExpr(_) | LuaExpr::LiteralExpr(_) => {
+            // Get the falsy part of the left type (nil, false)
+            let falsy_part = narrow_false_or_nil(db, left_type.clone());
+
+            // If left type has both truthy and falsy parts, result is: falsy_part | right_type
+            // The truthy part would evaluate to right_type, falsy part stays as-is
+            if !falsy_part.is_never() && !left_type.is_always_falsy() {
+                return Some(TypeOps::Union.apply(db, &falsy_part, right_type));
+            }
+        }
+        _ => {}
+    }
+
+    None
+}
+
+pub fn infer_binary_expr_and(
+    db: &DbIndex,
+    left: LuaType,
+    right: LuaType,
+) -> crate::semantic::infer::InferResult {
+    if left.is_always_falsy() {
+        return Ok(left);
+    } else if left.is_always_truthy() {
+        return Ok(right);
+    }
+
+    Ok(TypeOps::Union.apply(db, &narrow_false_or_nil(db, left), &right))
+}

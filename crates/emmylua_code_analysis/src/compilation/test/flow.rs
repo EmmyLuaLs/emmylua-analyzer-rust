@@ -361,6 +361,141 @@ end
     }
 
     #[test]
+    fn test_issue_921_or_with_empty_table() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field a? string
+
+            local opts --- @type Opts?
+
+            -- Test expression type: opts or {} should narrow to Opts
+            E = opts or {}
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "Opts");
+    }
+
+    #[test]
+    fn test_issue_921_or_with_table_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local opts --- @type table?
+
+            -- Test with plain table? type
+            E = opts or {}
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "table");
+    }
+
+    #[test]
+    fn test_issue_921_self_assignment_with_table() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local opts --- @type table?
+
+            opts = opts or {}
+
+            E = opts
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "table");
+    }
+
+    #[test]
+    fn test_issue_921_self_assignment_with_class() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field a? string
+
+            local opts --- @type Opts?
+
+            opts = opts or {}
+
+            E = opts
+            "#,
+        );
+
+        // After self-assignment opts = opts or {}, opts should be narrowed to Opts
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "Opts");
+    }
+
+    #[test]
+    fn test_issue_921_and_with_string_nullable() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field a? string
+
+            local opts --- @type Opts
+
+            -- When opts.a is string?, result should be table|nil
+            -- The table {'a'} is inferred as a tuple containing 'a'
+            E = opts.a and { 'a' }
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), r#"("a")?"#);
+    }
+
+    #[test]
+    fn test_issue_921_and_with_boolean_nullable_table() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field b? boolean
+
+            local opts --- @type Opts
+
+            -- When opts.b is boolean?, result should be false|nil|table
+            E = opts.b and { 'b' }
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), r#"(false|("b"))?"#);
+    }
+
+    #[test]
+    fn test_issue_921_and_with_boolean_nullable_string() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local bool --- @type boolean?
+
+            -- When bool is boolean?, result should be false|nil|'a'
+            E = bool and 'a'
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), r#"(false|"a")?"#);
+    }
+
+    #[test]
     fn test_issue_147() {
         let mut ws = VirtualWorkspace::new();
 

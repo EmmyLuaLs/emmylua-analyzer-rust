@@ -20,8 +20,12 @@ pub fn special_or_rule(
             }
         }
         LuaExpr::TableExpr(table_expr) => {
-            if table_expr.is_empty() && check_type_compact(db, left_type, &LuaType::Table).is_ok() {
-                return Some(remove_false_or_nil(left_type.clone()));
+            if table_expr.is_empty() {
+                // Remove nil/false from left type and check if result is table-compatible
+                let left_without_nil = remove_false_or_nil(left_type.clone());
+                if check_type_compact(db, &left_without_nil, &LuaType::Table).is_ok() {
+                    return Some(left_without_nil);
+                }
             }
         }
         LuaExpr::LiteralExpr(_) => {

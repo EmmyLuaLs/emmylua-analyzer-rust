@@ -1,8 +1,24 @@
 use crate::{DbIndex, LuaType, semantic::infer::narrow::narrow_type::narrow_down_type};
 
 pub fn narrow_false_or_nil(db: &DbIndex, t: LuaType) -> LuaType {
-    if t.is_boolean() {
-        return LuaType::BooleanConst(false);
+    match &t {
+        LuaType::Boolean => {
+            return LuaType::BooleanConst(false);
+        }
+        LuaType::Union(u) => {
+            // For unions, collect all the falsy parts from each member
+            let falsy_types: Vec<_> = u
+                .into_vec()
+                .iter()
+                .map(|member| narrow_false_or_nil(db, member.clone()))
+                .filter(|falsy| !falsy.is_never())
+                .collect();
+            return LuaType::from_vec(falsy_types);
+        }
+        LuaType::Nil | LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => {
+            return t;
+        }
+        _ => {}
     }
 
     narrow_down_type(db, t.clone(), LuaType::Nil).unwrap_or(LuaType::Never)

@@ -1,6 +1,8 @@
+mod infer_binary_and;
 mod infer_binary_or;
 
 use emmylua_parser::{BinaryOperator, LuaBinaryExpr};
+use infer_binary_and::{infer_binary_expr_and, special_and_rule};
 use infer_binary_or::{infer_binary_expr_or, special_or_rule};
 use smol_str::SmolStr;
 
@@ -8,7 +10,6 @@ use crate::{
     LuaInferCache, TypeOps, check_type_compact,
     db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
     get_real_type,
-    semantic::infer::narrow::narrow_false_or_nil,
 };
 
 use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
@@ -29,6 +30,16 @@ pub fn infer_binary_expr(
 
     if op == BinaryOperator::OpOr {
         if let Some(ty) = special_or_rule(db, left_type_ref, right_type_ref, left, right) {
+            return Ok(ty);
+        }
+    } else if op == BinaryOperator::OpAnd {
+        if let Some(ty) = special_and_rule(
+            db,
+            left_type_ref,
+            right_type_ref,
+            left.clone(),
+            right.clone(),
+        ) {
             return Ok(ty);
         }
     } else if !matches!(op, BinaryOperator::OpAnd | BinaryOperator::OpOr)
@@ -430,16 +441,6 @@ fn infer_binary_expr_concat(db: &DbIndex, left: LuaType, right: LuaType) -> Infe
     }
 
     infer_binary_custom_operator(db, &left, &right, LuaOperatorMetaMethod::Concat)
-}
-
-fn infer_binary_expr_and(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
-    if left.is_always_falsy() {
-        return Ok(left);
-    } else if left.is_always_truthy() {
-        return Ok(right);
-    }
-
-    Ok(TypeOps::Union.apply(db, &narrow_false_or_nil(db, left), &right))
 }
 
 fn infer_cmp_expr(_: &DbIndex, left: LuaType, right: LuaType, op: BinaryOperator) -> InferResult {
