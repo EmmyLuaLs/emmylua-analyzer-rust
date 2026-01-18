@@ -28,34 +28,33 @@ pub fn infer_binary_expr(
     let left_type_ref = real_left_type.unwrap_or(&left_type);
     let right_type_ref = real_right_type.unwrap_or(&right_type);
 
-    if op == BinaryOperator::OpOr {
-        if let Some(ty) = special_or_rule(db, left_type_ref, right_type_ref, left, right) {
-            return Ok(ty);
+    // Handle special binary operators first
+    match op {
+        BinaryOperator::OpOr => {
+            if let Some(ty) = special_or_rule(db, left_type_ref, right_type_ref, left, right) {
+                return Ok(ty);
+            }
         }
-    } else if op == BinaryOperator::OpAnd {
-        if let Some(ty) = special_and_rule(
-            db,
-            left_type_ref,
-            right_type_ref,
-            left.clone(),
-            right.clone(),
-        ) {
-            return Ok(ty);
+        BinaryOperator::OpAnd => {
+            if let Some(ty) = special_and_rule(db, left_type_ref, right_type_ref, left, right) {
+                return Ok(ty);
+            }
         }
-    } else if !matches!(op, BinaryOperator::OpAnd | BinaryOperator::OpOr)
-        && let Some(ty) = infer_union_binary_expr(db, op, left_type_ref, right_type_ref)
-    {
-        return Ok(ty);
+        _ => {
+            if let Some(ty) = infer_union_binary_expr(db, op, left_type_ref, right_type_ref) {
+                return Ok(ty);
+            }
+        }
     }
 
-    match (real_left_type.is_some(), real_right_type.is_some()) {
-        (false, false) => infer_binary_expr_type(db, left_type, right_type, op),
-        (true, false) => infer_binary_expr_type(db, left_type_ref.clone(), right_type, op),
-        (false, true) => infer_binary_expr_type(db, left_type, right_type_ref.clone(), op),
-        (true, true) => {
-            infer_binary_expr_type(db, left_type_ref.clone(), right_type_ref.clone(), op)
-        }
-    }
+    // Use the most specific type references available for inference
+    let (left_ty, right_ty) = match (real_left_type.is_some(), real_right_type.is_some()) {
+        (true, true) => (left_type_ref.clone(), right_type_ref.clone()),
+        (true, false) => (left_type_ref.clone(), right_type),
+        (false, true) => (left_type, right_type_ref.clone()),
+        (false, false) => (left_type, right_type),
+    };
+    infer_binary_expr_type(db, left_ty, right_ty, op)
 }
 
 fn infer_union_binary_expr(
