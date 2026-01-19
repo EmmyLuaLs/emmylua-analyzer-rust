@@ -19,6 +19,7 @@ use crate::{
 
 use super::type_substitutor::{SubstitutorValue, TypeSubstitutor};
 use crate::TypeVisitTrait;
+use crate::semantic::member::find_members_with_key;
 pub use instantiate_func_generic::{build_self_type, infer_self_type, instantiate_func_generic};
 pub use instantiate_special_generic::get_keyof_members;
 pub use instantiate_special_generic::instantiate_alias_call;
@@ -660,7 +661,23 @@ fn collect_infer_assignments(
                                 }
                                 let ty = match rest_types.len() {
                                     0 => LuaType::Never,
-                                    1 => rest_types[0].clone(),
+                                    1 => {
+                                        // If the source function is truly variadic (has `...` param),
+                                        // return the type as-is for proper variadic spreading.
+                                        // If the source has named params, wrap in a tuple so that
+                                        // spreading unpacks to named params (var0, var1, etc.)
+                                        if source_func.is_variadic() {
+                                            rest_types[0].clone()
+                                        } else {
+                                            LuaType::Tuple(
+                                                LuaTupleType::new(
+                                                    rest_types,
+                                                    LuaTupleStatus::InferResolve,
+                                                )
+                                                .into(),
+                                            )
+                                        }
+                                    }
                                     _ => LuaType::Tuple(
                                         LuaTupleType::new(rest_types, LuaTupleStatus::InferResolve)
                                             .into(),
@@ -726,6 +743,18 @@ fn collect_infer_assignments(
                 false
             }
         }
+        LuaType::Object(pattern_object) => match source {
+            LuaType::Object(source_object) => {
+                collect_infer_from_object_to_object(db, source_object, pattern_object, assignments)
+            }
+            LuaType::Ref(type_id) | LuaType::Def(type_id) => {
+                collect_infer_from_class_to_object(db, type_id, pattern_object, assignments)
+            }
+            LuaType::TableConst(table_id) => {
+                collect_infer_from_table_to_object(db, table_id, pattern_object, assignments)
+            }
+            _ => false,
+        },
         _ => {
             if contains_conditional_infer(pattern) {
                 false
@@ -734,6 +763,84 @@ fn collect_infer_assignments(
             }
         }
     }
+}
+
+/// Match object literal to object pattern, extracting infer types from fields
+fn collect_infer_from_object_to_object(
+    db: &DbIndex,
+    source_object: &LuaObjectType,
+    pattern_object: &LuaObjectType,
+    assignments: &mut HashMap<String, LuaType>,
+) -> bool {
+    let source_fields = source_object.get_fields();
+    let pattern_fields = pattern_object.get_fields();
+
+    for (key, pattern_field_ty) in pattern_fields {
+        if let Some(source_field_ty) = source_fields.get(key) {
+            if !collect_infer_assignments(db, source_field_ty, pattern_field_ty, assignments) {
+                return false;
+            }
+        } else if contains_conditional_infer(pattern_field_ty) {
+            // Pattern field contains infer but source doesn't have the field
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Match class/ref type to object pattern by looking up class members
+fn collect_infer_from_class_to_object(
+    db: &DbIndex,
+    type_id: &LuaTypeDeclId,
+    pattern_object: &LuaObjectType,
+    assignments: &mut HashMap<String, LuaType>,
+) -> bool {
+    let pattern_fields = pattern_object.get_fields();
+    let source_type = LuaType::Ref(type_id.clone());
+
+    for (key, pattern_field_ty) in pattern_fields {
+        if let Some(member_infos) = find_members_with_key(db, &source_type, key.clone(), false) {
+            if let Some(member_info) = member_infos.first() {
+                if !collect_infer_assignments(db, &member_info.typ, pattern_field_ty, assignments) {
+                    return false;
+                }
+            } else if contains_conditional_infer(pattern_field_ty) {
+                return false;
+            }
+        } else if contains_conditional_infer(pattern_field_ty) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Match table constant to object pattern by looking up table members
+fn collect_infer_from_table_to_object(
+    db: &DbIndex,
+    table_id: &crate::InFiled<rowan::TextRange>,
+    pattern_object: &LuaObjectType,
+    assignments: &mut HashMap<String, LuaType>,
+) -> bool {
+    let pattern_fields = pattern_object.get_fields();
+    let source_type = LuaType::TableConst(table_id.clone());
+
+    for (key, pattern_field_ty) in pattern_fields {
+        if let Some(member_infos) = find_members_with_key(db, &source_type, key.clone(), false) {
+            if let Some(member_info) = member_infos.first() {
+                if !collect_infer_assignments(db, &member_info.typ, pattern_field_ty, assignments) {
+                    return false;
+                }
+            } else if contains_conditional_infer(pattern_field_ty) {
+                return false;
+            }
+        } else if contains_conditional_infer(pattern_field_ty) {
+            return false;
+        }
+    }
+
+    true
 }
 
 fn strict_type_match(db: &DbIndex, source: &LuaType, pattern: &LuaType) -> bool {
