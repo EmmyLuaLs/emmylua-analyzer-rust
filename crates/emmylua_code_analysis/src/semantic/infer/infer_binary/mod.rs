@@ -1,6 +1,8 @@
+mod infer_binary_and;
 mod infer_binary_or;
 
 use emmylua_parser::{BinaryOperator, LuaBinaryExpr};
+use infer_binary_and::{infer_binary_expr_and, special_and_rule};
 use infer_binary_or::{infer_binary_expr_or, special_or_rule};
 use smol_str::SmolStr;
 
@@ -8,7 +10,6 @@ use crate::{
     LuaInferCache, TypeOps, check_type_compact,
     db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
     get_real_type,
-    semantic::infer::narrow::narrow_false_or_nil,
 };
 
 use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
@@ -27,24 +28,33 @@ pub fn infer_binary_expr(
     let left_type_ref = real_left_type.unwrap_or(&left_type);
     let right_type_ref = real_right_type.unwrap_or(&right_type);
 
-    if op == BinaryOperator::OpOr {
-        if let Some(ty) = special_or_rule(db, left_type_ref, right_type_ref, left, right) {
-            return Ok(ty);
+    // Handle special binary operators first
+    match op {
+        BinaryOperator::OpOr => {
+            if let Some(ty) = special_or_rule(db, left_type_ref, right_type_ref, left, right) {
+                return Ok(ty);
+            }
         }
-    } else if !matches!(op, BinaryOperator::OpAnd | BinaryOperator::OpOr)
-        && let Some(ty) = infer_union_binary_expr(db, op, left_type_ref, right_type_ref)
-    {
-        return Ok(ty);
+        BinaryOperator::OpAnd => {
+            if let Some(ty) = special_and_rule(db, left_type_ref, right_type_ref, left, right) {
+                return Ok(ty);
+            }
+        }
+        _ => {
+            if let Some(ty) = infer_union_binary_expr(db, op, left_type_ref, right_type_ref) {
+                return Ok(ty);
+            }
+        }
     }
 
-    match (real_left_type.is_some(), real_right_type.is_some()) {
-        (false, false) => infer_binary_expr_type(db, left_type, right_type, op),
-        (true, false) => infer_binary_expr_type(db, left_type_ref.clone(), right_type, op),
-        (false, true) => infer_binary_expr_type(db, left_type, right_type_ref.clone(), op),
-        (true, true) => {
-            infer_binary_expr_type(db, left_type_ref.clone(), right_type_ref.clone(), op)
-        }
-    }
+    // Use the most specific type references available for inference
+    let (left_ty, right_ty) = match (real_left_type.is_some(), real_right_type.is_some()) {
+        (true, true) => (left_type_ref.clone(), right_type_ref.clone()),
+        (true, false) => (left_type_ref.clone(), right_type),
+        (false, true) => (left_type, right_type_ref.clone()),
+        (false, false) => (left_type, right_type),
+    };
+    infer_binary_expr_type(db, left_ty, right_ty, op)
 }
 
 fn infer_union_binary_expr(
@@ -430,16 +440,6 @@ fn infer_binary_expr_concat(db: &DbIndex, left: LuaType, right: LuaType) -> Infe
     }
 
     infer_binary_custom_operator(db, &left, &right, LuaOperatorMetaMethod::Concat)
-}
-
-fn infer_binary_expr_and(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
-    if left.is_always_falsy() {
-        return Ok(left);
-    } else if left.is_always_truthy() {
-        return Ok(right);
-    }
-
-    Ok(TypeOps::Union.apply(db, &narrow_false_or_nil(db, left), &right))
 }
 
 fn infer_cmp_expr(_: &DbIndex, left: LuaType, right: LuaType, op: BinaryOperator) -> InferResult {

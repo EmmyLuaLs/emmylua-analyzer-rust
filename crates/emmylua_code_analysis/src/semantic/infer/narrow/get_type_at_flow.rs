@@ -212,23 +212,23 @@ fn get_type_at_assign_stat(
             continue;
         }
 
-        // maybe use type force type
-        let var_type = match var {
+        // Check if there's an explicit type annotation (not just inferred type)
+        let explicit_var_type = match var {
             LuaVarExpr::NameExpr(name_expr) => {
                 let decl_id = LuaDeclId::new(cache.get_file_id(), name_expr.get_position());
-                let type_cache = db.get_type_index().get_type_cache(&decl_id.into());
-                type_cache.map(|typ_cache| typ_cache.as_type().clone())
+                db.get_type_index()
+                    .get_type_cache(&decl_id.into())
+                    .filter(|tc| tc.is_doc())
+                    .map(|tc| tc.as_type().clone())
             }
             LuaVarExpr::IndexExpr(index_expr) => {
                 let member_id = LuaMemberId::new(index_expr.get_syntax_id(), cache.get_file_id());
-                let type_cache = db.get_type_index().get_type_cache(&member_id.into());
-                type_cache.map(|typ_cache| typ_cache.as_type().clone())
+                db.get_type_index()
+                    .get_type_cache(&member_id.into())
+                    .filter(|tc| tc.is_doc())
+                    .map(|tc| tc.as_type().clone())
             }
         };
-
-        if let Some(var_type) = var_type {
-            return Ok(ResultTypeOrContinue::Result(var_type));
-        }
 
         // infer from expr
         let expr_type = match exprs.get(i) {
@@ -266,9 +266,15 @@ fn get_type_at_assign_stat(
         let antecedent_type =
             get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
 
-        return Ok(ResultTypeOrContinue::Result(
-            narrow_down_type(db, antecedent_type, expr_type.clone()).unwrap_or(expr_type),
-        ));
+        // If there's an explicit type annotation (from ---@type comment), use it
+        // Otherwise, use flow-based narrowing
+        let result_type = if let Some(annotation) = explicit_var_type {
+            annotation
+        } else {
+            narrow_down_type(db, antecedent_type, expr_type.clone()).unwrap_or(expr_type)
+        };
+
+        return Ok(ResultTypeOrContinue::Result(result_type));
     }
 
     Ok(ResultTypeOrContinue::Continue)

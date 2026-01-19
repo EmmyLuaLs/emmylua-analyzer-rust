@@ -361,6 +361,146 @@ end
     }
 
     #[test]
+    fn test_issue_921_or_with_empty_table() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field a? string
+
+            local opts --- @type Opts?
+
+            -- Test expression type: opts or {} should narrow to Opts
+            E = opts or {}
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "Opts");
+    }
+
+    #[test]
+    fn test_issue_921_or_with_table_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local opts --- @type table?
+
+            -- Test with plain table? type
+            E = opts or {}
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "table");
+    }
+
+    #[test]
+    fn test_issue_921_self_assignment_with_table() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local opts --- @type table?
+
+            opts = opts or {}
+
+            E = opts
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "table");
+    }
+
+    #[test]
+    fn test_issue_921_self_assignment_with_class_empty_table() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field a? string
+
+            local opts0 --- @type Opts?
+            local opts1 --- @type Opts?
+
+            opts0 = opts0 or {}
+            opts1 = opts0 or { a = 'a' }
+
+            E0 = opts0
+            E1 = opts1
+            "#,
+        );
+
+        // After self-assignment opts = opts or {}, opts should be narrowed to Opts
+        let e0_ty = ws.expr_ty("E0");
+        assert_eq!(ws.humanize_type(e0_ty), "Opts");
+        let e1_ty = ws.expr_ty("E1");
+        assert_eq!(ws.humanize_type(e1_ty), "Opts");
+    }
+
+    #[test]
+    fn test_issue_921_and_with_string_nullable() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field a? string
+
+            local opts --- @type Opts
+
+            -- When opts.a is string?, result should be table|nil
+            -- The table {'a'} is inferred as a tuple containing 'a'
+            E = opts.a and { 'a' }
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), r#"("a")?"#);
+    }
+
+    #[test]
+    fn test_issue_921_and_with_boolean_nullable_table() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Opts
+            --- @field b? boolean
+
+            local opts --- @type Opts
+
+            -- When opts.b is boolean?, result should be false|nil|table
+            E = opts.b and { 'b' }
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), r#"(false|("b"))?"#);
+    }
+
+    #[test]
+    fn test_issue_921_and_with_boolean_nullable_string() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local bool --- @type boolean?
+
+            -- When bool is boolean?, result should be false|nil|'a'
+            E = bool and 'a'
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), r#"(false|"a")?"#);
+    }
+
+    #[test]
     fn test_issue_147() {
         let mut ws = VirtualWorkspace::new();
 
@@ -1475,5 +1615,66 @@ _2 = a[1]
             end
             "#,
         );
+    }
+
+    #[test]
+    fn test_or_empty_table_non_table_compatible() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local a --- @type string?
+
+            -- When left type is NOT table-compatible, should not narrow
+            E = a or {}
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        // string? or {} results in string|table (empty table becomes table)
+        assert_eq!(ws.humanize_type(e_ty), "(string|table)");
+    }
+
+    #[test]
+    fn test_or_empty_table_with_nonempty_class() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class MyClass
+            --- @field x number
+
+            local obj --- @type MyClass?
+
+            E = obj or {}
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "(MyClass|table)");
+    }
+
+    #[test]
+    fn test_or_empty_table_union_of_tables() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class A
+            --- @field a number
+
+            --- @class B
+            --- @field b string
+
+            local obj --- @type (A|B)?
+
+            -- Union of class types is table-compatible
+            E = obj or {}
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        let type_str = ws.humanize_type_detailed(e_ty);
+        assert_eq!(type_str, "(A|B|table)");
     }
 }
