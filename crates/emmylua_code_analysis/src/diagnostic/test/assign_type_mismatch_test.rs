@@ -988,4 +988,46 @@ return t
         "#
         ));
     }
+
+    #[test]
+    fn test_generic_array_alias_tuple() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias array<T> T[]
+        "#,
+        );
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type array<number>
+            local list = {
+                "2",
+            }
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_ref_index_key_match_tuple() {
+        let mut ws = crate::VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class Item
+                ---@field id int
+
+                ---@class TbItem
+                ---@field [int] Item
+
+                ---@type TbItem
+                local items = {
+                    { id = 1 },
+                    { id = 2 },
+                    { id = 2 },
+                }
+            "#,
+        ));
+    }
 }

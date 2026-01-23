@@ -4,9 +4,8 @@ use itertools::Itertools;
 use lsp_types::{
     CodeActionOrCommand, CompletionItem, CompletionItemKind, CompletionResponse,
     CompletionTriggerKind, Documentation, GotoDefinitionResponse, Hover, HoverContents,
-    InlayHintLabel, Location, MarkupContent, Position, SemanticTokenModifier, SemanticTokenType,
-    SemanticTokensResult, SignatureHelpContext, SignatureHelpTriggerKind, SignatureInformation,
-    TextEdit,
+    InlayHintLabel, Location, MarkupContent, Position, SemanticToken, SemanticTokensResult,
+    SignatureHelpContext, SignatureHelpTriggerKind, SignatureInformation, TextEdit,
 };
 use std::collections::HashSet;
 use std::{ops::Deref, sync::Arc};
@@ -25,7 +24,6 @@ use crate::{
 };
 
 use super::{hover::hover, implementation::implementation, references::references};
-use crate::handlers::semantic_token::{SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES};
 
 /// Calling this macro on a [`Result`] is equivalent to `result?`,
 /// but adds info about current location to the error message.
@@ -102,15 +100,6 @@ pub struct VirtualCodeAction {
     pub title: String,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct VirtualSemanticToken {
-    pub line: u32,
-    pub start: u32,
-    pub length: u32,
-    pub token_type: SemanticTokenType,
-    pub token_modifier: HashSet<SemanticTokenModifier>,
-}
-
 #[allow(unused)]
 impl ProviderVirtualWorkspace {
     pub fn new() -> Self {
@@ -152,6 +141,33 @@ impl ProviderVirtualWorkspace {
             .unwrap()
     }
 
+    pub fn def_files(&mut self, files: Vec<(&str, &str)>) -> Vec<FileId> {
+        let mut removed_files = HashSet::new();
+        let mut updated_files = HashSet::new();
+
+        for (file_name, content) in files {
+            let uri = self.virtual_url_generator.new_uri(file_name);
+            let file_id = self
+                .analysis
+                .compilation
+                .get_db_mut()
+                .get_vfs_mut()
+                .set_file_content(&uri, Some(content.to_string()));
+            removed_files.insert(file_id);
+            updated_files.insert(file_id);
+        }
+
+        self.analysis
+            .compilation
+            .remove_index(removed_files.into_iter().collect());
+
+        let mut file_ids: Vec<FileId> = updated_files.into_iter().collect();
+        file_ids.sort();
+        self.analysis.compilation.update_index(file_ids.clone());
+
+        file_ids
+    }
+
     pub fn get_emmyrc(&self) -> Emmyrc {
         self.analysis.emmyrc.deref().clone()
     }
@@ -161,13 +177,22 @@ impl ProviderVirtualWorkspace {
     }
 
     /// 处理文件内容
-    fn handle_file_content(content: &str) -> Result<(String, Position)> {
-        let content = content.to_string();
-        let cursor_byte_pos = content
-            .find("<??>")
-            .ok_or("module content should include <??>")
-            .or_fail()?;
-        if content.matches("<??>").count() > 1 {
+    pub fn handle_file_content(content: &str) -> Result<(String, Position)> {
+        let (content, position) = Self::handle_file_content_option(content)?;
+        Ok((
+            content,
+            position
+                .ok_or("module content should include <??>")
+                .or_fail()?,
+        ))
+    }
+
+    fn handle_file_content_option(content: &str) -> Result<(String, Option<Position>)> {
+        let cursor_byte_pos = match content.find("<??>") {
+            Some(pos) => pos,
+            None => return Ok((content.to_string(), None)),
+        };
+        if content[cursor_byte_pos + "<??>".len()..].contains("<??>") {
             return Err("found multiple <??>").or_fail();
         }
 
@@ -187,7 +212,7 @@ impl ProviderVirtualWorkspace {
         }
 
         let new_content = content.replace("<??>", "");
-        Ok((new_content, Position::new(line as u32, column as u32)))
+        Ok((new_content, Some(Position::new(line as u32, column as u32))))
     }
 
     pub fn check_hover(&mut self, block_str: &str, expected: VirtualHoverResult) -> Result<()> {
@@ -338,7 +363,10 @@ impl ProviderVirtualWorkspace {
         Self::assert_locations(items, expected)
     }
 
-    fn assert_locations(result: Vec<Location>, mut expected: Vec<VirtualLocation>) -> Result<()> {
+    pub fn assert_locations(
+        result: Vec<Location>,
+        mut expected: Vec<VirtualLocation>,
+    ) -> Result<()> {
         let mut items = result
             .iter()
             .map(|l| VirtualLocation {
@@ -511,64 +539,42 @@ impl ProviderVirtualWorkspace {
         )
     }
 
-    pub fn check_semantic_token(
-        &mut self,
-        block_str: &str,
-        expected: Vec<VirtualSemanticToken>,
-    ) -> Result<()> {
+    pub fn check_semantic_token(&mut self, block_str: &str, expected: Vec<u32>) -> Result<()> {
+        let result_data = self.get_semantic_token_data(block_str)?;
+        verify_eq!(result_data, expected)
+    }
+
+    pub fn get_semantic_token_data(&mut self, block_str: &str) -> Result<Vec<u32>> {
         let file_id = self.def(block_str);
+        self.get_semantic_token_data_for_file(file_id)
+    }
+
+    pub fn get_semantic_token_data_for_file(&mut self, file_id: FileId) -> Result<Vec<u32>> {
         let result = semantic_token(&self.analysis, file_id, true, ClientId::VSCode)
             .ok_or("failed to get semantic tokens")
             .or_fail()?;
         let SemanticTokensResult::Tokens(result) = result else {
-            return fail!("expected SemanticTokensResult::Tokens, got {result:?}");
+            return Err(format!(
+                "expected SemanticTokensResult::Tokens, got {result:?}"
+            ))
+            .or_fail();
         };
 
-        fn type_index_to_type(index: u32) -> Result<SemanticTokenType> {
-            SEMANTIC_TOKEN_TYPES
-                .get(index as usize)
-                .cloned()
-                .ok_or_else(|| format!("unknown semantic token {index}"))
-                .or_fail()
-        }
+        let result_data: Vec<u32> = result
+            .data
+            .into_iter()
+            .flat_map(|token: SemanticToken| {
+                [
+                    token.delta_line,
+                    token.delta_start,
+                    token.length,
+                    token.token_type,
+                    token.token_modifiers_bitset,
+                ]
+            })
+            .collect();
 
-        fn modifier_bitmap_to_modifiers(bitmap: u32) -> Result<HashSet<SemanticTokenModifier>> {
-            (0..32)
-                .filter_map(|i| {
-                    if bitmap & (1 << i) != 0 {
-                        Some(
-                            SEMANTIC_TOKEN_MODIFIERS
-                                .get(i as usize)
-                                .cloned()
-                                .ok_or_else(|| format!("unknown semantic token modifier {i}"))
-                                .or_fail(),
-                        )
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        }
-
-        let mut virtual_result = Vec::new();
-        let mut line = 0;
-        let mut start = 0;
-        for token in result.data {
-            if token.delta_line > 0 {
-                line += token.delta_line;
-                start = 0;
-            }
-            start += token.delta_start;
-            virtual_result.push(VirtualSemanticToken {
-                line,
-                start,
-                length: token.length,
-                token_type: type_index_to_type(token.token_type)?,
-                token_modifier: modifier_bitmap_to_modifiers(token.token_modifiers_bitset)?,
-            });
-        }
-
-        verify_eq!(virtual_result, expected)
+        Ok(result_data)
     }
 
     pub fn check_rename(
@@ -611,11 +617,30 @@ impl ProviderVirtualWorkspace {
 
     pub fn check_references(
         &mut self,
-        block_str: &str,
+        main_block_str: &str,
+        other_files: Vec<(&str, &str)>,
         expected: Vec<VirtualLocation>,
     ) -> Result<()> {
-        let (content, position) = Self::handle_file_content(block_str)?;
-        let file_id = self.def(&content);
+        let (main_content, position) = Self::handle_file_content(main_block_str)?;
+        let file_id = self.def(&main_content);
+
+        let processed_other_files = other_files
+            .into_iter()
+            .map(|(file_name, content)| {
+                let (content, position) = Self::handle_file_content_option(content)?;
+                if position.is_some() {
+                    return Err("found multiple <??>").or_fail();
+                }
+                Ok((file_name.to_string(), content))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        self.def_files(
+            processed_other_files
+                .iter()
+                .map(|(file_name, content)| (file_name.as_str(), content.as_str()))
+                .collect(),
+        );
         let result = references(&self.analysis, file_id, position)
             .ok_or("failed to get references")
             .or_fail()?;

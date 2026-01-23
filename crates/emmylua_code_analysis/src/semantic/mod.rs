@@ -259,7 +259,7 @@ impl<'a> SemanticModel<'a> {
     }
 
     pub fn is_sub_type_of(
-        &mut self,
+        &self,
         sub_type_ref_id: &LuaTypeDeclId,
         super_type_ref_id: &LuaTypeDeclId,
     ) -> bool {
