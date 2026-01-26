@@ -1,9 +1,11 @@
+mod collect_workspace_files;
 mod document;
 mod file_id;
 mod file_uri_handler;
 mod loader;
 mod virtual_url;
 
+pub use collect_workspace_files::*;
 pub use document::LuaDocument;
 use emmylua_parser::{LineIndex, LuaParseError, LuaParser, LuaSyntaxTree};
 pub use file_id::{FileId, InFiled};

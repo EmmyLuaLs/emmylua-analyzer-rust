@@ -1,8 +1,6 @@
-use emmylua_code_analysis::update_code_style;
+use emmylua_code_analysis::{WorkspaceFolder, WorkspaceImport, update_code_style};
 use std::path::PathBuf;
 use walkdir::{DirEntry, WalkDir};
-
-use crate::context::{WorkspaceFolder, WorkspaceImport};
 
 const VCS_DIRS: [&str; 3] = [".git", ".hg", ".svn"];
 

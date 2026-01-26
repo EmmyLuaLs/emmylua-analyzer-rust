@@ -1,6 +1,5 @@
 mod client_config;
 mod codestyle;
-mod collect_files;
 mod locale;
 mod std_i18n;
 
@@ -10,20 +9,19 @@ use crate::{
     cmd_args::CmdArgs,
     context::{
         FileDiagnostic, LspFeatures, ProgressTask, ServerContextSnapshot, StatusBar,
-        WorkspaceFileMatcher, WorkspaceFolder, get_client_id, load_emmy_config,
+        WorkspaceFileMatcher, get_client_id, load_emmy_config,
     },
     handlers::{
-        initialized::{
-            collect_files::calculate_include_and_exclude, std_i18n::try_generate_translated_std,
-        },
-        text_document::register_files_watch,
+        initialized::std_i18n::try_generate_translated_std, text_document::register_files_watch,
     },
     logger::init_logger,
 };
 pub use client_config::{ClientConfig, get_client_config};
 use codestyle::load_editorconfig;
-use collect_files::collect_files;
-use emmylua_code_analysis::{EmmyLuaAnalysis, Emmyrc, uri_to_file_path};
+use emmylua_code_analysis::{
+    EmmyLuaAnalysis, Emmyrc, WorkspaceFolder, calculate_include_and_exclude,
+    collect_workspace_files, uri_to_file_path,
+};
 use lsp_types::InitializeParams;
 use tokio::sync::RwLock;
 
@@ -143,7 +141,7 @@ pub async fn init_analysis(
 
     for lib in &emmyrc.workspace.library {
         log::info!("add library: {:?}", lib);
-        let lib_path = PathBuf::from(lib);
+        let lib_path = PathBuf::from(lib.get_path().clone());
         mut_analysis.add_library_workspace(lib_path.clone());
         workspace_folders.push(WorkspaceFolder::new(lib_path, true));
     }
@@ -179,7 +177,7 @@ pub async fn init_analysis(
     );
 
     // load files
-    let files = collect_files(&workspace_folders, &emmyrc);
+    let files = collect_workspace_files(&workspace_folders, &emmyrc, None, None);
     let files: Vec<(PathBuf, Option<String>)> =
         files.into_iter().map(|file| file.into_tuple()).collect();
     let file_count = files.len();

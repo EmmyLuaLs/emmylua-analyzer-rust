@@ -11,8 +11,9 @@ pub struct EmmyrcWorkspace {
     #[serde(default)]
     pub ignore_globs: Vec<String>,
     #[serde(default)]
-    /// Library paths. eg: "/usr/local/share/lua/5.1"
-    pub library: Vec<String>,
+    /// Library paths. Can be a string path or an object with path and ignore rules.
+    /// eg: ["/usr/local/share/lua/5.1"] or [{"path": "/usr/local/share/lua/5.1", "ignoreDir": ["test"], "ignoreGlobs": ["**/*.spec.lua"]}]
+    pub library: Vec<EmmyLibraryItem>,
     #[serde(default)]
     /// Package directories. Treat the parent directory as a `library`, but only add files from the specified directory.
     /// eg: `/usr/local/share/lua/5.1/module`
@@ -64,6 +65,37 @@ impl Default for EmmyrcWorkspace {
 pub struct EmmyrcWorkspaceModuleMap {
     pub pattern: String,
     pub replace: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Hash, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum EmmyLibraryItem {
+    /// Simple library path string
+    Path(String),
+    /// Library configuration with path and ignore rules
+    Config(EmmyLibraryConfig),
+}
+
+impl EmmyLibraryItem {
+    pub fn get_path(&self) -> &String {
+        match self {
+            EmmyLibraryItem::Path(p) => p,
+            EmmyLibraryItem::Config(c) => &c.path,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Hash, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EmmyLibraryConfig {
+    /// Library path
+    pub path: String,
+    /// Ignore directories within this library
+    #[serde(default)]
+    pub ignore_dir: Vec<String>,
+    /// Ignore globs within this library. eg: ["**/*.lua"]
+    #[serde(default)]
+    pub ignore_globs: Vec<String>,
 }
 
 fn encoding_default() -> String {

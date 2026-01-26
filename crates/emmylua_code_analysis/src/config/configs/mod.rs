@@ -32,4 +32,6 @@ pub use runtime::{EmmyrcLuaVersion, EmmyrcRuntime};
 pub use semantictoken::EmmyrcSemanticToken;
 pub use signature::EmmyrcSignature;
 pub use strict::EmmyrcStrict;
-pub use workspace::{EmmyrcWorkspace, EmmyrcWorkspaceModuleMap};
+pub use workspace::{
+    EmmyLibraryConfig, EmmyLibraryItem, EmmyrcWorkspace, EmmyrcWorkspaceModuleMap,
+};

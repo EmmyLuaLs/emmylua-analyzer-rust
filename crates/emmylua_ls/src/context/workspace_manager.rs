@@ -6,44 +6,15 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use super::{ClientProxy, FileDiagnostic, StatusBar};
 use crate::context::lsp_features::LspFeatures;
 use crate::handlers::{ClientConfig, init_analysis};
-use emmylua_code_analysis::{EmmyLuaAnalysis, Emmyrc, load_configs};
+use emmylua_code_analysis::{
+    EmmyLuaAnalysis, Emmyrc, WorkspaceFolder, WorkspaceImport, load_configs,
+};
 use emmylua_code_analysis::{update_code_style, uri_to_file_path};
 use log::{debug, info};
 use lsp_types::Uri;
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use wax::Pattern;
-
-#[derive(Clone, Debug)]
-pub enum WorkspaceImport {
-    All,
-    SubPaths(Vec<PathBuf>),
-}
-
-#[derive(Clone, Debug)]
-pub struct WorkspaceFolder {
-    pub root: PathBuf,
-    pub import: WorkspaceImport,
-    pub is_library: bool,
-}
-
-impl WorkspaceFolder {
-    pub fn new(root: PathBuf, is_library: bool) -> Self {
-        Self {
-            root,
-            import: WorkspaceImport::All,
-            is_library,
-        }
-    }
-
-    pub fn with_sub_paths(root: PathBuf, sub_paths: Vec<PathBuf>, is_library: bool) -> Self {
-        Self {
-            root,
-            import: WorkspaceImport::SubPaths(sub_paths),
-            is_library,
-        }
-    }
-}
 
 pub struct WorkspaceManager {
     analysis: Arc<RwLock<EmmyLuaAnalysis>>,
@@ -266,6 +237,7 @@ impl WorkspaceManager {
             return true;
         };
 
+        let mut is_workspace_file = false;
         for workspace in &self.workspace_folders {
             if let Ok(relative) = file_path.strip_prefix(&workspace.root) {
                 let inside_import = match &workspace.import {
@@ -280,12 +252,14 @@ impl WorkspaceManager {
                 }
 
                 if self.match_file_pattern.is_match(&file_path, relative) {
-                    return true;
+                    is_workspace_file = true;
+                } else {
+                    return false;
                 }
             }
         }
 
-        false
+        is_workspace_file
     }
 }
 

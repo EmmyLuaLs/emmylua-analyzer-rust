@@ -309,6 +309,13 @@ impl LuaModuleIndex {
         for workspace in &self.workspaces {
             if let Ok(relative_path) = path.strip_prefix(&workspace.root) {
                 let relative_path_str = relative_path.to_str().unwrap_or("");
+                if relative_path_str.is_empty() {
+                    if let Some(file_name) = workspace.root.file_prefix() {
+                        let module_path = file_name.to_string_lossy().to_string();
+                        return Some((module_path, workspace.id));
+                    }
+                }
+
                 let module_path = self.match_pattern(relative_path_str);
                 if let Some(module_path) = module_path {
                     if matched_module_path.is_none() {

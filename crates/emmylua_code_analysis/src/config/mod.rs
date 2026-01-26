@@ -1,26 +1,24 @@
 mod config_loader;
 mod configs;
 mod flatten_config;
+mod pre_process;
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::Path};
 
 pub use config_loader::{load_configs, load_configs_raw};
 pub use configs::{
-    DiagnosticSeveritySetting, DocSyntax, EmmyrcCodeAction, EmmyrcCodeLens, EmmyrcCompletion,
-    EmmyrcDiagnostic, EmmyrcDoc, EmmyrcDocumentColor, EmmyrcExternalTool, EmmyrcFilenameConvention,
-    EmmyrcHover, EmmyrcInlayHint, EmmyrcInlineValues, EmmyrcLuaVersion, EmmyrcReference,
-    EmmyrcReformat, EmmyrcResource, EmmyrcRuntime, EmmyrcSemanticToken, EmmyrcSignature,
-    EmmyrcStrict, EmmyrcWorkspace, EmmyrcWorkspaceModuleMap,
+    DiagnosticSeveritySetting, DocSyntax, EmmyLibraryConfig, EmmyLibraryItem, EmmyrcCodeAction,
+    EmmyrcCodeLens, EmmyrcCompletion, EmmyrcDiagnostic, EmmyrcDoc, EmmyrcDocumentColor,
+    EmmyrcExternalTool, EmmyrcFilenameConvention, EmmyrcHover, EmmyrcInlayHint, EmmyrcInlineValues,
+    EmmyrcLuaVersion, EmmyrcReference, EmmyrcReformat, EmmyrcResource, EmmyrcRuntime,
+    EmmyrcSemanticToken, EmmyrcSignature, EmmyrcStrict, EmmyrcWorkspace, EmmyrcWorkspaceModuleMap,
 };
 use emmylua_parser::{LuaLanguageLevel, LuaNonStdSymbolSet, ParserConfig, SpecialFunction};
-use regex::Regex;
 use rowan::NodeCache;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+
+use crate::config::pre_process::PreProcessContext;
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -107,118 +105,19 @@ impl Emmyrc {
     }
 
     pub fn pre_process_emmyrc(&mut self, workspace_root: &Path) {
-        fn process_and_dedup<'a>(
-            iter: impl Iterator<Item = &'a String>,
-            workspace_root: &Path,
-        ) -> Vec<String> {
-            let mut seen = HashSet::new();
-            iter.map(|root| pre_process_path(root, workspace_root))
-                .filter(|path| seen.insert(path.clone()))
-                .collect()
-        }
-        self.workspace.workspace_roots =
-            process_and_dedup(self.workspace.workspace_roots.iter(), workspace_root);
+        let mut context = PreProcessContext::new(workspace_root.to_path_buf());
 
-        self.workspace.library = process_and_dedup(self.workspace.library.iter(), workspace_root);
+        self.workspace.workspace_roots =
+            context.process_and_dedup_string(self.workspace.workspace_roots.iter());
+
+        self.workspace.library = context.process_and_dedup_library(self.workspace.library.iter());
 
         self.workspace.package_dirs =
-            process_and_dedup(self.workspace.package_dirs.iter(), workspace_root);
+            context.process_and_dedup_string(self.workspace.package_dirs.iter());
 
         self.workspace.ignore_dir =
-            process_and_dedup(self.workspace.ignore_dir.iter(), workspace_root);
+            context.process_and_dedup_string(self.workspace.ignore_dir.iter());
 
-        self.resource.paths = process_and_dedup(self.resource.paths.iter(), workspace_root);
+        self.resource.paths = context.process_and_dedup_string(self.resource.paths.iter());
     }
-}
-
-fn pre_process_path(path: &str, workspace: &Path) -> String {
-    let mut path = path.to_string();
-    path = replace_env_var(&path);
-    // ${workspaceFolder}  == {workspaceFolder}
-    path = path.replace("$", "");
-    let workspace_str = match workspace.to_str() {
-        Some(path) => path,
-        None => {
-            log::error!("Warning: workspace path is not valid UTF-8");
-            return path;
-        }
-    };
-
-    path = replace_placeholders(&path, workspace_str);
-
-    if path.starts_with('~') {
-        let home_dir = match dirs::home_dir() {
-            Some(path) => path,
-            None => {
-                log::error!("Warning: Home directory not found");
-                return path;
-            }
-        };
-        path = home_dir.join(&path[2..]).to_string_lossy().to_string();
-    } else if path.starts_with("./") {
-        path = workspace.join(&path[2..]).to_string_lossy().to_string();
-    } else if PathBuf::from(&path).is_absolute() {
-        path = path.to_string();
-    } else {
-        path = workspace.join(&path).to_string_lossy().to_string();
-    }
-
-    path
-}
-
-// compact luals
-fn replace_env_var(path: &str) -> String {
-    let re = match Regex::new(r"\$(\w+)") {
-        Ok(re) => re,
-        Err(_) => {
-            log::error!("Warning: Failed to create regex for environment variable replacement");
-            return path.to_string();
-        }
-    };
-    re.replace_all(path, |caps: &regex::Captures| {
-        let key = &caps[1];
-        std::env::var(key).unwrap_or_else(|_| {
-            log::error!("Warning: Environment variable {} is not set", key);
-            String::new()
-        })
-    })
-    .to_string()
-}
-
-fn replace_placeholders(input: &str, workspace_folder: &str) -> String {
-    let re = match Regex::new(r"\{([^}]+)\}") {
-        Ok(re) => re,
-        Err(_) => {
-            log::error!("Warning: Failed to create regex for placeholder replacement");
-            return input.to_string();
-        }
-    };
-    re.replace_all(input, |caps: &regex::Captures| {
-        let key = &caps[1];
-        if key == "workspaceFolder" {
-            workspace_folder.to_string()
-        } else if let Some(env_name) = key.strip_prefix("env:") {
-            std::env::var(env_name).unwrap_or_default()
-        } else if key == "luarocks" {
-            get_luarocks_deploy_dir()
-        } else {
-            caps[0].to_string()
-        }
-    })
-    .to_string()
-}
-
-fn get_luarocks_deploy_dir() -> String {
-    Command::new("luarocks")
-        .args(["config", "deploy_lua_dir"])
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default()
 }

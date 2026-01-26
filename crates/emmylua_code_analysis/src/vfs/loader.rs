@@ -30,6 +30,17 @@ pub fn load_workspace_files(
 ) -> Result<Vec<LuaFileInfo>, Box<dyn Error>> {
     let encoding = encoding.unwrap_or("utf-8");
     let mut files = Vec::new();
+    if root.is_file() {
+        if let Some(content) = read_file_with_encoding(root, encoding) {
+            files.push(LuaFileInfo {
+                path: root.to_string_lossy().to_string(),
+                content,
+            });
+        }
+
+        return Ok(files);
+    }
+
     let include_pattern = include_pattern
         .iter()
         .map(|s| s.as_str())
