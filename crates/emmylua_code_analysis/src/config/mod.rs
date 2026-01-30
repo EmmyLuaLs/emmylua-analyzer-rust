@@ -98,9 +98,8 @@ impl Emmyrc {
             EmmyrcLuaVersion::Lua53 => LuaLanguageLevel::Lua53,
             EmmyrcLuaVersion::Lua54 => LuaLanguageLevel::Lua54,
             EmmyrcLuaVersion::LuaJIT => LuaLanguageLevel::LuaJIT,
-            // wait lua5.5 release
-            EmmyrcLuaVersion::LuaLatest => LuaLanguageLevel::Lua54,
             EmmyrcLuaVersion::Lua55 => LuaLanguageLevel::Lua55,
+            EmmyrcLuaVersion::LuaLatest => LuaLanguageLevel::Lua55,
         }
     }
 

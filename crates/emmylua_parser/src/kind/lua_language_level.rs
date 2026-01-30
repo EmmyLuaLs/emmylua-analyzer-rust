@@ -6,8 +6,8 @@ pub enum LuaLanguageLevel {
     LuaJIT,
     Lua52,
     Lua53,
-    #[default]
     Lua54,
+    #[default]
     Lua55,
 }
 

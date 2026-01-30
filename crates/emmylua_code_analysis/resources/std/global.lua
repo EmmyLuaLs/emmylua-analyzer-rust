@@ -71,7 +71,7 @@ function assert(v, ...) end
 --- the major multiplier.
 --- **"isrunning"**: returns a boolean that tells whether the collector is
 --- running (i.e., not stopped).
---- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
+---@overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
 ---@param opt? std.collectgarbage_opt
 ---@param ... any
 ---@return any
