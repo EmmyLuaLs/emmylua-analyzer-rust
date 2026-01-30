@@ -73,6 +73,11 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
                 return Some(source);
             }
         }
+        LuaType::Signature(_) => {
+            if real_source_ref.is_function() {
+                return Some(target.clone());
+            }
+        }
         LuaType::Thread => {
             if real_source_ref.is_thread() {
                 return Some(source);

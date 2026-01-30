@@ -259,6 +259,27 @@ print(a.field)
     }
 
     #[test]
+    fn test_doc_function_assignment_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        local i --- @type integer|fun():string
+        i = function() end
+        _ = i()
+        A = i
+        "#;
+
+        ws.def(code);
+
+        assert!(ws.check_code_for(DiagnosticCode::CallNonCallable, code));
+        assert!(ws.check_code_for(DiagnosticCode::NeedCheckNil, code));
+
+        let a = ws.expr_ty("A");
+        let a_desc = ws.humanize_type_detailed(a);
+        assert_eq!(a_desc, "fun()");
+    }
+
+    #[test]
     fn test_issue_224() {
         let mut ws = VirtualWorkspace::new();
 
