@@ -263,7 +263,7 @@ print(a.field)
         let mut ws = VirtualWorkspace::new();
 
         let code = r#"
-        local i --- @type integer|fun():string
+        local i ---@type integer|fun():string
 
         i = function() end
 
@@ -272,6 +272,40 @@ print(a.field)
 
         assert!(ws.check_code_for(DiagnosticCode::CallNonCallable, code));
         assert!(ws.check_code_for(DiagnosticCode::NeedCheckNil, code));
+    }
+
+    #[test]
+    fn test_assignment_doc_type_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local i ---@type integer|fun():string
+            i = function() return '' end
+            A = i
+            "#,
+        );
+
+        let i = ws.expr_ty("A");
+        let i_desc = ws.humanize_type(i);
+        assert_eq!(i_desc, "fun() -> \"\"");
+    }
+
+    #[test]
+    fn test_assignment_doc_type_fallback_on_incompatible_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local j ---@type integer|fun():string
+            j = true
+            A = j
+            "#,
+        );
+
+        let j = ws.expr_ty("A");
+        let j_desc = ws.humanize_type_detailed(j);
+        assert_eq!(j_desc, "(integer|fun() -> string)");
     }
 
     #[test]

@@ -317,3 +317,22 @@ pub fn humanize_lint_type(db: &DbIndex, typ: &LuaType) -> String {
         _ => humanize_type(db, typ, RenderLevel::Simple),
     }
 }
+
+pub fn has_non_callable_non_nil(typ: &LuaType) -> bool {
+    if typ.is_function() || typ.is_call() {
+        return false;
+    }
+
+    match typ {
+        LuaType::Any | LuaType::Unknown | LuaType::SelfInfer | LuaType::Global | LuaType::Nil => {
+            false
+        }
+        LuaType::Union(union) => union.into_vec().iter().any(has_non_callable_non_nil),
+        LuaType::MultiLineUnion(union) => union
+            .get_unions()
+            .iter()
+            .any(|(t, _)| has_non_callable_non_nil(t)),
+        LuaType::TypeGuard(inner) => has_non_callable_non_nil(inner),
+        _ => true,
+    }
+}

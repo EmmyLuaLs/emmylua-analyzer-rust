@@ -7,7 +7,7 @@ use crate::{
     semantic::infer_call_expr_func,
 };
 
-use super::{Checker, DiagnosticContext};
+use super::{Checker, DiagnosticContext, has_non_callable_non_nil};
 
 pub struct CallNonCallableChecker;
 
@@ -32,7 +32,7 @@ fn check_call_expr(
     let db = semantic_model.get_db();
     let call_expr_type = infer_call_target_type(semantic_model, &prefix_expr)?;
     let mut cache = semantic_model.get_cache().borrow_mut();
-    let non_callable = is_definitely_non_callable(&call_expr_type);
+    let non_callable = has_non_callable_non_nil(&call_expr_type);
     let call_result = infer_call_expr_func(
         db,
         &mut cache,
@@ -148,29 +148,10 @@ fn infer_decl_initializer_type(
     semantic_model.infer_expr(expr).ok()
 }
 
-fn is_definitely_non_callable(typ: &LuaType) -> bool {
-    if typ.is_function() || typ.is_call() {
-        return false;
-    }
-
-    match typ {
-        LuaType::Any | LuaType::Unknown | LuaType::SelfInfer | LuaType::Global | LuaType::Nil => {
-            false
-        }
-        LuaType::Union(union) => union.into_vec().iter().any(is_definitely_non_callable),
-        LuaType::MultiLineUnion(union) => union
-            .get_unions()
-            .iter()
-            .any(|(t, _)| is_definitely_non_callable(t)),
-        LuaType::TypeGuard(inner) => is_definitely_non_callable(inner),
-        _ => true,
-    }
-}
-
 fn collect_non_callable_union_types(db: &crate::DbIndex, typ: &LuaType) -> Vec<String> {
     let mut types = BTreeSet::new();
     let mut insert_if_non_callable = |t: &LuaType| {
-        if *t != LuaType::Nil && is_definitely_non_callable(t) {
+        if *t != LuaType::Nil && has_non_callable_non_nil(t) {
             types.insert(humanize_lint_type(db, t));
         }
     };
