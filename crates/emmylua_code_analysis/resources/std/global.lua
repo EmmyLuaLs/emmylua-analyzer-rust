@@ -36,6 +36,14 @@ function assert(v, ...) end
 ---| "generational" # Change the collector mode to generational. This option can be followed by two numbers: the garbage-collector minor multiplier and the major multiplier.
 ---| "isrunning" # returns a boolean that tells whether the collector is running (i.e., not stopped).
 
+---@alias std.collectgarbage.param
+---| "minormul" # minor multiplier
+---| "majorminor" # major/minor ratio
+---| "minormajor" # minor/major ratio
+---| "pause" # collector pause
+---| "stepmul" # step multiplier
+---| "stepsize" # step size
+
 ---
 --- This function is a generic interface to the garbage collector. It performs
 --- different functions according to its first argument, `opt`:
@@ -63,6 +71,7 @@ function assert(v, ...) end
 --- the major multiplier.
 --- **"isrunning"**: returns a boolean that tells whether the collector is
 --- running (i.e., not stopped).
+--- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
 ---@param opt? std.collectgarbage_opt
 ---@param ... any
 ---@return any
@@ -435,8 +444,8 @@ function type(v) end
 
 ---
 --- A global variable (not a function) that holds a string containing the
---- running Lua version. The current value of this variable is "`Lua 5.3`".
-_VERSION = "Lua 5.4"
+--- running Lua version. The current value of this variable is "`Lua 5.5`".
+_VERSION = "Lua 5.5"
 
 ---
 --- This function is similar to `pcall`, except that it sets a new message
