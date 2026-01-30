@@ -48,11 +48,11 @@ function utf8.codes(s) end
 --- between byte position `i` and `j` (both included). The default for `i` is
 --- 1  and for `j` is `i`. It raises an error if it meets any invalid byte
 --- sequence.
----@overload fun(s:string):number
+---@overload fun(s:string):integer
 ---@param s string
----@param i? number
----@param j? number
----@return number
+---@param i? integer
+---@param j? integer
+---@return integer
 function utf8.codepoint(s, i, j) end
 
 ---
@@ -81,9 +81,9 @@ function utf8.len(s, i, j, lax) end
 --- byte of `s`.
 ---
 --- This function assumes that `s` is a valid UTF-8 string.
----@overload fun(s:string):number
+---@overload fun(s:string):integer
 ---@param s string
----@param n number
----@param i? number
----@return number
+---@param n integer
+---@param i? integer
+---@return integer
 function utf8.offset(s, n, i) end
