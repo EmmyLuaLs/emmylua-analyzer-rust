@@ -14,7 +14,7 @@ entries:
     end:
       line: 25
       col: 0
-  hash: '88878a5370a61cb8'
+  hash: c5a661c65ae1030a
   context_hash: de7cc417de1b3246
 - key: utf8lib.charpattern
   kind:
@@ -27,7 +27,7 @@ entries:
     end:
       line: 32
       col: 0
-  hash: ddecbf83d65e8850
+  hash: a11c6144655d15b2
   context_hash: de7cc417de1b3246
 - key: utf8lib.codes
   kind:
@@ -40,7 +40,7 @@ entries:
     end:
       line: 41
       col: 0
-  hash: '59ccd595ffa9ef53'
+  hash: c57cefb975fbd3bb
   context_hash: de7cc417de1b3246
 - key: utf8lib.codepoint
   kind:
@@ -53,7 +53,7 @@ entries:
     end:
       line: 50
       col: 0
-  hash: '3c9502ab0dd4907a'
+  hash: eff46239f32f51bb
   context_hash: de7cc417de1b3246
 - key: utf8lib.len
   kind:
@@ -66,7 +66,7 @@ entries:
     end:
       line: 62
       col: 0
-  hash: '02bcfb79f2709c26'
+  hash: '6f1924e1e29490a7'
   context_hash: de7cc417de1b3246
 - key: utf8lib.offset
   kind:
@@ -79,5 +79,5 @@ entries:
     end:
       line: 83
       col: 0
-  hash: '021a0690a3ca0f56'
+  hash: '373cd5d885e68978'
   context_hash: de7cc417de1b3246

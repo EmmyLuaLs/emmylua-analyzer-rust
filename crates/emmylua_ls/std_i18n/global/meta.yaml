@@ -146,16 +146,94 @@ entries:
       col: 101
   hash: ffcec93fe4c3260d
   context_hash: e728581e6d3b89a0
+- key: std.collectgarbage.param.item.minormul
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 39
+      col: 17
+    end:
+      line: 39
+      col: 34
+  hash: '17c912903d2b33e7'
+  context_hash: '347dbdc05e9d61fc'
+- key: std.collectgarbage.param.item.majorminor
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 40
+      col: 19
+    end:
+      line: 40
+      col: 37
+  hash: ca29b001e432351d
+  context_hash: aae259d24bc4e5cd
+- key: std.collectgarbage.param.item.minormajor
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 41
+      col: 19
+    end:
+      line: 41
+      col: 37
+  hash: '45e16901f0e1c945'
+  context_hash: '8d26b6ec034acd6d'
+- key: std.collectgarbage.param.item.pause
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 42
+      col: 14
+    end:
+      line: 42
+      col: 30
+  hash: '035f4092820a2d28'
+  context_hash: eaf41c3acfd833e4
+- key: std.collectgarbage.param.item.stepmul
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 43
+      col: 16
+    end:
+      line: 43
+      col: 32
+  hash: f0701f65388feb8c
+  context_hash: f1f84e457e031946
+- key: std.collectgarbage.param.item.stepsize
+  kind:
+    type: line_tail
+    prefix: ' '
+  range:
+    start:
+      line: 44
+      col: 17
+    end:
+      line: 44
+      col: 27
+  hash: '92c7a59e2065582e'
+  context_hash: '24078253f4b35579'
 - key: collectgarbage
   kind:
     type: doc_block
     indent: ''
   range:
     start:
-      line: 38
+      line: 46
       col: 0
     end:
-      line: 65
+      line: 73
       col: 0
   hash: bd476771d729520d
   context_hash: de7cc417de1b3246
@@ -165,10 +243,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 70
+      line: 79
       col: 0
     end:
-      line: 76
+      line: 85
       col: 0
   hash: '17eaac532d0d8b7f'
   context_hash: de7cc417de1b3246
@@ -178,10 +256,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 80
+      line: 89
       col: 0
     end:
-      line: 89
+      line: 98
       col: 0
   hash: '2ed38bdf5647d7e6'
   context_hash: de7cc417de1b3246
@@ -191,10 +269,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 93
+      line: 102
       col: 0
     end:
-      line: 97
+      line: 106
       col: 0
   hash: ed6170e60c7d1e6c
   context_hash: de7cc417de1b3246
@@ -204,10 +282,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 100
+      line: 109
       col: 0
     end:
-      line: 104
+      line: 113
       col: 0
   hash: fb34ddfee855c143
   context_hash: de7cc417de1b3246
@@ -217,10 +295,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 108
+      line: 117
       col: 0
     end:
-      line: 114
+      line: 123
       col: 0
   hash: '81cc1b7ba3316736'
   context_hash: de7cc417de1b3246
@@ -230,10 +308,10 @@ entries:
     prefix: ' '
   range:
     start:
-      line: 120
+      line: 129
       col: 10
     end:
-      line: 120
+      line: 129
       col: 29
   hash: a7b23db765875ab4
   context_hash: d05225bac089de1c
@@ -243,10 +321,10 @@ entries:
     prefix: ' '
   range:
     start:
-      line: 121
+      line: 130
       col: 10
     end:
-      line: 121
+      line: 130
       col: 27
   hash: '3f888b84d5ff9cb6'
   context_hash: '4c16fff1406dca0c'
@@ -256,10 +334,10 @@ entries:
     prefix: ' '
   range:
     start:
-      line: 122
+      line: 131
       col: 11
     end:
-      line: 122
+      line: 131
       col: 32
   hash: '6281255a2e74d843'
   context_hash: '36a85bed624ee77b'
@@ -269,10 +347,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 124
+      line: 133
       col: 0
     end:
-      line: 153
+      line: 162
       col: 0
   hash: '4ab0788de1108e49'
   context_hash: de7cc417de1b3246
@@ -282,10 +360,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 163
+      line: 172
       col: 0
     end:
-      line: 166
+      line: 175
       col: 0
   hash: '284dd88d29965057'
   context_hash: de7cc417de1b3246
@@ -295,10 +373,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 174
+      line: 183
       col: 0
     end:
-      line: 177
+      line: 186
       col: 0
   hash: '2509b32c0559be2b'
   context_hash: de7cc417de1b3246
@@ -308,10 +386,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 191
+      line: 200
       col: 0
     end:
-      line: 195
+      line: 204
       col: 0
   hash: b87ca1c9dd074609
   context_hash: de7cc417de1b3246
@@ -321,10 +399,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 199
+      line: 208
       col: 0
     end:
-      line: 216
+      line: 225
       col: 0
   hash: '0c06915c244a9fc7'
   context_hash: de7cc417de1b3246
@@ -334,10 +412,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 223
+      line: 232
       col: 0
     end:
-      line: 234
+      line: 243
       col: 0
   hash: '05ca1b5e9206cb2b'
   context_hash: de7cc417de1b3246
@@ -347,10 +425,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 239
+      line: 248
       col: 0
     end:
-      line: 246
+      line: 255
       col: 0
   hash: fc6ad4dc0c8dd9eb
   context_hash: de7cc417de1b3246
@@ -360,10 +438,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 252
+      line: 261
       col: 0
     end:
-      line: 257
+      line: 266
       col: 35
   hash: bb19bb9c28d20e8b
   context_hash: de7cc417de1b3246
@@ -373,10 +451,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 260
+      line: 269
       col: 0
     end:
-      line: 263
+      line: 272
       col: 0
   hash: '40261afe4c5e2460'
   context_hash: de7cc417de1b3246
@@ -386,10 +464,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 268
+      line: 277
       col: 0
     end:
-      line: 271
+      line: 280
       col: 0
   hash: '3d0e3f29adb567bf'
   context_hash: de7cc417de1b3246
@@ -399,10 +477,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 278
+      line: 287
       col: 0
     end:
-      line: 281
+      line: 290
       col: 0
   hash: '3bb95a6d6f8d5477'
   context_hash: de7cc417de1b3246
@@ -412,10 +490,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 285
+      line: 294
       col: 0
     end:
-      line: 289
+      line: 298
       col: 0
   hash: c726cd5a8ed490a8
   context_hash: de7cc417de1b3246
@@ -425,10 +503,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 294
+      line: 303
       col: 0
     end:
-      line: 324
+      line: 333
       col: 0
   hash: '1dd74d532228044d'
   context_hash: de7cc417de1b3246
@@ -438,10 +516,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 328
+      line: 337
       col: 0
     end:
-      line: 333
+      line: 342
       col: 0
   hash: '70e32f7a9c40be28'
   context_hash: de7cc417de1b3246
@@ -451,10 +529,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 371
+      line: 380
       col: 0
     end:
-      line: 378
+      line: 387
       col: 0
   hash: '6cb51df47e53ad08'
   context_hash: de7cc417de1b3246
@@ -464,10 +542,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 383
+      line: 392
       col: 0
     end:
-      line: 398
+      line: 407
       col: 0
   hash: '23e0d900a782af87'
   context_hash: de7cc417de1b3246
@@ -477,10 +555,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 404
+      line: 413
       col: 0
     end:
-      line: 412
+      line: 421
       col: 0
   hash: adc137af28e53d37
   context_hash: de7cc417de1b3246
@@ -490,10 +568,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 426
+      line: 435
       col: 0
     end:
-      line: 431
+      line: 440
       col: 0
   hash: '0800556f7051218b'
   context_hash: de7cc417de1b3246
@@ -503,12 +581,12 @@ entries:
     indent: ''
   range:
     start:
-      line: 435
+      line: 444
       col: 0
     end:
-      line: 437
+      line: 446
       col: 75
-  hash: d70840f86031589a
+  hash: '97152d055df02054'
   context_hash: de7cc417de1b3246
 - key: xpcall
   kind:
@@ -516,10 +594,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 440
+      line: 449
       col: 0
     end:
-      line: 443
+      line: 452
       col: 0
   hash: '8f9f463f8371a2f0'
   context_hash: de7cc417de1b3246
@@ -529,10 +607,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 467
+      line: 476
       col: 0
     end:
-      line: 469
+      line: 478
       col: 0
   hash: '450d61ac9994e275'
   context_hash: ff924cd5098e706f
@@ -542,10 +620,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 475
+      line: 484
       col: 0
     end:
-      line: 477
+      line: 486
       col: 0
   hash: '79ac6333c6044892'
   context_hash: de7cc417de1b3246
@@ -555,10 +633,10 @@ entries:
     prefix: ''
   range:
     start:
-      line: 477
+      line: 486
       col: 29
     end:
-      line: 477
+      line: 486
       col: 81
   hash: '45534d1ea636fab4'
   context_hash: d75ed448e13441d6
@@ -568,10 +646,10 @@ entries:
     prefix: ''
   range:
     start:
-      line: 478
+      line: 487
       col: 20
     end:
-      line: 478
+      line: 487
       col: 68
   hash: '405f4286ea2c7329'
   context_hash: '152a311703ac5ea8'
@@ -581,10 +659,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 482
+      line: 491
       col: 0
     end:
-      line: 484
+      line: 493
       col: 0
   hash: '3c8b579e5297fcd6'
   context_hash: de7cc417de1b3246
@@ -594,10 +672,10 @@ entries:
     prefix: ''
   range:
     start:
-      line: 484
+      line: 493
       col: 29
     end:
-      line: 484
+      line: 493
       col: 79
   hash: '61d794dd7c91d37d'
   context_hash: '467b302d8fefaf8f'
@@ -607,10 +685,10 @@ entries:
     prefix: ''
   range:
     start:
-      line: 485
+      line: 494
       col: 21
     end:
-      line: 485
+      line: 494
       col: 74
   hash: '41910412fe03bad4'
   context_hash: '570039d3c1c43398'
