@@ -10,7 +10,7 @@ mathlib.asin: |
 mathlib.atan: |
   返回 `y/x` 的反正切值（以弧度为单位），通过两个参数的符号来确定
   结果所在的象限。（它也正确处理 `x` 为零的情况。）
-
+  
   `x` 的默认值为 1，因此调用 `math.atan(y)` 返回 `y` 的反正切值。
 
 mathlib.ceil: |
@@ -101,7 +101,7 @@ mathlib.pow.param.y: |
 mathlib.atan2: |
   返回 `y/x` 的反正切值（以弧度为单位），通过两个参数的符号来确定
   结果所在的象限。（它也正确处理 `x` 为零的情况。）
-
+  
   注意：在某些 Lua 实现中，此函数相当于 `math.atan(y, x)`。
 
 mathlib.log10: |
@@ -122,3 +122,4 @@ mathlib.frexp: |
 
 mathlib.ldexp: |
   返回 *m2e* (`e` 应该是整数)。
+
