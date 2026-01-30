@@ -29,6 +29,9 @@ pub fn check_reach_reason(
 
             Some(typ.is_some())
         }
+        InferFailReason::UnResolveTypeDecl(type_id) => {
+            Some(db.get_type_index().get_type_decl(type_id).is_some())
+        }
         InferFailReason::UnResolveMemberType(member_id) => {
             let member = db.get_member_index().get_member(member_id)?;
             let key = member.get_key();
@@ -65,6 +68,7 @@ pub fn resolve_as_any(db: &mut DbIndex, reason: &InferFailReason, loop_count: us
     match reason {
         InferFailReason::None
         | InferFailReason::FieldNotFound
+        | InferFailReason::UnResolveTypeDecl(_)
         | InferFailReason::UnResolveOperatorCall
         | InferFailReason::RecursiveInfer => {
             return Some(());

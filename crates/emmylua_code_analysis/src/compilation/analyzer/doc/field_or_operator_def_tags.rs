@@ -167,11 +167,14 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
     let name_token = tag.get_name_token()?;
     let op_kind = LuaOperatorMetaMethod::from_operator_name(name_token.get_name_text())?;
     let mut operands: Vec<(String, Option<LuaType>)> = tag
-        .get_param_list()?
-        .get_types()
-        .enumerate()
-        .map(|(i, doc_type)| (format!("arg{}", i), Some(infer_type(analyzer, doc_type))))
-        .collect();
+        .get_param_list()
+        .map(|list| {
+            list.get_types()
+                .enumerate()
+                .map(|(i, doc_type)| (format!("arg{}", i), Some(infer_type(analyzer, doc_type))))
+                .collect()
+        })
+        .unwrap_or_default();
 
     operands.insert(
         0,

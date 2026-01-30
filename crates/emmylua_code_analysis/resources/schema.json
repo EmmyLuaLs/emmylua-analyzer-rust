@@ -432,6 +432,11 @@
           "description": "invert-if",
           "type": "string",
           "const": "invert-if"
+        },
+        {
+          "description": "Call to a non-callable value",
+          "type": "string",
+          "const": "call-non-callable"
         }
       ]
     },
