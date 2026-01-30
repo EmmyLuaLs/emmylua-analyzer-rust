@@ -1,6 +1,7 @@
 mod config_loader;
 mod configs;
 mod flatten_config;
+mod lua_loader;
 mod pre_process;
 
 use std::{collections::HashMap, path::Path};

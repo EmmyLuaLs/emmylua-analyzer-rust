@@ -79,6 +79,7 @@ pub fn load_workspace(
                 vec![
                     main_path.join(".luarc.json"),
                     main_path.join(".emmyrc.json"),
+                    main_path.join(".emmyrc.lua"),
                 ]
                 .into_iter()
                 .filter(|path| path.exists())

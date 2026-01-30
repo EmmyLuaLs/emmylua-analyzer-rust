@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[cfg_attr(feature = "cli", command(version))]
 pub struct CmdArgs {
     /// Configuration file paths.
-    /// If not provided, both ".emmyrc.json" and ".luarc.json" will be searched in the workspace
+    /// If not provided, both ".emmyrc.json" ".emmyrc.lua" and ".luarc.json" will be searched in the workspace
     /// directory
     #[cfg_attr(feature = "cli", arg(short, long, value_delimiter = ','))]
     pub config: Option<Vec<PathBuf>>,

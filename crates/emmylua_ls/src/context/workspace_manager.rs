@@ -274,6 +274,7 @@ pub fn load_emmy_config(config_root: Option<PathBuf>, client_config: ClientConfi
     // * Local `.emmyrc.json`.
     let luarc_file = ".luarc.json";
     let emmyrc_file = ".emmyrc.json";
+    let emmyrc_lua_file = ".emmyrc.lua";
     let mut config_files = Vec::new();
 
     let home_dir = dirs::home_dir();
@@ -287,6 +288,11 @@ pub fn load_emmy_config(config_root: Option<PathBuf>, client_config: ClientConfi
         if global_emmyrc_path.exists() {
             info!("load config from: {:?}", global_emmyrc_path);
             config_files.push(global_emmyrc_path);
+        }
+        let global_emmyrc_lua_path = home_dir.join(emmyrc_lua_file);
+        if global_emmyrc_lua_path.exists() {
+            info!("load config from: {:?}", global_emmyrc_lua_path);
+            config_files.push(global_emmyrc_lua_path);
         }
     };
 
@@ -302,6 +308,11 @@ pub fn load_emmy_config(config_root: Option<PathBuf>, client_config: ClientConfi
         if global_emmyrc_path.exists() {
             info!("load config from: {:?}", global_emmyrc_path);
             config_files.push(global_emmyrc_path);
+        }
+        let global_emmyrc_lua_path = config_dir.join(emmyrc_lua_file);
+        if global_emmyrc_lua_path.exists() {
+            info!("load config from: {:?}", global_emmyrc_lua_path);
+            config_files.push(global_emmyrc_lua_path);
         }
     };
 
@@ -325,6 +336,11 @@ pub fn load_emmy_config(config_root: Option<PathBuf>, client_config: ClientConfi
         if emmyrc_path.exists() {
             info!("load config from: {:?}", emmyrc_path);
             config_files.push(emmyrc_path);
+        }
+        let emmyrc_lua_path = config_root.join(emmyrc_lua_file);
+        if emmyrc_lua_path.exists() {
+            info!("load config from: {:?}", emmyrc_lua_path);
+            config_files.push(emmyrc_lua_path);
         }
     }
 

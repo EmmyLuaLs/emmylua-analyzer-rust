@@ -7,9 +7,9 @@ members = [
 
 [workspace.dependencies]
 # local
-emmylua_code_analysis = { path = "crates/emmylua_code_analysis", version = "0.19.0" }
-emmylua_parser = { path = "crates/emmylua_parser", version = "0.21.0" }
-emmylua_parser_desc = { path = "crates/emmylua_parser_desc", version = "0.21.0" }
+emmylua_code_analysis = { path = "crates/emmylua_code_analysis", version = "0.20.0" }
+emmylua_parser = { path = "crates/emmylua_parser", version = "0.22.0" }
+emmylua_parser_desc = { path = "crates/emmylua_parser_desc", version = "0.22.0" }
 emmylua_diagnostic_macro = { path = "crates/emmylua_diagnostic_macro", version = "0.5.0" }
 
 # external
@@ -53,6 +53,7 @@ num-traits = { version = "0.2", features = ["std"] }
 mimalloc = "0.1.48"
 googletest = "0.14.2"
 unicode-general-category = "1.0.0"
+luars = { version = "0.1.0", features = ["serde"] }
 
 # Lint configuration for the entire workspace
 [workspace.lints.clippy]

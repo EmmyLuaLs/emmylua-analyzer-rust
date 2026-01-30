@@ -110,7 +110,7 @@ fn get_file_type(uri: &Uri) -> Option<WatchedFileType> {
     let file_name = path.file_name()?.to_str()?;
     match file_name {
         ".editorconfig" => Some(WatchedFileType::Editorconfig),
-        ".emmyrc.json" | ".luarc.json" => Some(WatchedFileType::Emmyrc),
+        ".emmyrc.json" | ".luarc.json" | ".emmyrc.lua" => Some(WatchedFileType::Emmyrc),
         _ => Some(WatchedFileType::Lua),
     }
 }
