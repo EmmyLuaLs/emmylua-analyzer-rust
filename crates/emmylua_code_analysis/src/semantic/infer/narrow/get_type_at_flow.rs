@@ -253,7 +253,7 @@ fn get_type_at_assign_stat(
 
         // If there's an explicit doc-backed annotation, intersect it with the assigned value to
         // drop impossible branches (including implicit nil). Otherwise, use flow-based narrowing.
-        let result_type = if let Some(annotation) = explicit_var_type.clone() {
+        let result_type = if let Some(annotation) = explicit_var_type {
             let narrowed = TypeOps::Intersect.apply(db, &annotation, &expr_type);
             // If intersection collapses to Never, keep the explicit annotation instead of wiping it
             // out.
