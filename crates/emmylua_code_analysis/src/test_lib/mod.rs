@@ -152,6 +152,8 @@ impl VirtualWorkspace {
     }
 
     /// 只执行对应诊断代码的检查, 必须要在对应的`Checker`中为`const CODES`添加对应的诊断代码
+    /// Only perform checks for the corresponding diagnostic code.
+    /// You must add the corresponding diagnostic code to `const CODES` in the relevant `Checker`.
     pub fn check_code_for(&mut self, diagnostic_code: DiagnosticCode, block_str: &str) -> bool {
         // 只启用对应的诊断
         self.analysis.diagnostic.enable_only(diagnostic_code);

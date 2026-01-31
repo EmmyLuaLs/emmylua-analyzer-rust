@@ -362,6 +362,12 @@ pub fn bind_if_stat(binder: &mut FlowBinder, if_stat: LuaIfStat, current: FlowId
         binder.add_antecedent(post_if_label, else_label);
     }
 
+    if let Some(flow_node) = binder.get_flow(post_if_label)
+        && flow_node.antecedent.is_none()
+    {
+        return binder.unreachable;
+    }
+
     finish_flow_label(binder, post_if_label, else_label)
 }
 

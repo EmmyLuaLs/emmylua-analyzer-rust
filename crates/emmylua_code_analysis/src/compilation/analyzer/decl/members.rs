@@ -77,8 +77,12 @@ fn is_in_global_member(analyzer: &DeclAnalyzer, index_expr: &LuaIndexExpr) -> Op
                 return Some(false);
             }
 
+            // Treat globals as global-path owners so member defs on globals are discoverable.
             let decl = analyzer.find_decl(&name_text, name.get_position());
-            return Some(decl.is_none());
+            return Some(match decl {
+                Some(decl) => decl.is_global(),
+                None => true,
+            });
         }
         _ => {}
     }

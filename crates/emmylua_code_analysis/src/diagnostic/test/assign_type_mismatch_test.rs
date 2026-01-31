@@ -1030,4 +1030,24 @@ return t
             "#,
         ));
     }
+
+    #[test]
+    fn test_assign_tuple_to_func() {
+        let mut ws = crate::VirtualWorkspace::new();
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                local i ---@type integer|fun():string
+                i = function() end
+            "#,
+        ));
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                local i ---@type integer|fun():string
+                i = function() return true end
+            "#,
+        ));
+    }
 }

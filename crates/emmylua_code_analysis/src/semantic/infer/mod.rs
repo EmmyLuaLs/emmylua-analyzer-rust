@@ -220,6 +220,9 @@ pub fn infer_expr_list_types(
 }
 
 /// 推断值已经绑定的类型(不是推断值的类型). 例如从右值推断左值类型, 从调用参数推断函数参数类型参数类型
+/// Infers the type that a value is being bound to (not the type of the value itself). For example,
+/// inferring the type of a left-hand value from a right-hand value, or inferring a function
+/// parameter's type from a call argument.
 pub fn infer_bind_value_type(
     db: &DbIndex,
     cache: &mut LuaInferCache,

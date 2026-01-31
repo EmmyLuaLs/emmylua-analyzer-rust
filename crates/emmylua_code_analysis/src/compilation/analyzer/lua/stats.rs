@@ -24,6 +24,7 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
             let position = local_name.get_position();
             let decl_id = LuaDeclId::new(analyzer.file_id, position);
             // 标记了延迟定义属性, 此时将跳过绑定类型, 等待第一次赋值时再绑定类型
+            // Skip binding when delayed_definition is present; wait for first assignment.
             if has_delayed_definition_attribute(analyzer, decl_id) {
                 return Some(());
             }
@@ -51,6 +52,7 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
                     expr_type = multi.get_type(0)?.clone();
                 }
                 let decl_id = LuaDeclId::new(analyzer.file_id, position);
+                // Delay when a call arg includes a table; the table may not be analyzed yet.
                 // 当`call`参数包含表时, 表可能未被分析, 需要延迟
                 if let LuaType::Instance(instance) = &expr_type
                     && instance.get_base().is_unknown()
@@ -168,6 +170,7 @@ fn call_expr_has_effect_table_arg(expr: &LuaExpr) -> Option<()> {
             if let LuaExpr::TableExpr(table_expr) = arg
                 && !table_expr.is_empty()
             {
+                // Non-empty table literals can introduce members we haven't indexed yet.
                 return Some(());
             }
         }
@@ -204,6 +207,32 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
     let file_id = analyzer.file_id;
     let index_expr = LuaIndexExpr::cast(var_expr.syntax().clone())?;
     let prefix_expr = index_expr.get_prefix_expr()?;
+    // Fast path: index into a known global type like `Class.field`.
+    if let LuaExpr::NameExpr(name_expr) = &prefix_expr {
+        if let Some(name) = name_expr.get_name_text()
+            && let Some(decl_ids) = analyzer.db.get_global_index().get_global_decl_ids(&name)
+        {
+            // Resolve the global name to candidate decls and bind to any typed class/alias.
+            for decl_id in decl_ids {
+                if let Some(type_cache) = analyzer
+                    .db
+                    .get_type_index()
+                    .get_type_cache(&(*decl_id).into())
+                {
+                    match type_cache.as_type() {
+                        LuaType::Def(def_id) | LuaType::Ref(def_id) => {
+                            // Prefer binding members directly to known global types.
+                            let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
+                            let member_owner = LuaMemberOwner::Type(def_id.clone());
+                            add_member(analyzer.db, member_owner, member_id);
+                            return Some(());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 
     match analyzer.infer_expr(&prefix_expr.clone()) {
         Ok(prefix_type) => {
@@ -266,6 +295,7 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
         let type_owner = get_var_owner(analyzer, var.clone());
         set_index_expr_owner(analyzer, var.clone());
 
+        // Short-circuit for patterns like a = a or b.
         if special_assign_pattern(analyzer, type_owner.clone(), var.clone(), expr.clone()).is_some()
         {
             continue;
@@ -488,6 +518,7 @@ fn special_assign_pattern(
     var: LuaVarExpr,
     expr: LuaExpr,
 ) -> Option<()> {
+    // Handle "x = x or y" by merging only the right-hand type.
     let access_path = var.get_access_path()?;
     let binary_expr = if let LuaExpr::BinaryExpr(binary_expr) = expr {
         binary_expr

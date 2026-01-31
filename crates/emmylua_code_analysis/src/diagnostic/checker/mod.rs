@@ -3,6 +3,7 @@ mod analyze_error;
 mod assign_type_mismatch;
 mod attribute_check;
 mod await_in_sync;
+mod call_non_callable;
 mod cast_type_mismatch;
 mod check_export;
 mod check_field;
@@ -85,6 +86,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<local_const_reassign::LocalConstReassignChecker>(context, semantic_model);
     run_check::<discard_returns::DiscardReturnsChecker>(context, semantic_model);
     run_check::<await_in_sync::AwaitInSyncChecker>(context, semantic_model);
+    run_check::<call_non_callable::CallNonCallableChecker>(context, semantic_model);
     run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<param_type_check::ParamTypeCheckChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
@@ -313,5 +315,24 @@ pub fn humanize_lint_type(db: &DbIndex, typ: &LuaType) -> String {
         LuaType::DocIntegerConst(_) => "integer".to_string(),
         LuaType::DocBooleanConst(_) => "boolean".to_string(),
         _ => humanize_type(db, typ, RenderLevel::Simple),
+    }
+}
+
+pub fn has_non_callable_non_nil(typ: &LuaType) -> bool {
+    if typ.is_function() || typ.is_call() {
+        return false;
+    }
+
+    match typ {
+        LuaType::Any | LuaType::Unknown | LuaType::SelfInfer | LuaType::Global | LuaType::Nil => {
+            false
+        }
+        LuaType::Union(union) => union.into_vec().iter().any(has_non_callable_non_nil),
+        LuaType::MultiLineUnion(union) => union
+            .get_unions()
+            .iter()
+            .any(|(t, _)| has_non_callable_non_nil(t)),
+        LuaType::TypeGuard(inner) => has_non_callable_non_nil(inner),
+        _ => true,
     }
 }
