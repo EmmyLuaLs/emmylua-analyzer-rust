@@ -132,7 +132,16 @@ fn check_doc_func_type_compact_for_params(
         }
     }
 
-    // todo check return type
+    let source_ret = source_func.get_ret();
+    if !source_ret.is_nil() {
+        let compact_ret = compact_func.get_ret();
+        check_general_type_compact(
+            context,
+            source_ret,
+            compact_ret,
+            check_guard.next_level()?,
+        )?;
+    }
 
     Ok(())
 }
