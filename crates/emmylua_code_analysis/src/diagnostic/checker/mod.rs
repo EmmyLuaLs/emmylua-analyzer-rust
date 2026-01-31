@@ -3,6 +3,7 @@ mod analyze_error;
 mod assign_type_mismatch;
 mod attribute_check;
 mod await_in_sync;
+mod call_non_callable;
 mod cast_type_mismatch;
 mod check_export;
 mod check_field;
@@ -85,6 +86,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<local_const_reassign::LocalConstReassignChecker>(context, semantic_model);
     run_check::<discard_returns::DiscardReturnsChecker>(context, semantic_model);
     run_check::<await_in_sync::AwaitInSyncChecker>(context, semantic_model);
+    run_check::<call_non_callable::CallNonCallableChecker>(context, semantic_model);
     run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<param_type_check::ParamTypeCheckChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
