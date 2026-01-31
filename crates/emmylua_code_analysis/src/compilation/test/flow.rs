@@ -589,6 +589,30 @@ end
     }
 
     #[test]
+    fn test_narrow_after_error_branches() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        local r --- @type string?
+        local a --- @type boolean
+        if not r then
+            if a then
+                error()
+            else
+                error()
+            end
+        end
+
+        b = r -- should be string
+        "#,
+        );
+
+        let b = ws.expr_ty("b");
+        assert_eq!(b, LuaType::String);
+    }
+
+    #[test]
     fn test_unknown_type() {
         let mut ws = VirtualWorkspace::new();
 
