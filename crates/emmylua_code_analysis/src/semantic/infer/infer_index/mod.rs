@@ -10,7 +10,7 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
-    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
+    CacheEntry, GenericTpl, GlobalId, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
     LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
@@ -40,6 +40,26 @@ pub fn infer_index_expr(
     pass_flow: bool,
 ) -> InferResult {
     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
+
+    // Prefer global-path members for globals before falling back to type-based lookup.
+    if let LuaExpr::NameExpr(name_expr) = &prefix_expr {
+        if let Some(name) = name_expr.get_name_text()
+            && db.get_global_index().is_exist_global_decl(&name)
+        {
+            // Resolve `GlobalName[index]` against the global-path member table first.
+            let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
+            let member_key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
+            let owner = LuaMemberOwner::GlobalPath(GlobalId::new(&name));
+            if let Some(member_item) = db.get_member_index().get_member_item(&owner, &member_key) {
+                let member_type = member_item.resolve_type(db)?;
+                // Only use the global-path member when it is concrete (non-nil).
+                if !member_type.is_nil() {
+                    return Ok(member_type);
+                }
+            }
+        }
+    }
+
     let prefix_type = infer_expr(db, cache, prefix_expr)?;
     let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
 

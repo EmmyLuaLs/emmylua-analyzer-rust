@@ -1,8 +1,8 @@
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaChunk, LuaExpr, LuaVarExpr};
 
 use crate::{
-    CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
-    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, LuaTypeOwner, TypeOps, infer_expr,
+    CacheEntry, DbIndex, FlowId, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId, LuaInferCache,
+    LuaMemberId, LuaSignatureId, LuaType, LuaTypeOwner, TypeOps, infer_expr,
     semantic::infer::{
         InferResult, VarRefId,
         narrow::{
@@ -11,7 +11,6 @@ use crate::{
             get_multi_antecedents, get_single_antecedent,
             get_type_at_cast_flow::get_type_at_cast_flow,
             get_var_ref_type,
-            narrow_type::narrow_down_type,
             var_ref_id::get_var_expr_var_ref_id,
         },
     },
@@ -68,6 +67,9 @@ pub fn get_type_at_flow(
                         }
                         Err(err) => {
                             // 尝试推断声明位置的类型, 如果发生错误则返回初始错误, 否则返回当前推断错误
+                            // Try to infer the type at the declaration site; if an error occurs,
+                            // return the initial error, otherwise return the current inference
+                            // error
                             if let Some(init_type) =
                                 try_infer_decl_initializer_type(db, cache, root, var_ref_id)?
                             {
@@ -84,15 +86,8 @@ pub fn get_type_at_flow(
             }
             FlowNodeKind::Assignment(assign_ptr) => {
                 let assign_stat = assign_ptr.to_node(root).ok_or(InferFailReason::None)?;
-                let result_or_continue = get_type_at_assign_stat(
-                    db,
-                    tree,
-                    cache,
-                    root,
-                    var_ref_id,
-                    flow_node,
-                    assign_stat,
-                )?;
+                let result_or_continue =
+                    get_type_at_assign_stat(db, cache, var_ref_id, assign_stat)?;
 
                 if let ResultTypeOrContinue::Result(assign_type) = result_or_continue {
                     result_type = assign_type;
@@ -194,11 +189,8 @@ pub fn get_type_at_flow(
 
 fn get_type_at_assign_stat(
     db: &DbIndex,
-    tree: &FlowTree,
     cache: &mut LuaInferCache,
-    root: &LuaChunk,
     var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
     assign_stat: LuaAssignStat,
 ) -> Result<ResultTypeOrContinue, InferFailReason> {
     let (vars, exprs) = assign_stat.get_var_and_expr_list();
@@ -220,6 +212,7 @@ fn get_type_at_assign_stat(
             Some(expr) => {
                 let expr_type = infer_expr(db, cache, expr.clone())?;
                 match &expr_type {
+                    // If the expression type is variadic, get the first type
                     LuaType::Variadic(variadic) => match variadic.get_type(0) {
                         Some(typ) => typ.clone(),
                         None => return Ok(ResultTypeOrContinue::Continue),
@@ -247,23 +240,14 @@ fn get_type_at_assign_stat(
             }
         };
 
-        let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
-        let antecedent_type =
-            get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-
-        // If there's an explicit doc-backed annotation, intersect it with the assigned value to
-        // drop impossible branches (including implicit nil). Otherwise, use flow-based narrowing.
         let result_type = if let Some(annotation) = explicit_var_type {
-            let narrowed = TypeOps::Intersect.apply(db, &annotation, &expr_type);
-            // If intersection collapses to Never, keep the explicit annotation instead of wiping it
-            // out.
-            if matches!(narrowed, LuaType::Never) {
+            if matches!(expr_type, LuaType::TableConst(_)) {
                 annotation
             } else {
-                narrowed
+                expr_type
             }
         } else {
-            narrow_down_type(db, antecedent_type, expr_type.clone()).unwrap_or(expr_type)
+            expr_type
         };
 
         return Ok(ResultTypeOrContinue::Result(result_type));
@@ -278,28 +262,20 @@ fn get_explicit_var_type(
     var_ref_id: &VarRefId,
     var_expr: &LuaVarExpr,
 ) -> Option<LuaType> {
-    // Prefer the decl attached to the var ref; fall back to name/index lookup for doc-backed types.
     var_ref_id
         .get_decl_id_ref()
         .map(LuaTypeOwner::Decl)
         .and_then(|type_owner| get_doc_type_from_owner(db, type_owner))
-        // Fallback to legacy lookup when the ref doesn't carry a doc type.
         .or_else(|| {
             match var_expr {
-                LuaVarExpr::NameExpr(name_expr) => {
-                    // Name-based local/global decl: resolve by position for doc type.
-                    Some(LuaTypeOwner::Decl(LuaDeclId::new(
-                        cache.get_file_id(),
-                        name_expr.get_position(),
-                    )))
-                }
-                LuaVarExpr::IndexExpr(index_expr) => {
-                    // Member access: resolve by syntax id for doc type.
-                    Some(LuaTypeOwner::Member(LuaMemberId::new(
-                        index_expr.get_syntax_id(),
-                        cache.get_file_id(),
-                    )))
-                }
+                LuaVarExpr::NameExpr(name_expr) => Some(LuaTypeOwner::Decl(LuaDeclId::new(
+                    cache.get_file_id(),
+                    name_expr.get_position(),
+                ))),
+                LuaVarExpr::IndexExpr(index_expr) => Some(LuaTypeOwner::Member(LuaMemberId::new(
+                    index_expr.get_syntax_id(),
+                    cache.get_file_id(),
+                ))),
             }
             .and_then(|type_owner| get_doc_type_from_owner(db, type_owner))
         })

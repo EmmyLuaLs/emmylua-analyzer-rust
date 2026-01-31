@@ -46,8 +46,6 @@ pub fn intersect_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType
         // function | function const
         (LuaType::Function, LuaType::DocFunction(_) | LuaType::Signature(_)) => target.clone(),
         (LuaType::DocFunction(_) | LuaType::Signature(_), LuaType::Function) => real_type.clone(),
-        (LuaType::DocFunction(_), LuaType::Signature(_)) => target.clone(),
-        (LuaType::Signature(_), LuaType::DocFunction(_)) => real_type.clone(),
         // class references
         (LuaType::Ref(id1), LuaType::Ref(id2)) => {
             if id1 == id2 {
