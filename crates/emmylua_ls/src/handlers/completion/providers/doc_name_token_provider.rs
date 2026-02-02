@@ -232,14 +232,18 @@ fn add_tag_type_flag_completion(
     let mut flags = vec![(LuaTypeFlag::Partial, "partial")];
 
     match LuaDocTag::cast(node.syntax().parent()?)? {
-        LuaDocTag::Alias(_) => {}
+        LuaDocTag::Alias(_) => {
+            flags.push((LuaTypeFlag::Private, "private"));
+        }
         LuaDocTag::Class(_) => {
             flags.push((LuaTypeFlag::Exact, "exact"));
             flags.push((LuaTypeFlag::Constructor, "constructor"));
+            flags.push((LuaTypeFlag::Private, "private"));
         }
         LuaDocTag::Enum(_) => {
             flags.insert(0, (LuaTypeFlag::Key, "key"));
             flags.push((LuaTypeFlag::Exact, "exact"));
+            flags.push((LuaTypeFlag::Private, "private"));
         }
         _ => {}
     }

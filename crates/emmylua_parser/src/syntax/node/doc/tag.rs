@@ -426,6 +426,10 @@ impl LuaDocTagAlias {
     pub fn get_type(&self) -> Option<LuaDocType> {
         self.child()
     }
+
+    pub fn get_type_flag(&self) -> Option<LuaDocTypeFlag> {
+        self.child()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

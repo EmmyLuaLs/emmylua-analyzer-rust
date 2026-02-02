@@ -73,14 +73,8 @@ pub fn analyze_doc_tag_alias(analyzer: &mut DeclAnalyzer, alias: LuaDocTagAlias)
     let name_token = alias.get_name_token()?;
     let name = name_token.get_name_text().to_string();
     let range = name_token.syntax().text_range();
-
-    add_type_decl(
-        analyzer,
-        &name,
-        range,
-        LuaDeclTypeKind::Alias,
-        LuaTypeFlag::None.into(),
-    );
+    let type_flag = get_type_flag_value(analyzer, alias.get_type_flag());
+    add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Alias, type_flag);
     Some(())
 }
 

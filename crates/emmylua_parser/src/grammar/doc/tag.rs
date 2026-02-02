@@ -106,7 +106,7 @@ fn parse_tag_class(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-// (partial, global, local)
+// (partial, global, local, private)
 fn parse_doc_type_flag(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTypeFlag);
     p.bump();
@@ -214,12 +214,17 @@ fn parse_enum_field(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
+// ---@alias (private) A
 // ---@alias A string
 // ---@alias A<T> keyof T
 fn parse_tag_alias(p: &mut LuaDocParser) -> DocParseResult {
     p.set_lexer_state(LuaDocLexerState::Normal);
     let m = p.mark(LuaSyntaxKind::DocTagAlias);
     p.bump();
+    if p.current_token() == LuaTokenKind::TkLeftParen {
+        parse_doc_type_flag(p)?;
+    }
+
     expect_token(p, LuaTokenKind::TkName)?;
     if p.current_token() == LuaTokenKind::TkLt {
         parse_generic_decl_list(p, true)?;
