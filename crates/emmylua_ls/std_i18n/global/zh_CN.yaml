@@ -36,35 +36,53 @@ std.collectgarbage_opt.item.generational: |
 std.collectgarbage_opt.item.isrunning: |
   返回一个布尔值，指示收集器是否正在运行（即未停止）。
 
+# minor multiplier
+std.collectgarbage.param.item.minormul: ""
+
+# major/minor ratio
+std.collectgarbage.param.item.majorminor: ""
+
+# minor/major ratio
+std.collectgarbage.param.item.minormajor: ""
+
+# collector pause
+std.collectgarbage.param.item.pause: ""
+
+# step multiplier
+std.collectgarbage.param.item.stepmul: ""
+
+# step size
+std.collectgarbage.param.item.stepsize: ""
+
 collectgarbage: |
   此函数是垃圾收集器的通用接口。它根据第一个参数 `opt` 执行不同的功能。
-
+  
   ### opt
-
+  
   - **"collect"**: 执行完整的垃圾回收。这是默认选项。
-
+  
   - **"stop"**: 停止垃圾收集器的自动执行。收集器只会在显式调用之前运行，
   直到调用 restart。
-
+  
   - **"restart"**: 重启垃圾收集器的自动执行。
-
+  
   - **"count"**: 以 Kbytes 为单位返回 Lua 使用的总内存数。该值有小数部分，
   乘以 1024 可得到 Lua 使用的确切字节数（溢出除外）。
-
+  
   - **"step"**: 执行垃圾收集步进。步进 "size" 由 `arg` 控制。
   如果值为 0，收集器将执行一个基础（不可分割）步进。
   对于非零值，收集器执行的效果等同于 Lua 分配了相应数量（以 KBytes 为单位）的内存。
   如果步进完成了一个回收周期，则返回 **true**。
-
+  
   - **"setpause"**: 将 `arg` 设置为收集器 *pause* （参见 §2.5）的新值。
   返回 *pause* 的前一个值。
-
+  
   - **"incremental"**: 将收集器模式更改为增量模式。此选项后面可以跟三个数字：
   垃圾收集器暂停、步进倍率和步进大小。
-
+  
   - **"generational"**: 将收集器模式更改为分代模式。此选项后面可以跟两个数字：
   垃圾收集器次要倍率和主要倍率。
-
+  
   - **"isrunning"**: 返回一个布尔值，指示收集器是否正在运行（即未停止）。
 
 dofile: |
@@ -107,23 +125,23 @@ load: |
   如果 `chunk` 是字符串，则代码块就是该字符串。如果 `chunk` 是函数，
   `load` 会重复调用它以获取代码块片段。每次调用 `chunk` 必须返回
   一个与先前结果连接的字符串。返回空字符串、**nil** 或无值表示代码块结束。
-
+  
   如果没有语法错误，则将编译后的代码块作为函数返回；
   否则，返回 **nil** 加上错误消息。
-
+  
   如果生成的函数有上值，则第一个上值设置为 `env` 的值（如果给定了该参数），
   或者设置为全局环境的值。其他上值初始化为 **nil**。（当你加载主代码块时，
   生成的函数将始终只有一个上值，即 _ENV 变量。但是，当你加载从函数创建的
   二进制代码块时（参见 string.dump），生成的函数可以有任意数量的上值。）
   所有上值都是新的，即它们不与任何其他函数共享。
-
+  
   `chunkname` 用作错误消息和调试信息的代码块名称。如果省略，
   由于 `chunk` 是字符串，默认为 `chunk`，否则默认为 "=(load)"。
-
+  
   字符串 `mode` 控制代码块是文本还是二进制（即预编译代码块）。
   它可以是字符串 "b"（仅二进制代码块）、"t"（仅文本代码块）
   或 "bt"（二进制和文本）。默认为 "bt"。
-
+  
   Lua 不检查二进制代码块的一致性。恶意构造的二进制代码块可能会导致解释器崩溃。
 
 loadstring: |
@@ -143,19 +161,19 @@ next: |
   调用，或者在空表中使用 **nil** 调用时，`next` 返回 **nil**。
   如果省略第二个参数，则将其解释为 **nil**。特别是，你可以使用 `next(t)`
   来检查表是否为空。
-
+  
   索引枚举的顺序未指定，*即使对于数字索引也是如此*。（要按数字顺序
   遍历表，请使用数字 **for**。）
-
+  
   如果在遍历过程中将任何值赋给表中不存在的字段，则 `next` 的行为未定义。
   但是，你可以修改现有字段。特别是，你可以将现有字段设置为 nil。
 
 pairs: |
   如果 `t` 具有元方法 `__pairs`，则以 `t` 作为参数调用它，并返回该调用的前三个结果。
-
+  
   否则，返回三个值：`next` 函数、表 `t` 和 `nil`，
   因此结构 `for k,v in pairs(t) do *body* end` 会遍历表 `t` 的所有键值对。
-
+  
   关于在遍历过程中修改表的注意事项，请参见函数 `next`。
 
 pcall: |
@@ -190,17 +208,17 @@ require: |
   加载给定的模块。该函数首先在 'package.loaded' 表中查找 `modname`
   是否这就加载。如果是，则 `require` 返回存储在 `package.loaded[modname]`
   中的值。否则，它尝试为模块查找 *加载器*。
-
+  
   为了查找加载器，`require` 由 `package.searchers` 序列引导。
   通过更改此序列，我们可以改变 `require` 查找模块的方式。
   以下解释基于 `package.searchers` 的默认配置。
-
+  
   首先 `require` 查询 `package.preload[modname]`。如果它有值，
   该值（应该是一个函数）就是加载器。否则 `require` 使用存储在
   `package.path` 中的路径搜索 Lua 加载器。如果这也失败，它使用
   存储在 `package.cpath` 中的路径搜索 C 加载器。如果这也失败，
   它尝试 *一体化* 加载器（参见 `package.loaders`）。
-
+  
   一旦找到加载器，`require` 就会使用两个参数调用加载器：`modname`
   和一个取决于它如何获取加载器的额外值。（如果加载器来自文件，
   这个额外值就是文件名。）如果加载器返回任何非 nil 值，require
@@ -208,7 +226,7 @@ require: |
   非 nil 值并且没有给 `package.loaded[modname]` 赋值，则 `require`
   将 true 赋值给该条目。在任何情况下，require 返回
   `package.loaded[modname]` 的最终值。
-
+  
   如果加载或运行模块时出现任何错误，或者找不到模块的任何加载器，
   则 `require` 引发错误。
 
@@ -221,17 +239,17 @@ setmetatable: |
   为给定表设置元表。（要从 Lua 代码更改其他类型的元表，必须使用调试库。）
   如果 `metatable` 为 **nil**，则移除给定表的元表。如果原始元表
   具有 `"__metatable"` 字段，则引发错误。
-
+  
   此函数返回 `table`。
 
 tonumber: |
   当不带 `base` 调用时，`tonumber` 尝试将其参数转换为数字。
   如果参数已经是数字或可转换为数字的字符串，则 `tonumber` 返回该数字；
   否则，返回 **nil**。
-
+  
   字符串的转换可以根据 Lua 的词法约定产生整数或浮点数。（字符串可以有
   前导和尾随空格以及符号。）
-
+  
   当带 `base` 调用时，e 必须是一个字符串，被解释为该进制的整数。
   进制可以是 2 到 36 之间的任何整数（含）。在 10 以上的进制中，
   字母 'A'（大写或小写）表示 10，'B' 表示 11，依此类推，'Z' 表示 35。
@@ -240,7 +258,7 @@ tonumber: |
 tostring: |
   接收任何类型的值并将其转换为人类可读格式的字符串。（为了完全控制
   数字的转换方式，请使用 `string.format`）。
-
+  
   如果 `v` 的元表具有 `__tostring` 字段，则 `tostring` 使用 `v`
   作为参数调用相应的值，并将调用的结果作为其结果。
 
@@ -276,3 +294,4 @@ getfenv.param.f: |
 
 getfenv.return.1: |
   与给定函数关联的环境表。
+
