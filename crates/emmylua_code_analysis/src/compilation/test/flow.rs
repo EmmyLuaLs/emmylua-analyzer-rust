@@ -81,6 +81,24 @@ mod test {
     }
 
     #[test]
+    fn test_assert_cache_index_type() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        local M = {}
+        M.cache = {} ---@type table<integer,string?>
+        local i ---@type integer
+        A = assert(M.cache[i])
+        "#,
+        );
+
+        let ty = ws.expr_ty("A");
+        let desc = ws.humanize_type(ty);
+        assert_eq!(desc, "string");
+    }
+
+    #[test]
     fn test_issue_107() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.check_code_for(
@@ -256,6 +274,80 @@ print(a.field)
         foo(a)
         "#
         ));
+    }
+
+    #[test]
+    fn test_doc_function_assignment_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        local i ---@type integer|fun():string
+
+        -- rhs is not integer|fun():string, so should throw a warning but still narrow to fun()
+        i = function() end
+
+        A = i
+        "#;
+
+        ws.def(code);
+
+        let i = ws.expr_ty("A");
+        let i_desc = ws.humanize_type(i);
+        assert_eq!(i_desc, "fun()");
+    }
+
+    #[test]
+    fn test_doc_callable_assignment_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        ---@type std.RawGet<table, string>
+        local i
+
+        i = function() end
+
+        A = i
+        "#;
+
+        ws.def(code);
+
+        let i = ws.expr_ty("A");
+        let i_desc = ws.humanize_type(i);
+        assert_eq!(i_desc, "fun()");
+    }
+
+    #[test]
+    fn test_assignment_doc_type_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local i ---@type integer|fun():string
+            i = function() return '' end
+            A = i
+            "#,
+        );
+
+        let i = ws.expr_ty("A");
+        let i_desc = ws.humanize_type(i);
+        assert_eq!(i_desc, "fun() -> \"\"");
+    }
+
+    #[test]
+    fn test_assignment_doc_type_fallback_on_incompatible_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local j ---@type integer|fun():string
+            j = true
+            A = j
+            "#,
+        );
+
+        let j = ws.expr_ty("A");
+        let j_desc = ws.humanize_type_detailed(j);
+        assert_eq!(j_desc, "true");
     }
 
     #[test]

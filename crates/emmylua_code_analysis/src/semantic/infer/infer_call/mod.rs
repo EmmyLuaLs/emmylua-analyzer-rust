@@ -126,6 +126,9 @@ pub fn infer_call_expr_func(
         Err(r) if r.is_need_resolve() => {
             cache.call_cache.remove(&key);
         }
+        Err(InferFailReason::None) => {
+            cache.call_cache.remove(&key);
+        }
         _ => {}
     }
 
@@ -636,6 +639,43 @@ pub fn infer_call_expr(
     }
 
     Ok(ret_type)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        InferFailReason, InferGuard, LuaType, VirtualWorkspace, semantic::infer_call_expr_func,
+    };
+
+    #[test]
+    fn test_call_cache_non_callable_not_sticky() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def("local i = 1\n i()\n");
+        let call_expr = ws.get_node::<emmylua_parser::LuaCallExpr>(file_id);
+        let semantic_model = ws.analysis.compilation.get_semantic_model(file_id).unwrap();
+        let db = semantic_model.get_db();
+        let mut cache = semantic_model.get_cache().borrow_mut();
+        let call_expr_type = LuaType::IntegerConst(1);
+
+        let _ = infer_call_expr_func(
+            db,
+            &mut cache,
+            call_expr.clone(),
+            call_expr_type.clone(),
+            &InferGuard::new(),
+            None,
+        );
+        let second = infer_call_expr_func(
+            db,
+            &mut cache,
+            call_expr,
+            call_expr_type,
+            &InferGuard::new(),
+            None,
+        );
+
+        assert!(!matches!(second, Err(InferFailReason::RecursiveInfer)));
+    }
 }
 
 fn check_can_infer(
