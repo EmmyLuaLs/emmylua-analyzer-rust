@@ -489,6 +489,11 @@ mod tests {
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
             ],
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
@@ -506,6 +511,11 @@ mod tests {
                 },
                 VirtualCompletionItem {
                     label: "constructor".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -530,6 +540,11 @@ mod tests {
                 },
                 VirtualCompletionItem {
                     label: "exact".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
