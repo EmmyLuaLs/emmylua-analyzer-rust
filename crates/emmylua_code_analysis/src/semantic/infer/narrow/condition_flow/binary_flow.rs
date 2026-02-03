@@ -328,7 +328,7 @@ fn maybe_type_guard_binary(
 
     let result_type = match condition_flow {
         InferConditionFlow::TrueCondition => {
-            narrow_down_type(db, antecedent_type.clone(), narrow.clone()).unwrap_or(narrow)
+            narrow_down_type(db, antecedent_type.clone(), narrow.clone(), None).unwrap_or(narrow)
         }
         InferConditionFlow::FalseCondition => TypeOps::Remove.apply(db, &antecedent_type, &narrow),
     };

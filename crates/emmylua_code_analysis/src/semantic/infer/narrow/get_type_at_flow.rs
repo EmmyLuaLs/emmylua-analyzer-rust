@@ -10,8 +10,7 @@ use crate::{
             condition_flow::{InferConditionFlow, get_type_at_condition_flow},
             get_multi_antecedents, get_single_antecedent,
             get_type_at_cast_flow::get_type_at_cast_flow,
-            get_var_ref_type,
-            narrow_type::narrow_down_type,
+            get_var_ref_type, narrow_down_type,
             var_ref_id::get_var_expr_var_ref_id,
         },
     },
@@ -234,47 +233,69 @@ fn get_type_at_assign_stat(
         let expr_type = match exprs.get(i) {
             Some(expr) => {
                 let expr_type = infer_expr(db, cache, expr.clone())?;
+                // Variadic returns map to the first value for assignment.
                 match &expr_type {
-                    LuaType::Variadic(variadic) => match variadic.get_type(0) {
-                        Some(typ) => typ.clone(),
-                        None => return Ok(ResultTypeOrContinue::Continue),
-                    },
-                    _ => expr_type,
+                    LuaType::Variadic(variadic) => variadic.get_type(0).cloned(),
+                    _ => Some(expr_type),
                 }
             }
             None => {
                 let expr_len = exprs.len();
                 if expr_len == 0 {
-                    return Ok(ResultTypeOrContinue::Continue);
-                }
-
-                let last_expr = exprs[expr_len - 1].clone();
-                let last_expr_type = infer_expr(db, cache, last_expr)?;
-                if let LuaType::Variadic(variadic) = last_expr_type {
-                    let idx = i - expr_len + 1;
-                    match variadic.get_type(idx) {
-                        Some(typ) => typ.clone(),
-                        None => return Ok(ResultTypeOrContinue::Continue),
-                    }
+                    None
                 } else {
-                    return Ok(ResultTypeOrContinue::Continue);
+                    let last_expr = exprs[expr_len - 1].clone();
+                    let last_expr_type = infer_expr(db, cache, last_expr)?;
+                    if let LuaType::Variadic(variadic) = last_expr_type {
+                        let idx = i - expr_len + 1;
+                        variadic.get_type(idx).cloned()
+                    } else {
+                        None
+                    }
                 }
             }
         };
 
-        let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
-        let antecedent_type =
-            get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-
-        // If there's an explicit type annotation (from ---@type comment), use it
-        // Otherwise, use flow-based narrowing
-        let result_type = if let Some(annotation) = explicit_var_type {
-            annotation
-        } else if antecedent_type == LuaType::Nil {
-            expr_type.clone()
-        } else {
-            narrow_down_type(db, antecedent_type, expr_type.clone()).unwrap_or(expr_type)
+        let Some(expr_type) = expr_type else {
+            return Ok(ResultTypeOrContinue::Continue);
         };
+
+        let source_type = if let Some(explicit) = explicit_var_type.clone() {
+            explicit
+        } else {
+            let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
+            get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?
+        };
+
+        let narrowed = if source_type == LuaType::Nil {
+            None
+        } else {
+            let declared_for_merge = if let Some(explicit) = explicit_var_type.clone()
+                && matches!(explicit, LuaType::Def(_) | LuaType::Ref(_))
+            {
+                Some(explicit)
+            } else if explicit_var_type.is_none() {
+                get_var_ref_type(db, cache, var_ref_id)
+                    .ok()
+                    .filter(|typ| matches!(typ, LuaType::Def(_) | LuaType::Ref(_)))
+            } else {
+                None
+            };
+
+            narrow_down_type(
+                db,
+                source_type.clone(),
+                expr_type.clone(),
+                declared_for_merge,
+            )
+        };
+
+        let narrowed = match narrowed {
+            Some(LuaType::Nil) if !expr_type.is_nil() => None,
+            other => other,
+        };
+
+        let result_type = narrowed.unwrap_or(explicit_var_type.unwrap_or(expr_type));
 
         return Ok(ResultTypeOrContinue::Result(result_type));
     }
