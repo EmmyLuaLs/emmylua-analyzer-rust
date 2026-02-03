@@ -270,6 +270,8 @@ fn get_type_at_assign_stat(
         // Otherwise, use flow-based narrowing
         let result_type = if let Some(annotation) = explicit_var_type {
             annotation
+        } else if antecedent_type == LuaType::Nil {
+            expr_type.clone()
         } else {
             narrow_down_type(db, antecedent_type, expr_type.clone()).unwrap_or(expr_type)
         };
