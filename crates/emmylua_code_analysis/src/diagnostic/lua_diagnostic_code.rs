@@ -115,6 +115,8 @@ pub enum DiagnosticCode {
     AttributeRedundantParameter,
     /// invert-if
     InvertIf,
+    /// Call to a non-callable value
+    CallNonCallable,
     #[serde(other)]
     None,
 }
@@ -142,6 +144,7 @@ pub fn get_default_severity(code: DiagnosticCode) -> DiagnosticSeverity {
         DiagnosticCode::DuplicateRequire => DiagnosticSeverity::HINT,
         DiagnosticCode::IterVariableReassign => DiagnosticSeverity::ERROR,
         DiagnosticCode::PreferredLocalAlias => DiagnosticSeverity::HINT,
+        DiagnosticCode::CallNonCallable => DiagnosticSeverity::WARNING,
         _ => DiagnosticSeverity::WARNING,
     }
 }
