@@ -30,9 +30,9 @@ pub async fn run_ls(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + Send
 
     let (id, params) = connection.initialize_start()?;
     let initialization_params: InitializeParams = serde_json::from_value(params).unwrap();
-    let server_capbilities = server_capabilities(&initialization_params.capabilities);
+    let server_capabilities = server_capabilities(&initialization_params.capabilities);
     let initialize_data = serde_json::json!({
-        "capabilities": server_capbilities,
+        "capabilities": server_capabilities,
         "serverInfo": {
             "name": CRATE_NAME,
             "version": CRATE_VERSION

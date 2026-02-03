@@ -162,7 +162,7 @@ pub fn infer_table_should_be(
 ) -> InferResult {
     match table.get_parent::<LuaAst>().ok_or(InferFailReason::None)? {
         LuaAst::LuaCallArgList(call_arg_list) => {
-            infer_table_type_by_calleee(db, cache, call_arg_list, table)
+            infer_table_type_by_callee(db, cache, call_arg_list, table)
         }
         LuaAst::LuaTableField(field) => infer_table_field_type_by_parent(db, cache, field),
         LuaAst::LuaLocalStat(local) => infer_table_type_by_local(db, cache, local, table),
@@ -219,7 +219,7 @@ pub fn infer_table_field_value_should_be(
     Err(reason)
 }
 
-fn infer_table_type_by_calleee(
+fn infer_table_type_by_callee(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_arg_list: LuaCallArgList,
