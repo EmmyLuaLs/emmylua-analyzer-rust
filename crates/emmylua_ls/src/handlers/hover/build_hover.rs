@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use emmylua_code_analysis::humanize_type;
 use emmylua_code_analysis::{
-    DbIndex, LuaCompilation, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
-    LuaSignatureId, LuaType, RenderLevel, SemanticInfo, SemanticModel,
+    DbIndex, LuaCompilation, LuaDeclExtra, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey,
+    LuaSemanticDeclId, LuaSignatureId, LuaType, RenderLevel, SemanticInfo, SemanticModel,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallArgList, LuaExpr, LuaSyntaxKind, LuaSyntaxToken,
@@ -201,6 +201,18 @@ fn build_decl_hover(
         }
         for semantic_decl in semantic_decl_set {
             builder.add_description(semantic_decl);
+        }
+    }
+
+    if let LuaDeclExtra::Param {
+        idx, signature_id, ..
+    } = &decl.extra
+    {
+        if let Some(signature) = db.get_signature_index().get(signature_id)
+            && let Some(param_info) = signature.get_param_info_by_id(*idx)
+            && let Some(description) = &param_info.description
+        {
+            builder.add_annotation_description(description.clone());
         }
     }
 

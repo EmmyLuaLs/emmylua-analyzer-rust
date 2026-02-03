@@ -2,6 +2,35 @@
 mod tests {
     use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualHoverResult, check};
     use googletest::prelude::*;
+
+    fn dedent(input: &str) -> String {
+        let lines: Vec<&str> = input.lines().collect();
+        let mut min_indent = usize::MAX;
+        for line in &lines {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let indent = line.chars().take_while(|c| *c == ' ').count();
+            min_indent = min_indent.min(indent);
+        }
+        if min_indent == usize::MAX {
+            return String::new();
+        }
+        let mut out = String::new();
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = if line.len() >= min_indent {
+                &line[min_indent..]
+            } else {
+                line
+            };
+            out.push_str(trimmed);
+            if i + 1 < lines.len() {
+                out.push('\n');
+            }
+        }
+        out.trim_start_matches('\n').trim_end().to_string()
+    }
+
     #[gtest]
     fn test_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -120,6 +149,87 @@ mod tests {
             "#,
             VirtualHoverResult {
                 value: "```lua\nlocal function f(a, b)\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_param_string() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@param n string doc
+                function foo(<??>n)
+                end
+            "#,
+            VirtualHoverResult {
+                value: dedent(
+                    r#"
+                    ```lua
+                    local n: string
+                    ```
+
+                    ---
+
+                    doc
+                    "#
+                )
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_param_func() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@param n fun():boolean doc
+                function foo(<??>n)
+                end
+            "#,
+            VirtualHoverResult {
+                value: dedent(
+                    r#"
+                    ```lua
+                    local function n() -> boolean
+                    ```
+
+                    ---
+
+                    doc
+                    "#
+                )
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_narrowed_function_type() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@param n integer|fun():boolean
+                function _G.foo(n)
+                    local f = n
+                    if type(f) ~= 'function' then
+                        f = function()
+                            return true
+                        end
+                    end
+                    local _ = <??>f
+                end
+            "#,
+            VirtualHoverResult {
+                value: dedent(
+                    r#"
+                    ```lua
+                    local function n() -> boolean
+                    ```
+                    "#
+                ),
             },
         ));
         Ok(())
