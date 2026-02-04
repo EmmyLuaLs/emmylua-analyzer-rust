@@ -276,6 +276,18 @@ fn infer_special_generic_type(
 
             return Some(LuaType::TypeGuard(first_param.into()));
         }
+        "Merge" => {
+            let mut params = Vec::new();
+            for param in generic_type.get_generic_types()?.get_types() {
+                params.push(infer_doc_type(ctx, &param));
+            }
+            if params.len() != 2 {
+                return Some(LuaType::Unknown);
+            }
+            return Some(LuaType::Call(
+                LuaAliasCallType::new(LuaAliasCallKind::Merge, params).into(),
+            ));
+        }
         _ => {}
     }
 

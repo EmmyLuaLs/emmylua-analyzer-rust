@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use crate::{
     LuaIntersectionType, LuaMemberOwner, LuaType, TypeCheckFailReason, TypeCheckResult,
     semantic::type_check::{
-        check_general_type_compact, type_check_context::TypeCheckContext,
-        type_check_guard::TypeCheckGuard,
+        check_general_type_compact, intersection_utils::intersection_to_object,
+        type_check_context::TypeCheckContext, type_check_guard::TypeCheckGuard,
     },
 };
 
@@ -19,11 +21,29 @@ pub fn check_intersection_type_compact(
             LuaMemberOwner::Element(range.clone()),
             check_guard.next_level()?,
         ),
+        LuaType::Def(_) | LuaType::Ref(_) => {
+            if let Some(object_type) = intersection_to_object(context.db, source_intersection) {
+                let object_type = LuaType::Object(Arc::new(object_type));
+                check_general_type_compact(
+                    context,
+                    &object_type,
+                    compact_type,
+                    check_guard.next_level()?,
+                )
+            } else {
+                Err(TypeCheckFailReason::TypeNotMatch)
+            }
+        }
         LuaType::Object(_) => {
             // 检查对象是否满足交叉类型的所有组成部分
             for intersection_component in source_intersection.get_types() {
+                // NOTE: Use a fresh TypeCheckContext per component so `table_member_checked` (and
+                // similar state) doesn't leak across components. Otherwise `A & B` may check `A`
+                // first and then skip `B`'s same-key checks.
+                let mut component_context =
+                    TypeCheckContext::new(context.db, context.detail, context.level.clone());
                 check_general_type_compact(
-                    context,
+                    &mut component_context,
                     intersection_component,
                     compact_type,
                     check_guard.next_level()?,
@@ -44,8 +64,11 @@ pub fn check_intersection_type_compact(
         _ => {
             // 对于其他类型，检查是否至少满足一个组成部分
             for intersection_component in source_intersection.get_types() {
+                // NOTE: Use a fresh TypeCheckContext per component to avoid leaking check state.
+                let mut component_context =
+                    TypeCheckContext::new(context.db, context.detail, context.level.clone());
                 if check_general_type_compact(
-                    context,
+                    &mut component_context,
                     intersection_component,
                     compact_type,
                     check_guard.next_level()?,
@@ -68,8 +91,11 @@ fn check_intersection_type_compact_table(
 ) -> TypeCheckResult {
     // 交叉类型要求 TableConst 必须满足所有组成部分
     for intersection_component in source_intersection.get_types() {
+        // NOTE: Use a fresh TypeCheckContext per component to avoid leaking check state.
+        let mut component_context =
+            TypeCheckContext::new(context.db, context.detail, context.level.clone());
         check_general_type_compact(
-            context,
+            &mut component_context,
             intersection_component,
             &LuaType::TableConst(
                 table_owner

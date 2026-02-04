@@ -3,7 +3,12 @@ use std::collections::HashMap;
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeCache, LuaTypeDecl,
     LuaTypeDeclId, RenderLevel, humanize_type,
-    semantic::{member::find_members, type_check::type_check_context::TypeCheckContext},
+    semantic::{
+        member::find_members,
+        type_check::{
+            intersection_utils::intersection_to_object, type_check_context::TypeCheckContext,
+        },
+    },
 };
 
 use super::{
@@ -175,6 +180,18 @@ fn check_ref_class(
             source_id,
             check_guard.next_level()?,
         ),
+        LuaType::Intersection(intersection) => {
+            if let Some(object_type) = intersection_to_object(context.db, intersection) {
+                check_ref_type_compact_object(
+                    context,
+                    &object_type,
+                    source_id,
+                    check_guard.next_level()?,
+                )
+            } else {
+                Err(TypeCheckFailReason::TypeNotMatch)
+            }
+        }
         LuaType::Table => Ok(()),
         LuaType::Union(union_type) => {
             for typ in union_type.into_vec() {

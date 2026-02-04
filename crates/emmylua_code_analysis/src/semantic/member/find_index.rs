@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     DbIndex, InFiled, InferGuardRef, LuaGenericType, LuaIntersectionType, LuaMemberKey,
@@ -10,7 +10,7 @@ use crate::{
     },
 };
 
-use super::{FindMembersResult, LuaMemberInfo};
+use super::{FindMembersResult, LuaMemberInfo, intersect_member_types};
 use rowan::TextRange;
 
 pub fn find_index_operations(db: &DbIndex, prefix_type: &LuaType) -> FindMembersResult {
@@ -247,34 +247,47 @@ fn find_index_intersection(
     intersection: &LuaIntersectionType,
     infer_guard: &InferGuardRef,
 ) -> FindMembersResult {
-    let mut all_members = Vec::new();
+    let mut order: Vec<LuaMemberKey> = Vec::new();
+    let mut members: HashMap<LuaMemberKey, LuaType> = HashMap::new();
 
     for member in intersection.get_types() {
-        if let Some(sub_members) = find_index_operations_guard(db, member, infer_guard) {
-            all_members.push(sub_members);
+        let Some(sub_members) = find_index_operations_guard(db, member, infer_guard) else {
+            continue;
+        };
+
+        // Within a single component type, treat duplicate keys as overrides (first wins).
+        let mut component_seen: HashSet<LuaMemberKey> = HashSet::new();
+        for member in sub_members {
+            if !component_seen.insert(member.key.clone()) {
+                continue;
+            }
+
+            match members.entry(member.key.clone()) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    order.push(member.key.clone());
+                    entry.insert(member.typ.clone());
+                }
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    let merged =
+                        intersect_member_types(db, entry.get().clone(), member.typ.clone());
+                    entry.insert(merged);
+                }
+            }
         }
     }
 
-    if all_members.is_empty() {
+    if members.is_empty() {
         None
-    } else if all_members.len() == 1 {
-        Some(all_members.remove(0))
     } else {
-        let mut result = Vec::new();
-        let mut member_set = HashSet::new();
-
-        for member in all_members.iter().flatten() {
-            let key = member.key.clone();
-            let typ = member.typ.clone();
-            if member_set.contains(&key) {
+        let mut result: Vec<LuaMemberInfo> = Vec::new();
+        for key in order {
+            let Some(typ) = members.get(&key) else {
                 continue;
-            }
-            member_set.insert(key.clone());
-
+            };
             result.push(LuaMemberInfo {
                 property_owner_id: None,
                 key,
-                typ,
+                typ: typ.clone(),
                 feature: None,
                 overload_index: None,
             });

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use smol_str::SmolStr;
 
@@ -12,7 +12,9 @@ use crate::{
     },
 };
 
-use super::{FindMembersResult, LuaMemberInfo, get_buildin_type_map_type_id};
+use super::{
+    FindMembersResult, LuaMemberInfo, get_buildin_type_map_type_id, intersect_member_types,
+};
 
 #[derive(Debug, Clone)]
 pub enum FindMemberFilter {
@@ -380,31 +382,53 @@ fn find_intersection_members(
     ctx: &FindMembersContext,
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
-    let mut members = Vec::new();
+    let mut order: Vec<LuaMemberKey> = Vec::new();
+    let mut members: HashMap<LuaMemberKey, LuaMemberInfo> = HashMap::new();
+
     for typ in intersection_type.get_types().iter() {
         let instantiated_type = ctx.instantiate_type(db, typ);
         let fork_ctx = ctx.fork_infer();
         let sub_members = find_members_guard(db, &instantiated_type, &fork_ctx, filter);
-        if let Some(sub_members) = sub_members {
-            members.push(sub_members);
+        let Some(sub_members) = sub_members else {
+            continue;
+        };
+
+        // Within a single component type, treat duplicate keys as overrides (first wins).
+        let mut component_seen: HashSet<LuaMemberKey> = HashSet::new();
+        for member in sub_members {
+            if !component_seen.insert(member.key.clone()) {
+                continue;
+            }
+
+            match members.entry(member.key.clone()) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    order.push(member.key.clone());
+                    entry.insert(LuaMemberInfo {
+                        property_owner_id: member.property_owner_id.clone(),
+                        key: member.key,
+                        typ: member.typ,
+                        feature: None,
+                        overload_index: None,
+                    });
+                }
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    entry.get_mut().typ =
+                        intersect_member_types(db, entry.get().typ.clone(), member.typ.clone());
+                }
+            }
         }
     }
 
     if members.is_empty() {
         None
-    } else if members.len() == 1 {
-        Some(members.remove(0))
     } else {
         let mut result = Vec::new();
-        let mut member_set = HashSet::new();
-
-        for member in members.iter().flatten() {
+        for key in order {
+            let Some(member) = members.get(&key) else {
+                continue;
+            };
             let key = &member.key;
             let typ = &member.typ;
-            if member_set.contains(key) {
-                continue;
-            }
-            member_set.insert(key.clone());
 
             result.push(LuaMemberInfo {
                 property_owner_id: member.property_owner_id.clone(),

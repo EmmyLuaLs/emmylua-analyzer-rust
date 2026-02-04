@@ -6,7 +6,7 @@ mod infer_raw_member;
 use std::collections::HashSet;
 
 use crate::{
-    DbIndex, LuaMemberFeature, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
+    DbIndex, LuaMemberFeature, LuaMemberId, LuaMemberKey, LuaSemanticDeclId, TypeOps,
     db_index::{LuaType, LuaTypeDeclId},
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxKind, LuaTableExpr, LuaTableField};
@@ -42,6 +42,14 @@ pub struct LuaMemberInfo {
 
 type FindMembersResult = Option<Vec<LuaMemberInfo>>;
 type RawGetMemberTypeResult = Result<LuaType, InferFailReason>;
+
+pub(crate) fn intersect_member_types(db: &DbIndex, left: LuaType, right: LuaType) -> LuaType {
+    if left == right {
+        left
+    } else {
+        TypeOps::Intersect.apply(db, &left, &right)
+    }
+}
 
 pub fn find_member_origin_owner(
     db: &DbIndex,
