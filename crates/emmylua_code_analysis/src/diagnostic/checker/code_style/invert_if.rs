@@ -1,4 +1,6 @@
-use emmylua_parser::{LuaAstNode, LuaAstToken, LuaBlock, LuaIfStat, LuaStat, LuaTokenKind};
+use emmylua_parser::{
+    LuaAstNode, LuaAstToken, LuaBlock, LuaIfStat, LuaStat, LuaSyntaxKind, LuaTokenKind,
+};
 
 use crate::{
     DiagnosticCode, SemanticModel,
@@ -13,24 +15,42 @@ impl Checker for InvertIfChecker {
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
         let root = semantic_model.get_root().clone();
         for if_statement in root.descendants::<LuaIfStat>() {
-            check_if_statement(context, if_statement.clone());
-            check_nested_if_depth(context, if_statement);
+            check_early_return_pattern(context, &if_statement);
         }
     }
 }
 
-fn check_if_statement(context: &mut DiagnosticContext, if_statement: LuaIfStat) {
+/// Check if an if statement follows an early-return pattern that could benefit from inversion.
+///
+/// The pattern we're looking for is:
+/// ```lua
+/// if condition then
+///     -- many statements (main logic)
+/// else
+///     return  -- or return nil, or break (in loops)
+/// end
+/// -- more code follows here (important!)
+/// ```
+///
+/// This can be refactored to:
+/// ```lua
+/// if not condition then
+///     return
+/// end
+/// -- main logic (now at lower nesting level)
+/// -- more code follows
+/// ```
+fn check_early_return_pattern(context: &mut DiagnosticContext, if_statement: &LuaIfStat) {
     // Only check if statements that have an else clause
     let Some(else_clause) = if_statement.get_else_clause() else {
         return;
     };
 
-    // Check for elseif clauses; if present, do not suggest inversion
+    // Don't suggest inversion for if-elseif-else chains
     if if_statement.get_else_if_clause_list().next().is_some() {
         return;
     }
 
-    // Get the if body and else body
     let Some(if_block) = if_statement.get_block() else {
         return;
     };
@@ -38,92 +58,133 @@ fn check_if_statement(context: &mut DiagnosticContext, if_statement: LuaIfStat) 
         return;
     };
 
-    // Check whether the else block contains only simple jump statements (return or break)
-    if is_simple_jump_statement(&else_block) {
-        // Check whether the if block has enough statements to recommend inversion
-        let if_stmt_count = count_statements(&if_block);
-        if if_stmt_count >= 2 {
-            // Suggest inverting the if statement
-            if let Some(if_token) = if_statement.token_by_kind(LuaTokenKind::TkIf) {
-                context.add_diagnostic(
-                    DiagnosticCode::InvertIf,
-                    if_token.get_range(),
-                    t!("Consider inverting 'if' statement to reduce nesting").to_string(),
-                    None,
-                );
-            }
-        }
+    // Check if this if statement is in a loop - if so, be more careful about break suggestions
+    let in_loop = is_in_loop(if_statement);
+
+    // The else block should be a simple early-exit (return or break in loops)
+    let else_exit_type = get_early_exit_type(&else_block);
+    if else_exit_type == EarlyExitType::None {
+        return;
+    }
+
+    // Break is only meaningful in loops
+    if else_exit_type == EarlyExitType::Break && !in_loop {
+        return;
+    }
+
+    // The if block should NOT end with return/break (otherwise both branches exit, no benefit)
+    if block_ends_with_exit(&if_block) {
+        return;
+    }
+
+    // Check if there's code after this if statement (otherwise no real benefit from inversion)
+    if !has_code_after_if(if_statement) {
+        return;
+    }
+
+    // The if block should have substantial code to justify the suggestion
+    let if_stmt_count = count_meaningful_statements(&if_block);
+    if if_stmt_count < 3 {
+        return;
+    }
+
+    // All conditions met - suggest inversion
+    if let Some(if_token) = if_statement.token_by_kind(LuaTokenKind::TkIf) {
+        context.add_diagnostic(
+            DiagnosticCode::InvertIf,
+            if_token.get_range(),
+            t!("Consider inverting 'if' statement to reduce nesting").to_string(),
+            None,
+        );
     }
 }
 
-/// Check whether a block contains only simple jump statements (return or break)
-fn is_simple_jump_statement(block: &emmylua_parser::LuaBlock) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EarlyExitType {
+    None,
+    Return,
+    Break,
+}
+
+/// Check if a block is a simple early exit (return with no value, return nil, or break)
+fn get_early_exit_type(block: &LuaBlock) -> EarlyExitType {
     let stats: Vec<_> = block.get_stats().collect();
 
-    // Only one statement
+    // Should only have one statement
     if stats.len() != 1 {
-        return false;
+        return EarlyExitType::None;
     }
 
-    // Check if it is a return or break statement
     match &stats[0] {
         LuaStat::ReturnStat(return_stat) => {
-            // return statement has no return values, or only one simple return value
-            return_stat.get_expr_list().count() == 0
+            let expr_count = return_stat.get_expr_list().count();
+            // Allow: return, return nil
+            if expr_count <= 1 {
+                EarlyExitType::Return
+            } else {
+                EarlyExitType::None
+            }
         }
-        LuaStat::BreakStat(_) => true,
-        _ => false,
+        LuaStat::BreakStat(_) => EarlyExitType::Break,
+        _ => EarlyExitType::None,
     }
 }
 
-/// Count the number of statements in a block
-fn count_statements(block: &LuaBlock) -> usize {
-    block.get_stats().count()
-}
-
-/// Check for deeply nested if statements
-/// Reports diagnostics when nesting exceeds threshold (default: 3 levels)
-/// Only warns if the if statement is at the beginning of a block (suitable for early returns)
-fn check_nested_if_depth(context: &mut DiagnosticContext, if_statement: LuaIfStat) {
-    const MAX_NESTING_DEPTH: usize = 3;
-    // Calculate nesting depth
-    let depth = calculate_if_nesting_depth(&if_statement);
-
-    if depth >= MAX_NESTING_DEPTH {
-        if let Some(if_token) = if_statement.token_by_kind(LuaTokenKind::TkIf) {
-            let message = t!(
-                "Deep nesting detected (level %{level}). Consider using early returns to reduce complexity",
-                level = depth
-            );
-            context.add_diagnostic(
-                DiagnosticCode::InvertIf,
-                if_token.get_range(),
-                message.to_string(),
-                None,
-            );
-        }
+/// Check if a block ends with a return or break statement
+fn block_ends_with_exit(block: &LuaBlock) -> bool {
+    let stats: Vec<_> = block.get_stats().collect();
+    if let Some(last) = stats.last() {
+        matches!(last, LuaStat::ReturnStat(_) | LuaStat::BreakStat(_))
+    } else {
+        false
     }
 }
 
-/// Calculate the nesting depth of an if statement
-/// Returns the number of nested if statements from the function/file root
-fn calculate_if_nesting_depth(if_statement: &LuaIfStat) -> usize {
-    let mut depth = 1;
-    let mut current_if = if_statement.clone();
-    loop {
-        let prev_stat: Option<LuaStat> = current_if.syntax().prev_sibling().and_then(LuaStat::cast);
-        if prev_stat.is_some() {
-            break;
-        }
-        depth += 1;
-        let Some(parent_block) = current_if.get_parent::<LuaBlock>() else {
-            return depth;
-        };
-        current_if = match parent_block.get_parent::<LuaIfStat>() {
-            Some(parent) => parent,
-            None => return depth,
-        };
-    }
+/// Count meaningful statements (excluding empty statements)
+fn count_meaningful_statements(block: &LuaBlock) -> usize {
+    block
+        .get_stats()
+        .filter(|s| !matches!(s, LuaStat::EmptyStat(_)))
+        .count()
+}
 
-    depth
+/// Check if this if statement is inside a loop
+fn is_in_loop(if_statement: &LuaIfStat) -> bool {
+    for ancestor in if_statement.syntax().ancestors() {
+        let kind: LuaSyntaxKind = ancestor.kind().into();
+        match kind {
+            // Stop at function boundaries
+            LuaSyntaxKind::ClosureExpr
+            | LuaSyntaxKind::FuncStat
+            | LuaSyntaxKind::LocalFuncStat
+            | LuaSyntaxKind::Chunk => {
+                return false;
+            }
+            // Found a loop
+            LuaSyntaxKind::WhileStat
+            | LuaSyntaxKind::RepeatStat
+            | LuaSyntaxKind::ForStat
+            | LuaSyntaxKind::ForRangeStat => {
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Check if there's meaningful code after this if statement in the same block
+fn has_code_after_if(if_statement: &LuaIfStat) -> bool {
+    // Get the next sibling that is a statement
+    let mut next = if_statement.syntax().next_sibling();
+    while let Some(sibling) = next {
+        if let Some(stat) = LuaStat::cast(sibling.clone()) {
+            // Check if it's a meaningful statement (not just empty)
+            if !matches!(stat, LuaStat::EmptyStat(_)) {
+                return true;
+            }
+        }
+        next = sibling.next_sibling();
+    }
+    false
 }
