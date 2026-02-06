@@ -207,6 +207,44 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
 
     match analyzer.infer_expr(&prefix_expr.clone()) {
         Ok(prefix_type) => {
+            // Prefer declared global types for name prefixes when choosing a member owner.
+            // This keeps stdlib members (like table.unpack) attached to their type defs.
+            let prefix_type = if let LuaExpr::NameExpr(name_expr) = &prefix_expr {
+                let mut explicit_type = None;
+                if let Some(name) = name_expr.get_name_text() {
+                    // Avoid attaching members to stdlib globals when a local shadows the name.
+                    let is_shadowed = analyzer
+                        .db
+                        .get_decl_index()
+                        .get_decl_tree(&file_id)
+                        .and_then(|tree| tree.find_local_decl(&name, name_expr.get_position()))
+                        .map(|decl| decl.is_local() || decl.is_implicit_self())
+                        .unwrap_or(false);
+                    if !is_shadowed
+                        && let Some(decl_ids) =
+                            analyzer.db.get_global_index().get_global_decl_ids(&name)
+                    {
+                        // Pick the first resolvable global type cache as the owner type.
+                        for decl_id in decl_ids {
+                            if let Some(type_cache) = analyzer
+                                .db
+                                .get_type_index()
+                                .get_type_cache(&(*decl_id).into())
+                            {
+                                explicit_type = Some(type_cache.as_type().clone());
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Fall back to the inferred prefix type when no explicit type exists.
+                explicit_type.unwrap_or(prefix_type)
+            } else {
+                // Non-name prefixes keep the inferred prefix type.
+                prefix_type
+            };
+
             index_expr.get_index_key()?;
             let member_id = LuaMemberId::new(index_expr.get_syntax_id(), file_id);
             let member_owner = match prefix_type {
