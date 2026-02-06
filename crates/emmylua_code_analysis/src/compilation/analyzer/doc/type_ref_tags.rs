@@ -1,8 +1,8 @@
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaDocDescriptionOwner, LuaDocTagAs, LuaDocTagCast,
     LuaDocTagModule, LuaDocTagOther, LuaDocTagOverload, LuaDocTagParam, LuaDocTagReturn,
-    LuaDocTagReturnCast, LuaDocTagSee, LuaDocTagType, LuaExpr, LuaLocalName, LuaTokenKind,
-    LuaVarExpr,
+    LuaDocTagReturnCast, LuaDocTagSchema, LuaDocTagSee, LuaDocTagType, LuaExpr, LuaLocalName,
+    LuaTokenKind, LuaVarExpr,
 };
 
 use super::{
@@ -12,7 +12,7 @@ use super::{
     tags::{find_owner_closure, get_owner_id_or_report},
 };
 use crate::{
-    InFiled, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
+    InFiled, JsonSchemaFile, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
     SignatureReturnStatus, TypeOps,
     compilation::analyzer::common::bind_type,
     db_index::{
@@ -40,8 +40,18 @@ pub fn analyze_type(analyzer: &mut DocAnalyzer, tag: LuaDocTagType) -> Option<()
     }
 
     // bind ref type
+    bind_type_to_owner(analyzer, &tag, &type_list, description);
+    Some(())
+}
+
+fn bind_type_to_owner(
+    analyzer: &mut DocAnalyzer,
+    tag: &impl LuaAstNode,
+    type_list: &[LuaType],
+    description: Option<String>,
+) -> Option<()> {
     let Some(owner) = analyzer.comment.get_owner() else {
-        report_orphan_tag(analyzer, &tag);
+        report_orphan_tag(analyzer, tag);
         return None;
     };
     match owner {
@@ -156,7 +166,7 @@ pub fn analyze_type(analyzer: &mut DocAnalyzer, tag: LuaDocTagType) -> Option<()
             }
         }
         _ => {
-            report_orphan_tag(analyzer, &tag);
+            report_orphan_tag(analyzer, tag);
         }
     }
 
@@ -434,6 +444,38 @@ pub fn analyze_other(analyzer: &mut DocAnalyzer, other: LuaDocTagOther) -> Optio
         .db
         .get_property_index_mut()
         .add_other(analyzer.file_id, owner, tag_name, description);
+
+    Some(())
+}
+
+pub fn analyze_doc_tag_schema(analyzer: &mut DocAnalyzer, tag: LuaDocTagSchema) -> Option<()> {
+    if analyzer.is_meta || !analyzer.workspace_id.is_main() {
+        return Some(());
+    }
+
+    let path = tag.get_path_token()?;
+    let path_str = path.get_path();
+    if !path_str.ends_with(".json") {
+        return Some(());
+    }
+
+    let url = match url::Url::parse(path_str) {
+        Ok(url) => url,
+        Err(e) => {
+            log::error!("Invalid URL in @schema tag: {}, error: {}", path_str, e);
+            return Some(());
+        }
+    };
+
+    let schema_index = analyzer.db.get_json_schema_index_mut();
+    if let Some(schema_file) = schema_index.get_schema_file(&url) {
+        if let JsonSchemaFile::Resolved(file_id) = schema_file {
+            let types = vec![LuaType::ModuleRef(*file_id)];
+            bind_type_to_owner(analyzer, &tag, &types, None);
+        }
+    } else {
+        schema_index.add_schema_file(url, JsonSchemaFile::NeedResolve);
+    }
 
     Some(())
 }

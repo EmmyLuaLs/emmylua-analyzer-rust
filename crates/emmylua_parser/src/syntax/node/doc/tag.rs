@@ -31,6 +31,7 @@ pub enum LuaDocTag {
     Version(LuaDocTagVersion),
     Cast(LuaDocTagCast),
     Source(LuaDocTagSource),
+    Schema(LuaDocTagSchema),
     Other(LuaDocTagOther),
     Namespace(LuaDocTagNamespace),
     Using(LuaDocTagUsing),
@@ -66,6 +67,7 @@ impl LuaAstNode for LuaDocTag {
             LuaDocTag::Version(it) => it.syntax(),
             LuaDocTag::Cast(it) => it.syntax(),
             LuaDocTag::Source(it) => it.syntax(),
+            LuaDocTag::Schema(it) => it.syntax(),
             LuaDocTag::Other(it) => it.syntax(),
             LuaDocTag::Namespace(it) => it.syntax(),
             LuaDocTag::Using(it) => it.syntax(),
@@ -119,6 +121,7 @@ impl LuaAstNode for LuaDocTag {
             || kind == LuaSyntaxKind::DocTagExport
             || kind == LuaSyntaxKind::DocTagLanguage
             || kind == LuaSyntaxKind::DocTagAttributeUse
+            || kind == LuaSyntaxKind::DocTagSchema
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>
@@ -163,6 +166,9 @@ impl LuaAstNode for LuaDocTag {
             LuaSyntaxKind::DocTagDiagnostic => Some(LuaDocTag::Diagnostic(
                 LuaDocTagDiagnostic::cast(syntax).unwrap(),
             )),
+            LuaSyntaxKind::DocTagSchema => {
+                Some(LuaDocTag::Schema(LuaDocTagSchema::cast(syntax).unwrap()))
+            }
             LuaSyntaxKind::DocTagDeprecated => Some(LuaDocTag::Deprecated(
                 LuaDocTagDeprecated::cast(syntax).unwrap(),
             )),
@@ -1082,6 +1088,41 @@ impl LuaAstNode for LuaDocTagSource {
 impl LuaDocDescriptionOwner for LuaDocTagSource {}
 
 impl LuaDocTagSource {
+    pub fn get_path_token(&self) -> Option<LuaPathToken> {
+        self.token()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocTagSchema {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocTagSchema {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocTagSchema
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocTagSchema {
     pub fn get_path_token(&self) -> Option<LuaPathToken> {
         self.token()
     }

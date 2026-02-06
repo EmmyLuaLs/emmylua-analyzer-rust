@@ -6,7 +6,7 @@ use crate::{
     AnalyzeError, DiagnosticCode, LuaDeclId,
     compilation::analyzer::doc::{
         attribute_tags::analyze_tag_attribute_use, property_tags::analyze_readonly,
-        type_def_tags::analyze_attribute,
+        type_def_tags::analyze_attribute, type_ref_tags::analyze_doc_tag_schema,
     },
     db_index::{LuaMemberId, LuaSemanticDeclId, LuaSignatureId},
 };
@@ -120,6 +120,9 @@ pub fn analyze_tag(analyzer: &mut DocAnalyzer, tag: LuaDocTag) -> Option<()> {
         // 属性使用, 与 ---@tag 的语法不同
         LuaDocTag::AttributeUse(attribute_use) => {
             analyze_tag_attribute_use(analyzer, attribute_use)?;
+        }
+        LuaDocTag::Schema(doc_schema) => {
+            analyze_doc_tag_schema(analyzer, doc_schema);
         }
         _ => {}
     }

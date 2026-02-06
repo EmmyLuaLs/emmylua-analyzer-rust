@@ -76,6 +76,7 @@ pub enum LuaAst {
     LuaDocTagVersion(LuaDocTagVersion),
     LuaDocTagCast(LuaDocTagCast),
     LuaDocTagSource(LuaDocTagSource),
+    LuaDocTagSchema(LuaDocTagSchema),
     LuaDocTagOther(LuaDocTagOther),
     LuaDocTagNamespace(LuaDocTagNamespace),
     LuaDocTagUsing(LuaDocTagUsing),
@@ -167,6 +168,7 @@ impl LuaAstNode for LuaAst {
             LuaAst::LuaDocTagVersion(node) => node.syntax(),
             LuaAst::LuaDocTagCast(node) => node.syntax(),
             LuaAst::LuaDocTagSource(node) => node.syntax(),
+            LuaAst::LuaDocTagSchema(node) => node.syntax(),
             LuaAst::LuaDocTagOther(node) => node.syntax(),
             LuaAst::LuaDocTagNamespace(node) => node.syntax(),
             LuaAst::LuaDocTagUsing(node) => node.syntax(),
@@ -266,6 +268,7 @@ impl LuaAstNode for LuaAst {
                 | LuaSyntaxKind::DocTagVersion
                 | LuaSyntaxKind::DocTagCast
                 | LuaSyntaxKind::DocTagSource
+                | LuaSyntaxKind::DocTagSchema
                 | LuaSyntaxKind::DocTagOther
                 | LuaSyntaxKind::DocTagNamespace
                 | LuaSyntaxKind::DocTagUsing
@@ -395,6 +398,9 @@ impl LuaAstNode for LuaAst {
             LuaSyntaxKind::DocTagCast => LuaDocTagCast::cast(syntax).map(LuaAst::LuaDocTagCast),
             LuaSyntaxKind::DocTagSource => {
                 LuaDocTagSource::cast(syntax).map(LuaAst::LuaDocTagSource)
+            }
+            LuaSyntaxKind::DocTagSchema => {
+                LuaDocTagSchema::cast(syntax).map(LuaAst::LuaDocTagSchema)
             }
             LuaSyntaxKind::DocTagOther => LuaDocTagOther::cast(syntax).map(LuaAst::LuaDocTagOther),
             LuaSyntaxKind::DocTagNamespace => {

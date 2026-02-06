@@ -26,6 +26,7 @@ pub fn analyze(db: &mut DbIndex, need_analyzed_files: Vec<InFiled<LuaChunk>>, co
     let contexts = module_analyze(db, need_analyzed_files, config);
 
     for (workspace_id, mut context) in contexts {
+        context.workspace_id = Some(workspace_id);
         let profile_log = format!("analyze workspace {}", workspace_id);
         let _p = Profile::cond_new(&profile_log, context.tree_list.len() > 1);
         run_analysis::<decl::DeclAnalysisPipeline>(db, &mut context);
@@ -129,6 +130,7 @@ pub struct AnalyzeContext {
     metas: HashSet<FileId>,
     unresolves: Vec<(UnResolve, InferFailReason)>,
     infer_manager: InferCacheManager,
+    pub workspace_id: Option<WorkspaceId>,
 }
 
 impl AnalyzeContext {
@@ -139,6 +141,7 @@ impl AnalyzeContext {
             metas: HashSet::new(),
             unresolves: Vec::new(),
             infer_manager: InferCacheManager::new(),
+            workspace_id: None,
         }
     }
 

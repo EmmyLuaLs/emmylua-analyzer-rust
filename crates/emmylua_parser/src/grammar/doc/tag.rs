@@ -60,6 +60,7 @@ fn parse_tag_detail(p: &mut LuaDocParser) -> DocParseResult {
         LuaTokenKind::TkTagAttribute => parse_tag_attribute(p),
         LuaTokenKind::TkDocAttributeUse => parse_tag_attribute_use(p, true),
         LuaTokenKind::TkCallGeneric => parse_tag_call_generic(p),
+        LuaTokenKind::TKSchema => parse_tag_schema(p),
 
         // simple tag
         LuaTokenKind::TkTagVisibility => parse_tag_simple(p, LuaSyntaxKind::DocTagVisibility),
@@ -812,5 +813,13 @@ fn parse_tag_call_generic(p: &mut LuaDocParser) -> DocParseResult {
 
     expect_token(p, LuaTokenKind::TkGt)?;
 
+    Ok(m.complete(p))
+}
+
+fn parse_tag_schema(p: &mut LuaDocParser) -> DocParseResult {
+    p.set_lexer_state(LuaDocLexerState::Source);
+    let m = p.mark(LuaSyntaxKind::DocTagSchema);
+    p.bump();
+    expect_token(p, LuaTokenKind::TKDocPath)?;
     Ok(m.complete(p))
 }

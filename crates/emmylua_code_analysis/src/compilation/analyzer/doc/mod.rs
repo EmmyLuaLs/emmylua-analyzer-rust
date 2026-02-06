@@ -10,7 +10,7 @@ mod type_ref_tags;
 
 use super::AnalyzeContext;
 use crate::{
-    FileId, LuaSemanticDeclId,
+    FileId, LuaSemanticDeclId, WorkspaceId,
     compilation::analyzer::AnalysisPipeline,
     db_index::{DbIndex, LuaTypeDeclId},
     profile::Profile,
@@ -24,6 +24,7 @@ impl AnalysisPipeline for DocAnalysisPipeline {
     fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
         let _p = Profile::cond_new("doc analyze", context.tree_list.len() > 1);
         let tree_list = context.tree_list.clone();
+        let workspace_id = context.workspace_id.unwrap_or(WorkspaceId::MAIN);
         for in_filed_tree in tree_list.iter() {
             let root = &in_filed_tree.value;
             let mut generic_index = FileGenericIndex::new();
@@ -34,6 +35,7 @@ impl AnalysisPipeline for DocAnalysisPipeline {
                     &mut generic_index,
                     comment,
                     root.syntax().clone(),
+                    workspace_id,
                 );
                 analyze_comment(&mut analyzer);
             }
@@ -70,6 +72,7 @@ pub struct DocAnalyzer<'a> {
     comment: LuaComment,
     root: LuaSyntaxNode,
     is_meta: bool,
+    workspace_id: WorkspaceId,
 }
 
 impl<'a> DocAnalyzer<'a> {
@@ -79,6 +82,7 @@ impl<'a> DocAnalyzer<'a> {
         generic_index: &'a mut FileGenericIndex,
         comment: LuaComment,
         root: LuaSyntaxNode,
+        workspace_id: WorkspaceId,
     ) -> DocAnalyzer<'a> {
         let is_meta = db.get_module_index().is_meta_file(&file_id);
         DocAnalyzer {
@@ -89,6 +93,7 @@ impl<'a> DocAnalyzer<'a> {
             comment,
             root,
             is_meta,
+            workspace_id,
         }
     }
 }
