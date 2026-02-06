@@ -449,6 +449,24 @@ mod test {
     }
 
     #[test]
+    fn test_issue_696() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+        local ty --- @type type|fun(x:any): boolean
+
+        --- @param _ty fun(v:any):boolean
+        local function validate(_ty) end
+
+        if type(ty) == 'function' then
+          validate(ty)
+        end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_4() {
         let mut ws = VirtualWorkspace::new();
 
