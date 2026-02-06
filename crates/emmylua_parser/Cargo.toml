@@ -1,6 +1,6 @@
 [package]
 name = "emmylua_parser"
-version = "0.22.0"
+version = "0.23.0"
 edition = "2024"
 authors = ["CppCXY"]
 description = "A parser for EmmyLua and luals"
