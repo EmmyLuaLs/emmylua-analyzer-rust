@@ -74,6 +74,7 @@ pub async fn on_did_save_text_document(
                 .await;
             let workspace_manager = context.workspace_manager().write().await;
             workspace_manager.update_workspace_version(WorkspaceDiagnosticLevel::Slow, true);
+            workspace_manager.check_schema_update().await;
         }
 
         return Some(());
@@ -88,6 +89,7 @@ pub async fn on_did_save_text_document(
     workspace
         .reindex_workspace(Duration::from_millis(duration))
         .await;
+    workspace.check_schema_update().await;
     Some(())
 }
 

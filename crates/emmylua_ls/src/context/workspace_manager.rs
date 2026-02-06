@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -7,13 +7,11 @@ use super::{ClientProxy, FileDiagnostic, StatusBar};
 use crate::context::lsp_features::LspFeatures;
 use crate::handlers::{ClientConfig, init_analysis};
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, Emmyrc, JsonSchemaFile, LuaTypeDeclId, WorkspaceFolder, WorkspaceImport,
-    get_schema_short_name, load_configs, read_file_with_encoding,
+    EmmyLuaAnalysis, Emmyrc, WorkspaceFolder, WorkspaceImport, load_configs,
 };
 use emmylua_code_analysis::{update_code_style, uri_to_file_path};
 use log::{debug, info};
 use lsp_types::Uri;
-use schema_to_emmylua::SchemaConverter;
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use wax::Pattern;
@@ -265,77 +263,11 @@ impl WorkspaceManager {
     }
 
     pub async fn check_schema_update(&self) {
-        let analysis = self.analysis.read().await;
-        if analysis
-            .compilation
-            .get_db()
-            .get_json_schema_index()
-            .has_need_resolve_schemas()
-        {
-            let urls = analysis
-                .compilation
-                .get_db()
-                .get_json_schema_index()
-                .get_need_resolve_schemas();
-            drop(analysis);
-            let mut url_contents = HashMap::new();
-            for url in urls {
-                if url.scheme() == "file" {
-                    if let Ok(path) = url.to_file_path() {
-                        if path.exists() {
-                            let result = read_file_with_encoding(&path, "utf-8");
-                            if let Some(content) = result {
-                                url_contents.insert(url.clone(), content);
-                            } else {
-                                log::error!("Failed to read schema file: {:?}", url);
-                            }
-                        }
-                    }
-                } else {
-                    let result = reqwest::get(url.as_str()).await;
-                    if let Ok(response) = result {
-                        if let Ok(content) = response.text().await {
-                            url_contents.insert(url.clone(), content);
-                        } else {
-                            log::error!("Failed to read schema content from URL: {:?}", url);
-                        }
-                    } else {
-                        log::error!("Failed to fetch schema from URL: {:?}", url);
-                    }
-                }
-            }
-
-            if url_contents.is_empty() {
-                return;
-            }
-
-            let work_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            let converter = SchemaConverter::new(true);
-            for (url, json_content) in url_contents {
-                let short_name = get_schema_short_name(&url);
-                match converter.convert_from_str(&json_content) {
-                    Ok(convert_result) => {
-                        let mut analysis = self.analysis.write().await;
-                        let path = work_dir.join(short_name);
-                        let file_id = analysis
-                            .update_file_by_path(&path, Some(convert_result.annotation_text));
-                        // if let Some(f) = analysis
-                        //     .compilation
-                        //     .get_db()
-                        //     .get_json_schema_index_mut()
-                        //     .get_schema_file_mut(&url)
-                        // {
-                        //     *f = JsonSchemaFile::Resolved(LuaTypeDeclId::local(
-                        //         file_id.unwrap(),
-                        //         &convert_result.root_type_name.unwrap(),
-                        //     ));
-                        // }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to convert schema from URL {:?}: {}", url, e);
-                    }
-                }
-            }
+        let read_analysis = self.analysis.read().await;
+        if read_analysis.check_schema_update() {
+            drop(read_analysis);
+            let mut write_analysis = self.analysis.write().await;
+            write_analysis.update_schema().await;
         }
     }
 }

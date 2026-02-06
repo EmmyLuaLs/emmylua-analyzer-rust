@@ -41,8 +41,6 @@ dirs.workspace = true
 wax.workspace = true
 internment.workspace = true
 include_dir.workspace = true
-reqwest.workspace = true
-schema_to_emmylua.workspace = true
 
 [dependencies.clap]
 workspace = true
