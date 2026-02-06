@@ -181,7 +181,7 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
                 .filter_map(|t| narrow_down_type(db, t, target.clone()))
                 .collect::<Vec<_>>();
 
-            return Some(LuaType::from_vec(union_types));
+            return (!union_types.is_empty()).then_some(LuaType::from_vec(union_types));
         }
         LuaType::MultiLineUnion(multi_line_union) => {
             let union_types = multi_line_union
@@ -190,7 +190,7 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
                 .filter_map(|(ty, _)| narrow_down_type(db, ty.clone(), target.clone()))
                 .collect::<Vec<_>>();
 
-            return Some(LuaType::from_vec(union_types));
+            return (!union_types.is_empty()).then_some(LuaType::from_vec(union_types));
         }
         _ => {}
     }
