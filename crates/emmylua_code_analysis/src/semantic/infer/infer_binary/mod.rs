@@ -506,6 +506,16 @@ fn infer_cmp_expr(_: &DbIndex, left: LuaType, right: LuaType, op: BinaryOperator
             BinaryOperator::OpNe => Ok(LuaType::BooleanConst(i != j)),
             _ => Ok(LuaType::Boolean),
         },
+        (LuaType::Nil, right) if right.is_const() => match op {
+            BinaryOperator::OpEq => Ok(LuaType::BooleanConst(false)),
+            BinaryOperator::OpNe => Ok(LuaType::BooleanConst(true)),
+            _ => Ok(LuaType::Boolean),
+        },
+        (left, LuaType::Nil) if left.is_const() => match op {
+            BinaryOperator::OpEq => Ok(LuaType::BooleanConst(false)),
+            BinaryOperator::OpNe => Ok(LuaType::BooleanConst(true)),
+            _ => Ok(LuaType::Boolean),
+        },
         (left, right) if left.is_const() && right.is_const() => Ok(LuaType::BooleanConst(false)),
         _ => Ok(LuaType::Boolean),
     }
