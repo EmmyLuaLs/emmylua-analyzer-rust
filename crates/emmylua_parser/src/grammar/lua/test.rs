@@ -1336,4 +1336,28 @@ Syntax(Chunk)@0..60
             ParserConfig::with_level(LuaLanguageLevel::Lua55)
         );
     }
+
+    #[test]
+    fn test_global_const_mul() {
+        let code = "global <const> *";
+        let result = r#"
+Syntax(Chunk)@0..16
+  Syntax(Block)@0..16
+    Syntax(GlobalStat)@0..16
+      Token(TkGlobal)@0..6 "global"
+      Token(TkWhitespace)@6..7 " "
+      Syntax(Attribute)@7..14
+        Token(TkLt)@7..8 "<"
+        Token(TkName)@8..13 "const"
+        Token(TkGt)@13..14 ">"
+      Token(TkWhitespace)@14..15 " "
+      Token(TkMul)@15..16 "*"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::Lua55)
+        );
+    }
 }

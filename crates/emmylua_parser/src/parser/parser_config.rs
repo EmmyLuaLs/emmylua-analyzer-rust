@@ -83,9 +83,9 @@ impl<'cache> ParserConfig<'cache> {
 impl Default for ParserConfig<'_> {
     fn default() -> Self {
         Self {
-            level: LuaLanguageLevel::Lua54,
+            level: LuaLanguageLevel::Lua55,
             lexer_config: LexerConfig {
-                language_level: LuaLanguageLevel::Lua54,
+                language_level: LuaLanguageLevel::Lua55,
                 non_std_symbols: LuaNonStdSymbolSet::new(),
             },
             node_cache: None,

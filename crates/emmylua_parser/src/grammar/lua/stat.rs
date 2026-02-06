@@ -771,7 +771,16 @@ fn try_parse_global_stat(p: &mut LuaParser) -> ParseResult {
             p.set_current_token_kind(LuaTokenKind::TkGlobal);
             p.bump();
             parse_attrib(p)?;
-            parse_global_name_list(p)?;
+            if p.current_token() == LuaTokenKind::TkName {
+                parse_global_name_list(p)?;
+            } else if p.current_token() == LuaTokenKind::TkMul {
+                p.bump();
+            } else {
+                p.push_error(LuaParseError::syntax_error_from(
+                    &t!("expected variable name after global attribute"),
+                    p.current_token_range(),
+                ));
+            }
         }
         // global function
         LuaTokenKind::TkFunction => {
