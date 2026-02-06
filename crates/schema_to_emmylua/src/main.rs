@@ -7,7 +7,7 @@ fn main() {
     if args.len() < 2 {
         eprintln!("Usage: schema_to_emmylua <schema.json> [output.lua]");
         eprintln!();
-        eprintln!("Converts a JSON Schema file into LuaLS (EmmyLua) annotations.");
+        eprintln!("Converts a JSON Schema file into EmmyLua/LuaLS annotations.");
         eprintln!();
         eprintln!("Arguments:");
         eprintln!("  <schema.json>  Path to the input JSON Schema file");
@@ -22,18 +22,18 @@ fn main() {
     });
 
     let converter = SchemaConverter::new(false);
-    let output = converter.convert_from_str(&json_str).unwrap_or_else(|e| {
+    let result = converter.convert_from_str(&json_str).unwrap_or_else(|e| {
         eprintln!("Failed to parse JSON Schema: {}", e);
         std::process::exit(1);
     });
 
     if let Some(output_path) = args.get(2) {
-        fs::write(output_path, &output).unwrap_or_else(|e| {
+        fs::write(output_path, &result.annotation_text).unwrap_or_else(|e| {
             eprintln!("Failed to write '{}': {}", output_path, e);
             std::process::exit(1);
         });
         eprintln!("Written to {}", output_path);
     } else {
-        print!("{}", output);
+        print!("{}", result.annotation_text);
     }
 }

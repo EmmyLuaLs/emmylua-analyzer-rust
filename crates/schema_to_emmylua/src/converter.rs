@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::ConvertResult;
 use crate::lua_emitter::EmmyLuaEmitter;
 use crate::markdown_doc::sanitize_description;
 use crate::schema_walker::SchemaWalker;
@@ -24,8 +25,8 @@ impl SchemaConverter {
         }
     }
 
-    /// Convert a JSON Schema (as `serde_json::Value`) into LuaLS annotation text.
-    pub fn convert(&self, schema: &Value) -> String {
+    /// Convert a JSON Schema (as `serde_json::Value`) into EmmyLua annotation text.
+    pub fn convert(&self, schema: &Value) -> ConvertResult {
         let walker = SchemaWalker::new(schema);
         let mut emitter = EmmyLuaEmitter::new(self.is_private);
 
@@ -63,8 +64,10 @@ impl SchemaConverter {
             emitter.blank_line();
         }
 
+        let mut root_type_name = None;
         // Emit the root schema as a class
         if let Some(title) = walker.root_title() {
+            root_type_name = Some(format!("{}{}", self.type_prefix, title));
             let root = walker.root_schema();
             if root.get("properties").is_some() {
                 let prefixed = format!("{}{}", self.type_prefix, title);
@@ -73,11 +76,14 @@ impl SchemaConverter {
             }
         }
 
-        emitter.finish()
+        ConvertResult {
+            annotation_text: emitter.finish(),
+            root_type_name,
+        }
     }
 
     /// Convert a JSON Schema string into LuaLS annotation text.
-    pub fn convert_from_str(&self, json_str: &str) -> Result<String, serde_json::Error> {
+    pub fn convert_from_str(&self, json_str: &str) -> Result<ConvertResult, serde_json::Error> {
         let schema: Value = serde_json::from_str(json_str)?;
         Ok(self.convert(&schema))
     }
@@ -462,7 +468,7 @@ mod tests {
             "required": ["name"]
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@class schema.Config"));
         assert!(output.contains("--- The name\n---@field name string"));
         assert!(output.contains("--- Item count\n---@field count integer?"));
@@ -482,7 +488,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@alias schema.Color"));
         assert!(output.contains("---| \"red\""));
         assert!(output.contains("---| \"green\""));
@@ -505,7 +511,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@alias schema.Level"));
         assert!(output.contains("---| \"error\" # Error level"));
         assert!(output.contains("---| \"warning\" # Warning level"));
@@ -532,7 +538,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@field level schema.Level?"));
     }
 
@@ -548,7 +554,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@field name string?"));
     }
 
@@ -565,7 +571,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@field items string[]?"));
     }
 
@@ -592,7 +598,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@field settings table<string, schema.Level>?"));
     }
 
@@ -619,7 +625,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@alias schema.Item"));
         assert!(output.contains("---| string # Simple string path"));
         assert!(output.contains("---| schema.ItemConfig # Config object"));
@@ -637,7 +643,7 @@ mod tests {
             }
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         assert!(output.contains("---@field [\"$schema\"] string?"));
     }
 
@@ -655,7 +661,7 @@ mod tests {
             "required": ["name"]
         });
 
-        let output = converter().convert(&schema);
+        let output = converter().convert(&schema).annotation_text;
         // Description must be on the line directly above the field
         assert!(output.contains("--- The name of the config\n---@field name string\n"));
     }
