@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     #[test]
     fn test_string() {
@@ -207,5 +207,28 @@ mod test {
             test(a, b)
         "#
         ));
+    }
+
+    #[test]
+    fn test_set_index_expr_owner_prefers_declared_global_type() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def_file(
+            "def.lua",
+            r#"
+            table = table
+
+            ---@cast table unknown
+            AFTER_CAST = table
+
+            ---@return integer
+            function table.__sentinel()
+                return 1
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("AFTER_CAST"), LuaType::Unknown);
+        assert_eq!(ws.expr_ty("table.__sentinel()"), ws.ty("integer"));
     }
 }
