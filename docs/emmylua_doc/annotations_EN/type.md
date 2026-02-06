@@ -25,6 +25,15 @@ local isActive = true
 ---@type string | number
 local mixedValue = "Can be string or number"
 
+-- Intersection types
+---@type T & U
+local mergedValue = getMergedValue()
+-- Values must satisfy both types, so fields from both are included.
+-- If a field exists on both sides, its type becomes the intersection of the two types.
+-- Conflicting field types often collapse to `never` (e.g. {y:number} & {y:string} => y: never).
+-- For overwrite-style merges, use Merge<T, U> (right wins; use Merge<U, T> for left wins).
+-- Best used with classes or object types that define fields; open/unknown tables stay vague
+
 -- Optional types
 ---@type string?
 local optionalString = nil  -- Equivalent to string | nil

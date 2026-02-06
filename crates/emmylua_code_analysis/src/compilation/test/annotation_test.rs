@@ -191,6 +191,92 @@ mod test {
     }
 
     #[test]
+    fn test_merge_right_mapped_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@generic T: table, U: table
+        ---@param a T
+        ---@param b U
+        ---@return Merge<T, U>
+        local function extend(a, b) end
+
+        ---@type { x: number, y: number }
+        local a = { x = 1, y = 2 }
+
+        ---@type { y: string, z: boolean }
+        local b = { y = "hello", z = true }
+
+        c = extend(a, b)
+        "#,
+        );
+
+        let ty = ws.expr_ty("c.y");
+        let expected = ws.ty("string");
+        assert_eq!(ty, expected);
+    }
+
+    #[test]
+    fn test_extend_with_policy_overwrite() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@overload fun<T: table, U: table>(a: T, b: U, policy: "never"): T & U
+        ---@overload fun<T: table, U: table>(a: T, b: U, policy: "right"): Merge<T, U>
+        ---@overload fun<T: table, U: table>(a: T, b: U, policy: "left"): Merge<U, T>
+        ---@generic T: table, U: table
+        ---@param a T
+        ---@param b U
+        ---@param policy "never" | "left" | "right"
+        ---@return (T & U) | Merge<T, U> | Merge<U, T>
+        local function extend(a, b, policy) end
+
+        ---@type { x: number, y: number }
+        local a = { x = 1, y = 2 }
+
+        ---@type { y: string, z: boolean }
+        local b = { y = "hello", z = true }
+
+        c_never = extend(a, b, "never")
+        c_right = extend(a, b, "right")
+        c_left = extend(a, b, "left")
+        "#,
+        );
+
+        let never_ty = ws.expr_ty("c_never.y");
+        let never_expected = ws.ty("never");
+        assert_eq!(never_ty, never_expected);
+
+        let right_ty = ws.expr_ty("c_right.y");
+        let right_expected = ws.ty("string");
+        assert_eq!(right_ty, right_expected);
+
+        let left_ty = ws.expr_ty("c_left.y");
+        let left_expected = ws.ty("number");
+        assert_eq!(left_ty, left_expected);
+    }
+
+    #[test]
+    fn test_intersection_conflict_yields_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@return { y: number } & { y: string }
+        local function foo() end
+
+        c = foo()
+        "#,
+        );
+
+        let ty = ws.expr_ty("c.y");
+        let expected = ws.ty("never");
+        assert_eq!(ty, expected);
+    }
+
+    #[test]
     fn test_type_return_usage() {
         let mut ws = VirtualWorkspace::new();
 

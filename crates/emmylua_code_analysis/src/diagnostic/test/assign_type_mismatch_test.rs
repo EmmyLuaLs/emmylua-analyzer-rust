@@ -113,6 +113,124 @@ mod tests {
     }
 
     #[test]
+    fn test_intersection_assign_to_class() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.check_code_for_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            --- @class A
+            --- @field x integer
+            --- @field y integer
+
+            --- @class B
+            --- @field y string
+            --- @field z integer
+
+            local c --- @type A & B
+
+            --- @class C
+            --- @field x integer
+            --- @field y integer
+            --- @field z integer
+
+            --- @type C
+            _ = c -- missing y
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_intersection_assign_from_class() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.check_code_for_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            --- @class A
+            --- @field x integer
+            --- @field y integer
+
+            --- @class B
+            --- @field y string
+            --- @field z integer
+
+            --- @class C
+            --- @field x integer
+            --- @field y integer
+            --- @field z integer
+
+            local v --- @type C
+
+            local c --- @type A & B
+            c = v  -- no y in A & B
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_intersection_assign_from_class_inherited_members() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Base
+            ---@field x integer
+
+            ---@class C: Base
+            ---@field y integer
+
+            ---@class A
+            ---@field x integer
+
+            ---@class B
+            ---@field y integer
+
+            local v ---@type C
+
+            local c ---@type A & B
+            c = v
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_intersection_assign_tableconst_conflict() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@field y integer
+
+            ---@class B
+            ---@field y string
+
+            local c ---@type A & B
+            c = { y = 1 } -- no y in A & B
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_intersection_assign_tableconst_requires_right_only_members() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@field y integer
+
+            ---@class B
+            ---@field z integer
+
+            local c ---@type A & B
+            c = { y = 1 }
+            "#
+        ));
+    }
+
+    #[test]
     fn test_issue_193() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.check_code_for_namespace(
@@ -1027,6 +1145,42 @@ return t
                     { id = 2 },
                     { id = 2 },
                 }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_ref_index_access_assign_class_to_object_mismatch() {
+        let mut ws = crate::VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class A
+                ---@field [integer] string
+
+                local t ---@type { [integer]: number }
+                local a ---@type A
+
+                t = a
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_ref_index_access_assign_object_to_class_mismatch() {
+        let mut ws = crate::VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class A
+                ---@field [integer] string
+
+                local t ---@type { [integer]: number }
+                local a ---@type A
+
+                a = t
             "#,
         ));
     }
