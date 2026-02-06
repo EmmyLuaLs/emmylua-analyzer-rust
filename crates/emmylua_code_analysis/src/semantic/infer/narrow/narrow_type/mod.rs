@@ -1,12 +1,56 @@
 mod false_or_nil_type;
 
-use crate::{DbIndex, LuaType, TypeOps, get_real_type, semantic::type_check::is_sub_type_of};
+use crate::{
+    DbIndex, LuaInstanceType, LuaIntersectionType, LuaType, TypeOps, get_real_type,
+    semantic::type_check::is_sub_type_of,
+};
 pub use false_or_nil_type::{narrow_false_or_nil, remove_false_or_nil};
 
+fn is_class_def(db: &DbIndex, declared_type: &LuaType) -> bool {
+    match declared_type {
+        LuaType::Def(type_id) => db
+            .get_type_index()
+            .get_type_decl(type_id)
+            .is_some_and(|decl| decl.is_class()),
+        _ => false,
+    }
+}
+
 // need to be optimized
-pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Option<LuaType> {
+pub fn narrow_down_type(
+    db: &DbIndex,
+    source: LuaType,
+    target: LuaType,
+    declared: Option<LuaType>,
+) -> Option<LuaType> {
     if source == target {
         return Some(source);
+    }
+
+    let declared_override = if let Some(declared_type) = &declared
+        && matches!(declared_type, LuaType::Def(_) | LuaType::Ref(_))
+    {
+        let is_class_def = is_class_def(db, declared_type);
+        match &target {
+            // Preserve structural object fields by intersecting with the declared type.
+            LuaType::Object(_) => {
+                Some(LuaIntersectionType::new(vec![declared_type.clone(), target.clone()]).into())
+            }
+            // Preserve declared class/alias types while keeping concrete table fields.
+            LuaType::TableConst(range) if !is_class_def => Some(LuaType::Instance(
+                LuaInstanceType::new(declared_type.clone(), range.clone()).into(),
+            )),
+            LuaType::Instance(inst) if !is_class_def => Some(LuaType::Instance(
+                LuaInstanceType::new(declared_type.clone(), inst.get_range().clone()).into(),
+            )),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    if let Some(result) = declared_override {
+        return Some(result);
     }
 
     let real_source_ref = get_real_type(db, &source).unwrap_or(&source);
@@ -71,6 +115,11 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
         LuaType::Function => {
             if real_source_ref.is_function() {
                 return Some(source);
+            }
+        }
+        LuaType::Signature(_) => {
+            if real_source_ref.is_function() {
+                return Some(target.clone());
             }
         }
         LuaType::Thread => {
@@ -140,7 +189,9 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
             | LuaType::TableGeneric(_) => return Some(source),
             _ => {}
         },
-        LuaType::Instance(base) => return narrow_down_type(db, source, base.get_base().clone()),
+        LuaType::Instance(base) => {
+            return narrow_down_type(db, source, base.get_base().clone(), declared);
+        }
         LuaType::BooleanConst(_) => {
             if real_source_ref.is_boolean() {
                 return Some(LuaType::Boolean);
@@ -152,7 +203,7 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
             let source_types = target_u
                 .into_vec()
                 .into_iter()
-                .filter_map(|t| narrow_down_type(db, real_source_ref.clone(), t))
+                .filter_map(|t| narrow_down_type(db, real_source_ref.clone(), t, declared.clone()))
                 .collect::<Vec<_>>();
             let mut result_type = LuaType::Unknown;
             for source_type in source_types {
@@ -178,7 +229,7 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
             let union_types = union
                 .into_vec()
                 .into_iter()
-                .filter_map(|t| narrow_down_type(db, t, target.clone()))
+                .filter_map(|t| narrow_down_type(db, t, target.clone(), declared.clone()))
                 .collect::<Vec<_>>();
 
             return Some(LuaType::from_vec(union_types));
@@ -187,7 +238,9 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
             let union_types = multi_line_union
                 .get_unions()
                 .iter()
-                .filter_map(|(ty, _)| narrow_down_type(db, ty.clone(), target.clone()))
+                .filter_map(|(ty, _)| {
+                    narrow_down_type(db, ty.clone(), target.clone(), declared.clone())
+                })
                 .collect::<Vec<_>>();
 
             return Some(LuaType::from_vec(union_types));

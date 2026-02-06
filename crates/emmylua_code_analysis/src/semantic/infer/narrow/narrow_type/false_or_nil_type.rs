@@ -33,7 +33,7 @@ pub fn narrow_false_or_nil(db: &DbIndex, t: LuaType) -> LuaType {
         _ => {}
     }
 
-    narrow_down_type(db, t.clone(), LuaType::Nil).unwrap_or(LuaType::Never)
+    narrow_down_type(db, t.clone(), LuaType::Nil, None).unwrap_or(LuaType::Never)
 }
 
 /// Removes falsy values (false and nil) from a type.

@@ -259,6 +259,92 @@ print(a.field)
     }
 
     #[test]
+    fn test_doc_function_assignment_narrowing0() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        local i --- @type integer|fun():string
+        i = "str"
+        A = i
+        "#;
+
+        ws.def(code);
+        let a = ws.expr_ty("A");
+        let a_desc = ws.humanize_type_detailed(a);
+        assert_eq!(a_desc, "\"str\"");
+    }
+
+    #[test]
+    fn test_doc_member_assignment_prefers_annotation_source() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        local t = {}
+        t.a = "hello"
+        ---@type string|number
+        t.a = 1
+        b = t.a
+        "#;
+
+        ws.def(code);
+        assert_eq!(ws.expr_ty("b"), ws.ty("integer"));
+    }
+
+    #[test]
+    fn test_assignment_narrow_drops_nil_on_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        local a ---@type string?
+        a = 1
+        b = a
+        "#;
+
+        ws.def(code);
+        assert_eq!(ws.expr_ty("b"), LuaType::IntegerConst(1));
+    }
+
+    #[test]
+    fn test_doc_member_assignment_falls_back_to_annotation() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local t = {}
+            ---@type string|number
+            t.a = true
+            b = t.a
+        "#,
+        );
+
+        let b = ws.expr_ty("b");
+        let expected_ty = ws.ty("string|number");
+        let expected = ws.humanize_type(expected_ty);
+        assert_eq!(ws.humanize_type(b), expected);
+    }
+
+    #[test]
+    fn test_doc_function_assignment_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        local i --- @type integer|fun():string
+        i = function() end
+        _ = i()
+        A = i
+        "#;
+
+        ws.def(code);
+
+        assert!(ws.check_code_for(DiagnosticCode::CallNonCallable, code));
+        assert!(ws.check_code_for(DiagnosticCode::NeedCheckNil, code));
+
+        let a = ws.expr_ty("A");
+        let a_desc = ws.humanize_type_detailed(a);
+        assert_eq!(a_desc, "fun()");
+    }
+
+    #[test]
     fn test_issue_224() {
         let mut ws = VirtualWorkspace::new();
 

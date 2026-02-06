@@ -516,6 +516,7 @@ impl TypeVisitTrait for LuaType {
         f(self);
         match self {
             LuaType::Array(base) => base.visit_type(f),
+            LuaType::Call(base) => base.visit_type(f),
             LuaType::Tuple(base) => base.visit_type(f),
             LuaType::DocFunction(base) => base.visit_type(f),
             LuaType::Object(base) => base.visit_type(f),

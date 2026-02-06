@@ -4,10 +4,7 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
 use rowan::TextRange;
 
 use super::{
-    super::{
-        InferGuard, LuaInferCache, generic::TypeSubstitutor, instantiate_type_generic,
-        resolve_signature,
-    },
+    super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
     InferFailReason, InferResult,
 };
 use crate::{
@@ -18,7 +15,8 @@ use crate::{
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::instantiate_doc_function, infer::narrow::get_type_at_call_expr_inline_cast,
+        generic::{TypeSubstitutor, instantiate_doc_function},
+        infer::narrow::get_type_at_call_expr_inline_cast,
     },
 };
 use crate::{build_self_type, infer_self_type, instantiate_func_generic, semantic::infer_expr};
@@ -99,6 +97,16 @@ pub fn infer_call_expr_func(
     };
 
     let result = if let Ok(func_ty) = result {
+        let func_ty = match func_ty.get_ret() {
+            LuaType::Call(_) => {
+                match instantiate_func_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
+                    Ok(func_ty) => Arc::new(func_ty),
+                    Err(_) => func_ty,
+                }
+            }
+            _ => func_ty,
+        };
+
         let func_ret = func_ty.get_ret();
         match func_ret {
             LuaType::TypeGuard(_) => Ok(func_ty),
