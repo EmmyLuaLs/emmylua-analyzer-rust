@@ -25,6 +25,14 @@ local isActive = true
 ---@type string | number
 local mixedValue = "可以是字符串或数字"
 
+-- 交叉类型
+---@type T & U
+local mergedValue = getMergedValue()
+-- 说明：这里的“交叉”指同时满足两种类型，因此会包含双方字段
+-- 字段同时存在时，字段类型会变为两者的交叉；冲突时通常会变成 `never`（例如 {y:number} & {y:string} => y: never）
+-- 需要“覆盖式合并”时，使用 Merge<T, U>（右侧覆盖；左侧覆盖可写为 Merge<U, T>）
+-- 更适用于已定义字段的类或对象类型；开放/未知表会比较模糊
+
 -- 可选类型
 ---@type string?
 local optionalString = nil  -- 等价于 string | nil

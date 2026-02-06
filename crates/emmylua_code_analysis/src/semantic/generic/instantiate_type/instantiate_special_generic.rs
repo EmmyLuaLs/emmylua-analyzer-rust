@@ -1,8 +1,8 @@
-use std::{ops::Deref, vec};
+use std::{collections::HashMap, ops::Deref, vec};
 
 use crate::{
-    DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaTupleStatus,
-    LuaTupleType, LuaType, TypeOps, VariadicType, get_member_map,
+    DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
+    LuaTupleStatus, LuaTupleType, LuaType, TypeOps, VariadicType, get_member_map,
     semantic::{
         generic::key_type_to_member_key,
         member::{find_members, infer_raw_member_type},
@@ -91,7 +91,37 @@ pub fn instantiate_alias_call(
 
             instantiate_index_call(db, &operands[0], &key)
         }
+        LuaAliasCallKind::Merge => instantiate_merge_call(db, &operands),
     }
+}
+
+fn instantiate_merge_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
+    if operands.len() != 2 {
+        return LuaType::Unknown;
+    }
+
+    let left_members = find_members(db, &operands[0]);
+    let right_members = find_members(db, &operands[1]);
+    if left_members.is_none() && right_members.is_none() {
+        return LuaType::Unknown;
+    }
+
+    let mut left_map: HashMap<_, _> = HashMap::new();
+    for member in left_members.unwrap_or_default() {
+        left_map.entry(member.key).or_insert(member.typ);
+    }
+
+    let mut right_map: HashMap<_, _> = HashMap::new();
+    for member in right_members.unwrap_or_default() {
+        right_map.entry(member.key).or_insert(member.typ);
+    }
+
+    let mut fields = left_map;
+    for (k, v) in right_map {
+        fields.insert(k, v);
+    }
+
+    LuaType::Object(LuaObjectType::new_with_fields(fields, Vec::new()).into())
 }
 
 fn resolve_literal_operand(

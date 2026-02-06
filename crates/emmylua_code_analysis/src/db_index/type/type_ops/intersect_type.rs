@@ -46,6 +46,9 @@ pub fn intersect_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType
         // function | function const
         (LuaType::Function, LuaType::DocFunction(_) | LuaType::Signature(_)) => target.clone(),
         (LuaType::DocFunction(_) | LuaType::Signature(_), LuaType::Function) => real_type.clone(),
+        // TODO: Intersecting two non-identical function types currently falls back to `never`.
+        // Consider implementing a proper intersection (or overload-set semantics) for function
+        // signatures instead of treating it as incompatible.
         // class references
         (LuaType::Ref(id1), LuaType::Ref(id2)) => {
             if id1 == id2 {
