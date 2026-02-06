@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use emmylua_code_analysis::{
-    LuaCompilation, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, LuaUnionType,
+    LuaCompilation, LuaDeclExtra, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, LuaUnionType,
     SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxKind, LuaTableExpr, LuaTableField};
@@ -28,7 +28,20 @@ impl DeclOriginResult {
                     Some((decl.clone(), typ))
                 }
                 LuaSemanticDeclId::LuaDecl(decl_id) => {
-                    let typ = semantic_model.get_type((*decl_id).into());
+                    let db = semantic_model.get_db();
+                    let decl_info = db.get_decl_index().get_decl(decl_id)?;
+                    let typ = if let LuaDeclExtra::Param {
+                        idx, signature_id, ..
+                    } = &decl_info.extra
+                    {
+                        db.get_signature_index()
+                            .get(signature_id)?
+                            .get_param_info_by_id(*idx)?
+                            .type_ref
+                            .clone()
+                    } else {
+                        semantic_model.get_type((*decl_id).into())
+                    };
                     Some((decl.clone(), typ))
                 }
                 _ => None,
