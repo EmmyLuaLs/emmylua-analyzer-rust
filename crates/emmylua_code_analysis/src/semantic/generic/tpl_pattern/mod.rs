@@ -468,6 +468,7 @@ fn table_generic_tpl_pattern_member_owner_match(
         let key_type = match k {
             LuaMemberKey::Integer(i) => LuaType::IntegerConst(i),
             LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
+            LuaMemberKey::ExprType(typ) => typ,
             _ => continue,
         };
 

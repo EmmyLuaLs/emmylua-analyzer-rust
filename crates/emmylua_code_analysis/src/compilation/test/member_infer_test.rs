@@ -126,4 +126,45 @@ mod test {
         let ty = ws.expr_ty("A");
         assert_eq!(ws.humanize_type(ty), "(number|string)");
     }
+
+    #[test]
+    fn test_table_expr_key_string() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        local key = tostring(1)
+        local t = { [key] = 1 }
+        value = t[key]
+        "#,
+        );
+
+        let value_ty = ws.expr_ty("value");
+        assert!(
+            matches!(value_ty, LuaType::Integer | LuaType::IntegerConst(_)),
+            "expected integer type, got {:?}",
+            value_ty
+        );
+    }
+
+    #[test]
+    fn test_table_expr_key_doc_const() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@type 'field'
+        local key = "field"
+        local t = { [key] = 1 }
+        value = t[key]
+        "#,
+        );
+
+        let value_ty = ws.expr_ty("value");
+        assert!(
+            matches!(value_ty, LuaType::Integer | LuaType::IntegerConst(_)),
+            "expected integer type, got {:?}",
+            value_ty
+        );
+    }
 }

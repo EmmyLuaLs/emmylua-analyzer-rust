@@ -1,15 +1,16 @@
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAstNode, LuaExpr, LuaFuncStat, LuaIndexExpr,
-    LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaTableField, LuaVarExpr, PathTrait,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaIndexKey,
+    LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaTableExpr, LuaTableField, LuaVarExpr,
+    PathTrait,
 };
 
 use crate::{
-    InFiled, InferFailReason, LuaSemanticDeclId, LuaTypeCache, LuaTypeOwner,
+    InFiled, InferFailReason, LuaMemberKey, LuaSemanticDeclId, LuaTypeCache, LuaTypeOwner,
     compilation::analyzer::{
         common::{add_member, bind_type},
         unresolve::{UnResolveDecl, UnResolveMember},
     },
-    db_index::{LuaDeclId, LuaMemberId, LuaMemberOwner, LuaType},
+    db_index::{LuaDeclId, LuaMember, LuaMemberFeature, LuaMemberId, LuaMemberOwner, LuaType},
 };
 
 use super::LuaAnalyzer;
@@ -449,7 +450,53 @@ pub fn analyze_local_func_stat(
     Some(())
 }
 
+fn register_expr_key_member(analyzer: &mut LuaAnalyzer, field: &LuaTableField) {
+    // Register expression-key members early so table-decl inference (and pairs)
+    // can see them even when the table itself has no explicit generic type.
+    let Some(field_key) = field.get_field_key() else {
+        return;
+    };
+    let LuaIndexKey::Expr(_) = &field_key else {
+        return;
+    };
+    let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
+    if analyzer
+        .db
+        .get_member_index()
+        .get_member(&member_id)
+        .is_some()
+    {
+        return;
+    }
+    let cache = analyzer
+        .context
+        .infer_manager
+        .get_infer_cache(analyzer.file_id);
+    let Ok(member_key) = LuaMemberKey::from_index_key(analyzer.db, cache, &field_key) else {
+        return;
+    };
+    if matches!(member_key, LuaMemberKey::ExprType(ref typ) if typ.is_unknown()) {
+        return;
+    }
+    let Some(table_expr) = field.get_parent::<LuaTableExpr>() else {
+        return;
+    };
+    let owner_id = LuaMemberOwner::Element(InFiled::new(analyzer.file_id, table_expr.get_range()));
+    let decl_feature = if analyzer.context.metas.contains(&analyzer.file_id) {
+        LuaMemberFeature::MetaDefine
+    } else {
+        LuaMemberFeature::FileDefine
+    };
+    let member = LuaMember::new(member_id, member_key, decl_feature, None);
+    analyzer
+        .db
+        .get_member_index_mut()
+        .add_member(owner_id, member);
+}
+
 pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> Option<()> {
+    register_expr_key_member(analyzer, &field);
+
     if field.is_assign_field() {
         let value_expr = field.get_value_expr()?;
         let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
