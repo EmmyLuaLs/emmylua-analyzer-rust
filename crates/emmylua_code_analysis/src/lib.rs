@@ -30,7 +30,9 @@ pub use profile::Profile;
 pub use resources::get_best_resources_dir;
 pub use resources::load_resource_from_include_dir;
 use resources::load_resource_std;
+use schema_to_emmylua::SchemaConverter;
 pub use semantic::*;
+use std::collections::HashMap;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 pub use test_lib::VirtualWorkspace;
 use tokio_util::sync::CancellationToken;
@@ -259,6 +261,86 @@ impl EmmyLuaAnalysis {
         for uri in files_to_remove {
             self.remove_file_by_uri(&uri);
         }
+    }
+
+    pub fn check_schema_update(&self) -> bool {
+        self.compilation
+            .get_db()
+            .get_json_schema_index()
+            .has_need_resolve_schemas()
+    }
+
+    pub async fn update_schema(&mut self) {
+        let urls = self
+            .compilation
+            .get_db()
+            .get_json_schema_index()
+            .get_need_resolve_schemas();
+        let mut url_contents = HashMap::new();
+        for url in urls {
+            if url.scheme() == "file" {
+                if let Ok(path) = url.to_file_path() {
+                    if path.exists() {
+                        let result = read_file_with_encoding(&path, "utf-8");
+                        if let Some(content) = result {
+                            url_contents.insert(url.clone(), content);
+                        } else {
+                            log::error!("Failed to read schema file: {:?}", url);
+                        }
+                    }
+                }
+            } else {
+                let result = reqwest::get(url.as_str()).await;
+                if let Ok(response) = result {
+                    if let Ok(content) = response.text().await {
+                        url_contents.insert(url.clone(), content);
+                    } else {
+                        log::error!("Failed to read schema content from URL: {:?}", url);
+                    }
+                } else {
+                    log::error!("Failed to fetch schema from URL: {:?}", url);
+                }
+            }
+        }
+
+        if url_contents.is_empty() {
+            return;
+        }
+
+        let work_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let converter = SchemaConverter::new(true);
+        for (url, json_content) in url_contents {
+            let short_name = get_schema_short_name(&url);
+            match converter.convert_from_str(&json_content) {
+                Ok(convert_result) => {
+                    let path = work_dir.join(short_name);
+                    let Some(file_id) =
+                        self.update_file_by_path(&path, Some(convert_result.annotation_text))
+                    else {
+                        continue;
+                    };
+                    if let Some(f) = self
+                        .compilation
+                        .get_db_mut()
+                        .get_json_schema_index_mut()
+                        .get_schema_file_mut(&url)
+                    {
+                        *f = JsonSchemaFile::Resolved(LuaTypeDeclId::local(
+                            file_id,
+                            &convert_result.root_type_name,
+                        ));
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to convert schema from URL {:?}: {}", url, e);
+                }
+            }
+        }
+
+        self.compilation
+            .get_db_mut()
+            .get_json_schema_index_mut()
+            .reset_rest_schemas();
     }
 }
 

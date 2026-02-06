@@ -261,6 +261,15 @@ impl WorkspaceManager {
 
         is_workspace_file
     }
+
+    pub async fn check_schema_update(&self) {
+        let read_analysis = self.analysis.read().await;
+        if read_analysis.check_schema_update() {
+            drop(read_analysis);
+            let mut write_analysis = self.analysis.write().await;
+            write_analysis.update_schema().await;
+        }
+    }
 }
 
 pub fn load_emmy_config(config_root: Option<PathBuf>, client_config: ClientConfig) -> Arc<Emmyrc> {

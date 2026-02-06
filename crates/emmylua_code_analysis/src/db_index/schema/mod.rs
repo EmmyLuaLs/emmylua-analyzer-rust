@@ -49,6 +49,14 @@ impl JsonSchemaIndex {
             })
             .collect()
     }
+
+    pub fn reset_rest_schemas(&mut self) {
+        for schema_file in self.schema_files.values_mut() {
+            if let JsonSchemaFile::NeedResolve = schema_file {
+                *schema_file = JsonSchemaFile::BadUrl;
+            }
+        }
+    }
 }
 
 impl LuaIndex for JsonSchemaIndex {

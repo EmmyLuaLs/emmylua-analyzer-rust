@@ -50,6 +50,8 @@ include_dir.workspace = true
 emmylua_codestyle.workspace = true
 itertools.workspace = true
 luars.workspace = true
+reqwest.workspace = true
+schema_to_emmylua.workspace = true
 
 [package.metadata.i18n]
 available-locales = ["en", "zh_CN", "zh_HK"]

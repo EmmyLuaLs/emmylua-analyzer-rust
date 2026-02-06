@@ -469,8 +469,8 @@ pub fn analyze_doc_tag_schema(analyzer: &mut DocAnalyzer, tag: LuaDocTagSchema) 
 
     let schema_index = analyzer.db.get_json_schema_index_mut();
     if let Some(schema_file) = schema_index.get_schema_file(&url) {
-        if let JsonSchemaFile::Resolved(file_id) = schema_file {
-            let types = vec![LuaType::ModuleRef(*file_id)];
+        if let JsonSchemaFile::Resolved(type_id) = schema_file {
+            let types = vec![LuaType::Ref(type_id.clone())];
             bind_type_to_owner(analyzer, &tag, &types, None);
         }
     } else {

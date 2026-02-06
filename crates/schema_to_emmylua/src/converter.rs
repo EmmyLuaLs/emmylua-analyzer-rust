@@ -64,10 +64,10 @@ impl SchemaConverter {
             emitter.blank_line();
         }
 
-        let mut root_type_name = None;
+        let mut root_type_name = "schema.root".to_string();
         // Emit the root schema as a class
         if let Some(title) = walker.root_title() {
-            root_type_name = Some(format!("{}{}", self.type_prefix, title));
+            root_type_name = format!("{}{}", self.type_prefix, title);
             let root = walker.root_schema();
             if root.get("properties").is_some() {
                 let prefixed = format!("{}{}", self.type_prefix, title);

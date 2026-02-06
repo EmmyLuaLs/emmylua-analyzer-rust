@@ -7,5 +7,5 @@ pub use converter::SchemaConverter;
 
 pub struct ConvertResult {
     pub annotation_text: String,
-    pub root_type_name: Option<String>,
+    pub root_type_name: String,
 }
