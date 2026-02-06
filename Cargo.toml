@@ -50,7 +50,7 @@ itertools = "0.14.0"
 clap = { version = "4.5.51", features = ["derive", "wrap_help"] }
 ansi_term = "0.12.1"
 num-traits = { version = "0.2", features = ["std"] }
-mimalloc = "0.1.48"
+mimalloc = { version = "0.1.48", features = ["v3"] }
 googletest = "0.14.2"
 unicode-general-category = "1.0.0"
 luars = { version = "0.1.0", features = ["serde"] }

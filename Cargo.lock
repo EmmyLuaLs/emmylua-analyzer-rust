@@ -1790,6 +1790,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "schema_to_emmylua"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "schemars"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

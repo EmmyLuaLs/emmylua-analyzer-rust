@@ -1,0 +1,10 @@
+[package]
+name = "schema_to_emmylua"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
