@@ -4,6 +4,7 @@ use crate::{DbIndex, LuaType, TypeOps, get_real_type, semantic::type_check::is_s
 pub use false_or_nil_type::{narrow_false_or_nil, remove_false_or_nil};
 
 // need to be optimized
+// `source` is the current/antecedent type, `target` is the narrowing candidate (e.g. assignment RHS).
 pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Option<LuaType> {
     if source == target {
         return Some(source);
@@ -71,6 +72,12 @@ pub fn narrow_down_type(db: &DbIndex, source: LuaType, target: LuaType) -> Optio
         LuaType::Function => {
             if real_source_ref.is_function() {
                 return Some(source);
+            }
+        }
+        LuaType::Signature(_) => {
+            if real_source_ref.is_function() {
+                // Prefer the assigned closure signature, even when the antecedent is a doc function.
+                return Some(target.clone());
             }
         }
         LuaType::Thread => {
