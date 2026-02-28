@@ -271,7 +271,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "```lua\n(field) _cfg: number\n```".to_string(),
+                value: "```lua\n(field) _cfg: number?\n```".to_string(),
             },
         ));
 
@@ -293,7 +293,7 @@ mod tests {
                 end
             "#,
             VirtualHoverResult {
-                value: "```lua\n(field) _cfg: number\n```".to_string(),
+                value: "```lua\n(field) _cfg: number?\n```".to_string(),
             },
         ));
         Ok(())
