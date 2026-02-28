@@ -200,7 +200,7 @@ fn infer_table_generic_raw_member_type(
         LuaMemberKey::None => return Err(InferFailReason::FieldNotFound),
     };
     if check_type_compact(db, key_type, &access_key_type).is_ok() {
-        return Ok(value_type.clone());
+        return Ok(TypeOps::Union.apply(db, value_type, &LuaType::Nil));
     }
 
     Err(InferFailReason::FieldNotFound)

@@ -1110,7 +1110,8 @@ fn infer_member_by_index_table_generic(
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
     let key_type = &table_params[0];
     let value_type = &table_params[1];
-    infer_index_metamethod(db, cache, &index_key, key_type, value_type)
+    let result = infer_index_metamethod(db, cache, &index_key, key_type, value_type)?;
+    Ok(TypeOps::Union.apply(db, &result, &LuaType::Nil))
 }
 
 fn infer_global_field_member(

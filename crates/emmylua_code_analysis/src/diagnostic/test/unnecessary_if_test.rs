@@ -26,4 +26,21 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_table_generic_index_not_unnecessary() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::UnnecessaryIf,
+            r#"
+        ---@type table<string, number>
+        local t = {}
+        local k = "hello"
+        local v = t[k]
+        if v then
+            print(v)
+        end
+        "#
+        ));
+    }
 }
