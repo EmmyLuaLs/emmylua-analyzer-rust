@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use clap::{ArgGroup, Parser};
 
-use crate::styles::{LuaCodeStyle, LuaIndent};
+use crate::config::{IndentStyle, LuaFormatConfig};
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -58,38 +58,39 @@ pub struct CliArgs {
     pub max_line_width: Option<usize>,
 }
 
-pub fn resolve_style(args: &CliArgs) -> Result<LuaCodeStyle, String> {
+pub fn resolve_style(args: &CliArgs) -> Result<LuaFormatConfig, String> {
     let mut style = if let Some(cfg) = &args.config {
         let content = fs::read_to_string(cfg)
-            .map_err(|e| format!("读取配置失败: {}: {e}", cfg.to_string_lossy()))?;
+            .map_err(|e| format!("failed to read config: {}: {e}", cfg.to_string_lossy()))?;
         let ext = cfg
             .extension()
             .and_then(|s| s.to_str())
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
         match ext.as_str() {
-            "json" => serde_json::from_str::<LuaCodeStyle>(&content)
-                .map_err(|e| format!("解析 JSON 配置失败: {e}"))?,
-            "yml" | "yaml" => serde_yml::from_str::<LuaCodeStyle>(&content)
-                .map_err(|e| format!("解析 YAML 配置失败: {e}"))?,
+            "json" => serde_json::from_str::<LuaFormatConfig>(&content)
+                .map_err(|e| format!("failed to parse JSON config: {e}"))?,
+            "yml" | "yaml" => serde_yml::from_str::<LuaFormatConfig>(&content)
+                .map_err(|e| format!("failed to parse YAML config: {e}"))?,
             _ => {
                 // Unknown extension, try JSON first then YAML
-                match serde_json::from_str::<LuaCodeStyle>(&content) {
+                match serde_json::from_str::<LuaFormatConfig>(&content) {
                     Ok(v) => v,
-                    Err(_) => serde_yml::from_str::<LuaCodeStyle>(&content)
-                        .map_err(|e| format!("未知扩展名，按 JSON/YAML 解析均失败: {e}"))?,
+                    Err(_) => serde_yml::from_str::<LuaFormatConfig>(&content).map_err(|e| {
+                        format!("unknown extension, failed to parse as JSON/YAML: {e}")
+                    })?,
                 }
             }
         }
     } else {
-        LuaCodeStyle::default()
+        LuaFormatConfig::default()
     };
 
     // Indent overrides
     match (args.tab, args.spaces) {
-        (true, Some(_)) => return Err("--tab 与 --spaces 不能同时使用".into()),
-        (true, None) => style.indent = LuaIndent::Tab,
-        (false, Some(n)) => style.indent = LuaIndent::Space(n),
+        (true, Some(_)) => return Err("--tab and --spaces are mutually exclusive".into()),
+        (true, None) => style.indent_style = IndentStyle::Tab,
+        (false, Some(n)) => style.indent_style = IndentStyle::Space(n),
         _ => {}
     }
 

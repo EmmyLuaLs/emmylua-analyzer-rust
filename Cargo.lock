@@ -698,6 +698,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yml",
+ "smol_str",
 ]
 
 [[package]]

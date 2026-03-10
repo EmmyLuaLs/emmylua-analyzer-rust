@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::Parser;
-use emmylua_formatter::{LuaCodeStyle, cmd_args, reformat_lua_code};
+use emmylua_formatter::{LuaFormatConfig, cmd_args, reformat_lua_code};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -17,14 +17,14 @@ fn read_stdin_to_string() -> io::Result<String> {
     Ok(s)
 }
 
-fn format_content(content: &str, style: &LuaCodeStyle) -> String {
+fn format_content(content: &str, style: &LuaFormatConfig) -> String {
     reformat_lua_code(content, style)
 }
 
 #[allow(unused)]
 fn process_file(
     path: &PathBuf,
-    style: &LuaCodeStyle,
+    style: &LuaFormatConfig,
     write: bool,
     list_diff: bool,
 ) -> io::Result<(bool, Option<String>)> {

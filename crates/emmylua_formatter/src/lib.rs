@@ -1,26 +1,44 @@
 pub mod cmd_args;
-mod format;
-mod style_ruler;
-mod styles;
+pub mod config;
+mod formatter;
+pub mod ir;
+mod printer;
 mod test;
 
-use emmylua_parser::{LuaAst, LuaParser, ParserConfig};
+use emmylua_parser::{LuaParser, ParserConfig};
+use formatter::FormatContext;
+use printer::Printer;
 
-pub fn reformat_lua_code(code: &str, styles: &LuaCodeStyle) -> String {
-    let tree = LuaParser::parse(code, ParserConfig::default());
+pub use config::LuaFormatConfig;
 
-    let mut formatter = format::LuaFormatter::new(LuaAst::LuaChunk(tree.get_chunk_node()));
-    style_ruler::apply_styles(&mut formatter, styles);
+pub fn reformat_lua_code(code: &str, config: &LuaFormatConfig) -> String {
+    // Preserve shebang line (e.g. #!/usr/bin/lua)
+    let (shebang, lua_code) = if code.starts_with("#!") {
+        match code.find('\n') {
+            Some(pos) => (&code[..=pos], &code[pos + 1..]),
+            None => (code, ""),
+        }
+    } else {
+        ("", code)
+    };
 
-    formatter.get_formatted_text()
+    let tree = LuaParser::parse(lua_code, ParserConfig::default());
+
+    let ctx = FormatContext::new(config);
+    let chunk = tree.get_chunk_node();
+    let ir = formatter::format_chunk(&ctx, &chunk);
+
+    let mut output = Printer::new(config).print(&ir);
+    let newline = config.newline_str();
+
+    // Post-processing: trailing comment alignment (text-based)
+    if config.align_continuous_line_comment {
+        output = printer::alignment::align_trailing_comments(&output, newline);
+    }
+
+    if shebang.is_empty() {
+        output
+    } else {
+        format!("{}{}", shebang, output)
+    }
 }
-
-pub fn reformat_node(node: &LuaAst, styles: &LuaCodeStyle) -> String {
-    let mut formatter = format::LuaFormatter::new(node.clone());
-    style_ruler::apply_styles(&mut formatter, styles);
-
-    formatter.get_formatted_text()
-}
-
-// Re-export commonly used types for consumers/binaries
-pub use styles::LuaCodeStyle;
