@@ -1,12 +1,13 @@
 mod block;
 mod comment;
 mod expression;
+pub mod spacing;
 mod statement;
 mod trivia;
 
 use crate::config::LuaFormatConfig;
-use crate::ir::DocIR;
-use emmylua_parser::LuaChunk;
+use crate::ir::{self, DocIR};
+use emmylua_parser::{LuaAstNode, LuaChunk, LuaKind, LuaTokenKind};
 
 pub use block::format_block;
 pub use statement::format_body_end_with_parent;
@@ -25,6 +26,14 @@ impl<'a> FormatContext<'a> {
 /// Format a chunk (root node of the file)
 pub fn format_chunk(ctx: &FormatContext, chunk: &LuaChunk) -> Vec<DocIR> {
     let mut docs = Vec::new();
+
+    // Emit shebang if present (TkShebang is a trivia token in the syntax tree)
+    if let Some(first_token) = chunk.syntax().first_token()
+        && first_token.kind() == LuaKind::Token(LuaTokenKind::TkShebang)
+    {
+        docs.push(ir::text(first_token.text()));
+        docs.push(DocIR::HardLine);
+    }
 
     if let Some(block) = chunk.get_block() {
         docs.extend(format_block(ctx, &block));

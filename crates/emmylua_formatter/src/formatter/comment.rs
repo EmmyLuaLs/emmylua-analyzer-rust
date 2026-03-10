@@ -5,36 +5,75 @@ use crate::ir::{self, DocIR};
 
 /// Format a Comment node.
 ///
-/// Comment is a syntax node in the CST (LuaSyntaxKind::Comment),
-/// which can be a single-line comment (`-- ...`) or a multi-line comment (`--[[ ... ]]`).
-/// We preserve the original comment text and only handle indentation (managed by Printer's indent).
+/// Dispatches between three comment types:
+/// - Doc comments (`---@...`): walk the syntax tree, normalize whitespace
+/// - Long comments (`--[[ ... ]]`): preserve content as-is
+/// - Normal comments (`-- ...`): preserve text with trimming
 pub fn format_comment(comment: &LuaComment) -> Vec<DocIR> {
     let text = comment.syntax().text().to_string();
+
+    // Long comments (--[[ ... ]]): preserve content exactly (like long strings)
+    if text.starts_with("--[[") || text.starts_with("--[=") {
+        return vec![ir::text(text.trim_end())];
+    }
+
+    // Doc comments: walk the parsed syntax tree to normalize whitespace
+    if comment.get_doc_tags().next().is_some() || comment.get_description().is_some() {
+        return format_doc_comment(comment);
+    }
+
+    // Normal single-line comment: preserve text
     let text = text.trim_end();
+    vec![ir::text(text)]
+}
 
-    // Multi-line comment: split by lines, each line as a Text + HardLine
-    let lines: Vec<&str> = text.lines().collect();
-
-    if lines.len() <= 1 {
-        // Single-line comment
-        return vec![ir::text(text)];
-    }
-
-    // Multi-line content (doc comments or --[[ ]] block comments)
+/// Format a doc comment by walking its syntax tree token-by-token.
+///
+/// Only flat formatting is used (Text, Space, HardLine) — no Group/SoftLine
+/// since comments cannot have breaking rules.
+fn format_doc_comment(comment: &LuaComment) -> Vec<DocIR> {
     let mut docs = Vec::new();
-    for (i, line) in lines.iter().enumerate() {
-        if i > 0 {
-            docs.push(ir::hard_line());
-        }
-        let trimmed = line.trim_start();
-        if trimmed.is_empty() {
-            // Preserve empty lines
-            continue;
-        }
-        docs.push(ir::text(trimmed));
+    let mut last_was_space = false;
+    walk_doc_tokens(comment.syntax(), &mut docs, &mut last_was_space);
+    // Trim trailing whitespace
+    while matches!(docs.last(), Some(DocIR::Space)) {
+        docs.pop();
     }
-
     docs
+}
+
+/// Recursively walk a doc comment node, emitting flat IR for each token.
+fn walk_doc_tokens(node: &LuaSyntaxNode, docs: &mut Vec<DocIR>, last_was_space: &mut bool) {
+    for child in node.children_with_tokens() {
+        match child {
+            rowan::NodeOrToken::Token(token) => {
+                let kind: LuaTokenKind = token.kind().into();
+                match kind {
+                    LuaTokenKind::TkWhitespace => {
+                        if !*last_was_space {
+                            docs.push(ir::space());
+                            *last_was_space = true;
+                        }
+                    }
+                    LuaTokenKind::TkEndOfLine => {
+                        // Remove trailing space before line break
+                        if *last_was_space {
+                            docs.pop();
+                        }
+                        docs.push(ir::hard_line());
+                        *last_was_space = true; // prevent space at start of next line
+                    }
+                    _ => {
+                        docs.push(ir::text(token.text()));
+                        *last_was_space = false;
+                    }
+                }
+            }
+            rowan::NodeOrToken::Node(child_node) => {
+                walk_doc_tokens(&child_node, docs, last_was_space);
+            }
+        }
+    }
 }
 
 /// Collect "orphan" comments in a syntax node.

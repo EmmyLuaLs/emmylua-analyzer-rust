@@ -34,6 +34,17 @@ mod tests {
         assert_format!("local a = 1\n", "local a = 1\n");
     }
 
+    // ========== long string preservation ==========
+
+    #[test]
+    fn test_long_string_preserves_trailing_spaces() {
+        // Long string content including trailing spaces must be preserved exactly
+        assert_format!(
+            "local s = [[  hello   \n  world   \n]]\n",
+            "local s = [[  hello   \n  world   \n]]\n"
+        );
+    }
+
     // ========== idempotency ==========
 
     #[test]

@@ -23,6 +23,12 @@ pub struct LuaFormatConfig {
     pub space_inside_braces: bool,
     pub space_inside_parens: bool,
     pub space_inside_brackets: bool,
+    /// Space around arithmetic operators: + - * / // % ^
+    pub space_around_math_operator: bool,
+    /// Space around string concatenation operator: ..
+    pub space_around_concat_operator: bool,
+    /// Space around assign operator: =
+    pub space_around_assign_operator: bool,
 
     // ===== End of line =====
     pub end_of_line: EndOfLine,
@@ -55,6 +61,9 @@ impl Default for LuaFormatConfig {
             space_inside_braces: true,
             space_inside_parens: false,
             space_inside_brackets: false,
+            space_around_math_operator: true,
+            space_around_concat_operator: true,
+            space_around_assign_operator: true,
             table_expand: ExpandStrategy::Auto,
             call_args_expand: ExpandStrategy::Auto,
             func_params_expand: ExpandStrategy::Auto,

@@ -209,4 +209,111 @@ local b = 2
             config
         );
     }
+
+    // ========== operator spacing options ==========
+
+    #[test]
+    fn test_no_space_around_math_operator() {
+        let config = LuaFormatConfig {
+            space_around_math_operator: false,
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            "local a = 1 + 2 * 3 - 4 / 5\n",
+            "local a = 1+2*3-4/5\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_space_around_math_operator_default() {
+        // Default: spaces around math operators
+        assert_format_with_config!(
+            "local a = 1+2*3\n",
+            "local a = 1 + 2 * 3\n",
+            LuaFormatConfig::default()
+        );
+    }
+
+    #[test]
+    fn test_no_space_around_concat_operator() {
+        let config = LuaFormatConfig {
+            space_around_concat_operator: false,
+            ..Default::default()
+        };
+        assert_format_with_config!("local s = a .. b .. c\n", "local s = a..b..c\n", config);
+    }
+
+    #[test]
+    fn test_space_around_concat_operator_default() {
+        assert_format_with_config!(
+            "local s = a..b\n",
+            "local s = a .. b\n",
+            LuaFormatConfig::default()
+        );
+    }
+
+    #[test]
+    fn test_float_concat_no_space_keeps_space() {
+        // When no-space concat is enabled, `1. .. x` must keep the space to
+        // avoid producing the invalid token `1...`
+        let config = LuaFormatConfig {
+            space_around_concat_operator: false,
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            "local s = 1. .. \"str\"\n",
+            "local s = 1. ..\"str\"\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_no_math_space_keeps_comparison_space() {
+        // Disabling math operator spaces should NOT affect comparison operators
+        let config = LuaFormatConfig {
+            space_around_math_operator: false,
+            ..Default::default()
+        };
+        assert_format_with_config!("local x = a+b == c*d\n", "local x = a+b == c*d\n", config);
+    }
+
+    #[test]
+    fn test_no_math_space_keeps_logical_space() {
+        // Disabling math operator spaces should NOT affect logical operators
+        let config = LuaFormatConfig {
+            space_around_math_operator: false,
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            "local a = b and c or d\n",
+            "local a = b and c or d\n",
+            config
+        );
+    }
+
+    // ========== space around assign operator ==========
+
+    #[test]
+    fn test_no_space_around_assign() {
+        let config = LuaFormatConfig {
+            space_around_assign_operator: false,
+            ..Default::default()
+        };
+        assert_format_with_config!("local a = 1\n", "local a=1\n", config);
+    }
+
+    #[test]
+    fn test_no_space_around_assign_table() {
+        let config = LuaFormatConfig {
+            space_around_assign_operator: false,
+            ..Default::default()
+        };
+        assert_format_with_config!("local t = { a = 1 }\n", "local t={ a=1 }\n", config);
+    }
+
+    #[test]
+    fn test_space_around_assign_default() {
+        assert_format_with_config!("local a=1\n", "local a = 1\n", LuaFormatConfig::default());
+    }
 }

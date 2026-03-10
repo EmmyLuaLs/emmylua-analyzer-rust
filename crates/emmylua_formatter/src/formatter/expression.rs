@@ -1,7 +1,7 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallExpr, LuaClosureExpr, LuaComment, LuaExpr,
-    LuaIndexExpr, LuaKind, LuaLiteralExpr, LuaNameExpr, LuaParenExpr, LuaSyntaxKind, LuaTableExpr,
-    LuaTableField, LuaUnaryExpr, UnaryOperator,
+    BinaryOperator, LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallExpr, LuaClosureExpr,
+    LuaComment, LuaExpr, LuaIndexExpr, LuaKind, LuaLiteralExpr, LuaNameExpr, LuaParenExpr,
+    LuaSyntaxKind, LuaTableExpr, LuaTableField, LuaUnaryExpr, UnaryOperator,
 };
 use rowan::TextRange;
 
@@ -10,8 +10,8 @@ use crate::ir::{self, AlignEntry, DocIR, EqSplit};
 
 use super::FormatContext;
 use super::comment::{extract_trailing_comment, format_comment};
+use super::spacing::{SpaceRule, space_around_assign, space_around_binary_op};
 
-/// 格式化表达式（分派）
 pub fn format_expr(ctx: &FormatContext, expr: &LuaExpr) -> Vec<DocIR> {
     match expr {
         LuaExpr::NameExpr(e) => format_name_expr(ctx, e),
@@ -26,7 +26,6 @@ pub fn format_expr(ctx: &FormatContext, expr: &LuaExpr) -> Vec<DocIR> {
     }
 }
 
-/// 标识符: name
 fn format_name_expr(_ctx: &FormatContext, expr: &LuaNameExpr) -> Vec<DocIR> {
     if let Some(name) = expr.get_name_text() {
         vec![ir::text(name)]
@@ -35,7 +34,6 @@ fn format_name_expr(_ctx: &FormatContext, expr: &LuaNameExpr) -> Vec<DocIR> {
     }
 }
 
-/// 字面量: 1, "hello", true, nil, ...
 fn format_literal_expr(_ctx: &FormatContext, expr: &LuaLiteralExpr) -> Vec<DocIR> {
     // 直接使用原始文本
     vec![ir::text(expr.syntax().text().to_string())]
@@ -55,13 +53,33 @@ fn format_binary_expr(ctx: &FormatContext, expr: &LuaBinaryExpr) -> Vec<DocIR> {
 
         if let Some(op_token) = expr.get_op_token() {
             let op_text = op_token.syntax().text().to_string();
+            let op = op_token.get_op();
+            let space_rule = space_around_binary_op(op, ctx.config);
+            let space_ir = space_rule.to_ir();
+
+            // Safety: when the left operand text ends with '.' and the operator
+            // is '..', we must force a space before the operator to avoid
+            // ambiguity (e.g. `1. ..` must not become `1...`).
+            // Only the before-space is forced; the after-space follows the
+            // configured space_rule.
+            let force_space_before = op == BinaryOperator::OpConcat
+                && space_rule == SpaceRule::NoSpace
+                && left.syntax().text().to_string().ends_with('.');
+
+            // Before-operator break: soft_line (→space when flat) if space,
+            // soft_line_or_empty (→"" when flat) if no space
+            let break_ir = if !force_space_before && space_rule == SpaceRule::NoSpace {
+                ir::soft_line_or_empty()
+            } else {
+                ir::soft_line()
+            };
 
             return vec![ir::group(vec![
                 ir::list(left_docs),
                 ir::indent(vec![
-                    ir::soft_line(),
+                    break_ir,
                     ir::text(op_text),
-                    ir::space(),
+                    space_ir,
                     ir::list(right_docs),
                 ]),
             ])];
@@ -506,9 +524,10 @@ fn format_table_field_ir(ctx: &FormatContext, field: &LuaTableField) -> Vec<DocI
 
     if field.is_assign_field() {
         fdoc.extend(format_table_field_key_ir(ctx, field));
-        fdoc.push(ir::space());
+        let assign_space = space_around_assign(ctx.config).to_ir();
+        fdoc.push(assign_space.clone());
         fdoc.push(ir::text("="));
-        fdoc.push(ir::space());
+        fdoc.push(assign_space);
 
         if let Some(value) = field.get_value_expr() {
             fdoc.extend(format_expr(ctx, &value));
@@ -564,7 +583,8 @@ fn format_table_field_eq_split(ctx: &FormatContext, field: &LuaTableField) -> Op
         return None;
     }
 
-    let mut after = vec![ir::text("="), ir::space()];
+    let assign_space = space_around_assign(ctx.config).to_ir();
+    let mut after = vec![ir::text("="), assign_space];
     if let Some(value) = field.get_value_expr() {
         after.extend(format_expr(ctx, &value));
     }
@@ -896,7 +916,6 @@ pub fn format_params_ir(ctx: &FormatContext, params: &emmylua_parser::LuaParamLi
             vec![ir::group_break(vec![ir::indent(inner), ir::hard_line()])]
         }
     } else {
-        // 无注释：使用配置的展开策略
         let param_docs: Vec<Vec<DocIR>> = entries.into_iter().map(|e| e.doc).collect();
         let inner = ir::intersperse(param_docs.clone(), vec![ir::text(","), ir::soft_line()]);
 

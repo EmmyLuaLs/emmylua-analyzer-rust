@@ -10,6 +10,7 @@ use super::FormatContext;
 use super::block::format_block;
 use super::comment::collect_orphan_comments;
 use super::expression::format_expr;
+use super::spacing::space_around_assign;
 
 /// Format a statement (dispatch)
 pub fn format_stat(ctx: &FormatContext, stat: &LuaStat) -> Vec<DocIR> {
@@ -64,7 +65,8 @@ fn format_local_stat(ctx: &FormatContext, stat: &LuaLocalStat) -> Vec<DocIR> {
     // Value list
     let exprs: Vec<_> = stat.get_value_exprs().collect();
     if !exprs.is_empty() {
-        docs.push(ir::space());
+        let assign_space = space_around_assign(ctx.config).to_ir();
+        docs.push(assign_space);
         docs.push(ir::text("="));
 
         let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
@@ -72,12 +74,18 @@ fn format_local_stat(ctx: &FormatContext, stat: &LuaLocalStat) -> Vec<DocIR> {
 
         // Single-value assignment to function/table: join with space, no line break
         if exprs.len() == 1 && is_block_like_expr(&exprs[0]) {
-            docs.push(ir::space());
+            let assign_space_after = space_around_assign(ctx.config).to_ir();
+            docs.push(assign_space_after);
             docs.push(ir::list(separated));
         } else {
             // When value is too long, break after = and indent
+            let break_or_space = if ctx.config.space_around_assign_operator {
+                ir::soft_line()
+            } else {
+                ir::soft_line_or_empty()
+            };
             docs.push(ir::group(vec![ir::indent(vec![
-                ir::soft_line(),
+                break_or_space,
                 ir::list(separated),
             ])]));
         }
@@ -101,7 +109,8 @@ fn format_assign_stat(ctx: &FormatContext, stat: &LuaAssignStat) -> Vec<DocIR> {
 
     // Assignment operator
     if let Some(op) = stat.get_assign_op() {
-        docs.push(ir::space());
+        let assign_space = space_around_assign(ctx.config).to_ir();
+        docs.push(assign_space);
         docs.push(ir::text(op.syntax().text().to_string()));
     }
 
@@ -111,12 +120,18 @@ fn format_assign_stat(ctx: &FormatContext, stat: &LuaAssignStat) -> Vec<DocIR> {
 
     // Single-value assignment to function/table: join with space, no line break
     if exprs.len() == 1 && is_block_like_expr(&exprs[0]) {
-        docs.push(ir::space());
+        let assign_space_after = space_around_assign(ctx.config).to_ir();
+        docs.push(assign_space_after);
         docs.push(ir::list(separated));
     } else {
         // When value is too long, break after = and indent
+        let break_or_space = if ctx.config.space_around_assign_operator {
+            ir::soft_line()
+        } else {
+            ir::soft_line_or_empty()
+        };
         docs.push(ir::group(vec![ir::indent(vec![
-            ir::soft_line(),
+            break_or_space,
             ir::list(separated),
         ])]));
     }
@@ -709,7 +724,8 @@ fn format_local_stat_eq_split(ctx: &super::FormatContext, stat: &LuaLocalStat) -
     }
 
     // Build RHS: "= value1, value2"
-    let mut after = vec![ir::text("="), ir::space()];
+    let assign_space = space_around_assign(ctx.config).to_ir();
+    let mut after = vec![ir::text("="), assign_space];
     let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
     after.extend(ir::intersperse(expr_docs, vec![ir::text(","), ir::space()]));
 
@@ -738,7 +754,8 @@ fn format_assign_stat_eq_split(
     if let Some(op) = stat.get_assign_op() {
         after.push(ir::text(op.syntax().text().to_string()));
     }
-    after.push(ir::space());
+    let assign_space = space_around_assign(ctx.config).to_ir();
+    after.push(assign_space);
     let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
     after.extend(ir::intersperse(expr_docs, vec![ir::text(","), ir::space()]));
 

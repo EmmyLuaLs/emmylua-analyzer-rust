@@ -347,4 +347,41 @@ local d  = 4 -- w
 "#
         );
     }
+
+    // ========== doc comment formatting ==========
+
+    #[test]
+    fn test_doc_comment_normalize_whitespace() {
+        // Extra spaces in doc comment should be normalized to single space
+        assert_format!(
+            "---@param  name   string\nlocal function f(name) end\n",
+            "---@param name string\nlocal function f(name) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_preserved() {
+        // Well-formatted doc comment should be unchanged
+        assert_format!(
+            "---@param name string\nlocal function f(name) end\n",
+            "---@param name string\nlocal function f(name) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_multi_tag() {
+        assert_format!(
+            "---@param a number\n---@param b string\n---@return boolean\nlocal function f(a, b) end\n",
+            "---@param a number\n---@param b string\n---@return boolean\nlocal function f(a, b) end\n"
+        );
+    }
+
+    #[test]
+    fn test_long_comment_preserved() {
+        // Long comments should be preserved as-is (including content)
+        assert_format!(
+            "--[[ some content ]]\nlocal a = 1\n",
+            "--[[ some content ]]\nlocal a = 1\n"
+        );
+    }
 }
