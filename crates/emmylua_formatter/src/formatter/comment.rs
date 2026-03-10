@@ -56,10 +56,9 @@ pub fn collect_orphan_comments(node: &LuaSyntaxNode) -> Vec<DocIR> {
     }
     docs
 }
-///
-/// Find a Comment node on the same line after a statement node;
-/// if found, attach it to the end of line using LineSuffix.
-pub fn format_trailing_comment(node: &LuaSyntaxNode) -> Option<(DocIR, TextRange)> {
+/// Extract a trailing comment on the same line after a syntax node.
+/// Returns the raw comment docs (NOT wrapped in LineSuffix) and the text range.
+pub fn extract_trailing_comment(node: &LuaSyntaxNode) -> Option<(Vec<DocIR>, TextRange)> {
     let mut next = node.next_sibling_or_token();
 
     // Look ahead at most 4 elements (skipping whitespace, commas, semicolons)
@@ -80,10 +79,7 @@ pub fn format_trailing_comment(node: &LuaSyntaxNode) -> Option<(DocIR, TextRange
                 }
 
                 let range = comment_node.text_range();
-                return Some((
-                    ir::line_suffix(vec![ir::space(), ir::text(comment_text)]),
-                    range,
-                ));
+                return Some((vec![ir::text(comment_text)], range));
             }
             _ => return None,
         }
@@ -91,4 +87,12 @@ pub fn format_trailing_comment(node: &LuaSyntaxNode) -> Option<(DocIR, TextRange
     }
 
     None
+}
+
+/// Format a trailing comment as LineSuffix (for non-grouped use).
+pub fn format_trailing_comment(node: &LuaSyntaxNode) -> Option<(DocIR, TextRange)> {
+    let (docs, range) = extract_trailing_comment(node)?;
+    let mut suffix_content = vec![ir::space()];
+    suffix_content.extend(docs);
+    Some((ir::line_suffix(suffix_content), range))
 }

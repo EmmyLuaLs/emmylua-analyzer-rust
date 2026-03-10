@@ -1,4 +1,3 @@
-pub(crate) mod alignment;
 mod test;
 
 use std::collections::HashMap;
@@ -257,17 +256,31 @@ impl Printer {
                     // For fit checking, treat as all entries printed flat
                     for entry in &group.entries {
                         match entry {
-                            AlignEntry::Aligned { before, after } => {
+                            AlignEntry::Aligned {
+                                before,
+                                after,
+                                trailing,
+                            } => {
                                 for d in before.iter().rev() {
                                     stack.push((d, mode));
                                 }
                                 for d in after.iter().rev() {
                                     stack.push((d, mode));
                                 }
+                                if let Some(trail) = trailing {
+                                    for d in trail.iter().rev() {
+                                        stack.push((d, mode));
+                                    }
+                                }
                             }
-                            AlignEntry::Line(content) => {
+                            AlignEntry::Line { content, trailing } => {
                                 for d in content.iter().rev() {
                                     stack.push((d, mode));
+                                }
+                                if let Some(trail) = trailing {
+                                    for d in trail.iter().rev() {
+                                        stack.push((d, mode));
+                                    }
                                 }
                             }
                         }
@@ -349,25 +362,56 @@ impl Printer {
         let _ = mode;
     }
 
-    /// Print an alignment group: pad each entry's `before` to the max width so `after` parts align.
+    /// Print an alignment group with up to three-column alignment:
+    /// Column 1: `before` (padded to max_before)
+    /// Column 2: `after`
+    /// Column 3: `trailing` comment (padded to max content width)
     fn print_align_group(&mut self, entries: &[AlignEntry], mode: PrintMode) {
-        // Compute max flat width of `before` parts across all Aligned entries
+        // Phase 1: Compute max flat width of `before` parts across all Aligned entries
         let max_before = entries
             .iter()
             .filter_map(|e| match e {
                 AlignEntry::Aligned { before, .. } => Some(ir_flat_width(before)),
-                AlignEntry::Line(_) => None,
+                AlignEntry::Line { .. } => None,
             })
             .max()
             .unwrap_or(0);
 
+        // Phase 2: Compute max content width for trailing comment alignment
+        let has_any_trailing = entries.iter().any(|e| match e {
+            AlignEntry::Aligned { trailing, .. } | AlignEntry::Line { trailing, .. } => {
+                trailing.is_some()
+            }
+        });
+
+        let max_content_width = if has_any_trailing {
+            entries
+                .iter()
+                .map(|e| match e {
+                    AlignEntry::Aligned { after, .. } => {
+                        // before is padded to max_before, then " ", then after
+                        max_before + 1 + ir_flat_width(after)
+                    }
+                    AlignEntry::Line { content, .. } => ir_flat_width(content),
+                })
+                .max()
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Phase 3: Print each entry
         for (i, entry) in entries.iter().enumerate() {
             if i > 0 {
                 self.flush_line_suffixes();
                 self.push_newline();
             }
             match entry {
-                AlignEntry::Aligned { before, after } => {
+                AlignEntry::Aligned {
+                    before,
+                    after,
+                    trailing,
+                } => {
                     let before_width = ir_flat_width(before);
                     self.print_docs(before, mode);
                     let padding = max_before - before_width;
@@ -376,9 +420,29 @@ impl Printer {
                     }
                     self.push_text(" ");
                     self.print_docs(after, mode);
+
+                    if let Some(trail) = trailing {
+                        let content_width = max_before + 1 + ir_flat_width(after);
+                        let trail_padding = max_content_width.saturating_sub(content_width);
+                        if trail_padding > 0 {
+                            self.push_text(&" ".repeat(trail_padding));
+                        }
+                        self.push_text(" ");
+                        self.print_docs(trail, mode);
+                    }
                 }
-                AlignEntry::Line(content) => {
+                AlignEntry::Line { content, trailing } => {
                     self.print_docs(content, mode);
+
+                    if let Some(trail) = trailing {
+                        let content_width = ir_flat_width(content);
+                        let trail_padding = max_content_width.saturating_sub(content_width);
+                        if trail_padding > 0 {
+                            self.push_text(&" ".repeat(trail_padding));
+                        }
+                        self.push_text(" ");
+                        self.print_docs(trail, mode);
+                    }
                 }
             }
         }

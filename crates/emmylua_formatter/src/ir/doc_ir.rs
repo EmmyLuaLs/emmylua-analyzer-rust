@@ -70,12 +70,17 @@ pub type EqSplit = (Vec<DocIR>, Vec<DocIR>);
 pub enum AlignEntry {
     /// A line split at the alignment point.
     /// `before` is padded to the max width across the group, then `after` is appended.
+    /// `trailing` (if present) is a trailing comment aligned to a common column.
     Aligned {
         before: Vec<DocIR>,
         after: Vec<DocIR>,
+        trailing: Option<Vec<DocIR>>,
     },
-    /// A non-aligned line (e.g., standalone comment) kept in sequence
-    Line(Vec<DocIR>),
+    /// A non-aligned line (e.g., standalone comment or non-= statement with trailing comment)
+    Line {
+        content: Vec<DocIR>,
+        trailing: Option<Vec<DocIR>>,
+    },
 }
 
 /// Compute the flat (single-line) width of an IR slice.

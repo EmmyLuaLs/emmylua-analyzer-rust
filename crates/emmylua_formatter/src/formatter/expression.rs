@@ -9,7 +9,7 @@ use crate::config::ExpandStrategy;
 use crate::ir::{self, AlignEntry, DocIR, EqSplit};
 
 use super::FormatContext;
-use super::comment::{format_comment, format_trailing_comment};
+use super::comment::{extract_trailing_comment, format_comment};
 
 /// 格式化表达式（分派）
 pub fn format_expr(ctx: &FormatContext, expr: &LuaExpr) -> Vec<DocIR> {
@@ -349,13 +349,13 @@ fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
             } else {
                 None
             };
-            let trailing_comment = if let Some((c, range)) = format_trailing_comment(field.syntax())
-            {
-                consumed_comment_ranges.push(range);
-                Some(c)
-            } else {
-                None
-            };
+            let trailing_comment =
+                if let Some((docs, range)) = extract_trailing_comment(field.syntax()) {
+                    consumed_comment_ranges.push(range);
+                    Some(docs)
+                } else {
+                    None
+                };
             entries.push(TableEntry::Field {
                 doc: fdoc,
                 eq_split,
@@ -578,7 +578,8 @@ enum TableEntry {
         doc: Vec<DocIR>,
         /// Split at `=` for alignment: (key_docs, eq_value_docs)
         eq_split: Option<EqSplit>,
-        trailing_comment: Option<DocIR>,
+        /// Raw trailing comment docs (NOT wrapped in LineSuffix)
+        trailing_comment: Option<Vec<DocIR>>,
     },
     StandaloneComment(Vec<DocIR>),
 }
@@ -638,16 +639,17 @@ fn build_table_expanded_inner(
                                 } else {
                                     after_with_comma.push(ir::text(","));
                                 }
-                                if let Some(comment) = trailing_comment {
-                                    after_with_comma.push(comment.clone());
-                                }
                                 align_entries.push(AlignEntry::Aligned {
                                     before: before.clone(),
                                     after: after_with_comma,
+                                    trailing: trailing_comment.clone(),
                                 });
                             }
                             TableEntry::StandaloneComment(comment_docs) => {
-                                align_entries.push(AlignEntry::Line(comment_docs.clone()));
+                                align_entries.push(AlignEntry::Line {
+                                    content: comment_docs.clone(),
+                                    trailing: None,
+                                });
                             }
                             TableEntry::Field {
                                 doc,
@@ -661,10 +663,10 @@ fn build_table_expanded_inner(
                                 } else {
                                     line.push(ir::text(","));
                                 }
-                                if let Some(comment) = trailing_comment {
-                                    line.push(comment.clone());
-                                }
-                                align_entries.push(AlignEntry::Line(line));
+                                align_entries.push(AlignEntry::Line {
+                                    content: line,
+                                    trailing: trailing_comment.clone(),
+                                });
                             }
                         }
                     }
@@ -688,8 +690,10 @@ fn build_table_expanded_inner(
                     } else {
                         inner.push(ir::text(","));
                     }
-                    if let Some(comment) = trailing_comment {
-                        inner.push(comment.clone());
+                    if let Some(comment_docs) = trailing_comment {
+                        let mut suffix = vec![ir::space()];
+                        suffix.extend(comment_docs.clone());
+                        inner.push(ir::line_suffix(suffix));
                     }
                 }
                 TableEntry::StandaloneComment(comment_docs) => {
@@ -717,8 +721,10 @@ fn build_table_expanded_inner(
                         inner.push(ir::text(","));
                     }
 
-                    if let Some(comment) = trailing_comment {
-                        inner.push(comment.clone());
+                    if let Some(comment_docs) = trailing_comment {
+                        let mut suffix = vec![ir::space()];
+                        suffix.extend(comment_docs.clone());
+                        inner.push(ir::line_suffix(suffix));
                     }
                 }
                 TableEntry::StandaloneComment(comment_docs) => {
@@ -813,7 +819,8 @@ fn format_trailing_comma_ir(policy: crate::config::TrailingComma) -> DocIR {
 /// 参数条目
 struct ParamEntry {
     doc: Vec<DocIR>,
-    trailing_comment: Option<DocIR>,
+    /// Raw trailing comment docs (NOT wrapped in LineSuffix)
+    trailing_comment: Option<Vec<DocIR>>,
 }
 
 /// 格式化函数参数列表（支持参数注释）
@@ -834,9 +841,9 @@ pub fn format_params_ir(ctx: &FormatContext, params: &emmylua_parser::LuaParamLi
             continue;
         };
 
-        let trailing_comment = if let Some((c, range)) = format_trailing_comment(p.syntax()) {
+        let trailing_comment = if let Some((docs, range)) = extract_trailing_comment(p.syntax()) {
             consumed_comment_ranges.push(range);
-            Some(c)
+            Some(docs)
         } else {
             None
         };
@@ -854,20 +861,40 @@ pub fn format_params_ir(ctx: &FormatContext, params: &emmylua_parser::LuaParamLi
     let has_comments = entries.iter().any(|e| e.trailing_comment.is_some());
 
     if has_comments {
-        // 有注释：强制多行展开
+        // 有注释：强制多行展开，使用 AlignGroup 对齐注释
         let len = entries.len();
-        let mut inner = Vec::new();
-        for (i, entry) in entries.into_iter().enumerate() {
-            inner.push(ir::hard_line());
-            inner.extend(entry.doc);
-            if i < len - 1 {
-                inner.push(ir::text(","));
+        if ctx.config.align_continuous_line_comment {
+            let mut align_entries = Vec::new();
+            for (i, entry) in entries.into_iter().enumerate() {
+                let mut content = entry.doc;
+                if i < len - 1 {
+                    content.push(ir::text(","));
+                }
+                align_entries.push(AlignEntry::Line {
+                    content,
+                    trailing: entry.trailing_comment,
+                });
             }
-            if let Some(comment) = entry.trailing_comment {
-                inner.push(comment);
+            vec![ir::group_break(vec![
+                ir::indent(vec![ir::hard_line(), ir::align_group(align_entries)]),
+                ir::hard_line(),
+            ])]
+        } else {
+            let mut inner = Vec::new();
+            for (i, entry) in entries.into_iter().enumerate() {
+                inner.push(ir::hard_line());
+                inner.extend(entry.doc);
+                if i < len - 1 {
+                    inner.push(ir::text(","));
+                }
+                if let Some(comment_docs) = entry.trailing_comment {
+                    let mut suffix = vec![ir::space()];
+                    suffix.extend(comment_docs);
+                    inner.push(ir::line_suffix(suffix));
+                }
             }
+            vec![ir::group_break(vec![ir::indent(inner), ir::hard_line()])]
         }
-        vec![ir::group_break(vec![ir::indent(inner), ir::hard_line()])]
     } else {
         // 无注释：使用配置的展开策略
         let param_docs: Vec<Vec<DocIR>> = entries.into_iter().map(|e| e.doc).collect();

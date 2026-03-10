@@ -6,7 +6,7 @@ use rowan::TextRange;
 use crate::ir::{self, AlignEntry, DocIR};
 
 use super::FormatContext;
-use super::comment::{format_comment, format_trailing_comment};
+use super::comment::{extract_trailing_comment, format_comment, format_trailing_comment};
 use super::statement::{format_stat, format_stat_eq_split, is_eq_alignable};
 use super::trivia::count_blank_lines_before;
 
@@ -106,7 +106,7 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
                     }
 
                     if group_end - group_start >= 2 {
-                        // Emit alignment group
+                        // Emit = alignment group
                         if !is_first {
                             let blank_lines =
                                 count_blank_lines_before(children[group_start].syntax());
@@ -119,27 +119,108 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
                         let mut entries = Vec::new();
                         for child in children.iter().take(group_end).skip(group_start) {
                             if let BlockChild::Statement(s) = child {
-                                if let Some((before, after)) = format_stat_eq_split(ctx, s) {
-                                    entries.push(AlignEntry::Aligned { before, after });
+                                // Extract trailing comment for IR-level alignment
+                                let trailing = if ctx.config.align_continuous_line_comment {
+                                    extract_trailing_comment(s.syntax()).map(
+                                        |(trail_docs, range)| {
+                                            consumed_comment_ranges.push(range);
+                                            trail_docs
+                                        },
+                                    )
                                 } else {
-                                    entries.push(AlignEntry::Line(format_stat(ctx, s)));
-                                }
-                                // Handle trailing comment (as LineSuffix on the last doc)
-                                if let Some((trailing_ir, range)) =
-                                    format_trailing_comment(s.syntax())
-                                {
-                                    // Attach trailing comment to the last entry
-                                    match entries.last_mut() {
-                                        Some(AlignEntry::Aligned { after, .. }) => {
-                                            after.push(trailing_ir);
-                                        }
-                                        Some(AlignEntry::Line(content)) => {
-                                            content.push(trailing_ir);
-                                        }
-                                        None => {}
+                                    None
+                                };
+
+                                if let Some((before, mut after)) = format_stat_eq_split(ctx, s) {
+                                    // When not using trailing alignment, attach as LineSuffix
+                                    if trailing.is_none()
+                                        && let Some((trailing_ir, range)) =
+                                            format_trailing_comment(s.syntax())
+                                    {
+                                        after.push(trailing_ir);
+                                        consumed_comment_ranges.push(range);
                                     }
-                                    consumed_comment_ranges.push(range);
+                                    entries.push(AlignEntry::Aligned {
+                                        before,
+                                        after,
+                                        trailing,
+                                    });
+                                } else {
+                                    let mut content = format_stat(ctx, s);
+                                    if trailing.is_none()
+                                        && let Some((trailing_ir, range)) =
+                                            format_trailing_comment(s.syntax())
+                                    {
+                                        content.push(trailing_ir);
+                                        consumed_comment_ranges.push(range);
+                                    }
+                                    entries.push(AlignEntry::Line { content, trailing });
                                 }
+                            }
+                        }
+
+                        docs.push(ir::align_group(entries));
+                        docs.push(ir::hard_line());
+                        is_first = false;
+                        i = group_end;
+                        continue;
+                    }
+                }
+
+                // Try to form a comment-only alignment group
+                if ctx.config.align_continuous_line_comment
+                    && extract_trailing_comment(stat.syntax()).is_some()
+                {
+                    let group_start = i;
+                    let mut group_end = i + 1;
+                    while group_end < children.len() {
+                        match &children[group_end] {
+                            BlockChild::Statement(next_stat) => {
+                                let blank_lines = count_blank_lines_before(next_stat.syntax());
+                                if blank_lines > 0 {
+                                    break;
+                                }
+                                if extract_trailing_comment(next_stat.syntax()).is_some() {
+                                    group_end += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            BlockChild::Comment(_) => {
+                                group_end += 1;
+                                continue;
+                            }
+                        }
+                    }
+
+                    let stmt_count = children[group_start..group_end]
+                        .iter()
+                        .filter(|c| matches!(c, BlockChild::Statement(_)))
+                        .count();
+
+                    if stmt_count >= 2 {
+                        if !is_first {
+                            let blank_lines =
+                                count_blank_lines_before(children[group_start].syntax());
+                            let normalized = blank_lines.min(ctx.config.max_blank_lines);
+                            for _ in 0..normalized {
+                                docs.push(ir::hard_line());
+                            }
+                        }
+
+                        let mut entries = Vec::new();
+                        for child in children.iter().take(group_end).skip(group_start) {
+                            if let BlockChild::Statement(s) = child {
+                                let trailing = extract_trailing_comment(s.syntax()).map(
+                                    |(trail_docs, range)| {
+                                        consumed_comment_ranges.push(range);
+                                        trail_docs
+                                    },
+                                );
+                                entries.push(AlignEntry::Line {
+                                    content: format_stat(ctx, s),
+                                    trailing,
+                                });
                             }
                         }
 
