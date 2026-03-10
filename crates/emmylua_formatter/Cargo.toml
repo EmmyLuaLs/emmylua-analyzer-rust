@@ -1,5 +1,5 @@
 [package]
-name = "emmylua_code_style"
+name = "emmylua_formatter"
 version = "0.1.0"
 edition = "2024"
 
@@ -19,7 +19,7 @@ workspace = true
 optional = true
 
 [[bin]]
-name = "emmylua_format"
+name = "luafmt"
 required-features = ["cli"]
 
 [features]

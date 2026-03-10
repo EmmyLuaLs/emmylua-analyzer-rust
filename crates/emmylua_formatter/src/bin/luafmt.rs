@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::Parser;
-use emmylua_code_style::{LuaCodeStyle, cmd_args, reformat_lua_code};
+use emmylua_formatter::{LuaCodeStyle, cmd_args, reformat_lua_code};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;

@@ -648,19 +648,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emmylua_code_style"
-version = "0.1.0"
-dependencies = [
- "clap",
- "emmylua_parser",
- "mimalloc",
- "rowan",
- "serde",
- "serde_json",
- "serde_yml",
-]
-
-[[package]]
 name = "emmylua_codestyle"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -698,6 +685,19 @@ dependencies = [
  "serde_json",
  "tera",
  "walkdir",
+]
+
+[[package]]
+name = "emmylua_formatter"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "emmylua_parser",
+ "mimalloc",
+ "rowan",
+ "serde",
+ "serde_json",
+ "serde_yml",
 ]
 
 [[package]]
