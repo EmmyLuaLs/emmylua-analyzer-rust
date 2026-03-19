@@ -527,17 +527,12 @@ fn parse_suffixed_type(p: &mut LuaDocParser, cm: CompleteMarker) -> DocParseResu
             LuaTokenKind::TkLeftBracket => {
                 let mut m = cm.precede(p, LuaSyntaxKind::TypeArray);
                 p.bump();
-                if p.state == LuaDocParserState::Mapped {
-                    if p.current_token() != LuaTokenKind::TkRightBracket {
-                        m.set_kind(p, LuaSyntaxKind::TypeIndexAccess);
-                        parse_type(p)?;
-                    }
-                } else if matches!(
+                if matches!(
                     p.current_token(),
                     LuaTokenKind::TkString | LuaTokenKind::TkInt | LuaTokenKind::TkName
                 ) {
-                    m.set_kind(p, LuaSyntaxKind::IndexExpr);
-                    p.bump();
+                    m.set_kind(p, LuaSyntaxKind::TypeIndexAccess);
+                    parse_type(p)?;
                 }
 
                 expect_token(p, LuaTokenKind::TkRightBracket)?;
