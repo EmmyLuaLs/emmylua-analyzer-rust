@@ -34,4 +34,16 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_issue_925() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::TypeNotFound,
+            r#"
+            ---@alias Pick<T, K extends keyof T> { [P in K]: T[P]; }
+        "#,
+        ));
+    }
 }
