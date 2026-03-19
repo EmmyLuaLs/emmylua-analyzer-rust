@@ -701,8 +701,20 @@ fn infer_instance_member(
     match base_result {
         Ok(typ) => match infer_table_member(db, cache, range.clone(), index_expr.clone()) {
             Ok(table_type) => {
-                return Ok(match TypeOps::Intersect.apply(db, &typ, &table_type) {
-                    LuaType::Never => typ,
+                // Field exists in the literal, so it cannot be nil — strip nil.
+                let stripped = TypeOps::Remove.apply(db, &typ, &LuaType::Nil);
+                return Ok(match TypeOps::Intersect.apply(db, &stripped, &table_type) {
+                    LuaType::Never => {
+                        // If the literal field is itself a table, wrap in Instance
+                        // to preserve literal context for recursive member access.
+                        if let LuaType::TableConst(nested_range) = table_type {
+                            LuaType::Instance(
+                                LuaInstanceType::new(stripped, nested_range).into(),
+                            )
+                        } else {
+                            stripped
+                        }
+                    }
                     intersected => intersected,
                 });
             }

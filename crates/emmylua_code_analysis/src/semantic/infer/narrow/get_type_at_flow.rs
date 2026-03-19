@@ -62,6 +62,31 @@ pub fn get_type_at_flow(
                 if *position <= var_ref_id.get_position() {
                     match get_var_ref_type(db, cache, var_ref_id) {
                         Ok(var_type) => {
+                            if is_class_type(db, &var_type) {
+                                if let Ok(Some(init_type)) =
+                                    try_infer_decl_initializer_type(db, cache, root, var_ref_id)
+                                {
+                                    // Only narrow if the table literal has members
+                                    if let LuaType::TableConst(ref range) = init_type {
+                                        let owner = crate::LuaMemberOwner::Element(range.clone());
+                                        if db
+                                            .get_member_index()
+                                            .get_members(&owner)
+                                            .is_some_and(|m| !m.is_empty())
+                                        {
+                                            if let Some(narrowed) = narrow_down_type(
+                                                db,
+                                                var_type.clone(),
+                                                init_type,
+                                                Some(var_type.clone()),
+                                            ) {
+                                                result_type = narrowed;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             result_type = var_type;
                             break;
                         }
@@ -294,4 +319,15 @@ fn try_infer_decl_initializer_type(
     };
 
     Ok(init_type)
+}
+
+/// Check if a type is a Ref or Def that resolves to a class (not an alias).
+fn is_class_type(db: &DbIndex, ty: &LuaType) -> bool {
+    let type_id = match ty {
+        LuaType::Ref(id) | LuaType::Def(id) => id,
+        _ => return false,
+    };
+    db.get_type_index()
+        .get_type_decl(type_id)
+        .is_some_and(|decl| decl.is_class())
 }

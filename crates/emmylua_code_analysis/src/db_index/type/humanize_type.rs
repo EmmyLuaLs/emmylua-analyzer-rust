@@ -5,9 +5,9 @@ use itertools::Itertools;
 
 use crate::{
     AsyncState, DbIndex, LuaAliasCallType, LuaConditionalType, LuaFunctionType, LuaGenericType,
-    LuaIntersectionType, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSignatureId,
-    LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, TypeSubstitutor,
-    VariadicType,
+    LuaInstanceType, LuaIntersectionType, LuaMemberKey, LuaMemberOwner, LuaObjectType,
+    LuaSignatureId, LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, TypeOps,
+    TypeSubstitutor, VariadicType,
 };
 
 use super::{LuaAliasCallKind, LuaMultiLineUnion};
@@ -201,7 +201,7 @@ impl<'a> TypeHumanizer<'a> {
             LuaType::TplRef(tpl) => w.write_str(tpl.get_name()),
             LuaType::StrTplRef(str_tpl) => self.write_str_tpl_ref_type(str_tpl, w),
             LuaType::Variadic(multi) => self.write_variadic_type(multi, w),
-            LuaType::Instance(ins) => self.write_type_inner(ins.get_base(), w),
+            LuaType::Instance(ins) => self.write_instance_type(ins, w),
             LuaType::Signature(signature_id) => self.write_signature_type(signature_id, w),
             LuaType::Namespace(ns) => write!(w, "{{ {} }}", ns),
             LuaType::MultiLineUnion(multi_union) => {
@@ -269,6 +269,135 @@ impl<'a> TypeHumanizer<'a> {
             w.write_str(&param.name)?;
         }
         w.write_char('>')
+    }
+
+    // ─── Instance (narrowed struct view) ───────────────────────────
+
+    /// Writes an Instance type: a class type narrowed by a table literal.
+    /// Fields present in the literal have their nil stripped (not optional),
+    /// while absent fields retain their original (possibly optional) type.
+    fn write_instance_type<W: Write>(&mut self, ins: &LuaInstanceType, w: &mut W) -> fmt::Result {
+        let base = ins.get_base();
+
+        // Extract the type decl id from the base type
+        let type_id = match base {
+            LuaType::Ref(id) | LuaType::Def(id) => id.clone(),
+            _ => return self.write_type_inner(base, w),
+        };
+
+        let type_decl = match self.db.get_type_index().get_type_decl(&type_id) {
+            Some(decl) => decl,
+            None => return self.write_type_inner(base, w),
+        };
+
+        let name = type_decl.get_full_name().to_string();
+
+        let max_display_count = match self.level.max_display_count() {
+            Some(n) => n,
+            None => {
+                w.write_str(&name)?;
+                return Ok(());
+            }
+        };
+
+        // cycle detection
+        if !self.visited.insert(type_id.clone()) {
+            w.write_str(&name)?;
+            return Ok(());
+        }
+
+        // Collect keys present in the table literal
+        let literal_owner = LuaMemberOwner::Element(ins.get_range().clone());
+        let member_index = self.db.get_member_index();
+        let literal_keys: HashSet<LuaMemberKey> = member_index
+            .get_sorted_members(&literal_owner)
+            .map(|members| members.iter().map(|m| m.get_key().clone()).collect())
+            .unwrap_or_default();
+
+        // Get class members
+        let class_owner = LuaMemberOwner::Type(type_id.clone());
+        let members = match member_index.get_sorted_members(&class_owner) {
+            Some(m) => m,
+            None => {
+                self.visited.remove(&type_id);
+                w.write_str(&name)?;
+                return Ok(());
+            }
+        };
+
+        let mut member_vec = Vec::new();
+        let mut function_vec = Vec::new();
+        for member in members {
+            let member_key = member.get_key();
+            let type_cache = self
+                .db
+                .get_type_index()
+                .get_type_cache(&member.get_id().into());
+            let type_cache = match type_cache {
+                Some(type_cache) => type_cache,
+                None => &super::LuaTypeCache::InferType(LuaType::Any),
+            };
+            if type_cache.is_function() {
+                function_vec.push(member_key);
+            } else {
+                member_vec.push((member_key, type_cache.as_type()));
+            }
+        }
+
+        if member_vec.is_empty() && function_vec.is_empty() {
+            self.visited.remove(&type_id);
+            w.write_str(&name)?;
+            return Ok(());
+        }
+
+        let all_count = member_vec.len() + function_vec.len();
+
+        w.write_str(&name)?;
+        w.write_str(" {\n")?;
+
+        let saved = self.level;
+        self.level = self.child_level();
+
+        let mut count = 0;
+        for (member_key, typ) in &member_vec {
+            w.write_str("    ")?;
+            if literal_keys.contains(member_key) {
+                // Field provided in the literal: strip nil to remove optionality
+                let narrowed = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                self.write_table_member_field(member_key, &narrowed, saved, w)?;
+            } else if typ.is_nullable() {
+                // Optional field not provided: show as "name?: type" (without nil)
+                let stripped = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                self.write_optional_member_field(member_key, &stripped, saved, w)?;
+            } else {
+                self.write_table_member_field(member_key, typ, saved, w)?;
+            }
+            w.write_str(",\n")?;
+            count += 1;
+            if count >= max_display_count {
+                break;
+            }
+        }
+        if count < all_count {
+            for function_key in &function_vec {
+                w.write_str("    ")?;
+                write_member_key_and_separator(function_key, saved, w)?;
+                w.write_str("function,\n")?;
+                count += 1;
+                if count >= max_display_count {
+                    break;
+                }
+            }
+        }
+        if count >= max_display_count {
+            writeln!(w, "    ...(+{})", all_count - max_display_count)?;
+        }
+
+        self.level = saved;
+        self.visited.remove(&type_id);
+
+        w.write_char('}')?;
+        Ok(())
     }
 
     // ─── Simple (expanded struct view) ──────────────────────────────
@@ -1022,6 +1151,32 @@ impl<'a> TypeHumanizer<'a> {
         } else {
             w.write_str("module 'unknown'")
         }
+    }
+
+    /// Write an optional member field as "name?: type" (with ? after name, nil stripped from type).
+    fn write_optional_member_field<W: Write>(
+        &mut self,
+        member_key: &LuaMemberKey,
+        ty: &LuaType,
+        parent_level: RenderLevel,
+        w: &mut W,
+    ) -> fmt::Result {
+        match member_key {
+            LuaMemberKey::Name(name) => {
+                w.write_str(name)?;
+                w.write_str("?")?;
+                let separator = if parent_level == RenderLevel::Detailed {
+                    ": "
+                } else {
+                    " = "
+                };
+                w.write_str(separator)?;
+            }
+            _ => {
+                write_member_key_and_separator(member_key, parent_level, w)?;
+            }
+        }
+        self.write_type(ty, w)
     }
 
     // ─── helper: write a table member (key: type) ───────────────────

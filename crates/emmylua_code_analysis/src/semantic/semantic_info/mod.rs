@@ -4,8 +4,8 @@ mod semantic_decl_level;
 mod semantic_guard;
 
 use crate::{
-    DbIndex, LuaDeclExtra, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, LuaTypeCache,
-    TypeOps,
+    DbIndex, LuaDeclExtra, LuaDeclId, LuaInstanceType, LuaMemberId, LuaSemanticDeclId, LuaType,
+    LuaTypeCache, TypeOps,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaParamName,
@@ -17,6 +17,16 @@ pub use semantic_decl_level::SemanticDeclLevel;
 pub use semantic_guard::SemanticDeclGuard;
 
 use super::{LuaInferCache, infer_expr};
+
+fn is_class_type(db: &DbIndex, ty: &LuaType) -> bool {
+    let type_id = match ty {
+        LuaType::Ref(id) | LuaType::Def(id) => id,
+        _ => return false,
+    };
+    db.get_type_index()
+        .get_type_decl(type_id)
+        .is_some_and(|decl| decl.is_class())
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticInfo {
@@ -38,8 +48,38 @@ pub fn infer_token_semantic_info(
                 .get_type_index()
                 .get_type_cache(&decl_id.into())
                 .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
+            let mut typ = type_cache.as_type().clone();
+
+            // For LocalName with a class type and a non-empty table literal initializer,
+            // narrow to Instance to track which optional fields are provided.
+            if is_class_type(db, &typ) {
+                if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
+                    if let Some(value_syntax_id) = decl.get_value_syntax_id() {
+                        if let Some(node) =
+                            value_syntax_id.to_node_from_root(&parent.ancestors().last().unwrap())
+                        {
+                            if let Some(expr) = LuaExpr::cast(node) {
+                                if let Ok(LuaType::TableConst(range)) = infer_expr(db, cache, expr)
+                                {
+                                    let owner = crate::LuaMemberOwner::Element(range.clone());
+                                    if db
+                                        .get_member_index()
+                                        .get_members(&owner)
+                                        .is_some_and(|m| !m.is_empty())
+                                    {
+                                        typ = LuaType::Instance(
+                                            LuaInstanceType::new(typ, range).into(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Some(SemanticInfo {
-                typ: type_cache.as_type().clone(),
+                typ,
                 semantic_decl: Some(LuaSemanticDeclId::LuaDecl(decl_id)),
             })
         }
