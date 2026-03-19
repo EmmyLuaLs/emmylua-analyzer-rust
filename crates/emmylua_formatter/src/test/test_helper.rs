@@ -3,7 +3,7 @@ macro_rules! assert_format_with_config {
     ($input:expr, $expected:expr, $config:expr) => {{
         let input = $input.trim_start_matches('\n');
         let expected = $expected.trim_start_matches('\n');
-        let result = $crate::reformat_lua_code(input, &$config);
+        let result = $crate::format_text(input, &$config).formatted;
         if result != expected {
             let result_lines: Vec<&str> = result.lines().collect();
             let expected_lines: Vec<&str> = expected.lines().collect();

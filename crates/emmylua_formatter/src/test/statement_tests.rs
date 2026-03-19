@@ -2,7 +2,10 @@
 mod tests {
     // ========== if statement ==========
 
-    use crate::assert_format;
+    use crate::{
+        assert_format, assert_format_with_config,
+        config::{LayoutConfig, LuaFormatConfig},
+    };
 
     #[test]
     fn test_if_stat() {
@@ -44,6 +47,92 @@ end
         );
     }
 
+    #[test]
+    fn test_if_stat_preserves_standalone_comment_before_then() {
+        assert_format!(
+            "if ok\n-- separator\nthen\n    print(1)\nend\n",
+            "if ok\n-- separator\nthen\n    print(1)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_elseif_stat_preserves_standalone_comment_before_then() {
+        assert_format!(
+            "if a then\n    print(1)\nelseif b\n-- separator\nthen\n    print(2)\nend\n",
+            "if a then\n    print(1)\nelseif b\n-- separator\nthen\n    print(2)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_single_line_if_return_preserved() {
+        assert_format!(
+            "if ok then return value end\n",
+            "if ok then return value end\n"
+        );
+    }
+
+    #[test]
+    fn test_single_line_if_return_with_else_still_expands() {
+        assert_format!(
+            r#"
+if ok then return value else return fallback end
+"#,
+            r#"
+if ok then
+    return value
+else
+    return fallback
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_single_line_if_break_preserved() {
+        assert_format!("if stop then break end\n", "if stop then break end\n");
+    }
+
+    #[test]
+    fn test_single_line_if_call_preserved() {
+        assert_format!(
+            "if ready then notify(user) end\n",
+            "if ready then notify(user) end\n"
+        );
+    }
+
+    #[test]
+    fn test_single_line_if_assign_preserved() {
+        assert_format!(
+            "if ready then result = value end\n",
+            "if ready then result = value end\n"
+        );
+    }
+
+    #[test]
+    fn test_single_line_if_local_preserved() {
+        assert_format!(
+            "if ready then local x = value end\n",
+            "if ready then local x = value end\n"
+        );
+    }
+
+    #[test]
+    fn test_single_line_if_breaks_when_width_exceeded() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 40,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "if ready then notify_with_long_name(first_argument, second_argument, third_argument) end\n",
+            "if ready then\n    notify_with_long_name(\n        first_argument,\n        second_argument,\n        third_argument\n    )\nend\n",
+            config
+        );
+    }
+
     // ========== for loop ==========
 
     #[test]
@@ -78,6 +167,22 @@ end
         );
     }
 
+    #[test]
+    fn test_for_loop_preserves_standalone_comment_before_do() {
+        assert_format!(
+            "for i = 1, 10\n-- separator\ndo\n    print(i)\nend\n",
+            "for i = 1, 10\n-- separator\ndo\n    print(i)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_for_range_preserves_standalone_comment_before_in() {
+        assert_format!(
+            "for k, v\n-- separator\nin pairs(t) do\n    print(k, v)\nend\n",
+            "for k, v\n-- separator\nin pairs(t) do\n    print(k, v)\nend\n"
+        );
+    }
+
     // ========== while / repeat / do ==========
 
     #[test]
@@ -93,6 +198,14 @@ while x > 0 do
     x = x - 1
 end
 "#
+        );
+    }
+
+    #[test]
+    fn test_while_loop_preserves_standalone_comment_before_do() {
+        assert_format!(
+            "while x > 0\n-- separator\ndo\n    x = x - 1\nend\n",
+            "while x > 0\n-- separator\ndo\n    x = x - 1\nend\n"
         );
     }
 
@@ -179,6 +292,14 @@ end
     }
 
     #[test]
+    fn test_multiline_function_params_layout_preserved() {
+        assert_format!(
+            "function foo(\n    first,\n    second,\n    third\n)\n    return first\nend\n",
+            "function foo(\n    first,\n    second,\n    third\n)\n    return first\nend\n"
+        );
+    }
+
+    #[test]
     fn test_varargs_closure() {
         assert_format!(
             r#"
@@ -191,6 +312,14 @@ local f = function(...)
     return ...
 end
 "#
+        );
+    }
+
+    #[test]
+    fn test_multiline_closure_params_layout_preserved() {
+        assert_format!(
+            "local f = function(\n    first,\n    second\n)\n    return first + second\nend\n",
+            "local f = function(\n    first,\n    second\n)\n    return first + second\nend\n"
         );
     }
 
@@ -214,6 +343,26 @@ end
             r#"
 function f()
     return 1, 2, 3
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_return_table_keeps_inline_with_keyword() {
+        assert_format!(
+            r#"
+function f()
+return {
+key = value,
+}
+end
+"#,
+            r#"
+function f()
+    return {
+        key = value
+    }
 end
 "#
         );
@@ -357,6 +506,67 @@ end
         assert_format!(
             "local a <const>, b <const> = 1, 2\n",
             "local a <const>, b <const> = 1, 2\n"
+        );
+    }
+
+    #[test]
+    fn test_local_stat_preserves_inline_comment_before_assign() {
+        assert_format!("local a -- hiihi\n= 123\n", "local a -- hiihi\n= 123\n");
+    }
+
+    #[test]
+    fn test_function_stat_preserves_inline_comment_before_end() {
+        assert_format!(
+            "function t:a() -- this comment will stay the same\nend\n",
+            "function t:a() -- this comment will stay the same\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_function_stat_preserves_inline_comment_in_params() {
+        assert_format!(
+            "function foo(a -- first\n, b)\n    return a + b\nend\n",
+            "function foo(a -- first\n, b)\n    return a + b\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_function_stat_preserves_standalone_comment_before_params() {
+        assert_format!(
+            "function foo\n-- separator\n(a, b)\n    return a + b\nend\n",
+            "function foo\n-- separator\n(a, b)\n    return a + b\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_local_function_stat_preserves_standalone_comment_before_params() {
+        assert_format!(
+            "local function foo\n-- separator\n(a, b)\n    return a + b\nend\n",
+            "local function foo\n-- separator\n(a, b)\n    return a + b\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_local_stat_preserves_standalone_comment_between_name_and_assign() {
+        assert_format!(
+            "local a\n-- separator\n= 123\n",
+            "local a\n-- separator\n= 123\n"
+        );
+    }
+
+    #[test]
+    fn test_assign_stat_preserves_standalone_comment_before_assign_op() {
+        assert_format!(
+            "value\n-- separator\n= 123\n",
+            "value\n-- separator\n= 123\n"
+        );
+    }
+
+    #[test]
+    fn test_return_stat_preserves_standalone_comment_before_expr() {
+        assert_format!(
+            "return\n-- separator\nvalue\n",
+            "return\n-- separator\nvalue\n"
         );
     }
 

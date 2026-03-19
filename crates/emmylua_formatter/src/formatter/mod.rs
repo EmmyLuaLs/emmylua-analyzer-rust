@@ -1,8 +1,10 @@
 mod block;
 mod comment;
 mod expression;
+mod sequence;
 pub mod spacing;
 mod statement;
+mod tokens;
 mod trivia;
 
 use crate::config::LuaFormatConfig;
@@ -40,7 +42,7 @@ pub fn format_chunk(ctx: &FormatContext, chunk: &LuaChunk) -> Vec<DocIR> {
     }
 
     // Ensure file ends with a newline
-    if ctx.config.insert_final_newline {
+    if ctx.config.output.insert_final_newline {
         docs.push(DocIR::HardLine);
     }
 

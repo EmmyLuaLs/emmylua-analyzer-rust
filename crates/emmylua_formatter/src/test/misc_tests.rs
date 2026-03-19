@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::{assert_format, config::LuaFormatConfig};
+    use emmylua_parser::LuaLanguageLevel;
+
+    use crate::{SourceText, assert_format, config::LuaFormatConfig, reformat_lua_code};
 
     // ========== shebang ==========
 
@@ -60,8 +62,20 @@ end
 "#
         .trim_start_matches('\n');
 
-        let first = crate::reformat_lua_code(input, &config);
-        let second = crate::reformat_lua_code(&first, &config);
+        let first = crate::reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+        let second = crate::reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
         assert_eq!(
             first, second,
             "Formatter is not idempotent!\nFirst pass:\n{first}\nSecond pass:\n{second}"
@@ -80,8 +94,20 @@ local t = {
 "#
         .trim_start_matches('\n');
 
-        let first = crate::reformat_lua_code(input, &config);
-        let second = crate::reformat_lua_code(&first, &config);
+        let first = reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+        let second = reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
         assert_eq!(
             first, second,
             "Formatter is not idempotent for tables!\nFirst pass:\n{first}\nSecond pass:\n{second}"
@@ -112,8 +138,20 @@ end
 "#
         .trim_start_matches('\n');
 
-        let first = crate::reformat_lua_code(input, &config);
-        let second = crate::reformat_lua_code(&first, &config);
+        let first = crate::reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+        let second = crate::reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
         assert_eq!(
             first, second,
             "Formatter is not idempotent for complex code!\nFirst pass:\n{first}\nSecond pass:\n{second}"
@@ -130,8 +168,20 @@ local cc = 3 -- comment c
 "#
         .trim_start_matches('\n');
 
-        let first = crate::reformat_lua_code(input, &config);
-        let second = crate::reformat_lua_code(&first, &config);
+        let first = crate::reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+        let second = crate::reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
         assert_eq!(
             first, second,
             "Formatter is not idempotent for aligned code!\nFirst pass:\n{first}\nSecond pass:\n{second}"
@@ -141,13 +191,28 @@ local cc = 3 -- comment c
     #[test]
     fn test_idempotency_method_chain() {
         let config = LuaFormatConfig {
-            max_line_width: 40,
+            layout: crate::config::LayoutConfig {
+                max_line_width: 40,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let input = "local x = obj:method1():method2():method3()\n";
 
-        let first = crate::reformat_lua_code(input, &config);
-        let second = crate::reformat_lua_code(&first, &config);
+        let first = crate::reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+        let second = crate::reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
         assert_eq!(
             first, second,
             "Formatter is not idempotent for method chains!\nFirst pass:\n{first}\nSecond pass:\n{second}"
@@ -159,8 +224,20 @@ local cc = 3 -- comment c
         let config = LuaFormatConfig::default();
         let input = "#!/usr/bin/lua\nlocal a   =   1\n";
 
-        let first = crate::reformat_lua_code(input, &config);
-        let second = crate::reformat_lua_code(&first, &config);
+        let first = crate::reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+        let second = crate::reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
         assert_eq!(
             first, second,
             "Formatter is not idempotent with shebang!\nFirst pass:\n{first}\nSecond pass:\n{second}"

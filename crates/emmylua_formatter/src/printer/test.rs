@@ -43,7 +43,10 @@ mod tests {
     #[test]
     fn test_group_break() {
         let config = LuaFormatConfig {
-            max_line_width: 10,
+            layout: crate::config::LayoutConfig {
+                max_line_width: 10,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let printer = Printer::new(&config);

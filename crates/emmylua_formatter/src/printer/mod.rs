@@ -3,7 +3,7 @@ mod test;
 use std::collections::HashMap;
 
 use crate::config::LuaFormatConfig;
-use crate::ir::{AlignEntry, DocIR, GroupId, ir_flat_width};
+use crate::ir::{AlignEntry, DocIR, GroupId, ir_flat_width, syntax_text_trimmed_end};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PrintMode {
@@ -16,6 +16,8 @@ pub struct Printer {
     indent_str: String,
     indent_width: usize,
     newline_str: &'static str,
+    line_comment_min_spaces_before: usize,
+    line_comment_min_column: usize,
     output: String,
     current_column: usize,
     indent_level: usize,
@@ -26,10 +28,12 @@ pub struct Printer {
 impl Printer {
     pub fn new(config: &LuaFormatConfig) -> Self {
         Self {
-            max_line_width: config.max_line_width,
+            max_line_width: config.layout.max_line_width,
             indent_str: config.indent_str(),
             indent_width: config.indent_width(),
             newline_str: config.newline_str(),
+            line_comment_min_spaces_before: config.comments.line_comment_min_spaces_before.max(1),
+            line_comment_min_column: config.comments.line_comment_min_column,
             output: String::new(),
             current_column: 0,
             indent_level: 0,
@@ -62,6 +66,23 @@ impl Printer {
         match doc {
             DocIR::Text(s) => {
                 self.push_text(s);
+            }
+            DocIR::SourceNode { node, trim_end } => {
+                let text = node.text();
+                if *trim_end {
+                    let end = syntax_text_trimmed_end(&text);
+                    self.push_syntax_text(&text.slice(..end));
+                } else {
+                    self.push_syntax_text(&text);
+                }
+            }
+            DocIR::SourceToken(token) => {
+                self.push_text(token.text());
+            }
+            DocIR::SyntaxToken(kind) => {
+                if let Some(text) = kind.syntax_text() {
+                    self.push_text(text);
+                }
             }
             DocIR::Space => {
                 self.push_text(" ");
@@ -150,6 +171,10 @@ impl Printer {
         }
     }
 
+    fn push_syntax_text(&mut self, text: &rowan::SyntaxText) {
+        text.for_each_chunk(|chunk| self.push_text(chunk));
+    }
+
     fn push_newline(&mut self) {
         // Trim trailing spaces
         let trimmed = self.output.trim_end_matches(' ');
@@ -174,6 +199,21 @@ impl Printer {
         }
     }
 
+    fn trailing_comment_padding(
+        &self,
+        content_width: usize,
+        aligned_content_width: usize,
+    ) -> usize {
+        let natural_padding = aligned_content_width.saturating_sub(content_width)
+            + self.line_comment_min_spaces_before;
+
+        if self.line_comment_min_column == 0 {
+            natural_padding
+        } else {
+            natural_padding.max(self.line_comment_min_column.saturating_sub(content_width))
+        }
+    }
+
     /// Check whether contents fit within the remaining line width in Flat mode
     fn fits_on_line(&self, docs: &[DocIR], _current_mode: PrintMode) -> bool {
         let remaining = self.max_line_width.saturating_sub(self.current_column);
@@ -192,6 +232,24 @@ impl Printer {
             match doc {
                 DocIR::Text(s) => {
                     remaining -= s.len() as isize;
+                }
+                DocIR::SourceNode { node, trim_end } => {
+                    let text = node.text();
+                    let width = if *trim_end {
+                        let end = syntax_text_trimmed_end(&text);
+                        let end: u32 = end.into();
+                        end as isize
+                    } else {
+                        let len: u32 = text.len().into();
+                        len as isize
+                    };
+                    remaining -= width;
+                }
+                DocIR::SourceToken(token) => {
+                    remaining -= token.text().len() as isize;
+                }
+                DocIR::SyntaxToken(kind) => {
+                    remaining -= kind.syntax_text().map(str::len).unwrap_or(0) as isize;
                 }
                 DocIR::Space => {
                     remaining -= 1;
@@ -423,11 +481,11 @@ impl Printer {
 
                     if let Some(trail) = trailing {
                         let content_width = max_before + 1 + ir_flat_width(after);
-                        let trail_padding = max_content_width.saturating_sub(content_width);
+                        let trail_padding =
+                            self.trailing_comment_padding(content_width, max_content_width);
                         if trail_padding > 0 {
                             self.push_text(&" ".repeat(trail_padding));
                         }
-                        self.push_text(" ");
                         self.print_docs(trail, mode);
                     }
                 }
@@ -436,11 +494,11 @@ impl Printer {
 
                     if let Some(trail) = trailing {
                         let content_width = ir_flat_width(content);
-                        let trail_padding = max_content_width.saturating_sub(content_width);
+                        let trail_padding =
+                            self.trailing_comment_padding(content_width, max_content_width);
                         if trail_padding > 0 {
                             self.push_text(&" ".repeat(trail_padding));
                         }
-                        self.push_text(" ");
                         self.print_docs(trail, mode);
                     }
                 }

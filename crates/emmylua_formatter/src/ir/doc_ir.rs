@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use emmylua_parser::{LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
+use rowan::{SyntaxText, TextSize};
 use smol_str::SmolStr;
 
 /// Group identifier for querying break state across groups
@@ -11,6 +13,15 @@ pub struct GroupId(pub(crate) u32);
 pub enum DocIR {
     /// Raw text fragment
     Text(SmolStr),
+
+    /// Raw source text emitted directly from an existing syntax node.
+    SourceNode { node: LuaSyntaxNode, trim_end: bool },
+
+    /// Raw source text emitted directly from an existing syntax token.
+    SourceToken(LuaSyntaxToken),
+
+    /// Stable syntax token emitted from LuaTokenKind
+    SyntaxToken(LuaTokenKind),
 
     /// Hard line break — always emits a newline regardless of line width
     HardLine,
@@ -84,15 +95,86 @@ pub enum AlignEntry {
 }
 
 /// Compute the flat (single-line) width of an IR slice.
-/// Only handles simple nodes (Text, Space, List); other nodes contribute 0.
-/// This is safe for alignment `before` parts which are always flat.
+///
+/// This follows the same rules the printer uses in flat mode so alignment logic
+/// can estimate columns even when content contains nested groups or indents.
 pub fn ir_flat_width(docs: &[DocIR]) -> usize {
     docs.iter()
         .map(|d| match d {
             DocIR::Text(s) => s.len(),
+            DocIR::SourceNode { node, trim_end } => {
+                let text = node.text();
+                syntax_text_len(&text, *trim_end)
+            }
+            DocIR::SourceToken(token) => token.text().len(),
+            DocIR::SyntaxToken(kind) => kind.syntax_text().map(str::len).unwrap_or(0),
+            DocIR::HardLine => 0,
+            DocIR::SoftLine => 1,
+            DocIR::SoftLineOrEmpty => 0,
             DocIR::Space => 1,
+            DocIR::Indent(items) => ir_flat_width(items),
+            DocIR::Group { contents, .. } => ir_flat_width(contents),
             DocIR::List(items) => ir_flat_width(items),
-            _ => 0,
+            DocIR::IfBreak { flat_contents, .. } => {
+                ir_flat_width(std::slice::from_ref(flat_contents.as_ref()))
+            }
+            DocIR::Fill { parts } => ir_flat_width(parts),
+            DocIR::LineSuffix(_) => 0,
+            DocIR::AlignGroup(group) => group
+                .entries
+                .iter()
+                .map(|entry| match entry {
+                    AlignEntry::Aligned {
+                        before,
+                        after,
+                        trailing,
+                    } => {
+                        let mut width = ir_flat_width(before) + ir_flat_width(after);
+                        if let Some(trail) = trailing {
+                            width += 1 + ir_flat_width(trail);
+                        }
+                        width
+                    }
+                    AlignEntry::Line { content, trailing } => {
+                        let mut width = ir_flat_width(content);
+                        if let Some(trail) = trailing {
+                            width += 1 + ir_flat_width(trail);
+                        }
+                        width
+                    }
+                })
+                .max()
+                .unwrap_or(0),
         })
         .sum()
+}
+
+pub fn syntax_text_len(text: &SyntaxText, trim_end: bool) -> usize {
+    let len = text.len();
+    let end = if trim_end {
+        syntax_text_trimmed_end(text)
+    } else {
+        len
+    };
+
+    let width: u32 = end.into();
+    width as usize
+}
+
+pub fn syntax_text_trimmed_end(text: &SyntaxText) -> TextSize {
+    let mut trailing_len = 0usize;
+
+    text.for_each_chunk(|chunk| {
+        let trimmed_len = chunk.trim_end_matches(['\r', '\n', ' ', '\t']).len();
+        if trimmed_len == chunk.len() {
+            trailing_len = 0;
+        } else if trimmed_len == 0 {
+            trailing_len += chunk.len();
+        } else {
+            trailing_len = chunk.len() - trimmed_len;
+        }
+    });
+
+    let trailing_size = TextSize::from(trailing_len as u32);
+    text.len() - trailing_size
 }

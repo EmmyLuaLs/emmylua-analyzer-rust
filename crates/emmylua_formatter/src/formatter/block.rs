@@ -25,6 +25,156 @@ impl BlockChild {
     }
 }
 
+fn same_stat_kind(left: &LuaStat, right: &LuaStat) -> bool {
+    std::mem::discriminant(left) == std::mem::discriminant(right)
+}
+
+fn should_break_on_blank_lines(child: &BlockChild) -> bool {
+    count_blank_lines_before(child.syntax()) > 0
+}
+
+fn can_join_comment_alignment_group(
+    ctx: &FormatContext,
+    anchor: &LuaStat,
+    child: &BlockChild,
+) -> bool {
+    if should_break_on_blank_lines(child) {
+        return false;
+    }
+
+    match child {
+        BlockChild::Comment(_) => ctx.config.comments.align_across_standalone_comments,
+        BlockChild::Statement(next_stat) => {
+            if extract_trailing_comment(next_stat.syntax()).is_none() {
+                return false;
+            }
+            if ctx.config.comments.align_same_kind_only && !same_stat_kind(anchor, next_stat) {
+                return false;
+            }
+            true
+        }
+    }
+}
+
+fn can_join_eq_alignment_group(ctx: &FormatContext, anchor: &LuaStat, child: &BlockChild) -> bool {
+    if should_break_on_blank_lines(child) {
+        return false;
+    }
+
+    match child {
+        BlockChild::Comment(_) => ctx.config.comments.align_across_standalone_comments,
+        BlockChild::Statement(next_stat) => {
+            if !is_eq_alignable(next_stat) {
+                return false;
+            }
+            if ctx.config.comments.align_same_kind_only && !same_stat_kind(anchor, next_stat) {
+                return false;
+            }
+            true
+        }
+    }
+}
+
+fn build_eq_alignment_entries(
+    ctx: &FormatContext,
+    children: &[BlockChild],
+    consumed_comment_ranges: &mut Vec<TextRange>,
+) -> Vec<AlignEntry> {
+    let mut entries = Vec::new();
+
+    for child in children {
+        match child {
+            BlockChild::Comment(comment) => {
+                if consumed_comment_ranges
+                    .iter()
+                    .any(|range| *range == comment.syntax().text_range())
+                {
+                    continue;
+                }
+                entries.push(AlignEntry::Line {
+                    content: format_comment(ctx.config, comment),
+                    trailing: None,
+                });
+            }
+            BlockChild::Statement(stat) => {
+                let trailing = if ctx.config.should_align_statement_line_comments() {
+                    extract_trailing_comment(stat.syntax()).map(|(trail_docs, range)| {
+                        consumed_comment_ranges.push(range);
+                        trail_docs
+                    })
+                } else {
+                    None
+                };
+
+                if let Some((before, mut after)) = format_stat_eq_split(ctx, stat) {
+                    if trailing.is_none()
+                        && let Some((trailing_ir, range)) =
+                            format_trailing_comment(ctx.config, stat.syntax())
+                    {
+                        after.push(trailing_ir);
+                        consumed_comment_ranges.push(range);
+                    }
+                    entries.push(AlignEntry::Aligned {
+                        before,
+                        after,
+                        trailing,
+                    });
+                } else {
+                    let mut content = format_stat(ctx, stat);
+                    if trailing.is_none()
+                        && let Some((trailing_ir, range)) =
+                            format_trailing_comment(ctx.config, stat.syntax())
+                    {
+                        content.push(trailing_ir);
+                        consumed_comment_ranges.push(range);
+                    }
+                    entries.push(AlignEntry::Line { content, trailing });
+                }
+            }
+        }
+    }
+
+    entries
+}
+
+fn build_comment_alignment_entries(
+    ctx: &FormatContext,
+    children: &[BlockChild],
+    consumed_comment_ranges: &mut Vec<TextRange>,
+) -> Vec<AlignEntry> {
+    let mut entries = Vec::new();
+
+    for child in children {
+        match child {
+            BlockChild::Comment(comment) => {
+                if consumed_comment_ranges
+                    .iter()
+                    .any(|range| *range == comment.syntax().text_range())
+                {
+                    continue;
+                }
+                entries.push(AlignEntry::Line {
+                    content: format_comment(ctx.config, comment),
+                    trailing: None,
+                });
+            }
+            BlockChild::Statement(stat) => {
+                let trailing =
+                    extract_trailing_comment(stat.syntax()).map(|(trail_docs, range)| {
+                        consumed_comment_ranges.push(range);
+                        trail_docs
+                    });
+                entries.push(AlignEntry::Line {
+                    content: format_stat(ctx, stat),
+                    trailing,
+                });
+            }
+        }
+    }
+
+    entries
+}
+
 /// Format a block (statement list + blank line normalization + comment handling).
 ///
 /// Iterates all child nodes of the Block (including Statements and Comments),
@@ -32,7 +182,6 @@ impl BlockChild {
 /// When `=` alignment is enabled, consecutive alignable statements are grouped
 /// into an AlignGroup IR node so the Printer can align their `=` signs.
 pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
-    // Pass 1: collect all children
     let children: Vec<BlockChild> = block
         .syntax()
         .children()
@@ -44,7 +193,6 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
         })
         .collect();
 
-    // Pass 2: emit IR, grouping consecutive alignable statements
     let mut docs: Vec<DocIR> = Vec::new();
     let mut is_first = true;
     let mut consumed_comment_ranges: Vec<TextRange> = Vec::new();
@@ -63,13 +211,13 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
 
                 if !is_first {
                     let blank_lines = count_blank_lines_before(comment.syntax());
-                    let normalized = blank_lines.min(ctx.config.max_blank_lines);
+                    let normalized = blank_lines.min(ctx.config.layout.max_blank_lines);
                     for _ in 0..normalized {
                         docs.push(ir::hard_line());
                     }
                 }
 
-                docs.extend(format_comment(comment));
+                docs.extend(format_comment(ctx.config, comment));
 
                 if !is_first || !docs.is_empty() {
                     docs.push(ir::hard_line());
@@ -79,85 +227,38 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
             }
             BlockChild::Statement(stat) => {
                 // Try to form an alignment group if enabled
-                if ctx.config.align_continuous_assign_statement && is_eq_alignable(stat) {
+                if ctx.config.align.continuous_assign_statement && is_eq_alignable(stat) {
                     let group_start = i;
                     let mut group_end = i + 1;
-
-                    // Scan forward for consecutive alignable statements (no blank lines between).
-                    // Skip interleaved Comment children (they're trailing comments consumed later).
                     while group_end < children.len() {
-                        match &children[group_end] {
-                            BlockChild::Statement(next_stat) => {
-                                if is_eq_alignable(next_stat) {
-                                    let blank_lines = count_blank_lines_before(next_stat.syntax());
-                                    if blank_lines == 0 {
-                                        group_end += 1;
-                                        continue;
-                                    }
-                                }
-                                break;
-                            }
-                            BlockChild::Comment(_) => {
-                                // Skip trailing comment nodes when scanning for alignment group
-                                group_end += 1;
-                                continue;
-                            }
+                        if can_join_eq_alignment_group(ctx, stat, &children[group_end]) {
+                            group_end += 1;
+                        } else {
+                            break;
                         }
                     }
 
-                    if group_end - group_start >= 2 {
+                    let stmt_count = children[group_start..group_end]
+                        .iter()
+                        .filter(|child| matches!(child, BlockChild::Statement(_)))
+                        .count();
+
+                    if stmt_count >= 2 {
                         // Emit = alignment group
                         if !is_first {
                             let blank_lines =
                                 count_blank_lines_before(children[group_start].syntax());
-                            let normalized = blank_lines.min(ctx.config.max_blank_lines);
+                            let normalized = blank_lines.min(ctx.config.layout.max_blank_lines);
                             for _ in 0..normalized {
                                 docs.push(ir::hard_line());
                             }
                         }
 
-                        let mut entries = Vec::new();
-                        for child in children.iter().take(group_end).skip(group_start) {
-                            if let BlockChild::Statement(s) = child {
-                                // Extract trailing comment for IR-level alignment
-                                let trailing = if ctx.config.align_continuous_line_comment {
-                                    extract_trailing_comment(s.syntax()).map(
-                                        |(trail_docs, range)| {
-                                            consumed_comment_ranges.push(range);
-                                            trail_docs
-                                        },
-                                    )
-                                } else {
-                                    None
-                                };
-
-                                if let Some((before, mut after)) = format_stat_eq_split(ctx, s) {
-                                    // When not using trailing alignment, attach as LineSuffix
-                                    if trailing.is_none()
-                                        && let Some((trailing_ir, range)) =
-                                            format_trailing_comment(s.syntax())
-                                    {
-                                        after.push(trailing_ir);
-                                        consumed_comment_ranges.push(range);
-                                    }
-                                    entries.push(AlignEntry::Aligned {
-                                        before,
-                                        after,
-                                        trailing,
-                                    });
-                                } else {
-                                    let mut content = format_stat(ctx, s);
-                                    if trailing.is_none()
-                                        && let Some((trailing_ir, range)) =
-                                            format_trailing_comment(s.syntax())
-                                    {
-                                        content.push(trailing_ir);
-                                        consumed_comment_ranges.push(range);
-                                    }
-                                    entries.push(AlignEntry::Line { content, trailing });
-                                }
-                            }
-                        }
+                        let entries = build_eq_alignment_entries(
+                            ctx,
+                            &children[group_start..group_end],
+                            &mut consumed_comment_ranges,
+                        );
 
                         docs.push(ir::align_group(entries));
                         docs.push(ir::hard_line());
@@ -168,28 +269,16 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
                 }
 
                 // Try to form a comment-only alignment group
-                if ctx.config.align_continuous_line_comment
+                if ctx.config.should_align_statement_line_comments()
                     && extract_trailing_comment(stat.syntax()).is_some()
                 {
                     let group_start = i;
                     let mut group_end = i + 1;
                     while group_end < children.len() {
-                        match &children[group_end] {
-                            BlockChild::Statement(next_stat) => {
-                                let blank_lines = count_blank_lines_before(next_stat.syntax());
-                                if blank_lines > 0 {
-                                    break;
-                                }
-                                if extract_trailing_comment(next_stat.syntax()).is_some() {
-                                    group_end += 1;
-                                } else {
-                                    break;
-                                }
-                            }
-                            BlockChild::Comment(_) => {
-                                group_end += 1;
-                                continue;
-                            }
+                        if can_join_comment_alignment_group(ctx, stat, &children[group_end]) {
+                            group_end += 1;
+                        } else {
+                            break;
                         }
                     }
 
@@ -202,27 +291,17 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
                         if !is_first {
                             let blank_lines =
                                 count_blank_lines_before(children[group_start].syntax());
-                            let normalized = blank_lines.min(ctx.config.max_blank_lines);
+                            let normalized = blank_lines.min(ctx.config.layout.max_blank_lines);
                             for _ in 0..normalized {
                                 docs.push(ir::hard_line());
                             }
                         }
 
-                        let mut entries = Vec::new();
-                        for child in children.iter().take(group_end).skip(group_start) {
-                            if let BlockChild::Statement(s) = child {
-                                let trailing = extract_trailing_comment(s.syntax()).map(
-                                    |(trail_docs, range)| {
-                                        consumed_comment_ranges.push(range);
-                                        trail_docs
-                                    },
-                                );
-                                entries.push(AlignEntry::Line {
-                                    content: format_stat(ctx, s),
-                                    trailing,
-                                });
-                            }
-                        }
+                        let entries = build_comment_alignment_entries(
+                            ctx,
+                            &children[group_start..group_end],
+                            &mut consumed_comment_ranges,
+                        );
 
                         docs.push(ir::align_group(entries));
                         docs.push(ir::hard_line());
@@ -235,7 +314,7 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
                 // Normal (non-aligned) statement
                 if !is_first {
                     let blank_lines = count_blank_lines_before(stat.syntax());
-                    let normalized = blank_lines.min(ctx.config.max_blank_lines);
+                    let normalized = blank_lines.min(ctx.config.layout.max_blank_lines);
                     for _ in 0..normalized {
                         docs.push(ir::hard_line());
                     }
@@ -244,7 +323,9 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
                 let stat_docs = format_stat(ctx, stat);
                 docs.extend(stat_docs);
 
-                if let Some((trailing_ir, range)) = format_trailing_comment(stat.syntax()) {
+                if let Some((trailing_ir, range)) =
+                    format_trailing_comment(ctx.config, stat.syntax())
+                {
                     docs.push(trailing_ir);
                     consumed_comment_ranges.push(range);
                 }

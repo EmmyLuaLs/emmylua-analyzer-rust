@@ -1,12 +1,13 @@
 use std::{
     fs,
     io::{self, Read, Write},
-    path::PathBuf,
     process::exit,
 };
 
 use clap::Parser;
-use emmylua_formatter::{LuaFormatConfig, cmd_args, reformat_lua_code};
+use emmylua_formatter::{
+    cmd_args, collect_lua_files, default_config_toml, format_file, format_text_for_path,
+};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -17,45 +18,23 @@ fn read_stdin_to_string() -> io::Result<String> {
     Ok(s)
 }
 
-fn format_content(content: &str, style: &LuaFormatConfig) -> String {
-    reformat_lua_code(content, style)
-}
-
-#[allow(unused)]
-fn process_file(
-    path: &PathBuf,
-    style: &LuaFormatConfig,
-    write: bool,
-    list_diff: bool,
-) -> io::Result<(bool, Option<String>)> {
-    let original = fs::read_to_string(path)?;
-    let formatted = format_content(&original, style);
-    let changed = formatted != original;
-
-    if write && changed {
-        fs::write(path, formatted)?;
-        return Ok((true, None));
-    }
-
-    if list_diff && changed {
-        return Ok((true, Some(path.to_string_lossy().to_string())));
-    }
-
-    Ok((changed, None))
-}
-
 fn main() {
     let args = cmd_args::CliArgs::parse();
 
-    let mut exit_code = 0;
-
-    let style = match cmd_args::resolve_style(&args) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            exit(2);
+    if args.dump_default_config {
+        match default_config_toml() {
+            Ok(config) => {
+                println!("{config}");
+                exit(0);
+            }
+            Err(e) => {
+                eprintln!("Error: {e}");
+                exit(2);
+            }
         }
-    };
+    }
+
+    let mut exit_code = 0;
 
     let is_stdin = args.stdin || args.paths.is_empty();
 
@@ -68,15 +47,21 @@ fn main() {
             }
         };
 
-        let formatted = format_content(&content, &style);
-        let changed = formatted != content;
+        let result = match format_text_for_path(&content, None, args.config.as_deref()) {
+            Ok(result) => result,
+            Err(err) => {
+                eprintln!("Error: {err}");
+                exit(2);
+            }
+        };
+        let changed = result.output.changed;
 
         if args.check || args.list_different {
             if changed {
                 exit_code = 1;
             }
         } else if let Some(out) = &args.output {
-            if let Err(e) = fs::write(out, formatted) {
+            if let Err(e) = fs::write(out, result.output.formatted) {
                 eprintln!("Failed to write output to {out:?}: {e}");
                 exit(2);
             }
@@ -85,7 +70,7 @@ fn main() {
             exit(2);
         } else {
             let mut stdout = io::stdout();
-            if let Err(e) = stdout.write_all(formatted.as_bytes()) {
+            if let Err(e) = stdout.write_all(result.output.formatted.as_bytes()) {
                 eprintln!("Failed to write to stdout: {e}");
                 exit(2);
             }
@@ -94,66 +79,66 @@ fn main() {
         exit(exit_code);
     }
 
-    if args.paths.len() > 1 && args.output.is_some() {
+    if args.output.is_some() && args.paths.len() != 1 {
         eprintln!("--output can only be used with a single input or stdin");
         exit(2);
     }
 
-    if args.paths.len() > 1 && !(args.write || args.check || args.list_different) {
-        eprintln!("Multiple inputs require --write or --check");
+    let file_options = cmd_args::build_file_collector_options(&args);
+    let files = match collect_lua_files(&args.paths, &file_options) {
+        Ok(files) => files,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            exit(2);
+        }
+    };
+
+    if files.len() > 1 && !(args.write || args.check || args.list_different) {
+        eprintln!("Multiple matched files require --write, --check, or --list-different");
+        exit(2);
+    }
+
+    if files.is_empty() {
+        eprintln!("No Lua files matched the provided inputs");
         exit(2);
     }
 
     let mut different_paths: Vec<String> = Vec::new();
 
-    for path in &args.paths {
-        match fs::metadata(path) {
-            Ok(meta) => {
-                if !meta.is_file() {
-                    eprintln!("Skipping non-file path: {}", path.to_string_lossy());
-                    continue;
-                }
-            }
-            Err(e) => {
-                eprintln!("Cannot access {}: {e}", path.to_string_lossy());
-                exit_code = 2;
-                continue;
-            }
-        }
-
-        match fs::read_to_string(path) {
-            Ok(original) => {
-                let formatted = format_content(&original, &style);
-                let changed = formatted != original;
+    for path in &files {
+        match format_file(path, args.config.as_deref()) {
+            Ok(result) => {
+                let output = result.output;
 
                 if args.check || args.list_different {
-                    if changed {
+                    if output.changed {
                         exit_code = 1;
                         if args.list_different {
                             different_paths.push(path.to_string_lossy().to_string());
                         }
                     }
                 } else if args.write {
-                    if changed && let Err(e) = fs::write(path, formatted) {
+                    if output.changed
+                        && let Err(e) = fs::write(path, output.formatted)
+                    {
                         eprintln!("Failed to write {}: {e}", path.to_string_lossy());
                         exit_code = 2;
                     }
                 } else if let Some(out) = &args.output {
-                    if let Err(e) = fs::write(out, formatted) {
+                    if let Err(e) = fs::write(out, output.formatted) {
                         eprintln!("Failed to write output to {out:?}: {e}");
                         exit(2);
                     }
                 } else {
-                    // Single file without write/check: print to stdout
                     let mut stdout = io::stdout();
-                    if let Err(e) = stdout.write_all(formatted.as_bytes()) {
+                    if let Err(e) = stdout.write_all(output.formatted.as_bytes()) {
                         eprintln!("Failed to write to stdout: {e}");
                         exit(2);
                     }
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to read {}: {e}", path.to_string_lossy());
+            Err(err) => {
+                eprintln!("Failed to format {}: {err}", path.to_string_lossy());
                 exit_code = 2;
             }
         }

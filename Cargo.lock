@@ -693,12 +693,15 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "emmylua_parser",
+ "glob",
  "mimalloc",
  "rowan",
  "serde",
  "serde_json",
  "serde_yml",
  "smol_str",
+ "toml_edit",
+ "walkdir",
 ]
 
 [[package]]

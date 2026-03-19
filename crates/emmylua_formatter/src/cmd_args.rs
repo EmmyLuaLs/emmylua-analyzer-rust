@@ -1,14 +1,14 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::{ArgGroup, Parser};
 
-use crate::config::{IndentStyle, LuaFormatConfig};
+use crate::{FileCollectorOptions, IndentKind, ResolvedConfig, resolve_config_for_path};
 
 #[derive(Debug, Clone, Parser)]
 #[command(
-    name = "emmylua_format",
+    name = "luafmt",
     version,
-    about = "Format Lua source code using EmmyLua code style rules",
+    about = "Format Lua source code with structured EmmyLua formatter settings",
     disable_help_subcommand = true
 )]
 #[command(group(
@@ -41,9 +41,13 @@ pub struct CliArgs {
     #[arg(short, long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
     pub output: Option<PathBuf>,
 
-    /// Load style config from a file (json/yml/yaml)
+    /// Load style config from a file (toml/json/yml/yaml)
     #[arg(long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
     pub config: Option<PathBuf>,
+
+    /// Print the default configuration as TOML and exit
+    #[arg(long)]
+    pub dump_default_config: bool,
 
     /// Use tabs for indentation
     #[arg(long)]
@@ -56,47 +60,64 @@ pub struct CliArgs {
     /// Set maximum line width
     #[arg(long, value_name = "N")]
     pub max_line_width: Option<usize>,
+
+    /// Recurse into directories to find Lua files
+    #[arg(long, default_value_t = true)]
+    pub recursive: bool,
+
+    /// Include hidden files and directories
+    #[arg(long)]
+    pub include_hidden: bool,
+
+    /// Follow symlinks while walking directories
+    #[arg(long)]
+    pub follow_symlinks: bool,
+
+    /// Disable .luafmtignore support
+    #[arg(long)]
+    pub no_ignore: bool,
+
+    /// Include files matching an additional glob pattern
+    #[arg(long, value_name = "GLOB")]
+    pub include: Vec<String>,
+
+    /// Exclude files matching a glob pattern
+    #[arg(long, value_name = "GLOB")]
+    pub exclude: Vec<String>,
 }
 
-pub fn resolve_style(args: &CliArgs) -> Result<LuaFormatConfig, String> {
-    let mut style = if let Some(cfg) = &args.config {
-        let content = fs::read_to_string(cfg)
-            .map_err(|e| format!("failed to read config: {}: {e}", cfg.to_string_lossy()))?;
-        let ext = cfg
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase())
-            .unwrap_or_default();
-        match ext.as_str() {
-            "json" => serde_json::from_str::<LuaFormatConfig>(&content)
-                .map_err(|e| format!("failed to parse JSON config: {e}"))?,
-            "yml" | "yaml" => serde_yml::from_str::<LuaFormatConfig>(&content)
-                .map_err(|e| format!("failed to parse YAML config: {e}"))?,
-            _ => {
-                // Unknown extension, try JSON first then YAML
-                match serde_json::from_str::<LuaFormatConfig>(&content) {
-                    Ok(v) => v,
-                    Err(_) => serde_yml::from_str::<LuaFormatConfig>(&content).map_err(|e| {
-                        format!("unknown extension, failed to parse as JSON/YAML: {e}")
-                    })?,
-                }
-            }
-        }
-    } else {
-        LuaFormatConfig::default()
-    };
+pub fn resolve_style(args: &CliArgs) -> Result<ResolvedConfig, String> {
+    let mut resolved = resolve_config_for_path(
+        args.paths.first().map(PathBuf::as_path),
+        args.config.as_deref(),
+    )
+    .map_err(|err| err.to_string())?;
 
     // Indent overrides
     match (args.tab, args.spaces) {
         (true, Some(_)) => return Err("--tab and --spaces are mutually exclusive".into()),
-        (true, None) => style.indent_style = IndentStyle::Tab,
-        (false, Some(n)) => style.indent_style = IndentStyle::Space(n),
+        (true, None) => resolved.config.indent.kind = IndentKind::Tab,
+        (false, Some(n)) => {
+            resolved.config.indent.kind = IndentKind::Space;
+            resolved.config.indent.width = n;
+        }
         _ => {}
     }
 
     if let Some(w) = args.max_line_width {
-        style.max_line_width = w;
+        resolved.config.layout.max_line_width = w;
     }
 
-    Ok(style)
+    Ok(resolved)
+}
+
+pub fn build_file_collector_options(args: &CliArgs) -> FileCollectorOptions {
+    FileCollectorOptions {
+        recursive: args.recursive,
+        include_hidden: args.include_hidden,
+        follow_symlinks: args.follow_symlinks,
+        respect_ignore_files: !args.no_ignore,
+        include: args.include.clone(),
+        exclude: args.exclude.clone(),
+    }
 }

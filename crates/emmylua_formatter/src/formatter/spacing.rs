@@ -48,7 +48,7 @@ pub fn space_around_binary_op(op: BinaryOperator, config: &LuaFormatConfig) -> S
         | BinaryOperator::OpIDiv
         | BinaryOperator::OpMod
         | BinaryOperator::OpPow => {
-            if config.space_around_math_operator {
+            if config.spacing.space_around_math_operator {
                 SpaceRule::Space
             } else {
                 SpaceRule::NoSpace
@@ -68,7 +68,7 @@ pub fn space_around_binary_op(op: BinaryOperator, config: &LuaFormatConfig) -> S
 
         // Concatenation: ..
         BinaryOperator::OpConcat => {
-            if config.space_around_concat_operator {
+            if config.spacing.space_around_concat_operator {
                 SpaceRule::Space
             } else {
                 SpaceRule::NoSpace
@@ -88,7 +88,7 @@ pub fn space_around_binary_op(op: BinaryOperator, config: &LuaFormatConfig) -> S
 
 /// Resolve spacing around the assignment `=` operator.
 pub fn space_around_assign(config: &LuaFormatConfig) -> SpaceRule {
-    if config.space_around_assign_operator {
+    if config.spacing.space_around_assign_operator {
         SpaceRule::Space
     } else {
         SpaceRule::NoSpace

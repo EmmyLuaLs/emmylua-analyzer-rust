@@ -2,6 +2,8 @@ use smol_str::SmolStr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use emmylua_parser::{LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind};
+
 use super::{AlignEntry, AlignGroupData, DocIR, GroupId};
 
 static NEXT_GROUP_ID: AtomicU32 = AtomicU32::new(0);
@@ -12,6 +14,28 @@ pub fn next_group_id() -> GroupId {
 
 pub fn text(s: impl Into<SmolStr>) -> DocIR {
     DocIR::Text(s.into())
+}
+
+pub fn source_node(node: LuaSyntaxNode) -> DocIR {
+    DocIR::SourceNode {
+        node,
+        trim_end: false,
+    }
+}
+
+pub fn source_node_trimmed(node: LuaSyntaxNode) -> DocIR {
+    DocIR::SourceNode {
+        node,
+        trim_end: true,
+    }
+}
+
+pub fn source_token(token: LuaSyntaxToken) -> DocIR {
+    DocIR::SourceToken(token)
+}
+
+pub fn syntax_token(kind: LuaTokenKind) -> DocIR {
+    DocIR::SyntaxToken(kind)
 }
 
 pub fn space() -> DocIR {
