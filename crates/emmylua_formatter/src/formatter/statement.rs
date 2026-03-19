@@ -88,17 +88,23 @@ fn format_local_stat(ctx: &FormatContext, stat: &LuaLocalStat) -> Vec<DocIR> {
         let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
         let separated = ir::intersperse(expr_docs, comma_space_sep());
 
-        // Keep the RHS width-driven so short values stay inline while long
-        // values can still break after `=`.
-        let break_or_space = if ctx.config.spacing.space_around_assign_operator {
-            ir::soft_line()
+        // Keep block-like / preserved multiline RHS heads attached to `=` while
+        // ordinary expressions remain width-driven.
+        if exprs.len() == 1 && should_attach_single_value_head(&exprs[0]) {
+            let assign_space_after = space_around_assign(ctx.config).to_ir();
+            docs.push(assign_space_after);
+            docs.push(ir::list(separated));
         } else {
-            ir::soft_line_or_empty()
-        };
-        docs.push(ir::group(vec![ir::indent(vec![
-            break_or_space,
-            ir::list(separated),
-        ])]));
+            let break_or_space = if ctx.config.spacing.space_around_assign_operator {
+                ir::soft_line()
+            } else {
+                ir::soft_line_or_empty()
+            };
+            docs.push(ir::group(vec![ir::indent(vec![
+                break_or_space,
+                ir::list(separated),
+            ])]));
+        }
     }
 
     docs
@@ -135,17 +141,23 @@ fn format_assign_stat(ctx: &FormatContext, stat: &LuaAssignStat) -> Vec<DocIR> {
     let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
     let separated = ir::intersperse(expr_docs, vec![tok(LuaTokenKind::TkComma), ir::space()]);
 
-    // Keep the RHS width-driven so short values stay inline while long values
-    // can still break after the assignment operator.
-    let break_or_space = if ctx.config.spacing.space_around_assign_operator {
-        ir::soft_line()
+    // Keep block-like / preserved multiline RHS heads attached to the operator
+    // while ordinary expressions remain width-driven.
+    if exprs.len() == 1 && should_attach_single_value_head(&exprs[0]) {
+        let assign_space_after = space_around_assign(ctx.config).to_ir();
+        docs.push(assign_space_after);
+        docs.push(ir::list(separated));
     } else {
-        ir::soft_line_or_empty()
-    };
-    docs.push(ir::group(vec![ir::indent(vec![
-        break_or_space,
-        ir::list(separated),
-    ])]));
+        let break_or_space = if ctx.config.spacing.space_around_assign_operator {
+            ir::soft_line()
+        } else {
+            ir::soft_line_or_empty()
+        };
+        docs.push(ir::group(vec![ir::indent(vec![
+            break_or_space,
+            ir::list(separated),
+        ])]));
+    }
 
     docs
 }
@@ -854,7 +866,8 @@ fn try_preserve_single_line_if_body(ctx: &FormatContext, stat: &LuaIfStat) -> Op
         return None;
     }
 
-    if stat.syntax().text().len() > ctx.config.layout.max_line_width {
+    let text_len: u32 = stat.syntax().text().len().into();
+    if text_len as usize > ctx.config.layout.max_line_width {
         return None;
     }
 
@@ -1361,10 +1374,15 @@ fn format_return_stat(ctx: &FormatContext, stat: &LuaReturnStat) -> Vec<DocIR> {
         let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
         let separated = ir::intersperse(expr_docs, vec![tok(LuaTokenKind::TkComma), ir::space()]);
 
-        docs.push(ir::group(vec![ir::indent(vec![
-            ir::soft_line(),
-            ir::list(separated),
-        ])]));
+        if exprs.len() == 1 && should_attach_single_value_head(&exprs[0]) {
+            docs.push(ir::space());
+            docs.push(ir::list(separated));
+        } else {
+            docs.push(ir::group(vec![ir::indent(vec![
+                ir::soft_line(),
+                ir::list(separated),
+            ])]));
+        }
     }
 
     docs
@@ -1573,6 +1591,10 @@ fn format_block_or_orphan_comments(
 /// Expressions with their own block structure (function/table), should not break at alignment-only paths.
 fn is_block_like_expr(expr: &LuaExpr) -> bool {
     matches!(expr, LuaExpr::ClosureExpr(_) | LuaExpr::TableExpr(_))
+}
+
+fn should_attach_single_value_head(expr: &LuaExpr) -> bool {
+    is_block_like_expr(expr) || expr.syntax().text().contains_char('\n')
 }
 
 fn should_preserve_raw_empty_loop_with_comments(

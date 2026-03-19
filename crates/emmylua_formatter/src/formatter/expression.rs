@@ -1525,8 +1525,7 @@ pub fn format_params_ir(ctx: &FormatContext, params: &emmylua_parser::LuaParamLi
             ExpandStrategy::Auto => {
                 if preserve_multiline_layout {
                     vec![ir::group_break(vec![
-                        ir::hard_line(),
-                        ir::indent(inner),
+                        ir::indent(vec![ir::hard_line(), ir::list(inner)]),
                         ir::hard_line(),
                     ])]
                 } else {
