@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Write};
 
 use itertools::Itertools;
@@ -306,12 +306,25 @@ impl<'a> TypeHumanizer<'a> {
             return Ok(());
         }
 
-        // Collect keys present in the table literal
+        // Collect keys present in the table literal, along with their types
         let literal_owner = LuaMemberOwner::Element(ins.get_range().clone());
         let member_index = self.db.get_member_index();
-        let literal_keys: HashSet<LuaMemberKey> = member_index
+        let literal_keys: HashMap<LuaMemberKey, LuaType> = member_index
             .get_sorted_members(&literal_owner)
-            .map(|members| members.iter().map(|m| m.get_key().clone()).collect())
+            .map(|members| {
+                members
+                    .iter()
+                    .map(|m| {
+                        let ty = self
+                            .db
+                            .get_type_index()
+                            .get_type_cache(&m.get_id().into())
+                            .map(|tc| tc.as_type().clone())
+                            .unwrap_or(LuaType::Any);
+                        (m.get_key().clone(), ty)
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         // Get class members
@@ -361,10 +374,16 @@ impl<'a> TypeHumanizer<'a> {
         let mut count = 0;
         for (member_key, typ) in &member_vec {
             w.write_str("    ")?;
-            if literal_keys.contains(member_key) {
-                // Field provided in the literal: strip nil to remove optionality
-                let narrowed = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
-                self.write_table_member_field(member_key, &narrowed, saved, w)?;
+            if let Some(literal_ty) = literal_keys.get(member_key) {
+                if literal_ty.is_nullable() {
+                    // Literal value is nil/nullable — keep optional display
+                    let stripped = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                    self.write_optional_member_field(member_key, &stripped, saved, w)?;
+                } else {
+                    // Field provided with concrete value: strip nil
+                    let narrowed = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                    self.write_table_member_field(member_key, &narrowed, saved, w)?;
+                }
             } else if typ.is_nullable() {
                 // Optional field not provided: show as "name?: type" (without nil)
                 let stripped = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);

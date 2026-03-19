@@ -18,16 +18,6 @@ pub use semantic_guard::SemanticDeclGuard;
 
 use super::{LuaInferCache, infer_expr};
 
-fn is_class_type(db: &DbIndex, ty: &LuaType) -> bool {
-    let type_id = match ty {
-        LuaType::Ref(id) | LuaType::Def(id) => id,
-        _ => return false,
-    };
-    db.get_type_index()
-        .get_type_decl(type_id)
-        .is_some_and(|decl| decl.is_class())
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticInfo {
     pub typ: LuaType,
@@ -50,9 +40,9 @@ pub fn infer_token_semantic_info(
                 .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
             let mut typ = type_cache.as_type().clone();
 
-            // For LocalName with a class type and a non-empty table literal initializer,
-            // narrow to Instance to track which optional fields are provided.
-            if is_class_type(db, &typ) {
+            // Only narrow LocalName declarations — ForStat/ForRangeStat cannot have
+            // table literal initializers.
+            if matches!(parent.kind().into(), LuaSyntaxKind::LocalName) && typ.is_class_type(db) {
                 if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
                     if let Some(value_syntax_id) = decl.get_value_syntax_id() {
                         if let Some(node) =

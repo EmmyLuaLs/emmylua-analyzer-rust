@@ -366,11 +366,31 @@ mod test {
 
         // b is not provided in the literal, should remain integer? (nullable)
         let d_ty = ws.expr_ty("d");
-        assert!(
-            matches!(d_ty, LuaType::Union(_) | LuaType::Nil),
-            "expected nullable type for unprovided field, got {:?}",
-            d_ty
+        let expected = LuaType::Union(
+            LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into(),
         );
+        assert_eq!(d_ty, expected, "expected integer? for unprovided field");
+    }
+
+    #[test]
+    fn test_nil_literal_preserves_nullable() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class NilFieldTest
+        ---@field a? integer
+
+        ---@type NilFieldTest
+        local test = { a = nil }
+        x = test.a
+        "#,
+        );
+
+        let x_ty = ws.expr_ty("x");
+        let expected = LuaType::Union(
+            LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into(),
+        );
+        assert_eq!(x_ty, expected, "{{a = nil}} should keep a as integer?");
     }
 
     #[test]
