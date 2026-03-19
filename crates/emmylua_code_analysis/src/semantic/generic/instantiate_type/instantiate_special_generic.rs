@@ -60,6 +60,12 @@ pub fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
+            if operands[0].contain_tpl() || operands[1].contain_tpl() {
+                return LuaType::Call(
+                    LuaAliasCallType::new(LuaAliasCallKind::Extends, operands).into(),
+                );
+            }
+
             let compact = type_check::check_type_compact(db, &operands[0], &operands[1]).is_ok();
             LuaType::BooleanConst(compact)
         }
