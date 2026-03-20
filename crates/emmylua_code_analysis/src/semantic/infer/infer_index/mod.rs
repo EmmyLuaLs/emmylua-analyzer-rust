@@ -713,9 +713,7 @@ fn infer_instance_member(
                         // If the literal field is itself a table, wrap in Instance
                         // to preserve literal context for recursive member access.
                         if let LuaType::TableConst(nested_range) = table_type {
-                            LuaType::Instance(
-                                LuaInstanceType::new(base, nested_range).into(),
-                            )
+                            LuaType::Instance(LuaInstanceType::new(base, nested_range).into())
                         } else {
                             base
                         }

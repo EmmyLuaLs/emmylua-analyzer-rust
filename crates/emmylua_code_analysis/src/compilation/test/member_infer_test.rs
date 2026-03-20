@@ -366,9 +366,8 @@ mod test {
 
         // b is not provided in the literal, should remain integer? (nullable)
         let d_ty = ws.expr_ty("d");
-        let expected = LuaType::Union(
-            LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into(),
-        );
+        let expected =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into());
         assert_eq!(d_ty, expected, "expected integer? for unprovided field");
     }
 
@@ -387,9 +386,8 @@ mod test {
         );
 
         let x_ty = ws.expr_ty("x");
-        let expected = LuaType::Union(
-            LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into(),
-        );
+        let expected =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into());
         assert_eq!(x_ty, expected, "{{a = nil}} should keep a as integer?");
     }
 

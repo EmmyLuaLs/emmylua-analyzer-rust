@@ -320,4 +320,3 @@ fn try_infer_decl_initializer_type(
 
     Ok(init_type)
 }
-

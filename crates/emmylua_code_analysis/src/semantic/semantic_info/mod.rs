@@ -46,7 +46,7 @@ pub fn infer_token_semantic_info(
                 if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
                     if let Some(value_syntax_id) = decl.get_value_syntax_id() {
                         if let Some(node) =
-                            value_syntax_id.to_node_from_root(&parent.ancestors().last().unwrap())
+                            value_syntax_id.to_node_from_root(&parent.ancestors().last()?)
                         {
                             if let Some(expr) = LuaExpr::cast(node) {
                                 if let Ok(LuaType::TableConst(range)) = infer_expr(db, cache, expr)
