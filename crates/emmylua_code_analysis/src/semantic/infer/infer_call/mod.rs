@@ -841,4 +841,19 @@ mod tests {
         assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
         assert_eq!(ws.expr_ty("payload"), ws.ty("string"));
     }
+
+    #[test]
+    fn test_union_call_ignores_unresolved_alias_member() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@type MissingAlias | fun(): integer
+            local run
+
+            result = run()
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("integer"));
+    }
 }

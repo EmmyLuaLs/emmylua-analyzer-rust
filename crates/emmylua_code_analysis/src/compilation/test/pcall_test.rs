@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     const STACKED_PCALL_ALIAS_GUARDS: usize = 180;
 
@@ -198,5 +198,109 @@ mod test {
         assert_eq!(ws.expr_ty("outside"), ws.ty("unknown|string"));
         assert_eq!(ws.expr_ty("success"), ws.ty("unknown"));
         assert_eq!(ws.expr_ty("failure"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_return_overload_unions_callable_union_members_with_same_domain() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@alias FnA fun(x: integer): integer
+        ---@alias FnB fun(x: integer): boolean
+
+        ---@type FnA | FnB
+        local run
+
+        _, a = pcall(run, 1)
+        "#,
+        );
+
+        assert_eq!(
+            ws.expr_ty("a"),
+            LuaType::from_vec(vec![LuaType::Integer, LuaType::Boolean, LuaType::String])
+        );
+    }
+
+    #[test]
+    fn test_return_overload_callable_union_is_not_order_dependent() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@alias FnA fun(x: integer): integer
+        ---@alias FnB fun(x: integer): boolean
+
+        ---@type FnB | FnA
+        local run
+
+        _, a = pcall(run, 1)
+        "#,
+        );
+
+        assert_eq!(
+            ws.expr_ty("a"),
+            LuaType::from_vec(vec![LuaType::Integer, LuaType::Boolean, LuaType::String])
+        );
+    }
+
+    #[test]
+    fn test_return_overload_unions_callable_intersection_members_with_same_domain() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@alias FnA fun(x: integer): integer
+        ---@alias FnB fun(x: integer): boolean
+
+        ---@type FnA & FnB
+        local run
+
+        _, a = pcall(run, 1)
+        "#,
+        );
+
+        assert_eq!(
+            ws.expr_ty("a"),
+            LuaType::from_vec(vec![LuaType::Integer, LuaType::Boolean, LuaType::String])
+        );
+    }
+
+    #[test]
+    fn test_return_overload_narrows_callable_union_member_by_arg_shape() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@alias FnA fun(x: integer): integer
+        ---@alias FnB fun(x: string): integer
+
+        ---@type FnA | FnB
+        local run
+
+        _, a = pcall(run, 1)
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("a"), ws.ty("integer|string"));
+    }
+
+    #[test]
+    fn test_return_overload_narrows_callable_intersection_member_by_arg_shape() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@alias FnA fun(x: integer): integer
+        ---@alias FnB fun(x: string): boolean
+
+        ---@type FnA & FnB
+        local run
+
+        _, a = pcall(run, 1)
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("a"), ws.ty("integer|string"));
     }
 }

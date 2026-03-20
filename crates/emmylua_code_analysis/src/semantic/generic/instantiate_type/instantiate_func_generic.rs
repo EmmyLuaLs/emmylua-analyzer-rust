@@ -7,7 +7,7 @@ use std::{ops::Deref, sync::Arc};
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{
     DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
-    TypeVisitTrait,
+    TypeVisitTrait, check_type_compact,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
     semantic::{
@@ -22,6 +22,7 @@ use crate::{
         },
         infer::InferFailReason,
         infer_expr,
+        overload_resolve::resolve_signature_by_args,
     },
 };
 use crate::{
@@ -147,6 +148,157 @@ fn infer_return_from_callable(
     }
 }
 
+fn fallback_return_from_overloads(db: &DbIndex, overloads: &[Arc<LuaFunctionType>]) -> LuaType {
+    LuaType::from_vec(
+        overloads
+            .iter()
+            .map(|callable| {
+                let mut callable_tpls = HashSet::new();
+                callable.visit_type(&mut |ty| {
+                    if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
+                        callable_tpls.insert(generic_tpl.get_tpl_id());
+                    }
+                });
+
+                let mut callable_substitutor = TypeSubstitutor::new();
+                callable_substitutor.add_need_infer_tpls(callable_tpls);
+                infer_return_from_callable(db, callable, &callable_substitutor)
+            })
+            .collect(),
+    )
+}
+
+fn infer_callable_return_from_arg_types(
+    context: &mut TplContext,
+    callable_type: &LuaType,
+    call_arg_types: Option<&[LuaType]>,
+    fallback_on_no_match: bool,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let overloads = match callable_type {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => {
+            if let Some(origin_type) = context
+                .db
+                .get_type_index()
+                .get_type_decl(type_id)
+                .ok_or(InferFailReason::None)?
+                .get_alias_origin(context.db, None)
+            {
+                return infer_callable_return_from_arg_types(
+                    context,
+                    &origin_type,
+                    call_arg_types,
+                    fallback_on_no_match,
+                );
+            }
+            return Ok(None);
+        }
+        LuaType::Generic(generic) => {
+            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().to_vec());
+            if let Some(origin_type) = context
+                .db
+                .get_type_index()
+                .get_type_decl(&generic.get_base_type_id())
+                .ok_or(InferFailReason::None)?
+                .get_alias_origin(context.db, Some(&substitutor))
+            {
+                return infer_callable_return_from_arg_types(
+                    context,
+                    &origin_type,
+                    call_arg_types,
+                    fallback_on_no_match,
+                );
+            }
+            return Ok(None);
+        }
+        LuaType::Union(union) => {
+            let mut member_returns = Vec::new();
+            for member in union.into_vec() {
+                if let Some(member_return) =
+                    infer_callable_return_from_arg_types(context, &member, call_arg_types, false)?
+                {
+                    member_returns.push(member_return);
+                }
+            }
+            return Ok(if member_returns.is_empty() {
+                None
+            } else {
+                Some(LuaType::from_vec(member_returns))
+            });
+        }
+        LuaType::Intersection(intersection) => {
+            let mut member_returns = Vec::new();
+            for member in intersection.get_types() {
+                if let Some(member_return) =
+                    infer_callable_return_from_arg_types(context, member, call_arg_types, false)?
+                {
+                    member_returns.push(member_return);
+                }
+            }
+            return Ok(if member_returns.is_empty() {
+                None
+            } else {
+                Some(LuaType::from_vec(member_returns))
+            });
+        }
+        LuaType::DocFunction(doc_func) => vec![doc_func.clone()],
+        LuaType::Signature(sig_id) => {
+            let signature = context
+                .db
+                .get_signature_index()
+                .get(sig_id)
+                .ok_or(InferFailReason::None)?;
+            let mut overloads = signature.overloads.iter().cloned().collect::<Vec<_>>();
+            overloads.push(signature.to_doc_func_type());
+            overloads
+        }
+        _ => return Ok(None),
+    };
+
+    let Some(call_arg_types) = call_arg_types else {
+        return Ok(Some(fallback_return_from_overloads(context.db, &overloads)));
+    };
+
+    let instantiated_overloads = overloads
+        .iter()
+        .filter_map(|callable| {
+            instantiate_callable_from_arg_types(context, callable, call_arg_types)
+        })
+        .collect::<Vec<_>>();
+    if instantiated_overloads.is_empty() {
+        return Ok(if fallback_on_no_match {
+            Some(fallback_return_from_overloads(context.db, &overloads))
+        } else {
+            None
+        });
+    }
+
+    // Prefer candidates that produce an informative instantiated return over ones that only
+    // narrow to `unknown`. This keeps explicit `fun(...): unknown` callbacks aligned with
+    // unresolved closure returns while still preserving parameter-shape matching.
+    let preferred_overloads = instantiated_overloads
+        .iter()
+        .filter(|callable| !callable.get_ret().is_unknown())
+        .cloned()
+        .collect::<Vec<_>>();
+    let overloads_to_resolve = if preferred_overloads.is_empty() {
+        &instantiated_overloads
+    } else {
+        &preferred_overloads
+    };
+
+    Ok(Some(
+        resolve_signature_by_args(
+            context.db,
+            overloads_to_resolve,
+            call_arg_types,
+            false,
+            None,
+        )
+        .map(|callable| callable.get_ret().clone())
+        .unwrap_or_else(|_| fallback_return_from_overloads(context.db, &overloads)),
+    ))
+}
+
 pub fn infer_callable_return_from_remaining_args(
     context: &mut TplContext,
     callable_type: &LuaType,
@@ -156,9 +308,76 @@ pub fn infer_callable_return_from_remaining_args(
         return Ok(None);
     }
 
-    let Some(callable) = as_doc_function_type(context.db, callable_type)? else {
+    let call_arg_types =
+        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
+            Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
+            Err(_) => {
+                return infer_callable_return_from_arg_types(context, callable_type, None, true);
+            }
+        };
+    if call_arg_types.is_empty() {
         return Ok(None);
-    };
+    }
+
+    infer_callable_return_from_arg_types(context, callable_type, Some(&call_arg_types), true)
+}
+
+fn callable_matches_arg_types(
+    db: &DbIndex,
+    callable: &LuaFunctionType,
+    call_arg_types: &[LuaType],
+) -> bool {
+    let params = callable.get_params();
+    let param_len = params.len();
+    if param_len < call_arg_types.len() && !callable_last_param_is_variadic(callable) {
+        return false;
+    }
+
+    for (arg_index, call_arg_type) in call_arg_types.iter().enumerate() {
+        let mut param_index = arg_index;
+        if callable.is_colon_define() {
+            if param_index == 0 {
+                continue;
+            }
+            param_index -= 1;
+        }
+
+        let param_type = if let Some((_, ty)) = params.get(param_index) {
+            ty.clone().unwrap_or(LuaType::Any)
+        } else if let Some((name, ty)) = params.last() {
+            if name == "..." {
+                ty.clone().unwrap_or(LuaType::Any)
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        };
+
+        if !param_type.is_any() && check_type_compact(db, &param_type, call_arg_type).is_err() {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn callable_last_param_is_variadic(callable: &LuaFunctionType) -> bool {
+    if let Some((name, _)) = callable.get_params().last() {
+        name == "..."
+    } else {
+        false
+    }
+}
+
+fn instantiate_callable_from_arg_types(
+    context: &mut TplContext,
+    callable: &Arc<LuaFunctionType>,
+    call_arg_types: &[LuaType],
+) -> Option<Arc<LuaFunctionType>> {
+    if !callable_matches_arg_types(context.db, callable, call_arg_types) {
+        return None;
+    }
 
     let mut callable_tpls = HashSet::new();
     callable.visit_type(&mut |ty| {
@@ -167,20 +386,7 @@ pub fn infer_callable_return_from_remaining_args(
         }
     });
     if callable_tpls.is_empty() {
-        return Ok(Some(callable.get_ret().clone()));
-    }
-
-    let mut callable_substitutor = TypeSubstitutor::new();
-    callable_substitutor.add_need_infer_tpls(callable_tpls);
-    let fallback_return = infer_return_from_callable(context.db, &callable, &callable_substitutor);
-
-    let call_arg_types =
-        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
-            Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
-            Err(_) => return Ok(Some(fallback_return)),
-        };
-    if call_arg_types.is_empty() {
-        return Ok(None);
+        return Some(callable.clone());
     }
 
     let callable_param_types = callable
@@ -188,28 +394,36 @@ pub fn infer_callable_return_from_remaining_args(
         .iter()
         .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
         .collect::<Vec<_>>();
-
+    let mut callable_substitutor = TypeSubstitutor::new();
+    callable_substitutor.add_need_infer_tpls(callable_tpls.clone());
     let mut callable_context = TplContext {
         db: context.db,
         cache: context.cache,
         substitutor: &mut callable_substitutor,
         call_expr: context.call_expr.clone(),
     };
-    if tpl_pattern_match_args(
-        &mut callable_context,
-        &callable_param_types,
-        &call_arg_types,
-    )
-    .is_err()
+    if tpl_pattern_match_args(&mut callable_context, &callable_param_types, call_arg_types).is_err()
     {
-        return Ok(Some(fallback_return));
+        return None;
     }
 
-    Ok(Some(infer_return_from_callable(
-        context.db,
-        &callable,
-        &callable_substitutor,
-    )))
+    let instantiated = match instantiate_doc_function(context.db, callable, &callable_substitutor) {
+        LuaType::DocFunction(func) => func,
+        _ => callable.clone(),
+    };
+    let mut has_unresolved_return_tpl = false;
+    instantiated.get_ret().visit_type(&mut |ty| {
+        if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty
+            && callable_tpls.contains(&generic_tpl.get_tpl_id())
+        {
+            has_unresolved_return_tpl = true;
+        }
+    });
+    if has_unresolved_return_tpl {
+        return None;
+    }
+
+    Some(instantiated)
 }
 
 fn infer_generic_types_from_call(
