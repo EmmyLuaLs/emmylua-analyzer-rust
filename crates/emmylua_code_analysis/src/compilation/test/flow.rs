@@ -628,6 +628,111 @@ end
     }
 
     #[test]
+    fn test_while_loop_post_flow_keeps_incoming_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        local condition ---@type boolean
+        local value ---@type string?
+
+        while condition do
+            value = "loop"
+        end
+
+        after_loop = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_loop"), ws.ty("string?"));
+    }
+
+    #[test]
+    fn test_repeat_loop_post_flow_keeps_body_assignment() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        local condition ---@type boolean
+        local value ---@type string?
+
+        repeat
+            value = "loop"
+        until condition
+
+        after_loop = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_loop"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_numeric_for_loop_post_flow_keeps_incoming_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        local value ---@type string?
+
+        for i = 1, 3 do
+            value = "loop"
+        end
+
+        after_loop = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_loop"), ws.ty("string?"));
+    }
+
+    #[test]
+    fn test_for_in_loop_post_flow_keeps_incoming_type_after_break() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        local value ---@type string?
+
+        for _, _value in ipairs({ "loop" }) do
+            value = "loop"
+            break
+        end
+
+        after_loop = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_loop"), ws.ty("string?"));
+    }
+
+    #[test]
+    fn test_nested_while_loop_post_flow_keeps_incoming_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        local outer_condition ---@type boolean
+        local inner_condition ---@type boolean
+        local value ---@type string?
+
+        while outer_condition do
+            while inner_condition do
+                value = "loop"
+                break
+            end
+
+            break
+        end
+
+        after_loop = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_loop"), ws.ty("string?"));
+    }
+
+    #[test]
     fn test_issue_347() {
         let mut ws = VirtualWorkspace::new();
 
