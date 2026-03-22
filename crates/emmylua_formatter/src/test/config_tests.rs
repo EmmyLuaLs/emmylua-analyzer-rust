@@ -4,7 +4,8 @@ mod tests {
         assert_format_with_config,
         config::{
             EndOfLine, ExpandStrategy, IndentConfig, IndentKind, LayoutConfig, LuaFormatConfig,
-            OutputConfig, SpacingConfig, TrailingComma,
+            OutputConfig, QuoteStyle, SingleArgCallParens, SpacingConfig, TrailingComma,
+            TrailingTableSeparator,
         },
     };
 
@@ -186,6 +187,169 @@ local t = {
 "#,
             config
         );
+    }
+
+    #[test]
+    fn test_table_trailing_separator_can_override_global_trailing_comma() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                trailing_comma: TrailingComma::Never,
+                trailing_table_separator: TrailingTableSeparator::Multiline,
+                ..Default::default()
+            },
+            layout: LayoutConfig {
+                table_expand: ExpandStrategy::Always,
+                call_args_expand: ExpandStrategy::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local t = { a = 1, b = 2 }\n",
+            "local t = {\n    a = 1,\n    b = 2,\n}\n",
+            config.clone()
+        );
+
+        assert_format_with_config!("foo(a, b)\n", "foo(\n    a,\n    b\n)\n", config);
+    }
+
+    // ========== quote style ===========
+
+    #[test]
+    fn test_quote_style_double_rewrites_short_strings() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                quote_style: QuoteStyle::Double,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!("local s = 'hello'\n", "local s = \"hello\"\n", config);
+    }
+
+    #[test]
+    fn test_quote_style_double_allows_escaped_target_quotes_in_raw_text() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                quote_style: QuoteStyle::Double,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local s = 'hello \\\"lua\\\"'\n",
+            "local s = \"hello \\\"lua\\\"\"\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_quote_style_single_preserves_when_target_quote_exists_in_value() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                quote_style: QuoteStyle::Single,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local s = \"it's \\\"ok\\\"\"\n",
+            "local s = \"it's \\\"ok\\\"\"\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_quote_style_single_allows_escaped_target_quotes_in_raw_text() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                quote_style: QuoteStyle::Single,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local s = \"it\\'s fine\"\n",
+            "local s = 'it\\'s fine'\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_quote_style_single_rewrites_when_value_has_no_target_quote() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                quote_style: QuoteStyle::Single,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local s = \"hello \\\"lua\\\"\"\n",
+            "local s = 'hello \"lua\"'\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_quote_style_preserves_long_strings() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                quote_style: QuoteStyle::Single,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local s = [[a\n\"b\"\n]]\n",
+            "local s = [[a\n\"b\"\n]]\n",
+            config
+        );
+    }
+
+    // ========== single arg call parens ===========
+
+    #[test]
+    fn test_single_arg_call_parens_always_wraps_string_and_table_calls() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                single_arg_call_parens: SingleArgCallParens::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "require \"module\"\n",
+            "require(\"module\")\n",
+            config.clone()
+        );
+        assert_format_with_config!("foo {1, 2, 3}\n", "foo({ 1, 2, 3 })\n", config);
+    }
+
+    #[test]
+    fn test_single_arg_call_parens_omit_removes_parens_for_string_and_table_calls() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                single_arg_call_parens: SingleArgCallParens::Omit,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "require(\"module\")\n",
+            "require \"module\"\n",
+            config.clone()
+        );
+        assert_format_with_config!("foo({1, 2, 3})\n", "foo { 1, 2, 3 }\n", config);
     }
 
     // ========== indentation ==========
@@ -395,11 +559,17 @@ width = 2
 max_line_width = 88
 table_expand = "Always"
 
+[output]
+quote_style = "Single"
+trailing_table_separator = "Multiline"
+single_arg_call_parens = "Always"
+
 [spacing]
 space_before_call_paren = true
 
 [comments]
 align_line_comments = false
+space_after_comment_dash = false
 
 [emmy_doc]
 space_after_description_dash = false
@@ -414,8 +584,18 @@ table_field = false
         assert_eq!(config.indent.width, 2);
         assert_eq!(config.layout.max_line_width, 88);
         assert_eq!(config.layout.table_expand, ExpandStrategy::Always);
+        assert_eq!(config.output.quote_style, QuoteStyle::Single);
+        assert_eq!(
+            config.output.trailing_table_separator,
+            TrailingTableSeparator::Multiline
+        );
+        assert_eq!(
+            config.output.single_arg_call_parens,
+            SingleArgCallParens::Always
+        );
         assert!(config.spacing.space_before_call_paren);
         assert!(!config.comments.align_line_comments);
+        assert!(!config.comments.space_after_comment_dash);
         assert!(!config.emmy_doc.space_after_description_dash);
         assert!(!config.align.table_field);
     }

@@ -61,7 +61,11 @@ Key defaults:
 - `layout.call_args_expand = "Auto"`
 - `layout.func_params_expand = "Auto"`
 - `output.trailing_comma = "Never"`
+- `output.trailing_table_separator = "Inherit"`
+- `output.quote_style = "Preserve"`
+- `output.single_arg_call_parens = "Preserve"`
 - `comments.align_in_statements = false`
+- `comments.space_after_comment_dash = true`
 - `align.continuous_assign_statement = false`
 - `align.table_field = true`
 
@@ -195,6 +199,9 @@ func_params_expand = "Auto"
 [output]
 insert_final_newline = true
 trailing_comma = "Never"
+trailing_table_separator = "Inherit"
+quote_style = "Preserve"
+single_arg_call_parens = "Preserve"
 end_of_line = "LF"
 
 [spacing]

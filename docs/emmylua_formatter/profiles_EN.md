@@ -21,6 +21,11 @@ table_expand = "Auto"
 call_args_expand = "Auto"
 func_params_expand = "Auto"
 
+[output]
+quote_style = "Preserve"
+trailing_table_separator = "Multiline"
+single_arg_call_parens = "Preserve"
+
 [comments]
 align_in_statements = false
 align_in_table_fields = true
@@ -55,6 +60,11 @@ max_line_width = 88
 table_expand = "Auto"
 call_args_expand = "Auto"
 func_params_expand = "Auto"
+
+[output]
+quote_style = "Double"
+trailing_table_separator = "Multiline"
+single_arg_call_parens = "Always"
 
 [spacing]
 space_inside_braces = true
@@ -94,6 +104,11 @@ max_line_width = 100
 table_expand = "Auto"
 call_args_expand = "Auto"
 func_params_expand = "Auto"
+
+[output]
+quote_style = "Preserve"
+trailing_table_separator = "Multiline"
+single_arg_call_parens = "Preserve"
 
 [comments]
 align_in_statements = true

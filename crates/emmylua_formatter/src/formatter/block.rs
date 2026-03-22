@@ -45,7 +45,7 @@ fn can_join_comment_alignment_group(
     match child {
         BlockChild::Comment(_) => ctx.config.comments.align_across_standalone_comments,
         BlockChild::Statement(next_stat) => {
-            if extract_trailing_comment(next_stat.syntax()).is_none() {
+            if extract_trailing_comment(ctx.config, next_stat.syntax()).is_none() {
                 return false;
             }
             if ctx.config.comments.align_same_kind_only && !same_stat_kind(anchor, next_stat) {
@@ -64,7 +64,7 @@ fn can_join_eq_alignment_group(ctx: &FormatContext, anchor: &LuaStat, child: &Bl
     match child {
         BlockChild::Comment(_) => ctx.config.comments.align_across_standalone_comments,
         BlockChild::Statement(next_stat) => {
-            if !is_eq_alignable(next_stat) {
+            if !is_eq_alignable(ctx.config, next_stat) {
                 return false;
             }
             if ctx.config.comments.align_same_kind_only && !same_stat_kind(anchor, next_stat) {
@@ -98,10 +98,12 @@ fn build_eq_alignment_entries(
             }
             BlockChild::Statement(stat) => {
                 let trailing = if ctx.config.should_align_statement_line_comments() {
-                    extract_trailing_comment(stat.syntax()).map(|(trail_docs, range)| {
-                        consumed_comment_ranges.push(range);
-                        trail_docs
-                    })
+                    extract_trailing_comment(ctx.config, stat.syntax()).map(
+                        |(trail_docs, range)| {
+                            consumed_comment_ranges.push(range);
+                            trail_docs
+                        },
+                    )
                 } else {
                     None
                 };
@@ -159,11 +161,12 @@ fn build_comment_alignment_entries(
                 });
             }
             BlockChild::Statement(stat) => {
-                let trailing =
-                    extract_trailing_comment(stat.syntax()).map(|(trail_docs, range)| {
+                let trailing = extract_trailing_comment(ctx.config, stat.syntax()).map(
+                    |(trail_docs, range)| {
                         consumed_comment_ranges.push(range);
                         trail_docs
-                    });
+                    },
+                );
                 entries.push(AlignEntry::Line {
                     content: format_stat(ctx, stat),
                     trailing,
@@ -227,7 +230,8 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
             }
             BlockChild::Statement(stat) => {
                 // Try to form an alignment group if enabled
-                if ctx.config.align.continuous_assign_statement && is_eq_alignable(stat) {
+                if ctx.config.align.continuous_assign_statement && is_eq_alignable(ctx.config, stat)
+                {
                     let group_start = i;
                     let mut group_end = i + 1;
                     while group_end < children.len() {
@@ -270,7 +274,7 @@ pub fn format_block(ctx: &FormatContext, block: &LuaBlock) -> Vec<DocIR> {
 
                 // Try to form a comment-only alignment group
                 if ctx.config.should_align_statement_line_comments()
-                    && extract_trailing_comment(stat.syntax()).is_some()
+                    && extract_trailing_comment(ctx.config, stat.syntax()).is_some()
                 {
                     let group_start = i;
                     let mut group_end = i + 1;

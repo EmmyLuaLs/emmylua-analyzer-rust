@@ -59,6 +59,9 @@ Behavior notes:
 
 - `insert_final_newline`
 - `trailing_comma`: `Never`, `Multiline`, or `Always`
+- `trailing_table_separator`: `Inherit`, `Never`, `Multiline`, or `Always`
+- `quote_style`: `Preserve`, `Double`, or `Single`
+- `single_arg_call_parens`: `Preserve`, `Always`, or `Omit`
 - `end_of_line`: `LF` or `CRLF`
 
 Default:
@@ -67,8 +70,19 @@ Default:
 [output]
 insert_final_newline = true
 trailing_comma = "Never"
+trailing_table_separator = "Inherit"
+quote_style = "Preserve"
+single_arg_call_parens = "Preserve"
 end_of_line = "LF"
 ```
+
+Behavior notes:
+
+- `trailing_comma` is the general trailing-comma policy for sequence-like constructs.
+- `trailing_table_separator` overrides that policy for tables only. `Inherit` keeps using `trailing_comma`.
+- `quote_style` only rewrites normal short strings when it is safe to do so. Long strings and other string forms are preserved.
+- Quote rewriting works from the raw token text, checks for unescaped occurrences of the target delimiter, and only adjusts the minimal delimiter escaping needed to preserve semantics.
+- `single_arg_call_parens = "Omit"` only removes parentheses for Lua-valid single-string and single-table calls.
 
 ## spacing
 
@@ -92,6 +106,7 @@ These options control token spacing only. They do not override larger layout dec
 - `align_in_params`
 - `align_across_standalone_comments`
 - `align_same_kind_only`
+- `space_after_comment_dash`
 - `line_comment_min_spaces_before`
 - `line_comment_min_column`
 
@@ -106,6 +121,7 @@ align_in_call_args = true
 align_in_params = true
 align_across_standalone_comments = false
 align_same_kind_only = false
+space_after_comment_dash = true
 line_comment_min_spaces_before = 1
 line_comment_min_column = 0
 ```
@@ -116,6 +132,7 @@ Behavior notes:
 - Table, call-arg, and parameter trailing-comment alignment are input-driven. Extra spacing in the original source is treated as alignment intent.
 - Standalone comments usually break alignment groups.
 - Table-field trailing-comment alignment is scoped to contiguous subgroups rather than the whole table.
+- `space_after_comment_dash` only inserts one space for plain comments such as `--comment` when there is no gap after the prefix already; comments with larger existing gaps are preserved.
 
 ## emmy_doc
 

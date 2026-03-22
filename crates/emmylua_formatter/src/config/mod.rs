@@ -54,6 +54,15 @@ impl LuaFormatConfig {
     pub fn should_align_emmy_doc_reference_tags(&self) -> bool {
         self.emmy_doc.align_tag_columns && self.emmy_doc.align_reference_tags
     }
+
+    pub fn trailing_table_comma(&self) -> TrailingComma {
+        match self.output.trailing_table_separator {
+            TrailingTableSeparator::Inherit => self.output.trailing_comma.clone(),
+            TrailingTableSeparator::Never => TrailingComma::Never,
+            TrailingTableSeparator::Multiline => TrailingComma::Multiline,
+            TrailingTableSeparator::Always => TrailingComma::Always,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +108,9 @@ impl Default for LayoutConfig {
 pub struct OutputConfig {
     pub insert_final_newline: bool,
     pub trailing_comma: TrailingComma,
+    pub trailing_table_separator: TrailingTableSeparator,
+    pub quote_style: QuoteStyle,
+    pub single_arg_call_parens: SingleArgCallParens,
     pub end_of_line: EndOfLine,
 }
 
@@ -107,6 +119,9 @@ impl Default for OutputConfig {
         Self {
             insert_final_newline: true,
             trailing_comma: TrailingComma::Never,
+            trailing_table_separator: TrailingTableSeparator::Inherit,
+            quote_style: QuoteStyle::Preserve,
+            single_arg_call_parens: SingleArgCallParens::Preserve,
             end_of_line: EndOfLine::LF,
         }
     }
@@ -150,6 +165,7 @@ pub struct CommentConfig {
     pub align_in_params: bool,
     pub align_across_standalone_comments: bool,
     pub align_same_kind_only: bool,
+    pub space_after_comment_dash: bool,
     pub line_comment_min_spaces_before: usize,
     pub line_comment_min_column: usize,
 }
@@ -164,6 +180,7 @@ impl Default for CommentConfig {
             align_in_params: true,
             align_across_standalone_comments: false,
             align_same_kind_only: false,
+            space_after_comment_dash: true,
             line_comment_min_spaces_before: 1,
             line_comment_min_column: 0,
         }
@@ -219,6 +236,28 @@ pub enum TrailingComma {
     Never,
     Multiline,
     Always,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TrailingTableSeparator {
+    Inherit,
+    Never,
+    Multiline,
+    Always,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum QuoteStyle {
+    Preserve,
+    Double,
+    Single,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SingleArgCallParens {
+    Preserve,
+    Always,
+    Omit,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

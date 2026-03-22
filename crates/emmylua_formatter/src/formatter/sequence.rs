@@ -147,20 +147,6 @@ pub fn choose_sequence_layout(
     choose_best_sequence_candidate(ctx, ordered, policy)
 }
 
-pub fn choose_sequence_break_contents(
-    ctx: &FormatContext,
-    candidates: SequenceLayoutCandidates,
-    policy: SequenceLayoutPolicy,
-) -> Vec<DocIR> {
-    let ordered = ordered_sequence_candidates(candidates, policy);
-
-    if ordered.is_empty() {
-        return vec![];
-    }
-
-    choose_best_sequence_candidate(ctx, ordered, policy)
-}
-
 fn ordered_sequence_candidates(
     candidates: SequenceLayoutCandidates,
     policy: SequenceLayoutPolicy,
@@ -393,6 +379,80 @@ pub fn format_delimited_sequence(layout: DelimitedSequenceLayout) -> Vec<DocIR> 
     }
 }
 
+pub fn build_delimited_sequence_flat_candidate(layout: &DelimitedSequenceLayout) -> Vec<DocIR> {
+    let flat_inner = ir::intersperse(layout.items.clone(), layout.flat_separator.clone());
+    build_flat_doc(
+        &layout.open,
+        &layout.close,
+        &layout.flat_open_padding,
+        flat_inner,
+        &layout.flat_trailing,
+        &layout.flat_close_padding,
+    )
+}
+
+pub fn build_delimited_sequence_default_break_candidate(
+    layout: &DelimitedSequenceLayout,
+) -> Vec<DocIR> {
+    let break_inner = ir::intersperse(layout.items.clone(), layout.break_separator.clone());
+    build_delimited_sequence_break_candidate(
+        layout.open.clone(),
+        layout.close.clone(),
+        default_break_contents(break_inner, layout.grouped_trailing.clone()),
+    )
+}
+
+pub fn build_delimited_sequence_break_candidate(
+    open: DocIR,
+    close: DocIR,
+    inner: Vec<DocIR>,
+) -> Vec<DocIR> {
+    format_expanded_delimited_sequence(open, close, inner)
+}
+
+fn format_expanded_delimited_sequence(open: DocIR, close: DocIR, inner: Vec<DocIR>) -> Vec<DocIR> {
+    vec![ir::group_break(vec![
+        open,
+        ir::indent(inner),
+        ir::hard_line(),
+        close,
+    ])]
+}
+
+fn default_break_contents(inner: Vec<DocIR>, trailing: DocIR) -> Vec<DocIR> {
+    vec![ir::hard_line(), ir::list(inner), trailing]
+}
+
+fn build_flat_doc(
+    open: &DocIR,
+    close: &DocIR,
+    open_padding: &[DocIR],
+    inner: Vec<DocIR>,
+    trailing: &[DocIR],
+    close_padding: &[DocIR],
+) -> Vec<DocIR> {
+    let mut docs = vec![open.clone()];
+    docs.extend(open_padding.to_vec());
+    docs.extend(inner);
+    docs.extend(trailing.to_vec());
+    docs.extend(close_padding.to_vec());
+    docs.push(close.clone());
+    docs
+}
+
+fn build_fill_parts(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
+    let mut parts = Vec::with_capacity(items.len().saturating_mul(2));
+
+    for (index, item) in items.iter().enumerate() {
+        parts.push(ir::list(item.clone()));
+        if index + 1 < items.len() {
+            parts.push(ir::list(separator.to_vec()));
+        }
+    }
+
+    parts
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -603,47 +663,4 @@ mod tests {
             "aaaa + bbbb\n+ cccc + dddd\n+ eeee + ffff"
         );
     }
-}
-
-fn format_expanded_delimited_sequence(open: DocIR, close: DocIR, inner: Vec<DocIR>) -> Vec<DocIR> {
-    vec![ir::group_break(vec![
-        open,
-        ir::indent(inner),
-        ir::hard_line(),
-        close,
-    ])]
-}
-
-fn default_break_contents(inner: Vec<DocIR>, trailing: DocIR) -> Vec<DocIR> {
-    vec![ir::hard_line(), ir::list(inner), trailing]
-}
-
-fn build_flat_doc(
-    open: &DocIR,
-    close: &DocIR,
-    open_padding: &[DocIR],
-    inner: Vec<DocIR>,
-    trailing: &[DocIR],
-    close_padding: &[DocIR],
-) -> Vec<DocIR> {
-    let mut docs = vec![open.clone()];
-    docs.extend(open_padding.to_vec());
-    docs.extend(inner);
-    docs.extend(trailing.to_vec());
-    docs.extend(close_padding.to_vec());
-    docs.push(close.clone());
-    docs
-}
-
-fn build_fill_parts(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
-    let mut parts = Vec::with_capacity(items.len().saturating_mul(2));
-
-    for (index, item) in items.iter().enumerate() {
-        parts.push(ir::list(item.clone()));
-        if index + 1 < items.len() {
-            parts.push(ir::list(separator.to_vec()));
-        }
-    }
-
-    parts
 }

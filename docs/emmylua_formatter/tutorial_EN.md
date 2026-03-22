@@ -25,6 +25,11 @@ table_expand = "Auto"
 call_args_expand = "Auto"
 func_params_expand = "Auto"
 
+[output]
+quote_style = "Preserve"
+trailing_table_separator = "Multiline"
+single_arg_call_parens = "Preserve"
+
 [comments]
 align_in_statements = false
 align_in_table_fields = true
@@ -37,6 +42,10 @@ table_field = true
 ```
 
 The formatter discovers the nearest `.luafmt.toml` or `luafmt.toml` for each file.
+
+If you want vertically expanded tables to carry trailing separators by default without changing call arguments or parameter lists, set `output.trailing_table_separator = "Multiline"`.
+
+If you want to normalize short-string quoting, set `output.quote_style = "Double"` or `"Single"`. Long strings are preserved.
 
 ## 3. Format Files
 

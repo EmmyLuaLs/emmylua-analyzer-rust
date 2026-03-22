@@ -6,6 +6,7 @@ use emmylua_parser::{
     LuaTokenKind, LuaVarExpr, LuaWhileStat,
 };
 
+use crate::config::LuaFormatConfig;
 use crate::ir::{self, DocIR, EqSplit};
 
 use super::FormatContext;
@@ -1842,11 +1843,11 @@ fn should_preserve_raw_statement_with_inline_comments(stat: &LuaStat) -> bool {
 
 /// Check if a statement can participate in `=` alignment.
 /// Only simple local/assign statements with values qualify.
-pub fn is_eq_alignable(stat: &LuaStat) -> bool {
+pub fn is_eq_alignable(config: &LuaFormatConfig, stat: &LuaStat) -> bool {
     match stat {
         LuaStat::LocalStat(s) => {
             if node_has_direct_comment_child(s.syntax())
-                && extract_trailing_comment(s.syntax()).is_none()
+                && extract_trailing_comment(config, s.syntax()).is_none()
             {
                 return false;
             }
@@ -1863,7 +1864,7 @@ pub fn is_eq_alignable(stat: &LuaStat) -> bool {
         }
         LuaStat::AssignStat(s) => {
             if node_has_direct_comment_child(s.syntax())
-                && extract_trailing_comment(s.syntax()).is_none()
+                && extract_trailing_comment(config, s.syntax()).is_none()
             {
                 return false;
             }

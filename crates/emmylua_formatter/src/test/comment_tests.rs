@@ -22,6 +22,30 @@ local a = 1
     }
 
     #[test]
+    fn test_normal_comment_inserts_space_after_dash_by_default() {
+        assert_format!("--comment\nlocal a = 1\n", "-- comment\nlocal a = 1\n");
+    }
+
+    #[test]
+    fn test_normal_comment_can_keep_no_space_after_dash() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            comments: crate::config::CommentConfig {
+                space_after_comment_dash: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "--comment\nlocal a = 1\n",
+            "--comment\nlocal a = 1\n",
+            config
+        );
+    }
+
+    #[test]
     fn test_multiple_comments() {
         assert_format!(
             r#"
@@ -190,6 +214,24 @@ if ok then
     --     hello
     --yyyy
 end
+"#
+        );
+    }
+
+    #[test]
+    fn test_multiline_normal_comment_keeps_line_structure_from_comment_node() {
+        assert_format!(
+            r#"
+-- alpha
+--   beta gamma
+--delta
+local value = 1
+"#,
+            r#"
+-- alpha
+--   beta gamma
+--delta
+local value = 1
 "#
         );
     }
@@ -1020,6 +1062,22 @@ local t = {
             "--- keep tight\nlocal value = nil\n",
             "---keep tight\nlocal value = nil\n",
             config
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_single_line_description_still_normalizes_whitespace() {
+        assert_format!(
+            "---   spaced    words\nlocal value = nil\n",
+            "--- spaced words\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_multiline_description_preserves_line_structure() {
+        assert_format!(
+            "---@class Test first line\n---   second   line\nlocal value = {}\n",
+            "---@class Test first line\n---   second   line\nlocal value = {}\n"
         );
     }
 

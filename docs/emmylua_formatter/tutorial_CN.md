@@ -25,6 +25,11 @@ table_expand = "Auto"
 call_args_expand = "Auto"
 func_params_expand = "Auto"
 
+[output]
+quote_style = "Preserve"
+trailing_table_separator = "Multiline"
+single_arg_call_parens = "Preserve"
+
 [comments]
 align_in_statements = false
 align_in_table_fields = true
@@ -37,6 +42,10 @@ table_field = true
 ```
 
 格式化器会为每个文件向上查找最近的 `.luafmt.toml` 或 `luafmt.toml`。
+
+如果你希望只让竖排 table 默认带尾逗号，但不影响调用参数和函数参数，可以只设置 `output.trailing_table_separator = "Multiline"`。
+
+如果你希望统一短字符串引号，可以设置 `output.quote_style = "Double"` 或 `"Single"`。长字符串会继续保留原样。
 
 ## 3. 格式化文件
 

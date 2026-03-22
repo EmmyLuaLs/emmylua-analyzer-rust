@@ -59,6 +59,9 @@ func_params_expand = "Auto"
 
 - `insert_final_newline`
 - `trailing_comma`：`Never`、`Multiline`、`Always`
+- `trailing_table_separator`：`Inherit`、`Never`、`Multiline`、`Always`
+- `quote_style`：`Preserve`、`Double`、`Single`
+- `single_arg_call_parens`：`Preserve`、`Always`、`Omit`
 - `end_of_line`：`LF` 或 `CRLF`
 
 默认值：
@@ -67,8 +70,19 @@ func_params_expand = "Auto"
 [output]
 insert_final_newline = true
 trailing_comma = "Never"
+trailing_table_separator = "Inherit"
+quote_style = "Preserve"
+single_arg_call_parens = "Preserve"
 end_of_line = "LF"
 ```
+
+行为说明：
+
+- `trailing_comma` 是通用序列的尾逗号策略。
+- `trailing_table_separator` 只覆盖 table 的尾部分隔符策略；设为 `Inherit` 时继承 `trailing_comma`。
+- `quote_style` 只会在安全时重写普通短字符串；长字符串和其它字符串形式会保留原样。
+- 引号重写基于原始 token 文本判断是否存在未转义的目标引号，并只做保持语义不变所需的最小分隔符转义调整。
+- `single_arg_call_parens = "Omit"` 只会对 Lua 允许的单字符串参数调用和单 table 参数调用去掉括号。
 
 ## spacing
 
@@ -92,6 +106,7 @@ end_of_line = "LF"
 - `align_in_params`
 - `align_across_standalone_comments`
 - `align_same_kind_only`
+- `space_after_comment_dash`
 - `line_comment_min_spaces_before`
 - `line_comment_min_column`
 
@@ -106,6 +121,7 @@ align_in_call_args = true
 align_in_params = true
 align_across_standalone_comments = false
 align_same_kind_only = false
+space_after_comment_dash = true
 line_comment_min_spaces_before = 1
 line_comment_min_column = 0
 ```
@@ -116,6 +132,7 @@ line_comment_min_column = 0
 - table、调用参数、函数参数中的尾随注释对齐是输入驱动的；只有源代码已经体现出额外空格的对齐意图时，才会启用。
 - standalone comment 默认会打断对齐分组。
 - table 字段尾随注释只在连续子组内部对齐，不会拖动整个表体。
+- `space_after_comment_dash` 只会在普通 `--comment` 这类“前缀后完全没有空格”的情况下补一个空格；已有多个空格的注释会保留原样。
 
 ## emmy_doc
 
