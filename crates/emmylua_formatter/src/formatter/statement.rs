@@ -13,7 +13,8 @@ use super::block::format_block;
 use super::comment::{collect_orphan_comments, extract_trailing_comment, format_comment};
 use super::expression::format_expr;
 use super::sequence::{
-    SequenceEntry, comma_entry, render_sequence, sequence_ends_with_comment, sequence_has_comment,
+    SequenceEntry, SequenceLayoutCandidates, SequenceLayoutPolicy, choose_sequence_layout,
+    comma_entry, render_sequence, sequence_ends_with_comment, sequence_has_comment,
     sequence_starts_with_comment,
 };
 use super::spacing::space_around_assign;
@@ -99,7 +100,16 @@ fn format_local_stat(ctx: &FormatContext, stat: &LuaLocalStat) -> Vec<DocIR> {
             } else {
                 vec![]
             };
-            docs.extend(format_statement_expr_list(leading_docs, expr_docs));
+            let prefix_width = exprs
+                .first()
+                .map(|expr| source_line_prefix_width(expr.syntax()))
+                .unwrap_or(0);
+            docs.extend(format_statement_expr_list(
+                ctx,
+                leading_docs,
+                expr_docs,
+                prefix_width,
+            ));
         }
     }
 
@@ -148,7 +158,16 @@ fn format_assign_stat(ctx: &FormatContext, stat: &LuaAssignStat) -> Vec<DocIR> {
         } else {
             vec![]
         };
-        docs.extend(format_statement_expr_list(leading_docs, expr_docs));
+        let prefix_width = exprs
+            .first()
+            .map(|expr| source_line_prefix_width(expr.syntax()))
+            .unwrap_or(0);
+        docs.extend(format_statement_expr_list(
+            ctx,
+            leading_docs,
+            expr_docs,
+            prefix_width,
+        ));
     }
 
     docs
@@ -975,7 +994,16 @@ fn format_for_stat(ctx: &FormatContext, stat: &LuaForStat) -> Vec<DocIR> {
 
     let iter_exprs: Vec<_> = stat.get_iter_expr().collect();
     let iter_docs: Vec<Vec<DocIR>> = iter_exprs.iter().map(|e| format_expr(ctx, e)).collect();
-    head_docs.extend(format_statement_expr_list(vec![ir::space()], iter_docs));
+    let prefix_width = iter_exprs
+        .first()
+        .map(|expr| source_line_prefix_width(expr.syntax()))
+        .unwrap_or(0);
+    head_docs.extend(format_statement_expr_list(
+        ctx,
+        vec![ir::space()],
+        iter_docs,
+        prefix_width,
+    ));
 
     let mut docs = format_control_header(LuaTokenKind::TkFor, head_docs, LuaTokenKind::TkDo);
 
@@ -1017,7 +1045,16 @@ fn format_for_range_stat(ctx: &FormatContext, stat: &LuaForRangeStat) -> Vec<Doc
 
     let expr_list: Vec<_> = stat.get_expr_list().collect();
     let expr_docs: Vec<Vec<DocIR>> = expr_list.iter().map(|e| format_expr(ctx, e)).collect();
-    head_docs.extend(format_statement_expr_list(vec![ir::space()], expr_docs));
+    let prefix_width = expr_list
+        .first()
+        .map(|expr| source_line_prefix_width(expr.syntax()))
+        .unwrap_or(0);
+    head_docs.extend(format_statement_expr_list(
+        ctx,
+        vec![ir::space()],
+        expr_docs,
+        prefix_width,
+    ));
 
     let mut docs = format_control_header(LuaTokenKind::TkFor, head_docs, LuaTokenKind::TkDo);
 
@@ -1299,7 +1336,16 @@ fn format_return_stat(ctx: &FormatContext, stat: &LuaReturnStat) -> Vec<DocIR> {
             docs.push(ir::space());
             docs.push(ir::list(expr_docs.into_iter().next().unwrap_or_default()));
         } else {
-            docs.extend(format_statement_expr_list(vec![ir::space()], expr_docs));
+            let prefix_width = exprs
+                .first()
+                .map(|expr| source_line_prefix_width(expr.syntax()))
+                .unwrap_or(0);
+            docs.extend(format_statement_expr_list(
+                ctx,
+                vec![ir::space()],
+                expr_docs,
+                prefix_width,
+            ));
         }
     }
 
@@ -1351,7 +1397,12 @@ fn collect_return_stat_entries(ctx: &FormatContext, stat: &LuaReturnStat) -> Vec
     entries
 }
 
-fn format_statement_expr_list(leading_docs: Vec<DocIR>, expr_docs: Vec<Vec<DocIR>>) -> Vec<DocIR> {
+fn format_statement_expr_list(
+    ctx: &FormatContext,
+    leading_docs: Vec<DocIR>,
+    expr_docs: Vec<Vec<DocIR>>,
+    first_line_prefix_width: usize,
+) -> Vec<DocIR> {
     if expr_docs.is_empty() {
         return Vec::new();
     }
@@ -1362,6 +1413,52 @@ fn format_statement_expr_list(leading_docs: Vec<DocIR>, expr_docs: Vec<Vec<DocIR
         return docs;
     }
 
+    let fill_parts = build_statement_expr_fill_parts(leading_docs.clone(), expr_docs.clone());
+    let packed = build_statement_expr_packed(leading_docs.clone(), expr_docs.clone());
+    let one_per_line = build_statement_expr_one_per_line(leading_docs, expr_docs);
+
+    choose_sequence_layout(
+        ctx,
+        SequenceLayoutCandidates {
+            fill: Some(vec![ir::group(vec![ir::indent(vec![ir::fill(
+                fill_parts,
+            )])])]),
+            packed: Some(packed),
+            one_per_line: Some(one_per_line),
+            ..Default::default()
+        },
+        SequenceLayoutPolicy {
+            allow_alignment: false,
+            allow_fill: true,
+            allow_preserve: false,
+            prefer_preserve_multiline: false,
+            force_break_on_standalone_comments: false,
+            prefer_balanced_break_lines: true,
+            first_line_prefix_width,
+        },
+    )
+}
+
+fn source_line_prefix_width(node: &LuaSyntaxNode) -> usize {
+    let mut root = node.clone();
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+
+    let text = root.text().to_string();
+    let start = usize::from(node.text_range().start());
+    let line_start = text[..start]
+        .rfind(['\n', '\r'])
+        .map(|index| index + 1)
+        .unwrap_or(0);
+
+    start.saturating_sub(line_start)
+}
+
+fn build_statement_expr_fill_parts(
+    leading_docs: Vec<DocIR>,
+    expr_docs: Vec<Vec<DocIR>>,
+) -> Vec<DocIR> {
     let mut parts = Vec::with_capacity(expr_docs.len().saturating_mul(2));
     let mut expr_docs = expr_docs.into_iter();
     let mut first_chunk = leading_docs;
@@ -1373,7 +1470,61 @@ fn format_statement_expr_list(leading_docs: Vec<DocIR>, expr_docs: Vec<Vec<DocIR
         parts.push(ir::list(expr_doc));
     }
 
-    vec![ir::group(vec![ir::indent(vec![ir::fill(parts)])])]
+    parts
+}
+
+fn build_statement_expr_one_per_line(
+    leading_docs: Vec<DocIR>,
+    expr_docs: Vec<Vec<DocIR>>,
+) -> Vec<DocIR> {
+    let mut docs = Vec::new();
+    let mut expr_docs = expr_docs.into_iter();
+    let mut first_chunk = leading_docs;
+    first_chunk.extend(expr_docs.next().unwrap_or_default());
+    docs.push(ir::list(first_chunk));
+
+    for expr_doc in expr_docs {
+        docs.push(ir::list(vec![tok(LuaTokenKind::TkComma)]));
+        docs.push(ir::hard_line());
+        docs.push(ir::list(expr_doc));
+    }
+
+    vec![ir::group_break(vec![ir::indent(docs)])]
+}
+
+fn build_statement_expr_packed(leading_docs: Vec<DocIR>, expr_docs: Vec<Vec<DocIR>>) -> Vec<DocIR> {
+    let mut docs = Vec::new();
+    let mut expr_docs = expr_docs.into_iter().peekable();
+    let mut first_chunk = leading_docs;
+    first_chunk.extend(expr_docs.next().unwrap_or_default());
+    if expr_docs.peek().is_some() {
+        first_chunk.push(tok(LuaTokenKind::TkComma));
+    }
+    docs.push(ir::list(first_chunk));
+
+    let mut remaining = Vec::new();
+    while let Some(expr_doc) = expr_docs.next() {
+        let has_more = expr_docs.peek().is_some();
+        remaining.push((expr_doc, has_more));
+    }
+
+    for chunk in remaining.chunks(2) {
+        let mut line = Vec::new();
+        for (index, (expr_doc, has_more)) in chunk.iter().enumerate() {
+            if index > 0 {
+                line.push(ir::space());
+            }
+            line.extend(expr_doc.clone());
+            if *has_more {
+                line.push(tok(LuaTokenKind::TkComma));
+            }
+        }
+
+        docs.push(ir::hard_line());
+        docs.push(ir::list(line));
+    }
+
+    vec![ir::group_break(vec![ir::indent(docs)])]
 }
 
 fn format_control_header(

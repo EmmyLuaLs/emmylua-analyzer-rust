@@ -2,6 +2,9 @@ use emmylua_parser::LuaTokenKind;
 
 use crate::config::ExpandStrategy;
 use crate::ir::{self, DocIR};
+use crate::printer::Printer;
+
+use super::FormatContext;
 
 #[derive(Clone)]
 pub enum SequenceEntry {
@@ -84,6 +87,258 @@ pub struct DelimitedSequenceLayout {
     pub prefer_custom_break_in_auto: bool,
 }
 
+#[derive(Clone, Default)]
+pub struct SequenceLayoutCandidates {
+    pub flat: Option<Vec<DocIR>>,
+    pub fill: Option<Vec<DocIR>>,
+    pub packed: Option<Vec<DocIR>>,
+    pub one_per_line: Option<Vec<DocIR>>,
+    pub aligned: Option<Vec<DocIR>>,
+    pub preserve: Option<Vec<DocIR>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SequenceLayoutKind {
+    Flat,
+    Fill,
+    Packed,
+    Aligned,
+    OnePerLine,
+    Preserve,
+}
+
+#[derive(Clone)]
+struct RankedSequenceCandidate {
+    kind: SequenceLayoutKind,
+    docs: Vec<DocIR>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct SequenceCandidateScore {
+    overflow_penalty: usize,
+    line_count: usize,
+    line_balance_penalty: usize,
+    kind_penalty: usize,
+    widest_line_slack: usize,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct SequenceLayoutPolicy {
+    pub allow_alignment: bool,
+    pub allow_fill: bool,
+    pub allow_preserve: bool,
+    pub prefer_preserve_multiline: bool,
+    pub force_break_on_standalone_comments: bool,
+    pub prefer_balanced_break_lines: bool,
+    pub first_line_prefix_width: usize,
+}
+
+pub fn choose_sequence_layout(
+    ctx: &FormatContext,
+    candidates: SequenceLayoutCandidates,
+    policy: SequenceLayoutPolicy,
+) -> Vec<DocIR> {
+    let ordered = ordered_sequence_candidates(candidates, policy);
+
+    if ordered.is_empty() {
+        return vec![];
+    }
+
+    choose_best_sequence_candidate(ctx, ordered, policy)
+}
+
+pub fn choose_sequence_break_contents(
+    ctx: &FormatContext,
+    candidates: SequenceLayoutCandidates,
+    policy: SequenceLayoutPolicy,
+) -> Vec<DocIR> {
+    let ordered = ordered_sequence_candidates(candidates, policy);
+
+    if ordered.is_empty() {
+        return vec![];
+    }
+
+    choose_best_sequence_candidate(ctx, ordered, policy)
+}
+
+fn ordered_sequence_candidates(
+    candidates: SequenceLayoutCandidates,
+    policy: SequenceLayoutPolicy,
+) -> Vec<RankedSequenceCandidate> {
+    let mut ordered = Vec::new();
+
+    if policy.prefer_preserve_multiline {
+        if let Some(packed) = candidates.packed.clone() {
+            ordered.push(RankedSequenceCandidate {
+                kind: SequenceLayoutKind::Packed,
+                docs: packed,
+            });
+        }
+        if policy.allow_alignment
+            && let Some(aligned) = candidates.aligned.clone()
+        {
+            ordered.push(RankedSequenceCandidate {
+                kind: SequenceLayoutKind::Aligned,
+                docs: aligned,
+            });
+        }
+        if let Some(one_per_line) = candidates.one_per_line.clone() {
+            ordered.push(RankedSequenceCandidate {
+                kind: SequenceLayoutKind::OnePerLine,
+                docs: one_per_line,
+            });
+        }
+        push_flat_and_fill_candidates(
+            &mut ordered,
+            candidates.flat.clone(),
+            candidates.fill.clone(),
+            policy,
+        );
+    } else {
+        push_flat_and_fill_candidates(
+            &mut ordered,
+            candidates.flat.clone(),
+            candidates.fill.clone(),
+            policy,
+        );
+        if let Some(packed) = candidates.packed.clone() {
+            ordered.push(RankedSequenceCandidate {
+                kind: SequenceLayoutKind::Packed,
+                docs: packed,
+            });
+        }
+        if policy.allow_alignment
+            && let Some(aligned) = candidates.aligned.clone()
+        {
+            ordered.push(RankedSequenceCandidate {
+                kind: SequenceLayoutKind::Aligned,
+                docs: aligned,
+            });
+        }
+        if let Some(one_per_line) = candidates.one_per_line.clone() {
+            ordered.push(RankedSequenceCandidate {
+                kind: SequenceLayoutKind::OnePerLine,
+                docs: one_per_line,
+            });
+        }
+    }
+
+    if policy.allow_preserve
+        && let Some(preserve) = candidates.preserve
+    {
+        ordered.push(RankedSequenceCandidate {
+            kind: SequenceLayoutKind::Preserve,
+            docs: preserve,
+        });
+    }
+
+    ordered
+}
+
+fn push_flat_and_fill_candidates(
+    ordered: &mut Vec<RankedSequenceCandidate>,
+    flat: Option<Vec<DocIR>>,
+    fill: Option<Vec<DocIR>>,
+    policy: SequenceLayoutPolicy,
+) {
+    if policy.force_break_on_standalone_comments {
+        return;
+    }
+
+    if let Some(flat) = flat {
+        ordered.push(RankedSequenceCandidate {
+            kind: SequenceLayoutKind::Flat,
+            docs: flat,
+        });
+    }
+
+    if policy.allow_fill
+        && let Some(fill) = fill
+    {
+        ordered.push(RankedSequenceCandidate {
+            kind: SequenceLayoutKind::Fill,
+            docs: fill,
+        });
+    }
+}
+
+fn choose_best_sequence_candidate(
+    ctx: &FormatContext,
+    candidates: Vec<RankedSequenceCandidate>,
+    policy: SequenceLayoutPolicy,
+) -> Vec<DocIR> {
+    let mut best_docs = None;
+    let mut best_score = None;
+
+    for candidate in candidates {
+        let score = score_sequence_candidate(ctx, candidate.kind, &candidate.docs, policy);
+        if best_score.is_none_or(|current| score < current) {
+            best_score = Some(score);
+            best_docs = Some(candidate.docs);
+        }
+    }
+
+    best_docs.unwrap_or_default()
+}
+
+fn score_sequence_candidate(
+    ctx: &FormatContext,
+    kind: SequenceLayoutKind,
+    docs: &[DocIR],
+    policy: SequenceLayoutPolicy,
+) -> SequenceCandidateScore {
+    let rendered = Printer::new(ctx.config).print(docs);
+    let mut line_count = 0usize;
+    let mut overflow_penalty = 0usize;
+    let mut widest_line_width = 0usize;
+    let mut narrowest_line_width = usize::MAX;
+
+    for line in rendered.lines() {
+        line_count += 1;
+        let mut line_width = line.len();
+        if line_count == 1 {
+            line_width += policy.first_line_prefix_width;
+        }
+        widest_line_width = widest_line_width.max(line_width);
+        narrowest_line_width = narrowest_line_width.min(line_width);
+        if line_width > ctx.config.layout.max_line_width {
+            overflow_penalty += line_width - ctx.config.layout.max_line_width;
+        }
+    }
+
+    if line_count == 0 {
+        line_count = 1;
+        narrowest_line_width = 0;
+    }
+
+    SequenceCandidateScore {
+        overflow_penalty,
+        line_count,
+        line_balance_penalty: if policy.prefer_balanced_break_lines {
+            widest_line_width.saturating_sub(narrowest_line_width)
+        } else {
+            0
+        },
+        kind_penalty: sequence_layout_kind_penalty(kind),
+        widest_line_slack: ctx
+            .config
+            .layout
+            .max_line_width
+            .saturating_sub(widest_line_width.min(ctx.config.layout.max_line_width)),
+    }
+}
+
+fn sequence_layout_kind_penalty(kind: SequenceLayoutKind) -> usize {
+    match kind {
+        SequenceLayoutKind::Flat => 0,
+        SequenceLayoutKind::Fill => 1,
+        SequenceLayoutKind::Packed => 2,
+        SequenceLayoutKind::Aligned => 3,
+        SequenceLayoutKind::OnePerLine => 4,
+        SequenceLayoutKind::Preserve => 10,
+    }
+}
+
 pub fn format_delimited_sequence(layout: DelimitedSequenceLayout) -> Vec<DocIR> {
     if layout.items.is_empty() {
         return vec![layout.open, layout.close];
@@ -135,6 +390,218 @@ pub fn format_delimited_sequence(layout: DelimitedSequenceLayout) -> Vec<DocIR> 
             layout.grouped_padding,
             layout.close,
         ])],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        FormatContext, SequenceLayoutCandidates, SequenceLayoutKind, SequenceLayoutPolicy,
+        choose_sequence_layout, score_sequence_candidate,
+    };
+    use crate::{
+        config::{LayoutConfig, LuaFormatConfig},
+        ir,
+        printer::Printer,
+    };
+
+    fn render(config: &LuaFormatConfig, docs: &[crate::ir::DocIR]) -> String {
+        Printer::new(config).print(docs)
+    }
+
+    #[test]
+    fn test_score_prefers_wider_line_when_other_metrics_tie() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 20,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ctx = FormatContext::new(&config);
+
+        let wider = vec![ir::list(vec![
+            ir::text("alpha beta gamma"),
+            ir::hard_line(),
+            ir::text("delta"),
+        ])];
+        let narrower = vec![ir::list(vec![
+            ir::text("alpha beta"),
+            ir::hard_line(),
+            ir::text("gamma delta"),
+        ])];
+
+        let wider_score = score_sequence_candidate(
+            &ctx,
+            SequenceLayoutKind::OnePerLine,
+            &wider,
+            SequenceLayoutPolicy::default(),
+        );
+        let narrower_score = score_sequence_candidate(
+            &ctx,
+            SequenceLayoutKind::OnePerLine,
+            &narrower,
+            SequenceLayoutPolicy::default(),
+        );
+
+        assert!(wider_score < narrower_score);
+    }
+
+    #[test]
+    fn test_selector_prefers_fill_over_one_per_line_when_both_fit() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 18,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ctx = FormatContext::new(&config);
+
+        let selected = choose_sequence_layout(
+            &ctx,
+            SequenceLayoutCandidates {
+                fill: Some(vec![ir::list(vec![
+                    ir::text("alpha"),
+                    ir::text(", "),
+                    ir::text("beta"),
+                    ir::hard_line(),
+                    ir::text("gamma"),
+                ])]),
+                one_per_line: Some(vec![ir::list(vec![
+                    ir::text("alpha"),
+                    ir::hard_line(),
+                    ir::text("beta"),
+                    ir::hard_line(),
+                    ir::text("gamma"),
+                ])]),
+                ..Default::default()
+            },
+            SequenceLayoutPolicy {
+                allow_fill: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(render(&config, &selected), "alpha, beta\ngamma");
+    }
+
+    #[test]
+    fn test_selector_prefers_non_overflowing_break_candidate() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 12,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ctx = FormatContext::new(&config);
+
+        let selected = choose_sequence_layout(
+            &ctx,
+            SequenceLayoutCandidates {
+                fill: Some(vec![ir::text("alpha_beta_gamma")]),
+                one_per_line: Some(vec![ir::list(vec![
+                    ir::text("alpha"),
+                    ir::hard_line(),
+                    ir::text("beta"),
+                ])]),
+                ..Default::default()
+            },
+            SequenceLayoutPolicy {
+                allow_fill: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(render(&config, &selected), "alpha\nbeta");
+    }
+
+    #[test]
+    fn test_selector_prefers_balanced_packed_layout_when_line_count_ties() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 28,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ctx = FormatContext::new(&config);
+
+        let selected = choose_sequence_layout(
+            &ctx,
+            SequenceLayoutCandidates {
+                fill: Some(vec![ir::list(vec![
+                    ir::text("aaaa + bbbb"),
+                    ir::hard_line(),
+                    ir::text("cccc + dddd + eeee"),
+                    ir::hard_line(),
+                    ir::text("ffff"),
+                ])]),
+                packed: Some(vec![ir::list(vec![
+                    ir::text("aaaa + bbbb"),
+                    ir::hard_line(),
+                    ir::text("cccc + dddd"),
+                    ir::hard_line(),
+                    ir::text("eeee + ffff"),
+                ])]),
+                ..Default::default()
+            },
+            SequenceLayoutPolicy {
+                allow_fill: true,
+                prefer_balanced_break_lines: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            render(&config, &selected),
+            "aaaa + bbbb\ncccc + dddd\neeee + ffff"
+        );
+    }
+
+    #[test]
+    fn test_prefix_width_can_change_selected_candidate() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 28,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ctx = FormatContext::new(&config);
+
+        let selected = choose_sequence_layout(
+            &ctx,
+            SequenceLayoutCandidates {
+                fill: Some(vec![ir::list(vec![
+                    ir::text("aaaa + bbbb"),
+                    ir::hard_line(),
+                    ir::text("+ cccc + dddd + eeee"),
+                    ir::hard_line(),
+                    ir::text("+ ffff"),
+                ])]),
+                packed: Some(vec![ir::list(vec![
+                    ir::text("aaaa + bbbb"),
+                    ir::hard_line(),
+                    ir::text("+ cccc + dddd"),
+                    ir::hard_line(),
+                    ir::text("+ eeee + ffff"),
+                ])]),
+                ..Default::default()
+            },
+            SequenceLayoutPolicy {
+                allow_fill: true,
+                prefer_balanced_break_lines: true,
+                first_line_prefix_width: 14,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            render(&config, &selected),
+            "aaaa + bbbb\n+ cccc + dddd\n+ eeee + ffff"
+        );
     }
 }
 

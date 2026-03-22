@@ -1,0 +1,177 @@
+# EmmyLua Formatter 选项说明
+
+[English](./options_EN.md)
+
+本文档说明格式化器对外公开的配置分组、默认值以及各选项的预期影响。
+
+## 配置文件发现规则
+
+`luafmt` 和路径感知的库 API 都支持向上查找最近的配置文件：
+
+- `.luafmt.toml`
+- `luafmt.toml`
+
+显式传入配置文件时，支持：
+
+- TOML
+- JSON
+- YAML
+
+## indent
+
+- `kind`：`Space` 或 `Tab`
+- `width`：缩进宽度
+
+默认值：
+
+```toml
+[indent]
+kind = "Space"
+width = 4
+```
+
+## layout
+
+- `max_line_width`：目标最大行宽
+- `max_blank_lines`：保留的连续空行上限
+- `table_expand`：`Never`、`Always`、`Auto`
+- `call_args_expand`：`Never`、`Always`、`Auto`
+- `func_params_expand`：`Never`、`Always`、`Auto`
+
+默认值：
+
+```toml
+[layout]
+max_line_width = 120
+max_blank_lines = 1
+table_expand = "Auto"
+call_args_expand = "Auto"
+func_params_expand = "Auto"
+```
+
+行为说明：
+
+- `Auto` 表示允许格式化器在单行和多行候选之间进行比较。
+- 对于序列结构，格式化器在适用场景下会比较 fill、packed、aligned 和 one-per-line 等候选布局。
+- 二元表达式链和语句表达式列表在总行数不变时，会优先选择更均衡的 packed 布局，以避免最后一行过短。
+
+## output
+
+- `insert_final_newline`
+- `trailing_comma`：`Never`、`Multiline`、`Always`
+- `end_of_line`：`LF` 或 `CRLF`
+
+默认值：
+
+```toml
+[output]
+insert_final_newline = true
+trailing_comma = "Never"
+end_of_line = "LF"
+```
+
+## spacing
+
+- `space_before_call_paren`
+- `space_before_func_paren`
+- `space_inside_braces`
+- `space_inside_parens`
+- `space_inside_brackets`
+- `space_around_math_operator`
+- `space_around_concat_operator`
+- `space_around_assign_operator`
+
+这些选项只控制 token 级别的空格，不直接决定更高层的布局是否换行。
+
+## comments
+
+- `align_line_comments`
+- `align_in_statements`
+- `align_in_table_fields`
+- `align_in_call_args`
+- `align_in_params`
+- `align_across_standalone_comments`
+- `align_same_kind_only`
+- `line_comment_min_spaces_before`
+- `line_comment_min_column`
+
+默认值：
+
+```toml
+[comments]
+align_line_comments = true
+align_in_statements = false
+align_in_table_fields = true
+align_in_call_args = true
+align_in_params = true
+align_across_standalone_comments = false
+align_same_kind_only = false
+line_comment_min_spaces_before = 1
+line_comment_min_column = 0
+```
+
+行为说明：
+
+- statement 尾随注释对齐默认关闭。
+- table、调用参数、函数参数中的尾随注释对齐是输入驱动的；只有源代码已经体现出额外空格的对齐意图时，才会启用。
+- standalone comment 默认会打断对齐分组。
+- table 字段尾随注释只在连续子组内部对齐，不会拖动整个表体。
+
+## emmy_doc
+
+- `align_tag_columns`
+- `align_declaration_tags`
+- `align_reference_tags`
+- `tag_spacing`
+- `space_after_description_dash`
+
+默认值：
+
+```toml
+[emmy_doc]
+align_tag_columns = true
+align_declaration_tags = true
+align_reference_tags = true
+tag_spacing = 1
+space_after_description_dash = true
+```
+
+当前已结构化处理的标签包括 `@param`、`@field`、`@return`、`@class`、`@alias`、`@type`、`@generic`、`@overload`。
+
+## align
+
+- `continuous_assign_statement`
+- `table_field`
+
+默认值：
+
+```toml
+[align]
+continuous_assign_statement = false
+table_field = true
+```
+
+行为说明：
+
+- 连续赋值对齐默认关闭。
+- 表字段对齐默认开启，但只有当输入在 `=` 后已经表现出额外空格的对齐意图时才会激活。
+
+## 建议起步配置
+
+```toml
+[layout]
+max_line_width = 100
+table_expand = "Auto"
+call_args_expand = "Auto"
+func_params_expand = "Auto"
+
+[comments]
+align_in_statements = false
+align_in_table_fields = true
+align_in_call_args = true
+align_in_params = true
+
+[align]
+continuous_assign_statement = false
+table_field = true
+```

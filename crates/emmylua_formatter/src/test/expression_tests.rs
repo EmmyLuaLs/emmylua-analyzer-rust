@@ -83,6 +83,23 @@ local e = #t
         );
     }
 
+    #[test]
+    fn test_binary_chain_prefers_balanced_packed_layout() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 28,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local value = aaaa + bbbb + cccc + dddd + eeee + ffff\n",
+            "local value = aaaa + bbbb\n    + cccc + dddd\n    + eeee + ffff\n",
+            config
+        );
+    }
+
     // ========== index ==========
 
     #[test]

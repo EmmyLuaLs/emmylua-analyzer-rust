@@ -153,7 +153,7 @@ end
 
         assert_format_with_config!(
             "if alpha_beta_gamma + delta_theta + epsilon + zeta then\n    print(result)\nend\n",
-            "if alpha_beta_gamma + delta_theta + epsilon\n    + zeta then\n    print(result)\nend\n",
+            "if alpha_beta_gamma + delta_theta\n    + epsilon + zeta then\n    print(result)\nend\n",
             config
         );
     }
@@ -220,7 +220,7 @@ end
 
         assert_format_with_config!(
             "for i = very_long_start_expr, very_long_stop_expr, very_long_step_expr do\n    print(i)\nend\n",
-            "for i = very_long_start_expr, very_long_stop_expr,\n    very_long_step_expr do\n    print(i)\nend\n",
+            "for i = very_long_start_expr,\n    very_long_stop_expr, very_long_step_expr do\n    print(i)\nend\n",
             config
         );
     }
@@ -238,6 +238,23 @@ end
         assert_format_with_config!(
             "for key, value in very_long_iterator_expr, another_long_iterator_expr, fallback_iterator_expr do\n    print(key, value)\nend\n",
             "for key, value in very_long_iterator_expr,\n    another_long_iterator_expr, fallback_iterator_expr do\n    print(key, value)\nend\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_for_range_header_prefers_balanced_packed_expr_list() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 44,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "for key, value in first_long_expr, second_long_expr, third_long_expr, fourth_long_expr, fifth_long_expr do\n    print(key, value)\nend\n",
+            "for key, value in first_long_expr,\n    second_long_expr, third_long_expr,\n    fourth_long_expr, fifth_long_expr do\n    print(key, value)\nend\n",
             config
         );
     }
@@ -514,6 +531,23 @@ end
         assert_format_with_config!(
             "result = alpha_beta_gamma + delta_theta + epsilon + zeta\n",
             "result = alpha_beta_gamma + delta_theta\n    + epsilon + zeta\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_assign_expr_list_prefers_balanced_packed_layout_with_long_prefix() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 44,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "very_long_result_name = first_long_expr, second_long_expr, third_long_expr, fourth_long_expr, fifth_long_expr\n",
+            "very_long_result_name = first_long_expr,\n    second_long_expr, third_long_expr,\n    fourth_long_expr, fifth_long_expr\n",
             config
         );
     }

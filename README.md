@@ -234,6 +234,11 @@ EmmyLua Analyzer Rust implements the standard LSP protocol, making it compatible
 
 - [📖 **Features Guide**](./docs/features/features_EN.md) - Comprehensive feature documentation
 - [⚙️ **Configuration**](./docs/config/emmyrc_json_EN.md) - Advanced configuration options
+- [🧾 **Formatter Guide**](./docs/emmylua_formatter/README_EN.md) - Formatter behavior, options, and usage guide
+- [🖼️ **Formatter Examples**](./docs/emmylua_formatter/examples_EN.md) - Before-and-after formatting examples
+- [🛠️ **Formatter Options**](./docs/emmylua_formatter/options_EN.md) - Formatter configuration reference
+- [📐 **Formatter Profiles**](./docs/emmylua_formatter/profiles_EN.md) - Recommended formatter configurations for common styles
+- [📚 **Formatter Tutorial**](./docs/emmylua_formatter/tutorial_EN.md) - Practical formatting workflow and examples
 - [📝 **Annotations Reference**](./docs/emmylua_doc/annotations_EN/README.md) - Detailed annotation documentation
 - [🎨 **Code Style**](https://github.com/CppCXY/EmmyLuaCodeStyle/blob/master/README_EN.md) - Formatting and style guidelines
 - [🛠️ **External Formatter Integration**](./docs/external_format/external_formatter_options_EN.md) - Using external formatters
