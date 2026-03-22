@@ -39,6 +39,10 @@ impl LuaFormatConfig {
         self.comments.align_line_comments && self.comments.align_in_table_fields
     }
 
+    pub fn should_align_call_arg_line_comments(&self) -> bool {
+        self.comments.align_line_comments && self.comments.align_in_call_args
+    }
+
     pub fn should_align_param_line_comments(&self) -> bool {
         self.comments.align_line_comments && self.comments.align_in_params
     }
@@ -142,6 +146,7 @@ pub struct CommentConfig {
     pub align_line_comments: bool,
     pub align_in_statements: bool,
     pub align_in_table_fields: bool,
+    pub align_in_call_args: bool,
     pub align_in_params: bool,
     pub align_across_standalone_comments: bool,
     pub align_same_kind_only: bool,
@@ -153,10 +158,11 @@ impl Default for CommentConfig {
     fn default() -> Self {
         Self {
             align_line_comments: true,
-            align_in_statements: true,
+            align_in_statements: false,
             align_in_table_fields: true,
+            align_in_call_args: true,
             align_in_params: true,
-            align_across_standalone_comments: true,
+            align_across_standalone_comments: false,
             align_same_kind_only: false,
             line_comment_min_spaces_before: 1,
             line_comment_min_column: 0,
@@ -196,7 +202,7 @@ pub struct AlignConfig {
 impl Default for AlignConfig {
     fn default() -> Self {
         Self {
-            continuous_assign_statement: true,
+            continuous_assign_statement: false,
             table_field: true,
         }
     }

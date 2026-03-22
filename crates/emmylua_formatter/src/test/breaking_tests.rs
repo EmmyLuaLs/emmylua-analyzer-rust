@@ -58,11 +58,11 @@ some_function(
             "local t = { first_key = 1, second_key = 2, third_key = 3, fourth_key = 4, fifth_key = 5 }\n",
             r#"
 local t = {
-    first_key  = 1,
+    first_key = 1,
     second_key = 2,
-    third_key  = 3,
+    third_key = 3,
     fourth_key = 4,
-    fifth_key  = 5
+    fifth_key = 5
 }
 "#,
             config

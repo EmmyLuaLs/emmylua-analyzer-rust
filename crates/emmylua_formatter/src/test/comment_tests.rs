@@ -287,6 +287,42 @@ foo(
     }
 
     #[test]
+    fn test_call_arg_comments_stay_unaligned_without_alignment_signal() {
+        assert_format!(
+            r#"
+foo(
+    a, -- first
+    long_name -- second
+)
+"#,
+            r#"
+foo(
+    a, -- first
+    long_name -- second
+)
+"#
+        );
+    }
+
+    #[test]
+    fn test_call_arg_comments_align_when_input_has_alignment_signal() {
+        assert_format!(
+            r#"
+foo(
+    a,  -- first
+    long_name -- second
+)
+"#,
+            r#"
+foo(
+    a,        -- first
+    long_name -- second
+)
+"#
+        );
+    }
+
+    #[test]
     fn test_closure_param_comments() {
         assert_format!(
             r#"
@@ -308,11 +344,48 @@ end
         );
     }
 
+    #[test]
+    fn test_function_param_comments_stay_unaligned_without_alignment_signal() {
+        assert_format!(
+            r#"
+function foo(
+    a, -- first
+    long_name -- second
+)
+    return a
+end
+"#,
+            r#"
+function foo(
+    a, -- first
+    long_name -- second
+)
+    return a
+end
+"#
+        );
+    }
+
     // ========== alignment ==========
 
     #[test]
     fn test_trailing_comment_alignment() {
-        assert_format!(
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            comments: crate::config::CommentConfig {
+                align_in_statements: true,
+                align_across_standalone_comments: true,
+                ..Default::default()
+            },
+            align: crate::config::AlignConfig {
+                continuous_assign_statement: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
             r#"
 local a = 1 -- short
 local bbb = 2 -- long var
@@ -322,13 +395,24 @@ local cc = 3 -- medium
 local a   = 1 -- short
 local bbb = 2 -- long var
 local cc  = 3 -- medium
-"#
+"#,
+            config
         );
     }
 
     #[test]
     fn test_assign_alignment() {
-        assert_format!(
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            align: crate::config::AlignConfig {
+                continuous_assign_statement: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
             r#"
 local x = 1
 local yy = 2
@@ -338,7 +422,8 @@ local zzz = 3
 local x   = 1
 local yy  = 2
 local zzz = 3
-"#
+"#,
+            config
         );
     }
 
@@ -360,7 +445,7 @@ local zzz = 3
             r#"
 local t = {
     x = 1,
-    long_name = 2,
+    long_name =  2,
     yy = 3,
 }
 "#,
@@ -392,7 +477,7 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local t = { x = 1, long_name = 2, yy = 3 }\n",
+            "local t = { x = 1, long_name =  2, yy = 3 }\n",
             r#"
 local t = {
     x         = 1,
@@ -518,13 +603,51 @@ end
             r#"
 local t = {
     x = 100, -- first
-    long_name = 2, -- second
+    long_name =  2, -- second
 }
 "#,
             r#"
 local t = {
     x         = 100, -- first
     long_name = 2 -- second
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_comment_alignment_uses_contiguous_subgroups() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                table_expand: crate::config::ExpandStrategy::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local t = {
+    a = "very very long",  -- first
+    b =  2, -- second
+    c = 3,
+    d = 4,  -- third
+    e = 5 -- fourth
+}
+"#,
+            r#"
+local t = {
+    a = "very very long", -- first
+    b = 2,                -- second
+    c = 3,
+    d = 4, -- third
+    e = 5  -- fourth
 }
 "#,
             config
@@ -560,6 +683,8 @@ local t = {
                 ..Default::default()
             },
             comments: crate::config::CommentConfig {
+                align_in_statements: true,
+                align_across_standalone_comments: true,
                 line_comment_min_column: 16,
                 ..Default::default()
             },
@@ -580,7 +705,22 @@ local bb = 2    -- y
 
     #[test]
     fn test_alignment_group_broken_by_blank_line() {
-        assert_format!(
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            comments: crate::config::CommentConfig {
+                align_in_statements: true,
+                align_across_standalone_comments: true,
+                ..Default::default()
+            },
+            align: crate::config::AlignConfig {
+                continuous_assign_statement: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
             r#"
 local a = 1 -- x
 local b = 2 -- y
@@ -594,13 +734,29 @@ local b = 2 -- y
 
 local cc = 3 -- z
 local d  = 4 -- w
-"#
+"#,
+            config
         );
     }
 
     #[test]
     fn test_alignment_group_preserves_standalone_comment() {
-        assert_format!(
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            comments: crate::config::CommentConfig {
+                align_in_statements: true,
+                align_across_standalone_comments: true,
+                ..Default::default()
+            },
+            align: crate::config::AlignConfig {
+                continuous_assign_statement: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
             r#"
 local a = 1 -- x
 -- divider
@@ -610,7 +766,8 @@ local long_name = 2 -- y
 local a         = 1 -- x
 -- divider
 local long_name = 2 -- y
-"#
+"#,
+            config
         );
     }
 
@@ -620,7 +777,12 @@ local long_name = 2 -- y
 
         let config = LuaFormatConfig {
             comments: crate::config::CommentConfig {
+                align_in_statements: true,
                 align_across_standalone_comments: false,
+                ..Default::default()
+            },
+            align: crate::config::AlignConfig {
+                continuous_assign_statement: true,
                 ..Default::default()
             },
             ..Default::default()
@@ -650,6 +812,7 @@ local long_name = 2 -- y
                 ..Default::default()
             },
             comments: crate::config::CommentConfig {
+                align_in_statements: true,
                 align_same_kind_only: true,
                 ..Default::default()
             },
@@ -663,6 +826,40 @@ bbbb = 2 -- y
             r#"
 local a = 1 -- x
 bbbb = 2 -- y
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_field_without_alignment_signal_stays_unaligned() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                table_expand: crate::config::ExpandStrategy::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local t = {
+    x = 1,
+    long_name = 2,
+    yy = 3,
+}
+"#,
+            r#"
+local t = {
+    x = 1,
+    long_name = 2,
+    yy = 3
+}
 "#,
             config
         );

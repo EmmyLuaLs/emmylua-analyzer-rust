@@ -56,6 +56,14 @@ end
     }
 
     #[test]
+    fn test_if_stat_preserves_inline_comment_after_then() {
+        assert_format!(
+            "if ok then -- keep header note\n    print(1)\nend\n",
+            "if ok then -- keep header note\n    print(1)\nend\n"
+        );
+    }
+
+    #[test]
     fn test_elseif_stat_preserves_standalone_comment_before_then() {
         assert_format!(
             "if a then\n    print(1)\nelseif b\n-- separator\nthen\n    print(2)\nend\n",
@@ -715,6 +723,14 @@ end
         assert_format!(
             "local function foo\n-- separator\n(a, b)\n    return a + b\nend\n",
             "local function foo\n-- separator\n(a, b)\n    return a + b\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_function_stat_preserves_comment_before_params_with_method_name() {
+        assert_format!(
+            "function module.subsystem:build\n-- separator\n(first, second)\n    return first + second\nend\n",
+            "function module.subsystem:build\n-- separator\n(first, second)\n    return first + second\nend\n"
         );
     }
 

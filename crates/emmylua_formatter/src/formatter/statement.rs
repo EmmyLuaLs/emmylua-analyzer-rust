@@ -10,7 +10,7 @@ use crate::ir::{self, DocIR, EqSplit};
 
 use super::FormatContext;
 use super::block::format_block;
-use super::comment::{collect_orphan_comments, format_comment};
+use super::comment::{collect_orphan_comments, extract_trailing_comment, format_comment};
 use super::expression::format_expr;
 use super::sequence::{
     SequenceEntry, comma_entry, render_sequence, sequence_ends_with_comment, sequence_has_comment,
@@ -444,18 +444,18 @@ fn format_local_func_stat(ctx: &FormatContext, stat: &LuaLocalFuncStat) -> Vec<D
 
 fn format_func_stat_trivia_aware(ctx: &FormatContext, stat: &LuaFuncStat) -> Vec<DocIR> {
     let entries = collect_func_stat_header_entries(ctx, stat);
-    render_function_header_entries(vec![tok(LuaTokenKind::TkFunction)], entries)
+    format_function_header_entries(vec![tok(LuaTokenKind::TkFunction)], &entries)
 }
 
 fn format_local_func_stat_trivia_aware(ctx: &FormatContext, stat: &LuaLocalFuncStat) -> Vec<DocIR> {
     let entries = collect_local_func_stat_header_entries(ctx, stat);
-    render_function_header_entries(
+    format_function_header_entries(
         vec![
             tok(LuaTokenKind::TkLocal),
             ir::space(),
             tok(LuaTokenKind::TkFunction),
         ],
-        entries,
+        &entries,
     )
 }
 
@@ -505,10 +505,25 @@ fn collect_local_func_stat_header_entries(
     entries
 }
 
-fn render_function_header_entries(
-    mut docs: Vec<DocIR>,
-    entries: Vec<FunctionHeaderEntry>,
+fn format_function_header_entries(
+    leading_docs: Vec<DocIR>,
+    entries: &[FunctionHeaderEntry],
 ) -> Vec<DocIR> {
+    if !function_header_has_comment(entries) {
+        let mut head_docs = vec![ir::space()];
+        for entry in entries {
+            match entry {
+                FunctionHeaderEntry::Name(name_docs) => head_docs.extend(name_docs.clone()),
+                FunctionHeaderEntry::Closure(closure_docs) => {
+                    head_docs.extend(closure_docs.clone())
+                }
+                FunctionHeaderEntry::Comment(_) => {}
+            }
+        }
+        return format_keyword_header(leading_docs, head_docs);
+    }
+
+    let mut docs = leading_docs;
     let mut prev_was_comment = false;
     let mut has_seen_header_content = false;
 
@@ -520,7 +535,7 @@ fn render_function_header_entries(
                 } else {
                     docs.push(ir::space());
                 }
-                docs.extend(name_docs);
+                docs.extend(name_docs.clone());
                 prev_was_comment = false;
                 has_seen_header_content = true;
             }
@@ -530,7 +545,7 @@ fn render_function_header_entries(
                 } else {
                     docs.push(ir::space());
                 }
-                docs.extend(comment_docs);
+                docs.extend(comment_docs.clone());
                 prev_was_comment = true;
                 has_seen_header_content = true;
             }
@@ -538,7 +553,7 @@ fn render_function_header_entries(
                 if prev_was_comment {
                     docs.push(ir::hard_line());
                 }
-                docs.extend(closure_docs);
+                docs.extend(closure_docs.clone());
                 prev_was_comment = false;
                 has_seen_header_content = true;
             }
@@ -546,6 +561,12 @@ fn render_function_header_entries(
     }
 
     docs
+}
+
+fn function_header_has_comment(entries: &[FunctionHeaderEntry]) -> bool {
+    entries
+        .iter()
+        .any(|entry| matches!(entry, FunctionHeaderEntry::Comment(_)))
 }
 
 /// Single-line function definition: keep single-line output when body is empty
@@ -645,6 +666,10 @@ fn format_if_stat(ctx: &FormatContext, stat: &LuaIfStat) -> Vec<DocIR> {
         return preserved;
     }
 
+    if should_preserve_raw_if_header_inline_comment(stat) {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    }
+
     if should_preserve_raw_if_stat_with_comments(stat) {
         return vec![ir::source_node_trimmed(stat.syntax().clone())];
     }
@@ -724,12 +749,26 @@ fn should_preserve_raw_if_stat_with_comments(stat: &LuaIfStat) -> bool {
     text.contains("elseif") && text.contains("--")
 }
 
+fn should_preserve_raw_if_header_inline_comment(stat: &LuaIfStat) -> bool {
+    stat.syntax().text().to_string().lines().any(|line| {
+        line.find("then")
+            .map(|index| line[index + 4..].contains("--"))
+            .unwrap_or(false)
+    })
+}
+
 fn format_if_stat_trivia_aware(ctx: &FormatContext, stat: &LuaIfStat) -> Vec<DocIR> {
-    let mut docs = format_sequence_control_header(
-        vec![tok(LuaTokenKind::TkIf)],
-        &collect_if_clause_entries(ctx, stat.syntax()),
-        LuaTokenKind::TkThen,
-    );
+    let mut docs = if let Some(raw_header) =
+        try_format_raw_clause_header_until_block(stat.syntax(), stat.get_block().as_ref())
+    {
+        raw_header
+    } else {
+        format_sequence_control_header(
+            vec![tok(LuaTokenKind::TkIf)],
+            &collect_if_clause_entries(ctx, stat.syntax()),
+            LuaTokenKind::TkThen,
+        )
+    };
 
     format_block_or_orphan_comments(ctx, stat.get_block().as_ref(), stat.syntax(), &mut docs);
 
@@ -1655,7 +1694,9 @@ fn should_preserve_raw_statement_with_inline_comments(stat: &LuaStat) -> bool {
 pub fn is_eq_alignable(stat: &LuaStat) -> bool {
     match stat {
         LuaStat::LocalStat(s) => {
-            if node_has_direct_comment_child(s.syntax()) {
+            if node_has_direct_comment_child(s.syntax())
+                && extract_trailing_comment(s.syntax()).is_none()
+            {
                 return false;
             }
             // Must have values (local x = ...) and no block-like RHS
@@ -1670,7 +1711,9 @@ pub fn is_eq_alignable(stat: &LuaStat) -> bool {
             true
         }
         LuaStat::AssignStat(s) => {
-            if node_has_direct_comment_child(s.syntax()) {
+            if node_has_direct_comment_child(s.syntax())
+                && extract_trailing_comment(s.syntax()).is_none()
+            {
                 return false;
             }
             let (_, exprs) = s.get_var_and_expr_list();

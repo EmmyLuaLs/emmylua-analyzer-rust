@@ -9,6 +9,8 @@ use rowan::TextRange;
 use crate::config::LuaFormatConfig;
 use crate::ir::{self, DocIR};
 
+use super::trivia::has_non_trivia_before_on_same_line;
+
 /// Format a Comment node.
 ///
 /// Dispatches between three comment types:
@@ -876,6 +878,25 @@ pub fn collect_orphan_comments(config: &LuaFormatConfig, node: &LuaSyntaxNode) -
 /// Extract a trailing comment on the same line after a syntax node.
 /// Returns the raw comment docs (NOT wrapped in LineSuffix) and the text range.
 pub fn extract_trailing_comment(node: &LuaSyntaxNode) -> Option<(Vec<DocIR>, TextRange)> {
+    for child in node.children() {
+        if child.kind() != LuaKind::Syntax(LuaSyntaxKind::Comment)
+            || !has_non_trivia_before_on_same_line(&child)
+            || has_non_trivia_after_on_same_line(&child)
+        {
+            continue;
+        }
+
+        let comment = LuaComment::cast(child.clone())?;
+        if child.text().contains_char('\n') {
+            return None;
+        }
+
+        let comment_text = render_single_line_comment_text(&comment)
+            .unwrap_or_else(|| child.text().to_string().trim_end().to_string());
+
+        return Some((vec![ir::text(comment_text)], child.text_range()));
+    }
+
     let mut next = node.next_sibling_or_token();
 
     // Look ahead at most 4 elements (skipping whitespace, commas, semicolons)
@@ -906,6 +927,27 @@ pub fn extract_trailing_comment(node: &LuaSyntaxNode) -> Option<(Vec<DocIR>, Tex
     }
 
     None
+}
+
+fn has_non_trivia_after_on_same_line(node: &LuaSyntaxNode) -> bool {
+    let mut next = node.next_sibling_or_token();
+
+    while let Some(element) = next {
+        match element.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {
+                next = element.next_sibling_or_token();
+            }
+            LuaKind::Token(LuaTokenKind::TkEndOfLine) => {
+                next = element.next_sibling_or_token();
+            }
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => {
+                next = element.next_sibling_or_token();
+            }
+            _ => return true,
+        }
+    }
+
+    false
 }
 
 fn render_single_line_comment_text(comment: &LuaComment) -> Option<String> {

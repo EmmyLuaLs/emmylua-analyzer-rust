@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{ArgGroup, Parser};
+use clap::{ArgGroup, Parser, ValueEnum};
 
 use crate::{FileCollectorOptions, IndentKind, ResolvedConfig, resolve_config_for_path};
 
@@ -36,6 +36,14 @@ pub struct CliArgs {
     /// Print paths of files that would be reformatted
     #[arg(long, alias = "list-different")]
     pub list_different: bool,
+
+    /// Colorize --check diff output
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
+    pub color: ColorChoice,
+
+    /// Diff rendering style for --check output
+    #[arg(long, value_enum, default_value_t = DiffStyle::Marker)]
+    pub diff_style: DiffStyle,
 
     /// Write output to a specific file (only with a single input or stdin)
     #[arg(short, long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
@@ -84,6 +92,21 @@ pub struct CliArgs {
     /// Exclude files matching a glob pattern
     #[arg(long, value_name = "GLOB")]
     pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum ColorChoice {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum DiffStyle {
+    #[default]
+    Marker,
+    Git,
 }
 
 pub fn resolve_style(args: &CliArgs) -> Result<ResolvedConfig, String> {

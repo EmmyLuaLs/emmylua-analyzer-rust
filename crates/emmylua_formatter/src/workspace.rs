@@ -28,9 +28,29 @@ pub struct FormatOutput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormatCheckResult {
+    pub formatted: String,
+    pub changed: bool,
+    pub changed_line_ranges: Vec<ChangedLineRange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedLineRange {
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormatPathResult {
     pub path: PathBuf,
     pub output: FormatOutput,
+    pub config_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormatCheckPathResult {
+    pub path: PathBuf,
+    pub output: FormatCheckResult,
     pub config_path: Option<PathBuf>,
 }
 
@@ -112,13 +132,30 @@ impl From<io::Error> for FormatterError {
 }
 
 pub fn format_text(code: &str, config: &LuaFormatConfig) -> FormatOutput {
+    let check = check_text(code, config);
+    FormatOutput {
+        formatted: check.formatted,
+        changed: check.changed,
+    }
+}
+
+pub fn check_text(code: &str, config: &LuaFormatConfig) -> FormatCheckResult {
     let source = crate::SourceText {
         text: code,
         level: LuaLanguageLevel::default(),
     };
     let formatted = reformat_lua_code(&source, config);
     let changed = formatted != code;
-    FormatOutput { formatted, changed }
+    let changed_line_ranges = if changed {
+        collect_changed_line_ranges(code, &formatted)
+    } else {
+        Vec::new()
+    };
+    FormatCheckResult {
+        formatted,
+        changed,
+        changed_line_ranges,
+    }
 }
 
 pub fn format_text_for_path(
@@ -126,9 +163,25 @@ pub fn format_text_for_path(
     source_path: Option<&Path>,
     explicit_config_path: Option<&Path>,
 ) -> Result<FormatPathResult, FormatterError> {
-    let resolved = resolve_config_for_path(source_path, explicit_config_path)?;
-    let output = format_text(code, &resolved.config);
+    let result = check_text_for_path(code, source_path, explicit_config_path)?;
     Ok(FormatPathResult {
+        path: result.path,
+        output: FormatOutput {
+            formatted: result.output.formatted,
+            changed: result.output.changed,
+        },
+        config_path: result.config_path,
+    })
+}
+
+pub fn check_text_for_path(
+    code: &str,
+    source_path: Option<&Path>,
+    explicit_config_path: Option<&Path>,
+) -> Result<FormatCheckPathResult, FormatterError> {
+    let resolved = resolve_config_for_path(source_path, explicit_config_path)?;
+    let output = check_text(code, &resolved.config);
+    Ok(FormatCheckPathResult {
         path: source_path
             .unwrap_or_else(|| Path::new("<memory>"))
             .to_path_buf(),
@@ -141,10 +194,25 @@ pub fn format_file(
     path: &Path,
     explicit_config_path: Option<&Path>,
 ) -> Result<FormatPathResult, FormatterError> {
+    let result = check_file(path, explicit_config_path)?;
+    Ok(FormatPathResult {
+        path: result.path,
+        output: FormatOutput {
+            formatted: result.output.formatted,
+            changed: result.output.changed,
+        },
+        config_path: result.config_path,
+    })
+}
+
+pub fn check_file(
+    path: &Path,
+    explicit_config_path: Option<&Path>,
+) -> Result<FormatCheckPathResult, FormatterError> {
     let source = fs::read_to_string(path)?;
     let resolved = resolve_config_for_path(Some(path), explicit_config_path)?;
-    let output = format_text(&source, &resolved.config);
-    Ok(FormatPathResult {
+    let output = check_text(&source, &resolved.config);
+    Ok(FormatCheckPathResult {
         path: path.to_path_buf(),
         output,
         config_path: resolved.source_path,
@@ -445,6 +513,39 @@ fn parse_ignore_file(content: &str) -> Vec<String> {
         .collect()
 }
 
+fn collect_changed_line_ranges(original: &str, formatted: &str) -> Vec<ChangedLineRange> {
+    let original_lines: Vec<&str> = original.lines().collect();
+    let formatted_lines: Vec<&str> = formatted.lines().collect();
+    let max_len = original_lines.len().max(formatted_lines.len());
+
+    let mut ranges = Vec::new();
+    let mut current_start: Option<usize> = None;
+
+    for index in 0..max_len {
+        let original_line = original_lines.get(index).copied();
+        let formatted_line = formatted_lines.get(index).copied();
+        if original_line != formatted_line {
+            if current_start.is_none() {
+                current_start = Some(index + 1);
+            }
+        } else if let Some(start_line) = current_start.take() {
+            ranges.push(ChangedLineRange {
+                start_line,
+                end_line: index,
+            });
+        }
+    }
+
+    if let Some(start_line) = current_start {
+        ranges.push(ChangedLineRange {
+            start_line,
+            end_line: max_len.max(start_line),
+        });
+    }
+
+    ranges
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -520,5 +621,52 @@ mod tests {
         assert_eq!(resolved.config.layout.max_line_width, 88);
         assert_eq!(resolved.source_path, Some(root.join(".luafmt.toml")));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn test_check_text_reports_formatted_output_and_changed_flag() {
+        let config = LuaFormatConfig::default();
+
+        let result = check_text("local x=1\n", &config);
+
+        assert!(result.changed);
+        assert_eq!(result.formatted, "local x = 1\n");
+        assert_eq!(result.changed_line_ranges.len(), 1);
+        assert_eq!(result.changed_line_ranges[0].start_line, 1);
+        assert_eq!(result.changed_line_ranges[0].end_line, 1);
+    }
+
+    #[test]
+    fn test_check_text_for_path_uses_discovered_config() {
+        let root = make_temp_dir("luafmt-check-config");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join(".luafmt.toml"), "[layout]\nmax_line_width = 10\n").unwrap();
+        let file_path = root.join("src").join("main.lua");
+        fs::write(&file_path, "call(alpha, beta, gamma)\n").unwrap();
+
+        let result = check_file(&file_path, None).unwrap();
+
+        assert!(result.output.changed);
+        assert_eq!(result.config_path, Some(root.join(".luafmt.toml")));
+        assert!(result.output.formatted.contains("\n"));
+        assert!(!result.output.changed_line_ranges.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn test_check_text_collects_multiple_changed_line_ranges() {
+        let ranges = collect_changed_line_ranges(
+            "local a=1\nlocal b=2\nprint(a+b)\n",
+            "local a = 1\nlocal b = 2\nprint(a + b)\n",
+        );
+
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(
+            ranges[0],
+            ChangedLineRange {
+                start_line: 1,
+                end_line: 3
+            }
+        );
     }
 }

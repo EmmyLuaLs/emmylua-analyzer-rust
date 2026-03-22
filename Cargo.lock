@@ -699,6 +699,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yml",
+ "similar",
  "smol_str",
  "toml_edit",
  "walkdir",
@@ -2585,6 +2586,12 @@ checksum = "9203b8055f63a2a00e2f593bb0510367fe707d7ff1e5c872de2f537b339e5410"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "siphasher"

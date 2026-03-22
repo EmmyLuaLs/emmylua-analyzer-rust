@@ -13,6 +13,7 @@ toml_edit.workspace = true
 smol_str.workspace = true
 glob.workspace = true
 walkdir.workspace = true
+similar = { version = "2.7.0", features = ["inline"] }
 
 [dependencies.clap]
 workspace = true

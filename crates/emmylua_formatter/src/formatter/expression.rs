@@ -1,8 +1,8 @@
 use emmylua_parser::{
     BinaryOperator, LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallExpr, LuaClosureExpr,
     LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind, LuaLiteralExpr, LuaNameExpr,
-    LuaParenExpr, LuaSingleArgExpr, LuaSyntaxKind, LuaTableExpr, LuaTableField, LuaTokenKind,
-    LuaUnaryExpr, UnaryOperator,
+    LuaParenExpr, LuaSingleArgExpr, LuaSyntaxKind, LuaSyntaxNode, LuaTableExpr, LuaTableField,
+    LuaTokenKind, LuaUnaryExpr, UnaryOperator,
 };
 use rowan::TextRange;
 
@@ -537,12 +537,18 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                 } => trailing_comment.is_some(),
                 CallArgEntry::StandaloneComment(_) => true,
             });
+            let has_standalone_comments = arg_entries
+                .iter()
+                .any(|entry| matches!(entry, CallArgEntry::StandaloneComment(_)));
+            let align_comments = ctx.config.should_align_call_arg_line_comments()
+                && !has_standalone_comments
+                && call_arg_group_requests_alignment(&arg_entries);
             let trailing = format_trailing_comma_ir(ctx.config.output.trailing_comma.clone());
 
             match ctx.config.layout.call_args_expand {
                 ExpandStrategy::Always => {
                     let inner = if has_comments {
-                        build_multiline_call_arg_entries(ctx, arg_entries)
+                        build_multiline_call_arg_entries(ctx, arg_entries, align_comments)
                     } else {
                         let arg_docs: Vec<Vec<DocIR>> =
                             args.iter().map(|a| format_expr(ctx, a)).collect();
@@ -574,7 +580,8 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                 }
                 ExpandStrategy::Never => {
                     if has_comments {
-                        let inner = build_multiline_call_arg_entries(ctx, arg_entries);
+                        let inner =
+                            build_multiline_call_arg_entries(ctx, arg_entries, align_comments);
                         docs.push(ir::group_break(vec![
                             tok(LuaTokenKind::TkLeftParen),
                             ir::indent(vec![ir::hard_line(), ir::list(inner), trailing]),
@@ -605,13 +612,8 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                 }
                 ExpandStrategy::Auto => {
                     if has_comments {
-                        let inner = if has_comments {
-                            build_multiline_call_arg_entries(ctx, arg_entries)
-                        } else {
-                            let arg_docs: Vec<Vec<DocIR>> =
-                                args.iter().map(|a| format_expr(ctx, a)).collect();
-                            vec![ir::list(ir::intersperse(arg_docs, comma_soft_line_sep()))]
-                        };
+                        let inner =
+                            build_multiline_call_arg_entries(ctx, arg_entries, align_comments);
                         docs.push(ir::group_break(vec![
                             tok(LuaTokenKind::TkLeftParen),
                             ir::indent(vec![ir::hard_line(), ir::list(inner), trailing]),
@@ -807,16 +809,26 @@ fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
             } else {
                 None
             };
-            let trailing_comment =
+            let align_hint = field_requests_alignment(&field);
+            let (trailing_comment, comment_align_hint) =
                 if let Some((docs, range)) = extract_trailing_comment(field.syntax()) {
                     consumed_comment_ranges.push(range);
-                    Some(docs)
+                    (
+                        Some(docs),
+                        trailing_comment_requests_alignment(
+                            field.syntax(),
+                            range,
+                            ctx.config.comments.line_comment_min_spaces_before.max(1),
+                        ),
+                    )
                 } else {
-                    None
+                    (None, false)
                 };
             entries.push(TableEntry::Field {
                 doc: fdoc,
                 eq_split,
+                align_hint,
+                comment_align_hint,
                 trailing_comment,
             });
         } else if child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment) {
@@ -1079,10 +1091,175 @@ enum TableEntry {
         doc: Vec<DocIR>,
         /// Split at `=` for alignment: (key_docs, eq_value_docs)
         eq_split: Option<EqSplit>,
+        /// Whether the original source shows an intent to align this field's value.
+        align_hint: bool,
+        /// Whether the original source shows an intent to align this field's trailing comment.
+        comment_align_hint: bool,
         /// Raw trailing comment docs (NOT wrapped in LineSuffix)
         trailing_comment: Option<Vec<DocIR>>,
     },
     StandaloneComment(Vec<DocIR>),
+}
+
+fn field_requests_alignment(field: &LuaTableField) -> bool {
+    if !field.is_assign_field() {
+        return false;
+    }
+
+    let Some(value) = field.get_value_expr() else {
+        return false;
+    };
+
+    let Some(assign_token) = field.syntax().children_with_tokens().find_map(|element| {
+        let token = element.into_token()?;
+        (token.kind() == LuaTokenKind::TkAssign.into()).then_some(token)
+    }) else {
+        return false;
+    };
+
+    let field_start = field.syntax().text_range().start();
+    let gap_start = usize::from(assign_token.text_range().end() - field_start);
+    let gap_end = usize::from(value.syntax().text_range().start() - field_start);
+    if gap_end <= gap_start {
+        return false;
+    }
+
+    let text = field.syntax().text().to_string();
+    let Some(gap) = text.get(gap_start..gap_end) else {
+        return false;
+    };
+
+    !gap.contains(['\n', '\r']) && gap.chars().filter(|ch| matches!(ch, ' ' | '\t')).count() > 1
+}
+
+fn table_group_requests_alignment(entries: &[TableEntry]) -> bool {
+    entries.iter().any(|entry| {
+        matches!(
+            entry,
+            TableEntry::Field {
+                align_hint: true,
+                ..
+            }
+        )
+    })
+}
+
+fn table_comment_group_requests_alignment(entries: &[TableEntry]) -> bool {
+    entries.iter().any(|entry| {
+        matches!(
+            entry,
+            TableEntry::Field {
+                trailing_comment: Some(_),
+                comment_align_hint: true,
+                ..
+            }
+        )
+    })
+}
+
+fn trailing_comment_padding_for_config(
+    ctx: &FormatContext,
+    content_width: usize,
+    aligned_content_width: usize,
+) -> usize {
+    let natural_padding = aligned_content_width.saturating_sub(content_width)
+        + ctx.config.comments.line_comment_min_spaces_before.max(1);
+
+    if ctx.config.comments.line_comment_min_column == 0 {
+        natural_padding
+    } else {
+        natural_padding.max(
+            ctx.config
+                .comments
+                .line_comment_min_column
+                .saturating_sub(content_width),
+        )
+    }
+}
+
+fn trailing_comment_suffix_with_padding(comment_docs: &[DocIR], padding: usize) -> DocIR {
+    let mut suffix = Vec::new();
+    suffix.extend((0..padding).map(|_| ir::space()));
+    suffix.extend(comment_docs.iter().cloned());
+    ir::line_suffix(suffix)
+}
+
+fn aligned_table_comment_widths(
+    entries: &[TableEntry],
+    group_start: usize,
+    group_end: usize,
+    last_field_idx: Option<usize>,
+    trailing: &DocIR,
+    max_before: usize,
+) -> Vec<Option<usize>> {
+    let mut widths = vec![None; group_end - group_start];
+    let mut subgroup_start = group_start;
+
+    while subgroup_start < group_end {
+        while subgroup_start < group_end
+            && !matches!(
+                &entries[subgroup_start],
+                TableEntry::Field {
+                    trailing_comment: Some(_),
+                    ..
+                }
+            )
+        {
+            subgroup_start += 1;
+        }
+
+        if subgroup_start >= group_end {
+            break;
+        }
+
+        let mut subgroup_end = subgroup_start + 1;
+        while subgroup_end < group_end
+            && matches!(
+                &entries[subgroup_end],
+                TableEntry::Field {
+                    trailing_comment: Some(_),
+                    ..
+                }
+            )
+        {
+            subgroup_end += 1;
+        }
+
+        if table_comment_group_requests_alignment(&entries[subgroup_start..subgroup_end]) {
+            let mut max_content_width = 0;
+
+            for (index, entry) in entries
+                .iter()
+                .enumerate()
+                .take(subgroup_end)
+                .skip(subgroup_start)
+            {
+                if let TableEntry::Field {
+                    eq_split: Some((_, after)),
+                    ..
+                } = entry
+                {
+                    let mut after_with_separator = after.clone();
+                    if last_field_idx == Some(index) {
+                        after_with_separator.push(trailing.clone());
+                    } else {
+                        after_with_separator.push(tok(LuaTokenKind::TkComma));
+                    }
+
+                    max_content_width = max_content_width
+                        .max(max_before + 1 + ir::ir_flat_width(&after_with_separator));
+                }
+            }
+
+            for index in subgroup_start..subgroup_end {
+                widths[index - group_start] = Some(max_content_width);
+            }
+        }
+
+        subgroup_start = subgroup_end;
+    }
+
+    widths
 }
 
 /// Build inner content (entries between { and }) for an expanded table.
@@ -1118,20 +1295,44 @@ fn build_table_expanded_inner(
                         } => {
                             group_end += 1;
                         }
-                        TableEntry::StandaloneComment(_) => {
-                            group_end += 1;
-                        }
                         _ => break,
                     }
                 }
 
-                if group_end - group_start >= 2 {
+                if group_end - group_start >= 2
+                    && table_group_requests_alignment(&entries[group_start..group_end])
+                {
                     inner.push(ir::hard_line());
+                    let max_before = entries[group_start..group_end]
+                        .iter()
+                        .filter_map(|entry| match entry {
+                            TableEntry::Field {
+                                eq_split: Some((before, _)),
+                                ..
+                            } => Some(ir::ir_flat_width(before)),
+                            _ => None,
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    let comment_widths = if align_comments {
+                        aligned_table_comment_widths(
+                            entries,
+                            group_start,
+                            group_end,
+                            last_field_idx,
+                            trailing,
+                            max_before,
+                        )
+                    } else {
+                        vec![None; group_end - group_start]
+                    };
                     let mut align_entries = Vec::new();
                     for (j, entry) in entries.iter().enumerate().take(group_end).skip(group_start) {
                         match entry {
                             TableEntry::Field {
                                 eq_split: Some((before, after)),
+                                align_hint: _,
+                                comment_align_hint: _,
                                 trailing_comment,
                                 ..
                             } => {
@@ -1142,24 +1343,34 @@ fn build_table_expanded_inner(
                                 } else {
                                     after_with_comma.push(tok(LuaTokenKind::TkComma));
                                 }
-                                if align_comments {
-                                    align_entries.push(AlignEntry::Aligned {
-                                        before: before.clone(),
-                                        after: after_with_comma,
-                                        trailing: trailing_comment.clone(),
-                                    });
-                                } else {
-                                    if let Some(comment_docs) = trailing_comment {
+                                if let Some(comment_docs) = trailing_comment {
+                                    if let Some(aligned_content_width) =
+                                        comment_widths[j - group_start]
+                                    {
+                                        let content_width =
+                                            max_before + 1 + ir::ir_flat_width(&after_with_comma);
+                                        let padding = trailing_comment_padding_for_config(
+                                            ctx,
+                                            content_width,
+                                            aligned_content_width,
+                                        );
+                                        after_with_comma.push(
+                                            trailing_comment_suffix_with_padding(
+                                                comment_docs,
+                                                padding,
+                                            ),
+                                        );
+                                    } else {
                                         let mut suffix = trailing_comment_prefix(ctx.config);
                                         suffix.extend(comment_docs.clone());
                                         after_with_comma.push(ir::line_suffix(suffix));
                                     }
-                                    align_entries.push(AlignEntry::Aligned {
-                                        before: before.clone(),
-                                        after: after_with_comma,
-                                        trailing: None,
-                                    });
                                 }
+                                align_entries.push(AlignEntry::Aligned {
+                                    before: before.clone(),
+                                    after: after_with_comma,
+                                    trailing: None,
+                                });
                             }
                             TableEntry::StandaloneComment(comment_docs) => {
                                 align_entries.push(AlignEntry::Line {
@@ -1169,6 +1380,8 @@ fn build_table_expanded_inner(
                             }
                             TableEntry::Field {
                                 doc,
+                                align_hint: _,
+                                comment_align_hint: _,
                                 trailing_comment,
                                 ..
                             } => {
@@ -1207,6 +1420,8 @@ fn build_table_expanded_inner(
             match &entries[i] {
                 TableEntry::Field {
                     doc,
+                    align_hint: _,
+                    comment_align_hint: _,
                     trailing_comment,
                     ..
                 } => {
@@ -1236,6 +1451,8 @@ fn build_table_expanded_inner(
             match entry {
                 TableEntry::Field {
                     doc,
+                    align_hint: _,
+                    comment_align_hint: _,
                     trailing_comment,
                     ..
                 } => {
@@ -1416,7 +1633,11 @@ fn should_preserve_raw_call_expr(expr: &LuaCallExpr) -> bool {
     }
 
     expr.get_args_list()
-        .map(|args| node_has_direct_same_line_inline_comment(args.syntax()))
+        .map(|args| {
+            node_has_direct_same_line_inline_comment(args.syntax())
+                && !args.syntax().text().to_string().starts_with("(\n")
+                && !args.syntax().text().to_string().starts_with("(\r\n")
+        })
         .unwrap_or(false)
 }
 
@@ -1434,9 +1655,48 @@ enum CallArgEntry {
     Arg {
         doc: Vec<DocIR>,
         trailing_comment: Option<Vec<DocIR>>,
+        align_hint: bool,
         has_following_arg: bool,
     },
     StandaloneComment(Vec<DocIR>),
+}
+
+fn trailing_comment_requests_alignment(
+    node: &LuaSyntaxNode,
+    comment_range: TextRange,
+    required_min_gap: usize,
+) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+
+    let parent_start = parent.text_range().start();
+    let gap_start = usize::from(node.text_range().end() - parent_start);
+    let gap_end = usize::from(comment_range.start() - parent_start);
+    if gap_end <= gap_start {
+        return false;
+    }
+
+    let text = parent.text().to_string();
+    let Some(gap) = text.get(gap_start..gap_end) else {
+        return false;
+    };
+
+    !gap.contains(['\n', '\r'])
+        && gap.chars().filter(|ch| matches!(ch, ' ' | '\t')).count() > required_min_gap
+}
+
+fn call_arg_group_requests_alignment(entries: &[CallArgEntry]) -> bool {
+    entries.iter().any(|entry| {
+        matches!(
+            entry,
+            CallArgEntry::Arg {
+                trailing_comment: Some(_),
+                align_hint: true,
+                ..
+            }
+        )
+    })
 }
 
 fn collect_call_arg_entries(
@@ -1450,12 +1710,19 @@ fn collect_call_arg_entries(
 
     for child in args_list.syntax().children() {
         if let Some(arg) = LuaExpr::cast(child.clone()) {
-            let trailing_comment =
+            let (trailing_comment, align_hint) =
                 if let Some((docs, range)) = extract_trailing_comment(arg.syntax()) {
                     consumed_comment_ranges.push(range);
-                    Some(docs)
+                    (
+                        Some(docs),
+                        trailing_comment_requests_alignment(
+                            arg.syntax(),
+                            range,
+                            ctx.config.comments.line_comment_min_spaces_before.max(1),
+                        ),
+                    )
                 } else {
-                    None
+                    (None, false)
                 };
 
             let has_following_arg = arg_index + 1 < args.len();
@@ -1463,6 +1730,7 @@ fn collect_call_arg_entries(
             entries.push(CallArgEntry::Arg {
                 doc: format_expr(ctx, &arg),
                 trailing_comment,
+                align_hint,
                 has_following_arg,
             });
         } else if child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment)
@@ -1483,7 +1751,42 @@ fn collect_call_arg_entries(
     entries
 }
 
-fn build_multiline_call_arg_entries(ctx: &FormatContext, entries: Vec<CallArgEntry>) -> Vec<DocIR> {
+fn build_multiline_call_arg_entries(
+    ctx: &FormatContext,
+    entries: Vec<CallArgEntry>,
+    align_comments: bool,
+) -> Vec<DocIR> {
+    if align_comments {
+        let mut align_entries = Vec::new();
+
+        for entry in entries {
+            match entry {
+                CallArgEntry::Arg {
+                    mut doc,
+                    trailing_comment,
+                    align_hint: _,
+                    has_following_arg,
+                } => {
+                    if has_following_arg {
+                        doc.push(tok(LuaTokenKind::TkComma));
+                    }
+                    align_entries.push(AlignEntry::Line {
+                        content: doc,
+                        trailing: trailing_comment,
+                    });
+                }
+                CallArgEntry::StandaloneComment(comment_docs) => {
+                    align_entries.push(AlignEntry::Line {
+                        content: comment_docs,
+                        trailing: None,
+                    });
+                }
+            }
+        }
+
+        return vec![ir::align_group(align_entries)];
+    }
+
     let mut inner = Vec::new();
 
     for (index, entry) in entries.into_iter().enumerate() {
@@ -1495,6 +1798,7 @@ fn build_multiline_call_arg_entries(ctx: &FormatContext, entries: Vec<CallArgEnt
             CallArgEntry::Arg {
                 doc,
                 trailing_comment,
+                align_hint: _,
                 has_following_arg,
             } => {
                 inner.extend(doc);
@@ -1543,12 +1847,16 @@ pub fn format_param_list_ir(
             .iter()
             .any(|entry| matches!(entry, ParamEntry::StandaloneComment(_)));
 
-        if ctx.config.should_align_param_line_comments() && !has_standalone_comments {
+        if ctx.config.should_align_param_line_comments()
+            && !has_standalone_comments
+            && param_group_requests_alignment(&entries)
+        {
             let mut align_entries = Vec::new();
             for entry in entries {
                 if let ParamEntry::Param {
                     mut doc,
                     trailing_comment,
+                    align_hint: _,
                     has_following_param,
                 } = entry
                 {
@@ -1608,9 +1916,23 @@ enum ParamEntry {
     Param {
         doc: Vec<DocIR>,
         trailing_comment: Option<Vec<DocIR>>,
+        align_hint: bool,
         has_following_param: bool,
     },
     StandaloneComment(Vec<DocIR>),
+}
+
+fn param_group_requests_alignment(entries: &[ParamEntry]) -> bool {
+    entries.iter().any(|entry| {
+        matches!(
+            entry,
+            ParamEntry::Param {
+                trailing_comment: Some(_),
+                align_hint: true,
+                ..
+            }
+        )
+    })
 }
 
 fn collect_param_entries(
@@ -1632,12 +1954,19 @@ fn collect_param_entries(
                 continue;
             };
 
-            let trailing_comment =
+            let (trailing_comment, align_hint) =
                 if let Some((docs, range)) = extract_trailing_comment(param.syntax()) {
                     consumed_comment_ranges.push(range);
-                    Some(docs)
+                    (
+                        Some(docs),
+                        trailing_comment_requests_alignment(
+                            param.syntax(),
+                            range,
+                            ctx.config.comments.line_comment_min_spaces_before.max(1),
+                        ),
+                    )
                 } else {
-                    None
+                    (None, false)
                 };
 
             let has_following_param = param_index + 1 < param_nodes.len();
@@ -1645,6 +1974,7 @@ fn collect_param_entries(
             entries.push(ParamEntry::Param {
                 doc,
                 trailing_comment,
+                align_hint,
                 has_following_param,
             });
         } else if child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment)
@@ -1677,6 +2007,7 @@ fn build_multiline_param_entries(ctx: &FormatContext, entries: Vec<ParamEntry>) 
             ParamEntry::Param {
                 doc,
                 trailing_comment,
+                align_hint: _,
                 has_following_param,
             } => {
                 inner.extend(doc);
