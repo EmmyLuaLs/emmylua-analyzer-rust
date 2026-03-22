@@ -29,7 +29,7 @@ pub async fn on_did_change_watched_files(
                     continue;
                 }
 
-                if !workspace.current_open_files.contains(&file_event.uri) {
+                if !workspace.is_open_file(&file_event.uri) {
                     if !workspace.is_workspace_file(&file_event.uri) {
                         continue;
                     }
@@ -57,14 +57,12 @@ pub async fn on_did_change_watched_files(
                 if file_event.typ == FileChangeType::DELETED {
                     continue;
                 }
-                let emmyrc_path = uri_to_file_path(&file_event.uri).unwrap();
-                let file_dir = emmyrc_path.parent().unwrap().to_path_buf();
+                let config_path = uri_to_file_path(&file_event.uri).unwrap();
                 context
                     .workspace_manager()
                     .read()
                     .await
-                    .add_update_emmyrc_task(file_dir)
-                    .await;
+                    .add_update_emmyrc_task(context.clone(), config_path);
             }
             None => {}
         }

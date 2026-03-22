@@ -688,7 +688,7 @@ fn param_type_list_pattern_match_type_list(
     Ok(())
 }
 
-fn return_type_pattern_match_target_type(
+pub(crate) fn return_type_pattern_match_target_type(
     context: &mut TplContext,
     source: &LuaType,
     target: &LuaType,

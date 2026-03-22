@@ -221,27 +221,31 @@ where
         }
 
         let expr_type = infer(db, cache, expr.clone())?;
+        if let Some(var_count) = var_count
+            && expr_type.contain_multi_return()
+        {
+            if idx < var_count {
+                for i in idx..var_count {
+                    if let Some(typ) = expr_type.get_result_slot_type(i - idx) {
+                        value_types.push((typ, expr.get_range()));
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            break;
+        }
+
         match expr_type {
             LuaType::Variadic(variadic) => {
-                if let Some(var_count) = var_count {
-                    if idx < var_count {
-                        for i in idx..var_count {
-                            if let Some(typ) = variadic.get_type(i - idx) {
-                                value_types.push((typ.clone(), expr.get_range()));
-                            } else {
-                                break;
-                            }
-                        }
+                match variadic.deref() {
+                    VariadicType::Base(base) => {
+                        value_types.push((base.clone(), expr.get_range()));
                     }
-                } else {
-                    match variadic.deref() {
-                        VariadicType::Base(base) => {
-                            value_types.push((base.clone(), expr.get_range()));
-                        }
-                        VariadicType::Multi(vecs) => {
-                            for typ in vecs {
-                                value_types.push((typ.clone(), expr.get_range()));
-                            }
+                    VariadicType::Multi(vecs) => {
+                        for typ in vecs {
+                            value_types.push((typ.clone(), expr.get_range()));
                         }
                     }
                 }

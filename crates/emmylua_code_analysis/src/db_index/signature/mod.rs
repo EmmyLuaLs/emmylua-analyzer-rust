@@ -1,4 +1,5 @@
 mod async_state;
+mod return_rows;
 #[allow(clippy::module_inception)]
 mod signature;
 
@@ -6,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 
 pub use async_state::AsyncState;
 pub use signature::{
-    LuaDocParamInfo, LuaDocReturnInfo, LuaGenericParamInfo, LuaNoDiscard, LuaSignature,
-    LuaSignatureId, SignatureReturnStatus,
+    LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaGenericParamInfo, LuaNoDiscard,
+    LuaSignature, LuaSignatureId, SignatureReturnStatus,
 };
 
 use crate::FileId;

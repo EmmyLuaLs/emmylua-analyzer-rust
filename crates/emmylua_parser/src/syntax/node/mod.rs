@@ -67,6 +67,7 @@ pub enum LuaAst {
     LuaDocTagType(LuaDocTagType),
     LuaDocTagParam(LuaDocTagParam),
     LuaDocTagReturn(LuaDocTagReturn),
+    LuaDocTagReturnOverload(LuaDocTagReturnOverload),
     LuaDocTagOverload(LuaDocTagOverload),
     LuaDocTagField(LuaDocTagField),
     LuaDocTagModule(LuaDocTagModule),
@@ -159,6 +160,7 @@ impl LuaAstNode for LuaAst {
             LuaAst::LuaDocTagType(node) => node.syntax(),
             LuaAst::LuaDocTagParam(node) => node.syntax(),
             LuaAst::LuaDocTagReturn(node) => node.syntax(),
+            LuaAst::LuaDocTagReturnOverload(node) => node.syntax(),
             LuaAst::LuaDocTagOverload(node) => node.syntax(),
             LuaAst::LuaDocTagField(node) => node.syntax(),
             LuaAst::LuaDocTagModule(node) => node.syntax(),
@@ -259,6 +261,7 @@ impl LuaAstNode for LuaAst {
                 | LuaSyntaxKind::DocTagType
                 | LuaSyntaxKind::DocTagParam
                 | LuaSyntaxKind::DocTagReturn
+                | LuaSyntaxKind::DocTagReturnOverload
                 | LuaSyntaxKind::DocTagOverload
                 | LuaSyntaxKind::DocTagField
                 | LuaSyntaxKind::DocTagModule
@@ -377,6 +380,9 @@ impl LuaAstNode for LuaAst {
             LuaSyntaxKind::DocTagParam => LuaDocTagParam::cast(syntax).map(LuaAst::LuaDocTagParam),
             LuaSyntaxKind::DocTagReturn => {
                 LuaDocTagReturn::cast(syntax).map(LuaAst::LuaDocTagReturn)
+            }
+            LuaSyntaxKind::DocTagReturnOverload => {
+                LuaDocTagReturnOverload::cast(syntax).map(LuaAst::LuaDocTagReturnOverload)
             }
             LuaSyntaxKind::DocTagOverload => {
                 LuaDocTagOverload::cast(syntax).map(LuaAst::LuaDocTagOverload)

@@ -90,4 +90,47 @@ m.foo()
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_return_overload_tag_is_documentation_keyword() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let data = ws.get_semantic_token_data(
+            r#"---@return_overload true, integer
+"#,
+        )?;
+        let tokens = decode(&data);
+        let keyword = token_type_index(SemanticTokenType::KEYWORD);
+        let doc = modifier_bitset(&[SemanticTokenModifier::DOCUMENTATION]);
+
+        verify_that!(&tokens, contains(eq(&(0, 4, 15, keyword, doc))))?;
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_rows_highlight_types() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let data = ws.get_semantic_token_data(concat!(
+            "--- @return_overload false, [string,string]\n",
+            "--- @return_overload true, string\n",
+        ))?;
+        let tokens = decode(&data);
+        let typ = token_type_index(SemanticTokenType::TYPE);
+        let variable = token_type_index(SemanticTokenType::VARIABLE);
+        let default_library = modifier_bitset(&[SemanticTokenModifier::DEFAULT_LIBRARY]);
+
+        verify_that!(
+            &tokens,
+            all![
+                contains(eq(&(0, 21, 5, typ, 0))),
+                contains(eq(&(0, 29, 6, typ, default_library))),
+                contains(eq(&(0, 36, 6, typ, default_library))),
+                contains(eq(&(1, 21, 4, typ, 0))),
+                contains(eq(&(1, 27, 6, typ, default_library))),
+                not(contains(eq(&(0, 29, 6, variable, 0)))),
+                not(contains(eq(&(0, 36, 6, variable, 0)))),
+                not(contains(eq(&(1, 27, 6, variable, 0)))),
+            ]
+        )?;
+        Ok(())
+    }
 }

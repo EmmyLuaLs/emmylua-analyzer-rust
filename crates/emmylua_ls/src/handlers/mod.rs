@@ -44,6 +44,7 @@ use lsp_types::{ClientCapabilities, ServerCapabilities};
 pub use notification_handler::on_notification_handler;
 pub use request_handler::on_request_handler;
 pub use response_handler::on_response_handler;
+pub use text_document::register_files_watch;
 
 pub trait RegisterCapabilities {
     fn register_capabilities(

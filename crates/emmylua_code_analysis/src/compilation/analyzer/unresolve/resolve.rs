@@ -31,13 +31,9 @@ pub fn try_resolve_decl(
     let expr = decl.expr.clone();
     let expr_type = infer_expr(db, cache, expr)?;
     let decl_id = decl.decl_id;
-    let expr_type = match &expr_type {
-        LuaType::Variadic(multi) => multi
-            .get_type(decl.ret_idx)
-            .cloned()
-            .unwrap_or(LuaType::Unknown),
-        _ => expr_type,
-    };
+    let expr_type = expr_type
+        .get_result_slot_type(decl.ret_idx)
+        .unwrap_or(LuaType::Unknown);
 
     bind_type(db, decl_id.into(), LuaTypeCache::InferType(expr_type));
     Ok(())
@@ -76,13 +72,9 @@ pub fn try_resolve_member(
 
     if let Some(expr) = unresolve_member.expr.clone() {
         let expr_type = infer_expr(db, cache, expr)?;
-        let expr_type = match &expr_type {
-            LuaType::Variadic(multi) => multi
-                .get_type(unresolve_member.ret_idx)
-                .cloned()
-                .unwrap_or(LuaType::Unknown),
-            _ => expr_type,
-        };
+        let expr_type = expr_type
+            .get_result_slot_type(unresolve_member.ret_idx)
+            .unwrap_or(LuaType::Unknown);
 
         let member_id = unresolve_member.member_id;
         bind_type(db, member_id.into(), LuaTypeCache::InferType(expr_type));
@@ -174,10 +166,7 @@ pub fn try_resolve_module(
 ) -> ResolveResult {
     let expr = module.expr.clone();
     let expr_type = infer_expr(db, cache, expr)?;
-    let expr_type = match &expr_type {
-        LuaType::Variadic(multi) => multi.get_type(0).cloned().unwrap_or(LuaType::Unknown),
-        _ => expr_type,
-    };
+    let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
     let module_info = db
         .get_module_index_mut()
         .get_module_mut(module.file_id)

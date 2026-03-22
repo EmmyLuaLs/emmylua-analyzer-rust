@@ -69,6 +69,7 @@ pub enum LuaSyntaxKind {
     DocTagType,
     DocTagParam,
     DocTagReturn,
+    DocTagReturnOverload,
     DocTagGeneric,
     DocTagSee,
     DocTagDeprecated,

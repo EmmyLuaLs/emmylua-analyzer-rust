@@ -70,6 +70,19 @@ mod test {
     }
 
     #[test]
+    fn test_intersection_call_infers_return_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@type { field: string } & fun(): string
+            F = nil
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("F()"), ws.ty("string"));
+    }
+
+    #[test]
     fn test_infer_expr_list_types_tolerates_infer_failures() {
         let mut ws = VirtualWorkspace::new();
         let code = r#"

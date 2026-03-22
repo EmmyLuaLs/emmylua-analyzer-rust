@@ -133,6 +133,61 @@ Syntax(Chunk)@0..163
     }
 
     #[test]
+    fn test_return_overload_tag() {
+        let code = r#"
+        ---@return_overload true, integer
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..51
+  Syntax(Block)@0..51
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..42
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagReturnOverload)@13..42
+        Token(TkTagReturnOverload)@13..28 "return_overload"
+        Token(TkWhitespace)@28..29 " "
+        Syntax(TypeLiteral)@29..33
+          Token(TkTrue)@29..33 "true"
+        Token(TkComma)@33..34 ","
+        Token(TkWhitespace)@34..35 " "
+        Syntax(TypeName)@35..42
+          Token(TkName)@35..42 "integer"
+    Token(TkEndOfLine)@42..43 "\n"
+    Token(TkWhitespace)@43..51 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_return_overload_tag_does_not_parse_named_returns() {
+        let code = r#"
+        ---@return_overload true ok, integer
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..54
+  Syntax(Block)@0..54
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..45
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagReturnOverload)@13..33
+        Token(TkTagReturnOverload)@13..28 "return_overload"
+        Token(TkWhitespace)@28..29 " "
+        Syntax(TypeLiteral)@29..33
+          Token(TkTrue)@29..33 "true"
+      Token(TkWhitespace)@33..34 " "
+      Syntax(DocDescription)@34..45
+        Token(TkDocDetail)@34..45 "ok, integer"
+    Token(TkEndOfLine)@45..46 "\n"
+    Token(TkWhitespace)@46..54 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
     fn test_class_doc() {
         let code = r#"
         ---@class A hello

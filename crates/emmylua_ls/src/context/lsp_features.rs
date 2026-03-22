@@ -54,4 +54,13 @@ impl LspFeatures {
         }
         false
     }
+
+    pub fn supports_dynamic_watched_files_registration(&self) -> bool {
+        self.client_capabilities
+            .workspace
+            .as_ref()
+            .and_then(|ws| ws.did_change_watched_files.as_ref())
+            .and_then(|watch| watch.dynamic_registration)
+            .unwrap_or_default()
+    }
 }

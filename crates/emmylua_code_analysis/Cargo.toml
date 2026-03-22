@@ -50,8 +50,12 @@ include_dir.workspace = true
 emmylua_codestyle.workspace = true
 itertools.workspace = true
 luars.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, optional = true }
 schema_to_emmylua.workspace = true
+
+[features]
+default = []
+reqwest = ["dep:reqwest"]
 
 [package.metadata.i18n]
 available-locales = ["en", "zh_CN", "zh_HK"]

@@ -109,35 +109,36 @@ pub enum LuaTokenKind {
     TkTagAlias,     // alias
     TkTagModule,    // module
 
-    TkTagField,      // field
-    TkTagType,       // type
-    TkTagParam,      // param
-    TkTagReturn,     // return
-    TkTagOverload,   // overload
-    TkTagGeneric,    // generic
-    TkTagSee,        // see
-    TkTagDeprecated, // deprecated
-    TkTagAsync,      // async
-    TkTagCast,       // cast
-    TkTagOther,      // other
-    TkTagVisibility, // public private protected package
-    TkTagReadonly,   // readonly
-    TkTagDiagnostic, // diagnostic
-    TkTagMeta,       // meta
-    TkTagVersion,    // version
-    TkTagAs,         // as
-    TkTagNodiscard,  // nodiscard
-    TkTagOperator,   // operator
-    TkTagMapping,    // mapping
-    TkTagNamespace,  // namespace
-    TkTagUsing,      // using
-    TkTagSource,     // source
-    TkTagReturnCast, // return cast
-    TkTagExport,     // export
-    TkLanguage,      // language
-    TKTagSchema,     // schema
-    TkTagAttribute,  // attribute
-    TkCallGeneric,   // call generic. function_name--[[@<type>]](...)
+    TkTagField,          // field
+    TkTagType,           // type
+    TkTagParam,          // param
+    TkTagReturn,         // return
+    TkTagOverload,       // overload
+    TkTagGeneric,        // generic
+    TkTagSee,            // see
+    TkTagDeprecated,     // deprecated
+    TkTagAsync,          // async
+    TkTagCast,           // cast
+    TkTagOther,          // other
+    TkTagVisibility,     // public private protected package
+    TkTagReadonly,       // readonly
+    TkTagDiagnostic,     // diagnostic
+    TkTagMeta,           // meta
+    TkTagVersion,        // version
+    TkTagAs,             // as
+    TkTagNodiscard,      // nodiscard
+    TkTagOperator,       // operator
+    TkTagMapping,        // mapping
+    TkTagNamespace,      // namespace
+    TkTagUsing,          // using
+    TkTagSource,         // source
+    TkTagReturnCast,     // return cast
+    TkTagReturnOverload, // return overload
+    TkTagExport,         // export
+    TkLanguage,          // language
+    TKTagSchema,         // schema
+    TkTagAttribute,      // attribute
+    TkCallGeneric,       // call generic. function_name--[[@<type>]](...)
 
     TkDocOr,              // |
     TkDocAnd,             // &

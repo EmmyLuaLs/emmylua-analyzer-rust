@@ -389,6 +389,11 @@
           "const": "cast-type-mismatch"
         },
         {
+          "description": "unresolved-require",
+          "type": "string",
+          "const": "unresolved-require"
+        },
+        {
           "description": "require-module-not-visible",
           "type": "string",
           "const": "require-module-not-visible"

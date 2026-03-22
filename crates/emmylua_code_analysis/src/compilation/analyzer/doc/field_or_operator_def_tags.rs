@@ -176,13 +176,12 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
         })
         .unwrap_or_default();
 
-    operands.insert(
-        0,
-        (
-            "self".to_string(),
-            Some(LuaType::Ref(current_type_id.clone())),
-        ),
-    );
+    let self_name = if op_kind == LuaOperatorMetaMethod::Call {
+        "@call_self"
+    } else {
+        "self"
+    };
+    operands.insert(0, (self_name.to_string(), Some(LuaType::SelfInfer)));
 
     let return_type = if let Some(return_type) = tag.get_return_type() {
         infer_type(analyzer, return_type)

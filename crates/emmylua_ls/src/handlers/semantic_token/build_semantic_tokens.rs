@@ -164,11 +164,15 @@ fn build_tokens_semantic_token(
             }
         }
         LuaTokenKind::TkTrue | LuaTokenKind::TkFalse | LuaTokenKind::TkNil => {
-            builder.push_with_modifier(
-                token,
-                SemanticTokenType::KEYWORD,
-                SemanticTokenModifier::READONLY,
-            );
+            if is_doc_type_literal_token(token) {
+                builder.push(token, SemanticTokenType::TYPE);
+            } else {
+                builder.push_with_modifier(
+                    token,
+                    SemanticTokenType::KEYWORD,
+                    SemanticTokenModifier::READONLY,
+                );
+            }
         }
         LuaTokenKind::TkComplex | LuaTokenKind::TkInt | LuaTokenKind::TkFloat => {
             builder.push(token, SemanticTokenType::NUMBER);
@@ -201,6 +205,7 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkTagUsing
         | LuaTokenKind::TkTagSource
         | LuaTokenKind::TkTagReturnCast
+        | LuaTokenKind::TkTagReturnOverload
         | LuaTokenKind::TkTagExport
         | LuaTokenKind::TkLanguage
         | LuaTokenKind::TkTagAttribute
@@ -294,6 +299,12 @@ fn build_tokens_semantic_token(
     }
 }
 
+fn is_doc_type_literal_token(token: &LuaSyntaxToken) -> bool {
+    token
+        .parent()
+        .is_some_and(|parent| parent.kind() == LuaSyntaxKind::TypeLiteral.into())
+}
+
 fn build_node_semantic_token(
     semantic_model: &SemanticModel,
     builder: &mut SemanticBuilder,
@@ -376,6 +387,7 @@ fn build_node_semantic_token(
                 }
             }
         }
+        LuaAst::LuaDocTagReturnOverload(_) => {}
         LuaAst::LuaDocTagCast(doc_cast) => {
             if let Some(target_expr) = doc_cast.get_key_expr() {
                 match target_expr {
@@ -738,15 +750,6 @@ fn build_node_semantic_token(
                         );
                     }
                 }
-            }
-        }
-        LuaAst::LuaDocLiteralType(literal) => {
-            if let LuaLiteralToken::Bool(bool_token) = &literal.get_literal()? {
-                builder.push_with_modifier(
-                    bool_token.syntax(),
-                    SemanticTokenType::KEYWORD,
-                    SemanticTokenModifier::DOCUMENTATION,
-                );
             }
         }
         LuaAst::LuaDocDescription(description) => {

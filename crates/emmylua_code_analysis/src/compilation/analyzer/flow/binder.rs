@@ -6,8 +6,8 @@ use rowan::TextSize;
 use smol_str::SmolStr;
 
 use crate::{
-    AnalyzeError, DbIndex, FileId, FlowAntecedent, FlowId, FlowNode, FlowNodeKind, FlowTree,
-    LuaClosureId, LuaDeclId,
+    AnalyzeError, DbIndex, DeclMultiReturnRefAt, FileId, FlowAntecedent, FlowId, FlowNode,
+    FlowNodeKind, FlowTree, LuaClosureId, LuaDeclId,
 };
 
 #[derive(Debug)]
@@ -15,6 +15,7 @@ pub struct FlowBinder<'a> {
     pub db: &'a mut DbIndex,
     pub file_id: FileId,
     pub decl_bind_expr_ref: HashMap<LuaDeclId, LuaAstPtr<LuaExpr>>,
+    pub decl_multi_return_ref: HashMap<LuaDeclId, Vec<DeclMultiReturnRefAt>>,
     pub start: FlowId,
     pub unreachable: FlowId,
     pub loop_label: FlowId,
@@ -36,6 +37,7 @@ impl<'a> FlowBinder<'a> {
             flow_nodes: Vec::new(),
             multiple_antecedents: Vec::new(),
             decl_bind_expr_ref: HashMap::new(),
+            decl_multi_return_ref: HashMap::new(),
             labels: HashMap::new(),
             start: FlowId::default(),
             unreachable: FlowId::default(),
@@ -189,6 +191,7 @@ impl<'a> FlowBinder<'a> {
     pub fn finish(self) -> FlowTree {
         FlowTree::new(
             self.decl_bind_expr_ref,
+            self.decl_multi_return_ref,
             self.flow_nodes,
             self.multiple_antecedents,
             // self.labels,

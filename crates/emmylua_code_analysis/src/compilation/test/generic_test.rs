@@ -680,6 +680,24 @@ mod test {
     }
 
     #[test]
+    fn test_call_overload_self_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Callable
+            ---@overload fun<T>(self: self, value: T): T
+            ---@type Callable
+            local c
+
+            result = c(c, 1)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "integer");
+    }
+
+    #[test]
     fn test_generic_default_constraint_used() {
         let mut ws = VirtualWorkspace::new();
         {

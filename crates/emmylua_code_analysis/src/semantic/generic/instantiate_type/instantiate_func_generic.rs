@@ -4,6 +4,7 @@ use emmylua_parser::{LuaAstNode, LuaDocTypeList};
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use internment::ArcIntern;
 
+use crate::semantic::infer::infer_expr_list_types;
 use crate::{
     DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
     TypeVisitTrait,
@@ -15,15 +16,18 @@ use crate::{
             instantiate_type::instantiate_doc_function,
             tpl_context::TplContext,
             tpl_pattern::{
-                multi_param_tpl_pattern_match_multi_return, tpl_pattern_match,
-                variadic_tpl_pattern_match,
+                multi_param_tpl_pattern_match_multi_return, return_type_pattern_match_target_type,
+                tpl_pattern_match, variadic_tpl_pattern_match,
             },
         },
         infer::InferFailReason,
         infer_expr,
     },
 };
-use crate::{LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl};
+use crate::{
+    LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl,
+    tpl_pattern_match_args,
+};
 
 use super::TypeSubstitutor;
 
@@ -115,6 +119,99 @@ fn apply_call_generic_type_list(
     }
 }
 
+pub fn as_doc_function_type(
+    db: &DbIndex,
+    callable_type: &LuaType,
+) -> Result<Option<Arc<LuaFunctionType>>, InferFailReason> {
+    Ok(match callable_type {
+        LuaType::DocFunction(doc_func) => Some(doc_func.clone()),
+        LuaType::Signature(sig_id) => Some(
+            db.get_signature_index()
+                .get(sig_id)
+                .ok_or(InferFailReason::None)?
+                .to_doc_func_type(),
+        ),
+        _ => None,
+    })
+}
+
+fn infer_return_from_callable(
+    db: &DbIndex,
+    callable: &Arc<LuaFunctionType>,
+    substitutor: &TypeSubstitutor,
+) -> LuaType {
+    let instantiated = instantiate_doc_function(db, callable, substitutor);
+    match instantiated {
+        LuaType::DocFunction(func) => func.get_ret().clone(),
+        _ => callable.get_ret().clone(),
+    }
+}
+
+pub fn infer_callable_return_from_remaining_args(
+    context: &mut TplContext,
+    callable_type: &LuaType,
+    arg_exprs: &[LuaExpr],
+) -> Result<Option<LuaType>, InferFailReason> {
+    if arg_exprs.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(callable) = as_doc_function_type(context.db, callable_type)? else {
+        return Ok(None);
+    };
+
+    let mut callable_tpls = HashSet::new();
+    callable.visit_type(&mut |ty| {
+        if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
+            callable_tpls.insert(generic_tpl.get_tpl_id());
+        }
+    });
+    if callable_tpls.is_empty() {
+        return Ok(Some(callable.get_ret().clone()));
+    }
+
+    let mut callable_substitutor = TypeSubstitutor::new();
+    callable_substitutor.add_need_infer_tpls(callable_tpls);
+    let fallback_return = infer_return_from_callable(context.db, &callable, &callable_substitutor);
+
+    let call_arg_types =
+        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
+            Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
+            Err(_) => return Ok(Some(fallback_return)),
+        };
+    if call_arg_types.is_empty() {
+        return Ok(None);
+    }
+
+    let callable_param_types = callable
+        .get_params()
+        .iter()
+        .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
+        .collect::<Vec<_>>();
+
+    let mut callable_context = TplContext {
+        db: context.db,
+        cache: context.cache,
+        substitutor: &mut callable_substitutor,
+        call_expr: context.call_expr.clone(),
+    };
+    if tpl_pattern_match_args(
+        &mut callable_context,
+        &callable_param_types,
+        &call_arg_types,
+    )
+    .is_err()
+    {
+        return Ok(Some(fallback_return));
+    }
+
+    Ok(Some(infer_return_from_callable(
+        context.db,
+        &callable,
+        &callable_substitutor,
+    )))
+}
+
 fn infer_generic_types_from_call(
     db: &DbIndex,
     context: &mut TplContext,
@@ -166,6 +263,15 @@ fn infer_generic_types_from_call(
             Err(InferFailReason::FieldNotFound) => LuaType::Nil, // 对于未找到的字段, 我们认为是 nil 以执行后续推断
             Err(e) => return Err(e),
         };
+
+        if let Some(return_pattern) =
+            as_doc_function_type(context.db, func_param_type)?.map(|func| func.get_ret().clone())
+            && let Some(inferred_return_type) =
+                infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
+        {
+            return_type_pattern_match_target_type(context, &return_pattern, &inferred_return_type)?;
+        }
+
         match (func_param_type, &arg_type) {
             (LuaType::Variadic(variadic), _) => {
                 let mut arg_types = vec![];
@@ -268,18 +374,8 @@ fn check_expr_can_later_infer(
     func_param_type: &LuaType,
     call_arg_expr: &LuaExpr,
 ) -> Result<bool, InferFailReason> {
-    let doc_function = match func_param_type {
-        LuaType::DocFunction(doc_func) => doc_func.clone(),
-        LuaType::Signature(sig_id) => {
-            let sig = context
-                .db
-                .get_signature_index()
-                .get(sig_id)
-                .ok_or(InferFailReason::None)?;
-
-            sig.to_doc_func_type()
-        }
-        _ => return Ok(false),
+    let Some(doc_function) = as_doc_function_type(context.db, func_param_type)? else {
+        return Ok(false);
     };
 
     if let LuaExpr::ClosureExpr(_) = call_arg_expr {

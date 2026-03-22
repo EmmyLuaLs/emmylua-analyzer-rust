@@ -5,6 +5,7 @@ mod union_type;
 
 use super::LuaType;
 use crate::DbIndex;
+pub(crate) use union_type::union_type_shallow;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum TypeOps {

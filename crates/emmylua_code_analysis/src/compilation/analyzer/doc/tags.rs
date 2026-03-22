@@ -22,7 +22,7 @@ use super::{
     type_def_tags::{analyze_alias, analyze_class, analyze_enum, analyze_func_generic},
     type_ref_tags::{
         analyze_as, analyze_cast, analyze_module, analyze_other, analyze_overload, analyze_param,
-        analyze_return, analyze_return_cast, analyze_see, analyze_type,
+        analyze_return, analyze_return_cast, analyze_return_overload, analyze_see, analyze_type,
     },
 };
 
@@ -54,6 +54,9 @@ pub fn analyze_tag(analyzer: &mut DocAnalyzer, tag: LuaDocTag) -> Option<()> {
         }
         LuaDocTag::Return(return_tag) => {
             analyze_return(analyzer, return_tag)?;
+        }
+        LuaDocTag::ReturnOverload(return_overload_tag) => {
+            analyze_return_overload(analyzer, return_overload_tag)?;
         }
         LuaDocTag::ReturnCast(return_cast) => {
             analyze_return_cast(analyzer, return_cast)?;

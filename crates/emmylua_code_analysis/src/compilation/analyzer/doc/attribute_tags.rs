@@ -34,6 +34,9 @@ pub fn analyze_tag_attribute_use(
             (LuaAst::LuaDocTagReturn(_), LuaSemanticDeclId::Signature(_)) => {
                 return Some(());
             }
+            (LuaAst::LuaDocTagReturnOverload(_), LuaSemanticDeclId::Signature(_)) => {
+                return Some(());
+            }
             _ => {}
         }
     }
@@ -147,7 +150,8 @@ fn attribute_find_doc(comment: &LuaSyntaxNode) -> Option<LuaSyntaxNode> {
                 LuaKind::Syntax(
                     LuaSyntaxKind::DocTagField
                     | LuaSyntaxKind::DocTagParam
-                    | LuaSyntaxKind::DocTagReturn,
+                    | LuaSyntaxKind::DocTagReturn
+                    | LuaSyntaxKind::DocTagReturnOverload,
                 ) => {
                     if let Some(node) = sibling.as_node() {
                         return Some(node.clone());

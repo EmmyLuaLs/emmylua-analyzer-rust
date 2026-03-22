@@ -1532,4 +1532,27 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_call_operator_implicit_self_param_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@class Iter
+
+                ---@class IterMod
+                ---@operator call: Iter
+
+                ---@type string[]
+                local paths = { "a" }
+
+                ---@type IterMod
+                local iter
+
+                local value = iter(paths)
+        "#,
+        ));
+    }
 }

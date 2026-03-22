@@ -55,7 +55,14 @@ mimalloc = { version = "0.1.48", features = ["v3"] }
 googletest = "0.14.2"
 unicode-general-category = "1.0.0"
 luars = { version = "0.14.2", features = ["serde"] }
-reqwest = "0.13.1"
+# request's default-tls feature pulls in a dependency on aws-lc-rs,
+# which causes a linking error on Windows
+reqwest = { version = "0.13.1", default-features = false, features = [
+  "http2",
+  "charset",
+  "system-proxy",
+  "native-tls-vendored",
+]}
 
 # Lint configuration for the entire workspace
 [workspace.lints.clippy]

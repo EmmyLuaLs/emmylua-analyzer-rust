@@ -14,6 +14,7 @@ pub use humanize_type::{RenderLevel, TypeHumanizer, format_union_type, humanize_
 use std::collections::{HashMap, HashSet};
 pub use type_decl::{LuaDeclLocation, LuaDeclTypeKind, LuaTypeDecl, LuaTypeDeclId, LuaTypeFlag};
 pub use type_ops::TypeOps;
+pub(crate) use type_ops::union_type_shallow;
 pub use type_owner::{LuaTypeCache, LuaTypeOwner};
 pub use type_visit_trait::TypeVisitTrait;
 pub use types::*;

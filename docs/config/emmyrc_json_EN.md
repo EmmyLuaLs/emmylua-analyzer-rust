@@ -1,46 +1,12 @@
-<div align="center">
-
-# 🔧 EmmyLua Configuration Guide
+# EmmyLua Configuration Guide
 
 [中文版](./emmyrc_json_CN.md)
 
-*Master all configuration options of EmmyLua Analyzer Rust for more efficient Lua development*
+EmmyLua Analyzer Rust is configured via a `.emmyrc.json` file in your project root. It also supports `.luarc.json` for compatibility, but `.emmyrc.json` is recommended for full feature support.
 
-</div>
+## Schema Support
 
----
-
-
-### 📁 Configuration Files
-
-<table>
-<tr>
-<td width="50%">
-
-#### 📄 **Main Configuration File**
-- **`.emmyrc.json`**: Primary configuration file
-- **Location**: Project root directory
-- **Priority**: Highest
-- **Format**: JSON Schema support
-
-</td>
-<td width="50%">
-
-#### 🔄 **Compatibility Configuration**
-- **`.luarc.json`**: Compatibility configuration file
-- **Auto Conversion**: Converts to `.emmyrc.json` format
-- **Override Rules**: Overridden by `.emmyrc.json`
-- **Compatibility**: Partial feature support
-
-</td>
-</tr>
-</table>
-
-> **💡 Tip**: The `.emmyrc.json` configuration format is richer and more flexible. It's recommended to use this format for the best experience.
-
-### 🛠️ Schema Support
-
-For intelligent completion and validation of configuration files, you can add a schema reference to the configuration file:
+Add the following field to your config file for editor autocompletion and validation:
 
 ```json
 {
@@ -50,12 +16,10 @@ For intelligent completion and validation of configuration files, you can add a 
 
 ---
 
-## 📝 Complete Configuration Example
-
-Below is a complete configuration file example containing all configuration options:
+## Complete Configuration Example
 
 <details>
-<summary><b>🔧 Click to expand complete configuration</b></summary>
+<summary>Click to expand</summary>
 
 ```json
 {
@@ -163,179 +127,54 @@ Below is a complete configuration file example containing all configuration opti
 
 ---
 
-## 🎯 Configuration Details
+## Configuration Reference
 
-### 💡 completion - Code Completion
+### completion — Code Completion
 
-<div align="center">
-
-#### Intelligent completion configuration for enhanced coding efficiency
-
-</div>
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`enable`** | `boolean` | `true` | 🔧 Enable/disable code completion feature |
-| **`autoRequire`** | `boolean` | `true` | 📦 Auto-complete require statements |
-| **`autoRequireFunction`** | `string` | `"require"` | ⚡ Function name for auto-completion |
-| **`autoRequireNamingConvention`** | `string` | `"keep"` | 🏷️ Naming convention conversion method |
-| **`autoRequireSeparator`** | `string` | `"."` | 🔗 Auto-require path separator |
-| **`callSnippet`** | `boolean` | `false` | 🎪 Enable function call snippets |
-| **`postfix`** | `string` | `"@"` | 🔧 Postfix completion trigger symbol |
-| **`baseFunctionIncludesName`** | `boolean` | `true` | 📝 Include function name in base function completion |
-
-#### 🏷️ Naming Convention Options
-
-<table>
-<tr>
-<td width="25%">
-
-**`keep`**
-Keep original
-
-</td>
-<td width="25%">
-
-**`camel-case`**
-Camel case
-
-</td>
-<td width="25%">
-
-**`snake-case`**
-Snake case
-
-</td>
-<td width="25%">
-
-**`pascal-case`**
-Pascal case
-
-</td>
-</tr>
-</table>
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable code completion |
+| `autoRequire` | `boolean` | `true` | Auto-complete require statements |
+| `autoRequireFunction` | `string` | `"require"` | Function name used for auto-require |
+| `autoRequireNamingConvention` | `string` | `"keep"` | Naming style conversion (`keep` / `camel-case` / `snake-case` / `pascal-case`) |
+| `autoRequireSeparator` | `string` | `"."` | Path separator for auto-require |
+| `callSnippet` | `boolean` | `false` | Enable function call snippets |
+| `postfix` | `string` | `"@"` | Postfix completion trigger |
+| `baseFunctionIncludesName` | `boolean` | `true` | Include function name in base function completion |
 
 ---
 
-### 🎯 codeAction - Code Actions
+### codeAction — Code Actions
 
-<div align="center">
-
-#### Code quick fixes and refactoring operation configurations
-
-</div>
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`insertSpace`** | `boolean` | `false` | 🔧 Insert space when adding `@diagnostic disable-next-line` after `---` comments |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `insertSpace` | `boolean` | `false` | Add space after `---` when inserting `@diagnostic disable-next-line` |
 
 ---
 
-### 📄 doc - Documentation Syntax
+### codeLens — Code Lens
 
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`syntax`** | `string` | `"md"` | 📝 Documentation comment syntax type |
-
-#### 📚 Supported Documentation Syntax
-
-<table>
-<tr>
-<td width="50%">
-
-**`md`**
-Markdown syntax
-
-</td>
-<td width="50%">
-
-**`myst`**
-MyST syntax
-
-</td>
-</tr>
-</table>
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable CodeLens |
 
 ---
 
-### 🎨 documentColor - Document Color
+### diagnostics — Diagnostics
 
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`enable`** | `boolean` | `true` | 🌈 Enable/disable color display functionality in documents |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable diagnostics |
+| `disable` | `string[]` | `[]` | Disabled diagnostic rules |
+| `enables` | `string[]` | `[]` | Additionally enabled diagnostic rules |
+| `globals` | `string[]` | `[]` | Global variable whitelist |
+| `globalsRegex` | `string[]` | `[]` | Global variable regex patterns |
+| `severity` | `object` | `{}` | Custom diagnostic severity overrides |
+| `diagnosticInterval` | `number` | `500` | Diagnostic refresh interval (ms) |
 
----
+Severity values: `error` / `warning` / `information` / `hint`
 
-### 🔧 reformat - Code Formatting
-
-see [External Formatter Options](../external_format/external_formatter_options_CN.md)
-
----
-
-### 📊 inlineValues - Inline Values
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`enable`** | `boolean` | `true` | 🔍 Enable/disable inline value display during debugging |
-
----
-
-### 📝 signature - Function Signature
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`detailSignatureHelper`** | `boolean` | `false` | 📊 Show detailed function signature help (currently ineffective) |
-
----
-
-### 🔍 diagnostics - Code Diagnostics
-
-<div align="center">
-
-#### Powerful static analysis and error detection system
-
-</div>
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`disable`** | `string[]` | `[]` | ❌ List of disabled diagnostic messages |
-| **`globals`** | `string[]` | `[]` | 🌐 Global variable whitelist |
-| **`globalsRegex`** | `string[]` | `[]` | 🔤 Global variable regex patterns |
-| **`severity`** | `object` | `{}` | ⚠️ Diagnostic message severity configuration |
-| **`enables`** | `string[]` | `[]` | ✅ List of enabled diagnostic messages |
-
-#### 🎯 Severity Levels
-
-<table>
-<tr>
-<td width="25%">
-
-**`error`**
-🔴 Error
-
-</td>
-<td width="25%">
-
-**`warning`**
-🟡 Warning
-
-</td>
-<td width="25%">
-
-**`information`**
-🔵 Information
-
-</td>
-<td width="25%">
-
-**`hint`**
-💡 Hint
-
-</td>
-</tr>
-</table>
-
-#### 📋 Common Diagnostic Configuration Example
+Example:
 
 ```json
 {
@@ -350,144 +189,145 @@ see [External Formatter Options](../external_format/external_formatter_options_C
 }
 ```
 
-### Available Diagnostics List
+#### Available Diagnostic Rules
 
-| Diagnostic Message | Description | Default Category |
-|-----------|------|------|
-| **`syntax-error`** | Syntax errors | 🔴 Error |
-| **`doc-syntax-error`** | Documentation syntax errors | 🔴 Error |
-| **`type-not-found`** | Type not found | 🟡 Warning |
-| **`missing-return`** | Missing return statement | 🟡 Warning |
-| **`param-type-not-match`** | Parameter type mismatch | 🟡 Warning |
-| **`missing-parameter`** | Missing parameter | 🟡 Warning |
-| **`redundant-parameter`** | Redundant parameter | 🟡 Warning |
-| **`unreachable-code`** | Unreachable code | 💡 Hint |
-| **`unused`** | Unused variable/function | 💡 Hint |
-| **`undefined-global`** | Undefined global variable | 🔴 Error |
-| **`deprecated`** | Deprecated feature | 🔵 Hint |
-| **`access-invisible`** | Access to invisible member | 🟡 Warning |
-| **`discard-returns`** | Discarded return values | 🟡 Warning |
-| **`undefined-field`** | Undefined field | 🟡 Warning |
-| **`local-const-reassign`** | Local constant reassignment | 🔴 Error |
-| **`iter-variable-reassign`** | Iterator variable reassignment | 🟡 Warning |
-| **`duplicate-type`** | Duplicate type definition | 🟡 Warning |
-| **`redefined-local`** | Redefined local variable | 💡 Hint |
-| **`redefined-label`** | Redefined label | 🟡 Warning |
-| **`code-style-check`** | Code style check | 🟡 Warning |
-| **`need-check-nil`** | Need nil check | 🟡 Warning |
-| **`await-in-sync`** | Using await in synchronous code | 🟡 Warning |
-| **`annotation-usage-error`** | Annotation usage error | 🔴 Error |
-| **`return-type-mismatch`** | Return type mismatch | 🟡 Warning |
-| **`missing-return-value`** | Missing return value | 🟡 Warning |
-| **`redundant-return-value`** | Redundant return value | 🟡 Warning |
-| **`undefined-doc-param`** | Undefined parameter in documentation | 🟡 Warning |
-| **`duplicate-doc-field`** | Duplicate documentation field | 🟡 Warning |
-| **`missing-fields`** | Missing fields | 🟡 Warning |
-| **`inject-field`** | Inject field | 🟡 Warning |
-| **`circle-doc-class`** | Circular documentation class inheritance | 🟡 Warning |
-| **`incomplete-signature-doc`** | Incomplete signature documentation | 🟡 Warning |
-| **`missing-global-doc`** | Missing global variable documentation | 🟡 Warning |
-| **`assign-type-mismatch`** | Assignment type mismatch | 🟡 Warning |
-| **`duplicate-require`** | Duplicate require | 💡 Hint |
-| **`non-literal-expressions-in-assert`** | Non-literal expressions in assert | 🟡 Warning |
-| **`unbalanced-assignments`** | Unbalanced assignments | 🟡 Warning |
-| **`unnecessary-assert`** | Unnecessary assert | 🟡 Warning |
-| **`unnecessary-if`** | Unnecessary if statement | 🟡 Warning |
-| **`duplicate-set-field`** | Duplicate field assignment | 🟡 Warning |
-| **`duplicate-index`** | Duplicate index | 🟡 Warning |
-| **`generic-constraint-mismatch`** | Generic constraint mismatch | 🟡 Warning |
-
----
-
-### 💡 hint - Inline Hints
-
-<div align="center">
-
-#### Intelligent inline hint system for viewing type information without mouse hover
-
-</div>
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`enable`** | `boolean` | `true` | 🔧 Enable/disable inline hints |
-| **`paramHint`** | `boolean` | `true` | 🏷️ Show function parameter hints |
-| **`indexHint`** | `boolean` | `true` | 📊 Show cross-line index expression hints |
-| **`localHint`** | `boolean` | `true` | 📍 Show local variable type hints |
-| **`overrideHint`** | `boolean` | `true` | 🔄 Show method override hints |
-| **`metaCallHint`** | `boolean` | `true` | 🎭 Show metatable `__call` invocation hints |
+| Rule | Description | Default Level |
+|------|-------------|---------------|
+| `syntax-error` | Syntax errors | error |
+| `doc-syntax-error` | Documentation syntax errors | error |
+| `undefined-global` | Undefined global variable | error |
+| `local-const-reassign` | Local constant reassignment | error |
+| `annotation-usage-error` | Annotation usage error | error |
+| `type-not-found` | Type not found | warning |
+| `missing-return` | Missing return statement | warning |
+| `param-type-not-match` | Parameter type mismatch | warning |
+| `missing-parameter` | Missing parameter | warning |
+| `redundant-parameter` | Redundant parameter | warning |
+| `access-invisible` | Access to invisible member | warning |
+| `discard-returns` | Discarded return values | warning |
+| `undefined-field` | Undefined field | warning |
+| `iter-variable-reassign` | Iterator variable reassignment | warning |
+| `duplicate-type` | Duplicate type definition | warning |
+| `redefined-label` | Redefined label | warning |
+| `code-style-check` | Code style check | warning |
+| `need-check-nil` | Need nil check | warning |
+| `await-in-sync` | Using await in synchronous code | warning |
+| `return-type-mismatch` | Return type mismatch | warning |
+| `missing-return-value` | Missing return value | warning |
+| `redundant-return-value` | Redundant return value | warning |
+| `undefined-doc-param` | Undefined parameter in documentation | warning |
+| `duplicate-doc-field` | Duplicate documentation field | warning |
+| `missing-fields` | Missing fields | warning |
+| `inject-field` | Inject field | warning |
+| `circle-doc-class` | Circular class inheritance | warning |
+| `incomplete-signature-doc` | Incomplete signature documentation | warning |
+| `missing-global-doc` | Missing global variable documentation | warning |
+| `assign-type-mismatch` | Assignment type mismatch | warning |
+| `non-literal-expressions-in-assert` | Non-literal expressions in assert | warning |
+| `unbalanced-assignments` | Unbalanced assignments | warning |
+| `unnecessary-assert` | Unnecessary assert | warning |
+| `unnecessary-if` | Unnecessary if statement | warning |
+| `duplicate-set-field` | Duplicate field assignment | warning |
+| `duplicate-index` | Duplicate index | warning |
+| `generic-constraint-mismatch` | Generic constraint mismatch | warning |
+| `unreachable-code` | Unreachable code | hint |
+| `unused` | Unused variable/function | hint |
+| `deprecated` | Deprecated feature | hint |
+| `redefined-local` | Redefined local variable | hint |
+| `duplicate-require` | Duplicate require | hint |
 
 ---
 
-### ⚙️ runtime - Runtime Environment
+### doc — Documentation Syntax
 
-<div align="center">
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `syntax` | `string` | `"md"` | Comment syntax (`md` = Markdown, `myst` = MyST) |
 
-#### Configure Lua runtime environment and version features
+---
 
-</div>
+### documentColor — Document Color
 
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`version`** | `string` | `"LuaLatest"` | 🚀 Lua version selection |
-| **`requireLikeFunction`** | `string[]` | `[]` | 📦 List of require-like functions |
-| **`frameworkVersions`** | `string[]` | `[]` | 🎯 Framework version identifiers |
-| **`extensions`** | `string[]` | `[]` | 📄 Supported file extensions |
-| **`requirePattern`** | `string[]` | `[]` | 🔍 Require pattern matching rules |
-| **`classDefaultCall`** | `object` | `{}` | 🏗️ Class default call configuration |
-| **`nonstandardSymbol`** | `string[]` | `[]` | 🔧 Non-standard symbol list |
-| **`special`** | `object` | `{}` | ✨ Special symbol configuration |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable color preview in documents |
 
-#### 🚀 Supported Lua Versions
+---
 
-<table>
-<tr>
-<td width="16.6%">
+### hint — Inline Hints
 
-**`Lua5.1`**
-Classic version
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable inline hints |
+| `paramHint` | `boolean` | `true` | Show function parameter name hints |
+| `indexHint` | `boolean` | `true` | Show cross-line index expression hints |
+| `localHint` | `boolean` | `true` | Show local variable type hints |
+| `overrideHint` | `boolean` | `true` | Show method override hints |
+| `metaCallHint` | `boolean` | `true` | Show metatable `__call` invocation hints |
 
-</td>
-<td width="16.6%">
+---
 
-**`Lua5.2`**
-Enhanced features
+### hover — Hover Information
 
-</td>
-<td width="16.6%">
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable mouse hover information |
 
-**`Lua5.3`**
-Integer support
+---
 
-</td>
-<td width="16.6%">
+### inlineValues — Inline Values
 
-**`Lua5.4`**
-Latest features
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable inline value display during debugging |
 
-</td>
-<td width="16.6%">
+---
 
-**`LuaJIT`**
-High performance
+### references — Reference Finding
 
-</td>
-<td width="16.6%">
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable reference finding |
+| `fuzzySearch` | `boolean` | `true` | Enable fuzzy search |
+| `shortStringSearch` | `boolean` | `false` | Enable short string search |
 
-**`LuaLatest`**
-Latest feature set
+---
 
-</td>
-</tr>
-</table>
+### reformat — Code Formatting
 
-#### 📋 Runtime Configuration Example
+See [External Formatter Options](../external_format/external_formatter_options_EN.md)
+
+---
+
+### resource — Resource Paths
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `paths` | `string[]` | `[]` | Resource root directories for file path completion and navigation |
+
+---
+
+### runtime — Runtime Environment
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `version` | `string` | `"LuaLatest"` | Lua version (`Lua5.1` / `Lua5.2` / `Lua5.3` / `Lua5.4` / `LuaJIT` / `LuaLatest`) |
+| `requireLikeFunction` | `string[]` | `[]` | Require-like function names |
+| `frameworkVersions` | `string[]` | `[]` | Framework version identifiers |
+| `extensions` | `string[]` | `[]` | Additional file extensions |
+| `requirePattern` | `string[]` | `[]` | Require path patterns |
+| `classDefaultCall` | `object` | `{}` | Class default call configuration |
+| `nonstandardSymbol` | `string[]` | `[]` | Non-standard symbols (e.g. `"continue"`) |
+| `special` | `object` | `{}` | Special function mapping |
+
+Example:
 
 ```json
 {
   "runtime": {
     "version": "LuaLatest",
     "requireLikeFunction": ["import", "load", "dofile"],
-    "frameworkVersions": ["love2d", "openresty", "nginx"],
+    "frameworkVersions": ["love2d", "openresty"],
     "extensions": [".lua", ".lua.txt", ".luau"],
     "requirePattern": ["?.lua", "?/init.lua", "lib/?.lua"],
     "classDefaultCall": {
@@ -497,7 +337,7 @@ Latest feature set
     },
     "nonstandardSymbol": ["continue"],
     "special": {
-      "errorf":"error"
+      "errorf": "error"
     }
   }
 }
@@ -505,158 +345,71 @@ Latest feature set
 
 ---
 
-### 🏗️ workspace - Workspace Configuration
+### semanticTokens — Semantic Tokens
 
-<div align="center">
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | `boolean` | `true` | Enable semantic tokens |
 
-#### Workspace and project structure configuration, supporting both relative and absolute paths
+---
 
-</div>
+### signature — Function Signature
 
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`ignoreDir`** | `string[]` | `[]` | 📁 List of directories to ignore |
-| **`ignoreGlobs`** | `string[]` | `[]` | 🔍 Glob pattern-based file ignore rules |
-| **`library`** | `string[]` | `[]` | 📚 Library directory paths |
-| **`workspaceRoots`** | `string[]` | `[]` | 🏠 Workspace root directory list |
-| **`encoding`** | `string` | `"utf-8"` | 🔤 File encoding format |
-| **`moduleMap`** | `object[]` | `[]` | 🗺️ Module path mapping rules |
-| **`reindexDuration`** | `number` | `5000` | ⏱️ Reindexing time interval (milliseconds) |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `detailSignatureHelper` | `boolean` | `false` | Show detailed function signature help (currently inactive) |
 
-#### 🗺️ Module Mapping Configuration
+---
 
-Module mapping is used to convert one module path to another, supporting regular expressions:
+### strict — Strict Mode
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `requirePath` | `boolean` | `false` | Require paths must start from specified root directories |
+| `typeCall` | `boolean` | `false` | Type calls require manual overload definitions |
+| `arrayIndex` | `boolean` | `false` | Strict array index checking |
+| `metaOverrideFileDefine` | `boolean` | `true` | Meta definitions override file definitions |
+| `docBaseConstMatchBaseType` | `boolean` | `true` | Doc base const matches base type |
+
+> **Tip**: When strict mode is disabled, behavior is closer to `luals` lenient mode.
+
+---
+
+### workspace — Workspace
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ignoreDir` | `string[]` | `[]` | Directories to ignore |
+| `ignoreGlobs` | `string[]` | `[]` | Glob patterns for ignoring files |
+| `library` | `string[]` | `[]` | Library directory paths |
+| `workspaceRoots` | `string[]` | `[]` | Workspace root directories |
+| `encoding` | `string` | `"utf-8"` | File encoding |
+| `moduleMap` | `object[]` | `[]` | Module path mapping (supports regex) |
+| `reindexDuration` | `number` | `5000` | Reindex interval (ms) |
+| `enableReindex` | `boolean` | `false` | Enable automatic reindexing |
+
+Module mapping example:
 
 ```json
 {
   "workspace": {
     "moduleMap": [
-      {
-        "pattern": "^lib(.*)$",
-        "replace": "script$1"
-      }
-    ]
-  }
-}
-```
-
-#### 📋 Workspace Configuration Example
-
-```json
-{
-  "workspace": {
+      { "pattern": "^lib(.*)$", "replace": "script$1" }
+    ],
     "ignoreDir": ["build", "dist", "node_modules"],
-    "ignoreGlobs": ["*.log", "*.tmp", "test_*"],
     "library": ["/usr/local/lib/lua", "./libs"],
-    "workspaceRoots": ["Assets/Scripts/Lua"],
-    "encoding": "utf-8",
-    "reindexDuration": 3000
+    "workspaceRoots": ["Assets/Scripts/Lua"]
   }
 }
 ```
 
 ---
 
-### 📁 resource - Resource Paths
+## Getting Started
 
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`paths`** | `string[]` | `[]` | 🎯 List of resource file root directories |
+1. Create `.emmyrc.json` in your project root
+2. Add the `$schema` field for editor autocompletion
+3. Add configuration options as needed
+4. The language server will automatically reload on save
 
-> **💡 Purpose**: Configuring resource directories allows EmmyLua to properly provide file path completion and navigation functionality.
-
----
-
-### 👁️ codeLens - Code Lens
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`enable`** | `boolean` | `true` | 🔍 Enable/disable CodeLens functionality |
-
----
-
-### 🔒 strict - Strict Mode
-
-<div align="center">
-
-#### Strict mode configuration to control the strictness of type checking and code analysis
-
-</div>
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`requirePath`** | `boolean` | `false` | 📍 Require path strict mode |
-| **`typeCall`** | `boolean` | `false` | 🎯 Type call strict mode |
-| **`arrayIndex`** | `boolean` | `false` | 📊 Array index strict mode |
-| **`metaOverrideFileDefine`** | `boolean` | `true` | 🔄 Meta definitions override file definitions |
-
-#### 🎯 Strict Mode Explanation
-
-<table>
-<tr>
-<td width="50%">
-
-**🔒 When Strict Mode is Enabled**
-- **Require Path**: Must start from specified root directories
-- **Type Call**: Manual overload definitions required
-- **Array Index**: Strict adherence to indexing rules
-- **Meta Definitions**: Override definitions in files
-
-</td>
-<td width="50%">
-
-**🔓 When Strict Mode is Disabled**
-- **Require Path**: Flexible path resolution
-- **Type Call**: Returns self type
-- **Array Index**: Lenient indexing checks
-- **Meta Definitions**: Behavior similar to `luals`
-
-</td>
-</tr>
-</table>
-
----
-
-### 👁️ hover - Hover Information
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`enable`** | `boolean` | `true` | 🖱️ Enable/disable mouse hover information |
-
----
-
-### 🔗 references - Reference Finding
-
-| Configuration | Type | Default | Description |
-|--------|------|--------|------|
-| **`enable`** | `boolean` | `true` | 🔍 Enable/disable reference finding functionality |
-| **`fuzzySearch`** | `boolean` | `true` | 🎯 Enable fuzzy search |
-| **`shortStringSearch`** | `boolean` | `false` | 🔤 Enable short string search |
-
----
-
-
-### 📚 Related Resources
-
-<div align="center">
-
-[![GitHub](https://img.shields.io/badge/GitHub-EmmyLuaLs/emmylua--analyzer--rust-blue?style=for-the-badge&logo=github)](https://github.com/EmmyLuaLs/emmylua-analyzer-rust)
-[![Documentation](https://img.shields.io/badge/Documentation-Complete%20Configuration%20Guide-green?style=for-the-badge&logo=gitbook)](../../README.md)
-[![Issues](https://img.shields.io/badge/Issue%20Reporting-GitHub%20Issues-red?style=for-the-badge&logo=github)](https://github.com/EmmyLuaLs/emmylua-analyzer-rust/issues)
-
-</div>
-
----
-
-### 🎉 Getting Started
-
-1. **Create Configuration File**: Create `.emmyrc.json` in the project root directory
-2. **Add Schema**: Copy the schema URL above to get intelligent hints
-3. **Configure Gradually**: Add configuration items step by step according to project requirements
-4. **Test and Validate**: Save configuration and test language server functionality
-
-> **💡 Tip**: It's recommended to start with basic configuration and gradually add advanced features to better understand the purpose of each configuration item.
-
-[⬆ Back to Top](#-emmylua-configuration-guide)
-
-</div>
+[Back to top](#emmylua-configuration-guide)

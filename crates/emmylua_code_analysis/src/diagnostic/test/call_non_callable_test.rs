@@ -67,6 +67,14 @@ mod test {
             "#
         ));
 
+        assert!(ws.check_code_for(
+            DiagnosticCode::CallNonCallable,
+            r#"
+                local f ---@type { field: string } & fun()
+                f()
+            "#
+        ));
+
         // nil is covered by need-check-nil instead of call-non-callable
         assert!(ws.check_code_for(
             DiagnosticCode::CallNonCallable,

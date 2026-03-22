@@ -226,4 +226,88 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_call_operator_implicit_self() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@class Task
+                local Task = {}
+
+                ---@param callback fun()
+                function Task:await(callback)
+                end
+
+                ---@class TaskFun
+                ---@operator call: Task
+
+                ---@type TaskFun[]
+                local tasks = {}
+
+                tasks[1]():await(function()
+                end)
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_call_overload_named_self_is_not_stripped() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@class Callable
+                ---@overload fun(self: string)
+                ---@type Callable
+                local c
+
+                c()
+        "#
+        ));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@class Callable
+                ---@overload fun(self: string)
+                ---@type Callable
+                local c
+
+                c("x")
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_call_overload_self_type_is_not_stripped() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@class Callable
+                ---@overload fun(self: self)
+                ---@type Callable
+                local c
+
+                c()
+        "#
+        ));
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@class Callable
+                ---@overload fun(self: self)
+                ---@type Callable
+                local c
+
+                c(c)
+        "#
+        ));
+    }
 }

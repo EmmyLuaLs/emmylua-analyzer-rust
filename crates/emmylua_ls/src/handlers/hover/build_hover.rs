@@ -335,6 +335,15 @@ pub fn add_signature_ret_description(
             ));
         }
     }
+    for (i, ret_overload) in signature.return_overloads.iter().enumerate() {
+        if let Some(description) = ret_overload.description.clone() {
+            s.push_str(&format!(
+                "@*return_overload* #{} — {}\n\n",
+                i + 1,
+                description
+            ));
+        }
+    }
     if !s.is_empty() {
         marked_strings.push(MarkedString::from_markdown(s));
     }

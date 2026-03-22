@@ -121,7 +121,13 @@ impl LuaOperator {
 
     pub fn get_operator_func(&self, db: &DbIndex) -> LuaType {
         match &self.func {
-            OperatorFunction::Func(func) => LuaType::DocFunction(func.clone()),
+            OperatorFunction::Func(func) => {
+                if self.op == LuaOperatorMetaMethod::Call {
+                    LuaType::DocFunction(func.to_call_operator_func_type())
+                } else {
+                    LuaType::DocFunction(func.clone())
+                }
+            }
             OperatorFunction::Signature(signature) => LuaType::Signature(*signature),
             OperatorFunction::DefaultClassCtor {
                 id,

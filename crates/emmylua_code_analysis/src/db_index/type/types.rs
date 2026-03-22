@@ -421,6 +421,51 @@ impl LuaType {
         matches!(self, LuaType::Variadic(_))
     }
 
+    pub fn contain_multi_return(&self) -> bool {
+        match self {
+            LuaType::Variadic(_) => true,
+            LuaType::Union(union) => union.into_vec().iter().any(LuaType::contain_multi_return),
+            _ => false,
+        }
+    }
+
+    pub fn get_result_slot_type(&self, idx: usize) -> Option<LuaType> {
+        match self {
+            LuaType::Variadic(variadic) => match variadic.as_ref() {
+                VariadicType::Base(base) => Some(base.clone()),
+                VariadicType::Multi(types) => {
+                    let last_idx = types.len().checked_sub(1)?;
+                    if idx < last_idx {
+                        return types[idx].get_result_slot_type(0);
+                    }
+
+                    let last_type = types.get(last_idx)?;
+                    let offset = idx - last_idx;
+                    last_type.get_result_slot_type(offset)
+                }
+            },
+            LuaType::Union(union) => {
+                let slot_types = union
+                    .into_vec()
+                    .into_iter()
+                    .map(|ty| ty.get_result_slot_type(idx))
+                    .collect::<Vec<_>>();
+                if !slot_types.iter().any(|ty| ty.is_some()) {
+                    return None;
+                }
+
+                Some(LuaType::from_vec(
+                    slot_types
+                        .into_iter()
+                        .map(|ty| ty.unwrap_or(LuaType::Nil))
+                        .collect(),
+                ))
+            }
+            _ if idx == 0 => Some(self.clone()),
+            _ => None,
+        }
+    }
+
     pub fn is_global(&self) -> bool {
         matches!(self, LuaType::Global)
     }
@@ -505,6 +550,25 @@ impl LuaType {
 
     pub fn is_module_ref(&self) -> bool {
         matches!(self, LuaType::ModuleRef(_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LuaType, VariadicType};
+
+    #[test]
+    fn test_union_with_variadic_uses_result_slot_extraction() {
+        let variadic = LuaType::Variadic(VariadicType::Multi(vec![LuaType::String]).into());
+        let optional_variadic = LuaType::from_vec(vec![variadic.clone(), LuaType::Nil]);
+
+        assert_eq!(variadic.get_result_slot_type(0), Some(LuaType::String));
+        assert!(!optional_variadic.is_multi_return());
+        assert!(optional_variadic.contain_multi_return());
+        assert_eq!(
+            optional_variadic.get_result_slot_type(0),
+            Some(LuaType::from_vec(vec![LuaType::String, LuaType::Nil]))
+        );
     }
 }
 
@@ -748,6 +812,21 @@ impl LuaFunctionType {
         } else {
             false
         }
+    }
+
+    pub fn to_call_operator_func_type(&self) -> Arc<LuaFunctionType> {
+        let mut params = self.get_params().to_vec();
+        if params.first().is_some_and(|(name, _)| name == "@call_self") {
+            params.remove(0);
+        }
+
+        Arc::new(LuaFunctionType::new(
+            self.async_state,
+            false,
+            self.is_variadic,
+            params,
+            self.ret.clone(),
+        ))
     }
 }
 

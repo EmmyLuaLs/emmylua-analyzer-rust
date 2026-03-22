@@ -160,6 +160,10 @@ fn has_non_callable_member(db: &DbIndex, typ: &LuaType) -> bool {
             .into_vec()
             .iter()
             .any(|t| has_non_callable_member(db, t)),
+        LuaType::Intersection(intersection) => intersection
+            .get_types()
+            .iter()
+            .all(|t| has_non_callable_member(db, t)),
         LuaType::MultiLineUnion(union) => union
             .get_unions()
             .iter()

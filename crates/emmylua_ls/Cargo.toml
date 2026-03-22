@@ -60,4 +60,4 @@ required-features = ["cli"]
 
 [features]
 default = ["cli"]
-cli = ["dep:clap", "dep:mimalloc"]
+cli = ["dep:clap", "dep:mimalloc", "emmylua_code_analysis/reqwest"]

@@ -288,10 +288,7 @@ fn try_infer_decl_initializer_type(
     };
 
     let expr_type = infer_expr(db, cache, expr.clone())?;
-    let init_type = match expr_type {
-        LuaType::Variadic(variadic) => variadic.get_type(0).cloned(),
-        ty => Some(ty),
-    };
+    let init_type = expr_type.get_result_slot_type(0);
 
     Ok(init_type)
 }

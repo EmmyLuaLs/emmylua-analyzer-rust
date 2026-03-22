@@ -391,6 +391,10 @@ impl LuaModuleIndex {
         }
     }
 
+    pub fn clear_non_std_workspaces(&mut self) {
+        self.workspaces.retain(|workspace| workspace.id.is_std());
+    }
+
     pub fn next_library_workspace_id(&self) -> u32 {
         let used: HashSet<u32> = self.workspaces.iter().map(|w| w.id.id).collect();
         let mut candidate = 2;
