@@ -12,8 +12,8 @@ use crate::ir::{self, AlignEntry, DocIR, EqSplit};
 use super::FormatContext;
 use super::comment::{extract_trailing_comment, format_comment, trailing_comment_prefix};
 use super::sequence::{
-    SequenceEntry, render_sequence, sequence_ends_with_comment, sequence_has_comment,
-    sequence_starts_with_comment,
+    DelimitedSequenceLayout, SequenceEntry, format_delimited_sequence, render_sequence,
+    sequence_ends_with_comment, sequence_has_comment, sequence_starts_with_comment,
 };
 use super::spacing::{SpaceRule, space_around_assign, space_around_binary_op};
 use super::tokens::{comma_soft_line_sep, comma_space_sep, tok};
@@ -86,8 +86,6 @@ fn format_binary_expr(ctx: &FormatContext, expr: &LuaBinaryExpr) -> Vec<DocIR> {
             let op = op_token.get_op();
             let space_rule = space_around_binary_op(op, ctx.config);
             let space_ir = space_rule.to_ir();
-            let preserve_multiline_layout = expr.syntax().text().contains_char('\n');
-
             // Safety: when the left operand text ends with '.' and the operator
             // is '..', we must force a space before the operator to avoid
             // ambiguity (e.g. `1. ..` must not become `1...`).
@@ -104,10 +102,8 @@ fn format_binary_expr(ctx: &FormatContext, expr: &LuaBinaryExpr) -> Vec<DocIR> {
 
             // Before-operator break: soft_line (→space when flat) if space,
             // soft_line_or_empty (→"" when flat) if no space
-            let break_ir = continuation_break_ir(
-                preserve_multiline_layout,
-                force_space_before || space_rule != SpaceRule::NoSpace,
-            );
+            let break_ir =
+                continuation_break_ir(force_space_before || space_rule != SpaceRule::NoSpace);
 
             return vec![ir::group(vec![
                 ir::list(left_docs),
@@ -241,34 +237,39 @@ fn try_format_flat_binary_chain(ctx: &FormatContext, expr: &LuaBinaryExpr) -> Op
 
     let space_rule = space_around_binary_op(op, ctx.config);
     let space_ir = space_rule.to_ir();
-    let preserve_multiline_layout = expr.syntax().text().contains_char('\n');
-
-    let mut docs = format_expr(ctx, &operands[0]);
+    let mut fill_parts = Vec::new();
     let mut previous = &operands[0];
-    for operand in operands.iter().skip(1) {
+    let first_operand = format_expr(ctx, &operands[0]);
+    let mut first_chunk = first_operand;
+
+    for (index, operand) in operands.iter().skip(1).enumerate() {
         let force_space_before = op == BinaryOperator::OpConcat
             && space_rule == SpaceRule::NoSpace
             && expr_end_with_float(previous);
-        let break_ir = continuation_break_ir(
-            preserve_multiline_layout,
-            force_space_before || space_rule != SpaceRule::NoSpace,
-        );
+        let break_ir =
+            continuation_break_ir(force_space_before || space_rule != SpaceRule::NoSpace);
         let mut segment = Vec::new();
-        segment.push(break_ir);
         segment.push(ir::source_token(op_token.syntax().clone()));
         segment.push(space_ir.clone());
         segment.extend(format_expr(ctx, operand));
 
-        if preserve_multiline_layout {
-            docs.push(ir::indent(segment));
+        if index == 0 {
+            if force_space_before || space_rule != SpaceRule::NoSpace {
+                first_chunk.push(ir::space());
+            }
+            first_chunk.extend(segment);
+            fill_parts.push(ir::list(first_chunk.clone()));
         } else {
-            docs.push(ir::group(vec![ir::indent(segment)]));
+            fill_parts.push(break_ir);
+            fill_parts.push(ir::list(segment));
         }
 
         previous = operand;
     }
 
-    Some(docs)
+    Some(vec![ir::group(vec![ir::indent(vec![ir::fill(
+        fill_parts,
+    )])])])
 }
 
 fn collect_binary_chain_operands(expr: &LuaExpr, op: BinaryOperator, operands: &mut Vec<LuaExpr>) {
@@ -521,8 +522,6 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
         }
 
         let args: Vec<_> = args_list.get_args().collect();
-        let preserve_multiline_layout = args_list.syntax().text().contains_char('\n');
-
         if ctx.config.spacing.space_before_call_paren {
             docs.push(ir::space());
         }
@@ -547,7 +546,24 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                     } else {
                         let arg_docs: Vec<Vec<DocIR>> =
                             args.iter().map(|a| format_expr(ctx, a)).collect();
-                        vec![ir::list(ir::intersperse(arg_docs, comma_soft_line_sep()))]
+                        docs.extend(format_delimited_sequence(DelimitedSequenceLayout {
+                            open: tok(LuaTokenKind::TkLeftParen),
+                            close: tok(LuaTokenKind::TkRightParen),
+                            items: arg_docs,
+                            strategy: ExpandStrategy::Always,
+                            preserve_multiline: false,
+                            flat_separator: comma_space_sep(),
+                            fill_separator: comma_soft_line_sep(),
+                            break_separator: comma_soft_line_sep(),
+                            flat_open_padding: vec![],
+                            flat_close_padding: vec![],
+                            grouped_padding: ir::soft_line_or_empty(),
+                            flat_trailing: vec![],
+                            grouped_trailing: trailing,
+                            custom_break_contents: None,
+                            prefer_custom_break_in_auto: false,
+                        }));
+                        return docs;
                     };
                     docs.push(ir::group_break(vec![
                         tok(LuaTokenKind::TkLeftParen),
@@ -568,14 +584,27 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                     } else {
                         let arg_docs: Vec<Vec<DocIR>> =
                             args.iter().map(|a| format_expr(ctx, a)).collect();
-                        let flat_inner = ir::intersperse(arg_docs, comma_space_sep());
-                        docs.push(tok(LuaTokenKind::TkLeftParen));
-                        docs.push(ir::list(flat_inner));
-                        docs.push(tok(LuaTokenKind::TkRightParen));
+                        docs.extend(format_delimited_sequence(DelimitedSequenceLayout {
+                            open: tok(LuaTokenKind::TkLeftParen),
+                            close: tok(LuaTokenKind::TkRightParen),
+                            items: arg_docs,
+                            strategy: ExpandStrategy::Never,
+                            preserve_multiline: false,
+                            flat_separator: comma_space_sep(),
+                            fill_separator: comma_soft_line_sep(),
+                            break_separator: comma_soft_line_sep(),
+                            flat_open_padding: vec![],
+                            flat_close_padding: vec![],
+                            grouped_padding: ir::soft_line_or_empty(),
+                            flat_trailing: vec![],
+                            grouped_trailing: trailing,
+                            custom_break_contents: None,
+                            prefer_custom_break_in_auto: false,
+                        }));
                     }
                 }
                 ExpandStrategy::Auto => {
-                    if has_comments || preserve_multiline_layout {
+                    if has_comments {
                         let inner = if has_comments {
                             build_multiline_call_arg_entries(ctx, arg_entries)
                         } else {
@@ -592,13 +621,23 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                     } else {
                         let arg_docs: Vec<Vec<DocIR>> =
                             args.iter().map(|a| format_expr(ctx, a)).collect();
-                        let inner = ir::intersperse(arg_docs, comma_soft_line_sep());
-                        docs.push(ir::group(vec![
-                            tok(LuaTokenKind::TkLeftParen),
-                            ir::indent(vec![ir::soft_line_or_empty(), ir::list(inner), trailing]),
-                            ir::soft_line_or_empty(),
-                            tok(LuaTokenKind::TkRightParen),
-                        ]));
+                        docs.extend(format_delimited_sequence(DelimitedSequenceLayout {
+                            open: tok(LuaTokenKind::TkLeftParen),
+                            close: tok(LuaTokenKind::TkRightParen),
+                            items: arg_docs,
+                            strategy: ExpandStrategy::Auto,
+                            preserve_multiline: false,
+                            flat_separator: comma_space_sep(),
+                            fill_separator: comma_soft_line_sep(),
+                            break_separator: comma_soft_line_sep(),
+                            flat_open_padding: vec![],
+                            flat_close_padding: vec![],
+                            grouped_padding: ir::soft_line_or_empty(),
+                            flat_trailing: vec![],
+                            grouped_trailing: trailing,
+                            custom_break_contents: None,
+                            prefer_custom_break_in_auto: false,
+                        }));
                     }
                 }
             }
@@ -718,30 +757,30 @@ fn try_format_chain(ctx: &FormatContext, expr: &LuaCallExpr) -> Option<Vec<DocIR
         return None;
     }
 
-    let preserve_multiline_layout = expr.syntax().text().contains_char('\n');
-
     segments.reverse();
 
     // 基础表达式
     let base = format_expr(ctx, &current);
 
-    // 构建链内容: indent(soft_line + seg1 + soft_line + seg2 + ...)
-    let mut chain_content = Vec::new();
-    for seg in &segments {
-        chain_content.push(continuation_break_ir(preserve_multiline_layout, false));
-        chain_content.extend(seg.access.clone());
+    let mut fill_parts = Vec::new();
+    for (index, seg) in segments.iter().enumerate() {
+        let mut segment = Vec::new();
+        segment.extend(seg.access.clone());
         if let Some(args) = &seg.call_args {
-            chain_content.extend(args.clone());
+            segment.extend(args.clone());
+        }
+        fill_parts.push(ir::list(segment));
+        if index + 1 < segments.len() {
+            fill_parts.push(ir::soft_line_or_empty());
         }
     }
 
     let mut docs = Vec::new();
     docs.extend(base);
-    if preserve_multiline_layout {
-        docs.push(ir::group_break(vec![ir::indent(chain_content)]));
-    } else {
-        docs.push(ir::group(vec![ir::indent(chain_content)]));
-    }
+    docs.push(ir::group(vec![ir::indent(vec![
+        ir::soft_line_or_empty(),
+        ir::fill(fill_parts),
+    ])]));
 
     Some(docs)
 }
@@ -817,7 +856,6 @@ fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
     });
 
     // Standalone or trailing comments force expansion
-    let preserve_multiline_layout = expr.syntax().text().contains_char('\n');
     let force_expand = has_standalone_comments || has_trailing_comments;
 
     match ctx.config.layout.table_expand {
@@ -825,31 +863,43 @@ fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
             build_table_expanded(ctx, entries, trailing, true, ctx.config.align.table_field)
         }
         ExpandStrategy::Never if !force_expand => {
-            // Force single line (valid when no comments)
-            let field_docs: Vec<Vec<DocIR>> = entries
-                .into_iter()
-                .filter_map(|e| match e {
-                    TableEntry::Field { doc, .. } => Some(doc),
-                    TableEntry::StandaloneComment(_) => None,
-                })
-                .collect();
-            let flat_inner = ir::intersperse(field_docs, comma_space_sep());
-            let mut result = vec![tok(LuaTokenKind::TkLeftBrace)];
-            if ctx.config.spacing.space_inside_braces {
-                result.push(ir::space());
-            }
-            result.push(ir::list(flat_inner));
-            if ctx.config.spacing.space_inside_braces {
-                result.push(ir::space());
-            }
-            result.push(tok(LuaTokenKind::TkRightBrace));
-            result
+            format_delimited_sequence(DelimitedSequenceLayout {
+                open: tok(LuaTokenKind::TkLeftBrace),
+                close: tok(LuaTokenKind::TkRightBrace),
+                items: entries
+                    .into_iter()
+                    .filter_map(|e| match e {
+                        TableEntry::Field { doc, .. } => Some(doc),
+                        TableEntry::StandaloneComment(_) => None,
+                    })
+                    .collect(),
+                strategy: ExpandStrategy::Never,
+                preserve_multiline: false,
+                flat_separator: comma_space_sep(),
+                fill_separator: comma_soft_line_sep(),
+                break_separator: comma_soft_line_sep(),
+                flat_open_padding: if ctx.config.spacing.space_inside_braces {
+                    vec![ir::space()]
+                } else {
+                    vec![]
+                },
+                flat_close_padding: if ctx.config.spacing.space_inside_braces {
+                    vec![ir::space()]
+                } else {
+                    vec![]
+                },
+                grouped_padding: space_inside.clone(),
+                flat_trailing: vec![],
+                grouped_trailing: trailing.clone(),
+                custom_break_contents: None,
+                prefer_custom_break_in_auto: false,
+            })
         }
         ExpandStrategy::Never => {
             // Never mode but has comments — must expand
             build_table_expanded(ctx, entries, trailing, true, ctx.config.align.table_field)
         }
-        ExpandStrategy::Auto if force_expand || preserve_multiline_layout => {
+        ExpandStrategy::Auto if force_expand => {
             // Has comments: force expand
             build_table_expanded(ctx, entries, trailing, true, ctx.config.align.table_field)
         }
@@ -865,7 +915,6 @@ fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
                     )
                 })
             {
-                // Build flat content for single-line display
                 let flat_field_docs: Vec<Vec<DocIR>> = entries
                     .iter()
                     .filter_map(|e| match e {
@@ -873,20 +922,6 @@ fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
                         TableEntry::StandaloneComment(_) => None,
                     })
                     .collect();
-                let flat_separator = comma_soft_line_sep();
-                let flat_inner = ir::intersperse(flat_field_docs, flat_separator);
-                let flat_doc = ir::list(vec![
-                    tok(LuaTokenKind::TkLeftBrace),
-                    ir::indent(vec![
-                        space_inside.clone(),
-                        ir::list(flat_inner),
-                        trailing.clone(),
-                    ]),
-                    space_inside.clone(),
-                    tok(LuaTokenKind::TkRightBrace),
-                ]);
-
-                // Build break content with alignment for multi-line display
                 let break_inner = build_table_expanded_inner(
                     ctx,
                     &entries,
@@ -894,44 +929,70 @@ fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
                     true,
                     ctx.config.should_align_table_line_comments(),
                 );
-                let break_doc = ir::list(vec![
-                    tok(LuaTokenKind::TkLeftBrace),
-                    ir::indent(break_inner),
-                    ir::hard_line(),
-                    tok(LuaTokenKind::TkRightBrace),
-                ]);
-
-                let gid = ir::next_group_id();
-                vec![ir::group_with_id(
-                    vec![ir::if_break_with_group(break_doc, flat_doc, gid)],
-                    gid,
-                )]
+                format_delimited_sequence(DelimitedSequenceLayout {
+                    open: tok(LuaTokenKind::TkLeftBrace),
+                    close: tok(LuaTokenKind::TkRightBrace),
+                    items: flat_field_docs,
+                    strategy: ExpandStrategy::Auto,
+                    preserve_multiline: false,
+                    flat_separator: comma_space_sep(),
+                    fill_separator: comma_soft_line_sep(),
+                    break_separator: comma_soft_line_sep(),
+                    flat_open_padding: if ctx.config.spacing.space_inside_braces {
+                        vec![ir::space()]
+                    } else {
+                        vec![]
+                    },
+                    flat_close_padding: if ctx.config.spacing.space_inside_braces {
+                        vec![ir::space()]
+                    } else {
+                        vec![]
+                    },
+                    grouped_padding: space_inside.clone(),
+                    flat_trailing: vec![],
+                    grouped_trailing: trailing.clone(),
+                    custom_break_contents: Some(break_inner),
+                    prefer_custom_break_in_auto: true,
+                })
             } else {
-                let field_docs: Vec<Vec<DocIR>> = entries
-                    .into_iter()
-                    .filter_map(|e| match e {
-                        TableEntry::Field { doc, .. } => Some(doc),
-                        TableEntry::StandaloneComment(_) => None,
-                    })
-                    .collect();
-                let separator = comma_soft_line_sep();
-                let inner = ir::intersperse(field_docs, separator);
-                // Auto: single line if fits, otherwise expand
-                vec![ir::group(vec![
-                    tok(LuaTokenKind::TkLeftBrace),
-                    ir::indent(vec![space_inside.clone(), ir::list(inner), trailing]),
-                    space_inside,
-                    tok(LuaTokenKind::TkRightBrace),
-                ])]
+                format_delimited_sequence(DelimitedSequenceLayout {
+                    open: tok(LuaTokenKind::TkLeftBrace),
+                    close: tok(LuaTokenKind::TkRightBrace),
+                    items: entries
+                        .into_iter()
+                        .filter_map(|e| match e {
+                            TableEntry::Field { doc, .. } => Some(doc),
+                            TableEntry::StandaloneComment(_) => None,
+                        })
+                        .collect(),
+                    strategy: ExpandStrategy::Auto,
+                    preserve_multiline: false,
+                    flat_separator: comma_space_sep(),
+                    fill_separator: comma_soft_line_sep(),
+                    break_separator: comma_soft_line_sep(),
+                    flat_open_padding: if ctx.config.spacing.space_inside_braces {
+                        vec![ir::space()]
+                    } else {
+                        vec![]
+                    },
+                    flat_close_padding: if ctx.config.spacing.space_inside_braces {
+                        vec![ir::space()]
+                    } else {
+                        vec![]
+                    },
+                    grouped_padding: space_inside,
+                    flat_trailing: vec![],
+                    grouped_trailing: trailing,
+                    custom_break_contents: None,
+                    prefer_custom_break_in_auto: false,
+                })
             }
         }
     }
 }
 
-fn continuation_break_ir(preserve_multiline_layout: bool, flat_space: bool) -> DocIR {
-    if preserve_multiline_layout {
-        ir::hard_line()
-    } else if flat_space {
+fn continuation_break_ir(flat_space: bool) -> DocIR {
+    if flat_space {
         ir::soft_line()
     } else {
         ir::soft_line_or_empty()
@@ -1251,11 +1312,12 @@ fn format_closure_expr(ctx: &FormatContext, expr: &LuaClosureExpr) -> Vec<DocIR>
     }
 
     // 参数列表
-    docs.push(tok(LuaTokenKind::TkLeftParen));
     if let Some(params) = expr.get_params_list() {
-        docs.extend(format_params_ir(ctx, &params));
+        docs.extend(format_param_list_ir(ctx, &params));
+    } else {
+        docs.push(tok(LuaTokenKind::TkLeftParen));
+        docs.push(tok(LuaTokenKind::TkRightParen));
     }
-    docs.push(tok(LuaTokenKind::TkRightParen));
 
     // body
     super::format_body_end_with_parent(
@@ -1457,13 +1519,16 @@ fn build_multiline_call_arg_entries(ctx: &FormatContext, entries: Vec<CallArgEnt
 /// 格式化函数参数列表（支持参数注释）
 ///
 /// 当参数之间有注释时，自动强制展开为多行。
-/// 返回括号内的 IR（不含括号本身）。
-pub fn format_params_ir(ctx: &FormatContext, params: &emmylua_parser::LuaParamList) -> Vec<DocIR> {
+pub fn format_param_list_ir(
+    ctx: &FormatContext,
+    params: &emmylua_parser::LuaParamList,
+) -> Vec<DocIR> {
     let entries = collect_param_entries(ctx, params);
-    let preserve_multiline_layout = params.syntax().text().contains_char('\n');
-
     if entries.is_empty() {
-        return vec![];
+        return vec![
+            tok(LuaTokenKind::TkLeftParen),
+            tok(LuaTokenKind::TkRightParen),
+        ];
     }
 
     let has_comments = entries.iter().any(|entry| match entry {
@@ -1497,14 +1562,18 @@ pub fn format_params_ir(ctx: &FormatContext, params: &emmylua_parser::LuaParamLi
                 }
             }
             vec![ir::group_break(vec![
+                tok(LuaTokenKind::TkLeftParen),
                 ir::indent(vec![ir::hard_line(), ir::align_group(align_entries)]),
                 ir::hard_line(),
+                tok(LuaTokenKind::TkRightParen),
             ])]
         } else {
             let inner = build_multiline_param_entries(ctx, entries);
             vec![ir::group_break(vec![
+                tok(LuaTokenKind::TkLeftParen),
                 ir::indent(vec![ir::hard_line(), ir::list(inner)]),
                 ir::hard_line(),
+                tok(LuaTokenKind::TkRightParen),
             ])]
         }
     } else {
@@ -1515,31 +1584,23 @@ pub fn format_params_ir(ctx: &FormatContext, params: &emmylua_parser::LuaParamLi
                 ParamEntry::StandaloneComment(_) => None,
             })
             .collect();
-        let inner = ir::intersperse(param_docs.clone(), comma_soft_line_sep());
-
-        match ctx.config.layout.func_params_expand {
-            ExpandStrategy::Always => {
-                vec![ir::hard_line(), ir::indent(inner), ir::hard_line()]
-            }
-            ExpandStrategy::Never => ir::intersperse(param_docs, comma_space_sep()),
-            ExpandStrategy::Auto => {
-                if preserve_multiline_layout {
-                    vec![ir::group_break(vec![
-                        ir::indent(vec![ir::hard_line(), ir::list(inner)]),
-                        ir::hard_line(),
-                    ])]
-                } else {
-                    vec![ir::group(
-                        [
-                            vec![ir::soft_line_or_empty()],
-                            vec![ir::indent(inner)],
-                            vec![ir::soft_line_or_empty()],
-                        ]
-                        .concat(),
-                    )]
-                }
-            }
-        }
+        format_delimited_sequence(DelimitedSequenceLayout {
+            open: tok(LuaTokenKind::TkLeftParen),
+            close: tok(LuaTokenKind::TkRightParen),
+            items: param_docs,
+            strategy: ctx.config.layout.func_params_expand.clone(),
+            preserve_multiline: false,
+            flat_separator: comma_space_sep(),
+            fill_separator: comma_soft_line_sep(),
+            break_separator: comma_soft_line_sep(),
+            flat_open_padding: vec![],
+            flat_close_padding: vec![],
+            grouped_padding: ir::soft_line_or_empty(),
+            flat_trailing: vec![],
+            grouped_trailing: format_trailing_comma_ir(ctx.config.output.trailing_comma.clone()),
+            custom_break_contents: None,
+            prefer_custom_break_in_auto: false,
+        })
     }
 }
 

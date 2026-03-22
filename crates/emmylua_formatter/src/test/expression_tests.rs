@@ -34,10 +34,10 @@ local e = #t
     }
 
     #[test]
-    fn test_multiline_binary_layout_preserved() {
+    fn test_multiline_binary_layout_reflows_when_width_allows() {
         assert_format!(
             "local result = first\n    + second\n    + third\n",
-            "local result = first\n    + second\n    + third\n"
+            "local result = first + second + third\n"
         );
     }
 
@@ -61,7 +61,24 @@ local e = #t
 
         assert_format_with_config!(
             "local value = alpha_beta_gamma + delta_theta + epsilon + zeta\n",
-            "local value =\n    alpha_beta_gamma + delta_theta + epsilon\n        + zeta\n",
+            "local value = alpha_beta_gamma + delta_theta\n    + epsilon + zeta\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_binary_chain_fill_keeps_multiple_segments_per_line() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 30,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local total = alpha + beta + gamma + delta\n",
+            "local total = alpha + beta\n    + gamma + delta\n",
             config
         );
     }
@@ -122,10 +139,10 @@ local b = t[1]
     }
 
     #[test]
-    fn test_multiline_table_layout_preserved() {
+    fn test_multiline_table_layout_reflows_when_width_allows() {
         assert_format!(
             "local t = {\n    a = 1,\n    b = 2,\n}\n",
-            "local t = {\n    a = 1,\n    b = 2\n}\n"
+            "local t = { a = 1, b = 2 }\n"
         );
     }
 
@@ -187,10 +204,10 @@ local b = t[1]
     }
 
     #[test]
-    fn test_multiline_call_args_layout_preserved() {
+    fn test_multiline_call_args_layout_reflow_when_width_allows() {
         assert_format!(
             "some_function(\n    first,\n    second,\n    third\n)\n",
-            "some_function(\n    first,\n    second,\n    third\n)\n"
+            "some_function(first, second, third)\n"
         );
     }
 
@@ -215,6 +232,44 @@ local b = t[1]
         assert_format_with_config!(
             "cannotload(\"attempt to load a text chunk\", load(read1(x), \"modname\", \"b\", {}))\n",
             "cannotload(\n    \"attempt to load a text chunk\",\n    load(read1(x), \"modname\", \"b\", {})\n)\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_call_args_use_progressive_fill_before_full_expansion() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 44,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "some_function(first_arg, second_arg, third_arg, fourth_arg)\n",
+            "some_function(\n    first_arg, second_arg, third_arg,\n    fourth_arg\n)\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_auto_without_alignment_uses_progressive_fill() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 28,
+                ..Default::default()
+            },
+            align: crate::config::AlignConfig {
+                table_field: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local t = { alpha, beta, gamma, delta }\n",
+            "local t = {\n    alpha, beta, gamma,\n    delta\n}\n",
             config
         );
     }
@@ -245,10 +300,27 @@ local b = t[1]
     }
 
     #[test]
-    fn test_multiline_chain_layout_preserved() {
+    fn test_multiline_chain_layout_reflows_when_width_allows() {
         assert_format!(
             "builder\n    :set_name(name)\n    :set_age(age)\n    :build()\n",
-            "builder\n    :set_name(name)\n    :set_age(age)\n    :build()\n"
+            "builder:set_name(name):set_age(age):build()\n"
+        );
+    }
+
+    #[test]
+    fn test_method_chain_uses_progressive_fill_when_width_exceeded() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 32,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "builder:set_name(name):set_age(age):build()\n",
+            "builder\n    :set_name(name):set_age(age)\n    :build()\n",
+            config
         );
     }
 

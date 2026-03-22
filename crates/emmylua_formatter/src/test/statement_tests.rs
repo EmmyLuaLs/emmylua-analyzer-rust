@@ -128,7 +128,24 @@ end
 
         assert_format_with_config!(
             "if ready then notify_with_long_name(first_argument, second_argument, third_argument) end\n",
-            "if ready then\n    notify_with_long_name(\n        first_argument,\n        second_argument,\n        third_argument\n    )\nend\n",
+            "if ready then\n    notify_with_long_name(\n        first_argument, second_argument,\n        third_argument\n    )\nend\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_if_header_breaks_with_long_condition() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 44,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "if alpha_beta_gamma + delta_theta + epsilon + zeta then\n    print(result)\nend\n",
+            "if alpha_beta_gamma + delta_theta + epsilon\n    + zeta then\n    print(result)\nend\n",
             config
         );
     }
@@ -183,6 +200,40 @@ end
         );
     }
 
+    #[test]
+    fn test_for_loop_header_breaks_with_long_iter_exprs() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 60,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "for i = very_long_start_expr, very_long_stop_expr, very_long_step_expr do\n    print(i)\nend\n",
+            "for i = very_long_start_expr, very_long_stop_expr,\n    very_long_step_expr do\n    print(i)\nend\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_for_range_header_breaks_with_long_exprs() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 64,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "for key, value in very_long_iterator_expr, another_long_iterator_expr, fallback_iterator_expr do\n    print(key, value)\nend\n",
+            "for key, value in very_long_iterator_expr,\n    another_long_iterator_expr, fallback_iterator_expr do\n    print(key, value)\nend\n",
+            config
+        );
+    }
+
     // ========== while / repeat / do ==========
 
     #[test]
@@ -210,6 +261,31 @@ end
     }
 
     #[test]
+    fn test_while_trivia_header_preserves_comment_before_do_with_shared_helper() {
+        assert_format!(
+            "while alpha_beta_gamma\n-- separator\ndo\n    work()\nend\n",
+            "while alpha_beta_gamma\n-- separator\ndo\n    work()\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_while_header_breaks_with_long_condition() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 44,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "while alpha_beta_gamma + delta_theta + epsilon + zeta do\n    consume()\nend\n",
+            "while alpha_beta_gamma + delta_theta\n    + epsilon + zeta do\n    consume()\nend\n",
+            config
+        );
+    }
+
+    #[test]
     fn test_repeat_until() {
         assert_format!(
             r#"
@@ -222,6 +298,23 @@ repeat
     x = x + 1
 until x > 10
 "#
+        );
+    }
+
+    #[test]
+    fn test_repeat_until_header_breaks_with_long_condition() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 44,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "repeat\n    work()\nuntil alpha_beta_gamma + delta_theta + epsilon + zeta\n",
+            "repeat\n    work()\nuntil alpha_beta_gamma + delta_theta\n    + epsilon + zeta\n",
+            config
         );
     }
 
@@ -292,10 +385,44 @@ end
     }
 
     #[test]
-    fn test_multiline_function_params_layout_preserved() {
+    fn test_multiline_function_params_layout_reflow_when_width_allows() {
         assert_format!(
             "function foo(\n    first,\n    second,\n    third\n)\n    return first\nend\n",
-            "function foo(\n    first,\n    second,\n    third\n)\n    return first\nend\n"
+            "function foo(first, second, third)\n    return first\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_function_params_use_progressive_fill_before_full_expansion() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 27,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "function foo(first, second, third, fourth)\n    return first\nend\n",
+            "function foo(\n    first, second, third,\n    fourth\n)\n    return first\nend\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_function_header_keeps_name_and_breaks_params_progressively() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 52,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "function module_name.deep_property.compute(first_argument, second_argument, third_argument)\n    return first_argument\nend\n",
+            "function module_name.deep_property.compute(\n    first_argument, second_argument, third_argument\n)\n    return first_argument\nend\n",
+            config
         );
     }
 
@@ -316,10 +443,10 @@ end
     }
 
     #[test]
-    fn test_multiline_closure_params_layout_preserved() {
+    fn test_multiline_closure_params_layout_reflow_when_width_allows() {
         assert_format!(
             "local f = function(\n    first,\n    second\n)\n    return first + second\nend\n",
-            "local f = function(\n    first,\n    second\n)\n    return first + second\nend\n"
+            "local f = function(first, second)\n    return first + second\nend\n"
         );
     }
 
@@ -360,11 +487,43 @@ end
 "#,
             r#"
 function f()
-    return {
-        key = value
-    }
+    return { key = value }
 end
 "#
+        );
+    }
+
+    #[test]
+    fn test_assign_keeps_first_expr_on_operator_line_when_breaking() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 48,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "result = alpha_beta_gamma + delta_theta + epsilon + zeta\n",
+            "result = alpha_beta_gamma + delta_theta\n    + epsilon + zeta\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_return_keeps_first_expr_on_keyword_line_when_breaking() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 48,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "function f()\nreturn alpha_beta_gamma + delta_theta + epsilon + zeta\nend\n",
+            "function f()\n    return alpha_beta_gamma + delta_theta\n        + epsilon + zeta\nend\n",
+            config
         );
     }
 
@@ -510,6 +669,19 @@ end
     }
 
     #[test]
+    fn test_global_const_star() {
+        assert_format!("global <const> *\n", "global <const> *\n");
+    }
+
+    #[test]
+    fn test_global_preserves_name_attributes() {
+        assert_format!(
+            "global <const> a, b <const>\n",
+            "global <const> a, b <const>\n"
+        );
+    }
+
+    #[test]
     fn test_local_stat_preserves_inline_comment_before_assign() {
         assert_format!("local a -- hiihi\n= 123\n", "local a -- hiihi\n= 123\n");
     }
@@ -543,6 +715,23 @@ end
         assert_format!(
             "local function foo\n-- separator\n(a, b)\n    return a + b\nend\n",
             "local function foo\n-- separator\n(a, b)\n    return a + b\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_single_line_if_near_width_limit_prefers_expanded_layout() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 48,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "if alpha_beta_gamma then return delta_theta end\n",
+            "if alpha_beta_gamma then\n    return delta_theta\nend\n",
+            config
         );
     }
 

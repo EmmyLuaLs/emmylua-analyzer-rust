@@ -376,6 +376,35 @@ local t = {
     }
 
     #[test]
+    fn test_table_field_alignment_in_auto_mode_when_width_exceeded() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 28,
+                table_expand: crate::config::ExpandStrategy::Auto,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local t = { x = 1, long_name = 2, yy = 3 }\n",
+            r#"
+local t = {
+    x         = 1,
+    long_name = 2,
+    yy        = 3
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_alignment_disabled() {
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 

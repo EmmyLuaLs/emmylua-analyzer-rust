@@ -86,24 +86,20 @@ fn format_local_stat(ctx: &FormatContext, stat: &LuaLocalStat) -> Vec<DocIR> {
         docs.push(tok(LuaTokenKind::TkAssign));
 
         let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
-        let separated = ir::intersperse(expr_docs, comma_space_sep());
 
         // Keep block-like / preserved multiline RHS heads attached to `=` while
         // ordinary expressions remain width-driven.
         if exprs.len() == 1 && should_attach_single_value_head(&exprs[0]) {
             let assign_space_after = space_around_assign(ctx.config).to_ir();
             docs.push(assign_space_after);
-            docs.push(ir::list(separated));
+            docs.push(ir::list(expr_docs.into_iter().next().unwrap_or_default()));
         } else {
-            let break_or_space = if ctx.config.spacing.space_around_assign_operator {
-                ir::soft_line()
+            let leading_docs = if ctx.config.spacing.space_around_assign_operator {
+                vec![ir::space()]
             } else {
-                ir::soft_line_or_empty()
+                vec![]
             };
-            docs.push(ir::group(vec![ir::indent(vec![
-                break_or_space,
-                ir::list(separated),
-            ])]));
+            docs.extend(format_statement_expr_list(leading_docs, expr_docs));
         }
     }
 
@@ -139,24 +135,20 @@ fn format_assign_stat(ctx: &FormatContext, stat: &LuaAssignStat) -> Vec<DocIR> {
 
     // Value list
     let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
-    let separated = ir::intersperse(expr_docs, vec![tok(LuaTokenKind::TkComma), ir::space()]);
 
     // Keep block-like / preserved multiline RHS heads attached to the operator
     // while ordinary expressions remain width-driven.
     if exprs.len() == 1 && should_attach_single_value_head(&exprs[0]) {
         let assign_space_after = space_around_assign(ctx.config).to_ir();
         docs.push(assign_space_after);
-        docs.push(ir::list(separated));
+        docs.push(ir::list(expr_docs.into_iter().next().unwrap_or_default()));
     } else {
-        let break_or_space = if ctx.config.spacing.space_around_assign_operator {
-            ir::soft_line()
+        let leading_docs = if ctx.config.spacing.space_around_assign_operator {
+            vec![ir::space()]
         } else {
-            ir::soft_line_or_empty()
+            vec![]
         };
-        docs.push(ir::group(vec![ir::indent(vec![
-            break_or_space,
-            ir::list(separated),
-        ])]));
+        docs.extend(format_statement_expr_list(leading_docs, expr_docs));
     }
 
     docs
@@ -406,17 +398,17 @@ fn format_func_stat(ctx: &FormatContext, stat: &LuaFuncStat) -> Vec<DocIR> {
         return compact;
     }
 
-    let mut docs = vec![tok(LuaTokenKind::TkFunction), ir::space()];
+    let mut head_docs = vec![ir::space()];
 
     if let Some(name) = stat.get_func_name() {
-        docs.extend(format_expr(ctx, &name.into()));
+        head_docs.extend(format_expr(ctx, &name.into()));
     }
 
     if let Some(closure) = stat.get_closure() {
-        docs.extend(format_closure_body(ctx, &closure));
+        head_docs.extend(format_closure_body(ctx, &closure));
     }
 
-    docs
+    format_keyword_header(vec![tok(LuaTokenKind::TkFunction)], head_docs)
 }
 
 /// local function name() ... end
@@ -430,24 +422,24 @@ fn format_local_func_stat(ctx: &FormatContext, stat: &LuaLocalFuncStat) -> Vec<D
         return compact;
     }
 
-    let mut docs = vec![
+    let leading_docs = vec![
         tok(LuaTokenKind::TkLocal),
         ir::space(),
         tok(LuaTokenKind::TkFunction),
-        ir::space(),
     ];
+    let mut head_docs = vec![ir::space()];
 
     if let Some(name) = stat.get_local_name()
         && let Some(token) = name.get_name_token()
     {
-        docs.push(ir::source_token(token.syntax().clone()));
+        head_docs.push(ir::source_token(token.syntax().clone()));
     }
 
     if let Some(closure) = stat.get_closure() {
-        docs.extend(format_closure_body(ctx, &closure));
+        head_docs.extend(format_closure_body(ctx, &closure));
     }
 
-    docs
+    format_keyword_header(leading_docs, head_docs)
 }
 
 fn format_func_stat_trivia_aware(ctx: &FormatContext, stat: &LuaFuncStat) -> Vec<DocIR> {
@@ -665,15 +657,13 @@ fn format_if_stat(ctx: &FormatContext, stat: &LuaIfStat) -> Vec<DocIR> {
         return format_if_stat_trivia_aware(ctx, stat);
     }
 
-    let mut docs = vec![tok(LuaTokenKind::TkIf), ir::space()];
+    let mut head_docs = vec![ir::space()];
 
-    // if condition
     if let Some(cond) = stat.get_condition_expr() {
-        docs.extend(format_expr(ctx, &cond));
+        head_docs.extend(format_expr(ctx, &cond));
     }
 
-    docs.push(ir::space());
-    docs.push(tok(LuaTokenKind::TkThen));
+    let mut docs = format_control_header(LuaTokenKind::TkIf, head_docs, LuaTokenKind::TkThen);
 
     // if body
     format_block_or_orphan_comments(ctx, stat.get_block().as_ref(), stat.syntax(), &mut docs);
@@ -681,13 +671,15 @@ fn format_if_stat(ctx: &FormatContext, stat: &LuaIfStat) -> Vec<DocIR> {
     // elseif branches
     for clause in stat.get_else_if_clause_list() {
         docs.push(ir::hard_line());
-        docs.push(tok(LuaTokenKind::TkElseIf));
-        docs.push(ir::space());
+        let mut clause_head_docs = vec![ir::space()];
         if let Some(cond) = clause.get_condition_expr() {
-            docs.extend(format_expr(ctx, &cond));
+            clause_head_docs.extend(format_expr(ctx, &cond));
         }
-        docs.push(ir::space());
-        docs.push(tok(LuaTokenKind::TkThen));
+        docs.extend(format_control_header(
+            LuaTokenKind::TkElseIf,
+            clause_head_docs,
+            LuaTokenKind::TkThen,
+        ));
         format_block_or_orphan_comments(
             ctx,
             clause.get_block().as_ref(),
@@ -733,8 +725,8 @@ fn should_preserve_raw_if_stat_with_comments(stat: &LuaIfStat) -> bool {
 }
 
 fn format_if_stat_trivia_aware(ctx: &FormatContext, stat: &LuaIfStat) -> Vec<DocIR> {
-    let mut docs = format_if_clause_header(
-        LuaTokenKind::TkIf,
+    let mut docs = format_sequence_control_header(
+        vec![tok(LuaTokenKind::TkIf)],
         &collect_if_clause_entries(ctx, stat.syntax()),
         LuaTokenKind::TkThen,
     );
@@ -749,21 +741,11 @@ fn format_if_stat_trivia_aware(ctx: &FormatContext, stat: &LuaIfStat) -> Vec<Doc
             docs.extend(raw_header);
         } else {
             let clause_entries = collect_if_clause_entries(ctx, clause.syntax());
-            if sequence_has_comment(&clause_entries) {
-                docs.extend(format_if_clause_header(
-                    LuaTokenKind::TkElseIf,
-                    &clause_entries,
-                    LuaTokenKind::TkThen,
-                ));
-            } else {
-                docs.push(tok(LuaTokenKind::TkElseIf));
-                docs.push(ir::space());
-                if let Some(cond) = clause.get_condition_expr() {
-                    docs.extend(format_expr(ctx, &cond));
-                }
-                docs.push(ir::space());
-                docs.push(tok(LuaTokenKind::TkThen));
-            }
+            docs.extend(format_sequence_control_header(
+                vec![tok(LuaTokenKind::TkElseIf)],
+                &clause_entries,
+                LuaTokenKind::TkThen,
+            ));
         }
         format_block_or_orphan_comments(
             ctx,
@@ -814,30 +796,6 @@ fn collect_if_clause_entries(ctx: &FormatContext, syntax: &LuaSyntaxNode) -> Vec
     entries
 }
 
-fn format_if_clause_header(
-    leading_keyword: LuaTokenKind,
-    entries: &[SequenceEntry],
-    trailing_keyword: LuaTokenKind,
-) -> Vec<DocIR> {
-    let mut docs = vec![tok(leading_keyword)];
-
-    if !entries.is_empty() {
-        docs.push(ir::space());
-        render_sequence(&mut docs, entries, false);
-    }
-
-    if sequence_has_comment(entries) {
-        if !sequence_ends_with_comment(entries) {
-            docs.push(ir::hard_line());
-        }
-        docs.push(tok(trailing_keyword));
-    } else {
-        docs.push(ir::space());
-        docs.push(tok(trailing_keyword));
-    }
-    docs
-}
-
 fn try_format_raw_clause_header_until_block(
     syntax: &LuaSyntaxNode,
     block: Option<&LuaBlock>,
@@ -867,7 +825,12 @@ fn try_preserve_single_line_if_body(ctx: &FormatContext, stat: &LuaIfStat) -> Op
     }
 
     let text_len: u32 = stat.syntax().text().len().into();
-    if text_len as usize > ctx.config.layout.max_line_width {
+    let reserve_width = if ctx.config.layout.max_line_width > 40 {
+        8
+    } else {
+        4
+    };
+    if text_len as usize + reserve_width > ctx.config.layout.max_line_width {
         return None;
     }
 
@@ -919,14 +882,12 @@ fn format_while_stat(ctx: &FormatContext, stat: &LuaWhileStat) -> Vec<DocIR> {
         return format_while_stat_trivia_aware(ctx, stat);
     }
 
-    let mut docs = vec![tok(LuaTokenKind::TkWhile), ir::space()];
-
+    let mut head_docs = vec![ir::space()];
     if let Some(cond) = stat.get_condition_expr() {
-        docs.extend(format_expr(ctx, &cond));
+        head_docs.extend(format_expr(ctx, &cond));
     }
 
-    docs.push(ir::space());
-    docs.push(tok(LuaTokenKind::TkDo));
+    let mut docs = format_control_header(LuaTokenKind::TkWhile, head_docs, LuaTokenKind::TkDo);
 
     format_body_end_with_parent(
         ctx,
@@ -964,25 +925,20 @@ fn format_for_stat(ctx: &FormatContext, stat: &LuaForStat) -> Vec<DocIR> {
         return format_for_stat_trivia_aware(ctx, stat);
     }
 
-    let mut docs = vec![tok(LuaTokenKind::TkFor), ir::space()];
+    let mut head_docs = vec![ir::space()];
 
     if let Some(var_name) = stat.get_var_name() {
-        docs.push(ir::source_token(var_name.syntax().clone()));
+        head_docs.push(ir::source_token(var_name.syntax().clone()));
     }
 
-    docs.push(ir::space());
-    docs.push(tok(LuaTokenKind::TkAssign));
-    docs.push(ir::space());
+    head_docs.push(ir::space());
+    head_docs.push(tok(LuaTokenKind::TkAssign));
 
     let iter_exprs: Vec<_> = stat.get_iter_expr().collect();
     let iter_docs: Vec<Vec<DocIR>> = iter_exprs.iter().map(|e| format_expr(ctx, e)).collect();
-    docs.extend(ir::intersperse(
-        iter_docs,
-        vec![tok(LuaTokenKind::TkComma), ir::space()],
-    ));
+    head_docs.extend(format_statement_expr_list(vec![ir::space()], iter_docs));
 
-    docs.push(ir::space());
-    docs.push(tok(LuaTokenKind::TkDo));
+    let mut docs = format_control_header(LuaTokenKind::TkFor, head_docs, LuaTokenKind::TkDo);
 
     format_body_end_with_parent(
         ctx,
@@ -1006,30 +962,25 @@ fn format_for_range_stat(ctx: &FormatContext, stat: &LuaForRangeStat) -> Vec<Doc
         return format_for_range_stat_trivia_aware(ctx, stat);
     }
 
-    let mut docs = vec![tok(LuaTokenKind::TkFor), ir::space()];
+    let mut head_docs = vec![ir::space()];
 
     let var_names: Vec<_> = stat.get_var_name_list().collect();
     for (i, name) in var_names.iter().enumerate() {
         if i > 0 {
-            docs.push(tok(LuaTokenKind::TkComma));
-            docs.push(ir::space());
+            head_docs.push(tok(LuaTokenKind::TkComma));
+            head_docs.push(ir::space());
         }
-        docs.push(ir::source_token(name.syntax().clone()));
+        head_docs.push(ir::source_token(name.syntax().clone()));
     }
 
-    docs.push(ir::space());
-    docs.push(tok(LuaTokenKind::TkIn));
-    docs.push(ir::space());
+    head_docs.push(ir::space());
+    head_docs.push(tok(LuaTokenKind::TkIn));
 
     let expr_list: Vec<_> = stat.get_expr_list().collect();
     let expr_docs: Vec<Vec<DocIR>> = expr_list.iter().map(|e| format_expr(ctx, e)).collect();
-    docs.extend(ir::intersperse(
-        expr_docs,
-        vec![tok(LuaTokenKind::TkComma), ir::space()],
-    ));
+    head_docs.extend(format_statement_expr_list(vec![ir::space()], expr_docs));
 
-    docs.push(ir::space());
-    docs.push(tok(LuaTokenKind::TkDo));
+    let mut docs = format_control_header(LuaTokenKind::TkFor, head_docs, LuaTokenKind::TkDo);
 
     format_body_end_with_parent(
         ctx,
@@ -1043,22 +994,11 @@ fn format_for_range_stat(ctx: &FormatContext, stat: &LuaForRangeStat) -> Vec<Doc
 
 fn format_while_stat_trivia_aware(ctx: &FormatContext, stat: &LuaWhileStat) -> Vec<DocIR> {
     let entries = collect_while_stat_entries(ctx, stat);
-    let mut docs = vec![tok(LuaTokenKind::TkWhile)];
-
-    if !entries.is_empty() {
-        docs.push(ir::space());
-        render_sequence(&mut docs, &entries, false);
-    }
-
-    if sequence_has_comment(&entries) {
-        if !sequence_ends_with_comment(&entries) {
-            docs.push(ir::hard_line());
-        }
-        docs.push(tok(LuaTokenKind::TkDo));
-    } else {
-        docs.push(ir::space());
-        docs.push(tok(LuaTokenKind::TkDo));
-    }
+    let mut docs = format_sequence_control_header(
+        vec![tok(LuaTokenKind::TkWhile)],
+        &entries,
+        LuaTokenKind::TkDo,
+    );
 
     format_body_end_with_parent(
         ctx,
@@ -1100,44 +1040,13 @@ fn format_for_stat_trivia_aware(ctx: &FormatContext, stat: &LuaForStat) -> Vec<D
         assign_op,
         rhs_entries,
     } = collect_for_stat_entries(ctx, stat);
-    let mut docs = vec![tok(LuaTokenKind::TkFor)];
-
-    if !lhs_entries.is_empty() {
-        docs.push(ir::space());
-        render_sequence(&mut docs, &lhs_entries, false);
-    }
-
-    if let Some(assign_op) = assign_op {
-        if sequence_has_comment(&lhs_entries) {
-            if !sequence_ends_with_comment(&lhs_entries) {
-                docs.push(ir::hard_line());
-            }
-            docs.push(assign_op.clone());
-        } else {
-            docs.push(ir::space());
-            docs.push(assign_op);
-        }
-
-        if !rhs_entries.is_empty() {
-            if sequence_starts_with_comment(&rhs_entries) {
-                docs.push(ir::hard_line());
-                render_sequence(&mut docs, &rhs_entries, true);
-            } else {
-                docs.push(ir::space());
-                render_sequence(&mut docs, &rhs_entries, false);
-            }
-        }
-    }
-
-    if sequence_has_comment(&rhs_entries) {
-        if !sequence_ends_with_comment(&rhs_entries) {
-            docs.push(ir::hard_line());
-        }
-        docs.push(tok(LuaTokenKind::TkDo));
-    } else {
-        docs.push(ir::space());
-        docs.push(tok(LuaTokenKind::TkDo));
-    }
+    let mut docs = format_split_control_header(
+        vec![tok(LuaTokenKind::TkFor)],
+        &lhs_entries,
+        assign_op.as_ref(),
+        &rhs_entries,
+        LuaTokenKind::TkDo,
+    );
 
     format_body_end_with_parent(
         ctx,
@@ -1210,44 +1119,13 @@ fn format_for_range_stat_trivia_aware(ctx: &FormatContext, stat: &LuaForRangeSta
         assign_op,
         rhs_entries,
     } = collect_for_range_stat_entries(ctx, stat);
-    let mut docs = vec![tok(LuaTokenKind::TkFor)];
-
-    if !lhs_entries.is_empty() {
-        docs.push(ir::space());
-        render_sequence(&mut docs, &lhs_entries, false);
-    }
-
-    if let Some(assign_op) = assign_op {
-        if sequence_has_comment(&lhs_entries) {
-            if !sequence_ends_with_comment(&lhs_entries) {
-                docs.push(ir::hard_line());
-            }
-            docs.push(assign_op.clone());
-        } else {
-            docs.push(ir::space());
-            docs.push(assign_op);
-        }
-
-        if !rhs_entries.is_empty() {
-            if sequence_starts_with_comment(&rhs_entries) {
-                docs.push(ir::hard_line());
-                render_sequence(&mut docs, &rhs_entries, true);
-            } else {
-                docs.push(ir::space());
-                render_sequence(&mut docs, &rhs_entries, false);
-            }
-        }
-    }
-
-    if sequence_has_comment(&rhs_entries) {
-        if !sequence_ends_with_comment(&rhs_entries) {
-            docs.push(ir::hard_line());
-        }
-        docs.push(tok(LuaTokenKind::TkDo));
-    } else {
-        docs.push(ir::space());
-        docs.push(tok(LuaTokenKind::TkDo));
-    }
+    let mut docs = format_split_control_header(
+        vec![tok(LuaTokenKind::TkFor)],
+        &lhs_entries,
+        assign_op.as_ref(),
+        &rhs_entries,
+        LuaTokenKind::TkDo,
+    );
 
     format_body_end_with_parent(
         ctx,
@@ -1346,12 +1224,17 @@ fn format_repeat_stat(ctx: &FormatContext, stat: &LuaRepeatStat) -> Vec<DocIR> {
     }
 
     docs.push(ir::hard_line());
-    docs.push(tok(LuaTokenKind::TkUntil));
-    docs.push(ir::space());
+
+    let mut head_docs = vec![ir::space()];
 
     if let Some(cond) = stat.get_condition_expr() {
-        docs.extend(format_expr(ctx, &cond));
+        head_docs.extend(format_expr(ctx, &cond));
     }
+
+    docs.extend(format_keyword_header(
+        vec![tok(LuaTokenKind::TkUntil)],
+        head_docs,
+    ));
 
     docs
 }
@@ -1372,16 +1255,12 @@ fn format_return_stat(ctx: &FormatContext, stat: &LuaReturnStat) -> Vec<DocIR> {
     let exprs: Vec<_> = stat.get_expr_list().collect();
     if !exprs.is_empty() {
         let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
-        let separated = ir::intersperse(expr_docs, vec![tok(LuaTokenKind::TkComma), ir::space()]);
 
         if exprs.len() == 1 && should_attach_single_value_head(&exprs[0]) {
             docs.push(ir::space());
-            docs.push(ir::list(separated));
+            docs.push(ir::list(expr_docs.into_iter().next().unwrap_or_default()));
         } else {
-            docs.push(ir::group(vec![ir::indent(vec![
-                ir::soft_line(),
-                ir::list(separated),
-            ])]));
+            docs.extend(format_statement_expr_list(vec![ir::space()], expr_docs));
         }
     }
 
@@ -1433,6 +1312,142 @@ fn collect_return_stat_entries(ctx: &FormatContext, stat: &LuaReturnStat) -> Vec
     entries
 }
 
+fn format_statement_expr_list(leading_docs: Vec<DocIR>, expr_docs: Vec<Vec<DocIR>>) -> Vec<DocIR> {
+    if expr_docs.is_empty() {
+        return Vec::new();
+    }
+
+    if expr_docs.len() == 1 {
+        let mut docs = leading_docs;
+        docs.extend(expr_docs.into_iter().next().unwrap_or_default());
+        return docs;
+    }
+
+    let mut parts = Vec::with_capacity(expr_docs.len().saturating_mul(2));
+    let mut expr_docs = expr_docs.into_iter();
+    let mut first_chunk = leading_docs;
+    first_chunk.extend(expr_docs.next().unwrap_or_default());
+    parts.push(ir::list(first_chunk));
+
+    for expr_doc in expr_docs {
+        parts.push(ir::list(vec![tok(LuaTokenKind::TkComma), ir::soft_line()]));
+        parts.push(ir::list(expr_doc));
+    }
+
+    vec![ir::group(vec![ir::indent(vec![ir::fill(parts)])])]
+}
+
+fn format_control_header(
+    leading_keyword: LuaTokenKind,
+    head_docs: Vec<DocIR>,
+    trailing_keyword: LuaTokenKind,
+) -> Vec<DocIR> {
+    format_header_with_trailing(vec![tok(leading_keyword)], head_docs, trailing_keyword)
+}
+
+fn format_keyword_header(leading_docs: Vec<DocIR>, head_docs: Vec<DocIR>) -> Vec<DocIR> {
+    vec![ir::group(vec![ir::list(leading_docs), ir::list(head_docs)])]
+}
+
+fn format_header_with_trailing(
+    leading_docs: Vec<DocIR>,
+    head_docs: Vec<DocIR>,
+    trailing_keyword: LuaTokenKind,
+) -> Vec<DocIR> {
+    vec![ir::group(vec![
+        ir::list(leading_docs),
+        ir::list(head_docs),
+        ir::space(),
+        tok(trailing_keyword),
+    ])]
+}
+
+fn format_sequence_control_header(
+    leading_docs: Vec<DocIR>,
+    entries: &[SequenceEntry],
+    trailing_keyword: LuaTokenKind,
+) -> Vec<DocIR> {
+    if sequence_has_comment(entries) {
+        let mut docs = leading_docs;
+        if !entries.is_empty() {
+            docs.push(ir::space());
+            render_sequence(&mut docs, entries, false);
+        }
+        if !sequence_ends_with_comment(entries) {
+            docs.push(ir::hard_line());
+        }
+        docs.push(tok(trailing_keyword));
+        docs
+    } else {
+        let mut head_docs = vec![ir::space()];
+        render_sequence(&mut head_docs, entries, false);
+        format_header_with_trailing(leading_docs, head_docs, trailing_keyword)
+    }
+}
+
+fn format_split_control_header(
+    leading_docs: Vec<DocIR>,
+    lhs_entries: &[SequenceEntry],
+    split_op: Option<&DocIR>,
+    rhs_entries: &[SequenceEntry],
+    trailing_keyword: LuaTokenKind,
+) -> Vec<DocIR> {
+    if sequence_has_comment(lhs_entries) || sequence_has_comment(rhs_entries) {
+        let mut docs = leading_docs;
+
+        if !lhs_entries.is_empty() {
+            docs.push(ir::space());
+            render_sequence(&mut docs, lhs_entries, false);
+        }
+
+        if let Some(split_op) = split_op {
+            if sequence_has_comment(lhs_entries) {
+                if !sequence_ends_with_comment(lhs_entries) {
+                    docs.push(ir::hard_line());
+                }
+                docs.push(split_op.clone());
+            } else {
+                docs.push(ir::space());
+                docs.push(split_op.clone());
+            }
+
+            if !rhs_entries.is_empty() {
+                if sequence_starts_with_comment(rhs_entries) {
+                    docs.push(ir::hard_line());
+                    render_sequence(&mut docs, rhs_entries, true);
+                } else {
+                    docs.push(ir::space());
+                    render_sequence(&mut docs, rhs_entries, false);
+                }
+            }
+        }
+
+        if sequence_has_comment(rhs_entries) {
+            if !sequence_ends_with_comment(rhs_entries) {
+                docs.push(ir::hard_line());
+            }
+            docs.push(tok(trailing_keyword));
+        } else {
+            docs.push(ir::space());
+            docs.push(tok(trailing_keyword));
+        }
+
+        docs
+    } else {
+        let mut head_docs = vec![ir::space()];
+        render_sequence(&mut head_docs, lhs_entries, false);
+        if let Some(split_op) = split_op {
+            head_docs.push(ir::space());
+            head_docs.push(split_op.clone());
+            if !rhs_entries.is_empty() {
+                head_docs.push(ir::space());
+                render_sequence(&mut head_docs, rhs_entries, false);
+            }
+        }
+        format_header_with_trailing(leading_docs, head_docs, trailing_keyword)
+    }
+}
+
 /// goto label
 fn format_goto_stat(_ctx: &FormatContext, stat: &LuaGotoStat) -> Vec<DocIR> {
     let mut docs = vec![tok(LuaTokenKind::TkGoto), ir::space()];
@@ -1469,11 +1484,12 @@ fn format_closure_body_with_prefix_space(
     }
 
     // Parameter list
-    docs.push(tok(LuaTokenKind::TkLeftParen));
     if let Some(params) = closure.get_params_list() {
-        docs.extend(super::expression::format_params_ir(ctx, &params));
+        docs.extend(super::expression::format_param_list_ir(ctx, &params));
+    } else {
+        docs.push(tok(LuaTokenKind::TkLeftParen));
+        docs.push(tok(LuaTokenKind::TkRightParen));
     }
-    docs.push(tok(LuaTokenKind::TkRightParen));
 
     // body
     format_body_end_with_parent(
@@ -1486,18 +1502,10 @@ fn format_closure_body_with_prefix_space(
     docs
 }
 
-/// global name1, name2 / global <attr> name1 / global *
+/// global name1, name2 / global <attr> name1 / global <attr> *
 fn format_global_stat(_ctx: &FormatContext, stat: &LuaGlobalStat) -> Vec<DocIR> {
     let mut docs = vec![tok(LuaTokenKind::TkGlobal)];
 
-    // global * : declare all variables as global
-    if stat.is_any_global() {
-        docs.push(ir::space());
-        docs.push(ir::text("*"));
-        return docs;
-    }
-
-    // global <attr> name1, name2 : declaration with attribute
     if let Some(attrib) = stat.get_attrib() {
         docs.push(ir::space());
         docs.push(ir::text("<"));
@@ -1505,6 +1513,13 @@ fn format_global_stat(_ctx: &FormatContext, stat: &LuaGlobalStat) -> Vec<DocIR> 
             docs.push(ir::source_token(name_token.syntax().clone()));
         }
         docs.push(ir::text(">"));
+    }
+
+    // global * : declare all variables as global
+    if stat.is_any_global() {
+        docs.push(ir::space());
+        docs.push(ir::text("*"));
+        return docs;
     }
 
     // Variable name list
@@ -1517,9 +1532,7 @@ fn format_global_stat(_ctx: &FormatContext, stat: &LuaGlobalStat) -> Vec<DocIR> 
             docs.push(tok(LuaTokenKind::TkComma));
             docs.push(ir::space());
         }
-        if let Some(token) = name.get_name_token() {
-            docs.push(ir::source_token(token.syntax().clone()));
-        }
+        docs.extend(format_local_name_ir(name));
     }
 
     docs
@@ -1594,7 +1607,7 @@ fn is_block_like_expr(expr: &LuaExpr) -> bool {
 }
 
 fn should_attach_single_value_head(expr: &LuaExpr) -> bool {
-    is_block_like_expr(expr) || expr.syntax().text().contains_char('\n')
+    is_block_like_expr(expr) || node_has_direct_comment_child(expr.syntax())
 }
 
 fn should_preserve_raw_empty_loop_with_comments(
