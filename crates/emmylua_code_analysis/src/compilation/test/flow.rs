@@ -2,6 +2,8 @@
 mod test {
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
+    const STACKED_TYPE_GUARDS: usize = 180;
+
     #[test]
     fn test_closure_return() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
@@ -99,6 +101,540 @@ mod test {
         local foo = props.bar and props.bar() or nil
         "#
         ));
+    }
+
+    #[test]
+    fn test_stacked_same_var_type_guards_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_guards =
+            "if type(value) ~= 'string' then return end\n".repeat(STACKED_TYPE_GUARDS);
+        let block = format!(
+            r#"
+        local value ---@type string|integer|boolean
+
+        {repeated_guards}
+        local narrowed ---@type string
+        narrowed = value
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked same-variable type guard repro"
+        );
+        assert!(ws.check_code_for(DiagnosticCode::AssignTypeMismatch, &block));
+    }
+
+    #[test]
+    fn test_stacked_same_var_call_type_guards_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_guards =
+            "if not instance_of(value, 'string') then return end\n".repeat(STACKED_TYPE_GUARDS);
+        let block = format!(
+            r#"
+        ---@generic T
+        ---@param inst any
+        ---@param type `T`
+        ---@return TypeGuard<T>
+        local function instance_of(inst, type)
+            return true
+        end
+
+        local value ---@type string|integer|boolean
+
+        {repeated_guards}
+        after_guard = value
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked same-variable call type guard repro"
+        );
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_stacked_same_var_call_type_guard_eq_false_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_guards = "if instance_of(value, 'string') == false then return end\n"
+            .repeat(STACKED_TYPE_GUARDS);
+        let block = format!(
+            r#"
+        ---@generic T
+        ---@param inst any
+        ---@param type `T`
+        ---@return TypeGuard<T>
+        local function instance_of(inst, type)
+            return true
+        end
+
+        local value ---@type string|integer|boolean
+
+        {repeated_guards}
+        after_guard = value
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked binary call type guard repro"
+        );
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_branch_join_keeps_union_when_only_one_side_narrows() {
+        let mut ws = VirtualWorkspace::new();
+        let block = r#"
+        local cond ---@type boolean
+        local value ---@type string|integer
+
+        if cond then
+            if type(value) ~= 'string' then
+                return
+            end
+        end
+
+        after_join = value
+        "#;
+
+        let file_id = ws.def(block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for branch join merge-safety repro"
+        );
+        assert_eq!(ws.expr_ty("after_join"), ws.ty("string|integer"));
+    }
+
+    #[test]
+    fn test_stacked_same_field_truthiness_guards_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_guards = "if not value.foo then return end\n".repeat(STACKED_TYPE_GUARDS);
+        let block = format!(
+            r#"
+        ---@class HasFoo
+        ---@field foo string
+
+        ---@class NoFoo
+        ---@field bar integer
+
+        local value ---@type HasFoo|NoFoo
+
+        {repeated_guards}
+        after_guard = value
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked same-field truthiness repro"
+        );
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("HasFoo"));
+    }
+
+    #[test]
+    fn test_stacked_return_cast_guards_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_guards =
+            "if not is_player(creature) then return end\n".repeat(STACKED_TYPE_GUARDS);
+        let block = format!(
+            r#"
+        ---@class Creature
+
+        ---@class Player: Creature
+
+        ---@class Monster: Creature
+
+        ---@return boolean
+        ---@return_cast creature Player else Monster
+        local function is_player(creature)
+            return true
+        end
+
+        local creature ---@type Creature
+
+        {repeated_guards}
+        after_guard = creature
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked return-cast repro"
+        );
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_stacked_return_cast_self_guards_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_guards =
+            "if not creature:is_player() then return end\n".repeat(STACKED_TYPE_GUARDS);
+        let block = format!(
+            r#"
+        ---@class Creature
+
+        ---@class Player: Creature
+
+        ---@class Monster: Creature
+        local creature = {{}}
+
+        ---@return boolean
+        ---@return_cast self Player else Monster
+        function creature:is_player()
+            return true
+        end
+
+        {repeated_guards}
+        after_guard = creature
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked self return-cast repro"
+        );
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_pending_replay_order_uses_type_guard_before_self_return_cast_lookup() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Player
+
+        ---@class Monster
+
+        local checker = {}
+
+        ---@return boolean
+        ---@return_cast self Player else Monster
+        function checker:is_player()
+            return true
+        end
+
+        local branch ---@type boolean
+        local creature = branch and checker or false
+
+        if type(creature) ~= "table" then
+            return
+        end
+
+        if not creature:is_player() then
+            return
+        end
+
+        after_guard = creature
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_pending_replay_order_with_three_guards_before_self_lookup() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class PlayerA
+
+        ---@class MonsterA
+
+        ---@class PlayerB
+
+        ---@class MonsterB
+
+        local checker_a = {
+            kind = "checker_a",
+        }
+
+        ---@return boolean
+        ---@return_cast self PlayerA else MonsterA
+        function checker_a:is_player()
+            return true
+        end
+
+        local checker_b = {
+            kind = "checker_b",
+        }
+
+        ---@return boolean
+        ---@return_cast self PlayerB else MonsterB
+        function checker_b:is_player()
+            return true
+        end
+
+        local allow_false ---@type boolean
+        local choose_a ---@type boolean
+        local creature = allow_false and false or (choose_a and checker_a or checker_b)
+
+        if type(creature) ~= "table" then
+            return
+        end
+
+        if creature.kind ~= "checker_a" then
+            return
+        end
+
+        if creature:is_player() == false then
+            return
+        end
+
+        after_guard = creature
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("PlayerA"));
+    }
+
+    #[test]
+    fn test_return_cast_self_guard_uses_prior_narrowing_for_method_lookup() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Player
+
+        ---@class Monster
+
+        local checker = {
+            kind = "checker",
+        }
+
+        ---@return boolean
+        ---@return_cast self Player else Monster
+        function checker:is_player()
+            return true
+        end
+
+        local monster = {
+            kind = "monster",
+        }
+
+        local branch ---@type boolean
+        local creature = branch and checker or monster
+
+        if creature.kind ~= "checker" then
+            return
+        end
+
+        if not creature:is_player() then
+            return
+        end
+
+        after_guard = creature
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_return_cast_self_guard_without_prior_method_lookup_narrowing_does_not_apply() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Player
+
+        ---@class Monster
+
+        local checker = {
+            kind = "checker",
+        }
+
+        ---@return boolean
+        ---@return_cast self Player else Monster
+        function checker:is_player()
+            return true
+        end
+
+        local monster = {
+            kind = "monster",
+        }
+
+        local branch ---@type boolean
+        local creature = branch and checker or monster
+        before_guard = creature
+
+        if not creature:is_player() then
+            return
+        end
+
+        after_guard = creature
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.expr_ty("before_guard"));
+    }
+
+    #[test]
+    fn test_return_cast_self_guard_with_multiple_method_candidates_uses_prior_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class PlayerA
+
+        ---@class MonsterA
+
+        ---@class PlayerB
+
+        ---@class MonsterB
+
+        local checker_a = {
+            kind = "checker_a",
+        }
+
+        ---@return boolean
+        ---@return_cast self PlayerA else MonsterA
+        function checker_a:is_player()
+            return true
+        end
+
+        local checker_b = {
+            kind = "checker_b",
+        }
+
+        ---@return boolean
+        ---@return_cast self PlayerB else MonsterB
+        function checker_b:is_player()
+            return true
+        end
+
+        local branch ---@type boolean
+        local creature = branch and checker_a or checker_b
+
+        if creature.kind ~= "checker_a" then
+            return
+        end
+
+        if not creature:is_player() then
+            return
+        end
+
+        after_guard = creature
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("PlayerA"));
+    }
+
+    #[test]
+    fn test_return_cast_self_guard_with_non_callable_member_uses_prior_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Player
+
+        ---@class Monster
+
+        local checker = {
+            kind = "checker",
+        }
+
+        ---@return boolean
+        ---@return_cast self Player else Monster
+        function checker:is_player()
+            return true
+        end
+
+        local monster = {
+            kind = "monster",
+            is_player = false,
+        }
+
+        local branch ---@type boolean
+        local creature = branch and checker or monster
+
+        if creature.kind ~= "checker" then
+            return
+        end
+
+        if not creature:is_player() then
+            return
+        end
+
+        after_guard = creature
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_return_cast_self_guard_eq_false_uses_prior_narrowing_for_method_lookup() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Player
+
+        ---@class Monster
+
+        local checker = {
+            kind = "checker",
+        }
+
+        ---@return boolean
+        ---@return_cast self Player else Monster
+        function checker:is_player()
+            return true
+        end
+
+        local monster = {
+            kind = "monster",
+            is_player = false,
+        }
+
+        local branch ---@type boolean
+        local creature = branch and checker or monster
+
+        if creature.kind ~= "checker" then
+            return
+        end
+
+        if creature:is_player() == false then
+            return
+        end
+
+        after_guard = creature
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
     }
 
     #[test]
@@ -1891,5 +2427,306 @@ _2 = a[1]
         let e_ty = ws.expr_ty("E");
         let type_str = ws.humanize_type_detailed(e_ty);
         assert_eq!(type_str, "(A|B|table)");
+    }
+
+    #[test]
+    fn test_assignment_from_wider_single_return_call_drops_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+            ---@field a integer
+
+            ---@class Bar
+            ---@field kind "bar"
+            ---@field b integer
+
+            ---@param ok boolean
+            ---@return Foo|Bar
+            local function pick(ok)
+                if ok then
+                    return { kind = "foo", a = 1 }
+                end
+
+                return { kind = "bar", b = 2 }
+            end
+
+            local ok ---@type boolean
+            local x ---@type Foo|Bar
+
+            if x.kind == "foo" then
+                x = pick(ok)
+                after_assign = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("Foo|Bar"));
+    }
+
+    #[test]
+    fn test_assignment_after_pending_return_cast_guard_drops_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Creature
+
+            ---@class Player: Creature
+
+            ---@class Monster: Creature
+
+            ---@param creature Creature
+            ---@return boolean
+            ---@return_cast creature Player else Monster
+            local function is_player(creature)
+                return true
+            end
+
+            local creature ---@type Creature
+            local next_creature ---@type Creature
+
+            if not is_player(creature) then
+                return
+            end
+
+            before_assign = creature
+            creature = next_creature
+            after_assign = creature
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("before_assign"), ws.ty("Player"));
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("Creature"));
+    }
+
+    #[test]
+    fn test_assignment_after_binary_call_guard_eq_false_drops_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param inst any
+            ---@param type `T`
+            ---@return TypeGuard<T>
+            local function instance_of(inst, type)
+                return true
+            end
+
+            local value ---@type string|integer|boolean
+            local next_value ---@type string|integer|boolean
+
+            if instance_of(value, 'string') == false then
+                return
+            end
+
+            before_assign = value
+            value = next_value
+            after_assign = value
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("before_assign"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("string|integer|boolean"));
+    }
+
+    #[test]
+    fn test_assignment_after_mixed_eager_and_pending_guards_drops_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Player
+            ---@field kind "player"
+
+            ---@class Monster
+            ---@field kind "monster"
+
+            ---@param creature Player|Monster
+            ---@return boolean
+            ---@return_cast creature Player else Monster
+            local function is_player(creature)
+                return true
+            end
+
+            local creature ---@type Player|Monster
+            local next_creature ---@type Player|Monster
+
+            if creature.kind ~= "player" then
+                return
+            end
+
+            if not is_player(creature) then
+                return
+            end
+
+            before_assign = creature
+            creature = next_creature
+            after_assign = creature
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("before_assign"), ws.ty("Player"));
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("Player|Monster"));
+    }
+
+    #[test]
+    fn test_assignment_from_nullable_union_keeps_rhs_members() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local x ---@type string?
+            local y ---@type number?
+
+            if x then
+                x = y
+                after_assign = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("number?"));
+    }
+
+    #[test]
+    fn test_assignment_from_partially_overlapping_union_keeps_rhs_members() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local x ---@type string|number
+            local y ---@type integer|string
+
+            if x == 1 then
+                x = y
+                after_assign = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("integer|string"));
+    }
+
+    #[test]
+    fn test_partial_table_reassignment_preserves_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+            ---@field a integer
+
+            ---@class Bar
+            ---@field kind "bar"
+            ---@field b integer
+
+            local x ---@type Foo|Bar
+
+            if x.kind == "foo" then
+                x = {}
+                x.kind = "foo"
+                x.a = 1
+                after_assign = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("Foo"));
+    }
+
+    #[test]
+    fn test_partial_table_reassignment_with_discriminant_preserves_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+            ---@field a integer
+
+            ---@class Bar
+            ---@field kind "bar"
+            ---@field b integer
+
+            local x ---@type Foo|Bar
+
+            if x.kind == "foo" then
+                x = { kind = "foo" }
+                x.a = 1
+                after_assign = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("Foo"));
+    }
+
+    #[test]
+    fn test_exact_string_reassignment_preserves_literal_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local x ---@type string|number
+
+            if x == 1 then
+                x = "a"
+                after_assign = x
+            end
+            "#,
+        );
+
+        let after_assign = ws.expr_ty("after_assign");
+        assert_eq!(ws.humanize_type(after_assign), r#""a""#);
+    }
+
+    #[test]
+    fn test_assignment_from_broad_string_drops_literal_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local x ---@type "a"|boolean
+            local y ---@type string
+
+            if x == "a" then
+                x = y
+                after_assign = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_partial_table_reassignment_with_conflicting_discriminant_drops_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+            ---@field a integer
+
+            ---@class Bar
+            ---@field kind "bar"
+            ---@field b integer
+
+            local x ---@type Foo|Bar
+
+            if x.kind == "foo" then
+                x = { kind = "bar" }
+                after_assign = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("Foo|Bar"));
     }
 }

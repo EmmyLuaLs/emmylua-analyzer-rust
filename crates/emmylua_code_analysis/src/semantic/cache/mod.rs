@@ -22,7 +22,7 @@ pub struct LuaInferCache {
     pub expr_cache: HashMap<LuaSyntaxId, CacheEntry<LuaType>>,
     pub call_cache:
         HashMap<(LuaSyntaxId, Option<usize>, LuaType), CacheEntry<Arc<LuaFunctionType>>>,
-    pub flow_node_cache: HashMap<(VarRefId, FlowId), CacheEntry<LuaType>>,
+    pub(crate) flow_node_cache: HashMap<(VarRefId, FlowId, bool), CacheEntry<LuaType>>,
     pub index_ref_origin_type_cache: HashMap<VarRefId, CacheEntry<LuaType>>,
     pub expr_var_ref_id_cache: HashMap<LuaSyntaxId, VarRefId>,
     pub narrow_by_literal_stop_position_cache: HashSet<LuaSyntaxId>,

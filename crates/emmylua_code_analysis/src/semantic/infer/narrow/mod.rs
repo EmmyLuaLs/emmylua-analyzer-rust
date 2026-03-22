@@ -71,22 +71,11 @@ fn get_var_ref_type(db: &DbIndex, cache: &mut LuaInferCache, var_ref_id: &VarRef
     }
 }
 
-fn get_single_antecedent(tree: &FlowTree, flow: &FlowNode) -> Result<FlowId, InferFailReason> {
+fn get_single_antecedent(flow: &FlowNode) -> Result<FlowId, InferFailReason> {
     match &flow.antecedent {
         Some(antecedent) => match antecedent {
             FlowAntecedent::Single(id) => Ok(*id),
-            FlowAntecedent::Multiple(multi_id) => {
-                let multi_flow = tree
-                    .get_multi_antecedents(*multi_id)
-                    .ok_or(InferFailReason::None)?;
-                if !multi_flow.is_empty() {
-                    // If there are multiple antecedents, we need to handle them separately
-                    // For now, we just return the first one
-                    Ok(multi_flow[0])
-                } else {
-                    Err(InferFailReason::None)
-                }
-            }
+            FlowAntecedent::Multiple(_) => Err(InferFailReason::None),
         },
         None => Err(InferFailReason::None),
     }

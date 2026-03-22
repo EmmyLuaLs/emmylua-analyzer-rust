@@ -2,6 +2,8 @@
 mod test {
     use crate::{DiagnosticCode, VirtualWorkspace};
 
+    const STACKED_PCALL_ALIAS_GUARDS: usize = 180;
+
     #[test]
     fn test_issue_263() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
@@ -140,5 +142,37 @@ mod test {
         assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
         assert_eq!(ws.expr_ty("status"), ws.ty("boolean|string"));
         assert_eq!(ws.expr_ty("payload"), ws.ty("integer|string"));
+    }
+
+    #[test]
+    fn test_pcall_stacked_alias_guards_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let repeated_guards =
+            "if failed then error(result) end\n".repeat(STACKED_PCALL_ALIAS_GUARDS);
+        let block = format!(
+            r#"
+        ---@return integer
+        local function foo()
+            return 1
+        end
+
+        local ok, result = pcall(foo)
+        local failed = ok == false
+
+        {repeated_guards}
+        narrowed = result
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked pcall alias guard repro"
+        );
+        assert_eq!(ws.expr_ty("narrowed"), ws.ty("integer"));
     }
 }

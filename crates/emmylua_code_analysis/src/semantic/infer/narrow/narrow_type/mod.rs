@@ -207,6 +207,9 @@ pub fn narrow_down_type(
                 .into_iter()
                 .filter_map(|t| narrow_down_type(db, real_source_ref.clone(), t, declared.clone()))
                 .collect::<Vec<_>>();
+            if source_types.is_empty() {
+                return None;
+            }
             let mut result_type = LuaType::Unknown;
             for source_type in source_types {
                 result_type = TypeOps::Union.apply(db, &result_type, &source_type);
