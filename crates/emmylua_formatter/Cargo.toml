@@ -13,7 +13,6 @@ toml_edit.workspace = true
 smol_str.workspace = true
 glob.workspace = true
 walkdir.workspace = true
-similar = { version = "2.7.0", features = ["inline"] }
 
 [dependencies.clap]
 workspace = true
@@ -23,10 +22,14 @@ optional = true
 workspace = true
 optional = true
 
+[dependencies.similar]
+workspace = true
+optional = true
+
 [[bin]]
 name = "luafmt"
 required-features = ["cli"]
 
 [features]
 default = ["cli"]
-cli = ["dep:clap", "dep:mimalloc"]
+cli = ["dep:clap", "dep:mimalloc", "dep:similar"]

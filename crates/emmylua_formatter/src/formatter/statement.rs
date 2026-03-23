@@ -20,7 +20,10 @@ use super::sequence::{
 };
 use super::spacing::space_around_assign;
 use super::tokens::{comma_space_sep, tok};
-use super::trivia::{node_has_direct_comment_child, node_has_direct_same_line_inline_comment};
+use super::trivia::{
+    node_has_direct_comment_child, node_has_direct_same_line_inline_comment,
+    source_line_prefix_width, syntax_has_descendant_comment,
+};
 
 /// Format a statement (dispatch)
 pub fn format_stat(ctx: &FormatContext, stat: &LuaStat) -> Vec<DocIR> {
@@ -765,8 +768,7 @@ fn should_preserve_raw_if_stat_trivia_aware(ctx: &FormatContext, stat: &LuaIfSta
 }
 
 fn should_preserve_raw_if_stat_with_comments(stat: &LuaIfStat) -> bool {
-    let text = stat.syntax().text().to_string();
-    text.contains("elseif") && text.contains("--")
+    stat.get_else_if_clause_list().next().is_some() && syntax_has_descendant_comment(stat.syntax())
 }
 
 fn should_preserve_raw_if_header_inline_comment(stat: &LuaIfStat) -> bool {
@@ -860,22 +862,33 @@ fn try_format_raw_clause_header_until_block(
     block: Option<&LuaBlock>,
 ) -> Option<Vec<DocIR>> {
     let block = block?;
-    let text = syntax.text().to_string();
-    if !text.contains("--") {
+    if !syntax_has_descendant_comment(syntax) {
         return None;
     }
 
-    let start = syntax.text_range().start();
-    let block_start = block.syntax().text_range().start();
-    if block_start <= start {
-        return None;
+    let mut header = String::new();
+    let block_range = block.syntax().text_range();
+    for child in syntax.children_with_tokens() {
+        if let Some(node) = child.as_node()
+            && node.text_range() == block_range
+        {
+            break;
+        }
+
+        match child {
+            rowan::NodeOrToken::Node(node) => {
+                node.text().for_each_chunk(|chunk| header.push_str(chunk));
+            }
+            rowan::NodeOrToken::Token(token) => header.push_str(token.text()),
+        }
     }
 
-    let header_len = usize::from(block_start - start);
-    let header = text
-        .get(..header_len)?
-        .trim_end_matches(['\r', '\n', ' ', '\t']);
-    Some(vec![ir::text(header.to_string())])
+    let header = header.trim_end_matches(['\r', '\n', ' ', '\t']);
+    if header.is_empty() {
+        None
+    } else {
+        Some(vec![ir::text(header.to_string())])
+    }
 }
 
 fn try_preserve_single_line_if_body(ctx: &FormatContext, stat: &LuaIfStat) -> Option<Vec<DocIR>> {
@@ -1438,22 +1451,6 @@ fn format_statement_expr_list(
             first_line_prefix_width,
         },
     )
-}
-
-fn source_line_prefix_width(node: &LuaSyntaxNode) -> usize {
-    let mut root = node.clone();
-    while let Some(parent) = root.parent() {
-        root = parent;
-    }
-
-    let text = root.text().to_string();
-    let start = usize::from(node.text_range().start());
-    let line_start = text[..start]
-        .rfind(['\n', '\r'])
-        .map(|index| index + 1)
-        .unwrap_or(0);
-
-    start.saturating_sub(line_start)
 }
 
 fn build_statement_expr_fill_parts(

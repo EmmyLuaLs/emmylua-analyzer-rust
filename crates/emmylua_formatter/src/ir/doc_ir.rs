@@ -149,6 +149,57 @@ pub fn ir_flat_width(docs: &[DocIR]) -> usize {
         .sum()
 }
 
+pub fn ir_has_forced_line_break(docs: &[DocIR]) -> bool {
+    docs.iter().any(doc_has_forced_line_break)
+}
+
+fn doc_has_forced_line_break(doc: &DocIR) -> bool {
+    match doc {
+        DocIR::HardLine => true,
+        DocIR::Indent(items) | DocIR::List(items) => ir_has_forced_line_break(items),
+        DocIR::Group { contents, .. } => ir_has_forced_line_break(contents),
+        DocIR::IfBreak {
+            break_contents,
+            flat_contents,
+            ..
+        } => {
+            doc_has_forced_line_break(break_contents.as_ref())
+                || doc_has_forced_line_break(flat_contents.as_ref())
+        }
+        DocIR::Fill { parts } => ir_has_forced_line_break(parts),
+        DocIR::LineSuffix(contents) => ir_has_forced_line_break(contents),
+        DocIR::AlignGroup(group) => {
+            group.entries.len() > 1
+                || group.entries.iter().any(|entry| match entry {
+                    AlignEntry::Aligned {
+                        before,
+                        after,
+                        trailing,
+                    } => {
+                        ir_has_forced_line_break(before)
+                            || ir_has_forced_line_break(after)
+                            || trailing
+                                .as_ref()
+                                .is_some_and(|trail| ir_has_forced_line_break(trail))
+                    }
+                    AlignEntry::Line { content, trailing } => {
+                        ir_has_forced_line_break(content)
+                            || trailing
+                                .as_ref()
+                                .is_some_and(|trail| ir_has_forced_line_break(trail))
+                    }
+                })
+        }
+        DocIR::Text(_)
+        | DocIR::SourceNode { .. }
+        | DocIR::SourceToken(_)
+        | DocIR::SyntaxToken(_)
+        | DocIR::SoftLine
+        | DocIR::SoftLineOrEmpty
+        | DocIR::Space => false,
+    }
+}
+
 pub fn syntax_text_len(text: &SyntaxText, trim_end: bool) -> usize {
     let len = text.len();
     let end = if trim_end {

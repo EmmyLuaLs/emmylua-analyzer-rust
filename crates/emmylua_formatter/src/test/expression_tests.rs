@@ -271,6 +271,14 @@ local b = t[1]
     }
 
     #[test]
+    fn test_callback_arg_with_multiline_closure_breaks_one_arg_per_line() {
+        assert_format!(
+            "check(function()\n    return not not k3\nend, 'LOADTRUE', 'RETURN1')\n",
+            "check(\n    function()\n        return not not k3\n    end,\n    'LOADTRUE',\n    'RETURN1'\n)\n"
+        );
+    }
+
+    #[test]
     fn test_table_auto_without_alignment_uses_progressive_fill() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {

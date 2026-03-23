@@ -7,7 +7,7 @@ use emmylua_parser::{
 use rowan::TextRange;
 
 use crate::config::{ExpandStrategy, QuoteStyle, SingleArgCallParens};
-use crate::ir::{self, AlignEntry, DocIR, EqSplit};
+use crate::ir::{self, AlignEntry, DocIR, EqSplit, ir_has_forced_line_break};
 
 use super::FormatContext;
 use super::comment::{extract_trailing_comment, format_comment, trailing_comment_prefix};
@@ -20,7 +20,10 @@ use super::sequence::{
 };
 use super::spacing::{SpaceRule, space_around_assign, space_around_binary_op};
 use super::tokens::{comma_soft_line_sep, comma_space_sep, tok};
-use super::trivia::{node_has_direct_comment_child, node_has_direct_same_line_inline_comment};
+use super::trivia::{
+    node_has_direct_comment_child, node_has_direct_same_line_inline_comment,
+    source_line_prefix_width, trailing_gap_requests_alignment,
+};
 
 struct BinaryExprSplit {
     lhs_entries: Vec<SequenceEntry>,
@@ -354,22 +357,6 @@ fn try_format_flat_binary_chain(ctx: &FormatContext, expr: &LuaBinaryExpr) -> Op
             first_line_prefix_width: source_line_prefix_width(expr.syntax()),
         },
     ))
-}
-
-fn source_line_prefix_width(node: &LuaSyntaxNode) -> usize {
-    let mut root = node.clone();
-    while let Some(parent) = root.parent() {
-        root = parent;
-    }
-
-    let text = root.text().to_string();
-    let start = usize::from(node.text_range().start());
-    let line_start = text[..start]
-        .rfind(['\n', '\r'])
-        .map(|index| index + 1)
-        .unwrap_or(0);
-
-    start.saturating_sub(line_start)
 }
 
 fn build_binary_chain_segment(
@@ -832,23 +819,44 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                     } else {
                         let arg_docs: Vec<Vec<DocIR>> =
                             args.iter().map(|a| format_expr(ctx, a)).collect();
-                        docs.extend(format_delimited_sequence(DelimitedSequenceLayout {
-                            open: tok(LuaTokenKind::TkLeftParen),
-                            close: tok(LuaTokenKind::TkRightParen),
-                            items: arg_docs,
-                            strategy: ExpandStrategy::Auto,
-                            preserve_multiline: false,
-                            flat_separator: comma_space_sep(),
-                            fill_separator: comma_soft_line_sep(),
-                            break_separator: comma_soft_line_sep(),
-                            flat_open_padding: vec![],
-                            flat_close_padding: vec![],
-                            grouped_padding: ir::soft_line_or_empty(),
-                            flat_trailing: vec![],
-                            grouped_trailing: trailing,
-                            custom_break_contents: None,
-                            prefer_custom_break_in_auto: false,
-                        }));
+                        if arg_docs.iter().any(|doc| ir_has_forced_line_break(doc)) {
+                            let multiline_entries = arg_docs
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, doc)| CallArgEntry::Arg {
+                                    doc,
+                                    trailing_comment: None,
+                                    align_hint: false,
+                                    has_following_arg: index + 1 < args.len(),
+                                })
+                                .collect();
+                            docs.extend(format_call_args_multiline_candidates(
+                                ctx,
+                                multiline_entries,
+                                trailing,
+                                false,
+                                false,
+                                source_line_prefix_width(args_list.syntax()),
+                            ));
+                        } else {
+                            docs.extend(format_delimited_sequence(DelimitedSequenceLayout {
+                                open: tok(LuaTokenKind::TkLeftParen),
+                                close: tok(LuaTokenKind::TkRightParen),
+                                items: arg_docs,
+                                strategy: ExpandStrategy::Auto,
+                                preserve_multiline: false,
+                                flat_separator: comma_space_sep(),
+                                fill_separator: comma_soft_line_sep(),
+                                break_separator: comma_soft_line_sep(),
+                                flat_open_padding: vec![],
+                                flat_close_padding: vec![],
+                                grouped_padding: ir::soft_line_or_empty(),
+                                flat_trailing: vec![],
+                                grouped_trailing: trailing,
+                                custom_break_contents: None,
+                                prefer_custom_break_in_auto: false,
+                            }));
+                        }
                     }
                 }
             }
@@ -2012,24 +2020,7 @@ fn trailing_comment_requests_alignment(
     comment_range: TextRange,
     required_min_gap: usize,
 ) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-
-    let parent_start = parent.text_range().start();
-    let gap_start = usize::from(node.text_range().end() - parent_start);
-    let gap_end = usize::from(comment_range.start() - parent_start);
-    if gap_end <= gap_start {
-        return false;
-    }
-
-    let text = parent.text().to_string();
-    let Some(gap) = text.get(gap_start..gap_end) else {
-        return false;
-    };
-
-    !gap.contains(['\n', '\r'])
-        && gap.chars().filter(|ch| matches!(ch, ' ' | '\t')).count() > required_min_gap
+    trailing_gap_requests_alignment(node, comment_range, required_min_gap)
 }
 
 fn call_arg_group_requests_alignment(entries: &[CallArgEntry]) -> bool {

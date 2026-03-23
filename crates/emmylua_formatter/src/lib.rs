@@ -1,3 +1,4 @@
+#![cfg(feature = "cli")]
 pub mod cmd_args;
 pub mod config;
 mod formatter;

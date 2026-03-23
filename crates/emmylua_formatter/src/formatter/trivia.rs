@@ -1,4 +1,5 @@
 use emmylua_parser::{LuaKind, LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind};
+use rowan::TextRange;
 
 /// Count how many blank lines appear before a node.
 pub fn count_blank_lines_before(node: &LuaSyntaxNode) -> usize {
@@ -57,4 +58,73 @@ pub fn has_non_trivia_before_on_same_line(node: &LuaSyntaxNode) -> bool {
     }
 
     false
+}
+
+pub fn source_line_prefix_width(node: &LuaSyntaxNode) -> usize {
+    let mut width = 0usize;
+    let Some(mut token) = node.first_token() else {
+        return 0;
+    };
+
+    while let Some(prev) = token.prev_token() {
+        let text = prev.text();
+        let mut chars_since_break = 0usize;
+
+        for ch in text.chars().rev() {
+            if matches!(ch, '\n' | '\r') {
+                return width;
+            }
+            chars_since_break += 1;
+        }
+
+        width += chars_since_break;
+        token = prev;
+    }
+
+    width
+}
+
+pub fn syntax_has_descendant_comment(node: &LuaSyntaxNode) -> bool {
+    node.descendants()
+        .any(|child| child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment))
+}
+
+pub fn trailing_gap_requests_alignment(
+    node: &LuaSyntaxNode,
+    comment_range: TextRange,
+    required_min_gap: usize,
+) -> bool {
+    let mut gap_width = 0usize;
+    let mut next = node.next_sibling_or_token();
+
+    while let Some(element) = next {
+        if element.text_range().start() >= comment_range.start() {
+            break;
+        }
+
+        match element.kind() {
+            LuaKind::Token(LuaTokenKind::TkEndOfLine) => return false,
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {
+                if let Some(token) = element.as_token() {
+                    for ch in token.text().chars() {
+                        if matches!(ch, '\n' | '\r') {
+                            return false;
+                        }
+                        if matches!(ch, ' ' | '\t') {
+                            gap_width += 1;
+                        }
+                    }
+                }
+            }
+            _ => {
+                if element.text_range().end() > comment_range.start() {
+                    return false;
+                }
+            }
+        }
+
+        next = element.next_sibling_or_token();
+    }
+
+    gap_width > required_min_gap
 }

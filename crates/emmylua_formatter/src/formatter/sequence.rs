@@ -1,7 +1,7 @@
 use emmylua_parser::LuaTokenKind;
 
 use crate::config::ExpandStrategy;
-use crate::ir::{self, DocIR};
+use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break};
 use crate::printer::Printer;
 
 use super::FormatContext;
@@ -142,6 +142,23 @@ pub fn choose_sequence_layout(
 
     if ordered.is_empty() {
         return vec![];
+    }
+
+    if ordered.len() == 1 {
+        return ordered
+            .into_iter()
+            .next()
+            .map(|candidate| candidate.docs)
+            .unwrap_or_default();
+    }
+
+    if let Some(flat_candidate) = ordered.first()
+        && flat_candidate.kind == SequenceLayoutKind::Flat
+        && !ir_has_forced_line_break(&flat_candidate.docs)
+        && ir_flat_width(&flat_candidate.docs) + policy.first_line_prefix_width
+            <= ctx.config.layout.max_line_width
+    {
+        return flat_candidate.docs.clone();
     }
 
     choose_best_sequence_candidate(ctx, ordered, policy)
