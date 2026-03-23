@@ -1183,3 +1183,8 @@ pub fn format_trailing_comment(
     suffix_content.extend(docs);
     Some((ir::line_suffix(suffix_content), range))
 }
+
+pub fn should_keep_comment_inline_in_expression(comment: &LuaComment) -> bool {
+    matches!(classify_comment(comment), CommentKind::Long)
+        && !comment.syntax().text().contains_char('\n')
+}

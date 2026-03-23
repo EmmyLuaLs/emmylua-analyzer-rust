@@ -7,8 +7,10 @@ mod statement;
 mod tokens;
 mod trivia;
 
+use std::cell::Cell;
+
 use crate::config::LuaFormatConfig;
-use crate::ir::{self, DocIR};
+use crate::ir::{self, DocIR, GroupId};
 use emmylua_parser::{LuaAstNode, LuaChunk, LuaKind, LuaTokenKind};
 
 pub use block::format_block;
@@ -17,11 +19,21 @@ pub use statement::format_body_end_with_parent;
 /// Formatting context, shared throughout the formatting process
 pub struct FormatContext<'a> {
     pub config: &'a LuaFormatConfig,
+    next_group_id: Cell<u32>,
 }
 
 impl<'a> FormatContext<'a> {
     pub fn new(config: &'a LuaFormatConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            next_group_id: Cell::new(0),
+        }
+    }
+
+    pub fn next_group_id(&self) -> GroupId {
+        let next = self.next_group_id.get();
+        self.next_group_id.set(next + 1);
+        GroupId(next)
     }
 }
 

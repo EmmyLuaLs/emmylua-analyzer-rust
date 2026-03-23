@@ -50,6 +50,22 @@ local e = #t
     }
 
     #[test]
+    fn test_binary_expr_keeps_inline_doc_long_comment_before_operator() {
+        assert_format!(
+            "local x = x--[[@cast -?]] * 60\n",
+            "local x = x--[[@cast -?]] * 60\n"
+        );
+    }
+
+    #[test]
+    fn test_binary_expr_keeps_inline_long_comment_before_operator() {
+        assert_format!(
+            "local x = x--[[cast]] * 60\n",
+            "local x = x--[[cast]] * 60\n"
+        );
+    }
+
+    #[test]
     fn test_binary_chain_uses_progressive_line_packing() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {
@@ -151,6 +167,38 @@ local b = t[1]
     }
 
     #[test]
+    fn test_table_expr_preserves_inline_comment_after_open_brace() {
+        assert_format!(
+            "local d = { -- enne\n    a = 1, -- hf\n    b = 2,\n}\n",
+            "local d = { -- enne\n    a = 1, -- hf\n    b = 2\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_table_expr_formats_body_with_after_open_delimiter_comment() {
+        assert_format!(
+            "local d = { -- enne\na=1,-- hf\nb=2,\n}\n",
+            "local d = { -- enne\n    a = 1, -- hf\n    b = 2\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_table_expr_formats_separator_comment_with_attached_field() {
+        assert_format!(
+            "local t = {\na=1,\n-- separator\nb=2\n}\n",
+            "local t = {\n    a = 1,\n    -- separator\n    b = 2\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_table_expr_formats_before_close_comment_attachment() {
+        assert_format!(
+            "local t = {\na=1,\n-- tail\n}\n",
+            "local t = {\n    a = 1\n    -- tail\n}\n"
+        );
+    }
+
+    #[test]
     fn test_empty_table() {
         assert_format!("local t = {}\n", "local t = {}\n");
     }
@@ -209,14 +257,54 @@ local b = t[1]
 
     #[test]
     fn test_call_expr_preserves_inline_comment_in_args() {
-        assert_format!("foo(a -- first\n, b)\n", "foo(a -- first\n, b)\n");
+        assert_format!(
+            "foo(a -- first\n, b)\n",
+            "foo(\n    a, -- first\n    b\n)\n"
+        );
+    }
+
+    #[test]
+    fn test_call_expr_formats_after_open_comment_attachment() {
+        assert_format!(
+            "foo( -- first\na,-- second\nb\n)\n",
+            "foo( -- first\n    a, -- second\n    b\n)\n"
+        );
+    }
+
+    #[test]
+    fn test_call_expr_formats_separator_comment_attachment() {
+        assert_format!(
+            "foo(\na,\n-- separator\nb\n)\n",
+            "foo(\n    a,\n    -- separator\n    b\n)\n"
+        );
+    }
+
+    #[test]
+    fn test_call_expr_formats_before_close_comment_attachment() {
+        assert_format!("foo(\na,\n-- tail\n)\n", "foo(\n    a\n    -- tail\n)\n");
     }
 
     #[test]
     fn test_closure_expr_preserves_inline_comment_in_params() {
         assert_format!(
             "local f = function(a -- first\n, b)\n    return a + b\nend\n",
-            "local f = function(a -- first\n, b)\n    return a + b\nend\n"
+            "local f = function(\n    a, -- first\n    b\n)\n    return a + b\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_closure_expr_formats_after_open_comment_in_params() {
+        assert_format!(
+            "local f = function( -- first\na,-- second\nb\n)\n    return a + b\nend\n",
+            "local f = function( -- first\n    a, -- second\n    b\n)\n    return a + b\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_closure_expr_formats_before_close_comment_in_params() {
+        assert_format!(
+            "local f = function(\na,\n-- tail\n)\n    return a\nend\n",
+            "local f = function(\n    a\n    -- tail\n)\n    return a\nend\n"
         );
     }
 

@@ -801,10 +801,18 @@ end
     }
 
     #[test]
+    fn test_function_stat_preserves_inline_comment_before_non_empty_body() {
+        assert_format!(
+            "function name13()  --hhii\n    return \"name13\" --jj\nend\n",
+            "function name13()  --hhii\n    return \"name13\" --jj\nend\n"
+        );
+    }
+
+    #[test]
     fn test_function_stat_preserves_inline_comment_in_params() {
         assert_format!(
             "function foo(a -- first\n, b)\n    return a + b\nend\n",
-            "function foo(a -- first\n, b)\n    return a + b\nend\n"
+            "function foo(\n    a, -- first\n    b\n)\n    return a + b\nend\n"
         );
     }
 

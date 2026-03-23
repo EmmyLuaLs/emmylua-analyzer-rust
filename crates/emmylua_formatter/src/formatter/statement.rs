@@ -21,8 +21,9 @@ use super::sequence::{
 use super::spacing::space_around_assign;
 use super::tokens::{comma_space_sep, tok};
 use super::trivia::{
-    node_has_direct_comment_child, node_has_direct_same_line_inline_comment,
-    source_line_prefix_width, syntax_has_descendant_comment,
+    has_non_trivia_before_on_same_line_tokenwise, node_has_direct_comment_child,
+    node_has_direct_same_line_inline_comment, source_line_prefix_width,
+    syntax_has_descendant_comment,
 };
 
 /// Format a statement (dispatch)
@@ -1955,9 +1956,9 @@ fn should_preserve_raw_statement_with_inline_comments(stat: &LuaStat) -> bool {
             .map(|closure| {
                 node_has_direct_same_line_inline_comment(closure.syntax())
                     || closure
-                        .get_params_list()
-                        .map(|params| node_has_direct_same_line_inline_comment(params.syntax()))
-                        .unwrap_or(false)
+                        .get_block()
+                        .as_ref()
+                        .is_some_and(block_has_leading_same_line_inline_comment)
             })
             .unwrap_or(false),
         LuaStat::LocalFuncStat(func) => func
@@ -1965,13 +1966,21 @@ fn should_preserve_raw_statement_with_inline_comments(stat: &LuaStat) -> bool {
             .map(|closure| {
                 node_has_direct_same_line_inline_comment(closure.syntax())
                     || closure
-                        .get_params_list()
-                        .map(|params| node_has_direct_same_line_inline_comment(params.syntax()))
-                        .unwrap_or(false)
+                        .get_block()
+                        .as_ref()
+                        .is_some_and(block_has_leading_same_line_inline_comment)
             })
             .unwrap_or(false),
         _ => false,
     }
+}
+
+fn block_has_leading_same_line_inline_comment(block: &LuaBlock) -> bool {
+    block
+        .syntax()
+        .children()
+        .find(|child| child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment))
+        .is_some_and(|comment| has_non_trivia_before_on_same_line_tokenwise(&comment))
 }
 
 /// Check if a statement can participate in `=` alignment.

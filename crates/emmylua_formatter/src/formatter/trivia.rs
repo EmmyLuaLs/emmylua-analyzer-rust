@@ -60,6 +60,26 @@ pub fn has_non_trivia_before_on_same_line(node: &LuaSyntaxNode) -> bool {
     false
 }
 
+pub fn has_non_trivia_before_on_same_line_tokenwise(node: &LuaSyntaxNode) -> bool {
+    let Some(first_token) = node.first_token() else {
+        return false;
+    };
+
+    let mut previous = first_token.prev_token();
+
+    while let Some(token) = previous {
+        match token.kind().to_token() {
+            LuaTokenKind::TkWhitespace => {
+                previous = token.prev_token();
+            }
+            LuaTokenKind::TkEndOfLine => return false,
+            _ => return true,
+        }
+    }
+
+    false
+}
+
 pub fn source_line_prefix_width(node: &LuaSyntaxNode) -> usize {
     let mut width = 0usize;
     let Some(mut token) = node.first_token() else {

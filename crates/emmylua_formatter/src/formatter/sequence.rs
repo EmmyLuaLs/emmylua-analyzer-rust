@@ -1,10 +1,13 @@
-use emmylua_parser::LuaTokenKind;
+use emmylua_parser::{LuaAstNode, LuaComment, LuaTokenKind};
+use rowan::TextRange;
 
 use crate::config::ExpandStrategy;
 use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break};
 use crate::printer::Printer;
 
 use super::FormatContext;
+use super::comment::{format_comment, trailing_comment_prefix};
+use super::trivia::has_non_trivia_before_on_same_line_tokenwise;
 
 #[derive(Clone)]
 pub enum SequenceEntry {
@@ -85,6 +88,113 @@ pub struct DelimitedSequenceLayout {
     pub grouped_trailing: DocIR,
     pub custom_break_contents: Option<Vec<DocIR>>,
     pub prefer_custom_break_in_auto: bool,
+}
+
+#[derive(Clone, Default)]
+pub struct DelimitedSequenceAttachments {
+    pub after_open_comment: Option<Vec<DocIR>>,
+    pub before_close_comments: Vec<Vec<DocIR>>,
+}
+
+#[derive(Default)]
+pub struct DelimitedSequenceCommentState {
+    attachments: DelimitedSequenceAttachments,
+    consumed_comment_ranges: Vec<TextRange>,
+    pending_leading_comments: Vec<Vec<DocIR>>,
+    has_standalone_comments: bool,
+    seen_item: bool,
+}
+
+impl DelimitedSequenceCommentState {
+    pub fn record_consumed_comment_range(&mut self, range: TextRange) {
+        self.consumed_comment_ranges.push(range);
+    }
+
+    pub fn should_skip_comment(&self, comment: &LuaComment) -> bool {
+        self.consumed_comment_ranges
+            .iter()
+            .any(|range| *range == comment.syntax().text_range())
+    }
+
+    pub fn handle_comment(&mut self, ctx: &FormatContext, comment: &LuaComment) {
+        let comment_docs = format_comment(ctx.config, comment);
+        if !self.seen_item
+            && self.attachments.after_open_comment.is_none()
+            && has_non_trivia_before_on_same_line_tokenwise(comment.syntax())
+        {
+            self.attachments.after_open_comment = Some(comment_docs);
+            return;
+        }
+
+        self.pending_leading_comments.push(comment_docs);
+        self.has_standalone_comments = true;
+    }
+
+    pub fn take_leading_comments(&mut self) -> Vec<Vec<DocIR>> {
+        std::mem::take(&mut self.pending_leading_comments)
+    }
+
+    pub fn mark_item_seen(&mut self) {
+        self.seen_item = true;
+    }
+
+    pub fn finish(mut self) -> (DelimitedSequenceAttachments, bool) {
+        self.attachments.before_close_comments = self.pending_leading_comments;
+        (self.attachments, self.has_standalone_comments)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct DelimitedSequenceMultilineWrapOptions {
+    pub leading_hard_line: bool,
+    pub indent_before_close_comments: bool,
+}
+
+pub fn push_comment_lines(target: &mut Vec<DocIR>, comments: &[Vec<DocIR>]) {
+    for comment_docs in comments {
+        target.push(ir::hard_line());
+        target.extend(comment_docs.clone());
+    }
+}
+
+pub fn wrap_multiline_delimited_sequence_docs(
+    ctx: &FormatContext,
+    open: DocIR,
+    close: DocIR,
+    inner: Vec<DocIR>,
+    trailing: Option<DocIR>,
+    attachments: &DelimitedSequenceAttachments,
+    options: DelimitedSequenceMultilineWrapOptions,
+) -> Vec<DocIR> {
+    let mut indented = Vec::new();
+    if options.leading_hard_line {
+        indented.push(ir::hard_line());
+    }
+    indented.push(ir::list(inner));
+    if let Some(trailing) = trailing {
+        indented.push(trailing);
+    }
+    if !options.indent_before_close_comments {
+        push_comment_lines(&mut indented, &attachments.before_close_comments);
+    }
+
+    let mut docs = vec![open];
+    if let Some(comment_docs) = &attachments.after_open_comment {
+        let mut suffix = trailing_comment_prefix(ctx.config);
+        suffix.extend(comment_docs.clone());
+        docs.push(ir::line_suffix(suffix));
+    }
+    docs.push(ir::indent(indented));
+
+    if options.indent_before_close_comments && !attachments.before_close_comments.is_empty() {
+        let mut closing_comments = Vec::new();
+        push_comment_lines(&mut closing_comments, &attachments.before_close_comments);
+        docs.push(ir::indent(closing_comments));
+    }
+
+    docs.push(ir::hard_line());
+    docs.push(close);
+    vec![ir::group_break(docs)]
 }
 
 #[derive(Clone, Default)]
@@ -342,7 +452,10 @@ fn sequence_layout_kind_penalty(kind: SequenceLayoutKind) -> usize {
     }
 }
 
-pub fn format_delimited_sequence(layout: DelimitedSequenceLayout) -> Vec<DocIR> {
+pub fn format_delimited_sequence(
+    ctx: &FormatContext,
+    layout: DelimitedSequenceLayout,
+) -> Vec<DocIR> {
     if layout.items.is_empty() {
         return vec![layout.open, layout.close];
     }
@@ -371,7 +484,7 @@ pub fn format_delimited_sequence(layout: DelimitedSequenceLayout) -> Vec<DocIR> 
             format_expanded_delimited_sequence(layout.open, layout.close, break_contents)
         }
         ExpandStrategy::Auto if layout.prefer_custom_break_in_auto => {
-            let gid = ir::next_group_id();
+            let gid = ctx.next_group_id();
             let break_doc = ir::list(vec![
                 layout.open,
                 ir::indent(break_contents),
