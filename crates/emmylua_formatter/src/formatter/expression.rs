@@ -1002,6 +1002,14 @@ fn collect_index_standalone_layout(
 
 /// 格式化调用参数部分（不含前缀），如 `(a, b)` 或单参数简写 ` "str"` / ` { ... }`
 fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
+    format_call_args_ir_with_options(ctx, expr, false)
+}
+
+fn format_call_args_ir_with_options(
+    ctx: &FormatContext,
+    expr: &LuaCallExpr,
+    preserve_chain_attached_table_source: bool,
+) -> Vec<DocIR> {
     let mut docs = Vec::new();
 
     if let Some(args_list) = expr.get_args_list() {
@@ -1124,6 +1132,7 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                                     attach_first_arg,
                                     preserve_multiline_args,
                                     index,
+                                    preserve_chain_attached_table_source,
                                 )
                             })
                             .collect();
@@ -1193,10 +1202,11 @@ fn format_call_arg_value_ir(
     attach_first_arg: bool,
     preserve_multiline_args: bool,
     index: usize,
+    preserve_chain_attached_table_source: bool,
 ) -> Vec<DocIR> {
     if preserve_multiline_args && arg.syntax().text().contains_char('\n') {
         if let LuaExpr::TableExpr(table) = arg {
-            if attach_first_arg && index == 0 {
+            if preserve_chain_attached_table_source && attach_first_arg && index == 0 {
                 return format_preserved_multiline_attached_table_arg(ctx, table);
             }
 
@@ -1406,7 +1416,7 @@ fn try_format_chain(ctx: &FormatContext, expr: &LuaCallExpr) -> Option<Vec<DocIR
     loop {
         match &current {
             LuaExpr::CallExpr(call) => {
-                let args = format_call_args_ir(ctx, call);
+                let args = format_call_args_ir_with_options(ctx, call, true);
                 if let Some(prefix) = call.get_prefix_expr()
                     && let LuaExpr::IndexExpr(idx) = &prefix
                 {

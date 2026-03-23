@@ -167,6 +167,14 @@ end
     }
 
     #[test]
+    fn test_if_block_reindents_attached_multiline_table_call_arg() {
+        assert_format!(
+            "if ok then\n    configure({\nkey = value,\nanother = other,\n}, option_one, option_two)\nend\n",
+            "if ok then\n    configure({\n        key = value,\n        another = other\n    },\n        option_one,\n        option_two\n    )\nend\n"
+        );
+    }
+
+    #[test]
     fn test_while_header_keeps_short_logical_tail_with_multiline_callback_call() {
         assert_format!(
             "while check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') and another_predicate do\n    print('ok')\nend\n",
