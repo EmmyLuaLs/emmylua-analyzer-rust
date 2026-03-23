@@ -928,6 +928,19 @@ local t = {
     }
 
     #[test]
+    fn test_doc_long_comment_cast_preserved() {
+        assert_format!("--[[@cast -?]]\n", "--[[@cast -?]]\n");
+    }
+
+    #[test]
+    fn test_doc_long_comment_multiline_preserved() {
+        assert_format!(
+            "--[[@as string\nsecond line\n]]\nlocal value = nil\n",
+            "--[[@as string\nsecond line\n]]\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_multi_tag() {
         assert_format!(
             "---@param a number\n---@param b string\n---@return boolean\nlocal function f(a, b) end\n",

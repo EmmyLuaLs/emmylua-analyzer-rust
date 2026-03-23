@@ -15,7 +15,7 @@ use super::trivia::has_non_trivia_before_on_same_line;
 ///
 /// Dispatches between three comment types:
 /// - Doc comments (`---@...`): walk the syntax tree, normalize whitespace
-/// - Long comments (`--[[ ... ]]`): preserve content as-is
+/// - Long comments (`--[[ ... ]]`, `--[[@...]]`): preserve content as-is
 /// - Normal comments (`-- ...`): preserve text with trimming
 pub fn format_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
     match classify_comment(comment) {
@@ -57,11 +57,10 @@ fn classify_comment(comment: &LuaComment) -> CommentKind {
     };
 
     match first_token.kind().into() {
-        LuaTokenKind::TkLongCommentStart => CommentKind::Long,
-        LuaTokenKind::TkDocStart
-        | LuaTokenKind::TkDocLongStart
-        | LuaTokenKind::TkDocContinue
-        | LuaTokenKind::TkDocContinueOr => CommentKind::Doc,
+        LuaTokenKind::TkLongCommentStart | LuaTokenKind::TkDocLongStart => CommentKind::Long,
+        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocContinue | LuaTokenKind::TkDocContinueOr => {
+            CommentKind::Doc
+        }
         LuaTokenKind::TkNormalStart => {
             if first_token.text().starts_with("---") || comment.get_doc_tags().next().is_some() {
                 CommentKind::Doc
