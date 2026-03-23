@@ -274,7 +274,32 @@ local b = t[1]
     fn test_callback_arg_with_multiline_closure_breaks_one_arg_per_line() {
         assert_format!(
             "check(function()\n    return not not k3\nend, 'LOADTRUE', 'RETURN1')\n",
-            "check(\n    function()\n        return not not k3\n    end,\n    'LOADTRUE',\n    'RETURN1'\n)\n"
+            "check(function()\n    return not not k3\nend,\n    'LOADTRUE',\n    'RETURN1'\n)\n"
+        );
+    }
+
+    #[test]
+    fn test_first_table_arg_stays_attached_when_call_breaks() {
+        assert_format!(
+            "configure({\n    key = value,\n    another = other,\n}, option_one, option_two)\n",
+            "configure({\n    key = value,\n    another = other\n},\n    option_one,\n    option_two\n)\n"
+        );
+    }
+
+    #[test]
+    fn test_multiline_call_comparison_keeps_short_rhs_on_closing_line() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 40,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "assert(check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') == \"hiho\")\n",
+            "assert(\n    check(function()\n        return true\n    end,\n        'LOADTRUE',\n        'RETURN1'\n    ) == \"hiho\"\n)\n",
+            config
         );
     }
 
@@ -296,6 +321,46 @@ local b = t[1]
             "local t = { alpha, beta, gamma, delta }\n",
             "local t = {\n    alpha, beta, gamma,\n    delta\n}\n",
             config
+        );
+    }
+
+    #[test]
+    fn test_table_field_preserves_multiline_closure_value_shape() {
+        assert_format!(
+            "local spec = {\n    callback = function()\n        return true\n    end,\n    fallback = another_value,\n}\n",
+            "local spec = {\n    callback = function()\n        return true\n    end,\n    fallback = another_value\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_table_field_multiline_closure_value_still_formats_interior() {
+        assert_format!(
+            "local mt = {\n    __eq = function (a, b)\n        coroutine.yield(nil, \"eq\")\n        return  val(a) ==       val(b)\n    end\n}\n",
+            "local mt = {\n    __eq = function(a, b)\n        coroutine.yield(nil, \"eq\")\n        return val(a) == val(b)\n    end\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_table_field_preserves_multiline_nested_table_value_shape() {
+        assert_format!(
+            "local spec = {\n    nested = {\n        foo=1,\n        bar =    2,\n    },\n    fallback = another_value,\n}\n",
+            "local spec = {\n    nested = {\n        foo = 1,\n        bar = 2\n    },\n    fallback = another_value\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_deep_nested_table_field_keeps_expanded_shape_and_formats_interior() {
+        assert_format!(
+            "local spec = {\n    outer = {\n        callback = function (a, b)\n            return  val(a) ==       val(b)\n        end,\n        nested = {\n            foo=1,\n            bar =    2,\n        },\n    },\n}\n",
+            "local spec = {\n    outer = {\n        callback = function(a, b)\n            return val(a) == val(b)\n        end,\n        nested = {\n            foo = 1,\n            bar = 2\n        }\n    }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_multiline_call_arg_nested_table_keeps_expanded_shape_and_formats_interior() {
+        assert_format!(
+            "local spec = {\n    outer = {\n        callback = wrap(function (a, b)\n            return  val(a) ==       val(b)\n        end, {\n            foo=1,\n            bar =    2,\n        }),\n        fallback = another_value,\n    },\n}\n",
+            "local spec = {\n    outer = {\n        callback = wrap(function(a, b)\n            return val(a) == val(b)\n        end,\n            {\n                foo = 1,\n                bar = 2\n            }\n        ),\n        fallback = another_value\n    }\n}\n"
         );
     }
 
@@ -363,6 +428,38 @@ local b = t[1]
             "builder:set_name(name):set_age(age):build()\n",
             "builder\n    :set_name(name)\n    :set_age(age)\n    :build()\n",
             config
+        );
+    }
+
+    #[test]
+    fn test_chain_keeps_single_multiline_table_payload_attached() {
+        assert_format!(
+            "builder:with_config({\n    key = value,\n    another = other,\n}):set_name(name):build()\n",
+            "builder:with_config({\n    key = value,\n    another = other\n}):set_name(name):build()\n"
+        );
+    }
+
+    #[test]
+    fn test_chain_keeps_mixed_closure_and_multiline_table_payloads_expanded() {
+        assert_format!(
+            "builder:with_config(function (a, b)\n    return  val(a) ==       val(b)\nend, {\n    foo=1,\n    bar =    2,\n}):set_name(name):build()\n",
+            "builder:with_config(function(a, b)\n        return val(a) == val(b)\n    end,\n        {\n            foo = 1,\n            bar = 2\n        }\n    ):set_name(name):build()\n"
+        );
+    }
+
+    #[test]
+    fn test_chain_keeps_mixed_closure_table_and_fallback_payloads_expanded() {
+        assert_format!(
+            "builder:with_config(function (a, b)\n    return  val(a) ==       val(b)\nend, {\n    foo=1,\n    bar =    2,\n}, fallback):set_name(name):build()\n",
+            "builder:with_config(function(a, b)\n        return val(a) == val(b)\n    end,\n        {\n            foo = 1,\n            bar = 2\n        },\n        fallback\n    ):set_name(name):build()\n"
+        );
+    }
+
+    #[test]
+    fn test_if_header_keeps_short_comparison_tail_with_multiline_callback_call() {
+        assert_format!(
+            "if check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') == \"hiho\" then\n    print('ok')\nend\n",
+            "if check(function()\n    return true\nend,\n    'LOADTRUE',\n    'RETURN1'\n) == \"hiho\" then\n    print('ok')\nend\n"
         );
     }
 

@@ -7,7 +7,7 @@ use emmylua_parser::{
 };
 
 use crate::config::LuaFormatConfig;
-use crate::ir::{self, DocIR, EqSplit};
+use crate::ir::{self, DocIR, EqSplit, ir_has_forced_line_break};
 
 use super::FormatContext;
 use super::block::format_block;
@@ -90,7 +90,11 @@ fn format_local_stat(ctx: &FormatContext, stat: &LuaLocalStat) -> Vec<DocIR> {
         docs.push(assign_space);
         docs.push(tok(LuaTokenKind::TkAssign));
 
-        let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
+        let expr_docs: Vec<Vec<DocIR>> = exprs
+            .iter()
+            .enumerate()
+            .map(|(index, expr)| format_statement_value_expr(ctx, expr, index, exprs.len()))
+            .collect();
 
         // Keep block-like / preserved multiline RHS heads attached to `=` while
         // ordinary expressions remain width-driven.
@@ -108,12 +112,19 @@ fn format_local_stat(ctx: &FormatContext, stat: &LuaLocalStat) -> Vec<DocIR> {
                 .first()
                 .map(|expr| source_line_prefix_width(expr.syntax()))
                 .unwrap_or(0);
-            docs.extend(format_statement_expr_list(
-                ctx,
-                leading_docs,
-                expr_docs,
-                prefix_width,
-            ));
+            if should_preserve_first_multiline_statement_value(&exprs[0], 0, exprs.len()) {
+                docs.extend(format_statement_expr_list_with_attached_first_multiline(
+                    leading_docs,
+                    expr_docs,
+                ));
+            } else {
+                docs.extend(format_statement_expr_list(
+                    ctx,
+                    leading_docs,
+                    expr_docs,
+                    prefix_width,
+                ));
+            }
         }
     }
 
@@ -148,7 +159,11 @@ fn format_assign_stat(ctx: &FormatContext, stat: &LuaAssignStat) -> Vec<DocIR> {
     }
 
     // Value list
-    let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
+    let expr_docs: Vec<Vec<DocIR>> = exprs
+        .iter()
+        .enumerate()
+        .map(|(index, expr)| format_statement_value_expr(ctx, expr, index, exprs.len()))
+        .collect();
 
     // Keep block-like / preserved multiline RHS heads attached to the operator
     // while ordinary expressions remain width-driven.
@@ -166,12 +181,19 @@ fn format_assign_stat(ctx: &FormatContext, stat: &LuaAssignStat) -> Vec<DocIR> {
             .first()
             .map(|expr| source_line_prefix_width(expr.syntax()))
             .unwrap_or(0);
-        docs.extend(format_statement_expr_list(
-            ctx,
-            leading_docs,
-            expr_docs,
-            prefix_width,
-        ));
+        if should_preserve_first_multiline_statement_value(&exprs[0], 0, exprs.len()) {
+            docs.extend(format_statement_expr_list_with_attached_first_multiline(
+                leading_docs,
+                expr_docs,
+            ));
+        } else {
+            docs.extend(format_statement_expr_list(
+                ctx,
+                leading_docs,
+                expr_docs,
+                prefix_width,
+            ));
+        }
     }
 
     docs
@@ -1012,12 +1034,25 @@ fn format_for_stat(ctx: &FormatContext, stat: &LuaForStat) -> Vec<DocIR> {
         .first()
         .map(|expr| source_line_prefix_width(expr.syntax()))
         .unwrap_or(0);
-    head_docs.extend(format_statement_expr_list(
-        ctx,
-        vec![ir::space()],
-        iter_docs,
-        prefix_width,
-    ));
+    if iter_exprs
+        .first()
+        .zip(iter_docs.first())
+        .is_some_and(|(expr, doc)| {
+            should_preserve_first_multiline_header_expr(expr, doc, 0, iter_exprs.len())
+        })
+    {
+        head_docs.extend(format_statement_expr_list_with_attached_first_multiline(
+            vec![ir::space()],
+            iter_docs,
+        ));
+    } else {
+        head_docs.extend(format_statement_expr_list(
+            ctx,
+            vec![ir::space()],
+            iter_docs,
+            prefix_width,
+        ));
+    }
 
     let mut docs = format_control_header(LuaTokenKind::TkFor, head_docs, LuaTokenKind::TkDo);
 
@@ -1063,12 +1098,25 @@ fn format_for_range_stat(ctx: &FormatContext, stat: &LuaForRangeStat) -> Vec<Doc
         .first()
         .map(|expr| source_line_prefix_width(expr.syntax()))
         .unwrap_or(0);
-    head_docs.extend(format_statement_expr_list(
-        ctx,
-        vec![ir::space()],
-        expr_docs,
-        prefix_width,
-    ));
+    if expr_list
+        .first()
+        .zip(expr_docs.first())
+        .is_some_and(|(expr, doc)| {
+            should_preserve_first_multiline_header_expr(expr, doc, 0, expr_list.len())
+        })
+    {
+        head_docs.extend(format_statement_expr_list_with_attached_first_multiline(
+            vec![ir::space()],
+            expr_docs,
+        ));
+    } else {
+        head_docs.extend(format_statement_expr_list(
+            ctx,
+            vec![ir::space()],
+            expr_docs,
+            prefix_width,
+        ));
+    }
 
     let mut docs = format_control_header(LuaTokenKind::TkFor, head_docs, LuaTokenKind::TkDo);
 
@@ -1344,7 +1392,11 @@ fn format_return_stat(ctx: &FormatContext, stat: &LuaReturnStat) -> Vec<DocIR> {
 
     let exprs: Vec<_> = stat.get_expr_list().collect();
     if !exprs.is_empty() {
-        let expr_docs: Vec<Vec<DocIR>> = exprs.iter().map(|e| format_expr(ctx, e)).collect();
+        let expr_docs: Vec<Vec<DocIR>> = exprs
+            .iter()
+            .enumerate()
+            .map(|(index, expr)| format_statement_value_expr(ctx, expr, index, exprs.len()))
+            .collect();
 
         if exprs.len() == 1 && should_attach_single_value_head(&exprs[0]) {
             docs.push(ir::space());
@@ -1354,12 +1406,19 @@ fn format_return_stat(ctx: &FormatContext, stat: &LuaReturnStat) -> Vec<DocIR> {
                 .first()
                 .map(|expr| source_line_prefix_width(expr.syntax()))
                 .unwrap_or(0);
-            docs.extend(format_statement_expr_list(
-                ctx,
-                vec![ir::space()],
-                expr_docs,
-                prefix_width,
-            ));
+            if should_preserve_first_multiline_statement_value(&exprs[0], 0, exprs.len()) {
+                docs.extend(format_statement_expr_list_with_attached_first_multiline(
+                    vec![ir::space()],
+                    expr_docs,
+                ));
+            } else {
+                docs.extend(format_statement_expr_list(
+                    ctx,
+                    vec![ir::space()],
+                    expr_docs,
+                    prefix_width,
+                ));
+            }
         }
     }
 
@@ -1451,6 +1510,40 @@ fn format_statement_expr_list(
             first_line_prefix_width,
         },
     )
+}
+
+fn format_statement_expr_list_with_attached_first_multiline(
+    leading_docs: Vec<DocIR>,
+    expr_docs: Vec<Vec<DocIR>>,
+) -> Vec<DocIR> {
+    if expr_docs.is_empty() {
+        return Vec::new();
+    }
+
+    let mut docs = leading_docs;
+    let mut iter = expr_docs.into_iter();
+    let first_expr = iter.next().unwrap_or_default();
+    docs.extend(first_expr);
+
+    let remaining: Vec<Vec<DocIR>> = iter.collect();
+    if remaining.is_empty() {
+        return docs;
+    }
+
+    docs.push(tok(LuaTokenKind::TkComma));
+
+    let mut tail = Vec::new();
+    let remaining_len = remaining.len();
+    for (index, expr_doc) in remaining.into_iter().enumerate() {
+        tail.push(ir::hard_line());
+        tail.extend(expr_doc);
+        if index + 1 < remaining_len {
+            tail.push(tok(LuaTokenKind::TkComma));
+        }
+    }
+
+    docs.push(ir::indent(tail));
+    docs
 }
 
 fn build_statement_expr_fill_parts(
@@ -1796,6 +1889,49 @@ fn is_block_like_expr(expr: &LuaExpr) -> bool {
 
 fn should_attach_single_value_head(expr: &LuaExpr) -> bool {
     is_block_like_expr(expr) || node_has_direct_comment_child(expr.syntax())
+}
+
+fn format_statement_value_expr(
+    ctx: &FormatContext,
+    expr: &LuaExpr,
+    index: usize,
+    total_exprs: usize,
+) -> Vec<DocIR> {
+    if should_preserve_first_multiline_statement_value(expr, index, total_exprs) {
+        vec![ir::source_node_trimmed(expr.syntax().clone())]
+    } else {
+        format_expr(ctx, expr)
+    }
+}
+
+fn should_preserve_first_multiline_statement_value(
+    expr: &LuaExpr,
+    index: usize,
+    total_exprs: usize,
+) -> bool {
+    index == 0
+        && total_exprs > 1
+        && is_block_like_expr(expr)
+        && expr.syntax().text().contains_char('\n')
+}
+
+fn should_preserve_first_multiline_header_expr(
+    expr: &LuaExpr,
+    expr_doc: &[DocIR],
+    index: usize,
+    total_exprs: usize,
+) -> bool {
+    index == 0
+        && total_exprs > 1
+        && expr.syntax().text().contains_char('\n')
+        && ir_has_forced_line_break(expr_doc)
+        && matches!(
+            expr,
+            LuaExpr::CallExpr(_)
+                | LuaExpr::BinaryExpr(_)
+                | LuaExpr::ClosureExpr(_)
+                | LuaExpr::TableExpr(_)
+        )
 }
 
 fn should_preserve_raw_empty_loop_with_comments(

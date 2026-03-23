@@ -158,6 +158,22 @@ end
         );
     }
 
+    #[test]
+    fn test_if_header_keeps_short_logical_tail_with_multiline_callback_call() {
+        assert_format!(
+            "if check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') and another_predicate then\n    print('ok')\nend\n",
+            "if check(function()\n    return true\nend,\n    'LOADTRUE',\n    'RETURN1'\n) and another_predicate then\n    print('ok')\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_while_header_keeps_short_logical_tail_with_multiline_callback_call() {
+        assert_format!(
+            "while check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') and another_predicate do\n    print('ok')\nend\n",
+            "while check(function()\n    return true\nend,\n    'LOADTRUE',\n    'RETURN1'\n) and another_predicate do\n    print('ok')\nend\n"
+        );
+    }
+
     // ========== for loop ==========
 
     #[test]
@@ -239,6 +255,14 @@ end
             "for key, value in very_long_iterator_expr, another_long_iterator_expr, fallback_iterator_expr do\n    print(key, value)\nend\n",
             "for key, value in very_long_iterator_expr,\n    another_long_iterator_expr, fallback_iterator_expr do\n    print(key, value)\nend\n",
             config
+        );
+    }
+
+    #[test]
+    fn test_for_range_keeps_first_multiline_iterator_shape_when_breaking() {
+        assert_format!(
+            "for key, value in iterate(function()\n    return true\nend, 'LOADTRUE', 'RETURN1'), fallback_iterator do\n    print(key, value)\nend\n",
+            "for key, value in iterate(function()\n    return true\nend,\n    'LOADTRUE',\n    'RETURN1'\n),\n    fallback_iterator do\n    print(key, value)\nend\n"
         );
     }
 
@@ -566,6 +590,38 @@ end
             "function f()\nreturn alpha_beta_gamma + delta_theta + epsilon + zeta\nend\n",
             "function f()\n    return alpha_beta_gamma + delta_theta\n        + epsilon + zeta\nend\n",
             config
+        );
+    }
+
+    #[test]
+    fn test_return_preserves_first_multiline_closure_shape_when_breaking() {
+        assert_format!(
+            "function f()\n    return function()\n        return true\n    end, first_result, second_result\nend\n",
+            "function f()\n    return function()\n        return true\n    end,\n        first_result,\n        second_result\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_return_preserves_first_multiline_table_shape_when_breaking() {
+        assert_format!(
+            "function f()\n    return {\n        key = value,\n        another = other,\n    }, first_result, second_result\nend\n",
+            "function f()\n    return {\n        key = value,\n        another = other,\n    },\n        first_result,\n        second_result\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_local_assign_preserves_first_multiline_closure_shape_when_breaking() {
+        assert_format!(
+            "local first, second, third = function()\n    return true\nend, alpha_result, beta_result\n",
+            "local first, second, third = function()\n    return true\nend,\n    alpha_result,\n    beta_result\n"
+        );
+    }
+
+    #[test]
+    fn test_assign_preserves_first_multiline_table_shape_when_breaking() {
+        assert_format!(
+            "target, fallback = {\n    key = value,\n    another = other,\n}, alpha_result, beta_result\n",
+            "target, fallback = {\n    key = value,\n    another = other,\n},\n    alpha_result,\n    beta_result\n"
         );
     }
 

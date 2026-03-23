@@ -7,7 +7,7 @@ use emmylua_parser::{
 use rowan::TextRange;
 
 use crate::config::{ExpandStrategy, QuoteStyle, SingleArgCallParens};
-use crate::ir::{self, AlignEntry, DocIR, EqSplit, ir_has_forced_line_break};
+use crate::ir::{self, AlignEntry, DocIR, EqSplit, ir_flat_width, ir_has_forced_line_break};
 
 use super::FormatContext;
 use super::comment::{extract_trailing_comment, format_comment, trailing_comment_prefix};
@@ -53,6 +53,249 @@ pub fn format_expr(ctx: &FormatContext, expr: &LuaExpr) -> Vec<DocIR> {
         LuaExpr::TableExpr(e) => format_table_expr(ctx, e),
         LuaExpr::ClosureExpr(e) => format_closure_expr(ctx, e),
         LuaExpr::ParenExpr(e) => format_paren_expr(ctx, e),
+    }
+}
+
+fn format_table_expr_with_forced_expand(
+    ctx: &FormatContext,
+    expr: &LuaTableExpr,
+    force_expand_from_context: bool,
+) -> Vec<DocIR> {
+    if expr.is_empty() {
+        return vec![
+            tok(LuaTokenKind::TkLeftBrace),
+            tok(LuaTokenKind::TkRightBrace),
+        ];
+    }
+
+    let mut entries: Vec<TableEntry> = Vec::new();
+    let mut consumed_comment_ranges: Vec<TextRange> = Vec::new();
+    let mut has_standalone_comments = false;
+
+    for child in expr.syntax().children() {
+        if let Some(field) = LuaTableField::cast(child.clone()) {
+            let fdoc = format_table_field_ir(ctx, &field);
+            let force_expand = field
+                .get_value_expr()
+                .as_ref()
+                .is_some_and(should_preserve_multiline_table_field_value);
+            let eq_split = if ctx.config.align.table_field {
+                format_table_field_eq_split(ctx, &field)
+            } else {
+                None
+            };
+            let align_hint = field_requests_alignment(&field);
+            let (trailing_comment, comment_align_hint) =
+                if let Some((docs, range)) = extract_trailing_comment(ctx.config, field.syntax()) {
+                    consumed_comment_ranges.push(range);
+                    (
+                        Some(docs),
+                        trailing_comment_requests_alignment(
+                            field.syntax(),
+                            range,
+                            ctx.config.comments.line_comment_min_spaces_before.max(1),
+                        ),
+                    )
+                } else {
+                    (None, false)
+                };
+            entries.push(TableEntry::Field {
+                doc: fdoc,
+                eq_split,
+                force_expand,
+                align_hint,
+                comment_align_hint,
+                trailing_comment,
+            });
+        } else if child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment) {
+            if consumed_comment_ranges
+                .iter()
+                .any(|r| *r == child.text_range())
+            {
+                continue;
+            }
+            let comment = LuaComment::cast(child).unwrap();
+            entries.push(TableEntry::StandaloneComment(format_comment(
+                ctx.config, &comment,
+            )));
+            has_standalone_comments = true;
+        }
+    }
+
+    let trailing = format_trailing_comma_ir(ctx.config.trailing_table_comma());
+
+    let space_inside = if ctx.config.spacing.space_inside_braces {
+        ir::soft_line()
+    } else {
+        ir::soft_line_or_empty()
+    };
+
+    let has_trailing_comments = entries.iter().any(|e| {
+        matches!(
+            e,
+            TableEntry::Field {
+                trailing_comment: Some(_),
+                ..
+            }
+        )
+    });
+
+    let has_multiline_field_docs = entries.iter().any(|entry| match entry {
+        TableEntry::Field {
+            doc, force_expand, ..
+        } => *force_expand || ir_has_forced_line_break(doc),
+        TableEntry::StandaloneComment(_) => false,
+    });
+
+    let force_expand = force_expand_from_context
+        || has_standalone_comments
+        || has_trailing_comments
+        || has_multiline_field_docs;
+
+    match ctx.config.layout.table_expand {
+        ExpandStrategy::Always => format_table_multiline_candidates(
+            ctx,
+            entries,
+            trailing,
+            ctx.config.align.table_field,
+            true,
+            has_standalone_comments,
+            source_line_prefix_width(expr.syntax()),
+        ),
+        ExpandStrategy::Never if !force_expand => {
+            format_delimited_sequence(DelimitedSequenceLayout {
+                open: tok(LuaTokenKind::TkLeftBrace),
+                close: tok(LuaTokenKind::TkRightBrace),
+                items: entries
+                    .into_iter()
+                    .filter_map(|e| match e {
+                        TableEntry::Field { doc, .. } => Some(doc),
+                        TableEntry::StandaloneComment(_) => None,
+                    })
+                    .collect(),
+                strategy: ExpandStrategy::Never,
+                preserve_multiline: false,
+                flat_separator: comma_space_sep(),
+                fill_separator: comma_soft_line_sep(),
+                break_separator: comma_soft_line_sep(),
+                flat_open_padding: if ctx.config.spacing.space_inside_braces {
+                    vec![ir::space()]
+                } else {
+                    vec![]
+                },
+                flat_close_padding: if ctx.config.spacing.space_inside_braces {
+                    vec![ir::space()]
+                } else {
+                    vec![]
+                },
+                grouped_padding: space_inside.clone(),
+                flat_trailing: vec![],
+                grouped_trailing: trailing.clone(),
+                custom_break_contents: None,
+                prefer_custom_break_in_auto: false,
+            })
+        }
+        ExpandStrategy::Never => format_table_multiline_candidates(
+            ctx,
+            entries,
+            trailing,
+            ctx.config.align.table_field,
+            true,
+            has_standalone_comments,
+            source_line_prefix_width(expr.syntax()),
+        ),
+        ExpandStrategy::Auto if force_expand => format_table_multiline_candidates(
+            ctx,
+            entries,
+            trailing,
+            ctx.config.align.table_field,
+            true,
+            has_standalone_comments,
+            source_line_prefix_width(expr.syntax()),
+        ),
+        ExpandStrategy::Auto => {
+            let flat_field_docs: Vec<Vec<DocIR>> = entries
+                .iter()
+                .filter_map(|e| match e {
+                    TableEntry::Field { doc, .. } => Some(doc.clone()),
+                    TableEntry::StandaloneComment(_) => None,
+                })
+                .collect();
+            let layout = DelimitedSequenceLayout {
+                open: tok(LuaTokenKind::TkLeftBrace),
+                close: tok(LuaTokenKind::TkRightBrace),
+                items: flat_field_docs,
+                strategy: ExpandStrategy::Auto,
+                preserve_multiline: false,
+                flat_separator: comma_space_sep(),
+                fill_separator: comma_soft_line_sep(),
+                break_separator: comma_soft_line_sep(),
+                flat_open_padding: if ctx.config.spacing.space_inside_braces {
+                    vec![ir::space()]
+                } else {
+                    vec![]
+                },
+                flat_close_padding: if ctx.config.spacing.space_inside_braces {
+                    vec![ir::space()]
+                } else {
+                    vec![]
+                },
+                grouped_padding: space_inside,
+                flat_trailing: vec![],
+                grouped_trailing: trailing.clone(),
+                custom_break_contents: None,
+                prefer_custom_break_in_auto: false,
+            };
+            let has_assign_fields = entries.iter().any(|e| {
+                matches!(
+                    e,
+                    TableEntry::Field {
+                        eq_split: Some(_),
+                        ..
+                    }
+                )
+            });
+            let has_assign_alignment = ctx.config.align.table_field && has_assign_fields;
+
+            if has_assign_fields {
+                let aligned = has_assign_alignment.then(|| {
+                    build_delimited_sequence_break_candidate(
+                        layout.open.clone(),
+                        layout.close.clone(),
+                        build_table_expanded_inner(
+                            ctx,
+                            &entries,
+                            &trailing,
+                            true,
+                            ctx.config.should_align_table_line_comments(),
+                        ),
+                    )
+                });
+
+                choose_sequence_layout(
+                    ctx,
+                    SequenceLayoutCandidates {
+                        flat: Some(build_delimited_sequence_flat_candidate(&layout)),
+                        aligned,
+                        one_per_line: Some(build_delimited_sequence_default_break_candidate(
+                            &layout,
+                        )),
+                        ..Default::default()
+                    },
+                    SequenceLayoutPolicy {
+                        allow_alignment: has_assign_alignment,
+                        allow_fill: false,
+                        allow_preserve: false,
+                        prefer_preserve_multiline: false,
+                        force_break_on_standalone_comments: false,
+                        prefer_balanced_break_lines: false,
+                        first_line_prefix_width: source_line_prefix_width(expr.syntax()),
+                    },
+                )
+            } else {
+                format_delimited_sequence(layout)
+            }
+        }
     }
 }
 
@@ -197,6 +440,21 @@ fn format_binary_expr(ctx: &FormatContext, expr: &LuaBinaryExpr) -> Vec<DocIR> {
                 force_space_before = true;
             }
 
+            if ir_has_forced_line_break(&left_docs)
+                && should_attach_short_binary_tail(op, &right, &right_docs)
+            {
+                let mut docs = left_docs;
+                if force_space_before {
+                    docs.push(ir::space());
+                } else {
+                    docs.push(space_rule.to_ir());
+                }
+                docs.push(ir::source_token(op_token.syntax().clone()));
+                docs.push(space_ir);
+                docs.extend(right_docs);
+                return docs;
+            }
+
             // Before-operator break: soft_line (→space when flat) if space,
             // soft_line_or_empty (→"" when flat) if no space
             let break_ir =
@@ -215,6 +473,43 @@ fn format_binary_expr(ctx: &FormatContext, expr: &LuaBinaryExpr) -> Vec<DocIR> {
     }
 
     vec![]
+}
+
+fn should_attach_short_binary_tail(
+    op: BinaryOperator,
+    right: &LuaExpr,
+    right_docs: &[DocIR],
+) -> bool {
+    if ir_has_forced_line_break(right_docs) {
+        return false;
+    }
+
+    match op {
+        BinaryOperator::OpEq
+        | BinaryOperator::OpNe
+        | BinaryOperator::OpLt
+        | BinaryOperator::OpLe
+        | BinaryOperator::OpGt
+        | BinaryOperator::OpGe => {
+            ir_flat_width(right_docs) <= 16
+                && matches!(
+                    right,
+                    LuaExpr::LiteralExpr(_) | LuaExpr::NameExpr(_) | LuaExpr::ParenExpr(_)
+                )
+        }
+        BinaryOperator::OpAnd | BinaryOperator::OpOr => {
+            ir_flat_width(right_docs) <= 24
+                && matches!(
+                    right,
+                    LuaExpr::LiteralExpr(_)
+                        | LuaExpr::NameExpr(_)
+                        | LuaExpr::ParenExpr(_)
+                        | LuaExpr::IndexExpr(_)
+                        | LuaExpr::CallExpr(_)
+                )
+        }
+        _ => false,
+    }
 }
 
 fn format_binary_expr_with_standalone_comments(
@@ -817,9 +1112,28 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
                             source_line_prefix_width(args_list.syntax()),
                         ));
                     } else {
-                        let arg_docs: Vec<Vec<DocIR>> =
-                            args.iter().map(|a| format_expr(ctx, a)).collect();
-                        if arg_docs.iter().any(|doc| ir_has_forced_line_break(doc)) {
+                        let attach_first_arg = should_attach_first_call_arg(&args);
+                        let preserve_multiline_args = args_list.syntax().text().contains_char('\n');
+                        let arg_docs: Vec<Vec<DocIR>> = args
+                            .iter()
+                            .enumerate()
+                            .map(|(index, arg)| {
+                                format_call_arg_value_ir(
+                                    ctx,
+                                    arg,
+                                    attach_first_arg,
+                                    preserve_multiline_args,
+                                    index,
+                                )
+                            })
+                            .collect();
+                        if attach_first_arg {
+                            docs.extend(format_call_args_with_attached_first_arg(
+                                arg_docs,
+                                trailing,
+                                preserve_multiline_args,
+                            ));
+                        } else if arg_docs.iter().any(|doc| ir_has_forced_line_break(doc)) {
                             let multiline_entries = arg_docs
                                 .into_iter()
                                 .enumerate()
@@ -864,6 +1178,159 @@ fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
     }
 
     docs
+}
+
+fn should_attach_first_call_arg(args: &[LuaExpr]) -> bool {
+    matches!(
+        args.first(),
+        Some(LuaExpr::TableExpr(_) | LuaExpr::ClosureExpr(_))
+    )
+}
+
+fn format_call_arg_value_ir(
+    ctx: &FormatContext,
+    arg: &LuaExpr,
+    attach_first_arg: bool,
+    preserve_multiline_args: bool,
+    index: usize,
+) -> Vec<DocIR> {
+    if preserve_multiline_args && arg.syntax().text().contains_char('\n') {
+        if let LuaExpr::TableExpr(table) = arg {
+            if attach_first_arg && index == 0 {
+                return format_preserved_multiline_attached_table_arg(ctx, table);
+            }
+
+            return format_table_expr_with_forced_expand(ctx, table, true);
+        }
+
+        if attach_first_arg && index == 0 {
+            return format_expr(ctx, arg);
+        }
+    }
+
+    format_expr(ctx, arg)
+}
+
+fn format_preserved_multiline_attached_table_arg(
+    ctx: &FormatContext,
+    table: &LuaTableExpr,
+) -> Vec<DocIR> {
+    let text = table.syntax().text().to_string();
+    let normalized = normalize_multiline_table_trailing_separator(
+        text.trim_end_matches(['\r', '\n', ' ', '\t']),
+        ctx.config.trailing_table_comma(),
+    );
+
+    vec![ir::text(normalized)]
+}
+
+fn normalize_multiline_table_trailing_separator(
+    source: &str,
+    policy: crate::config::TrailingComma,
+) -> String {
+    let mut normalized = source.to_string();
+    let close_index = normalized.rfind('}');
+    let Some(close_index) = close_index else {
+        return normalized;
+    };
+
+    let before_close = &normalized[..close_index];
+    let content_end = before_close.trim_end_matches(['\r', '\n', ' ', '\t']).len();
+    if content_end == 0 {
+        return normalized;
+    }
+
+    let has_trailing_comma = normalized[..content_end].ends_with(',');
+    match policy {
+        crate::config::TrailingComma::Never => {
+            if has_trailing_comma {
+                normalized.remove(content_end - 1);
+            }
+        }
+        crate::config::TrailingComma::Always | crate::config::TrailingComma::Multiline => {
+            if !has_trailing_comma {
+                normalized.insert(content_end, ',');
+            }
+        }
+    }
+
+    normalized
+}
+
+fn format_call_args_with_attached_first_arg(
+    arg_docs: Vec<Vec<DocIR>>,
+    trailing: DocIR,
+    preserve_multiline: bool,
+) -> Vec<DocIR> {
+    let layout = DelimitedSequenceLayout {
+        open: tok(LuaTokenKind::TkLeftParen),
+        close: tok(LuaTokenKind::TkRightParen),
+        items: arg_docs.clone(),
+        strategy: ExpandStrategy::Auto,
+        preserve_multiline: false,
+        flat_separator: comma_space_sep(),
+        fill_separator: comma_soft_line_sep(),
+        break_separator: comma_soft_line_sep(),
+        flat_open_padding: vec![],
+        flat_close_padding: vec![],
+        grouped_padding: ir::soft_line_or_empty(),
+        flat_trailing: vec![],
+        grouped_trailing: trailing.clone(),
+        custom_break_contents: None,
+        prefer_custom_break_in_auto: false,
+    };
+
+    let flat_docs = build_delimited_sequence_flat_candidate(&layout);
+    let break_docs = build_call_args_attached_first_break_doc(arg_docs, trailing);
+
+    if preserve_multiline {
+        break_docs
+    } else {
+        let gid = ir::next_group_id();
+        vec![ir::group_with_id(
+            vec![ir::if_break_with_group(
+                ir::list(break_docs),
+                ir::list(flat_docs),
+                gid,
+            )],
+            gid,
+        )]
+    }
+}
+
+fn build_call_args_attached_first_break_doc(
+    arg_docs: Vec<Vec<DocIR>>,
+    trailing: DocIR,
+) -> Vec<DocIR> {
+    if arg_docs.is_empty() {
+        return vec![];
+    }
+
+    let mut docs = vec![tok(LuaTokenKind::TkLeftParen)];
+    docs.extend(arg_docs[0].clone());
+
+    if arg_docs.len() == 1 {
+        docs.push(trailing);
+        docs.push(tok(LuaTokenKind::TkRightParen));
+        return vec![ir::group_break(docs)];
+    } else {
+        docs.push(tok(LuaTokenKind::TkComma));
+        let mut rest = Vec::new();
+        for (index, item_docs) in arg_docs.iter().enumerate().skip(1) {
+            rest.push(ir::hard_line());
+            rest.extend(item_docs.clone());
+            if index + 1 < arg_docs.len() {
+                rest.push(tok(LuaTokenKind::TkComma));
+            }
+        }
+        rest.push(trailing);
+        docs.push(ir::indent(rest));
+    }
+
+    docs.push(ir::hard_line());
+    docs.push(tok(LuaTokenKind::TkRightParen));
+
+    vec![ir::group_break(docs)]
 }
 
 /// 格式化索引访问部分（不含前缀），如 `.x`、`:m`、`[k]`
@@ -1006,238 +1473,7 @@ fn try_format_chain(ctx: &FormatContext, expr: &LuaCallExpr) -> Option<Vec<DocIR
 
 /// Table literal: {}, { 1, 2, 3 }, { key = value, ... }
 fn format_table_expr(ctx: &FormatContext, expr: &LuaTableExpr) -> Vec<DocIR> {
-    if expr.is_empty() {
-        return vec![
-            tok(LuaTokenKind::TkLeftBrace),
-            tok(LuaTokenKind::TkRightBrace),
-        ];
-    }
-
-    // Collect all child nodes: fields and standalone comments
-    let mut entries: Vec<TableEntry> = Vec::new();
-    let mut consumed_comment_ranges: Vec<TextRange> = Vec::new();
-    let mut has_standalone_comments = false;
-
-    for child in expr.syntax().children() {
-        if let Some(field) = LuaTableField::cast(child.clone()) {
-            let fdoc = format_table_field_ir(ctx, &field);
-            let eq_split = if ctx.config.align.table_field {
-                format_table_field_eq_split(ctx, &field)
-            } else {
-                None
-            };
-            let align_hint = field_requests_alignment(&field);
-            let (trailing_comment, comment_align_hint) =
-                if let Some((docs, range)) = extract_trailing_comment(ctx.config, field.syntax()) {
-                    consumed_comment_ranges.push(range);
-                    (
-                        Some(docs),
-                        trailing_comment_requests_alignment(
-                            field.syntax(),
-                            range,
-                            ctx.config.comments.line_comment_min_spaces_before.max(1),
-                        ),
-                    )
-                } else {
-                    (None, false)
-                };
-            entries.push(TableEntry::Field {
-                doc: fdoc,
-                eq_split,
-                align_hint,
-                comment_align_hint,
-                trailing_comment,
-            });
-        } else if child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment) {
-            // Check if already consumed as trailing comment
-            if consumed_comment_ranges
-                .iter()
-                .any(|r| *r == child.text_range())
-            {
-                continue;
-            }
-            let comment = LuaComment::cast(child).unwrap();
-            entries.push(TableEntry::StandaloneComment(format_comment(
-                ctx.config, &comment,
-            )));
-            has_standalone_comments = true;
-        }
-    }
-
-    // Trailing comma
-    let trailing = format_trailing_comma_ir(ctx.config.trailing_table_comma());
-
-    let space_inside = if ctx.config.spacing.space_inside_braces {
-        ir::soft_line()
-    } else {
-        ir::soft_line_or_empty()
-    };
-
-    // Whether any field has a trailing comment
-    let has_trailing_comments = entries.iter().any(|e| {
-        matches!(
-            e,
-            TableEntry::Field {
-                trailing_comment: Some(_),
-                ..
-            }
-        )
-    });
-
-    // Standalone or trailing comments force expansion
-    let force_expand = has_standalone_comments || has_trailing_comments;
-
-    match ctx.config.layout.table_expand {
-        ExpandStrategy::Always => format_table_multiline_candidates(
-            ctx,
-            entries,
-            trailing,
-            ctx.config.align.table_field,
-            true,
-            has_standalone_comments,
-            source_line_prefix_width(expr.syntax()),
-        ),
-        ExpandStrategy::Never if !force_expand => {
-            format_delimited_sequence(DelimitedSequenceLayout {
-                open: tok(LuaTokenKind::TkLeftBrace),
-                close: tok(LuaTokenKind::TkRightBrace),
-                items: entries
-                    .into_iter()
-                    .filter_map(|e| match e {
-                        TableEntry::Field { doc, .. } => Some(doc),
-                        TableEntry::StandaloneComment(_) => None,
-                    })
-                    .collect(),
-                strategy: ExpandStrategy::Never,
-                preserve_multiline: false,
-                flat_separator: comma_space_sep(),
-                fill_separator: comma_soft_line_sep(),
-                break_separator: comma_soft_line_sep(),
-                flat_open_padding: if ctx.config.spacing.space_inside_braces {
-                    vec![ir::space()]
-                } else {
-                    vec![]
-                },
-                flat_close_padding: if ctx.config.spacing.space_inside_braces {
-                    vec![ir::space()]
-                } else {
-                    vec![]
-                },
-                grouped_padding: space_inside.clone(),
-                flat_trailing: vec![],
-                grouped_trailing: trailing.clone(),
-                custom_break_contents: None,
-                prefer_custom_break_in_auto: false,
-            })
-        }
-        ExpandStrategy::Never => {
-            // Never mode but has comments — must expand
-            format_table_multiline_candidates(
-                ctx,
-                entries,
-                trailing,
-                ctx.config.align.table_field,
-                true,
-                has_standalone_comments,
-                source_line_prefix_width(expr.syntax()),
-            )
-        }
-        ExpandStrategy::Auto if force_expand => {
-            // Has comments: force expand
-            format_table_multiline_candidates(
-                ctx,
-                entries,
-                trailing,
-                ctx.config.align.table_field,
-                true,
-                has_standalone_comments,
-                source_line_prefix_width(expr.syntax()),
-            )
-        }
-        ExpandStrategy::Auto => {
-            let flat_field_docs: Vec<Vec<DocIR>> = entries
-                .iter()
-                .filter_map(|e| match e {
-                    TableEntry::Field { doc, .. } => Some(doc.clone()),
-                    TableEntry::StandaloneComment(_) => None,
-                })
-                .collect();
-            let layout = DelimitedSequenceLayout {
-                open: tok(LuaTokenKind::TkLeftBrace),
-                close: tok(LuaTokenKind::TkRightBrace),
-                items: flat_field_docs,
-                strategy: ExpandStrategy::Auto,
-                preserve_multiline: false,
-                flat_separator: comma_space_sep(),
-                fill_separator: comma_soft_line_sep(),
-                break_separator: comma_soft_line_sep(),
-                flat_open_padding: if ctx.config.spacing.space_inside_braces {
-                    vec![ir::space()]
-                } else {
-                    vec![]
-                },
-                flat_close_padding: if ctx.config.spacing.space_inside_braces {
-                    vec![ir::space()]
-                } else {
-                    vec![]
-                },
-                grouped_padding: space_inside,
-                flat_trailing: vec![],
-                grouped_trailing: trailing.clone(),
-                custom_break_contents: None,
-                prefer_custom_break_in_auto: false,
-            };
-            let has_assign_fields = entries.iter().any(|e| {
-                matches!(
-                    e,
-                    TableEntry::Field {
-                        eq_split: Some(_),
-                        ..
-                    }
-                )
-            });
-            let has_assign_alignment = ctx.config.align.table_field && has_assign_fields;
-
-            if has_assign_fields {
-                let aligned = has_assign_alignment.then(|| {
-                    build_delimited_sequence_break_candidate(
-                        layout.open.clone(),
-                        layout.close.clone(),
-                        build_table_expanded_inner(
-                            ctx,
-                            &entries,
-                            &trailing,
-                            true,
-                            ctx.config.should_align_table_line_comments(),
-                        ),
-                    )
-                });
-
-                choose_sequence_layout(
-                    ctx,
-                    SequenceLayoutCandidates {
-                        flat: Some(build_delimited_sequence_flat_candidate(&layout)),
-                        aligned,
-                        one_per_line: Some(build_delimited_sequence_default_break_candidate(
-                            &layout,
-                        )),
-                        ..Default::default()
-                    },
-                    SequenceLayoutPolicy {
-                        allow_alignment: has_assign_alignment,
-                        allow_fill: false,
-                        allow_preserve: false,
-                        prefer_preserve_multiline: false,
-                        force_break_on_standalone_comments: false,
-                        prefer_balanced_break_lines: false,
-                        first_line_prefix_width: source_line_prefix_width(expr.syntax()),
-                    },
-                )
-            } else {
-                format_delimited_sequence(layout)
-            }
-        }
-    }
+    format_table_expr_with_forced_expand(ctx, expr, false)
 }
 
 fn format_table_multiline_candidates(
@@ -1306,16 +1542,26 @@ fn format_table_field_ir(ctx: &FormatContext, field: &LuaTableField) -> Vec<DocI
         fdoc.push(assign_space);
 
         if let Some(value) = field.get_value_expr() {
-            fdoc.extend(format_expr(ctx, &value));
+            fdoc.extend(format_table_field_value_ir(ctx, &value));
         }
     } else {
         // value only
         if let Some(value) = field.get_value_expr() {
-            fdoc.extend(format_expr(ctx, &value));
+            fdoc.extend(format_table_field_value_ir(ctx, &value));
         }
     }
 
     fdoc
+}
+
+fn format_table_field_value_ir(ctx: &FormatContext, value: &LuaExpr) -> Vec<DocIR> {
+    if let LuaExpr::TableExpr(table) = value
+        && should_preserve_multiline_table_field_table_value(value)
+    {
+        format_table_expr_with_forced_expand(ctx, table, true)
+    } else {
+        format_expr(ctx, value)
+    }
 }
 
 /// Format the key part of a table field
@@ -1354,6 +1600,14 @@ fn format_table_field_eq_split(ctx: &FormatContext, field: &LuaTableField) -> Op
         return None;
     }
 
+    if field
+        .get_value_expr()
+        .as_ref()
+        .is_some_and(should_preserve_multiline_table_field_value)
+    {
+        return None;
+    }
+
     let before = format_table_field_key_ir(ctx, field);
     if before.is_empty() {
         return None;
@@ -1368,12 +1622,24 @@ fn format_table_field_eq_split(ctx: &FormatContext, field: &LuaTableField) -> Op
     Some((before, after))
 }
 
+fn should_preserve_multiline_table_field_value(expr: &LuaExpr) -> bool {
+    matches!(expr, LuaExpr::ClosureExpr(_) | LuaExpr::TableExpr(_))
+        && expr.syntax().text().contains_char('\n')
+}
+
+fn should_preserve_multiline_table_field_table_value(expr: &LuaExpr) -> bool {
+    matches!(expr, LuaExpr::TableExpr(_)) && expr.syntax().text().contains_char('\n')
+}
+
 /// Table entry: field or standalone comment
 enum TableEntry {
     Field {
         doc: Vec<DocIR>,
         /// Split at `=` for alignment: (key_docs, eq_value_docs)
         eq_split: Option<EqSplit>,
+        /// The field value should keep its multiline source shape, so the outer
+        /// table must not stay in a flat candidate.
+        force_expand: bool,
         /// Whether the original source shows an intent to align this field's value.
         align_hint: bool,
         /// Whether the original source shows an intent to align this field's trailing comment.
