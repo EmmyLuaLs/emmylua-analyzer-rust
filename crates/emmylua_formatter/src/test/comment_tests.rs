@@ -944,6 +944,14 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_align_param_columns_with_interleaved_descriptions() {
+        assert_format!(
+            "--- first parameter docs\n---@param short string desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
+            "--- first parameter docs\n---@param short       string  desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_field_columns() {
         assert_format!(
             "---@field x string desc\n---@field longer_name integer another desc\nlocal t = {}\n",
@@ -952,10 +960,34 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_align_field_columns_with_interleaved_descriptions() {
+        assert_format!(
+            "---@class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n---@field arrayIndex boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n---@field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n---@field metaOverrideFileDefine boolean?\n",
+            "---@class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n---@field arrayIndex                boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n---@field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n---@field metaOverrideFileDefine    boolean?\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_return_columns() {
         assert_format!(
             "---@return number ok success\n---@return string, integer err failure\nfunction f() end\n",
             "---@return number ok           success\n---@return string, integer err failure\nfunction f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_return_columns_with_interleaved_descriptions() {
+        assert_format!(
+            "--- first return docs\n---@return number ok success\n--- second return docs\n---@return string, integer err failure\nfunction f() end\n",
+            "--- first return docs\n---@return number ok           success\n--- second return docs\n---@return string, integer err failure\nfunction f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_complex_field_columns() {
+        assert_format!(
+            "---@field public [\"foo\"] string?\n---@field private [bar] integer\n---@field protected baz fun(x: string): boolean\nlocal t = {}\n",
+            "---@field public [\"foo\"] string?\n---@field private [bar]  integer\n---@field protected baz  fun(x: string): boolean\nlocal t = {}\n"
         );
     }
 

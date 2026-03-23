@@ -629,31 +629,108 @@ fn render_doc_comment_lines(config: &LuaFormatConfig, lines: &[DocCommentLine]) 
     let mut rendered = Vec::new();
     let mut index = 0;
     while index < lines.len() {
-        let kind = alignable_doc_tag_kind(&lines[index]);
-        if let Some(kind) = kind
-            && should_align_doc_tag_kind(config, kind)
-        {
-            let mut group_end = index + 1;
-            while group_end < lines.len() && alignable_doc_tag_kind(&lines[group_end]) == Some(kind)
-            {
-                group_end += 1;
-            }
-
-            if group_end - index >= 2 {
-                rendered.extend(render_aligned_doc_tag_group(
-                    config,
-                    &lines[index..group_end],
-                    kind,
-                ));
-                index = group_end;
-                continue;
-            }
+        if let Some((kind, group_end)) = find_interleaved_aligned_group(config, lines, index) {
+            rendered.extend(render_interleaved_aligned_doc_tag_group(
+                config,
+                &lines[index..group_end],
+                kind,
+            ));
+            index = group_end;
+            continue;
         }
 
         rendered.push(render_single_doc_comment_line(config, &lines[index]));
         index += 1;
     }
     rendered
+}
+
+fn find_interleaved_aligned_group(
+    config: &LuaFormatConfig,
+    lines: &[DocCommentLine],
+    start: usize,
+) -> Option<(AlignableDocTagKind, usize)> {
+    let mut cursor = start;
+    let kind = loop {
+        let line = lines.get(cursor)?;
+        if let Some(kind) = alignable_doc_tag_kind(line) {
+            break kind;
+        }
+
+        if !matches!(line, DocCommentLine::Description(_) | DocCommentLine::Empty)
+            && !matches!(line, DocCommentLine::Raw(text) if is_raw_doc_description_line(text))
+        {
+            return None;
+        }
+
+        cursor += 1;
+    };
+
+    if !should_align_doc_tag_kind(config, kind) {
+        return None;
+    }
+
+    let mut group_end = cursor + 1;
+    let mut alignable_count = 1usize;
+    while group_end < lines.len() {
+        if alignable_doc_tag_kind(&lines[group_end]) == Some(kind) {
+            alignable_count += 1;
+            group_end += 1;
+            continue;
+        }
+
+        if should_keep_doc_line_inside_aligned_group(&lines[group_end], kind) {
+            group_end += 1;
+            continue;
+        }
+
+        break;
+    }
+
+    (alignable_count >= 2).then_some((kind, group_end))
+}
+
+fn should_keep_doc_line_inside_aligned_group(
+    line: &DocCommentLine,
+    _kind: AlignableDocTagKind,
+) -> bool {
+    match line {
+        DocCommentLine::Description(_) | DocCommentLine::Empty => true,
+        DocCommentLine::Raw(text) if is_raw_doc_description_line(text) => true,
+        _ => false,
+    }
+}
+
+fn is_raw_doc_description_line(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed == "---" || (trimmed.starts_with("---") && !trimmed.starts_with("---@"))
+}
+
+fn render_interleaved_aligned_doc_tag_group(
+    config: &LuaFormatConfig,
+    lines: &[DocCommentLine],
+    kind: AlignableDocTagKind,
+) -> Vec<String> {
+    let alignable_lines: Vec<DocCommentLine> = lines
+        .iter()
+        .filter(|line| alignable_doc_tag_kind(line) == Some(kind))
+        .cloned()
+        .collect();
+    let aligned_rendered = render_aligned_doc_tag_group(config, &alignable_lines, kind);
+    let mut aligned_iter = aligned_rendered.into_iter();
+
+    lines
+        .iter()
+        .map(|line| {
+            if alignable_doc_tag_kind(line) == Some(kind) {
+                aligned_iter
+                    .next()
+                    .unwrap_or_else(|| render_single_doc_comment_line(config, line))
+            } else {
+                render_single_doc_comment_line(config, line)
+            }
+        })
+        .collect()
 }
 
 fn should_align_doc_tag_kind(config: &LuaFormatConfig, kind: AlignableDocTagKind) -> bool {
