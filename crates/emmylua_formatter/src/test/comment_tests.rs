@@ -1143,6 +1143,22 @@ local t = {
     }
 
     #[test]
+    fn test_doc_type_with_inline_comment_marker_is_preserved_raw() {
+        assert_format!(
+            "---@type string --1\nlocal s\n",
+            "---@type string --1\nlocal s\n"
+        );
+    }
+
+    #[test]
+    fn test_nonstandard_dash_comment_is_preserved_raw() {
+        assert_format!(
+            "----    keep odd prefix\nlocal value = nil\n",
+            "----    keep odd prefix\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_multiline_alias_falls_back() {
         assert_format!(
             "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n",

@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+mod comment_formatter;
+
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
     LuaDocTagAlias, LuaDocTagClass, LuaDocTagField, LuaDocTagGeneric, LuaDocTagOverload,
@@ -9,26 +12,344 @@ use rowan::TextRange;
 use crate::config::LuaFormatConfig;
 use crate::ir::{self, DocIR};
 
+use self::comment_formatter::CommentFormatter;
 use super::trivia::has_non_trivia_before_on_same_line;
 
-/// Format a Comment node.
-///
-/// Dispatches between three comment types:
-/// - Doc comments (`---@...`): walk the syntax tree, normalize whitespace
-/// - Long comments (`--[[ ... ]]`, `--[[@...]]`): preserve content as-is
-/// - Normal comments (`-- ...`): preserve text with trimming
+enum TokenExpected {
+    Space(usize),
+    MaxSpace(usize),
+}
+
 pub fn format_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
-    match classify_comment(comment) {
-        CommentKind::Long => vec![ir::source_node_trimmed(comment.syntax().clone())],
-        CommentKind::Doc => format_doc_comment(config, comment),
-        CommentKind::Normal => format_normal_comment(config, comment),
+    let is_doc = is_doc_comment(comment);
+
+    if has_nonstandard_dash_prefix(comment)
+        || (is_doc && should_preserve_doc_comment_raw(comment))
+    {
+        return vec![ir::source_node_trimmed(comment.syntax().clone())];
+    }
+
+    if is_long_comment(comment) {
+        return vec![ir::source_node_trimmed(comment.syntax().clone())];
+    }
+
+    if !is_doc {
+        return format_normal_comment(config, comment);
+    }
+
+    format_doc_comment(config, comment)
+}
+
+pub fn collect_orphan_comments(config: &LuaFormatConfig, node: &LuaSyntaxNode) -> Vec<DocIR> {
+    let mut docs = Vec::new();
+    for child in node.children() {
+        if child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment)
+            && let Some(comment) = LuaComment::cast(child)
+        {
+            if !docs.is_empty() {
+                docs.push(ir::hard_line());
+            }
+            docs.extend(format_comment(config, &comment));
+        }
+    }
+    docs
+}
+
+pub fn extract_trailing_comment(
+    config: &LuaFormatConfig,
+    node: &LuaSyntaxNode,
+) -> Option<(Vec<DocIR>, TextRange)> {
+    for child in node.children() {
+        if child.kind() != LuaKind::Syntax(LuaSyntaxKind::Comment)
+            || !has_non_trivia_before_on_same_line(&child)
+            || has_non_trivia_after_on_same_line(&child)
+        {
+            continue;
+        }
+
+        let comment = LuaComment::cast(child.clone())?;
+        if child.text().contains_char('\n') {
+            return None;
+        }
+
+        let comment_text =
+            render_single_line_comment_text(config, &comment).unwrap_or_else(|| trim_end_owned(child.text()));
+
+        return Some((vec![ir::text(comment_text)], child.text_range()));
+    }
+
+    let mut next = node.next_sibling_or_token();
+    for _ in 0..4 {
+        let sibling = next.as_ref()?;
+        match sibling.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {}
+            LuaKind::Token(LuaTokenKind::TkSemicolon) => {}
+            LuaKind::Token(LuaTokenKind::TkComma) => {}
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => {
+                let comment_node = sibling.as_node()?;
+                let comment = LuaComment::cast(comment_node.clone())?;
+                if comment_node.text().contains_char('\n') {
+                    return None;
+                }
+
+                let comment_text = render_single_line_comment_text(config, &comment)
+                    .unwrap_or_else(|| trim_end_owned(comment_node.text()));
+
+                return Some((vec![ir::text(comment_text)], comment_node.text_range()));
+            }
+            _ => return None,
+        }
+        next = sibling.next_sibling_or_token();
+    }
+
+    None
+}
+
+pub fn trailing_comment_prefix(config: &LuaFormatConfig) -> Vec<DocIR> {
+    let gap = config.comments.line_comment_min_spaces_before.max(1);
+    (0..gap).map(|_| ir::space()).collect()
+}
+
+pub fn format_trailing_comment(
+    config: &LuaFormatConfig,
+    node: &LuaSyntaxNode,
+) -> Option<(DocIR, TextRange)> {
+    let (docs, range) = extract_trailing_comment(config, node)?;
+    let mut suffix_content = trailing_comment_prefix(config);
+    suffix_content.extend(docs);
+    Some((ir::line_suffix(suffix_content), range))
+}
+
+pub fn should_keep_comment_inline_in_expression(comment: &LuaComment) -> bool {
+    is_long_comment(comment) && !comment.syntax().text().contains_char('\n')
+}
+
+fn should_preserve_doc_comment_raw(comment: &LuaComment) -> bool {
+    let mut seen_prefix_on_line = false;
+
+    for element in comment.syntax().descendants_with_tokens() {
+        let Some(token) = element.into_token() else {
+            continue;
+        };
+
+        match token.kind().into() {
+            LuaTokenKind::TkEndOfLine => {
+                seen_prefix_on_line = false;
+            }
+            LuaTokenKind::TkDocStart
+            | LuaTokenKind::TkDocLongStart
+            | LuaTokenKind::TkDocContinue
+            | LuaTokenKind::TkDocContinueOr
+            | LuaTokenKind::TkNormalStart => {
+                if seen_prefix_on_line {
+                    return true;
+                }
+                seen_prefix_on_line = true;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+fn is_doc_comment(comment: &LuaComment) -> bool {
+    let Some(first_token) = comment.syntax().first_token() else {
+        return false;
+    };
+
+    match first_token.kind().into() {
+        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocContinue | LuaTokenKind::TkDocContinueOr => {
+            true
+        }
+        LuaTokenKind::TkNormalStart => is_doc_normal_start(first_token.text()),
+        _ => comment.get_doc_tags().next().is_some(),
     }
 }
 
-/// Format a doc comment by walking its syntax tree token-by-token.
-///
-/// Only flat formatting is used (Text, Space, HardLine) — no Group/SoftLine
-/// since comments cannot have breaking rules.
+fn is_long_comment(comment: &LuaComment) -> bool {
+    let Some(first_token) = comment.syntax().first_token() else {
+        return false;
+    };
+
+    matches!(
+        first_token.kind().into(),
+        LuaTokenKind::TkLongCommentStart | LuaTokenKind::TkDocLongStart
+    )
+}
+
+fn format_normal_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
+    let formatter = build_comment_formatter(config, comment, !comment.syntax().text().contains_char('\n'));
+    formatter.render_comment(comment)
+}
+
+fn build_comment_formatter(
+    config: &LuaFormatConfig,
+    comment: &LuaComment,
+    normalize_start_tokens: bool,
+) -> CommentFormatter {
+    let mut formatter = CommentFormatter::new();
+
+    for element in comment.syntax().descendants_with_tokens() {
+        let Some(token) = element.into_token() else {
+            continue;
+        };
+
+        let syntax_id = emmylua_parser::LuaSyntaxId::from_token(&token);
+        match token.kind().to_token() {
+            LuaTokenKind::TkNormalStart if normalize_start_tokens => {
+                if let Some(replacement) = normalized_comment_prefix(config, token.text()) {
+                    formatter.add_token_replace(syntax_id, replacement);
+                    formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+                }
+            }
+            LuaTokenKind::TkDocStart if normalize_start_tokens => {
+                formatter.add_token_replace(syntax_id, "---@".to_string());
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+            }
+            LuaTokenKind::TkDocContinue if normalize_start_tokens => {
+                formatter.add_token_replace(
+                    syntax_id,
+                    normalized_doc_continue_prefix(config, token.text()),
+                );
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+            }
+            LuaTokenKind::TkLeftParen | LuaTokenKind::TkLeftBracket => {
+                if let Some(prev_token) = get_prev_sibling_token_without_space(&token) {
+                    match prev_token.kind().to_token() {
+                        LuaTokenKind::TkName
+                        | LuaTokenKind::TkRightParen
+                        | LuaTokenKind::TkRightBracket => {
+                            formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+                        }
+                        LuaTokenKind::TkString
+                        | LuaTokenKind::TkRightBrace
+                        | LuaTokenKind::TkLongString => {
+                            formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+                        }
+                        _ => {}
+                    }
+                }
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+            }
+            LuaTokenKind::TkRightBracket | LuaTokenKind::TkRightParen => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+            }
+            LuaTokenKind::TkLeftBrace => {
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            LuaTokenKind::TkRightBrace => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+            }
+            LuaTokenKind::TkComma => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            LuaTokenKind::TkPlus | LuaTokenKind::TkMinus => {
+                if is_parent_syntax(&token, LuaSyntaxKind::UnaryExpr) {
+                    formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+                    continue;
+                }
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            LuaTokenKind::TkLt => {
+                if is_parent_syntax(&token, LuaSyntaxKind::Attribute) {
+                    formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+                    formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+                    continue;
+                }
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            LuaTokenKind::TkGt => {
+                if is_parent_syntax(&token, LuaSyntaxKind::Attribute) {
+                    formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+                    formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+                    continue;
+                }
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            LuaTokenKind::TkMul
+            | LuaTokenKind::TkDiv
+            | LuaTokenKind::TkIDiv
+            | LuaTokenKind::TkMod
+            | LuaTokenKind::TkPow
+            | LuaTokenKind::TkConcat
+            | LuaTokenKind::TkAssign
+            | LuaTokenKind::TkBitAnd
+            | LuaTokenKind::TkBitOr
+            | LuaTokenKind::TkBitXor
+            | LuaTokenKind::TkEq
+            | LuaTokenKind::TkGe
+            | LuaTokenKind::TkLe
+            | LuaTokenKind::TkNe
+            | LuaTokenKind::TkAnd
+            | LuaTokenKind::TkOr
+            | LuaTokenKind::TkShl
+            | LuaTokenKind::TkShr => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            LuaTokenKind::TkColon => {
+                if is_parent_syntax(&token, LuaSyntaxKind::IndexExpr) {
+                    formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+                    formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+                    continue;
+                }
+                formatter.add_token_left_expected(syntax_id, TokenExpected::MaxSpace(1));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::MaxSpace(1));
+            }
+            LuaTokenKind::TkDot => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+            }
+            LuaTokenKind::TkLocal
+            | LuaTokenKind::TkFunction
+            | LuaTokenKind::TkIf
+            | LuaTokenKind::TkWhile
+            | LuaTokenKind::TkFor
+            | LuaTokenKind::TkRepeat
+            | LuaTokenKind::TkReturn
+            | LuaTokenKind::TkDo
+            | LuaTokenKind::TkElseIf
+            | LuaTokenKind::TkElse
+            | LuaTokenKind::TkThen
+            | LuaTokenKind::TkUntil
+            | LuaTokenKind::TkIn
+            | LuaTokenKind::TkNot => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(1));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            _ => {}
+        }
+    }
+
+    formatter
+}
+
+fn render_single_line_comment_text(config: &LuaFormatConfig, comment: &LuaComment) -> Option<String> {
+    if is_long_comment(comment) {
+        return Some(trim_end_owned(comment.syntax().text()));
+    }
+
+    if has_nonstandard_dash_prefix(comment) {
+        return Some(trim_end_owned(comment.syntax().text()));
+    }
+
+    if is_doc_comment(comment) {
+        return None;
+    }
+
+    if comment.syntax().text().contains_char('\n') {
+        return None;
+    }
+
+    let formatter = build_comment_formatter(config, comment, true);
+    Some(formatter.render_comment_text(comment))
+}
+
 fn format_doc_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
     let lines = parse_doc_comment_lines(comment);
     let rendered = render_doc_comment_lines(config, &lines);
@@ -44,198 +365,15 @@ fn format_doc_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<Doc
     docs
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum CommentKind {
-    Long,
-    Doc,
-    Normal,
-}
-
-fn classify_comment(comment: &LuaComment) -> CommentKind {
-    let Some(first_token) = comment.syntax().first_token() else {
-        return CommentKind::Normal;
-    };
-
-    match first_token.kind().into() {
-        LuaTokenKind::TkLongCommentStart | LuaTokenKind::TkDocLongStart => CommentKind::Long,
-        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocContinue | LuaTokenKind::TkDocContinueOr => {
-            CommentKind::Doc
-        }
-        LuaTokenKind::TkNormalStart => {
-            if first_token.text().starts_with("---") || comment.get_doc_tags().next().is_some() {
-                CommentKind::Doc
-            } else {
-                CommentKind::Normal
-            }
-        }
-        _ => {
-            if comment.get_doc_tags().next().is_some() {
-                CommentKind::Doc
-            } else {
-                CommentKind::Normal
-            }
-        }
-    }
-}
-
-fn format_normal_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
-    let lines = parse_normal_comment_lines(comment);
-    if lines.is_empty() {
-        let raw = comment.syntax().text().to_string().trim_end().to_string();
-        return vec![ir::text(apply_space_after_comment_dash(
-            &raw,
-            config.comments.space_after_comment_dash,
-        ))];
-    }
-
-    let rendered = render_normal_comment_lines(&lines, config.comments.space_after_comment_dash);
-    let mut docs = Vec::new();
-    for (index, line) in rendered.into_iter().enumerate() {
-        if index > 0 {
-            docs.push(ir::hard_line());
-        }
-        if !line.is_empty() {
-            docs.push(ir::text(line));
-        }
-    }
-    docs
-}
-
-#[derive(Debug, Clone, Default)]
-struct NormalCommentLine {
-    prefix: String,
-    gap: String,
-    detail: String,
-}
-
-fn parse_normal_comment_lines(comment: &LuaComment) -> Vec<NormalCommentLine> {
-    let mut lines = Vec::new();
-    let mut current_line: Option<NormalCommentLine> = None;
-
-    for child in comment.syntax().children_with_tokens() {
-        let LuaSyntaxElement::Token(token) = child else {
-            continue;
-        };
-
-        match token.kind().into() {
-            LuaTokenKind::TkNormalStart | LuaTokenKind::TKNonStdComment => {
-                if let Some(line) = current_line.take() {
-                    lines.push(line);
-                }
-                current_line = Some(NormalCommentLine {
-                    prefix: token.text().to_string(),
-                    ..Default::default()
-                });
-            }
-            LuaTokenKind::TkWhitespace => {
-                let Some(line) = current_line.as_mut() else {
-                    continue;
-                };
-
-                if line.detail.is_empty() {
-                    line.gap.push_str(token.text());
-                } else {
-                    line.detail.push_str(token.text());
-                }
-            }
-            LuaTokenKind::TkDocDetail => {
-                if let Some(line) = current_line.as_mut() {
-                    line.detail.push_str(token.text());
-                }
-            }
-            LuaTokenKind::TkEndOfLine => {
-                if let Some(line) = current_line.take() {
-                    lines.push(line);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(line) = current_line.take() {
-        lines.push(line);
-    }
-
-    lines
-}
-
-fn render_normal_comment_lines(
-    lines: &[NormalCommentLine],
-    space_after_comment_dash: bool,
-) -> Vec<String> {
-    lines
-        .iter()
-        .map(|line| render_normal_comment_line(line, space_after_comment_dash))
-        .collect()
-}
-
-fn render_normal_comment_line(line: &NormalCommentLine, space_after_comment_dash: bool) -> String {
-    let mut rendered = line.prefix.trim_end().to_string();
-    if line.gap.is_empty()
-        && line.detail.is_empty()
-        && space_after_comment_dash
-        && let Some(body) = rendered.strip_prefix("--")
-        && !body.is_empty()
-        && !body.starts_with(' ')
-        && !body.starts_with('\t')
-    {
-        return format!("-- {body}").trim_end().to_string();
-    }
-
-    if !line.gap.is_empty() || !line.detail.is_empty() {
-        if line.gap.is_empty() && !line.detail.is_empty() && space_after_comment_dash {
-            rendered.push(' ');
-            rendered.push_str(line.detail.trim_start());
-        } else {
-            rendered.push_str(&line.gap);
-            rendered.push_str(&line.detail);
-        }
-    }
-
-    rendered.trim_end().to_string()
-}
-
-fn apply_space_after_comment_dash(text: &str, space_after_comment_dash: bool) -> String {
-    let trimmed = text.trim_end();
-    if !space_after_comment_dash {
-        return trimmed.to_string();
-    }
-
-    if let Some(body) = trimmed.strip_prefix("--")
-        && !body.is_empty()
-        && !body.starts_with(' ')
-        && !body.starts_with('\t')
-    {
-        return format!("-- {body}");
-    }
-
-    trimmed.to_string()
-}
-
 #[derive(Debug, Clone)]
 enum DocCommentLine {
     Empty,
     Description(String),
-    Class {
-        body: String,
-        desc: Option<String>,
-    },
-    Alias {
-        body: String,
-        desc: Option<String>,
-    },
-    Type {
-        body: String,
-        desc: Option<String>,
-    },
-    Generic {
-        body: String,
-        desc: Option<String>,
-    },
-    Overload {
-        body: String,
-        desc: Option<String>,
-    },
+    Class { body: String, desc: Option<String> },
+    Alias { body: String, desc: Option<String> },
+    Type { body: String, desc: Option<String> },
+    Generic { body: String, desc: Option<String> },
+    Overload { body: String, desc: Option<String> },
     Param {
         name: String,
         ty: String,
@@ -246,10 +384,7 @@ enum DocCommentLine {
         ty: String,
         desc: Option<String>,
     },
-    Return {
-        body: String,
-        desc: Option<String>,
-    },
+    Return { body: String, desc: Option<String> },
     Raw(String),
 }
 
@@ -338,7 +473,7 @@ fn append_doc_description_lines(
             }
             LuaTokenKind::TkEndOfLine => {
                 pending.description = Some(if pending.preserve_description_raw {
-                    current_text.trim_end().to_string()
+                    trim_end_owned(current_text.as_str())
                 } else {
                     normalize_single_line_spaces(&current_text)
                 });
@@ -352,7 +487,7 @@ fn append_doc_description_lines(
 
     if !current_text.is_empty() {
         pending.description = Some(if pending.preserve_description_raw {
-            current_text.trim_end().to_string()
+            trim_end_owned(current_text.as_str())
         } else {
             normalize_single_line_spaces(&current_text)
         });
@@ -369,16 +504,16 @@ fn finalize_doc_comment_line(pending: &mut PendingDocLine) -> DocCommentLine {
         build_doc_tag_line(&prefix, tag, description)
     } else if let Some(text) = description {
         if preserve_description_raw {
-            DocCommentLine::Raw(format!("{prefix}{text}").trim_end().to_string())
+            DocCommentLine::Raw(trim_end_owned(format!("{prefix}{text}")))
         } else if text.is_empty() {
-            DocCommentLine::Raw(prefix.trim_end().to_string())
+            DocCommentLine::Raw(trim_end_owned(prefix.as_str()))
         } else {
             DocCommentLine::Description(text)
         }
     } else if prefix.is_empty() {
         DocCommentLine::Empty
     } else {
-        DocCommentLine::Raw(prefix.trim_end().to_string())
+        DocCommentLine::Raw(trim_end_owned(prefix.as_str()))
     }
 }
 
@@ -389,46 +524,29 @@ fn build_doc_tag_line(prefix: &str, tag: LuaDocTag, description: Option<String>)
 
     match tag {
         LuaDocTag::Class(class_tag) => {
-            build_class_doc_line(prefix, &class_tag, description.clone()).unwrap_or_else(|| {
+            build_class_doc_line(&class_tag, description.clone()).unwrap_or_else(|| {
                 raw_doc_tag_line(prefix, class_tag.syntax().text().to_string(), description)
             })
         }
-        LuaDocTag::Alias(alias) => build_alias_doc_line(prefix, &alias, description.clone())
-            .unwrap_or_else(|| {
-                raw_doc_tag_line(prefix, alias.syntax().text().to_string(), description)
-            }),
-        LuaDocTag::Type(type_tag) => build_type_doc_line(prefix, &type_tag, description.clone())
-            .unwrap_or_else(|| {
-                raw_doc_tag_line(prefix, type_tag.syntax().text().to_string(), description)
-            }),
-        LuaDocTag::Generic(generic) => {
-            build_generic_doc_line(prefix, &generic, description.clone()).unwrap_or_else(|| {
-                raw_doc_tag_line(prefix, generic.syntax().text().to_string(), description)
-            })
-        }
-        LuaDocTag::Overload(overload) => {
-            build_overload_doc_line(prefix, &overload, description.clone()).unwrap_or_else(|| {
-                raw_doc_tag_line(prefix, overload.syntax().text().to_string(), description)
-            })
-        }
-        LuaDocTag::Param(param) => build_param_doc_line(prefix, &param, description.clone())
-            .unwrap_or_else(|| {
-                raw_doc_tag_line(prefix, param.syntax().text().to_string(), description)
-            }),
-        LuaDocTag::Field(field) => build_field_doc_line(prefix, &field, description.clone())
-            .unwrap_or_else(|| {
-                raw_doc_tag_line(prefix, field.syntax().text().to_string(), description)
-            }),
-        LuaDocTag::Return(ret) => build_return_doc_line(prefix, &ret, description.clone())
-            .unwrap_or_else(|| {
-                raw_doc_tag_line(prefix, ret.syntax().text().to_string(), description)
-            }),
+        LuaDocTag::Alias(alias) => build_alias_doc_line(&alias, description.clone())
+            .unwrap_or_else(|| raw_doc_tag_line(prefix, alias.syntax().text().to_string(), description)),
+        LuaDocTag::Type(type_tag) => build_type_doc_line(&type_tag, description.clone())
+            .unwrap_or_else(|| raw_doc_tag_line(prefix, type_tag.syntax().text().to_string(), description)),
+        LuaDocTag::Generic(generic) => build_generic_doc_line(&generic, description.clone())
+            .unwrap_or_else(|| raw_doc_tag_line(prefix, generic.syntax().text().to_string(), description)),
+        LuaDocTag::Overload(overload) => build_overload_doc_line(&overload, description.clone())
+            .unwrap_or_else(|| raw_doc_tag_line(prefix, overload.syntax().text().to_string(), description)),
+        LuaDocTag::Param(param) => build_param_doc_line(&param, description.clone())
+            .unwrap_or_else(|| raw_doc_tag_line(prefix, param.syntax().text().to_string(), description)),
+        LuaDocTag::Field(field) => build_field_doc_line(&field, description.clone())
+            .unwrap_or_else(|| raw_doc_tag_line(prefix, field.syntax().text().to_string(), description)),
+        LuaDocTag::Return(ret) => build_return_doc_line(&ret, description.clone())
+            .unwrap_or_else(|| raw_doc_tag_line(prefix, ret.syntax().text().to_string(), description)),
         other => raw_doc_tag_line(prefix, other.syntax().text().to_string(), description),
     }
 }
 
 fn build_class_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagClass,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -445,7 +563,6 @@ fn build_class_doc_line(
 }
 
 fn build_alias_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagAlias,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -455,7 +572,6 @@ fn build_alias_doc_line(
 }
 
 fn build_type_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagType,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -474,7 +590,6 @@ fn build_type_doc_line(
 }
 
 fn build_generic_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagGeneric,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -484,7 +599,6 @@ fn build_generic_doc_line(
 }
 
 fn build_overload_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagOverload,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -495,7 +609,7 @@ fn build_overload_doc_line(
 
 fn raw_doc_tag_line(prefix: &str, body: String, description: Option<String>) -> DocCommentLine {
     if body.contains('\n') {
-        return DocCommentLine::Raw(format!("{prefix}{body}").trim_end().to_string());
+        return DocCommentLine::Raw(trim_end_owned(format!("{prefix}{body}")));
     }
 
     let mut line = format!("{prefix}{}", normalize_single_line_spaces(&body));
@@ -509,7 +623,6 @@ fn raw_doc_tag_line(prefix: &str, body: String, description: Option<String>) -> 
 }
 
 fn build_param_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagParam,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -528,7 +641,6 @@ fn build_param_doc_line(
 }
 
 fn build_field_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagField,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -548,7 +660,6 @@ fn build_field_doc_line(
 }
 
 fn build_return_doc_line(
-    _prefix: &str,
     tag: &LuaDocTagReturn,
     description: Option<String>,
 ) -> Option<DocCommentLine> {
@@ -588,7 +699,11 @@ fn single_line_syntax_text(node: &impl LuaAstNode) -> Option<String> {
 
 fn non_empty_description_text(description: Option<String>) -> Option<String> {
     let text = description?;
-    if text.is_empty() { None } else { Some(text) }
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 fn normalize_single_line_spaces(text: &str) -> String {
@@ -602,9 +717,8 @@ fn generic_decl_list_text(list: &LuaDocGenericDeclList) -> Option<String> {
 
 fn raw_doc_tag_body_text<T: LuaAstNode>(tag_name: &str, node: &T) -> Option<String> {
     let text = single_line_node_text(node)?;
-
     let body = text.trim().strip_prefix(tag_name)?.trim_start();
-    Some(body.trim_end().to_string())
+    Some(trim_end_owned(body))
 }
 
 fn single_line_node_text(node: &impl LuaAstNode) -> Option<String> {
@@ -702,7 +816,7 @@ fn should_keep_doc_line_inside_aligned_group(
 
 fn is_raw_doc_description_line(text: &str) -> bool {
     let trimmed = text.trim();
-    trimmed == "---" || (trimmed.starts_with("---") && !trimmed.starts_with("---@"))
+    trimmed == "---" || (dash_prefix_len(trimmed) == 3 && !trimmed.starts_with("---@"))
 }
 
 fn render_interleaved_aligned_doc_tag_group(
@@ -805,7 +919,7 @@ fn render_aligned_doc_tag_group(
                             rendered.push_str(&gap);
                             rendered.push_str(desc);
                         }
-                        rendered.trim_end().to_string()
+                        trim_end_owned(rendered)
                     }
                     other => render_single_doc_comment_line(config, other),
                 })
@@ -845,7 +959,7 @@ fn render_aligned_doc_tag_group(
                             rendered.push_str(&gap);
                             rendered.push_str(desc);
                         }
-                        rendered.trim_end().to_string()
+                        trim_end_owned(rendered)
                     }
                     other => render_single_doc_comment_line(config, other),
                 })
@@ -875,7 +989,7 @@ fn render_aligned_doc_tag_group(
                             rendered.push_str(&gap);
                             rendered.push_str(desc);
                         }
-                        rendered.trim_end().to_string()
+                        trim_end_owned(rendered)
                     }
                     other => render_single_doc_comment_line(config, other),
                 })
@@ -909,7 +1023,7 @@ fn render_alias_doc_group(config: &LuaFormatConfig, lines: &[DocCommentLine]) ->
                     rendered.push_str(&gap);
                     rendered.push_str(desc);
                 }
-                rendered.trim_end().to_string()
+                trim_end_owned(rendered)
             }
             other => render_single_doc_comment_line(config, other),
         })
@@ -943,7 +1057,7 @@ fn render_body_aligned_doc_group(
                     rendered.push_str(&gap);
                     rendered.push_str(desc);
                 }
-                rendered.trim_end().to_string()
+                trim_end_owned(rendered)
             } else {
                 render_single_doc_comment_line(config, line)
             }
@@ -1042,80 +1156,77 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
     }
 }
 
-/// Collect "orphan" comments in a syntax node.
-///
-/// When a Block is empty (e.g. `if x then -- comment end`),
-/// comments may become direct children of the parent statement node rather than the Block.
-/// This function collects those comments and returns the formatted IR.
-pub fn collect_orphan_comments(config: &LuaFormatConfig, node: &LuaSyntaxNode) -> Vec<DocIR> {
-    let mut docs = Vec::new();
-    for child in node.children() {
-        if child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment)
-            && let Some(comment) = LuaComment::cast(child)
-        {
-            if !docs.is_empty() {
-                docs.push(ir::hard_line());
-            }
-            docs.extend(format_comment(config, &comment));
-        }
+fn normalized_comment_prefix(config: &LuaFormatConfig, prefix_text: &str) -> Option<String> {
+    match dash_prefix_len(prefix_text) {
+        2 => Some(if config.comments.space_after_comment_dash {
+            "-- ".to_string()
+        } else {
+            "--".to_string()
+        }),
+        3 => Some(if config.emmy_doc.space_after_description_dash {
+            "--- ".to_string()
+        } else {
+            "---".to_string()
+        }),
+        _ => None,
     }
-    docs
 }
-/// Extract a trailing comment on the same line after a syntax node.
-/// Returns the raw comment docs (NOT wrapped in LineSuffix) and the text range.
-pub fn extract_trailing_comment(
-    config: &LuaFormatConfig,
-    node: &LuaSyntaxNode,
-) -> Option<(Vec<DocIR>, TextRange)> {
-    for child in node.children() {
-        if child.kind() != LuaKind::Syntax(LuaSyntaxKind::Comment)
-            || !has_non_trivia_before_on_same_line(&child)
-            || has_non_trivia_after_on_same_line(&child)
-        {
-            continue;
+
+fn normalized_doc_continue_prefix(config: &LuaFormatConfig, prefix_text: &str) -> String {
+    if prefix_text == "---" || prefix_text == "--- " {
+        if config.emmy_doc.space_after_description_dash {
+            "--- ".to_string()
+        } else {
+            "---".to_string()
         }
+    } else {
+        prefix_text.to_string()
+    }
+}
 
-        let comment = LuaComment::cast(child.clone())?;
-        if child.text().contains_char('\n') {
-            return None;
-        }
+fn trim_end_owned(text: impl ToString) -> String {
+    let mut text = text.to_string();
+    let trimmed_len = text.trim_end().len();
+    text.truncate(trimmed_len);
+    text
+}
 
-        let comment_text = render_single_line_comment_text(config, &comment)
-            .unwrap_or_else(|| child.text().to_string().trim_end().to_string());
+fn has_nonstandard_dash_prefix(comment: &LuaComment) -> bool {
+    let Some(first_token) = comment.syntax().first_token() else {
+        return false;
+    };
 
-        return Some((vec![ir::text(comment_text)], child.text_range()));
+    if !matches!(first_token.kind().into(), LuaTokenKind::TkNormalStart) {
+        return false;
     }
 
-    let mut next = node.next_sibling_or_token();
-
-    // Look ahead at most 4 elements (skipping whitespace, commas, semicolons)
-    for _ in 0..4 {
-        let sibling = next.as_ref()?;
-        match sibling.kind() {
-            LuaKind::Token(LuaTokenKind::TkWhitespace) => {}
-            LuaKind::Token(LuaTokenKind::TkSemicolon) => {}
-            LuaKind::Token(LuaTokenKind::TkComma) => {}
-            LuaKind::Syntax(LuaSyntaxKind::Comment) => {
-                let comment_node = sibling.as_node()?;
-                let comment = LuaComment::cast(comment_node.clone())?;
-
-                // Only single-line comments are treated as trailing comments
-                if comment_node.text().contains_char('\n') {
-                    return None;
-                }
-
-                let comment_text = render_single_line_comment_text(config, &comment)
-                    .unwrap_or_else(|| comment_node.text().to_string().trim_end().to_string());
-
-                let range = comment_node.text_range();
-                return Some((vec![ir::text(comment_text)], range));
-            }
-            _ => return None,
-        }
-        next = sibling.next_sibling_or_token();
+    let dash_len = dash_prefix_len(first_token.text());
+    if dash_len > 3 {
+        return true;
     }
 
-    None
+    dash_len == 3
+        && !first_token
+            .text()
+            .chars()
+            .last()
+            .is_some_and(char::is_whitespace)
+        && comment
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .skip(1)
+            .take_while(|token| token.kind().to_token() != LuaTokenKind::TkEndOfLine)
+            .find(|token| token.kind().to_token() != LuaTokenKind::TkWhitespace)
+            .is_some_and(|token| token.text().starts_with('-'))
+}
+
+fn is_doc_normal_start(prefix_text: &str) -> bool {
+    dash_prefix_len(prefix_text) == 3
+}
+
+fn dash_prefix_len(prefix_text: &str) -> usize {
+    prefix_text.bytes().take_while(|byte| *byte == b'-').count()
 }
 
 fn has_non_trivia_after_on_same_line(node: &LuaSyntaxNode) -> bool {
@@ -1139,52 +1250,23 @@ fn has_non_trivia_after_on_same_line(node: &LuaSyntaxNode) -> bool {
     false
 }
 
-fn render_single_line_comment_text(
-    config: &LuaFormatConfig,
-    comment: &LuaComment,
-) -> Option<String> {
-    match classify_comment(comment) {
-        CommentKind::Long => Some(comment.syntax().text().to_string().trim_end().to_string()),
-        CommentKind::Normal => {
-            let parsed_lines = parse_normal_comment_lines(comment);
-            if parsed_lines.is_empty() {
-                return Some(apply_space_after_comment_dash(
-                    &comment.syntax().text().to_string(),
-                    config.comments.space_after_comment_dash,
-                ));
-            }
-
-            let lines = render_normal_comment_lines(
-                &parsed_lines,
-                config.comments.space_after_comment_dash,
-            );
-            if lines.len() == 1 {
-                lines.into_iter().next()
-            } else {
-                None
-            }
-        }
-        CommentKind::Doc => None,
+fn is_parent_syntax(token: &emmylua_parser::LuaSyntaxToken, kind: LuaSyntaxKind) -> bool {
+    if let Some(parent) = token.parent() {
+        return parent.kind().to_syntax() == kind;
     }
+    false
 }
 
-pub fn trailing_comment_prefix(config: &LuaFormatConfig) -> Vec<DocIR> {
-    let gap = config.comments.line_comment_min_spaces_before.max(1);
-    (0..gap).map(|_| ir::space()).collect()
-}
+fn get_prev_sibling_token_without_space(
+    token: &emmylua_parser::LuaSyntaxToken,
+) -> Option<emmylua_parser::LuaSyntaxToken> {
+    let mut current = token.clone();
+    while let Some(prev) = current.prev_token() {
+        if prev.kind().to_token() != LuaTokenKind::TkWhitespace {
+            return Some(prev);
+        }
+        current = prev;
+    }
 
-/// Format a trailing comment as LineSuffix (for non-grouped use).
-pub fn format_trailing_comment(
-    config: &LuaFormatConfig,
-    node: &LuaSyntaxNode,
-) -> Option<(DocIR, TextRange)> {
-    let (docs, range) = extract_trailing_comment(config, node)?;
-    let mut suffix_content = trailing_comment_prefix(config);
-    suffix_content.extend(docs);
-    Some((ir::line_suffix(suffix_content), range))
-}
-
-pub fn should_keep_comment_inline_in_expression(comment: &LuaComment) -> bool {
-    matches!(classify_comment(comment), CommentKind::Long)
-        && !comment.syntax().text().contains_char('\n')
+    None
 }

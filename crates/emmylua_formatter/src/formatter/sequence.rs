@@ -6,7 +6,7 @@ use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break};
 use crate::printer::Printer;
 
 use super::FormatContext;
-use super::comment::{format_comment, trailing_comment_prefix};
+use super::comments::{format_comment, trailing_comment_prefix};
 use super::trivia::has_non_trivia_before_on_same_line_tokenwise;
 
 #[derive(Clone)]

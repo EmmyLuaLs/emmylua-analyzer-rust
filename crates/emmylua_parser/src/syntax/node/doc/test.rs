@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{LuaAstNode, LuaComment, LuaParser, ParserConfig};
+    use crate::{LuaAstNode, LuaComment, LuaKind, LuaParser, LuaTokenKind, ParserConfig};
 
     #[allow(unused)]
     fn print_ast(lua_code: &str) {
@@ -81,5 +81,41 @@ mod test {
         "#;
 
         print_ast(code);
+    }
+
+    #[test]
+    fn test_doc_type_with_inline_comment_marker_has_second_prefix_on_same_line() {
+        let code = "---@type string --1\nlocal s\n";
+
+        let tree = LuaParser::parse(code, ParserConfig::default());
+        let root = tree.get_chunk_node();
+        let comment = root.descendants::<LuaComment>().next().unwrap();
+
+        let prefix_tokens: Vec<_> = comment
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| {
+                let token = element.into_token()?;
+                matches!(
+                    token.kind(),
+                    LuaKind::Token(
+                        LuaTokenKind::TkDocStart
+                            | LuaTokenKind::TkDocLongStart
+                            | LuaTokenKind::TkDocContinue
+                            | LuaTokenKind::TkDocContinueOr
+                            | LuaTokenKind::TkNormalStart
+                    )
+                )
+                .then_some((token.kind(), token.text().to_string()))
+            })
+            .collect();
+
+        assert_eq!(
+            prefix_tokens,
+            vec![
+                (LuaKind::Token(LuaTokenKind::TkDocStart), "---@".to_string()),
+                (LuaKind::Token(LuaTokenKind::TkNormalStart), "--".to_string()),
+            ]
+        );
     }
 }

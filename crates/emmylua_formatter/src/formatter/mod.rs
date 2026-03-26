@@ -1,5 +1,5 @@
 mod block;
-mod comment;
+mod comments;
 mod expression;
 mod sequence;
 pub mod spacing;

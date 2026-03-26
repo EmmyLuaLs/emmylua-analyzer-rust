@@ -6,7 +6,7 @@ use rowan::TextRange;
 use crate::ir::{self, AlignEntry, DocIR};
 
 use super::FormatContext;
-use super::comment::{extract_trailing_comment, format_comment, format_trailing_comment};
+use super::comments::{extract_trailing_comment, format_comment, format_trailing_comment};
 use super::statement::{format_stat, format_stat_eq_split, is_eq_alignable};
 use super::trivia::count_blank_lines_before;
 

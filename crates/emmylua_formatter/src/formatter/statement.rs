@@ -11,7 +11,7 @@ use crate::ir::{self, DocIR, EqSplit, ir_has_forced_line_break};
 
 use super::FormatContext;
 use super::block::format_block;
-use super::comment::{collect_orphan_comments, extract_trailing_comment, format_comment};
+use super::comments::{collect_orphan_comments, extract_trailing_comment, format_comment};
 use super::expression::format_expr;
 use super::sequence::{
     SequenceEntry, SequenceLayoutCandidates, SequenceLayoutPolicy, choose_sequence_layout,

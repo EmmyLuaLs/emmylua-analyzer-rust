@@ -10,7 +10,7 @@ use crate::config::{ExpandStrategy, QuoteStyle, SingleArgCallParens};
 use crate::ir::{self, AlignEntry, DocIR, EqSplit, ir_flat_width, ir_has_forced_line_break};
 
 use super::FormatContext;
-use super::comment::{
+use super::comments::{
     extract_trailing_comment, format_comment, should_keep_comment_inline_in_expression,
     trailing_comment_prefix,
 };
