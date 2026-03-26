@@ -40,6 +40,44 @@ mod test {
     }
 
     #[test]
+    fn test_return_overload_narrow_tracks_multiple_targets_from_same_call() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@param ok boolean
+            ---@return boolean
+            ---@return integer|string
+            ---@return string|boolean
+            ---@return_overload true, integer, string
+            ---@return_overload false, string, boolean
+            local function pick(ok)
+                if ok then
+                    return true, 1, "value"
+                end
+                return false, "error", false
+            end
+
+            local cond ---@type boolean
+            local ok, result, extra = pick(cond)
+
+            if ok then
+                a = result
+                b = extra
+            else
+                c = result
+                d = extra
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("a"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("b"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("c"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("d"), ws.ty("boolean"));
+    }
+
+    #[test]
     fn test_return_overload_reassign_clears_multi_return_mapping() {
         let mut ws = VirtualWorkspace::new();
 

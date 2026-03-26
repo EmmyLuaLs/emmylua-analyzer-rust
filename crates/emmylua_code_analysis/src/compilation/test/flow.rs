@@ -3,6 +3,7 @@ mod test {
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     const STACKED_TYPE_GUARDS: usize = 180;
+    const LARGE_LINEAR_ASSIGNMENT_STEPS: usize = 2048;
 
     #[test]
     fn test_closure_return() {
@@ -330,6 +331,36 @@ mod test {
             "expected semantic model for stacked self return-cast repro"
         );
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_large_linear_assignment_file_builds_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let mut block = String::from(
+            r#"
+        local value ---@type integer
+        value = 1
+
+        "#,
+        );
+
+        for i in 0..LARGE_LINEAR_ASSIGNMENT_STEPS {
+            block.push_str(&format!("local alias_{i} = value\n"));
+            block.push_str(&format!("value = alias_{i}\n"));
+        }
+        block.push_str("after_assign = value\n");
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for large linear assignment stress case"
+        );
+        let after_assign = ws.expr_ty("after_assign");
+        assert_eq!(ws.humanize_type(after_assign), "integer");
     }
 
     #[test]

@@ -363,11 +363,7 @@ fn get_type_at_assign_stat(
                 (explicit, true)
             } else {
                 let antecedent_flow_id = get_single_antecedent(flow_node)?;
-                let narrowed_source_type =
-                    get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-                if can_reuse_narrowed_assignment_source(db, &narrowed_source_type, &expr_type) {
-                    (narrowed_source_type, true)
-                } else {
+                if !preserves_assignment_expr_type(&expr_type) {
                     (
                         get_type_at_flow_internal(
                             db,
@@ -380,6 +376,25 @@ fn get_type_at_assign_stat(
                         )?,
                         false,
                     )
+                } else {
+                    let narrowed_source_type =
+                        get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
+                    if can_reuse_narrowed_assignment_source(db, &narrowed_source_type, &expr_type) {
+                        (narrowed_source_type, true)
+                    } else {
+                        (
+                            get_type_at_flow_internal(
+                                db,
+                                tree,
+                                cache,
+                                root,
+                                var_ref_id,
+                                antecedent_flow_id,
+                                false,
+                            )?,
+                            false,
+                        )
+                    }
                 }
             };
 
