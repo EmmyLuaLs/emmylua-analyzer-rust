@@ -4,8 +4,8 @@ mod comment_formatter;
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaComment, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag,
     LuaDocTagAlias, LuaDocTagClass, LuaDocTagField, LuaDocTagGeneric, LuaDocTagOverload,
-    LuaDocTagParam, LuaDocTagReturn, LuaDocTagType, LuaKind, LuaSyntaxElement, LuaSyntaxKind,
-    LuaSyntaxNode, LuaTokenKind,
+    LuaDocTagParam, LuaDocTagReturn, LuaDocTagType, LuaKind, LuaSyntaxElement, LuaSyntaxId,
+    LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind,
 };
 use rowan::TextRange;
 
@@ -198,7 +198,7 @@ fn build_comment_formatter(
             continue;
         };
 
-        let syntax_id = emmylua_parser::LuaSyntaxId::from_token(&token);
+        let syntax_id = LuaSyntaxId::from_token(&token);
         match token.kind().to_token() {
             LuaTokenKind::TkNormalStart if normalize_start_tokens => {
                 if let Some(replacement) = normalized_comment_prefix(config, token.text()) {
@@ -368,6 +368,10 @@ fn format_doc_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<Doc
         return docs;
     }
 
+    if let Some(docs) = try_format_doc_comment_with_token_alignment(config, comment) {
+        return docs;
+    }
+
     let lines = parse_doc_comment_lines(comment);
     let rendered = render_doc_comment_lines(config, &lines);
     let mut docs = Vec::new();
@@ -444,6 +448,208 @@ fn try_format_doc_comment_with_tokens(
     Some(formatter.render_comment(comment))
 }
 
+fn try_format_doc_comment_with_token_alignment(
+    config: &LuaFormatConfig,
+    comment: &LuaComment,
+) -> Option<Vec<DocIR>> {
+    if !comment.syntax().text().contains_char('\n') {
+        return None;
+    }
+
+    let lines = parse_doc_comment_lines(comment);
+    let tag_count = comment.get_doc_tags().count();
+    let supported_tag_count = lines
+        .iter()
+        .filter(|line| {
+            matches!(
+                line,
+                DocCommentLine::Class { .. }
+                    | DocCommentLine::Alias { .. }
+                    | DocCommentLine::Type { .. }
+                    | DocCommentLine::Generic { .. }
+                    | DocCommentLine::Overload { .. }
+                    | DocCommentLine::Param { .. }
+                    | DocCommentLine::Field { .. }
+                    | DocCommentLine::Return { .. }
+            )
+        })
+        .count();
+
+    if tag_count == 0 || tag_count != supported_tag_count {
+        return None;
+    }
+
+    let mut formatter = build_comment_formatter(config, comment, true);
+    let gap = config.emmy_doc.tag_spacing.max(1);
+    let mut tags = comment.get_doc_tags();
+    let mut line_tags: Vec<Option<LuaDocTag>> = Vec::with_capacity(lines.len());
+
+    for line in &lines {
+        match line {
+            DocCommentLine::Class { .. } => {
+                let LuaDocTag::Class(tag) = tags.next()? else {
+                    return None;
+                };
+                configure_declaration_doc_tag_token_spacing(
+                    &mut formatter,
+                    config,
+                    &tag.syntax().clone(),
+                    tag.get_name_token().map(|token| token.syntax().clone()),
+                    find_inline_doc_description_after(tag.syntax()),
+                )?;
+                if let Some(generic_decl) = tag.get_generic_decl() {
+                    configure_generic_decl_token_spacing(&mut formatter, generic_decl.syntax());
+                }
+                line_tags.push(Some(LuaDocTag::Class(tag)));
+            }
+            DocCommentLine::Alias { .. } => {
+                let LuaDocTag::Alias(tag) = tags.next()? else {
+                    return None;
+                };
+                configure_declaration_doc_tag_token_spacing(
+                    &mut formatter,
+                    config,
+                    &tag.syntax().clone(),
+                    tag.get_name_token().map(|token| token.syntax().clone()),
+                    find_inline_doc_description_after(tag.syntax()),
+                )?;
+                if let Some(generic_decl_list) = tag.get_generic_decl_list() {
+                    configure_generic_decl_token_spacing(
+                        &mut formatter,
+                        generic_decl_list.syntax(),
+                    );
+                }
+                line_tags.push(Some(LuaDocTag::Alias(tag)));
+            }
+            DocCommentLine::Type { .. } => {
+                let LuaDocTag::Type(tag) = tags.next()? else {
+                    return None;
+                };
+                configure_declaration_doc_tag_token_spacing(
+                    &mut formatter,
+                    config,
+                    &tag.syntax().clone(),
+                    tag.get_type_list()
+                        .next()
+                        .and_then(|ty| ty.syntax().first_token()),
+                    find_inline_doc_description_after(tag.syntax()),
+                )?;
+                line_tags.push(Some(LuaDocTag::Type(tag)));
+            }
+            DocCommentLine::Generic { .. } => {
+                let LuaDocTag::Generic(tag) = tags.next()? else {
+                    return None;
+                };
+                let generic_decl_list = tag.get_generic_decl_list();
+                configure_declaration_doc_tag_token_spacing(
+                    &mut formatter,
+                    config,
+                    &tag.syntax().clone(),
+                    generic_decl_list
+                        .as_ref()
+                        .and_then(|decls| decls.syntax().first_token()),
+                    find_inline_doc_description_after(tag.syntax()),
+                )?;
+                if let Some(generic_decl_list) = generic_decl_list {
+                    configure_generic_decl_token_spacing(
+                        &mut formatter,
+                        generic_decl_list.syntax(),
+                    );
+                }
+                line_tags.push(Some(LuaDocTag::Generic(tag)));
+            }
+            DocCommentLine::Overload { .. } => {
+                let LuaDocTag::Overload(tag) = tags.next()? else {
+                    return None;
+                };
+                configure_declaration_doc_tag_token_spacing(
+                    &mut formatter,
+                    config,
+                    &tag.syntax().clone(),
+                    tag.get_type().and_then(|ty| ty.syntax().first_token()),
+                    find_inline_doc_description_after(tag.syntax()),
+                )?;
+                line_tags.push(Some(LuaDocTag::Overload(tag)));
+            }
+            DocCommentLine::Param { .. } => {
+                let LuaDocTag::Param(tag) = tags.next()? else {
+                    return None;
+                };
+                configure_param_doc_tag_token_spacing(&mut formatter, config, &tag)?;
+                line_tags.push(Some(LuaDocTag::Param(tag)));
+            }
+            DocCommentLine::Field { .. } => {
+                let LuaDocTag::Field(tag) = tags.next()? else {
+                    return None;
+                };
+                configure_field_doc_tag_token_spacing(&mut formatter, config, &tag)?;
+                line_tags.push(Some(LuaDocTag::Field(tag)));
+            }
+            DocCommentLine::Return { .. } => {
+                let LuaDocTag::Return(tag) = tags.next()? else {
+                    return None;
+                };
+                configure_return_doc_tag_token_spacing(&mut formatter, config, &tag)?;
+                line_tags.push(Some(LuaDocTag::Return(tag)));
+            }
+            _ => line_tags.push(None),
+        }
+    }
+
+    if tags.next().is_some() {
+        return None;
+    }
+
+    let mut applied_group = false;
+    let mut index = 0;
+    while index < lines.len() {
+        let Some((kind, group_end)) = find_interleaved_aligned_group(config, &lines, index) else {
+            index += 1;
+            continue;
+        };
+
+        applied_group = true;
+        match kind {
+            AlignableDocTagKind::Class
+            | AlignableDocTagKind::Alias
+            | AlignableDocTagKind::Type
+            | AlignableDocTagKind::Generic
+            | AlignableDocTagKind::Overload => apply_declaration_alignment_group(
+                &mut formatter,
+                &lines[index..group_end],
+                &line_tags[index..group_end],
+                gap,
+            )?,
+            AlignableDocTagKind::Param => apply_param_alignment_group(
+                &mut formatter,
+                &lines[index..group_end],
+                &line_tags[index..group_end],
+                gap,
+            )?,
+            AlignableDocTagKind::Field => apply_field_alignment_group(
+                &mut formatter,
+                &lines[index..group_end],
+                &line_tags[index..group_end],
+                gap,
+            )?,
+            AlignableDocTagKind::Return => apply_return_alignment_group(
+                &mut formatter,
+                &lines[index..group_end],
+                &line_tags[index..group_end],
+                gap,
+            )?,
+        }
+
+        index = group_end;
+    }
+
+    if !applied_group {
+        return None;
+    }
+
+    Some(formatter.render_comment(comment))
+}
+
 fn configure_doc_tag_token_spacing(
     formatter: &mut CommentFormatter,
     config: &LuaFormatConfig,
@@ -478,6 +684,309 @@ fn configure_doc_tag_token_spacing(
             formatter.add_token_left_expected(
                 emmylua_parser::LuaSyntaxId::from_token(&first_description_token),
                 TokenExpected::Space(1),
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn configure_param_doc_tag_token_spacing(
+    formatter: &mut CommentFormatter,
+    config: &LuaFormatConfig,
+    tag: &LuaDocTagParam,
+) -> Option<()> {
+    configure_doc_tag_token_spacing(
+        formatter,
+        config,
+        &tag.syntax().clone(),
+        tag.get_name_token().map(|token| token.syntax().clone()),
+        tag.get_type().and_then(|ty| ty.syntax().first_token()),
+        find_inline_doc_description_after(tag.syntax()),
+    )
+}
+
+fn configure_declaration_doc_tag_token_spacing(
+    formatter: &mut CommentFormatter,
+    config: &LuaFormatConfig,
+    tag_syntax: &LuaSyntaxNode,
+    body_first_token: Option<emmylua_parser::LuaSyntaxToken>,
+    inline_description: Option<LuaSyntaxNode>,
+) -> Option<()> {
+    configure_doc_tag_token_spacing(
+        formatter,
+        config,
+        tag_syntax,
+        None,
+        body_first_token,
+        inline_description,
+    )
+}
+
+fn configure_generic_decl_token_spacing(
+    formatter: &mut CommentFormatter,
+    generic_decl_syntax: &LuaSyntaxNode,
+) {
+    for element in generic_decl_syntax.descendants_with_tokens() {
+        let Some(token) = element.into_token() else {
+            continue;
+        };
+
+        let syntax_id = LuaSyntaxId::from_token(&token);
+        match token.kind().to_token() {
+            LuaTokenKind::TkLt | LuaTokenKind::TkGt => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+            }
+            LuaTokenKind::TkComma => {
+                formatter.add_token_left_expected(syntax_id, TokenExpected::Space(0));
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(1));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn configure_field_doc_tag_token_spacing(
+    formatter: &mut CommentFormatter,
+    config: &LuaFormatConfig,
+    tag: &LuaDocTagField,
+) -> Option<()> {
+    let tag_token = tag.syntax().first_token()?;
+    formatter.add_token_right_expected(
+        LuaSyntaxId::from_token(&tag_token),
+        TokenExpected::Space(config.emmy_doc.tag_spacing.max(1)),
+    );
+
+    if let Some(body_first_token) = tag.get_type().and_then(|ty| ty.syntax().first_token()) {
+        formatter.add_token_left_expected(
+            LuaSyntaxId::from_token(&body_first_token),
+            TokenExpected::Space(1),
+        );
+    }
+
+    if let Some(description) = find_inline_doc_description_after(tag.syntax()) {
+        normalize_doc_description_tokens(formatter, &description);
+        if let Some(first_description_token) = first_non_whitespace_token(&description) {
+            formatter.add_token_left_expected(
+                LuaSyntaxId::from_token(&first_description_token),
+                TokenExpected::Space(1),
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn configure_return_doc_tag_token_spacing(
+    formatter: &mut CommentFormatter,
+    config: &LuaFormatConfig,
+    tag: &LuaDocTagReturn,
+) -> Option<()> {
+    let tag_token = tag.syntax().first_token()?;
+    formatter.add_token_right_expected(
+        LuaSyntaxId::from_token(&tag_token),
+        TokenExpected::Space(config.emmy_doc.tag_spacing.max(1)),
+    );
+
+    if let Some(body_first_token) = tag
+        .get_first_type()
+        .and_then(|ty| ty.syntax().first_token())
+    {
+        formatter.add_token_left_expected(
+            LuaSyntaxId::from_token(&body_first_token),
+            TokenExpected::Space(1),
+        );
+    }
+
+    if let Some(description) = find_inline_doc_description_after(tag.syntax()) {
+        normalize_doc_description_tokens(formatter, &description);
+        if let Some(first_description_token) = first_non_whitespace_token(&description) {
+            formatter.add_token_left_expected(
+                LuaSyntaxId::from_token(&first_description_token),
+                TokenExpected::Space(1),
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn apply_param_alignment_group(
+    formatter: &mut CommentFormatter,
+    lines: &[DocCommentLine],
+    tags: &[Option<LuaDocTag>],
+    gap: usize,
+) -> Option<()> {
+    let max_name = lines
+        .iter()
+        .filter_map(|line| match line {
+            DocCommentLine::Param { name, .. } => Some(name.len()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+    let max_type = lines
+        .iter()
+        .filter_map(|line| match line {
+            DocCommentLine::Param { ty, .. } => Some(ty.len()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+
+    for (line, tag) in lines.iter().zip(tags.iter()) {
+        let (name, ty, tag) = match (line, tag) {
+            (DocCommentLine::Param { name, ty, .. }, Some(LuaDocTag::Param(tag))) => {
+                (name, ty, tag)
+            }
+            _ => continue,
+        };
+
+        let body_first_token = tag.get_type().and_then(|ty| ty.syntax().first_token())?;
+        formatter.add_token_left_alignment_expected(
+            LuaSyntaxId::from_token(&body_first_token),
+            TokenExpected::Space(gap + max_name.saturating_sub(name.len())),
+        );
+
+        if let Some(description) = find_inline_doc_description_after(tag.syntax())
+            && let Some(first_description_token) = first_non_whitespace_token(&description)
+        {
+            formatter.add_token_left_alignment_expected(
+                LuaSyntaxId::from_token(&first_description_token),
+                TokenExpected::Space(gap + max_type.saturating_sub(ty.len())),
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn apply_declaration_alignment_group(
+    formatter: &mut CommentFormatter,
+    lines: &[DocCommentLine],
+    tags: &[Option<LuaDocTag>],
+    gap: usize,
+) -> Option<()> {
+    let max_body = lines
+        .iter()
+        .filter_map(|line| match line {
+            DocCommentLine::Class { body, .. }
+            | DocCommentLine::Alias { body, .. }
+            | DocCommentLine::Type { body, .. }
+            | DocCommentLine::Generic { body, .. }
+            | DocCommentLine::Overload { body, .. } => Some(body.len()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+
+    for (line, tag) in lines.iter().zip(tags.iter()) {
+        let (body, tag_syntax) = match (line, tag) {
+            (DocCommentLine::Class { body, .. }, Some(LuaDocTag::Class(tag))) => {
+                (body, tag.syntax())
+            }
+            (DocCommentLine::Alias { body, .. }, Some(LuaDocTag::Alias(tag))) => {
+                (body, tag.syntax())
+            }
+            (DocCommentLine::Type { body, .. }, Some(LuaDocTag::Type(tag))) => (body, tag.syntax()),
+            (DocCommentLine::Generic { body, .. }, Some(LuaDocTag::Generic(tag))) => {
+                (body, tag.syntax())
+            }
+            (DocCommentLine::Overload { body, .. }, Some(LuaDocTag::Overload(tag))) => {
+                (body, tag.syntax())
+            }
+            _ => continue,
+        };
+
+        if let Some(description) = find_inline_doc_description_after(tag_syntax)
+            && let Some(first_description_token) = first_non_whitespace_token(&description)
+        {
+            formatter.add_token_left_alignment_expected(
+                LuaSyntaxId::from_token(&first_description_token),
+                TokenExpected::Space(gap + max_body.saturating_sub(body.len())),
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn apply_field_alignment_group(
+    formatter: &mut CommentFormatter,
+    lines: &[DocCommentLine],
+    tags: &[Option<LuaDocTag>],
+    gap: usize,
+) -> Option<()> {
+    let max_key = lines
+        .iter()
+        .filter_map(|line| match line {
+            DocCommentLine::Field { key, .. } => Some(key.len()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+    let max_type = lines
+        .iter()
+        .filter_map(|line| match line {
+            DocCommentLine::Field { ty, .. } => Some(ty.len()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+
+    for (line, tag) in lines.iter().zip(tags.iter()) {
+        let (key, ty, tag) = match (line, tag) {
+            (DocCommentLine::Field { key, ty, .. }, Some(LuaDocTag::Field(tag))) => (key, ty, tag),
+            _ => continue,
+        };
+
+        let body_first_token = tag.get_type().and_then(|ty| ty.syntax().first_token())?;
+        formatter.add_token_left_alignment_expected(
+            LuaSyntaxId::from_token(&body_first_token),
+            TokenExpected::Space(gap + max_key.saturating_sub(key.len())),
+        );
+
+        if let Some(description) = find_inline_doc_description_after(tag.syntax())
+            && let Some(first_description_token) = first_non_whitespace_token(&description)
+        {
+            formatter.add_token_left_alignment_expected(
+                LuaSyntaxId::from_token(&first_description_token),
+                TokenExpected::Space(gap + max_type.saturating_sub(ty.len())),
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn apply_return_alignment_group(
+    formatter: &mut CommentFormatter,
+    lines: &[DocCommentLine],
+    tags: &[Option<LuaDocTag>],
+    gap: usize,
+) -> Option<()> {
+    let max_body = lines
+        .iter()
+        .filter_map(|line| match line {
+            DocCommentLine::Return { body, .. } => Some(body.len()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+
+    for (line, tag) in lines.iter().zip(tags.iter()) {
+        let (body, tag) = match (line, tag) {
+            (DocCommentLine::Return { body, .. }, Some(LuaDocTag::Return(tag))) => (body, tag),
+            _ => continue,
+        };
+
+        if let Some(description) = find_inline_doc_description_after(tag.syntax())
+            && let Some(first_description_token) = first_non_whitespace_token(&description)
+        {
+            formatter.add_token_left_alignment_expected(
+                LuaSyntaxId::from_token(&first_description_token),
+                TokenExpected::Space(gap + max_body.saturating_sub(body.len())),
             );
         }
     }
@@ -925,23 +1434,10 @@ fn single_line_node_text(node: &impl LuaAstNode) -> Option<String> {
 }
 
 fn render_doc_comment_lines(config: &LuaFormatConfig, lines: &[DocCommentLine]) -> Vec<String> {
-    let mut rendered = Vec::new();
-    let mut index = 0;
-    while index < lines.len() {
-        if let Some((kind, group_end)) = find_interleaved_aligned_group(config, lines, index) {
-            rendered.extend(render_interleaved_aligned_doc_tag_group(
-                config,
-                &lines[index..group_end],
-                kind,
-            ));
-            index = group_end;
-            continue;
-        }
-
-        rendered.push(render_single_doc_comment_line(config, &lines[index]));
-        index += 1;
-    }
-    rendered
+    lines
+        .iter()
+        .map(|line| render_single_doc_comment_line(config, line))
+        .collect()
 }
 
 fn find_interleaved_aligned_group(
@@ -1008,33 +1504,6 @@ fn is_raw_doc_description_line(text: &str) -> bool {
             && !trimmed.starts_with("--- @"))
 }
 
-fn render_interleaved_aligned_doc_tag_group(
-    config: &LuaFormatConfig,
-    lines: &[DocCommentLine],
-    kind: AlignableDocTagKind,
-) -> Vec<String> {
-    let alignable_lines: Vec<DocCommentLine> = lines
-        .iter()
-        .filter(|line| alignable_doc_tag_kind(line) == Some(kind))
-        .cloned()
-        .collect();
-    let aligned_rendered = render_aligned_doc_tag_group(config, &alignable_lines, kind);
-    let mut aligned_iter = aligned_rendered.into_iter();
-
-    lines
-        .iter()
-        .map(|line| {
-            if alignable_doc_tag_kind(line) == Some(kind) {
-                aligned_iter
-                    .next()
-                    .unwrap_or_else(|| render_single_doc_comment_line(config, line))
-            } else {
-                render_single_doc_comment_line(config, line)
-            }
-        })
-        .collect()
-}
-
 fn should_align_doc_tag_kind(config: &LuaFormatConfig, kind: AlignableDocTagKind) -> bool {
     match kind {
         AlignableDocTagKind::Class
@@ -1058,220 +1527,6 @@ fn alignable_doc_tag_kind(line: &DocCommentLine) -> Option<AlignableDocTagKind> 
         DocCommentLine::Param { .. } => Some(AlignableDocTagKind::Param),
         DocCommentLine::Field { .. } => Some(AlignableDocTagKind::Field),
         DocCommentLine::Return { .. } => Some(AlignableDocTagKind::Return),
-        _ => None,
-    }
-}
-
-fn render_aligned_doc_tag_group(
-    config: &LuaFormatConfig,
-    lines: &[DocCommentLine],
-    kind: AlignableDocTagKind,
-) -> Vec<String> {
-    let gap = " ".repeat(config.emmy_doc.tag_spacing.max(1));
-    match kind {
-        AlignableDocTagKind::Class => render_body_aligned_doc_group(config, lines, "class"),
-        AlignableDocTagKind::Alias => render_alias_doc_group(config, lines),
-        AlignableDocTagKind::Type => render_body_aligned_doc_group(config, lines, "type"),
-        AlignableDocTagKind::Generic => render_body_aligned_doc_group(config, lines, "generic"),
-        AlignableDocTagKind::Overload => render_body_aligned_doc_group(config, lines, "overload"),
-        AlignableDocTagKind::Param => {
-            let max_name = lines
-                .iter()
-                .filter_map(|line| match line {
-                    DocCommentLine::Param { name, .. } => Some(name.len()),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let max_type = lines
-                .iter()
-                .filter_map(|line| match line {
-                    DocCommentLine::Param { ty, .. } => Some(ty.len()),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-
-            lines
-                .iter()
-                .map(|line| match line {
-                    DocCommentLine::Param { name, ty, desc } => {
-                        let tag_prefix = normalized_doc_tag_with_name_prefix(config, "param");
-                        let mut rendered = format!(
-                            "{tag_prefix}{gap}{name:<max_name$}{gap}{ty:<max_type$}",
-                            tag_prefix = tag_prefix,
-                            gap = gap,
-                            name = name,
-                            max_name = max_name,
-                            ty = ty,
-                            max_type = max_type,
-                        );
-                        if let Some(desc) = desc {
-                            rendered.push_str(&gap);
-                            rendered.push_str(desc);
-                        }
-                        trim_end_owned(rendered)
-                    }
-                    other => render_single_doc_comment_line(config, other),
-                })
-                .collect()
-        }
-        AlignableDocTagKind::Field => {
-            let max_key = lines
-                .iter()
-                .filter_map(|line| match line {
-                    DocCommentLine::Field { key, .. } => Some(key.len()),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let max_type = lines
-                .iter()
-                .filter_map(|line| match line {
-                    DocCommentLine::Field { ty, .. } => Some(ty.len()),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-
-            lines
-                .iter()
-                .map(|line| match line {
-                    DocCommentLine::Field { key, ty, desc } => {
-                        let tag_prefix = normalized_doc_tag_with_name_prefix(config, "field");
-                        let mut rendered = format!(
-                            "{tag_prefix}{gap}{key:<max_key$}{gap}{ty:<max_type$}",
-                            tag_prefix = tag_prefix,
-                            gap = gap,
-                            key = key,
-                            max_key = max_key,
-                            ty = ty,
-                            max_type = max_type,
-                        );
-                        if let Some(desc) = desc {
-                            rendered.push_str(&gap);
-                            rendered.push_str(desc);
-                        }
-                        trim_end_owned(rendered)
-                    }
-                    other => render_single_doc_comment_line(config, other),
-                })
-                .collect()
-        }
-        AlignableDocTagKind::Return => {
-            let max_body = lines
-                .iter()
-                .filter_map(|line| match line {
-                    DocCommentLine::Return { body, .. } => Some(body.len()),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-
-            lines
-                .iter()
-                .map(|line| match line {
-                    DocCommentLine::Return { body, desc } => {
-                        let tag_prefix = normalized_doc_tag_with_name_prefix(config, "return");
-                        let mut rendered = format!(
-                            "{tag_prefix}{gap}{body:<max_body$}",
-                            tag_prefix = tag_prefix,
-                            gap = gap,
-                            body = body,
-                            max_body = max_body,
-                        );
-                        if let Some(desc) = desc {
-                            rendered.push_str(&gap);
-                            rendered.push_str(desc);
-                        }
-                        trim_end_owned(rendered)
-                    }
-                    other => render_single_doc_comment_line(config, other),
-                })
-                .collect()
-        }
-    }
-}
-
-fn render_alias_doc_group(config: &LuaFormatConfig, lines: &[DocCommentLine]) -> Vec<String> {
-    let gap = " ".repeat(config.emmy_doc.tag_spacing.max(1));
-    let max_body = lines
-        .iter()
-        .filter_map(|line| match line {
-            DocCommentLine::Alias { body, .. } => Some(body.len()),
-            _ => None,
-        })
-        .max()
-        .unwrap_or(0);
-
-    lines
-        .iter()
-        .map(|line| match line {
-            DocCommentLine::Alias { body, desc } => {
-                let tag_prefix = normalized_doc_tag_with_name_prefix(config, "alias");
-                let normalized_body = normalize_embedded_doc_prefixes(config, body);
-                let mut rendered = format!(
-                    "{tag_prefix}{gap}{body:<max_body$}",
-                    tag_prefix = tag_prefix,
-                    gap = gap,
-                    body = normalized_body,
-                    max_body = max_body,
-                );
-                if let Some(desc) = desc {
-                    rendered.push_str(&gap);
-                    rendered.push_str(desc);
-                }
-                trim_end_owned(rendered)
-            }
-            other => render_single_doc_comment_line(config, other),
-        })
-        .collect()
-}
-
-fn render_body_aligned_doc_group(
-    config: &LuaFormatConfig,
-    lines: &[DocCommentLine],
-    tag_name: &str,
-) -> Vec<String> {
-    let gap = " ".repeat(config.emmy_doc.tag_spacing.max(1));
-    let max_body = lines
-        .iter()
-        .filter_map(|line| doc_line_body_and_desc(line).map(|(body, _)| body.len()))
-        .max()
-        .unwrap_or(0);
-
-    lines
-        .iter()
-        .map(|line| {
-            if let Some((body, desc)) = doc_line_body_and_desc(line) {
-                let tag_prefix = normalized_doc_tag_with_name_prefix(config, tag_name);
-                let mut rendered = format!(
-                    "{tag_prefix}{gap}{body:<max_body$}",
-                    tag_prefix = tag_prefix,
-                    gap = gap,
-                    body = body,
-                    max_body = max_body,
-                );
-                if let Some(desc) = desc {
-                    rendered.push_str(&gap);
-                    rendered.push_str(desc);
-                }
-                trim_end_owned(rendered)
-            } else {
-                render_single_doc_comment_line(config, line)
-            }
-        })
-        .collect()
-}
-
-fn doc_line_body_and_desc(line: &DocCommentLine) -> Option<(&str, Option<&String>)> {
-    match line {
-        DocCommentLine::Class { body, desc }
-        | DocCommentLine::Alias { body, desc }
-        | DocCommentLine::Type { body, desc }
-        | DocCommentLine::Generic { body, desc }
-        | DocCommentLine::Overload { body, desc }
-        | DocCommentLine::Return { body, desc } => Some((body.as_str(), desc.as_ref())),
         _ => None,
     }
 }
