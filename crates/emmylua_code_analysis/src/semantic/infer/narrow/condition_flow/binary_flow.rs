@@ -297,6 +297,18 @@ fn maybe_type_guard_binary_action(
         )));
     }
 
+    let Some(discriminant_decl_id) = maybe_var_ref_id.get_decl_id_ref() else {
+        return Ok(None);
+    };
+    let Some(target_decl_id) = var_ref_id.get_decl_id_ref() else {
+        return Ok(None);
+    };
+    if !tree.has_decl_multi_return_refs(&discriminant_decl_id)
+        || !tree.has_decl_multi_return_refs(&target_decl_id)
+    {
+        return Ok(None);
+    }
+
     let antecedent_flow_id = get_single_antecedent(flow_node)?;
     let antecedent_type =
         get_type_at_flow(db, tree, cache, root, &maybe_var_ref_id, antecedent_flow_id)?;
@@ -305,10 +317,6 @@ fn maybe_type_guard_binary_action(
             narrow_down_type(db, antecedent_type, narrow.clone(), None).unwrap_or(narrow.clone())
         }
         InferConditionFlow::FalseCondition => TypeOps::Remove.apply(db, &antecedent_type, &narrow),
-    };
-
-    let Some(discriminant_decl_id) = maybe_var_ref_id.get_decl_id_ref() else {
-        return Ok(None);
     };
 
     Ok(prepare_var_from_return_overload_condition(
@@ -403,13 +411,20 @@ fn get_var_eq_condition_action(
                 return Ok(ConditionFlowAction::Continue);
             };
 
-            let antecedent_flow_id = get_single_antecedent(flow_node)?;
-            let right_expr_type = infer_expr(db, cache, right_expr)?;
-
             if maybe_ref_id != *var_ref_id {
                 let Some(discriminant_decl_id) = maybe_ref_id.get_decl_id_ref() else {
                     return Ok(ConditionFlowAction::Continue);
                 };
+                let Some(target_decl_id) = var_ref_id.get_decl_id_ref() else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+                if !tree.has_decl_multi_return_refs(&discriminant_decl_id)
+                    || !tree.has_decl_multi_return_refs(&target_decl_id)
+                {
+                    return Ok(ConditionFlowAction::Continue);
+                }
+                let antecedent_flow_id = get_single_antecedent(flow_node)?;
+                let right_expr_type = infer_expr(db, cache, right_expr)?;
                 let antecedent_type =
                     get_type_at_flow(db, tree, cache, root, &maybe_ref_id, antecedent_flow_id)?;
                 let narrowed_discriminant_type =
@@ -430,6 +445,7 @@ fn get_var_eq_condition_action(
                 .unwrap_or(ConditionFlowAction::Continue));
             }
 
+            let right_expr_type = infer_expr(db, cache, right_expr)?;
             let result_type = match condition_flow {
                 InferConditionFlow::TrueCondition => {
                     // self 是特殊的, 我们删除其 nil 类型

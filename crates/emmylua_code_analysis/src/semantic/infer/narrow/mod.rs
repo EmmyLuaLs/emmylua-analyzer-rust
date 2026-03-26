@@ -12,6 +12,7 @@ use crate::{
         infer_name::{find_decl_member_type, infer_global_type},
     },
 };
+pub(in crate::semantic) use condition_flow::ConditionFlowAction;
 use emmylua_parser::{LuaAstNode, LuaChunk, LuaExpr};
 pub use get_type_at_cast_flow::get_type_at_call_expr_inline_cast;
 pub use narrow_type::{narrow_down_type, narrow_false_or_nil, remove_false_or_nil};

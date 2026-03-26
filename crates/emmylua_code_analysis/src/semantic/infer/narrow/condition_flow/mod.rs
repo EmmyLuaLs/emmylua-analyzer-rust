@@ -55,8 +55,8 @@ impl InferConditionFlow {
     }
 }
 
-#[derive(Debug)]
-pub(in crate::semantic::infer::narrow) enum ConditionFlowAction {
+#[derive(Debug, Clone)]
+pub(in crate::semantic) enum ConditionFlowAction {
     Continue,
     Result(LuaType),
     Pending(PendingConditionNarrow),
@@ -72,7 +72,7 @@ impl From<ResultTypeOrContinue> for ConditionFlowAction {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::semantic::infer::narrow) enum PendingConditionNarrow {
+pub(in crate::semantic) enum PendingConditionNarrow {
     Truthiness(InferConditionFlow),
     FieldTruthy {
         index: LuaIndexMemberExpr,
@@ -399,34 +399,41 @@ fn get_type_at_name_ref(
         return Ok(ConditionFlowAction::Continue);
     };
 
-    let antecedent_flow_id = get_single_antecedent(flow_node)?;
-    let antecedent_discriminant_type = get_type_at_flow(
-        db,
-        tree,
-        cache,
-        root,
-        &VarRefId::VarRef(decl_id),
-        antecedent_flow_id,
-    )?;
-    let narrowed_discriminant_type = match condition_flow {
-        InferConditionFlow::FalseCondition => narrow_false_or_nil(db, antecedent_discriminant_type),
-        InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_discriminant_type),
-    };
+    if let Some(target_decl_id) = var_ref_id.get_decl_id_ref()
+        && tree.has_decl_multi_return_refs(&decl_id)
+        && tree.has_decl_multi_return_refs(&target_decl_id)
+    {
+        let antecedent_flow_id = get_single_antecedent(flow_node)?;
+        let antecedent_discriminant_type = get_type_at_flow(
+            db,
+            tree,
+            cache,
+            root,
+            &VarRefId::VarRef(decl_id),
+            antecedent_flow_id,
+        )?;
+        let narrowed_discriminant_type = match condition_flow {
+            InferConditionFlow::FalseCondition => {
+                narrow_false_or_nil(db, antecedent_discriminant_type)
+            }
+            InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_discriminant_type),
+        };
 
-    if let Some(correlated_narrowing) = prepare_var_from_return_overload_condition(
-        db,
-        tree,
-        cache,
-        root,
-        var_ref_id,
-        flow_node,
-        decl_id,
-        name_expr.get_position(),
-        &narrowed_discriminant_type,
-    )? {
-        return Ok(ConditionFlowAction::Pending(
-            PendingConditionNarrow::Correlated(correlated_narrowing),
-        ));
+        if let Some(correlated_narrowing) = prepare_var_from_return_overload_condition(
+            db,
+            tree,
+            cache,
+            root,
+            var_ref_id,
+            flow_node,
+            decl_id,
+            name_expr.get_position(),
+            &narrowed_discriminant_type,
+        )? {
+            return Ok(ConditionFlowAction::Pending(
+                PendingConditionNarrow::Correlated(correlated_narrowing),
+            ));
+        }
     }
 
     let Some(expr_ptr) = tree.get_decl_ref_expr(&decl_id) else {

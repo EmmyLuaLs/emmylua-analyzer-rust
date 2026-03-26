@@ -7,7 +7,11 @@ use std::{
     sync::Arc,
 };
 
-use crate::{FileId, FlowId, LuaFunctionType, db_index::LuaType, semantic::infer::VarRefId};
+use crate::{
+    FileId, FlowId, LuaFunctionType,
+    db_index::LuaType,
+    semantic::infer::{ConditionFlowAction, VarRefId},
+};
 
 #[derive(Debug)]
 pub enum CacheEntry<T> {
@@ -23,6 +27,8 @@ pub struct LuaInferCache {
     pub call_cache:
         HashMap<(LuaSyntaxId, Option<usize>, LuaType), CacheEntry<Arc<LuaFunctionType>>>,
     pub(crate) flow_node_cache: HashMap<(VarRefId, FlowId, bool), CacheEntry<LuaType>>,
+    pub(in crate::semantic) condition_flow_cache:
+        HashMap<(VarRefId, FlowId, bool), CacheEntry<ConditionFlowAction>>,
     pub index_ref_origin_type_cache: HashMap<VarRefId, CacheEntry<LuaType>>,
     pub expr_var_ref_id_cache: HashMap<LuaSyntaxId, VarRefId>,
     pub narrow_by_literal_stop_position_cache: HashSet<LuaSyntaxId>,
@@ -36,6 +42,7 @@ impl LuaInferCache {
             expr_cache: HashMap::new(),
             call_cache: HashMap::new(),
             flow_node_cache: HashMap::new(),
+            condition_flow_cache: HashMap::new(),
             index_ref_origin_type_cache: HashMap::new(),
             expr_var_ref_id_cache: HashMap::new(),
             narrow_by_literal_stop_position_cache: HashSet::new(),
@@ -58,6 +65,7 @@ impl LuaInferCache {
         self.expr_cache.clear();
         self.call_cache.clear();
         self.flow_node_cache.clear();
+        self.condition_flow_cache.clear();
         self.index_ref_origin_type_cache.clear();
         self.expr_var_ref_id_cache.clear();
     }

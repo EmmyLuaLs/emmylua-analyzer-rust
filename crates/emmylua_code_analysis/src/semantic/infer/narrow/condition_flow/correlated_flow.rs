@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub(in crate::semantic::infer::narrow) struct CorrelatedConditionNarrowing {
+pub(in crate::semantic) struct CorrelatedConditionNarrowing {
     search_root_correlated_types: Vec<SearchRootCorrelatedTypes>,
 }
 

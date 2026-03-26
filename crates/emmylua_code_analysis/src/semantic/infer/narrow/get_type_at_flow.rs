@@ -246,17 +246,50 @@ fn get_type_at_flow_internal(
                         } else {
                             InferConditionFlow::FalseCondition
                         };
-                    let condition = condition_ptr.to_node(root).ok_or(InferFailReason::None)?;
-                    match get_type_at_condition_flow(
-                        db,
-                        tree,
-                        cache,
-                        root,
-                        var_ref_id,
-                        flow_node,
-                        condition,
-                        condition_flow,
-                    )? {
+                    let condition_key = (
+                        var_ref_id.clone(),
+                        antecedent_flow_id,
+                        matches!(condition_flow, InferConditionFlow::TrueCondition),
+                    );
+                    let condition_action = {
+                        if let Some(cache_entry) = cache.condition_flow_cache.get(&condition_key) {
+                            match cache_entry {
+                                CacheEntry::Cache(action) => {
+                                    Ok::<ConditionFlowAction, InferFailReason>(action.clone())
+                                }
+                                CacheEntry::Ready => Err(InferFailReason::RecursiveInfer),
+                            }
+                        } else {
+                            let condition =
+                                condition_ptr.to_node(root).ok_or(InferFailReason::None)?;
+                            cache
+                                .condition_flow_cache
+                                .insert(condition_key.clone(), CacheEntry::Ready);
+                            let result = get_type_at_condition_flow(
+                                db,
+                                tree,
+                                cache,
+                                root,
+                                var_ref_id,
+                                flow_node,
+                                condition,
+                                condition_flow,
+                            );
+                            match &result {
+                                Ok(action) => {
+                                    cache
+                                        .condition_flow_cache
+                                        .insert(condition_key, CacheEntry::Cache(action.clone()));
+                                }
+                                Err(_) => {
+                                    cache.condition_flow_cache.remove(&condition_key);
+                                }
+                            }
+                            result
+                        }
+                    }?;
+
+                    match condition_action {
                         ConditionFlowAction::Pending(pending_condition_narrow) => {
                             pending_condition_narrows.push(pending_condition_narrow);
                             antecedent_flow_id = get_single_antecedent(flow_node)?;
