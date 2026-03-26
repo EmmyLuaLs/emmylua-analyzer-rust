@@ -114,7 +114,10 @@ mod test {
             prefix_tokens,
             vec![
                 (LuaKind::Token(LuaTokenKind::TkDocStart), "---@".to_string()),
-                (LuaKind::Token(LuaTokenKind::TkNormalStart), "--".to_string()),
+                (
+                    LuaKind::Token(LuaTokenKind::TkNormalStart),
+                    "--".to_string()
+                ),
             ]
         );
     }

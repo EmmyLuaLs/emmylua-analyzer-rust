@@ -914,7 +914,7 @@ local t = {
         // Extra spaces in doc comment should be normalized to single space
         assert_format!(
             "---@param  name   string\nlocal function f(name) end\n",
-            "---@param name string\nlocal function f(name) end\n"
+            "--- @param name string\nlocal function f(name) end\n"
         );
     }
 
@@ -923,7 +923,7 @@ local t = {
         // Well-formatted doc comment should be unchanged
         assert_format!(
             "---@param name string\nlocal function f(name) end\n",
-            "---@param name string\nlocal function f(name) end\n"
+            "--- @param name string\nlocal function f(name) end\n"
         );
     }
 
@@ -944,7 +944,7 @@ local t = {
     fn test_doc_comment_multi_tag() {
         assert_format!(
             "---@param a number\n---@param b string\n---@return boolean\nlocal function f(a, b) end\n",
-            "---@param a number\n---@param b string\n---@return boolean\nlocal function f(a, b) end\n"
+            "--- @param a number\n--- @param b string\n--- @return boolean\nlocal function f(a, b) end\n"
         );
     }
 
@@ -952,7 +952,7 @@ local t = {
     fn test_doc_comment_align_param_columns() {
         assert_format!(
             "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "---@param short       string  desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
+            "--- @param short       string  desc\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
         );
     }
 
@@ -960,7 +960,7 @@ local t = {
     fn test_doc_comment_align_param_columns_with_interleaved_descriptions() {
         assert_format!(
             "--- first parameter docs\n---@param short string desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "--- first parameter docs\n---@param short       string  desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
+            "--- first parameter docs\n--- @param short       string  desc\n--- second parameter docs\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
         );
     }
 
@@ -968,7 +968,7 @@ local t = {
     fn test_doc_comment_align_field_columns() {
         assert_format!(
             "---@field x string desc\n---@field longer_name integer another desc\nlocal t = {}\n",
-            "---@field x           string  desc\n---@field longer_name integer another desc\nlocal t = {}\n"
+            "--- @field x           string  desc\n--- @field longer_name integer another desc\nlocal t = {}\n"
         );
     }
 
@@ -976,7 +976,7 @@ local t = {
     fn test_doc_comment_align_field_columns_with_interleaved_descriptions() {
         assert_format!(
             "---@class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n---@field arrayIndex boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n---@field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n---@field metaOverrideFileDefine boolean?\n",
-            "---@class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n---@field arrayIndex                boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n---@field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n---@field metaOverrideFileDefine    boolean?\n"
+            "--- @class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n--- @field arrayIndex                boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n--- @field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n--- @field metaOverrideFileDefine    boolean?\n"
         );
     }
 
@@ -984,7 +984,7 @@ local t = {
     fn test_doc_comment_align_return_columns() {
         assert_format!(
             "---@return number ok success\n---@return string, integer err failure\nfunction f() end\n",
-            "---@return number ok           success\n---@return string, integer err failure\nfunction f() end\n"
+            "--- @return number ok           success\n--- @return string, integer err failure\nfunction f() end\n"
         );
     }
 
@@ -992,7 +992,7 @@ local t = {
     fn test_doc_comment_align_return_columns_with_interleaved_descriptions() {
         assert_format!(
             "--- first return docs\n---@return number ok success\n--- second return docs\n---@return string, integer err failure\nfunction f() end\n",
-            "--- first return docs\n---@return number ok           success\n--- second return docs\n---@return string, integer err failure\nfunction f() end\n"
+            "--- first return docs\n--- @return number ok           success\n--- second return docs\n--- @return string, integer err failure\nfunction f() end\n"
         );
     }
 
@@ -1000,7 +1000,7 @@ local t = {
     fn test_doc_comment_align_complex_field_columns() {
         assert_format!(
             "---@field public [\"foo\"] string?\n---@field private [bar] integer\n---@field protected baz fun(x: string): boolean\nlocal t = {}\n",
-            "---@field public [\"foo\"] string?\n---@field private [bar]  integer\n---@field protected baz  fun(x: string): boolean\nlocal t = {}\n"
+            "--- @field public [\"foo\"] string?\n--- @field private [bar]  integer\n--- @field protected baz  fun(x: string): boolean\nlocal t = {}\n"
         );
     }
 
@@ -1017,7 +1017,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
+            "--- @param short string desc\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
             config
         );
     }
@@ -1035,7 +1035,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@class Short short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n",
-            "---@class Short short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n",
+            "--- @class Short short desc\n--- @class LongerName<T> longer desc\nlocal value = {}\n",
             config
         );
     }
@@ -1053,7 +1053,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
+            "--- @param short string desc\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
             config
         );
     }
@@ -1062,7 +1062,7 @@ local t = {
     fn test_doc_comment_align_class_columns() {
         assert_format!(
             "---@class Short short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n",
-            "---@class Short         short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n"
+            "--- @class Short         short desc\n--- @class LongerName<T> longer desc\nlocal value = {}\n"
         );
     }
 
@@ -1070,7 +1070,7 @@ local t = {
     fn test_doc_comment_align_alias_columns() {
         assert_format!(
             "---@alias Id integer identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n",
-            "---@alias Id integer         identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n"
+            "--- @alias Id integer         identifier\n--- @alias DisplayName string user facing name\nlocal value = nil\n"
         );
     }
 
@@ -1087,7 +1087,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@alias Id   integer|nil identifier\n---@alias DisplayName    string user facing name\nlocal value = nil\n",
-            "---@alias Id   integer|nil identifier\n---@alias DisplayName    string user facing name\nlocal value = nil\n",
+            "--- @alias Id   integer|nil identifier\n--- @alias DisplayName    string user facing name\nlocal value = nil\n",
             config
         );
     }
@@ -1111,6 +1111,44 @@ local t = {
     }
 
     #[test]
+    fn test_doc_tag_prefix_can_omit_space_before_at() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_after_description_dash: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "--- @param  name   string\nlocal function f(name) end\n",
+            "---@param name string\nlocal function f(name) end\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_doc_continue_or_prefix_can_omit_space() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_after_description_dash: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "--- @alias Complex\n--- | string\n--- | integer\nlocal value = nil\n",
+            "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n",
+            config
+        );
+    }
+
+    #[test]
     fn test_doc_comment_single_line_description_still_normalizes_whitespace() {
         assert_format!(
             "---   spaced    words\nlocal value = nil\n",
@@ -1119,10 +1157,26 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_multiline_description_without_tags_uses_token_prefixes() {
+        assert_format!(
+            "--- first line\n---   second   line\nlocal value = nil\n",
+            "--- first line\n---   second   line\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_tag_prefix_inserts_space_before_at_by_default() {
+        assert_format!(
+            "---@param  name   string\nlocal function f(name) end\n",
+            "--- @param name string\nlocal function f(name) end\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_multiline_description_preserves_line_structure() {
         assert_format!(
             "---@class Test first line\n---   second   line\nlocal value = {}\n",
-            "---@class Test first line\n---   second   line\nlocal value = {}\n"
+            "--- @class Test first line\n---   second   line\nlocal value = {}\n"
         );
     }
 
@@ -1130,7 +1184,7 @@ local t = {
     fn test_doc_comment_align_generic_columns() {
         assert_format!(
             "---@generic T value type\n---@generic Value, Result: number mapped result\nlocal function f() end\n",
-            "---@generic T                     value type\n---@generic Value, Result: number mapped result\nlocal function f() end\n"
+            "--- @generic T                     value type\n--- @generic Value, Result: number mapped result\nlocal function f() end\n"
         );
     }
 
@@ -1138,7 +1192,7 @@ local t = {
     fn test_doc_comment_format_type_and_overload() {
         assert_format!(
             "---@type   string|integer value\n---@overload   fun(x: string): integer callable\nlocal fn = nil\n",
-            "---@type string|integer value\n---@overload fun(x: string): integer callable\nlocal fn = nil\n"
+            "--- @type string|integer value\n--- @overload fun(x: string): integer callable\nlocal fn = nil\n"
         );
     }
 
@@ -1162,7 +1216,7 @@ local t = {
     fn test_doc_comment_multiline_alias_falls_back() {
         assert_format!(
             "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n",
-            "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n"
+            "--- @alias Complex\n--- | string\n--- | integer\nlocal value = nil\n"
         );
     }
 

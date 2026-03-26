@@ -107,8 +107,11 @@ impl CommentFormatter {
                 _ => {
                     let syntax_id = LuaSyntaxId::from_token(&token);
                     if line_has_content {
-                        current_line
-                            .push_str(&self.resolve_gap(prev_token_id, syntax_id, &pending_gap));
+                        current_line.push_str(&self.resolve_gap(
+                            prev_token_id,
+                            syntax_id,
+                            &pending_gap,
+                        ));
                     }
 
                     current_line.push_str(

@@ -23,8 +23,7 @@ enum TokenExpected {
 pub fn format_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
     let is_doc = is_doc_comment(comment);
 
-    if has_nonstandard_dash_prefix(comment)
-        || (is_doc && should_preserve_doc_comment_raw(comment))
+    if has_nonstandard_dash_prefix(comment) || (is_doc && should_preserve_doc_comment_raw(comment))
     {
         return vec![ir::source_node_trimmed(comment.syntax().clone())];
     }
@@ -72,8 +71,8 @@ pub fn extract_trailing_comment(
             return None;
         }
 
-        let comment_text =
-            render_single_line_comment_text(config, &comment).unwrap_or_else(|| trim_end_owned(child.text()));
+        let comment_text = render_single_line_comment_text(config, &comment)
+            .unwrap_or_else(|| trim_end_owned(child.text()));
 
         return Some((vec![ir::text(comment_text)], child.text_range()));
     }
@@ -179,7 +178,11 @@ fn is_long_comment(comment: &LuaComment) -> bool {
 }
 
 fn format_normal_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
-    let formatter = build_comment_formatter(config, comment, !comment.syntax().text().contains_char('\n'));
+    let formatter = build_comment_formatter(
+        config,
+        comment,
+        !comment.syntax().text().contains_char('\n'),
+    );
     formatter.render_comment(comment)
 }
 
@@ -204,13 +207,20 @@ fn build_comment_formatter(
                 }
             }
             LuaTokenKind::TkDocStart if normalize_start_tokens => {
-                formatter.add_token_replace(syntax_id, "---@".to_string());
+                formatter.add_token_replace(syntax_id, normalized_doc_tag_prefix(config));
                 formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
             }
             LuaTokenKind::TkDocContinue if normalize_start_tokens => {
                 formatter.add_token_replace(
                     syntax_id,
                     normalized_doc_continue_prefix(config, token.text()),
+                );
+                formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
+            }
+            LuaTokenKind::TkDocContinueOr if normalize_start_tokens => {
+                formatter.add_token_replace(
+                    syntax_id,
+                    normalized_doc_continue_or_prefix(config, token.text()),
                 );
                 formatter.add_token_right_expected(syntax_id, TokenExpected::Space(0));
             }
@@ -329,7 +339,10 @@ fn build_comment_formatter(
     formatter
 }
 
-fn render_single_line_comment_text(config: &LuaFormatConfig, comment: &LuaComment) -> Option<String> {
+fn render_single_line_comment_text(
+    config: &LuaFormatConfig,
+    comment: &LuaComment,
+) -> Option<String> {
     if is_long_comment(comment) {
         return Some(trim_end_owned(comment.syntax().text()));
     }
@@ -351,6 +364,10 @@ fn render_single_line_comment_text(config: &LuaFormatConfig, comment: &LuaCommen
 }
 
 fn format_doc_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<DocIR> {
+    if let Some(docs) = try_format_doc_comment_with_tokens(config, comment) {
+        return docs;
+    }
+
     let lines = parse_doc_comment_lines(comment);
     let rendered = render_doc_comment_lines(config, &lines);
     let mut docs = Vec::new();
@@ -365,15 +382,174 @@ fn format_doc_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<Doc
     docs
 }
 
+fn try_format_doc_comment_with_tokens(
+    config: &LuaFormatConfig,
+    comment: &LuaComment,
+) -> Option<Vec<DocIR>> {
+    let is_single_line = !comment.syntax().text().contains_char('\n');
+    let mut doc_tags = comment.get_doc_tags();
+    let first_tag = doc_tags.next();
+    if doc_tags.next().is_some() {
+        return None;
+    }
+
+    let normalize_start_tokens = is_single_line || first_tag.is_some();
+    let mut formatter = build_comment_formatter(config, comment, normalize_start_tokens);
+
+    match first_tag {
+        None => {
+            let description = comment.get_description()?;
+            if is_single_line {
+                normalize_doc_description_tokens(&mut formatter, description.syntax());
+            }
+            return Some(formatter.render_comment(comment));
+        }
+        Some(LuaDocTag::Param(tag)) if is_single_line => {
+            configure_doc_tag_token_spacing(
+                &mut formatter,
+                config,
+                &tag.syntax().clone(),
+                tag.get_name_token().map(|token| token.syntax().clone()),
+                tag.get_type().and_then(|ty| ty.syntax().first_token()),
+                find_inline_doc_description_after(tag.syntax()),
+            )?;
+        }
+        Some(LuaDocTag::Type(tag)) if is_single_line => {
+            let first_type_token = tag
+                .get_type_list()
+                .next()
+                .and_then(|ty| ty.syntax().first_token());
+            configure_doc_tag_token_spacing(
+                &mut formatter,
+                config,
+                &tag.syntax().clone(),
+                None,
+                first_type_token,
+                find_inline_doc_description_after(tag.syntax()),
+            )?;
+        }
+        Some(LuaDocTag::Overload(tag)) if is_single_line => {
+            configure_doc_tag_token_spacing(
+                &mut formatter,
+                config,
+                &tag.syntax().clone(),
+                None,
+                tag.get_type().and_then(|ty| ty.syntax().first_token()),
+                find_inline_doc_description_after(tag.syntax()),
+            )?;
+        }
+        _ => return None,
+    }
+
+    Some(formatter.render_comment(comment))
+}
+
+fn configure_doc_tag_token_spacing(
+    formatter: &mut CommentFormatter,
+    config: &LuaFormatConfig,
+    tag_syntax: &LuaSyntaxNode,
+    middle_token: Option<emmylua_parser::LuaSyntaxToken>,
+    body_first_token: Option<emmylua_parser::LuaSyntaxToken>,
+    inline_description: Option<LuaSyntaxNode>,
+) -> Option<()> {
+    let tag_token = tag_syntax.first_token()?;
+    formatter.add_token_right_expected(
+        emmylua_parser::LuaSyntaxId::from_token(&tag_token),
+        TokenExpected::Space(config.emmy_doc.tag_spacing.max(1)),
+    );
+
+    if let Some(middle_token) = middle_token {
+        formatter.add_token_right_expected(
+            emmylua_parser::LuaSyntaxId::from_token(&middle_token),
+            TokenExpected::Space(1),
+        );
+    }
+
+    if let Some(body_first_token) = body_first_token {
+        formatter.add_token_left_expected(
+            emmylua_parser::LuaSyntaxId::from_token(&body_first_token),
+            TokenExpected::Space(1),
+        );
+    }
+
+    if let Some(description) = inline_description {
+        normalize_doc_description_tokens(formatter, &description);
+        if let Some(first_description_token) = first_non_whitespace_token(&description) {
+            formatter.add_token_left_expected(
+                emmylua_parser::LuaSyntaxId::from_token(&first_description_token),
+                TokenExpected::Space(1),
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn normalize_doc_description_tokens(formatter: &mut CommentFormatter, description: &LuaSyntaxNode) {
+    for element in description.descendants_with_tokens() {
+        let Some(token) = element.into_token() else {
+            continue;
+        };
+
+        if token.kind().to_token() == LuaTokenKind::TkDocDetail {
+            formatter.add_token_replace(
+                emmylua_parser::LuaSyntaxId::from_token(&token),
+                normalize_single_line_spaces(token.text()),
+            );
+        }
+    }
+}
+
+fn first_non_whitespace_token(node: &LuaSyntaxNode) -> Option<emmylua_parser::LuaSyntaxToken> {
+    node.descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .find(|token| {
+            token.kind().to_token() != LuaTokenKind::TkWhitespace
+                && token.kind().to_token() != LuaTokenKind::TkEndOfLine
+        })
+}
+
+fn find_inline_doc_description_after(node: &LuaSyntaxNode) -> Option<LuaSyntaxNode> {
+    let mut next_sibling = node.next_sibling_or_token();
+    for _ in 0..=3 {
+        let sibling = next_sibling.as_ref()?;
+        match sibling.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {}
+            LuaKind::Syntax(LuaSyntaxKind::DocDescription) => {
+                return sibling.clone().into_node();
+            }
+            _ => return None,
+        }
+        next_sibling = sibling.next_sibling_or_token();
+    }
+
+    None
+}
+
 #[derive(Debug, Clone)]
 enum DocCommentLine {
     Empty,
     Description(String),
-    Class { body: String, desc: Option<String> },
-    Alias { body: String, desc: Option<String> },
-    Type { body: String, desc: Option<String> },
-    Generic { body: String, desc: Option<String> },
-    Overload { body: String, desc: Option<String> },
+    Class {
+        body: String,
+        desc: Option<String>,
+    },
+    Alias {
+        body: String,
+        desc: Option<String>,
+    },
+    Type {
+        body: String,
+        desc: Option<String>,
+    },
+    Generic {
+        body: String,
+        desc: Option<String>,
+    },
+    Overload {
+        body: String,
+        desc: Option<String>,
+    },
     Param {
         name: String,
         ty: String,
@@ -384,7 +560,10 @@ enum DocCommentLine {
         ty: String,
         desc: Option<String>,
     },
-    Return { body: String, desc: Option<String> },
+    Return {
+        body: String,
+        desc: Option<String>,
+    },
     Raw(String),
 }
 
@@ -518,30 +697,44 @@ fn finalize_doc_comment_line(pending: &mut PendingDocLine) -> DocCommentLine {
 }
 
 fn build_doc_tag_line(prefix: &str, tag: LuaDocTag, description: Option<String>) -> DocCommentLine {
-    if prefix != "---@" {
+    if !is_structured_doc_tag_prefix(prefix) {
         return raw_doc_tag_line(prefix, tag.syntax().text().to_string(), description);
     }
 
     match tag {
-        LuaDocTag::Class(class_tag) => {
-            build_class_doc_line(&class_tag, description.clone()).unwrap_or_else(|| {
+        LuaDocTag::Class(class_tag) => build_class_doc_line(&class_tag, description.clone())
+            .unwrap_or_else(|| {
                 raw_doc_tag_line(prefix, class_tag.syntax().text().to_string(), description)
+            }),
+        LuaDocTag::Alias(alias) => build_alias_doc_line(&alias, description.clone())
+            .unwrap_or_else(|| {
+                raw_doc_tag_line(prefix, alias.syntax().text().to_string(), description)
+            }),
+        LuaDocTag::Type(type_tag) => build_type_doc_line(&type_tag, description.clone())
+            .unwrap_or_else(|| {
+                raw_doc_tag_line(prefix, type_tag.syntax().text().to_string(), description)
+            }),
+        LuaDocTag::Generic(generic) => build_generic_doc_line(&generic, description.clone())
+            .unwrap_or_else(|| {
+                raw_doc_tag_line(prefix, generic.syntax().text().to_string(), description)
+            }),
+        LuaDocTag::Overload(overload) => build_overload_doc_line(&overload, description.clone())
+            .unwrap_or_else(|| {
+                raw_doc_tag_line(prefix, overload.syntax().text().to_string(), description)
+            }),
+        LuaDocTag::Param(param) => build_param_doc_line(&param, description.clone())
+            .unwrap_or_else(|| {
+                raw_doc_tag_line(prefix, param.syntax().text().to_string(), description)
+            }),
+        LuaDocTag::Field(field) => build_field_doc_line(&field, description.clone())
+            .unwrap_or_else(|| {
+                raw_doc_tag_line(prefix, field.syntax().text().to_string(), description)
+            }),
+        LuaDocTag::Return(ret) => {
+            build_return_doc_line(&ret, description.clone()).unwrap_or_else(|| {
+                raw_doc_tag_line(prefix, ret.syntax().text().to_string(), description)
             })
         }
-        LuaDocTag::Alias(alias) => build_alias_doc_line(&alias, description.clone())
-            .unwrap_or_else(|| raw_doc_tag_line(prefix, alias.syntax().text().to_string(), description)),
-        LuaDocTag::Type(type_tag) => build_type_doc_line(&type_tag, description.clone())
-            .unwrap_or_else(|| raw_doc_tag_line(prefix, type_tag.syntax().text().to_string(), description)),
-        LuaDocTag::Generic(generic) => build_generic_doc_line(&generic, description.clone())
-            .unwrap_or_else(|| raw_doc_tag_line(prefix, generic.syntax().text().to_string(), description)),
-        LuaDocTag::Overload(overload) => build_overload_doc_line(&overload, description.clone())
-            .unwrap_or_else(|| raw_doc_tag_line(prefix, overload.syntax().text().to_string(), description)),
-        LuaDocTag::Param(param) => build_param_doc_line(&param, description.clone())
-            .unwrap_or_else(|| raw_doc_tag_line(prefix, param.syntax().text().to_string(), description)),
-        LuaDocTag::Field(field) => build_field_doc_line(&field, description.clone())
-            .unwrap_or_else(|| raw_doc_tag_line(prefix, field.syntax().text().to_string(), description)),
-        LuaDocTag::Return(ret) => build_return_doc_line(&ret, description.clone())
-            .unwrap_or_else(|| raw_doc_tag_line(prefix, ret.syntax().text().to_string(), description)),
         other => raw_doc_tag_line(prefix, other.syntax().text().to_string(), description),
     }
 }
@@ -571,10 +764,7 @@ fn build_alias_doc_line(
     Some(DocCommentLine::Alias { body, desc })
 }
 
-fn build_type_doc_line(
-    tag: &LuaDocTagType,
-    description: Option<String>,
-) -> Option<DocCommentLine> {
+fn build_type_doc_line(tag: &LuaDocTagType, description: Option<String>) -> Option<DocCommentLine> {
     let mut parts = Vec::new();
     for ty in tag.get_type_list() {
         parts.push(single_line_syntax_text(&ty)?);
@@ -699,11 +889,7 @@ fn single_line_syntax_text(node: &impl LuaAstNode) -> Option<String> {
 
 fn non_empty_description_text(description: Option<String>) -> Option<String> {
     let text = description?;
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
+    if text.is_empty() { None } else { Some(text) }
 }
 
 fn normalize_single_line_spaces(text: &str) -> String {
@@ -816,7 +1002,10 @@ fn should_keep_doc_line_inside_aligned_group(
 
 fn is_raw_doc_description_line(text: &str) -> bool {
     let trimmed = text.trim();
-    trimmed == "---" || (dash_prefix_len(trimmed) == 3 && !trimmed.starts_with("---@"))
+    trimmed == "---"
+        || (dash_prefix_len(trimmed) == 3
+            && !trimmed.starts_with("---@")
+            && !trimmed.starts_with("--- @"))
 }
 
 fn render_interleaved_aligned_doc_tag_group(
@@ -907,8 +1096,10 @@ fn render_aligned_doc_tag_group(
                 .iter()
                 .map(|line| match line {
                     DocCommentLine::Param { name, ty, desc } => {
+                        let tag_prefix = normalized_doc_tag_with_name_prefix(config, "param");
                         let mut rendered = format!(
-                            "---@param{gap}{name:<max_name$}{gap}{ty:<max_type$}",
+                            "{tag_prefix}{gap}{name:<max_name$}{gap}{ty:<max_type$}",
+                            tag_prefix = tag_prefix,
                             gap = gap,
                             name = name,
                             max_name = max_name,
@@ -947,8 +1138,10 @@ fn render_aligned_doc_tag_group(
                 .iter()
                 .map(|line| match line {
                     DocCommentLine::Field { key, ty, desc } => {
+                        let tag_prefix = normalized_doc_tag_with_name_prefix(config, "field");
                         let mut rendered = format!(
-                            "---@field{gap}{key:<max_key$}{gap}{ty:<max_type$}",
+                            "{tag_prefix}{gap}{key:<max_key$}{gap}{ty:<max_type$}",
+                            tag_prefix = tag_prefix,
                             gap = gap,
                             key = key,
                             max_key = max_key,
@@ -979,8 +1172,10 @@ fn render_aligned_doc_tag_group(
                 .iter()
                 .map(|line| match line {
                     DocCommentLine::Return { body, desc } => {
+                        let tag_prefix = normalized_doc_tag_with_name_prefix(config, "return");
                         let mut rendered = format!(
-                            "---@return{gap}{body:<max_body$}",
+                            "{tag_prefix}{gap}{body:<max_body$}",
+                            tag_prefix = tag_prefix,
                             gap = gap,
                             body = body,
                             max_body = max_body,
@@ -1013,10 +1208,13 @@ fn render_alias_doc_group(config: &LuaFormatConfig, lines: &[DocCommentLine]) ->
         .iter()
         .map(|line| match line {
             DocCommentLine::Alias { body, desc } => {
+                let tag_prefix = normalized_doc_tag_with_name_prefix(config, "alias");
+                let normalized_body = normalize_embedded_doc_prefixes(config, body);
                 let mut rendered = format!(
-                    "---@alias{gap}{body:<max_body$}",
+                    "{tag_prefix}{gap}{body:<max_body$}",
+                    tag_prefix = tag_prefix,
                     gap = gap,
-                    body = body,
+                    body = normalized_body,
                     max_body = max_body,
                 );
                 if let Some(desc) = desc {
@@ -1046,9 +1244,10 @@ fn render_body_aligned_doc_group(
         .iter()
         .map(|line| {
             if let Some((body, desc)) = doc_line_body_and_desc(line) {
+                let tag_prefix = normalized_doc_tag_with_name_prefix(config, tag_name);
                 let mut rendered = format!(
-                    "---@{tag_name}{gap}{body:<max_body$}",
-                    tag_name = tag_name,
+                    "{tag_prefix}{gap}{body:<max_body$}",
+                    tag_prefix = tag_prefix,
                     gap = gap,
                     body = body,
                     max_body = max_body,
@@ -1088,9 +1287,12 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
                 format!("---{text}")
             }
         }
-        DocCommentLine::Raw(text) => text.clone(),
+        DocCommentLine::Raw(text) => normalize_embedded_doc_prefixes(config, text),
         DocCommentLine::Class { body, desc } => {
-            let mut rendered = format!("---@class{gap}{body}");
+            let mut rendered = format!(
+                "{}{gap}{body}",
+                normalized_doc_tag_with_name_prefix(config, "class")
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1098,7 +1300,11 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             rendered
         }
         DocCommentLine::Alias { body, desc } => {
-            let mut rendered = format!("---@alias{gap}{body}");
+            let mut rendered = format!(
+                "{}{gap}{}",
+                normalized_doc_tag_with_name_prefix(config, "alias"),
+                normalize_embedded_doc_prefixes(config, body)
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1106,7 +1312,10 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             rendered
         }
         DocCommentLine::Type { body, desc } => {
-            let mut rendered = format!("---@type{gap}{body}");
+            let mut rendered = format!(
+                "{}{gap}{body}",
+                normalized_doc_tag_with_name_prefix(config, "type")
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1114,7 +1323,10 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             rendered
         }
         DocCommentLine::Generic { body, desc } => {
-            let mut rendered = format!("---@generic{gap}{body}");
+            let mut rendered = format!(
+                "{}{gap}{body}",
+                normalized_doc_tag_with_name_prefix(config, "generic")
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1122,7 +1334,10 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             rendered
         }
         DocCommentLine::Overload { body, desc } => {
-            let mut rendered = format!("---@overload{gap}{body}");
+            let mut rendered = format!(
+                "{}{gap}{body}",
+                normalized_doc_tag_with_name_prefix(config, "overload")
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1130,7 +1345,10 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             rendered
         }
         DocCommentLine::Param { name, ty, desc } => {
-            let mut rendered = format!("---@param{gap}{name}{gap}{ty}");
+            let mut rendered = format!(
+                "{}{gap}{name}{gap}{ty}",
+                normalized_doc_tag_with_name_prefix(config, "param")
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1138,7 +1356,10 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             rendered
         }
         DocCommentLine::Field { key, ty, desc } => {
-            let mut rendered = format!("---@field{gap}{key}{gap}{ty}");
+            let mut rendered = format!(
+                "{}{gap}{key}{gap}{ty}",
+                normalized_doc_tag_with_name_prefix(config, "field")
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1146,7 +1367,10 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             rendered
         }
         DocCommentLine::Return { body, desc } => {
-            let mut rendered = format!("---@return{gap}{body}");
+            let mut rendered = format!(
+                "{}{gap}{body}",
+                normalized_doc_tag_with_name_prefix(config, "return")
+            );
             if let Some(desc) = desc {
                 rendered.push_str(&gap);
                 rendered.push_str(desc);
@@ -1172,6 +1396,18 @@ fn normalized_comment_prefix(config: &LuaFormatConfig, prefix_text: &str) -> Opt
     }
 }
 
+fn normalized_doc_tag_prefix(config: &LuaFormatConfig) -> String {
+    if config.emmy_doc.space_after_description_dash {
+        "--- @".to_string()
+    } else {
+        "---@".to_string()
+    }
+}
+
+fn normalized_doc_tag_with_name_prefix(config: &LuaFormatConfig, tag_name: &str) -> String {
+    format!("{}{tag_name}", normalized_doc_tag_prefix(config))
+}
+
 fn normalized_doc_continue_prefix(config: &LuaFormatConfig, prefix_text: &str) -> String {
     if prefix_text == "---" || prefix_text == "--- " {
         if config.emmy_doc.space_after_description_dash {
@@ -1182,6 +1418,67 @@ fn normalized_doc_continue_prefix(config: &LuaFormatConfig, prefix_text: &str) -
     } else {
         prefix_text.to_string()
     }
+}
+
+fn normalized_doc_continue_or_prefix(config: &LuaFormatConfig, prefix_text: &str) -> String {
+    if !prefix_text.starts_with("---") {
+        return prefix_text.to_string();
+    }
+
+    let suffix = prefix_text[3..].trim_start();
+    if config.emmy_doc.space_after_description_dash {
+        format!("--- {suffix}")
+    } else {
+        format!("---{suffix}")
+    }
+}
+
+fn is_structured_doc_tag_prefix(prefix: &str) -> bool {
+    let trimmed = prefix.trim_end();
+    trimmed == "---@" || trimmed == "---"
+}
+
+fn normalize_raw_doc_line(config: &LuaFormatConfig, text: &str) -> String {
+    let Some(rest) = text.strip_prefix("---@") else {
+        if let Some(rest) = text.strip_prefix("--- @") {
+            return if config.emmy_doc.space_after_description_dash {
+                format!("--- @{rest}")
+            } else {
+                format!("---@{rest}")
+            };
+        }
+
+        if let Some(rest) = text.strip_prefix("---|") {
+            return if config.emmy_doc.space_after_description_dash {
+                format!("--- |{rest}")
+            } else {
+                format!("---|{rest}")
+            };
+        }
+
+        if let Some(rest) = text.strip_prefix("--- |") {
+            return if config.emmy_doc.space_after_description_dash {
+                format!("--- |{rest}")
+            } else {
+                format!("---|{rest}")
+            };
+        }
+
+        return text.to_string();
+    };
+
+    if config.emmy_doc.space_after_description_dash {
+        format!("--- @{rest}")
+    } else {
+        format!("---@{rest}")
+    }
+}
+
+fn normalize_embedded_doc_prefixes(config: &LuaFormatConfig, text: &str) -> String {
+    text.lines()
+        .map(|line| normalize_raw_doc_line(config, line))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn trim_end_owned(text: impl ToString) -> String {
