@@ -1,12 +1,14 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaAstToken, LuaChunk, LuaComment, LuaExpr, LuaForRangeStat,
-    LuaForStat, LuaIfStat, LuaKind, LuaLocalName, LuaLocalStat, LuaRepeatStat, LuaReturnStat,
-    LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
-    LuaWhileStat,
+    LuaAssignStat, LuaAstNode, LuaAstToken, LuaCallExprStat, LuaChunk, LuaComment, LuaDoStat,
+    LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaIfStat, LuaKind, LuaLocalFuncStat,
+    LuaLocalName, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaStat, LuaSyntaxId, LuaSyntaxKind,
+    LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind, LuaVarExpr, LuaWhileStat,
 };
+use rowan::TextRange;
+use std::collections::HashMap;
 
 use crate::formatter::model::StatementExprListLayoutKind;
-use crate::ir::{self, DocIR};
+use crate::ir::{self, AlignEntry, DocIR};
 
 use super::FormatContext;
 use super::expr;
@@ -18,7 +20,7 @@ use super::sequence::{
 };
 use super::trivia::{
     count_blank_lines_before, has_non_trivia_before_on_same_line_tokenwise,
-    node_has_direct_comment_child,
+    node_has_direct_comment_child, trailing_gap_requests_alignment,
 };
 
 pub fn render_root(ctx: &FormatContext, chunk: &LuaChunk, plan: &RootFormatPlan) -> Vec<DocIR> {
@@ -32,42 +34,16 @@ pub fn render_root(ctx: &FormatContext, chunk: &LuaChunk, plan: &RootFormatPlan)
     }
 
     if !plan.layout.root_nodes.is_empty() {
-        docs.extend(render_layout_nodes(
+        docs.extend(render_aligned_block_layout_nodes_new(
             ctx,
             chunk.syntax(),
             &plan.layout.root_nodes,
             plan,
-            false,
         ));
     }
 
     if plan.line_breaks.insert_final_newline {
         docs.push(DocIR::HardLine);
-    }
-
-    docs
-}
-
-fn render_layout_nodes(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    nodes: &[LayoutNodePlan],
-    plan: &RootFormatPlan,
-    inside_block: bool,
-) -> Vec<DocIR> {
-    let mut docs = Vec::new();
-
-    for (index, node) in nodes.iter().enumerate() {
-        if inside_block && index > 0 {
-            let blank_lines = count_blank_lines_before_layout_node(root, node)
-                .min(ctx.config.layout.max_blank_lines);
-            docs.push(ir::hard_line());
-            for _ in 0..blank_lines {
-                docs.push(ir::hard_line());
-            }
-        }
-
-        docs.extend(render_layout_node(ctx, root, node, plan));
     }
 
     docs
@@ -91,7 +67,7 @@ fn render_layout_node(
         }
         LayoutNodePlan::Syntax(syntax_plan) => match syntax_plan.kind {
             LuaSyntaxKind::Block => {
-                render_layout_nodes(ctx, root, &syntax_plan.children, plan, true)
+                render_aligned_block_layout_nodes_new(ctx, root, &syntax_plan.children, plan)
             }
             LuaSyntaxKind::LocalStat => {
                 render_local_stat_new(ctx, root, syntax_plan.syntax_id, plan)
@@ -107,6 +83,14 @@ fn render_layout_node(
             LuaSyntaxKind::ForRangeStat => render_for_range_stat_new(ctx, root, syntax_plan, plan),
             LuaSyntaxKind::RepeatStat => render_repeat_stat_new(ctx, root, syntax_plan, plan),
             LuaSyntaxKind::IfStat => render_if_stat_new(ctx, root, syntax_plan, plan),
+            LuaSyntaxKind::FuncStat => render_func_stat_new(ctx, root, syntax_plan, plan),
+            LuaSyntaxKind::LocalFuncStat => {
+                render_local_func_stat_new(ctx, root, syntax_plan, plan)
+            }
+            LuaSyntaxKind::DoStat => render_do_stat_new(ctx, root, syntax_plan, plan),
+            LuaSyntaxKind::CallExprStat => {
+                render_call_expr_stat_new(ctx, root, syntax_plan.syntax_id, plan)
+            }
             _ => render_unmigrated_syntax_leaf(root, syntax_plan.syntax_id),
         },
     }
@@ -117,6 +101,9 @@ struct StatementAssignSplit {
     assign_op: Option<LuaSyntaxToken>,
     rhs_entries: Vec<SequenceEntry>,
 }
+
+type DocPair = (Vec<DocIR>, Vec<DocIR>);
+type RenderedTrailingComment = (Vec<DocIR>, TextRange, bool);
 
 fn render_local_stat_new(
     ctx: &FormatContext,
@@ -192,6 +179,8 @@ fn render_local_stat_new(
         ));
     }
 
+    append_trailing_comment_suffix_new(ctx, plan, &mut docs, stat.syntax());
+
     docs
 }
 
@@ -262,6 +251,8 @@ fn render_assign_stat_new(
         expr_docs,
     ));
 
+    append_trailing_comment_suffix_new(ctx, plan, &mut docs, stat.syntax());
+
     docs
 }
 
@@ -323,6 +314,8 @@ fn render_return_stat_new(
         ));
     }
 
+    append_trailing_comment_suffix_new(ctx, plan, &mut docs, stat.syntax());
+
     docs
 }
 
@@ -338,6 +331,10 @@ fn render_while_stat_new(
     let Some(stat) = LuaWhileStat::cast(node) else {
         return Vec::new();
     };
+
+    if syntax_has_descendant_comment_new(stat.syntax()) {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    }
 
     let while_token = first_direct_token(stat.syntax(), LuaTokenKind::TkWhile);
     let do_token = first_direct_token(stat.syntax(), LuaTokenKind::TkDo);
@@ -548,6 +545,10 @@ fn render_repeat_stat_new(
         return Vec::new();
     };
 
+    if syntax_has_descendant_comment_new(stat.syntax()) {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    }
+
     let repeat_token = first_direct_token(stat.syntax(), LuaTokenKind::TkRepeat);
     let until_token = first_direct_token(stat.syntax(), LuaTokenKind::TkUntil);
     let has_inline_comment = plan
@@ -672,6 +673,204 @@ fn render_if_stat_new(
     docs
 }
 
+fn render_func_stat_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    syntax_plan: &SyntaxNodeLayoutPlan,
+    plan: &RootFormatPlan,
+) -> Vec<DocIR> {
+    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
+        return Vec::new();
+    };
+    let Some(stat) = LuaFuncStat::cast(node) else {
+        return Vec::new();
+    };
+    let Some(closure) = stat.get_closure() else {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    };
+
+    if node_has_direct_comment_child(stat.syntax())
+        || node_has_direct_comment_child(closure.syntax())
+        || closure
+            .get_block()
+            .as_ref()
+            .is_some_and(|block| syntax_has_descendant_comment_new(block.syntax()))
+    {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    }
+
+    let global_token = first_direct_token(stat.syntax(), LuaTokenKind::TkGlobal);
+    let function_token = first_direct_token(stat.syntax(), LuaTokenKind::TkFunction);
+    let mut docs = Vec::new();
+
+    if let Some(global_token) = global_token.as_ref() {
+        docs.push(ir::source_token(global_token.clone()));
+        docs.extend(token_right_spacing_docs(plan, Some(global_token)));
+    }
+
+    docs.push(token_or_kind_doc(
+        function_token.as_ref(),
+        LuaTokenKind::TkFunction,
+    ));
+    docs.extend(token_right_spacing_docs(plan, function_token.as_ref()));
+
+    if let Some(name) = stat.get_func_name() {
+        docs.extend(render_expr_new(ctx, plan, &name.into()));
+    }
+
+    docs.extend(render_named_function_closure_tail_new(
+        ctx,
+        root,
+        syntax_plan,
+        plan,
+        &closure,
+    ));
+    docs
+}
+
+fn render_local_func_stat_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    syntax_plan: &SyntaxNodeLayoutPlan,
+    plan: &RootFormatPlan,
+) -> Vec<DocIR> {
+    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
+        return Vec::new();
+    };
+    let Some(stat) = LuaLocalFuncStat::cast(node) else {
+        return Vec::new();
+    };
+    let Some(closure) = stat.get_closure() else {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    };
+
+    if node_has_direct_comment_child(stat.syntax())
+        || node_has_direct_comment_child(closure.syntax())
+        || closure
+            .get_block()
+            .as_ref()
+            .is_some_and(|block| syntax_has_descendant_comment_new(block.syntax()))
+    {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    }
+
+    let local_token = first_direct_token(stat.syntax(), LuaTokenKind::TkLocal);
+    let function_token = first_direct_token(stat.syntax(), LuaTokenKind::TkFunction);
+    let mut docs = vec![token_or_kind_doc(
+        local_token.as_ref(),
+        LuaTokenKind::TkLocal,
+    )];
+    docs.extend(token_right_spacing_docs(plan, local_token.as_ref()));
+    docs.push(token_or_kind_doc(
+        function_token.as_ref(),
+        LuaTokenKind::TkFunction,
+    ));
+    docs.extend(token_right_spacing_docs(plan, function_token.as_ref()));
+
+    if let Some(name) = stat.get_local_name() {
+        docs.extend(format_local_name_ir_new(&name));
+    }
+
+    docs.extend(render_named_function_closure_tail_new(
+        ctx,
+        root,
+        syntax_plan,
+        plan,
+        &closure,
+    ));
+    docs
+}
+
+fn render_do_stat_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    syntax_plan: &SyntaxNodeLayoutPlan,
+    plan: &RootFormatPlan,
+) -> Vec<DocIR> {
+    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
+        return Vec::new();
+    };
+    let Some(stat) = LuaDoStat::cast(node) else {
+        return Vec::new();
+    };
+
+    if node_has_direct_comment_child(stat.syntax()) {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    }
+
+    let do_token = first_direct_token(stat.syntax(), LuaTokenKind::TkDo);
+    let mut docs = vec![token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo)];
+    docs.extend(render_control_body_end_new(
+        ctx,
+        root,
+        syntax_plan,
+        plan,
+        LuaTokenKind::TkEnd,
+    ));
+    docs
+}
+
+fn render_call_expr_stat_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    syntax_id: LuaSyntaxId,
+    plan: &RootFormatPlan,
+) -> Vec<DocIR> {
+    let Some(node) = find_node_by_id(root, syntax_id) else {
+        return Vec::new();
+    };
+    let Some(stat) = LuaCallExprStat::cast(node) else {
+        return Vec::new();
+    };
+
+    if node_has_direct_comment_child(stat.syntax()) {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    }
+
+    stat.get_call_expr()
+        .map(|expr| render_expr_new(ctx, plan, &expr.into()))
+        .unwrap_or_default()
+}
+
+fn render_named_function_closure_tail_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    syntax_plan: &SyntaxNodeLayoutPlan,
+    plan: &RootFormatPlan,
+    closure: &emmylua_parser::LuaClosureExpr,
+) -> Vec<DocIR> {
+    let mut docs = if let Some(params) = closure.get_params_list() {
+        let open = first_direct_token(params.syntax(), LuaTokenKind::TkLeftParen);
+        let mut docs = token_left_spacing_docs(plan, open.as_ref());
+        docs.extend(expr::format_param_list_ir(ctx, plan, &params));
+        docs
+    } else {
+        vec![
+            ir::syntax_token(LuaTokenKind::TkLeftParen),
+            ir::syntax_token(LuaTokenKind::TkRightParen),
+        ]
+    };
+
+    if let Some(closure_plan) =
+        find_direct_child_plan_by_kind(syntax_plan, LuaSyntaxKind::ClosureExpr)
+    {
+        let body_docs = render_block_from_parent_plan_new(ctx, root, closure_plan, plan);
+        if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
+            docs.push(ir::space());
+            docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+            return docs;
+        }
+
+        docs.extend(body_docs);
+        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+        return docs;
+    }
+
+    docs.push(ir::space());
+    docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+    docs
+}
+
 fn format_local_stat_trivia_aware_new(
     ctx: &FormatContext,
     plan: &RootFormatPlan,
@@ -695,14 +894,7 @@ fn format_local_stat_trivia_aware_new(
         .is_some_and(|layout| layout.has_inline_comment);
 
     if has_inline_comment {
-        docs.push(ir::indent(render_trivia_aware_split_sequence_tail_new(
-            plan,
-            token_right_spacing_docs(plan, local_token.as_ref()),
-            &lhs_entries,
-            assign_op.as_ref(),
-            &rhs_entries,
-        )));
-        return docs;
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
     }
 
     if !lhs_entries.is_empty() {
@@ -731,6 +923,8 @@ fn format_local_stat_trivia_aware_new(
             }
         }
     }
+
+    append_trailing_comment_suffix_new(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -786,6 +980,8 @@ fn format_assign_stat_trivia_aware_new(
         }
     }
 
+    append_trailing_comment_suffix_new(ctx, plan, &mut docs, stat.syntax());
+
     docs
 }
 
@@ -826,6 +1022,8 @@ fn format_return_stat_trivia_aware_new(
         docs.extend(token_right_spacing_docs(plan, return_token.as_ref()));
         render_sequence(&mut docs, &entries, false);
     }
+
+    append_trailing_comment_suffix_new(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -870,6 +1068,11 @@ fn collect_local_stat_entries_new(
                 if let Some(node) = child.as_node()
                     && let Some(comment) = LuaComment::cast(node.clone())
                 {
+                    if has_inline_non_trivia_before_new(comment.syntax())
+                        && !has_inline_non_trivia_after_new(comment.syntax())
+                    {
+                        continue;
+                    }
                     let entry = SequenceEntry::Comment(SequenceComment {
                         docs: vec![ir::source_node_trimmed(comment.syntax().clone())],
                         inline_after_previous: has_non_trivia_before_on_same_line_tokenwise(
@@ -933,6 +1136,11 @@ fn collect_assign_stat_entries_new(
                 if let Some(node) = child.as_node()
                     && let Some(comment) = LuaComment::cast(node.clone())
                 {
+                    if has_inline_non_trivia_before_new(comment.syntax())
+                        && !has_inline_non_trivia_after_new(comment.syntax())
+                    {
+                        continue;
+                    }
                     let entry = SequenceEntry::Comment(SequenceComment {
                         docs: vec![ir::source_node_trimmed(comment.syntax().clone())],
                         inline_after_previous: has_non_trivia_before_on_same_line_tokenwise(
@@ -986,6 +1194,11 @@ fn collect_return_stat_entries_new(
                 if let Some(node) = child.as_node()
                     && let Some(comment) = LuaComment::cast(node.clone())
                 {
+                    if has_inline_non_trivia_before_new(comment.syntax())
+                        && !has_inline_non_trivia_after_new(comment.syntax())
+                    {
+                        continue;
+                    }
                     entries.push(SequenceEntry::Comment(SequenceComment {
                         docs: vec![ir::source_node_trimmed(comment.syntax().clone())],
                         inline_after_previous: has_non_trivia_before_on_same_line_tokenwise(
@@ -1209,10 +1422,14 @@ fn render_header_exprs_new(
     expr_docs: Vec<Vec<DocIR>>,
 ) -> Vec<DocIR> {
     let leading_docs = token_right_spacing_docs(plan, leading_token);
-    if matches!(
-        expr_list_plan.kind,
-        StatementExprListLayoutKind::PreserveFirstMultiline
-    ) {
+    let attach_first_multiline = expr_docs
+        .first()
+        .is_some_and(|docs| crate::ir::ir_has_forced_line_break(docs))
+        || matches!(
+            expr_list_plan.kind,
+            StatementExprListLayoutKind::PreserveFirstMultiline
+        );
+    if attach_first_multiline {
         format_statement_expr_list_with_attached_first_multiline_new(
             comma_token,
             leading_docs,
@@ -1360,6 +1577,10 @@ fn is_simple_single_line_if_body_new(stat: &LuaStat) -> bool {
 }
 
 fn should_preserve_raw_if_stat_new(stat: &LuaIfStat) -> bool {
+    if syntax_has_descendant_comment_new(stat.syntax()) {
+        return true;
+    }
+
     if node_has_direct_comment_child(stat.syntax()) {
         return true;
     }
@@ -1417,7 +1638,12 @@ fn render_control_body_end_new(
     plan: &RootFormatPlan,
     end_kind: LuaTokenKind,
 ) -> Vec<DocIR> {
-    let mut docs = render_control_body_new(ctx, root, syntax_plan, plan);
+    let body_docs = render_control_body_new(ctx, root, syntax_plan, plan);
+    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
+        return vec![ir::space(), ir::syntax_token(end_kind)];
+    }
+
+    let mut docs = body_docs;
     docs.push(ir::syntax_token(end_kind));
     docs
 }
@@ -1428,12 +1654,7 @@ fn render_control_body_new(
     syntax_plan: &SyntaxNodeLayoutPlan,
     plan: &RootFormatPlan,
 ) -> Vec<DocIR> {
-    let block_children = syntax_plan.children.iter().find_map(|child| match child {
-        LayoutNodePlan::Syntax(block) if block.kind == LuaSyntaxKind::Block => {
-            Some(block.children.as_slice())
-        }
-        _ => None,
-    });
+    let block_children = block_children_from_parent_plan(syntax_plan);
 
     render_block_children_new(ctx, root, block_children, plan)
 }
@@ -1444,14 +1665,20 @@ fn render_block_from_parent_plan_new(
     syntax_plan: &SyntaxNodeLayoutPlan,
     plan: &RootFormatPlan,
 ) -> Vec<DocIR> {
-    let block_children = syntax_plan.children.iter().find_map(|child| match child {
+    let block_children = block_children_from_parent_plan(syntax_plan);
+
+    render_block_children_new(ctx, root, block_children, plan)
+}
+
+fn block_children_from_parent_plan(
+    syntax_plan: &SyntaxNodeLayoutPlan,
+) -> Option<&[LayoutNodePlan]> {
+    syntax_plan.children.iter().find_map(|child| match child {
         LayoutNodePlan::Syntax(block) if block.kind == LuaSyntaxKind::Block => {
             Some(block.children.as_slice())
         }
         _ => None,
-    });
-
-    render_block_children_new(ctx, root, block_children, plan)
+    })
 }
 
 fn render_block_children_new(
@@ -1463,9 +1690,10 @@ fn render_block_children_new(
     let mut docs = Vec::new();
 
     if let Some(children) = block_children {
-        if !children.is_empty() {
+        let rendered_children = render_aligned_block_layout_nodes_new(ctx, root, children, plan);
+        if !rendered_children.is_empty() {
             let mut body = vec![ir::hard_line()];
-            body.extend(render_layout_nodes(ctx, root, children, plan, true));
+            body.extend(rendered_children);
             docs.push(ir::indent(body));
             docs.push(ir::hard_line());
         } else {
@@ -1475,6 +1703,469 @@ fn render_block_children_new(
         docs.push(ir::hard_line());
     }
     docs
+}
+
+fn render_aligned_block_layout_nodes_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    nodes: &[LayoutNodePlan],
+    plan: &RootFormatPlan,
+) -> Vec<DocIR> {
+    let mut docs = Vec::new();
+    let mut index = 0usize;
+
+    while index < nodes.len() {
+        if layout_comment_is_inline_trailing_new(root, nodes, index) {
+            index += 1;
+            continue;
+        }
+
+        if index > 0 {
+            let blank_lines = count_blank_lines_before_layout_node(root, &nodes[index])
+                .min(ctx.config.layout.max_blank_lines);
+            docs.push(ir::hard_line());
+            for _ in 0..blank_lines {
+                docs.push(ir::hard_line());
+            }
+        }
+
+        if let Some((group_docs, next_index)) =
+            try_render_aligned_statement_group_new(ctx, root, nodes, index, plan)
+        {
+            docs.extend(group_docs);
+            index = next_index;
+            continue;
+        }
+
+        docs.extend(render_layout_node(ctx, root, &nodes[index], plan));
+        index += 1;
+    }
+
+    docs
+}
+
+fn try_render_aligned_statement_group_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    nodes: &[LayoutNodePlan],
+    start: usize,
+    plan: &RootFormatPlan,
+) -> Option<(Vec<DocIR>, usize)> {
+    let anchor = statement_alignment_node_kind_new(&nodes[start])?;
+    let allow_eq_alignment = ctx.config.align.continuous_assign_statement;
+    let allow_comment_alignment = ctx.config.should_align_statement_line_comments();
+    if !allow_eq_alignment && !allow_comment_alignment {
+        return None;
+    }
+
+    let mut end = start + 1;
+    while end < nodes.len() {
+        if layout_comment_is_inline_trailing_new(root, nodes, end) {
+            end += 1;
+            continue;
+        }
+
+        if count_blank_lines_before_layout_node(root, &nodes[end]) > 0 {
+            break;
+        }
+
+        if !can_join_statement_alignment_group_new(ctx, root, anchor, &nodes[end], plan) {
+            break;
+        }
+
+        end += 1;
+    }
+
+    let statement_count = nodes[start..end]
+        .iter()
+        .filter(|node| statement_alignment_node_kind_new(node).is_some())
+        .count();
+    if statement_count < 2 {
+        return None;
+    }
+
+    let mut entries = Vec::new();
+    let mut has_aligned_split = false;
+    let mut has_aligned_comment_signal = false;
+
+    for node in &nodes[start..end] {
+        if let LayoutNodePlan::Comment(_) = node
+            && let Some(index) = nodes[start..end]
+                .iter()
+                .position(|candidate| std::ptr::eq(candidate, node))
+            && layout_comment_is_inline_trailing_new(root, nodes, start + index)
+        {
+            continue;
+        }
+
+        match node {
+            LayoutNodePlan::Comment(comment_plan) => {
+                let syntax = find_node_by_id(root, comment_plan.syntax_id)?;
+                let comment = LuaComment::cast(syntax)?;
+                entries.push(AlignEntry::Line {
+                    content: render_comment_with_spacing(ctx, &comment, plan),
+                    trailing: None,
+                });
+            }
+            LayoutNodePlan::Syntax(syntax_plan) => {
+                let syntax = find_node_by_id(root, syntax_plan.syntax_id)?;
+                let trailing_comment =
+                    extract_trailing_comment_rendered_new(ctx, syntax_plan, &syntax, plan).map(
+                        |(docs, _, align_hint)| {
+                            if align_hint {
+                                has_aligned_comment_signal = true;
+                            }
+                            docs
+                        },
+                    );
+
+                if allow_eq_alignment
+                    && let Some((before, after)) =
+                        render_statement_align_split_new(ctx, root, syntax_plan, plan)
+                {
+                    has_aligned_split = true;
+                    entries.push(AlignEntry::Aligned {
+                        before,
+                        after,
+                        trailing: trailing_comment,
+                    });
+                } else {
+                    entries.push(AlignEntry::Line {
+                        content: render_statement_line_content_new(ctx, root, syntax_plan, plan)
+                            .unwrap_or_else(|| render_layout_node(ctx, root, node, plan)),
+                        trailing: trailing_comment,
+                    });
+                }
+            }
+        }
+    }
+
+    if !has_aligned_split && !has_aligned_comment_signal {
+        return None;
+    }
+
+    Some((vec![ir::align_group(entries)], end))
+}
+
+fn layout_comment_is_inline_trailing_new(
+    root: &LuaSyntaxNode,
+    nodes: &[LayoutNodePlan],
+    index: usize,
+) -> bool {
+    let Some(LayoutNodePlan::Comment(comment_plan)) = nodes.get(index) else {
+        return false;
+    };
+    let Some(comment_node) = find_node_by_id(root, comment_plan.syntax_id) else {
+        return false;
+    };
+
+    has_non_trivia_before_on_same_line_tokenwise(&comment_node)
+        && !comment_node.text().contains_char('\n')
+        && !has_inline_non_trivia_after_new(&comment_node)
+}
+
+fn can_join_statement_alignment_group_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    anchor_kind: LuaSyntaxKind,
+    node: &LayoutNodePlan,
+    plan: &RootFormatPlan,
+) -> bool {
+    match node {
+        LayoutNodePlan::Comment(_) => ctx.config.comments.align_across_standalone_comments,
+        LayoutNodePlan::Syntax(syntax_plan) => {
+            if let Some(kind) = statement_alignment_node_kind_new(node) {
+                if ctx.config.comments.align_same_kind_only && kind != anchor_kind {
+                    return false;
+                }
+
+                if ctx.config.align.continuous_assign_statement {
+                    return true;
+                }
+
+                let Some(syntax) = find_node_by_id(root, syntax_plan.syntax_id) else {
+                    return false;
+                };
+                extract_trailing_comment_rendered_new(ctx, syntax_plan, &syntax, plan).is_some()
+            } else {
+                false
+            }
+        }
+    }
+}
+
+fn statement_alignment_node_kind_new(node: &LayoutNodePlan) -> Option<LuaSyntaxKind> {
+    match node {
+        LayoutNodePlan::Syntax(syntax_plan)
+            if matches!(
+                syntax_plan.kind,
+                LuaSyntaxKind::LocalStat | LuaSyntaxKind::AssignStat
+            ) =>
+        {
+            Some(syntax_plan.kind)
+        }
+        _ => None,
+    }
+}
+
+fn render_statement_align_split_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    syntax_plan: &SyntaxNodeLayoutPlan,
+    plan: &RootFormatPlan,
+) -> Option<DocPair> {
+    match syntax_plan.kind {
+        LuaSyntaxKind::LocalStat => {
+            let node = find_node_by_id(root, syntax_plan.syntax_id)?;
+            let stat = LuaLocalStat::cast(node)?;
+            render_local_stat_align_split_new(ctx, plan, syntax_plan.syntax_id, &stat)
+        }
+        LuaSyntaxKind::AssignStat => {
+            let node = find_node_by_id(root, syntax_plan.syntax_id)?;
+            let stat = LuaAssignStat::cast(node)?;
+            render_assign_stat_align_split_new(ctx, plan, syntax_plan.syntax_id, &stat)
+        }
+        _ => None,
+    }
+}
+
+fn render_statement_line_content_new(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    syntax_plan: &SyntaxNodeLayoutPlan,
+    plan: &RootFormatPlan,
+) -> Option<Vec<DocIR>> {
+    let (before, after) = render_statement_align_split_new(ctx, root, syntax_plan, plan)?;
+    let mut docs = before;
+    docs.push(ir::space());
+    docs.extend(after);
+    Some(docs)
+}
+
+fn render_local_stat_align_split_new(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    syntax_id: LuaSyntaxId,
+    stat: &LuaLocalStat,
+) -> Option<DocPair> {
+    let exprs: Vec<_> = stat.get_value_exprs().collect();
+    if exprs.is_empty() {
+        return None;
+    }
+
+    let expr_list_plan = plan.layout.statement_expr_lists.get(&syntax_id).copied()?;
+    let local_token = first_direct_token(stat.syntax(), LuaTokenKind::TkLocal);
+    let comma_token = first_direct_token(stat.syntax(), LuaTokenKind::TkComma);
+    let assign_token = first_direct_token(stat.syntax(), LuaTokenKind::TkAssign);
+
+    let mut before = vec![token_or_kind_doc(
+        local_token.as_ref(),
+        LuaTokenKind::TkLocal,
+    )];
+    before.extend(token_right_spacing_docs(plan, local_token.as_ref()));
+    let local_names: Vec<_> = stat.get_local_name_list().collect();
+    for (index, local_name) in local_names.iter().enumerate() {
+        if index > 0 {
+            before.extend(comma_flat_separator(plan, comma_token.as_ref()));
+        }
+        before.extend(format_local_name_ir_new(local_name));
+    }
+
+    let expr_docs: Vec<Vec<DocIR>> = exprs
+        .iter()
+        .enumerate()
+        .map(|(index, expr)| {
+            format_statement_value_expr_new(
+                ctx,
+                plan,
+                expr,
+                index == 0
+                    && matches!(
+                        expr_list_plan.kind,
+                        StatementExprListLayoutKind::PreserveFirstMultiline
+                    ),
+            )
+        })
+        .collect();
+
+    let mut after = vec![token_or_kind_doc(
+        assign_token.as_ref(),
+        LuaTokenKind::TkAssign,
+    )];
+    after.extend(render_statement_exprs_new(
+        ctx,
+        plan,
+        expr_list_plan,
+        assign_token.as_ref(),
+        comma_token.as_ref(),
+        expr_docs,
+    ));
+
+    Some((before, after))
+}
+
+fn render_assign_stat_align_split_new(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    syntax_id: LuaSyntaxId,
+    stat: &LuaAssignStat,
+) -> Option<DocPair> {
+    let (vars, exprs) = stat.get_var_and_expr_list();
+    if exprs.is_empty() {
+        return None;
+    }
+
+    let expr_list_plan = plan.layout.statement_expr_lists.get(&syntax_id).copied()?;
+    let comma_token = first_direct_token(stat.syntax(), LuaTokenKind::TkComma);
+    let assign_token = stat.get_assign_op().map(|op| op.syntax().clone());
+    let var_docs: Vec<Vec<DocIR>> = vars
+        .iter()
+        .map(|var| render_expr_new(ctx, plan, &var.clone().into()))
+        .collect();
+    let before = ir::intersperse(var_docs, comma_flat_separator(plan, comma_token.as_ref()));
+
+    let expr_docs: Vec<Vec<DocIR>> = exprs
+        .iter()
+        .enumerate()
+        .map(|(index, expr)| {
+            format_statement_value_expr_new(
+                ctx,
+                plan,
+                expr,
+                index == 0
+                    && matches!(
+                        expr_list_plan.kind,
+                        StatementExprListLayoutKind::PreserveFirstMultiline
+                    ),
+            )
+        })
+        .collect();
+
+    let mut after = vec![token_or_kind_doc(
+        assign_token.as_ref(),
+        LuaTokenKind::TkAssign,
+    )];
+    after.extend(render_statement_exprs_new(
+        ctx,
+        plan,
+        expr_list_plan,
+        assign_token.as_ref(),
+        comma_token.as_ref(),
+        expr_docs,
+    ));
+
+    Some((before, after))
+}
+
+fn extract_trailing_comment_rendered_new(
+    ctx: &FormatContext,
+    syntax_plan: &SyntaxNodeLayoutPlan,
+    node: &LuaSyntaxNode,
+    plan: &RootFormatPlan,
+) -> Option<RenderedTrailingComment> {
+    let comment = find_inline_trailing_comment_node_new(node)?;
+    if comment.text().contains_char('\n') {
+        return None;
+    }
+    let comment = LuaComment::cast(comment.clone())?;
+    let docs = render_comment_with_spacing(ctx, &comment, plan);
+    let align_hint = matches!(
+        syntax_plan.kind,
+        LuaSyntaxKind::LocalStat | LuaSyntaxKind::AssignStat
+    ) && trailing_gap_requests_alignment(
+        node,
+        comment.syntax().text_range(),
+        ctx.config.comments.line_comment_min_spaces_before.max(1),
+    );
+    Some((docs, comment.syntax().text_range(), align_hint))
+}
+
+fn append_trailing_comment_suffix_new(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    docs: &mut Vec<DocIR>,
+    node: &LuaSyntaxNode,
+) {
+    let Some(comment_node) = find_inline_trailing_comment_node_new(node) else {
+        return;
+    };
+    let Some(comment) = LuaComment::cast(comment_node) else {
+        return;
+    };
+
+    let content_width = crate::ir::ir_flat_width(docs);
+    let padding = if ctx.config.comments.line_comment_min_column == 0 {
+        ctx.config.comments.line_comment_min_spaces_before.max(1)
+    } else {
+        ctx.config
+            .comments
+            .line_comment_min_spaces_before
+            .max(1)
+            .max(
+                ctx.config
+                    .comments
+                    .line_comment_min_column
+                    .saturating_sub(content_width),
+            )
+    };
+    let mut suffix = (0..padding).map(|_| ir::space()).collect::<Vec<_>>();
+    suffix.extend(render_comment_with_spacing(ctx, &comment, plan));
+    docs.push(ir::line_suffix(suffix));
+}
+
+fn find_inline_trailing_comment_node_new(node: &LuaSyntaxNode) -> Option<LuaSyntaxNode> {
+    for child in node.children() {
+        if child.kind() != LuaKind::Syntax(LuaSyntaxKind::Comment) {
+            continue;
+        }
+
+        if has_inline_non_trivia_before_new(&child) && !has_inline_non_trivia_after_new(&child) {
+            return Some(child);
+        }
+    }
+
+    let mut next = node.next_sibling_or_token();
+    for _ in 0..4 {
+        let sibling = next.as_ref()?;
+        match sibling.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace)
+            | LuaKind::Token(LuaTokenKind::TkSemicolon)
+            | LuaKind::Token(LuaTokenKind::TkComma) => {}
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => return sibling.as_node().cloned(),
+            _ => return None,
+        }
+        next = sibling.next_sibling_or_token();
+    }
+
+    None
+}
+
+fn has_inline_non_trivia_before_new(node: &LuaSyntaxNode) -> bool {
+    let mut previous = node.prev_sibling_or_token();
+    while let Some(element) = previous {
+        match element.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {
+                previous = element.prev_sibling_or_token()
+            }
+            LuaKind::Token(LuaTokenKind::TkEndOfLine) => return false,
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => previous = element.prev_sibling_or_token(),
+            _ => return true,
+        }
+    }
+    false
+}
+
+fn has_inline_non_trivia_after_new(node: &LuaSyntaxNode) -> bool {
+    let mut next = node.next_sibling_or_token();
+    while let Some(element) = next {
+        match element.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => next = element.next_sibling_or_token(),
+            LuaKind::Token(LuaTokenKind::TkEndOfLine) => return false,
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => next = element.next_sibling_or_token(),
+            _ => return true,
+        }
+    }
+    false
 }
 
 fn render_expr_new(_ctx: &FormatContext, plan: &RootFormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
@@ -1621,15 +2312,20 @@ fn render_trivia_aware_split_sequence_tail_new(
 }
 
 fn render_comment_with_spacing(
-    _ctx: &FormatContext,
+    ctx: &FormatContext,
     comment: &LuaComment,
-    plan: &RootFormatPlan,
+    _plan: &RootFormatPlan,
 ) -> Vec<DocIR> {
-    if should_preserve_comment_raw(comment) {
+    if should_preserve_comment_raw(comment) || should_preserve_doc_comment_block_raw(comment) {
         return vec![ir::source_node_trimmed(comment.syntax().clone())];
     }
 
-    let lines = collect_comment_render_lines(comment, plan);
+    let raw = trim_end_comment_text(comment.syntax().text().to_string());
+    let lines = if raw.starts_with("---") {
+        normalize_doc_comment_block(ctx, &raw)
+    } else {
+        normalize_normal_comment_block(ctx, &raw)
+    };
     lines
         .into_iter()
         .enumerate()
@@ -1644,6 +2340,336 @@ fn render_comment_with_spacing(
             docs
         })
         .collect()
+}
+
+fn trim_end_comment_text(mut text: String) -> String {
+    while matches!(text.chars().last(), Some(' ' | '\t' | '\r' | '\n')) {
+        text.pop();
+    }
+    text
+}
+
+fn normalize_normal_comment_block(ctx: &FormatContext, raw: &str) -> Vec<String> {
+    let lines: Vec<_> = raw.lines().map(str::to_string).collect();
+    if lines.len() <= 1 {
+        return vec![normalize_single_normal_comment_line(ctx, raw)];
+    }
+    lines
+}
+
+fn normalize_single_normal_comment_line(ctx: &FormatContext, line: &str) -> String {
+    if !line.starts_with("--") || line.starts_with("---") {
+        return line.to_string();
+    }
+    let body = line[2..].trim_start();
+    if ctx.config.comments.space_after_comment_dash {
+        if body.is_empty() {
+            "--".to_string()
+        } else {
+            format!("-- {body}")
+        }
+    } else {
+        format!("--{body}")
+    }
+}
+
+#[derive(Clone)]
+enum DocLineKind {
+    Description {
+        content: String,
+        preserve_spacing: bool,
+    },
+    ContinueOr {
+        content: String,
+    },
+    Tag(DocTagLine),
+}
+
+#[derive(Clone)]
+struct DocTagLine {
+    tag: String,
+    raw_rest: String,
+    columns: Vec<String>,
+    align_key: Option<String>,
+    preserve_body_spacing: bool,
+}
+
+fn should_preserve_doc_comment_block_raw(comment: &LuaComment) -> bool {
+    let raw = comment.syntax().text().to_string();
+    raw.lines().any(|line| {
+        let trimmed = line.trim_start();
+        (trimmed.starts_with("---@type") || trimmed.starts_with("--- @type"))
+            && trimmed.contains(" --")
+    })
+}
+
+fn normalize_doc_comment_block(ctx: &FormatContext, raw: &str) -> Vec<String> {
+    let raw_lines: Vec<&str> = raw.lines().collect();
+    let parsed: Vec<DocLineKind> = raw_lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| parse_doc_comment_line(ctx, line, index == 0, raw_lines.len() == 1))
+        .collect();
+
+    let mut widths: HashMap<String, Vec<usize>> = HashMap::new();
+    for line in &parsed {
+        let DocLineKind::Tag(tag) = line else {
+            continue;
+        };
+        let Some(key) = &tag.align_key else {
+            continue;
+        };
+        let entry = widths
+            .entry(key.clone())
+            .or_insert_with(|| vec![0; tag.columns.len().saturating_sub(1)]);
+        if entry.len() < tag.columns.len().saturating_sub(1) {
+            entry.resize(tag.columns.len().saturating_sub(1), 0);
+        }
+        for (index, column) in tag
+            .columns
+            .iter()
+            .take(tag.columns.len().saturating_sub(1))
+            .enumerate()
+        {
+            entry[index] = entry[index].max(column.len());
+        }
+    }
+
+    parsed
+        .into_iter()
+        .map(|line| format_doc_comment_line(ctx, line, &widths))
+        .collect()
+}
+
+fn parse_doc_comment_line(
+    ctx: &FormatContext,
+    line: &str,
+    is_first_line: bool,
+    single_line_block: bool,
+) -> DocLineKind {
+    let suffix = line.strip_prefix("---").unwrap_or(line);
+    let trimmed = suffix.trim_start();
+
+    if let Some(rest) = trimmed.strip_prefix('@') {
+        return DocLineKind::Tag(parse_doc_tag_line(ctx, rest.trim_start()));
+    }
+    if let Some(rest) = trimmed.strip_prefix('|') {
+        return DocLineKind::ContinueOr {
+            content: collapse_spaces(rest.trim_start()),
+        };
+    }
+
+    let preserve_spacing = !single_line_block && !is_first_line;
+    let content = if preserve_spacing {
+        suffix.to_string()
+    } else {
+        collapse_spaces(trimmed)
+    };
+    DocLineKind::Description {
+        content,
+        preserve_spacing,
+    }
+}
+
+fn parse_doc_tag_line(ctx: &FormatContext, rest: &str) -> DocTagLine {
+    let mut parts = rest.split_whitespace();
+    let tag = parts.next().unwrap_or_default().to_string();
+    let raw_rest = rest[tag.len()..].trim_start().to_string();
+    let mut columns = match tag.as_str() {
+        "param" => split_columns(&raw_rest, &[1, 1]),
+        "field" => parse_field_columns(&raw_rest),
+        "return" => parse_return_columns(&raw_rest),
+        "class" => split_columns(&raw_rest, &[1]),
+        "alias" => parse_alias_columns(&raw_rest),
+        "generic" => parse_generic_columns(&raw_rest),
+        "type" | "overload" => vec![collapse_spaces(&raw_rest)],
+        _ => vec![collapse_spaces(&raw_rest)],
+    };
+    columns.retain(|column| !column.is_empty());
+
+    let align_key = match tag.as_str() {
+        "class" | "alias" | "field" | "generic"
+            if ctx.config.should_align_emmy_doc_declaration_tags() =>
+        {
+            Some(tag.clone())
+        }
+        "param" | "return" if ctx.config.should_align_emmy_doc_reference_tags() => {
+            Some(tag.clone())
+        }
+        _ => None,
+    };
+
+    let preserve_body_spacing = tag == "alias" && !ctx.config.emmy_doc.align_tag_columns;
+
+    DocTagLine {
+        tag,
+        raw_rest,
+        columns,
+        align_key,
+        preserve_body_spacing,
+    }
+}
+
+fn format_doc_comment_line(
+    ctx: &FormatContext,
+    line: DocLineKind,
+    widths: &HashMap<String, Vec<usize>>,
+) -> String {
+    match line {
+        DocLineKind::Description {
+            content,
+            preserve_spacing,
+        } => {
+            let prefix = if ctx.config.emmy_doc.space_after_description_dash {
+                "--- "
+            } else {
+                "---"
+            };
+            if preserve_spacing {
+                format!("---{content}")
+            } else if content.is_empty() {
+                prefix.trim_end().to_string()
+            } else {
+                format!("{prefix}{content}")
+            }
+        }
+        DocLineKind::ContinueOr { content } => {
+            let prefix = if ctx.config.emmy_doc.space_after_description_dash {
+                "--- |"
+            } else {
+                "---|"
+            };
+            if content.is_empty() {
+                prefix.to_string()
+            } else {
+                format!("{prefix} {content}")
+            }
+        }
+        DocLineKind::Tag(tag) => {
+            let prefix = if ctx.config.emmy_doc.space_after_description_dash {
+                format!("--- @{}", tag.tag)
+            } else {
+                format!("---@{}", tag.tag)
+            };
+            if tag.preserve_body_spacing {
+                return if tag.raw_rest.is_empty() {
+                    prefix
+                } else {
+                    format!("{prefix} {}", tag.raw_rest)
+                };
+            }
+            let Some(key) = &tag.align_key else {
+                return if tag.columns.is_empty() {
+                    prefix
+                } else {
+                    format!("{prefix} {}", tag.columns.join(" "))
+                };
+            };
+            let target_widths = widths.get(key);
+            let mut rendered = prefix;
+            if let Some((first, rest)) = tag.columns.split_first() {
+                rendered.push(' ');
+                rendered.push_str(first);
+                for (index, column) in rest.iter().enumerate() {
+                    let source_index = index;
+                    let padding = target_widths
+                        .and_then(|widths| widths.get(source_index))
+                        .map(|width| {
+                            width.saturating_sub(tag.columns[source_index].len())
+                                + ctx.config.emmy_doc.tag_spacing
+                        })
+                        .unwrap_or(1);
+                    rendered.extend(std::iter::repeat_n(' ', padding));
+                    rendered.push_str(column);
+                }
+            }
+            rendered
+        }
+    }
+}
+
+fn split_columns(input: &str, head_sizes: &[usize]) -> Vec<String> {
+    let tokens: Vec<_> = input.split_whitespace().collect();
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+    let mut columns = Vec::new();
+    let mut index = 0;
+    for head_size in head_sizes {
+        if index >= tokens.len() {
+            break;
+        }
+        let end = (index + *head_size).min(tokens.len());
+        columns.push(tokens[index..end].join(" "));
+        index = end;
+    }
+    if index < tokens.len() {
+        columns.push(tokens[index..].join(" "));
+    }
+    columns
+}
+
+fn parse_field_columns(input: &str) -> Vec<String> {
+    let tokens: Vec<_> = input.split_whitespace().collect();
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+    let visibility = matches!(
+        tokens.first().copied(),
+        Some("public" | "private" | "protected")
+    );
+    if visibility && tokens.len() >= 2 {
+        let mut columns = vec![format!("{} {}", tokens[0], tokens[1])];
+        if tokens.len() >= 3 {
+            columns.push(tokens[2].to_string());
+        }
+        if tokens.len() >= 4 {
+            columns.push(tokens[3..].join(" "));
+        }
+        columns
+    } else {
+        split_columns(input, &[1, 1])
+    }
+}
+
+fn parse_return_columns(input: &str) -> Vec<String> {
+    let tokens: Vec<_> = input.split_whitespace().collect();
+    match tokens.len() {
+        0 => Vec::new(),
+        1 => vec![tokens[0].to_string()],
+        2 => vec![tokens.join(" ")],
+        _ => vec![
+            tokens[..tokens.len() - 1].join(" "),
+            tokens[tokens.len() - 1].to_string(),
+        ],
+    }
+}
+
+fn parse_alias_columns(input: &str) -> Vec<String> {
+    let tokens: Vec<_> = input.split_whitespace().collect();
+    match tokens.len() {
+        0 => Vec::new(),
+        1 => vec![tokens[0].to_string()],
+        2 => vec![tokens.join(" ")],
+        _ => vec![tokens[..2].join(" "), tokens[2..].join(" ")],
+    }
+}
+
+fn parse_generic_columns(input: &str) -> Vec<String> {
+    let tokens: Vec<_> = input.split_whitespace().collect();
+    match tokens.len() {
+        0 => Vec::new(),
+        1 => vec![tokens[0].to_string()],
+        2 => vec![tokens[0].to_string(), tokens[1].to_string()],
+        _ => vec![
+            tokens[..tokens.len() - 2].join(" "),
+            tokens[tokens.len() - 2..].join(" "),
+        ],
+    }
+}
+
+fn collapse_spaces(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[derive(Default)]
@@ -1761,6 +2787,9 @@ fn render_comment_line(line: RenderCommentLine) -> String {
 }
 
 fn should_preserve_comment_raw(comment: &LuaComment) -> bool {
+    if comment.syntax().text().to_string().starts_with("----") {
+        return true;
+    }
     let Some(first_token) = comment.syntax().first_token() else {
         return false;
     };

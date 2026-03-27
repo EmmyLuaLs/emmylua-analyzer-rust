@@ -7,29 +7,17 @@ mod sequence;
 mod spacing;
 mod trivia;
 
-use std::cell::Cell;
-
 use crate::config::LuaFormatConfig;
-use crate::ir::{DocIR, GroupId};
+use crate::ir::DocIR;
 use emmylua_parser::LuaChunk;
 
 pub struct FormatContext<'a> {
     pub config: &'a LuaFormatConfig,
-    next_group_id: Cell<u32>,
 }
 
 impl<'a> FormatContext<'a> {
     pub fn new(config: &'a LuaFormatConfig) -> Self {
-        Self {
-            config,
-            next_group_id: Cell::new(0),
-        }
-    }
-
-    pub fn next_group_id(&self) -> GroupId {
-        let next = self.next_group_id.get();
-        self.next_group_id.set(next + 1);
-        GroupId(next)
+        Self { config }
     }
 }
 
