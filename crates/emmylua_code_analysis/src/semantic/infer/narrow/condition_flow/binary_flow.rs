@@ -289,7 +289,7 @@ fn maybe_type_guard_binary_action(
     };
 
     if maybe_var_ref_id == *var_ref_id {
-        return Ok(Some(ConditionFlowAction::Pending(
+        return Ok(Some(ConditionFlowAction::pending(
             PendingConditionNarrow::TypeGuard {
                 narrow,
                 condition_flow,
@@ -331,7 +331,7 @@ fn maybe_type_guard_binary_action(
         &narrowed_discriminant_type,
     )?
     .map(PendingConditionNarrow::Correlated)
-    .map(ConditionFlowAction::Pending))
+    .map(ConditionFlowAction::pending))
 }
 
 /// Maps the string result of Lua's builtin `type()` call to the corresponding `LuaType`.
@@ -441,7 +441,7 @@ fn get_var_eq_condition_action(
                     &narrowed_discriminant_type,
                 )?
                 .map(PendingConditionNarrow::Correlated)
-                .map(ConditionFlowAction::Pending)
+                .map(ConditionFlowAction::pending)
                 .unwrap_or(ConditionFlowAction::Continue));
             }
 
@@ -452,14 +452,14 @@ fn get_var_eq_condition_action(
                     if var_ref_id.is_self_ref() && !right_expr_type.is_nil() {
                         TypeOps::Remove.apply(db, &right_expr_type, &LuaType::Nil)
                     } else {
-                        return Ok(ConditionFlowAction::Pending(PendingConditionNarrow::Eq {
+                        return Ok(ConditionFlowAction::pending(PendingConditionNarrow::Eq {
                             right_expr_type,
                             condition_flow,
                         }));
                     }
                 }
                 InferConditionFlow::FalseCondition => {
-                    return Ok(ConditionFlowAction::Pending(PendingConditionNarrow::Eq {
+                    return Ok(ConditionFlowAction::pending(PendingConditionNarrow::Eq {
                         right_expr_type,
                         condition_flow,
                     }));
@@ -499,7 +499,7 @@ fn get_var_eq_condition_action(
 
             let right_expr_type = infer_expr(db, cache, right_expr)?;
             if condition_flow.is_false() {
-                return Ok(ConditionFlowAction::Pending(PendingConditionNarrow::Eq {
+                return Ok(ConditionFlowAction::pending(PendingConditionNarrow::Eq {
                     right_expr_type,
                     condition_flow,
                 }));

@@ -47,7 +47,7 @@ pub fn get_type_at_call_expr(
                     if needs_antecedent_same_var_colon_lookup(&member_type) {
                         // Keep the dedicated pending case here: replay needs the antecedent type
                         // for member lookup itself, not just for applying a cast after lookup.
-                        return Ok(ConditionFlowAction::Pending(
+                        return Ok(ConditionFlowAction::pending(
                             PendingConditionNarrow::SameVarColonCall {
                                 index: LuaIndexMemberExpr::IndexExpr(index_expr.clone()),
                                 condition_flow,
@@ -216,7 +216,7 @@ fn get_type_at_call_expr_by_type_guard(
         return Ok(ConditionFlowAction::Continue);
     }
 
-    Ok(ConditionFlowAction::Pending(
+    Ok(ConditionFlowAction::pending(
         PendingConditionNarrow::TypeGuard {
             narrow: guard_type,
             condition_flow,
@@ -308,7 +308,7 @@ fn get_signature_cast_pending(
     signature_id: LuaSignatureId,
     condition_flow: InferConditionFlow,
 ) -> ConditionFlowAction {
-    ConditionFlowAction::Pending(PendingConditionNarrow::SignatureCast {
+    ConditionFlowAction::pending(PendingConditionNarrow::SignatureCast {
         signature_id,
         condition_flow,
     })

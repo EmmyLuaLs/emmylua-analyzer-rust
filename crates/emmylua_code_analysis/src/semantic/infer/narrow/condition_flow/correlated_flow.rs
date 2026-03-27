@@ -4,7 +4,7 @@ use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaChunk};
 
 use crate::{
     DbIndex, FlowId, FlowNode, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType,
-    LuaInferCache, LuaType, TypeOps, infer_expr, instantiate_func_generic,
+    LuaInferCache, LuaSignature, LuaType, TypeOps, infer_expr, instantiate_func_generic,
     semantic::infer::{
         VarRefId,
         narrow::{get_single_antecedent, get_type_at_flow::get_type_at_flow},
@@ -23,25 +23,33 @@ struct SearchRootCorrelatedTypes {
     deferred_known_call_target_types: Option<Vec<LuaType>>,
 }
 
+#[derive(Debug)]
+struct CollectedCorrelatedTypes {
+    matching_target_types: Vec<LuaType>,
+    correlated_candidate_types: Vec<LuaType>,
+    unmatched_target_types: Vec<LuaType>,
+    has_unmatched_discriminant_origin: bool,
+    has_opaque_target_origin: bool,
+}
+
 impl CorrelatedConditionNarrowing {
     pub(in crate::semantic::infer::narrow) fn apply(
-        self,
+        &self,
         db: &DbIndex,
         antecedent_type: LuaType,
     ) -> LuaType {
         let mut root_target_types = Vec::new();
         let mut found_matching_root = false;
-        for root_types in self.search_root_correlated_types {
-            let SearchRootCorrelatedTypes {
-                matching_target_types,
-                mut uncorrelated_target_types,
-                deferred_known_call_target_types,
-            } = root_types;
+        for root_types in &self.search_root_correlated_types {
+            let matching_target_types = &root_types.matching_target_types;
+            let mut uncorrelated_target_types = root_types.uncorrelated_target_types.clone();
+            let deferred_known_call_target_types =
+                root_types.deferred_known_call_target_types.as_deref();
 
             let root_matching_target_type = if matching_target_types.is_empty() {
                 None
             } else {
-                let matching_target_type = LuaType::from_vec(matching_target_types);
+                let matching_target_type = LuaType::from_vec(matching_target_types.clone());
                 let narrowed_correlated_type =
                     TypeOps::Intersect.apply(db, &antecedent_type, &matching_target_type);
                 if narrowed_correlated_type.is_never() {
@@ -185,13 +193,13 @@ fn collect_correlated_types_from_search_root(
         condition_position,
         search_root_flow_id,
     );
-    let (
-        root_matching_target_types,
-        root_correlated_candidate_types,
-        root_unmatched_target_types,
+    let CollectedCorrelatedTypes {
+        matching_target_types: root_matching_target_types,
+        correlated_candidate_types: root_correlated_candidate_types,
+        unmatched_target_types: root_unmatched_target_types,
         has_unmatched_discriminant_origin,
         has_opaque_target_origin,
-    ) = collect_matching_correlated_types(
+    } = collect_matching_correlated_types(
         db,
         cache,
         root,
@@ -277,7 +285,7 @@ fn collect_matching_correlated_types(
     discriminant_refs: &[crate::DeclMultiReturnRef],
     target_refs: &[crate::DeclMultiReturnRef],
     narrowed_discriminant_type: &LuaType,
-) -> Result<(Vec<LuaType>, Vec<LuaType>, Vec<LuaType>, bool, bool), InferFailReason> {
+) -> Result<CollectedCorrelatedTypes, InferFailReason> {
     let mut matching_target_types = Vec::new();
     let mut correlated_candidate_types = Vec::new();
     let mut unmatched_target_types = Vec::new();
@@ -304,18 +312,16 @@ fn collect_matching_correlated_types(
             correlated_discriminant_call_expr_ids.insert(discriminant_call_expr_id);
             correlated_target_call_expr_ids.insert(target_ref.call_expr.get_syntax_id());
             correlated_candidate_types.extend(overload_rows.iter().map(|overload| {
-                crate::LuaSignature::get_overload_row_slot(overload, target_ref.return_index)
+                LuaSignature::get_overload_row_slot(overload, target_ref.return_index)
             }));
             matching_target_types.extend(overload_rows.iter().filter_map(|overload| {
-                let discriminant_type = crate::LuaSignature::get_overload_row_slot(
-                    overload,
-                    discriminant_ref.return_index,
-                );
+                let discriminant_type =
+                    LuaSignature::get_overload_row_slot(overload, discriminant_ref.return_index);
                 if !TypeOps::Intersect
                     .apply(db, &discriminant_type, narrowed_discriminant_type)
                     .is_never()
                 {
-                    return Some(crate::LuaSignature::get_overload_row_slot(
+                    return Some(LuaSignature::get_overload_row_slot(
                         overload,
                         target_ref.return_index,
                     ));
@@ -340,22 +346,22 @@ fn collect_matching_correlated_types(
         };
         let return_rows = instantiate_return_rows(db, cache, call_expr, signature);
         unmatched_target_types.extend(
-            return_rows.iter().map(|row| {
-                crate::LuaSignature::get_overload_row_slot(row, target_ref.return_index)
-            }),
+            return_rows
+                .iter()
+                .map(|row| LuaSignature::get_overload_row_slot(row, target_ref.return_index)),
         );
     }
 
     let has_unmatched_discriminant_origin = discriminant_refs.iter().any(|discriminant_ref| {
         !correlated_discriminant_call_expr_ids.contains(&discriminant_ref.call_expr.get_syntax_id())
     });
-    Ok((
+    Ok(CollectedCorrelatedTypes {
         matching_target_types,
         correlated_candidate_types,
         unmatched_target_types,
         has_unmatched_discriminant_origin,
         has_opaque_target_origin,
-    ))
+    })
 }
 
 fn infer_signature_for_call_ptr<'a>(
@@ -363,7 +369,7 @@ fn infer_signature_for_call_ptr<'a>(
     cache: &mut LuaInferCache,
     root: &LuaChunk,
     call_expr_ptr: &LuaAstPtr<LuaCallExpr>,
-) -> Result<Option<(LuaCallExpr, &'a crate::LuaSignature)>, InferFailReason> {
+) -> Result<Option<(LuaCallExpr, &'a LuaSignature)>, InferFailReason> {
     let Some(call_expr) = call_expr_ptr.to_node(root) else {
         return Ok(None);
     };
@@ -385,7 +391,7 @@ fn instantiate_return_rows(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,
-    signature: &crate::LuaSignature,
+    signature: &LuaSignature,
 ) -> Vec<Vec<LuaType>> {
     if signature.return_overloads.is_empty() {
         let return_type = signature.get_return_type();
@@ -404,15 +410,13 @@ fn instantiate_return_rows(
         } else {
             return_type
         };
-        return vec![crate::LuaSignature::return_type_to_row(
-            instantiated_return_type,
-        )];
+        return vec![LuaSignature::return_type_to_row(instantiated_return_type)];
     }
 
     let mut rows = Vec::with_capacity(signature.return_overloads.len());
     for overload in &signature.return_overloads {
         let type_refs = &overload.type_refs;
-        let overload_return_type = crate::LuaSignature::row_to_return_type(type_refs.to_vec());
+        let overload_return_type = LuaSignature::row_to_return_type(type_refs.to_vec());
         let instantiated_return_type = if overload_return_type.contain_tpl() {
             let overload_func = LuaFunctionType::new(
                 signature.async_state,
@@ -429,9 +433,7 @@ fn instantiate_return_rows(
             overload_return_type
         };
 
-        rows.push(crate::LuaSignature::return_type_to_row(
-            instantiated_return_type,
-        ));
+        rows.push(LuaSignature::return_type_to_row(instantiated_return_type));
     }
 
     rows

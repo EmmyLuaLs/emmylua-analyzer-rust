@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaChunk, LuaExpr, LuaVarExpr};
 
 use crate::{
@@ -130,7 +132,7 @@ fn get_type_at_flow_internal(
     let result = (|| {
         let result_type;
         let mut antecedent_flow_id = flow_id;
-        let mut pending_condition_narrows: Vec<PendingConditionNarrow> = Vec::new();
+        let mut pending_condition_narrows: Vec<Rc<PendingConditionNarrow>> = Vec::new();
         loop {
             let flow_node = tree
                 .get_flow_node(antecedent_flow_id)

@@ -3,6 +3,8 @@ mod call_flow;
 pub(in crate::semantic::infer::narrow) mod correlated_flow;
 mod index_flow;
 
+use std::rc::Rc;
+
 use self::{
     binary_flow::get_type_at_binary_expr,
     correlated_flow::{CorrelatedConditionNarrowing, prepare_var_from_return_overload_condition},
@@ -59,7 +61,7 @@ impl InferConditionFlow {
 pub(in crate::semantic) enum ConditionFlowAction {
     Continue,
     Result(LuaType),
-    Pending(PendingConditionNarrow),
+    Pending(Rc<PendingConditionNarrow>),
 }
 
 impl From<ResultTypeOrContinue> for ConditionFlowAction {
@@ -68,6 +70,14 @@ impl From<ResultTypeOrContinue> for ConditionFlowAction {
             ResultTypeOrContinue::Continue => ConditionFlowAction::Continue,
             ResultTypeOrContinue::Result(result_type) => ConditionFlowAction::Result(result_type),
         }
+    }
+}
+
+impl ConditionFlowAction {
+    pub(in crate::semantic::infer::narrow) fn pending(
+        pending_condition_narrow: PendingConditionNarrow,
+    ) -> Self {
+        ConditionFlowAction::Pending(Rc::new(pending_condition_narrow))
     }
 }
 
@@ -99,13 +109,13 @@ pub(in crate::semantic) enum PendingConditionNarrow {
 
 impl PendingConditionNarrow {
     pub(in crate::semantic::infer::narrow) fn apply(
-        self,
+        &self,
         db: &DbIndex,
         cache: &mut LuaInferCache,
         antecedent_type: LuaType,
     ) -> LuaType {
         match self {
-            PendingConditionNarrow::Truthiness(condition_flow) => match condition_flow {
+            PendingConditionNarrow::Truthiness(condition_flow) => match condition_flow.clone() {
                 InferConditionFlow::FalseCondition => narrow_false_or_nil(db, antecedent_type),
                 InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_type),
             },
@@ -139,7 +149,7 @@ impl PendingConditionNarrow {
                 if result.is_empty() {
                     antecedent_type
                 } else {
-                    match condition_flow {
+                    match condition_flow.clone() {
                         InferConditionFlow::TrueCondition => LuaType::from_vec(result),
                         InferConditionFlow::FalseCondition => {
                             let target = LuaType::from_vec(result);
@@ -156,7 +166,7 @@ impl PendingConditionNarrow {
                     db,
                     cache,
                     &antecedent_type,
-                    index,
+                    index.clone(),
                     &InferGuard::new(),
                 ) else {
                     return antecedent_type;
@@ -178,9 +188,9 @@ impl PendingConditionNarrow {
                 apply_signature_cast(
                     db,
                     antecedent_type,
-                    signature_id,
+                    signature_id.clone(),
                     signature_cast,
-                    condition_flow,
+                    condition_flow.clone(),
                 )
             }
             PendingConditionNarrow::SignatureCast {
@@ -195,18 +205,18 @@ impl PendingConditionNarrow {
                 apply_signature_cast(
                     db,
                     antecedent_type,
-                    signature_id,
+                    signature_id.clone(),
                     signature_cast,
-                    condition_flow,
+                    condition_flow.clone(),
                 )
             }
             PendingConditionNarrow::Eq {
                 right_expr_type,
                 condition_flow,
-            } => match condition_flow {
+            } => match condition_flow.clone() {
                 InferConditionFlow::TrueCondition => {
                     let maybe_type =
-                        crate::TypeOps::Intersect.apply(db, &antecedent_type, &right_expr_type);
+                        crate::TypeOps::Intersect.apply(db, &antecedent_type, right_expr_type);
                     if maybe_type.is_never() {
                         antecedent_type
                     } else {
@@ -214,18 +224,19 @@ impl PendingConditionNarrow {
                     }
                 }
                 InferConditionFlow::FalseCondition => {
-                    crate::TypeOps::Remove.apply(db, &antecedent_type, &right_expr_type)
+                    crate::TypeOps::Remove.apply(db, &antecedent_type, right_expr_type)
                 }
             },
             PendingConditionNarrow::TypeGuard {
                 narrow,
                 condition_flow,
-            } => match condition_flow {
+            } => match condition_flow.clone() {
                 InferConditionFlow::TrueCondition => {
-                    narrow_down_type(db, antecedent_type, narrow.clone(), None).unwrap_or(narrow)
+                    narrow_down_type(db, antecedent_type, narrow.clone(), None)
+                        .unwrap_or_else(|| narrow.clone())
                 }
                 InferConditionFlow::FalseCondition => {
-                    crate::TypeOps::Remove.apply(db, &antecedent_type, &narrow)
+                    crate::TypeOps::Remove.apply(db, &antecedent_type, narrow)
                 }
             },
             PendingConditionNarrow::Correlated(correlated_narrowing) => {
@@ -376,7 +387,7 @@ fn get_type_at_name_expr(
         );
     }
 
-    Ok(ConditionFlowAction::Pending(
+    Ok(ConditionFlowAction::pending(
         PendingConditionNarrow::Truthiness(condition_flow),
     ))
 }
@@ -430,7 +441,7 @@ fn get_type_at_name_ref(
             name_expr.get_position(),
             &narrowed_discriminant_type,
         )? {
-            return Ok(ConditionFlowAction::Pending(
+            return Ok(ConditionFlowAction::pending(
                 PendingConditionNarrow::Correlated(correlated_narrowing),
             ));
         }
