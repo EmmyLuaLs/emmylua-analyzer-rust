@@ -8,7 +8,7 @@ use vscode_config::get_client_config_vscode;
 use crate::context::{ClientId, ServerContextSnapshot};
 
 #[allow(unused)]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ClientConfig {
     pub client_id: ClientId,
     pub exclude: Vec<String>,
