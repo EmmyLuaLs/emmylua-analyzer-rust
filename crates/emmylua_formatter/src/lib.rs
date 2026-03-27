@@ -2,6 +2,8 @@
 pub mod cmd_args;
 pub mod config;
 mod formatter;
+#[allow(dead_code)]
+mod formatter_new;
 pub mod ir;
 mod printer;
 mod test;
@@ -41,6 +43,23 @@ pub fn reformat_lua_code(source: &SourceText, config: &LuaFormatConfig) -> Strin
 pub fn reformat_chunk(chunk: &LuaChunk, config: &LuaFormatConfig) -> String {
     let ctx = FormatContext::new(config);
     let ir = formatter::format_chunk(&ctx, chunk);
+
+    Printer::new(config).print(&ir)
+}
+
+pub fn reformat_lua_code_new(source: &SourceText, config: &LuaFormatConfig) -> String {
+    let tree = LuaParser::parse(source.text, ParserConfig::with_level(source.level));
+
+    let ctx = formatter_new::FormatContext::new(config);
+    let chunk = tree.get_chunk_node();
+    let ir = formatter_new::format_chunk(&ctx, &chunk);
+
+    Printer::new(config).print(&ir)
+}
+
+pub fn reformat_chunk_new(chunk: &LuaChunk, config: &LuaFormatConfig) -> String {
+    let ctx = formatter_new::FormatContext::new(config);
+    let ir = formatter_new::format_chunk(&ctx, chunk);
 
     Printer::new(config).print(&ir)
 }

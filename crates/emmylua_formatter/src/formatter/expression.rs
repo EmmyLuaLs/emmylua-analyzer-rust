@@ -26,7 +26,7 @@ use super::sequence::{
 use super::spacing::{SpaceRule, space_around_assign, space_around_binary_op};
 use super::tokens::{comma_soft_line_sep, comma_space_sep, tok};
 use super::trivia::{
-    node_has_direct_comment_child, node_has_direct_same_line_inline_comment,
+    has_non_trivia_before_on_same_line_tokenwise, node_has_direct_comment_child,
     source_line_prefix_width, trailing_gap_requests_alignment,
 };
 
@@ -44,6 +44,28 @@ enum IndexStandaloneSuffix {
 struct IndexStandaloneLayout {
     before_suffix_comments: Vec<SequenceEntry>,
     suffix: Option<IndexStandaloneSuffix>,
+}
+
+struct InlineCommentFragment {
+    docs: Vec<DocIR>,
+    same_line_before: bool,
+}
+
+struct CallArgsRenderPlan {
+    docs: Vec<DocIR>,
+    inline_space_before: bool,
+}
+
+struct CallExprShellPlan {
+    prefix: Vec<DocIR>,
+    comments: Vec<InlineCommentFragment>,
+    args: CallArgsRenderPlan,
+}
+
+struct ClosureExprShellPlan {
+    params: Vec<DocIR>,
+    before_params_comments: Vec<InlineCommentFragment>,
+    before_body_comments: Vec<InlineCommentFragment>,
 }
 
 pub fn format_expr(ctx: &FormatContext, expr: &LuaExpr) -> Vec<DocIR> {
@@ -849,26 +871,14 @@ fn format_unary_expr(ctx: &FormatContext, expr: &LuaUnaryExpr) -> Vec<DocIR> {
 
 /// 函数调用: f(a, b), obj:m(a), f "hello", f { ... }
 fn format_call_expr(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
-    if should_preserve_raw_call_expr(expr) {
-        return vec![ir::source_node_trimmed(expr.syntax().clone())];
-    }
-
     // 尝试方法链格式化
-    if let Some(chain) = try_format_chain(ctx, expr) {
+    if !node_has_direct_comment_child(expr.syntax())
+        && let Some(chain) = try_format_chain(ctx, expr)
+    {
         return chain;
     }
 
-    let mut docs = Vec::new();
-
-    // 前缀（函数名/表达式）
-    if let Some(prefix) = expr.get_prefix_expr() {
-        docs.extend(format_expr(ctx, &prefix));
-    }
-
-    // 参数列表
-    docs.extend(format_call_args_ir(ctx, expr));
-
-    docs
+    render_call_expr_shell(ctx, collect_call_expr_shell_plan(ctx, expr))
 }
 
 /// 索引表达式: t.x, t:m, t[k]
@@ -1033,29 +1043,35 @@ fn collect_index_standalone_layout(
     }
 }
 
-/// 格式化调用参数部分（不含前缀），如 `(a, b)` 或单参数简写 ` "str"` / ` { ... }`
-fn format_call_args_ir(ctx: &FormatContext, expr: &LuaCallExpr) -> Vec<DocIR> {
-    format_call_args_ir_with_options(ctx, expr, false)
-}
-
 fn format_call_args_ir_with_options(
     ctx: &FormatContext,
     expr: &LuaCallExpr,
     preserve_chain_attached_table_source: bool,
 ) -> Vec<DocIR> {
+    let plan = format_call_args_render_plan(ctx, expr, preserve_chain_attached_table_source);
+    let mut docs = Vec::new();
+    if plan.inline_space_before {
+        docs.push(ir::space());
+    }
+    docs.extend(plan.docs);
+    docs
+}
+
+fn format_call_args_render_plan(
+    ctx: &FormatContext,
+    expr: &LuaCallExpr,
+    preserve_chain_attached_table_source: bool,
+) -> CallArgsRenderPlan {
     let mut docs = Vec::new();
 
     if let Some(args_list) = expr.get_args_list() {
         let args: Vec<_> = args_list.get_args().collect();
         if let Some(single_arg_docs) = format_single_arg_call_without_parens(ctx, &args_list, &args)
         {
-            docs.push(ir::space());
-            docs.extend(single_arg_docs);
-            return docs;
-        }
-
-        if ctx.config.spacing.space_before_call_paren {
-            docs.push(ir::space());
+            return CallArgsRenderPlan {
+                docs: single_arg_docs,
+                inline_space_before: true,
+            };
         }
 
         if args.is_empty() {
@@ -1086,27 +1102,29 @@ fn format_call_args_ir_with_options(
                     } else {
                         let arg_docs: Vec<Vec<DocIR>> =
                             args.iter().map(|a| format_expr(ctx, a)).collect();
-                        docs.extend(format_delimited_sequence(
-                            ctx,
-                            DelimitedSequenceLayout {
-                                open: tok(LuaTokenKind::TkLeftParen),
-                                close: tok(LuaTokenKind::TkRightParen),
-                                items: arg_docs,
-                                strategy: ExpandStrategy::Always,
-                                preserve_multiline: false,
-                                flat_separator: comma_space_sep(),
-                                fill_separator: comma_soft_line_sep(),
-                                break_separator: comma_soft_line_sep(),
-                                flat_open_padding: vec![],
-                                flat_close_padding: vec![],
-                                grouped_padding: ir::soft_line_or_empty(),
-                                flat_trailing: vec![],
-                                grouped_trailing: trailing,
-                                custom_break_contents: None,
-                                prefer_custom_break_in_auto: false,
-                            },
-                        ));
-                        return docs;
+                        return CallArgsRenderPlan {
+                            docs: format_delimited_sequence(
+                                ctx,
+                                DelimitedSequenceLayout {
+                                    open: tok(LuaTokenKind::TkLeftParen),
+                                    close: tok(LuaTokenKind::TkRightParen),
+                                    items: arg_docs,
+                                    strategy: ExpandStrategy::Always,
+                                    preserve_multiline: false,
+                                    flat_separator: comma_space_sep(),
+                                    fill_separator: comma_soft_line_sep(),
+                                    break_separator: comma_soft_line_sep(),
+                                    flat_open_padding: vec![],
+                                    flat_close_padding: vec![],
+                                    grouped_padding: ir::soft_line_or_empty(),
+                                    flat_trailing: vec![],
+                                    grouped_trailing: trailing,
+                                    custom_break_contents: None,
+                                    prefer_custom_break_in_auto: false,
+                                },
+                            ),
+                            inline_space_before: ctx.config.spacing.space_before_call_paren,
+                        };
                     };
                     docs.extend(wrap_multiline_call_arg_docs(
                         ctx,
@@ -1234,7 +1252,10 @@ fn format_call_args_ir_with_options(
         }
     }
 
-    docs
+    CallArgsRenderPlan {
+        docs,
+        inline_space_before: ctx.config.spacing.space_before_call_paren,
+    }
 }
 
 fn should_attach_first_call_arg(args: &[LuaExpr]) -> bool {
@@ -2090,33 +2111,7 @@ fn build_table_expanded_inner(
 
 /// 匿名函数: function(params) ... end
 fn format_closure_expr(ctx: &FormatContext, expr: &LuaClosureExpr) -> Vec<DocIR> {
-    if should_preserve_raw_closure_expr(expr) {
-        return vec![ir::source_node_trimmed(expr.syntax().clone())];
-    }
-
-    let mut docs = vec![tok(LuaTokenKind::TkFunction)];
-
-    if ctx.config.spacing.space_before_func_paren {
-        docs.push(ir::space());
-    }
-
-    // 参数列表
-    if let Some(params) = expr.get_params_list() {
-        docs.extend(format_param_list_ir(ctx, &params));
-    } else {
-        docs.push(tok(LuaTokenKind::TkLeftParen));
-        docs.push(tok(LuaTokenKind::TkRightParen));
-    }
-
-    // body
-    super::format_body_end_with_parent(
-        ctx,
-        expr.get_block().as_ref(),
-        Some(expr.syntax()),
-        &mut docs,
-    );
-
-    docs
+    render_closure_expr_shell(ctx, expr, collect_closure_expr_shell_plan(ctx, expr))
 }
 
 /// 括号表达式: (expr)
@@ -2242,20 +2237,191 @@ fn single_arg_expr_from_args(args: &[LuaExpr]) -> Option<LuaSingleArgExpr> {
     }
 }
 
-fn should_preserve_raw_call_expr(expr: &LuaCallExpr) -> bool {
-    if node_has_direct_same_line_inline_comment(expr.syntax()) {
-        return true;
+fn collect_call_expr_shell_plan(ctx: &FormatContext, expr: &LuaCallExpr) -> CallExprShellPlan {
+    let mut prefix = Vec::new();
+    let mut comments = Vec::new();
+
+    for child in expr.syntax().children() {
+        if let Some(prefix_expr) = LuaExpr::cast(child.clone()) {
+            prefix = format_expr(ctx, &prefix_expr);
+        } else if let Some(comment) = LuaComment::cast(child) {
+            comments.push(InlineCommentFragment {
+                docs: format_comment(ctx.config, &comment),
+                same_line_before: has_non_trivia_before_on_same_line_tokenwise(comment.syntax()),
+            });
+        }
     }
 
-    false
+    CallExprShellPlan {
+        prefix,
+        comments,
+        args: format_call_args_render_plan(ctx, expr, false),
+    }
 }
 
-fn should_preserve_raw_closure_expr(expr: &LuaClosureExpr) -> bool {
-    if node_has_direct_same_line_inline_comment(expr.syntax()) {
-        return true;
+fn render_call_expr_shell(ctx: &FormatContext, plan: CallExprShellPlan) -> Vec<DocIR> {
+    let mut docs = plan.prefix;
+
+    if plan.comments.is_empty() {
+        if plan.args.inline_space_before {
+            docs.push(ir::space());
+        }
+        docs.extend(plan.args.docs);
+        return docs;
     }
 
-    false
+    let mut broke_before_args = false;
+    for comment in plan.comments {
+        if comment.same_line_before && !broke_before_args {
+            let mut suffix = trailing_comment_prefix(ctx.config);
+            suffix.extend(comment.docs);
+            docs.push(ir::line_suffix(suffix));
+        } else {
+            docs.push(ir::hard_line());
+            docs.extend(comment.docs);
+        }
+        broke_before_args = true;
+    }
+
+    if broke_before_args {
+        docs.push(ir::hard_line());
+        docs.extend(plan.args.docs);
+    } else {
+        if plan.args.inline_space_before {
+            docs.push(ir::space());
+        }
+        docs.extend(plan.args.docs);
+    }
+
+    docs
+}
+
+fn collect_closure_expr_shell_plan(
+    ctx: &FormatContext,
+    expr: &LuaClosureExpr,
+) -> ClosureExprShellPlan {
+    let mut params = vec![
+        tok(LuaTokenKind::TkLeftParen),
+        tok(LuaTokenKind::TkRightParen),
+    ];
+    let mut before_params_comments = Vec::new();
+    let mut before_body_comments = Vec::new();
+    let mut seen_params = false;
+
+    for child in expr.syntax().children() {
+        if let Some(params_list) = emmylua_parser::LuaParamList::cast(child.clone()) {
+            params = format_param_list_ir(ctx, &params_list);
+            seen_params = true;
+        } else if LuaComment::cast(child.clone()).is_some() {
+            let comment = LuaComment::cast(child).unwrap();
+            let fragment = InlineCommentFragment {
+                docs: format_comment(ctx.config, &comment),
+                same_line_before: has_non_trivia_before_on_same_line_tokenwise(comment.syntax()),
+            };
+            if seen_params {
+                before_body_comments.push(fragment);
+            } else {
+                before_params_comments.push(fragment);
+            }
+        }
+    }
+
+    ClosureExprShellPlan {
+        params,
+        before_params_comments,
+        before_body_comments,
+    }
+}
+
+fn render_closure_expr_shell(
+    ctx: &FormatContext,
+    expr: &LuaClosureExpr,
+    plan: ClosureExprShellPlan,
+) -> Vec<DocIR> {
+    let mut docs = vec![tok(LuaTokenKind::TkFunction)];
+    let mut broke_before_params = false;
+
+    for comment in plan.before_params_comments {
+        if comment.same_line_before && !broke_before_params {
+            let mut suffix = trailing_comment_prefix(ctx.config);
+            suffix.extend(comment.docs);
+            docs.push(ir::line_suffix(suffix));
+        } else {
+            docs.push(ir::hard_line());
+            docs.extend(comment.docs);
+        }
+        broke_before_params = true;
+    }
+
+    if broke_before_params {
+        docs.push(ir::hard_line());
+    } else if ctx.config.spacing.space_before_func_paren {
+        docs.push(ir::space());
+    }
+    docs.extend(plan.params);
+
+    let has_comment_before_body = !plan.before_body_comments.is_empty();
+    let mut body_comment_lines = Vec::new();
+    let mut saw_same_line_body_comment = false;
+    for comment in plan.before_body_comments {
+        if comment.same_line_before && body_comment_lines.is_empty() {
+            let mut suffix = trailing_comment_prefix(ctx.config);
+            suffix.extend(comment.docs);
+            docs.push(ir::line_suffix(suffix));
+            saw_same_line_body_comment = true;
+        } else {
+            body_comment_lines.push(comment.docs);
+        }
+    }
+
+    if has_comment_before_body {
+        let block_docs = expr
+            .get_block()
+            .map(|block| super::format_block(ctx, &block));
+        if let Some(block_docs) = block_docs
+            && !block_docs.is_empty()
+        {
+            let mut indented = vec![ir::hard_line()];
+            for comment_docs in body_comment_lines {
+                indented.extend(comment_docs);
+                indented.push(ir::hard_line());
+            }
+            indented.extend(block_docs);
+            docs.push(ir::indent(indented));
+            docs.push(ir::hard_line());
+            docs.push(tok(LuaTokenKind::TkEnd));
+            return docs;
+        }
+
+        if !body_comment_lines.is_empty() {
+            let mut indented = vec![ir::hard_line()];
+            let body_comment_count = body_comment_lines.len();
+            for (index, comment_docs) in body_comment_lines.into_iter().enumerate() {
+                indented.extend(comment_docs);
+                if index + 1 < body_comment_count {
+                    indented.push(ir::hard_line());
+                }
+            }
+            docs.push(ir::indent(indented));
+            docs.push(ir::hard_line());
+            docs.push(tok(LuaTokenKind::TkEnd));
+            return docs;
+        }
+
+        if saw_same_line_body_comment {
+            docs.push(ir::hard_line());
+            docs.push(tok(LuaTokenKind::TkEnd));
+            return docs;
+        }
+    }
+
+    super::format_body_end_with_parent(
+        ctx,
+        expr.get_block().as_ref(),
+        Some(expr.syntax()),
+        &mut docs,
+    );
+    docs
 }
 
 enum CallArgEntry {

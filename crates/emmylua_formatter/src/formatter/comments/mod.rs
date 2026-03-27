@@ -1563,12 +1563,9 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
             &format!("{name}{gap}{ty}"),
             desc.as_deref(),
         ),
-        DocCommentLine::Field { key, ty, desc } => render_structured_doc_line(
-            config,
-            "field",
-            &format!("{key}{gap}{ty}"),
-            desc.as_deref(),
-        ),
+        DocCommentLine::Field { key, ty, desc } => {
+            render_structured_doc_line(config, "field", &format!("{key}{gap}{ty}"), desc.as_deref())
+        }
         DocCommentLine::Return { body, desc } => {
             render_structured_doc_line(config, "return", body, desc.as_deref())
         }

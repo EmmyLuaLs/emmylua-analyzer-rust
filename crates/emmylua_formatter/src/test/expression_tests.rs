@@ -285,6 +285,14 @@ local b = t[1]
     }
 
     #[test]
+    fn test_call_expr_formats_inline_comment_between_prefix_and_args() {
+        assert_format!(
+            "local value = foo -- note\n(a, b)\n",
+            "local value = foo -- note\n(a, b)\n"
+        );
+    }
+
+    #[test]
     fn test_closure_expr_preserves_inline_comment_in_params() {
         assert_format!(
             "local f = function(a -- first\n, b)\n    return a + b\nend\n",
@@ -305,6 +313,14 @@ local b = t[1]
         assert_format!(
             "local f = function(\na,\n-- tail\n)\n    return a\nend\n",
             "local f = function(\n    a\n    -- tail\n)\n    return a\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_closure_expr_formats_inline_comment_before_end() {
+        assert_format!(
+            "local f = function() -- note\nend\n",
+            "local f = function() -- note\nend\n"
         );
     }
 

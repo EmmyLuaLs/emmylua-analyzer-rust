@@ -48,7 +48,7 @@ pub fn format_stat(ctx: &FormatContext, stat: &LuaStat) -> Vec<DocIR> {
         LuaStat::ReturnStat(s) => format_return_stat(ctx, s),
         LuaStat::GotoStat(s) => format_goto_stat(ctx, s),
         LuaStat::LabelStat(s) => format_label_stat(ctx, s),
-        LuaStat::EmptyStat(_) => vec![tok(LuaTokenKind::TkSemicolon)],
+        LuaStat::EmptyStat(_) => vec![],
         LuaStat::GlobalStat(s) => format_global_stat(ctx, s),
     }
 }
