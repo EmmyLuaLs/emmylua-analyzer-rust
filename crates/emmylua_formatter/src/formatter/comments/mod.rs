@@ -373,9 +373,12 @@ fn format_doc_comment(config: &LuaFormatConfig, comment: &LuaComment) -> Vec<Doc
     }
 
     let lines = parse_doc_comment_lines(comment);
-    let rendered = render_doc_comment_lines(config, &lines);
     let mut docs = Vec::new();
-    for (index, line) in rendered.into_iter().enumerate() {
+    for (index, line) in lines
+        .iter()
+        .map(|line| render_single_doc_comment_line(config, line))
+        .enumerate()
+    {
         if index > 0 {
             docs.push(ir::hard_line());
         }
@@ -1433,13 +1436,6 @@ fn single_line_node_text(node: &impl LuaAstNode) -> Option<String> {
     Some(text)
 }
 
-fn render_doc_comment_lines(config: &LuaFormatConfig, lines: &[DocCommentLine]) -> Vec<String> {
-    lines
-        .iter()
-        .map(|line| render_single_doc_comment_line(config, line))
-        .collect()
-}
-
 fn find_interleaved_aligned_group(
     config: &LuaFormatConfig,
     lines: &[DocCommentLine],
@@ -1544,95 +1540,57 @@ fn render_single_doc_comment_line(config: &LuaFormatConfig, line: &DocCommentLin
         }
         DocCommentLine::Raw(text) => normalize_embedded_doc_prefixes(config, text),
         DocCommentLine::Class { body, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{body}",
-                normalized_doc_tag_with_name_prefix(config, "class")
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
+            render_structured_doc_line(config, "class", body, desc.as_deref())
         }
-        DocCommentLine::Alias { body, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{}",
-                normalized_doc_tag_with_name_prefix(config, "alias"),
-                normalize_embedded_doc_prefixes(config, body)
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
-        }
+        DocCommentLine::Alias { body, desc } => render_structured_doc_line(
+            config,
+            "alias",
+            &normalize_embedded_doc_prefixes(config, body),
+            desc.as_deref(),
+        ),
         DocCommentLine::Type { body, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{body}",
-                normalized_doc_tag_with_name_prefix(config, "type")
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
+            render_structured_doc_line(config, "type", body, desc.as_deref())
         }
         DocCommentLine::Generic { body, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{body}",
-                normalized_doc_tag_with_name_prefix(config, "generic")
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
+            render_structured_doc_line(config, "generic", body, desc.as_deref())
         }
         DocCommentLine::Overload { body, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{body}",
-                normalized_doc_tag_with_name_prefix(config, "overload")
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
+            render_structured_doc_line(config, "overload", body, desc.as_deref())
         }
-        DocCommentLine::Param { name, ty, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{name}{gap}{ty}",
-                normalized_doc_tag_with_name_prefix(config, "param")
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
-        }
-        DocCommentLine::Field { key, ty, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{key}{gap}{ty}",
-                normalized_doc_tag_with_name_prefix(config, "field")
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
-        }
+        DocCommentLine::Param { name, ty, desc } => render_structured_doc_line(
+            config,
+            "param",
+            &format!("{name}{gap}{ty}"),
+            desc.as_deref(),
+        ),
+        DocCommentLine::Field { key, ty, desc } => render_structured_doc_line(
+            config,
+            "field",
+            &format!("{key}{gap}{ty}"),
+            desc.as_deref(),
+        ),
         DocCommentLine::Return { body, desc } => {
-            let mut rendered = format!(
-                "{}{gap}{body}",
-                normalized_doc_tag_with_name_prefix(config, "return")
-            );
-            if let Some(desc) = desc {
-                rendered.push_str(&gap);
-                rendered.push_str(desc);
-            }
-            rendered
+            render_structured_doc_line(config, "return", body, desc.as_deref())
         }
     }
+}
+
+fn render_structured_doc_line(
+    config: &LuaFormatConfig,
+    tag_name: &str,
+    body: &str,
+    desc: Option<&str>,
+) -> String {
+    let gap = " ".repeat(config.emmy_doc.tag_spacing.max(1));
+    let mut rendered = format!(
+        "{}{gap}{body}",
+        normalized_doc_tag_with_name_prefix(config, tag_name)
+    );
+    if let Some(desc) = desc {
+        rendered.push_str(&gap);
+        rendered.push_str(desc);
+    }
+    rendered
 }
 
 fn normalized_comment_prefix(config: &LuaFormatConfig, prefix_text: &str) -> Option<String> {
