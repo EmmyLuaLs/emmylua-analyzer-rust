@@ -1,22 +1,18 @@
-mod block;
-mod comments;
-mod expression;
+mod expr;
+mod layout;
+mod line_breaks;
+mod model;
+mod render;
 mod sequence;
-pub mod spacing;
-mod statement;
-mod tokens;
+mod spacing;
 mod trivia;
 
 use std::cell::Cell;
 
 use crate::config::LuaFormatConfig;
-use crate::ir::{self, DocIR, GroupId};
-use emmylua_parser::{LuaAstNode, LuaChunk, LuaKind, LuaTokenKind};
+use crate::ir::{DocIR, GroupId};
+use emmylua_parser::LuaChunk;
 
-pub use block::format_block;
-pub use statement::format_body_end_with_parent;
-
-/// Formatting context, shared throughout the formatting process
 pub struct FormatContext<'a> {
     pub config: &'a LuaFormatConfig,
     next_group_id: Cell<u32>,
@@ -37,26 +33,9 @@ impl<'a> FormatContext<'a> {
     }
 }
 
-/// Format a chunk (root node of the file)
 pub fn format_chunk(ctx: &FormatContext, chunk: &LuaChunk) -> Vec<DocIR> {
-    let mut docs = Vec::new();
-
-    // Emit shebang if present (TkShebang is a trivia token in the syntax tree)
-    if let Some(first_token) = chunk.syntax().first_token()
-        && first_token.kind() == LuaKind::Token(LuaTokenKind::TkShebang)
-    {
-        docs.push(ir::text(first_token.text()));
-        docs.push(DocIR::HardLine);
-    }
-
-    if let Some(block) = chunk.get_block() {
-        docs.extend(format_block(ctx, &block));
-    }
-
-    // Ensure file ends with a newline
-    if ctx.config.output.insert_final_newline {
-        docs.push(DocIR::HardLine);
-    }
-
-    docs
+    let spacing_plan = spacing::analyze_root_spacing(ctx, chunk);
+    let layout_plan = layout::analyze_root_layout(ctx, chunk, spacing_plan);
+    let final_plan = line_breaks::analyze_root_line_breaks(ctx, chunk, layout_plan);
+    render::render_root(ctx, chunk, &final_plan)
 }

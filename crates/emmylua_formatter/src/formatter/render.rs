@@ -5,6 +5,7 @@ use emmylua_parser::{
     LuaWhileStat,
 };
 
+use crate::formatter::model::StatementExprListLayoutKind;
 use crate::ir::{self, DocIR};
 
 use super::FormatContext;
@@ -175,7 +176,7 @@ fn render_local_stat_new(
                     index == 0
                         && matches!(
                             expr_list_plan.kind,
-                            super::model::StatementExprListLayoutKind::PreserveFirstMultiline
+                            StatementExprListLayoutKind::PreserveFirstMultiline
                         ),
                 )
             })
@@ -246,7 +247,7 @@ fn render_assign_stat_new(
                 index == 0
                     && matches!(
                         expr_list_plan.kind,
-                        super::model::StatementExprListLayoutKind::PreserveFirstMultiline
+                        StatementExprListLayoutKind::PreserveFirstMultiline
                     ),
             )
         })
@@ -306,7 +307,7 @@ fn render_return_stat_new(
                     index == 0
                         && matches!(
                             expr_list_plan.kind,
-                            super::model::StatementExprListLayoutKind::PreserveFirstMultiline
+                            StatementExprListLayoutKind::PreserveFirstMultiline
                         ),
                 )
             })
@@ -429,7 +430,7 @@ fn render_for_stat_new(
                     index == 0
                         && matches!(
                             expr_list_plan.kind,
-                            super::model::StatementExprListLayoutKind::PreserveFirstMultiline
+                            StatementExprListLayoutKind::PreserveFirstMultiline
                         ),
                 )
             })
@@ -507,7 +508,7 @@ fn render_for_range_stat_new(
                     index == 0
                         && matches!(
                             expr_list_plan.kind,
-                            super::model::StatementExprListLayoutKind::PreserveFirstMultiline
+                            StatementExprListLayoutKind::PreserveFirstMultiline
                         ),
                 )
             })
@@ -1085,7 +1086,7 @@ fn format_local_name_ir_new(local_name: &LuaLocalName) -> Vec<DocIR> {
     docs
 }
 
-fn format_statement_expr_list_new(
+fn format_statement_expr_list(
     ctx: &FormatContext,
     plan: &RootFormatPlan,
     expr_list_plan: super::model::StatementExprListLayoutPlan,
@@ -1180,7 +1181,7 @@ fn render_statement_exprs_new(
     let leading_docs = token_right_spacing_docs(plan, leading_token);
     if matches!(
         expr_list_plan.kind,
-        super::model::StatementExprListLayoutKind::PreserveFirstMultiline
+        StatementExprListLayoutKind::PreserveFirstMultiline
     ) {
         format_statement_expr_list_with_attached_first_multiline_new(
             comma_token,
@@ -1188,7 +1189,7 @@ fn render_statement_exprs_new(
             expr_docs,
         )
     } else {
-        format_statement_expr_list_new(
+        format_statement_expr_list(
             ctx,
             plan,
             expr_list_plan,
@@ -1210,7 +1211,7 @@ fn render_header_exprs_new(
     let leading_docs = token_right_spacing_docs(plan, leading_token);
     if matches!(
         expr_list_plan.kind,
-        super::model::StatementExprListLayoutKind::PreserveFirstMultiline
+        StatementExprListLayoutKind::PreserveFirstMultiline
     ) {
         format_statement_expr_list_with_attached_first_multiline_new(
             comma_token,
@@ -1218,7 +1219,7 @@ fn render_header_exprs_new(
             expr_docs,
         )
     } else {
-        format_statement_expr_list_new(
+        format_statement_expr_list(
             ctx,
             plan,
             expr_list_plan,

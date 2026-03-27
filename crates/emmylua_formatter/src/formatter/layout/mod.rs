@@ -311,7 +311,7 @@ mod tests {
     use emmylua_parser::{LuaAstNode, LuaLanguageLevel, LuaParser, LuaSyntaxKind, ParserConfig};
 
     use crate::config::LuaFormatConfig;
-    use crate::formatter_new::model::{LayoutNodePlan, StatementExprListLayoutKind};
+    use crate::formatter::model::{LayoutNodePlan, StatementExprListLayoutKind};
 
     use super::*;
 
@@ -323,12 +323,12 @@ mod tests {
             ParserConfig::with_level(LuaLanguageLevel::Lua54),
         );
         let chunk = tree.get_chunk_node();
-        let spacing_plan = crate::formatter_new::spacing::analyze_root_spacing(
-            &crate::formatter_new::FormatContext::new(&config),
+        let spacing_plan = crate::formatter::spacing::analyze_root_spacing(
+            &crate::formatter::FormatContext::new(&config),
             &chunk,
         );
         let plan = analyze_root_layout(
-            &crate::formatter_new::FormatContext::new(&config),
+            &crate::formatter::FormatContext::new(&config),
             &chunk,
             spacing_plan,
         );
@@ -356,8 +356,8 @@ mod tests {
             ParserConfig::with_level(LuaLanguageLevel::Lua54),
         );
         let chunk = tree.get_chunk_node();
-        let ctx = crate::formatter_new::FormatContext::new(&config);
-        let spacing_plan = crate::formatter_new::spacing::analyze_root_spacing(&ctx, &chunk);
+        let ctx = crate::formatter::FormatContext::new(&config);
+        let spacing_plan = crate::formatter::spacing::analyze_root_spacing(&ctx, &chunk);
         let plan = analyze_root_layout(&ctx, &chunk, spacing_plan);
 
         let local_stat = chunk
@@ -422,8 +422,8 @@ mod tests {
             ParserConfig::with_level(LuaLanguageLevel::Lua54),
         );
         let chunk = tree.get_chunk_node();
-        let ctx = crate::formatter_new::FormatContext::new(&config);
-        let spacing_plan = crate::formatter_new::spacing::analyze_root_spacing(&ctx, &chunk);
+        let ctx = crate::formatter::FormatContext::new(&config);
+        let spacing_plan = crate::formatter::spacing::analyze_root_spacing(&ctx, &chunk);
         let plan = analyze_root_layout(&ctx, &chunk, spacing_plan);
 
         let param_list = chunk

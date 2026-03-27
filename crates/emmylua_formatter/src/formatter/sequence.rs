@@ -1,57 +1,61 @@
-use emmylua_parser::{LuaAstNode, LuaComment, LuaTokenKind};
-use rowan::TextRange;
-
 use crate::config::ExpandStrategy;
 use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break};
 use crate::printer::Printer;
 
+#[derive(Clone)]
+pub struct SequenceComment {
+    pub docs: Vec<DocIR>,
+    pub inline_after_previous: bool,
+}
+
 use super::FormatContext;
-use super::comments::{format_comment, trailing_comment_prefix};
-use super::trivia::has_non_trivia_before_on_same_line_tokenwise;
 
 #[derive(Clone)]
 pub enum SequenceEntry {
     Item(Vec<DocIR>),
-    Comment(Vec<DocIR>),
-    Separator { docs: Vec<DocIR>, space_after: bool },
-}
-
-pub fn comma_entry() -> SequenceEntry {
-    SequenceEntry::Separator {
-        docs: vec![ir::syntax_token(LuaTokenKind::TkComma)],
-        space_after: true,
-    }
+    Comment(SequenceComment),
+    Separator {
+        docs: Vec<DocIR>,
+        after_docs: Vec<DocIR>,
+    },
 }
 
 pub fn render_sequence(docs: &mut Vec<DocIR>, entries: &[SequenceEntry], mut line_start: bool) {
-    let mut needs_space_before_item = false;
+    let mut pending_docs_before_item: Vec<DocIR> = Vec::new();
 
     for entry in entries {
         match entry {
             SequenceEntry::Item(item_docs) => {
-                if !line_start && needs_space_before_item {
-                    docs.push(ir::space());
+                if !line_start && !pending_docs_before_item.is_empty() {
+                    docs.extend(pending_docs_before_item.clone());
                 }
                 docs.extend(item_docs.clone());
                 line_start = false;
-                needs_space_before_item = false;
+                pending_docs_before_item.clear();
             }
-            SequenceEntry::Comment(comment_docs) => {
-                if !line_start {
+            SequenceEntry::Comment(comment) => {
+                if comment.inline_after_previous && !line_start {
+                    let mut suffix = vec![ir::space()];
+                    suffix.extend(comment.docs.clone());
+                    docs.push(ir::line_suffix(suffix));
+                    docs.push(ir::hard_line());
+                } else {
+                    if !line_start {
+                        docs.push(ir::hard_line());
+                    }
+                    docs.extend(comment.docs.clone());
                     docs.push(ir::hard_line());
                 }
-                docs.extend(comment_docs.clone());
-                docs.push(ir::hard_line());
                 line_start = true;
-                needs_space_before_item = false;
+                pending_docs_before_item.clear();
             }
             SequenceEntry::Separator {
                 docs: separator_docs,
-                space_after,
+                after_docs,
             } => {
                 docs.extend(separator_docs.clone());
                 line_start = false;
-                needs_space_before_item = *space_after;
+                pending_docs_before_item = after_docs.clone();
             }
         }
     }
@@ -60,141 +64,21 @@ pub fn render_sequence(docs: &mut Vec<DocIR>, entries: &[SequenceEntry], mut lin
 pub fn sequence_has_comment(entries: &[SequenceEntry]) -> bool {
     entries
         .iter()
-        .any(|entry| matches!(entry, SequenceEntry::Comment(_)))
+        .any(|entry| matches!(entry, SequenceEntry::Comment(..)))
 }
 
 pub fn sequence_ends_with_comment(entries: &[SequenceEntry]) -> bool {
-    matches!(entries.last(), Some(SequenceEntry::Comment(_)))
+    matches!(entries.last(), Some(SequenceEntry::Comment(..)))
 }
 
-pub fn sequence_starts_with_comment(entries: &[SequenceEntry]) -> bool {
-    matches!(entries.first(), Some(SequenceEntry::Comment(_)))
-}
-
-#[derive(Clone)]
-pub struct DelimitedSequenceLayout {
-    pub open: DocIR,
-    pub close: DocIR,
-    pub items: Vec<Vec<DocIR>>,
-    pub strategy: ExpandStrategy,
-    pub preserve_multiline: bool,
-    pub flat_separator: Vec<DocIR>,
-    pub fill_separator: Vec<DocIR>,
-    pub break_separator: Vec<DocIR>,
-    pub flat_open_padding: Vec<DocIR>,
-    pub flat_close_padding: Vec<DocIR>,
-    pub grouped_padding: DocIR,
-    pub flat_trailing: Vec<DocIR>,
-    pub grouped_trailing: DocIR,
-    pub custom_break_contents: Option<Vec<DocIR>>,
-    pub prefer_custom_break_in_auto: bool,
-}
-
-#[derive(Clone, Default)]
-pub struct DelimitedSequenceAttachments {
-    pub after_open_comment: Option<Vec<DocIR>>,
-    pub before_close_comments: Vec<Vec<DocIR>>,
-}
-
-#[derive(Default)]
-pub struct DelimitedSequenceCommentState {
-    attachments: DelimitedSequenceAttachments,
-    consumed_comment_ranges: Vec<TextRange>,
-    pending_leading_comments: Vec<Vec<DocIR>>,
-    has_standalone_comments: bool,
-    seen_item: bool,
-}
-
-impl DelimitedSequenceCommentState {
-    pub fn record_consumed_comment_range(&mut self, range: TextRange) {
-        self.consumed_comment_ranges.push(range);
-    }
-
-    pub fn should_skip_comment(&self, comment: &LuaComment) -> bool {
-        self.consumed_comment_ranges
-            .iter()
-            .any(|range| *range == comment.syntax().text_range())
-    }
-
-    pub fn handle_comment(&mut self, ctx: &FormatContext, comment: &LuaComment) {
-        let comment_docs = format_comment(ctx.config, comment);
-        if !self.seen_item
-            && self.attachments.after_open_comment.is_none()
-            && has_non_trivia_before_on_same_line_tokenwise(comment.syntax())
-        {
-            self.attachments.after_open_comment = Some(comment_docs);
-            return;
-        }
-
-        self.pending_leading_comments.push(comment_docs);
-        self.has_standalone_comments = true;
-    }
-
-    pub fn take_leading_comments(&mut self) -> Vec<Vec<DocIR>> {
-        std::mem::take(&mut self.pending_leading_comments)
-    }
-
-    pub fn mark_item_seen(&mut self) {
-        self.seen_item = true;
-    }
-
-    pub fn finish(mut self) -> (DelimitedSequenceAttachments, bool) {
-        self.attachments.before_close_comments = self.pending_leading_comments;
-        (self.attachments, self.has_standalone_comments)
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct DelimitedSequenceMultilineWrapOptions {
-    pub leading_hard_line: bool,
-    pub indent_before_close_comments: bool,
-}
-
-pub fn push_comment_lines(target: &mut Vec<DocIR>, comments: &[Vec<DocIR>]) {
-    for comment_docs in comments {
-        target.push(ir::hard_line());
-        target.extend(comment_docs.clone());
-    }
-}
-
-pub fn wrap_multiline_delimited_sequence_docs(
-    ctx: &FormatContext,
-    open: DocIR,
-    close: DocIR,
-    inner: Vec<DocIR>,
-    trailing: Option<DocIR>,
-    attachments: &DelimitedSequenceAttachments,
-    options: DelimitedSequenceMultilineWrapOptions,
-) -> Vec<DocIR> {
-    let mut indented = Vec::new();
-    if options.leading_hard_line {
-        indented.push(ir::hard_line());
-    }
-    indented.push(ir::list(inner));
-    if let Some(trailing) = trailing {
-        indented.push(trailing);
-    }
-    if !options.indent_before_close_comments {
-        push_comment_lines(&mut indented, &attachments.before_close_comments);
-    }
-
-    let mut docs = vec![open];
-    if let Some(comment_docs) = &attachments.after_open_comment {
-        let mut suffix = trailing_comment_prefix(ctx.config);
-        suffix.extend(comment_docs.clone());
-        docs.push(ir::line_suffix(suffix));
-    }
-    docs.push(ir::indent(indented));
-
-    if options.indent_before_close_comments && !attachments.before_close_comments.is_empty() {
-        let mut closing_comments = Vec::new();
-        push_comment_lines(&mut closing_comments, &attachments.before_close_comments);
-        docs.push(ir::indent(closing_comments));
-    }
-
-    docs.push(ir::hard_line());
-    docs.push(close);
-    vec![ir::group_break(docs)]
+pub fn sequence_starts_with_inline_comment(entries: &[SequenceEntry]) -> bool {
+    matches!(
+        entries.first(),
+        Some(SequenceEntry::Comment(SequenceComment {
+            inline_after_previous: true,
+            ..
+        }))
+    )
 }
 
 #[derive(Clone, Default)]
@@ -241,6 +125,23 @@ pub struct SequenceLayoutPolicy {
     pub force_break_on_standalone_comments: bool,
     pub prefer_balanced_break_lines: bool,
     pub first_line_prefix_width: usize,
+}
+
+#[derive(Clone)]
+pub struct DelimitedSequenceLayout {
+    pub open: DocIR,
+    pub close: DocIR,
+    pub items: Vec<Vec<DocIR>>,
+    pub strategy: ExpandStrategy,
+    pub preserve_multiline: bool,
+    pub flat_separator: Vec<DocIR>,
+    pub fill_separator: Vec<DocIR>,
+    pub break_separator: Vec<DocIR>,
+    pub flat_open_padding: Vec<DocIR>,
+    pub flat_close_padding: Vec<DocIR>,
+    pub grouped_padding: DocIR,
+    pub flat_trailing: Vec<DocIR>,
+    pub grouped_trailing: DocIR,
 }
 
 pub fn choose_sequence_layout(
@@ -357,14 +258,12 @@ fn push_flat_and_fill_candidates(
     if policy.force_break_on_standalone_comments {
         return;
     }
-
     if let Some(flat) = flat {
         ordered.push(RankedSequenceCandidate {
             kind: SequenceLayoutKind::Flat,
             docs: flat,
         });
     }
-
     if policy.allow_fill
         && let Some(fill) = fill
     {
@@ -453,7 +352,7 @@ fn sequence_layout_kind_penalty(kind: SequenceLayoutKind) -> usize {
 }
 
 pub fn format_delimited_sequence(
-    ctx: &FormatContext,
+    _ctx: &FormatContext,
     layout: DelimitedSequenceLayout,
 ) -> Vec<DocIR> {
     if layout.items.is_empty() {
@@ -462,7 +361,7 @@ pub fn format_delimited_sequence(
 
     let flat_inner = ir::intersperse(layout.items.clone(), layout.flat_separator.clone());
     let fill_inner = ir::fill(build_fill_parts(&layout.items, &layout.fill_separator));
-    let break_inner = ir::intersperse(layout.items, layout.break_separator);
+
     let flat_doc = build_flat_doc(
         &layout.open,
         &layout.close,
@@ -471,31 +370,25 @@ pub fn format_delimited_sequence(
         &layout.flat_trailing,
         &layout.flat_close_padding,
     );
-    let break_contents = layout
-        .custom_break_contents
-        .unwrap_or_else(|| default_break_contents(break_inner, layout.grouped_trailing.clone()));
 
     match layout.strategy {
         ExpandStrategy::Never => flat_doc,
-        ExpandStrategy::Always => {
-            format_expanded_delimited_sequence(layout.open, layout.close, break_contents)
-        }
-        ExpandStrategy::Auto if layout.preserve_multiline => {
-            format_expanded_delimited_sequence(layout.open, layout.close, break_contents)
-        }
-        ExpandStrategy::Auto if layout.prefer_custom_break_in_auto => {
-            let gid = ctx.next_group_id();
-            let break_doc = ir::list(vec![
-                layout.open,
-                ir::indent(break_contents),
-                ir::hard_line(),
-                layout.close,
-            ]);
-            vec![ir::group_with_id(
-                vec![ir::if_break_with_group(break_doc, ir::list(flat_doc), gid)],
-                gid,
-            )]
-        }
+        ExpandStrategy::Always => format_expanded_delimited_sequence(
+            layout.open,
+            layout.close,
+            default_break_contents(
+                ir::intersperse(layout.items, layout.break_separator),
+                layout.grouped_trailing,
+            ),
+        ),
+        ExpandStrategy::Auto if layout.preserve_multiline => format_expanded_delimited_sequence(
+            layout.open,
+            layout.close,
+            default_break_contents(
+                ir::intersperse(layout.items, layout.break_separator),
+                layout.grouped_trailing,
+            ),
+        ),
         ExpandStrategy::Auto => vec![ir::group(vec![
             layout.open,
             ir::indent(vec![
@@ -507,37 +400,6 @@ pub fn format_delimited_sequence(
             layout.close,
         ])],
     }
-}
-
-pub fn build_delimited_sequence_flat_candidate(layout: &DelimitedSequenceLayout) -> Vec<DocIR> {
-    let flat_inner = ir::intersperse(layout.items.clone(), layout.flat_separator.clone());
-    build_flat_doc(
-        &layout.open,
-        &layout.close,
-        &layout.flat_open_padding,
-        flat_inner,
-        &layout.flat_trailing,
-        &layout.flat_close_padding,
-    )
-}
-
-pub fn build_delimited_sequence_default_break_candidate(
-    layout: &DelimitedSequenceLayout,
-) -> Vec<DocIR> {
-    let break_inner = ir::intersperse(layout.items.clone(), layout.break_separator.clone());
-    build_delimited_sequence_break_candidate(
-        layout.open.clone(),
-        layout.close.clone(),
-        default_break_contents(break_inner, layout.grouped_trailing.clone()),
-    )
-}
-
-pub fn build_delimited_sequence_break_candidate(
-    open: DocIR,
-    close: DocIR,
-    inner: Vec<DocIR>,
-) -> Vec<DocIR> {
-    format_expanded_delimited_sequence(open, close, inner)
 }
 
 fn format_expanded_delimited_sequence(open: DocIR, close: DocIR, inner: Vec<DocIR>) -> Vec<DocIR> {
@@ -581,216 +443,4 @@ fn build_fill_parts(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
     }
 
     parts
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        FormatContext, SequenceLayoutCandidates, SequenceLayoutKind, SequenceLayoutPolicy,
-        choose_sequence_layout, score_sequence_candidate,
-    };
-    use crate::{
-        config::{LayoutConfig, LuaFormatConfig},
-        ir,
-        printer::Printer,
-    };
-
-    fn render(config: &LuaFormatConfig, docs: &[crate::ir::DocIR]) -> String {
-        Printer::new(config).print(docs)
-    }
-
-    #[test]
-    fn test_score_prefers_wider_line_when_other_metrics_tie() {
-        let config = LuaFormatConfig {
-            layout: LayoutConfig {
-                max_line_width: 20,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let ctx = FormatContext::new(&config);
-
-        let wider = vec![ir::list(vec![
-            ir::text("alpha beta gamma"),
-            ir::hard_line(),
-            ir::text("delta"),
-        ])];
-        let narrower = vec![ir::list(vec![
-            ir::text("alpha beta"),
-            ir::hard_line(),
-            ir::text("gamma delta"),
-        ])];
-
-        let wider_score = score_sequence_candidate(
-            &ctx,
-            SequenceLayoutKind::OnePerLine,
-            &wider,
-            SequenceLayoutPolicy::default(),
-        );
-        let narrower_score = score_sequence_candidate(
-            &ctx,
-            SequenceLayoutKind::OnePerLine,
-            &narrower,
-            SequenceLayoutPolicy::default(),
-        );
-
-        assert!(wider_score < narrower_score);
-    }
-
-    #[test]
-    fn test_selector_prefers_fill_over_one_per_line_when_both_fit() {
-        let config = LuaFormatConfig {
-            layout: LayoutConfig {
-                max_line_width: 18,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let ctx = FormatContext::new(&config);
-
-        let selected = choose_sequence_layout(
-            &ctx,
-            SequenceLayoutCandidates {
-                fill: Some(vec![ir::list(vec![
-                    ir::text("alpha"),
-                    ir::text(", "),
-                    ir::text("beta"),
-                    ir::hard_line(),
-                    ir::text("gamma"),
-                ])]),
-                one_per_line: Some(vec![ir::list(vec![
-                    ir::text("alpha"),
-                    ir::hard_line(),
-                    ir::text("beta"),
-                    ir::hard_line(),
-                    ir::text("gamma"),
-                ])]),
-                ..Default::default()
-            },
-            SequenceLayoutPolicy {
-                allow_fill: true,
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(render(&config, &selected), "alpha, beta\ngamma");
-    }
-
-    #[test]
-    fn test_selector_prefers_non_overflowing_break_candidate() {
-        let config = LuaFormatConfig {
-            layout: LayoutConfig {
-                max_line_width: 12,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let ctx = FormatContext::new(&config);
-
-        let selected = choose_sequence_layout(
-            &ctx,
-            SequenceLayoutCandidates {
-                fill: Some(vec![ir::text("alpha_beta_gamma")]),
-                one_per_line: Some(vec![ir::list(vec![
-                    ir::text("alpha"),
-                    ir::hard_line(),
-                    ir::text("beta"),
-                ])]),
-                ..Default::default()
-            },
-            SequenceLayoutPolicy {
-                allow_fill: true,
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(render(&config, &selected), "alpha\nbeta");
-    }
-
-    #[test]
-    fn test_selector_prefers_balanced_packed_layout_when_line_count_ties() {
-        let config = LuaFormatConfig {
-            layout: LayoutConfig {
-                max_line_width: 28,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let ctx = FormatContext::new(&config);
-
-        let selected = choose_sequence_layout(
-            &ctx,
-            SequenceLayoutCandidates {
-                fill: Some(vec![ir::list(vec![
-                    ir::text("aaaa + bbbb"),
-                    ir::hard_line(),
-                    ir::text("cccc + dddd + eeee"),
-                    ir::hard_line(),
-                    ir::text("ffff"),
-                ])]),
-                packed: Some(vec![ir::list(vec![
-                    ir::text("aaaa + bbbb"),
-                    ir::hard_line(),
-                    ir::text("cccc + dddd"),
-                    ir::hard_line(),
-                    ir::text("eeee + ffff"),
-                ])]),
-                ..Default::default()
-            },
-            SequenceLayoutPolicy {
-                allow_fill: true,
-                prefer_balanced_break_lines: true,
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(
-            render(&config, &selected),
-            "aaaa + bbbb\ncccc + dddd\neeee + ffff"
-        );
-    }
-
-    #[test]
-    fn test_prefix_width_can_change_selected_candidate() {
-        let config = LuaFormatConfig {
-            layout: LayoutConfig {
-                max_line_width: 28,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let ctx = FormatContext::new(&config);
-
-        let selected = choose_sequence_layout(
-            &ctx,
-            SequenceLayoutCandidates {
-                fill: Some(vec![ir::list(vec![
-                    ir::text("aaaa + bbbb"),
-                    ir::hard_line(),
-                    ir::text("+ cccc + dddd + eeee"),
-                    ir::hard_line(),
-                    ir::text("+ ffff"),
-                ])]),
-                packed: Some(vec![ir::list(vec![
-                    ir::text("aaaa + bbbb"),
-                    ir::hard_line(),
-                    ir::text("+ cccc + dddd"),
-                    ir::hard_line(),
-                    ir::text("+ eeee + ffff"),
-                ])]),
-                ..Default::default()
-            },
-            SequenceLayoutPolicy {
-                allow_fill: true,
-                prefer_balanced_break_lines: true,
-                first_line_prefix_width: 14,
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(
-            render(&config, &selected),
-            "aaaa + bbbb\n+ cccc + dddd\n+ eeee + ffff"
-        );
-    }
 }

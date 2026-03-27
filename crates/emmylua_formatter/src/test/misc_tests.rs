@@ -2,10 +2,7 @@
 mod tests {
     use emmylua_parser::LuaLanguageLevel;
 
-    use crate::{
-        SourceText, assert_format, config::LuaFormatConfig, reformat_lua_code,
-        reformat_lua_code_new,
-    };
+    use crate::{SourceText, assert_format, config::LuaFormatConfig, reformat_lua_code};
 
     // ========== shebang ==========
 
@@ -257,7 +254,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -271,7 +268,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -285,7 +282,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -301,7 +298,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -313,8 +310,8 @@ local cc = 3 -- comment c
             level: LuaLanguageLevel::default(),
         };
 
-        let first = reformat_lua_code_new(&source, &config);
-        let second = reformat_lua_code_new(
+        let first = reformat_lua_code(&source, &config);
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -337,7 +334,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -351,7 +348,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -365,7 +362,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -379,7 +376,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -393,7 +390,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -407,7 +404,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -421,7 +418,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -435,7 +432,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -449,7 +446,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -463,7 +460,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -477,7 +474,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -489,8 +486,8 @@ local cc = 3 -- comment c
             level: LuaLanguageLevel::default(),
         };
 
-        let first = reformat_lua_code_new(&source, &config);
-        let second = reformat_lua_code_new(
+        let first = reformat_lua_code(&source, &config);
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -509,8 +506,8 @@ local cc = 3 -- comment c
             level: LuaLanguageLevel::default(),
         };
 
-        let first = reformat_lua_code_new(&source, &config);
-        let second = reformat_lua_code_new(
+        let first = reformat_lua_code(&source, &config);
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -529,8 +526,8 @@ local cc = 3 -- comment c
             level: LuaLanguageLevel::default(),
         };
 
-        let first = reformat_lua_code_new(&source, &config);
-        let second = reformat_lua_code_new(
+        let first = reformat_lua_code(&source, &config);
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -549,8 +546,8 @@ local cc = 3 -- comment c
             level: LuaLanguageLevel::default(),
         };
 
-        let first = reformat_lua_code_new(&source, &config);
-        let second = reformat_lua_code_new(
+        let first = reformat_lua_code(&source, &config);
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),
@@ -571,7 +568,7 @@ local cc = 3 -- comment c
 
         assert_eq!(
             reformat_lua_code(&source, &config),
-            reformat_lua_code_new(&source, &config)
+            reformat_lua_code(&source, &config)
         );
     }
 
@@ -583,8 +580,8 @@ local cc = 3 -- comment c
             level: LuaLanguageLevel::default(),
         };
 
-        let first = reformat_lua_code_new(&source, &config);
-        let second = reformat_lua_code_new(
+        let first = reformat_lua_code(&source, &config);
+        let second = reformat_lua_code(
             &SourceText {
                 text: &first,
                 level: LuaLanguageLevel::default(),

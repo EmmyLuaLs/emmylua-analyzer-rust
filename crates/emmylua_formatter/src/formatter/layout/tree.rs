@@ -1,6 +1,6 @@
 use emmylua_parser::{LuaAstNode, LuaChunk, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode};
 
-use crate::formatter_new::model::{CommentLayoutPlan, LayoutNodePlan, SyntaxNodeLayoutPlan};
+use crate::formatter::model::{CommentLayoutPlan, LayoutNodePlan, SyntaxNodeLayoutPlan};
 
 pub fn collect_root_layout_nodes(chunk: &LuaChunk) -> Vec<LayoutNodePlan> {
     collect_child_layout_nodes(chunk.syntax())
