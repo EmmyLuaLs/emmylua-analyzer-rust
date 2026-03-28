@@ -50,7 +50,7 @@ fn get_type_at_cast_expr(
         return Ok(ResultTypeOrContinue::Continue);
     }
 
-    let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
+    let antecedent_flow_id = get_single_antecedent(flow_node)?;
     let mut antecedent_type =
         get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
     for cast_op_type in tag_cast.get_op_types() {
@@ -74,7 +74,7 @@ fn get_type_at_inline_cast(
     flow_node: &FlowNode,
     tag_cast: LuaDocTagCast,
 ) -> Result<ResultTypeOrContinue, InferFailReason> {
-    let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
+    let antecedent_flow_id = get_single_antecedent(flow_node)?;
     let mut antecedent_type =
         get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
     for cast_op_type in tag_cast.get_op_types() {

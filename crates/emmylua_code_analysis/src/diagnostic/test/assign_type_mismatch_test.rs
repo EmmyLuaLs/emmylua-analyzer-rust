@@ -1184,4 +1184,64 @@ return t
             "#,
         ));
     }
+
+    #[test]
+    fn test_exact_string_reassignment_in_narrowed_branch_keeps_assign_literal() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                local x ---@type string|number
+
+                if x == 1 then
+                    x = "a"
+
+                    ---@type "a"
+                    local y = x
+                end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_return_overload_mixed_guards_keep_assign_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@generic T, E
+                ---@param ok boolean
+                ---@param success T
+                ---@param failure E
+                ---@return boolean
+                ---@return T|E
+                ---@return_overload true, T
+                ---@return_overload false, E
+                local function pick(ok, success, failure)
+                    if ok then
+                        return true, success
+                    end
+                    return false, failure
+                end
+
+                ---@param cond boolean
+                local function test(cond)
+                    local ok, result = pick(cond, 1, "err")
+
+                    if ok == false then
+                        error(result)
+                    end
+
+                    if not ok then
+                        error(result)
+                    end
+
+                    ---@type integer
+                    local narrowed = result
+                end
+            "#,
+        ));
+    }
 }

@@ -132,6 +132,158 @@ mod tests {
     }
 
     #[test]
+    fn test_discriminated_union_assignment_keeps_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+            ---@field a integer
+
+            ---@class Bar
+            ---@field kind "bar"
+            ---@field b integer
+
+            ---@param x Foo|Bar
+            ---@return Foo
+            local function test(x)
+                if x.kind == "foo" then
+                    x = { kind = "foo", a = 1 }
+                    return x
+                end
+
+                return { kind = "foo", a = 2 }
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_discriminated_union_partial_assignment_keeps_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+            ---@field a integer
+
+            ---@class Bar
+            ---@field kind "bar"
+            ---@field b integer
+
+            ---@param x Foo|Bar
+            ---@return Foo
+            local function test(x)
+                if x.kind == "foo" then
+                    x = {}
+                    x.kind = "foo"
+                    x.a = 1
+                    return x
+                end
+
+                return { kind = "foo", a = 2 }
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_discriminated_union_partial_literal_assignment_keeps_branch_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+            ---@field a integer
+
+            ---@class Bar
+            ---@field kind "bar"
+            ---@field b integer
+
+            ---@param x Foo|Bar
+            ---@return Foo
+            local function test(x)
+                if x.kind == "foo" then
+                    x = { kind = "foo" }
+                    x.a = 1
+                    return x
+                end
+
+                return { kind = "foo", a = 2 }
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_exact_string_reassignment_in_narrowed_branch_keeps_return_literal() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@param x string|number
+            ---@return "a"
+            local function test(x)
+                if x == 1 then
+                    x = "a"
+                    return x
+                end
+
+                return "a"
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_return_overload_mixed_guards_keep_return_narrowing() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@generic T, E
+            ---@param ok boolean
+            ---@param success T
+            ---@param failure E
+            ---@return boolean
+            ---@return T|E
+            ---@return_overload true, T
+            ---@return_overload false, E
+            local function pick(ok, success, failure)
+                if ok then
+                    return true, success
+                end
+                return false, failure
+            end
+
+            ---@param cond boolean
+            ---@return integer
+            local function test(cond)
+                local ok, result = pick(cond, 1, "err")
+
+                if ok == false then
+                    error(result)
+                end
+
+                if not ok then
+                    error(result)
+                end
+
+                return result
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_variadic_return_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
 

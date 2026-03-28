@@ -4,15 +4,112 @@ use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaChunk};
 
 use crate::{
     DbIndex, FlowId, FlowNode, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType,
-    LuaInferCache, LuaType, TypeOps, infer_expr, instantiate_func_generic,
+    LuaInferCache, LuaSignature, LuaType, TypeOps, infer_expr, instantiate_func_generic,
     semantic::infer::{
         VarRefId,
-        narrow::{ResultTypeOrContinue, get_single_antecedent, get_type_at_flow::get_type_at_flow},
+        narrow::{get_single_antecedent, get_type_at_flow::get_type_at_flow},
     },
 };
 
+#[derive(Debug, Clone)]
+pub(in crate::semantic) struct CorrelatedConditionNarrowing {
+    search_root_correlated_types: Vec<SearchRootCorrelatedTypes>,
+}
+
+#[derive(Debug, Clone)]
+struct SearchRootCorrelatedTypes {
+    matching_target_types: Vec<LuaType>,
+    uncorrelated_target_types: Vec<LuaType>,
+    deferred_known_call_target_types: Option<Vec<LuaType>>,
+}
+
+#[derive(Debug)]
+struct CollectedCorrelatedTypes {
+    matching_target_types: Vec<LuaType>,
+    correlated_candidate_types: Vec<LuaType>,
+    unmatched_target_types: Vec<LuaType>,
+    has_unmatched_discriminant_origin: bool,
+    has_opaque_target_origin: bool,
+}
+
+impl CorrelatedConditionNarrowing {
+    pub(in crate::semantic::infer::narrow) fn apply(
+        &self,
+        db: &DbIndex,
+        antecedent_type: LuaType,
+    ) -> LuaType {
+        let mut root_target_types = Vec::new();
+        let mut found_matching_root = false;
+        for root_types in &self.search_root_correlated_types {
+            let matching_target_types = &root_types.matching_target_types;
+            let mut uncorrelated_target_types = root_types.uncorrelated_target_types.clone();
+            let deferred_known_call_target_types =
+                root_types.deferred_known_call_target_types.as_deref();
+
+            let root_matching_target_type = if matching_target_types.is_empty() {
+                None
+            } else {
+                let matching_target_type = LuaType::from_vec(matching_target_types.clone());
+                let narrowed_correlated_type =
+                    TypeOps::Intersect.apply(db, &antecedent_type, &matching_target_type);
+                if narrowed_correlated_type.is_never() {
+                    None
+                } else {
+                    found_matching_root = true;
+                    Some(narrowed_correlated_type)
+                }
+            };
+
+            if let Some(known_call_target_types) = deferred_known_call_target_types {
+                let remaining_root_type =
+                    if known_call_target_types.is_empty() && uncorrelated_target_types.is_empty() {
+                        Some(antecedent_type.clone())
+                    } else {
+                        subtract_correlated_candidate_types(
+                            db,
+                            antecedent_type.clone(),
+                            &known_call_target_types,
+                        )
+                    };
+                if let Some(remaining_root_type) = remaining_root_type {
+                    uncorrelated_target_types.push(remaining_root_type);
+                }
+            }
+
+            let root_uncorrelated_target_type = (!uncorrelated_target_types.is_empty())
+                .then(|| LuaType::from_vec(uncorrelated_target_types));
+
+            match (root_matching_target_type, root_uncorrelated_target_type) {
+                (Some(root_matching_target_type), Some(root_uncorrelated_target_type)) => {
+                    root_target_types.push(LuaType::from_vec(vec![
+                        root_matching_target_type,
+                        root_uncorrelated_target_type,
+                    ]));
+                }
+                (Some(root_matching_target_type), None) => {
+                    root_target_types.push(root_matching_target_type);
+                }
+                (None, Some(root_uncorrelated_target_type)) => {
+                    root_target_types.push(root_uncorrelated_target_type);
+                }
+                (None, None) => {}
+            }
+        }
+
+        if !found_matching_root {
+            return antecedent_type;
+        }
+
+        if root_target_types.is_empty() {
+            antecedent_type
+        } else {
+            LuaType::from_vec(root_target_types)
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-pub(in crate::semantic::infer::narrow::condition_flow) fn narrow_var_from_return_overload_condition(
+pub(in crate::semantic::infer::narrow) fn prepare_var_from_return_overload_condition(
     db: &DbIndex,
     tree: &FlowTree,
     cache: &mut LuaInferCache,
@@ -22,27 +119,27 @@ pub(in crate::semantic::infer::narrow::condition_flow) fn narrow_var_from_return
     discriminant_decl_id: LuaDeclId,
     condition_position: rowan::TextSize,
     narrowed_discriminant_type: &LuaType,
-) -> Result<ResultTypeOrContinue, InferFailReason> {
+) -> Result<Option<CorrelatedConditionNarrowing>, InferFailReason> {
     let Some(target_decl_id) = var_ref_id.get_decl_id_ref() else {
-        return Ok(ResultTypeOrContinue::Continue);
+        return Ok(None);
     };
     if !tree.has_decl_multi_return_refs(&discriminant_decl_id)
         || !tree.has_decl_multi_return_refs(&target_decl_id)
     {
-        return Ok(ResultTypeOrContinue::Continue);
+        return Ok(None);
     }
 
-    let antecedent_flow_id = get_single_antecedent(tree, flow_node)?;
+    let antecedent_flow_id = get_single_antecedent(flow_node)?;
     let search_root_flow_ids = tree.get_decl_multi_return_search_roots(
         &discriminant_decl_id,
         &target_decl_id,
         condition_position,
         antecedent_flow_id,
     );
-    let mut matching_target_types = Vec::new();
-    let mut uncorrelated_target_types = Vec::new();
-    for search_root_flow_id in search_root_flow_ids {
-        let (root_matching_target_types, root_uncorrelated_target_type) =
+    let root_correlated_types = search_root_flow_ids
+        .iter()
+        .copied()
+        .map(|search_root_flow_id| {
             collect_correlated_types_from_search_root(
                 db,
                 tree,
@@ -52,47 +149,23 @@ pub(in crate::semantic::infer::narrow::condition_flow) fn narrow_var_from_return
                 discriminant_decl_id,
                 target_decl_id,
                 condition_position,
+                antecedent_flow_id,
                 search_root_flow_id,
                 narrowed_discriminant_type,
-            )?;
-        matching_target_types.extend(root_matching_target_types);
-        if let Some(root_uncorrelated_target_type) = root_uncorrelated_target_type {
-            uncorrelated_target_types.push(root_uncorrelated_target_type);
-        }
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if root_correlated_types
+        .iter()
+        .all(|root_types| root_types.matching_target_types.is_empty())
+    {
+        return Ok(None);
     }
 
-    if matching_target_types.is_empty() {
-        return Ok(ResultTypeOrContinue::Continue);
-    }
-
-    let matching_target_type = LuaType::from_vec(matching_target_types);
-    let antecedent_type = get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-    let narrowed_correlated_type =
-        TypeOps::Intersect.apply(db, &antecedent_type, &matching_target_type);
-    if narrowed_correlated_type.is_never() {
-        return Ok(ResultTypeOrContinue::Continue);
-    }
-
-    if uncorrelated_target_types.is_empty() {
-        return Ok(if narrowed_correlated_type == antecedent_type {
-            ResultTypeOrContinue::Continue
-        } else {
-            ResultTypeOrContinue::Result(narrowed_correlated_type)
-        });
-    }
-
-    let uncorrelated_target_type = LuaType::from_vec(uncorrelated_target_types);
-    let merged_type = if uncorrelated_target_type.is_never() {
-        narrowed_correlated_type
-    } else {
-        LuaType::from_vec(vec![narrowed_correlated_type, uncorrelated_target_type])
-    };
-
-    Ok(if merged_type == antecedent_type {
-        ResultTypeOrContinue::Continue
-    } else {
-        ResultTypeOrContinue::Result(merged_type)
-    })
+    Ok(Some(CorrelatedConditionNarrowing {
+        search_root_correlated_types: root_correlated_types,
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -105,9 +178,10 @@ fn collect_correlated_types_from_search_root(
     discriminant_decl_id: LuaDeclId,
     target_decl_id: LuaDeclId,
     condition_position: rowan::TextSize,
+    antecedent_flow_id: FlowId,
     search_root_flow_id: FlowId,
     narrowed_discriminant_type: &LuaType,
-) -> Result<(Vec<LuaType>, Option<LuaType>), InferFailReason> {
+) -> Result<SearchRootCorrelatedTypes, InferFailReason> {
     let (discriminant_refs, discriminant_has_non_reference_origin) = tree
         .get_decl_multi_return_ref_summary_at(
             &discriminant_decl_id,
@@ -119,18 +193,13 @@ fn collect_correlated_types_from_search_root(
         condition_position,
         search_root_flow_id,
     );
-    if discriminant_refs.is_empty() || target_refs.is_empty() {
-        return Ok((
-            Vec::new(),
-            get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id).ok(),
-        ));
-    }
-
-    let (
-        root_matching_target_types,
-        root_correlated_candidate_types,
-        has_unmatched_correlated_origin,
-    ) = collect_matching_correlated_types(
+    let CollectedCorrelatedTypes {
+        matching_target_types: root_matching_target_types,
+        correlated_candidate_types: root_correlated_candidate_types,
+        unmatched_target_types: root_unmatched_target_types,
+        has_unmatched_discriminant_origin,
+        has_opaque_target_origin,
+    } = collect_matching_correlated_types(
         db,
         cache,
         root,
@@ -138,27 +207,48 @@ fn collect_correlated_types_from_search_root(
         &target_refs,
         narrowed_discriminant_type,
     )?;
-    if root_matching_target_types.is_empty() {
-        return Ok((
-            Vec::new(),
-            get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id).ok(),
-        ));
+
+    let mut root_uncorrelated_target_types = root_unmatched_target_types;
+    let has_uncorrelated_origin = discriminant_has_non_reference_origin
+        || target_has_non_reference_origin
+        || has_opaque_target_origin
+        || has_unmatched_discriminant_origin;
+    let correlated_candidate_types_is_empty = root_correlated_candidate_types.is_empty();
+    let deferred_known_call_target_types =
+        if has_uncorrelated_origin && search_root_flow_id == antecedent_flow_id {
+            let mut known_call_target_types = root_correlated_candidate_types.clone();
+            known_call_target_types.extend(root_uncorrelated_target_types.iter().cloned());
+            Some(known_call_target_types)
+        } else {
+            None
+        };
+    if has_uncorrelated_origin && deferred_known_call_target_types.is_none() {
+        if correlated_candidate_types_is_empty && root_uncorrelated_target_types.is_empty() {
+            if let Ok(root_type) =
+                get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id)
+            {
+                root_uncorrelated_target_types.push(root_type);
+            }
+        } else {
+            let mut known_call_target_types = root_correlated_candidate_types;
+            known_call_target_types.extend(root_uncorrelated_target_types.iter().cloned());
+            if let Some(remaining_root_type) =
+                get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id)
+                    .ok()
+                    .and_then(|root_type| {
+                        subtract_correlated_candidate_types(db, root_type, &known_call_target_types)
+                    })
+            {
+                root_uncorrelated_target_types.push(remaining_root_type);
+            }
+        }
     }
 
-    let root_uncorrelated_target_type = if discriminant_has_non_reference_origin
-        || target_has_non_reference_origin
-        || has_unmatched_correlated_origin
-    {
-        get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id)
-            .ok()
-            .and_then(|root_type| {
-                subtract_correlated_candidate_types(db, root_type, &root_correlated_candidate_types)
-            })
-    } else {
-        None
-    };
-
-    Ok((root_matching_target_types, root_uncorrelated_target_type))
+    Ok(SearchRootCorrelatedTypes {
+        matching_target_types: root_matching_target_types,
+        uncorrelated_target_types: root_uncorrelated_target_types,
+        deferred_known_call_target_types,
+    })
 }
 
 fn subtract_correlated_candidate_types(
@@ -195,9 +285,10 @@ fn collect_matching_correlated_types(
     discriminant_refs: &[crate::DeclMultiReturnRef],
     target_refs: &[crate::DeclMultiReturnRef],
     narrowed_discriminant_type: &LuaType,
-) -> Result<(Vec<LuaType>, Vec<LuaType>, bool), InferFailReason> {
+) -> Result<CollectedCorrelatedTypes, InferFailReason> {
     let mut matching_target_types = Vec::new();
     let mut correlated_candidate_types = Vec::new();
+    let mut unmatched_target_types = Vec::new();
     let mut correlated_discriminant_call_expr_ids = HashSet::new();
     let mut correlated_target_call_expr_ids = HashSet::new();
 
@@ -211,7 +302,7 @@ fn collect_matching_correlated_types(
             continue;
         }
 
-        let overload_rows = instantiate_return_overload_rows(db, cache, call_expr, signature);
+        let overload_rows = instantiate_return_rows(db, cache, call_expr, signature);
         let discriminant_call_expr_id = discriminant_ref.call_expr.get_syntax_id();
 
         for target_ref in target_refs {
@@ -221,18 +312,16 @@ fn collect_matching_correlated_types(
             correlated_discriminant_call_expr_ids.insert(discriminant_call_expr_id);
             correlated_target_call_expr_ids.insert(target_ref.call_expr.get_syntax_id());
             correlated_candidate_types.extend(overload_rows.iter().map(|overload| {
-                crate::LuaSignature::get_overload_row_slot(overload, target_ref.return_index)
+                LuaSignature::get_overload_row_slot(overload, target_ref.return_index)
             }));
             matching_target_types.extend(overload_rows.iter().filter_map(|overload| {
-                let discriminant_type = crate::LuaSignature::get_overload_row_slot(
-                    overload,
-                    discriminant_ref.return_index,
-                );
+                let discriminant_type =
+                    LuaSignature::get_overload_row_slot(overload, discriminant_ref.return_index);
                 if !TypeOps::Intersect
                     .apply(db, &discriminant_type, narrowed_discriminant_type)
                     .is_never()
                 {
-                    return Some(crate::LuaSignature::get_overload_row_slot(
+                    return Some(LuaSignature::get_overload_row_slot(
                         overload,
                         target_ref.return_index,
                     ));
@@ -243,16 +332,36 @@ fn collect_matching_correlated_types(
         }
     }
 
-    let has_unmatched_correlated_origin = discriminant_refs.iter().any(|discriminant_ref| {
+    let mut has_opaque_target_origin = false;
+    for target_ref in target_refs {
+        if correlated_target_call_expr_ids.contains(&target_ref.call_expr.get_syntax_id()) {
+            continue;
+        }
+
+        let Some((call_expr, signature)) =
+            infer_signature_for_call_ptr(db, cache, root, &target_ref.call_expr)?
+        else {
+            has_opaque_target_origin = true;
+            continue;
+        };
+        let return_rows = instantiate_return_rows(db, cache, call_expr, signature);
+        unmatched_target_types.extend(
+            return_rows
+                .iter()
+                .map(|row| LuaSignature::get_overload_row_slot(row, target_ref.return_index)),
+        );
+    }
+
+    let has_unmatched_discriminant_origin = discriminant_refs.iter().any(|discriminant_ref| {
         !correlated_discriminant_call_expr_ids.contains(&discriminant_ref.call_expr.get_syntax_id())
-    }) || target_refs.iter().any(|target_ref| {
-        !correlated_target_call_expr_ids.contains(&target_ref.call_expr.get_syntax_id())
     });
-    Ok((
+    Ok(CollectedCorrelatedTypes {
         matching_target_types,
         correlated_candidate_types,
-        has_unmatched_correlated_origin,
-    ))
+        unmatched_target_types,
+        has_unmatched_discriminant_origin,
+        has_opaque_target_origin,
+    })
 }
 
 fn infer_signature_for_call_ptr<'a>(
@@ -260,7 +369,7 @@ fn infer_signature_for_call_ptr<'a>(
     cache: &mut LuaInferCache,
     root: &LuaChunk,
     call_expr_ptr: &LuaAstPtr<LuaCallExpr>,
-) -> Result<Option<(LuaCallExpr, &'a crate::LuaSignature)>, InferFailReason> {
+) -> Result<Option<(LuaCallExpr, &'a LuaSignature)>, InferFailReason> {
     let Some(call_expr) = call_expr_ptr.to_node(root) else {
         return Ok(None);
     };
@@ -278,16 +387,36 @@ fn infer_signature_for_call_ptr<'a>(
     Ok(Some((call_expr, signature)))
 }
 
-fn instantiate_return_overload_rows(
+fn instantiate_return_rows(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,
-    signature: &crate::LuaSignature,
+    signature: &LuaSignature,
 ) -> Vec<Vec<LuaType>> {
+    if signature.return_overloads.is_empty() {
+        let return_type = signature.get_return_type();
+        let instantiated_return_type = if return_type.contain_tpl() {
+            let func = LuaFunctionType::new(
+                signature.async_state,
+                signature.is_colon_define,
+                signature.is_vararg,
+                signature.get_type_params(),
+                return_type.clone(),
+            );
+            match instantiate_func_generic(db, cache, &func, call_expr) {
+                Ok(instantiated) => instantiated.get_ret().clone(),
+                Err(_) => return_type,
+            }
+        } else {
+            return_type
+        };
+        return vec![LuaSignature::return_type_to_row(instantiated_return_type)];
+    }
+
     let mut rows = Vec::with_capacity(signature.return_overloads.len());
     for overload in &signature.return_overloads {
         let type_refs = &overload.type_refs;
-        let overload_return_type = crate::LuaSignature::row_to_return_type(type_refs.to_vec());
+        let overload_return_type = LuaSignature::row_to_return_type(type_refs.to_vec());
         let instantiated_return_type = if overload_return_type.contain_tpl() {
             let overload_func = LuaFunctionType::new(
                 signature.async_state,
@@ -304,9 +433,7 @@ fn instantiate_return_overload_rows(
             overload_return_type
         };
 
-        rows.push(crate::LuaSignature::return_type_to_row(
-            instantiated_return_type,
-        ));
+        rows.push(LuaSignature::return_type_to_row(instantiated_return_type));
     }
 
     rows
