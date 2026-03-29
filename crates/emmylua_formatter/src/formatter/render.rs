@@ -49,6 +49,28 @@ pub fn render_root(ctx: &FormatContext, chunk: &LuaChunk, plan: &RootFormatPlan)
     docs
 }
 
+pub(crate) fn render_closure_block_body_new(
+    ctx: &FormatContext,
+    expr: &emmylua_parser::LuaClosureExpr,
+    plan: &RootFormatPlan,
+) -> Vec<DocIR> {
+    let root = expr
+        .syntax()
+        .ancestors()
+        .last()
+        .unwrap_or_else(|| expr.syntax().clone());
+    let closure_id = LuaSyntaxId::from_node(expr.syntax());
+    let Some(closure_plan) = find_syntax_plan_by_id(&plan.layout.root_nodes, closure_id) else {
+        return Vec::new();
+    };
+
+    let Some(block_children) = block_children_from_parent_plan(closure_plan) else {
+        return Vec::new();
+    };
+
+    render_aligned_block_layout_nodes_new(ctx, &root, block_children, plan)
+}
+
 fn render_layout_node(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
@@ -2180,6 +2202,25 @@ fn find_direct_child_plan_by_kind(
         LayoutNodePlan::Syntax(plan) if plan.kind == kind => Some(plan),
         _ => None,
     })
+}
+
+fn find_syntax_plan_by_id(
+    nodes: &[LayoutNodePlan],
+    syntax_id: LuaSyntaxId,
+) -> Option<&SyntaxNodeLayoutPlan> {
+    for node in nodes {
+        if let LayoutNodePlan::Syntax(plan) = node {
+            if plan.syntax_id == syntax_id {
+                return Some(plan);
+            }
+
+            if let Some(found) = find_syntax_plan_by_id(&plan.children, syntax_id) {
+                return Some(found);
+            }
+        }
+    }
+
+    None
 }
 
 fn token_or_kind_doc(token: Option<&LuaSyntaxToken>, fallback_kind: LuaTokenKind) -> DocIR {

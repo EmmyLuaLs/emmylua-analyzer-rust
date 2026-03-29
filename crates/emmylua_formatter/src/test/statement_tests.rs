@@ -162,7 +162,7 @@ end
     fn test_if_header_keeps_short_logical_tail_with_multiline_callback_call() {
         assert_format!(
             "if check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') and another_predicate then\n    print('ok')\nend\n",
-            "if check(function()\n    return true\nend,\n    'LOADTRUE',\n    'RETURN1'\n) and another_predicate then\n    print('ok')\nend\n"
+            "if check(function()\n    return true\nend,\n    'LOADTRUE', 'RETURN1') and another_predicate then\n    print('ok')\nend\n"
         );
     }
 
@@ -170,7 +170,7 @@ end
     fn test_if_block_reindents_attached_multiline_table_call_arg() {
         assert_format!(
             "if ok then\n    configure({\nkey = value,\nanother = other,\n}, option_one, option_two)\nend\n",
-            "if ok then\n    configure({\n        key = value,\n        another = other\n    },\n        option_one,\n        option_two\n    )\nend\n"
+            "if ok then\n    configure({\n        key = value,\n        another = other\n    },\n        option_one, option_two)\nend\n"
         );
     }
 
@@ -178,7 +178,7 @@ end
     fn test_while_header_keeps_short_logical_tail_with_multiline_callback_call() {
         assert_format!(
             "while check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') and another_predicate do\n    print('ok')\nend\n",
-            "while check(function()\n    return true\nend,\n    'LOADTRUE',\n    'RETURN1'\n) and another_predicate do\n    print('ok')\nend\n"
+            "while check(function()\n    return true\nend,\n    'LOADTRUE', 'RETURN1') and another_predicate do\n    print('ok')\nend\n"
         );
     }
 
@@ -270,7 +270,7 @@ end
     fn test_for_range_keeps_first_multiline_iterator_shape_when_breaking() {
         assert_format!(
             "for key, value in iterate(function()\n    return true\nend, 'LOADTRUE', 'RETURN1'), fallback_iterator do\n    print(key, value)\nend\n",
-            "for key, value in iterate(function()\n    return true\nend,\n    'LOADTRUE',\n    'RETURN1'\n),\n    fallback_iterator do\n    print(key, value)\nend\n"
+            "for key, value in iterate(function()\n    return true\nend,\n    'LOADTRUE', 'RETURN1'),\n    fallback_iterator do\n    print(key, value)\nend\n"
         );
     }
 
