@@ -576,6 +576,45 @@ fn format_call_arg_list(
         );
     }
 
+    let inline_block_indices: Vec<_> = args
+        .iter()
+        .enumerate()
+        .skip(1)
+        .filter_map(|(index, arg)| {
+            (matches!(arg, LuaExpr::ClosureExpr(_) | LuaExpr::TableExpr(_))
+                && arg.syntax().text().contains_char('\n'))
+            .then_some(index)
+        })
+        .collect();
+
+    if inline_block_indices.len() == 1 {
+        return format_call_args_with_inline_block_item(
+            ctx,
+            plan,
+            layout_plan,
+            arg_docs,
+            inline_block_indices[0],
+            token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
+            token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
+            comma.as_ref(),
+        );
+    }
+
+    if arg_docs
+        .iter()
+        .skip(1)
+        .any(|docs| crate::ir::ir_has_forced_line_break(docs))
+    {
+        return format_call_args_with_block_items(
+            ctx,
+            layout_plan,
+            arg_docs,
+            token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
+            token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
+            comma.as_ref(),
+        );
+    }
+
     format_delimited_sequence(
         ctx,
         DelimitedSequenceLayout {
@@ -596,10 +635,177 @@ fn format_call_arg_list(
     )
 }
 
+fn format_call_args_with_inline_block_item(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    layout_plan: ExprSequenceLayoutPlan,
+    arg_docs: Vec<Vec<DocIR>>,
+    block_index: usize,
+    open: DocIR,
+    close: DocIR,
+    comma: Option<&LuaSyntaxToken>,
+) -> Vec<DocIR> {
+    let prefix_items = arg_docs[..block_index].to_vec();
+    let block_item = arg_docs[block_index].clone();
+    let tail_items = arg_docs[block_index + 1..].to_vec();
+
+    let mut anchored_docs = vec![open.clone()];
+    if !prefix_items.is_empty() {
+        anchored_docs.extend(ir::intersperse(
+            prefix_items,
+            comma_flat_separator(plan, comma),
+        ));
+        anchored_docs.extend(comma_flat_separator(plan, comma));
+    }
+    anchored_docs.extend(block_item);
+    if !tail_items.is_empty() {
+        anchored_docs.push(ir::indent(vec![ir::fill(
+            build_fill_parts_with_leading_separator(&tail_items, &comma_fill_separator(comma)),
+        )]));
+        anchored_docs.push(ir::hard_line());
+        anchored_docs.push(close.clone());
+    } else {
+        anchored_docs.push(close.clone());
+    }
+
+    let anchored = vec![ir::group_break(anchored_docs)];
+
+    let mut one_per_line_inner = Vec::new();
+    for (index, item_docs) in arg_docs.iter().enumerate() {
+        one_per_line_inner.push(ir::hard_line());
+        one_per_line_inner.extend(item_docs.clone());
+        if index + 1 < arg_docs.len() {
+            one_per_line_inner.extend(comma_token_docs(comma));
+        }
+    }
+
+    let one_per_line = vec![ir::group_break(vec![
+        open,
+        ir::indent(one_per_line_inner),
+        ir::hard_line(),
+        close,
+    ])];
+
+    choose_sequence_layout(
+        ctx,
+        SequenceLayoutCandidates {
+            fill: Some(anchored),
+            one_per_line: Some(one_per_line),
+            ..Default::default()
+        },
+        SequenceLayoutPolicy {
+            allow_fill: true,
+            prefer_balanced_break_lines: true,
+            first_line_prefix_width: layout_plan.first_line_prefix_width,
+            ..Default::default()
+        },
+    )
+}
+
+fn format_call_args_with_block_items(
+    ctx: &FormatContext,
+    layout_plan: ExprSequenceLayoutPlan,
+    arg_docs: Vec<Vec<DocIR>>,
+    open: DocIR,
+    close: DocIR,
+    comma: Option<&LuaSyntaxToken>,
+) -> Vec<DocIR> {
+    if arg_docs.is_empty() {
+        return vec![open, close];
+    }
+
+    let mut blocked_inner = Vec::new();
+    let mut current_chunk: Vec<Vec<DocIR>> = Vec::new();
+
+    for (index, item_docs) in arg_docs.iter().enumerate() {
+        let is_last = index + 1 == arg_docs.len();
+        let item_is_multiline = crate::ir::ir_has_forced_line_break(item_docs);
+        let mut item_with_trailing = item_docs.clone();
+        if !is_last {
+            item_with_trailing.extend(comma_token_docs(comma));
+        }
+
+        if item_is_multiline {
+            if !current_chunk.is_empty() {
+                blocked_inner.push(ir::hard_line());
+                blocked_inner.extend(render_blocked_call_arg_chunk(std::mem::take(
+                    &mut current_chunk,
+                )));
+            }
+            blocked_inner.push(ir::hard_line());
+            blocked_inner.extend(item_with_trailing);
+        } else {
+            current_chunk.push(item_with_trailing);
+        }
+    }
+
+    if !current_chunk.is_empty() {
+        blocked_inner.push(ir::hard_line());
+        blocked_inner.extend(render_blocked_call_arg_chunk(current_chunk));
+    }
+
+    let blocked = vec![ir::group_break(vec![
+        open.clone(),
+        ir::indent(blocked_inner),
+        ir::hard_line(),
+        close.clone(),
+    ])];
+
+    let mut one_per_line_inner = Vec::new();
+    for (index, item_docs) in arg_docs.iter().enumerate() {
+        one_per_line_inner.push(ir::hard_line());
+        one_per_line_inner.extend(item_docs.clone());
+        if index + 1 < arg_docs.len() {
+            one_per_line_inner.extend(comma_token_docs(comma));
+        }
+    }
+
+    let one_per_line = vec![ir::group_break(vec![
+        open,
+        ir::indent(one_per_line_inner),
+        ir::hard_line(),
+        close,
+    ])];
+
+    choose_sequence_layout(
+        ctx,
+        SequenceLayoutCandidates {
+            fill: Some(blocked),
+            one_per_line: Some(one_per_line),
+            ..Default::default()
+        },
+        SequenceLayoutPolicy {
+            allow_fill: true,
+            prefer_balanced_break_lines: true,
+            first_line_prefix_width: layout_plan.first_line_prefix_width,
+            ..Default::default()
+        },
+    )
+}
+
+fn render_blocked_call_arg_chunk(items_with_trailing: Vec<Vec<DocIR>>) -> Vec<DocIR> {
+    if items_with_trailing.is_empty() {
+        return Vec::new();
+    }
+
+    let item_count = items_with_trailing.len();
+    let mut parts = Vec::with_capacity(items_with_trailing.len().saturating_mul(2));
+    for (index, item_docs) in items_with_trailing.into_iter().enumerate() {
+        parts.push(ir::list(item_docs));
+        if index + 1 < item_count {
+            parts.push(ir::soft_line());
+        }
+    }
+    vec![ir::fill(parts)]
+}
+
 fn should_attach_first_call_arg(args: &[LuaExpr]) -> bool {
     matches!(
         args.first(),
-        Some(LuaExpr::TableExpr(_) | LuaExpr::ClosureExpr(_))
+        Some(LuaExpr::TableExpr(table)) if table.syntax().text().contains_char('\n')
+    ) || matches!(
+        args.first(),
+        Some(LuaExpr::ClosureExpr(closure)) if closure.syntax().text().contains_char('\n')
     )
 }
 
@@ -1884,7 +2090,15 @@ fn format_call_suffix_ir(
     let is_single_multiline_table_payload = args.len() == 1
         && matches!(args.first(), Some(LuaExpr::TableExpr(table)) if table.syntax().text().contains_char('\n'));
 
-    if crate::ir::ir_has_forced_line_break(&docs) && !is_single_multiline_table_payload {
+    let has_multiline_block_payload = args.iter().any(|arg| {
+        matches!(arg, LuaExpr::ClosureExpr(_) | LuaExpr::TableExpr(_))
+            && arg.syntax().text().contains_char('\n')
+    });
+
+    if crate::ir::ir_has_forced_line_break(&docs)
+        && !is_single_multiline_table_payload
+        && !has_multiline_block_payload
+    {
         vec![ir::indent(docs)]
     } else {
         docs
@@ -1940,6 +2154,21 @@ fn build_fill_parts(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
         if index + 1 < items.len() {
             parts.push(ir::list(separator.to_vec()));
         }
+    }
+
+    parts
+}
+
+fn build_fill_parts_with_leading_separator(
+    items: &[Vec<DocIR>],
+    separator: &[DocIR],
+) -> Vec<DocIR> {
+    let mut parts = Vec::with_capacity(items.len().saturating_mul(2) + 1);
+    parts.push(ir::list(Vec::new()));
+
+    for item in items {
+        parts.push(ir::list(separator.to_vec()));
+        parts.push(ir::list(item.clone()));
     }
 
     parts

@@ -408,6 +408,48 @@ local b = t[1]
     }
 
     #[test]
+    fn test_non_first_multiline_callback_resets_call_anchor() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 40,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "test(1, \"hello\", function()\n        return 1, 2, 34\n    end, 4, 5, 6, 7, 8, 9, 10)\n",
+            "test(1, \"hello\", function()\n    return 1, 2, 34\nend, 4, 5, 6, 7, 8, 9, 10\n)\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_non_first_multiline_callback_tail_refills_after_end() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 28,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "test(1, \"hello\", function()\n        return 1, 2, 34\n    end, 4, 5, 6, 7, 8, 9, 10)\n",
+            "test(1, \"hello\", function()\n    return 1, 2, 34\nend, 4, 5, 6, 7, 8, 9, 10\n)\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_non_first_multiline_callback_end_aligns_with_call_anchor() {
+        assert_format!(
+            "table.sort({ 3, 1, 2 }, function(a, b)\n        return a < b\n    end)\n",
+            "table.sort({ 3, 1, 2 }, function(a, b)\n    return a < b\nend)\n"
+        );
+    }
+
+    #[test]
     fn test_multiline_call_comparison_keeps_short_rhs_on_closing_line() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {
@@ -564,7 +606,7 @@ local b = t[1]
     fn test_chain_keeps_mixed_closure_and_multiline_table_payloads_expanded() {
         assert_format!(
             "builder:with_config(function (a, b)\n    return  val(a) ==       val(b)\nend, {\n    foo=1,\n    bar =    2,\n}):set_name(name):build()\n",
-            "builder:with_config(function(a, b)\n        return val(a) == val(b)\n    end,\n        {\n            foo = 1,\n            bar = 2\n        }):set_name(name):build()\n"
+            "builder:with_config(function(a, b)\n    return val(a) == val(b)\nend,\n    {\n        foo = 1,\n        bar = 2\n    }):set_name(name):build()\n"
         );
     }
 
@@ -572,7 +614,7 @@ local b = t[1]
     fn test_chain_keeps_mixed_closure_table_and_fallback_payloads_expanded() {
         assert_format!(
             "builder:with_config(function (a, b)\n    return  val(a) ==       val(b)\nend, {\n    foo=1,\n    bar =    2,\n}, fallback):set_name(name):build()\n",
-            "builder:with_config(function(a, b)\n        return val(a) == val(b)\n    end,\n        {\n            foo = 1,\n            bar = 2\n        }, fallback):set_name(name):build()\n"
+            "builder:with_config(function(a, b)\n    return val(a) == val(b)\nend,\n    {\n        foo = 1,\n        bar = 2\n    }, fallback):set_name(name):build()\n"
         );
     }
 
