@@ -103,7 +103,7 @@ pub fn get_tpl_ref_extend_type(
             if depth > 1 {
                 return None;
             }
-            let mut result = LuaType::Unknown;
+            let mut result = LuaType::Never;
             for union_member_type in union_type.into_vec().iter() {
                 let extend_type = get_tpl_ref_extend_type(
                     db,

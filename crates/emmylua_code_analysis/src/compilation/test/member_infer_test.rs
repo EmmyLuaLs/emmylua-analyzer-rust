@@ -324,4 +324,48 @@ mod test {
             value_ty
         );
     }
+
+    #[test]
+    fn test_union_member_access_preserves_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class A
+        ---@field y never
+
+        ---@class B
+        ---@field y never
+
+        ---@return A|B
+        local function make() end
+
+        local value = make()
+
+        result = value.y
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("never"));
+    }
+
+    #[test]
+    fn test_table_expr_index_preserves_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@return { y: number } & { y: string }
+        local function impossible() end
+
+        local t = {
+            a = impossible().y,
+        }
+
+        result = t["a"]
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("never"));
+    }
 }

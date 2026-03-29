@@ -273,17 +273,20 @@ fn infer_table_type_by_callee(
 
 /// 移除掉一些非`table`类型
 fn union_remove_non_table_type(db: &DbIndex, union: &Arc<LuaUnionType>) -> LuaType {
-    let mut result = LuaType::Unknown;
+    let mut result = None;
     for typ in union.into_set().into_iter() {
         match typ {
             LuaType::Signature(_) | LuaType::DocFunction(_) => {}
             _ if typ.is_string() || typ.is_number() || typ.is_boolean() => {}
             _ => {
-                result = TypeOps::Union.apply(db, &result, &typ);
+                result = Some(match result {
+                    Some(result) => TypeOps::Union.apply(db, &result, &typ),
+                    None => typ,
+                });
             }
         }
     }
-    result
+    result.unwrap_or(LuaType::Unknown)
 }
 
 fn infer_table_field_type_by_parent(

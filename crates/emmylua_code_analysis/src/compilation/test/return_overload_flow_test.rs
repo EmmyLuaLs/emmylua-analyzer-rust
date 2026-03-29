@@ -78,6 +78,71 @@ mod test {
     }
 
     #[test]
+    fn test_return_overload_narrow_with_overlapping_target_union() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@param ok boolean
+            ---@return boolean
+            ---@return string|number
+            ---@return_overload true, string
+            ---@return_overload false, string|number
+            local function pick(ok)
+                if ok then
+                    return true, "value"
+                end
+                return false, 1
+            end
+
+            local cond ---@type boolean
+            local ok, result = pick(cond)
+
+            if ok then
+                success_branch = result
+            else
+                failure_branch = result
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("success_branch"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("failure_branch"), ws.ty("string|number"));
+    }
+
+    #[test]
+    fn test_return_overload_narrow_with_overlapping_supertype_target() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@param ok boolean
+            ---@return boolean
+            ---@return number
+            ---@return_overload true, integer
+            ---@return_overload false, number
+            local function pick(ok)
+                if ok then
+                    return true, 1
+                end
+                return false, 1.5
+            end
+
+            local cond ---@type boolean
+            local ok, result = pick(cond)
+
+            if ok then
+                success_branch = result
+            else
+                failure_branch = result
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("success_branch"), ws.ty("integer"));
+    }
+
+    #[test]
     fn test_return_overload_reassign_clears_multi_return_mapping() {
         let mut ws = VirtualWorkspace::new();
 

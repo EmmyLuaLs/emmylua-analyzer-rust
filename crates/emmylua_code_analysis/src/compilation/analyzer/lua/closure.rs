@@ -208,30 +208,32 @@ fn analyze_lambda_returns(
 pub fn analyze_return_point(
     db: &DbIndex,
     cache: &mut LuaInferCache,
-    return_points: &Vec<LuaReturnPoint>,
+    return_points: &[LuaReturnPoint],
 ) -> Result<Vec<LuaDocReturnInfo>, InferFailReason> {
-    let mut return_type = LuaType::Unknown;
+    let mut return_type = None;
     for point in return_points {
-        match point {
-            LuaReturnPoint::Expr(expr) => {
-                let expr_type = infer_expr(db, cache, expr.clone())?;
-                return_type = union_return_expr(db, return_type, expr_type);
-            }
+        let point_type = match point {
+            LuaReturnPoint::Expr(expr) => Some(infer_expr(db, cache, expr.clone())?),
             LuaReturnPoint::MuliExpr(exprs) => {
-                let mut multi_return = vec![];
+                let mut multi_return = Vec::with_capacity(exprs.len());
                 for expr in exprs {
-                    let expr_type = infer_expr(db, cache, expr.clone())?;
-                    multi_return.push(expr_type);
+                    multi_return.push(infer_expr(db, cache, expr.clone())?);
                 }
-                let typ = LuaType::Variadic(VariadicType::Multi(multi_return).into());
-                return_type = union_return_expr(db, return_type, typ);
+                Some(LuaType::Variadic(VariadicType::Multi(multi_return).into()))
             }
-            LuaReturnPoint::Nil => {
-                return_type = union_return_expr(db, return_type, LuaType::Nil);
-            }
-            _ => {}
+            LuaReturnPoint::Nil => Some(LuaType::Nil),
+            _ => None,
+        };
+
+        if let Some(point_type) = point_type {
+            return_type = Some(match return_type {
+                Some(return_type) => union_return_expr(db, return_type, point_type),
+                None => point_type,
+            });
         }
     }
+
+    let return_type = return_type.unwrap_or(LuaType::Unknown);
 
     Ok(vec![LuaDocReturnInfo {
         type_ref: return_type,
@@ -242,10 +244,6 @@ pub fn analyze_return_point(
 }
 
 fn union_return_expr(db: &DbIndex, left: LuaType, right: LuaType) -> LuaType {
-    if left == LuaType::Unknown {
-        return right;
-    }
-
     match (&left, &right) {
         (LuaType::Variadic(left_variadic), LuaType::Variadic(right_variadic)) => {
             match (&left_variadic.deref(), &right_variadic.deref()) {

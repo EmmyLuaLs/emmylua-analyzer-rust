@@ -266,10 +266,18 @@ fn infer_generic_types_from_call(
 
         if let Some(return_pattern) =
             as_doc_function_type(context.db, func_param_type)?.map(|func| func.get_ret().clone())
-            && let Some(inferred_return_type) =
-                infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
         {
-            return_type_pattern_match_target_type(context, &return_pattern, &inferred_return_type)?;
+            if let Some(inferred_return_type) =
+                infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
+            {
+                return_type_pattern_match_target_type(
+                    context,
+                    &return_pattern,
+                    &inferred_return_type,
+                )?;
+            } else if arg_type.is_any() || arg_type.is_unknown() {
+                return_type_pattern_match_target_type(context, &return_pattern, &LuaType::Unknown)?;
+            }
         }
 
         match (func_param_type, &arg_type) {

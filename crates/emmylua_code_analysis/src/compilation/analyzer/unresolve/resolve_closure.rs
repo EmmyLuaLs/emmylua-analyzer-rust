@@ -307,7 +307,8 @@ fn resolve_closure_member_type(
                 .get(&closure_params.signature_id)
                 .ok_or(InferFailReason::None)?;
             let mut final_params = signature.get_type_params().to_vec();
-            let mut final_ret = LuaType::Unknown;
+            let mut final_ret = LuaType::Never;
+            let mut has_final_ret = false;
 
             let mut multi_function_type = Vec::new();
             for typ in union_types.into_vec() {
@@ -369,17 +370,21 @@ fn resolve_closure_member_type(
 
                             break;
                         }
-                        let new_type = TypeOps::Union.apply(
-                            db,
-                            final_param.1.as_ref().unwrap_or(&LuaType::Unknown),
-                            param.1.as_ref().unwrap_or(&LuaType::Unknown),
-                        );
-                        final_params[idx] = (final_param.0.clone(), Some(new_type));
+                        let new_type = match (&final_param.1, &param.1) {
+                            (Some(final_type), Some(param_type)) => {
+                                Some(TypeOps::Union.apply(db, final_type, param_type))
+                            }
+                            (Some(final_type), None) => Some(final_type.clone()),
+                            (None, Some(param_type)) => Some(param_type.clone()),
+                            (None, None) => None,
+                        };
+                        final_params[idx] = (final_param.0.clone(), new_type);
                     } else {
                         final_params.push((param.0.clone(), param.1.clone()));
                     }
                 }
 
+                has_final_ret = true;
                 final_ret = TypeOps::Union.apply(db, &final_ret, doc_func.get_ret());
             }
 
@@ -388,6 +393,12 @@ fn resolve_closure_member_type(
             {
                 param.1 = Some(variadic_type);
             }
+
+            let final_ret = if !has_final_ret {
+                LuaType::Unknown
+            } else {
+                final_ret
+            };
 
             resolve_doc_function(
                 db,

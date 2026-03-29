@@ -670,7 +670,7 @@ impl LuaTupleType {
     }
 
     pub fn cast_down_array_base(&self, db: &DbIndex) -> LuaType {
-        let mut ty = LuaType::Unknown;
+        let mut ty = LuaType::Never;
         for t in &self.types {
             match t {
                 LuaType::IntegerConst(i) => {
@@ -688,7 +688,11 @@ impl LuaTupleType {
             }
         }
 
-        ty
+        if self.types.is_empty() {
+            LuaType::Unknown
+        } else {
+            ty
+        }
     }
 
     pub fn is_infer_resolve(&self) -> bool {
@@ -929,18 +933,16 @@ impl LuaObjectType {
             let mut ty = None;
             for (key, value_type) in self.index_access.iter() {
                 if matches!(key, LuaType::Integer) {
-                    if ty.is_none() {
-                        ty = Some(LuaType::Unknown);
-                    }
-                    if let Some(t) = ty {
-                        ty = Some(TypeOps::Union.apply(db, &t, value_type));
-                    }
+                    ty = Some(match ty {
+                        Some(t) => TypeOps::Union.apply(db, &t, value_type),
+                        None => value_type.clone(),
+                    });
                 }
             }
             return ty;
         }
 
-        let mut ty = LuaType::Unknown;
+        let mut ty = None;
         let mut count = 1;
         let mut fields = self.fields.iter().collect::<Vec<_>>();
 
@@ -960,10 +962,13 @@ impl LuaObjectType {
 
             count += 1;
 
-            ty = TypeOps::Union.apply(db, &ty, value_type);
+            ty = Some(match ty {
+                Some(t) => TypeOps::Union.apply(db, &t, value_type),
+                None => value_type.clone(),
+            });
         }
 
-        Some(ty)
+        Some(ty.unwrap_or(LuaType::Unknown))
     }
 }
 
