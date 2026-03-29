@@ -2355,17 +2355,18 @@ fn render_trivia_aware_split_sequence_tail_new(
 fn render_comment_with_spacing(
     ctx: &FormatContext,
     comment: &LuaComment,
-    _plan: &RootFormatPlan,
+    plan: &RootFormatPlan,
 ) -> Vec<DocIR> {
     if should_preserve_comment_raw(comment) || should_preserve_doc_comment_block_raw(comment) {
         return vec![ir::source_node_trimmed(comment.syntax().clone())];
     }
 
     let raw = trim_end_comment_text(comment.syntax().text().to_string());
+    let prefix_replacements = collect_comment_line_prefix_replacements(comment, plan);
     let lines = if raw.starts_with("---") {
-        normalize_doc_comment_block(ctx, &raw)
+        normalize_doc_comment_block(ctx, &raw, &prefix_replacements)
     } else {
-        normalize_normal_comment_block(ctx, &raw)
+        normalize_normal_comment_block(ctx, &raw, &prefix_replacements)
     };
     lines
         .into_iter()
@@ -2390,27 +2391,97 @@ fn trim_end_comment_text(mut text: String) -> String {
     text
 }
 
-fn normalize_normal_comment_block(ctx: &FormatContext, raw: &str) -> Vec<String> {
-    let lines: Vec<_> = raw.lines().map(str::to_string).collect();
-    if lines.len() <= 1 {
-        return vec![normalize_single_normal_comment_line(ctx, raw)];
+fn collect_comment_line_prefix_replacements(
+    comment: &LuaComment,
+    plan: &RootFormatPlan,
+) -> Vec<Option<String>> {
+    let mut line_prefixes = Vec::new();
+    let mut current_prefix = None;
+    let mut saw_token_on_line = false;
+
+    for element in comment.syntax().descendants_with_tokens() {
+        let Some(token) = element.into_token() else {
+            continue;
+        };
+
+        match token.kind().to_token() {
+            LuaTokenKind::TkWhitespace => {}
+            LuaTokenKind::TkEndOfLine => {
+                line_prefixes.push(current_prefix.take());
+                saw_token_on_line = false;
+            }
+            _ => {
+                if !saw_token_on_line {
+                    current_prefix = comment_prefix_replacement_for_token(plan, &token);
+                    saw_token_on_line = true;
+                }
+            }
+        }
     }
-    lines
+
+    if saw_token_on_line || current_prefix.is_some() {
+        line_prefixes.push(current_prefix);
+    }
+
+    line_prefixes
 }
 
-fn normalize_single_normal_comment_line(ctx: &FormatContext, line: &str) -> String {
+fn comment_prefix_replacement_for_token(
+    plan: &RootFormatPlan,
+    token: &LuaSyntaxToken,
+) -> Option<String> {
+    match token.kind().to_token() {
+        LuaTokenKind::TkNormalStart
+        | LuaTokenKind::TkDocStart
+        | LuaTokenKind::TkDocContinue
+        | LuaTokenKind::TkDocContinueOr => Some(
+            plan.spacing
+                .token_replace(LuaSyntaxId::from_token(token))
+                .unwrap_or(token.text())
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+fn normalize_normal_comment_block(
+    ctx: &FormatContext,
+    raw: &str,
+    prefix_replacements: &[Option<String>],
+) -> Vec<String> {
+    let lines: Vec<_> = raw.lines().collect();
+    if lines.len() <= 1 {
+        return vec![normalize_single_normal_comment_line(
+            ctx,
+            raw,
+            prefix_replacements
+                .first()
+                .and_then(|prefix| prefix.as_deref()),
+        )];
+    }
+    lines.into_iter().map(str::to_string).collect()
+}
+
+fn normalize_single_normal_comment_line(
+    ctx: &FormatContext,
+    line: &str,
+    prefix_override: Option<&str>,
+) -> String {
     if !line.starts_with("--") || line.starts_with("---") {
         return line.to_string();
     }
-    let body = line[2..].trim_start();
-    if ctx.config.comments.space_after_comment_dash {
-        if body.is_empty() {
-            "--".to_string()
+    let prefix = prefix_override.map(str::to_string).unwrap_or_else(|| {
+        if ctx.config.comments.space_after_comment_dash {
+            "-- ".to_string()
         } else {
-            format!("-- {body}")
+            "--".to_string()
         }
+    });
+    let body = line[2..].trim_start();
+    if body.is_empty() {
+        prefix.trim_end().to_string()
     } else {
-        format!("--{body}")
+        format!("{prefix}{body}")
     }
 }
 
@@ -2444,7 +2515,11 @@ fn should_preserve_doc_comment_block_raw(comment: &LuaComment) -> bool {
     })
 }
 
-fn normalize_doc_comment_block(ctx: &FormatContext, raw: &str) -> Vec<String> {
+fn normalize_doc_comment_block(
+    ctx: &FormatContext,
+    raw: &str,
+    prefix_replacements: &[Option<String>],
+) -> Vec<String> {
     let raw_lines: Vec<&str> = raw.lines().collect();
     let parsed: Vec<DocLineKind> = raw_lines
         .iter()
@@ -2478,7 +2553,17 @@ fn normalize_doc_comment_block(ctx: &FormatContext, raw: &str) -> Vec<String> {
 
     parsed
         .into_iter()
-        .map(|line| format_doc_comment_line(ctx, line, &widths))
+        .enumerate()
+        .map(|(index, line)| {
+            format_doc_comment_line(
+                ctx,
+                line,
+                &widths,
+                prefix_replacements
+                    .get(index)
+                    .and_then(|prefix| prefix.as_deref()),
+            )
+        })
         .collect()
 }
 
@@ -2555,39 +2640,49 @@ fn format_doc_comment_line(
     ctx: &FormatContext,
     line: DocLineKind,
     widths: &HashMap<String, Vec<usize>>,
+    prefix_override: Option<&str>,
 ) -> String {
     match line {
         DocLineKind::Description {
             content,
             preserve_spacing,
         } => {
-            let prefix = if ctx.config.emmy_doc.space_after_description_dash {
-                "--- "
-            } else {
-                "---"
-            };
             if preserve_spacing {
                 format!("---{content}")
-            } else if content.is_empty() {
-                prefix.trim_end().to_string()
             } else {
-                format!("{prefix}{content}")
+                let prefix = prefix_override.map(str::to_string).unwrap_or_else(|| {
+                    if ctx.config.emmy_doc.space_after_description_dash {
+                        "--- ".to_string()
+                    } else {
+                        "---".to_string()
+                    }
+                });
+                if content.is_empty() {
+                    prefix.trim_end().to_string()
+                } else {
+                    format!("{prefix}{content}")
+                }
             }
         }
         DocLineKind::ContinueOr { content } => {
-            let prefix = if ctx.config.emmy_doc.space_after_description_dash {
-                "--- |"
-            } else {
-                "---|"
-            };
+            let prefix = prefix_override.map(str::to_string).unwrap_or_else(|| {
+                if ctx.config.emmy_doc.space_after_description_dash {
+                    "--- |".to_string()
+                } else {
+                    "---|".to_string()
+                }
+            });
             if content.is_empty() {
-                prefix.to_string()
+                prefix
             } else {
-                format!("{prefix} {content}")
+                let separator = if prefix.ends_with(' ') { "" } else { " " };
+                format!("{prefix}{separator}{content}")
             }
         }
         DocLineKind::Tag(tag) => {
-            let prefix = if ctx.config.emmy_doc.space_after_description_dash {
+            let prefix = if let Some(prefix) = prefix_override {
+                format!("{prefix}{}", tag.tag)
+            } else if ctx.config.emmy_doc.space_after_description_dash {
                 format!("--- @{}", tag.tag)
             } else {
                 format!("---@{}", tag.tag)
@@ -2713,120 +2808,6 @@ fn collapse_spaces(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-#[derive(Default)]
-struct RenderCommentLine {
-    tokens: Vec<(LuaSyntaxId, String)>,
-    gaps: Vec<String>,
-}
-
-fn collect_comment_render_lines(comment: &LuaComment, plan: &RootFormatPlan) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut current = RenderCommentLine::default();
-    let mut pending_gap = String::new();
-    let mut ended_with_newline = false;
-
-    for element in comment.syntax().descendants_with_tokens() {
-        let Some(token) = element.into_token() else {
-            continue;
-        };
-
-        match token.kind().to_token() {
-            LuaTokenKind::TkWhitespace => pending_gap.push_str(token.text()),
-            LuaTokenKind::TkEndOfLine => {
-                apply_comment_spacing_line(plan, &mut current);
-                lines.push(render_comment_line(current));
-                current = RenderCommentLine::default();
-                pending_gap.clear();
-                ended_with_newline = true;
-            }
-            _ => {
-                let syntax_id = LuaSyntaxId::from_token(&token);
-                if !current.tokens.is_empty() {
-                    current.gaps.push(std::mem::take(&mut pending_gap));
-                } else {
-                    pending_gap.clear();
-                }
-                let text = plan
-                    .spacing
-                    .token_replace(syntax_id)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| token.text().to_string());
-                current.tokens.push((syntax_id, text));
-                ended_with_newline = false;
-            }
-        }
-    }
-
-    if !current.tokens.is_empty() || ended_with_newline {
-        apply_comment_spacing_line(plan, &mut current);
-        lines.push(render_comment_line(current));
-    }
-
-    lines
-}
-
-fn apply_comment_spacing_line(plan: &RootFormatPlan, line: &mut RenderCommentLine) {
-    for index in 0..line.gaps.len() {
-        let prev_id = line.tokens[index].0;
-        let token_id = line.tokens[index + 1].0;
-        line.gaps[index] = resolve_comment_gap(plan, Some(prev_id), token_id, &line.gaps[index]);
-    }
-}
-
-fn resolve_comment_gap(
-    plan: &RootFormatPlan,
-    prev_token_id: Option<LuaSyntaxId>,
-    token_id: LuaSyntaxId,
-    gap: &str,
-) -> String {
-    let mut exact_space = None;
-    let mut max_space = None;
-
-    if let Some(prev_token_id) = prev_token_id
-        && let Some(expected) = plan.spacing.right_expected(prev_token_id)
-    {
-        match expected {
-            TokenSpacingExpected::Space(count) => exact_space = Some(*count),
-            TokenSpacingExpected::MaxSpace(count) => max_space = Some(*count),
-        }
-    }
-
-    if let Some(expected) = plan.spacing.left_expected(token_id) {
-        match expected {
-            TokenSpacingExpected::Space(count) => {
-                exact_space = Some(exact_space.map_or(*count, |current| current.max(*count)));
-            }
-            TokenSpacingExpected::MaxSpace(count) => {
-                max_space = Some(max_space.map_or(*count, |current| current.min(*count)));
-            }
-        }
-    }
-
-    if let Some(exact_space) = exact_space {
-        return " ".repeat(exact_space);
-    }
-    if let Some(max_space) = max_space {
-        let original_space_count = gap.chars().take_while(|ch| *ch == ' ').count();
-        return " ".repeat(original_space_count.min(max_space));
-    }
-
-    gap.to_string()
-}
-
-fn render_comment_line(line: RenderCommentLine) -> String {
-    let mut tokens = line.tokens.into_iter();
-    let Some((_, first_text)) = tokens.next() else {
-        return String::new();
-    };
-
-    let mut rendered = first_text;
-    for (gap, (_, token_text)) in line.gaps.into_iter().zip(tokens) {
-        rendered.push_str(&gap);
-        rendered.push_str(&token_text);
-    }
-    rendered
-}
-
 fn should_preserve_comment_raw(comment: &LuaComment) -> bool {
     if comment.syntax().text().to_string().starts_with("----") {
         return true;
@@ -2864,4 +2845,54 @@ fn find_node_by_id(root: &LuaSyntaxNode, syntax_id: LuaSyntaxId) -> Option<LuaSy
 
     root.descendants()
         .find(|node| LuaSyntaxId::from_node(node) == syntax_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use emmylua_parser::{LuaAstNode, LuaComment, LuaLanguageLevel, LuaParser, ParserConfig};
+
+    use crate::{config::LuaFormatConfig, printer::Printer};
+
+    use super::*;
+
+    fn parse_comment(input: &str) -> LuaComment {
+        let tree = LuaParser::parse(input, ParserConfig::with_level(LuaLanguageLevel::Lua54));
+        tree.get_chunk_node()
+            .syntax()
+            .descendants()
+            .find_map(LuaComment::cast)
+            .unwrap()
+    }
+
+    #[test]
+    fn test_render_comment_with_spacing_uses_normal_prefix_replacement() {
+        let config = LuaFormatConfig::default();
+        let ctx = FormatContext::new(&config);
+        let comment = parse_comment("--hello\n");
+        let mut plan = RootFormatPlan::from_config(&config);
+        let start = comment.syntax().first_token().unwrap();
+        plan.spacing
+            .add_token_replace(LuaSyntaxId::from_token(&start), "--  ".to_string());
+
+        let docs = render_comment_with_spacing(&ctx, &comment, &plan);
+        let rendered = Printer::new(&config).print(&docs);
+
+        assert_eq!(rendered, "--  hello");
+    }
+
+    #[test]
+    fn test_render_comment_with_spacing_uses_doc_prefix_replacement() {
+        let config = LuaFormatConfig::default();
+        let ctx = FormatContext::new(&config);
+        let comment = parse_comment("---@param x string\n");
+        let mut plan = RootFormatPlan::from_config(&config);
+        let start = comment.syntax().first_token().unwrap();
+        plan.spacing
+            .add_token_replace(LuaSyntaxId::from_token(&start), "---  @".to_string());
+
+        let docs = render_comment_with_spacing(&ctx, &comment, &plan);
+        let rendered = Printer::new(&config).print(&docs);
+
+        assert_eq!(rendered, "---  @param x string");
+    }
 }

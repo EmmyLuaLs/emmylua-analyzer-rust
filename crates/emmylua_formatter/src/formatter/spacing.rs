@@ -12,8 +12,6 @@ use super::model::{RootFormatPlan, RootSpacingModel, TokenSpacingExpected};
 pub(crate) enum SpaceRule {
     Space,
     NoSpace,
-    SoftLine,
-    SoftLineOrEmpty,
 }
 
 impl SpaceRule {
@@ -21,8 +19,6 @@ impl SpaceRule {
         match self {
             SpaceRule::Space => ir::space(),
             SpaceRule::NoSpace => ir::list(vec![]),
-            SpaceRule::SoftLine => ir::soft_line(),
-            SpaceRule::SoftLineOrEmpty => ir::soft_line_or_empty(),
         }
     }
 }
@@ -381,11 +377,11 @@ fn binary_op_for_plus_minus(token: &LuaSyntaxToken) -> BinaryOperator {
 
 fn apply_space_rule(spacing: &mut RootSpacingModel, syntax_id: LuaSyntaxId, rule: SpaceRule) {
     match rule {
-        SpaceRule::Space | SpaceRule::SoftLine => {
+        SpaceRule::Space => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(1));
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
         }
-        SpaceRule::NoSpace | SpaceRule::SoftLineOrEmpty => {
+        SpaceRule::NoSpace => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
         }
@@ -501,13 +497,6 @@ mod tests {
     use crate::config::LuaFormatConfig;
 
     use super::*;
-
-    fn analyze(input: &str, config: LuaFormatConfig) -> RootSpacingModel {
-        let tree = LuaParser::parse(input, ParserConfig::with_level(LuaLanguageLevel::Lua54));
-        let chunk = tree.get_chunk_node();
-        let ctx = FormatContext::new(&config);
-        analyze_root_spacing(&ctx, &chunk).spacing
-    }
 
     fn find_token(chunk: &LuaChunk, kind: LuaTokenKind) -> LuaSyntaxToken {
         chunk
