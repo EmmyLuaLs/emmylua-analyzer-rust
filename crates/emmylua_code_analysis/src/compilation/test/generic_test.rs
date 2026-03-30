@@ -847,4 +847,25 @@ mod test {
             "#,
         ));
     }
+
+    #[test]
+    fn test_issue_986() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Foo
+            ---@field cost number
+
+            ---@generic K extends keyof Foo
+            ---@param key K
+            ---@return Foo[K]
+            function get(key)
+            end
+
+            A = get('cost')
+        "#,
+        );
+        let result_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(result_ty), "number");
+    }
 }

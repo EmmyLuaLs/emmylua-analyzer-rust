@@ -22,9 +22,10 @@ impl WorkspaceId {
     pub const STD: WorkspaceId = WorkspaceId { id: 0 };
     pub const MAIN: WorkspaceId = WorkspaceId { id: 1 };
     pub const REMOTE: WorkspaceId = WorkspaceId { id: 2 };
+    pub const LIBRARY_START: WorkspaceId = WorkspaceId { id: 3 };
 
     pub fn is_library(&self) -> bool {
-        self.id > 2
+        self.id >= Self::LIBRARY_START.id
     }
 
     pub fn is_remote(&self) -> bool {
