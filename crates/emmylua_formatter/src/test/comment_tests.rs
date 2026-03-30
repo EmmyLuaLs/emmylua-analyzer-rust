@@ -216,8 +216,8 @@ end
             r#"
 if ok then
     -- hihihi
-    --     hello
-    --yyyy
+    -- hello
+    -- yyyy
 end
 "#
         );
@@ -234,8 +234,8 @@ local value = 1
 "#,
             r#"
 -- alpha
---   beta gamma
---delta
+-- beta gamma
+-- delta
 local value = 1
 "#
         );

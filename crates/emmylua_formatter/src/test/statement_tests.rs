@@ -59,7 +59,15 @@ end
     fn test_if_stat_preserves_inline_comment_after_then() {
         assert_format!(
             "if ok then -- keep header note\n    print(1)\nend\n",
-            "if ok then -- keep header note\n    print(1)\nend\n"
+            "if ok then\n    -- keep header note\n    print(1)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_if_body_comment_does_not_force_raw_preserve() {
+        assert_format!(
+            "if ok then\n-- note\nprint(1)\nend\n",
+            "if ok then\n    -- note\n    print(1)\nend\n"
         );
     }
 
@@ -322,6 +330,14 @@ end
         assert_format!(
             "while alpha_beta_gamma\n-- separator\ndo\n    work()\nend\n",
             "while alpha_beta_gamma\n-- separator\ndo\n    work()\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_while_body_comment_does_not_force_raw_preserve() {
+        assert_format!(
+            "while x > 0 do\n-- note\nx = x-1\nend\n",
+            "while x > 0 do\n    -- note\n    x = x - 1\nend\n"
         );
     }
 
@@ -796,7 +812,7 @@ end
     fn test_function_stat_preserves_inline_comment_before_end() {
         assert_format!(
             "function t:a() -- this comment will stay the same\nend\n",
-            "function t:a() -- this comment will stay the same\nend\n"
+            "function t:a()\n    -- this comment will stay the same\nend\n"
         );
     }
 
@@ -804,7 +820,23 @@ end
     fn test_function_stat_preserves_inline_comment_before_non_empty_body() {
         assert_format!(
             "function name13()  --hhii\n    return \"name13\" --jj\nend\n",
-            "function name13()  --hhii\n    return \"name13\" --jj\nend\n"
+            "function name13()\n    -- hhii\n    return \"name13\" -- jj\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_if_body_inline_return_comment_does_not_block_previous_statement_formatting() {
+        assert_format!(
+            "if nState ~= self.StarBoxType.GetNormal then\n    pPlayer     .Msg(\"请先领取该星级的普通宝箱奖励后再来购买钻石宝箱\")\n    return -- 还未领取普通宝箱奖励\nend\n",
+            "if nState ~= self.StarBoxType.GetNormal then\n    pPlayer.Msg(\"请先领取该星级的普通宝箱奖励后再来购买钻石宝箱\")\n    return -- 还未领取普通宝箱奖励\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_function_body_comment_does_not_force_raw_preserve() {
+        assert_format!(
+            "function JiuJieXunZong:LoadMissionTimeAward()\n        -- 策划填的是分钟\n    for i = 3, #tbSettings do\n        tbSet[nPoolTime] =  true\n            table.insert( self.tbMissionTimeReward[nChapterId][nPoolTime], {\n            tbRewardItem = tbRewardItem,\n            nWeight = nWeight\n        }\n        )\n    end\n\n\nend\n",
+            "function JiuJieXunZong:LoadMissionTimeAward()\n    -- 策划填的是分钟\n    for i = 3, #tbSettings do\n        tbSet[nPoolTime] = true\n        table.insert(self.tbMissionTimeReward[nChapterId][nPoolTime], {\n            tbRewardItem = tbRewardItem,\n            nWeight = nWeight\n        })\n    end\nend\n"
         );
     }
 

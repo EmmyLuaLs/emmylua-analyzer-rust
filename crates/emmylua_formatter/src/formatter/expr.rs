@@ -1915,7 +1915,7 @@ fn render_closure_shell(
         }
     }
 
-    let rendered_body_docs = render::render_closure_block_body_new(ctx, expr, root_plan);
+    let rendered_body_docs = render::render_closure_block_body(ctx, expr, root_plan);
 
     if !body_comment_lines.is_empty() || !rendered_body_docs.is_empty() {
         let mut block_docs = vec![ir::hard_line()];
