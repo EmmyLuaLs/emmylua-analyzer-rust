@@ -1,9 +1,10 @@
 #[macro_export]
 macro_rules! assert_format_with_config {
     ($input:expr, $expected:expr, $config:expr) => {{
+        use emmylua_parser::LuaLanguageLevel;
         let input = $input.trim_start_matches('\n');
         let expected = $expected.trim_start_matches('\n');
-        let result = $crate::format_text(input, &$config).formatted;
+        let result = $crate::format_text(input, LuaLanguageLevel::default(), &$config).formatted;
         if result != expected {
             let result_lines: Vec<&str> = result.lines().collect();
             let expected_lines: Vec<&str> = expected.lines().collect();

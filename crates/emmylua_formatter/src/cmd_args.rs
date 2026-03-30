@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{ArgGroup, Parser, ValueEnum};
+use emmylua_parser::LuaLanguageLevel;
 
 use crate::{FileCollectorOptions, IndentKind, ResolvedConfig, resolve_config_for_path};
 
@@ -92,6 +93,9 @@ pub struct CliArgs {
     /// Exclude files matching a glob pattern
     #[arg(long, value_name = "GLOB")]
     pub exclude: Vec<String>,
+
+    #[arg(long, value_enum, default_value_t = LanguageLevel::Lua55)]
+    pub level: LanguageLevel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
@@ -107,6 +111,30 @@ pub enum DiffStyle {
     #[default]
     Marker,
     Git,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum LanguageLevel {
+    Lua51,
+    Lua52,
+    Lua53,
+    Lua54,
+    #[default]
+    Lua55,
+    LuaJIT,
+}
+
+impl From<LanguageLevel> for LuaLanguageLevel {
+    fn from(level: LanguageLevel) -> Self {
+        match level {
+            LanguageLevel::Lua51 => LuaLanguageLevel::Lua51,
+            LanguageLevel::Lua52 => LuaLanguageLevel::Lua52,
+            LanguageLevel::Lua53 => LuaLanguageLevel::Lua53,
+            LanguageLevel::Lua54 => LuaLanguageLevel::Lua54,
+            LanguageLevel::Lua55 => LuaLanguageLevel::Lua55,
+            LanguageLevel::LuaJIT => LuaLanguageLevel::LuaJIT,
+        }
+    }
 }
 
 pub fn resolve_style(args: &CliArgs) -> Result<ResolvedConfig, String> {

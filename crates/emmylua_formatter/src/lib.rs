@@ -30,6 +30,9 @@ pub struct SourceText<'a> {
 
 pub fn reformat_lua_code(source: &SourceText, config: &LuaFormatConfig) -> String {
     let tree = LuaParser::parse(source.text, ParserConfig::with_level(source.level));
+    if tree.has_syntax_errors() {
+        return source.text.to_string();
+    }
 
     let ctx = FormatContext::new(config);
     let chunk = tree.get_chunk_node();

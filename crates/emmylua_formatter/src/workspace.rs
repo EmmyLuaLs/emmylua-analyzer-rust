@@ -9,7 +9,7 @@ use glob::Pattern;
 use toml_edit::{de::from_str as from_toml_str, ser::to_string_pretty as to_toml_string};
 use walkdir::{DirEntry, WalkDir};
 
-use crate::{LuaFormatConfig, reformat_lua_code};
+use crate::{LuaFormatConfig, SourceText, reformat_lua_code};
 
 const CONFIG_FILE_NAMES: [&str; 2] = [".luafmt.toml", "luafmt.toml"];
 const IGNORE_FILE_NAME: &str = ".luafmtignore";
@@ -80,6 +80,7 @@ impl Default for FileCollectorOptions {
 #[derive(Debug)]
 pub enum FormatterError {
     Io(io::Error),
+    SyntaxError(String),
     ConfigRead {
         path: PathBuf,
         source: io::Error,
@@ -98,6 +99,7 @@ impl fmt::Display for FormatterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(err) => write!(f, "{err}"),
+            Self::SyntaxError(message) => write!(f, "syntax error: {message}"),
             Self::ConfigRead { path, source } => {
                 write!(
                     f,
@@ -131,19 +133,20 @@ impl From<io::Error> for FormatterError {
     }
 }
 
-pub fn format_text(code: &str, config: &LuaFormatConfig) -> FormatOutput {
-    let check = check_text(code, config);
+pub fn format_text(code: &str, level: LuaLanguageLevel, config: &LuaFormatConfig) -> FormatOutput {
+    let check = check_text(code, level, config);
     FormatOutput {
         formatted: check.formatted,
         changed: check.changed,
     }
 }
 
-pub fn check_text(code: &str, config: &LuaFormatConfig) -> FormatCheckResult {
-    let source = crate::SourceText {
-        text: code,
-        level: LuaLanguageLevel::default(),
-    };
+pub fn check_text(
+    code: &str,
+    level: LuaLanguageLevel,
+    config: &LuaFormatConfig,
+) -> FormatCheckResult {
+    let source = SourceText { text: code, level };
     let formatted = reformat_lua_code(&source, config);
     let changed = formatted != code;
     let changed_line_ranges = if changed {
@@ -160,10 +163,11 @@ pub fn check_text(code: &str, config: &LuaFormatConfig) -> FormatCheckResult {
 
 pub fn format_text_for_path(
     code: &str,
+    level: LuaLanguageLevel,
     source_path: Option<&Path>,
     explicit_config_path: Option<&Path>,
 ) -> Result<FormatPathResult, FormatterError> {
-    let result = check_text_for_path(code, source_path, explicit_config_path)?;
+    let result = check_text_for_path(code, level, source_path, explicit_config_path)?;
     Ok(FormatPathResult {
         path: result.path,
         output: FormatOutput {
@@ -176,11 +180,12 @@ pub fn format_text_for_path(
 
 pub fn check_text_for_path(
     code: &str,
+    level: LuaLanguageLevel,
     source_path: Option<&Path>,
     explicit_config_path: Option<&Path>,
 ) -> Result<FormatCheckPathResult, FormatterError> {
     let resolved = resolve_config_for_path(source_path, explicit_config_path)?;
-    let output = check_text(code, &resolved.config);
+    let output = check_text(code, level, &resolved.config);
     Ok(FormatCheckPathResult {
         path: source_path
             .unwrap_or_else(|| Path::new("<memory>"))
@@ -192,9 +197,10 @@ pub fn check_text_for_path(
 
 pub fn format_file(
     path: &Path,
+    level: LuaLanguageLevel,
     explicit_config_path: Option<&Path>,
 ) -> Result<FormatPathResult, FormatterError> {
-    let result = check_file(path, explicit_config_path)?;
+    let result = check_file(path, level, explicit_config_path)?;
     Ok(FormatPathResult {
         path: result.path,
         output: FormatOutput {
@@ -207,11 +213,12 @@ pub fn format_file(
 
 pub fn check_file(
     path: &Path,
+    level: LuaLanguageLevel,
     explicit_config_path: Option<&Path>,
 ) -> Result<FormatCheckPathResult, FormatterError> {
     let source = fs::read_to_string(path)?;
     let resolved = resolve_config_for_path(Some(path), explicit_config_path)?;
-    let output = check_text(&source, &resolved.config);
+    let output = check_text(&source, level, &resolved.config);
     Ok(FormatCheckPathResult {
         path: path.to_path_buf(),
         output,
@@ -627,7 +634,7 @@ mod tests {
     fn test_check_text_reports_formatted_output_and_changed_flag() {
         let config = LuaFormatConfig::default();
 
-        let result = check_text("local x=1\n", &config);
+        let result = check_text("local x=1\n", LuaLanguageLevel::default(), &config);
 
         assert!(result.changed);
         assert_eq!(result.formatted, "local x = 1\n");
@@ -644,7 +651,7 @@ mod tests {
         let file_path = root.join("src").join("main.lua");
         fs::write(&file_path, "call(alpha, beta, gamma)\n").unwrap();
 
-        let result = check_file(&file_path, None).unwrap();
+        let result = check_file(&file_path, LuaLanguageLevel::default(), None).unwrap();
 
         assert!(result.output.changed);
         assert_eq!(result.config_path, Some(root.join(".luafmt.toml")));

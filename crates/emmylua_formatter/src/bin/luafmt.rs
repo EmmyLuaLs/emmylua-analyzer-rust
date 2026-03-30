@@ -222,13 +222,14 @@ fn main() {
             }
         };
 
-        let result = match check_text_for_path(&content, None, args.config.as_deref()) {
-            Ok(result) => result,
-            Err(err) => {
-                eprintln!("Error: {err}");
-                exit(2);
-            }
-        };
+        let result =
+            match check_text_for_path(&content, args.level.into(), None, args.config.as_deref()) {
+                Ok(result) => result,
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    exit(2);
+                }
+            };
         let changed = result.output.changed;
 
         if args.check || args.list_different {
@@ -296,7 +297,13 @@ fn main() {
             fs::read_to_string(path)
                 .map_err(emmylua_formatter::FormatterError::from)
                 .and_then(|source| {
-                    check_text_for_path(&source, Some(path), args.config.as_deref()).map(|result| {
+                    check_text_for_path(
+                        &source,
+                        args.level.into(),
+                        Some(path),
+                        args.config.as_deref(),
+                    )
+                    .map(|result| {
                         (
                             result.path,
                             source,
@@ -306,7 +313,7 @@ fn main() {
                     })
                 })
         } else {
-            format_file(path, args.config.as_deref()).map(|result| {
+            format_file(path, args.level.into(), args.config.as_deref()).map(|result| {
                 (
                     result.path,
                     String::new(),
