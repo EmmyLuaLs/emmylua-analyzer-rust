@@ -46,6 +46,11 @@ local a = 1
     }
 
     #[test]
+    fn test_single_line_normal_comment_uses_spacing_normalization() {
+        assert_format!("--hello\n", "-- hello\n");
+    }
+
+    #[test]
     fn test_multiple_comments() {
         assert_format!(
             r#"
@@ -1193,6 +1198,38 @@ local t = {
         assert_format!(
             "---@type   string|integer value\n---@overload   fun(x: string): integer callable\nlocal fn = nil\n",
             "--- @type string|integer value\n--- @overload fun(x: string): integer callable\nlocal fn = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_type_normalizes_generic_spacing() {
+        assert_format!(
+            "--- @type table < number, Person >\nlocal d = {}\n",
+            "--- @type table<number, Person>\nlocal d = {}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_type_normalizes_group_and_array_spacing() {
+        assert_format!(
+            "--- @type ( string|number)[]\nlocal c\n",
+            "--- @type (string|number)[]\nlocal c\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_generic_uses_spacing_normalization() {
+        assert_format!(
+            "--- @generic Value , Result : number mapped result\nlocal function f() end\n",
+            "--- @generic Value, Result: number mapped result\nlocal function f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_type_uses_spacing_normalization_for_function_types() {
+        assert_format!(
+            "--- @type fun( x : string ) : integer\nlocal fn\n",
+            "--- @type fun(x: string): integer\nlocal fn\n"
         );
     }
 

@@ -7,6 +7,7 @@ use crate::config::LuaFormatConfig;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenSpacingExpected {
     Space(usize),
+    #[allow(unused)]
     MaxSpace(usize),
 }
 

@@ -2363,10 +2363,11 @@ fn render_comment_with_spacing(
 
     let raw = trim_end_comment_text(comment.syntax().text().to_string());
     let prefix_replacements = collect_comment_line_prefix_replacements(comment, plan);
+    let normalized_lines = collect_comment_line_spacing_normalized_texts(comment, plan);
     let lines = if raw.starts_with("---") {
-        normalize_doc_comment_block(ctx, &raw, &prefix_replacements)
+        normalize_doc_comment_block(ctx, &raw, &prefix_replacements, normalized_lines.as_slice())
     } else {
-        normalize_normal_comment_block(ctx, &raw, &prefix_replacements)
+        normalize_normal_comment_block(ctx, &raw, &prefix_replacements, normalized_lines.as_slice())
     };
     lines
         .into_iter()
@@ -2448,6 +2449,7 @@ fn normalize_normal_comment_block(
     ctx: &FormatContext,
     raw: &str,
     prefix_replacements: &[Option<String>],
+    normalized_lines: &[Option<String>],
 ) -> Vec<String> {
     let lines: Vec<_> = raw.lines().collect();
     if lines.len() <= 1 {
@@ -2457,6 +2459,7 @@ fn normalize_normal_comment_block(
             prefix_replacements
                 .first()
                 .and_then(|prefix| prefix.as_deref()),
+            normalized_lines.first().and_then(|line| line.as_deref()),
         )];
     }
     lines.into_iter().map(str::to_string).collect()
@@ -2466,9 +2469,13 @@ fn normalize_single_normal_comment_line(
     ctx: &FormatContext,
     line: &str,
     prefix_override: Option<&str>,
+    normalized_line: Option<&str>,
 ) -> String {
     if !line.starts_with("--") || line.starts_with("---") {
         return line.to_string();
+    }
+    if let Some(normalized_line) = normalized_line {
+        return normalized_line.to_string();
     }
     let prefix = prefix_override.map(str::to_string).unwrap_or_else(|| {
         if ctx.config.comments.space_after_comment_dash {
@@ -2519,12 +2526,21 @@ fn normalize_doc_comment_block(
     ctx: &FormatContext,
     raw: &str,
     prefix_replacements: &[Option<String>],
+    normalized_lines: &[Option<String>],
 ) -> Vec<String> {
     let raw_lines: Vec<&str> = raw.lines().collect();
     let parsed: Vec<DocLineKind> = raw_lines
         .iter()
         .enumerate()
-        .map(|(index, line)| parse_doc_comment_line(ctx, line, index == 0, raw_lines.len() == 1))
+        .map(|(index, line)| {
+            parse_doc_comment_line(
+                ctx,
+                line,
+                normalized_lines.get(index).and_then(|line| line.as_deref()),
+                index == 0,
+                raw_lines.len() == 1,
+            )
+        })
         .collect();
 
     let mut widths: HashMap<String, Vec<usize>> = HashMap::new();
@@ -2570,18 +2586,30 @@ fn normalize_doc_comment_block(
 fn parse_doc_comment_line(
     ctx: &FormatContext,
     line: &str,
+    normalized_line: Option<&str>,
     is_first_line: bool,
     single_line_block: bool,
 ) -> DocLineKind {
     let suffix = line.strip_prefix("---").unwrap_or(line);
     let trimmed = suffix.trim_start();
+    let normalized = normalized_line.unwrap_or(line);
+    let normalized_suffix = normalized.strip_prefix("---").unwrap_or(normalized);
+    let normalized_trimmed = normalized_suffix.trim_start();
 
     if let Some(rest) = trimmed.strip_prefix('@') {
-        return DocLineKind::Tag(parse_doc_tag_line(ctx, rest.trim_start()));
+        let normalized_rest = normalized_trimmed
+            .strip_prefix('@')
+            .unwrap_or(rest)
+            .trim_start();
+        return DocLineKind::Tag(parse_doc_tag_line(ctx, normalized_rest, rest.trim_start()));
     }
     if let Some(rest) = trimmed.strip_prefix('|') {
         return DocLineKind::ContinueOr {
-            content: collapse_spaces(rest.trim_start()),
+            content: normalized_trimmed
+                .strip_prefix('|')
+                .unwrap_or(rest)
+                .trim_start()
+                .to_string(),
         };
     }
 
@@ -2597,19 +2625,20 @@ fn parse_doc_comment_line(
     }
 }
 
-fn parse_doc_tag_line(ctx: &FormatContext, rest: &str) -> DocTagLine {
+fn parse_doc_tag_line(ctx: &FormatContext, rest: &str, raw_rest_source: &str) -> DocTagLine {
     let mut parts = rest.split_whitespace();
     let tag = parts.next().unwrap_or_default().to_string();
-    let raw_rest = rest[tag.len()..].trim_start().to_string();
+    let normalized_rest = rest[tag.len()..].trim_start().to_string();
+    let raw_rest = raw_rest_source[tag.len()..].trim_start().to_string();
     let mut columns = match tag.as_str() {
-        "param" => split_columns(&raw_rest, &[1, 1]),
-        "field" => parse_field_columns(&raw_rest),
-        "return" => parse_return_columns(&raw_rest),
-        "class" => split_columns(&raw_rest, &[1]),
-        "alias" => parse_alias_columns(&raw_rest),
-        "generic" => parse_generic_columns(&raw_rest),
-        "type" | "overload" => vec![collapse_spaces(&raw_rest)],
-        _ => vec![collapse_spaces(&raw_rest)],
+        "param" => split_columns(&normalized_rest, &[1, 1]),
+        "field" => parse_field_columns(&normalized_rest),
+        "return" => parse_return_columns(&normalized_rest),
+        "class" => split_columns(&normalized_rest, &[1]),
+        "alias" => parse_alias_columns(&normalized_rest),
+        "generic" => parse_generic_columns(&normalized_rest),
+        "type" | "overload" => vec![normalized_rest.clone()],
+        _ => vec![collapse_spaces(&normalized_rest)],
     };
     columns.retain(|column| !column.is_empty());
 
@@ -2802,6 +2831,135 @@ fn parse_generic_columns(input: &str) -> Vec<String> {
             tokens[tokens.len() - 2..].join(" "),
         ],
     }
+}
+
+fn collect_comment_line_spacing_normalized_texts(
+    comment: &LuaComment,
+    plan: &RootFormatPlan,
+) -> Vec<Option<String>> {
+    let mut lines = Vec::new();
+    let mut current_line = Vec::new();
+
+    for element in comment.syntax().descendants_with_tokens() {
+        let Some(token) = element.into_token() else {
+            continue;
+        };
+
+        match token.kind().to_token() {
+            LuaTokenKind::TkEndOfLine => {
+                lines.push(normalize_comment_line_with_spacing(&current_line, plan));
+                current_line.clear();
+            }
+            _ => current_line.push(token),
+        }
+    }
+
+    if !current_line.is_empty() {
+        lines.push(normalize_comment_line_with_spacing(&current_line, plan));
+    }
+
+    lines
+}
+
+fn normalize_comment_line_with_spacing(
+    tokens: &[LuaSyntaxToken],
+    plan: &RootFormatPlan,
+) -> Option<String> {
+    let mut out = String::new();
+    let mut previous_token: Option<&LuaSyntaxToken> = None;
+    let mut saw_whitespace = false;
+
+    for token in tokens {
+        if token.kind().to_token() == LuaTokenKind::TkWhitespace {
+            saw_whitespace = !out.is_empty();
+            continue;
+        }
+
+        if !out.is_empty() {
+            let spacing =
+                comment_spacing_between_tokens(plan, previous_token, token, saw_whitespace);
+            out.extend(std::iter::repeat_n(' ', spacing));
+        }
+
+        out.push_str(comment_token_text(plan, token));
+        previous_token = Some(token);
+        saw_whitespace = false;
+    }
+
+    (!out.is_empty()).then_some(out)
+}
+
+fn comment_spacing_between_tokens(
+    plan: &RootFormatPlan,
+    previous_token: Option<&LuaSyntaxToken>,
+    current_token: &LuaSyntaxToken,
+    had_source_whitespace: bool,
+) -> usize {
+    if had_source_whitespace && previous_token.is_some_and(is_doc_tag_keyword_token) {
+        return 1;
+    }
+
+    if had_source_whitespace
+        && current_token.kind().to_token() == LuaTokenKind::TkLeftBracket
+        && previous_token.is_some_and(|token| {
+            matches!(
+                token.kind().to_token(),
+                LuaTokenKind::TkDocVisibility | LuaTokenKind::TkTagVisibility
+            )
+        })
+    {
+        return 1;
+    }
+
+    let current_id = LuaSyntaxId::from_token(current_token);
+    if let Some(expected) = plan.spacing.left_expected(current_id) {
+        return resolve_comment_spacing_expected(expected, had_source_whitespace);
+    }
+
+    if let Some(previous_token) = previous_token {
+        let previous_id = LuaSyntaxId::from_token(previous_token);
+        if let Some(expected) = plan.spacing.right_expected(previous_id) {
+            return resolve_comment_spacing_expected(expected, had_source_whitespace);
+        }
+    }
+
+    usize::from(had_source_whitespace)
+}
+
+fn resolve_comment_spacing_expected(
+    expected: &TokenSpacingExpected,
+    had_source_whitespace: bool,
+) -> usize {
+    match expected {
+        TokenSpacingExpected::Space(count) => *count,
+        TokenSpacingExpected::MaxSpace(count) => {
+            if had_source_whitespace {
+                (*count).min(1)
+            } else {
+                0
+            }
+        }
+    }
+}
+
+fn comment_token_text<'a>(plan: &'a RootFormatPlan, token: &'a LuaSyntaxToken) -> &'a str {
+    plan.spacing
+        .token_replace(LuaSyntaxId::from_token(token))
+        .unwrap_or(token.text())
+}
+
+fn is_doc_tag_keyword_token(token: &LuaSyntaxToken) -> bool {
+    matches!(
+        token.kind().to_token(),
+        LuaTokenKind::TkTagClass
+            | LuaTokenKind::TkTagAlias
+            | LuaTokenKind::TkTagField
+            | LuaTokenKind::TkTagType
+            | LuaTokenKind::TkTagParam
+            | LuaTokenKind::TkTagReturn
+            | LuaTokenKind::TkTagGeneric
+            | LuaTokenKind::TkTagOverload
+    )
 }
 
 fn collapse_spaces(text: &str) -> String {

@@ -164,8 +164,8 @@ fn analyze_token_spacing(
                 spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
                 spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
             } else if in_comment(token) {
-                spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::MaxSpace(1));
-                spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::MaxSpace(1));
+                spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
+                spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
             }
         }
         LuaTokenKind::TkDot => {
@@ -202,6 +202,12 @@ fn analyze_token_spacing(
         | LuaTokenKind::TkNe
         | LuaTokenKind::TkAnd
         | LuaTokenKind::TkOr => apply_operator_spacing(ctx, spacing, token, syntax_id),
+        LuaTokenKind::TkDocOr | LuaTokenKind::TkDocAnd => {
+            apply_space_rule(spacing, syntax_id, SpaceRule::NoSpace);
+        }
+        LuaTokenKind::TkDocExtends | LuaTokenKind::TkDocIn => {
+            apply_space_rule(spacing, syntax_id, SpaceRule::Space);
+        }
         LuaTokenKind::TkAssign => {
             apply_space_rule(spacing, syntax_id, space_around_assign(ctx.config));
         }
@@ -302,6 +308,13 @@ fn apply_operator_spacing(
     syntax_id: LuaSyntaxId,
 ) {
     match token.kind().to_token() {
+        LuaTokenKind::TkLt if in_comment(token) => {
+            spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
+            spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
+        }
+        LuaTokenKind::TkGt if in_comment(token) => {
+            spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
+        }
         LuaTokenKind::TkLt | LuaTokenKind::TkGt
             if is_parent_syntax(token, LuaSyntaxKind::Attribute) =>
         {
