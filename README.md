@@ -93,7 +93,6 @@ Completion · Go to Definition · Find References · Go to Implementation · Hov
 - Static analysis with 40+ diagnostic rules
 - Code formatting and style enforcement
 - EmmyLua / Luacats annotation support
-
 ---
 
 ## Usage
@@ -132,13 +131,12 @@ emmylua_doc_cli ./src --output ./docs
 
 ## Documentation
 
-| Resource | Link |
-|----------|------|
-| Features Guide | [features_EN.md](./docs/features/features_EN.md) |
-| Configuration | [emmyrc_json_EN.md](./docs/config/emmyrc_json_EN.md) |
-| Annotations Reference | [annotations_EN](./docs/emmylua_doc/annotations_EN/README.md) |
-| Code Style | [EmmyLuaCodeStyle](https://github.com/CppCXY/EmmyLuaCodeStyle/blob/master/README_EN.md) |
-| External Formatters | [external_formatter_options_EN.md](./docs/external_format/external_formatter_options_EN.md) |
+- [**Features Guide**](./docs/features/features_EN.md) - Comprehensive feature documentation
+- [**Configuration**](./docs/config/emmyrc_json_EN.md) - Advanced configuration options
+- [**Formatter Guide**](./docs/emmylua_formatter/README_EN.md) - Formatter behavior, options, and usage guide
+- [**Annotations Reference**](./docs/emmylua_doc/annotations_EN/README.md) - Detailed annotation documentation
+- [**Old Formatter**](https://github.com/CppCXY/EmmyLuaCodeStyle/blob/master/README_EN.md) - Formatting and style guidelines
+- [**External Formatter Integration**](./docs/external_format/external_formatter_options_EN.md) - Using external formatters
 
 ---
 

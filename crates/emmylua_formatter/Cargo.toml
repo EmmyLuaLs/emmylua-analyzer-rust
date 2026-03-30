@@ -1,5 +1,5 @@
 [package]
-name = "emmylua_code_style"
+name = "emmylua_formatter"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,6 +9,10 @@ emmylua_parser.workspace = true
 rowan.workspace = true
 serde_json.workspace = true
 serde_yml.workspace = true
+toml_edit.workspace = true
+smol_str.workspace = true
+glob.workspace = true
+walkdir.workspace = true
 
 [dependencies.clap]
 workspace = true
@@ -18,10 +22,14 @@ optional = true
 workspace = true
 optional = true
 
+[dependencies.similar]
+workspace = true
+optional = true
+
 [[bin]]
-name = "emmylua_format"
+name = "luafmt"
 required-features = ["cli"]
 
 [features]
 default = ["cli"]
-cli = ["dep:clap", "dep:mimalloc"]
+cli = ["dep:clap", "dep:mimalloc", "dep:similar"]
