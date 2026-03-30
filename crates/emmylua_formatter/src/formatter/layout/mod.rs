@@ -1,11 +1,5 @@
 mod tree;
 
-use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaCallArgList, LuaChunk, LuaComment, LuaExpr,
-    LuaForRangeStat, LuaForStat, LuaIfStat, LuaLocalStat, LuaParamList, LuaRepeatStat,
-    LuaReturnStat, LuaSyntaxId, LuaTableExpr, LuaWhileStat,
-};
-
 use super::FormatContext;
 use super::model::{
     ControlHeaderLayoutPlan, ExprSequenceLayoutPlan, RootFormatPlan, StatementExprListLayoutKind,
@@ -14,6 +8,12 @@ use super::model::{
 use super::trivia::{
     has_non_trivia_before_on_same_line_tokenwise, node_has_direct_comment_child,
     source_line_prefix_width,
+};
+use emmylua_parser::{
+    LuaAssignStat, LuaAst, LuaAstNode, LuaCallArgList, LuaChunk, LuaComment, LuaDoStat, LuaExpr,
+    LuaForRangeStat, LuaForStat, LuaFuncStat, LuaIfStat, LuaLocalFuncStat, LuaLocalStat,
+    LuaParamList, LuaRepeatStat, LuaReturnStat, LuaSyntaxId, LuaSyntaxNode, LuaSyntaxToken,
+    LuaTableExpr, LuaTokenKind, LuaWhileStat,
 };
 
 pub fn analyze_root_layout(
@@ -54,6 +54,15 @@ fn analyze_node_layouts(chunk: &LuaChunk, plan: &mut RootFormatPlan) {
             LuaAst::LuaIfStat(stat) => {
                 analyze_if_stat_layout(&stat, plan);
             }
+            LuaAst::LuaFuncStat(stat) => {
+                analyze_func_stat_layout(&stat, plan);
+            }
+            LuaAst::LuaLocalFuncStat(stat) => {
+                analyze_local_func_stat_layout(&stat, plan);
+            }
+            LuaAst::LuaDoStat(stat) => {
+                analyze_do_stat_layout(&stat, plan);
+            }
             LuaAst::LuaParamList(param) => {
                 analyze_param_list_layout(&param, plan);
             }
@@ -92,6 +101,16 @@ fn analyze_return_stat_layout(stat: &LuaReturnStat, plan: &mut RootFormatPlan) {
 fn analyze_while_stat_layout(stat: &LuaWhileStat, plan: &mut RootFormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
+    analyze_boundary_comments_after_token(
+        stat.syntax(),
+        syntax_id,
+        LuaTokenKind::TkDo,
+        first_direct_token(stat.syntax(), LuaTokenKind::TkDo).as_ref(),
+        plan,
+    );
+    if let Some(block) = stat.get_block() {
+        analyze_boundary_comments_in_block(block.syntax(), syntax_id, LuaTokenKind::TkDo, plan);
+    }
 }
 
 fn analyze_for_stat_layout(stat: &LuaForStat, plan: &mut RootFormatPlan) {
@@ -99,6 +118,16 @@ fn analyze_for_stat_layout(stat: &LuaForStat, plan: &mut RootFormatPlan) {
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
     let exprs: Vec<_> = stat.get_iter_expr().collect();
     analyze_control_header_expr_list_layout(syntax_id, &exprs, plan);
+    analyze_boundary_comments_after_token(
+        stat.syntax(),
+        syntax_id,
+        LuaTokenKind::TkDo,
+        first_direct_token(stat.syntax(), LuaTokenKind::TkDo).as_ref(),
+        plan,
+    );
+    if let Some(block) = stat.get_block() {
+        analyze_boundary_comments_in_block(block.syntax(), syntax_id, LuaTokenKind::TkDo, plan);
+    }
 }
 
 fn analyze_for_range_stat_layout(stat: &LuaForRangeStat, plan: &mut RootFormatPlan) {
@@ -106,6 +135,23 @@ fn analyze_for_range_stat_layout(stat: &LuaForRangeStat, plan: &mut RootFormatPl
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
     let exprs: Vec<_> = stat.get_expr_list().collect();
     analyze_control_header_expr_list_layout(syntax_id, &exprs, plan);
+    analyze_boundary_comments_after_token(
+        stat.syntax(),
+        syntax_id,
+        LuaTokenKind::TkIn,
+        first_direct_token(stat.syntax(), LuaTokenKind::TkIn).as_ref(),
+        plan,
+    );
+    analyze_boundary_comments_after_token(
+        stat.syntax(),
+        syntax_id,
+        LuaTokenKind::TkDo,
+        first_direct_token(stat.syntax(), LuaTokenKind::TkDo).as_ref(),
+        plan,
+    );
+    if let Some(block) = stat.get_block() {
+        analyze_boundary_comments_in_block(block.syntax(), syntax_id, LuaTokenKind::TkDo, plan);
+    }
 }
 
 fn analyze_repeat_stat_layout(stat: &LuaRepeatStat, plan: &mut RootFormatPlan) {
@@ -116,10 +162,133 @@ fn analyze_repeat_stat_layout(stat: &LuaRepeatStat, plan: &mut RootFormatPlan) {
 fn analyze_if_stat_layout(stat: &LuaIfStat, plan: &mut RootFormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
+    analyze_boundary_comments_after_token(
+        stat.syntax(),
+        syntax_id,
+        LuaTokenKind::TkThen,
+        first_direct_token(stat.syntax(), LuaTokenKind::TkThen).as_ref(),
+        plan,
+    );
 
     for clause in stat.get_else_if_clause_list() {
         let clause_id = LuaSyntaxId::from_node(clause.syntax());
         analyze_control_header_layout(clause.syntax(), clause_id, plan);
+        analyze_boundary_comments_after_token(
+            clause.syntax(),
+            clause_id,
+            LuaTokenKind::TkThen,
+            first_direct_token(clause.syntax(), LuaTokenKind::TkThen).as_ref(),
+            plan,
+        );
+        if let Some(block) = clause.get_block() {
+            analyze_boundary_comments_in_block(
+                block.syntax(),
+                clause_id,
+                LuaTokenKind::TkThen,
+                plan,
+            );
+        }
+    }
+
+    if let Some(clause) = stat.get_else_clause() {
+        let clause_id = LuaSyntaxId::from_node(clause.syntax());
+        analyze_boundary_comments_after_token(
+            clause.syntax(),
+            clause_id,
+            LuaTokenKind::TkElse,
+            first_direct_token(clause.syntax(), LuaTokenKind::TkElse).as_ref(),
+            plan,
+        );
+        if let Some(block) = clause.get_block() {
+            analyze_boundary_comments_in_block(
+                block.syntax(),
+                clause_id,
+                LuaTokenKind::TkElse,
+                plan,
+            );
+        }
+    }
+
+    if let Some(block) = stat.get_block() {
+        analyze_boundary_comments_in_block(block.syntax(), syntax_id, LuaTokenKind::TkThen, plan);
+    }
+}
+
+fn analyze_func_stat_layout(stat: &LuaFuncStat, plan: &mut RootFormatPlan) {
+    let syntax_id = LuaSyntaxId::from_node(stat.syntax());
+    if let Some(closure) = stat.get_closure()
+        && let Some(params) = closure.get_params_list()
+    {
+        analyze_boundary_comments_after_token(
+            stat.syntax(),
+            syntax_id,
+            LuaTokenKind::TkRightParen,
+            first_direct_token(params.syntax(), LuaTokenKind::TkRightParen).as_ref(),
+            plan,
+        );
+
+        analyze_boundary_comments_after_token(
+            closure.syntax(),
+            syntax_id,
+            LuaTokenKind::TkRightParen,
+            first_direct_token(params.syntax(), LuaTokenKind::TkRightParen).as_ref(),
+            plan,
+        );
+
+        if let Some(block) = closure.get_block() {
+            analyze_boundary_comments_in_block(
+                block.syntax(),
+                syntax_id,
+                LuaTokenKind::TkRightParen,
+                plan,
+            );
+        }
+    }
+}
+
+fn analyze_local_func_stat_layout(stat: &LuaLocalFuncStat, plan: &mut RootFormatPlan) {
+    let syntax_id = LuaSyntaxId::from_node(stat.syntax());
+    if let Some(closure) = stat.get_closure()
+        && let Some(params) = closure.get_params_list()
+    {
+        analyze_boundary_comments_after_token(
+            stat.syntax(),
+            syntax_id,
+            LuaTokenKind::TkRightParen,
+            first_direct_token(params.syntax(), LuaTokenKind::TkRightParen).as_ref(),
+            plan,
+        );
+
+        analyze_boundary_comments_after_token(
+            closure.syntax(),
+            syntax_id,
+            LuaTokenKind::TkRightParen,
+            first_direct_token(params.syntax(), LuaTokenKind::TkRightParen).as_ref(),
+            plan,
+        );
+
+        if let Some(block) = closure.get_block() {
+            analyze_boundary_comments_in_block(
+                block.syntax(),
+                syntax_id,
+                LuaTokenKind::TkRightParen,
+                plan,
+            );
+        }
+    }
+}
+
+fn analyze_do_stat_layout(stat: &LuaDoStat, plan: &mut RootFormatPlan) {
+    let syntax_id = LuaSyntaxId::from_node(stat.syntax());
+    analyze_boundary_comments_after_token(
+        stat.syntax(),
+        syntax_id,
+        LuaTokenKind::TkDo,
+        first_direct_token(stat.syntax(), LuaTokenKind::TkDo).as_ref(),
+        plan,
+    );
+    if let Some(block) = stat.get_block() {
+        analyze_boundary_comments_in_block(block.syntax(), syntax_id, LuaTokenKind::TkDo, plan);
     }
 }
 
@@ -214,6 +383,100 @@ fn analyze_control_header_layout(
     plan.layout
         .control_headers
         .insert(syntax_id, ControlHeaderLayoutPlan { has_inline_comment });
+}
+
+fn analyze_boundary_comments_after_token(
+    node: &LuaSyntaxNode,
+    owner_syntax_id: LuaSyntaxId,
+    anchor_kind: LuaTokenKind,
+    anchor_token: Option<&LuaSyntaxToken>,
+    plan: &mut RootFormatPlan,
+) {
+    let Some(anchor_token) = anchor_token else {
+        return;
+    };
+
+    let anchor_end = anchor_token.text_range().end();
+    let comment_ids: Vec<_> = node
+        .children()
+        .filter(|child| {
+            child.kind() == emmylua_parser::LuaKind::Syntax(emmylua_parser::LuaSyntaxKind::Comment)
+        })
+        .filter(|child| child.text_range().start() >= anchor_end)
+        .map(|child| LuaSyntaxId::from_node(&child))
+        .collect();
+
+    record_boundary_comment_ids(owner_syntax_id, anchor_kind, None, comment_ids, plan);
+}
+
+fn analyze_boundary_comments_in_block(
+    block: &LuaSyntaxNode,
+    owner_syntax_id: LuaSyntaxId,
+    anchor_kind: LuaTokenKind,
+    plan: &mut RootFormatPlan,
+) {
+    let mut comment_ids = Vec::new();
+    for child in block.children() {
+        match child.kind() {
+            emmylua_parser::LuaKind::Syntax(emmylua_parser::LuaSyntaxKind::Comment) => {
+                comment_ids.push(LuaSyntaxId::from_node(&child));
+            }
+            _ => break,
+        }
+    }
+
+    record_boundary_comment_ids(
+        owner_syntax_id,
+        anchor_kind,
+        Some(LuaSyntaxId::from_node(block)),
+        comment_ids,
+        plan,
+    );
+}
+
+fn record_boundary_comment_ids(
+    owner_syntax_id: LuaSyntaxId,
+    anchor_kind: LuaTokenKind,
+    block_syntax_id: Option<LuaSyntaxId>,
+    comment_ids: Vec<LuaSyntaxId>,
+    plan: &mut RootFormatPlan,
+) {
+    if comment_ids.is_empty() {
+        return;
+    }
+
+    let boundary_entry = plan
+        .layout
+        .boundary_comments
+        .entry(owner_syntax_id)
+        .or_default()
+        .entry(anchor_kind)
+        .or_default();
+    for comment_id in &comment_ids {
+        if !boundary_entry.comment_ids.contains(comment_id) {
+            boundary_entry.comment_ids.push(*comment_id);
+        }
+    }
+
+    if let Some(block_syntax_id) = block_syntax_id {
+        let excluded_entry = plan
+            .layout
+            .block_excluded_comments
+            .entry(block_syntax_id)
+            .or_default();
+        for comment_id in comment_ids {
+            if !excluded_entry.contains(&comment_id) {
+                excluded_entry.push(comment_id);
+            }
+        }
+    }
+}
+
+fn first_direct_token(node: &LuaSyntaxNode, kind: LuaTokenKind) -> Option<LuaSyntaxToken> {
+    node.children_with_tokens().find_map(|element| {
+        let token = element.into_token()?;
+        (token.kind() == kind.into()).then_some(token)
+    })
 }
 
 fn analyze_statement_expr_list_layout(
@@ -412,6 +675,67 @@ mod tests {
             .descendants()
             .find_map(emmylua_parser::LuaWhileStat::cast);
         assert!(while_stat.is_none());
+
+        let inline_if_tree = LuaParser::parse(
+            "if ok then -- note\n    print(1)\nelseif retry then -- retry note\n    print(2)\nelse -- fallback note\n    print(3)\nend\n",
+            ParserConfig::with_level(LuaLanguageLevel::Lua54),
+        );
+        let inline_if_chunk = inline_if_tree.get_chunk_node();
+        let inline_ctx = crate::formatter::FormatContext::new(&config);
+        let inline_spacing =
+            crate::formatter::spacing::analyze_root_spacing(&inline_ctx, &inline_if_chunk);
+        let inline_plan = analyze_root_layout(&inline_ctx, &inline_if_chunk, inline_spacing);
+        let if_stat = inline_if_chunk
+            .syntax()
+            .descendants()
+            .find_map(emmylua_parser::LuaIfStat::cast)
+            .expect("expected if stat");
+        let if_boundary = inline_plan
+            .layout
+            .boundary_comments
+            .get(&LuaSyntaxId::from_node(if_stat.syntax()))
+            .expect("expected if boundary comment layout");
+        assert_eq!(
+            if_boundary
+                .get(&LuaTokenKind::TkThen)
+                .unwrap()
+                .comment_ids
+                .len(),
+            1
+        );
+
+        let else_if_clause = if_stat
+            .get_else_if_clause_list()
+            .next()
+            .expect("expected elseif clause");
+        let else_if_boundary = inline_plan
+            .layout
+            .boundary_comments
+            .get(&LuaSyntaxId::from_node(else_if_clause.syntax()))
+            .expect("expected elseif boundary comment layout");
+        assert_eq!(
+            else_if_boundary
+                .get(&LuaTokenKind::TkThen)
+                .unwrap()
+                .comment_ids
+                .len(),
+            1
+        );
+
+        let else_clause = if_stat.get_else_clause().expect("expected else clause");
+        let else_boundary = inline_plan
+            .layout
+            .boundary_comments
+            .get(&LuaSyntaxId::from_node(else_clause.syntax()))
+            .expect("expected else boundary comment layout");
+        assert_eq!(
+            else_boundary
+                .get(&LuaTokenKind::TkElse)
+                .unwrap()
+                .comment_ids
+                .len(),
+            1
+        );
     }
 
     #[test]

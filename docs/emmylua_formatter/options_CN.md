@@ -62,6 +62,7 @@ func_params_expand = "Auto"
 - `trailing_table_separator`：`Inherit`、`Never`、`Multiline`、`Always`
 - `quote_style`：`Preserve`、`Double`、`Single`
 - `single_arg_call_parens`：`Preserve`、`Always`、`Omit`
+- `simple_lambda_single_line`：`Preserve`、`Always`、`Never`
 - `end_of_line`：`LF` 或 `CRLF`
 
 默认值：
@@ -73,6 +74,7 @@ trailing_comma = "Never"
 trailing_table_separator = "Inherit"
 quote_style = "Preserve"
 single_arg_call_parens = "Preserve"
+simple_lambda_single_line = "Preserve"
 end_of_line = "LF"
 ```
 
@@ -83,6 +85,9 @@ end_of_line = "LF"
 - `quote_style` 只会在安全时重写普通短字符串；长字符串和其它字符串形式会保留原样。
 - 引号重写基于原始 token 文本判断是否存在未转义的目标引号，并只做保持语义不变所需的最小分隔符转义调整。
 - `single_arg_call_parens = "Omit"` 只会对 Lua 允许的单字符串参数调用和单 table 参数调用去掉括号。
+- `simple_lambda_single_line = "Preserve"` 只会在输入本来就是单行简单 lambda 时保留单行。
+- `simple_lambda_single_line = "Always"` 会在满足条件且不超出行宽时，将简单 lambda 收回成 `function(...) return expr end`。
+- `simple_lambda_single_line = "Never"` 会关闭简单单行 lambda 快路径，始终把闭包体格式化为多行。
 
 ## spacing
 
@@ -187,6 +192,63 @@ align_in_statements = false
 align_in_table_fields = true
 align_in_call_args = true
 align_in_params = true
+
+[align]
+continuous_assign_statement = false
+table_field = true
+```
+
+## 完整默认配置
+
+```toml
+[indent]
+kind = "Space"
+width = 4
+
+[layout]
+max_line_width = 120
+max_blank_lines = 1
+table_expand = "Auto"
+call_args_expand = "Auto"
+func_params_expand = "Auto"
+
+[output]
+insert_final_newline = true
+trailing_comma = "Never"
+trailing_table_separator = "Inherit"
+quote_style = "Preserve"
+single_arg_call_parens = "Preserve"
+simple_lambda_single_line = "Preserve"
+end_of_line = "LF"
+
+[spacing]
+space_before_call_paren = false
+space_before_func_paren = false
+space_inside_braces = true
+space_inside_parens = false
+space_inside_brackets = false
+space_around_math_operator = true
+space_around_concat_operator = true
+space_around_assign_operator = true
+
+[comments]
+align_line_comments = true
+align_in_statements = false
+align_in_table_fields = true
+align_in_call_args = true
+align_in_params = true
+align_across_standalone_comments = false
+align_same_kind_only = false
+space_after_comment_dash = true
+line_comment_min_spaces_before = 1
+line_comment_min_column = 0
+
+[emmy_doc]
+align_tag_columns = true
+align_declaration_tags = true
+align_reference_tags = true
+tag_spacing = 1
+space_after_description_dash = true
 
 [align]
 continuous_assign_statement = false

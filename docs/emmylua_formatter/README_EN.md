@@ -23,6 +23,8 @@ The formatter is intentionally conservative around comments and ambiguous syntax
 - [Recommended Profiles](./profiles_EN.md): suggested formatter configurations for common team styles
 - [Formatter Tutorial](./tutorial_EN.md): practical setup, CLI workflows, and before/after examples
 
+The options reference now includes a complete default config block, so it can be used as the canonical formatter config reference when wiring editor integration or reviewing new options such as `output.simple_lambda_single_line`.
+
 ## Layout Model
 
 Recent formatter work introduced candidate-based layout selection for sequence-like constructs such as call arguments, parameters, table fields, binary-expression chains, and statement expression lists.

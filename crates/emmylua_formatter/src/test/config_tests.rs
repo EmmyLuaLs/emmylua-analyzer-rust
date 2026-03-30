@@ -4,8 +4,8 @@ mod tests {
         assert_format_with_config,
         config::{
             EndOfLine, ExpandStrategy, IndentConfig, IndentKind, LayoutConfig, LuaFormatConfig,
-            OutputConfig, QuoteStyle, SingleArgCallParens, SpacingConfig, TrailingComma,
-            TrailingTableSeparator,
+            OutputConfig, QuoteStyle, SimpleLambdaSingleLine, SingleArgCallParens, SpacingConfig,
+            TrailingComma, TrailingTableSeparator,
         },
     };
 
@@ -352,6 +352,40 @@ local t = {
         assert_format_with_config!("foo({1, 2, 3})\n", "foo { 1, 2, 3 }\n", config);
     }
 
+    #[test]
+    fn test_simple_lambda_single_line_always_collapses_eligible_multiline_lambda() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                simple_lambda_single_line: SimpleLambdaSingleLine::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local f = function(x)\n    return x + 1\nend\n",
+            "local f = function(x) return x + 1 end\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_simple_lambda_single_line_never_keeps_simple_lambda_multiline() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                simple_lambda_single_line: SimpleLambdaSingleLine::Never,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local f = function() return x + 1 end\n",
+            "local f = function()\n    return x + 1\nend\n",
+            config
+        );
+    }
+
     // ========== indentation ==========
 
     #[test]
@@ -563,6 +597,7 @@ table_expand = "Always"
 quote_style = "Single"
 trailing_table_separator = "Multiline"
 single_arg_call_parens = "Always"
+simple_lambda_single_line = "Always"
 
 [spacing]
 space_before_call_paren = true
@@ -592,6 +627,10 @@ table_field = false
         assert_eq!(
             config.output.single_arg_call_parens,
             SingleArgCallParens::Always
+        );
+        assert_eq!(
+            config.output.simple_lambda_single_line,
+            SimpleLambdaSingleLine::Always
         );
         assert!(config.spacing.space_before_call_paren);
         assert!(!config.comments.align_line_comments);

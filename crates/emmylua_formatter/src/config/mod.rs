@@ -111,6 +111,7 @@ pub struct OutputConfig {
     pub trailing_table_separator: TrailingTableSeparator,
     pub quote_style: QuoteStyle,
     pub single_arg_call_parens: SingleArgCallParens,
+    pub simple_lambda_single_line: SimpleLambdaSingleLine,
     pub end_of_line: EndOfLine,
 }
 
@@ -122,6 +123,7 @@ impl Default for OutputConfig {
             trailing_table_separator: TrailingTableSeparator::Inherit,
             quote_style: QuoteStyle::Preserve,
             single_arg_call_parens: SingleArgCallParens::Preserve,
+            simple_lambda_single_line: SimpleLambdaSingleLine::Preserve,
             end_of_line: EndOfLine::LF,
         }
     }
@@ -258,6 +260,13 @@ pub enum SingleArgCallParens {
     Preserve,
     Always,
     Omit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SimpleLambdaSingleLine {
+    Preserve,
+    Always,
+    Never,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

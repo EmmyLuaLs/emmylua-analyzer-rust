@@ -377,19 +377,15 @@ fn render_while_stat(
         docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
     }
 
-    let direct_body_comments =
-        collect_direct_comments_after_token(ctx, stat.syntax(), do_token.as_ref(), plan);
-    let mut body_docs = render_control_body(ctx, root, syntax_plan, plan);
-    if matches!(body_docs.as_slice(), [DocIR::HardLine]) && !direct_body_comments.is_empty() {
-        let mut body = vec![ir::hard_line()];
-        for (index, comment) in direct_body_comments.into_iter().enumerate() {
-            if index > 0 {
-                body.push(ir::hard_line());
-            }
-            body.extend(comment);
-        }
-        body_docs = vec![ir::indent(body), ir::hard_line()];
-    }
+    let body_docs = render_boundary_owned_block(
+        ctx,
+        root,
+        syntax_plan.syntax_id,
+        LuaTokenKind::TkDo,
+        do_token.as_ref(),
+        syntax_plan,
+        plan,
+    );
     if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
         docs.push(ir::space());
         docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
@@ -469,13 +465,22 @@ fn render_for_stat(
     docs.extend(token_left_spacing_docs(plan, do_token.as_ref()));
     docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
 
-    docs.extend(render_control_body_end(
+    let body_docs = render_boundary_owned_block(
         ctx,
         root,
+        syntax_plan.syntax_id,
+        LuaTokenKind::TkDo,
+        do_token.as_ref(),
         syntax_plan,
         plan,
-        LuaTokenKind::TkEnd,
-    ));
+    );
+    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
+        docs.push(ir::space());
+        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+    } else {
+        docs.extend(body_docs);
+        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+    }
     docs
 }
 
@@ -540,24 +545,43 @@ fn render_for_range_stat(
             )
         })
         .collect();
-    docs.extend(render_header_exprs(
+    let Some(in_leading_docs) = render_boundary_header_leading_docs(
+        ctx,
+        root,
+        syntax_plan.syntax_id,
+        LuaTokenKind::TkIn,
+        in_token.as_ref(),
+        plan,
+    ) else {
+        return vec![ir::source_node_trimmed(stat.syntax().clone())];
+    };
+    docs.extend(render_header_exprs_with_leading_docs(
         ctx,
         plan,
         expr_list_plan,
-        in_token.as_ref(),
+        in_leading_docs,
         comma_token.as_ref(),
         expr_docs,
     ));
     docs.extend(token_left_spacing_docs(plan, do_token.as_ref()));
     docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
 
-    docs.extend(render_control_body_end(
+    let body_docs = render_boundary_owned_block(
         ctx,
         root,
+        syntax_plan.syntax_id,
+        LuaTokenKind::TkDo,
+        do_token.as_ref(),
         syntax_plan,
         plan,
-        LuaTokenKind::TkEnd,
-    ));
+    );
+    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
+        docs.push(ir::space());
+        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+    } else {
+        docs.extend(body_docs);
+        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+    }
     docs
 }
 
@@ -647,12 +671,14 @@ fn render_if_stat(
     }
     docs.extend(token_left_spacing_docs(plan, then_token.as_ref()));
     docs.push(token_or_kind_doc(then_token.as_ref(), LuaTokenKind::TkThen));
-    let header_comments =
-        collect_direct_comments_after_token(ctx, stat.syntax(), then_token.as_ref(), plan);
-    let body_docs = render_block_from_parent_plan(ctx, root, syntax_plan, plan);
-    docs.extend(prepend_comment_lines_to_block_docs(
-        body_docs,
-        header_comments,
+    docs.extend(render_boundary_owned_block(
+        ctx,
+        root,
+        syntax_plan.syntax_id,
+        LuaTokenKind::TkThen,
+        then_token.as_ref(),
+        syntax_plan,
+        plan,
     ));
 
     let else_if_plans: Vec<_> = syntax_plan
@@ -678,16 +704,14 @@ fn render_if_stat(
         }
         docs.extend(token_left_spacing_docs(plan, then_token.as_ref()));
         docs.push(token_or_kind_doc(then_token.as_ref(), LuaTokenKind::TkThen));
-        let header_comments = collect_direct_comments_after_token(
+        docs.extend(render_boundary_owned_block(
             ctx,
-            clause.syntax(),
+            root,
+            clause_plan.syntax_id,
+            LuaTokenKind::TkThen,
             then_token.as_ref(),
+            clause_plan,
             plan,
-        );
-        let body_docs = render_block_from_parent_plan(ctx, root, clause_plan, plan);
-        docs.extend(prepend_comment_lines_to_block_docs(
-            body_docs,
-            header_comments,
         ));
     }
 
@@ -697,7 +721,15 @@ fn render_if_stat(
         if let Some(else_plan) =
             find_direct_child_plan_by_kind(syntax_plan, LuaSyntaxKind::ElseClauseStat)
         {
-            docs.extend(render_block_from_parent_plan(ctx, root, else_plan, plan));
+            docs.extend(render_boundary_owned_block(
+                ctx,
+                root,
+                else_plan.syntax_id,
+                LuaTokenKind::TkElse,
+                else_token.as_ref(),
+                else_plan,
+                plan,
+            ));
         } else {
             docs.push(ir::hard_line());
         }
@@ -752,7 +784,7 @@ fn render_func_stat(
     docs.extend(render_named_function_closure_tail(
         ctx,
         root,
-        stat.syntax(),
+        syntax_plan.syntax_id,
         syntax_plan,
         plan,
         &closure,
@@ -803,7 +835,7 @@ fn render_local_func_stat(
     docs.extend(render_named_function_closure_tail(
         ctx,
         root,
-        stat.syntax(),
+        syntax_plan.syntax_id,
         syntax_plan,
         plan,
         &closure,
@@ -826,12 +858,15 @@ fn render_do_stat(
 
     let do_token = first_direct_token(stat.syntax(), LuaTokenKind::TkDo);
     let mut docs = vec![token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo)];
-    let direct_body_comments =
-        collect_direct_comments_after_token(ctx, stat.syntax(), do_token.as_ref(), plan);
-    let mut body_docs = render_control_body(ctx, root, syntax_plan, plan);
-    if matches!(body_docs.as_slice(), [DocIR::HardLine]) && !direct_body_comments.is_empty() {
-        body_docs = prepend_comment_lines_to_block_docs(body_docs, direct_body_comments);
-    }
+    let body_docs = render_boundary_owned_block(
+        ctx,
+        root,
+        syntax_plan.syntax_id,
+        LuaTokenKind::TkDo,
+        do_token.as_ref(),
+        syntax_plan,
+        plan,
+    );
     if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
         docs.push(ir::space());
         docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
@@ -855,35 +890,26 @@ fn render_call_expr_stat(
         return Vec::new();
     };
 
-    stat.get_call_expr()
+    let mut docs = stat
+        .get_call_expr()
         .map(|expr| render_expr(ctx, plan, &expr.into()))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_named_function_closure_tail(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
-    header_syntax: &LuaSyntaxNode,
+    owner_syntax_id: LuaSyntaxId,
     syntax_plan: &SyntaxNodeLayoutPlan,
     plan: &RootFormatPlan,
     closure: &emmylua_parser::LuaClosureExpr,
 ) -> Vec<DocIR> {
-    let mut header_comments = Vec::new();
     let mut docs = if let Some(params) = closure.get_params_list() {
         let open = first_direct_token(params.syntax(), LuaTokenKind::TkLeftParen);
-        let close = first_direct_token(params.syntax(), LuaTokenKind::TkRightParen);
         let mut docs = token_left_spacing_docs(plan, open.as_ref());
         docs.extend(expr::format_param_list_ir(ctx, plan, &params));
-        header_comments =
-            collect_direct_comments_after_token(ctx, header_syntax, close.as_ref(), plan);
-        if header_comments.is_empty() {
-            header_comments = collect_direct_comments_after_token(
-                ctx,
-                closure.syntax(),
-                close.as_ref(),
-                plan,
-            );
-        }
         docs
     } else {
         vec![
@@ -895,8 +921,18 @@ fn render_named_function_closure_tail(
     if let Some(closure_plan) =
         find_direct_child_plan_by_kind(syntax_plan, LuaSyntaxKind::ClosureExpr)
     {
-        let body_docs = render_block_from_parent_plan(ctx, root, closure_plan, plan);
-        let body_docs = prepend_comment_lines_to_block_docs(body_docs, header_comments);
+        let close_token = closure
+            .get_params_list()
+            .and_then(|params| first_direct_token(params.syntax(), LuaTokenKind::TkRightParen));
+        let body_docs = render_boundary_owned_block(
+            ctx,
+            root,
+            owner_syntax_id,
+            LuaTokenKind::TkRightParen,
+            close_token.as_ref(),
+            closure_plan,
+            plan,
+        );
         if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
             docs.push(ir::space());
             docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
@@ -1305,26 +1341,100 @@ fn has_direct_comment_before_token(syntax: &LuaSyntaxNode, token: Option<&LuaSyn
     })
 }
 
-fn collect_direct_comments_after_token(
+fn render_boundary_owned_block(
     ctx: &FormatContext,
-    syntax: &LuaSyntaxNode,
-    token: Option<&LuaSyntaxToken>,
+    root: &LuaSyntaxNode,
+    owner_syntax_id: LuaSyntaxId,
+    anchor_kind: LuaTokenKind,
+    anchor_token: Option<&LuaSyntaxToken>,
+    syntax_plan: &SyntaxNodeLayoutPlan,
     plan: &RootFormatPlan,
-) -> Vec<Vec<DocIR>> {
-    let Some(token) = token else {
-        return Vec::new();
-    };
+) -> Vec<DocIR> {
+    let boundary_comment_ids = boundary_comment_ids_for_anchor(plan, owner_syntax_id, anchor_kind);
+    let body_docs = render_block_from_parent_plan(ctx, root, syntax_plan, plan);
 
-    let token_end = token.text_range().end();
-    syntax
-        .children()
-        .filter(|child| {
-            child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment)
-                && child.text_range().start() >= token_end
-        })
-        .filter_map(LuaComment::cast)
-        .map(|comment| render_comment_with_spacing(ctx, &comment, plan))
-        .collect()
+    render_boundary_body_docs(
+        ctx,
+        root,
+        anchor_token,
+        boundary_comment_ids,
+        body_docs,
+        plan,
+    )
+}
+
+fn render_boundary_header_leading_docs(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    owner_syntax_id: LuaSyntaxId,
+    anchor_kind: LuaTokenKind,
+    anchor_token: Option<&LuaSyntaxToken>,
+    plan: &RootFormatPlan,
+) -> Option<Vec<DocIR>> {
+    let boundary_comment_ids = boundary_comment_ids_for_anchor(plan, owner_syntax_id, anchor_kind);
+    if boundary_comment_ids.is_empty() {
+        return Some(token_right_spacing_docs(plan, anchor_token));
+    }
+
+    let mut docs = Vec::new();
+    for (index, comment_id) in boundary_comment_ids.iter().enumerate() {
+        let comment_node = find_node_by_id(root, *comment_id)?;
+        let comment = LuaComment::cast(comment_node.clone())?;
+        if index == 0 && comment_is_inline_after_anchor(root, anchor_token, comment.syntax()) {
+            docs.extend(boundary_inline_separator_docs(plan, anchor_token));
+            docs.extend(render_comment_with_spacing(ctx, &comment, plan));
+        } else {
+            return None;
+        }
+    }
+
+    Some(docs)
+}
+
+fn boundary_comment_ids_for_anchor(
+    plan: &RootFormatPlan,
+    owner_syntax_id: LuaSyntaxId,
+    anchor_kind: LuaTokenKind,
+) -> &[LuaSyntaxId] {
+    plan.layout
+        .boundary_comments
+        .get(&owner_syntax_id)
+        .and_then(|anchors| anchors.get(&anchor_kind))
+        .map(|layout| layout.comment_ids.as_slice())
+        .unwrap_or(&[])
+}
+
+fn render_header_exprs_with_leading_docs(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
+    leading_docs: Vec<DocIR>,
+    comma_token: Option<&LuaSyntaxToken>,
+    expr_docs: Vec<Vec<DocIR>>,
+) -> Vec<DocIR> {
+    let attach_first_multiline = expr_docs
+        .first()
+        .is_some_and(|docs| crate::ir::ir_has_forced_line_break(docs))
+        || matches!(
+            expr_list_plan.kind,
+            StatementExprListLayoutKind::PreserveFirstMultiline
+        );
+    if attach_first_multiline {
+        format_statement_expr_list_with_attached_first_multiline(
+            comma_token,
+            leading_docs,
+            expr_docs,
+        )
+    } else {
+        format_statement_expr_list(
+            ctx,
+            plan,
+            expr_list_plan,
+            comma_token,
+            leading_docs,
+            expr_docs,
+        )
+    }
 }
 
 fn collect_repeat_stat_entries(
@@ -1670,23 +1780,6 @@ fn render_unmigrated_syntax_leaf(root: &LuaSyntaxNode, syntax_id: LuaSyntaxId) -
     vec![ir::source_node_trimmed(node)]
 }
 
-fn render_control_body_end(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-    end_kind: LuaTokenKind,
-) -> Vec<DocIR> {
-    let body_docs = render_control_body(ctx, root, syntax_plan, plan);
-    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
-        return vec![ir::space(), ir::syntax_token(end_kind)];
-    }
-
-    let mut docs = body_docs;
-    docs.push(ir::syntax_token(end_kind));
-    docs
-}
-
 fn render_control_body(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
@@ -1728,7 +1821,29 @@ fn render_block_plan(
         return vec![ir::hard_line()];
     };
 
-    let block_children = Some(block_plan.children.as_slice());
+    let excluded_comment_ids = plan
+        .layout
+        .block_excluded_comments
+        .get(&block_plan.syntax_id)
+        .cloned()
+        .unwrap_or_default();
+    let filtered_children;
+    let block_children = if excluded_comment_ids.is_empty() {
+        Some(block_plan.children.as_slice())
+    } else {
+        filtered_children = block_plan
+            .children
+            .iter()
+            .filter(|child| match child {
+                LayoutNodePlan::Comment(comment) => {
+                    !excluded_comment_ids.contains(&comment.syntax_id)
+                }
+                _ => true,
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        Some(filtered_children.as_slice())
+    };
     let docs = render_block_children(ctx, root, block_children, plan);
     if !matches!(docs.as_slice(), [DocIR::HardLine]) {
         return docs;
@@ -1740,9 +1855,84 @@ fn render_block_plan(
     let direct_comments: Vec<Vec<DocIR>> = block_node
         .children()
         .filter_map(LuaComment::cast)
+        .filter(|comment| !excluded_comment_ids.contains(&LuaSyntaxId::from_node(comment.syntax())))
         .map(|comment| render_comment_with_spacing(ctx, &comment, plan))
         .collect();
     prepend_comment_lines_to_block_docs(docs, direct_comments)
+}
+
+fn render_boundary_body_docs(
+    ctx: &FormatContext,
+    root: &LuaSyntaxNode,
+    anchor_token: Option<&LuaSyntaxToken>,
+    boundary_comment_ids: &[LuaSyntaxId],
+    body_docs: Vec<DocIR>,
+    plan: &RootFormatPlan,
+) -> Vec<DocIR> {
+    if boundary_comment_ids.is_empty() {
+        return body_docs;
+    }
+
+    let mut inline_prefix = Vec::new();
+    let mut block_comments = Vec::new();
+
+    for (index, comment_id) in boundary_comment_ids.iter().enumerate() {
+        let Some(comment_node) = find_node_by_id(root, *comment_id) else {
+            continue;
+        };
+        let Some(comment) = LuaComment::cast(comment_node.clone()) else {
+            continue;
+        };
+        let comment_docs = render_comment_with_spacing(ctx, &comment, plan);
+        let is_inline_after_anchor =
+            index == 0 && comment_is_inline_after_anchor(root, anchor_token, comment.syntax());
+        if is_inline_after_anchor {
+            inline_prefix.extend(boundary_inline_separator_docs(plan, anchor_token));
+            inline_prefix.extend(comment_docs);
+        } else {
+            block_comments.push(comment_docs);
+        }
+    }
+
+    let body_docs = prepend_comment_lines_to_block_docs(body_docs, block_comments);
+    if inline_prefix.is_empty() {
+        body_docs
+    } else {
+        let mut docs = inline_prefix;
+        docs.extend(body_docs);
+        docs
+    }
+}
+
+fn boundary_inline_separator_docs(
+    plan: &RootFormatPlan,
+    anchor_token: Option<&LuaSyntaxToken>,
+) -> Vec<DocIR> {
+    let spacing = token_right_spacing_docs(plan, anchor_token);
+    if spacing.is_empty() {
+        vec![ir::space()]
+    } else {
+        spacing
+    }
+}
+
+fn comment_is_inline_after_anchor(
+    root: &LuaSyntaxNode,
+    anchor_token: Option<&LuaSyntaxToken>,
+    comment: &LuaSyntaxNode,
+) -> bool {
+    let Some(anchor_token) = anchor_token else {
+        return false;
+    };
+
+    let start: usize = anchor_token.text_range().end().into();
+    let end: usize = comment.text_range().start().into();
+    if end < start {
+        return false;
+    }
+
+    let text = root.text().to_string();
+    !text[start..end].chars().any(|ch| matches!(ch, '\n' | '\r'))
 }
 
 fn render_block_children(

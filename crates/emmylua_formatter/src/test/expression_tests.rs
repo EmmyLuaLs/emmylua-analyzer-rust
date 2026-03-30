@@ -325,6 +325,22 @@ local b = t[1]
     }
 
     #[test]
+    fn test_simple_inline_lambda_stays_inline() {
+        assert_format!(
+            "local f = function() return  true end\n",
+            "local f = function() return true end\n"
+        );
+    }
+
+    #[test]
+    fn test_simple_inline_lambda_callback_stays_inline() {
+        assert_format!(
+            "map(items, function(x) return  x + 1 end)\n",
+            "map(items, function(x) return x + 1 end)\n"
+        );
+    }
+
+    #[test]
     fn test_multiline_call_args_layout_reflow_when_width_allows() {
         assert_format!(
             "some_function(\n    first,\n    second,\n    third\n)\n",

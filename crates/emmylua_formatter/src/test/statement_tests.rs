@@ -59,7 +59,23 @@ end
     fn test_if_stat_preserves_inline_comment_after_then() {
         assert_format!(
             "if ok then -- keep header note\n    print(1)\nend\n",
-            "if ok then\n    -- keep header note\n    print(1)\nend\n"
+            "if ok then -- keep header note\n    print(1)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_elseif_stat_preserves_inline_comment_after_then() {
+        assert_format!(
+            "if a then\n    print(1)\nelseif b then -- keep elseif note\n    print(2)\nend\n",
+            "if a then\n    print(1)\nelseif b then -- keep elseif note\n    print(2)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_else_clause_preserves_inline_comment_after_else() {
+        assert_format!(
+            "if a then\n    print(1)\nelse -- keep else note\n    print(2)\nend\n",
+            "if a then\n    print(1)\nelse -- keep else note\n    print(2)\nend\n"
         );
     }
 
@@ -233,10 +249,34 @@ end
     }
 
     #[test]
+    fn test_for_loop_preserves_inline_comment_after_do() {
+        assert_format!(
+            "for i = 1, 10 do -- loop note\n    print(i)\nend\n",
+            "for i = 1, 10 do -- loop note\n    print(i)\nend\n"
+        );
+    }
+
+    #[test]
     fn test_for_range_preserves_standalone_comment_before_in() {
         assert_format!(
             "for k, v\n-- separator\nin pairs(t) do\n    print(k, v)\nend\n",
             "for k, v\n-- separator\nin pairs(t) do\n    print(k, v)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_for_range_preserves_inline_comment_after_in() {
+        assert_format!(
+            "for k, v in -- iterator note\npairs(t) do\n    print(k, v)\nend\n",
+            "for k, v in -- iterator note\npairs(t) do\n    print(k, v)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_for_range_preserves_inline_comment_after_do() {
+        assert_format!(
+            "for k, v in pairs(t) do -- body note\n    print(k, v)\nend\n",
+            "for k, v in pairs(t) do -- body note\n    print(k, v)\nend\n"
         );
     }
 
@@ -812,7 +852,7 @@ end
     fn test_function_stat_preserves_inline_comment_before_end() {
         assert_format!(
             "function t:a() -- this comment will stay the same\nend\n",
-            "function t:a()\n    -- this comment will stay the same\nend\n"
+            "function t:a() -- this comment will stay the same\nend\n"
         );
     }
 
@@ -820,7 +860,7 @@ end
     fn test_function_stat_preserves_inline_comment_before_non_empty_body() {
         assert_format!(
             "function name13()  --hhii\n    return \"name13\" --jj\nend\n",
-            "function name13()\n    -- hhii\n    return \"name13\" -- jj\nend\n"
+            "function name13() -- hhii\n    return \"name13\" -- jj\nend\n"
         );
     }
 
@@ -829,6 +869,38 @@ end
         assert_format!(
             "if nState ~= self.StarBoxType.GetNormal then\n    pPlayer     .Msg(\"请先领取该星级的普通宝箱奖励后再来购买钻石宝箱\")\n    return -- 还未领取普通宝箱奖励\nend\n",
             "if nState ~= self.StarBoxType.GetNormal then\n    pPlayer.Msg(\"请先领取该星级的普通宝箱奖励后再来购买钻石宝箱\")\n    return -- 还未领取普通宝箱奖励\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_if_inline_header_comment_does_not_drop_first_call_statement() {
+        assert_format!(
+            "if nState ~= 1 then --hiihii\n    c.    Msg(\"hihi\")\n    return -- 111\nend\n",
+            "if nState ~= 1 then -- hiihii\n    c.Msg(\"hihi\")\n    return -- 111\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_chain_call_statement_preserves_inline_comments_between_segments() {
+        assert_format!(
+            "builder.new()\n    .setName(\"test\") -- 222\n    .setVersion(\"1.0.0\") -- 333\n",
+            "builder.new()\n    .setName(\"test\") -- 222\n    .setVersion(\"1.0.0\") -- 333\n"
+        );
+    }
+
+    #[test]
+    fn test_chain_call_statement_formats_multiline_closure_with_comment_gap() {
+        assert_format!(
+            "-- hihi\nbuilder.new()\n    -- hihi\n    .setName(\"test\", function()\n    return \"1.0.0\" + 1\nend).setVersion(\"1.0.0\", function()\n    return \"1.0.0\" + 1\nend) -- 333\n",
+            "-- hihi\nbuilder.new()\n    -- hihi\n    .setName(\"test\", function()\n        return \"1.0.0\" + 1\n    end).setVersion(\"1.0.0\", function()\n        return \"1.0.0\" + 1\n    end) -- 333\n"
+        );
+    }
+
+    #[test]
+    fn test_chain_call_statement_formats_comment_between_segments_without_raw_preserve() {
+        assert_format!(
+            "builder.new()\n -- nofowo\n    .setName(\"test\", function()\n        return \"1.0.0\" + 1\n    end).setVersion(\"1.0.0\", function()\n        return \"1.0.0\" + 1\n    end) -- 333\n",
+            "builder.new()\n    -- nofowo\n    .setName(\"test\", function()\n        return \"1.0.0\" + 1\n    end).setVersion(\"1.0.0\", function()\n        return \"1.0.0\" + 1\n    end) -- 333\n"
         );
     }
 

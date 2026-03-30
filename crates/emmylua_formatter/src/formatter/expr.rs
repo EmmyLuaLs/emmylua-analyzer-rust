@@ -1,13 +1,15 @@
 use emmylua_parser::{
     BinaryOperator, LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallArgList, LuaCallExpr,
     LuaClosureExpr, LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind, LuaLiteralExpr,
-    LuaLiteralToken, LuaNameExpr, LuaParamList, LuaParenExpr, LuaSingleArgExpr, LuaSyntaxId,
-    LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTableExpr, LuaTableField, LuaTokenKind,
-    LuaUnaryExpr, UnaryOperator,
+    LuaLiteralToken, LuaNameExpr, LuaParamList, LuaParenExpr, LuaSingleArgExpr, LuaStat,
+    LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTableExpr, LuaTableField,
+    LuaTokenKind, LuaUnaryExpr, UnaryOperator,
 };
 use rowan::TextRange;
 
-use crate::config::{ExpandStrategy, QuoteStyle, SingleArgCallParens, TrailingComma};
+use crate::config::{
+    ExpandStrategy, QuoteStyle, SimpleLambdaSingleLine, SingleArgCallParens, TrailingComma,
+};
 use crate::ir::{self, AlignEntry, DocIR};
 
 use super::FormatContext;
@@ -25,6 +27,7 @@ use super::trivia::{
 
 pub fn format_expr(ctx: &FormatContext, plan: &RootFormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
     if expr_is_chain_root(expr)
+        && !chain_has_direct_comments(expr)
         && let Some(chain_docs) = try_format_chain_expr(ctx, plan, expr)
     {
         return chain_docs;
@@ -280,15 +283,30 @@ fn format_index_expr(
     plan: &RootFormatPlan,
     expr: &LuaIndexExpr,
 ) -> Vec<DocIR> {
-    if node_has_direct_comment_child(expr.syntax()) {
+    if expr
+        .get_index_token()
+        .is_some_and(|token| token.is_left_bracket())
+        && node_has_direct_comment_child(expr.syntax())
+    {
         return vec![ir::source_node_trimmed(expr.syntax().clone())];
     }
 
-    let mut docs = expr
+    let prefix_docs = expr
         .get_prefix_expr()
         .map(|prefix| format_expr(ctx, plan, &prefix))
         .unwrap_or_default();
-    docs.extend(format_index_access_ir(ctx, plan, expr));
+    let access_docs = format_index_access_ir(ctx, plan, expr);
+    let indent_tail = expr
+        .get_index_token()
+        .is_some_and(|token| token.is_dot() || token.is_colon());
+
+    let bridge = analyze_expr_bridge(expr.syntax());
+    if bridge.has_line_break || !bridge.comment_fragments.is_empty() {
+        return format_expr_with_bridge_tail(ctx, prefix_docs, access_docs, bridge, indent_tail);
+    }
+
+    let mut docs = prefix_docs;
+    docs.extend(access_docs);
     docs
 }
 
@@ -505,12 +523,11 @@ fn format_param_list_with_comments(
 }
 
 fn format_call_expr(ctx: &FormatContext, plan: &RootFormatPlan, expr: &LuaCallExpr) -> Vec<DocIR> {
-    if node_has_direct_comment_child(expr.syntax()) {
-        return vec![ir::source_node_trimmed(expr.syntax().clone())];
-    }
-
-    let mut docs = expr
-        .get_prefix_expr()
+    let prefix_expr = expr.get_prefix_expr();
+    let prefix_is_multiline = prefix_expr
+        .as_ref()
+        .is_some_and(|prefix| prefix.syntax().text().contains_char('\n'));
+    let mut docs = prefix_expr
         .map(|prefix| format_expr(ctx, plan, &prefix))
         .unwrap_or_default();
 
@@ -529,8 +546,109 @@ fn format_call_expr(ctx: &FormatContext, plan: &RootFormatPlan, expr: &LuaCallEx
     if docs.is_empty() && ctx.config.spacing.space_before_call_paren {
         docs.push(ir::space());
     }
-    docs.extend(format_call_arg_list(ctx, plan, &args_list));
+    let arg_docs = format_call_arg_list(ctx, plan, &args_list);
+
+    let bridge = analyze_expr_bridge(expr.syntax());
+    if bridge.has_line_break || !bridge.comment_fragments.is_empty() {
+        return format_expr_with_bridge_tail(ctx, docs, arg_docs, bridge, false);
+    }
+
+    if prefix_is_multiline && crate::ir::ir_has_forced_line_break(&arg_docs) {
+        docs.push(ir::indent(arg_docs));
+    } else {
+        docs.extend(arg_docs);
+    }
     docs
+}
+
+struct ExprBridgePlan {
+    has_line_break: bool,
+    comment_fragments: Vec<InlineCommentFragment>,
+}
+
+fn format_expr_with_bridge_tail(
+    ctx: &FormatContext,
+    prefix_docs: Vec<DocIR>,
+    tail_docs: Vec<DocIR>,
+    bridge: ExprBridgePlan,
+    indent_tail: bool,
+) -> Vec<DocIR> {
+    let mut bridged_tail = Vec::new();
+    let mut has_content_before_tail = false;
+    let mut has_inline_suffix_comment = false;
+
+    for (index, fragment) in bridge.comment_fragments.into_iter().enumerate() {
+        if fragment.same_line_before && index == 0 {
+            let mut suffix = trailing_comment_prefix(ctx);
+            suffix.extend(fragment.docs);
+            bridged_tail.push(ir::line_suffix(suffix));
+            has_inline_suffix_comment = true;
+        } else {
+            bridged_tail.push(ir::hard_line());
+            bridged_tail.extend(fragment.docs);
+            has_content_before_tail = true;
+        }
+    }
+
+    if bridge.has_line_break || has_content_before_tail || has_inline_suffix_comment {
+        bridged_tail.push(ir::hard_line());
+    }
+    bridged_tail.extend(tail_docs);
+
+    let mut docs = prefix_docs;
+    if indent_tail {
+        docs.push(ir::indent(bridged_tail));
+    } else {
+        docs.extend(bridged_tail);
+    }
+    docs
+}
+
+fn analyze_expr_bridge(syntax: &LuaSyntaxNode) -> ExprBridgePlan {
+    let mut seen_prefix_expr = false;
+    let mut comment_fragments = Vec::new();
+    let mut has_line_break = false;
+
+    for element in syntax.children_with_tokens() {
+        match element {
+            rowan::NodeOrToken::Node(node) => {
+                if !seen_prefix_expr {
+                    if LuaExpr::cast(node).is_some() {
+                        seen_prefix_expr = true;
+                    }
+                    continue;
+                }
+
+                if let Some(comment) = LuaComment::cast(node) {
+                    comment_fragments.push(InlineCommentFragment {
+                        docs: vec![ir::source_node_trimmed(comment.syntax().clone())],
+                        same_line_before: has_non_trivia_before_on_same_line_tokenwise(
+                            comment.syntax(),
+                        ),
+                    });
+                    continue;
+                }
+
+                break;
+            }
+            rowan::NodeOrToken::Token(token) => {
+                if !seen_prefix_expr {
+                    continue;
+                }
+
+                match token.kind().into() {
+                    LuaTokenKind::TkWhitespace => {}
+                    LuaTokenKind::TkEndOfLine => has_line_break = true,
+                    _ => break,
+                }
+            }
+        }
+    }
+
+    ExprBridgePlan {
+        has_line_break,
+        comment_fragments,
+    }
 }
 
 fn format_call_arg_list(
@@ -1821,8 +1939,79 @@ fn format_closure_expr(
     plan: &RootFormatPlan,
     expr: &LuaClosureExpr,
 ) -> Vec<DocIR> {
+    if let Some(inline_docs) = try_format_simple_inline_closure_expr(ctx, plan, expr) {
+        return inline_docs;
+    }
+
     let shell_plan = collect_closure_shell_plan(ctx, plan, expr);
     render_closure_shell(ctx, plan, expr, shell_plan)
+}
+
+fn try_format_simple_inline_closure_expr(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    expr: &LuaClosureExpr,
+) -> Option<Vec<DocIR>> {
+    let source_is_single_line = !expr.syntax().text().contains_char('\n');
+    match ctx.config.output.simple_lambda_single_line {
+        SimpleLambdaSingleLine::Never => return None,
+        SimpleLambdaSingleLine::Preserve if !source_is_single_line => return None,
+        SimpleLambdaSingleLine::Always | SimpleLambdaSingleLine::Preserve => {}
+    }
+
+    if node_has_direct_comment_child(expr.syntax()) {
+        return None;
+    }
+
+    let shell_plan = collect_closure_shell_plan(ctx, plan, expr);
+    if !shell_plan.before_params_comments.is_empty() || !shell_plan.before_body_comments.is_empty()
+    {
+        return None;
+    }
+    if crate::ir::ir_has_forced_line_break(&shell_plan.params) {
+        return None;
+    }
+
+    let block = expr.get_block()?;
+    if node_has_direct_comment_child(block.syntax()) {
+        return None;
+    }
+
+    let mut stats = block.get_stats();
+    let LuaStat::ReturnStat(return_stat) = stats.next()? else {
+        return None;
+    };
+    if stats.next().is_some() || node_has_direct_comment_child(return_stat.syntax()) {
+        return None;
+    }
+
+    let mut returned_exprs = return_stat.get_expr_list();
+    let returned_expr = returned_exprs.next()?;
+    if returned_exprs.next().is_some() {
+        return None;
+    }
+
+    let returned_docs = format_expr(ctx, plan, &returned_expr);
+    if crate::ir::ir_has_forced_line_break(&returned_docs) {
+        return None;
+    }
+
+    let mut docs = vec![ir::syntax_token(LuaTokenKind::TkFunction)];
+    if let Some(params) = expr.get_params_list() {
+        let (open, _) = paren_tokens(params.syntax());
+        docs.extend(token_left_spacing_docs(plan, open.as_ref()));
+    }
+    docs.extend(shell_plan.params);
+    docs.push(ir::space());
+    docs.push(ir::syntax_token(LuaTokenKind::TkReturn));
+    docs.push(ir::space());
+    docs.extend(returned_docs);
+    docs.push(ir::space());
+    docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+
+    (crate::ir::ir_flat_width(&docs) + source_line_prefix_width(expr.syntax())
+        <= ctx.config.layout.max_line_width)
+        .then_some(docs)
 }
 
 struct InlineCommentFragment {
@@ -1965,6 +2154,22 @@ fn expr_is_chain_root(expr: &LuaExpr) -> bool {
             LuaSyntaxId::from_node(prefix.syntax()) != LuaSyntaxId::from_node(expr.syntax())
         }),
         _ => true,
+    }
+}
+
+fn chain_has_direct_comments(expr: &LuaExpr) -> bool {
+    if node_has_direct_comment_child(expr.syntax()) {
+        return true;
+    }
+
+    match expr {
+        LuaExpr::CallExpr(call) => call
+            .get_prefix_expr()
+            .is_some_and(|prefix| chain_has_direct_comments(&prefix)),
+        LuaExpr::IndexExpr(index) => index
+            .get_prefix_expr()
+            .is_some_and(|prefix| chain_has_direct_comments(&prefix)),
+        _ => false,
     }
 }
 
@@ -2340,14 +2545,10 @@ fn format_index_access_ir(
     if let Some(index_token) = expr.get_index_token() {
         if index_token.is_dot() {
             docs.push(ir::syntax_token(LuaTokenKind::TkDot));
-            if let Some(name_token) = expr.get_index_name_token() {
-                docs.push(ir::source_token(name_token));
-            }
+            docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_colon() {
             docs.push(ir::syntax_token(LuaTokenKind::TkColon));
-            if let Some(name_token) = expr.get_index_name_token() {
-                docs.push(ir::source_token(name_token));
-            }
+            docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_left_bracket() {
             docs.push(ir::syntax_token(LuaTokenKind::TkLeftBracket));
             if ctx.config.spacing.space_inside_brackets {
@@ -2375,6 +2576,21 @@ fn format_index_access_ir(
         }
     }
     docs
+}
+
+fn format_named_index_key_ir(expr: &LuaIndexExpr) -> Vec<DocIR> {
+    if let Some(name_token) = expr.get_index_name_token()
+        && name_token.kind() == LuaTokenKind::TkName.into()
+    {
+        return vec![ir::source_token(name_token)];
+    }
+
+    match expr.get_index_key() {
+        Some(LuaIndexKey::Name(name)) => vec![ir::source_token(name.syntax().clone())],
+        Some(LuaIndexKey::String(string)) => vec![ir::source_token(string.syntax().clone())],
+        Some(LuaIndexKey::Integer(number)) => vec![ir::source_token(number.syntax().clone())],
+        _ => Vec::new(),
+    }
 }
 
 fn trailing_comma_ir(policy: TrailingComma) -> DocIR {

@@ -62,6 +62,7 @@ Behavior notes:
 - `trailing_table_separator`: `Inherit`, `Never`, `Multiline`, or `Always`
 - `quote_style`: `Preserve`, `Double`, or `Single`
 - `single_arg_call_parens`: `Preserve`, `Always`, or `Omit`
+- `simple_lambda_single_line`: `Preserve`, `Always`, or `Never`
 - `end_of_line`: `LF` or `CRLF`
 
 Default:
@@ -73,6 +74,7 @@ trailing_comma = "Never"
 trailing_table_separator = "Inherit"
 quote_style = "Preserve"
 single_arg_call_parens = "Preserve"
+simple_lambda_single_line = "Preserve"
 end_of_line = "LF"
 ```
 
@@ -83,6 +85,9 @@ Behavior notes:
 - `quote_style` only rewrites normal short strings when it is safe to do so. Long strings and other string forms are preserved.
 - Quote rewriting works from the raw token text, checks for unescaped occurrences of the target delimiter, and only adjusts the minimal delimiter escaping needed to preserve semantics.
 - `single_arg_call_parens = "Omit"` only removes parentheses for Lua-valid single-string and single-table calls.
+- `simple_lambda_single_line = "Preserve"` only keeps an eligible simple lambda on one line when the input was already inline.
+- `simple_lambda_single_line = "Always"` collapses an eligible simple lambda back to `function(...) return expr end` when it fits within the configured width.
+- `simple_lambda_single_line = "Never"` disables the simple inline lambda fast path and always formats the closure body on multiple lines.
 
 ## spacing
 
@@ -187,6 +192,63 @@ align_in_statements = false
 align_in_table_fields = true
 align_in_call_args = true
 align_in_params = true
+
+[align]
+continuous_assign_statement = false
+table_field = true
+```
+
+## Complete Default Config
+
+```toml
+[indent]
+kind = "Space"
+width = 4
+
+[layout]
+max_line_width = 120
+max_blank_lines = 1
+table_expand = "Auto"
+call_args_expand = "Auto"
+func_params_expand = "Auto"
+
+[output]
+insert_final_newline = true
+trailing_comma = "Never"
+trailing_table_separator = "Inherit"
+quote_style = "Preserve"
+single_arg_call_parens = "Preserve"
+simple_lambda_single_line = "Preserve"
+end_of_line = "LF"
+
+[spacing]
+space_before_call_paren = false
+space_before_func_paren = false
+space_inside_braces = true
+space_inside_parens = false
+space_inside_brackets = false
+space_around_math_operator = true
+space_around_concat_operator = true
+space_around_assign_operator = true
+
+[comments]
+align_line_comments = true
+align_in_statements = false
+align_in_table_fields = true
+align_in_call_args = true
+align_in_params = true
+align_across_standalone_comments = false
+align_same_kind_only = false
+space_after_comment_dash = true
+line_comment_min_spaces_before = 1
+line_comment_min_column = 0
+
+[emmy_doc]
+align_tag_columns = true
+align_declaration_tags = true
+align_reference_tags = true
+tag_spacing = 1
+space_after_description_dash = true
 
 [align]
 continuous_assign_statement = false

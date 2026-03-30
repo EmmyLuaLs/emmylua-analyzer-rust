@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_parser::{LuaSyntaxId, LuaSyntaxKind};
+use emmylua_parser::{LuaSyntaxId, LuaSyntaxKind, LuaTokenKind};
 
 use crate::config::LuaFormatConfig;
 
@@ -81,6 +81,11 @@ pub struct ControlHeaderLayoutPlan {
     pub has_inline_comment: bool,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BoundaryCommentLayoutPlan {
+    pub comment_ids: Vec<LuaSyntaxId>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StatementExprListLayoutKind {
     Sequence,
@@ -113,6 +118,8 @@ pub struct RootLayoutModel {
     pub expr_sequences: HashMap<LuaSyntaxId, ExprSequenceLayoutPlan>,
     pub control_headers: HashMap<LuaSyntaxId, ControlHeaderLayoutPlan>,
     pub control_header_expr_lists: HashMap<LuaSyntaxId, StatementExprListLayoutPlan>,
+    pub boundary_comments: HashMap<LuaSyntaxId, HashMap<LuaTokenKind, BoundaryCommentLayoutPlan>>,
+    pub block_excluded_comments: HashMap<LuaSyntaxId, Vec<LuaSyntaxId>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -139,6 +146,8 @@ impl RootFormatPlan {
                 expr_sequences: HashMap::new(),
                 control_headers: HashMap::new(),
                 control_header_expr_lists: HashMap::new(),
+                boundary_comments: HashMap::new(),
+                block_excluded_comments: HashMap::new(),
             },
             line_breaks: RootLineBreakModel {
                 insert_final_newline: config.output.insert_final_newline,

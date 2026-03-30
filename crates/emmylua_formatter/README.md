@@ -64,12 +64,15 @@ Key defaults:
 - `output.trailing_table_separator = "Inherit"`
 - `output.quote_style = "Preserve"`
 - `output.single_arg_call_parens = "Preserve"`
+- `output.simple_lambda_single_line = "Preserve"`
 - `comments.align_in_statements = false`
 - `comments.space_after_comment_dash = true`
 - `align.continuous_assign_statement = false`
 - `align.table_field = true`
 
 These defaults intentionally favor conservative rewrites. Alignment-heavy output is not enabled broadly unless the source already indicates that alignment should be preserved.
+
+`output.simple_lambda_single_line` controls whether eligible closures of the form `function(...) return expr end` stay on one line only when the source was already inline, collapse back to one line whenever they fit, or always expand to a multiline body.
 
 ## Comment Alignment
 
@@ -202,6 +205,7 @@ trailing_comma = "Never"
 trailing_table_separator = "Inherit"
 quote_style = "Preserve"
 single_arg_call_parens = "Preserve"
+simple_lambda_single_line = "Preserve"
 end_of_line = "LF"
 
 [spacing]
@@ -222,6 +226,7 @@ align_in_call_args = true
 align_in_params = true
 align_across_standalone_comments = false
 align_same_kind_only = false
+space_after_comment_dash = true
 line_comment_min_spaces_before = 1
 line_comment_min_column = 0
 
