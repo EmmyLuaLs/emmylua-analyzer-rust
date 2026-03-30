@@ -280,8 +280,8 @@ local b = t[1]
     }
 
     #[test]
-    fn test_call_expr_formats_before_close_comment_attachment() {
-        assert_format!("foo(\na,\n-- tail\n)\n", "foo(\n    a\n    -- tail\n)\n");
+    fn test_call_expr_preserves_before_close_comment_attachment() {
+        assert_format!("foo(\na,\n-- tail\n)\n", "foo(\na,\n-- tail\n)\n");
     }
 
     #[test]
@@ -309,10 +309,10 @@ local b = t[1]
     }
 
     #[test]
-    fn test_closure_expr_formats_before_close_comment_in_params() {
+    fn test_closure_expr_preserves_before_close_comment_in_params() {
         assert_format!(
             "local f = function(\na,\n-- tail\n)\n    return a\nend\n",
-            "local f = function(\n    a\n    -- tail\n)\n    return a\nend\n"
+            "local f = function(\na,\n-- tail\n)\n    return a\nend\n"
         );
     }
 
