@@ -1,26 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::handlers::semantic_token::{SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES};
-    use crate::handlers::test_lib::ProviderVirtualWorkspace;
+    use crate::handlers::{
+        semantic_token::{SemanticTokenModifierKind, SemanticTokenTypeKind},
+        test_lib::ProviderVirtualWorkspace,
+    };
     use googletest::prelude::*;
-    use lsp_types::{SemanticTokenModifier, SemanticTokenType};
-
-    fn token_type_index(token_type: SemanticTokenType) -> u32 {
-        SEMANTIC_TOKEN_TYPES
-            .iter()
-            .position(|t| t == &token_type)
-            .unwrap() as u32
-    }
-
-    fn modifier_bitset(modifiers: &[SemanticTokenModifier]) -> u32 {
-        modifiers.iter().fold(0, |acc, m| {
-            let index = SEMANTIC_TOKEN_MODIFIERS
-                .iter()
-                .position(|x| x == m)
-                .unwrap() as u32;
-            acc | (1 << index)
-        })
-    }
 
     fn decode(data: &[u32]) -> Vec<(u32, u32, u32, u32, u32)> {
         let mut result = Vec::new();
@@ -71,10 +55,10 @@ m.foo()
         let data = ws.get_semantic_token_data_for_file(main)?;
         let tokens = decode(&data);
 
-        let class_idx = token_type_index(SemanticTokenType::CLASS);
-        let namespace_idx = token_type_index(SemanticTokenType::NAMESPACE);
-        let method_idx = token_type_index(SemanticTokenType::METHOD);
-        let readonly = modifier_bitset(&[SemanticTokenModifier::READONLY]);
+        let class_idx = SemanticTokenTypeKind::Class.to_u32();
+        let namespace_idx = SemanticTokenTypeKind::Namespace.to_u32();
+        let method_idx = SemanticTokenTypeKind::Method.to_u32();
+        let readonly = SemanticTokenModifierKind::READONLY.to_u32();
 
         // `local m = require("mod")`
         verify_that!(&tokens, contains(eq(&(0, 6, 1, class_idx, readonly))))?;
@@ -99,8 +83,8 @@ m.foo()
 "#,
         )?;
         let tokens = decode(&data);
-        let keyword = token_type_index(SemanticTokenType::KEYWORD);
-        let doc = modifier_bitset(&[SemanticTokenModifier::DOCUMENTATION]);
+        let keyword = SemanticTokenTypeKind::Keyword.to_u32();
+        let doc = SemanticTokenModifierKind::DOCUMENTATION.to_u32();
 
         verify_that!(&tokens, contains(eq(&(0, 4, 15, keyword, doc))))?;
         Ok(())
@@ -114,9 +98,9 @@ m.foo()
             "--- @return_overload true, string\n",
         ))?;
         let tokens = decode(&data);
-        let typ = token_type_index(SemanticTokenType::TYPE);
-        let variable = token_type_index(SemanticTokenType::VARIABLE);
-        let default_library = modifier_bitset(&[SemanticTokenModifier::DEFAULT_LIBRARY]);
+        let typ = SemanticTokenTypeKind::Type.to_u32();
+        let variable = SemanticTokenTypeKind::Variable.to_u32();
+        let default_library = SemanticTokenModifierKind::DEFAULT_LIBRARY.to_u32();
 
         verify_that!(
             &tokens,

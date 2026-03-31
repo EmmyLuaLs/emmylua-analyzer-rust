@@ -394,9 +394,9 @@ fn infer_binary_expr_bxor(db: &DbIndex, left: LuaType, right: LuaType) -> InferR
 fn infer_binary_expr_shl(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
     if left.is_integer() && right.is_integer() {
         return match (&left, &right) {
-            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => {
-                Ok(LuaType::IntegerConst(int1.checked_shl(*int2 as u32).unwrap_or(0)))
-            }
+            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => Ok(
+                LuaType::IntegerConst(int1.checked_shl(*int2 as u32).unwrap_or(0)),
+            ),
             _ => Ok(LuaType::Integer),
         };
     }
@@ -407,9 +407,9 @@ fn infer_binary_expr_shl(db: &DbIndex, left: LuaType, right: LuaType) -> InferRe
 fn infer_binary_expr_shr(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
     if left.is_integer() && right.is_integer() {
         return match (&left, &right) {
-            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => {
-                Ok(LuaType::IntegerConst(int1.checked_shr(*int2 as u32).unwrap_or(0)))
-            }
+            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => Ok(
+                LuaType::IntegerConst(int1.checked_shr(*int2 as u32).unwrap_or(0)),
+            ),
             _ => Ok(LuaType::Integer),
         };
     }
