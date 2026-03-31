@@ -71,7 +71,7 @@ fn infer_union_binary_expr(
         return None;
     };
 
-    let mut result = LuaType::Unknown;
+    let mut result = None;
     let types = u.into_vec();
     for ty in types.iter() {
         // 只在实际调用时才 clone，而不是预先 clone
@@ -82,10 +82,13 @@ fn infer_union_binary_expr(
         };
 
         if let Ok(ty) = ty_result {
-            result = TypeOps::Union.apply(db, &result, &ty);
+            result = Some(match result {
+                Some(result) => TypeOps::Union.apply(db, &result, &ty),
+                None => ty,
+            });
         }
     }
-    Some(result)
+    Some(result.unwrap_or(LuaType::Unknown))
 }
 
 fn infer_binary_expr_type(

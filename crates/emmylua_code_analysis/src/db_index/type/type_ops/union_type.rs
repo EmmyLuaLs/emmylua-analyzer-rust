@@ -21,8 +21,6 @@ fn union_type_impl(match_source: &LuaType, source: LuaType, target: LuaType) -> 
         (_, LuaType::Any) => LuaType::Any,
         (LuaType::Never, _) => target,
         (_, LuaType::Never) => source,
-        (LuaType::Unknown, _) => target,
-        (_, LuaType::Unknown) => source,
         // int | int const
         (LuaType::Integer, LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)) => {
             LuaType::Integer

@@ -149,7 +149,7 @@ fn get_type_at_flow_internal(
                 FlowNodeKind::BranchLabel | FlowNodeKind::NamedLabel(_) => {
                     let multi_antecedents = get_multi_antecedents(tree, flow_node)?;
 
-                    let mut branch_result_type = LuaType::Unknown;
+                    let mut branch_result_type = LuaType::Never;
                     for &flow_id in &multi_antecedents {
                         let branch_type = get_type_at_flow_internal(
                             db,

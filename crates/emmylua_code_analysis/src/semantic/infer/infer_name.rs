@@ -361,7 +361,7 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
     });
 
     // TODO: 或许应该联合所有定义的类型?
-    let mut valid_type = LuaType::Unknown;
+    let mut valid_type = LuaType::Never;
     let mut last_resolve_reason = InferFailReason::None;
     for decl_id in sorted_decl_ids {
         let decl_type_cache = db.get_type_index().get_type_cache(&decl_id.into());
@@ -394,7 +394,7 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
         }
     }
 
-    if !valid_type.is_unknown() {
+    if !valid_type.is_never() {
         return Ok(valid_type);
     }
 

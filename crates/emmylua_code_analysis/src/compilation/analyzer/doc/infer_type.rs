@@ -370,13 +370,6 @@ fn infer_binary_type(analyzer: &mut DocAnalyzer, binary_type: &LuaDocBinaryType)
     if let Some((left, right)) = binary_type.get_types() {
         let left_type = infer_type(analyzer, left);
         let right_type = infer_type(analyzer, right);
-        if left_type.is_unknown() {
-            return right_type;
-        }
-        if right_type.is_unknown() {
-            return left_type;
-        }
-
         if let Some(op) = binary_type.get_op_token() {
             match op.get_op() {
                 LuaTypeBinaryOperator::Union => match (left_type, right_type) {
