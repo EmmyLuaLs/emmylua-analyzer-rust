@@ -2,7 +2,7 @@ mod flow_node;
 mod flow_tree;
 mod signature_cast;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::{FileId, LuaSignatureId};
 use emmylua_parser::{LuaAstPtr, LuaDocOpType};

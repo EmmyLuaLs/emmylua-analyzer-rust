@@ -52,6 +52,7 @@ itertools.workspace = true
 luars.workspace = true
 reqwest = { workspace = true, optional = true }
 schema_to_emmylua.workspace = true
+hashbrown.workspace = true
 
 [features]
 default = []

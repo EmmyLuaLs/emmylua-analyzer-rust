@@ -1,13 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    ops::Deref,
-    sync::Arc,
-};
-
+use hashbrown::{HashMap, HashSet};
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
+use std::{hash::Hash, ops::Deref, sync::Arc};
 
 use crate::{
     AsyncState, DbIndex, FileId, InFiled, SemanticModel,

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
+    use hashbrown::HashSet;
     use std::sync::Arc;
 
     use crate::{LuaType, LuaUnionType, VirtualWorkspace};

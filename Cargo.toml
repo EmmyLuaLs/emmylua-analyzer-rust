@@ -64,6 +64,7 @@ reqwest = { version = "0.13.1", default-features = false, features = [
   "native-tls-vendored",
 ]}
 similar = { version = "2.7.0", features = ["inline"] }
+hashbrown = "0.16.1"
 
 # Lint configuration for the entire workspace
 [workspace.lints.clippy]

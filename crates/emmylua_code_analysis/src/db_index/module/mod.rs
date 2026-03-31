@@ -12,8 +12,8 @@ pub use workspace::{Workspace, WorkspaceId};
 
 use super::traits::LuaIndex;
 use crate::{Emmyrc, FileId};
+use hashbrown::{HashMap, HashSet};
 use std::{
-    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -147,8 +147,7 @@ impl LuaModuleIndex {
                     }
                 }
             };
-            if let std::collections::hash_map::Entry::Vacant(e) = self.module_nodes.entry(child_id)
-            {
+            if let hashbrown::hash_map::Entry::Vacant(e) = self.module_nodes.entry(child_id) {
                 let new_node = ModuleNode {
                     children: HashMap::new(),
                     file_ids: Vec::new(),

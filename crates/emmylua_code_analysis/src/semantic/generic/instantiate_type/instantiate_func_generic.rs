@@ -1,8 +1,8 @@
-use std::{collections::HashSet, ops::Deref, sync::Arc};
-
 use emmylua_parser::{LuaAstNode, LuaDocTypeList};
 use emmylua_parser::{LuaCallExpr, LuaExpr};
+use hashbrown::HashSet;
 use internment::ArcIntern;
+use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{

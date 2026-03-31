@@ -1,6 +1,6 @@
 mod schema_file;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use url::Url;
 

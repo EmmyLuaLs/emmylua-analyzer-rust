@@ -1,6 +1,6 @@
+use hashbrown::HashMap;
 use rowan::TextRange;
 use smol_str::SmolStr;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct StringReference {

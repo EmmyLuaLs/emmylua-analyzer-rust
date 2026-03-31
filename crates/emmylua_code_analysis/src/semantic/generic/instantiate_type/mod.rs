@@ -1,10 +1,8 @@
 mod instantiate_func_generic;
 mod instantiate_special_generic;
 
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Deref,
-};
+use hashbrown::{HashMap, HashSet};
+use std::ops::Deref;
 
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaAliasCallKind, LuaArrayType, LuaConditionalType,

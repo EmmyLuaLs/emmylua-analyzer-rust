@@ -1,6 +1,6 @@
 use emmylua_parser::{LuaAst, LuaAstNode, LuaDocTagCast};
+use hashbrown::HashSet;
 use rowan::TextRange;
-use std::collections::HashSet;
 
 use crate::{
     DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType, SemanticModel,

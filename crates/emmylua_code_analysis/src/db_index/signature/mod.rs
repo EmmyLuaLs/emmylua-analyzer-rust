@@ -3,7 +3,7 @@ mod return_rows;
 #[allow(clippy::module_inception)]
 mod signature;
 
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 pub use async_state::AsyncState;
 pub use signature::{

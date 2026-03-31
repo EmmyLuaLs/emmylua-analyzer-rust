@@ -3,7 +3,7 @@ mod find_decl_function;
 mod resolve;
 mod resolve_closure;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::{
     FileId, InferFailReason, LuaMemberFeature, LuaSemanticDeclId,

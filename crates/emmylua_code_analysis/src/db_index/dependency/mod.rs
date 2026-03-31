@@ -1,6 +1,6 @@
 mod file_dependency_relation;
 
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 use file_dependency_relation::FileDependencyRelation;
 

@@ -2,7 +2,7 @@ mod decl_feature;
 #[allow(clippy::module_inception)]
 mod property;
 
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 pub use decl_feature::{DeclFeatureFlag, PropertyDeclFeature};
 use emmylua_parser::{LuaAstNode, LuaDocTagField, LuaDocType, LuaVersionCondition, VisibilityKind};

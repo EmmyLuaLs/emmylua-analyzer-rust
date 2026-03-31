@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use emmylua_parser::{LuaAstPtr, LuaExpr, LuaNameToken, LuaSyntaxId};
 use internment::ArcIntern;

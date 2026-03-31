@@ -1,5 +1,3 @@
-use std::{collections::HashMap, ops::Deref, vec};
-
 use crate::{
     DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
     LuaTupleStatus, LuaTupleType, LuaType, TypeOps, VariadicType, get_member_map,
@@ -9,6 +7,8 @@ use crate::{
         type_check,
     },
 };
+use hashbrown::HashMap;
+use std::{ops::Deref, vec};
 
 use super::{TypeSubstitutor, instantiate_type_generic};
 

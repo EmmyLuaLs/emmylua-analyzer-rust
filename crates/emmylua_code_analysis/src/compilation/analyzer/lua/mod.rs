@@ -6,7 +6,7 @@ mod metatable;
 mod module;
 mod stats;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use closure::analyze_closure;
 pub use closure::analyze_return_point;
