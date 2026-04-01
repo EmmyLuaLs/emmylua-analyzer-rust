@@ -231,7 +231,6 @@ fn add_table_field_value_completion(builder: &mut CompletionBuilder) -> Option<(
                         .get_member_key(&field.get_field_key()?)?;
                     let member_infos = builder.semantic_model.get_member_infos(&table_type)?;
                     let member_info = member_infos.iter().find(|m| m.key == key)?;
-
                     if add_field_value_completion(builder, member_info.clone()).is_some() {
                         // 如果添加了补全项, 则停止
                         builder.stop_here();
