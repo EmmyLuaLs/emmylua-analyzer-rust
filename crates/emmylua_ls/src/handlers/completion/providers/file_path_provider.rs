@@ -8,7 +8,29 @@ use crate::handlers::completion::completion_builder::CompletionBuilder;
 
 use super::get_text_edit_range_in_string;
 
-pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct FilePathProvider;
+
+impl CompletionProvider for FilePathProvider {
+    fn name(&self) -> &'static str {
+        "file_path"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
     let Some(string_token) = LuaStringToken::cast(builder.trigger_token.clone()) else {
         return false;
     };
@@ -16,7 +38,7 @@ pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
     string_token.get_value().find(['/', '\\']).is_some()
 }
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
@@ -52,8 +74,6 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
             }
         }
     }
-
-    builder.stop_here();
 
     Some(())
 }

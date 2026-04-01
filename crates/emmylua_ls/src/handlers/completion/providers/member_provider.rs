@@ -10,7 +10,33 @@ use crate::handlers::completion::{
     completion_builder::CompletionBuilder,
 };
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct MemberProvider;
+
+impl CompletionProvider for MemberProvider {
+    fn name(&self) -> &'static str {
+        "member"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        builder
+            .trigger_token
+            .parent()
+            .and_then(LuaIndexExpr::cast)
+            .is_some()
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Continue
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }

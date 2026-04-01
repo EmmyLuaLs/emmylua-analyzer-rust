@@ -11,11 +11,33 @@ use crate::handlers::completion::{
     completion_builder::CompletionBuilder,
 };
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct EnvProvider;
+
+impl CompletionProvider for EnvProvider {
+    fn name(&self) -> &'static str {
+        "env"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Continue
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
-    if check_can_add_completion(builder).is_none() {
+    if !supports_provider(builder) {
         return Some(());
     }
 
@@ -39,29 +61,33 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     Some(())
 }
 
-fn check_can_add_completion(builder: &CompletionBuilder) -> Option<()> {
+fn supports_provider(builder: &CompletionBuilder) -> bool {
     if builder.is_space_trigger_character {
-        return None;
+        return false;
     }
 
     let trigger_text = builder.get_trigger_text();
     if builder.trigger_kind == CompletionTriggerKind::TRIGGER_CHARACTER {
-        let parent = builder.trigger_token.parent()?;
+        let Some(parent) = builder.trigger_token.parent() else {
+            return false;
+        };
 
         if trigger_text == "("
             && (LuaCallArgList::can_cast(parent.kind().into())
                 || LuaParamList::can_cast(parent.kind().into()))
         {
-            return None;
+            return false;
         }
     } else if builder.trigger_kind == CompletionTriggerKind::INVOKED {
-        let parent = builder.trigger_token.parent()?;
+        let Some(parent) = builder.trigger_token.parent() else {
+            return false;
+        };
         if let Some(prev_token) = builder.trigger_token.prev_token() {
             match prev_token.kind().into() {
                 LuaTokenKind::TkTagUsing
                 | LuaTokenKind::TkTagExport
                 | LuaTokenKind::TkTagNamespace => {
-                    return None;
+                    return false;
                 }
                 _ => {}
             }
@@ -69,11 +95,11 @@ fn check_can_add_completion(builder: &CompletionBuilder) -> Option<()> {
 
         // 即时是主动触发, 也不允许在函数定义的参数列表中添加
         if trigger_text == "(" && LuaParamList::can_cast(parent.kind().into()) {
-            return None;
+            return false;
         }
     }
 
-    Some(())
+    true
 }
 
 fn add_self(

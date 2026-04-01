@@ -9,11 +9,33 @@ use lsp_types::CompletionItem;
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
 
-pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct DocNameTokenProvider;
+
+impl CompletionProvider for DocNameTokenProvider {
+    fn name(&self) -> &'static str {
+        "doc_name_token"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
     get_doc_completion_expected(&builder.trigger_token).is_some()
 }
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
@@ -45,8 +67,6 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
             add_tag_export_completion(builder);
         }
     }
-
-    builder.stop_here();
 
     Some(())
 }

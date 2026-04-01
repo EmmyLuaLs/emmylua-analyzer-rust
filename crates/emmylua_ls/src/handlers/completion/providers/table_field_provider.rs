@@ -15,15 +15,34 @@ use crate::handlers::completion::{
     providers::function_provider::dispatch_type,
 };
 
-pub fn has_exclusive_completion(builder: &CompletionBuilder) -> bool {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct TableFieldProvider;
+
+impl CompletionProvider for TableFieldProvider {
+    fn name(&self) -> &'static str {
+        "table_field"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        complete_provider(builder).unwrap_or(ProviderDecision::NoMatch)
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
     has_key_completion(builder) || has_function_value_completion(builder)
 }
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
-    add_table_field_key_completion(builder);
-    add_table_field_value_completion(builder);
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<ProviderDecision> {
+    if add_table_field_key_completion(builder).is_some() {
+        return Some(ProviderDecision::Stop);
+    }
 
-    Some(())
+    add_table_field_value_completion(builder)
 }
 
 fn has_key_completion(builder: &CompletionBuilder) -> bool {
@@ -170,7 +189,6 @@ fn add_table_field_key_completion(builder: &mut CompletionBuilder) -> Option<()>
         add_field_key_completion(builder, member_info);
     }
 
-    builder.stop_here();
     Some(())
 }
 
@@ -313,7 +331,7 @@ fn in_env(builder: &mut CompletionBuilder, target_name: &str, target_type: &LuaT
     None
 }
 
-fn add_table_field_value_completion(builder: &mut CompletionBuilder) -> Option<()> {
+fn add_table_field_value_completion(builder: &mut CompletionBuilder) -> Option<ProviderDecision> {
     if builder.is_cancelled() {
         return None;
     }
@@ -337,8 +355,7 @@ fn add_table_field_value_completion(builder: &mut CompletionBuilder) -> Option<(
                     let member_infos = builder.semantic_model.get_member_infos(&table_type)?;
                     let member_info = member_infos.iter().find(|m| m.key == key)?;
                     if add_field_value_completion(builder, member_info.clone()).is_some() {
-                        // 如果添加了补全项, 则停止
-                        builder.stop_here();
+                        return Some(ProviderDecision::Stop);
                     }
                 } else {
                     let table_field_should = infer_table_field_value_should_be(
@@ -347,15 +364,15 @@ fn add_table_field_value_completion(builder: &mut CompletionBuilder) -> Option<(
                         field,
                     )
                     .ok()?;
-                    dispatch_type(builder, table_field_should, &InferGuard::new())?;
+                    return dispatch_type(builder, table_field_should, &InferGuard::new());
                 }
-                return Some(());
+                return Some(ProviderDecision::Continue);
             }
             _ => parent = parent.parent()?,
         }
     }
 
-    Some(())
+    Some(ProviderDecision::Continue)
 }
 
 fn add_field_value_completion(

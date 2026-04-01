@@ -15,7 +15,6 @@ pub struct CompletionBuilder<'a> {
     pub env_duplicate_name: HashSet<String>,
     completion_items: Vec<CompletionItem>,
     cancel_token: CancellationToken,
-    stopped: bool,
     pub trigger_kind: CompletionTriggerKind,
     /// 是否为空格字符触发的补全(非主动触发)
     pub is_space_trigger_character: bool,
@@ -44,7 +43,6 @@ impl<'a> CompletionBuilder<'a> {
             env_duplicate_name: HashSet::new(),
             completion_items: Vec::new(),
             cancel_token,
-            stopped: false,
             trigger_kind,
             is_space_trigger_character,
             position_offset,
@@ -54,7 +52,7 @@ impl<'a> CompletionBuilder<'a> {
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.stopped || self.cancel_token.is_cancelled()
+        self.cancel_token.is_cancelled()
     }
 
     pub fn add_completion_item(&mut self, item: CompletionItem) -> Option<()> {
@@ -68,10 +66,6 @@ impl<'a> CompletionBuilder<'a> {
 
     pub fn get_completion_items_mut(&mut self) -> &mut Vec<CompletionItem> {
         &mut self.completion_items
-    }
-
-    pub fn stop_here(&mut self) {
-        self.stopped = true;
     }
 
     pub fn get_trigger_text(&self) -> String {

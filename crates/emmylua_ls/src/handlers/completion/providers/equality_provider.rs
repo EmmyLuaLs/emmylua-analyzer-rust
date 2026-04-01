@@ -10,20 +10,71 @@ use crate::handlers::completion::{
     completion_builder::CompletionBuilder, providers::function_provider::dispatch_type,
 };
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct EqualityProvider;
+
+impl CompletionProvider for EqualityProvider {
+    fn name(&self) -> &'static str {
+        "equality"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        complete_provider(builder).unwrap_or(ProviderDecision::NoMatch)
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<ProviderDecision> {
     if builder.is_cancelled() {
         return None;
     }
 
     let types = get_token_should_type(builder)?;
+    let mut should_stop = false;
     for typ in &types {
-        dispatch_type(builder, typ.clone(), &InferGuard::new());
+        if matches!(
+            dispatch_type(builder, typ.clone(), &InferGuard::new()),
+            Some(ProviderDecision::Stop)
+        ) {
+            should_stop = true;
+            break;
+        }
     }
 
-    if !types.is_empty() && !builder.is_invoked() {
-        builder.stop_here();
+    if should_stop || (!types.is_empty() && !builder.is_invoked()) {
+        return Some(ProviderDecision::Stop);
     }
-    Some(())
+    Some(ProviderDecision::Continue)
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
+    let token = builder.trigger_token.clone();
+    let Some(mut parent_node) = token.parent() else {
+        return false;
+    };
+    if let Some(node) = token.prev_token().and_then(|prev| prev.parent()) {
+        parent_node = node;
+    } else if LuaLiteralExpr::can_cast(parent_node.kind().into()) {
+        let Some(next_parent) = parent_node.parent() else {
+            return false;
+        };
+        parent_node = next_parent;
+    }
+
+    matches!(
+        LuaAst::cast(parent_node),
+        Some(
+            LuaAst::LuaBinaryExpr(_)
+                | LuaAst::LuaLocalStat(_)
+                | LuaAst::LuaAssignStat(_)
+                | LuaAst::LuaTableExpr(_)
+                | LuaAst::LuaTableField(_)
+        )
+    )
 }
 
 fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>> {

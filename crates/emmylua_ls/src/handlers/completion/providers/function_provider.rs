@@ -23,16 +23,57 @@ use crate::handlers::{
 };
 use emmylua_code_analysis::humanize_type;
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct FunctionProvider;
+
+impl CompletionProvider for FunctionProvider {
+    fn name(&self) -> &'static str {
+        "function"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        complete_provider(builder).unwrap_or(ProviderDecision::NoMatch)
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<ProviderDecision> {
     if builder.is_cancelled() {
         return None;
     }
 
     let types = get_token_should_type(builder)?;
     for typ in types {
-        dispatch_type(builder, typ, &InferGuard::new());
+        if matches!(
+            dispatch_type(builder, typ, &InferGuard::new()),
+            Some(ProviderDecision::Stop)
+        ) {
+            return Some(ProviderDecision::Stop);
+        }
     }
-    Some(())
+    Some(ProviderDecision::Continue)
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
+    let token = builder.trigger_token.clone();
+    let Some(mut parent_node) = token.parent() else {
+        return false;
+    };
+    if LuaLiteralExpr::can_cast(parent_node.kind().into()) {
+        let Some(next_parent) = parent_node.parent() else {
+            return false;
+        };
+        parent_node = next_parent;
+    }
+
+    matches!(
+        parent_node.kind().into(),
+        LuaSyntaxKind::CallArgList | LuaSyntaxKind::ParamList | LuaSyntaxKind::Block
+    )
 }
 
 fn get_token_should_type(builder: &mut CompletionBuilder) -> Option<Vec<LuaType>> {
@@ -90,13 +131,13 @@ pub fn dispatch_type(
     builder: &mut CompletionBuilder,
     typ: LuaType,
     infer_guard: &InferGuardRef,
-) -> Option<()> {
+) -> Option<ProviderDecision> {
     match typ {
         LuaType::Ref(type_ref_id) => {
-            add_type_ref_completion(builder, type_ref_id.clone(), infer_guard);
+            return add_type_ref_completion(builder, type_ref_id.clone(), infer_guard);
         }
         LuaType::Union(union_typ) => {
-            add_union_member_completion(builder, &union_typ, infer_guard);
+            return add_union_member_completion(builder, &union_typ, infer_guard);
         }
         LuaType::DocFunction(func) => {
             add_lambda_completion(builder, &func);
@@ -105,16 +146,16 @@ pub fn dispatch_type(
             add_string_completion(builder, key.as_str());
         }
         LuaType::MultiLineUnion(multi_union) => {
-            add_multi_line_union_member_completion(builder, &multi_union, infer_guard);
+            return add_multi_line_union_member_completion(builder, &multi_union, infer_guard);
         }
         LuaType::StrTplRef(key) => {
             add_str_tpl_ref_completion(builder, &key);
         }
         LuaType::ConstTplRef(tpl) => {
-            add_const_tpl_ref_completion(builder, &tpl.get_tpl_id(), infer_guard);
+            return add_const_tpl_ref_completion(builder, &tpl.get_tpl_id(), infer_guard);
         }
         LuaType::TplRef(tpl) => {
-            add_tpl_ref_completion(builder, &tpl.get_tpl_id(), infer_guard);
+            return add_tpl_ref_completion(builder, &tpl.get_tpl_id(), infer_guard);
         }
         LuaType::Call(special_call) => {
             add_special_call_completion(builder, &special_call);
@@ -122,14 +163,14 @@ pub fn dispatch_type(
         _ => {}
     }
 
-    Some(())
+    Some(ProviderDecision::Continue)
 }
 
 fn add_type_ref_completion(
     builder: &mut CompletionBuilder,
     type_ref_id: LuaTypeDeclId,
     infer_guard: &InferGuardRef,
-) -> Option<()> {
+) -> Option<ProviderDecision> {
     infer_guard.check(&type_ref_id).ok()?;
 
     let type_decl = builder
@@ -143,7 +184,7 @@ fn add_type_ref_completion(
             return dispatch_type(builder, origin.clone(), infer_guard);
         }
 
-        builder.stop_here();
+        return Some(ProviderDecision::Stop);
     } else if type_decl.is_enum() {
         let owner_id = LuaMemberOwner::Type(type_ref_id.clone());
 
@@ -179,17 +220,17 @@ fn add_type_ref_completion(
             add_enum_members_completion(builder, &type_ref_id, locations);
         }
 
-        builder.stop_here();
+        return Some(ProviderDecision::Stop);
     }
 
-    Some(())
+    Some(ProviderDecision::Continue)
 }
 
 fn add_union_member_completion(
     builder: &mut CompletionBuilder,
     union_typ: &LuaUnionType,
     infer_guard: &InferGuardRef,
-) -> Option<()> {
+) -> Option<ProviderDecision> {
     // 如果存在 strtplref, 那么将其移动到最后面
     let mut union_types = union_typ.into_vec();
     union_types.sort_by_key(|typ| matches!(typ, LuaType::StrTplRef(_)));
@@ -199,7 +240,12 @@ fn add_union_member_completion(
             LuaType::DocStringConst(s) => to_enum_label(builder, s.as_str()),
             LuaType::DocIntegerConst(i) => i.to_string(),
             _ => {
-                dispatch_type(builder, union_sub_typ.clone(), &infer_guard.fork());
+                if matches!(
+                    dispatch_type(builder, union_sub_typ.clone(), &infer_guard.fork()),
+                    Some(ProviderDecision::Stop)
+                ) {
+                    return Some(ProviderDecision::Stop);
+                }
                 continue;
             }
         };
@@ -213,7 +259,7 @@ fn add_union_member_completion(
         builder.add_completion_item(completion_item);
     }
 
-    Some(())
+    Some(ProviderDecision::Continue)
 }
 
 fn add_string_completion(builder: &mut CompletionBuilder, str: &str) -> Option<()> {
@@ -518,13 +564,18 @@ fn add_multi_line_union_member_completion(
     builder: &mut CompletionBuilder,
     union_typ: &LuaMultiLineUnion,
     infer_guard: &InferGuardRef,
-) -> Option<()> {
+) -> Option<ProviderDecision> {
     for (union_sub_typ, description) in union_typ.get_unions() {
         let name = match union_sub_typ {
             LuaType::DocStringConst(s) => to_enum_label(builder, s),
             LuaType::DocIntegerConst(i) => i.to_string(),
             _ => {
-                dispatch_type(builder, union_sub_typ.clone(), &infer_guard.fork());
+                if matches!(
+                    dispatch_type(builder, union_sub_typ.clone(), &infer_guard.fork()),
+                    Some(ProviderDecision::Stop)
+                ) {
+                    return Some(ProviderDecision::Stop);
+                }
                 continue;
             }
         };
@@ -552,7 +603,7 @@ fn add_multi_line_union_member_completion(
         builder.add_completion_item(completion_item);
     }
 
-    Some(())
+    Some(ProviderDecision::Continue)
 }
 
 fn to_enum_label(builder: &CompletionBuilder, str: &str) -> String {
@@ -816,12 +867,10 @@ fn add_const_tpl_ref_completion(
     builder: &mut CompletionBuilder,
     tpl_id: &GenericTplId,
     infer_guard: &InferGuardRef,
-) -> Option<()> {
+) -> Option<ProviderDecision> {
     // 泛型约束
     let extend_type = get_tpl_ref_extend_type(builder, tpl_id)?;
-    dispatch_type(builder, extend_type, infer_guard);
-
-    Some(())
+    dispatch_type(builder, extend_type, infer_guard)
 }
 
 fn add_special_call_completion(
@@ -917,8 +966,7 @@ fn add_tpl_ref_completion(
     builder: &mut CompletionBuilder,
     tpl_id: &GenericTplId,
     infer_guard: &InferGuardRef,
-) -> Option<()> {
+) -> Option<ProviderDecision> {
     let extend_type = get_tpl_ref_extend_type(builder, tpl_id)?;
-    dispatch_type(builder, extend_type, infer_guard);
-    Some(())
+    dispatch_type(builder, extend_type, infer_guard)
 }

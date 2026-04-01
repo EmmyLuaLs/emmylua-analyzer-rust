@@ -8,7 +8,29 @@ use lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
 
 use super::get_text_edit_range_in_string;
 
-pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct ModulePathProvider;
+
+impl CompletionProvider for ModulePathProvider {
+    fn name(&self) -> &'static str {
+        "module_path"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
     let Some(string_token) = LuaStringToken::cast(builder.trigger_token.clone()) else {
         return false;
     };
@@ -23,12 +45,12 @@ pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
     call_expr.is_require()
 }
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
-    if !can_add_completion(builder) {
+    if !supports_provider(builder) {
         return None;
     }
 
@@ -36,7 +58,6 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
 
     let text_edit_range = get_text_edit_range_in_string(builder, string_token.clone())?;
     add_modules(builder, &string_token.get_value(), Some(text_edit_range));
-    builder.stop_here();
     Some(())
 }
 

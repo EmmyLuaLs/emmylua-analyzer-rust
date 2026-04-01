@@ -11,11 +11,33 @@ use emmylua_parser_desc::{LuaDescRefPathItem, parse_ref_target};
 use rowan::TextRange;
 use std::collections::HashSet;
 
-pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct DescProvider;
+
+impl CompletionProvider for DescProvider {
+    fn name(&self) -> &'static str {
+        "doc_description"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
     detect_path(builder).is_some()
 }
 
-pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
@@ -27,8 +49,6 @@ pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
     } else {
         add_by_prefix(builder, &path);
     }
-
-    builder.stop_here();
 
     Some(())
 }

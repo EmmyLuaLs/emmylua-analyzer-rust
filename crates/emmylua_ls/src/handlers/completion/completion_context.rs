@@ -1,8 +1,8 @@
 use super::{
     completion_builder::CompletionBuilder,
     providers::{
-        desc_provider, doc_name_token_provider, doc_tag_provider, doc_type_provider,
-        file_path_provider, module_path_provider, table_field_provider,
+        CompletionProvider, DescProvider, DocNameTokenProvider, DocTagProvider, DocTypeProvider,
+        FilePathProvider, ModulePathProvider, TableFieldProvider,
     },
 };
 
@@ -20,31 +20,31 @@ pub enum CompletionContext {
 
 impl CompletionContext {
     pub fn analyze(builder: &CompletionBuilder) -> Self {
-        if doc_tag_provider::can_add_completion(builder) {
+        if DocTagProvider.supports(builder) {
             return Self::DocTag;
         }
 
-        if doc_name_token_provider::can_add_completion(builder) {
+        if DocNameTokenProvider.supports(builder) {
             return Self::DocName;
         }
 
-        if doc_type_provider::get_completion_type(builder).is_some() {
+        if DocTypeProvider.supports(builder) {
             return Self::DocType;
         }
 
-        if desc_provider::can_add_completion(builder) {
+        if DescProvider.supports(builder) {
             return Self::DocDescription;
         }
 
-        if module_path_provider::can_add_completion(builder) {
+        if ModulePathProvider.supports(builder) {
             return Self::ModulePath;
         }
 
-        if file_path_provider::can_add_completion(builder) {
+        if FilePathProvider.supports(builder) {
             return Self::FilePath;
         }
 
-        if table_field_provider::has_exclusive_completion(builder) {
+        if TableFieldProvider.supports(builder) {
             return Self::TableField;
         }
 

@@ -5,7 +5,32 @@ use rowan::{TextRange, TextSize, TokenAtOffset};
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct PostfixProvider;
+
+impl CompletionProvider for PostfixProvider {
+    fn name(&self) -> &'static str {
+        "postfix"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        is_postfix_trigger(
+            builder.trigger_token.kind().into(),
+            builder.semantic_model.get_emmyrc(),
+        )
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Continue
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
