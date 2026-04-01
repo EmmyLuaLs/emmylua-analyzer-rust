@@ -2,7 +2,7 @@ use rowan::TextSize;
 
 #[derive(Debug, Clone)]
 pub struct LineIndex {
-    line_offsets: Vec<TextSize>,
+    line_offsets: Vec<u32>,
     line_only_ascii_vec: Vec<bool>,
 }
 
@@ -10,18 +10,15 @@ impl LineIndex {
     pub fn parse(text: &str) -> LineIndex {
         let mut line_offsets = Vec::new();
         let mut line_only_ascii_vec = Vec::new();
-        let mut offset = 0;
-
-        line_offsets.push(TextSize::from(offset as u32));
+        line_offsets.push(0);
 
         let mut is_line_only_ascii = true;
-        for (i, c) in text.char_indices() {
-            if c == '\n' {
-                offset = i + 1; // 记录每行的字节偏移量
-                line_offsets.push(TextSize::from(offset as u32));
+        for (index, byte) in text.as_bytes().iter().copied().enumerate() {
+            if byte == b'\n' {
+                line_offsets.push((index + 1) as u32);
                 line_only_ascii_vec.push(is_line_only_ascii);
                 is_line_only_ascii = true;
-            } else if !c.is_ascii() {
+            } else if byte >= 0x80 {
                 is_line_only_ascii = false;
             }
         }
@@ -38,8 +35,7 @@ impl LineIndex {
     pub fn get_line_offset(&self, line: usize) -> Option<TextSize> {
         let line_index = line;
         if line_index < self.line_offsets.len() {
-            let line_offset = self.line_offsets[line_index];
-            Some(line_offset)
+            Some(TextSize::from(self.line_offsets[line_index]))
         } else {
             None
         }
@@ -47,35 +43,26 @@ impl LineIndex {
 
     // get line base 0
     pub fn get_line(&self, offset: TextSize) -> Option<usize> {
-        let offset_value = usize::from(offset);
-        match self
+        let offset = u32::from(offset);
+        let line = self
             .line_offsets
-            .binary_search(&TextSize::from(offset_value as u32))
-        {
-            Ok(line) => Some(line),
-            Err(line) => {
-                if line > 0 {
-                    Some(line - 1)
-                } else {
-                    None
-                }
-            }
-        }
+            .partition_point(|&line_offset| line_offset <= offset);
+        if line == 0 { None } else { Some(line - 1) }
     }
 
     pub fn get_line_with_start_offset(&self, offset: TextSize) -> Option<(usize, TextSize)> {
         let line = self.get_line(offset)?;
-        let start_offset = self.line_offsets[line];
+        let start_offset = TextSize::from(self.line_offsets[line]);
         Some((line, start_offset))
     }
 
+    #[inline]
+    fn is_line_only_ascii_index(&self, line: usize) -> bool {
+        self.line_only_ascii_vec.get(line).copied().unwrap_or(false)
+    }
+
     pub fn is_line_only_ascii(&self, line: TextSize) -> bool {
-        let line_index = usize::from(line);
-        if line_index < self.line_only_ascii_vec.len() {
-            self.line_only_ascii_vec[line_index]
-        } else {
-            false
-        }
+        self.is_line_only_ascii_index(usize::from(line))
     }
 
     pub fn line_count(&self) -> usize {
@@ -85,7 +72,7 @@ impl LineIndex {
     // get col base 0
     pub fn get_col(&self, offset: TextSize, source_text: &str) -> Option<usize> {
         let (line, start_offset) = self.get_line_with_start_offset(offset)?;
-        if self.is_line_only_ascii(line.try_into().unwrap()) {
+        if self.is_line_only_ascii_index(line) {
             Some(usize::from(offset - start_offset))
         } else {
             let text = &source_text[usize::from(start_offset)..usize::from(offset)];
@@ -96,7 +83,7 @@ impl LineIndex {
     // get line and col base 0
     pub fn get_line_col(&self, offset: TextSize, source_text: &str) -> Option<(usize, usize)> {
         let (line, start_offset) = self.get_line_with_start_offset(offset)?;
-        if self.is_line_only_ascii(line.try_into().unwrap()) {
+        if self.is_line_only_ascii_index(line) {
             Some((line, usize::from(offset - start_offset)))
         } else {
             let text = &source_text[usize::from(start_offset)..usize::from(offset)];
@@ -111,7 +98,7 @@ impl LineIndex {
             return Some(start_offset);
         }
 
-        if self.is_line_only_ascii(line.try_into().unwrap()) {
+        if self.is_line_only_ascii_index(line) {
             let col = col.min(source_text.len());
             Some(start_offset + TextSize::from(col as u32))
         } else {
@@ -140,7 +127,7 @@ impl LineIndex {
             return Some(0.into());
         }
 
-        if self.is_line_only_ascii(line.try_into().unwrap()) {
+        if self.is_line_only_ascii_index(line) {
             let col = col.min(source_text.len());
             Some(TextSize::from(col as u32))
         } else {

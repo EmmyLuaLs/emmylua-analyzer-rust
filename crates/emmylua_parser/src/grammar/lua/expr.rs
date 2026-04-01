@@ -52,6 +52,7 @@ fn parse_sub_expr(p: &mut LuaParser, limit: i32) -> ParseResult {
                     ),
                     op_range,
                 ));
+                m.complete(p);
                 return Err(err);
             }
         }
@@ -229,6 +230,7 @@ fn parse_param_name(p: &mut LuaParser, is_vararg: &mut bool) -> ParseResult {
                 &t!("expected parameter name or '...' (vararg)"),
                 p.current_token_range(),
             ));
+            m.complete(p);
             return Err(ParseFailReason::UnexpectedToken);
         }
     }
@@ -491,6 +493,7 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
                         &t!("expected expression inside parentheses"),
                         paren_range,
                     ));
+                    m.complete(p);
                     return Err(err);
                 }
             }
@@ -517,7 +520,10 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
         match p.current_token() {
             LuaTokenKind::TkDot | LuaTokenKind::TkColon | LuaTokenKind::TkLeftBracket => {
                 let m = cm.precede(p, LuaSyntaxKind::IndexExpr);
-                parse_index_struct(p)?;
+                if let Err(err) = parse_index_struct(p) {
+                    m.complete(p);
+                    return Err(err);
+                }
                 cm = m.complete(p);
             }
             LuaTokenKind::TkLeftParen
@@ -525,7 +531,10 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
             | LuaTokenKind::TkString
             | LuaTokenKind::TkLeftBrace => {
                 let m = cm.precede(p, LuaSyntaxKind::CallExpr);
-                parse_args(p)?;
+                if let Err(err) = parse_args(p) {
+                    m.complete(p);
+                    return Err(err);
+                }
                 cm = m.complete(p);
             }
             _ => {
@@ -559,7 +568,10 @@ fn parse_name_or_special_function(p: &mut LuaParser) -> ParseResult {
             | LuaTokenKind::TkLeftBrace
     ) {
         let m1 = cm.precede(p, special_kind);
-        parse_args(p)?;
+        if let Err(err) = parse_args(p) {
+            m1.complete(p);
+            return Err(err);
+        }
         cm = m1.complete(p);
     }
 
@@ -712,6 +724,7 @@ fn parse_args(p: &mut LuaParser) -> ParseResult {
                     &t!("invalid table constructor in function call"),
                     p.current_token_range(),
                 ));
+                m.complete(p);
                 return Err(err);
             }
         },
@@ -726,6 +739,7 @@ fn parse_args(p: &mut LuaParser) -> ParseResult {
                 p.current_token_range(),
             ));
 
+            m.complete(p);
             return Err(ParseFailReason::UnexpectedToken);
         }
     }

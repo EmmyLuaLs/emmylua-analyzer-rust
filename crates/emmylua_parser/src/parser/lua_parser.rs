@@ -351,6 +351,7 @@ fn is_invalid_kind(kind: LuaTokenKind) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::grammar::parse_chunk;
     use crate::text::Reader;
     use crate::{
         LuaParser, kind::LuaTokenKind, lexer::LuaLexer, parser::ParserConfig,
@@ -432,5 +433,41 @@ mod tests {
 
         let tree = LuaParser::parse(lua_code, ParserConfig::default());
         println!("{:#?}", tree.get_red_root());
+    }
+
+    #[test]
+    fn test_invalid_suffixed_expr_keeps_mark_level_balanced() {
+        let lua_code = r#"
+
+function MyClass:Test1(data)
+    if self.nId == 123 and self. then
+
+    end
+    print("Test1")
+end"#;
+        let mut errors = Vec::new();
+        let mut parser = new_parser(lua_code, ParserConfig::default(), &mut errors, false);
+
+        parse_chunk(&mut parser);
+
+        assert_eq!(parser.mark_level, 0);
+    }
+
+    #[test]
+    fn test_invalid_suffixed_expr_still_builds_recoverable_tree() {
+        let lua_code = r#"
+
+function MyClass:Test1(data)
+    if self.nId == 123 and self. then
+
+    end
+    print("Test1")
+end"#;
+
+        let tree = LuaParser::parse(lua_code, ParserConfig::default());
+        let result = format!("{:#?}", tree.get_red_root());
+
+        assert!(result.contains("Syntax(FuncStat)"));
+        assert!(result.contains("Syntax(IfStat)"));
     }
 }
