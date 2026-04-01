@@ -1,55 +1,50 @@
-use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaAstToken, LuaCallExprStat, LuaChunk, LuaComment, LuaDoStat,
-    LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaIfStat, LuaKind, LuaLocalFuncStat,
-    LuaLocalName, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaStat, LuaSyntaxId, LuaSyntaxKind,
-    LuaSyntaxNode, LuaSyntaxToken, LuaTokenKind, LuaVarExpr, LuaWhileStat,
-};
-use rowan::TextRange;
 use std::collections::HashMap;
 
 use crate::formatter::model::{StatementExprListLayoutKind, StatementExprListLayoutPlan};
 use crate::ir::{self, AlignEntry, DocIR};
+use emmylua_parser::*;
+use rowan::TextRange;
 
 use super::FormatContext;
-use super::expr;
-use super::model::{LayoutNodePlan, RootFormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected};
-use super::sequence::{
-    SequenceComment, SequenceEntry, SequenceLayoutCandidates, SequenceLayoutPolicy,
-    choose_sequence_layout, render_sequence, sequence_ends_with_comment, sequence_has_comment,
-    sequence_starts_with_inline_comment,
+use crate::formatter::model::{
+    LayoutNodePlan, RootFormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
 };
-use super::trivia::{
-    count_blank_lines_before, has_non_trivia_before_on_same_line_tokenwise,
-    node_has_direct_comment_child, trailing_gap_requests_alignment,
+use crate::formatter::sequence::*;
+use crate::formatter::trivia::*;
+
+mod control;
+mod helpers;
+
+use self::control::{
+    render_do_stat, render_for_range_stat, render_for_stat, render_func_stat, render_if_stat,
+    render_local_func_stat, render_repeat_stat, render_while_stat,
 };
+use self::helpers::*;
 
 pub fn render_root(ctx: &FormatContext, chunk: &LuaChunk, plan: &RootFormatPlan) -> Vec<DocIR> {
     let mut docs = Vec::new();
-
-    if plan.spacing.has_shebang
-        && let Some(first_token) = chunk.syntax().first_token()
+    if let Some(token) = chunk.syntax().first_token()
+        && token.kind() == LuaKind::Token(LuaTokenKind::TkShebang)
     {
-        docs.push(ir::text(first_token.text().to_string()));
-        docs.push(DocIR::HardLine);
+        docs.push(ir::source_token(token));
+        if !plan.layout.root_nodes.is_empty() {
+            docs.push(ir::hard_line());
+        }
     }
 
-    if !plan.layout.root_nodes.is_empty() {
-        docs.extend(render_aligned_block_layout_nodes(
-            ctx,
-            chunk.syntax(),
-            &plan.layout.root_nodes,
-            plan,
-        ));
-    }
-
+    docs.extend(render_aligned_block_layout_nodes(
+        ctx,
+        chunk.syntax(),
+        plan.layout.root_nodes.as_slice(),
+        plan,
+    ));
     if plan.line_breaks.insert_final_newline {
-        docs.push(DocIR::HardLine);
+        docs.push(ir::hard_line());
     }
-
     docs
 }
 
-pub(crate) fn render_closure_block_body(
+pub fn render_closure_block_body(
     ctx: &FormatContext,
     expr: &emmylua_parser::LuaClosureExpr,
     plan: &RootFormatPlan,
@@ -293,6 +288,7 @@ fn render_return_stat(
         return_token.as_ref(),
         LuaTokenKind::TkReturn,
     )];
+
     let exprs: Vec<_> = stat.get_expr_list().collect();
     if !exprs.is_empty() {
         let expr_list_plan = plan
@@ -333,550 +329,6 @@ fn render_return_stat(
     docs
 }
 
-fn render_while_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaWhileStat::cast(node) else {
-        return Vec::new();
-    };
-
-    let while_token = first_direct_token(stat.syntax(), LuaTokenKind::TkWhile);
-    let do_token = first_direct_token(stat.syntax(), LuaTokenKind::TkDo);
-    let mut docs = vec![token_or_kind_doc(
-        while_token.as_ref(),
-        LuaTokenKind::TkWhile,
-    )];
-
-    if has_direct_comment_before_token(stat.syntax(), do_token.as_ref()) {
-        let entries = collect_while_stat_entries(ctx, plan, &stat);
-        if sequence_has_comment(&entries) {
-            docs.extend(token_right_spacing_docs(plan, while_token.as_ref()));
-            render_sequence(&mut docs, &entries, false);
-            if !sequence_ends_with_comment(&entries) {
-                docs.push(ir::hard_line());
-            }
-            docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
-        } else {
-            docs.extend(token_right_spacing_docs(plan, while_token.as_ref()));
-            render_sequence(&mut docs, &entries, false);
-            docs.extend(token_left_spacing_docs(plan, do_token.as_ref()));
-            docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
-        }
-    } else {
-        docs.extend(token_right_spacing_docs(plan, while_token.as_ref()));
-        if let Some(cond) = stat.get_condition_expr() {
-            docs.extend(render_expr(ctx, plan, &cond));
-        }
-        docs.extend(token_left_spacing_docs(plan, do_token.as_ref()));
-        docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
-    }
-
-    let body_docs = render_boundary_owned_block(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        LuaTokenKind::TkDo,
-        do_token.as_ref(),
-        syntax_plan,
-        plan,
-    );
-    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
-        docs.push(ir::space());
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    } else {
-        docs.extend(body_docs);
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    }
-    docs
-}
-
-fn render_for_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaForStat::cast(node) else {
-        return Vec::new();
-    };
-
-    let for_token = first_direct_token(stat.syntax(), LuaTokenKind::TkFor);
-    let assign_token = first_direct_token(stat.syntax(), LuaTokenKind::TkAssign);
-    let comma_token = first_direct_token(stat.syntax(), LuaTokenKind::TkComma);
-    let do_token = first_direct_token(stat.syntax(), LuaTokenKind::TkDo);
-    let mut docs = vec![token_or_kind_doc(for_token.as_ref(), LuaTokenKind::TkFor)];
-
-    if has_direct_comment_before_token(stat.syntax(), do_token.as_ref()) {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    }
-
-    docs.extend(token_right_spacing_docs(plan, for_token.as_ref()));
-    if let Some(var_name) = stat.get_var_name() {
-        docs.push(ir::source_token(var_name.syntax().clone()));
-    }
-    docs.extend(token_left_spacing_docs(plan, assign_token.as_ref()));
-    docs.push(token_or_kind_doc(
-        assign_token.as_ref(),
-        LuaTokenKind::TkAssign,
-    ));
-
-    let iter_exprs: Vec<_> = stat.get_iter_expr().collect();
-    let Some(expr_list_plan) = plan
-        .layout
-        .control_header_expr_lists
-        .get(&syntax_plan.syntax_id)
-        .copied()
-    else {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    };
-    let expr_docs: Vec<Vec<DocIR>> = iter_exprs
-        .iter()
-        .enumerate()
-        .map(|(index, expr)| {
-            format_statement_value_expr(
-                ctx,
-                plan,
-                expr,
-                index == 0
-                    && matches!(
-                        expr_list_plan.kind,
-                        StatementExprListLayoutKind::PreserveFirstMultiline
-                    ),
-            )
-        })
-        .collect();
-    docs.extend(render_header_exprs(
-        ctx,
-        plan,
-        expr_list_plan,
-        assign_token.as_ref(),
-        comma_token.as_ref(),
-        expr_docs,
-    ));
-    docs.extend(token_left_spacing_docs(plan, do_token.as_ref()));
-    docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
-
-    let body_docs = render_boundary_owned_block(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        LuaTokenKind::TkDo,
-        do_token.as_ref(),
-        syntax_plan,
-        plan,
-    );
-    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
-        docs.push(ir::space());
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    } else {
-        docs.extend(body_docs);
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    }
-    docs
-}
-
-fn render_for_range_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaForRangeStat::cast(node) else {
-        return Vec::new();
-    };
-
-    let for_token = first_direct_token(stat.syntax(), LuaTokenKind::TkFor);
-    let in_token = first_direct_token(stat.syntax(), LuaTokenKind::TkIn);
-    let comma_token = first_direct_token(stat.syntax(), LuaTokenKind::TkComma);
-    let do_token = first_direct_token(stat.syntax(), LuaTokenKind::TkDo);
-    let mut docs = vec![token_or_kind_doc(for_token.as_ref(), LuaTokenKind::TkFor)];
-
-    if has_direct_comment_before_token(stat.syntax(), in_token.as_ref())
-        || has_direct_comment_before_token(stat.syntax(), do_token.as_ref())
-    {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    }
-
-    docs.extend(token_right_spacing_docs(plan, for_token.as_ref()));
-    let var_names: Vec<_> = stat.get_var_name_list().collect();
-    for (index, name) in var_names.iter().enumerate() {
-        if index > 0 {
-            docs.extend(comma_flat_separator(plan, comma_token.as_ref()));
-        }
-        docs.push(ir::source_token(name.syntax().clone()));
-    }
-    docs.extend(token_left_spacing_docs(plan, in_token.as_ref()));
-    docs.push(token_or_kind_doc(in_token.as_ref(), LuaTokenKind::TkIn));
-
-    let exprs: Vec<_> = stat.get_expr_list().collect();
-    let Some(expr_list_plan) = plan
-        .layout
-        .control_header_expr_lists
-        .get(&syntax_plan.syntax_id)
-        .copied()
-    else {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    };
-    let expr_docs: Vec<Vec<DocIR>> = exprs
-        .iter()
-        .enumerate()
-        .map(|(index, expr)| {
-            format_statement_value_expr(
-                ctx,
-                plan,
-                expr,
-                index == 0
-                    && matches!(
-                        expr_list_plan.kind,
-                        StatementExprListLayoutKind::PreserveFirstMultiline
-                    ),
-            )
-        })
-        .collect();
-    let Some(in_leading_docs) = render_boundary_header_leading_docs(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        LuaTokenKind::TkIn,
-        in_token.as_ref(),
-        plan,
-    ) else {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    };
-    docs.extend(render_header_exprs_with_leading_docs(
-        ctx,
-        plan,
-        expr_list_plan,
-        in_leading_docs,
-        comma_token.as_ref(),
-        expr_docs,
-    ));
-    docs.extend(token_left_spacing_docs(plan, do_token.as_ref()));
-    docs.push(token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo));
-
-    let body_docs = render_boundary_owned_block(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        LuaTokenKind::TkDo,
-        do_token.as_ref(),
-        syntax_plan,
-        plan,
-    );
-    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
-        docs.push(ir::space());
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    } else {
-        docs.extend(body_docs);
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    }
-    docs
-}
-
-fn render_repeat_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaRepeatStat::cast(node) else {
-        return Vec::new();
-    };
-
-    let repeat_token = first_direct_token(stat.syntax(), LuaTokenKind::TkRepeat);
-    let until_token = first_direct_token(stat.syntax(), LuaTokenKind::TkUntil);
-    let has_inline_comment = plan
-        .layout
-        .control_headers
-        .get(&syntax_plan.syntax_id)
-        .is_some_and(|layout| layout.has_inline_comment);
-    let mut docs = vec![token_or_kind_doc(
-        repeat_token.as_ref(),
-        LuaTokenKind::TkRepeat,
-    )];
-
-    docs.extend(render_control_body(ctx, root, syntax_plan, plan));
-    docs.push(token_or_kind_doc(
-        until_token.as_ref(),
-        LuaTokenKind::TkUntil,
-    ));
-
-    if node_has_direct_comment_child(stat.syntax()) {
-        let entries = collect_repeat_stat_entries(ctx, plan, &stat);
-        let tail = render_trivia_aware_sequence_tail(
-            plan,
-            token_right_spacing_docs(plan, until_token.as_ref()),
-            &entries,
-        );
-        if has_inline_comment {
-            docs.push(ir::indent(tail));
-        } else {
-            docs.extend(tail);
-        }
-    } else if let Some(cond) = stat.get_condition_expr() {
-        docs.extend(token_right_spacing_docs(plan, until_token.as_ref()));
-        docs.extend(render_expr(ctx, plan, &cond));
-    }
-
-    docs
-}
-
-fn render_if_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaIfStat::cast(node) else {
-        return Vec::new();
-    };
-
-    if let Some(preserved) = try_preserve_single_line_if_body(ctx, &stat) {
-        return preserved;
-    }
-
-    let if_token = first_direct_token(stat.syntax(), LuaTokenKind::TkIf);
-    let then_token = first_direct_token(stat.syntax(), LuaTokenKind::TkThen);
-    if has_direct_comment_before_token(stat.syntax(), then_token.as_ref())
-        || stat.get_else_if_clause_list().clone().any(|clause| {
-            let clause_then_token = first_direct_token(clause.syntax(), LuaTokenKind::TkThen);
-            has_direct_comment_before_token(clause.syntax(), clause_then_token.as_ref())
-        })
-    {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    }
-
-    let mut docs = vec![token_or_kind_doc(if_token.as_ref(), LuaTokenKind::TkIf)];
-    docs.extend(token_right_spacing_docs(plan, if_token.as_ref()));
-    if let Some(cond) = stat.get_condition_expr() {
-        docs.extend(render_expr(ctx, plan, &cond));
-    }
-    docs.extend(token_left_spacing_docs(plan, then_token.as_ref()));
-    docs.push(token_or_kind_doc(then_token.as_ref(), LuaTokenKind::TkThen));
-    docs.extend(render_boundary_owned_block(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        LuaTokenKind::TkThen,
-        then_token.as_ref(),
-        syntax_plan,
-        plan,
-    ));
-
-    let else_if_plans: Vec<_> = syntax_plan
-        .children
-        .iter()
-        .filter_map(|child| match child {
-            LayoutNodePlan::Syntax(plan) if plan.kind == LuaSyntaxKind::ElseIfClauseStat => {
-                Some(plan)
-            }
-            _ => None,
-        })
-        .collect();
-    for (clause, clause_plan) in stat.get_else_if_clause_list().zip(else_if_plans) {
-        let else_if_token = first_direct_token(clause.syntax(), LuaTokenKind::TkElseIf);
-        let then_token = first_direct_token(clause.syntax(), LuaTokenKind::TkThen);
-        docs.push(token_or_kind_doc(
-            else_if_token.as_ref(),
-            LuaTokenKind::TkElseIf,
-        ));
-        docs.extend(token_right_spacing_docs(plan, else_if_token.as_ref()));
-        if let Some(cond) = clause.get_condition_expr() {
-            docs.extend(render_expr(ctx, plan, &cond));
-        }
-        docs.extend(token_left_spacing_docs(plan, then_token.as_ref()));
-        docs.push(token_or_kind_doc(then_token.as_ref(), LuaTokenKind::TkThen));
-        docs.extend(render_boundary_owned_block(
-            ctx,
-            root,
-            clause_plan.syntax_id,
-            LuaTokenKind::TkThen,
-            then_token.as_ref(),
-            clause_plan,
-            plan,
-        ));
-    }
-
-    if let Some(else_clause) = stat.get_else_clause() {
-        let else_token = first_direct_token(else_clause.syntax(), LuaTokenKind::TkElse);
-        docs.push(token_or_kind_doc(else_token.as_ref(), LuaTokenKind::TkElse));
-        if let Some(else_plan) =
-            find_direct_child_plan_by_kind(syntax_plan, LuaSyntaxKind::ElseClauseStat)
-        {
-            docs.extend(render_boundary_owned_block(
-                ctx,
-                root,
-                else_plan.syntax_id,
-                LuaTokenKind::TkElse,
-                else_token.as_ref(),
-                else_plan,
-                plan,
-            ));
-        } else {
-            docs.push(ir::hard_line());
-        }
-    }
-
-    docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    docs
-}
-
-fn render_func_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaFuncStat::cast(node) else {
-        return Vec::new();
-    };
-    let Some(closure) = stat.get_closure() else {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    };
-
-    let params_open_token = closure
-        .get_params_list()
-        .and_then(|params| first_direct_token(params.syntax(), LuaTokenKind::TkLeftParen));
-    if has_direct_comment_before_token(stat.syntax(), params_open_token.as_ref()) {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    }
-
-    let global_token = first_direct_token(stat.syntax(), LuaTokenKind::TkGlobal);
-    let function_token = first_direct_token(stat.syntax(), LuaTokenKind::TkFunction);
-    let mut docs = Vec::new();
-
-    if let Some(global_token) = global_token.as_ref() {
-        docs.push(ir::source_token(global_token.clone()));
-        docs.extend(token_right_spacing_docs(plan, Some(global_token)));
-    }
-
-    docs.push(token_or_kind_doc(
-        function_token.as_ref(),
-        LuaTokenKind::TkFunction,
-    ));
-    docs.extend(token_right_spacing_docs(plan, function_token.as_ref()));
-
-    if let Some(name) = stat.get_func_name() {
-        docs.extend(render_expr(ctx, plan, &name.into()));
-    }
-
-    docs.extend(render_named_function_closure_tail(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        syntax_plan,
-        plan,
-        &closure,
-    ));
-    docs
-}
-
-fn render_local_func_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaLocalFuncStat::cast(node) else {
-        return Vec::new();
-    };
-    let Some(closure) = stat.get_closure() else {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    };
-
-    let params_open_token = closure
-        .get_params_list()
-        .and_then(|params| first_direct_token(params.syntax(), LuaTokenKind::TkLeftParen));
-    if has_direct_comment_before_token(stat.syntax(), params_open_token.as_ref()) {
-        return vec![ir::source_node_trimmed(stat.syntax().clone())];
-    }
-
-    let local_token = first_direct_token(stat.syntax(), LuaTokenKind::TkLocal);
-    let function_token = first_direct_token(stat.syntax(), LuaTokenKind::TkFunction);
-    let mut docs = vec![token_or_kind_doc(
-        local_token.as_ref(),
-        LuaTokenKind::TkLocal,
-    )];
-    docs.extend(token_right_spacing_docs(plan, local_token.as_ref()));
-    docs.push(token_or_kind_doc(
-        function_token.as_ref(),
-        LuaTokenKind::TkFunction,
-    ));
-    docs.extend(token_right_spacing_docs(plan, function_token.as_ref()));
-
-    if let Some(name) = stat.get_local_name() {
-        docs.extend(format_local_name_ir(&name));
-    }
-
-    docs.extend(render_named_function_closure_tail(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        syntax_plan,
-        plan,
-        &closure,
-    ));
-    docs
-}
-
-fn render_do_stat(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
-        return Vec::new();
-    };
-    let Some(stat) = LuaDoStat::cast(node) else {
-        return Vec::new();
-    };
-
-    let do_token = first_direct_token(stat.syntax(), LuaTokenKind::TkDo);
-    let mut docs = vec![token_or_kind_doc(do_token.as_ref(), LuaTokenKind::TkDo)];
-    let body_docs = render_boundary_owned_block(
-        ctx,
-        root,
-        syntax_plan.syntax_id,
-        LuaTokenKind::TkDo,
-        do_token.as_ref(),
-        syntax_plan,
-        plan,
-    );
-    if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
-        docs.push(ir::space());
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    } else {
-        docs.extend(body_docs);
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-    }
-    docs
-}
-
 fn render_call_expr_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
@@ -895,57 +347,6 @@ fn render_call_expr_stat(
         .map(|expr| render_expr(ctx, plan, &expr.into()))
         .unwrap_or_default();
     append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
-    docs
-}
-
-fn render_named_function_closure_tail(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    owner_syntax_id: LuaSyntaxId,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-    closure: &emmylua_parser::LuaClosureExpr,
-) -> Vec<DocIR> {
-    let mut docs = if let Some(params) = closure.get_params_list() {
-        let open = first_direct_token(params.syntax(), LuaTokenKind::TkLeftParen);
-        let mut docs = token_left_spacing_docs(plan, open.as_ref());
-        docs.extend(expr::format_param_list_ir(ctx, plan, &params));
-        docs
-    } else {
-        vec![
-            ir::syntax_token(LuaTokenKind::TkLeftParen),
-            ir::syntax_token(LuaTokenKind::TkRightParen),
-        ]
-    };
-
-    if let Some(closure_plan) =
-        find_direct_child_plan_by_kind(syntax_plan, LuaSyntaxKind::ClosureExpr)
-    {
-        let close_token = closure
-            .get_params_list()
-            .and_then(|params| first_direct_token(params.syntax(), LuaTokenKind::TkRightParen));
-        let body_docs = render_boundary_owned_block(
-            ctx,
-            root,
-            owner_syntax_id,
-            LuaTokenKind::TkRightParen,
-            close_token.as_ref(),
-            closure_plan,
-            plan,
-        );
-        if matches!(body_docs.as_slice(), [DocIR::HardLine]) {
-            docs.push(ir::space());
-            docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-            return docs;
-        }
-
-        docs.extend(body_docs);
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
-        return docs;
-    }
-
-    docs.push(ir::space());
-    docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
     docs
 }
 
@@ -1297,38 +698,6 @@ fn collect_return_stat_entries(
     entries
 }
 
-fn collect_while_stat_entries(
-    ctx: &FormatContext,
-    plan: &RootFormatPlan,
-    stat: &LuaWhileStat,
-) -> Vec<SequenceEntry> {
-    let mut entries = Vec::new();
-    for child in stat.syntax().children_with_tokens() {
-        match child.kind() {
-            LuaKind::Syntax(LuaSyntaxKind::Comment) => {
-                if let Some(node) = child.as_node()
-                    && let Some(comment) = LuaComment::cast(node.clone())
-                {
-                    entries.push(SequenceEntry::Comment(SequenceComment {
-                        docs: vec![ir::source_node_trimmed(comment.syntax().clone())],
-                        inline_after_previous: has_non_trivia_before_on_same_line_tokenwise(
-                            comment.syntax(),
-                        ),
-                    }));
-                }
-            }
-            _ => {
-                if let Some(node) = child.as_node()
-                    && let Some(expr) = LuaExpr::cast(node.clone())
-                {
-                    entries.push(SequenceEntry::Item(render_expr(ctx, plan, &expr)));
-                }
-            }
-        }
-    }
-    entries
-}
-
 fn has_direct_comment_before_token(syntax: &LuaSyntaxNode, token: Option<&LuaSyntaxToken>) -> bool {
     let Some(token) = token else {
         return false;
@@ -1339,69 +708,6 @@ fn has_direct_comment_before_token(syntax: &LuaSyntaxNode, token: Option<&LuaSyn
         child.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment)
             && child.text_range().start() < token_start
     })
-}
-
-fn render_boundary_owned_block(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    owner_syntax_id: LuaSyntaxId,
-    anchor_kind: LuaTokenKind,
-    anchor_token: Option<&LuaSyntaxToken>,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let boundary_comment_ids = boundary_comment_ids_for_anchor(plan, owner_syntax_id, anchor_kind);
-    let body_docs = render_block_from_parent_plan(ctx, root, syntax_plan, plan);
-
-    render_boundary_body_docs(
-        ctx,
-        root,
-        anchor_token,
-        boundary_comment_ids,
-        body_docs,
-        plan,
-    )
-}
-
-fn render_boundary_header_leading_docs(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    owner_syntax_id: LuaSyntaxId,
-    anchor_kind: LuaTokenKind,
-    anchor_token: Option<&LuaSyntaxToken>,
-    plan: &RootFormatPlan,
-) -> Option<Vec<DocIR>> {
-    let boundary_comment_ids = boundary_comment_ids_for_anchor(plan, owner_syntax_id, anchor_kind);
-    if boundary_comment_ids.is_empty() {
-        return Some(token_right_spacing_docs(plan, anchor_token));
-    }
-
-    let mut docs = Vec::new();
-    for (index, comment_id) in boundary_comment_ids.iter().enumerate() {
-        let comment_node = find_node_by_id(root, *comment_id)?;
-        let comment = LuaComment::cast(comment_node.clone())?;
-        if index == 0 && comment_is_inline_after_anchor(root, anchor_token, comment.syntax()) {
-            docs.extend(boundary_inline_separator_docs(plan, anchor_token));
-            docs.extend(render_comment_with_spacing(ctx, &comment, plan));
-        } else {
-            return None;
-        }
-    }
-
-    Some(docs)
-}
-
-fn boundary_comment_ids_for_anchor(
-    plan: &RootFormatPlan,
-    owner_syntax_id: LuaSyntaxId,
-    anchor_kind: LuaTokenKind,
-) -> &[LuaSyntaxId] {
-    plan.layout
-        .boundary_comments
-        .get(&owner_syntax_id)
-        .and_then(|anchors| anchors.get(&anchor_kind))
-        .map(|layout| layout.comment_ids.as_slice())
-        .unwrap_or(&[])
 }
 
 fn render_header_exprs_with_leading_docs(
@@ -1435,38 +741,6 @@ fn render_header_exprs_with_leading_docs(
             expr_docs,
         )
     }
-}
-
-fn collect_repeat_stat_entries(
-    ctx: &FormatContext,
-    plan: &RootFormatPlan,
-    stat: &LuaRepeatStat,
-) -> Vec<SequenceEntry> {
-    let mut entries = Vec::new();
-    for child in stat.syntax().children_with_tokens() {
-        match child.kind() {
-            LuaKind::Syntax(LuaSyntaxKind::Comment) => {
-                if let Some(node) = child.as_node()
-                    && let Some(comment) = LuaComment::cast(node.clone())
-                {
-                    entries.push(SequenceEntry::Comment(SequenceComment {
-                        docs: vec![ir::source_node_trimmed(comment.syntax().clone())],
-                        inline_after_previous: has_non_trivia_before_on_same_line_tokenwise(
-                            comment.syntax(),
-                        ),
-                    }));
-                }
-            }
-            _ => {
-                if let Some(node) = child.as_node()
-                    && let Some(expr) = LuaExpr::cast(node.clone())
-                {
-                    entries.push(SequenceEntry::Item(render_expr(ctx, plan, &expr)));
-                }
-            }
-        }
-    }
-    entries
 }
 
 fn format_local_name_ir(local_name: &LuaLocalName) -> Vec<DocIR> {
@@ -1599,40 +873,6 @@ fn render_statement_exprs(
     }
 }
 
-fn render_header_exprs(
-    ctx: &FormatContext,
-    plan: &RootFormatPlan,
-    expr_list_plan: StatementExprListLayoutPlan,
-    leading_token: Option<&LuaSyntaxToken>,
-    comma_token: Option<&LuaSyntaxToken>,
-    expr_docs: Vec<Vec<DocIR>>,
-) -> Vec<DocIR> {
-    let leading_docs = token_right_spacing_docs(plan, leading_token);
-    let attach_first_multiline = expr_docs
-        .first()
-        .is_some_and(|docs| crate::ir::ir_has_forced_line_break(docs))
-        || matches!(
-            expr_list_plan.kind,
-            StatementExprListLayoutKind::PreserveFirstMultiline
-        );
-    if attach_first_multiline {
-        format_statement_expr_list_with_attached_first_multiline(
-            comma_token,
-            leading_docs,
-            expr_docs,
-        )
-    } else {
-        format_statement_expr_list(
-            ctx,
-            plan,
-            expr_list_plan,
-            comma_token,
-            leading_docs,
-            expr_docs,
-        )
-    }
-}
-
 fn build_statement_expr_fill_parts(
     comma_token: Option<&LuaSyntaxToken>,
     leading_docs: Vec<DocIR>,
@@ -1704,61 +944,6 @@ fn build_statement_expr_packed(
     vec![ir::group_break(vec![ir::indent(docs)])]
 }
 
-fn is_block_like_expr(expr: &LuaExpr) -> bool {
-    matches!(expr, LuaExpr::ClosureExpr(_) | LuaExpr::TableExpr(_))
-}
-
-fn try_preserve_single_line_if_body(ctx: &FormatContext, stat: &LuaIfStat) -> Option<Vec<DocIR>> {
-    if stat.syntax().text().contains_char('\n') {
-        return None;
-    }
-
-    let text_len: u32 = stat.syntax().text().len().into();
-    let reserve_width = if ctx.config.layout.max_line_width > 40 {
-        8
-    } else {
-        4
-    };
-    if text_len as usize + reserve_width > ctx.config.layout.max_line_width {
-        return None;
-    }
-
-    if stat.get_else_clause().is_some() || stat.get_else_if_clause_list().next().is_some() {
-        return None;
-    }
-
-    let block = stat.get_block()?;
-    let mut stats = block.get_stats();
-    let only_stat = stats.next()?;
-    if stats.next().is_some() {
-        return None;
-    }
-
-    if !is_simple_single_line_if_body(&only_stat) {
-        return None;
-    }
-
-    Some(vec![ir::source_node(stat.syntax().clone())])
-}
-
-fn is_simple_single_line_if_body(stat: &LuaStat) -> bool {
-    match stat {
-        LuaStat::ReturnStat(_)
-        | LuaStat::BreakStat(_)
-        | LuaStat::GotoStat(_)
-        | LuaStat::CallExprStat(_) => true,
-        LuaStat::LocalStat(local) => {
-            let exprs: Vec<_> = local.get_value_exprs().collect();
-            exprs.len() <= 1 && exprs.iter().all(|expr| !is_block_like_expr(expr))
-        }
-        LuaStat::AssignStat(assign) => {
-            let (_, exprs) = assign.get_var_and_expr_list();
-            exprs.len() <= 1 && exprs.iter().all(|expr| !is_block_like_expr(expr))
-        }
-        _ => false,
-    }
-}
-
 fn format_statement_value_expr(
     ctx: &FormatContext,
     plan: &RootFormatPlan,
@@ -1780,28 +965,6 @@ fn render_unmigrated_syntax_leaf(root: &LuaSyntaxNode, syntax_id: LuaSyntaxId) -
     vec![ir::source_node_trimmed(node)]
 }
 
-fn render_control_body(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let block_plan = block_plan_from_parent_plan(syntax_plan);
-
-    render_block_plan(ctx, root, block_plan, plan)
-}
-
-fn render_block_from_parent_plan(
-    ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
-) -> Vec<DocIR> {
-    let block_plan = block_plan_from_parent_plan(syntax_plan);
-
-    render_block_plan(ctx, root, block_plan, plan)
-}
-
 fn block_plan_from_parent_plan(
     syntax_plan: &SyntaxNodeLayoutPlan,
 ) -> Option<&SyntaxNodeLayoutPlan> {
@@ -1811,22 +974,17 @@ fn block_plan_from_parent_plan(
     })
 }
 
-fn render_block_plan(
+fn render_block_plan_without_excluded_comments(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     block_plan: Option<&SyntaxNodeLayoutPlan>,
     plan: &RootFormatPlan,
+    excluded_comment_ids: &[LuaSyntaxId],
 ) -> Vec<DocIR> {
     let Some(block_plan) = block_plan else {
         return vec![ir::hard_line()];
     };
 
-    let excluded_comment_ids = plan
-        .layout
-        .block_excluded_comments
-        .get(&block_plan.syntax_id)
-        .cloned()
-        .unwrap_or_default();
     let filtered_children;
     let block_children = if excluded_comment_ids.is_empty() {
         Some(block_plan.children.as_slice())
@@ -1844,6 +1002,7 @@ fn render_block_plan(
             .collect::<Vec<_>>();
         Some(filtered_children.as_slice())
     };
+
     let docs = render_block_children(ctx, root, block_children, plan);
     if !matches!(docs.as_slice(), [DocIR::HardLine]) {
         return docs;
@@ -1861,59 +1020,19 @@ fn render_block_plan(
     prepend_comment_lines_to_block_docs(docs, direct_comments)
 }
 
-fn render_boundary_body_docs(
+fn render_direct_body_comment(
+    comment: LuaComment,
     ctx: &FormatContext,
-    root: &LuaSyntaxNode,
-    anchor_token: Option<&LuaSyntaxToken>,
-    boundary_comment_ids: &[LuaSyntaxId],
-    body_docs: Vec<DocIR>,
     plan: &RootFormatPlan,
 ) -> Vec<DocIR> {
-    if boundary_comment_ids.is_empty() {
-        return body_docs;
-    }
-
-    let mut inline_prefix = Vec::new();
-    let mut block_comments = Vec::new();
-
-    for (index, comment_id) in boundary_comment_ids.iter().enumerate() {
-        let Some(comment_node) = find_node_by_id(root, *comment_id) else {
-            continue;
-        };
-        let Some(comment) = LuaComment::cast(comment_node.clone()) else {
-            continue;
-        };
-        let comment_docs = render_comment_with_spacing(ctx, &comment, plan);
-        let is_inline_after_anchor =
-            index == 0 && comment_is_inline_after_anchor(root, anchor_token, comment.syntax());
-        if is_inline_after_anchor {
-            inline_prefix.extend(boundary_inline_separator_docs(plan, anchor_token));
-            inline_prefix.extend(comment_docs);
-        } else {
-            block_comments.push(comment_docs);
-        }
-    }
-
-    let body_docs = prepend_comment_lines_to_block_docs(body_docs, block_comments);
-    if inline_prefix.is_empty() {
-        body_docs
-    } else {
-        let mut docs = inline_prefix;
-        docs.extend(body_docs);
-        docs
-    }
-}
-
-fn boundary_inline_separator_docs(
-    plan: &RootFormatPlan,
-    anchor_token: Option<&LuaSyntaxToken>,
-) -> Vec<DocIR> {
-    let spacing = token_right_spacing_docs(plan, anchor_token);
-    if spacing.is_empty() {
-        vec![ir::space()]
-    } else {
-        spacing
-    }
+    vec![
+        ir::indent({
+            let mut docs = vec![ir::hard_line()];
+            docs.extend(render_comment_with_spacing(ctx, &comment, plan));
+            docs
+        }),
+        ir::hard_line(),
+    ]
 }
 
 fn comment_is_inline_after_anchor(
@@ -2035,51 +1154,25 @@ fn try_render_aligned_statement_group(
     start: usize,
     plan: &RootFormatPlan,
 ) -> Option<(Vec<DocIR>, usize)> {
-    let anchor = statement_alignment_node_kind(&nodes[start])?;
+    let anchor_kind = statement_alignment_node_kind(&nodes[start])?;
     let allow_eq_alignment = ctx.config.align.continuous_assign_statement;
-    let allow_comment_alignment = ctx.config.should_align_statement_line_comments();
-    if !allow_eq_alignment && !allow_comment_alignment {
-        return None;
-    }
+    let mut entries = Vec::new();
+    let mut has_aligned_split = false;
+    let mut has_aligned_comment_signal = false;
 
-    let mut end = start + 1;
+    let mut end = start;
     while end < nodes.len() {
         if layout_comment_is_inline_trailing(root, nodes, end) {
             end += 1;
             continue;
         }
 
-        if count_blank_lines_before_layout_node(root, &nodes[end]) > 0 {
+        let node = &nodes[end];
+        if end > start && count_blank_lines_before_layout_node(root, node) > 0 {
             break;
         }
-
-        if !can_join_statement_alignment_group(ctx, root, anchor, &nodes[end], plan) {
+        if end > start && !can_join_statement_alignment_group(ctx, root, anchor_kind, node, plan) {
             break;
-        }
-
-        end += 1;
-    }
-
-    let statement_count = nodes[start..end]
-        .iter()
-        .filter(|node| statement_alignment_node_kind(node).is_some())
-        .count();
-    if statement_count < 2 {
-        return None;
-    }
-
-    let mut entries = Vec::new();
-    let mut has_aligned_split = false;
-    let mut has_aligned_comment_signal = false;
-
-    for node in &nodes[start..end] {
-        if let LayoutNodePlan::Comment(_) = node
-            && let Some(index) = nodes[start..end]
-                .iter()
-                .position(|candidate| std::ptr::eq(candidate, node))
-            && layout_comment_is_inline_trailing(root, nodes, start + index)
-        {
-            continue;
         }
 
         match node {
@@ -2122,6 +1215,8 @@ fn try_render_aligned_statement_group(
                 }
             }
         }
+
+        end += 1;
     }
 
     if !has_aligned_split && !has_aligned_comment_signal {
@@ -2305,12 +1400,15 @@ fn render_assign_stat_align_split(
 
     let expr_list_plan = plan.layout.statement_expr_lists.get(&syntax_id).copied()?;
     let comma_token = first_direct_token(stat.syntax(), LuaTokenKind::TkComma);
-    let assign_token = stat.get_assign_op().map(|op| op.syntax().clone());
-    let var_docs: Vec<Vec<DocIR>> = vars
-        .iter()
-        .map(|var| render_expr(ctx, plan, &var.clone().into()))
-        .collect();
-    let before = ir::intersperse(var_docs, comma_flat_separator(plan, comma_token.as_ref()));
+    let assign_token = first_direct_token(stat.syntax(), LuaTokenKind::TkAssign);
+
+    let mut before = Vec::new();
+    for (index, var) in vars.iter().enumerate() {
+        if index > 0 {
+            before.extend(comma_flat_separator(plan, comma_token.as_ref()));
+        }
+        before.extend(render_expr(ctx, plan, &var.clone().into()));
+    }
 
     let expr_docs: Vec<Vec<DocIR>> = exprs
         .iter()
@@ -2454,168 +1552,6 @@ fn has_inline_non_trivia_after(node: &LuaSyntaxNode) -> bool {
         }
     }
     false
-}
-
-fn render_expr(_ctx: &FormatContext, plan: &RootFormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
-    expr::format_expr(_ctx, plan, expr)
-}
-
-fn find_direct_child_plan_by_kind(
-    syntax_plan: &SyntaxNodeLayoutPlan,
-    kind: LuaSyntaxKind,
-) -> Option<&SyntaxNodeLayoutPlan> {
-    syntax_plan.children.iter().find_map(|child| match child {
-        LayoutNodePlan::Syntax(plan) if plan.kind == kind => Some(plan),
-        _ => None,
-    })
-}
-
-fn find_syntax_plan_by_id(
-    nodes: &[LayoutNodePlan],
-    syntax_id: LuaSyntaxId,
-) -> Option<&SyntaxNodeLayoutPlan> {
-    for node in nodes {
-        if let LayoutNodePlan::Syntax(plan) = node {
-            if plan.syntax_id == syntax_id {
-                return Some(plan);
-            }
-
-            if let Some(found) = find_syntax_plan_by_id(&plan.children, syntax_id) {
-                return Some(found);
-            }
-        }
-    }
-
-    None
-}
-
-fn token_or_kind_doc(token: Option<&LuaSyntaxToken>, fallback_kind: LuaTokenKind) -> DocIR {
-    token
-        .map(|token| ir::source_token(token.clone()))
-        .unwrap_or_else(|| ir::syntax_token(fallback_kind))
-}
-
-fn first_direct_token(node: &LuaSyntaxNode, kind: LuaTokenKind) -> Option<LuaSyntaxToken> {
-    node.children_with_tokens().find_map(|element| {
-        let token = element.into_token()?;
-        (token.kind().to_token() == kind).then_some(token)
-    })
-}
-
-fn token_left_spacing_docs(plan: &RootFormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
-    let Some(token) = token else {
-        return Vec::new();
-    };
-    spacing_docs_from_expected(plan.spacing.left_expected(LuaSyntaxId::from_token(token)))
-}
-
-fn token_right_spacing_docs(plan: &RootFormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
-    let Some(token) = token else {
-        return Vec::new();
-    };
-    spacing_docs_from_expected(plan.spacing.right_expected(LuaSyntaxId::from_token(token)))
-}
-
-fn spacing_docs_from_expected(expected: Option<&TokenSpacingExpected>) -> Vec<DocIR> {
-    match expected {
-        Some(TokenSpacingExpected::Space(count)) | Some(TokenSpacingExpected::MaxSpace(count)) => {
-            (0..*count).map(|_| ir::space()).collect()
-        }
-        None => Vec::new(),
-    }
-}
-
-fn comma_token_docs(token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
-    vec![token_or_kind_doc(token, LuaTokenKind::TkComma)]
-}
-
-fn comma_flat_separator(plan: &RootFormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
-    let mut docs = comma_token_docs(token);
-    docs.extend(token_right_spacing_docs(plan, token));
-    docs
-}
-
-fn comma_fill_separator(token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
-    let mut docs = comma_token_docs(token);
-    docs.push(ir::soft_line());
-    docs
-}
-
-fn separator_entry_from_token(
-    plan: &RootFormatPlan,
-    token: Option<&LuaSyntaxToken>,
-) -> SequenceEntry {
-    SequenceEntry::Separator {
-        docs: token
-            .map(|token| vec![ir::source_token(token.clone())])
-            .unwrap_or_else(|| comma_token_docs(None)),
-        after_docs: token_right_spacing_docs(plan, token),
-    }
-}
-
-fn render_trivia_aware_sequence_tail(
-    _plan: &RootFormatPlan,
-    leading_docs: Vec<DocIR>,
-    entries: &[SequenceEntry],
-) -> Vec<DocIR> {
-    let mut tail = if sequence_starts_with_inline_comment(entries) {
-        Vec::new()
-    } else {
-        leading_docs
-    };
-    if sequence_has_comment(entries) {
-        if sequence_starts_with_inline_comment(entries) {
-            render_sequence(&mut tail, entries, false);
-        } else {
-            tail.push(ir::hard_line());
-            render_sequence(&mut tail, entries, true);
-        }
-    } else {
-        render_sequence(&mut tail, entries, false);
-    }
-    tail
-}
-
-fn render_trivia_aware_split_sequence_tail(
-    plan: &RootFormatPlan,
-    leading_docs: Vec<DocIR>,
-    lhs_entries: &[SequenceEntry],
-    split_token: Option<&LuaSyntaxToken>,
-    rhs_entries: &[SequenceEntry],
-) -> Vec<DocIR> {
-    let mut tail = leading_docs;
-    if !lhs_entries.is_empty() {
-        render_sequence(&mut tail, lhs_entries, false);
-    }
-
-    if let Some(split_token) = split_token {
-        if sequence_ends_with_comment(lhs_entries) {
-            tail.push(ir::hard_line());
-            tail.push(ir::source_token(split_token.clone()));
-        } else if sequence_has_comment(lhs_entries) {
-            tail.push(ir::space());
-            tail.push(ir::source_token(split_token.clone()));
-        } else {
-            tail.extend(token_left_spacing_docs(plan, Some(split_token)));
-            tail.push(ir::source_token(split_token.clone()));
-        }
-
-        if !rhs_entries.is_empty() {
-            if sequence_has_comment(rhs_entries) {
-                if sequence_starts_with_inline_comment(rhs_entries) {
-                    render_sequence(&mut tail, rhs_entries, false);
-                } else {
-                    tail.push(ir::hard_line());
-                    render_sequence(&mut tail, rhs_entries, true);
-                }
-            } else {
-                tail.extend(token_right_spacing_docs(plan, Some(split_token)));
-                render_sequence(&mut tail, rhs_entries, false);
-            }
-        }
-    }
-
-    tail
 }
 
 fn render_comment_with_spacing(
@@ -3022,8 +1958,8 @@ fn format_doc_comment_line(
                 for (index, column) in rest.iter().enumerate() {
                     let source_index = index;
                     let padding = target_widths
-                        .and_then(|widths| widths.get(source_index))
-                        .map(|width| {
+                        .and_then(|widths: &Vec<usize>| widths.get(source_index))
+                        .map(|width: &usize| {
                             width.saturating_sub(tag.columns[source_index].len())
                                 + ctx.config.emmy_doc.tag_spacing
                         })
@@ -3266,27 +2202,6 @@ fn should_preserve_comment_raw(comment: &LuaComment) -> bool {
 
 fn dash_prefix_len(prefix_text: &str) -> usize {
     prefix_text.bytes().take_while(|byte| *byte == b'-').count()
-}
-
-fn count_blank_lines_before_layout_node(root: &LuaSyntaxNode, node: &LayoutNodePlan) -> usize {
-    let syntax_id = match node {
-        LayoutNodePlan::Comment(comment) => comment.syntax_id,
-        LayoutNodePlan::Syntax(syntax) => syntax.syntax_id,
-    };
-    let Some(node) = find_node_by_id(root, syntax_id) else {
-        return 0;
-    };
-
-    count_blank_lines_before(&node)
-}
-
-fn find_node_by_id(root: &LuaSyntaxNode, syntax_id: LuaSyntaxId) -> Option<LuaSyntaxNode> {
-    if LuaSyntaxId::from_node(root) == syntax_id {
-        return Some(root.clone());
-    }
-
-    root.descendants()
-        .find(|node| LuaSyntaxId::from_node(node) == syntax_id)
 }
 
 #[cfg(test)]

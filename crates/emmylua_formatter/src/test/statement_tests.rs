@@ -56,6 +56,14 @@ end
     }
 
     #[test]
+    fn test_if_comment_before_then_does_not_force_raw_preserve() {
+        assert_format!(
+            "if alpha + beta + gamma\n-- separator\nthen\nprint(1)\nend\n",
+            "if alpha + beta + gamma\n-- separator\nthen\n    print(1)\nend\n"
+        );
+    }
+
+    #[test]
     fn test_if_stat_preserves_inline_comment_after_then() {
         assert_format!(
             "if ok then -- keep header note\n    print(1)\nend\n",
@@ -80,6 +88,14 @@ end
     }
 
     #[test]
+    fn test_if_then_and_else_inline_comments_stay_with_their_clauses() {
+        assert_format!(
+            "if a then -- hello\n    local x = 123\nelse -- ii\nend\n",
+            "if a then -- hello\n    local x = 123\nelse -- ii\nend\n"
+        );
+    }
+
+    #[test]
     fn test_if_body_comment_does_not_force_raw_preserve() {
         assert_format!(
             "if ok then\n-- note\nprint(1)\nend\n",
@@ -92,6 +108,14 @@ end
         assert_format!(
             "if a then\n    print(1)\nelseif b\n-- separator\nthen\n    print(2)\nend\n",
             "if a then\n    print(1)\nelseif b\n-- separator\nthen\n    print(2)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_elseif_comment_before_then_does_not_force_raw_preserve() {
+        assert_format!(
+            "if a then\n    print(1)\nelseif alpha + beta + gamma\n-- separator\nthen\nprint(2)\nend\n",
+            "if a then\n    print(1)\nelseif alpha + beta + gamma\n-- separator\nthen\n    print(2)\nend\n"
         );
     }
 
@@ -249,6 +273,14 @@ end
     }
 
     #[test]
+    fn test_for_loop_comment_before_do_does_not_force_raw_preserve() {
+        assert_format!(
+            "for i = 1, 10\n-- separator\ndo\nprint(i+1)\nend\n",
+            "for i = 1, 10\n-- separator\ndo\n    print(i + 1)\nend\n"
+        );
+    }
+
+    #[test]
     fn test_for_loop_preserves_inline_comment_after_do() {
         assert_format!(
             "for i = 1, 10 do -- loop note\n    print(i)\nend\n",
@@ -260,6 +292,14 @@ end
     fn test_for_range_preserves_standalone_comment_before_in() {
         assert_format!(
             "for k, v\n-- separator\nin pairs(t) do\n    print(k, v)\nend\n",
+            "for k, v\n-- separator\nin pairs(t) do\n    print(k, v)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_for_range_comment_before_in_does_not_force_raw_preserve() {
+        assert_format!(
+            "for k,v\n-- separator\nin pairs(t) do\nprint(k,v)\nend\n",
             "for k, v\n-- separator\nin pairs(t) do\n    print(k, v)\nend\n"
         );
     }
@@ -277,6 +317,14 @@ end
         assert_format!(
             "for k, v in pairs(t) do -- body note\n    print(k, v)\nend\n",
             "for k, v in pairs(t) do -- body note\n    print(k, v)\nend\n"
+        );
+    }
+
+    #[test]
+    fn test_for_range_comment_before_do_does_not_force_raw_preserve() {
+        assert_format!(
+            "for k, v in pairs(t)\n-- separator\ndo\nprint(k,v)\nend\n",
+            "for k, v in pairs(t)\n-- separator\ndo\n    print(k, v)\nend\n"
         );
     }
 
@@ -382,6 +430,14 @@ end
     }
 
     #[test]
+    fn test_while_preserves_inline_comment_after_do() {
+        assert_format!(
+            "while x > 0 do -- loop note\n    x = x - 1\nend\n",
+            "while x > 0 do -- loop note\n    x = x - 1\nend\n"
+        );
+    }
+
+    #[test]
     fn test_while_header_breaks_with_long_condition() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {
@@ -432,6 +488,14 @@ until x > 10
     }
 
     #[test]
+    fn test_repeat_comment_before_until_does_not_force_raw_preserve() {
+        assert_format!(
+            "repeat\nx=x+1\n-- guard\nuntil ready(a,b)\n",
+            "repeat\n    x = x + 1\n    -- guard\nuntil ready(a, b)\n"
+        );
+    }
+
+    #[test]
     fn test_do_block() {
         assert_format!(
             r#"
@@ -444,6 +508,14 @@ do
     local x = 1
 end
 "#
+        );
+    }
+
+    #[test]
+    fn test_do_block_preserves_inline_comment_after_do() {
+        assert_format!(
+            "do -- block note\nlocal x=1\nend\n",
+            "do -- block note\n    local x = 1\nend\n"
         );
     }
 
