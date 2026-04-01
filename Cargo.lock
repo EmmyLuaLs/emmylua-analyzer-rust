@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_check"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "ansi_term",
  "clap",
@@ -560,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_code_analysis"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "dirs",
  "emmy_lsp_types",
@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_doc_cli"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "clap",
  "emmy_lsp_types",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_ls"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "chrono",
  "clap",
@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "rowan",
  "rust-i18n",
@@ -694,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser_desc"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "emmylua_parser",
  "googletest",
