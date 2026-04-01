@@ -228,7 +228,7 @@ fn get_constraint_type(
             if depth > 1 {
                 return None;
             }
-            let mut result = LuaType::Unknown;
+            let mut result = LuaType::Never;
             for union_member_type in union_type.into_vec().iter() {
                 let extend_type = get_constraint_type(semantic_model, union_member_type, depth + 1)
                     .unwrap_or(union_member_type.clone());

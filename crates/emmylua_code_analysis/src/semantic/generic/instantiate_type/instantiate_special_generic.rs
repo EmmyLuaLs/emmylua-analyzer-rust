@@ -283,7 +283,7 @@ fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
             for i in 1..10 {
                 let member_key = LuaMemberKey::Integer(i);
                 if let Some(member_info) = members.get(&member_key) {
-                    let mut member_type = LuaType::Unknown;
+                    let mut member_type = LuaType::Never;
                     for sub_member_info in member_info {
                         member_type = TypeOps::Union.apply(db, &member_type, &sub_member_info.typ);
                     }
@@ -311,6 +311,10 @@ fn instantiate_rawget_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaT
 }
 
 fn instantiate_index_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaType {
+    if owner.is_unknown() {
+        return LuaType::Unknown;
+    }
+
     if let LuaType::Variadic(variadic) = owner {
         match variadic.deref() {
             VariadicType::Base(base) => {

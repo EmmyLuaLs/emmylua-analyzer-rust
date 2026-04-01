@@ -7,7 +7,7 @@ use crate::{
     LuaInferCache, LuaSignature, LuaType, TypeOps, infer_expr, instantiate_func_generic,
     semantic::infer::{
         VarRefId,
-        narrow::{get_single_antecedent, get_type_at_flow::get_type_at_flow},
+        narrow::{get_single_antecedent, get_type_at_flow::get_type_at_flow, narrow_down_type},
     },
 };
 
@@ -50,8 +50,11 @@ impl CorrelatedConditionNarrowing {
                 None
             } else {
                 let matching_target_type = LuaType::from_vec(matching_target_types.clone());
-                let narrowed_correlated_type =
-                    TypeOps::Intersect.apply(db, &antecedent_type, &matching_target_type);
+                let narrowed_correlated_type = narrow_matching_correlated_type(
+                    db,
+                    antecedent_type.clone(),
+                    &matching_target_type,
+                );
                 if narrowed_correlated_type.is_never() {
                     None
                 } else {
@@ -230,7 +233,7 @@ fn collect_correlated_types_from_search_root(
                 root_uncorrelated_target_types.push(root_type);
             }
         } else {
-            let mut known_call_target_types = root_correlated_candidate_types;
+            let mut known_call_target_types = root_correlated_candidate_types.clone();
             known_call_target_types.extend(root_uncorrelated_target_types.iter().cloned());
             if let Some(remaining_root_type) =
                 get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id)
@@ -261,20 +264,102 @@ fn subtract_correlated_candidate_types(
             .into_vec()
             .into_iter()
             .filter(|member| {
-                !correlated_candidate_types.iter().any(|correlated_type| {
-                    TypeOps::Union.apply(db, correlated_type, member) == *correlated_type
-                })
+                !correlated_candidate_types
+                    .iter()
+                    .any(|correlated_type| correlated_type_contains(db, correlated_type, member))
             })
             .collect::<Vec<_>>(),
-        source_type => (!correlated_candidate_types.iter().any(|correlated_type| {
-            TypeOps::Union.apply(db, correlated_type, &source_type) == *correlated_type
-        }))
+        source_type => (!correlated_candidate_types
+            .iter()
+            .any(|correlated_type| correlated_type_contains(db, correlated_type, &source_type)))
         .then_some(source_type)
         .into_iter()
         .collect(),
     };
 
     (!remaining_types.is_empty()).then_some(LuaType::from_vec(remaining_types))
+}
+
+fn narrow_matching_correlated_type(
+    db: &DbIndex,
+    antecedent_type: LuaType,
+    matching_target_type: &LuaType,
+) -> LuaType {
+    if let LuaType::Union(union) = matching_target_type {
+        let narrowed_types = union
+            .into_vec()
+            .into_iter()
+            .filter_map(|member| {
+                let narrowed =
+                    narrow_matching_correlated_type(db, antecedent_type.clone(), &member);
+                (!narrowed.is_never()).then_some(narrowed)
+            })
+            .collect::<Vec<_>>();
+
+        return if narrowed_types.is_empty() {
+            LuaType::Never
+        } else {
+            LuaType::from_vec(narrowed_types)
+        };
+    }
+
+    if matching_target_type.is_unknown()
+        && let LuaType::Union(union) = &antecedent_type
+    {
+        let exact_unknown_types = union
+            .into_vec()
+            .into_iter()
+            .filter(|member| member.is_unknown())
+            .collect::<Vec<_>>();
+        if !exact_unknown_types.is_empty() {
+            return LuaType::from_vec(exact_unknown_types);
+        }
+    }
+
+    if let Some(narrowed_type) = narrow_down_type(
+        db,
+        antecedent_type.clone(),
+        matching_target_type.clone(),
+        None,
+    ) {
+        return narrowed_type;
+    }
+
+    match antecedent_type {
+        LuaType::Union(union) => {
+            let narrowed_types = union
+                .into_vec()
+                .into_iter()
+                .filter_map(|member| {
+                    let narrowed =
+                        narrow_matching_correlated_type(db, member, matching_target_type);
+                    (!narrowed.is_never()).then_some(narrowed)
+                })
+                .collect::<Vec<_>>();
+
+            if narrowed_types.is_empty() {
+                LuaType::Never
+            } else {
+                LuaType::from_vec(narrowed_types)
+            }
+        }
+        antecedent_type => TypeOps::Intersect.apply(db, &antecedent_type, matching_target_type),
+    }
+}
+
+fn correlated_type_contains(db: &DbIndex, container: &LuaType, target: &LuaType) -> bool {
+    if target.is_unknown() && !container.is_any() {
+        return match container {
+            LuaType::Unknown => true,
+            LuaType::Union(union) => union
+                .into_vec()
+                .iter()
+                .any(|member| correlated_type_contains(db, member, target)),
+            _ => false,
+        };
+    }
+
+    TypeOps::Union.apply(db, container, target) == *container
 }
 
 #[allow(clippy::too_many_arguments)]

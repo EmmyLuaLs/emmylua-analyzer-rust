@@ -175,4 +175,28 @@ mod test {
         );
         assert_eq!(ws.expr_ty("narrowed"), ws.ty("integer"));
     }
+
+    #[test]
+    fn test_pcall_any_callable_splits_success_unknown_and_failure_string() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@type any
+        local x
+
+        local ok, result = pcall(x)
+        outside = result
+        if ok then
+            success = result
+        else
+            failure = result
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("outside"), ws.ty("unknown|string"));
+        assert_eq!(ws.expr_ty("success"), ws.ty("unknown"));
+        assert_eq!(ws.expr_ty("failure"), ws.ty("string"));
+    }
 }

@@ -164,13 +164,6 @@ fn merge_return_rows(left_row: &[LuaType], right_row: &[LuaType]) -> LuaType {
 }
 
 fn merge_return_type(left: LuaType, right: LuaType) -> LuaType {
-    if left == LuaType::Unknown {
-        return right;
-    }
-    if right == LuaType::Unknown {
-        return left;
-    }
-
     match (&left, &right) {
         (LuaType::Variadic(_), _) | (_, LuaType::Variadic(_)) => {
             let left_row = return_type_to_row(left);

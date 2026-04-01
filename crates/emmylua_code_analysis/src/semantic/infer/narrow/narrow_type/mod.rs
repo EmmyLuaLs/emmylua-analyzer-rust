@@ -210,7 +210,7 @@ pub fn narrow_down_type(
             if source_types.is_empty() {
                 return None;
             }
-            let mut result_type = LuaType::Unknown;
+            let mut result_type = LuaType::Never;
             for source_type in source_types {
                 result_type = TypeOps::Union.apply(db, &result_type, &source_type);
             }

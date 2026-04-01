@@ -70,7 +70,7 @@ fn resolve_member_type(
 
             match resolve_state {
                 MemberTypeResolveState::All => {
-                    let mut typ = LuaType::Unknown;
+                    let mut typ = LuaType::Never;
                     for member in members {
                         typ = TypeOps::Union.apply(
                             db,
@@ -84,7 +84,7 @@ fn resolve_member_type(
                     Ok(typ)
                 }
                 MemberTypeResolveState::Meta => {
-                    let mut typ = LuaType::Unknown;
+                    let mut typ = LuaType::Never;
                     for member in &members {
                         let feature = member.get_feature();
                         if feature.is_meta_decl() {
@@ -101,7 +101,7 @@ fn resolve_member_type(
                     Ok(typ)
                 }
                 MemberTypeResolveState::FileDecl => {
-                    let mut typ = LuaType::Unknown;
+                    let mut typ = LuaType::Never;
                     for member in &members {
                         let feature = member.get_feature();
                         if feature.is_file_decl() {
