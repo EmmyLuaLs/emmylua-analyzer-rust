@@ -9,13 +9,16 @@ use lsp_types::CompletionItem;
 
 use crate::handlers::completion::completion_builder::CompletionBuilder;
 
+pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+    get_doc_completion_expected(&builder.trigger_token).is_some()
+}
+
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
-    let trigger_token = &builder.trigger_token;
-    let expected = get_doc_completion_expected(trigger_token)?;
+    let expected = get_doc_completion_expected(&builder.trigger_token)?;
     match expected {
         DocCompletionExpected::ParamName => {
             add_tag_param_name_completion(builder);

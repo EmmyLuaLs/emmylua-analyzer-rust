@@ -15,11 +15,116 @@ use crate::handlers::completion::{
     providers::function_provider::dispatch_type,
 };
 
+pub fn has_exclusive_completion(builder: &CompletionBuilder) -> bool {
+    has_key_completion(builder) || has_function_value_completion(builder)
+}
+
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     add_table_field_key_completion(builder);
     add_table_field_value_completion(builder);
 
     Some(())
+}
+
+fn has_key_completion(builder: &CompletionBuilder) -> bool {
+    if !can_add_key_completion(builder) {
+        return false;
+    }
+
+    let Some(prev_token) = builder.trigger_token.prev_token() else {
+        return false;
+    };
+    if builder.trigger_token.kind() == LuaKind::Token(LuaTokenKind::TkWhitespace)
+        && prev_token.kind() == LuaKind::Token(LuaTokenKind::TkAssign)
+    {
+        return false;
+    }
+
+    let Some(parent) = builder.trigger_token.parent() else {
+        return false;
+    };
+    let Some(node) = LuaAst::cast(parent) else {
+        return false;
+    };
+    let table_expr = match node {
+        LuaAst::LuaTableExpr(table_expr) => Some(table_expr),
+        LuaAst::LuaNameExpr(name_expr) => name_expr
+            .get_parent::<LuaTableField>()
+            .and_then(|field| field.get_parent::<LuaTableExpr>()),
+        _ => None,
+    };
+
+    let Some(table_expr) = table_expr else {
+        return false;
+    };
+    let Some(table_type) = builder.semantic_model.infer_table_should_be(table_expr) else {
+        return false;
+    };
+
+    builder
+        .semantic_model
+        .get_member_infos(&table_type)
+        .is_some_and(|member_infos| !member_infos.is_empty())
+}
+
+fn has_function_value_completion(builder: &CompletionBuilder) -> bool {
+    let mut parent = if builder.trigger_token.kind() == LuaTokenKind::TkWhitespace.into() {
+        let Some(prev_token) = builder.trigger_token.prev_token() else {
+            return false;
+        };
+        let Some(parent) = prev_token.parent() else {
+            return false;
+        };
+        parent
+    } else {
+        let Some(parent) = builder.trigger_token.parent() else {
+            return false;
+        };
+        parent
+    };
+
+    for _ in 0..3 {
+        match LuaAst::cast(parent.clone()) {
+            Some(LuaAst::LuaTableField(field)) if field.is_assign_field() => {
+                let Some(table_expr) = field.get_parent::<LuaTableExpr>() else {
+                    return false;
+                };
+                let Some(table_type) = builder.semantic_model.infer_table_should_be(table_expr)
+                else {
+                    return false;
+                };
+                let Some(field_key) = field.get_field_key() else {
+                    return false;
+                };
+                let Some(key) = builder.semantic_model.get_member_key(&field_key) else {
+                    return false;
+                };
+                let Some(member_infos) = builder.semantic_model.get_member_infos(&table_type)
+                else {
+                    return false;
+                };
+                let Some(member_info) = member_infos.iter().find(|member| member.key == key) else {
+                    return false;
+                };
+                let Some(real_type) =
+                    get_real_type(builder.semantic_model.get_db(), &member_info.typ)
+                else {
+                    return false;
+                };
+
+                return real_type.is_function();
+            }
+            Some(_) => {
+                let Some(next_parent) = parent.parent() else {
+                    return false;
+                };
+                parent = next_parent;
+            }
+            None => return false,
+        }
+    }
+
+    false
 }
 
 fn add_table_field_key_completion(builder: &mut CompletionBuilder) -> Option<()> {
@@ -69,7 +174,7 @@ fn add_table_field_key_completion(builder: &mut CompletionBuilder) -> Option<()>
     Some(())
 }
 
-fn can_add_key_completion(builder: &mut CompletionBuilder) -> bool {
+fn can_add_key_completion(builder: &CompletionBuilder) -> bool {
     if builder.is_cancelled() {
         return false;
     }

@@ -8,6 +8,14 @@ use crate::handlers::completion::completion_builder::CompletionBuilder;
 
 use super::get_text_edit_range_in_string;
 
+pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+    let Some(string_token) = LuaStringToken::cast(builder.trigger_token.clone()) else {
+        return false;
+    };
+
+    string_token.get_value().find(['/', '\\']).is_some()
+}
+
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;

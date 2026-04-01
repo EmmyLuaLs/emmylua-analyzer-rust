@@ -8,20 +8,31 @@ use lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
 
 use super::get_text_edit_range_in_string;
 
+pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+    let Some(string_token) = LuaStringToken::cast(builder.trigger_token.clone()) else {
+        return false;
+    };
+    let Some(call_expr) = string_token
+        .get_parent::<LuaLiteralExpr>()
+        .and_then(|literal| literal.get_parent::<LuaCallArgList>())
+        .and_then(|arg_list| arg_list.get_parent::<LuaCallExpr>())
+    else {
+        return false;
+    };
+
+    call_expr.is_require()
+}
+
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
-    let string_token = LuaStringToken::cast(builder.trigger_token.clone())?;
-    let call_expr = string_token
-        .get_parent::<LuaLiteralExpr>()?
-        .get_parent::<LuaCallArgList>()?
-        .get_parent::<LuaCallExpr>()?;
-
-    if !call_expr.is_require() {
+    if !can_add_completion(builder) {
         return None;
     }
+
+    let string_token = LuaStringToken::cast(builder.trigger_token.clone())?;
 
     let text_edit_range = get_text_edit_range_in_string(builder, string_token.clone())?;
     add_modules(builder, &string_token.get_value(), Some(text_edit_range));

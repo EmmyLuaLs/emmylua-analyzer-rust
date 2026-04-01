@@ -11,15 +11,33 @@ use emmylua_parser_desc::{LuaDescRefPathItem, parse_ref_target};
 use rowan::TextRange;
 use std::collections::HashSet;
 
+pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+    detect_path(builder).is_some()
+}
+
 pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
+    let path = detect_path(builder)?;
+
+    if path.is_empty() {
+        add_global_completions(builder);
+    } else {
+        add_by_prefix(builder, &path);
+    }
+
+    builder.stop_here();
+
+    Some(())
+}
+
+fn detect_path(builder: &CompletionBuilder) -> Option<Vec<(LuaDescRefPathItem, TextRange)>> {
     let semantic_model = &builder.semantic_model;
     let document = semantic_model.get_document();
 
-    let path = if let Some(description) = builder
+    if let Some(description) = builder
         .trigger_token
         .parent()
         .and_then(LuaDocDescription::cast)
@@ -43,26 +61,16 @@ pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
             document.get_text(),
             description,
             builder.position_offset,
-        )?
+        )
     } else if builder.trigger_token.kind() == LuaTokenKind::TkDocSeeContent.into() {
         parse_ref_target(
             document.get_text(),
             builder.trigger_token.text_range(),
             builder.position_offset,
-        )?
+        )
     } else {
-        return None;
-    };
-
-    if path.is_empty() {
-        add_global_completions(builder);
-    } else {
-        add_by_prefix(builder, &path);
+        None
     }
-
-    builder.stop_here();
-
-    Some(())
 }
 
 fn add_global_completions(builder: &mut CompletionBuilder) -> Option<()> {

@@ -1,42 +1,60 @@
 mod auto_require_provider;
-mod desc_provider;
-mod doc_name_token_provider;
-mod doc_tag_provider;
-mod doc_type_provider;
+pub(super) mod desc_provider;
+pub(super) mod doc_name_token_provider;
+pub(super) mod doc_tag_provider;
+pub(super) mod doc_type_provider;
 mod env_provider;
 mod equality_provider;
-mod file_path_provider;
+pub(super) mod file_path_provider;
 mod function_provider;
 mod keywords_provider;
 mod member_provider;
-mod module_path_provider;
+pub(super) mod module_path_provider;
 mod postfix_provider;
-mod table_field_provider;
+pub(super) mod table_field_provider;
 
-use super::completion_builder::CompletionBuilder;
+use super::{completion_builder::CompletionBuilder, completion_context::CompletionContext};
 use emmylua_parser::LuaAstToken;
 use emmylua_parser::LuaStringToken;
 pub use function_provider::get_function_remove_nil;
 use rowan::TextRange;
 
-pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
-    postfix_provider::add_completion(builder);
-    // `function_provider`优先级必须高于`env_provider`
-    function_provider::add_completion(builder);
-    equality_provider::add_completion(builder);
-    // 如果`table_field_provider`执行成功会中止补全, 同时优先级必须高于`env_provider`
-    table_field_provider::add_completion(builder);
-    env_provider::add_completion(builder);
-    keywords_provider::add_completion(builder);
-    member_provider::add_completion(builder);
+type CompletionProvider = fn(&mut CompletionBuilder) -> Option<()>;
 
-    module_path_provider::add_completion(builder);
-    file_path_provider::add_completion(builder);
-    auto_require_provider::add_completion(builder);
-    doc_tag_provider::add_completion(builder);
-    doc_type_provider::add_completion(builder);
-    doc_name_token_provider::add_completion(builder);
-    desc_provider::add_completions(builder);
+pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
+    match builder.context {
+        CompletionContext::DocTag => return doc_tag_provider::add_completion(builder),
+        CompletionContext::DocName => return doc_name_token_provider::add_completion(builder),
+        CompletionContext::DocType => return doc_type_provider::add_completion(builder),
+        CompletionContext::DocDescription => return desc_provider::add_completions(builder),
+        CompletionContext::ModulePath => return module_path_provider::add_completion(builder),
+        CompletionContext::FilePath => return file_path_provider::add_completion(builder),
+        CompletionContext::TableField => return table_field_provider::add_completion(builder),
+        CompletionContext::General => {}
+    }
+
+    run_provider_group(
+        builder,
+        &[
+            postfix_provider::add_completion,
+            // `function_provider`优先级必须高于`env_provider`
+            function_provider::add_completion,
+            equality_provider::add_completion,
+            // `table_field_provider`执行成功时会中止补全, 且优先级必须高于`env_provider`
+            table_field_provider::add_completion,
+        ],
+    );
+
+    run_provider_group(
+        builder,
+        &[
+            env_provider::add_completion,
+            keywords_provider::add_completion,
+            member_provider::add_completion,
+        ],
+    );
+
+    run_provider_group(builder, &[auto_require_provider::add_completion]);
 
     for (index, item) in builder.get_completion_items_mut().iter_mut().enumerate() {
         if item.sort_text.is_none() {
@@ -45,6 +63,15 @@ pub fn add_completions(builder: &mut CompletionBuilder) -> Option<()> {
     }
 
     Some(())
+}
+
+fn run_provider_group(builder: &mut CompletionBuilder, providers: &[CompletionProvider]) {
+    for provider in providers {
+        provider(builder);
+        if builder.is_cancelled() {
+            break;
+        }
+    }
 }
 
 fn get_text_edit_range_in_string(

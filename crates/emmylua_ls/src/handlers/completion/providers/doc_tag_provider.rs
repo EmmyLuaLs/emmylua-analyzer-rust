@@ -5,17 +5,20 @@ use emmylua_parser::{
 };
 use lsp_types::{CompletionItem, MarkupContent};
 
+pub fn can_add_completion(builder: &CompletionBuilder) -> bool {
+    matches!(
+        builder.trigger_token.kind().into(),
+        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocLongStart | LuaTokenKind::TkTagOther
+    )
+}
+
 pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
-    let trigger_token = &builder.trigger_token;
-    let trigger_token_kind: LuaTokenKind = trigger_token.kind().into();
-    if !matches!(
-        trigger_token_kind,
-        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocLongStart | LuaTokenKind::TkTagOther
-    ) {
+    let trigger_token_kind: LuaTokenKind = builder.trigger_token.kind().into();
+    if !can_add_completion(builder) {
         return None;
     }
 

@@ -12,7 +12,7 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         return None;
     }
 
-    let completion_type = check_can_add_type_completion(builder)?;
+    let completion_type = get_completion_type(builder)?;
 
     let prefix_content = builder.trigger_token.text().to_string();
     let prefix = if let Some(last_sep) = prefix_content.rfind('.') {
@@ -82,7 +82,7 @@ pub enum CompletionType {
     AttributeUse,
 }
 
-fn check_can_add_type_completion(builder: &CompletionBuilder) -> Option<CompletionType> {
+pub fn get_completion_type(builder: &CompletionBuilder) -> Option<CompletionType> {
     match builder.trigger_token.kind().into() {
         LuaTokenKind::TkName => {
             let parent = builder.trigger_token.parent()?;

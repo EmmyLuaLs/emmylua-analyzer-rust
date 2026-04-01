@@ -6,9 +6,12 @@ use lsp_types::{CompletionItem, CompletionTriggerKind};
 use rowan::TextSize;
 use tokio_util::sync::CancellationToken;
 
+use super::completion_context::CompletionContext;
+
 pub struct CompletionBuilder<'a> {
     pub trigger_token: LuaSyntaxToken,
     pub semantic_model: SemanticModel<'a>,
+    pub context: CompletionContext,
     pub env_duplicate_name: HashSet<String>,
     completion_items: Vec<CompletionItem>,
     cancel_token: CancellationToken,
@@ -34,9 +37,10 @@ impl<'a> CompletionBuilder<'a> {
             false
         };
 
-        Self {
+        let mut builder = Self {
             trigger_token,
             semantic_model,
+            context: CompletionContext::General,
             env_duplicate_name: HashSet::new(),
             completion_items: Vec::new(),
             cancel_token,
@@ -44,7 +48,9 @@ impl<'a> CompletionBuilder<'a> {
             trigger_kind,
             is_space_trigger_character,
             position_offset,
-        }
+        };
+        builder.context = CompletionContext::analyze(&builder);
+        builder
     }
 
     pub fn is_cancelled(&self) -> bool {
