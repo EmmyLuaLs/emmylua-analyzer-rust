@@ -225,15 +225,45 @@ fn infer_table_member(
     inst: InFiled<TextRange>,
     index_expr: LuaIndexMemberExpr,
 ) -> InferResult {
-    let owner = LuaMemberOwner::Element(inst);
+    let owner = LuaMemberOwner::Element(inst.clone());
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
     let key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
-    let member_item = match db.get_member_index().get_member_item(&owner, &key) {
-        Some(member_item) => member_item,
-        None => return Err(InferFailReason::FieldNotFound),
-    };
+    if let Some(member_item) = db.get_member_index().get_member_item(&owner, &key) {
+        return member_item.resolve_type(db);
+    }
 
-    member_item.resolve_type(db)
+    // When the direct member lookup fails, check if this table has a `__index`
+    // member. This handles the common Lua pattern:
+    //   local mt = {}; mt.__index = mt
+    //   function mt:method() self.field ... end
+    // where `self` is typed as the TableConst for `mt`, but the fields are
+    // defined on a @class that is associated via setmetatable.
+    let index_member_key = LuaMemberKey::Name("__index".into());
+    if let Some(index_member) = db.get_member_index().get_member_item(&owner, &index_member_key) {
+        if let Ok(index_type) = index_member.resolve_type(db) {
+            let is_self_referencing = matches!(&index_type, LuaType::TableConst(id) if *id == inst);
+            if is_self_referencing {
+                // mt.__index = mt pattern: this table is used as a metatable.
+                // Unknown fields may come from a @class associated via
+                // setmetatable, so return Unknown instead of FieldNotFound
+                // to avoid false positive diagnostics.
+                return Ok(LuaType::Unknown);
+            }
+            // __index points to a different type; look up the member there.
+            let result = infer_member_by_member_key(
+                db,
+                cache,
+                &index_type,
+                index_expr,
+                &InferGuard::new(),
+            );
+            if result.is_ok() {
+                return result;
+            }
+        }
+    }
+
+    Err(InferFailReason::FieldNotFound)
 }
 
 fn infer_custom_type_member(

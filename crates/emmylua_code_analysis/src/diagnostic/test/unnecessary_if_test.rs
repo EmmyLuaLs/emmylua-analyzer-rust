@@ -26,4 +26,34 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_metatable_separate_class_no_false_positive() {
+        // When @class is defined on M and methods are defined on a separate mt
+        // with mt.__index = mt, optional @fields should NOT be reported as
+        // always falsy in mt methods.
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.check_code_for(DiagnosticCode::UnnecessaryIf,
+        r#"
+        ---@class TestMt.Rpc
+        ---@field name string?
+        local M = {}
+
+        local mt = {}
+        mt.__index = mt
+
+        function mt:test()
+            local name = self.name
+            if name then
+                print(name)
+            end
+        end
+
+        ---@return TestMt.Rpc
+        function M.new()
+            return setmetatable({}, mt)
+        end
+        "#
+        ));
+    }
 }
