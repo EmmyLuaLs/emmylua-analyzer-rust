@@ -2,7 +2,7 @@ mod instantiate_func_generic;
 mod instantiate_special_generic;
 
 use hashbrown::{HashMap, HashSet};
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaAliasCallKind, LuaArrayType, LuaConditionalType,
@@ -12,7 +12,10 @@ use crate::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
         LuaUnionType, VariadicType,
     },
-    semantic::type_check::{TypeCheckCheckLevel, check_type_compact_with_level},
+    semantic::{
+        infer::InferFailReason,
+        type_check::{TypeCheckCheckLevel, check_type_compact_with_level},
+    },
 };
 
 use super::type_substitutor::{SubstitutorValue, TypeSubstitutor};
@@ -21,6 +24,57 @@ use crate::semantic::member::find_members_with_key;
 pub use instantiate_func_generic::{build_self_type, infer_self_type, instantiate_func_generic};
 pub use instantiate_special_generic::get_keyof_members;
 pub use instantiate_special_generic::instantiate_alias_call;
+
+pub(crate) fn collect_callable_overload_groups(
+    db: &DbIndex,
+    callable_type: &LuaType,
+    groups: &mut Vec<Vec<Arc<LuaFunctionType>>>,
+) -> Result<(), InferFailReason> {
+    match callable_type {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => {
+            let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
+                return Ok(());
+            };
+            if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+                collect_callable_overload_groups(db, &origin_type, groups)?;
+            }
+        }
+        LuaType::Generic(generic) => {
+            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().to_vec());
+            let Some(type_decl) = db
+                .get_type_index()
+                .get_type_decl(&generic.get_base_type_id())
+            else {
+                return Ok(());
+            };
+            if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+                collect_callable_overload_groups(db, &origin_type, groups)?;
+            }
+        }
+        LuaType::Union(union) => {
+            for member in union.into_vec() {
+                collect_callable_overload_groups(db, &member, groups)?;
+            }
+        }
+        LuaType::Intersection(intersection) => {
+            for member in intersection.get_types() {
+                collect_callable_overload_groups(db, member, groups)?;
+            }
+        }
+        LuaType::DocFunction(doc_func) => groups.push(vec![doc_func.clone()]),
+        LuaType::Signature(sig_id) => {
+            let Some(signature) = db.get_signature_index().get(sig_id) else {
+                return Ok(());
+            };
+            let mut overloads = signature.overloads.to_vec();
+            overloads.push(signature.to_doc_func_type());
+            groups.push(overloads);
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
 
 pub fn instantiate_type_generic(
     db: &DbIndex,

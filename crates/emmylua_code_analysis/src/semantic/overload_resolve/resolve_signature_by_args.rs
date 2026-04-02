@@ -6,6 +6,33 @@ use crate::{
     semantic::infer::InferCallFuncResult,
 };
 
+pub(crate) fn callable_accepts_args(
+    db: &DbIndex,
+    func: &LuaFunctionType,
+    expr_types: &[LuaType],
+    is_colon_call: bool,
+    arg_count: Option<usize>,
+) -> bool {
+    let arg_count = arg_count.unwrap_or(expr_types.len());
+    if func.get_params().len() < arg_count && !is_func_last_param_variadic(func) {
+        return false;
+    }
+
+    for (arg_index, expr_type) in expr_types.iter().enumerate() {
+        let param_type = match get_call_arg_param(func, arg_index, is_colon_call) {
+            CallArgParam::Skip => continue,
+            CallArgParam::Present { param_type, .. } => param_type,
+            CallArgParam::Missing => return false,
+        };
+
+        if !param_type.is_any() && check_type_compact(db, &param_type, expr_type).is_err() {
+            return false;
+        }
+    }
+
+    true
+}
+
 pub fn resolve_signature_by_args(
     db: &DbIndex,
     overloads: &[Arc<LuaFunctionType>],
@@ -43,41 +70,22 @@ pub fn resolve_signature_by_args(
                 None => continue,
                 Some(func) => func,
             };
-            let param_len = func.get_params().len();
-            if param_len < arg_count && !is_func_last_param_variadic(func) {
+            if func.get_params().len() < arg_count && !is_func_last_param_variadic(func) {
                 *opt_func = None;
                 continue;
             }
 
-            let colon_define = func.is_colon_define();
-            let mut param_index = arg_index;
-            match (colon_define, is_colon_call) {
-                (true, false) => {
-                    if param_index == 0 {
-                        continue;
-                    }
-                    param_index -= 1;
-                }
-                (false, true) => {
-                    param_index += 1;
-                }
-                _ => {}
-            }
-            let param_type = if param_index < param_len {
-                let param_info = func.get_params().get(param_index);
-                param_info
-                    .map(|it| it.1.clone().unwrap_or(LuaType::Any))
-                    .unwrap_or(LuaType::Any)
-            } else if let Some(last_param_info) = func.get_params().last() {
-                if last_param_info.0 == "..." {
-                    last_param_info.1.clone().unwrap_or(LuaType::Any)
-                } else {
+            let (param_index, param_type) = match get_call_arg_param(func, arg_index, is_colon_call)
+            {
+                CallArgParam::Skip => continue,
+                CallArgParam::Present {
+                    param_index,
+                    param_type,
+                } => (param_index, param_type),
+                CallArgParam::Missing => {
                     *opt_func = None;
                     continue;
                 }
-            } else {
-                *opt_func = None;
-                continue;
             };
 
             let match_result = if param_type.is_any() {
@@ -144,35 +152,15 @@ pub fn resolve_signature_by_args(
                 None => continue,
                 Some(func) => func,
             };
-            let param_len = func.get_params().len();
-            let colon_define = func.is_colon_define();
-            let mut param_index = param_index;
-            match (colon_define, is_colon_call) {
-                (true, false) => {
-                    if param_index == 0 {
-                        continue;
-                    }
-                    param_index -= 1;
-                }
-                (false, true) => {
-                    param_index += 1;
-                }
-                _ => {}
-            }
-            let param_type = if param_index < param_len {
-                let param_info = func.get_params().get(param_index);
-                param_info
-                    .map(|it| it.1.clone().unwrap_or(LuaType::Any))
-                    .unwrap_or(LuaType::Any)
-            } else if let Some(last_param_info) = func.get_params().last() {
-                if last_param_info.0 == "..." {
-                    last_param_info.1.clone().unwrap_or(LuaType::Any)
-                } else {
-                    return Ok(func.clone());
-                }
-            } else {
-                return Ok(func.clone());
-            };
+            let (param_index, param_type) =
+                match get_call_arg_param(func, param_index, is_colon_call) {
+                    CallArgParam::Skip => continue,
+                    CallArgParam::Present {
+                        param_index,
+                        param_type,
+                    } => (param_index, param_type),
+                    CallArgParam::Missing => return Ok(func.clone()),
+                };
 
             let match_result = if param_type.is_any() {
                 ParamMatchResult::Any
@@ -208,6 +196,44 @@ pub fn resolve_signature_by_args(
     Ok(best_match_result)
 }
 
+fn get_call_arg_param(
+    func: &LuaFunctionType,
+    arg_index: usize,
+    is_colon_call: bool,
+) -> CallArgParam {
+    let mut param_index = arg_index;
+    match (func.is_colon_define(), is_colon_call) {
+        (true, false) => {
+            if param_index == 0 {
+                return CallArgParam::Skip;
+            }
+            param_index -= 1;
+        }
+        (false, true) => {
+            param_index += 1;
+        }
+        _ => {}
+    }
+
+    if let Some((_, ty)) = func.get_params().get(param_index) {
+        return CallArgParam::Present {
+            param_index,
+            param_type: ty.clone().unwrap_or(LuaType::Any),
+        };
+    }
+
+    if let Some((name, ty)) = func.get_params().last()
+        && name == "..."
+    {
+        return CallArgParam::Present {
+            param_index,
+            param_type: ty.clone().unwrap_or(LuaType::Any),
+        };
+    }
+
+    CallArgParam::Missing
+}
+
 fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
     if let Some(last_param) = func.get_params().last() {
         last_param.0 == "..."
@@ -221,4 +247,13 @@ enum ParamMatchResult {
     Not,
     Any,
     Type,
+}
+
+enum CallArgParam {
+    Skip,
+    Present {
+        param_index: usize,
+        param_type: LuaType,
+    },
+    Missing,
 }
