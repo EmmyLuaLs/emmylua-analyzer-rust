@@ -262,6 +262,36 @@ mod test {
     }
 
     #[test]
+    fn test_apply_return_infer_keeps_same_arity_overload_returns_when_tail_is_unknown() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic A, B, R
+            ---@param f fun(x: A, y: B): R
+            ---@param x A
+            ---@param y B
+            ---@return R
+            local function apply2(f, x, y)
+                return f(x, y)
+            end
+
+            ---@overload fun(x: integer, y: number): number
+            ---@param x integer
+            ---@param y string
+            ---@return string
+            local function run(x, y) end
+
+            local source ---@type table
+
+            result = apply2(run, 1, source.missing)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(result_ty, ws.ty("number|string"));
+    }
+
+    #[test]
     fn test_union_call_ignores_non_matching_generic_callable_member() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

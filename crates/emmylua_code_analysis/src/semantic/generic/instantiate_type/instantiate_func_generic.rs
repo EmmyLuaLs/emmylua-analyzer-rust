@@ -216,8 +216,19 @@ fn infer_callable_return_from_arg_types(
         } else {
             &preferred_overloads
         };
+        let unresolved_arg_match = overloads_to_resolve.len() > 1
+            && call_arg_types
+                .iter()
+                .any(|arg_type| arg_type.is_any() || arg_type.is_unknown());
 
-        member_returns.push(
+        member_returns.push(if unresolved_arg_match {
+            LuaType::from_vec(
+                overloads_to_resolve
+                    .iter()
+                    .map(|callable| callable.get_ret().clone())
+                    .collect(),
+            )
+        } else {
             resolve_signature_by_args(
                 context.db,
                 overloads_to_resolve,
@@ -226,8 +237,8 @@ fn infer_callable_return_from_arg_types(
                 None,
             )
             .map(|callable| callable.get_ret().clone())
-            .unwrap_or_else(|_| fallback_return_from_overloads(context.db, overloads)),
-        );
+            .unwrap_or_else(|_| fallback_return_from_overloads(context.db, overloads))
+        });
     }
     if member_returns.is_empty() {
         return Ok(if fallback_on_no_match {
