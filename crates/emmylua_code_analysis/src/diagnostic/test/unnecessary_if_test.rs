@@ -57,4 +57,27 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_indirect_cycle_index_no_infinite_recursion() {
+        // Two tables referencing each other via __index should not cause
+        // infinite recursion. The analyzer should gracefully return Unknown.
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.check_code_for(
+            DiagnosticCode::UnnecessaryIf,
+            r#"
+        local t1 = {}
+        local t2 = {}
+        t1.__index = t2
+        t2.__index = t1
+
+        function t1:test()
+            local x = self.foo
+            if x then
+                print(x)
+            end
+        end
+        "#
+        ));
+    }
 }

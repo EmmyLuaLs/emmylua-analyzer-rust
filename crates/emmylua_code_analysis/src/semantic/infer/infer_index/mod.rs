@@ -153,7 +153,17 @@ pub fn infer_member_by_member_key(
     match &prefix_type {
         LuaType::Table | LuaType::Any | LuaType::Unknown => Ok(LuaType::Any),
         LuaType::Nil => Ok(LuaType::Never),
-        LuaType::TableConst(id) => infer_table_member(db, cache, id.clone(), index_expr),
+        LuaType::TableConst(id) => {
+            let mut visited_tables = HashSet::new();
+            infer_table_member(
+                db,
+                cache,
+                id.clone(),
+                index_expr,
+                infer_guard,
+                &mut visited_tables,
+            )
+        }
         LuaType::String
         | LuaType::Io
         | LuaType::StringConst(_)
@@ -219,12 +229,60 @@ pub fn infer_member_by_member_key(
     }
 }
 
+/// Like `infer_member_by_member_key`, but propagates a `visited_tables` set
+/// through the `__index` chain to detect indirect cycles among TableConst types
+/// (e.g. `t1.__index = t2` and `t2.__index = t1`).
+fn infer_member_by_member_key_with_tables(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    prefix_type: &LuaType,
+    index_expr: LuaIndexMemberExpr,
+    infer_guard: &InferGuardRef,
+    visited_tables: &mut HashSet<InFiled<TextRange>>,
+) -> InferResult {
+    // For TableConst types, delegate to infer_table_member with the shared
+    // visited_tables set so that cycles are detected across the __index chain.
+    if let LuaType::TableConst(id) = prefix_type {
+        return infer_table_member(
+            db,
+            cache,
+            id.clone(),
+            index_expr,
+            infer_guard,
+            visited_tables,
+        );
+    }
+    // For all other types, fall back to the standard path.
+    infer_member_by_member_key(db, cache, prefix_type, index_expr, infer_guard)
+}
+
+/// Check whether `index_type` references the table `inst` itself, either
+/// directly (`TableConst(inst)`) or inside a union type.
+fn contains_table_self_reference(index_type: &LuaType, inst: &InFiled<TextRange>) -> bool {
+    match index_type {
+        LuaType::TableConst(id) => id == inst,
+        LuaType::Union(union_type) => union_type
+            .into_vec()
+            .iter()
+            .any(|t| matches!(t, LuaType::TableConst(id) if id == inst)),
+        _ => false,
+    }
+}
+
 fn infer_table_member(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     inst: InFiled<TextRange>,
     index_expr: LuaIndexMemberExpr,
+    infer_guard: &InferGuardRef,
+    visited_tables: &mut HashSet<InFiled<TextRange>>,
 ) -> InferResult {
+    // Cycle detection: if we have already visited this table in the current
+    // __index chain, stop to avoid infinite recursion.
+    if !visited_tables.insert(inst.clone()) {
+        return Ok(LuaType::Unknown);
+    }
+
     let owner = LuaMemberOwner::Element(inst.clone());
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
     let key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
@@ -244,17 +302,26 @@ fn infer_table_member(
         .get_member_item(&owner, &index_member_key)
     {
         if let Ok(index_type) = index_member.resolve_type(db) {
-            let is_self_referencing = matches!(&index_type, LuaType::TableConst(id) if *id == inst);
-            if is_self_referencing {
-                // mt.__index = mt pattern: this table is used as a metatable.
-                // Unknown fields may come from a @class associated via
-                // setmetatable, so return Unknown instead of FieldNotFound
-                // to avoid false positive diagnostics.
+            if contains_table_self_reference(&index_type, &inst) {
+                // mt.__index = mt pattern (direct or inside a union): this
+                // table is used as a metatable. Unknown fields may come from
+                // a @class associated via setmetatable, so return Unknown
+                // instead of FieldNotFound to avoid false positive diagnostics.
                 return Ok(LuaType::Unknown);
             }
             // __index points to a different type; look up the member there.
-            let result =
-                infer_member_by_member_key(db, cache, &index_type, index_expr, &InferGuard::new());
+            // Pass the caller's infer_guard to propagate cycle detection for
+            // non-TableConst types (e.g. Ref/Def), and visited_tables is
+            // propagated through infer_member_by_member_key_with_tables for
+            // TableConst types.
+            let result = infer_member_by_member_key_with_tables(
+                db,
+                cache,
+                &index_type,
+                index_expr,
+                infer_guard,
+                visited_tables,
+            );
             if result.is_ok() {
                 return result;
             }
@@ -730,26 +797,43 @@ fn infer_instance_member(
     infer_guard: &InferGuardRef,
 ) -> InferResult {
     let range = inst.get_range();
+    let mut visited_tables = HashSet::new();
 
     let origin_type = inst.get_base();
     let base_result =
         infer_member_by_member_key(db, cache, origin_type, index_expr.clone(), infer_guard);
     match base_result {
-        Ok(typ) => match infer_table_member(db, cache, range.clone(), index_expr.clone()) {
-            Ok(table_type) => {
-                return Ok(match TypeOps::Intersect.apply(db, &typ, &table_type) {
-                    LuaType::Never => typ,
-                    intersected => intersected,
-                });
+        Ok(typ) => {
+            match infer_table_member(
+                db,
+                cache,
+                range.clone(),
+                index_expr.clone(),
+                infer_guard,
+                &mut visited_tables,
+            ) {
+                Ok(table_type) => {
+                    return Ok(match TypeOps::Intersect.apply(db, &typ, &table_type) {
+                        LuaType::Never => typ,
+                        intersected => intersected,
+                    });
+                }
+                Err(InferFailReason::FieldNotFound) => return Ok(typ),
+                Err(err) => return Err(err),
             }
-            Err(InferFailReason::FieldNotFound) => return Ok(typ),
-            Err(err) => return Err(err),
-        },
+        }
         Err(InferFailReason::FieldNotFound) => {}
         Err(err) => return Err(err),
     }
 
-    infer_table_member(db, cache, range.clone(), index_expr.clone())
+    infer_table_member(
+        db,
+        cache,
+        range.clone(),
+        index_expr.clone(),
+        infer_guard,
+        &mut visited_tables,
+    )
 }
 
 pub fn infer_member_by_operator(
