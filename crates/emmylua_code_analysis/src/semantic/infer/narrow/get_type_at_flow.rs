@@ -33,7 +33,7 @@ pub fn get_type_at_flow(
 
     let result_type;
     let mut antecedent_flow_id = flow_id;
-    loop {
+    'flow: loop {
         let flow_node = tree
             .get_flow_node(antecedent_flow_id)
             .ok_or(InferFailReason::None)?;
@@ -90,7 +90,7 @@ pub fn get_type_at_flow(
                                     Some(var_type.clone()),
                                 ) {
                                     result_type = narrowed;
-                                    break;
+                                    break 'flow;
                                 }
                             }
                             result_type = var_type;
