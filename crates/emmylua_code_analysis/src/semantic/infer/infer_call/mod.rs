@@ -796,4 +796,20 @@ mod tests {
 
         assert_eq!(ws.expr_ty("result"), ws.ty("integer"));
     }
+
+    #[test]
+    fn test_union_call_breaks_recursive_alias_cycle() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A A | fun(): integer
+            ---@type A
+            local run
+
+            result = run()
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("integer"));
+    }
 }
