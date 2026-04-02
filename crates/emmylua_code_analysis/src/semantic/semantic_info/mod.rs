@@ -16,7 +16,7 @@ pub use resolve_global_decl::resolve_global_decl_id;
 pub use semantic_decl_level::SemanticDeclLevel;
 pub use semantic_guard::SemanticDeclGuard;
 
-use super::{LuaInferCache, infer_expr};
+use super::{LuaInferCache, infer::literal_provides_optional_class_field, infer_expr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticInfo {
@@ -190,36 +190,6 @@ fn try_narrow_local_to_instance(
     Some(LuaType::Instance(
         LuaInstanceType::new(typ.clone(), range).into(),
     ))
-}
-
-/// Returns `true` if the table literal (identified by `literal_owner`) provides at least
-/// one field that is declared optional (`field?`) in `class_type`.
-fn literal_provides_optional_class_field(
-    db: &DbIndex,
-    class_type: &LuaType,
-    literal_owner: &LuaMemberOwner,
-) -> bool {
-    let type_id = match class_type {
-        LuaType::Ref(id) | LuaType::Def(id) => id,
-        _ => return false,
-    };
-    let class_owner = LuaMemberOwner::Type(type_id.clone());
-    let Some(class_members) = db.get_member_index().get_members(&class_owner) else {
-        return false;
-    };
-    let Some(literal_members) = db.get_member_index().get_members(literal_owner) else {
-        return false;
-    };
-    literal_members.iter().any(|lit_member| {
-        let lit_key = lit_member.get_key();
-        class_members.iter().any(|cls_member| {
-            cls_member.get_key() == lit_key
-                && db
-                    .get_type_index()
-                    .get_type_cache(&cls_member.get_id().into())
-                    .is_some_and(|tc| tc.as_type().is_nullable())
-        })
-    })
 }
 
 fn type_def_tag_info(name: &str, db: &DbIndex, cache: &mut LuaInferCache) -> Option<SemanticInfo> {

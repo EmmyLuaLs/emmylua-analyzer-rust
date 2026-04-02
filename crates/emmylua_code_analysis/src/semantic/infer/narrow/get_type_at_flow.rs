@@ -520,38 +520,9 @@ fn try_narrow_decl_to_instance(
     let literal_owner = LuaMemberOwner::Element(range.clone());
     // Only create Instance when at least one provided literal field corresponds
     // to an optional class field — otherwise narrowing brings no benefit.
-    if !literal_provides_optional_class_field(db, var_type, &literal_owner) {
+    if !super::literal_provides_optional_class_field(db, var_type, &literal_owner) {
         return None;
     }
     narrow_down_type(db, var_type.clone(), init_type, Some(var_type.clone()))
 }
 
-/// Returns `true` if the table literal (identified by `literal_owner`) provides at least
-/// one field that is declared optional (`field?`) in `class_type`.
-fn literal_provides_optional_class_field(
-    db: &DbIndex,
-    class_type: &LuaType,
-    literal_owner: &LuaMemberOwner,
-) -> bool {
-    let type_id = match class_type {
-        LuaType::Ref(id) | LuaType::Def(id) => id,
-        _ => return false,
-    };
-    let class_owner = LuaMemberOwner::Type(type_id.clone());
-    let Some(class_members) = db.get_member_index().get_members(&class_owner) else {
-        return false;
-    };
-    let Some(literal_members) = db.get_member_index().get_members(literal_owner) else {
-        return false;
-    };
-    literal_members.iter().any(|lit_member| {
-        let lit_key = lit_member.get_key();
-        class_members.iter().any(|cls_member| {
-            cls_member.get_key() == lit_key
-                && db
-                    .get_type_index()
-                    .get_type_cache(&cls_member.get_id().into())
-                    .is_some_and(|tc| tc.as_type().is_nullable())
-        })
-    })
-}

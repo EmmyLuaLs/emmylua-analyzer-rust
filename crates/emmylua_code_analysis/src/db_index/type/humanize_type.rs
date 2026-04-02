@@ -374,21 +374,17 @@ impl<'a> TypeHumanizer<'a> {
         let mut count = 0;
         for (member_key, typ) in &member_vec {
             w.write_str("    ")?;
-            if let Some(literal_ty) = literal_keys.get(member_key) {
-                if literal_ty.is_nullable() {
-                    // Literal value is nil/nullable — show as optional (strip nil from
-                    // type, but add `?` to the key to signal it was not concretely set).
-                    let without_nil = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+            let is_optional = literal_keys
+                .get(member_key)
+                .map_or(typ.is_nullable(), |lit| lit.is_nullable());
+            if is_optional || literal_keys.contains_key(member_key) {
+                // Strip nil: either the field has a concrete literal value or is optional.
+                let without_nil = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                if is_optional {
                     self.write_optional_member_field(member_key, &without_nil, saved, w)?;
                 } else {
-                    // Concrete value provided — strip nil and display as required.
-                    let without_nil = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
                     self.write_table_member_field(member_key, &without_nil, saved, w)?;
                 }
-            } else if typ.is_nullable() {
-                // Optional field not provided: show as "name?: type" (without nil)
-                let without_nil = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
-                self.write_optional_member_field(member_key, &without_nil, saved, w)?;
             } else {
                 self.write_table_member_field(member_key, typ, saved, w)?;
             }
@@ -398,7 +394,7 @@ impl<'a> TypeHumanizer<'a> {
                 break;
             }
         }
-        if count < all_count {
+        if count < max_display_count {
             for function_key in &function_vec {
                 w.write_str("    ")?;
                 write_member_key_and_separator(function_key, saved, w)?;
