@@ -11,7 +11,7 @@ use regex::Regex;
 pub use workspace::{Workspace, WorkspaceId};
 
 use super::traits::LuaIndex;
-use crate::{Emmyrc, FileId};
+use crate::{Emmyrc, FileId, WorkspaceImport};
 use hashbrown::{HashMap, HashSet};
 use std::{
     path::{Path, PathBuf},
@@ -326,6 +326,9 @@ impl LuaModuleIndex {
         let mut matched_module_path: Option<(String, WorkspaceId)> = None;
         for workspace in &self.workspaces {
             if let Ok(relative_path) = path.strip_prefix(&workspace.root) {
+                if !workspace.import.includes_path(relative_path) {
+                    continue;
+                }
                 let relative_path_str = relative_path.to_str().unwrap_or("");
                 if relative_path_str.is_empty() {
                     if let Some(file_name) = workspace.root.file_prefix() {
@@ -384,10 +387,24 @@ impl LuaModuleIndex {
         None
     }
 
-    pub fn add_workspace_root(&mut self, root: PathBuf, workspace_id: WorkspaceId) {
-        if !self.workspaces.iter().any(|w| w.root == root) {
-            self.workspaces.push(Workspace::new(root, workspace_id));
+    pub fn add_workspace_root_with_import(
+        &mut self,
+        root: PathBuf,
+        import: WorkspaceImport,
+        workspace_id: WorkspaceId,
+    ) {
+        if !self
+            .workspaces
+            .iter()
+            .any(|w| w.root == root && w.import == import)
+        {
+            self.workspaces
+                .push(Workspace::new(root, import, workspace_id));
         }
+    }
+
+    pub fn add_workspace_root(&mut self, root: PathBuf, workspace_id: WorkspaceId) {
+        self.add_workspace_root_with_import(root, WorkspaceImport::All, workspace_id);
     }
 
     pub fn clear_non_std_workspaces(&mut self) {

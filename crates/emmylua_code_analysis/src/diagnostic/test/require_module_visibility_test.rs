@@ -1,13 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, VirtualWorkspace, WorkspaceFolder};
 
     #[test]
     fn internal_return_table_is_not_visible_outside_current_project() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::RequireModuleNotVisible);
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
 
         ws.def_file(
             "lib/test.lua",
@@ -29,8 +31,10 @@ mod tests {
     fn appending_visibility_label_when_return_nameexpr_is_invalid() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::RequireModuleNotVisible);
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
 
         {
             // 返回 NameExpr 时, 附加在 return 语句上的可见性标签无效
@@ -76,8 +80,10 @@ mod tests {
     fn public_return_owner_is_visible_outside_current_project() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::RequireModuleNotVisible);
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
 
         ws.def_file(
             "lib/test.lua",
@@ -101,8 +107,10 @@ mod tests {
     fn internal_return_owner_is_not_visible_outside_current_project() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::RequireModuleNotVisible);
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
 
         ws.def_file(
             "lib/test.lua",
@@ -126,8 +134,10 @@ mod tests {
     fn default_return_is_public_outside_current_project() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::RequireModuleNotVisible);
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
 
         ws.def_file(
             "lib/test.lua",
@@ -150,8 +160,10 @@ mod tests {
     fn multiple_return_expressions_use_first_return_expression_as_base() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::RequireModuleNotVisible);
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
         // 对于模块, 我们取第一个返回表达式为基准, 因此后续 return 不会扩大可见性
         ws.def_file(
             "lib/test.lua",
@@ -182,8 +194,10 @@ mod tests {
     fn explicit_internal_return_path_keeps_internal_visibility() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::RequireModuleNotVisible);
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
 
         ws.def_file(
             "lib/test.lua",
@@ -215,8 +229,10 @@ mod tests {
     #[test]
     fn return_call_expr_use_public_visibility() {
         let mut ws = VirtualWorkspace::new();
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
 
         // todo: 处理直接返回函数调用表达式时附加可见性的情况
         ws.def_file(

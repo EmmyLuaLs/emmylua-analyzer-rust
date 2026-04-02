@@ -347,4 +347,40 @@ mod tests {
         assert!(module_info.is_requireable_from(WorkspaceId::MAIN));
         assert!(module_info.is_requireable_from(WorkspaceId { id: 99 }));
     }
+
+    #[test]
+    fn test_sibling_packages_under_same_parent_keep_distinct_package_scopes() {
+        let mut m = create_module();
+        m.add_workspace_root_with_import(
+            Path::new("C:/Users/username/Documents/module").into(),
+            crate::WorkspaceImport::Package("socket".into()),
+            WorkspaceId { id: 3 },
+        );
+        m.add_workspace_root_with_import(
+            Path::new("C:/Users/username/Documents/module").into(),
+            crate::WorkspaceImport::Package("net".into()),
+            WorkspaceId { id: 4 },
+        );
+
+        let socket_file = FileId { id: 1 };
+        let net_file = FileId { id: 2 };
+        m.add_module_by_path(
+            socket_file,
+            "C:/Users/username/Documents/module/socket/init.lua",
+        );
+        m.add_module_by_path(net_file, "C:/Users/username/Documents/module/net/init.lua");
+        m.set_module_visibility(socket_file, ModuleVisibility::Internal);
+        m.set_module_visibility(net_file, ModuleVisibility::Internal);
+
+        let socket_info = m.get_module(socket_file).unwrap();
+        let net_info = m.get_module(net_file).unwrap();
+
+        assert_eq!(socket_info.full_module_name, "socket");
+        assert_eq!(net_info.full_module_name, "net");
+        assert_eq!(socket_info.workspace_id, WorkspaceId { id: 3 });
+        assert_eq!(net_info.workspace_id, WorkspaceId { id: 4 });
+        assert_ne!(socket_info.workspace_id, net_info.workspace_id);
+        assert!(!socket_info.is_requireable_from(net_info.workspace_id));
+        assert!(!net_info.is_requireable_from(socket_info.workspace_id));
+    }
 }

@@ -130,8 +130,8 @@ pub async fn init_analysis(
     let workspace_folders = build_workspace_folders(&workspace_folders, emmyrc.as_ref());
     for workspace in &workspace_folders {
         if workspace.is_library {
-            log::info!("add library workspace: {:?}", workspace.root);
-            mut_analysis.add_library_workspace(workspace.root.clone());
+            log::info!("add library workspace: {:?}", workspace);
+            mut_analysis.add_library_workspace(workspace);
         } else {
             log::info!("add workspace root: {:?}", workspace.root);
             mut_analysis.add_main_workspace(workspace.root.clone());

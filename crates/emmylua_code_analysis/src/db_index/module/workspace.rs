@@ -1,14 +1,17 @@
 use std::{fmt, path::PathBuf};
 
-#[derive(Debug)]
+use crate::WorkspaceImport;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
     pub root: PathBuf,
+    pub import: WorkspaceImport,
     pub id: WorkspaceId,
 }
 
 impl Workspace {
-    pub fn new(root: PathBuf, id: WorkspaceId) -> Self {
-        Self { root, id }
+    pub fn new(root: PathBuf, import: WorkspaceImport, id: WorkspaceId) -> Self {
+        Self { root, import, id }
     }
 }
 

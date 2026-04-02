@@ -5,7 +5,8 @@ mod test {
     use lsp_types::Uri;
 
     use crate::{
-        DbIndex, FileId, LuaTypeDecl, VirtualWorkspace, WorkspaceId, is_type_decl_visible,
+        DbIndex, FileId, LuaTypeDecl, VirtualWorkspace, WorkspaceFolder, WorkspaceId,
+        is_type_decl_visible,
     };
 
     fn find_visible_type_decl<'a>(
@@ -24,8 +25,10 @@ mod test {
     #[test]
     fn type_decl_visibility_comes_from_type_flags_instead_of_standalone_visibility_tags() {
         let mut ws = VirtualWorkspace::new();
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
         ws.def_file(
             "lib/types.lua",
             r#"

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{DiagnosticCode, VirtualWorkspace};
+    use crate::{DiagnosticCode, VirtualWorkspace, WorkspaceFolder};
 
     #[test]
     fn explicit_public_and_internal_visibility_report_inconsistency() {
@@ -21,8 +21,10 @@ mod tests {
     #[test]
     fn default_visibility_difference_does_not_report_inconsistency() {
         let mut ws = VirtualWorkspace::new();
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
         ws.def_file(
             "lib/foo.lua",
             r#"

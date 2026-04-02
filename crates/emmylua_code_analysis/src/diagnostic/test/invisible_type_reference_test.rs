@@ -1,12 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use crate::{DiagnosticCode, LuaType, VirtualWorkspace, WorkspaceFolder};
 
     #[test]
     fn internal_type_reference_reports_diagnostic_but_still_resolves() {
         let mut ws = VirtualWorkspace::new();
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
         ws.def_file(
             "lib/types.lua",
             r#"
@@ -29,8 +31,10 @@ mod tests {
     #[test]
     fn default_public_type_reference_does_not_report_visibility_diagnostic() {
         let mut ws = VirtualWorkspace::new();
-        ws.analysis
-            .add_library_workspace(ws.virtual_url_generator.new_path("lib"));
+        ws.analysis.add_library_workspace(&WorkspaceFolder::new(
+            ws.virtual_url_generator.new_path("lib"),
+            true,
+        ));
         ws.def_file(
             "lib/types.lua",
             r#"

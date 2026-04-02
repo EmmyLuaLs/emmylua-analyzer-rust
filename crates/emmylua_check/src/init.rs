@@ -1,5 +1,6 @@
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, WorkspaceFolder, collect_workspace_files, load_configs, update_code_style,
+    EmmyLuaAnalysis, WorkspaceFolder, build_workspace_folders, collect_workspace_files,
+    load_configs, update_code_style,
 };
 use fern::Dispatch;
 use log::LevelFilter;
@@ -90,7 +91,7 @@ pub async fn load_workspace(
     );
     emmyrc.pre_process_emmyrc(&config_root);
 
-    let mut workspace_folders = cmd_workspace_folders
+    let workspace_folders = cmd_workspace_folders
         .iter()
         .map(|path| WorkspaceFolder::new(path.clone(), false))
         .collect::<Vec<WorkspaceFolder>>();
@@ -98,18 +99,13 @@ pub async fn load_workspace(
     analysis.update_config(emmyrc.clone().into());
     analysis.init_std_lib(None);
 
-    for lib in &emmyrc.workspace.library {
-        let path = PathBuf::from(lib.get_path().clone());
-        analysis.add_library_workspace(path.clone());
-        workspace_folders.push(WorkspaceFolder::new(path.clone(), true));
-    }
-
-    for path in &workspace_folders {
-        analysis.add_main_workspace(path.root.clone());
-    }
-
-    for root in &emmyrc.workspace.workspace_roots {
-        analysis.add_main_workspace(PathBuf::from(root));
+    let workspace_folders = build_workspace_folders(&workspace_folders, &emmyrc);
+    for workspace in &workspace_folders {
+        if workspace.is_library {
+            analysis.add_library_workspace(workspace);
+        } else {
+            analysis.add_main_workspace(workspace.root.clone());
+        }
     }
 
     let file_infos = collect_workspace_files(&workspace_folders, &analysis.emmyrc, None, ignore);
