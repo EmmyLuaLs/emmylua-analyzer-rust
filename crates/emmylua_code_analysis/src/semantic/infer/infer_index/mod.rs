@@ -239,7 +239,10 @@ fn infer_table_member(
     // where `self` is typed as the TableConst for `mt`, but the fields are
     // defined on a @class that is associated via setmetatable.
     let index_member_key = LuaMemberKey::Name("__index".into());
-    if let Some(index_member) = db.get_member_index().get_member_item(&owner, &index_member_key) {
+    if let Some(index_member) = db
+        .get_member_index()
+        .get_member_item(&owner, &index_member_key)
+    {
         if let Ok(index_type) = index_member.resolve_type(db) {
             let is_self_referencing = matches!(&index_type, LuaType::TableConst(id) if *id == inst);
             if is_self_referencing {
@@ -250,13 +253,8 @@ fn infer_table_member(
                 return Ok(LuaType::Unknown);
             }
             // __index points to a different type; look up the member there.
-            let result = infer_member_by_member_key(
-                db,
-                cache,
-                &index_type,
-                index_expr,
-                &InferGuard::new(),
-            );
+            let result =
+                infer_member_by_member_key(db, cache, &index_type, index_expr, &InferGuard::new());
             if result.is_ok() {
                 return result;
             }

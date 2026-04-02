@@ -33,8 +33,9 @@ mod test {
         // with mt.__index = mt, optional @fields should NOT be reported as
         // always falsy in mt methods.
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(DiagnosticCode::UnnecessaryIf,
-        r#"
+        assert!(ws.check_code_for(
+            DiagnosticCode::UnnecessaryIf,
+            r#"
         ---@class TestMt.Rpc
         ---@field name string?
         local M = {}
