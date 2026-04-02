@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::{collections::HashSet, path::PathBuf, process::Command};
 
-use crate::config::configs::{EmmyLibraryConfig, EmmyLibraryItem};
+use crate::config::configs::{EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem};
 
 pub struct PreProcessContext {
     workspace: PathBuf,
@@ -48,12 +48,13 @@ impl PreProcessContext {
             .collect()
     }
 
-    pub fn process_and_dedup_library<'a>(
+    /// library / packages
+    pub fn process_and_dedup_workspace_path_items<'a>(
         &mut self,
-        iter: impl Iterator<Item = &'a EmmyLibraryItem>,
-    ) -> Vec<EmmyLibraryItem> {
+        iter: impl Iterator<Item = &'a EmmyrcWorkspacePathItem>,
+    ) -> Vec<EmmyrcWorkspacePathItem> {
         let mut seen = HashSet::new();
-        iter.map(|root| self.pre_process_library(root))
+        iter.map(|root| self.pre_process_workspace_path_item(root))
             .filter(|path| seen.insert(path.clone()))
             .collect()
     }
@@ -97,13 +98,16 @@ impl PreProcessContext {
         path
     }
 
-    fn pre_process_library(&mut self, item: &EmmyLibraryItem) -> EmmyLibraryItem {
+    fn pre_process_workspace_path_item(
+        &mut self,
+        item: &EmmyrcWorkspacePathItem,
+    ) -> EmmyrcWorkspacePathItem {
         match item {
-            EmmyLibraryItem::Path(p) => {
+            EmmyrcWorkspacePathItem::Path(p) => {
                 let processed_path = self.pre_process_path(p);
-                EmmyLibraryItem::Path(processed_path)
+                EmmyrcWorkspacePathItem::Path(processed_path)
             }
-            EmmyLibraryItem::Config(config) => {
+            EmmyrcWorkspacePathItem::Config(config) => {
                 let processed_path = self.pre_process_path(&config.path);
                 let old_workspace = self.workspace.clone();
                 self.workspace = PathBuf::from(&processed_path);
@@ -115,7 +119,7 @@ impl PreProcessContext {
                 self.workspace = old_workspace;
                 let processed_ignore_globs = config.ignore_globs.clone();
 
-                EmmyLibraryItem::Config(EmmyLibraryConfig {
+                EmmyrcWorkspacePathItem::Config(EmmyrcWorkspacePathConfig {
                     path: processed_path,
                     ignore_dir: processed_ignore_dir,
                     ignore_globs: processed_ignore_globs,

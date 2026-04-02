@@ -151,7 +151,7 @@
         "ignoreGlobs": [],
         "library": [],
         "moduleMap": [],
-        "packageDirs": [],
+        "packages": [],
         "preloadFileSize": 0,
         "reindexDuration": 5000,
         "workspaceRoots": []
@@ -485,46 +485,6 @@
         "md",
         "myst",
         "rst"
-      ]
-    },
-    "EmmyLibraryConfig": {
-      "type": "object",
-      "properties": {
-        "ignoreDir": {
-          "description": "Ignore directories within this library",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "ignoreGlobs": {
-          "description": "Ignore globs within this library. eg: [\"**/*.lua\"]",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "path": {
-          "description": "Library path",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ]
-    },
-    "EmmyLibraryItem": {
-      "anyOf": [
-        {
-          "description": "Simple library path string",
-          "type": "string"
-        },
-        {
-          "description": "Library configuration with path and ignore rules",
-          "$ref": "#/$defs/EmmyLibraryConfig"
-        }
       ]
     },
     "EmmyrcCodeAction": {
@@ -1155,7 +1115,7 @@
           "type": "array",
           "default": [],
           "items": {
-            "$ref": "#/$defs/EmmyLibraryItem"
+            "$ref": "#/$defs/EmmyrcWorkspacePathItem"
           }
         },
         "moduleMap": {
@@ -1166,12 +1126,12 @@
             "$ref": "#/$defs/EmmyrcWorkspaceModuleMap"
           }
         },
-        "packageDirs": {
-          "description": "Package directories. Treat the parent directory as a `library`, but only add files from the specified directory.\neg: `/usr/local/share/lua/5.1/module`",
+        "packages": {
+          "description": "Package directories. Can be a string path or an object with path and ignore rules.\nTreat the parent directory as a `library`, but only add files from the specified directory.\neg: [\"/usr/local/share/lua/5.1/module\"] or [{\"path\": \"/usr/local/share/lua/5.1/module\", \"ignoreDir\": [\"test\"], \"ignoreGlobs\": [\"**/*.spec.lua\"]}]",
           "type": "array",
           "default": [],
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/EmmyrcWorkspacePathItem"
           }
         },
         "preloadFileSize": {
@@ -1210,6 +1170,46 @@
       "required": [
         "pattern",
         "replace"
+      ]
+    },
+    "EmmyrcWorkspacePathConfig": {
+      "type": "object",
+      "properties": {
+        "ignoreDir": {
+          "description": "Ignore directories within this entry",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "ignoreGlobs": {
+          "description": "Ignore globs within this entry. eg: [\"**/*.lua\"]",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "path": {
+          "description": "Workspace entry path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    },
+    "EmmyrcWorkspacePathItem": {
+      "anyOf": [
+        {
+          "description": "Simple workspace entry path string",
+          "type": "string"
+        },
+        {
+          "description": "Workspace entry configuration with path and ignore rules",
+          "$ref": "#/$defs/EmmyrcWorkspacePathConfig"
+        }
       ]
     }
   }

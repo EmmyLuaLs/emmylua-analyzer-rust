@@ -381,7 +381,8 @@ Example:
 |--------|------|---------|-------------|
 | `ignoreDir` | `string[]` | `[]` | Directories to ignore |
 | `ignoreGlobs` | `string[]` | `[]` | Glob patterns for ignoring files |
-| `library` | `string[]` | `[]` | Library directory paths |
+| `library` | `array<string \| object>` | `[]` | Library paths, as strings or objects with `path`/`ignoreDir`/`ignoreGlobs` |
+| `packages` | `array<string \| object>` | `[]` | Package paths; the parent directory is treated as a `library`, but only the target subdirectory is indexed |
 | `workspaceRoots` | `string[]` | `[]` | Workspace root directories |
 | `encoding` | `string` | `"utf-8"` | File encoding |
 | `moduleMap` | `object[]` | `[]` | Module path mapping (supports regex) |
@@ -397,7 +398,14 @@ Module mapping example:
       { "pattern": "^lib(.*)$", "replace": "script$1" }
     ],
     "ignoreDir": ["build", "dist", "node_modules"],
-    "library": ["/usr/local/lib/lua", "./libs"],
+    "library": [
+      "/usr/local/lib/lua",
+      { "path": "./libs", "ignoreGlobs": ["**/*.spec.lua"] }
+    ],
+    "packages": [
+      "./vendor/lua_modules/share/lua/5.1/socket",
+      { "path": "./vendor/lua_modules/share/lua/5.1/mime", "ignoreDir": ["tests"] }
+    ],
     "workspaceRoots": ["Assets/Scripts/Lua"]
   }
 }

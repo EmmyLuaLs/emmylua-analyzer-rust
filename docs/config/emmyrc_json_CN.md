@@ -381,7 +381,8 @@ EmmyLua Analyzer Rust 通过项目根目录的 `.emmyrc.json` 文件进行配置
 |--------|------|--------|------|
 | `ignoreDir` | `string[]` | `[]` | 忽略的目录列表 |
 | `ignoreGlobs` | `string[]` | `[]` | 基于 glob 模式忽略文件 |
-| `library` | `string[]` | `[]` | 库文件目录路径 |
+| `library` | `array<string \| object>` | `[]` | 库路径，支持字符串或带 `path`/`ignoreDir`/`ignoreGlobs` 的对象 |
+| `packages` | `array<string \| object>` | `[]` | 包目录路径，父目录按 `library` 处理，但只索引指定子目录 |
 | `workspaceRoots` | `string[]` | `[]` | 工作区根目录列表 |
 | `encoding` | `string` | `"utf-8"` | 文件编码 |
 | `moduleMap` | `object[]` | `[]` | 模块路径映射（支持正则） |
@@ -397,7 +398,14 @@ EmmyLua Analyzer Rust 通过项目根目录的 `.emmyrc.json` 文件进行配置
       { "pattern": "^lib(.*)$", "replace": "script$1" }
     ],
     "ignoreDir": ["build", "dist", "node_modules"],
-    "library": ["/usr/local/lib/lua", "./libs"],
+    "library": [
+      "/usr/local/lib/lua",
+      { "path": "./libs", "ignoreGlobs": ["**/*.spec.lua"] }
+    ],
+    "packages": [
+      "./vendor/lua_modules/share/lua/5.1/socket",
+      { "path": "./vendor/lua_modules/share/lua/5.1/mime", "ignoreDir": ["tests"] }
+    ],
     "workspaceRoots": ["Assets/Scripts/Lua"]
   }
 }

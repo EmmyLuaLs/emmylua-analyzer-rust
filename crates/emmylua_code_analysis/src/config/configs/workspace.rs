@@ -13,11 +13,12 @@ pub struct EmmyrcWorkspace {
     #[serde(default)]
     /// Library paths. Can be a string path or an object with path and ignore rules.
     /// eg: ["/usr/local/share/lua/5.1"] or [{"path": "/usr/local/share/lua/5.1", "ignoreDir": ["test"], "ignoreGlobs": ["**/*.spec.lua"]}]
-    pub library: Vec<EmmyLibraryItem>,
+    pub library: Vec<EmmyrcWorkspacePathItem>,
     #[serde(default)]
-    /// Package directories. Treat the parent directory as a `library`, but only add files from the specified directory.
-    /// eg: `/usr/local/share/lua/5.1/module`
-    pub package_dirs: Vec<String>,
+    /// Package directories. Can be a string path or an object with path and ignore rules.
+    /// Treat the parent directory as a `library`, but only add files from the specified directory.
+    /// eg: ["/usr/local/share/lua/5.1/module"] or [{"path": "/usr/local/share/lua/5.1/module", "ignoreDir": ["test"], "ignoreGlobs": ["**/*.spec.lua"]}]
+    pub packages: Vec<EmmyrcWorkspacePathItem>,
     #[serde(default)]
     /// Workspace roots. eg: ["src", "test"]
     pub workspace_roots: Vec<String>,
@@ -50,7 +51,7 @@ impl Default for EmmyrcWorkspace {
             ignore_dir: Vec::new(),
             ignore_globs: Vec::new(),
             library: Vec::new(),
-            package_dirs: Vec::new(),
+            packages: Vec::new(),
             workspace_roots: Vec::new(),
             preload_file_size: 0,
             encoding: encoding_default(),
@@ -69,34 +70,40 @@ pub struct EmmyrcWorkspaceModuleMap {
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Hash, PartialEq, Eq)]
 #[serde(untagged)]
-pub enum EmmyLibraryItem {
-    /// Simple library path string
+pub enum EmmyrcWorkspacePathItem {
+    /// Simple workspace entry path string
     Path(String),
-    /// Library configuration with path and ignore rules
-    Config(EmmyLibraryConfig),
+    /// Workspace entry configuration with path and ignore rules
+    Config(EmmyrcWorkspacePathConfig),
 }
 
-impl EmmyLibraryItem {
+impl EmmyrcWorkspacePathItem {
     pub fn get_path(&self) -> &String {
         match self {
-            EmmyLibraryItem::Path(p) => p,
-            EmmyLibraryItem::Config(c) => &c.path,
+            EmmyrcWorkspacePathItem::Path(p) => p,
+            EmmyrcWorkspacePathItem::Config(c) => &c.path,
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Hash, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct EmmyLibraryConfig {
-    /// Library path
+pub struct EmmyrcWorkspacePathConfig {
+    /// Workspace entry path
     pub path: String,
-    /// Ignore directories within this library
+    /// Ignore directories within this entry
     #[serde(default)]
     pub ignore_dir: Vec<String>,
-    /// Ignore globs within this library. eg: ["**/*.lua"]
+    /// Ignore globs within this entry. eg: ["**/*.lua"]
     #[serde(default)]
     pub ignore_globs: Vec<String>,
 }
+
+#[doc(hidden)]
+pub type EmmyLibraryItem = EmmyrcWorkspacePathItem;
+
+#[doc(hidden)]
+pub type EmmyLibraryConfig = EmmyrcWorkspacePathConfig;
 
 fn encoding_default() -> String {
     "utf-8".to_string()

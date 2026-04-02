@@ -1,6 +1,9 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
-use crate::{EmmyLibraryItem, Emmyrc, LuaFileInfo, load_workspace_files};
+use crate::{Emmyrc, EmmyrcWorkspacePathItem, LuaFileInfo, load_workspace_files};
 
 #[derive(Clone, Debug)]
 pub enum WorkspaceImport {
@@ -53,29 +56,23 @@ pub fn build_workspace_folders(
             .iter()
             .map(|library| WorkspaceFolder::new(PathBuf::from(library.get_path()), true)),
     );
-    resolved.extend(
-        emmyrc
-            .workspace
-            .package_dirs
-            .iter()
-            .filter_map(|package_dir| {
-                let package_path = PathBuf::from(package_dir);
-                let Some(parent) = package_path.parent() else {
-                    log::warn!("package dir {:?} has no parent", package_path);
-                    return None;
-                };
-                let Some(name) = package_path.file_name() else {
-                    log::warn!("package dir {:?} has no file name", package_path);
-                    return None;
-                };
+    resolved.extend(emmyrc.workspace.packages.iter().filter_map(|package| {
+        let package_path = PathBuf::from(package.get_path());
+        let Some(parent) = package_path.parent() else {
+            log::warn!("package dir {:?} has no parent", package_path);
+            return None;
+        };
+        let Some(name) = package_path.file_name() else {
+            log::warn!("package dir {:?} has no file name", package_path);
+            return None;
+        };
 
-                Some(WorkspaceFolder::with_sub_paths(
-                    parent.to_path_buf(),
-                    vec![PathBuf::from(name)],
-                    true,
-                ))
-            }),
-    );
+        Some(WorkspaceFolder::with_sub_paths(
+            parent.to_path_buf(),
+            vec![PathBuf::from(name)],
+            true,
+        ))
+    }));
 
     resolved
 }
@@ -171,17 +168,17 @@ pub fn calculate_include_and_exclude(emmyrc: &Emmyrc) -> (Vec<String>, Vec<Strin
     (include, exclude, exclude_dirs)
 }
 
-pub fn find_library_exclude(
-    library: &WorkspaceFolder,
-    emmyrc: &Emmyrc,
+pub fn find_workspace_path_exclude(
+    root: &Path,
+    configured_entries: &[EmmyrcWorkspacePathItem],
 ) -> (Vec<String>, Vec<PathBuf>) {
     let mut exclude = Vec::new();
     let mut exclude_dirs = Vec::new();
 
-    for lib in &emmyrc.workspace.library {
-        if let EmmyLibraryItem::Config(detail_config) = &lib {
-            let lib_path = PathBuf::from(&detail_config.path);
-            if lib_path == library.root {
+    for entry in configured_entries {
+        if let EmmyrcWorkspacePathItem::Config(detail_config) = entry {
+            let configured_path = PathBuf::from(&detail_config.path);
+            if configured_path == root {
                 exclude = detail_config.ignore_globs.clone();
                 exclude_dirs = detail_config.ignore_dir.iter().map(PathBuf::from).collect();
                 break;
@@ -301,29 +298,43 @@ impl WorkspaceMatchEntry {
         emmyrc: &Emmyrc,
     ) -> Vec<Self> {
         let is_library = workspace.is_library;
-        let mut exclude = exclude.to_vec();
-        let mut exclude_dir = exclude_dir.to_vec();
-        if is_library {
-            let (library_exclude, library_exclude_dir) = find_library_exclude(&workspace, emmyrc);
-            exclude.extend(library_exclude);
-            exclude.sort();
-            exclude.dedup();
-
-            exclude_dir.extend(library_exclude_dir);
-            exclude_dir.sort();
-            exclude_dir.dedup();
-        }
-        let roots = match workspace.import {
-            WorkspaceImport::All => vec![workspace.root],
-            WorkspaceImport::SubPaths(paths) => paths
-                .into_iter()
-                .map(|path| workspace.root.join(path))
-                .collect(),
+        let workspace_root = workspace.root;
+        let (roots, configured_entries) = match workspace.import {
+            WorkspaceImport::All => (
+                vec![workspace_root],
+                is_library.then_some(emmyrc.workspace.library.as_slice()),
+            ),
+            WorkspaceImport::SubPaths(paths) => {
+                let roots = paths
+                    .into_iter()
+                    .map(|path| workspace_root.join(path))
+                    .collect();
+                (
+                    roots,
+                    is_library.then_some(emmyrc.workspace.packages.as_slice()),
+                )
+            }
         };
 
         roots
             .into_iter()
-            .map(|root| Self::new(root, is_library, &exclude, &exclude_dir))
+            .map(|root| {
+                let mut entry_exclude = exclude.to_vec();
+                let mut entry_exclude_dir = exclude_dir.to_vec();
+                if let Some(configured_entries) = configured_entries {
+                    let (configured_exclude, configured_exclude_dir) =
+                        find_workspace_path_exclude(&root, configured_entries);
+                    entry_exclude.extend(configured_exclude);
+                    entry_exclude.sort();
+                    entry_exclude.dedup();
+
+                    entry_exclude_dir.extend(configured_exclude_dir);
+                    entry_exclude_dir.sort();
+                    entry_exclude_dir.dedup();
+                }
+
+                Self::new(root, is_library, &entry_exclude, &entry_exclude_dir)
+            })
             .collect()
     }
 
@@ -662,5 +673,70 @@ mod tests {
         let loaded = loaded_paths(files);
         assert!(loaded.contains(&kept_file));
         assert!(!loaded.contains(&ignored_file));
+    }
+
+    #[test]
+    fn package_is_indexed_even_when_parent_is_globally_ignored() {
+        let workspace = TestWorkspace::new();
+        let main_file = workspace.write_file("lua/main.lua");
+        let package_root = workspace.path(".rocks/share/lua/5.1/module");
+        let package_file = workspace.write_file(".rocks/share/lua/5.1/module/init.lua");
+
+        let emmyrc = emmyrc_from_json(&format!(
+            r#"{{
+                "workspace": {{
+                    "ignoreDir": [{}],
+                    "packages": [{}]
+                }}
+            }}"#,
+            json_string(&to_string(&workspace.path(".rocks"))),
+            json_string(&to_string(&package_root)),
+        ));
+
+        let workspace_folders = build_workspace_folders(
+            &[WorkspaceFolder::new(workspace.root.clone(), false)],
+            &emmyrc,
+        );
+        let files = collect_workspace_files(&workspace_folders, &emmyrc, None, None);
+
+        let loaded = loaded_paths(files);
+        assert!(loaded.contains(&main_file));
+        assert!(loaded.contains(&package_file));
+    }
+
+    #[test]
+    fn package_specific_ignores_still_apply() {
+        let workspace = TestWorkspace::new();
+        let package_root = workspace.path(".rocks/share/lua/5.1/module");
+        let kept_file = workspace.write_file(".rocks/share/lua/5.1/module/keep.lua");
+        let ignored_dir_file = workspace.write_file(".rocks/share/lua/5.1/module/tests/spec.lua");
+        let ignored_glob_file = workspace.write_file(".rocks/share/lua/5.1/module/async.spec.lua");
+
+        let emmyrc = emmyrc_from_json(&format!(
+            r#"{{
+                "workspace": {{
+                    "ignoreDir": [{}],
+                    "packages": [{{
+                        "path": {},
+                        "ignoreDir": [{}],
+                        "ignoreGlobs": ["**/*.spec.lua"]
+                    }}]
+                }}
+            }}"#,
+            json_string(&to_string(&workspace.path(".rocks"))),
+            json_string(&to_string(&package_root)),
+            json_string(&to_string(&package_root.join("tests"))),
+        ));
+
+        let workspace_folders = build_workspace_folders(
+            &[WorkspaceFolder::new(workspace.root.clone(), false)],
+            &emmyrc,
+        );
+        let files = collect_workspace_files(&workspace_folders, &emmyrc, None, None);
+
+        let loaded = loaded_paths(files);
+        assert!(loaded.contains(&kept_file));
+        assert!(!loaded.contains(&ignored_dir_file));
+        assert!(!loaded.contains(&ignored_glob_file));
     }
 }
