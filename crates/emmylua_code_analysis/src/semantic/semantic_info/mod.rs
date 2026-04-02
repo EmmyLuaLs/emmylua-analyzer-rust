@@ -157,8 +157,13 @@ pub fn infer_node_semantic_info(
     }
 }
 
-/// If `typ` is a class type and `decl_id` has a non-empty `TableConst` initializer,
-/// returns `Instance(typ, range)`. Otherwise returns `None`.
+/// If `typ` is a class type, `decl_id` has a `TableConst` initializer, and at least one
+/// provided field is optional in the class, returns `Instance(typ, range)`.
+/// Otherwise returns `None`.
+///
+/// The optional-field guard prevents wrapping non-optional class declarations in
+/// Instance (which would intersect field types with literal constants, narrowing
+/// `integer` to `IntegerConst(1)` undesirably for initial declarations).
 fn try_narrow_local_to_instance(
     db: &DbIndex,
     cache: &mut LuaInferCache,
@@ -176,17 +181,45 @@ fn try_narrow_local_to_instance(
     let LuaType::TableConst(range) = infer_expr(db, cache, expr).ok()? else {
         return None;
     };
-    let owner = LuaMemberOwner::Element(range.clone());
-    if !db
-        .get_member_index()
-        .get_members(&owner)
-        .is_some_and(|m| !m.is_empty())
-    {
+    let literal_owner = LuaMemberOwner::Element(range.clone());
+    // Only create Instance when at least one provided literal field corresponds
+    // to an optional class field — otherwise narrowing brings no benefit.
+    if !literal_provides_optional_class_field(db, typ, &literal_owner) {
         return None;
     }
     Some(LuaType::Instance(
         LuaInstanceType::new(typ.clone(), range).into(),
     ))
+}
+
+/// Returns `true` if the table literal (identified by `literal_owner`) provides at least
+/// one field that is declared optional (`field?`) in `class_type`.
+fn literal_provides_optional_class_field(
+    db: &DbIndex,
+    class_type: &LuaType,
+    literal_owner: &LuaMemberOwner,
+) -> bool {
+    let type_id = match class_type {
+        LuaType::Ref(id) | LuaType::Def(id) => id,
+        _ => return false,
+    };
+    let class_owner = LuaMemberOwner::Type(type_id.clone());
+    let Some(class_members) = db.get_member_index().get_members(&class_owner) else {
+        return false;
+    };
+    let Some(literal_members) = db.get_member_index().get_members(literal_owner) else {
+        return false;
+    };
+    literal_members.iter().any(|lit_member| {
+        let lit_key = lit_member.get_key();
+        class_members.iter().any(|cls_member| {
+            cls_member.get_key() == lit_key
+                && db
+                    .get_type_index()
+                    .get_type_cache(&cls_member.get_id().into())
+                    .is_some_and(|tc| tc.as_type().is_nullable())
+        })
+    })
 }
 
 fn type_def_tag_info(name: &str, db: &DbIndex, cache: &mut LuaInferCache) -> Option<SemanticInfo> {
