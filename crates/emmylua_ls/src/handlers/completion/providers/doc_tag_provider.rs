@@ -5,17 +5,42 @@ use emmylua_parser::{
 };
 use lsp_types::{CompletionItem, MarkupContent};
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct DocTagProvider;
+
+impl CompletionProvider for DocTagProvider {
+    fn name(&self) -> &'static str {
+        "doc_tag"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
+    matches!(
+        builder.trigger_token.kind().into(),
+        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocLongStart | LuaTokenKind::TkTagOther
+    )
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
-    let trigger_token = &builder.trigger_token;
-    let trigger_token_kind: LuaTokenKind = trigger_token.kind().into();
-    if !matches!(
-        trigger_token_kind,
-        LuaTokenKind::TkDocStart | LuaTokenKind::TkDocLongStart | LuaTokenKind::TkTagOther
-    ) {
+    let trigger_token_kind: LuaTokenKind = builder.trigger_token.kind().into();
+    if !supports_provider(builder) {
         return None;
     }
 
@@ -34,7 +59,6 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         add_tag_param_return_completion(builder, last_index);
     }
 
-    builder.stop_here();
     Some(())
 }
 

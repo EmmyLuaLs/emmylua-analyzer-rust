@@ -179,6 +179,92 @@ mod tests {
     }
 
     #[gtest]
+    fn test_return_overload_hover() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(
+            ws.check_hover(
+                r#"
+                ---@return_overload true, integer
+                ---@return_overload false, string
+                local function parse()
+                end
+
+                local <??>alias = parse
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\nlocal function parse()\n  -> true, integer\n  -> false, string\n\n```"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_description_hover() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@return_overload true, integer success
+                ---@return_overload false, string failed
+                local function parse()
+                end
+
+                local <??>alias = parse
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function parse()\n  -> true, integer\n  -> false, string\n\n```\n\n---\n\n@*return_overload* #1 — success\n\n@*return_overload* #2 — failed".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_call_hover() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class B
+                local B
+
+                ---@generic T
+                ---@param x T
+                ---@return_overload true, T
+                ---@return_overload false, string
+                local function parse(x)
+                end
+
+                pa<??>rse(B)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function parse(x: B)\n  -> true, B\n  -> false, string\n\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_pcall_return_overload_hover() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        check!(ws.check_hover(
+            r#"
+                --- @param a string
+                --- @param b table<string,integer>
+                --- @return_overload false, [string,string] comment
+                --- @return_overload true, string comment
+                local function foo(a, b)
+                end
+
+                local a, b = pca<??>ll(foo)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nfunction pcall(f: sync fun(a: string, b: table<string,integer>) -> ((false|true),((string,string)|string)), a: string, b: table<string,integer>)\n  -> true, (false|true), ((string,string)|string)\n  -> false, string\n\n```\n\n---\n\n\nCalls function `f` with the given arguments in *protected mode*. This\nmeans that any error inside `f` is not propagated; instead, `pcall` catches\nthe error and returns a status code. Its first result is the status code (a\nboolean), which is true if the call succeeds without errors. In such case,\n`pcall` also returns all results from the call, after this first result. In\ncase of any error, `pcall` returns **false** plus the error message.".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_table_field_function_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(

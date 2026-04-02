@@ -15,7 +15,34 @@ use crate::{
     util::{file_name_convert, module_name_convert},
 };
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct AutoRequireProvider;
+
+impl CompletionProvider for AutoRequireProvider {
+    fn name(&self) -> &'static str {
+        "auto_require"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        builder.semantic_model.get_emmyrc().completion.auto_require
+            && builder
+                .trigger_token
+                .parent()
+                .and_then(LuaNameExpr::cast)
+                .is_some()
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Continue
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }

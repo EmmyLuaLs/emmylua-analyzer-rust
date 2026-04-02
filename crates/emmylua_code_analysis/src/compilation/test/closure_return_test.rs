@@ -80,4 +80,49 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_inferred_return_preserves_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@return { y: number } & { y: string }
+        local function impossible() end
+
+        local function f()
+            return impossible().y
+        end
+
+        result = f()
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("never"));
+    }
+
+    #[test]
+    fn test_member_doc_return_preserves_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@return { y: number } & { y: string }
+        local function impossible() end
+
+        ---@class ClosureTest
+        ---@field e fun(): never
+        ---@field e fun(): never
+        local Test
+
+        function Test.e()
+            return impossible().y
+        end
+
+        result = Test.e()
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("never"));
+    }
 }

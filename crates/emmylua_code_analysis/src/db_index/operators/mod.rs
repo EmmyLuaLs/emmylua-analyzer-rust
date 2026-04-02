@@ -1,7 +1,7 @@
 mod lua_operator;
 mod lua_operator_meta_method;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::FileId;
 

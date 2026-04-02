@@ -1,8 +1,8 @@
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaDocDescriptionOwner, LuaDocTagAs, LuaDocTagCast,
     LuaDocTagModule, LuaDocTagOther, LuaDocTagOverload, LuaDocTagParam, LuaDocTagReturn,
-    LuaDocTagReturnCast, LuaDocTagSchema, LuaDocTagSee, LuaDocTagType, LuaExpr, LuaLocalName,
-    LuaTokenKind, LuaVarExpr,
+    LuaDocTagReturnCast, LuaDocTagReturnOverload, LuaDocTagSchema, LuaDocTagSee, LuaDocTagType,
+    LuaExpr, LuaLocalName, LuaTokenKind, LuaVarExpr,
 };
 
 use super::{
@@ -16,8 +16,8 @@ use crate::{
     SignatureReturnStatus, TypeOps,
     compilation::analyzer::common::bind_type,
     db_index::{
-        LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaMemberId, LuaOperator, LuaSemanticDeclId,
-        LuaSignatureId, LuaType,
+        LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaMemberId,
+        LuaOperator, LuaSemanticDeclId, LuaSignatureId, LuaType,
     },
 };
 use crate::{
@@ -248,29 +248,59 @@ pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Optio
     let description = tag
         .get_description()
         .map(|des| preprocess_description(&des.get_description_text(), None));
+    let return_infos = tag
+        .get_info_list()
+        .into_iter()
+        .map(|(doc_type, name_token)| LuaDocReturnInfo {
+            name: name_token.map(|name| name.get_name_text().to_string()),
+            type_ref: infer_type(analyzer, doc_type),
+            description: description.clone(),
+            attributes: None,
+        })
+        .collect::<Vec<_>>();
 
-    if let Some(closure) = find_owner_closure_or_report(analyzer, &tag) {
-        let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
-        let returns = tag.get_info_list();
-        for (doc_type, name_token) in returns {
-            let name = name_token.map(|name| name.get_name_text().to_string());
+    bind_signature_return_docs(analyzer, &tag, |signature| {
+        signature.return_docs.extend(return_infos);
+    })
+}
 
-            let type_ref = infer_type(analyzer, doc_type);
-            let return_info = LuaDocReturnInfo {
-                name,
-                type_ref,
-                description: description.clone(),
-                attributes: None,
-            };
-
-            let signature = analyzer
-                .db
-                .get_signature_index_mut()
-                .get_or_create(signature_id);
-            signature.return_docs.push(return_info);
-            signature.resolve_return = SignatureReturnStatus::DocResolve;
-        }
+pub fn analyze_return_overload(
+    analyzer: &mut DocAnalyzer,
+    tag: LuaDocTagReturnOverload,
+) -> Option<()> {
+    let description = tag
+        .get_description()
+        .map(|des| preprocess_description(&des.get_description_text(), None))
+        .filter(|des| !des.is_empty());
+    let overload_info = LuaDocReturnOverloadInfo {
+        type_refs: tag
+            .get_types()
+            .map(|doc_type| infer_type(analyzer, doc_type))
+            .collect(),
+        description,
+    };
+    if overload_info.type_refs.is_empty() {
+        return Some(());
     }
+
+    bind_signature_return_docs(analyzer, &tag, |signature| {
+        signature.return_overloads.push(overload_info);
+    })
+}
+
+fn bind_signature_return_docs(
+    analyzer: &mut DocAnalyzer,
+    tag: &impl LuaAstNode,
+    bind: impl FnOnce(&mut crate::LuaSignature),
+) -> Option<()> {
+    let closure = find_owner_closure_or_report(analyzer, tag)?;
+    let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
+    let signature = analyzer
+        .db
+        .get_signature_index_mut()
+        .get_or_create(signature_id);
+    bind(signature);
+    signature.resolve_return = SignatureReturnStatus::DocResolve;
     Some(())
 }
 

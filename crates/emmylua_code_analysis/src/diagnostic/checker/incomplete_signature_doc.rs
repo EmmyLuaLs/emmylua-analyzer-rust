@@ -1,8 +1,13 @@
 use std::collections::HashSet;
 
-use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaDocTagParam, LuaDocTagReturn, LuaStat};
+use emmylua_parser::{
+    LuaAstNode, LuaClosureExpr, LuaDocTagParam, LuaDocTagReturn, LuaDocTagReturnOverload, LuaStat,
+};
 
-use crate::{DiagnosticCode, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel};
+use crate::{
+    DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType, SemanticDeclLevel, SemanticModel,
+    SignatureReturnStatus,
+};
 
 use super::{Checker, DiagnosticContext, get_closure_expr_comment, get_return_stats};
 
@@ -81,10 +86,20 @@ fn check_doc(
         })
         .collect();
 
-    let doc_return_len: usize = comment
-        .children::<LuaDocTagReturn>()
-        .map(|return_doc| return_doc.get_types().count())
-        .sum();
+    let doc_return_len =
+        get_doc_return_max_len(semantic_model, closure_expr).unwrap_or_else(|| {
+            let doc_return_len: usize = comment
+                .children::<LuaDocTagReturn>()
+                .map(|return_doc| return_doc.get_types().count())
+                .sum();
+            let doc_return_overload_max_len = comment
+                .children::<LuaDocTagReturnOverload>()
+                .map(|return_doc| return_doc.get_types().count())
+                .max()
+                .unwrap_or(0);
+
+            Some(doc_return_len.max(doc_return_overload_max_len))
+        });
 
     check_params(
         context,
@@ -149,7 +164,7 @@ fn check_returns(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     closure_expr: &LuaClosureExpr,
-    doc_return_len: usize,
+    doc_return_len: Option<usize>,
     code: DiagnosticCode,
     is_global: bool,
     function_name: &str,
@@ -169,7 +184,9 @@ fn check_returns(
 
             return_stat_len += expr_return_count;
 
-            if return_stat_len > doc_return_len {
+            if let Some(doc_return_len) = doc_return_len
+                && return_stat_len > doc_return_len
+            {
                 let message = if is_global {
                     t!(
                         "Missing @return annotation at index `%{index}` in global function `%{function_name}`.",
@@ -189,4 +206,26 @@ fn check_returns(
     }
 
     Some(())
+}
+
+fn get_doc_return_max_len(
+    semantic_model: &SemanticModel,
+    closure_expr: &LuaClosureExpr,
+) -> Option<Option<usize>> {
+    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
+    let signature = semantic_model
+        .get_db()
+        .get_signature_index()
+        .get(&signature_id)?;
+    if signature.resolve_return != SignatureReturnStatus::DocResolve {
+        return None;
+    }
+    let return_type = signature.get_return_type();
+
+    Some(match return_type {
+        LuaType::Variadic(variadic) => variadic.get_max_len(),
+        LuaType::Any | LuaType::Unknown => Some(1),
+        LuaType::Nil => Some(0),
+        _ => Some(1),
+    })
 }

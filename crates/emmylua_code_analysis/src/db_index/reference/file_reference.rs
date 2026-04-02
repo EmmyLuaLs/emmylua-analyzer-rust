@@ -1,5 +1,5 @@
+use hashbrown::HashMap;
 use rowan::TextRange;
-use std::collections::HashMap;
 
 use crate::db_index::LuaDeclId;
 

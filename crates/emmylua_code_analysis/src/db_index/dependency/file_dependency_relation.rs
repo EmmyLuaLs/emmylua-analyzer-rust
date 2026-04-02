@@ -1,5 +1,6 @@
 use crate::FileId;
-use std::collections::{HashMap, HashSet, VecDeque};
+use hashbrown::{HashMap, HashSet};
+use std::collections::VecDeque;
 
 #[derive(Debug)]
 pub struct FileDependencyRelation<'a> {

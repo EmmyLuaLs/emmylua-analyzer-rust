@@ -3,16 +3,24 @@ use std::ops::Deref;
 use crate::{DbIndex, LuaType, LuaUnionType, get_real_type};
 
 pub fn union_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType {
-    let real_type = get_real_type(db, &source).unwrap_or(&source);
+    let match_source = get_real_type(db, &source)
+        .cloned()
+        .unwrap_or_else(|| source.clone());
+    union_type_impl(&match_source, source, target)
+}
 
-    match (&real_type, &target) {
+pub(crate) fn union_type_shallow(source: LuaType, target: LuaType) -> LuaType {
+    let match_source = source.clone();
+    union_type_impl(&match_source, source, target)
+}
+
+fn union_type_impl(match_source: &LuaType, source: LuaType, target: LuaType) -> LuaType {
+    match (match_source, &target) {
         // ANY | T = ANY
         (LuaType::Any, _) => LuaType::Any,
         (_, LuaType::Any) => LuaType::Any,
         (LuaType::Never, _) => target,
         (_, LuaType::Never) => source,
-        (LuaType::Unknown, _) => target,
-        (_, LuaType::Unknown) => source,
         // int | int const
         (LuaType::Integer, LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_)) => {
             LuaType::Integer
@@ -27,11 +35,14 @@ pub fn union_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType {
         (LuaType::String, LuaType::StringConst(_) | LuaType::DocStringConst(_)) => LuaType::String,
         (LuaType::StringConst(_) | LuaType::DocStringConst(_), LuaType::String) => LuaType::String,
         // boolean | boolean const
-        (LuaType::Boolean, LuaType::BooleanConst(_)) => LuaType::Boolean,
-        (LuaType::BooleanConst(_), LuaType::Boolean) => LuaType::Boolean,
-        (LuaType::BooleanConst(left), LuaType::BooleanConst(right)) => {
+        (LuaType::Boolean, right) if right.is_boolean() => LuaType::Boolean,
+        (left, LuaType::Boolean) if left.is_boolean() => LuaType::Boolean,
+        (
+            LuaType::BooleanConst(left) | LuaType::DocBooleanConst(left),
+            LuaType::BooleanConst(right) | LuaType::DocBooleanConst(right),
+        ) => {
             if left == right {
-                LuaType::BooleanConst(*left)
+                source.clone()
             } else {
                 LuaType::Boolean
             }
@@ -103,7 +114,7 @@ pub fn union_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType {
         }
 
         // same type
-        (left, right) if *left == right => source.clone(),
+        (left, right) if *left == *right => source.clone(),
         _ => LuaType::from_vec(vec![source, target]),
     }
 }

@@ -27,6 +27,7 @@
 ### 函数注解
 - [`@param`](./param.md) - 参数定义
 - [`@return`](./return.md) - 返回值定义
+- `@return_overload`（见 [`@return`](./return.md)）- 关联返回元组
 - [`@overload`](./overload.md) - 函数重载
 - [`@async`](./async.md) - 异步函数标记
 - [`@nodiscard`](./nodiscard.md) - 不可忽略返回值
@@ -122,6 +123,7 @@ end
 | `@field` | 字段定义 | `---@field name string` |
 | `@param` | 参数定义 | `---@param name string` |
 | `@return` | 返回值定义 | `---@return boolean` |
+| `@return_overload` | 关联返回元组 | `---@return_overload true, T` |
 | `@type` | 类型声明 | `---@type string` |
 | `@generic` | 泛型定义 | `---@generic T` |
 | `@overload` | 函数重载 | `---@overload fun(x: number): number` |

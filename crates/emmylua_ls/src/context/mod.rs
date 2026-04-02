@@ -114,13 +114,16 @@ impl ServerContext {
         }));
 
         let analysis = Arc::new(RwLock::new(EmmyLuaAnalysis::new()));
-        let status_bar = Arc::new(StatusBar::new(client.clone()));
+        let lsp_features = Arc::new(LspFeatures::new(client_capabilities));
+        let status_bar = Arc::new(StatusBar::new(
+            client.clone(),
+            lsp_features.supports_work_done_progress(),
+        ));
         let file_diagnostic = Arc::new(FileDiagnostic::new(
             analysis.clone(),
             status_bar.clone(),
             client.clone(),
         ));
-        let lsp_features = Arc::new(LspFeatures::new(client_capabilities));
         let workspace_manager = Arc::new(RwLock::new(WorkspaceManager::new(
             analysis.clone(),
             client.clone(),

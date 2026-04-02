@@ -22,6 +22,7 @@ pub enum LuaDocTag {
     Type(LuaDocTagType),
     Param(LuaDocTagParam),
     Return(LuaDocTagReturn),
+    ReturnOverload(LuaDocTagReturnOverload),
     Overload(LuaDocTagOverload),
     Field(LuaDocTagField),
     Module(LuaDocTagModule),
@@ -58,6 +59,7 @@ impl LuaAstNode for LuaDocTag {
             LuaDocTag::Type(it) => it.syntax(),
             LuaDocTag::Param(it) => it.syntax(),
             LuaDocTag::Return(it) => it.syntax(),
+            LuaDocTag::ReturnOverload(it) => it.syntax(),
             LuaDocTag::Overload(it) => it.syntax(),
             LuaDocTag::Field(it) => it.syntax(),
             LuaDocTag::Module(it) => it.syntax(),
@@ -97,6 +99,7 @@ impl LuaAstNode for LuaDocTag {
             || kind == LuaSyntaxKind::DocTagAttribute
             || kind == LuaSyntaxKind::DocTagParam
             || kind == LuaSyntaxKind::DocTagReturn
+            || kind == LuaSyntaxKind::DocTagReturnOverload
             || kind == LuaSyntaxKind::DocTagOverload
             || kind == LuaSyntaxKind::DocTagField
             || kind == LuaSyntaxKind::DocTagModule
@@ -153,6 +156,9 @@ impl LuaAstNode for LuaDocTag {
             LuaSyntaxKind::DocTagReturn => {
                 Some(LuaDocTag::Return(LuaDocTagReturn::cast(syntax).unwrap()))
             }
+            LuaSyntaxKind::DocTagReturnOverload => Some(LuaDocTag::ReturnOverload(
+                LuaDocTagReturnOverload::cast(syntax).unwrap(),
+            )),
             LuaSyntaxKind::DocTagOverload => Some(LuaDocTag::Overload(
                 LuaDocTagOverload::cast(syntax).unwrap(),
             )),
@@ -592,6 +598,47 @@ impl LuaDocTagReturn {
         }
 
         result
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaDocTagReturnOverload {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaDocTagReturnOverload {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::DocTagReturnOverload
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaDocDescriptionOwner for LuaDocTagReturnOverload {}
+
+impl LuaDocTagReturnOverload {
+    pub fn get_first_type(&self) -> Option<LuaDocType> {
+        self.child()
+    }
+
+    pub fn get_types(&self) -> LuaAstChildren<LuaDocType> {
+        self.children()
     }
 }
 

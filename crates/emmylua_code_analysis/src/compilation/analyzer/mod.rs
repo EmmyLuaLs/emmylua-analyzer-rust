@@ -6,16 +6,13 @@ mod infer_cache_manager;
 mod lua;
 mod unresolve;
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-
 use crate::{
     Emmyrc, FileId, InFiled, InferFailReason, WorkspaceId, db_index::DbIndex, profile::Profile,
 };
 use emmylua_parser::LuaChunk;
+use hashbrown::{HashMap, HashSet};
 use infer_cache_manager::InferCacheManager;
+use std::sync::Arc;
 use unresolve::UnResolve;
 
 pub fn analyze(db: &mut DbIndex, need_analyzed_files: Vec<InFiled<LuaChunk>>, config: Arc<Emmyrc>) {

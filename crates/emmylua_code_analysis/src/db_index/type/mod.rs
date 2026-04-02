@@ -1,3 +1,4 @@
+mod basic_union;
 mod generic_param;
 mod humanize_type;
 mod test;
@@ -9,11 +10,13 @@ mod types;
 
 use super::traits::LuaIndex;
 use crate::{DbIndex, FileId, InFiled, db_index::r#type::type_decl::LuaTypeIdentifier};
+pub use basic_union::{BasicTypeKind, BasicTypeUnion};
 pub use generic_param::GenericParam;
+use hashbrown::{HashMap, HashSet};
 pub use humanize_type::{RenderLevel, TypeHumanizer, format_union_type, humanize_type};
-use std::collections::{HashMap, HashSet};
 pub use type_decl::{LuaDeclLocation, LuaDeclTypeKind, LuaTypeDecl, LuaTypeDeclId, LuaTypeFlag};
 pub use type_ops::TypeOps;
+pub(crate) use type_ops::union_type_shallow;
 pub use type_owner::{LuaTypeCache, LuaTypeOwner};
 pub use type_visit_trait::TypeVisitTrait;
 pub use types::*;

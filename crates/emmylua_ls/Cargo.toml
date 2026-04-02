@@ -1,6 +1,6 @@
 [package]
 name = "emmylua_ls"
-version = "0.21.0"
+version = "0.22.0"
 edition = "2024"
 authors = ["CppCXY"]
 description = "A language server for emmylua."
@@ -61,3 +61,4 @@ required-features = ["cli"]
 [features]
 default = ["cli"]
 cli = ["dep:clap", "dep:mimalloc", "emmylua_code_analysis/reqwest"]
+full-test = []

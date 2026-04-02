@@ -6,12 +6,13 @@ use std::{collections::HashMap, sync::Arc};
 use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaDocFuncType};
 use rowan::TextSize;
 
+use super::return_rows;
 use crate::db_index::signature::async_state::AsyncState;
 use crate::{
     FileId,
     db_index::{LuaFunctionType, LuaType},
 };
-use crate::{LuaAttributeUse, SemanticModel, VariadicType, first_param_may_not_self};
+use crate::{LuaAttributeUse, SemanticModel, first_param_may_not_self};
 
 #[derive(Debug)]
 pub struct LuaSignature {
@@ -20,6 +21,7 @@ pub struct LuaSignature {
     pub param_docs: HashMap<usize, LuaDocParamInfo>,
     pub params: Vec<String>,
     pub return_docs: Vec<LuaDocReturnInfo>,
+    pub return_overloads: Vec<LuaDocReturnOverloadInfo>,
     pub resolve_return: SignatureReturnStatus,
     pub is_colon_define: bool,
     pub async_state: AsyncState,
@@ -47,6 +49,7 @@ impl LuaSignature {
             param_docs: HashMap::new(),
             params: Vec::new(),
             return_docs: Vec::new(),
+            return_overloads: Vec::new(),
             resolve_return: SignatureReturnStatus::UnResolve,
             is_colon_define: false,
             async_state: AsyncState::None,
@@ -111,19 +114,19 @@ impl LuaSignature {
     }
 
     pub fn get_return_type(&self) -> LuaType {
-        match self.return_docs.len() {
-            0 => LuaType::Nil,
-            1 => self.return_docs[0].type_ref.clone(),
-            _ => LuaType::Variadic(
-                VariadicType::Multi(
-                    self.return_docs
-                        .iter()
-                        .map(|info| info.type_ref.clone())
-                        .collect(),
-                )
-                .into(),
-            ),
-        }
+        return_rows::get_return_type(&self.return_docs, &self.return_overloads)
+    }
+
+    pub(crate) fn get_overload_row_slot(row: &[LuaType], idx: usize) -> LuaType {
+        return_rows::get_overload_row_slot(row, idx)
+    }
+
+    pub(crate) fn row_to_return_type(row: Vec<LuaType>) -> LuaType {
+        return_rows::row_to_return_type(row)
+    }
+
+    pub(crate) fn return_type_to_row(return_type: LuaType) -> Vec<LuaType> {
+        return_rows::return_type_to_row(return_type)
     }
 
     pub fn is_method(&self, semantic_model: &SemanticModel, owner_type: Option<&LuaType>) -> bool {
@@ -207,6 +210,12 @@ pub struct LuaDocReturnInfo {
     pub type_ref: LuaType,
     pub description: Option<String>,
     pub attributes: Option<Vec<LuaAttributeUse>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LuaDocReturnOverloadInfo {
+    pub type_refs: Vec<LuaType>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]

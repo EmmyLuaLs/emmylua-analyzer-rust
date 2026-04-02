@@ -36,7 +36,8 @@ mod tests {
                 pcall(readFile, <??>)
             "#,
             VirtualSignatureHelp {
-                target_label: "pcall(f: sync fun(path: string), path: string): boolean".to_string(),
+                target_label:
+                    "pcall(f: sync fun(path: string), path: string): (true|false)".to_string(),
                 active_signature: 0,
                 active_parameter: 1,
             },

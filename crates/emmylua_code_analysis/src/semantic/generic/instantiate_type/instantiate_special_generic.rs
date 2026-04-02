@@ -1,5 +1,3 @@
-use std::{collections::HashMap, ops::Deref, vec};
-
 use crate::{
     DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
     LuaTupleStatus, LuaTupleType, LuaType, TypeOps, VariadicType, get_member_map,
@@ -9,6 +7,8 @@ use crate::{
         type_check,
     },
 };
+use hashbrown::HashMap;
+use std::{ops::Deref, vec};
 
 use super::{TypeSubstitutor, instantiate_type_generic};
 
@@ -58,6 +58,12 @@ pub fn instantiate_alias_call(
         LuaAliasCallKind::Extends => {
             if operands.len() != 2 {
                 return LuaType::Unknown;
+            }
+
+            if operands[0].contain_tpl() || operands[1].contain_tpl() {
+                return LuaType::Call(
+                    LuaAliasCallType::new(LuaAliasCallKind::Extends, operands).into(),
+                );
             }
 
             let compact = type_check::check_type_compact(db, &operands[0], &operands[1]).is_ok();
@@ -277,7 +283,7 @@ fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
             for i in 1..10 {
                 let member_key = LuaMemberKey::Integer(i);
                 if let Some(member_info) = members.get(&member_key) {
-                    let mut member_type = LuaType::Unknown;
+                    let mut member_type = LuaType::Never;
                     for sub_member_info in member_info {
                         member_type = TypeOps::Union.apply(db, &member_type, &sub_member_info.typ);
                     }
@@ -305,6 +311,10 @@ fn instantiate_rawget_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaT
 }
 
 fn instantiate_index_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaType {
+    if owner.is_unknown() {
+        return LuaType::Unknown;
+    }
+
     if let LuaType::Variadic(variadic) = owner {
         match variadic.deref() {
             VariadicType::Base(base) => {

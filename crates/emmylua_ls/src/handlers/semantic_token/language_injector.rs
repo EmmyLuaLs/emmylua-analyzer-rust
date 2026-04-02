@@ -5,10 +5,11 @@ use emmylua_parser::{
 use emmylua_parser_desc::{
     CodeBlockHighlightKind, CodeBlockLang, DescItem, DescItemKind, ResultContainer, process_code,
 };
-use lsp_types::SemanticTokenType;
 use rowan::{TextRange, TextSize};
 
-use crate::handlers::semantic_token::semantic_token_builder::SemanticBuilder;
+use crate::handlers::semantic_token::semantic_token_builder::{
+    SemanticBuilder, SemanticTokenTypeKind,
+};
 
 pub fn inject_language(
     builder: &mut SemanticBuilder,
@@ -52,17 +53,17 @@ pub fn process_inject_lang_string_token(
     for desc_item in result.results() {
         if let DescItemKind::CodeBlockHl(highlight_kind) = desc_item.kind {
             let token_type = match highlight_kind {
-                CodeBlockHighlightKind::Keyword => SemanticTokenType::KEYWORD,
-                CodeBlockHighlightKind::String => SemanticTokenType::STRING,
-                CodeBlockHighlightKind::Number => SemanticTokenType::NUMBER,
-                CodeBlockHighlightKind::Comment => SemanticTokenType::COMMENT,
-                CodeBlockHighlightKind::Function => SemanticTokenType::FUNCTION,
-                CodeBlockHighlightKind::Class => SemanticTokenType::CLASS,
-                CodeBlockHighlightKind::Enum => SemanticTokenType::ENUM,
-                CodeBlockHighlightKind::Variable => SemanticTokenType::VARIABLE,
-                CodeBlockHighlightKind::Property => SemanticTokenType::PROPERTY,
-                CodeBlockHighlightKind::Decorator => SemanticTokenType::DECORATOR,
-                CodeBlockHighlightKind::Operators => SemanticTokenType::OPERATOR,
+                CodeBlockHighlightKind::Keyword => SemanticTokenTypeKind::Keyword,
+                CodeBlockHighlightKind::String => SemanticTokenTypeKind::String,
+                CodeBlockHighlightKind::Number => SemanticTokenTypeKind::Number,
+                CodeBlockHighlightKind::Comment => SemanticTokenTypeKind::Comment,
+                CodeBlockHighlightKind::Function => SemanticTokenTypeKind::Function,
+                CodeBlockHighlightKind::Class => SemanticTokenTypeKind::Class,
+                CodeBlockHighlightKind::Enum => SemanticTokenTypeKind::Enum,
+                CodeBlockHighlightKind::Variable => SemanticTokenTypeKind::Variable,
+                CodeBlockHighlightKind::Property => SemanticTokenTypeKind::Property,
+                CodeBlockHighlightKind::Decorator => SemanticTokenTypeKind::Decorator,
+                CodeBlockHighlightKind::Operators => SemanticTokenTypeKind::Operator,
                 _ => continue, // Fallback for other kinds
             };
 
@@ -70,15 +71,18 @@ pub fn process_inject_lang_string_token(
                 desc_item.range.start() + code_block_range.start(),
                 desc_item.range.end() + code_block_range.start(),
             );
-            if let Some(token_text) = str_token.slice(sub_token_range) {
-                builder.push_at_range(token_text, sub_token_range, token_type, &[]);
-            }
+            builder.push_at_range(sub_token_range, token_type, None);
         }
     }
 
     for quote_range in code_block_info.quote_ranges {
         let len = u32::from(quote_range.end() - quote_range.start());
-        builder.push_at_position(quote_range.start(), len, SemanticTokenType::STRING, None);
+        builder.push_at_position(
+            quote_range.start(),
+            len,
+            SemanticTokenTypeKind::String,
+            None,
+        );
     }
     builder.add_special_string_range(str_token.get_range());
 

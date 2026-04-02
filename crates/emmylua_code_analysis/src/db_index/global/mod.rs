@@ -1,6 +1,6 @@
 mod global_id;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 pub use global_id::GlobalId;
 

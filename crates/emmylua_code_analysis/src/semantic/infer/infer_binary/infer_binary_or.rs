@@ -1,7 +1,7 @@
 use emmylua_parser::LuaExpr;
 
 use crate::{
-    DbIndex, LuaType, LuaUnionType, TypeOps, check_type_compact,
+    BasicTypeKind, DbIndex, LuaType, LuaUnionType, TypeOps, check_type_compact,
     db_index::{LuaMemberOwner, LuaTypeCache, LuaTypeDeclId},
     semantic::infer::{InferResult, narrow::remove_false_or_nil},
 };
@@ -41,6 +41,7 @@ fn can_empty_table_satisfy_type(db: &DbIndex, ty: &LuaType) -> bool {
         // For unions, at least ONE type must be satisfiable by {}
         LuaType::Union(union_type) => {
             match union_type.as_ref() {
+                LuaUnionType::Basic(basic) => basic.contains(BasicTypeKind::Table),
                 LuaUnionType::Nullable(inner) => {
                     // For Type?, check the inner type (nil is already removed)
                     can_empty_table_satisfy_type(db, inner)

@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_check"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "ansi_term",
  "clap",
@@ -560,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_code_analysis"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "dirs",
  "emmy_lsp_types",
@@ -570,6 +570,7 @@ dependencies = [
  "encoding_rs",
  "flagset",
  "googletest",
+ "hashbrown 0.16.1",
  "include_dir",
  "internment",
  "itertools 0.14.0",
@@ -590,19 +591,6 @@ dependencies = [
  "url",
  "walkdir",
  "wax",
-]
-
-[[package]]
-name = "emmylua_code_style"
-version = "0.1.0"
-dependencies = [
- "clap",
- "emmylua_parser",
- "mimalloc",
- "rowan",
- "serde",
- "serde_json",
- "serde_yml",
 ]
 
 [[package]]
@@ -627,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_doc_cli"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "clap",
  "emmy_lsp_types",
@@ -646,8 +634,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "emmylua_formatter"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "emmylua_parser",
+ "glob",
+ "mimalloc",
+ "rowan",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "similar",
+ "smol_str",
+ "toml_edit",
+ "walkdir",
+]
+
+[[package]]
 name = "emmylua_ls"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "chrono",
  "clap",
@@ -679,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "rowan",
  "rust-i18n",
@@ -688,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser_desc"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "emmylua_parser",
  "googletest",
@@ -759,6 +765,12 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "foreign-types"
@@ -968,7 +980,18 @@ checksum = "5971ac85611da7067dbfcabef3c70ebb5606018acd9e2a3903a0da507521e0d5"
 dependencies = [
  "allocator-api2",
  "equivalent",
- "foldhash",
+ "foldhash 0.1.5",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -1503,24 +1526,24 @@ dependencies = [
 
 [[package]]
 name = "luars"
-version = "0.14.2"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a0eb4beb18b5a2c72dac7c68b379493f11cccfacc5b65cd99c42ef7eb577bd3"
+checksum = "9e48e2f276047ed2b75edf7fd051634d693c0b4ad747c37b9b267133be05f767"
 dependencies = [
  "ahash",
  "chrono",
  "itoa",
+ "js-sys",
  "luars-derive",
  "serde",
  "serde_json",
- "smol_str",
 ]
 
 [[package]]
 name = "luars-derive"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bf6760985f0fedec009332a92ac45353645958c555fcfb097611607653c7463"
+checksum = "14c1ccef6c678ea324ae6afa818f077c9883f6695e2df61199604b30bc6981e0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2454,6 +2477,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
 name = "siphasher"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2591,7 +2620,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

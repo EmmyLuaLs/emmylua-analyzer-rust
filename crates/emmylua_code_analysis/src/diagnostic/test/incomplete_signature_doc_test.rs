@@ -95,6 +95,51 @@ mod tests {
     }
 
     #[test]
+    fn test_return_overload() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_full_diagnostic();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+            ---@return_overload true, integer
+            ---@return_overload false, string
+            local function f()
+                return true, 1
+            end
+            "#
+        ));
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+            ---@return_overload true, integer
+            ---@return_overload false, string
+            local function f()
+                return true, 1, "extra"
+            end
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_variadic_return_overload_does_not_trigger_incomplete_signature_doc() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_full_diagnostic();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+            ---@return_overload true, integer...
+            ---@return_overload false, string
+            local function f()
+                return true, 1, 2, 3, 4
+            end
+            "#
+        ));
+    }
+
+    #[test]
     fn test_global() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();

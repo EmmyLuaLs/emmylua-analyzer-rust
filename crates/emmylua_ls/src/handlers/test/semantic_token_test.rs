@@ -1,26 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::handlers::semantic_token::{SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES};
-    use crate::handlers::test_lib::ProviderVirtualWorkspace;
+    use crate::handlers::{
+        semantic_token::{SemanticTokenModifierKind, SemanticTokenTypeKind},
+        test_lib::ProviderVirtualWorkspace,
+    };
     use googletest::prelude::*;
-    use lsp_types::{SemanticTokenModifier, SemanticTokenType};
-
-    fn token_type_index(token_type: SemanticTokenType) -> u32 {
-        SEMANTIC_TOKEN_TYPES
-            .iter()
-            .position(|t| t == &token_type)
-            .unwrap() as u32
-    }
-
-    fn modifier_bitset(modifiers: &[SemanticTokenModifier]) -> u32 {
-        modifiers.iter().fold(0, |acc, m| {
-            let index = SEMANTIC_TOKEN_MODIFIERS
-                .iter()
-                .position(|x| x == m)
-                .unwrap() as u32;
-            acc | (1 << index)
-        })
-    }
 
     fn decode(data: &[u32]) -> Vec<(u32, u32, u32, u32, u32)> {
         let mut result = Vec::new();
@@ -71,10 +55,10 @@ m.foo()
         let data = ws.get_semantic_token_data_for_file(main)?;
         let tokens = decode(&data);
 
-        let class_idx = token_type_index(SemanticTokenType::CLASS);
-        let namespace_idx = token_type_index(SemanticTokenType::NAMESPACE);
-        let method_idx = token_type_index(SemanticTokenType::METHOD);
-        let readonly = modifier_bitset(&[SemanticTokenModifier::READONLY]);
+        let class_idx = SemanticTokenTypeKind::Class.to_u32();
+        let namespace_idx = SemanticTokenTypeKind::Namespace.to_u32();
+        let method_idx = SemanticTokenTypeKind::Method.to_u32();
+        let readonly = SemanticTokenModifierKind::READONLY.to_u32();
 
         // `local m = require("mod")`
         verify_that!(&tokens, contains(eq(&(0, 6, 1, class_idx, readonly))))?;
@@ -88,6 +72,49 @@ m.foo()
             ]
         )?;
 
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_tag_is_documentation_keyword() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let data = ws.get_semantic_token_data(
+            r#"---@return_overload true, integer
+"#,
+        )?;
+        let tokens = decode(&data);
+        let keyword = SemanticTokenTypeKind::Keyword.to_u32();
+        let doc = SemanticTokenModifierKind::DOCUMENTATION.to_u32();
+
+        verify_that!(&tokens, contains(eq(&(0, 4, 15, keyword, doc))))?;
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_rows_highlight_types() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let data = ws.get_semantic_token_data(concat!(
+            "--- @return_overload false, [string,string]\n",
+            "--- @return_overload true, string\n",
+        ))?;
+        let tokens = decode(&data);
+        let typ = SemanticTokenTypeKind::Type.to_u32();
+        let variable = SemanticTokenTypeKind::Variable.to_u32();
+        let default_library = SemanticTokenModifierKind::DEFAULT_LIBRARY.to_u32();
+
+        verify_that!(
+            &tokens,
+            all![
+                contains(eq(&(0, 21, 5, typ, 0))),
+                contains(eq(&(0, 29, 6, typ, default_library))),
+                contains(eq(&(0, 36, 6, typ, default_library))),
+                contains(eq(&(1, 21, 4, typ, 0))),
+                contains(eq(&(1, 27, 6, typ, default_library))),
+                not(contains(eq(&(0, 29, 6, variable, 0)))),
+                not(contains(eq(&(0, 36, 6, variable, 0)))),
+                not(contains(eq(&(1, 27, 6, variable, 0)))),
+            ]
+        )?;
         Ok(())
     }
 }

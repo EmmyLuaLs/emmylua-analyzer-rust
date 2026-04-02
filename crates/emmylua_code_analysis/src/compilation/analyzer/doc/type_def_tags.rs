@@ -200,6 +200,7 @@ fn get_generic_params(
     analyzer: &mut DocAnalyzer,
     params: LuaDocGenericDeclList,
 ) -> Vec<GenericParam> {
+    analyzer.generic_index.clear_pending_type_params();
     let mut params_result = Vec::new();
     for param in params.get_generic_decl() {
         let name = if let Some(param) = param.get_name_token() {
@@ -207,12 +208,19 @@ fn get_generic_params(
         } else {
             continue;
         };
-        let type_ref = param
+
+        let type_constraint = param
             .get_type()
             .map(|type_ref| infer_type(analyzer, type_ref));
 
-        params_result.push(GenericParam::new(name, type_ref, None));
+        let param = GenericParam::new(name, type_constraint, None);
+        analyzer
+            .generic_index
+            .append_pending_type_param(param.clone());
+
+        params_result.push(param);
     }
+    analyzer.generic_index.clear_pending_type_params();
 
     params_result
 }

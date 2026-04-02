@@ -109,35 +109,36 @@ pub enum LuaTokenKind {
     TkTagAlias,     // alias
     TkTagModule,    // module
 
-    TkTagField,      // field
-    TkTagType,       // type
-    TkTagParam,      // param
-    TkTagReturn,     // return
-    TkTagOverload,   // overload
-    TkTagGeneric,    // generic
-    TkTagSee,        // see
-    TkTagDeprecated, // deprecated
-    TkTagAsync,      // async
-    TkTagCast,       // cast
-    TkTagOther,      // other
-    TkTagVisibility, // public private protected package
-    TkTagReadonly,   // readonly
-    TkTagDiagnostic, // diagnostic
-    TkTagMeta,       // meta
-    TkTagVersion,    // version
-    TkTagAs,         // as
-    TkTagNodiscard,  // nodiscard
-    TkTagOperator,   // operator
-    TkTagMapping,    // mapping
-    TkTagNamespace,  // namespace
-    TkTagUsing,      // using
-    TkTagSource,     // source
-    TkTagReturnCast, // return cast
-    TkTagExport,     // export
-    TkLanguage,      // language
-    TKTagSchema,     // schema
-    TkTagAttribute,  // attribute
-    TkCallGeneric,   // call generic. function_name--[[@<type>]](...)
+    TkTagField,          // field
+    TkTagType,           // type
+    TkTagParam,          // param
+    TkTagReturn,         // return
+    TkTagOverload,       // overload
+    TkTagGeneric,        // generic
+    TkTagSee,            // see
+    TkTagDeprecated,     // deprecated
+    TkTagAsync,          // async
+    TkTagCast,           // cast
+    TkTagOther,          // other
+    TkTagVisibility,     // public private protected package
+    TkTagReadonly,       // readonly
+    TkTagDiagnostic,     // diagnostic
+    TkTagMeta,           // meta
+    TkTagVersion,        // version
+    TkTagAs,             // as
+    TkTagNodiscard,      // nodiscard
+    TkTagOperator,       // operator
+    TkTagMapping,        // mapping
+    TkTagNamespace,      // namespace
+    TkTagUsing,          // using
+    TkTagSource,         // source
+    TkTagReturnCast,     // return cast
+    TkTagReturnOverload, // return overload
+    TkTagExport,         // export
+    TkLanguage,          // language
+    TKTagSchema,         // schema
+    TkTagAttribute,      // attribute
+    TkCallGeneric,       // call generic. function_name--[[@<type>]](...)
 
     TkDocOr,              // |
     TkDocAnd,             // &
@@ -172,6 +173,79 @@ impl fmt::Display for LuaTokenKind {
 }
 
 impl LuaTokenKind {
+    pub fn syntax_text(self) -> Option<&'static str> {
+        Some(match self {
+            LuaTokenKind::TkAnd => "and",
+            LuaTokenKind::TkBreak => "break",
+            LuaTokenKind::TkDo => "do",
+            LuaTokenKind::TkElse => "else",
+            LuaTokenKind::TkElseIf => "elseif",
+            LuaTokenKind::TkEnd => "end",
+            LuaTokenKind::TkFalse => "false",
+            LuaTokenKind::TkFor => "for",
+            LuaTokenKind::TkFunction => "function",
+            LuaTokenKind::TkGoto => "goto",
+            LuaTokenKind::TkIf => "if",
+            LuaTokenKind::TkIn => "in",
+            LuaTokenKind::TkLocal => "local",
+            LuaTokenKind::TkNil => "nil",
+            LuaTokenKind::TkNot => "not",
+            LuaTokenKind::TkOr => "or",
+            LuaTokenKind::TkRepeat => "repeat",
+            LuaTokenKind::TkReturn => "return",
+            LuaTokenKind::TkThen => "then",
+            LuaTokenKind::TkTrue => "true",
+            LuaTokenKind::TkUntil => "until",
+            LuaTokenKind::TkWhile => "while",
+            LuaTokenKind::TkGlobal => "global",
+            LuaTokenKind::TkPlus => "+",
+            LuaTokenKind::TkMinus => "-",
+            LuaTokenKind::TkMul => "*",
+            LuaTokenKind::TkDiv => "/",
+            LuaTokenKind::TkIDiv => "//",
+            LuaTokenKind::TkDot => ".",
+            LuaTokenKind::TkConcat => "..",
+            LuaTokenKind::TkDots => "...",
+            LuaTokenKind::TkComma => ",",
+            LuaTokenKind::TkAssign => "=",
+            LuaTokenKind::TkEq => "==",
+            LuaTokenKind::TkGe => ">=",
+            LuaTokenKind::TkLe => "<=",
+            LuaTokenKind::TkNe => "~=",
+            LuaTokenKind::TkShl => "<<",
+            LuaTokenKind::TkShr => ">>",
+            LuaTokenKind::TkLt => "<",
+            LuaTokenKind::TkGt => ">",
+            LuaTokenKind::TkMod => "%",
+            LuaTokenKind::TkPow => "^",
+            LuaTokenKind::TkLen => "#",
+            LuaTokenKind::TkBitAnd => "&",
+            LuaTokenKind::TkBitOr => "|",
+            LuaTokenKind::TkBitXor => "~",
+            LuaTokenKind::TkColon => ":",
+            LuaTokenKind::TkDbColon => "::",
+            LuaTokenKind::TkSemicolon => ";",
+            LuaTokenKind::TkPlusAssign => "+=",
+            LuaTokenKind::TkMinusAssign => "-=",
+            LuaTokenKind::TkStarAssign => "*=",
+            LuaTokenKind::TkSlashAssign => "/=",
+            LuaTokenKind::TkPercentAssign => "%=",
+            LuaTokenKind::TkCaretAssign => "^=",
+            LuaTokenKind::TkDoubleSlashAssign => "//=",
+            LuaTokenKind::TkPipeAssign => "|=",
+            LuaTokenKind::TkAmpAssign => "&=",
+            LuaTokenKind::TkShiftLeftAssign => "<<=",
+            LuaTokenKind::TkShiftRightAssign => ">>=",
+            LuaTokenKind::TkLeftBracket => "[",
+            LuaTokenKind::TkRightBracket => "]",
+            LuaTokenKind::TkLeftParen => "(",
+            LuaTokenKind::TkRightParen => ")",
+            LuaTokenKind::TkLeftBrace => "{",
+            LuaTokenKind::TkRightBrace => "}",
+            _ => return None,
+        })
+    }
+
     pub fn is_keyword(self) -> bool {
         matches!(
             self,

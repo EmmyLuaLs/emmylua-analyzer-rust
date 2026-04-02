@@ -2,12 +2,12 @@ mod flow_node;
 mod flow_tree;
 mod signature_cast;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::{FileId, LuaSignatureId};
 use emmylua_parser::{LuaAstPtr, LuaDocOpType};
 pub use flow_node::*;
-pub use flow_tree::FlowTree;
+pub use flow_tree::{DeclMultiReturnRef, DeclMultiReturnRefAt, FlowTree};
 pub use signature_cast::LuaSignatureCast;
 
 use super::traits::LuaIndex;

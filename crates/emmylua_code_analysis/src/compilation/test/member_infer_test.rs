@@ -124,7 +124,9 @@ mod test {
         );
 
         let ty = ws.expr_ty("A");
-        assert_eq!(ws.humanize_type(ty), "(number|string)");
+        let expected =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::String, LuaType::Number]).into());
+        assert_eq!(ty, expected);
     }
 
     #[test]
@@ -425,5 +427,49 @@ mod test {
             "expected InnerClass (non-nullable, possibly Instance) for provided optional field, got {:?}",
             c_ty
         );
+    }
+
+    #[test]
+    fn test_union_member_access_preserves_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class A
+        ---@field y never
+
+        ---@class B
+        ---@field y never
+
+        ---@return A|B
+        local function make() end
+
+        local value = make()
+
+        result = value.y
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("never"));
+    }
+
+    #[test]
+    fn test_table_expr_index_preserves_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@return { y: number } & { y: string }
+        local function impossible() end
+
+        local t = {
+            a = impossible().y,
+        }
+
+        result = t["a"]
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("never"));
     }
 }

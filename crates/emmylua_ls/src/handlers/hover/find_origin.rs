@@ -261,6 +261,7 @@ fn table_is_class(table_type: &LuaType, depth: usize) -> bool {
     match table_type {
         LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => true,
         LuaType::Union(union) => match union.as_ref() {
+            LuaUnionType::Basic(_) => false,
             LuaUnionType::Nullable(t) => table_is_class(t, depth + 1),
             LuaUnionType::Multi(ts) => ts.iter().any(|t| table_is_class(t, depth + 1)),
         },

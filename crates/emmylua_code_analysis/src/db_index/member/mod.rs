@@ -4,7 +4,7 @@ mod lua_member_item;
 mod lua_member_owner;
 mod lua_owner_members;
 
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 use super::traits::LuaIndex;
 use crate::{FileId, db_index::member::lua_owner_members::LuaOwnerMembers};

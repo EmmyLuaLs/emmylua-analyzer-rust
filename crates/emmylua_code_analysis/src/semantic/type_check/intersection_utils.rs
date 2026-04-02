@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::{DbIndex, LuaIntersectionType, LuaObjectType, LuaType, semantic::member::find_members};
 

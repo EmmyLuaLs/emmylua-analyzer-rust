@@ -1,5 +1,6 @@
 mod add_completions;
 mod completion_builder;
+mod completion_context;
 mod completion_data;
 mod data;
 mod providers;

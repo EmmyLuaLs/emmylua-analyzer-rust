@@ -205,7 +205,7 @@ fn find_custom_type_function_member(
     let key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
     if let Some(member_item) = db.get_member_index().get_member_item(&owner, &key) {
         let index_member_id = get_member_id(cache, &index_expr);
-        let mut result_type = LuaType::Unknown;
+        let mut result_type = LuaType::Never;
         for member_id in member_item.get_member_ids() {
             if index_member_id != member_id
                 && let Some(type_cache) = db.get_type_index().get_type_cache(&member_id.into())
@@ -213,7 +213,7 @@ fn find_custom_type_function_member(
                 result_type = TypeOps::Union.apply(db, &result_type, type_cache.as_type());
             }
         }
-        if !result_type.is_unknown() {
+        if !result_type.is_never() {
             return Ok(result_type);
         }
     }
@@ -540,7 +540,7 @@ fn find_member_by_index_table(
                     .get_member_index()
                     .get_members(&LuaMemberOwner::Element(table_range.clone()));
                 if let Some(members) = members {
-                    let mut result_type = LuaType::Unknown;
+                    let mut result_type = LuaType::Never;
                     for member in members {
                         let member_key_type = match member.get_key() {
                             LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
@@ -558,7 +558,7 @@ fn find_member_by_index_table(
                         }
                     }
 
-                    if !result_type.is_unknown() {
+                    if !result_type.is_never() {
                         if matches!(
                             key_type,
                             LuaType::String | LuaType::Number | LuaType::Integer
@@ -698,7 +698,7 @@ fn find_member_by_index_union(
     infer_guard: &InferGuardRef,
     deep_guard: &mut DeepLevel,
 ) -> FunctionTypeResult {
-    let mut member_type = LuaType::Unknown;
+    let mut member_type = LuaType::Never;
     for member in union.into_vec() {
         let result = find_function_type_by_operator(
             db,
@@ -719,7 +719,7 @@ fn find_member_by_index_union(
         }
     }
 
-    if member_type.is_unknown() {
+    if member_type.is_never() {
         return Err(InferFailReason::FieldNotFound);
     }
 

@@ -47,10 +47,8 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
         };
 
         match analyzer.infer_expr(&expr) {
-            Ok(mut expr_type) => {
-                if let LuaType::Variadic(multi) = expr_type {
-                    expr_type = multi.get_type(0)?.clone();
-                }
+            Ok(expr_type) => {
+                let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
                 let decl_id = LuaDeclId::new(analyzer.file_id, position);
                 // 当`call`参数包含表时, 表可能未被分析, 需要延迟
                 if let LuaType::Instance(instance) = &expr_type
@@ -106,12 +104,12 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
         if let Some(last_expr) = last_expr {
             match analyzer.infer_expr(last_expr) {
                 Ok(last_expr_type) => {
-                    if let LuaType::Variadic(variadic) = last_expr_type {
+                    if last_expr_type.contain_multi_return() {
                         for i in expr_count..name_count {
                             let name = name_list.get(i)?;
                             let position = name.get_position();
                             let decl_id = LuaDeclId::new(analyzer.file_id, position);
-                            let ret_type = variadic.get_type(i - expr_count + 1);
+                            let ret_type = last_expr_type.get_result_slot_type(i - expr_count + 1);
                             if let Some(ret_type) = ret_type {
                                 bind_type(
                                     analyzer.db,
@@ -311,10 +309,7 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
         }
 
         let expr_type = match analyzer.infer_expr(expr) {
-            Ok(expr_type) => match expr_type {
-                LuaType::Variadic(multi) => multi.get_type(0)?.clone(),
-                _ => expr_type,
-            },
+            Ok(expr_type) => expr_type.get_result_slot_type(0).unwrap_or(expr_type),
             Err(InferFailReason::None) => LuaType::Unknown,
             Err(reason) => {
                 match type_owner {
@@ -367,7 +362,7 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
     {
         match analyzer.infer_expr(last_expr) {
             Ok(last_expr_type) => {
-                if last_expr_type.is_multi_return() {
+                if last_expr_type.contain_multi_return() {
                     for i in expr_count..var_count {
                         let var = var_list.get(i)?;
                         let type_owner = get_var_owner(analyzer, var.clone());
@@ -408,10 +403,7 @@ fn assign_merge_type_owner_and_expr_type(
     expr_type: &LuaType,
     idx: usize,
 ) -> Option<()> {
-    let mut expr_type = expr_type.clone();
-    if let LuaType::Variadic(multi) = expr_type {
-        expr_type = multi.get_type(idx).unwrap_or(&LuaType::Nil).clone();
-    }
+    let expr_type = expr_type.get_result_slot_type(idx).unwrap_or(LuaType::Nil);
 
     bind_type(analyzer.db, type_owner, LuaTypeCache::InferType(expr_type));
 

@@ -31,15 +31,7 @@ pub fn analyze_chunk_return(analyzer: &mut LuaAnalyzer, chunk: LuaChunk) -> Opti
                 .db
                 .get_module_index_mut()
                 .get_module_mut(analyzer.file_id)?;
-            match expr_type {
-                LuaType::Variadic(multi) => {
-                    let ty = multi.get_type(0)?;
-                    module_info.export_type = Some(ty.clone());
-                }
-                _ => {
-                    module_info.export_type = Some(expr_type);
-                }
-            }
+            module_info.export_type = Some(expr_type.get_result_slot_type(0).unwrap_or(expr_type));
             module_info.semantic_id = semantic_id;
             break;
         }

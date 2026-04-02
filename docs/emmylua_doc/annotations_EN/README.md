@@ -29,6 +29,7 @@ The following notation symbols are used in annotation syntax descriptions:
 ### Function Annotations
 - [`@param`](./param.md) - Parameter definition
 - [`@return`](./return.md) - Return value definition
+- `@return_overload` (see [`@return`](./return.md)) - Correlated return tuples
 - [`@overload`](./overload.md) - Function overload
 - [`@async`](./async.md) - Async function marker
 - [`@nodiscard`](./nodiscard.md) - Non-discardable return value
@@ -124,6 +125,7 @@ end
 | `@field` | Field definition | `---@field name string` |
 | `@param` | Parameter definition | `---@param name string` |
 | `@return` | Return value definition | `---@return boolean` |
+| `@return_overload` | Correlated return tuples | `---@return_overload true, T` |
 | `@type` | Type declaration | `---@type string` |
 | `@generic` | Generic definition | `---@generic T` |
 | `@overload` | Function overload | `---@overload fun(x: number): number` |

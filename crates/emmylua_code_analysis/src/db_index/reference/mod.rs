@@ -1,7 +1,7 @@
 mod file_reference;
 mod string_reference;
 
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 use emmylua_parser::LuaSyntaxId;
 pub use file_reference::{DeclReference, DeclReferenceCell, FileReference};

@@ -1,11 +1,13 @@
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaBlock, LuaBreakStat, LuaCallArgList,
     LuaCallExprStat, LuaDoStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaGotoStat,
-    LuaIfStat, LuaLabelStat, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaVarExpr, LuaWhileStat,
+    LuaIfStat, LuaLabelStat, LuaLocalName, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaVarExpr,
+    LuaWhileStat,
 };
 
 use crate::{
-    AnalyzeError, DiagnosticCode, FlowId, FlowNodeKind, LuaClosureId, LuaDeclId,
+    AnalyzeError, DeclMultiReturnRef, DeclMultiReturnRefAt, DiagnosticCode, FlowId, FlowNodeKind,
+    LuaClosureId, LuaDeclId,
     compilation::analyzer::flow::{
         bind_analyze::{
             bind_block, bind_each_child, bind_node,
@@ -33,13 +35,20 @@ pub fn bind_local_stat(
         }
     }
 
-    for value in values {
+    for value in &values {
         // If there are more values than names, we still need to bind the values
         bind_expr(binder, value.clone(), current);
     }
 
     let local_flow_id = binder.create_decl(local_stat.get_position());
     binder.add_antecedent(local_flow_id, current);
+    bind_multi_return_refs(
+        binder,
+        &get_local_decl_ids(binder, &local_names),
+        &values,
+        local_stat.get_position(),
+        local_flow_id,
+    );
     local_flow_id
 }
 
@@ -69,6 +78,27 @@ fn check_value_expr_is_check_expr(value_expr: LuaExpr) -> bool {
     }
 }
 
+fn get_local_decl_ids(
+    binder: &FlowBinder<'_>,
+    local_names: &[LuaLocalName],
+) -> Vec<Option<LuaDeclId>> {
+    local_names
+        .iter()
+        .map(|name| Some(LuaDeclId::new(binder.file_id, name.get_position())))
+        .collect()
+}
+
+fn get_var_decl_ids(binder: &FlowBinder<'_>, vars: &[LuaVarExpr]) -> Vec<Option<LuaDeclId>> {
+    vars.iter()
+        .map(|var| {
+            binder
+                .db
+                .get_reference_index()
+                .get_var_reference_decl(&binder.file_id, var.get_range())
+        })
+        .collect()
+}
+
 pub fn bind_assign_stat(
     binder: &mut FlowBinder,
     assign_stat: LuaAssignStat,
@@ -91,8 +121,55 @@ pub fn bind_assign_stat(
     let assignment_kind = FlowNodeKind::Assignment(assign_stat.to_ptr());
     let flow_id = binder.create_node(assignment_kind);
     binder.add_antecedent(flow_id, current);
+    bind_multi_return_refs(
+        binder,
+        &get_var_decl_ids(binder, &vars),
+        &values,
+        assign_stat.get_position(),
+        flow_id,
+    );
 
     flow_id
+}
+
+fn bind_multi_return_refs(
+    binder: &mut FlowBinder,
+    decl_ids: &[Option<LuaDeclId>],
+    values: &[LuaExpr],
+    position: rowan::TextSize,
+    flow_id: FlowId,
+) {
+    let tail_call = values.last().and_then(|value| match value {
+        LuaExpr::CallExpr(call_expr) => Some((values.len() - 1, call_expr.to_ptr())),
+        _ => None,
+    });
+
+    for (i, decl_id) in decl_ids.iter().enumerate() {
+        let Some(decl_id) = decl_id else {
+            continue;
+        };
+
+        let reference = tail_call.as_ref().and_then(|(last_value_idx, call_expr)| {
+            if i < *last_value_idx {
+                return None;
+            }
+
+            Some(DeclMultiReturnRef {
+                call_expr: call_expr.clone(),
+                return_index: i - *last_value_idx,
+            })
+        });
+
+        binder
+            .decl_multi_return_ref
+            .entry(*decl_id)
+            .or_default()
+            .push(DeclMultiReturnRefAt {
+                position,
+                flow_id,
+                reference,
+            });
+    }
 }
 
 pub fn bind_call_expr_stat(

@@ -228,4 +228,30 @@ mod test {
         // so that variadic spreading continues to work as expected
         assert_eq!(ws.humanize_type(v_ty), "string");
     }
+
+    #[test]
+    fn test_issue_925() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Test<T>
+            local M = {}
+
+            ---@generic T
+            ---@param value T
+            ---@return Test<T extends Test<infer U> and U or T>
+            function M.with_dot(value) end
+            "#,
+        );
+        ws.def(
+            r#"
+            ---@type Test<integer>
+            local a
+            A = a.with_dot(1)
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "Test<integer>");
+    }
 }

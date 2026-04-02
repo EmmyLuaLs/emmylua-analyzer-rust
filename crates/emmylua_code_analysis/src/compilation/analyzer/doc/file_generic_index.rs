@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use rowan::{TextRange, TextSize};
 
@@ -9,6 +9,7 @@ pub struct FileGenericIndex {
     generic_params: Vec<TagGenericParams>,
     root_node_ids: Vec<GenericEffectId>,
     effect_nodes: Vec<GenericEffectRangeNode>,
+    pending_type_params: Vec<GenericParam>,
 }
 
 impl FileGenericIndex {
@@ -17,6 +18,7 @@ impl FileGenericIndex {
             generic_params: Vec::new(),
             root_node_ids: Vec::new(),
             effect_nodes: Vec::new(),
+            pending_type_params: Vec::new(),
         }
     }
 
@@ -74,6 +76,14 @@ impl FileGenericIndex {
         {
             stored_param.type_constraint = constraint;
         }
+    }
+
+    pub fn append_pending_type_param(&mut self, param: GenericParam) {
+        self.pending_type_params.push(param);
+    }
+
+    pub fn clear_pending_type_params(&mut self) {
+        self.pending_type_params.clear();
     }
 
     fn get_start(&self, ranges: &[TextRange]) -> Option<usize> {
@@ -134,22 +144,33 @@ impl FileGenericIndex {
         position: TextSize,
         name: &str,
     ) -> Option<(GenericTplId, Option<LuaType>)> {
-        let params_ids = self.find_generic_params(position)?;
-
-        for params_id in params_ids.iter().rev() {
-            if let Some(params) = self.generic_params.get(*params_id)
-                && let Some((id, param)) = params.params.get(name)
-            {
-                let tpl_id = if params.is_func {
-                    GenericTplId::Func(*id as u32)
-                } else {
-                    GenericTplId::Type(*id as u32)
-                };
-                return Some((tpl_id, param.type_constraint.clone()));
+        if let Some(params_ids) = self.find_generic_params(position) {
+            for params_id in params_ids.iter().rev() {
+                if let Some(params) = self.generic_params.get(*params_id)
+                    && let Some((id, param)) = params.params.get(name)
+                {
+                    let tpl_id = if params.is_func {
+                        GenericTplId::Func(*id as u32)
+                    } else {
+                        GenericTplId::Type(*id as u32)
+                    };
+                    return Some((tpl_id, param.type_constraint.clone()));
+                }
             }
         }
 
-        None
+        // 搜索前置类型参数, 例如 ---@alias Pick<T, K extends keyof T>
+        self.pending_type_params
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, param)| param.name == name)
+            .map(|(idx, param)| {
+                (
+                    GenericTplId::Type(idx as u32),
+                    param.type_constraint.clone(),
+                )
+            })
     }
 
     fn find_generic_params(&self, position: TextSize) -> Option<Vec<usize>> {

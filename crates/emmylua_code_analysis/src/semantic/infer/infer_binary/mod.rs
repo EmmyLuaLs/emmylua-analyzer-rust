@@ -71,7 +71,7 @@ fn infer_union_binary_expr(
         return None;
     };
 
-    let mut result = LuaType::Unknown;
+    let mut result = None;
     let types = u.into_vec();
     for ty in types.iter() {
         // 只在实际调用时才 clone，而不是预先 clone
@@ -82,10 +82,13 @@ fn infer_union_binary_expr(
         };
 
         if let Ok(ty) = ty_result {
-            result = TypeOps::Union.apply(db, &result, &ty);
+            result = Some(match result {
+                Some(result) => TypeOps::Union.apply(db, &result, &ty),
+                None => ty,
+            });
         }
     }
-    Some(result)
+    Some(result.unwrap_or(LuaType::Unknown))
 }
 
 fn infer_binary_expr_type(
@@ -394,9 +397,9 @@ fn infer_binary_expr_bxor(db: &DbIndex, left: LuaType, right: LuaType) -> InferR
 fn infer_binary_expr_shl(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
     if left.is_integer() && right.is_integer() {
         return match (&left, &right) {
-            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => {
-                Ok(LuaType::IntegerConst(int1 << int2))
-            }
+            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => Ok(
+                LuaType::IntegerConst(int1.checked_shl(*int2 as u32).unwrap_or(0)),
+            ),
             _ => Ok(LuaType::Integer),
         };
     }
@@ -407,9 +410,9 @@ fn infer_binary_expr_shl(db: &DbIndex, left: LuaType, right: LuaType) -> InferRe
 fn infer_binary_expr_shr(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
     if left.is_integer() && right.is_integer() {
         return match (&left, &right) {
-            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => {
-                Ok(LuaType::IntegerConst(int1 >> int2))
-            }
+            (LuaType::IntegerConst(int1), LuaType::IntegerConst(int2)) => Ok(
+                LuaType::IntegerConst(int1.checked_shr(*int2 as u32).unwrap_or(0)),
+            ),
             _ => Ok(LuaType::Integer),
         };
     }

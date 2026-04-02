@@ -1,6 +1,6 @@
 mod test;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use serde_json::Value;
 

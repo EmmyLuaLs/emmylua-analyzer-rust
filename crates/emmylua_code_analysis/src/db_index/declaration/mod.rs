@@ -7,8 +7,8 @@ pub use decl::LuaDeclExtra;
 pub use decl::{LocalAttribute, LuaDecl};
 pub use decl_id::LuaDeclId;
 pub use decl_tree::{LuaDeclOrMemberId, LuaDeclarationTree};
+use hashbrown::HashMap;
 pub use scope::{LuaScope, LuaScopeId, LuaScopeKind, ScopeOrDeclId};
-use std::collections::HashMap;
 
 use crate::FileId;
 

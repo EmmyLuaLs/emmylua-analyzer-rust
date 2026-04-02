@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 use super::tpl_pattern::constant_decay;
 use crate::{GenericTplId, LuaType, LuaTypeDeclId};

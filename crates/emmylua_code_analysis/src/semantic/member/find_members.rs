@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 use smol_str::SmolStr;
 
@@ -401,7 +401,7 @@ fn find_intersection_members(
             }
 
             match members.entry(member.key.clone()) {
-                std::collections::hash_map::Entry::Vacant(entry) => {
+                hashbrown::hash_map::Entry::Vacant(entry) => {
                     order.push(member.key.clone());
                     entry.insert(LuaMemberInfo {
                         property_owner_id: member.property_owner_id.clone(),
@@ -411,7 +411,7 @@ fn find_intersection_members(
                         overload_index: None,
                     });
                 }
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                hashbrown::hash_map::Entry::Occupied(mut entry) => {
                     entry.get_mut().typ =
                         intersect_member_types(db, entry.get().typ.clone(), member.typ.clone());
                 }

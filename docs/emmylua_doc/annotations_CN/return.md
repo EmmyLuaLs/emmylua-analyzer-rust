@@ -14,6 +14,9 @@
 -- 多返回值
 ---@return <类型1> [名称1] [描述1]
 ---@return <类型2> [名称2] [描述2]
+
+-- 关联返回行（每一行代表一种返回元组）
+---@return_overload <类型1>, <类型2>[, <类型3>...]
 ```
 
 ## 示例
@@ -174,6 +177,53 @@ for id, userName in iterateUsers() do
 end
 ```
 
+## 返回重载行（`@return_overload`）
+
+`@return_overload` 用于定义“关联”的多返回值行。每一条注解代表一种可能的返回元组。
+这对状态/结果模式（例如 `pcall` 风格代码）非常有用。
+
+当多个局部变量来自同一次函数调用时，对某个返回槽位的条件判断
+（真假判断、字面量相等判断，或 `type()` 守卫）会联动收窄同一返回行中的其他槽位。
+
+```lua
+---@generic T, E
+---@param ok boolean
+---@param success T
+---@param failure E
+---@return boolean
+---@return T|E
+---@return_overload true, T
+---@return_overload false, E
+local function pick(ok, success, failure)
+    if ok then
+        return true, success
+    end
+    return false, failure
+end
+
+local cond ---@type boolean
+local ok, result = pick(cond, 1, "error")
+
+if not ok then
+    error(result) -- result: string
+end
+
+local value = result -- value: integer
+```
+
+`@return_overload` 同样支持泛型和可变尾部：
+
+```lua
+---@generic T, R
+---@param f fun(...: T...): R...
+---@param ... T...
+---@return_overload true, R...
+---@return_overload false, string
+local function wrap(f, ...) end
+```
+
+你可以保留 `@return` 作为宽泛声明，再用 `@return_overload` 提供关联敏感的推断信息。
+
 ## 特性
 
 1. **多返回值支持**
@@ -182,3 +232,4 @@ end
 4. **函数返回值**
 5. **异步返回值**
 6. **条件返回值**
+7. **关联返回行收窄（`@return_overload`）**

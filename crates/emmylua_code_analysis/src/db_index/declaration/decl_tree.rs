@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use super::{LuaDeclId, decl, scope};
 use crate::{FileId, db_index::LuaMemberId};

@@ -11,10 +11,8 @@ use lsp_types::{
     SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities,
 };
-#[allow(unused)]
-pub use semantic_token_builder::{
-    CustomSemanticTokenType, SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES,
-};
+
+pub use semantic_token_builder::{SemanticTokenModifierKind, SemanticTokenTypeKind};
 use tokio_util::sync::CancellationToken;
 
 use super::RegisterCapabilities;
@@ -75,8 +73,8 @@ impl RegisterCapabilities for SemanticTokenCapabilities {
         server_capabilities.semantic_tokens_provider = Some(
             SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
                 legend: SemanticTokensLegend {
-                    token_modifiers: SEMANTIC_TOKEN_MODIFIERS.to_vec(),
-                    token_types: SEMANTIC_TOKEN_TYPES.to_vec(),
+                    token_modifiers: SemanticTokenModifierKind::all_modifiers(),
+                    token_types: SemanticTokenTypeKind::all_types(),
                 },
                 full: Some(SemanticTokensFullOptions::Bool(true)),
                 ..Default::default()

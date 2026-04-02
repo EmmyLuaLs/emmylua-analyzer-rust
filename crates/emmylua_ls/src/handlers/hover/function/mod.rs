@@ -1,9 +1,10 @@
 use std::{collections::HashSet, sync::Arc, vec};
 
 use emmylua_code_analysis::{
-    AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberOwner,
-    LuaSemanticDeclId, LuaType, RenderLevel, TypeSubstitutor, VariadicType, humanize_type,
-    infer_call_expr_func, instantiate_doc_function, try_extract_signature_id_from_field,
+    AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType,
+    LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel,
+    TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, instantiate_doc_function,
+    instantiate_func_generic, try_extract_signature_id_from_field,
 };
 
 use crate::handlers::hover::{
@@ -73,15 +74,17 @@ fn build_function_call_hover(
     .ok()?;
 
     // 根据推断出来的类型确定哪个 semantic_decl 是匹配的
-    let mut match_semantic_decl = &semantic_decls.last()?.0;
-    for (semantic_decl, typ) in semantic_decls.iter() {
+    let mut matched_decl = semantic_decls.last()?;
+    for semantic_decl in semantic_decls.iter() {
+        let (_, typ) = semantic_decl;
         if let LuaType::DocFunction(f) = typ {
             if f == &final_type {
-                match_semantic_decl = semantic_decl;
+                matched_decl = semantic_decl;
                 break;
             }
         }
     }
+    let (match_semantic_decl, match_typ) = matched_decl;
 
     let function_member = match match_semantic_decl {
         LuaSemanticDeclId::Member(id) => {
@@ -92,15 +95,65 @@ fn build_function_call_hover(
     };
 
     let is_field = function_member_is_field(db, semantic_decls);
-    let contents = process_function_type(
-        builder,
-        db,
-        &LuaType::DocFunction(final_type),
-        function_member,
-        function_name,
-        is_local,
-        is_field,
-    )?;
+    let contents = if let LuaType::Signature(signature_id) = match_typ {
+        let signature = db.get_signature_index().get(signature_id)?;
+        let base_function = LuaFunctionType::new(
+            signature.async_state,
+            signature.is_colon_define,
+            signature.is_vararg,
+            signature.get_type_params(),
+            signature.get_return_type(),
+        );
+        let instantiated_signature = instantiate_func_generic(
+            db,
+            &mut builder.semantic_model.get_cache().borrow_mut(),
+            &base_function,
+            call_expr.clone(),
+        )
+        .ok()?;
+
+        if !signature.return_overloads.is_empty()
+            && final_type.get_async_state() == instantiated_signature.get_async_state()
+            && final_type.is_colon_define() == instantiated_signature.is_colon_define()
+            && final_type.is_variadic() == instantiated_signature.is_variadic()
+            && final_type.get_params() == instantiated_signature.get_params()
+        {
+            let return_overloads =
+                instantiate_call_return_overloads(builder, db, call_expr, signature);
+            let ret_detail = build_function_return_overload_rows(builder, &return_overloads);
+            vec![hover_doc_function_type(
+                builder,
+                db,
+                final_type.as_ref(),
+                function_member,
+                function_name,
+                is_local,
+                is_field,
+                Vec::new(),
+                Some(ret_detail),
+            )]
+        } else {
+            process_function_type(
+                builder,
+                db,
+                &LuaType::DocFunction(final_type),
+                function_member,
+                function_name,
+                is_local,
+                is_field,
+            )?
+        }
+    } else {
+        process_function_type(
+            builder,
+            db,
+            &LuaType::DocFunction(final_type),
+            function_member,
+            function_name,
+            is_local,
+            is_field,
+        )?
+    };
     let description = get_function_description(builder, db, &match_semantic_decl);
     builder.set_type_description(contents.first()?.clone());
     builder.add_description_from_info(description);
@@ -218,6 +271,7 @@ fn process_function_type(
                 is_local,
                 is_field,
                 convert_function_return_to_docs(lua_func),
+                None,
             );
             Some(vec![content])
         }
@@ -231,23 +285,45 @@ fn process_function_type(
                 signature.get_type_params(),
                 signature.get_return_type(),
             ));
-            new_overloads.insert(0, fake_doc_function);
+            new_overloads.insert(0, fake_doc_function.clone());
             let mut contents = Vec::with_capacity(new_overloads.len());
             for (i, overload) in new_overloads.iter().enumerate() {
-                contents.push(hover_doc_function_type(
-                    builder,
-                    db,
-                    overload,
-                    function_member,
-                    function_name,
-                    is_local,
-                    is_field,
-                    if i == 0 {
-                        signature.return_docs.clone()
-                    } else {
-                        convert_function_return_to_docs(overload)
-                    },
-                ));
+                let content = if i == 0 && !signature.return_overloads.is_empty() {
+                    let ret_detail =
+                        build_function_return_overload_rows(builder, &signature.return_overloads);
+                    hover_doc_function_type(
+                        builder,
+                        db,
+                        overload,
+                        function_member,
+                        function_name,
+                        is_local,
+                        is_field,
+                        Vec::new(),
+                        Some(ret_detail),
+                    )
+                } else {
+                    hover_doc_function_type(
+                        builder,
+                        db,
+                        overload,
+                        function_member,
+                        function_name,
+                        is_local,
+                        is_field,
+                        if i == 0 {
+                            if signature.return_docs.is_empty() {
+                                convert_function_return_to_docs(fake_doc_function.as_ref())
+                            } else {
+                                signature.return_docs.clone()
+                            }
+                        } else {
+                            convert_function_return_to_docs(overload)
+                        },
+                        None,
+                    )
+                };
+                contents.push(content);
             }
             Some(contents)
         }
@@ -281,6 +357,7 @@ fn hover_doc_function_type(
     is_local: bool,
     is_field: bool,                     /* 是否为类字段 */
     return_docs: Vec<LuaDocReturnInfo>, /* 返回值以此为准 */
+    ret_detail: Option<String>,
 ) -> String {
     let async_label = match func.get_async_state() {
         AsyncState::Async => "async ",
@@ -372,11 +449,60 @@ fn hover_doc_function_type(
             }
         })
         .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(", ");
+        .collect::<Vec<_>>();
 
-    let ret_detail = build_function_returns(builder, return_docs);
-    format_function_type(type_label, async_label, full_name, params, ret_detail)
+    let ret_detail = ret_detail.unwrap_or_else(|| build_function_returns(builder, return_docs));
+    format_function_type(
+        type_label,
+        async_label,
+        full_name,
+        params.join(", "),
+        ret_detail,
+    )
+}
+
+fn instantiate_call_return_overloads(
+    builder: &HoverBuilder,
+    db: &DbIndex,
+    call_expr: &emmylua_parser::LuaCallExpr,
+    signature: &LuaSignature,
+) -> Vec<LuaDocReturnOverloadInfo> {
+    let mut cache = builder.semantic_model.get_cache().borrow_mut();
+
+    signature
+        .return_overloads
+        .iter()
+        .map(|row| {
+            let row_return_type = match row.type_refs.len() {
+                0 => LuaType::Nil,
+                1 => row.type_refs[0].clone(),
+                _ => LuaType::Variadic(VariadicType::Multi(row.type_refs.clone()).into()),
+            };
+            let row_function = LuaFunctionType::new(
+                signature.async_state,
+                signature.is_colon_define,
+                signature.is_vararg,
+                signature.get_type_params(),
+                row_return_type,
+            );
+            let instantiated_row =
+                instantiate_func_generic(db, &mut cache, &row_function, call_expr.clone())
+                    .ok()
+                    .map(|func| match func.get_ret() {
+                        LuaType::Variadic(variadic) => match variadic.as_ref() {
+                            VariadicType::Multi(types) => types.clone(),
+                            VariadicType::Base(_) => vec![LuaType::Variadic(variadic.clone())],
+                        },
+                        typ => vec![typ.clone()],
+                    })
+                    .unwrap_or_else(|| row.type_refs.clone());
+
+            LuaDocReturnOverloadInfo {
+                type_refs: instantiated_row,
+                description: row.description.clone(),
+            }
+        })
+        .collect()
 }
 
 fn convert_function_return_to_docs(func: &LuaFunctionType) -> Vec<LuaDocReturnInfo> {
@@ -466,7 +592,6 @@ fn build_function_returns(
         let type_text = build_function_return_type(builder, return_info, i);
 
         if has_multiline {
-            // 存在返回值名称时使用多行模式
             let prefix = if i == 0 {
                 result.push('\n');
                 "-> ".to_string()
@@ -485,14 +610,39 @@ fn build_function_returns(
                 },
                 type_text,
             ));
+        } else if i == 0 {
+            result.push_str(&format!(" -> {}", type_text));
         } else {
-            // 不存在返回值名称时使用单行模式
-            if i == 0 {
-                result.push_str(&format!(" -> {}", type_text));
-            } else {
-                result.push_str(&format!(", {}", type_text));
-            }
+            result.push_str(&format!(", {}", type_text));
         }
+    }
+
+    result
+}
+
+fn build_function_return_overload_rows(
+    builder: &mut HoverBuilder,
+    return_overloads: &[LuaDocReturnOverloadInfo],
+) -> String {
+    let mut result = String::new();
+
+    for (row_idx, row) in return_overloads.iter().enumerate() {
+        if row.type_refs.is_empty() {
+            continue;
+        }
+
+        let row_text = row
+            .type_refs
+            .iter()
+            .enumerate()
+            .map(|(i, typ)| build_return_type_text(builder, typ, i))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        if row_idx == 0 {
+            result.push('\n');
+        }
+        result.push_str(&format!("  -> {}\n", row_text));
     }
 
     result
@@ -503,9 +653,13 @@ fn build_function_return_type(
     ret_info: &LuaDocReturnInfo,
     i: usize,
 ) -> String {
+    build_return_type_text(builder, &ret_info.type_ref, i)
+}
+
+fn build_return_type_text(builder: &mut HoverBuilder, typ: &LuaType, i: usize) -> String {
     let type_expansion_count = builder.get_type_expansion_count();
     // 在这个过程中可能会设置`type_expansion`
-    let type_text = hover_humanize_type(builder, &ret_info.type_ref, Some(RenderLevel::Simple));
+    let type_text = hover_humanize_type(builder, typ, Some(RenderLevel::Simple));
     if builder.get_type_expansion_count() > type_expansion_count {
         // 重新设置`type_expansion`
         if let Some(pop_type_expansion) =

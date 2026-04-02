@@ -7,12 +7,34 @@ use crate::handlers::completion::{
     completion_builder::CompletionBuilder, completion_data::CompletionData,
 };
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct DocTypeProvider;
+
+impl CompletionProvider for DocTypeProvider {
+    fn name(&self) -> &'static str {
+        "doc_type"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        completion_type_for(builder).is_some()
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
-    let completion_type = check_can_add_type_completion(builder)?;
+    let completion_type = completion_type_for(builder)?;
 
     let prefix_content = builder.trigger_token.text().to_string();
     let prefix = if let Some(last_sep) = prefix_content.rfind('.') {
@@ -22,7 +44,6 @@ pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
         ""
     };
     complete_types_by_prefix(builder, prefix, None, Some(completion_type));
-    builder.stop_here();
     Some(())
 }
 
@@ -82,7 +103,7 @@ pub enum CompletionType {
     AttributeUse,
 }
 
-fn check_can_add_type_completion(builder: &CompletionBuilder) -> Option<CompletionType> {
+fn completion_type_for(builder: &CompletionBuilder) -> Option<CompletionType> {
     match builder.trigger_token.kind().into() {
         LuaTokenKind::TkName => {
             let parent = builder.trigger_token.parent()?;

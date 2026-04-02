@@ -133,6 +133,61 @@ Syntax(Chunk)@0..163
     }
 
     #[test]
+    fn test_return_overload_tag() {
+        let code = r#"
+        ---@return_overload true, integer
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..51
+  Syntax(Block)@0..51
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..42
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagReturnOverload)@13..42
+        Token(TkTagReturnOverload)@13..28 "return_overload"
+        Token(TkWhitespace)@28..29 " "
+        Syntax(TypeLiteral)@29..33
+          Token(TkTrue)@29..33 "true"
+        Token(TkComma)@33..34 ","
+        Token(TkWhitespace)@34..35 " "
+        Syntax(TypeName)@35..42
+          Token(TkName)@35..42 "integer"
+    Token(TkEndOfLine)@42..43 "\n"
+    Token(TkWhitespace)@43..51 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_return_overload_tag_does_not_parse_named_returns() {
+        let code = r#"
+        ---@return_overload true ok, integer
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..54
+  Syntax(Block)@0..54
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..45
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagReturnOverload)@13..33
+        Token(TkTagReturnOverload)@13..28 "return_overload"
+        Token(TkWhitespace)@28..29 " "
+        Syntax(TypeLiteral)@29..33
+          Token(TkTrue)@29..33 "true"
+      Token(TkWhitespace)@33..34 " "
+      Syntax(DocDescription)@34..45
+        Token(TkDocDetail)@34..45 "ok, integer"
+    Token(TkEndOfLine)@45..46 "\n"
+    Token(TkWhitespace)@46..54 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
     fn test_class_doc() {
         let code = r#"
         ---@class A hello
@@ -3215,7 +3270,7 @@ Syntax(Chunk)@0..110
         let code = r#"
         ---@alias ConstructorParameters<T> T extends new (fun(...: infer P): any) and P or never
         "#;
-        print_ast(code);
+        // print_ast(code);
         let result = r#"
 Syntax(Chunk)@0..106
   Syntax(Block)@0..106
@@ -3422,6 +3477,75 @@ Syntax(Chunk)@0..60
     Token(TkWhitespace)@52..60 "        "
         "#;
 
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_type_index_access() {
+        let code = r#"
+        ---@type T[1]
+        ---@type T["a"]
+        ---@type T[A]
+        ---@type T[]
+        "#;
+        // print_ast(code);
+        let result = r#"
+Syntax(Chunk)@0..98
+  Syntax(Block)@0..98
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..89
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagType)@13..22
+        Token(TkTagType)@13..17 "type"
+        Token(TkWhitespace)@17..18 " "
+        Syntax(TypeIndexAccess)@18..22
+          Syntax(TypeName)@18..19
+            Token(TkName)@18..19 "T"
+          Token(TkLeftBracket)@19..20 "["
+          Syntax(TypeLiteral)@20..21
+            Token(TkInt)@20..21 "1"
+          Token(TkRightBracket)@21..22 "]"
+      Token(TkEndOfLine)@22..23 "\n"
+      Token(TkWhitespace)@23..31 "        "
+      Token(TkDocStart)@31..35 "---@"
+      Syntax(DocTagType)@35..46
+        Token(TkTagType)@35..39 "type"
+        Token(TkWhitespace)@39..40 " "
+        Syntax(TypeIndexAccess)@40..46
+          Syntax(TypeName)@40..41
+            Token(TkName)@40..41 "T"
+          Token(TkLeftBracket)@41..42 "["
+          Syntax(TypeLiteral)@42..45
+            Token(TkString)@42..45 "\"a\""
+          Token(TkRightBracket)@45..46 "]"
+      Token(TkEndOfLine)@46..47 "\n"
+      Token(TkWhitespace)@47..55 "        "
+      Token(TkDocStart)@55..59 "---@"
+      Syntax(DocTagType)@59..68
+        Token(TkTagType)@59..63 "type"
+        Token(TkWhitespace)@63..64 " "
+        Syntax(TypeIndexAccess)@64..68
+          Syntax(TypeName)@64..65
+            Token(TkName)@64..65 "T"
+          Token(TkLeftBracket)@65..66 "["
+          Syntax(TypeName)@66..67
+            Token(TkName)@66..67 "A"
+          Token(TkRightBracket)@67..68 "]"
+      Token(TkEndOfLine)@68..69 "\n"
+      Token(TkWhitespace)@69..77 "        "
+      Token(TkDocStart)@77..81 "---@"
+      Syntax(DocTagType)@81..89
+        Token(TkTagType)@81..85 "type"
+        Token(TkWhitespace)@85..86 " "
+        Syntax(TypeArray)@86..89
+          Syntax(TypeName)@86..87
+            Token(TkName)@86..87 "T"
+          Token(TkLeftBracket)@87..88 "["
+          Token(TkRightBracket)@88..89 "]"
+    Token(TkEndOfLine)@89..90 "\n"
+    Token(TkWhitespace)@90..98 "        "
+        "#;
         assert_ast_eq!(code, result);
     }
 }

@@ -1,10 +1,8 @@
 mod instantiate_func_generic;
 mod instantiate_special_generic;
 
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Deref,
-};
+use hashbrown::{HashMap, HashSet};
+use std::ops::Deref;
 
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaAliasCallKind, LuaArrayType, LuaConditionalType,
@@ -493,21 +491,24 @@ fn instantiate_conditional(
             }
         }
 
-        // infer 必须位于条件语句中(right), 判断是否包含并收集
-        if contains_conditional_infer(&right)
-            && collect_infer_assignments(db, &left, &right, &mut infer_assignments)
-        {
-            condition_result = Some(true);
-        } else {
-            condition_result = Some(
-                check_type_compact_with_level(
-                    db,
-                    &left,
-                    &right,
-                    TypeCheckCheckLevel::GenericConditional,
-                )
-                .is_ok(),
-            );
+        // 仍有未解析模板时不能提前折叠 conditional, 否则会把 infer 结果固定成悬空占位符.
+        if !left.contain_tpl() && !right.contain_tpl() {
+            // infer 必须位于条件语句中(right), 判断是否包含并收集
+            if contains_conditional_infer(&right)
+                && collect_infer_assignments(db, &left, &right, &mut infer_assignments)
+            {
+                condition_result = Some(true);
+            } else {
+                condition_result = Some(
+                    check_type_compact_with_level(
+                        db,
+                        &left,
+                        &right,
+                        TypeCheckCheckLevel::GenericConditional,
+                    )
+                    .is_ok(),
+                );
+            }
         }
     }
 

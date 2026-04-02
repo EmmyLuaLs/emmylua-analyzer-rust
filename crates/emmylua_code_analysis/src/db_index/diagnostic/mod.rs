@@ -1,7 +1,7 @@
 mod analyze_error;
 mod diagnostic_action;
 
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 pub use analyze_error::AnalyzeError;
 pub use diagnostic_action::{DiagnosticAction, DiagnosticActionKind};

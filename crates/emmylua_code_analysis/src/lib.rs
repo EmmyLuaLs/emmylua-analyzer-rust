@@ -24,6 +24,7 @@ pub use config::*;
 pub use db_index::*;
 pub use diagnostic::*;
 pub use emmylua_codestyle::*;
+use hashbrown::HashMap;
 pub use locale::get_locale_code;
 use lsp_types::Uri;
 pub use profile::Profile;
@@ -32,7 +33,6 @@ pub use resources::load_resource_from_include_dir;
 use resources::load_resource_std;
 use schema_to_emmylua::SchemaConverter;
 pub use semantic::*;
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 pub use test_lib::VirtualWorkspace;
@@ -53,6 +53,8 @@ pub struct EmmyLuaAnalysis {
     pub compilation: LuaCompilation,
     pub diagnostic: LuaDiagnostic,
     pub emmyrc: Arc<Emmyrc>,
+    #[cfg(test)]
+    reindex_count: usize,
 }
 
 impl EmmyLuaAnalysis {
@@ -62,6 +64,8 @@ impl EmmyLuaAnalysis {
             compilation: LuaCompilation::new(emmyrc.clone()),
             diagnostic: LuaDiagnostic::new(),
             emmyrc,
+            #[cfg(test)]
+            reindex_count: 0,
         }
     }
 
@@ -239,17 +243,24 @@ impl EmmyLuaAnalysis {
         let mut kept_paths = open_paths.clone();
         kept_paths.extend(files.iter().map(|(path, _)| path.clone()));
 
-        let stale_uris = {
+        let (had_existing_non_std_local_files, stale_uris) = {
             let db = self.compilation.get_db();
             let vfs = db.get_vfs();
             let module_index = db.get_module_index();
-            vfs.get_all_local_file_ids()
+            let mut had_existing_non_std_local_files = false;
+            let stale_uris = vfs
+                .get_all_local_file_ids()
                 .into_iter()
-                .filter(|file_id| !module_index.is_std(file_id))
+                .filter(|file_id| {
+                    let is_non_std = !module_index.is_std(file_id);
+                    had_existing_non_std_local_files |= is_non_std;
+                    is_non_std
+                })
                 .filter_map(|file_id| vfs.get_file_path(&file_id).cloned())
                 .filter(|path| !kept_paths.contains(path))
                 .filter_map(|path| file_path_to_uri(&path))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (had_existing_non_std_local_files, stale_uris)
         };
         for uri in &stale_uris {
             self.remove_file_by_uri(uri);
@@ -267,7 +278,9 @@ impl EmmyLuaAnalysis {
                 .map(|(uri, text)| (uri, Some(text)))
                 .collect(),
         );
-        self.reindex();
+        if had_existing_non_std_local_files {
+            self.reindex();
+        }
         stale_uris
     }
 
@@ -291,6 +304,10 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn reindex(&mut self) {
+        #[cfg(test)]
+        {
+            self.reindex_count += 1;
+        }
         let file_ids = self.compilation.get_db().get_vfs().get_all_file_ids();
         self.compilation.clear_index();
         self.compilation.update_index(file_ids);
@@ -417,3 +434,44 @@ impl Default for EmmyLuaAnalysis {
 
 unsafe impl Send for EmmyLuaAnalysis {}
 unsafe impl Sync for EmmyLuaAnalysis {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reload_workspace_files_skips_reindex_when_bootstrapping_workspace() {
+        let mut analysis = EmmyLuaAnalysis::new();
+        let workspace_root = std::env::current_dir().unwrap();
+        let file_path = workspace_root.join("__reload_workspace_startup_test.lua");
+        analysis.add_main_workspace(workspace_root);
+
+        analysis.reload_workspace_files(
+            vec![(file_path.clone(), Some("return true\n".to_string()))],
+            Vec::new(),
+        );
+
+        assert_eq!(analysis.reindex_count, 0);
+        assert!(
+            analysis
+                .get_file_id(&file_path_to_uri(&file_path).unwrap())
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn reload_workspace_files_reindexes_existing_workspace_files() {
+        let mut analysis = EmmyLuaAnalysis::new();
+        let workspace_root = std::env::current_dir().unwrap();
+        let file_path = workspace_root.join("__reload_workspace_existing_test.lua");
+        analysis.add_main_workspace(workspace_root);
+        analysis.update_files_by_path(vec![(file_path.clone(), Some("return true\n".to_string()))]);
+
+        analysis.reload_workspace_files(
+            vec![(file_path, Some("return false\n".to_string()))],
+            Vec::new(),
+        );
+
+        assert_eq!(analysis.reindex_count, 1);
+    }
+}

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 use crate::{
     DbIndex, InFiled, InferGuardRef, LuaGenericType, LuaIntersectionType, LuaMemberKey,
@@ -263,11 +263,11 @@ fn find_index_intersection(
             }
 
             match members.entry(member.key.clone()) {
-                std::collections::hash_map::Entry::Vacant(entry) => {
+                hashbrown::hash_map::Entry::Vacant(entry) => {
                     order.push(member.key.clone());
                     entry.insert(member.typ.clone());
                 }
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                hashbrown::hash_map::Entry::Occupied(mut entry) => {
                     let merged =
                         intersect_member_types(db, entry.get().clone(), member.typ.clone());
                     entry.insert(merged);

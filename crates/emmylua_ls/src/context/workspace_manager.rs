@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "full-test"))]
 mod tests;
 
 use std::collections::{HashMap, HashSet};

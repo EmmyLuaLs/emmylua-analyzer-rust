@@ -8,24 +8,56 @@ use lsp_types::{CompletionItem, CompletionTextEdit, TextEdit};
 
 use super::get_text_edit_range_in_string;
 
-pub fn add_completion(builder: &mut CompletionBuilder) -> Option<()> {
+use super::{CompletionProvider, ProviderDecision};
+
+pub struct ModulePathProvider;
+
+impl CompletionProvider for ModulePathProvider {
+    fn name(&self) -> &'static str {
+        "module_path"
+    }
+
+    fn supports(&self, builder: &CompletionBuilder) -> bool {
+        supports_provider(builder)
+    }
+
+    fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
+        if complete_provider(builder).is_some() {
+            ProviderDecision::Stop
+        } else {
+            ProviderDecision::NoMatch
+        }
+    }
+}
+
+fn supports_provider(builder: &CompletionBuilder) -> bool {
+    let Some(string_token) = LuaStringToken::cast(builder.trigger_token.clone()) else {
+        return false;
+    };
+    let Some(call_expr) = string_token
+        .get_parent::<LuaLiteralExpr>()
+        .and_then(|literal| literal.get_parent::<LuaCallArgList>())
+        .and_then(|arg_list| arg_list.get_parent::<LuaCallExpr>())
+    else {
+        return false;
+    };
+
+    call_expr.is_require()
+}
+
+fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     if builder.is_cancelled() {
         return None;
     }
 
-    let string_token = LuaStringToken::cast(builder.trigger_token.clone())?;
-    let call_expr = string_token
-        .get_parent::<LuaLiteralExpr>()?
-        .get_parent::<LuaCallArgList>()?
-        .get_parent::<LuaCallExpr>()?;
-
-    if !call_expr.is_require() {
+    if !supports_provider(builder) {
         return None;
     }
 
+    let string_token = LuaStringToken::cast(builder.trigger_token.clone())?;
+
     let text_edit_range = get_text_edit_range_in_string(builder, string_token.clone())?;
     add_modules(builder, &string_token.get_value(), Some(text_edit_range));
-    builder.stop_here();
     Some(())
 }
 

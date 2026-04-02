@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 
 use emmylua_parser::{
     LuaAstNode, LuaDocTagClass, LuaDocTagField, LuaIndexExpr, LuaStat, LuaSyntaxKind, LuaSyntaxNode,

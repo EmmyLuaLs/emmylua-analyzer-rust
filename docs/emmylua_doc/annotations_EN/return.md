@@ -14,6 +14,9 @@ Define return value types and description information for functions.
 -- Multiple return values
 ---@return <type1> [name1] [description1]
 ---@return <type2> [name2] [description2]
+
+-- Correlated return rows (one row per possible return tuple)
+---@return_overload <type1>, <type2>[, <type3>...]
 ```
 
 ## Examples
@@ -174,6 +177,54 @@ for id, userName in iterateUsers() do
 end
 ```
 
+## Return Overload Rows (`@return_overload`)
+
+`@return_overload` defines correlated multi-return rows. Each annotation line represents one possible return tuple.
+This is useful for status/result APIs (for example `pcall`-style code).
+
+When multiple local variables are assigned from the same call, condition checks on one return slot
+(truthy/falsy checks, literal equality checks, or `type()` guards) narrow correlated slots from
+the same row.
+
+```lua
+---@generic T, E
+---@param ok boolean
+---@param success T
+---@param failure E
+---@return boolean
+---@return T|E
+---@return_overload true, T
+---@return_overload false, E
+local function pick(ok, success, failure)
+    if ok then
+        return true, success
+    end
+    return false, failure
+end
+
+local cond ---@type boolean
+local ok, result = pick(cond, 1, "error")
+
+if not ok then
+    error(result) -- result: string
+end
+
+local value = result -- value: integer
+```
+
+`@return_overload` also supports generic and variadic tails:
+
+```lua
+---@generic T, R
+---@param f fun(...: T...): R...
+---@param ... T...
+---@return_overload true, R...
+---@return_overload false, string
+local function wrap(f, ...) end
+```
+
+You can keep `@return` as the broad declaration and add `@return_overload` rows for correlation-sensitive inference.
+
 ## Features
 
 1. **Multiple return value support**
@@ -182,3 +233,4 @@ end
 4. **Function return values**
 5. **Async return values**
 6. **Conditional return values**
+7. **Correlated return row narrowing (`@return_overload`)**
