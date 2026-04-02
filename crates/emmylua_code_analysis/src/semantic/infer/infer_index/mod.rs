@@ -707,18 +707,15 @@ fn infer_instance_member(
                     return Ok(typ);
                 }
                 // Field has a concrete value — strip nil from the class type.
+                // Do not intersect with the literal value to avoid narrowing declared
+                // types (e.g. `integer`) down to their constant (e.g. `IntegerConst(1)`).
                 let base = TypeOps::Remove.apply(db, &typ, &LuaType::Nil);
-                return Ok(match TypeOps::Intersect.apply(db, &base, &table_type) {
-                    LuaType::Never => {
-                        // If the literal field is itself a table, wrap in Instance
-                        // to preserve literal context for recursive member access.
-                        if let LuaType::TableConst(nested_range) = table_type {
-                            LuaType::Instance(LuaInstanceType::new(base, nested_range).into())
-                        } else {
-                            base
-                        }
-                    }
-                    intersected => intersected,
+                return Ok(if let LuaType::TableConst(nested_range) = table_type {
+                    // Nested table: wrap in Instance to preserve literal context
+                    // for recursive member access.
+                    LuaType::Instance(LuaInstanceType::new(base, nested_range).into())
+                } else {
+                    base
                 });
             }
             Err(InferFailReason::FieldNotFound) => return Ok(typ),

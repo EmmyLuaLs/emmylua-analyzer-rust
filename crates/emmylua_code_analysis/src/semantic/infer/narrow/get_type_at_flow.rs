@@ -62,29 +62,35 @@ pub fn get_type_at_flow(
                 if *position <= var_ref_id.get_position() {
                     match get_var_ref_type(db, cache, var_ref_id) {
                         Ok(var_type) => {
-                            if var_type.is_class_type(db) {
-                                if let Ok(Some(init_type)) =
-                                    try_infer_decl_initializer_type(db, cache, root, var_ref_id)
+                            'narrow: {
+                                if !var_type.is_class_type(db) {
+                                    break 'narrow;
+                                }
+                                let Ok(Some(init_type)) = try_infer_decl_initializer_type(
+                                    db, cache, root, var_ref_id,
+                                ) else {
+                                    break 'narrow;
+                                };
+                                // Only narrow if the table literal has members
+                                let LuaType::TableConst(ref range) = init_type else {
+                                    break 'narrow;
+                                };
+                                let owner = crate::LuaMemberOwner::Element(range.clone());
+                                if !db
+                                    .get_member_index()
+                                    .get_members(&owner)
+                                    .is_some_and(|m| !m.is_empty())
                                 {
-                                    // Only narrow if the table literal has members
-                                    if let LuaType::TableConst(ref range) = init_type {
-                                        let owner = crate::LuaMemberOwner::Element(range.clone());
-                                        if db
-                                            .get_member_index()
-                                            .get_members(&owner)
-                                            .is_some_and(|m| !m.is_empty())
-                                        {
-                                            if let Some(narrowed) = narrow_down_type(
-                                                db,
-                                                var_type.clone(),
-                                                init_type,
-                                                Some(var_type.clone()),
-                                            ) {
-                                                result_type = narrowed;
-                                                break;
-                                            }
-                                        }
-                                    }
+                                    break 'narrow;
+                                }
+                                if let Some(narrowed) = narrow_down_type(
+                                    db,
+                                    var_type.clone(),
+                                    init_type,
+                                    Some(var_type.clone()),
+                                ) {
+                                    result_type = narrowed;
+                                    break;
                                 }
                             }
                             result_type = var_type;

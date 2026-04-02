@@ -97,28 +97,10 @@ mod test {
         let e_ty = ws.expr_ty("e");
         let f_ty = ws.expr_ty("f");
 
-        // a and d: direct field access resolves via the table literal (IntegerConst)
-        // or via the class declaration (Integer); both are valid integer types
-        assert!(
-            matches!(a_ty, LuaType::Integer | LuaType::IntegerConst(_)),
-            "expected integer type for a, got {:?}",
-            a_ty
-        );
-        assert!(
-            matches!(d_ty, LuaType::Integer | LuaType::IntegerConst(_)),
-            "expected integer type for d, got {:?}",
-            d_ty
-        );
-        assert!(
-            matches!(e_ty, LuaType::Integer | LuaType::IntegerConst(_)),
-            "expected integer type for e, got {:?}",
-            e_ty
-        );
-        assert!(
-            matches!(f_ty, LuaType::Integer | LuaType::IntegerConst(_)),
-            "expected integer type for f, got {:?}",
-            f_ty
-        );
+        assert_eq!(a_ty, LuaType::Integer);
+        assert_eq!(d_ty, LuaType::Integer);
+        assert_eq!(e_ty, LuaType::Integer);
+        assert_eq!(f_ty, LuaType::Integer);
     }
 
     #[test]

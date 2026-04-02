@@ -376,18 +376,19 @@ impl<'a> TypeHumanizer<'a> {
             w.write_str("    ")?;
             if let Some(literal_ty) = literal_keys.get(member_key) {
                 if literal_ty.is_nullable() {
-                    // Literal value is nil/nullable — keep optional display
-                    let stripped = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
-                    self.write_optional_member_field(member_key, &stripped, saved, w)?;
+                    // Literal value is nil/nullable — show as optional (strip nil from
+                    // type, but add `?` to the key to signal it was not concretely set).
+                    let without_nil = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                    self.write_optional_member_field(member_key, &without_nil, saved, w)?;
                 } else {
-                    // Field provided with concrete value: strip nil
-                    let narrowed = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
-                    self.write_table_member_field(member_key, &narrowed, saved, w)?;
+                    // Concrete value provided — strip nil and display as required.
+                    let without_nil = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                    self.write_table_member_field(member_key, &without_nil, saved, w)?;
                 }
             } else if typ.is_nullable() {
                 // Optional field not provided: show as "name?: type" (without nil)
-                let stripped = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
-                self.write_optional_member_field(member_key, &stripped, saved, w)?;
+                let without_nil = TypeOps::Remove.apply(self.db, typ, &LuaType::Nil);
+                self.write_optional_member_field(member_key, &without_nil, saved, w)?;
             } else {
                 self.write_table_member_field(member_key, typ, saved, w)?;
             }

@@ -4,8 +4,8 @@ mod semantic_decl_level;
 mod semantic_guard;
 
 use crate::{
-    DbIndex, LuaDeclExtra, LuaDeclId, LuaInstanceType, LuaMemberId, LuaSemanticDeclId, LuaType,
-    LuaTypeCache, TypeOps,
+    DbIndex, LuaDeclExtra, LuaDeclId, LuaInstanceType, LuaMemberId, LuaMemberOwner,
+    LuaSemanticDeclId, LuaType, LuaTypeCache, TypeOps,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaParamName,
@@ -42,29 +42,12 @@ pub fn infer_token_semantic_info(
 
             // Only narrow LocalName declarations — ForStat/ForRangeStat cannot have
             // table literal initializers.
-            if matches!(parent.kind().into(), LuaSyntaxKind::LocalName) && typ.is_class_type(db) {
-                if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
-                    if let Some(value_syntax_id) = decl.get_value_syntax_id() {
-                        if let Some(node) =
-                            value_syntax_id.to_node_from_root(&parent.ancestors().last()?)
-                        {
-                            if let Some(expr) = LuaExpr::cast(node) {
-                                if let Ok(LuaType::TableConst(range)) = infer_expr(db, cache, expr)
-                                {
-                                    let owner = crate::LuaMemberOwner::Element(range.clone());
-                                    if db
-                                        .get_member_index()
-                                        .get_members(&owner)
-                                        .is_some_and(|m| !m.is_empty())
-                                    {
-                                        typ = LuaType::Instance(
-                                            LuaInstanceType::new(typ, range).into(),
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
+            if matches!(parent.kind().into(), LuaSyntaxKind::LocalName) {
+                let root = parent.ancestors().last()?;
+                if let Some(narrowed) =
+                    try_narrow_local_to_instance(db, cache, &typ, &decl_id, &root)
+                {
+                    typ = narrowed;
                 }
             }
 
@@ -172,6 +155,38 @@ pub fn infer_node_semantic_info(
         }
         _ => None,
     }
+}
+
+/// If `typ` is a class type and `decl_id` has a non-empty `TableConst` initializer,
+/// returns `Instance(typ, range)`. Otherwise returns `None`.
+fn try_narrow_local_to_instance(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    typ: &LuaType,
+    decl_id: &LuaDeclId,
+    root: &LuaSyntaxNode,
+) -> Option<LuaType> {
+    if !typ.is_class_type(db) {
+        return None;
+    }
+    let decl = db.get_decl_index().get_decl(decl_id)?;
+    let value_syntax_id = decl.get_value_syntax_id()?;
+    let node = value_syntax_id.to_node_from_root(root)?;
+    let expr = LuaExpr::cast(node)?;
+    let LuaType::TableConst(range) = infer_expr(db, cache, expr).ok()? else {
+        return None;
+    };
+    let owner = LuaMemberOwner::Element(range.clone());
+    if !db
+        .get_member_index()
+        .get_members(&owner)
+        .is_some_and(|m| !m.is_empty())
+    {
+        return None;
+    }
+    Some(LuaType::Instance(
+        LuaInstanceType::new(typ.clone(), range).into(),
+    ))
 }
 
 fn type_def_tag_info(name: &str, db: &DbIndex, cache: &mut LuaInferCache) -> Option<SemanticInfo> {
