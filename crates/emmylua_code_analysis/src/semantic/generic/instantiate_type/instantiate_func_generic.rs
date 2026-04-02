@@ -27,7 +27,7 @@ use crate::{
 };
 use crate::{
     LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl,
-    tpl_pattern_match_args,
+    tpl_pattern_match_args_skip_unknown,
 };
 
 use super::{TypeSubstitutor, collect_callable_overload_groups};
@@ -259,15 +259,22 @@ pub fn infer_callable_return_from_remaining_args(
     let call_arg_types =
         match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
             Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
-            Err(_) => {
-                return infer_callable_return_from_arg_types(context, callable_type, None, true);
-            }
+            Err(_) => arg_exprs
+                .iter()
+                .map(|arg_expr| {
+                    infer_expr(context.db, context.cache, arg_expr.clone())
+                        .unwrap_or(LuaType::Unknown)
+                })
+                .collect::<Vec<_>>(),
         };
     if call_arg_types.is_empty() {
         return Ok(None);
     }
 
-    infer_callable_return_from_arg_types(context, callable_type, Some(&call_arg_types), true)
+    // Preserve any known remaining-arg shape, including arity, even when some later arguments
+    // collapse to `unknown`. This avoids unioning returns from overloads that are impossible
+    // for the current call.
+    infer_callable_return_from_arg_types(context, callable_type, Some(&call_arg_types), false)
 }
 
 fn instantiate_callable_from_arg_types(
@@ -302,7 +309,12 @@ fn instantiate_callable_from_arg_types(
         substitutor: &mut callable_substitutor,
         call_expr: context.call_expr.clone(),
     };
-    if tpl_pattern_match_args(&mut callable_context, &callable_param_types, call_arg_types).is_err()
+    if tpl_pattern_match_args_skip_unknown(
+        &mut callable_context,
+        &callable_param_types,
+        call_arg_types,
+    )
+    .is_err()
     {
         return None;
     }

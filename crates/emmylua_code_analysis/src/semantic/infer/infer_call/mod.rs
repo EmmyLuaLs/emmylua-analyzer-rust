@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
+use hashbrown::HashSet;
 use rowan::TextRange;
 
 use super::{
     super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
     InferFailReason, InferResult,
 };
+use crate::semantic::overload_resolve::callable_accepts_args;
 use crate::{
     CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
@@ -102,12 +104,16 @@ pub fn infer_call_expr_func(
         ),
         LuaType::Union(union) => {
             // 此时我们将其视为泛型实例化联合体
-            if union
-                .into_vec()
+            let union_types = union.into_vec();
+            if union_types
                 .iter()
                 .all(|t| matches!(t, LuaType::DocFunction(_)))
             {
-                infer_generic_doc_function_union(db, cache, union, call_expr.clone(), args_count)
+                let mut overloads = Vec::new();
+                for typ in union_types {
+                    overloads.extend(collect_callable_overloads(db, &typ)?);
+                }
+                resolve_filtered_overloads(db, cache, overloads, call_expr.clone(), args_count)
             } else {
                 infer_union(db, cache, union, call_expr.clone(), args_count)
             }
@@ -194,19 +200,67 @@ fn infer_doc_function(
     Ok(func.clone().into())
 }
 
-fn infer_generic_doc_function_union(
+fn filter_callable_overloads_by_call_args(
     db: &DbIndex,
     cache: &mut LuaInferCache,
-    union: &LuaUnionType,
+    overloads: Vec<Arc<LuaFunctionType>>,
+    call_expr: &LuaCallExpr,
+    args_count: Option<usize>,
+) -> Result<Vec<Arc<LuaFunctionType>>, InferFailReason> {
+    let args = call_expr.get_args_list().ok_or(InferFailReason::None)?;
+    let expr_types = super::infer_expr_list_types(
+        db,
+        cache,
+        &args.get_args().collect::<Vec<_>>(),
+        args_count,
+        |db, cache, expr| Ok(infer_expr(db, cache, expr).unwrap_or(LuaType::Unknown)),
+    )?
+    .into_iter()
+    .map(|(ty, _)| ty)
+    .collect::<Vec<_>>();
+    let is_colon_call = call_expr.is_colon_call();
+
+    Ok(overloads
+        .into_iter()
+        .filter(|func| {
+            let mut callable_tpls = HashSet::new();
+            func.visit_type(&mut |ty| match ty {
+                LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
+                    callable_tpls.insert(generic_tpl.get_tpl_id());
+                }
+                LuaType::StrTplRef(str_tpl) => {
+                    callable_tpls.insert(str_tpl.get_tpl_id());
+                }
+                _ => {}
+            });
+
+            if callable_tpls.is_empty() {
+                return true;
+            }
+
+            let mut substitutor = TypeSubstitutor::new();
+            substitutor.add_need_infer_tpls(callable_tpls);
+            let match_func = match instantiate_doc_function(db, func, &substitutor) {
+                LuaType::DocFunction(doc_func) => doc_func,
+                _ => func.clone(),
+            };
+
+            callable_accepts_args(db, &match_func, &expr_types, is_colon_call, args_count)
+        })
+        .collect())
+}
+
+fn resolve_filtered_overloads(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    overloads: Vec<Arc<LuaFunctionType>>,
     call_expr: LuaCallExpr,
     args_count: Option<usize>,
 ) -> InferCallFuncResult {
-    let mut overloads = Vec::new();
-    for typ in union.into_vec() {
-        overloads.extend(collect_callable_overloads(db, &typ)?);
-    }
-
-    resolve_signature(db, cache, overloads, call_expr.clone(), false, args_count)
+    let contains_tpl = overloads.iter().any(|func| func.contain_tpl());
+    let overloads =
+        filter_callable_overloads_by_call_args(db, cache, overloads, &call_expr, args_count)?;
+    resolve_signature(db, cache, overloads, call_expr, contains_tpl, args_count)
 }
 
 fn infer_signature_doc_function(
@@ -482,8 +536,7 @@ fn infer_union(
     if overloads.is_empty() {
         return Err(InferFailReason::None);
     }
-    let is_generic = overloads.iter().any(|func| func.contain_tpl());
-    resolve_signature(db, cache, overloads, call_expr, is_generic, args_count)
+    resolve_filtered_overloads(db, cache, overloads, call_expr, args_count)
 }
 
 fn collect_callable_overloads(

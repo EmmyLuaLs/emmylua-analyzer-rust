@@ -15,6 +15,7 @@ pub use instantiate_type::*;
 use rowan::NodeOrToken;
 pub use tpl_context::TplContext;
 pub use tpl_pattern::tpl_pattern_match_args;
+pub use tpl_pattern::tpl_pattern_match_args_skip_unknown;
 pub use type_substitutor::TypeSubstitutor;
 
 use crate::DbIndex;

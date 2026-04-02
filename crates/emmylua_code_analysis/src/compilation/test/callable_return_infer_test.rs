@@ -200,4 +200,98 @@ mod test {
         // unresolved and carried through a named callback value.
         assert_eq!(ws.expr_ty("classify_string_unresolved"), ws.ty("string"));
     }
+
+    #[test]
+    fn test_apply_return_infer_leaves_result_unknown_when_no_callable_member_matches_arg_shape() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic A, R
+            ---@param f fun(x: A): R
+            ---@param x A
+            ---@return R
+            local function apply(f, x)
+                return f(x)
+            end
+
+            ---@alias FnInt fun(x: integer): integer
+            ---@alias FnString fun(x: string): string
+
+            ---@type FnInt | FnString
+            local run
+
+            ---@type boolean
+            local b
+
+            result = apply(run, b)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(result_ty, ws.ty("unknown"));
+    }
+
+    #[test]
+    fn test_apply_return_infer_keeps_only_arity_compatible_fallbacks() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic A, B, R
+            ---@param f fun(x: A, y: B): R
+            ---@param x A
+            ---@param y B
+            ---@return R
+            local function apply2(f, x, y)
+                return f(x, y)
+            end
+
+            ---@overload fun(x: integer): integer
+            ---@param x integer
+            ---@param y string
+            ---@return string
+            local function run(x, y) end
+
+            local source ---@type table
+
+            result = apply2(run, 1, source.missing)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "string");
+    }
+
+    #[test]
+    fn test_union_call_ignores_non_matching_generic_callable_member() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@type (fun<T: string>(x: T): T) | fun(x: integer): integer
+            local run
+
+            result = run(1)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "integer");
+    }
+
+    #[test]
+    fn test_union_call_ignores_non_matching_generic_alias_member() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias GenericStr<T: string> fun(x: T): T
+
+            ---@type GenericStr | fun(x: integer): integer
+            local run
+
+            result = run(1)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "integer");
+    }
 }

@@ -33,6 +33,23 @@ pub fn tpl_pattern_match_args(
     func_param_types: &[LuaType],
     call_arg_types: &[LuaType],
 ) -> TplPatternMatchResult {
+    tpl_pattern_match_args_inner(context, func_param_types, call_arg_types, false)
+}
+
+pub fn tpl_pattern_match_args_skip_unknown(
+    context: &mut TplContext,
+    func_param_types: &[LuaType],
+    call_arg_types: &[LuaType],
+) -> TplPatternMatchResult {
+    tpl_pattern_match_args_inner(context, func_param_types, call_arg_types, true)
+}
+
+fn tpl_pattern_match_args_inner(
+    context: &mut TplContext,
+    func_param_types: &[LuaType],
+    call_arg_types: &[LuaType],
+    skip_unknown_tpl: bool,
+) -> TplPatternMatchResult {
     for i in 0..func_param_types.len() {
         if i >= call_arg_types.len() {
             break;
@@ -54,6 +71,9 @@ pub fn tpl_pattern_match_args(
                 )?;
                 break;
             }
+            _ if skip_unknown_tpl
+                && func_param_type.contain_tpl()
+                && (call_arg_type.is_any() || call_arg_type.is_unknown()) => {}
             _ => {
                 tpl_pattern_match(context, func_param_type, call_arg_type)?;
             }
