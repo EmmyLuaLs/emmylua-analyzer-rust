@@ -274,8 +274,9 @@ impl<'a> TypeHumanizer<'a> {
     // ─── Instance (narrowed struct view) ───────────────────────────
 
     /// Writes an Instance type: a class type narrowed by a table literal.
-    /// Fields present in the literal have their nil stripped (not optional),
-    /// while absent fields retain their original (possibly optional) type.
+    /// Fields present in the literal with non-nullable values have their nil stripped,
+    /// while fields with nullable literal values (e.g. `nil` or `cond and 1`)
+    /// and absent fields retain their original (possibly optional) type.
     fn write_instance_type<W: Write>(&mut self, ins: &LuaInstanceType, w: &mut W) -> fmt::Result {
         let base = ins.get_base();
 
@@ -310,7 +311,7 @@ impl<'a> TypeHumanizer<'a> {
         let literal_owner = LuaMemberOwner::Element(ins.get_range().clone());
         let member_index = self.db.get_member_index();
         let literal_keys: HashMap<LuaMemberKey, LuaType> = member_index
-            .get_sorted_members(&literal_owner)
+            .get_members(&literal_owner)
             .map(|members| {
                 members
                     .iter()

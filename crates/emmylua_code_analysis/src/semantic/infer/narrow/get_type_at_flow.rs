@@ -525,4 +525,3 @@ fn try_narrow_decl_to_instance(
     }
     narrow_down_type(db, var_type.clone(), init_type, Some(var_type.clone()))
 }
-
