@@ -63,9 +63,6 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         DocCompletionExpected::Using => {
             add_tag_using_completion(builder);
         }
-        DocCompletionExpected::Export => {
-            add_tag_export_completion(builder);
-        }
     }
 
     Some(())
@@ -100,7 +97,6 @@ fn get_doc_completion_expected(trigger_token: &LuaSyntaxToken) -> Option<DocComp
                 }
                 LuaTokenKind::TkTagNamespace => Some(DocCompletionExpected::Namespace),
                 LuaTokenKind::TkTagUsing => Some(DocCompletionExpected::Using),
-                LuaTokenKind::TkTagExport => Some(DocCompletionExpected::Export),
                 LuaTokenKind::TkComma => {
                     let parent = left_token.parent()?;
                     match parent.kind().into() {
@@ -155,7 +151,6 @@ enum DocCompletionExpected {
     TypeFlag(LuaDocTypeFlag),
     Namespace,
     Using,
-    Export,
 }
 
 fn add_tag_param_name_completion(builder: &mut CompletionBuilder) -> Option<()> {
@@ -257,16 +252,19 @@ fn add_tag_type_flag_completion(
     match LuaDocTag::cast(node.syntax().parent()?)? {
         LuaDocTag::Alias(_) => {
             flags.push((LuaTypeFlag::Private, "private"));
+            flags.push((LuaTypeFlag::Public, "public"));
         }
         LuaDocTag::Class(_) => {
             flags.push((LuaTypeFlag::Exact, "exact"));
             flags.push((LuaTypeFlag::Constructor, "constructor"));
             flags.push((LuaTypeFlag::Private, "private"));
+            flags.push((LuaTypeFlag::Public, "public"));
         }
         LuaDocTag::Enum(_) => {
             flags.insert(0, (LuaTypeFlag::Key, "key"));
             flags.push((LuaTypeFlag::Exact, "exact"));
             flags.push((LuaTypeFlag::Private, "private"));
+            flags.push((LuaTypeFlag::Public, "public"));
         }
         _ => {}
     }
@@ -329,19 +327,6 @@ fn add_tag_using_completion(builder: &mut CompletionBuilder) {
             kind: Some(lsp_types::CompletionItemKind::MODULE),
             sort_text: Some(format!("{:03}", sorted_index)),
             insert_text: Some(namespace.to_string()),
-            ..Default::default()
-        };
-        builder.add_completion_item(completion_item);
-    }
-}
-
-fn add_tag_export_completion(builder: &mut CompletionBuilder) {
-    let key = ["namespace", "global"];
-    for (sorted_index, key) in key.iter().enumerate() {
-        let completion_item = CompletionItem {
-            label: key.to_string(),
-            kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
-            sort_text: Some(format!("{:03}", sorted_index)),
             ..Default::default()
         };
         builder.add_completion_item(completion_item);

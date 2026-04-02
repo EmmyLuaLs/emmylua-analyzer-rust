@@ -201,7 +201,6 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkTagSource
         | LuaTokenKind::TkTagReturnCast
         | LuaTokenKind::TkTagReturnOverload
-        | LuaTokenKind::TkTagExport
         | LuaTokenKind::TkLanguage
         | LuaTokenKind::TkTagAttribute
         | LuaTokenKind::TKTagSchema => {
@@ -430,14 +429,6 @@ fn build_node_semantic_token(
         LuaAst::LuaDocTagUsing(doc_using) => {
             let name = doc_using.get_name_token()?;
             builder.push(name.syntax(), SemanticTokenTypeKind::Namespace);
-        }
-        LuaAst::LuaDocTagExport(doc_export) => {
-            let name = doc_export.get_name_token()?;
-            builder.push_with_modifier(
-                name.syntax(),
-                SemanticTokenTypeKind::Namespace,
-                SemanticTokenModifierKind::MODIFICATION,
-            );
         }
         LuaAst::LuaParamName(param_name) => {
             let name_token = param_name.get_name_token()?;

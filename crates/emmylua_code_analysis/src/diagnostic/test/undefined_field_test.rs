@@ -760,7 +760,6 @@ mod test {
         ws.def_file(
             "a.lua",
             r#"
-            ---@export
             local export = {}
 
             return export
@@ -784,8 +783,6 @@ mod test {
         assert!(!ws.check_code_for(
             DiagnosticCode::UndefinedField,
             r#"
-
-            ---@export
             local export = {}
 
             export.aaa()

@@ -9,12 +9,15 @@ mod type_visit_trait;
 mod types;
 
 use super::traits::LuaIndex;
-use crate::{DbIndex, FileId, InFiled, db_index::r#type::type_decl::LuaTypeIdentifier};
+use crate::{DbIndex, FileId, InFiled, db_index::WorkspaceId};
 pub use basic_union::{BasicTypeKind, BasicTypeUnion};
 pub use generic_param::GenericParam;
 use hashbrown::{HashMap, HashSet};
 pub use humanize_type::{RenderLevel, TypeHumanizer, format_union_type, humanize_type};
-pub use type_decl::{LuaDeclLocation, LuaDeclTypeKind, LuaTypeDecl, LuaTypeDeclId, LuaTypeFlag};
+pub use type_decl::{
+    LuaDeclLocation, LuaDeclTypeKind, LuaTypeDecl, LuaTypeDeclId, LuaTypeFlag, LuaTypeIdentifier,
+    TypeVisibility,
+};
 pub use type_ops::TypeOps;
 pub(crate) use type_ops::union_type_shallow;
 pub use type_owner::{LuaTypeCache, LuaTypeOwner};
@@ -290,10 +293,11 @@ impl LuaTypeIndex {
     pub fn get_type_cache(&self, owner: &LuaTypeOwner) -> Option<&LuaTypeCache> {
         self.types.get(owner)
     }
-}
 
-impl LuaIndex for LuaTypeIndex {
-    fn remove(&mut self, file_id: FileId) {
+    pub fn remove_with_workspace_resolver<F>(&mut self, file_id: FileId, mut get_workspace_id: F)
+    where
+        F: FnMut(FileId) -> Option<WorkspaceId>,
+    {
         self.file_namespace.remove(&file_id);
         self.file_using_namespace.remove(&file_id);
         if let Some(type_id_list) = self.file_types.remove(&file_id) {
@@ -305,6 +309,8 @@ impl LuaIndex for LuaTypeIndex {
                     if decl.get_mut_locations().is_empty() {
                         self.full_name_type_map.remove(&id);
                         remove_type = true;
+                    } else {
+                        decl.recalculate_visibility(&mut get_workspace_id);
                     }
                 }
 
@@ -326,6 +332,12 @@ impl LuaIndex for LuaTypeIndex {
                 self.types.remove(&type_owner);
             }
         }
+    }
+}
+
+impl LuaIndex for LuaTypeIndex {
+    fn remove(&mut self, file_id: FileId) {
+        self.remove_with_workspace_resolver(file_id, |_| Some(WorkspaceId::MAIN));
     }
 
     fn clear(&mut self) {

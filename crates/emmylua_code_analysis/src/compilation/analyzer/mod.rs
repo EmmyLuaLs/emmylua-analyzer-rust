@@ -7,7 +7,9 @@ mod lua;
 mod unresolve;
 
 use crate::{
-    Emmyrc, FileId, InFiled, InferFailReason, WorkspaceId, db_index::DbIndex, profile::Profile,
+    Emmyrc, FileId, InFiled, InferFailReason,
+    db_index::{DbIndex, WorkspaceId},
+    profile::Profile,
 };
 use emmylua_parser::LuaChunk;
 use hashbrown::{HashMap, HashSet};

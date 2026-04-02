@@ -494,6 +494,11 @@ mod tests {
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
+                VirtualCompletionItem {
+                    label: "public".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
             ],
             CompletionTriggerKind::TRIGGER_CHARACTER,
         ));
@@ -516,6 +521,11 @@ mod tests {
                 },
                 VirtualCompletionItem {
                     label: "private".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "public".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -545,6 +555,11 @@ mod tests {
                 },
                 VirtualCompletionItem {
                     label: "private".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "public".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -978,7 +993,6 @@ mod tests {
         ws.def_file(
             "aaaa.lua",
             r#"
-                ---@export
                 local export = {}
 
                 ---@enum MapName
@@ -1103,7 +1117,7 @@ mod tests {
     #[gtest]
     fn test_auto_require_field_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        // 没有 export 标记, 不允许子字段自动导入
+        // 模块 return 显式声明后，不再区分稳定 surface。
         ws.def_file(
             "AAA.lua",
             r#"
@@ -1118,7 +1132,11 @@ mod tests {
             r#"
                 map<??>
             "#,
-            vec![],
+            vec![VirtualCompletionItem {
+                label: "map".to_string(),
+                kind: CompletionItemKind::FUNCTION,
+                label_detail: Some("    (in AAA)".to_string()),
+            }],
         ));
         Ok(())
     }
@@ -2395,7 +2413,6 @@ mod tests {
         ws.def_file(
             "test.lua",
             r#"
-            ---@export global
             local function processError()
                 return 1
             end

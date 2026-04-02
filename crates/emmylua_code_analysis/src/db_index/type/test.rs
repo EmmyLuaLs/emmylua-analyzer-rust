@@ -5,7 +5,7 @@ mod test {
     use crate::db_index::traits::LuaIndex;
     use crate::db_index::r#type::LuaTypeIndex;
     use crate::db_index::{LuaDeclTypeKind, LuaTypeFlag};
-    use crate::{FileId, LuaTypeDecl, LuaTypeDeclId};
+    use crate::{FileId, LuaTypeDecl, LuaTypeDeclId, WorkspaceId};
 
     fn create_type_index() -> LuaTypeIndex {
         LuaTypeIndex::new()
@@ -24,6 +24,7 @@ mod test {
             LuaTypeDecl::new(
                 file_id,
                 TextRange::new(0.into(), 4.into()),
+                WorkspaceId::MAIN,
                 "new_type".to_string(),
                 LuaDeclTypeKind::Alias,
                 LuaTypeFlag::Partial.into(),
@@ -60,6 +61,7 @@ mod test {
             LuaTypeDecl::new(
                 file_id,
                 TextRange::new(0.into(), 4.into()),
+                WorkspaceId::MAIN,
                 "new_type".to_string(),
                 LuaDeclTypeKind::Alias,
                 LuaTypeFlag::Partial.into(),
@@ -90,6 +92,7 @@ mod test {
             LuaTypeDecl::new(
                 file_id,
                 TextRange::new(0.into(), 4.into()),
+                WorkspaceId::MAIN,
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
@@ -108,6 +111,7 @@ mod test {
             LuaTypeDecl::new(
                 file_id,
                 TextRange::new(0.into(), 4.into()),
+                WorkspaceId::MAIN,
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
@@ -121,6 +125,7 @@ mod test {
             LuaTypeDecl::new(
                 file_id2,
                 TextRange::new(0.into(), 4.into()),
+                WorkspaceId::MAIN,
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
@@ -148,6 +153,7 @@ mod test {
             LuaTypeDecl::new(
                 file_id,
                 TextRange::new(0.into(), 4.into()),
+                WorkspaceId::MAIN,
                 "new_type".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),

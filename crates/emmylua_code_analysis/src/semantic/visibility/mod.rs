@@ -1,4 +1,5 @@
-mod export;
+#[cfg(test)]
+mod test;
 
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaFuncStat, LuaGeneralToken, LuaIndexExpr,
@@ -7,12 +8,37 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner, LuaSemanticDeclId, LuaType,
+    LuaTypeDeclId, LuaTypeIdentifier, ModuleInfo, SemanticModel, db_index::WorkspaceId,
     try_extract_signature_id_from_field,
 };
 
 use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
 
-pub use export::check_export_visibility;
+pub fn is_type_decl_visible(
+    db: &DbIndex,
+    file_id: FileId,
+    decl_id: &LuaTypeDeclId,
+) -> Option<bool> {
+    if let Some(local_file_id) = match decl_id.get_id() {
+        LuaTypeIdentifier::Global(_) => None,
+        LuaTypeIdentifier::Local(file_id, _) => Some(*file_id),
+    } {
+        return Some(local_file_id == file_id);
+    }
+
+    let type_decl = db.get_type_index().get_type_decl(decl_id)?;
+    let current_workspace_id = db
+        .get_module_index()
+        .get_workspace_id(file_id)
+        .or_else(|| {
+            if db.get_vfs().is_remote_file(&file_id) {
+                Some(WorkspaceId::REMOTE)
+            } else {
+                None
+            }
+        })?;
+    Some(type_decl.is_visible_from(current_workspace_id))
+}
 
 pub fn check_visibility(
     db: &DbIndex,
@@ -255,4 +281,15 @@ fn check_member_name(
         }
     };
     Some(true)
+}
+
+pub fn check_module_visibility(
+    semantic_model: &SemanticModel,
+    module_info: &ModuleInfo,
+) -> Option<bool> {
+    let current_workspace_id = semantic_model
+        .get_db()
+        .get_module_index()
+        .get_workspace_id(semantic_model.get_file_id())?;
+    Some(module_info.is_requireable_from(current_workspace_id))
 }

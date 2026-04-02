@@ -1,25 +1,55 @@
 use crate::{
-    AsyncState, LuaDeclId, LuaExport, LuaExportScope, LuaNoDiscard, LuaSemanticDeclId,
-    LuaSignatureId, PropertyDeclFeature,
+    AsyncState, LuaDeclId, LuaNoDiscard, LuaSemanticDeclId, LuaSignatureId, PropertyDeclFeature,
+    compilation::analyzer::doc::tags::report_orphan_tag,
 };
 
 use super::{
     DocAnalyzer,
     tags::{find_owner_closure_or_report, get_owner_id_or_report},
 };
-use crate::compilation::analyzer::doc::tags::report_orphan_tag;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaDocDescriptionOwner, LuaDocTagAsync, LuaDocTagDeprecated,
-    LuaDocTagExport, LuaDocTagNodiscard, LuaDocTagReadonly, LuaDocTagSource, LuaDocTagVersion,
-    LuaDocTagVisibility, LuaExpr,
+    LuaDocTagNodiscard, LuaDocTagReadonly, LuaDocTagSource, LuaDocTagVersion, LuaDocTagVisibility,
+    LuaExpr,
 };
 
 pub fn analyze_visibility(
     analyzer: &mut DocAnalyzer,
     visibility: LuaDocTagVisibility,
 ) -> Option<()> {
+    let Some(owner) = analyzer.comment.get_owner() else {
+        report_orphan_tag(analyzer, &visibility);
+        return None;
+    };
+    let owner_id = match owner {
+        LuaAst::LuaReturnStat(return_stat) => {
+            let expr = return_stat.child::<LuaExpr>()?;
+            match expr {
+                // 返回变量不能附加可见性
+                // LuaExpr::NameExpr(name_expr) => {
+                //     let name = name_expr.get_name_text()?;
+                //     let tree = analyzer
+                //         .db
+                //         .get_decl_index()
+                //         .get_decl_tree(&analyzer.file_id)?;
+                //     let decl = tree.find_local_decl(&name, name_expr.get_position())?;
+
+                //     Some(LuaSemanticDeclId::LuaDecl(decl.get_id()))
+                // }
+                LuaExpr::ClosureExpr(closure) => Some(LuaSemanticDeclId::Signature(
+                    LuaSignatureId::from_closure(analyzer.file_id, &closure),
+                )),
+                LuaExpr::TableExpr(table_expr) => Some(LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
+                    analyzer.file_id,
+                    table_expr.get_position(),
+                ))),
+                _ => None,
+            }?
+        }
+        _ => get_owner_id_or_report(analyzer, &visibility)?,
+    };
+
     let visibility_kind = visibility.get_visibility_token()?.get_visibility()?;
-    let owner_id = get_owner_id_or_report(analyzer, &visibility)?;
 
     analyzer.db.get_property_index_mut().add_visibility(
         analyzer.file_id,
@@ -110,60 +140,6 @@ pub fn analyze_async(analyzer: &mut DocAnalyzer, tag: LuaDocTagAsync) -> Option<
         .get_mut(&signature_id)?;
 
     signature.async_state = AsyncState::Async;
-
-    Some(())
-}
-
-pub fn analyze_export(analyzer: &mut DocAnalyzer, tag: LuaDocTagExport) -> Option<()> {
-    let Some(owner) = analyzer.comment.get_owner() else {
-        report_orphan_tag(analyzer, &tag);
-        return None;
-    };
-    let owner_id = match owner {
-        LuaAst::LuaReturnStat(return_stat) => {
-            let expr = return_stat.child::<LuaExpr>()?;
-            match expr {
-                LuaExpr::NameExpr(name_expr) => {
-                    let name = name_expr.get_name_text()?;
-                    let tree = analyzer
-                        .db
-                        .get_decl_index()
-                        .get_decl_tree(&analyzer.file_id)?;
-                    let decl = tree.find_local_decl(&name, name_expr.get_position())?;
-
-                    Some(LuaSemanticDeclId::LuaDecl(decl.get_id()))
-                }
-                LuaExpr::ClosureExpr(closure) => Some(LuaSemanticDeclId::Signature(
-                    LuaSignatureId::from_closure(analyzer.file_id, &closure),
-                )),
-                LuaExpr::TableExpr(table_expr) => Some(LuaSemanticDeclId::LuaDecl(LuaDeclId::new(
-                    analyzer.file_id,
-                    table_expr.get_position(),
-                ))),
-                _ => None,
-            }?
-        }
-        _ => get_owner_id_or_report(analyzer, &tag)?,
-    };
-
-    let export_scope = if let Some(scope_text) = tag.get_export_scope() {
-        match scope_text.as_str() {
-            "namespace" => LuaExportScope::Namespace,
-            "global" => LuaExportScope::Global,
-            _ => LuaExportScope::Default,
-        }
-    } else {
-        LuaExportScope::Default
-    };
-
-    let export = LuaExport {
-        scope: export_scope,
-    };
-
-    analyzer
-        .db
-        .get_property_index_mut()
-        .add_export(analyzer.file_id, owner_id, export);
 
     Some(())
 }

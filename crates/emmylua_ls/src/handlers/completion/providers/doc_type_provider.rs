@@ -1,4 +1,4 @@
-use emmylua_code_analysis::LuaTypeDeclId;
+use emmylua_code_analysis::{LuaTypeDeclId, is_type_decl_visible};
 use emmylua_parser::{LuaAstNode, LuaDocAttributeUse, LuaDocNameType, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::CompletionItem;
 use std::collections::HashSet;
@@ -63,6 +63,12 @@ pub fn complete_types_by_prefix(
             && type_decl
                 .as_ref()
                 .is_some_and(|type_decl| filter.contains(type_decl))
+        {
+            continue;
+        }
+        if let Some(decl_id) = &type_decl
+            && !is_type_decl_visible(builder.semantic_model.get_db(), file_id, decl_id)
+                .unwrap_or(true)
         {
             continue;
         }

@@ -209,7 +209,6 @@ mod tests {
         ws.def_file(
             "test.lua",
             r#"
-                ---@export
                 ---@class Export
                 local export = {}
                 ---@generic T
@@ -230,7 +229,7 @@ mod tests {
             "#,
             vec![Expected {
                 file: "test.lua".to_string(),
-                line: 8
+                line: 7
             }]
         ));
         Ok(())

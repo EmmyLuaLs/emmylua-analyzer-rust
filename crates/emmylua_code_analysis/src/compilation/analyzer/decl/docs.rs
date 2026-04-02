@@ -7,8 +7,8 @@ use flagset::FlagSet;
 use rowan::TextRange;
 
 use crate::{
-    LuaTypeDecl, LuaTypeDeclId,
-    db_index::{LuaDeclTypeKind, LuaTypeFlag},
+    LuaTypeDecl, LuaTypeDeclId, ModuleVisibility,
+    db_index::{LuaDeclTypeKind, LuaTypeFlag, WorkspaceId},
 };
 
 use super::DeclAnalyzer;
@@ -30,7 +30,7 @@ fn get_type_flag_value(
     let mut attr: FlagSet<LuaTypeFlag> = if analyzer.is_meta {
         LuaTypeFlag::Meta.into()
     } else {
-        LuaTypeFlag::None.into()
+        FlagSet::default()
     };
 
     if let Some(flag) = flag {
@@ -47,6 +47,12 @@ fn get_type_flag_value(
                 }
                 "constructor" => {
                     attr |= LuaTypeFlag::Constructor;
+                }
+                "public" => {
+                    attr |= LuaTypeFlag::Public;
+                }
+                "internal" => {
+                    attr |= LuaTypeFlag::Internal;
                 }
                 "private" => {
                     attr |= LuaTypeFlag::Private;
@@ -91,7 +97,7 @@ pub fn analyze_doc_tag_attribute(
         &name,
         range,
         LuaDeclTypeKind::Attribute,
-        LuaTypeFlag::None.into(),
+        FlagSet::default(),
     );
     Some(())
 }
@@ -136,7 +142,7 @@ pub fn analyze_doc_tag_meta(analyzer: &mut DeclAnalyzer, tag: LuaDocTagMeta) -> 
             analyzer
                 .db
                 .get_module_index_mut()
-                .set_module_visibility(file_id, false);
+                .set_module_visibility(file_id, ModuleVisibility::Hide);
         } else {
             let workspace_id = analyzer
                 .db
@@ -183,6 +189,12 @@ fn add_type_decl(
     flag: FlagSet<LuaTypeFlag>,
 ) {
     let file_id = analyzer.get_file_id();
+    let workspace_id = analyzer
+        .db
+        .get_module_index()
+        .get_workspace_id(file_id)
+        .or(analyzer.context.workspace_id)
+        .unwrap_or(WorkspaceId::MAIN);
     let type_index = analyzer.db.get_type_index_mut();
 
     let basic_name = name;
@@ -198,6 +210,14 @@ fn add_type_decl(
     let simple_name = id.get_simple_name();
     type_index.add_type_decl(
         file_id,
-        LuaTypeDecl::new(file_id, range, simple_name.to_string(), kind, flag, id),
+        LuaTypeDecl::new(
+            file_id,
+            range,
+            workspace_id,
+            simple_name.to_string(),
+            kind,
+            flag,
+            id,
+        ),
     );
 }

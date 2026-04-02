@@ -68,8 +68,9 @@ fn check_export_index_expr(
 
     let index_key = index_expr.get_index_key()?;
 
-    // 检查该表是否为导入的表.
-    if let Some(module_info) = check_require_table_const_with_export(semantic_model, index_expr) {
+    if let Some(module_info) =
+        check_require_table_const_with_export_surface(semantic_model, index_expr)
+    {
         if code == DiagnosticCode::InjectField {
             // 检查字段定义是否来自导入的表.
             if let Some(info) = semantic_model.get_semantic_info(index_expr.syntax().clone().into())
@@ -146,12 +147,12 @@ fn check_export_index_expr(
     if !decl.is_local() {
         return Some(());
     }
-    // 且该声明标记了 `export`
-    let property = semantic_model
-        .get_db()
-        .get_property_index()
-        .get_property(&decl_id.into())?;
-    if property.export().is_none() {
+    let Some(module_info) = semantic_model.get_module() else {
+        return Some(());
+    };
+    if !module_info.has_export_type()
+        || module_info.semantic_id.as_ref() != Some(&LuaSemanticDeclId::LuaDecl(decl_id))
+    {
         return Some(());
     }
 
@@ -172,7 +173,7 @@ fn check_export_index_expr(
     Some(())
 }
 
-fn check_require_table_const_with_export<'a>(
+fn check_require_table_const_with_export_surface<'a>(
     semantic_model: &'a SemanticModel,
     index_expr: &LuaIndexExpr,
 ) -> Option<&'a ModuleInfo> {
@@ -180,7 +181,7 @@ fn check_require_table_const_with_export<'a>(
     let prefix_expr = index_expr.get_prefix_expr()?;
     if let Some(call_expr) = LuaCallExpr::cast(prefix_expr.syntax().clone()) {
         let module_info = parse_require_expr_module_info(semantic_model, &call_expr)?;
-        if module_info.is_export(semantic_model.get_db()) {
+        if module_info.has_export_type() {
             return Some(module_info);
         }
     }
@@ -202,7 +203,7 @@ fn check_require_table_const_with_export<'a>(
         .get_decl(&decl_id)?;
 
     let module_info = parse_require_module_info(semantic_model, &decl)?;
-    if module_info.is_export(semantic_model.get_db()) {
+    if module_info.has_export_type() {
         return Some(module_info);
     }
     None

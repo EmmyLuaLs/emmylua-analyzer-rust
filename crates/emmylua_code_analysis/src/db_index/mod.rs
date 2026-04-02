@@ -225,7 +225,18 @@ impl LuaIndex for DbIndex {
     fn remove(&mut self, file_id: FileId) {
         self.decl_index.remove(file_id);
         self.references_index.remove(file_id);
-        self.types_index.remove(file_id);
+        let modules_index = &self.modules_index;
+        let vfs = &self.vfs;
+        self.types_index
+            .remove_with_workspace_resolver(file_id, |target_file_id| {
+                modules_index.get_workspace_id(target_file_id).or_else(|| {
+                    if vfs.is_remote_file(&target_file_id) {
+                        Some(module::WorkspaceId::REMOTE)
+                    } else {
+                        None
+                    }
+                })
+            });
         self.modules_index.remove(file_id);
         self.members_index.remove(file_id);
         self.property_index.remove(file_id);

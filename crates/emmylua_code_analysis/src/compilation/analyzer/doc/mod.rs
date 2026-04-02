@@ -10,9 +10,9 @@ mod type_ref_tags;
 
 use super::AnalyzeContext;
 use crate::{
-    FileId, LuaSemanticDeclId, WorkspaceId,
+    FileId, LuaSemanticDeclId,
     compilation::analyzer::AnalysisPipeline,
-    db_index::{DbIndex, LuaTypeDeclId},
+    db_index::{DbIndex, LuaTypeDeclId, WorkspaceId},
     profile::Profile,
 };
 use emmylua_parser::{LuaAstNode, LuaComment, LuaSyntaxNode};

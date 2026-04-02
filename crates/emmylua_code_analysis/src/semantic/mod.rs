@@ -37,8 +37,8 @@ use semantic_info::{
 };
 pub(crate) use type_check::check_type_compact;
 use type_check::is_sub_type_of;
-pub use visibility::check_export_visibility;
 use visibility::check_visibility;
+pub use visibility::{check_module_visibility, is_type_decl_visible};
 
 pub use crate::semantic::member::find_members_with_key;
 use crate::semantic::type_check::check_type_compact_detail;

@@ -5,7 +5,7 @@ mod workspace;
 
 use emmylua_parser::LuaVersionCondition;
 use log::{error, info};
-pub use module_info::ModuleInfo;
+pub use module_info::{ModuleInfo, ModuleVisibility};
 pub use module_node::{ModuleNode, ModuleNodeId};
 use regex::Regex;
 pub use workspace::{Workspace, WorkspaceId};
@@ -173,7 +173,7 @@ impl LuaModuleIndex {
             full_module_name: module_parts.join("."),
             name: module_name.clone(),
             module_id: parent_node_id,
-            visible: true,
+            visible: ModuleVisibility::default(),
             export_type: None,
             version_conds: None,
             workspace_id,
@@ -200,9 +200,9 @@ impl LuaModuleIndex {
         self.file_module_map.get_mut(&file_id)
     }
 
-    pub fn set_module_visibility(&mut self, file_id: FileId, visible: bool) {
+    pub fn set_module_visibility(&mut self, file_id: FileId, visible: ModuleVisibility) {
         if let Some(module_info) = self.file_module_map.get_mut(&file_id) {
-            module_info.visible = visible;
+            module_info.set_visibility(visible);
         }
     }
 

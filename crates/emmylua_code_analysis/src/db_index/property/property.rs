@@ -15,7 +15,6 @@ pub struct LuaCommonProperty {
     pub deprecated: Option<Box<LuaDeprecated>>,
     pub version_conds: Option<Box<Vec<LuaVersionCondition>>>,
     pub tag_content: Option<Box<LuaTagContent>>,
-    pub export: Option<LuaExport>,
     pub decl_features: DeclFeatureFlag,
     pub attribute_uses: Option<Arc<Vec<LuaAttributeUse>>>,
 }
@@ -29,13 +28,12 @@ impl Default for LuaCommonProperty {
 impl LuaCommonProperty {
     pub fn new() -> Self {
         Self {
-            visibility: VisibilityKind::Public,
+            visibility: VisibilityKind::Internal,
             description: None,
             source: None,
             deprecated: None,
             version_conds: None,
             tag_content: None,
-            export: None,
             decl_features: DeclFeatureFlag::new(),
             attribute_uses: None,
         }
@@ -47,10 +45,6 @@ impl LuaCommonProperty {
 
     pub fn version_conds(&self) -> Option<&Vec<LuaVersionCondition>> {
         self.version_conds.as_deref()
-    }
-
-    pub fn export(&self) -> Option<&LuaExport> {
-        self.export.as_ref()
     }
 
     pub fn tag_content(&self) -> Option<&LuaTagContent> {
@@ -90,10 +84,6 @@ impl LuaCommonProperty {
             .add_tag(tag, content);
     }
 
-    pub fn add_extra_export(&mut self, export: LuaExport) {
-        self.export = Some(export);
-    }
-
     pub fn add_decl_feature(&mut self, feature: PropertyDeclFeature) {
         self.decl_features.add_feature(feature);
     }
@@ -126,13 +116,6 @@ pub enum LuaDeprecated {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LuaExportScope {
-    Default, // 默认声明, 会根据配置文件作不同的处理.
-    Global,
-    Namespace,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LuaTagContent {
     pub tags: Vec<(String, String)>,
 }
@@ -155,11 +138,6 @@ impl LuaTagContent {
     pub fn get_all_tags(&self) -> &[(String, String)] {
         &self.tags
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LuaExport {
-    pub scope: LuaExportScope,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Copy)]

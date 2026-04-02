@@ -7,7 +7,7 @@ use hashbrown::{HashMap, HashSet};
 pub use decl_feature::{DeclFeatureFlag, PropertyDeclFeature};
 use emmylua_parser::{LuaAstNode, LuaDocTagField, LuaDocType, LuaVersionCondition, VisibilityKind};
 pub use property::LuaCommonProperty;
-pub use property::{LuaDeprecated, LuaExport, LuaExportScope, LuaPropertyId};
+pub use property::{LuaDeprecated, LuaPropertyId};
 
 pub use crate::db_index::property::property::LuaAttributeUse;
 use crate::{DbIndex, FileId, LuaMember, LuaSignatureId};
@@ -192,23 +192,6 @@ impl LuaPropertyIndex {
     ) -> Option<()> {
         let (property, _) = self.get_or_create_property(owner_id.clone())?;
         property.add_extra_tag(tag_name, other_content);
-
-        self.in_filed_owner
-            .entry(file_id)
-            .or_default()
-            .insert(owner_id);
-
-        Some(())
-    }
-
-    pub fn add_export(
-        &mut self,
-        file_id: FileId,
-        owner_id: LuaSemanticDeclId,
-        export: property::LuaExport,
-    ) -> Option<()> {
-        let (property, _) = self.get_or_create_property(owner_id.clone())?;
-        property.add_extra_export(export);
 
         self.in_filed_owner
             .entry(file_id)

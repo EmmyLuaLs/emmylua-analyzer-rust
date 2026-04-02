@@ -134,7 +134,6 @@ pub enum LuaTokenKind {
     TkTagSource,         // source
     TkTagReturnCast,     // return cast
     TkTagReturnOverload, // return overload
-    TkTagExport,         // export
     TkLanguage,          // language
     TKTagSchema,         // schema
     TkTagAttribute,      // attribute
