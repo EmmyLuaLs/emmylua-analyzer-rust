@@ -443,14 +443,9 @@
           "const": "call-non-callable"
         },
         {
-          "description": "invisible-type-reference",
+          "description": "inconsistent-type-access-modifier",
           "type": "string",
-          "const": "invisible-type-reference"
-        },
-        {
-          "description": "inconsistent-type-visibility",
-          "type": "string",
-          "const": "inconsistent-type-visibility"
+          "const": "inconsistent-type-access-modifier"
         }
       ]
     },

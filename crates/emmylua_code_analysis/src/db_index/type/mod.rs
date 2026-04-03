@@ -397,6 +397,56 @@ impl LuaTypeIndex {
         self.full_name_type_map.get(decl_id)
     }
 
+    pub fn get_file_type_decls(&self, file_id: FileId) -> Vec<&LuaTypeDecl> {
+        let mut seen = HashSet::new();
+        self.file_types
+            .get(&file_id)
+            .into_iter()
+            .flatten()
+            .filter(|decl_id| seen.insert((*decl_id).clone()))
+            .filter_map(|decl_id| self.full_name_type_map.get(decl_id))
+            .collect()
+    }
+
+    pub fn get_visible_type_decls_by_full_name(
+        &self,
+        file_id: FileId,
+        full_name: &str,
+        workspace_id: Option<WorkspaceId>,
+    ) -> Vec<&LuaTypeDecl> {
+        let mut decls = Vec::with_capacity(3);
+
+        if let Some(decl) = self
+            .local_name_type_map
+            .get(&file_id)
+            .and_then(|type_names| type_names.get(full_name))
+            .and_then(|decl_id| self.full_name_type_map.get(decl_id))
+        {
+            decls.push(decl);
+        }
+
+        if let Some(workspace_id) = workspace_id {
+            if let Some(decl) = self
+                .internal_name_type_map
+                .get(&workspace_id)
+                .and_then(|type_names| type_names.get(full_name))
+                .and_then(|decl_id| self.full_name_type_map.get(decl_id))
+            {
+                decls.push(decl);
+            }
+        }
+
+        if let Some(decl) = self
+            .global_name_type_map
+            .get(full_name)
+            .and_then(|decl_id| self.full_name_type_map.get(decl_id))
+        {
+            decls.push(decl);
+        }
+
+        decls
+    }
+
     pub fn get_all_types(&self) -> Vec<&LuaTypeDecl> {
         self.full_name_type_map.values().collect()
     }
