@@ -16,7 +16,7 @@ use super::{
     infer::{InferCallFuncResult, InferFailReason},
 };
 
-use resolve_signature_by_args::resolve_signature_by_args;
+pub(crate) use resolve_signature_by_args::{callable_accepts_args, resolve_signature_by_args};
 
 pub fn resolve_signature(
     db: &DbIndex,

@@ -22,14 +22,15 @@ use crate::{
         },
         infer::InferFailReason,
         infer_expr,
+        overload_resolve::{callable_accepts_args, resolve_signature_by_args},
     },
 };
 use crate::{
     LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl,
-    tpl_pattern_match_args,
+    tpl_pattern_match_args_skip_unknown,
 };
 
-use super::TypeSubstitutor;
+use super::{TypeSubstitutor, collect_callable_overload_groups};
 
 pub fn instantiate_func_generic(
     db: &DbIndex,
@@ -147,6 +148,116 @@ fn infer_return_from_callable(
     }
 }
 
+fn fallback_return_from_overloads(db: &DbIndex, overloads: &[Arc<LuaFunctionType>]) -> LuaType {
+    LuaType::from_vec(
+        overloads
+            .iter()
+            .map(|callable| {
+                let mut callable_tpls = HashSet::new();
+                callable.visit_type(&mut |ty| {
+                    if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
+                        callable_tpls.insert(generic_tpl.get_tpl_id());
+                    }
+                });
+
+                let mut callable_substitutor = TypeSubstitutor::new();
+                callable_substitutor.add_need_infer_tpls(callable_tpls);
+                infer_return_from_callable(db, callable, &callable_substitutor)
+            })
+            .collect(),
+    )
+}
+
+fn infer_callable_return_from_arg_types(
+    context: &mut TplContext,
+    callable_type: &LuaType,
+    call_arg_types: Option<&[LuaType]>,
+    fallback_on_no_match: bool,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let mut overload_groups = Vec::new();
+    collect_callable_overload_groups(context.db, callable_type, &mut overload_groups)?;
+    if overload_groups.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(call_arg_types) = call_arg_types else {
+        return Ok(Some(fallback_return_from_overloads(
+            context.db,
+            &overload_groups
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>(),
+        )));
+    };
+
+    let mut member_returns = Vec::new();
+    for overloads in &overload_groups {
+        let instantiated_overloads = overloads
+            .iter()
+            .filter_map(|callable| {
+                instantiate_callable_from_arg_types(context, callable, call_arg_types)
+            })
+            .collect::<Vec<_>>();
+        if instantiated_overloads.is_empty() {
+            continue;
+        }
+
+        // Prefer candidates that produce an informative instantiated return over ones that only
+        // narrow to `unknown`. This keeps explicit `fun(...): unknown` callbacks aligned with
+        // unresolved closure returns while still preserving parameter-shape matching.
+        let preferred_overloads = instantiated_overloads
+            .iter()
+            .filter(|callable| !callable.get_ret().is_unknown())
+            .cloned()
+            .collect::<Vec<_>>();
+        let overloads_to_resolve = if preferred_overloads.is_empty() {
+            &instantiated_overloads
+        } else {
+            &preferred_overloads
+        };
+        let unresolved_arg_match = overloads_to_resolve.len() > 1
+            && call_arg_types
+                .iter()
+                .any(|arg_type| arg_type.is_any() || arg_type.is_unknown());
+
+        member_returns.push(if unresolved_arg_match {
+            LuaType::from_vec(
+                overloads_to_resolve
+                    .iter()
+                    .map(|callable| callable.get_ret().clone())
+                    .collect(),
+            )
+        } else {
+            resolve_signature_by_args(
+                context.db,
+                overloads_to_resolve,
+                call_arg_types,
+                false,
+                None,
+            )
+            .map(|callable| callable.get_ret().clone())
+            .unwrap_or_else(|_| fallback_return_from_overloads(context.db, overloads))
+        });
+    }
+    if member_returns.is_empty() {
+        return Ok(if fallback_on_no_match {
+            Some(fallback_return_from_overloads(
+                context.db,
+                &overload_groups
+                    .iter()
+                    .flatten()
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            ))
+        } else {
+            None
+        });
+    }
+
+    Ok(Some(LuaType::from_vec(member_returns)))
+}
+
 pub fn infer_callable_return_from_remaining_args(
     context: &mut TplContext,
     callable_type: &LuaType,
@@ -156,9 +267,35 @@ pub fn infer_callable_return_from_remaining_args(
         return Ok(None);
     }
 
-    let Some(callable) = as_doc_function_type(context.db, callable_type)? else {
+    let call_arg_types =
+        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
+            Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
+            Err(_) => arg_exprs
+                .iter()
+                .map(|arg_expr| {
+                    infer_expr(context.db, context.cache, arg_expr.clone())
+                        .unwrap_or(LuaType::Unknown)
+                })
+                .collect::<Vec<_>>(),
+        };
+    if call_arg_types.is_empty() {
         return Ok(None);
-    };
+    }
+
+    // Preserve any known remaining-arg shape, including arity, even when some later arguments
+    // collapse to `unknown`. This avoids unioning returns from overloads that are impossible
+    // for the current call.
+    infer_callable_return_from_arg_types(context, callable_type, Some(&call_arg_types), false)
+}
+
+fn instantiate_callable_from_arg_types(
+    context: &mut TplContext,
+    callable: &Arc<LuaFunctionType>,
+    call_arg_types: &[LuaType],
+) -> Option<Arc<LuaFunctionType>> {
+    if !callable_accepts_args(context.db, callable, call_arg_types, false, None) {
+        return None;
+    }
 
     let mut callable_tpls = HashSet::new();
     callable.visit_type(&mut |ty| {
@@ -167,20 +304,7 @@ pub fn infer_callable_return_from_remaining_args(
         }
     });
     if callable_tpls.is_empty() {
-        return Ok(Some(callable.get_ret().clone()));
-    }
-
-    let mut callable_substitutor = TypeSubstitutor::new();
-    callable_substitutor.add_need_infer_tpls(callable_tpls);
-    let fallback_return = infer_return_from_callable(context.db, &callable, &callable_substitutor);
-
-    let call_arg_types =
-        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
-            Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
-            Err(_) => return Ok(Some(fallback_return)),
-        };
-    if call_arg_types.is_empty() {
-        return Ok(None);
+        return Some(callable.clone());
     }
 
     let callable_param_types = callable
@@ -188,28 +312,41 @@ pub fn infer_callable_return_from_remaining_args(
         .iter()
         .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
         .collect::<Vec<_>>();
-
+    let mut callable_substitutor = TypeSubstitutor::new();
+    callable_substitutor.add_need_infer_tpls(callable_tpls.clone());
     let mut callable_context = TplContext {
         db: context.db,
         cache: context.cache,
         substitutor: &mut callable_substitutor,
         call_expr: context.call_expr.clone(),
     };
-    if tpl_pattern_match_args(
+    if tpl_pattern_match_args_skip_unknown(
         &mut callable_context,
         &callable_param_types,
-        &call_arg_types,
+        call_arg_types,
     )
     .is_err()
     {
-        return Ok(Some(fallback_return));
+        return None;
     }
 
-    Ok(Some(infer_return_from_callable(
-        context.db,
-        &callable,
-        &callable_substitutor,
-    )))
+    let instantiated = match instantiate_doc_function(context.db, callable, &callable_substitutor) {
+        LuaType::DocFunction(func) => func,
+        _ => callable.clone(),
+    };
+    let mut has_unresolved_return_tpl = false;
+    instantiated.get_ret().visit_type(&mut |ty| {
+        if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty
+            && callable_tpls.contains(&generic_tpl.get_tpl_id())
+        {
+            has_unresolved_return_tpl = true;
+        }
+    });
+    if has_unresolved_return_tpl {
+        return None;
+    }
+
+    Some(instantiated)
 }
 
 fn infer_generic_types_from_call(
