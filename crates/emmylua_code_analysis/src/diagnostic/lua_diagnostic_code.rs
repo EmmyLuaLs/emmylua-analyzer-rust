@@ -119,8 +119,6 @@ pub enum DiagnosticCode {
     InvertIf,
     /// Call to a non-callable value
     CallNonCallable,
-    /// invisible-type-reference
-    InvisibleTypeReference,
     /// inconsistent-type-visibility
     InconsistentTypeVisibility,
     #[serde(other)]

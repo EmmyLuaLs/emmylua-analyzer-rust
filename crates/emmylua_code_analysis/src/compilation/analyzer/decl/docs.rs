@@ -204,20 +204,14 @@ fn add_type_decl(
         .unwrap_or(basic_name.to_string());
     let id = if flag.contains(LuaTypeFlag::Private) {
         LuaTypeDeclId::local(file_id, &full_name)
+    } else if flag.contains(LuaTypeFlag::Internal) {
+        LuaTypeDeclId::internal(workspace_id, &full_name)
     } else {
         LuaTypeDeclId::global(&full_name)
     };
     let simple_name = id.get_simple_name();
     type_index.add_type_decl(
         file_id,
-        LuaTypeDecl::new(
-            file_id,
-            range,
-            workspace_id,
-            simple_name.to_string(),
-            kind,
-            flag,
-            id,
-        ),
+        LuaTypeDecl::new(file_id, range, simple_name.to_string(), kind, flag, id),
     );
 }

@@ -8,37 +8,10 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    LuaTypeDeclId, LuaTypeIdentifier, ModuleInfo, SemanticModel, db_index::WorkspaceId,
-    try_extract_signature_id_from_field,
+    ModuleInfo, SemanticModel, try_extract_signature_id_from_field,
 };
 
 use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
-
-pub fn is_type_decl_visible(
-    db: &DbIndex,
-    file_id: FileId,
-    decl_id: &LuaTypeDeclId,
-) -> Option<bool> {
-    if let Some(local_file_id) = match decl_id.get_id() {
-        LuaTypeIdentifier::Global(_) => None,
-        LuaTypeIdentifier::Local(file_id, _) => Some(*file_id),
-    } {
-        return Some(local_file_id == file_id);
-    }
-
-    let type_decl = db.get_type_index().get_type_decl(decl_id)?;
-    let current_workspace_id = db
-        .get_module_index()
-        .get_workspace_id(file_id)
-        .or_else(|| {
-            if db.get_vfs().is_remote_file(&file_id) {
-                Some(WorkspaceId::REMOTE)
-            } else {
-                None
-            }
-        })?;
-    Some(type_decl.is_visible_from(current_workspace_id))
-}
 
 pub fn check_visibility(
     db: &DbIndex,
@@ -83,8 +56,8 @@ pub fn check_visibility(
         }
         VisibilityKind::Internal => {
             let property_file_id = property_owner.get_file_id()?;
-            let property_workspace_id = db.get_module_index().get_workspace_id(property_file_id)?;
-            let current_workspace_id = db.get_module_index().get_workspace_id(file_id)?;
+            let property_workspace_id = db.resolve_workspace_id(property_file_id)?;
+            let current_workspace_id = db.resolve_workspace_id(file_id)?;
             if current_workspace_id != property_workspace_id {
                 return Some(false);
             }

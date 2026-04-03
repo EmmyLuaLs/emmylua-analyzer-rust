@@ -26,10 +26,11 @@ pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<
     let file_id = analyzer.file_id;
     let name = tag.get_name_token()?.get_name_text().to_string();
 
-    let class_decl = analyzer
-        .db
-        .get_type_index_mut()
-        .find_type_decl(file_id, &name)?;
+    let class_decl =
+        analyzer
+            .db
+            .get_type_index()
+            .find_type_decl(file_id, &name, Some(analyzer.workspace_id))?;
 
     let class_decl_id = class_decl.get_id();
     analyzer.current_type_id = Some(class_decl_id.clone());
@@ -94,10 +95,11 @@ pub fn analyze_enum(analyzer: &mut DocAnalyzer, tag: LuaDocTagEnum) -> Option<()
     let name = tag.get_name_token()?.get_name_text().to_string();
 
     let enum_decl_id = {
-        let enum_decl = analyzer
-            .db
-            .get_type_index()
-            .find_type_decl(file_id, &name)?;
+        let enum_decl = analyzer.db.get_type_index().find_type_decl(
+            file_id,
+            &name,
+            Some(analyzer.workspace_id),
+        )?;
         if !enum_decl.is_enum() {
             return None;
         }
@@ -131,10 +133,11 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
     let name = tag.get_name_token()?.get_name_text().to_string();
 
     let alias_decl_id = {
-        let alias_decl = analyzer
-            .db
-            .get_type_index()
-            .find_type_decl(file_id, &name)?;
+        let alias_decl = analyzer.db.get_type_index().find_type_decl(
+            file_id,
+            &name,
+            Some(analyzer.workspace_id),
+        )?;
         if !alias_decl.is_alias() {
             return None;
         }
@@ -176,10 +179,11 @@ pub fn analyze_attribute(analyzer: &mut DocAnalyzer, tag: LuaDocTagAttribute) ->
     let name = tag.get_name_token()?.get_name_text().to_string();
 
     let decl_id = {
-        let decl = analyzer
-            .db
-            .get_type_index()
-            .find_type_decl(file_id, &name)?;
+        let decl = analyzer.db.get_type_index().find_type_decl(
+            file_id,
+            &name,
+            Some(analyzer.workspace_id),
+        )?;
         if !decl.is_attribute() {
             return None;
         }

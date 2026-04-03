@@ -174,11 +174,11 @@ fn infer_buildin_or_ref_type(
             }
 
             let mut founded = false;
-            let type_id = if let Some(name_type_decl) = analyzer
-                .db
-                .get_type_index_mut()
-                .find_type_decl(analyzer.file_id, name)
-            {
+            let type_id = if let Some(name_type_decl) = analyzer.db.get_type_index().find_type_decl(
+                analyzer.file_id,
+                name,
+                Some(analyzer.workspace_id),
+            ) {
                 founded = true;
                 name_type_decl.get_id()
             } else {
@@ -233,11 +233,11 @@ fn infer_generic_type(analyzer: &mut DocAnalyzer, generic_type: &LuaDocGenericTy
             return typ;
         }
 
-        let id = if let Some(name_type_decl) = analyzer
-            .db
-            .get_type_index_mut()
-            .find_type_decl(analyzer.file_id, &name)
-        {
+        let id = if let Some(name_type_decl) = analyzer.db.get_type_index().find_type_decl(
+            analyzer.file_id,
+            &name,
+            Some(analyzer.workspace_id),
+        ) {
             name_type_decl.get_id()
         } else {
             analyzer.db.get_diagnostic_index_mut().add_diagnostic(

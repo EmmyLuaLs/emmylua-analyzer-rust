@@ -127,7 +127,10 @@ pub fn resolve_ref(
             .filter_map(|(item, _)| item.get_name())
             .join(".");
 
-        if let Some(found) = db.get_type_index().find_type_decl(file_id, &name) {
+        if let Some(found) =
+            db.get_type_index()
+                .find_type_decl(file_id, &name, db.resolve_workspace_id(file_id))
+        {
             let scopes = vec![SemanticInfo {
                 typ: LuaType::Ref(found.get_id()),
                 semantic_decl: Some(found.get_id().into()),
@@ -213,7 +216,11 @@ pub fn find_comment_scope(
 
         return Some(
             db.get_type_index()
-                .find_type_decl(file_id, name_tag.get_name_text())?
+                .find_type_decl(
+                    file_id,
+                    name_tag.get_name_text(),
+                    db.resolve_workspace_id(file_id),
+                )?
                 .get_id(),
         );
     }

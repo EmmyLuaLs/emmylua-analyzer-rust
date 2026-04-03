@@ -4,22 +4,15 @@ mod test {
 
     use lsp_types::Uri;
 
-    use crate::{
-        DbIndex, FileId, LuaTypeDecl, VirtualWorkspace, WorkspaceFolder, WorkspaceId,
-        is_type_decl_visible,
-    };
+    use crate::{DbIndex, FileId, LuaTypeDecl, VirtualWorkspace, WorkspaceFolder, WorkspaceId};
 
     fn find_visible_type_decl<'a>(
         db: &'a DbIndex,
         file_id: FileId,
         name: &str,
     ) -> Option<&'a LuaTypeDecl> {
-        let type_decl = db.get_type_index().find_type_decl(file_id, name)?;
-        if is_type_decl_visible(db, file_id, &type_decl.get_id()).unwrap_or(true) {
-            return Some(type_decl);
-        }
-
-        None
+        db.get_type_index()
+            .find_type_decl(file_id, name, db.resolve_workspace_id(file_id))
     }
 
     #[test]
@@ -51,9 +44,17 @@ mod test {
                 local PrivateType = {}
             "#,
         );
+        let library_consumer = ws.def_file("lib/consumer.lua", "local value = 1");
         let consumer = ws.def_file("main.lua", "local value = 1");
 
         let db = ws.analysis.compilation.get_db();
+        assert!(
+            find_visible_type_decl(db, library_consumer, "Shared.TaggedInternalType").is_some()
+        );
+        assert!(find_visible_type_decl(db, library_consumer, "Shared.PlainPublicType").is_some());
+        assert!(find_visible_type_decl(db, library_consumer, "Shared.PublicType").is_some());
+        assert!(find_visible_type_decl(db, library_consumer, "Shared.InternalType").is_some());
+        assert!(find_visible_type_decl(db, library_consumer, "Shared.PrivateType").is_none());
         assert!(find_visible_type_decl(db, consumer, "Shared.TaggedInternalType").is_some());
         assert!(find_visible_type_decl(db, consumer, "Shared.PlainPublicType").is_some());
         assert!(find_visible_type_decl(db, consumer, "Shared.PublicType").is_some());

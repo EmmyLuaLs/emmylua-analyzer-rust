@@ -34,18 +34,11 @@ flags! {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TypeVisibility {
-    Public,
-    Internal(WorkspaceId),
-}
-
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct LuaTypeDecl {
     simple_name: String,
     locations: Vec<LuaDeclLocation>,
     id: LuaTypeDeclId,
-    visibility: TypeVisibility,
     extra: LuaTypeExtra,
 }
 
@@ -53,13 +46,11 @@ impl LuaTypeDecl {
     pub fn new(
         file_id: FileId,
         range: TextRange,
-        workspace_id: WorkspaceId,
         name: String,
         kind: LuaDeclTypeKind,
         flag: FlagSet<LuaTypeFlag>,
         id: LuaTypeDeclId,
     ) -> Self {
-        let visibility = resolve_type_visibility(&flag, workspace_id);
         let location = LuaDeclLocation {
             file_id,
             range,
@@ -67,7 +58,6 @@ impl LuaTypeDecl {
         };
         Self {
             simple_name: name,
-            visibility,
             locations: vec![location],
             id,
             extra: match kind {
@@ -89,17 +79,6 @@ impl LuaTypeDecl {
 
     pub fn get_name(&self) -> &str {
         &self.simple_name
-    }
-
-    pub fn get_visibility(&self) -> TypeVisibility {
-        self.visibility
-    }
-
-    pub fn is_visible_from(&self, workspace_id: WorkspaceId) -> bool {
-        match self.visibility {
-            TypeVisibility::Public => true,
-            TypeVisibility::Internal(owner_workspace_id) => owner_workspace_id == workspace_id,
-        }
     }
 
     pub fn is_class(&self) -> bool {
@@ -214,32 +193,7 @@ impl LuaTypeDecl {
     }
 
     pub fn merge_decl(&mut self, other: LuaTypeDecl) {
-        self.visibility = merge_type_visibility(self.visibility, other.visibility);
         self.locations.extend(other.locations);
-    }
-
-    pub fn recalculate_visibility<F>(&mut self, mut get_workspace_id: F)
-    where
-        F: FnMut(FileId) -> Option<WorkspaceId>,
-    {
-        let mut visibility: Option<TypeVisibility> = None;
-        for location in &self.locations {
-            let Some(workspace_id) = get_workspace_id(location.file_id) else {
-                continue;
-            };
-            let current_visibility = resolve_type_visibility(&location.flag, workspace_id);
-            visibility = Some(match visibility {
-                Some(existing_visibility) => {
-                    merge_type_visibility(existing_visibility, current_visibility)
-                }
-                None => current_visibility,
-            });
-            if visibility == Some(TypeVisibility::Public) {
-                break;
-            }
-        }
-
-        self.visibility = visibility.unwrap_or(TypeVisibility::Public);
     }
 
     /// 获取枚举字段的类型
@@ -287,6 +241,7 @@ impl LuaTypeDecl {
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum LuaTypeIdentifier {
     Global(SmolStr),
+    Internal(WorkspaceId, SmolStr),
     Local(FileId, SmolStr),
 }
 
@@ -308,6 +263,12 @@ impl LuaTypeDeclId {
         }
     }
 
+    pub fn internal(workspace_id: WorkspaceId, str: &str) -> Self {
+        Self {
+            id: ArcIntern::new(LuaTypeIdentifier::Internal(workspace_id, SmolStr::new(str))),
+        }
+    }
+
     pub fn get_id(&self) -> &LuaTypeIdentifier {
         self.id.as_ref()
     }
@@ -315,6 +276,7 @@ impl LuaTypeDeclId {
     pub fn get_name(&self) -> &str {
         match self.id.as_ref() {
             LuaTypeIdentifier::Global(name) => name.as_ref(),
+            LuaTypeIdentifier::Internal(_, name) => name.as_ref(),
             LuaTypeIdentifier::Local(_, name) => name.as_ref(),
         }
     }
@@ -374,6 +336,10 @@ impl Serialize for LuaTypeDeclId {
     {
         match self.id.as_ref() {
             LuaTypeIdentifier::Global(name) => serializer.serialize_str(name.as_ref()),
+            LuaTypeIdentifier::Internal(workspace_id, name) => {
+                let s = format!("ws:{}|{}", workspace_id.id, &name);
+                serializer.serialize_str(&s)
+            }
             LuaTypeIdentifier::Local(file_id, name) => {
                 let s = format!("{}|{}", file_id.id, &name);
                 serializer.serialize_str(&s)
@@ -401,6 +367,13 @@ impl<'de> Deserialize<'de> for LuaTypeDeclId {
                 E: serde::de::Error,
             {
                 if let Some((file_id_str, name)) = value.split_once('|') {
+                    if let Some(workspace_id_str) = file_id_str.strip_prefix("ws:") {
+                        let workspace_id = workspace_id_str.parse::<u32>().map_err(E::custom)?;
+                        return Ok(LuaTypeDeclId::internal(
+                            WorkspaceId { id: workspace_id },
+                            name,
+                        ));
+                    }
                     let file_id = file_id_str.parse::<u32>().map_err(E::custom)?;
                     Ok(LuaTypeDeclId::local(FileId { id: file_id }, name))
                 } else {
@@ -426,24 +399,4 @@ pub enum LuaTypeExtra {
     Class,
     Alias { origin: Option<LuaType> },
     Attribute { typ: Option<LuaType> },
-}
-
-fn merge_type_visibility(left: TypeVisibility, right: TypeVisibility) -> TypeVisibility {
-    match (left, right) {
-        (TypeVisibility::Public, _) | (_, TypeVisibility::Public) => TypeVisibility::Public,
-        (TypeVisibility::Internal(left_workspace), TypeVisibility::Internal(right_workspace)) => {
-            TypeVisibility::Internal(left_workspace.min(right_workspace))
-        }
-    }
-}
-
-fn resolve_type_visibility(
-    flag: &FlagSet<LuaTypeFlag>,
-    workspace_id: WorkspaceId,
-) -> TypeVisibility {
-    if flag.contains(LuaTypeFlag::Internal) {
-        TypeVisibility::Internal(workspace_id)
-    } else {
-        TypeVisibility::Public
-    }
 }

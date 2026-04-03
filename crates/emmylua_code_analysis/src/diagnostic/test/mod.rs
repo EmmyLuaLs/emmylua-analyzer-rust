@@ -15,7 +15,6 @@ mod global_in_non_module_test;
 mod incomplete_signature_doc_test;
 mod inconsistent_type_visibility_test;
 mod inject_field_test;
-mod invisible_type_reference_test;
 mod missing_fields_test;
 mod missing_parameter_test;
 mod need_check_nil_test;
