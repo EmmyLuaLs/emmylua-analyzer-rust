@@ -39,19 +39,43 @@ Or download pre-built binaries from the [Releases](https://github.com/CppCXY/emm
 
 ### Editor Setup
 
+Before connecting your editor:
+
+1. Install `emmylua_ls` and make sure it is available in `PATH`, or use an absolute binary path in your LSP client.
+2. Add a project config file such as `.emmyrc.json` or `.luarc.json`.
+3. Restart the language server after changing global editor or workspace configuration.
+
+See the [Configuration Guide](./docs/config/emmyrc_json_EN.md) for all supported options.
+
 <details>
 <summary><b>VS Code</b></summary>
 
-Install the [EmmyLua Extension](https://marketplace.visualstudio.com/items?itemName=tangzx.emmylua).
+Recommended setup:
+
+1. Install the [EmmyLua Extension](https://marketplace.visualstudio.com/items?itemName=tangzx.emmylua).
+2. Open a Lua workspace.
+3. Add `.emmyrc.json` at the project root if you need custom runtime, diagnostics, or library paths.
+
+This is the easiest way to get completion, diagnostics, hover, formatting, semantic tokens, and project indexing with minimal manual setup.
 
 </details>
 
 <details>
 <summary><b>Neovim</b></summary>
 
+Neovim 0.11+ example:
+
 ```lua
-vim.lsp.enable({"emmylua_ls"})
+vim.lsp.config("emmylua_ls", {
+	cmd = { "emmylua_ls" },
+	filetypes = { "lua" },
+	root_markers = { ".emmyrc.json", ".luarc.json", ".git" },
+})
+
+vim.lsp.enable("emmylua_ls")
 ```
+
+If you manage servers manually, replace `cmd` with the full path to your binary.
 
 </details>
 
@@ -60,12 +84,36 @@ vim.lsp.enable({"emmylua_ls"})
 
 Install the [EmmyLua2 Plugin](https://plugins.jetbrains.com/plugin/25076-emmylua2) from the JetBrains Marketplace.
 
+For most projects, no extra setup is required beyond opening the workspace. Add `.emmyrc.json` if you need custom workspace roots, library paths, or stricter diagnostics.
+
 </details>
 
 <details>
 <summary><b>Other editors</b></summary>
 
-Any editor with LSP support can use `emmylua_ls` via stdio (default) or TCP.
+Any editor with LSP support can use `emmylua_ls` over stdio, which is the default and recommended mode.
+
+Typical client command:
+
+```json
+{
+	"command": "emmylua_ls",
+	"args": []
+}
+```
+
+Use TCP only when you explicitly want a remote or debug-friendly setup:
+
+```bash
+emmylua_ls -c tcp --ip 127.0.0.1 --port 5007
+```
+
+Useful client root markers:
+
+- `.emmyrc.json`
+- `.luarc.json`
+- `.emmyrc.lua`
+- `.git`
 
 </details>
 
@@ -86,7 +134,15 @@ Any editor with LSP support can use `emmylua_ls` via stdio (default) or TCP.
 
 ### LSP Capabilities
 
-Completion · Go to Definition · Find References · Go to Implementation · Hover · Signature Help · Rename · Code Actions · Diagnostics · Document & Workspace Symbols · Formatting · Folding · Document Links · Semantic Tokens · Inlay Hints · Document Highlights · Code Lens · Call Hierarchy · Document Color
+| Area | Capabilities |
+| --- | --- |
+| Navigation | Go to Definition, Go to Implementation, Find References, Call Hierarchy, Document Highlights |
+| Symbols | Document Symbols, Workspace Symbols, Selection Range |
+| Editing | Completion, Rename, Code Actions, Document Formatting, Range Formatting, On-type Formatting |
+| Insight | Hover, Signature Help, Diagnostics, Semantic Tokens, Inlay Hints, Code Lens, Document Color |
+| Structure | Folding Range, Document Links |
+
+In practice, this gives you a full day-to-day Lua editing workflow: symbol navigation, annotation-aware type feedback, project-wide references, incremental diagnostics, and formatting support in editors that expose standard LSP features.
 
 ### Code Quality
 

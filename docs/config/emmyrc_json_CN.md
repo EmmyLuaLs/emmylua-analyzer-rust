@@ -2,11 +2,38 @@
 
 [English](./emmyrc_json_EN.md)
 
-EmmyLua Analyzer Rust 通过项目根目录的 `.emmyrc.json` 文件进行配置。也兼容 `.luarc.json`，但功能支持有限，推荐使用 `.emmyrc.json`。
+EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中。
+
+兼容的配置文件：
+
+- `.emmyrc.json`：推荐，功能最完整
+- `.luarc.json`：兼容已有 LuaLS 配置
+- `.emmyrc.lua`：适合动态生成配置
+
+## 快速开始
+
+把下面这份最小配置放到项目根目录即可：
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
+  "runtime": {
+    "version": "LuaLatest"
+  },
+  "workspace": {
+    "workspaceRoots": ["./src"]
+  }
+}
+```
 
 ## Schema 支持
 
-在配置文件中添加以下字段可获得编辑器内的智能补全与校验：
+添加 `$schema` 后，编辑器可以提供：
+
+- 配置项补全
+- 字段类型校验
+- 枚举值提示
+- 悬浮说明
 
 ```json
 {
@@ -14,165 +41,220 @@ EmmyLua Analyzer Rust 通过项目根目录的 `.emmyrc.json` 文件进行配置
 }
 ```
 
----
+## 路径规则
 
-## 完整配置示例
+`workspace` 与 `resource` 中的路径会在加载时自动展开。
 
-<details>
-<summary>点击展开</summary>
+| 写法 | 含义 |
+| --- | --- |
+| `./libs` | 相对于工作区根目录 |
+| `libs/runtime` | 也会按工作区相对路径处理 |
+| `~/lua` | 相对于用户 Home 目录 |
+| `${workspaceFolder}` 或 `{workspaceFolder}` | 工作区根目录 |
+| `{env:NAME}` | 环境变量 `NAME` |
+| `$NAME` | 环境变量 `NAME` |
+| `{luarocks}` | LuaRocks deploy lua 目录 |
+
+示例：
 
 ```json
 {
-    "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
-    "codeAction": {
-        "insertSpace": false
-    },
-    "codeLens": {
-        "enable": true
-    },
-    "completion": {
-        "enable": true,
-        "autoRequire": true,
-        "autoRequireFunction": "require",
-        "autoRequireNamingConvention": "keep",
-        "autoRequireSeparator": ".",
-        "callSnippet": false,
-        "postfix": "@",
-        "baseFunctionIncludesName": true
-    },
-    "diagnostics": {
-        "enable": true,
-        "disable": [],
-        "enables": [],
-        "globals": [],
-        "globalsRegex": [],
-        "severity": {},
-        "diagnosticInterval": 500
-    },
-    "doc": {
-        "syntax": "md"
-    },
-    "documentColor": {
-        "enable": true
-    },
-    "hover": {
-        "enable": true
-    },
-    "hint": {
-        "enable": true,
-        "paramHint": true,
-        "indexHint": true,
-        "localHint": true,
-        "overrideHint": true,
-        "metaCallHint": true
-    },
-    "inlineValues": {
-        "enable": true
-    },
-    "references": {
-        "enable": true,
-        "fuzzySearch": true,
-        "shortStringSearch": false
-    },
-    "reformat": {
-        "externalTool": null,
-        "externalToolRangeFormat": null,
-        "useDiff": false
-    },
-    "resource": {
-        "paths": []
-    },
-    "runtime": {
-        "version": "LuaLatest",
-        "requireLikeFunction": [],
-        "frameworkVersions": [],
-        "extensions": [],
-        "requirePattern": [],
-        "classDefaultCall": {
-            "functionName": "",
-            "forceNonColon": false,
-            "forceReturnSelf": false
-        },
-        "nonstandardSymbol": [],
-        "special": {}
-    },
-    "semanticTokens": {
-        "enable": true
-    },
-    "signature": {
-        "detailSignatureHelper": true
-    },
-    "strict": {
-        "requirePath": false,
-        "typeCall": false,
-        "arrayIndex": true,
-        "metaOverrideFileDefine": true,
-        "docBaseConstMatchBaseType": true
-    },
-    "workspace": {
-        "ignoreDir": [],
-        "ignoreGlobs": [],
-        "library": [],
-        "workspaceRoots": [],
-        "preloadFileSize": 0,
-        "encoding": "utf-8",
-        "moduleMap": [],
-        "reindexDuration": 5000,
-        "enableReindex": false
-    }
+  "workspace": {
+    "library": [
+      "${workspaceFolder}/types",
+      "{env:HOME}/.lua",
+      "{luarocks}"
+    ],
+    "workspaceRoots": [
+      "./src",
+      "./test"
+    ]
+  }
+}
+```
+
+## 推荐模板
+
+这份模板适合大多数 Lua 项目：
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
+  "completion": {
+    "autoRequire": true,
+    "callSnippet": false,
+    "postfix": "@"
+  },
+  "diagnostics": {
+    "globals": [],
+    "disable": ["undefined-global"],
+  },
+  "doc": {
+    "syntax": "md"
+  },
+  "runtime": {
+    "version": "LuaLatest",
+    "requirePattern": ["?.lua", "?/init.lua"]
+  }
+}
+```
+
+## 完整配置示例
+
+> 注意：当前格式化配置的顶层键名是 `format`，不是 `reformat`。
+
+<details>
+<summary>点击展开完整示例</summary>
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
+  "codeAction": {
+    "insertSpace": false
+  },
+  "codeLens": {
+    "enable": true
+  },
+  "completion": {
+    "enable": true,
+    "autoRequire": true,
+    "autoRequireFunction": "require",
+    "autoRequireNamingConvention": "keep",
+    "autoRequireSeparator": ".",
+    "callSnippet": false,
+    "postfix": "@",
+    "baseFunctionIncludesName": true
+  },
+  "diagnostics": {
+    "enable": true,
+    "disable": [],
+    "enables": [],
+    "globals": [],
+    "globalsRegex": [],
+    "severity": {},
+    "diagnosticInterval": 500
+  },
+  "doc": {
+    "privateName": [],
+    "knownTags": [],
+    "syntax": "md"
+  },
+  "documentColor": {
+    "enable": true
+  },
+  "format": {
+    "externalTool": null,
+    "externalToolRangeFormat": null,
+    "useDiff": false
+  },
+  "hint": {
+    "enable": true,
+    "paramHint": true,
+    "indexHint": true,
+    "localHint": true,
+    "overrideHint": true,
+    "metaCallHint": true,
+    "enumParamHint": false
+  },
+  "hover": {
+    "enable": true,
+    "customDetail": null
+  },
+  "inlineValues": {
+    "enable": true
+  },
+  "references": {
+    "enable": true,
+    "fuzzySearch": true,
+    "shortStringSearch": false
+  },
+  "resource": {
+    "paths": []
+  },
+  "runtime": {
+    "version": "LuaLatest",
+    "requireLikeFunction": [],
+    "frameworkVersions": [],
+    "extensions": [],
+    "requirePattern": [],
+    "nonstandardSymbol": [],
+    "special": {}
+  },
+  "semanticTokens": {
+    "enable": true,
+    "renderDocumentationMarkup": true
+  },
+  "signature": {
+    "detailSignatureHelper": true
+  },
+  "strict": {
+    "requirePath": false,
+    "typeCall": false,
+    "arrayIndex": true,
+    "metaOverrideFileDefine": true,
+    "docBaseConstMatchBaseType": true,
+    "requireExportGlobal": false
+  },
+  "workspace": {
+    "ignoreDir": [],
+    "ignoreGlobs": [],
+    "library": [],
+    "packageDirs": [],
+    "workspaceRoots": [],
+    "preloadFileSize": 0,
+    "encoding": "utf-8",
+    "moduleMap": [],
+    "reindexDuration": 5000,
+    "enableReindex": false
+  }
 }
 ```
 
 </details>
 
----
+## 顶层分组速览
 
-## 配置详解
+| 分组 | 用途 | 常用字段 |
+| --- | --- | --- |
+| `completion` | 补全与自动 require | `autoRequire`、`callSnippet`、`postfix` |
+| `diagnostics` | 诊断开关、白名单、级别覆盖 | `disable`、`globals`、`severity` |
+| `doc` | 文档注释解析与渲染 | `syntax`、`knownTags`、`privateName` |
+| `runtime` | Lua 版本、扩展语法与 require 规则 | `version`、`extensions`、`requirePattern` |
+| `workspace` | 工作区目录、库目录、忽略规则 | `library`、`workspaceRoots`、`ignoreGlobs` |
+| `strict` | 更严格的类型和可见性约束 | `arrayIndex`、`requireExportGlobal` |
+| `format` | 外部格式化工具对接 | `externalTool`、`externalToolRangeFormat` |
+| `hint` | 内联提示 | `paramHint`、`localHint`、`enumParamHint` |
+| `hover` | 悬浮说明 | `enable`、`customDetail` |
+| `references` | 引用查找 | `fuzzySearch`、`shortStringSearch` |
 
-### completion — 代码补全
+## 配置参考
 
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用代码补全 |
-| `autoRequire` | `boolean` | `true` | 自动补全 require 语句 |
-| `autoRequireFunction` | `string` | `"require"` | 自动补全时使用的函数名 |
-| `autoRequireNamingConvention` | `string` | `"keep"` | 命名风格转换（`keep` / `camel-case` / `snake-case` / `pascal-case`） |
-| `autoRequireSeparator` | `string` | `"."` | 自动引用路径分隔符 |
-| `callSnippet` | `boolean` | `false` | 启用函数调用代码片段 |
-| `postfix` | `string` | `"@"` | 后缀补全触发符号 |
-| `baseFunctionIncludesName` | `boolean` | `true` | 基础函数补全时包含函数名 |
+### completion
 
----
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `enable` | `boolean` | `true` | 启用补全 |
+| `autoRequire` | `boolean` | `true` | 自动插入跨模块符号需要的 require |
+| `autoRequireFunction` | `string` | `"require"` | 自动 require 使用的函数名 |
+| `autoRequireNamingConvention` | `string` | `"keep"` | 文件名转换方式：`keep`、`snake-case`、`pascal-case`、`camel-case`、`keep-class` |
+| `autoRequireSeparator` | `string` | `"."` | 自动 require 路径分隔符 |
+| `callSnippet` | `boolean` | `false` | 补全函数时是否带调用片段 |
+| `postfix` | `string` | `"@"` | 后缀补全触发符 |
+| `baseFunctionIncludesName` | `boolean` | `true` | 生成函数模板时包含函数名 |
 
-### codeAction — 代码操作
+### diagnostics
 
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `insertSpace` | `boolean` | `false` | 插入 `@diagnostic disable-next-line` 时在 `---` 后添加空格 |
-
----
-
-### codeLens — 代码透镜
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用 CodeLens |
-
----
-
-### diagnostics — 代码诊断
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
 | `enable` | `boolean` | `true` | 启用诊断 |
-| `disable` | `string[]` | `[]` | 禁用的诊断规则列表 |
-| `enables` | `string[]` | `[]` | 额外启用的诊断规则列表 |
+| `disable` | `string[]` | `[]` | 禁用的诊断规则 |
+| `enables` | `string[]` | `[]` | 额外启用的诊断规则 |
 | `globals` | `string[]` | `[]` | 全局变量白名单 |
-| `globalsRegex` | `string[]` | `[]` | 全局变量正则匹配 |
-| `severity` | `object` | `{}` | 自定义诊断严重程度 |
-| `diagnosticInterval` | `number` | `500` | 诊断刷新间隔（毫秒） |
+| `globalsRegex` | `string[]` | `[]` | 全局变量正则白名单 |
+| `severity` | `object` | `{}` | 自定义规则级别 |
+| `diagnosticInterval` | `number | null` | `500` | 文件变化后触发诊断的延迟，单位毫秒 |
 
-严重程度可选值：`error` / `warning` / `information` / `hint`
+严重程度可选值：`error`、`warning`、`information`、`hint`。
 
 示例：
 
@@ -184,232 +266,235 @@ EmmyLua Analyzer Rust 通过项目根目录的 `.emmyrc.json` 文件进行配置
       "undefined-global": "warning",
       "unused": "hint"
     },
-    "enables": ["undefined-field"]
+    "enables": ["unknown-doc-tag"]
   }
 }
 ```
 
-#### 可用诊断规则
+<details>
+<summary>查看诊断规则</summary>
 
-| 规则名 | 描述 | 默认级别 |
-|--------|------|----------|
-| `syntax-error` | 语法错误 | error |
-| `doc-syntax-error` | 文档语法错误 | error |
-| `undefined-global` | 未定义的全局变量 | error |
-| `local-const-reassign` | 局部常量重新赋值 | error |
-| `annotation-usage-error` | 注解使用错误 | error |
-| `type-not-found` | 类型未找到 | warning |
-| `missing-return` | 缺少返回语句 | warning |
-| `param-type-not-match` | 参数类型不匹配 | warning |
-| `missing-parameter` | 缺少参数 | warning |
-| `redundant-parameter` | 冗余参数 | warning |
-| `access-invisible` | 访问不可见成员 | warning |
-| `discard-returns` | 丢弃返回值 | warning |
-| `undefined-field` | 未定义的字段 | warning |
-| `iter-variable-reassign` | 迭代变量重新赋值 | warning |
-| `duplicate-type` | 重复类型定义 | warning |
-| `redefined-label` | 重新定义标签 | warning |
-| `code-style-check` | 代码风格检查 | warning |
-| `need-check-nil` | 需要检查 nil | warning |
-| `await-in-sync` | 同步代码中使用 await | warning |
-| `return-type-mismatch` | 返回类型不匹配 | warning |
-| `missing-return-value` | 缺少返回值 | warning |
-| `redundant-return-value` | 冗余返回值 | warning |
-| `undefined-doc-param` | 文档中未定义的参数 | warning |
-| `duplicate-doc-field` | 重复的文档字段 | warning |
-| `missing-fields` | 缺少字段 | warning |
-| `inject-field` | 注入字段 | warning |
-| `circle-doc-class` | 循环类继承 | warning |
-| `incomplete-signature-doc` | 不完整的签名文档 | warning |
-| `missing-global-doc` | 缺少全局变量文档 | warning |
-| `assign-type-mismatch` | 赋值类型不匹配 | warning |
-| `non-literal-expressions-in-assert` | assert 中使用非字面量表达式 | warning |
-| `unbalanced-assignments` | 不平衡的赋值 | warning |
-| `unnecessary-assert` | 不必要的 assert | warning |
-| `unnecessary-if` | 不必要的 if 判断 | warning |
-| `duplicate-set-field` | 重复设置字段 | warning |
-| `duplicate-index` | 重复索引 | warning |
-| `generic-constraint-mismatch` | 泛型约束不匹配 | warning |
-| `unreachable-code` | 不可达代码 | hint |
-| `unused` | 未使用的变量/函数 | hint |
-| `deprecated` | 已弃用的功能 | hint |
-| `redefined-local` | 重新定义局部变量 | hint |
-| `duplicate-require` | 重复 require | hint |
+默认是 `error`：
 
----
+- `syntax-error`
+- `doc-syntax-error`
+- `undefined-global`
+- `local-const-reassign`
+- `annotation-usage-error`
+- `iter-variable-reassign`（Lua 5.5 及以上默认启用）
 
-### doc — 文档语法
+默认是 `hint`：
 
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `syntax` | `string` | `"md"` | 文档注释语法（`md` = Markdown，`myst` = MyST） |
+- `unreachable-code`
+- `unused`
+- `deprecated`
+- `redefined-local`
+- `duplicate-require`
+- `preferred-local-alias`
 
----
+默认关闭：
 
-### documentColor — 文档颜色
+- `code-style-check`
+- `incomplete-signature-doc`
+- `missing-global-doc`
+- `unknown-doc-tag`
+- `non-literal-expressions-in-assert`
 
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用文档中的颜色预览 |
+其余规则默认级别为 `warning`：
 
----
+- `type-not-found`
+- `missing-return`
+- `param-type-mismatch`
+- `missing-parameter`
+- `redundant-parameter`
+- `access-invisible`
+- `discard-returns`
+- `undefined-field`
+- `duplicate-type`
+- `redefined-label`
+- `need-check-nil`
+- `await-in-sync`
+- `return-type-mismatch`
+- `missing-return-value`
+- `redundant-return-value`
+- `undefined-doc-param`
+- `duplicate-doc-field`
+- `missing-fields`
+- `inject-field`
+- `circle-doc-class`
+- `assign-type-mismatch`
+- `unbalanced-assignments`
+- `unnecessary-assert`
+- `unnecessary-if`
+- `duplicate-set-field`
+- `duplicate-index`
+- `generic-constraint-mismatch`
+- `cast-type-mismatch`
+- `unresolved-require`
+- `require-module-not-visible`
+- `enum-value-mismatch`
+- `read-only`
+- `global-in-non-module`
+- `attribute-param-type-mismatch`
+- `attribute-missing-parameter`
+- `attribute-redundant-parameter`
+- `invert-if`
+- `call-non-callable`
 
-### hint — 内联提示
+</details>
 
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用内联提示 |
-| `paramHint` | `boolean` | `true` | 显示函数参数名提示 |
-| `indexHint` | `boolean` | `true` | 显示跨行索引表达式提示 |
-| `localHint` | `boolean` | `true` | 显示局部变量类型提示 |
-| `overrideHint` | `boolean` | `true` | 显示方法重载提示 |
-| `metaCallHint` | `boolean` | `true` | 显示元表 `__call` 调用提示 |
+### doc
 
----
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `privateName` | `string[]` | `[]` | 把符合模式的字段视为私有成员，例如 `m_*` |
+| `knownTags` | `string[]` | `[]` | 额外识别的文档标签 |
+| `syntax` | `string` | `"md"` | 文档语法：`none`、`md`、`myst`、`rst` |
+| `rstPrimaryDomain` | `string | null` | `null` | `myst` 或 `rst` 下的主 domain |
+| `rstDefaultRole` | `string | null` | `null` | `myst` 或 `rst` 下的默认 role |
 
-### hover — 悬浮提示
+### runtime
 
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用鼠标悬浮提示 |
-
----
-
-### inlineValues — 内联值
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用调试时的内联值显示 |
-
----
-
-### references — 引用查找
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用引用查找 |
-| `fuzzySearch` | `boolean` | `true` | 启用模糊搜索 |
-| `shortStringSearch` | `boolean` | `false` | 启用短字符串搜索 |
-
----
-
-### reformat — 代码格式化
-
-参见 [外部格式化工具选项](../external_format/external_formatter_options_CN.md)
-
----
-
-### resource — 资源路径
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `paths` | `string[]` | `[]` | 资源文件根目录列表，用于文件路径补全和跳转 |
-
----
-
-### runtime — 运行时环境
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `version` | `string` | `"LuaLatest"` | Lua 版本（`Lua5.1` / `Lua5.2` / `Lua5.3` / `Lua5.4` / `LuaJIT` / `LuaLatest`） |
-| `requireLikeFunction` | `string[]` | `[]` | 类似 require 的函数列表 |
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `version` | `string` | `"LuaLatest"` | Lua 版本：`Lua5.1`、`LuaJIT`、`Lua5.2`、`Lua5.3`、`Lua5.4`、`Lua5.5`、`LuaLatest` |
+| `requireLikeFunction` | `string[]` | `[]` | 视为 require 的函数名 |
 | `frameworkVersions` | `string[]` | `[]` | 框架版本标识 |
-| `extensions` | `string[]` | `[]` | 额外的文件扩展名 |
-| `requirePattern` | `string[]` | `[]` | require 路径匹配模式 |
-| `classDefaultCall` | `object` | `{}` | 类默认调用配置 |
-| `nonstandardSymbol` | `string[]` | `[]` | 非标准符号列表（如 `"continue"`） |
+| `extensions` | `string[]` | `[]` | 额外识别的 Lua 文件扩展名 |
+| `requirePattern` | `string[]` | `[]` | require 搜索模式，例如 `?.lua`、`?/init.lua` |
+| `nonstandardSymbol` | `string[]` | `[]` | 允许的非标准语法符号 |
 | `special` | `object` | `{}` | 特殊函数映射 |
 
-示例：
+`nonstandardSymbol` 支持的值：
+
+- `//`
+- `/**/`
+- `` ` ``
+- `+=`
+- `-=`
+- `*=`
+- `/=`
+- `%=`
+- `^=`
+- `//=`
+- `|=`
+- `&=`
+- `<<=`
+- `>>=`
+- `||`
+- `&&`
+- `!`
+- `!=`
+- `continue`
+
+`special` 支持的值：`none`、`require`、`error`、`assert`、`type`、`setmetatable`。
+
+### workspace
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `ignoreDir` | `string[]` | `[]` | 忽略目录 |
+| `ignoreGlobs` | `string[]` | `[]` | 按 glob 忽略文件 |
+| `library` | `string[] | object[]` | `[]` | 库目录，支持字符串路径或带忽略规则的对象 |
+| `packageDirs` | `string[]` | `[]` | 包目录，父目录按 library 处理，但只导入指定子目录 |
+| `workspaceRoots` | `string[]` | `[]` | 工作区源代码根目录 |
+| `preloadFileSize` | `number` | `0` | 预留字段，目前未使用 |
+| `encoding` | `string` | `"utf-8"` | 文件编码 |
+| `moduleMap` | `object[]` | `[]` | 模块名映射规则 |
+| `reindexDuration` | `number` | `5000` | 全量重建索引延迟，单位毫秒 |
+| `enableReindex` | `boolean` | `false` | 文件变化后启用全量重建索引 |
+
+`library` 既可以写路径字符串，也可以写对象：
 
 ```json
 {
-  "runtime": {
-    "version": "LuaLatest",
-    "requireLikeFunction": ["import", "load", "dofile"],
-    "frameworkVersions": ["love2d", "openresty"],
-    "extensions": [".lua", ".lua.txt", ".luau"],
-    "requirePattern": ["?.lua", "?/init.lua", "lib/?.lua"],
-    "classDefaultCall": {
-      "functionName": "new",
-      "forceNonColon": false,
-      "forceReturnSelf": true
-    },
-    "nonstandardSymbol": ["continue"],
-    "special": {
-      "errorf": "error"
-    }
+  "workspace": {
+    "library": [
+      "./types",
+      {
+        "path": "./vendor",
+        "ignoreDir": ["test"],
+        "ignoreGlobs": ["**/*.spec.lua"]
+      }
+    ]
   }
 }
 ```
 
----
-
-### semanticTokens — 语义标记
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `enable` | `boolean` | `true` | 启用语义标记 |
-
----
-
-### signature — 函数签名
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `detailSignatureHelper` | `boolean` | `false` | 显示详细函数签名帮助（当前无效） |
-
----
-
-### strict — 严格模式
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `requirePath` | `boolean` | `false` | require 路径必须从指定根目录开始 |
-| `typeCall` | `boolean` | `false` | 类型调用需手动定义重载 |
-| `arrayIndex` | `boolean` | `false` | 严格数组索引检查 |
-| `metaOverrideFileDefine` | `boolean` | `true` | 元定义覆盖文件中的定义 |
-| `docBaseConstMatchBaseType` | `boolean` | `true` | 文档基类常量匹配基础类型 |
-
-> **提示**：禁用严格模式时，行为更接近 `luals` 的宽松模式。
-
----
-
-### workspace — 工作区
-
-| 配置项 | 类型 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `ignoreDir` | `string[]` | `[]` | 忽略的目录列表 |
-| `ignoreGlobs` | `string[]` | `[]` | 基于 glob 模式忽略文件 |
-| `library` | `string[]` | `[]` | 库文件目录路径 |
-| `workspaceRoots` | `string[]` | `[]` | 工作区根目录列表 |
-| `encoding` | `string` | `"utf-8"` | 文件编码 |
-| `moduleMap` | `object[]` | `[]` | 模块路径映射（支持正则） |
-| `reindexDuration` | `number` | `5000` | 重新索引间隔（毫秒） |
-| `enableReindex` | `boolean` | `false` | 启用自动重新索引 |
-
-模块映射示例：
+`moduleMap` 示例：
 
 ```json
 {
   "workspace": {
     "moduleMap": [
-      { "pattern": "^lib(.*)$", "replace": "script$1" }
-    ],
-    "ignoreDir": ["build", "dist", "node_modules"],
-    "library": ["/usr/local/lib/lua", "./libs"],
-    "workspaceRoots": ["Assets/Scripts/Lua"]
+      {
+        "pattern": "^lib(.*)$",
+        "replace": "script$1"
+      }
+    ]
   }
 }
 ```
 
----
+### strict
 
-## 快速上手
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `requirePath` | `boolean` | `false` | 强制 require 路径必须命中配置的模块路径 |
+| `typeCall` | `boolean` | `false` | 更严格地检查类型调用 |
+| `arrayIndex` | `boolean` | `true` | 更严格地检查数组索引 |
+| `metaOverrideFileDefine` | `boolean` | `true` | 元定义覆盖文件内定义 |
+| `docBaseConstMatchBaseType` | `boolean` | `true` | 允许文档中的基础常量类型与基础类型匹配 |
+| `requireExportGlobal` | `boolean` | `false` | 第三方库必须显式使用 `---@export global` 才可导入 |
 
-1. 在项目根目录创建 `.emmyrc.json`
-2. 添加 `$schema` 字段以获得编辑器智能提示
-3. 按需添加配置项
-4. 保存后语言服务器会自动加载配置
+### format
+
+更多说明请参见 [外部格式化工具选项](../external_format/external_formatter_options_CN.md)。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `externalTool` | `object | null` | `null` | 整文件格式化时使用的外部工具 |
+| `externalToolRangeFormat` | `object | null` | `null` | 选区格式化时使用的外部工具 |
+| `useDiff` | `boolean` | `false` | 通过 diff 合并格式化结果 |
+
+外部工具配置对象：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `program` | `string` | `""` | 可执行文件 |
+| `args` | `string[]` | `[]` | 参数列表 |
+| `timeout` | `number` | `5000` | 超时时间，单位毫秒 |
+
+### 其他分组
+
+| 分组 | 字段 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `codeAction` | `insertSpace` | `false` | 插入 `@diagnostic disable-next-line` 时在 `---` 后补空格 |
+| `codeLens` | `enable` | `true` | 启用 CodeLens |
+| `documentColor` | `enable` | `true` | 识别颜色字符串并显示颜色预览 |
+| `hint` | `enable` | `true` | 总开关 |
+| `hint` | `paramHint` | `true` | 参数名与参数类型提示 |
+| `hint` | `indexHint` | `true` | 数组索引命名提示 |
+| `hint` | `localHint` | `true` | 局部变量类型提示 |
+| `hint` | `overrideHint` | `true` | 覆写方法提示 |
+| `hint` | `metaCallHint` | `true` | 元表 `__call` 提示 |
+| `hint` | `enumParamHint` | `false` | 枚举字面量提示 |
+| `hover` | `enable` | `true` | 启用悬浮说明 |
+| `hover` | `customDetail` | `null` | 自定义悬浮细节等级，通常为 `1` 到 `255` |
+| `inlineValues` | `enable` | `true` | 调试时显示内联值 |
+| `references` | `enable` | `true` | 启用引用查找 |
+| `references` | `fuzzySearch` | `true` | 常规查找失败后尝试模糊查找 |
+| `references` | `shortStringSearch` | `false` | 同时在短字符串中查找引用 |
+| `resource` | `paths` | `[]` | 资源根目录，用于路径补全与跳转 |
+| `semanticTokens` | `enable` | `true` | 启用语义高亮 |
+| `semanticTokens` | `renderDocumentationMarkup` | `true` | 渲染文档标记，需要配合 `doc.syntax` |
+| `signature` | `detailSignatureHelper` | `true` | 显示详细签名帮助 |
+
+## 建议
+
+- 新项目优先使用 `.emmyrc.json`
+- 有现成 LuaLS 项目时，可先沿用 `.luarc.json`
+- `workspace.library` 与 `workspace.workspaceRoots` 建议尽早配置，否则跳转、补全和诊断的结果会比较分散
+- 若项目依赖第三方库可见性约束，可考虑启用 `strict.requireExportGlobal`
 
 [返回顶部](#emmylua-配置指南)
