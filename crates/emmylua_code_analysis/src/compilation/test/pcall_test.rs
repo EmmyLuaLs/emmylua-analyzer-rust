@@ -235,4 +235,59 @@ mod test {
         assert_eq!(ws.humanize_type(success_result), "boolean");
         assert_eq!(ws.humanize_type(failure_result), "string");
     }
+
+    #[test]
+    fn test_pcall_with_overloaded_module_function() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        // When a module function has both @field annotation and actual implementation,
+        // pcall should correctly infer the return type from the overloaded callable.
+        ws.def(
+            r#"
+        ---@class ShlexModule
+        ---@field split fun(s: string): string[]
+        local Shlex = {}
+
+        ---@param s string
+        ---@return string[]
+        function Shlex.split(s)
+            return {}
+        end
+
+        ok, args = pcall(Shlex.split, "hello world")
+        "#,
+        );
+
+        let ok_ty = ws.expr_ty("ok");
+        let args_ty = ws.expr_ty("args");
+        assert_eq!(ok_ty, ws.ty("true|false"));
+        assert_eq!(args_ty, ws.ty("string[]|string"));
+    }
+
+    #[test]
+    fn test_pcall_with_overloaded_module_function_scalar() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        // Same scenario but with a scalar return type (integer).
+        ws.def(
+            r#"
+        ---@class ModScalar
+        ---@field compute fun(s: string): integer
+        local M = {}
+
+        ---@param s string
+        ---@return integer
+        function M.compute(s)
+            return 1
+        end
+
+        ok, result = pcall(M.compute, "hello")
+        "#,
+        );
+
+        let ok_ty = ws.expr_ty("ok");
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ok_ty, ws.ty("true|false"));
+        assert_eq!(result_ty, ws.ty("integer|string"));
+    }
 }

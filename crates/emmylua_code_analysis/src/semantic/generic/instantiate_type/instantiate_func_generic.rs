@@ -25,7 +25,7 @@ use crate::{
     },
 };
 use crate::{
-    LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl,
+    LuaMemberOwner, LuaSemanticDeclId, LuaUnionType, SemanticDeclLevel, infer_node_semantic_decl,
     tpl_pattern_match_args,
 };
 
@@ -115,6 +115,30 @@ pub fn as_doc_function_type(
                 .ok_or(InferFailReason::None)?
                 .to_doc_func_type(),
         ),
+        LuaType::Union(union) => {
+            match union.as_ref() {
+                LuaUnionType::Basic(basic) => {
+                    for member in basic.iter() {
+                        if let Some(func) = as_doc_function_type(db, &member)? {
+                            return Ok(Some(func));
+                        }
+                    }
+                }
+                LuaUnionType::Nullable(ty) => {
+                    if let Some(func) = as_doc_function_type(db, ty)? {
+                        return Ok(Some(func));
+                    }
+                }
+                LuaUnionType::Multi(types) => {
+                    for member in types {
+                        if let Some(func) = as_doc_function_type(db, member)? {
+                            return Ok(Some(func));
+                        }
+                    }
+                }
+            }
+            None
+        }
         _ => None,
     })
 }
