@@ -17,7 +17,7 @@ use crate::{
                 },
                 get_multi_antecedents, get_single_antecedent,
                 get_type_at_cast_flow::get_type_at_cast_flow,
-                get_var_ref_type, narrow_down_type,
+                get_var_ref_type, literal_provides_optional_class_field, narrow_down_type,
                 var_ref_id::get_var_expr_var_ref_id,
             },
         },
@@ -520,7 +520,7 @@ fn try_narrow_decl_to_instance(
     let literal_owner = LuaMemberOwner::Element(range.clone());
     // Only create Instance when at least one provided literal field corresponds
     // to an optional class field — otherwise narrowing brings no benefit.
-    if !super::literal_provides_optional_class_field(db, var_type, &literal_owner) {
+    if !literal_provides_optional_class_field(db, var_type, &literal_owner) {
         return None;
     }
     narrow_down_type(db, var_type.clone(), init_type, Some(var_type.clone()))
