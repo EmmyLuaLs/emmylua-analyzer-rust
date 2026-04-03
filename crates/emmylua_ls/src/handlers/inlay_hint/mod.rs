@@ -34,6 +34,10 @@ pub fn inlay_hint(
     client_id: ClientId,
 ) -> Option<Vec<InlayHint>> {
     let semantic_model = analysis.compilation.get_semantic_model(file_id)?;
+    if !semantic_model.get_emmyrc().hint.enable {
+        return Some(vec![]);
+    }
+
     build_inlay_hints(&semantic_model, client_id)
 }
 
