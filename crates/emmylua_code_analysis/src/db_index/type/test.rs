@@ -386,4 +386,57 @@ mod test {
         assert_eq!(encoded, "\"ws:42|Foo.Bar\"");
         assert_eq!(decoded, decl_id);
     }
+
+    #[test]
+    fn test_find_type_decls_merges_namespace_using_and_bare_prefixes_in_order() {
+        let mut index = create_type_index();
+        let file_id = FileId { id: 1 };
+
+        index.add_file_namespace(file_id, "pkg".to_string());
+        index.add_file_using_namespace(file_id, "util".to_string());
+
+        let mut add_global_decl = |full_name: &str| {
+            let simple_name = full_name
+                .rsplit('.')
+                .next()
+                .unwrap_or(full_name)
+                .to_string();
+            index.add_type_decl(
+                file_id,
+                LuaTypeDecl::new(
+                    file_id,
+                    TextRange::new(0.into(), 4.into()),
+                    simple_name,
+                    LuaDeclTypeKind::Class,
+                    LuaTypeFlag::Partial.into(),
+                    LuaTypeDeclId::global(full_name),
+                ),
+            );
+        };
+
+        add_global_decl("pkg.Bar");
+        add_global_decl("util.Qux");
+        add_global_decl("Bar");
+        add_global_decl("Baz");
+        add_global_decl("pkg.nested.Inner");
+        add_global_decl("util.nested.Helper");
+
+        let visible = index.find_type_decls(file_id, "", None);
+
+        assert_eq!(
+            visible.get("Bar").cloned(),
+            Some(Some(LuaTypeDeclId::global("Bar")))
+        );
+        assert_eq!(
+            visible.get("Qux").cloned(),
+            Some(Some(LuaTypeDeclId::global("util.Qux")))
+        );
+        assert_eq!(
+            visible.get("Baz").cloned(),
+            Some(Some(LuaTypeDeclId::global("Baz")))
+        );
+        assert_eq!(visible.get("nested").cloned(), Some(None));
+        assert_eq!(visible.get("pkg").cloned(), Some(None));
+        assert_eq!(visible.get("util").cloned(), Some(None));
+    }
 }

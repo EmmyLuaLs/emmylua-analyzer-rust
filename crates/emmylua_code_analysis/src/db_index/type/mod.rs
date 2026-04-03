@@ -150,17 +150,11 @@ impl LuaTypeIndex {
         }
     }
 
-    fn build_qualified_name<'a>(
-        qualified_name: &'a mut String,
-        namespace: &str,
-        name: &str,
-    ) -> &'a str {
+    fn build_qualified_name(qualified_name: &mut String, namespace: &str, name: &str) {
         qualified_name.clear();
-        qualified_name.reserve(namespace.len() + name.len() + 1);
         qualified_name.push_str(namespace);
         qualified_name.push('.');
         qualified_name.push_str(name);
-        qualified_name.as_str()
     }
 
     pub fn find_type_decl(
@@ -195,41 +189,93 @@ impl LuaTypeIndex {
         self.find_scoped_type_decl_by_name(file_id, workspace_id, name, true)
     }
 
+    /// 查找当前作用域下 `prefix` 下一层可见的类型项.
+    ///
+    /// 注意, 这里返回的不是“所有完整名称以 `prefix` 开头的类型”.
+    /// 返回值会按下一层名称折叠:
+    /// - `Some(LuaTypeDeclId)` 表示该名称已经落到具体类型节点.
+    /// - `None` 表示该名称只是中间 namespace 节点, 下面仍有更深层的类型.
+    ///
+    /// 例如存在 `pkg.Bar` 与 `pkg.nested.Inner` 时:
+    /// - 查询 `""` 会得到 `pkg -> None`
+    /// - 查询 `"pkg."` 会得到 `Bar -> Some(...)` 与 `nested -> None`
     pub fn find_type_decls(
         &self,
         file_id: FileId,
         prefix: &str,
         workspace_id: Option<WorkspaceId>,
     ) -> HashMap<String, Option<LuaTypeDeclId>> {
-        let mut result = HashMap::new();
-        let all_type_ids = self.full_name_type_map.keys().collect::<Vec<_>>();
+        let mut prefixes = Vec::new();
         let mut qualified_prefix = String::new();
+
+        let mut push_unique_prefix = |candidate: &str| {
+            if prefixes.iter().any(|prefix| prefix == candidate) {
+                return;
+            }
+            prefixes.push(candidate.to_string());
+        };
+
         if let Some(ns) = self.get_file_namespace(&file_id) {
             Self::build_qualified_name(&mut qualified_prefix, ns, prefix);
-            self.collect_type_decl_matches(
-                &mut result,
-                &all_type_ids,
-                file_id,
-                workspace_id,
-                &qualified_prefix,
-            );
+            push_unique_prefix(&qualified_prefix);
         }
 
         if let Some(usings) = self.get_file_using_namespace(&file_id) {
             for ns in usings {
                 Self::build_qualified_name(&mut qualified_prefix, ns, prefix);
-                self.collect_type_decl_matches(
-                    &mut result,
-                    &all_type_ids,
-                    file_id,
-                    workspace_id,
-                    &qualified_prefix,
-                );
+                push_unique_prefix(&qualified_prefix);
             }
         }
 
-        self.collect_type_decl_matches(&mut result, &all_type_ids, file_id, workspace_id, prefix);
+        push_unique_prefix(prefix);
 
+        let mut prefix_results = Vec::with_capacity(prefixes.len());
+        for _ in 0..prefixes.len() {
+            prefix_results.push(HashMap::new());
+        }
+
+        for id in self.full_name_type_map.keys() {
+            let id_name = match id.get_id() {
+                LuaTypeIdentifier::Global(name) => name.as_str(),
+                LuaTypeIdentifier::Internal(owner_workspace_id, name) => {
+                    if workspace_id == Some(*owner_workspace_id) {
+                        name.as_str()
+                    } else {
+                        continue;
+                    }
+                }
+                LuaTypeIdentifier::Local(owner_file_id, name) => {
+                    if *owner_file_id == file_id {
+                        name.as_str()
+                    } else {
+                        continue;
+                    }
+                }
+            };
+
+            for (idx, prefix) in prefixes.iter().enumerate() {
+                if let Some(rest_name) = id_name.strip_prefix(prefix) {
+                    if let Some(i) = rest_name.find('.') {
+                        let name = rest_name[..i].to_string();
+                        // 仍然存在更深层路径时只暴露当前层级名称, 并标记为 namespace 节点
+                        prefix_results[idx].entry(name).or_insert(None);
+                    } else {
+                        prefix_results[idx].insert(rest_name.to_string(), Some(id.clone()));
+                    }
+                }
+            }
+        }
+
+        let mut result = HashMap::new();
+        for prefix_result in prefix_results {
+            for (name, decl_id) in prefix_result {
+                if let Some(decl_id) = decl_id {
+                    result.insert(name, Some(decl_id));
+                } else {
+                    result.entry(name).or_insert(None);
+                }
+            }
+        }
         result
     }
 
@@ -265,45 +311,6 @@ impl LuaTypeIndex {
         self.global_name_type_map
             .get(name)
             .and_then(|decl_id| self.full_name_type_map.get(decl_id))
-    }
-
-    fn collect_type_decl_matches(
-        &self,
-        result: &mut HashMap<String, Option<LuaTypeDeclId>>,
-        all_type_ids: &[&LuaTypeDeclId],
-        file_id: FileId,
-        workspace_id: Option<WorkspaceId>,
-        prefix: &str,
-    ) {
-        for id in all_type_ids {
-            let id_name = match id.get_id() {
-                LuaTypeIdentifier::Global(name) => name.as_str(),
-                LuaTypeIdentifier::Internal(owner_workspace_id, name) => {
-                    if workspace_id == Some(*owner_workspace_id) {
-                        name.as_str()
-                    } else {
-                        continue;
-                    }
-                }
-                LuaTypeIdentifier::Local(owner_file_id, name) => {
-                    if *owner_file_id == file_id {
-                        name.as_str()
-                    } else {
-                        continue;
-                    }
-                }
-            };
-            if id_name.starts_with(prefix)
-                && let Some(rest_name) = id_name.strip_prefix(prefix)
-            {
-                if let Some(i) = rest_name.find('.') {
-                    let name = rest_name[..i].to_string();
-                    result.entry(name).or_insert(None);
-                } else {
-                    result.insert(rest_name.to_string(), Some((*id).clone()));
-                }
-            }
-        }
     }
 
     pub fn add_generic_params(&mut self, decl_id: LuaTypeDeclId, params: Vec<GenericParam>) {
