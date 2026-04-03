@@ -28,7 +28,7 @@ impl Default for LuaCommonProperty {
 impl LuaCommonProperty {
     pub fn new() -> Self {
         Self {
-            visibility: VisibilityKind::Internal,
+            visibility: VisibilityKind::Public,
             description: None,
             source: None,
             deprecated: None,
