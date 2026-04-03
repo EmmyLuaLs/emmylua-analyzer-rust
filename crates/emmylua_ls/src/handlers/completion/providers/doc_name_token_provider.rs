@@ -251,10 +251,12 @@ fn add_tag_type_flag_completion(
 
     match LuaDocTag::cast(node.syntax().parent()?)? {
         LuaDocTag::Alias(_) => {
+            flags.push((LuaTypeFlag::Internal, "internal"));
             flags.push((LuaTypeFlag::Private, "private"));
             flags.push((LuaTypeFlag::Public, "public"));
         }
         LuaDocTag::Class(_) => {
+            flags.push((LuaTypeFlag::Internal, "internal"));
             flags.push((LuaTypeFlag::Exact, "exact"));
             flags.push((LuaTypeFlag::Constructor, "constructor"));
             flags.push((LuaTypeFlag::Private, "private"));
@@ -262,6 +264,7 @@ fn add_tag_type_flag_completion(
         }
         LuaDocTag::Enum(_) => {
             flags.insert(0, (LuaTypeFlag::Key, "key"));
+            flags.push((LuaTypeFlag::Internal, "internal"));
             flags.push((LuaTypeFlag::Exact, "exact"));
             flags.push((LuaTypeFlag::Private, "private"));
             flags.push((LuaTypeFlag::Public, "public"));
