@@ -464,8 +464,8 @@ pub fn get_override_lsp_location(
     let document = semantic_model.get_document_by_file_id(file_id)?;
     let root = semantic_model.get_root_by_file_id(file_id)?;
     let node = syntax_id.to_node_from_root(root.syntax())?;
-    let range = if let Some(index_exor) = LuaIndexExpr::cast(node.clone()) {
-        index_exor.get_index_name_token()?.text_range()
+    let range = if let Some(index_expr) = LuaIndexExpr::cast(node.clone()) {
+        index_expr.get_index_name_token()?.text_range()
     } else {
         node.text_range()
     };
