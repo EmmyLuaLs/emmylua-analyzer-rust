@@ -87,7 +87,9 @@ fn resolve_member_type(
                     let mut typ = LuaType::Never;
                     for member in &members {
                         let feature = member.get_feature();
-                        if feature.is_meta_decl() {
+                        if feature.is_meta_decl()
+                            && check_member_version(db, LuaSemanticDeclId::Member(member.get_id()))
+                        {
                             typ = TypeOps::Union.apply(
                                 db,
                                 &typ,
@@ -161,7 +163,9 @@ fn resolve_type_owner_member_id(
                 MemberTypeResolveState::Meta => {
                     for member in &members {
                         let feature = member.get_feature();
-                        if feature.is_meta_decl() {
+                        if feature.is_meta_decl()
+                            && check_member_version(db, LuaSemanticDeclId::Member(member.get_id()))
+                        {
                             return Some(member.get_id());
                         }
                     }
