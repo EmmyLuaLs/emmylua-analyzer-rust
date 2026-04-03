@@ -184,8 +184,8 @@ function loadstring(text, chunkname) end
 --- Similar to `load`, but gets the chunk from file `filename` or from the
 --- standard input, if no file name is given.
 ---@param filename? string
----@param mode? string
----@param env? any
+---@param mode? std.loadmode
+---@param env? table
 ---@return function? chunk
 ---@return string? error_message
 function loadfile(filename, mode, env) end
