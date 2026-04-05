@@ -3466,4 +3466,50 @@ Syntax(Chunk)@0..98
         "#;
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_attribute_with_boolean() {
+        let code = r#"
+        ---@[warn(true, "str", 1, 1.4, nil)]
+        "#;
+        // print_ast(code);
+        let result = r#"
+Syntax(Chunk)@0..54
+  Syntax(Block)@0..54
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..45
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagAttributeUse)@13..45
+        Token(TkDocAttributeUse)@13..14 "["
+        Syntax(DocAttributeUse)@14..44
+          Syntax(TypeName)@14..18
+            Token(TkName)@14..18 "warn"
+          Syntax(DocAttributeCallArgList)@18..44
+            Token(TkLeftParen)@18..19 "("
+            Syntax(LiteralExpr)@19..23
+              Token(TkTrue)@19..23 "true"
+            Token(TkComma)@23..24 ","
+            Token(TkWhitespace)@24..25 " "
+            Syntax(LiteralExpr)@25..30
+              Token(TkString)@25..30 "\"str\""
+            Token(TkComma)@30..31 ","
+            Token(TkWhitespace)@31..32 " "
+            Syntax(LiteralExpr)@32..33
+              Token(TkInt)@32..33 "1"
+            Token(TkComma)@33..34 ","
+            Token(TkWhitespace)@34..35 " "
+            Syntax(LiteralExpr)@35..38
+              Token(TkFloat)@35..38 "1.4"
+            Token(TkComma)@38..39 ","
+            Token(TkWhitespace)@39..40 " "
+            Syntax(LiteralExpr)@40..43
+              Token(TkNil)@40..43 "nil"
+            Token(TkRightParen)@43..44 ")"
+        Token(TkRightBracket)@44..45 "]"
+    Token(TkEndOfLine)@45..46 "\n"
+    Token(TkWhitespace)@46..54 "        "
+        "#;
+        assert_ast_eq!(code, result);
+    }
 }
