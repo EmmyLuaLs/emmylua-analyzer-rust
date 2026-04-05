@@ -63,4 +63,52 @@ mod test {
         let ty_desc = ws.humanize_type(ty);
         assert_eq!(ty_desc, "integer");
     }
+
+    #[test]
+    fn test_constructor_attribute() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def_files(vec![
+            (
+                "1_main.lua",
+                r#"
+                local MyClass = require("2_myclass")
+
+                instance = MyClass("Test")
+                "#,
+            ),
+            (
+                "2_myclass.lua",
+                r#"
+                ---@class MyClass
+                local MyClass = meta("MyClass")
+
+                ---@param name string
+                function MyClass:init(name)
+                end
+
+                return MyClass
+                "#,
+            ),
+            (
+                "3_meta.lua",
+                r#"
+                ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+
+                ---@class class
+                ---@field is_class true
+
+                ---@generic T
+                ---@[constructor("init", "class")]
+                ---@param class `T`
+                ---@return T
+                function meta(class) return {} end
+                "#,
+            ),
+        ]);
+
+        let ty = ws.expr_ty("instance");
+        let ty_desc = ws.humanize_type(ty);
+        assert_eq!(ty_desc, "MyClass");
+    }
 }
