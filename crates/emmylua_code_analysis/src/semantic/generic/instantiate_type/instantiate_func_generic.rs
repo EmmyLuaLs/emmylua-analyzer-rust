@@ -25,7 +25,7 @@ use crate::{
     },
 };
 use crate::{
-    LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl,
+    LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, infer_node_semantic_decl,
     tpl_pattern_match_args,
 };
 
@@ -361,14 +361,27 @@ pub fn infer_self_type(
                 name.syntax().clone(),
                 SemanticDeclLevel::default(),
             )?;
-            if let LuaSemanticDeclId::Member(member_id) = semantic_decl_id {
-                let owner = db.get_member_index().get_current_owner(&member_id)?;
-                if let LuaMemberOwner::Type(id) = owner {
-                    let typ = LuaType::Ref(id.clone());
+            match semantic_decl_id {
+                LuaSemanticDeclId::Member(member_id) => {
+                    let owner = db.get_member_index().get_current_owner(&member_id)?;
+                    if let LuaMemberOwner::Type(id) = owner {
+                        let typ = LuaType::Ref(id.clone());
+                        let self_type = build_self_type(db, &typ);
+                        return Some(self_type);
+                    }
+                    return None;
+                }
+                LuaSemanticDeclId::LuaDecl(decl_id) => {
+                    let typ = db
+                        .get_type_index()
+                        .get_type_cache(&LuaTypeOwner::Decl(decl_id))
+                        .map(|cache| cache.as_type())
+                        .unwrap_or(&LuaType::Unknown)
+                        .clone();
                     let self_type = build_self_type(db, &typ);
                     return Some(self_type);
                 }
-                return None;
+                _ => return None,
             }
         }
         _ => {}

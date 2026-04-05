@@ -343,7 +343,8 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
             Some(type_cache) => type_cache.as_type().clone(),
             None => return Err(InferFailReason::UnResolveDeclType(id)),
         };
-        return if typ.contain_tpl() {
+        // todo: 不置为 Unknown 有可能引用泛型函数中的泛型参数导致泄露, 但这样会导致丢失类型, 我们可能需要更好的办法去处理
+        return if !typ.is_generic() && typ.contain_tpl() {
             // This decl is located in a generic function,
             // and is type contains references to generic variables
             // of this function.

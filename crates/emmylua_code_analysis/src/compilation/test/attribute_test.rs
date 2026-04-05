@@ -111,4 +111,37 @@ mod test {
         let ty_desc = ws.humanize_type(ty);
         assert_eq!(ty_desc, "MyClass");
     }
+
+    #[test]
+    fn test_issue_1008() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "init.lua",
+            r#"
+            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+
+            ---@generic T
+            ---@[constructor("init")]
+            ---@param class `T`
+            ---@return T
+            function class(class) return {} end
+
+            ---@class ClassB<T>
+            ClassB = class("ClassB")
+
+            ---@param value T
+            function ClassB:init(value) end
+            "#,
+        );
+
+        ws.def(
+            r#"
+            A = ClassB("I'm ClassB")
+            "#,
+        );
+
+        let ty = ws.expr_ty("A");
+        let ty_desc = ws.humanize_type(ty);
+        assert_eq!(ty_desc, "ClassB<T>");
+    }
 }
