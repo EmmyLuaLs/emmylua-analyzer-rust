@@ -5,10 +5,10 @@ use emmylua_parser::{
 };
 
 use crate::{
-    InFiled, InferFailReason, LuaBuiltinAttributeKind, LuaDeclId, LuaMember, LuaMemberId,
-    LuaMemberInfo, LuaMemberKey, LuaOperator, LuaOperatorMetaMethod, LuaOperatorOwner,
-    LuaSemanticDeclId, LuaTypeCache, LuaTypeDeclId, OperatorFunction, SignatureReturnStatus,
-    TypeOps,
+    InFiled, InferFailReason, LuaBuiltinAttributeKind, LuaConstructorReturnMode, LuaDeclId,
+    LuaMember, LuaMemberId, LuaMemberInfo, LuaMemberKey, LuaOperator, LuaOperatorMetaMethod,
+    LuaOperatorOwner, LuaSemanticDeclId, LuaTypeCache, LuaTypeDeclId, OperatorFunction,
+    SignatureReturnStatus, TypeOps,
     compilation::analyzer::{
         common::{add_member, bind_type},
         lua::{analyze_return_point, infer_for_range_iter_expr_func},
@@ -247,7 +247,7 @@ pub fn try_resolve_class_constructor(
     cache: &mut LuaInferCache,
     unresolve_constructor: &mut UnResolveConstructor,
 ) -> ResolveResult {
-    let (param_type, target_signature_name, root_class, strip_self, return_self) = {
+    let (param_type, target_signature_name, root_class, strip_self, return_mode) = {
         let signature = db
             .get_signature_index()
             .get(&unresolve_constructor.signature_id)
@@ -267,14 +267,14 @@ pub fn try_resolve_class_constructor(
         // 是否可以省略self参数
         let strip_self = constructor_attribute.strip_self;
         // 是否返回self
-        let return_self = constructor_attribute.return_self;
+        let return_mode = constructor_attribute.return_mode;
 
         Ok::<_, InferFailReason>((
             param_info.type_ref.clone(),
             target_signature_name,
             root_class,
             strip_self,
-            return_self,
+            return_mode,
         ))
     }?;
 
@@ -310,7 +310,7 @@ pub fn try_resolve_class_constructor(
         find_members_with_key(db, &target_type, member_key, false).ok_or(InferFailReason::None)?;
     let ctor_signature_member = members.first().ok_or(InferFailReason::None)?;
 
-    set_signature_to_default_call(db, cache, ctor_signature_member, strip_self, return_self)
+    set_signature_to_default_call(db, cache, ctor_signature_member, strip_self, return_mode)
         .ok_or(InferFailReason::None)?;
 
     Ok(())
@@ -321,7 +321,7 @@ fn set_signature_to_default_call(
     cache: &mut LuaInferCache,
     member_info: &LuaMemberInfo,
     strip_self: bool,
-    return_self: bool,
+    return_mode: LuaConstructorReturnMode,
 ) -> Option<()> {
     let LuaType::Signature(signature_id) = member_info.typ else {
         return None;
@@ -358,7 +358,7 @@ fn set_signature_to_default_call(
         OperatorFunction::DefaultClassCtor {
             id: signature_id,
             strip_self,
-            return_self,
+            return_mode,
         },
     );
     db.get_operator_index_mut().add_operator(operator);

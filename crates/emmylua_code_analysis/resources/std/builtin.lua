@@ -188,8 +188,10 @@
 --- - `name`: The name of the method as a constructor.
 --- - `root_class`: Used to mark the root class, will implicitly inherit this class, such as `System.Object` in c#. Defaults to empty.
 --- - `strip_self`: Whether the `self` parameter can be omitted when calling the constructor, defaults to `true`
---- - `return_self`: Whether the constructor is forced to return `self`, defaults to `true`
----@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+--- - `return_mode`: Constructor return strategy. `"self"` forces `self`, `"doc"` uses the documented return type,
+---                 and `"default"` prefers the documented return type and falls back to `self`.
+---                 Defaults to `"default"`
+---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
 
 ---
 --- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,

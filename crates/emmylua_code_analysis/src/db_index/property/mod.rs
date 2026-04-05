@@ -8,8 +8,9 @@ use hashbrown::{HashMap, HashSet};
 use crate::{DbIndex, FileId, LuaMember, LuaSignatureId};
 pub use builtin_attribute::{
     LuaAttributeCollectionExt, LuaAttributeUse, LuaBuiltinAttributeKind, LuaConstructorAttribute,
-    LuaDeprecatedAttribute, LuaFieldAccessorAttribute, LuaFieldAccessorConvention,
-    LuaIndexAliasAttribute, LuaLspOptimizationAttribute, LuaLspOptimizationCode,
+    LuaConstructorReturnMode, LuaDeprecatedAttribute, LuaFieldAccessorAttribute,
+    LuaFieldAccessorConvention, LuaIndexAliasAttribute, LuaLspOptimizationAttribute,
+    LuaLspOptimizationCode,
 };
 pub use decl_feature::{DeclFeatureFlag, PropertyDeclFeature};
 use emmylua_parser::{LuaAstNode, LuaDocTagField, LuaDocType, LuaVersionCondition, VisibilityKind};

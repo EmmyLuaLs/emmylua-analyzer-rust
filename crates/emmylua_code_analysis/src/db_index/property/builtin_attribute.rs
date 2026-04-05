@@ -134,7 +134,12 @@ impl LuaAttributeUse {
             name: self.get_string_param("name")?,
             root_class: self.get_string_param("root_class"),
             strip_self: self.get_bool_param("strip_self").unwrap_or(true),
-            return_self: self.get_bool_param("return_self").unwrap_or(true),
+            return_mode: match self.get_param_by_name("return_mode") {
+                Some(LuaType::DocStringConst(value)) => {
+                    LuaConstructorReturnMode::from_name(value.as_ref())?
+                }
+                _ => LuaConstructorReturnMode::Default,
+            },
         })
     }
 
@@ -204,8 +209,26 @@ pub struct LuaConstructorAttribute<'a> {
     pub root_class: Option<&'a str>,
     /// 是否移除`self`参数
     pub strip_self: bool,
-    /// 是否返回`self`
-    pub return_self: bool,
+    /// 构造函数返回策略
+    pub return_mode: LuaConstructorReturnMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LuaConstructorReturnMode {
+    SelfType,
+    Doc,
+    Default,
+}
+
+impl LuaConstructorReturnMode {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "self" => Some(Self::SelfType),
+            "doc" => Some(Self::Doc),
+            "default" => Some(Self::Default),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -237,7 +260,10 @@ pub struct LuaFieldAccessorAttribute<'a> {
 mod tests {
     use smol_str::SmolStr;
 
-    use super::{LuaAttributeUse, LuaFieldAccessorConvention, LuaLspOptimizationCode};
+    use super::{
+        LuaAttributeUse, LuaConstructorReturnMode, LuaFieldAccessorConvention,
+        LuaLspOptimizationCode,
+    };
     use crate::{LuaType, LuaTypeDeclId};
 
     fn doc_string(value: &str) -> LuaType {
@@ -255,7 +281,21 @@ mod tests {
         assert_eq!(constructor.name, "__init");
         assert_eq!(constructor.root_class, None);
         assert!(constructor.strip_self);
-        assert!(constructor.return_self);
+        assert_eq!(constructor.return_mode, LuaConstructorReturnMode::Default);
+    }
+
+    #[test]
+    fn constructor_attribute_supports_string_return_mode() {
+        let attribute = LuaAttributeUse::new(
+            LuaTypeDeclId::global("constructor"),
+            vec![
+                ("name".into(), Some(doc_string("__init"))),
+                ("return_mode".into(), Some(doc_string("doc"))),
+            ],
+        );
+
+        let constructor = attribute.as_constructor().unwrap();
+        assert_eq!(constructor.return_mode, LuaConstructorReturnMode::Doc);
     }
 
     #[test]

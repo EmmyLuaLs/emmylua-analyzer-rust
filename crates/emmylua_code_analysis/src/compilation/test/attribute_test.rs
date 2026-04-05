@@ -16,7 +16,7 @@ mod test {
             (
                 "meta.lua",
                 r#"
-            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
 
             ---@generic T
             ---@[constructor("__init")]
@@ -93,7 +93,7 @@ mod test {
             (
                 "3_meta.lua",
                 r#"
-                ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+                ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
 
                 ---@class class
                 ---@field is_class true
@@ -118,7 +118,7 @@ mod test {
         ws.def_file(
             "init.lua",
             r#"
-            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
 
             ---@generic T
             ---@[constructor("init")]
@@ -143,5 +143,40 @@ mod test {
         let ty = ws.expr_ty("A");
         let ty_desc = ws.humanize_type(ty);
         assert_eq!(ty_desc, "ClassB<T>");
+    }
+
+    #[test]
+    fn test_issue_1008_new_mode() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "init.lua",
+            r#"
+            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+
+            ---@generic T
+            ---@[constructor("init")]
+            ---@param class `T`
+            ---@return T
+            function class(class) return {} end
+
+            ---@class ClassB<T>
+            ClassB = class("ClassB")
+
+            ---@generic T
+            ---@param value T
+            ---@return ClassB<T>
+            function ClassB:init(value) end
+            "#,
+        );
+
+        ws.def(
+            r#"
+            A = ClassB("I'm ClassB")
+            "#,
+        );
+
+        let ty = ws.expr_ty("A");
+        let ty_desc = ws.humanize_type(ty);
+        assert_eq!(ty_desc, "ClassB<string>");
     }
 }
