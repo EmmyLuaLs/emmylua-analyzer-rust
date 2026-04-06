@@ -5,8 +5,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType, SemanticDeclLevel, SemanticModel,
-    SignatureReturnStatus,
+    DiagnosticCode, LuaSemanticDeclId, LuaSignature, LuaSignatureId, LuaType, SemanticDeclLevel,
+    SemanticModel, SignatureReturnStatus,
 };
 
 use super::{Checker, DiagnosticContext, get_closure_expr_comment, get_return_stats};
@@ -46,6 +46,11 @@ fn check_doc(
         }
         _ => (false, String::new()),
     };
+    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
+    let signature = semantic_model
+        .get_db()
+        .get_signature_index()
+        .get(&signature_id)?;
 
     let comment = get_closure_expr_comment(closure_expr);
 
@@ -56,6 +61,12 @@ fn check_doc(
     };
 
     if comment.is_none() {
+        if !is_global
+            && should_skip_incomplete_signature_doc(closure_expr, signature.get_return_type())
+        {
+            return Some(());
+        }
+
         let message = if is_global {
             t!(
                 "Missing comment for global function `%{name}`.",
@@ -86,20 +97,19 @@ fn check_doc(
         })
         .collect();
 
-    let doc_return_len =
-        get_doc_return_max_len(semantic_model, closure_expr).unwrap_or_else(|| {
-            let doc_return_len: usize = comment
-                .children::<LuaDocTagReturn>()
-                .map(|return_doc| return_doc.get_types().count())
-                .sum();
-            let doc_return_overload_max_len = comment
-                .children::<LuaDocTagReturnOverload>()
-                .map(|return_doc| return_doc.get_types().count())
-                .max()
-                .unwrap_or(0);
+    let doc_return_len = get_doc_return_max_len(signature).unwrap_or_else(|| {
+        let doc_return_len: usize = comment
+            .children::<LuaDocTagReturn>()
+            .map(|return_doc| return_doc.get_types().count())
+            .sum();
+        let doc_return_overload_max_len = comment
+            .children::<LuaDocTagReturnOverload>()
+            .map(|return_doc| return_doc.get_types().count())
+            .max()
+            .unwrap_or(0);
 
-            Some(doc_return_len.max(doc_return_overload_max_len))
-        });
+        Some(doc_return_len.max(doc_return_overload_max_len))
+    });
 
     check_params(
         context,
@@ -121,6 +131,18 @@ fn check_doc(
     );
 
     Some(())
+}
+
+fn should_skip_incomplete_signature_doc(
+    closure_expr: &LuaClosureExpr,
+    return_type: LuaType,
+) -> bool {
+    let has_params = closure_expr
+        .get_params_list()
+        .map(|params_list| params_list.get_params().next().is_some())
+        .unwrap_or(false);
+
+    !has_params && !matches!(return_type, LuaType::Unknown)
 }
 
 fn check_params(
@@ -208,15 +230,7 @@ fn check_returns(
     Some(())
 }
 
-fn get_doc_return_max_len(
-    semantic_model: &SemanticModel,
-    closure_expr: &LuaClosureExpr,
-) -> Option<Option<usize>> {
-    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
-    let signature = semantic_model
-        .get_db()
-        .get_signature_index()
-        .get(&signature_id)?;
+fn get_doc_return_max_len(signature: &LuaSignature) -> Option<Option<usize>> {
     if signature.resolve_return != SignatureReturnStatus::DocResolve {
         return None;
     }

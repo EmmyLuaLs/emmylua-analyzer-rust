@@ -42,7 +42,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(ws.check_code_for(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             local function noop()
@@ -175,6 +175,20 @@ mod tests {
             r#"
                 ---
                 function FLPR2()
+                end
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_incomplete_signature_doc_no_param_no_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_full_diagnostic();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+                local function a()
                 end
             "#
         ));
