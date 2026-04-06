@@ -815,4 +815,36 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_issue_1018() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias TypeGuard<T> boolean
+
+            ---@class MyClass
+            ---@class MyInheritedClass : MyClass
+            ---@field test fun(): void
+
+            ---@param instance MyClass
+            ---@return TypeGuard<MyInheritedClass>
+            function typeguard(instance)
+                return true
+            end
+
+
+            "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@type MyClass
+            local instance = {}
+            if typeguard(instance) then
+                instance:test()
+            end
+        "#
+        ));
+    }
 }

@@ -31,6 +31,7 @@ use crate::{
             var_ref_id::get_var_expr_var_ref_id,
         },
     },
+    semantic::type_check::is_sub_type_of,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,8 +233,7 @@ impl PendingConditionNarrow {
                 condition_flow,
             } => match condition_flow.clone() {
                 InferConditionFlow::TrueCondition => {
-                    narrow_down_type(db, antecedent_type, narrow.clone(), None)
-                        .unwrap_or_else(|| narrow.clone())
+                    narrow_type_guard(db, antecedent_type, narrow.clone()).unwrap_or(narrow.clone())
                 }
                 InferConditionFlow::FalseCondition => {
                     crate::TypeOps::Remove.apply(db, &antecedent_type, narrow)
@@ -244,6 +244,63 @@ impl PendingConditionNarrow {
             }
         }
     }
+}
+
+fn narrow_type_guard(db: &DbIndex, antecedent_type: LuaType, narrow: LuaType) -> Option<LuaType> {
+    if antecedent_type == narrow {
+        return Some(antecedent_type);
+    }
+
+    match (&antecedent_type, &narrow) {
+        (
+            LuaType::Def(source_id) | LuaType::Ref(source_id),
+            LuaType::Def(target_id) | LuaType::Ref(target_id),
+        ) => {
+            if is_sub_type_of(db, source_id, target_id) {
+                return Some(antecedent_type);
+            }
+            if is_sub_type_of(db, target_id, source_id) {
+                return Some(narrow);
+            }
+        }
+        (LuaType::Union(source_union), _) => {
+            let narrowed = source_union
+                .into_vec()
+                .into_iter()
+                .filter_map(|member| narrow_type_guard(db, member, narrow.clone()))
+                .collect::<Vec<_>>();
+            return (!narrowed.is_empty()).then_some(LuaType::from_vec(narrowed));
+        }
+        (LuaType::MultiLineUnion(source_union), _) => {
+            let narrowed = source_union
+                .get_unions()
+                .iter()
+                .filter_map(|(member, _)| narrow_type_guard(db, member.clone(), narrow.clone()))
+                .collect::<Vec<_>>();
+            return (!narrowed.is_empty()).then_some(LuaType::from_vec(narrowed));
+        }
+        (_, LuaType::Union(target_union)) => {
+            let narrowed = target_union
+                .into_vec()
+                .into_iter()
+                .filter_map(|target| narrow_type_guard(db, antecedent_type.clone(), target))
+                .collect::<Vec<_>>();
+            return (!narrowed.is_empty()).then_some(LuaType::from_vec(narrowed));
+        }
+        (_, LuaType::MultiLineUnion(target_union)) => {
+            let narrowed = target_union
+                .get_unions()
+                .iter()
+                .filter_map(|(target, _)| {
+                    narrow_type_guard(db, antecedent_type.clone(), target.clone())
+                })
+                .collect::<Vec<_>>();
+            return (!narrowed.is_empty()).then_some(LuaType::from_vec(narrowed));
+        }
+        _ => {}
+    }
+
+    narrow_down_type(db, antecedent_type, narrow, None)
 }
 
 fn apply_signature_cast(
