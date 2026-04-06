@@ -104,17 +104,7 @@ impl LuaOperator {
             } => {
                 let signature = db.get_signature_index().get(id);
                 if let Some(signature) = signature {
-                    let return_type = match *return_mode {
-                        LuaConstructorReturnMode::SelfType => LuaType::SelfInfer,
-                        LuaConstructorReturnMode::Doc => signature.get_return_type(),
-                        LuaConstructorReturnMode::Default => {
-                            if has_constructor_doc_return(signature) {
-                                signature.get_return_type()
-                            } else {
-                                LuaType::SelfInfer
-                            }
-                        }
-                    };
+                    let return_type = get_constructor_return_type(signature, return_mode);
                     return Ok(return_type);
                 }
 
@@ -145,18 +135,8 @@ impl LuaOperator {
                     } else {
                         signature.is_colon_define
                     };
+                    let return_type = get_constructor_return_type(signature, return_mode);
 
-                    let return_type = match *return_mode {
-                        LuaConstructorReturnMode::SelfType => LuaType::SelfInfer,
-                        LuaConstructorReturnMode::Doc => signature.get_return_type(),
-                        LuaConstructorReturnMode::Default => {
-                            if has_constructor_doc_return(signature) {
-                                signature.get_return_type()
-                            } else {
-                                LuaType::SelfInfer
-                            }
-                        }
-                    };
                     let func_type = LuaFunctionType::new(
                         signature.async_state,
                         is_colon_define,
@@ -218,6 +198,20 @@ impl From<InFiled<TextRange>> for LuaOperatorOwner {
     }
 }
 
-fn has_constructor_doc_return(signature: &LuaSignature) -> bool {
-    !signature.return_docs.is_empty() || !signature.return_overloads.is_empty()
+fn get_constructor_return_type(
+    signature: &LuaSignature,
+    return_mode: &LuaConstructorReturnMode,
+) -> LuaType {
+    let return_type = match *return_mode {
+        LuaConstructorReturnMode::SelfType => LuaType::SelfInfer,
+        LuaConstructorReturnMode::Doc => signature.get_return_type(),
+        LuaConstructorReturnMode::Default => {
+            if signature.resolve_return == SignatureReturnStatus::DocResolve {
+                signature.get_return_type()
+            } else {
+                LuaType::SelfInfer
+            }
+        }
+    };
+    return_type
 }

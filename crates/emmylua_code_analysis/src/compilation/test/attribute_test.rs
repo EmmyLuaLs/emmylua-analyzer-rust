@@ -179,4 +179,40 @@ mod test {
         let ty_desc = ws.humanize_type(ty);
         assert_eq!(ty_desc, "ClassB<string>");
     }
+
+    #[test]
+    fn test_attribute_constructor_return_mode() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "init.lua",
+            r#"
+                ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+
+                ---@generic T
+                ---@[constructor("__init")]
+                ---@param name `T`
+                ---@return T
+                function class(name)
+                    return {}
+                end
+            "#,
+        );
+
+        ws.def(
+            r#"
+            ---@class ClassA
+            ---@field a number
+            local classA = class("ClassA")
+
+            function classA:__init()
+                self.a = 1
+            end
+            A = classA()
+            "#,
+        );
+
+        let ty = ws.expr_ty("A");
+        let ty_desc = ws.humanize_type(ty);
+        assert_eq!(ty_desc, "ClassA");
+    }
 }
