@@ -169,7 +169,6 @@ function ipairs(t) end
 ---@nodiscard
 function load(chunk, chunkname, mode, env) end
 
-
 ---
 ---Loads a chunk from the given string.
 ---
@@ -184,10 +183,9 @@ function loadstring(text, chunkname) end
 ---
 --- Similar to `load`, but gets the chunk from file `filename` or from the
 --- standard input, if no file name is given.
----@overload fun()
----@param filename string
----@param mode? string
----@param env? any
+---@param filename? string
+---@param mode? std.loadmode
+---@param env? table
 ---@return function? chunk
 ---@return string? error_message
 function loadfile(filename, mode, env) end
