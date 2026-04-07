@@ -199,4 +199,40 @@ mod test {
         assert_eq!(ws.expr_ty("success"), ws.ty("unknown"));
         assert_eq!(ws.expr_ty("failure"), ws.ty("string"));
     }
+
+    #[test]
+    fn test_issue_1020_pcall_preserves_pairs_value_function_return() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        local t = {
+            { id = 1, func = function() return a > 0 end },
+            { id = 2, func = function() return a > 0 end },
+            { id = 3, func = function() return a > 0 end },
+        }
+
+        for _, v in pairs(t) do
+            local f = v.func
+            captured_f = f
+            local success, result = pcall(f)
+            outside = result
+            if success then
+                success_result = result
+            else
+                failure_result = result
+            end
+        end
+        "#,
+        );
+
+        let captured_f = ws.expr_ty("captured_f");
+        let outside = ws.expr_ty("outside");
+        let success_result = ws.expr_ty("success_result");
+        let failure_result = ws.expr_ty("failure_result");
+        assert_eq!(ws.humanize_type(captured_f), "fun() -> boolean");
+        assert_eq!(ws.humanize_type(outside), "(boolean|string)");
+        assert_eq!(ws.humanize_type(success_result), "boolean");
+        assert_eq!(ws.humanize_type(failure_result), "string");
+    }
 }

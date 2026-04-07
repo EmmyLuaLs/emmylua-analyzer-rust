@@ -1,12 +1,12 @@
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
-use crate::{DbIndex, LuaType, LuaUnionType, get_real_type};
+use crate::{DbIndex, LuaFunctionType, LuaType, LuaUnionType, get_real_type};
 
 pub fn union_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType {
     let match_source = get_real_type(db, &source)
         .cloned()
         .unwrap_or_else(|| source.clone());
-    union_type_impl(&match_source, source, target)
+    canonicalize_callable_union(db, union_type_impl(&match_source, source, target))
 }
 
 pub(crate) fn union_type_shallow(source: LuaType, target: LuaType) -> LuaType {
@@ -106,15 +106,55 @@ fn union_type_impl(match_source: &LuaType, source: LuaType, target: LuaType) -> 
         }
         // two union
         (LuaType::Union(left), LuaType::Union(right)) => {
-            let mut left = left.into_vec();
-            let right = right.into_vec();
-            left.extend(right);
+            if left == right {
+                return source.clone();
+            }
 
-            LuaType::from_vec(left)
+            let mut merged = left.into_vec();
+            merged.extend(right.into_vec());
+
+            LuaType::from_vec(merged)
         }
 
         // same type
         (left, right) if *left == *right => source.clone(),
         _ => LuaType::from_vec(vec![source, target]),
+    }
+}
+
+// `Signature` and `DocFunction` carry the same callable shape through different variants.
+// Collapse them after the normal union merge so the core merge logic stays simple.
+fn canonicalize_callable_union(db: &DbIndex, ty: LuaType) -> LuaType {
+    let LuaType::Union(union) = ty else {
+        return ty;
+    };
+
+    let mut types = Vec::new();
+    for member in union.into_vec() {
+        let member_callable = as_callable_type(db, &member);
+        if types.iter().any(|existing| {
+            existing == &member
+                || as_callable_type(db, existing)
+                    .as_ref()
+                    .zip(member_callable.as_ref())
+                    .is_some_and(|(existing, member)| existing == member)
+        }) {
+            continue;
+        }
+        types.push(member);
+    }
+
+    LuaType::from_vec(types)
+}
+
+fn as_callable_type(db: &DbIndex, ty: &LuaType) -> Option<Arc<LuaFunctionType>> {
+    match ty {
+        LuaType::DocFunction(func) => Some(func.clone()),
+        LuaType::Signature(signature_id) => db
+            .get_signature_index()
+            .get(signature_id)
+            .filter(|signature| signature.is_resolve_return())
+            .map(|signature| signature.to_doc_func_type()),
+        _ => None,
     }
 }
