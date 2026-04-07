@@ -35,7 +35,7 @@ pub fn check_object_type_compact(
                 check_guard.next_level()?,
             );
         }
-        LuaType::Ref(type_id) => {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => {
             return check_object_type_compact_type_ref(
                 context,
                 source_object,

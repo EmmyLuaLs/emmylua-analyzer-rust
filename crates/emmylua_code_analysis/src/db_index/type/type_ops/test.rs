@@ -181,6 +181,30 @@ mod tests {
     }
 
     #[test]
+    fn test_union_collapses_equivalent_callable_variants() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@return boolean
+        function foo()
+            return true
+        end
+        "#,
+        );
+
+        let doc = ws.ty("fun(): boolean");
+        let sig = ws.expr_ty("foo");
+        let doc_first = TypeOps::Union.apply(ws.get_db_mut(), &doc, &sig);
+        assert!(!doc_first.is_union());
+        assert_eq!(ws.humanize_type(doc_first), "fun() -> boolean");
+
+        let sig_first = TypeOps::Union.apply(ws.get_db_mut(), &sig, &doc);
+        assert!(!sig_first.is_union());
+        assert_eq!(ws.humanize_type(sig_first), "fun() -> boolean");
+    }
+
+    #[test]
     fn test_remove_type() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.check_code_for(
