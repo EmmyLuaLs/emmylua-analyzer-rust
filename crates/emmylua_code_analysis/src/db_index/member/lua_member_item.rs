@@ -85,20 +85,28 @@ fn resolve_member_type(
                 }
                 MemberTypeResolveState::Meta => {
                     let mut typ = LuaType::Never;
+                    let mut last_meta_type = LuaType::Never;
                     for member in &members {
                         let feature = member.get_feature();
                         if feature.is_meta_decl() {
-                            typ = TypeOps::Union.apply(
-                                db,
-                                &typ,
-                                db.get_type_index()
-                                    .get_type_cache(&member.get_id().into())
-                                    .ok_or(InferFailReason::UnResolveMemberType(member.get_id()))?
-                                    .as_type(),
-                            );
+                            let member_type = db
+                                .get_type_index()
+                                .get_type_cache(&member.get_id().into())
+                                .ok_or(InferFailReason::UnResolveMemberType(member.get_id()))?
+                                .as_type();
+                            last_meta_type =
+                                TypeOps::Union.apply(db, &last_meta_type, &member_type);
+                            if check_member_version(db, LuaSemanticDeclId::Member(member.get_id()))
+                            {
+                                typ = TypeOps::Union.apply(db, &typ, &member_type);
+                            }
                         }
                     }
-                    Ok(typ)
+                    if typ == LuaType::Never {
+                        Ok(last_meta_type)
+                    } else {
+                        Ok(typ)
+                    }
                 }
                 MemberTypeResolveState::FileDecl => {
                     let mut typ = LuaType::Never;
@@ -159,14 +167,19 @@ fn resolve_type_owner_member_id(
                     None
                 }
                 MemberTypeResolveState::Meta => {
+                    let mut last_meta_member_id = None;
                     for member in &members {
                         let feature = member.get_feature();
                         if feature.is_meta_decl() {
-                            return Some(member.get_id());
+                            last_meta_member_id = Some(member.get_id());
+                            if check_member_version(db, LuaSemanticDeclId::Member(member.get_id()))
+                            {
+                                return Some(member.get_id());
+                            }
                         }
                     }
 
-                    None
+                    last_meta_member_id
                 }
                 MemberTypeResolveState::FileDecl => {
                     for member in &members {
