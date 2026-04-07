@@ -256,13 +256,13 @@ function debug.sethook(thread, hook, mask, count) end
 --- raises an error when called with a `level` out of range. (You can call
 --- `getinfo` to check whether the level is valid.) Otherwise, it returns the
 --- name of the local variable.
----@overload fun(level:integer, var:string, value:any):string?
+---@overload fun(level:integer, index:integer, value:any):string?
 ---@param thread thread
 ---@param level integer
----@param var string
+---@param index integer
 ---@param value any
 ---@return string?
-function debug.setlocal(thread, level, var, value) end
+function debug.setlocal(thread, level, index, value) end
 
 ---
 --- Sets the metatable for the given `object` to the given `table` (which
