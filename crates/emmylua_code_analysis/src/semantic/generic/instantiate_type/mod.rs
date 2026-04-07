@@ -312,7 +312,26 @@ fn instantiate_generic_with_env(env: &GenericEvalEnv, generic: &LuaGenericType) 
         && let Some(type_decl) = env.db.get_type_index().get_type_decl(&type_decl_id)
         && type_decl.is_alias()
     {
-        let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
+        let mut new_substitutor =
+            TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
+        // true 分支里为 outer tpl 收集到的 conditional overlay 需要继续映射到 inner alias 参数位,
+        // 这样像 `ParametersNew<T>` 这类嵌套 conditional 才能看到 "T 已满足外层 extends 约束" 的局部事实.
+        for (i, origin_param) in generic_params.iter().enumerate() {
+            let outer_tpl = match origin_param {
+                LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl,
+                _ => continue,
+            };
+
+            let Some(conditional_raw) = env
+                .substitutor
+                .get_conditional_raw_type(outer_tpl.get_tpl_id())
+            else {
+                continue;
+            };
+
+            new_substitutor
+                .insert_conditional_type(GenericTplId::Type(i as u32), conditional_raw.clone());
+        }
         if let Some(origin) = type_decl.get_alias_origin(env.db, Some(&new_substitutor)) {
             return origin;
         }

@@ -4,7 +4,10 @@ use crate::{
     DbIndex, GenericTplId, LuaAliasCallKind, LuaConditionalType, LuaTypeDeclId, TypeOps,
     TypeVisitTrait, check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
-    semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
+    semantic::{
+        generic::type_substitutor::SubstitutorValue, member::find_members_with_key,
+        type_check::check_type_compact_with_level,
+    },
 };
 
 use super::{get_default_constructor, instantiate_type_generic, instantiate_type_generic_with_env};
@@ -89,18 +92,24 @@ fn resolve_conditional(
         return ConditionalResolution::Deferred;
     }
 
+    // `T extends U and true_type or false_type`, T 为被检查的类型, U 为约束类型
+    // left_operand 为 T, right_operand 为 U
     let left_operand = &alias_call.get_operands()[0];
     let right_operand = &alias_call.get_operands()[1];
 
     let instantiate_operand = |operand: &LuaType, mode: ConditionalCheckMode, checked: bool| {
+        // conditional 求值会同时构造 permissive 和 rigid 两种视图.
+        // permissive 用于回答 "是否必不成立", rigid 用于回答 "是否必成立".
         // checked operand 需要尽量看到 raw type, 否则像 T extends Foo 这类判断会被包装后的模板形态干扰.
         let scoped_env = env.with_conditional_check_mode(mode);
         let mut result = instantiate_type_generic_with_env(&scoped_env, operand);
-        if checked
-            && let LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) = operand
-            && let Some(raw) = env.substitutor.get_raw_type(tpl_ref.get_tpl_id())
-        {
-            result = raw.clone();
+        if checked && let LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) = operand {
+            let tpl_id = tpl_ref.get_tpl_id();
+            if let Some(raw) = env.substitutor.get_conditional_raw_type(tpl_id) {
+                result = raw.clone();
+            } else if let Some(raw) = env.substitutor.get_raw_type(tpl_id) {
+                result = raw.clone();
+            }
         }
         if conditional.has_new
             && let LuaType::Ref(id) | LuaType::Def(id) = &result
@@ -114,13 +123,18 @@ fn resolve_conditional(
         result
     };
 
+    // permissive 宽容模式下未解析模版会被尽量放宽为 `any`.
+    // rigid 严格模式下未解析模版会被保留.
+    // 这 4 个值分别用于 false proof, true proof, infer 匹配和后续 constraint fallback.
     let left_permissive = instantiate_operand(left_operand, ConditionalCheckMode::Permissive, true);
     let left_rigid = instantiate_operand(left_operand, ConditionalCheckMode::Rigid, true);
     let right_permissive =
         instantiate_operand(right_operand, ConditionalCheckMode::Permissive, false);
     let right_rigid = instantiate_operand(right_operand, ConditionalCheckMode::Rigid, false);
 
+    // right_has_infer 表示右侧 pattern 里还带 infer.
     let right_has_infer = contains_conditional_infer(&right_rigid);
+    // rigid_has_tpl 表示严格视图下至少一侧还依赖未解模板.
     let rigid_has_tpl = left_rigid.contain_tpl() || right_rigid.contain_tpl();
     if !rigid_has_tpl && right_has_infer {
         // 左右两侧都已经具体化时, infer pattern 可以直接做精确匹配, 成功就是 true, 失败就是 false.
@@ -137,6 +151,8 @@ fn resolve_conditional(
         };
     }
 
+    // permissive false proof 负责回答 "在最宽松视图下, 是否仍然必不成立".
+    // 这里禁止 infer 参与, 因为 infer pattern 不能拿来证明 false.
     if !right_has_infer
         && check_type_compact_with_level(
             env.db,
@@ -150,6 +166,8 @@ fn resolve_conditional(
         return ConditionalResolution::ExactFalse;
     }
 
+    // rigid true proof 负责回答 "在最保守视图下, 是否已经足够确定地成立".
+    // 只有两侧都稳定, 且右侧不含 infer 时, 才能把结果折叠成 ExactTrue.
     if !rigid_has_tpl
         && !right_has_infer
         && check_type_compact_with_level(
@@ -166,19 +184,81 @@ fn resolve_conditional(
         };
     }
 
+    // infer 右侧如果仍依赖未解模板, 当前作用域就没有资格为它固定绑定结果.
+    // 这时必须 defer, 否则会把占位结论错误地提前提交.
     if right_has_infer && rigid_has_tpl {
         // infer 右侧仍依赖未解模板时必须 defer, 否则会把占位结果错误固定到当前作用域.
         return ConditionalResolution::Deferred;
     }
 
-    let true_type = instantiate_type_generic(env.db, conditional.get_true_type(), env.substitutor);
+    // 走到这里说明:
+    // 1. 还不能精确证明 true 或 false.
+    // 2. 也不需要把整个 conditional 原样 defer.
+    // 因此回退到 constraint 求值, 用 true 和 false 两个分支的保守结果合成近似类型.
+    let true_type = instantiate_constraint_true_type(env, conditional, left_operand, &right_rigid);
     let false_type =
         instantiate_type_generic(env.db, conditional.get_false_type(), env.substitutor);
 
+    // 两个分支如果已经收敛为同一类型, 直接返回该类型.
+    // 否则返回它们的 union, 作为当前 conditional 的约束结果.
     if true_type == false_type {
         ConditionalResolution::Constraint(true_type)
     } else {
         ConditionalResolution::Constraint(TypeOps::Union.apply(env.db, &true_type, &false_type))
+    }
+}
+
+// 在 conditional 无法证明恒真或恒假, 只能退化为 constraint union 时,
+// true 分支仍然应该看到 "T 已满足 extends 右侧约束" 这一局部事实.
+// 这里会优先构造一个只对 true 分支生效的 substitutor:
+// - 未绑定模板直接注入窄化后的 checked type;
+// - 已有 raw 绑定的模板则只增加 checked overlay, 保留原始部分实例化信息.
+fn instantiate_constraint_true_type(
+    env: &GenericEvalEnv,
+    conditional: &LuaConditionalType,
+    left_operand: &LuaType,
+    narrowed_checked: &LuaType,
+) -> LuaType {
+    if let Some(true_substitutor) =
+        build_true_constraint_substitutor(env, left_operand, narrowed_checked)
+    {
+        return instantiate_type_generic(env.db, conditional.get_true_type(), &true_substitutor);
+    }
+
+    instantiate_type_generic(env.db, conditional.get_true_type(), env.substitutor)
+}
+
+// true 分支需要两种不同处理:
+// 1. 模板完全未绑定时, 可以直接把它临时绑定为 extends 右侧约束.
+// 2. 模板已经带着 raw 绑定进入当前 conditional, 且 raw 里还含外层模板时,
+//    只能给 checked operand 增加一层局部 constraint overlay, 不能覆盖原始 raw 绑定.
+fn build_true_constraint_substitutor(
+    env: &GenericEvalEnv,
+    left_operand: &LuaType,
+    narrowed_checked: &LuaType,
+) -> Option<TypeSubstitutor> {
+    let tpl = match left_operand {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl,
+        _ => return None,
+    };
+
+    let tpl_id = tpl.get_tpl_id();
+    match env.substitutor.get(tpl_id) {
+        None | Some(SubstitutorValue::None) => {
+            let mut true_substitutor = env.substitutor.clone();
+            true_substitutor.insert_type(tpl_id, narrowed_checked.clone(), true);
+            Some(true_substitutor)
+        }
+        Some(_) => {
+            let raw = env.substitutor.get_raw_type(tpl_id)?;
+            if !raw.contain_tpl() {
+                return None;
+            }
+
+            let mut true_substitutor = env.substitutor.clone();
+            true_substitutor.insert_conditional_type(tpl_id, narrowed_checked.clone());
+            Some(true_substitutor)
+        }
     }
 }
 

@@ -868,4 +868,64 @@ mod test {
         let result_ty = ws.expr_ty("A");
         assert_eq!(ws.humanize_type(result_ty), "number");
     }
+
+    #[test]
+    fn test_extends_conditional_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Procedure fun(...: any...): any
+
+            ---@alias MockContextCalls<T> T extends any... and any[] or T
+
+            ---@alias ParametersNew<T extends function> T extends (fun(...: infer P): any) and P or never
+
+            ---@alias MockParameters<T> T extends Procedure and ParametersNew<T> or never
+
+            ---@class MockContext<T>
+            ---@field calls (MockContextCalls<MockParameters<T>>)[]
+
+            ---@class Mock<T>
+            ---@field ctx MockContext<T>
+
+            ---@type Mock
+            local mock
+
+            Calls = mock.ctx.calls
+
+        "#,
+        );
+        let result_ty = ws.expr_ty("Calls");
+        assert_eq!(ws.humanize_type(result_ty), "any[][]");
+    }
+
+    #[test]
+    fn test_extends_conditional_generic_preserves_partial_instantiation() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias IdIfHasFoo<T> T extends { foo: any } and T or never
+
+            ---@class Inner<T>
+            ---@field value IdIfHasFoo<T>
+
+            ---@class Wrapper<U>
+            ---@field inner Inner<{ foo: U }>
+
+            ---@type Wrapper
+            local wrapper
+
+            Value = wrapper.inner.value
+            Foo = wrapper.inner.value.foo
+        "#,
+        );
+
+        let value_ty = ws.expr_ty("Value");
+        let value_desc = ws.humanize_type_detailed(value_ty);
+        assert!(!value_desc.contains("foo: any"), "{value_desc}");
+
+        let foo_ty = ws.expr_ty("Foo");
+        let foo_desc = ws.humanize_type(foo_ty);
+        assert_ne!(foo_desc, "any", "{foo_desc}");
+    }
 }

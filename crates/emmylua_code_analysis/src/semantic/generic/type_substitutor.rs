@@ -5,11 +5,10 @@ use crate::{DbIndex, GenericTplId, LuaType, LuaTypeDeclId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionalCheckMode {
-    // 默认实例化模式, 保持模板未绑定时的原始形态.
     Normal,
-    // 宽松条件判断模式, 用于证明 conditional 一定不成立的场景.
+    /// 宽松条件判断模式, 用于证明 conditional 一定不成立的场景.
     Permissive,
-    // 刚性条件判断模式, 只在两侧都足够稳定时证明 conditional 一定成立.
+    /// 刚性条件判断模式, 只在两侧都足够稳定时证明 conditional 一定成立.
     Rigid,
 }
 
@@ -41,6 +40,7 @@ impl<'a> GenericEvalEnv<'a> {
 #[derive(Debug, Clone)]
 pub struct TypeSubstitutor {
     tpl_replace_map: HashMap<GenericTplId, SubstitutorValue>,
+    conditional_tpl_replace_map: HashMap<GenericTplId, LuaType>,
     alias_type_id: Option<LuaTypeDeclId>,
     self_type: Option<LuaType>,
 }
@@ -55,6 +55,7 @@ impl TypeSubstitutor {
     pub fn new() -> Self {
         Self {
             tpl_replace_map: HashMap::new(),
+            conditional_tpl_replace_map: HashMap::new(),
             alias_type_id: None,
             self_type: None,
         }
@@ -70,6 +71,7 @@ impl TypeSubstitutor {
         }
         Self {
             tpl_replace_map,
+            conditional_tpl_replace_map: HashMap::new(),
             alias_type_id: None,
             self_type: None,
         }
@@ -85,6 +87,7 @@ impl TypeSubstitutor {
         }
         Self {
             tpl_replace_map,
+            conditional_tpl_replace_map: HashMap::new(),
             alias_type_id: Some(alias_type_id),
             self_type: None,
         }
@@ -188,23 +191,43 @@ impl TypeSubstitutor {
     pub fn get_self_type(&self) -> Option<&LuaType> {
         self.self_type.as_ref()
     }
+
+    pub fn insert_conditional_type(&mut self, tpl_id: GenericTplId, replace_type: LuaType) {
+        self.conditional_tpl_replace_map
+            .insert(tpl_id, into_ref_type(replace_type));
+    }
+
+    pub fn get_conditional_raw_type(&self, tpl_id: GenericTplId) -> Option<&LuaType> {
+        self.conditional_tpl_replace_map.get(&tpl_id)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct SubstitutorTypeValue {
     raw: LuaType,
-    default: LuaType,
+    decayed: DecayedType,
+}
+
+#[derive(Debug, Clone)]
+enum DecayedType {
+    Same,
+    Cached(LuaType),
 }
 
 impl SubstitutorTypeValue {
     pub fn new(raw: LuaType, decay: bool) -> Self {
         let raw = into_ref_type(raw);
-        let default = if decay {
-            into_ref_type(constant_decay(raw.clone()))
+        let decayed = if decay {
+            let decayed = into_ref_type(constant_decay(raw.clone()));
+            if decayed == raw {
+                DecayedType::Same
+            } else {
+                DecayedType::Cached(decayed)
+            }
         } else {
-            raw.clone()
+            DecayedType::Same
         };
-        Self { raw, default }
+        Self { raw, decayed }
     }
 
     pub fn raw(&self) -> &LuaType {
@@ -212,7 +235,10 @@ impl SubstitutorTypeValue {
     }
 
     pub fn default(&self) -> &LuaType {
-        &self.default
+        match &self.decayed {
+            DecayedType::Same => &self.raw,
+            DecayedType::Cached(decayed) => decayed,
+        }
     }
 }
 
