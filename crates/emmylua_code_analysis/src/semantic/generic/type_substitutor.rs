@@ -1,7 +1,42 @@
 use hashbrown::{HashMap, HashSet};
 
 use super::tpl_pattern::constant_decay;
-use crate::{GenericTplId, LuaType, LuaTypeDeclId};
+use crate::{DbIndex, GenericTplId, LuaType, LuaTypeDeclId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConditionalCheckMode {
+    // 默认实例化模式, 保持模板未绑定时的原始形态.
+    Normal,
+    // 宽松条件判断模式, 用于证明 conditional 一定不成立的场景.
+    Permissive,
+    // 刚性条件判断模式, 只在两侧都足够稳定时证明 conditional 一定成立.
+    Rigid,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GenericEvalEnv<'a> {
+    pub db: &'a DbIndex,
+    pub substitutor: &'a TypeSubstitutor,
+    pub conditional_check_mode: ConditionalCheckMode,
+}
+
+impl<'a> GenericEvalEnv<'a> {
+    pub fn new(db: &'a DbIndex, substitutor: &'a TypeSubstitutor) -> Self {
+        Self {
+            db,
+            substitutor,
+            conditional_check_mode: ConditionalCheckMode::Normal,
+        }
+    }
+
+    pub fn with_conditional_check_mode(&self, mode: ConditionalCheckMode) -> Self {
+        Self {
+            db: self.db,
+            substitutor: self.substitutor,
+            conditional_check_mode: mode,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TypeSubstitutor {
