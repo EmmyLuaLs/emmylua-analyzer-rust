@@ -119,7 +119,7 @@ function table.unpack(list, i, j) end
 ---
 ---@generic T
 ---@param ... T...
----@return [T...] | { n: integer }
+---@return [T...] & { n: integer }
 ---@nodiscard
 function table.pack(...) end
 
