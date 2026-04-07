@@ -301,6 +301,47 @@ mod test {
     }
 
     #[test]
+    fn test_object_constraint_with_class_duck_typing() {
+        let mut ws = VirtualWorkspace::new();
+        // A @class whose inferred Def type (e.g. from `return self`) should satisfy
+        // an object constraint via structural duck typing, same as Ref types do.
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                ---@class MyPos
+                ---@field x number
+                ---@field y number
+                ---@field z number
+                ---@overload fun(x: number, y: number, z: number): MyPos
+                MyPos = {}
+                MyPos.__index = MyPos
+
+                setmetatable(MyPos, {
+                    __call = function(x, y, z)
+                        return setmetatable({ x = x, y = y, z = z }, MyPos)
+                    end
+                })
+
+                function MyPos:next()
+                    self.x = self.x + 1
+                    self.y = self.y + 1
+                    return self
+                end
+
+                ---@generic T: { x: number, y: number, z: number }
+                ---@param pos T
+                local function getTile(pos) end
+
+                local p = MyPos(0, 0, 0):next()
+                getTile(p)
+
+                local p2 = MyPos(1, 1, 1)
+                getTile(p2:next())
+            "#
+        ));
+    }
+
+    #[test]
     fn test_generic_keyof_param_scope() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
