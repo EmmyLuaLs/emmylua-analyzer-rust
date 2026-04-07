@@ -206,6 +206,15 @@ fn infer_call_doc_function(
                 .get_db()
                 .get_signature_index()
                 .get(&signature_id)?;
+            if !signature.overloads.is_empty() {
+                // When a signature has overloads, `to_doc_func_type()` merges all overload
+                // parameter types into unions on the main signature. This produces incorrect
+                // types for generic constraint checking (e.g. a merged `T | nil | integer`
+                // would falsely trigger a constraint mismatch).
+                // Instead, resolve the actual overload that matches the call arguments,
+                // so that constraint checking runs against the correct parameter types.
+                return semantic_model.infer_call_expr_func(call_expr.clone(), None);
+            }
             Some(signature.to_doc_func_type())
         }
         LuaType::DocFunction(func) => Some(func),
