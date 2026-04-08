@@ -61,7 +61,7 @@ function coroutine.close(co) end
 ---@return any ...
 function coroutine.resume(co, val1, ...) end
 
----@version 5.1
+---@version 5.1, JIT
 ---
 --- Returns the running coroutine, or nil when called by the main thread.
 ---@return thread?
