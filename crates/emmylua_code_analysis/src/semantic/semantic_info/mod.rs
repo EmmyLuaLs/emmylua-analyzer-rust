@@ -4,8 +4,8 @@ mod semantic_decl_level;
 mod semantic_guard;
 
 use crate::{
-    DbIndex, LuaDeclExtra, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, LuaTypeCache,
-    TypeOps,
+    DbIndex, LuaDeclExtra, LuaDeclId, LuaInstanceType, LuaMemberId, LuaMemberOwner,
+    LuaSemanticDeclId, LuaType, LuaTypeCache, TypeOps,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaParamName,
@@ -16,7 +16,7 @@ pub use resolve_global_decl::resolve_global_decl_id;
 pub use semantic_decl_level::SemanticDeclLevel;
 pub use semantic_guard::SemanticDeclGuard;
 
-use super::{LuaInferCache, infer_expr};
+use super::{LuaInferCache, infer::literal_provides_optional_class_field, infer_expr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SemanticInfo {
@@ -38,8 +38,21 @@ pub fn infer_token_semantic_info(
                 .get_type_index()
                 .get_type_cache(&decl_id.into())
                 .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
+            let mut typ = type_cache.as_type().clone();
+
+            // Only narrow LocalName declarations — ForStat/ForRangeStat cannot have
+            // table literal initializers.
+            if matches!(parent.kind().into(), LuaSyntaxKind::LocalName) {
+                let root = parent.ancestors().last()?;
+                if let Some(narrowed) =
+                    try_narrow_local_to_instance(db, cache, &typ, &decl_id, &root)
+                {
+                    typ = narrowed;
+                }
+            }
+
             Some(SemanticInfo {
-                typ: type_cache.as_type().clone(),
+                typ,
                 semantic_decl: Some(LuaSemanticDeclId::LuaDecl(decl_id)),
             })
         }
@@ -142,6 +155,41 @@ pub fn infer_node_semantic_info(
         }
         _ => None,
     }
+}
+
+/// If `typ` is a class type, `decl_id` has a `TableConst` initializer, and at least one
+/// provided field is optional in the class, returns `Instance(typ, range)`.
+/// Otherwise returns `None`.
+///
+/// The optional-field guard prevents wrapping non-optional class declarations in
+/// Instance (which would intersect field types with literal constants, narrowing
+/// `integer` to `IntegerConst(1)` undesirably for initial declarations).
+fn try_narrow_local_to_instance(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    typ: &LuaType,
+    decl_id: &LuaDeclId,
+    root: &LuaSyntaxNode,
+) -> Option<LuaType> {
+    if !typ.is_class_type(db) {
+        return None;
+    }
+    let decl = db.get_decl_index().get_decl(decl_id)?;
+    let value_syntax_id = decl.get_value_syntax_id()?;
+    let node = value_syntax_id.to_node_from_root(root)?;
+    let expr = LuaExpr::cast(node)?;
+    let LuaType::TableConst(range) = infer_expr(db, cache, expr).ok()? else {
+        return None;
+    };
+    let literal_owner = LuaMemberOwner::Element(range.clone());
+    // Only create Instance when at least one provided literal field corresponds
+    // to an optional class field — otherwise narrowing brings no benefit.
+    if !literal_provides_optional_class_field(db, typ, &literal_owner) {
+        return None;
+    }
+    Some(LuaType::Instance(
+        LuaInstanceType::new(typ.clone(), range).into(),
+    ))
 }
 
 fn type_def_tag_info(name: &str, db: &DbIndex, cache: &mut LuaInferCache) -> Option<SemanticInfo> {

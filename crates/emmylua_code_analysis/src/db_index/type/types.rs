@@ -231,6 +231,16 @@ impl LuaType {
         matches!(self, LuaType::Unknown)
     }
 
+    pub fn is_class_type(&self, db: &DbIndex) -> bool {
+        let type_id = match self {
+            LuaType::Ref(id) | LuaType::Def(id) => id,
+            _ => return false,
+        };
+        db.get_type_index()
+            .get_type_decl(type_id)
+            .is_some_and(|decl| decl.is_class())
+    }
+
     pub fn is_nil(&self) -> bool {
         matches!(self, LuaType::Nil)
     }

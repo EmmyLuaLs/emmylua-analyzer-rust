@@ -709,8 +709,25 @@ fn infer_instance_member(
     match base_result {
         Ok(typ) => match infer_table_member(db, cache, range.clone(), index_expr.clone()) {
             Ok(table_type) => {
-                return Ok(match TypeOps::Intersect.apply(db, &typ, &table_type) {
-                    LuaType::Never => typ,
+                // If the literal value is nullable (e.g. `a = nil`), the field
+                // is effectively unset — keep the original (nullable) class type.
+                if table_type.is_nullable() {
+                    return Ok(typ);
+                }
+                // Field has a concrete value — strip nil from the class type, then
+                // intersect with the literal type to capture the specific assigned type
+                // (e.g. `string` → `StringConst("hello")` after `a = { a = "hello" }`).
+                let base = TypeOps::Remove.apply(db, &typ, &LuaType::Nil);
+                return Ok(match TypeOps::Intersect.apply(db, &base, &table_type) {
+                    LuaType::Never => {
+                        // Incompatible types: if literal field is a nested table, wrap in
+                        // Instance to preserve context for recursive member access.
+                        if let LuaType::TableConst(nested_range) = table_type {
+                            LuaType::Instance(LuaInstanceType::new(base, nested_range).into())
+                        } else {
+                            base
+                        }
+                    }
                     intersected => intersected,
                 });
             }

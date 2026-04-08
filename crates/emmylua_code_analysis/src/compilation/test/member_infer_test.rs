@@ -326,6 +326,110 @@ mod test {
     }
 
     #[test]
+    fn test_optional_field_narrowed_by_table_literal() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class NarrowFieldTest
+        ---@field a? integer
+        ---@field b? integer
+
+        ---@type NarrowFieldTest
+        local test = { a = 1 }
+        c = test.a
+        d = test.b
+        "#,
+        );
+
+        let c_ty = ws.expr_ty("c");
+        assert!(
+            matches!(c_ty, LuaType::Integer | LuaType::IntegerConst(_)),
+            "expected integer type for provided field, got {:?}",
+            c_ty
+        );
+
+        // b is not provided in the literal, should remain integer? (nullable)
+        let d_ty = ws.expr_ty("d");
+        let expected =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into());
+        assert_eq!(d_ty, expected, "expected integer? for unprovided field");
+    }
+
+    #[test]
+    fn test_nil_literal_preserves_nullable() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class NilFieldTest
+        ---@field a? integer
+
+        ---@type NilFieldTest
+        local test = { a = nil }
+        x = test.a
+        "#,
+        );
+
+        let x_ty = ws.expr_ty("x");
+        let expected =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::Integer, LuaType::Nil]).into());
+        assert_eq!(x_ty, expected, "{{a = nil}} should keep a as integer?");
+    }
+
+    #[test]
+    fn test_recursive_instance_member_resolution() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class DeepInner
+        ---@field c integer
+
+        ---@class DeepMiddle
+        ---@field b? DeepInner
+
+        ---@class DeepOuter
+        ---@field a? DeepMiddle
+
+        ---@type DeepOuter
+        local test = { a = { b = { c = 1 } } }
+        x = test.a.b.c
+        "#,
+        );
+
+        let x_ty = ws.expr_ty("x");
+        assert!(
+            matches!(x_ty, LuaType::Integer | LuaType::IntegerConst(_)),
+            "expected integer type for deeply nested field, got {:?}",
+            x_ty
+        );
+    }
+
+    #[test]
+    fn test_optional_class_field_narrowed_by_table_literal() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class InnerClass
+        ---@field b integer
+
+        ---@class OuterClass
+        ---@field a? InnerClass
+
+        ---@type OuterClass
+        local test = { a = { b = 1 } }
+        c = test.a
+        "#,
+        );
+
+        let c_ty = ws.expr_ty("c");
+        assert!(
+            matches!(c_ty, LuaType::Ref(_) | LuaType::Instance(_)),
+            "expected InnerClass (non-nullable, possibly Instance) for provided optional field, got {:?}",
+            c_ty
+        );
+    }
+
+    #[test]
     fn test_union_member_access_preserves_never() {
         let mut ws = VirtualWorkspace::new();
 

@@ -4,7 +4,8 @@ use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaChunk, LuaExpr, LuaVarExpr};
 
 use crate::{
     CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
-    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact, infer_expr,
+    LuaInferCache, LuaMemberId, LuaMemberOwner, LuaSignatureId, LuaType, TypeOps,
+    check_type_compact, infer_expr,
     semantic::{
         infer::{
             InferResult, VarRefId, infer_expr_list_value_type_at,
@@ -16,7 +17,7 @@ use crate::{
                 },
                 get_multi_antecedents, get_single_antecedent,
                 get_type_at_cast_flow::get_type_at_cast_flow,
-                get_var_ref_type, narrow_down_type,
+                get_var_ref_type, literal_provides_optional_class_field, narrow_down_type,
                 var_ref_id::get_var_expr_var_ref_id,
             },
         },
@@ -170,7 +171,10 @@ fn get_type_at_flow_internal(
                     if *position <= var_ref_id.get_position() {
                         match get_var_ref_type(db, cache, var_ref_id) {
                             Ok(var_type) => {
-                                result_type = var_type;
+                                result_type = try_narrow_decl_to_instance(
+                                    db, cache, root, var_ref_id, &var_type,
+                                )
+                                .unwrap_or(var_type);
                                 break;
                             }
                             Err(err) => {
@@ -490,4 +494,34 @@ fn try_infer_decl_initializer_type(
     let init_type = expr_type.get_result_slot_type(0);
 
     Ok(init_type)
+}
+
+/// If `var_type` is a class type, the declaration's initializer is a `TableConst`, and
+/// at least one provided field is optional in the class, returns the Instance-narrowed
+/// type. Otherwise returns `None`.
+///
+/// The optional-field guard prevents wrapping non-optional class declarations in
+/// Instance (which would intersect field types with literal constants, narrowing
+/// `integer` to `IntegerConst(1)` undesirably for initial declarations).
+fn try_narrow_decl_to_instance(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    root: &LuaChunk,
+    var_ref_id: &VarRefId,
+    var_type: &LuaType,
+) -> Option<LuaType> {
+    if !var_type.is_class_type(db) {
+        return None;
+    }
+    let init_type = try_infer_decl_initializer_type(db, cache, root, var_ref_id).ok()??;
+    let LuaType::TableConst(ref range) = init_type else {
+        return None;
+    };
+    let literal_owner = LuaMemberOwner::Element(range.clone());
+    // Only create Instance when at least one provided literal field corresponds
+    // to an optional class field — otherwise narrowing brings no benefit.
+    if !literal_provides_optional_class_field(db, var_type, &literal_owner) {
+        return None;
+    }
+    narrow_down_type(db, var_type.clone(), init_type, Some(var_type.clone()))
 }

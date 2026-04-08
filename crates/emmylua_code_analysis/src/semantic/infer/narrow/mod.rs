@@ -6,7 +6,7 @@ mod var_ref_id;
 
 use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowTree, InferFailReason,
-    LuaInferCache, LuaType, infer_param,
+    LuaInferCache, LuaMemberOwner, LuaType, infer_param,
     semantic::infer::{
         InferResult,
         infer_name::{find_decl_member_type, infer_global_type},
@@ -101,4 +101,34 @@ fn get_multi_antecedents(tree: &FlowTree, flow: &FlowNode) -> Result<Vec<FlowId>
 pub enum ResultTypeOrContinue {
     Result(LuaType),
     Continue,
+}
+
+/// Returns `true` if the table literal (identified by `literal_owner`) provides at least
+/// one field that is declared optional (`field?`) in `class_type`.
+pub(in crate::semantic) fn literal_provides_optional_class_field(
+    db: &DbIndex,
+    class_type: &LuaType,
+    literal_owner: &LuaMemberOwner,
+) -> bool {
+    let type_id = match class_type {
+        LuaType::Ref(id) | LuaType::Def(id) => id,
+        _ => return false,
+    };
+    let class_owner = LuaMemberOwner::Type(type_id.clone());
+    let Some(class_members) = db.get_member_index().get_members(&class_owner) else {
+        return false;
+    };
+    let Some(literal_members) = db.get_member_index().get_members(literal_owner) else {
+        return false;
+    };
+    literal_members.iter().any(|lit_member| {
+        let lit_key = lit_member.get_key();
+        class_members.iter().any(|cls_member| {
+            cls_member.get_key() == lit_key
+                && db
+                    .get_type_index()
+                    .get_type_cache(&cls_member.get_id().into())
+                    .is_some_and(|tc| tc.as_type().is_nullable())
+        })
+    })
 }

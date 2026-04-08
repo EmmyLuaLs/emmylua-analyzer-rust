@@ -551,4 +551,113 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_optional_field_narrowing_partial() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            ---@class NarrowTest
+            ---@field a? integer
+            ---@field b? integer
+
+            ---@type NarrowTest
+            local <??>test = { a = 1 }
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal test: NarrowTest {\n    a: integer,\n    b?: integer,\n}\n```"
+                    .to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_optional_field_narrowing_all_provided() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            ---@class NarrowTestAll
+            ---@field a? integer
+            ---@field b? integer
+
+            ---@type NarrowTestAll
+            local <??>test = { a = 1, b = 2 }
+            "#,
+            VirtualHoverResult {
+                value:
+                    "```lua\nlocal test: NarrowTestAll {\n    a: integer,\n    b: integer,\n}\n```"
+                        .to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_optional_field_narrowing_empty_table() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        // Empty table: no Instance created, falls back to standard Ref rendering
+        check!(ws.check_hover(
+            r#"
+            ---@class NarrowTestEmpty
+            ---@field a? integer
+            ---@field b? integer
+
+            ---@type NarrowTestEmpty
+            local <??>test = {}
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal test: NarrowTestEmpty {\n    a: integer?,\n    b: integer?,\n}\n```"
+                    .to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_recursive_nested_hover() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            ---@class RecDeepInner
+            ---@field c integer
+
+            ---@class RecDeepMiddle
+            ---@field b? RecDeepInner
+
+            ---@class RecDeepOuter
+            ---@field a? RecDeepMiddle
+
+            ---@type RecDeepOuter
+            local test = { a = { b = { c = 1 } } }
+            local <??>x = test.a.b.c
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal x: integer = 1\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_nested_optional_field_narrowing() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+            ---@class NarrowNestedInner
+            ---@field b integer
+
+            ---@class NarrowNestedOuter
+            ---@field a? NarrowNestedInner
+
+            ---@type NarrowNestedOuter
+            local test = { a = { b = 1 } }
+            local <??>x = test.a
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal x: NarrowNestedInner {\n    b: integer,\n}\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }
