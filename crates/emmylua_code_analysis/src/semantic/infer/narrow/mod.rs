@@ -6,13 +6,13 @@ mod var_ref_id;
 
 use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowTree, InferFailReason,
-    LuaInferCache, LuaType, infer_param,
+    LuaInferCache, infer_param,
     semantic::infer::{
         InferResult,
         infer_name::{find_decl_member_type, infer_global_type},
     },
 };
-pub(in crate::semantic) use condition_flow::ConditionFlowAction;
+pub(in crate::semantic) use condition_flow::{ConditionFlowAction, InferConditionFlow};
 use emmylua_parser::{LuaAstNode, LuaChunk, LuaExpr};
 pub use get_type_at_cast_flow::get_type_at_call_expr_inline_cast;
 pub use narrow_type::{narrow_down_type, narrow_false_or_nil, remove_false_or_nil};
@@ -95,10 +95,4 @@ fn get_multi_antecedents(tree: &FlowTree, flow: &FlowNode) -> Result<Vec<FlowId>
         },
         None => Err(InferFailReason::None),
     }
-}
-
-#[derive(Debug)]
-pub enum ResultTypeOrContinue {
-    Result(LuaType),
-    Continue,
 }

@@ -1,93 +1,9 @@
-use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaCallExpr, LuaChunk, LuaDocOpType, LuaDocTagCast, LuaExpr,
-};
+use emmylua_parser::{BinaryOperator, LuaAstNode, LuaCallExpr, LuaChunk, LuaDocOpType};
 
 use crate::{
-    DbIndex, FileId, FlowId, FlowNode, FlowNodeKind, FlowTree, InFiled, InferFailReason,
-    LuaInferCache, LuaType, LuaTypeOwner, TypeOps,
-    semantic::infer::{
-        VarRefId,
-        narrow::{
-            ResultTypeOrContinue, condition_flow::InferConditionFlow, get_single_antecedent,
-            get_type_at_flow::get_type_at_flow, var_ref_id::get_var_expr_var_ref_id,
-        },
-    },
+    DbIndex, FileId, FlowId, FlowNodeKind, FlowTree, InFiled, InferFailReason, LuaInferCache,
+    LuaType, LuaTypeOwner, TypeOps, semantic::infer::narrow::condition_flow::InferConditionFlow,
 };
-
-pub fn get_type_at_cast_flow(
-    db: &DbIndex,
-    tree: &FlowTree,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
-    tag_cast: LuaDocTagCast,
-) -> Result<ResultTypeOrContinue, InferFailReason> {
-    match tag_cast.get_key_expr() {
-        Some(expr) => {
-            get_type_at_cast_expr(db, tree, cache, root, var_ref_id, flow_node, tag_cast, expr)
-        }
-        None => get_type_at_inline_cast(db, tree, cache, root, var_ref_id, flow_node, tag_cast),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn get_type_at_cast_expr(
-    db: &DbIndex,
-    tree: &FlowTree,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
-    tag_cast: LuaDocTagCast,
-    key_expr: LuaExpr,
-) -> Result<ResultTypeOrContinue, InferFailReason> {
-    let Some(maybe_ref_id) = get_var_expr_var_ref_id(db, cache, key_expr) else {
-        return Ok(ResultTypeOrContinue::Continue);
-    };
-
-    if maybe_ref_id != *var_ref_id {
-        return Ok(ResultTypeOrContinue::Continue);
-    }
-
-    let antecedent_flow_id = get_single_antecedent(flow_node)?;
-    let mut antecedent_type =
-        get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-    for cast_op_type in tag_cast.get_op_types() {
-        antecedent_type = cast_type(
-            db,
-            cache.get_file_id(),
-            cast_op_type,
-            antecedent_type,
-            InferConditionFlow::TrueCondition,
-        )?;
-    }
-    Ok(ResultTypeOrContinue::Result(antecedent_type))
-}
-
-fn get_type_at_inline_cast(
-    db: &DbIndex,
-    tree: &FlowTree,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
-    tag_cast: LuaDocTagCast,
-) -> Result<ResultTypeOrContinue, InferFailReason> {
-    let antecedent_flow_id = get_single_antecedent(flow_node)?;
-    let mut antecedent_type =
-        get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-    for cast_op_type in tag_cast.get_op_types() {
-        antecedent_type = cast_type(
-            db,
-            cache.get_file_id(),
-            cast_op_type,
-            antecedent_type,
-            InferConditionFlow::TrueCondition,
-        )?;
-    }
-    Ok(ResultTypeOrContinue::Result(antecedent_type))
-}
 
 pub fn get_type_at_call_expr_inline_cast(
     db: &DbIndex,
@@ -127,16 +43,6 @@ enum CastAction {
     Force,
 }
 
-impl CastAction {
-    fn get_negative(&self) -> Self {
-        match self {
-            CastAction::Add => CastAction::Remove,
-            CastAction::Remove => CastAction::Add,
-            CastAction::Force => CastAction::Remove,
-        }
-    }
-}
-
 pub fn cast_type(
     db: &DbIndex,
     file_id: FileId,
@@ -155,8 +61,12 @@ pub fn cast_type(
         None => CastAction::Force,
     };
 
-    if condition_flow.is_false() {
-        action = action.get_negative();
+    if matches!(condition_flow, InferConditionFlow::FalseCondition) {
+        action = match action {
+            CastAction::Add => CastAction::Remove,
+            CastAction::Remove => CastAction::Add,
+            CastAction::Force => CastAction::Remove,
+        };
     }
 
     if cast_op_type.is_nullable() {

@@ -1867,6 +1867,27 @@ end
     }
 
     #[test]
+    fn test_feature_const_local_alias_chain_does_not_inherit_flow() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            local ret --- @type string | nil
+
+            local is_string = type(ret) == "string"
+            local ok = is_string
+            if ok then
+                a = ret
+            end
+            "#,
+        );
+
+        let a = ws.expr_ty("a");
+        let a_expected = ws.ty("string?");
+        assert_eq!(a, a_expected);
+    }
+
+    #[test]
     fn test_feature_generic_type_guard() {
         let mut ws = VirtualWorkspace::new();
 

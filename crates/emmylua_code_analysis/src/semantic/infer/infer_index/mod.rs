@@ -1,10 +1,9 @@
 mod infer_array;
 
-use std::collections::HashSet;
-
 use emmylua_parser::{
     LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult, PathTrait,
 };
+use hashbrown::HashSet;
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -107,6 +106,7 @@ fn infer_member_type_pass_flow(
     cache
         .index_ref_origin_type_cache
         .insert(var_ref_id.clone(), CacheEntry::Cache(member_type.clone()));
+
     let result = infer_expr_narrow_type(db, cache, LuaExpr::IndexExpr(index_expr), var_ref_id);
     match &result {
         Err(InferFailReason::None) => Ok(member_type.clone()),
