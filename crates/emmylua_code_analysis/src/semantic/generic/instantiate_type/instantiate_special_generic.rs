@@ -1,6 +1,6 @@
 use crate::{
     DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
-    LuaTupleStatus, LuaTupleType, LuaType, TypeOps, VariadicType, get_member_map,
+    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
     semantic::{
         generic::key_type_to_member_key,
         member::{find_members, infer_raw_member_type},
@@ -60,7 +60,7 @@ pub fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
-            if operands[0].contain_tpl() || operands[1].contain_tpl() {
+            if operands[0].contains_tpl_node() || operands[1].contains_tpl_node() {
                 return LuaType::Call(
                     LuaAliasCallType::new(LuaAliasCallKind::Extends, operands).into(),
                 );

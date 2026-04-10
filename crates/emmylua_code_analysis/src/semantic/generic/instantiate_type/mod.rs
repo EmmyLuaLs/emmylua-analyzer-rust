@@ -16,7 +16,7 @@ use crate::{
 };
 
 use super::type_substitutor::{SubstitutorValue, TypeSubstitutor};
-use crate::TypeVisitTrait;
+use crate::LuaTypeNode;
 use crate::semantic::member::find_members_with_key;
 pub use instantiate_func_generic::{build_self_type, infer_self_type, instantiate_func_generic};
 pub use instantiate_special_generic::get_keyof_members;
@@ -59,6 +59,35 @@ pub fn instantiate_type_generic(
         LuaType::Mapped(mapped) => instantiate_mapped_type(db, mapped.deref(), substitutor),
         _ => ty.clone(),
     }
+}
+
+fn instantiate_types<'a, I>(db: &DbIndex, types: I, substitutor: &TypeSubstitutor) -> Vec<LuaType>
+where
+    I: IntoIterator<Item = &'a LuaType>,
+{
+    types
+        .into_iter()
+        .map(|ty| instantiate_type_generic(db, ty, substitutor))
+        .collect()
+}
+
+fn instantiate_type_pairs<'a, I>(
+    db: &DbIndex,
+    pairs: I,
+    substitutor: &TypeSubstitutor,
+) -> Vec<(LuaType, LuaType)>
+where
+    I: IntoIterator<Item = &'a (LuaType, LuaType)>,
+{
+    pairs
+        .into_iter()
+        .map(|(key, value)| {
+            (
+                instantiate_type_generic(db, key, substitutor),
+                instantiate_type_generic(db, value, substitutor),
+            )
+        })
+        .collect()
 }
 
 fn instantiate_array(db: &DbIndex, base: &LuaType, substitutor: &TypeSubstitutor) -> LuaType {
@@ -231,34 +260,25 @@ fn instantiate_object(
     object: &LuaObjectType,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
-    let fields = object.get_fields();
-    let index_access = object.get_index_access();
+    let new_fields = object
+        .get_fields()
+        .iter()
+        .map(|(key, field)| {
+            (
+                key.clone(),
+                instantiate_type_generic(db, field, substitutor),
+            )
+        })
+        .collect::<HashMap<_, _>>();
 
-    let mut new_fields = HashMap::new();
-    for (key, field) in fields {
-        let new_field = instantiate_type_generic(db, field, substitutor);
-        new_fields.insert(key.clone(), new_field);
-    }
-
-    let mut new_index_access = Vec::new();
-    for (key, value) in index_access {
-        let key = instantiate_type_generic(db, key, substitutor);
-        let value = instantiate_type_generic(db, value, substitutor);
-        new_index_access.push((key, value));
-    }
+    let new_index_access =
+        instantiate_type_pairs(db, object.get_index_access().iter(), substitutor);
 
     LuaType::Object(LuaObjectType::new_with_fields(new_fields, new_index_access).into())
 }
 
 fn instantiate_union(db: &DbIndex, union: &LuaUnionType, substitutor: &TypeSubstitutor) -> LuaType {
-    let types = union.into_vec();
-    let mut result_types = Vec::new();
-    for t in types {
-        let t = instantiate_type_generic(db, &t, substitutor);
-        result_types.push(t);
-    }
-
-    LuaType::from_vec(result_types)
+    LuaType::from_vec(instantiate_types(db, union.into_vec().iter(), substitutor))
 }
 
 fn instantiate_intersection(
@@ -266,14 +286,14 @@ fn instantiate_intersection(
     intersection: &LuaIntersectionType,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
-    let types = intersection.get_types();
-    let mut new_types = Vec::new();
-    for t in types {
-        let t = instantiate_type_generic(db, t, substitutor);
-        new_types.push(t);
-    }
-
-    LuaType::Intersection(LuaIntersectionType::new(new_types).into())
+    LuaType::Intersection(
+        LuaIntersectionType::new(instantiate_types(
+            db,
+            intersection.get_types().iter(),
+            substitutor,
+        ))
+        .into(),
+    )
 }
 
 pub fn instantiate_generic(
@@ -281,12 +301,7 @@ pub fn instantiate_generic(
     generic: &LuaGenericType,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
-    let generic_params = generic.get_params();
-    let mut new_params = Vec::new();
-    for param in generic_params {
-        let new_param = instantiate_type_generic(db, param, substitutor);
-        new_params.push(new_param);
-    }
+    let new_params = instantiate_types(db, generic.get_params().iter(), substitutor);
 
     let base = generic.get_base_type();
     let type_decl_id = if let LuaType::Ref(id) = base {
@@ -310,16 +325,10 @@ pub fn instantiate_generic(
 
 fn instantiate_table_generic(
     db: &DbIndex,
-    table_params: &Vec<LuaType>,
+    table_params: &[LuaType],
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
-    let mut new_params = Vec::new();
-    for param in table_params {
-        let new_param = instantiate_type_generic(db, param, substitutor);
-        new_params.push(new_param);
-    }
-
-    LuaType::TableGeneric(new_params.into())
+    LuaType::TableGeneric(instantiate_types(db, table_params.iter(), substitutor).into())
 }
 
 fn instantiate_tpl_ref(_: &DbIndex, tpl: &GenericTpl, substitutor: &TypeSubstitutor) -> LuaType {
@@ -428,7 +437,7 @@ fn instantiate_variadic_type(
             _ => {}
         },
         VariadicType::Multi(types) => {
-            if types.iter().any(|it| it.contain_tpl()) {
+            if types.iter().any(LuaTypeNode::contains_tpl_node) {
                 let mut new_types = Vec::new();
                 for t in types {
                     let t = instantiate_type_generic(db, t, substitutor);
@@ -492,7 +501,7 @@ fn instantiate_conditional(
         }
 
         // 仍有未解析模板时不能提前折叠 conditional, 否则会把 infer 结果固定成悬空占位符.
-        if !left.contain_tpl() && !right.contain_tpl() {
+        if !left.contains_tpl_node() && !right.contains_tpl_node() {
             // infer 必须位于条件语句中(right), 判断是否包含并收集
             if contains_conditional_infer(&right)
                 && collect_infer_assignments(db, &left, &right, &mut infer_assignments)
@@ -557,13 +566,7 @@ fn instantiate_conditional(
 
 // 遍历类型树判断是否仍存在 ConditionalInfer 占位符
 fn contains_conditional_infer(ty: &LuaType) -> bool {
-    let mut found = false;
-    ty.visit_type(&mut |inner| {
-        if matches!(inner, LuaType::ConditionalInfer(_)) {
-            found = true;
-        }
-    });
-    found
+    ty.any_type(|inner| matches!(inner, LuaType::ConditionalInfer(_)))
 }
 
 // 尝试将`pattern`中的每个`infer`名称映射到`source`内部对应的类型, 当结构不兼容或发现冲突的赋值时, 返回`false`
@@ -910,7 +913,7 @@ fn resolve_infer_tpl_ids(
     infer_names: &HashSet<String>,
 ) -> HashMap<String, GenericTplId> {
     let mut map = HashMap::new();
-    let mut visit = |ty: &LuaType| {
+    conditional.visit_nested_types(&mut |ty: &LuaType| {
         if let LuaType::TplRef(tpl) = ty {
             if substitutor.get(tpl.get_tpl_id()).is_none() {
                 let name = tpl.get_name();
@@ -919,11 +922,7 @@ fn resolve_infer_tpl_ids(
                 }
             }
         }
-    };
-
-    conditional.get_true_type().visit_type(&mut visit);
-    conditional.get_condition().visit_type(&mut visit);
-    conditional.get_false_type().visit_type(&mut visit);
+    });
 
     map
 }

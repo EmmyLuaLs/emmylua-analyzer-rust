@@ -10,8 +10,8 @@ use smol_str::SmolStr;
 
 use crate::{
     InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType,
-    LuaSemanticDeclId, LuaTupleType, LuaTypeDeclId, LuaUnionType, SemanticDeclLevel, VariadicType,
-    check_type_compact,
+    LuaSemanticDeclId, LuaTupleType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, SemanticDeclLevel,
+    VariadicType, check_type_compact,
     db_index::{DbIndex, LuaGenericType, LuaType},
     infer_node_semantic_decl,
     semantic::{
@@ -132,7 +132,7 @@ pub fn tpl_pattern_match(
     target: &LuaType,
 ) -> TplPatternMatchResult {
     let target = escape_alias(context.db, target);
-    if !pattern.contain_tpl() {
+    if !pattern.contains_tpl_node() {
         return Ok(());
     }
 

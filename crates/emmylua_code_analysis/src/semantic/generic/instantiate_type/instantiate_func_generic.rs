@@ -7,7 +7,7 @@ use std::{ops::Deref, sync::Arc};
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{
     DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
-    TypeVisitTrait,
+    LuaTypeNode,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
     semantic::{
@@ -38,23 +38,7 @@ pub fn instantiate_func_generic(
     call_expr: LuaCallExpr,
 ) -> Result<LuaFunctionType, InferFailReason> {
     let file_id = cache.get_file_id().clone();
-    let mut generic_tpls = HashSet::new();
-    let mut contain_self = false;
-    func.visit_type(&mut |t| match t {
-        LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            let tpl_id = generic_tpl.get_tpl_id();
-            if tpl_id.is_func() {
-                generic_tpls.insert(tpl_id);
-            }
-        }
-        LuaType::StrTplRef(str_tpl) => {
-            generic_tpls.insert(str_tpl.get_tpl_id());
-        }
-        LuaType::SelfInfer => {
-            contain_self = true;
-        }
-        _ => {}
-    });
+    let (generic_tpls, contain_self) = collect_func_tpl_ids(func);
 
     let origin_params = func.get_params();
     let mut func_params: Vec<_> = origin_params
@@ -161,7 +145,7 @@ pub fn infer_callable_return_from_remaining_args(
     };
 
     let mut callable_tpls = HashSet::new();
-    callable.visit_type(&mut |ty| {
+    callable.visit_nested_types(&mut |ty| {
         if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
             callable_tpls.insert(generic_tpl.get_tpl_id());
         }
@@ -212,6 +196,27 @@ pub fn infer_callable_return_from_remaining_args(
     )))
 }
 
+fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool) {
+    let mut generic_tpls = HashSet::new();
+    let mut contain_self = false;
+
+    func.visit_nested_types(&mut |ty| match ty {
+        LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
+            let tpl_id = generic_tpl.get_tpl_id();
+            if tpl_id.is_func() {
+                generic_tpls.insert(tpl_id);
+            }
+        }
+        LuaType::StrTplRef(str_tpl) => {
+            generic_tpls.insert(str_tpl.get_tpl_id());
+        }
+        LuaType::SelfInfer => contain_self = true,
+        _ => {}
+    });
+
+    (generic_tpls, contain_self)
+}
+
 fn infer_generic_types_from_call(
     db: &DbIndex,
     context: &mut TplContext,
@@ -246,7 +251,7 @@ fn infer_generic_types_from_call(
 
         let (_, func_param_type) = &func_params[i];
         let call_arg_expr = &arg_exprs[i];
-        if !func_param_type.contain_tpl() {
+        if !func_param_type.contains_tpl_node() {
             continue;
         }
 

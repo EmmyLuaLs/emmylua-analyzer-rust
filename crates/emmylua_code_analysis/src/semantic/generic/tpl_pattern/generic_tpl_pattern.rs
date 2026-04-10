@@ -1,5 +1,5 @@
 use crate::{
-    InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaType, TplContext,
+    InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaType, LuaTypeNode, TplContext,
     TypeSubstitutor, instantiate_generic, instantiate_type_generic,
     semantic::generic::tpl_pattern::{
         TplPatternMatchResult, tpl_pattern_match, variadic_tpl_pattern_match,
@@ -66,7 +66,7 @@ fn generic_tpl_pattern_match_inner(
                 context.db.get_type_index().get_super_types(target_base)
             {
                 for mut super_type in super_types {
-                    if super_type.contain_tpl() {
+                    if super_type.contains_tpl_node() {
                         let substitutor =
                             TypeSubstitutor::from_type_array(target_generic.get_params().clone());
                         super_type =
