@@ -147,6 +147,32 @@ function string.format(fmt, ...) end
 ---@return fun():string?...
 function string.gmatch(s, pattern) end
 
+---
+--- Returns an iterator function that, each time it is called, returns the
+--- next captures from `pattern` over the string `s`. If `pattern` specifies no
+--- captures, then the whole match is produced in each call. A third,
+--- optional numeric argument init specifies where to start the search;
+--- its default value is 1 and can be negative.
+---
+--- As an example, the following loop will iterate over all the words from
+--- string `s`, printing one per line:
+---
+--- `s = "hello world from Lua"`
+--- `for w in string.gmatch(s, "%a+") do`
+---  > `print(w)`
+--- `end`
+---
+--- The next example collects all pairs `key=value` from the given string into a
+--- table:
+---
+--- `t = {}`
+---  s = "from=world, to=Lua"`
+--- `for k, v in string.gmatch(s, "(%w+)=(%w+)") do`
+---  > `t[k] = v`
+--- `end`
+---
+--- For this function, a caret '`^`' at the start of a pattern does not work as
+--- an anchor, as this would prevent the iteration.
 ---@version > 5.4
 ---@param s string
 ---@param pattern string

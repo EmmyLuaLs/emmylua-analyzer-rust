@@ -148,7 +148,7 @@ debuglib.setuservalue: |
   
   返回 `udata`，如果 userdata 没有该值则返回 **nil**。
 
-debuglib.traceback: |
+debuglib.traceback@5.1,JIT: |
   生成调用栈的回溯信息。
   不带参数调用时，返回当前线程的回溯。
   当第一个参数是线程时，为该线程生成回溯；可选的第二个参数（如果是字符串）
@@ -156,14 +156,12 @@ debuglib.traceback: |
   当第一个参数不是线程且不是 nil 时，它被视为可选消息。在这种情况下，
   为当前线程生成回溯，如果提供了第二个参数，则指定起始层级。
 
-debuglib.traceback.param.thread: |
-  可选的线程或 nil。如果不是线程，则被解释为消息。
-
-debuglib.traceback.param.message: |
-  添加到回溯前面的可选消息。如果不是字符串（或 nil），则原样返回。
-
-debuglib.traceback.param.level: |
-  开始回溯的可选层级（默认为1）。
+debuglib.traceback@>5.2: |
+  如果 message 存在但既不是字符串也不是 nil，那么此函数将直接返回 message 而不做进一步处理。
+  否则，它会返回一个包含调用栈回溯信息的字符串。
+  
+  可选的 message 字符串会被追加到回溯信息的开头。
+  可选的 level 数字指示应从哪一层开始回溯（默认值为 1，即调用 traceback 的函数）。
 
 debuglib.upvalueid: |
   返回给定函数中编号为 `n` 的上值的唯一标识符（作为轻量 userdata）。
