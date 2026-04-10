@@ -78,8 +78,8 @@ function utf8.codepoint(s, i, j, lax) end
 ---@param s    string
 ---@param i?   integer
 ---@param j?   integer
----@return integer?
----@return integer? errpos
+---@return_overload integer
+---@return_overload nil, integer errpos
 ---@nodiscard
 function utf8.len(s, i, j) end
 
@@ -88,8 +88,8 @@ function utf8.len(s, i, j) end
 ---@param i?   integer
 ---@param j?   integer
 ---@param lax? boolean
----@return integer?
----@return integer? errpos
+---@return_overload integer
+---@return_overload nil, integer errpos
 ---@nodiscard
 function utf8.len(s, i, j, lax) end
 
