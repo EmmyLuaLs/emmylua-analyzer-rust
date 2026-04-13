@@ -10,10 +10,8 @@ pub fn load_editorconfig(workspace_folders: Vec<WorkspaceFolder>) -> Option<()> 
     for workspace in workspace_folders {
         match &workspace.import {
             WorkspaceImport::All => collect_editorconfigs(&workspace.root, &mut editorconfig_files),
-            WorkspaceImport::SubPaths(subs) => {
-                for sub in subs {
-                    collect_editorconfigs(&workspace.root.join(sub), &mut editorconfig_files);
-                }
+            WorkspaceImport::Package(sub) => {
+                collect_editorconfigs(&workspace.root.join(sub), &mut editorconfig_files);
             }
         }
     }

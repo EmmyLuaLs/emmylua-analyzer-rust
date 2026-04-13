@@ -219,6 +219,16 @@ impl DbIndex {
     pub fn get_emmyrc(&self) -> &Emmyrc {
         &self.emmyrc
     }
+
+    pub fn resolve_workspace_id(&self, file_id: FileId) -> Option<WorkspaceId> {
+        self.modules_index.get_workspace_id(file_id).or_else(|| {
+            if self.vfs.is_remote_file(&file_id) {
+                Some(WorkspaceId::REMOTE)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 impl LuaIndex for DbIndex {

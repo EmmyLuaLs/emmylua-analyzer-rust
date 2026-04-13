@@ -7,7 +7,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, FileId, LuaMemberKey, LuaMemberOwner, TypeSubstitutor, instantiate_type_generic,
+    DbIndex, FileId, LuaMemberKey, LuaMemberOwner, TypeSubstitutor, db_index::WorkspaceId,
+    instantiate_type_generic,
 };
 
 use super::{LuaType, LuaUnionType};
@@ -22,12 +23,13 @@ pub enum LuaDeclTypeKind {
 
 flags! {
     pub enum LuaTypeFlag: u8 {
-        None,
         Key,
         Partial,
         Exact,
         Meta,
         Constructor,
+        Public,
+        Internal,
         Private
     }
 }
@@ -49,13 +51,14 @@ impl LuaTypeDecl {
         flag: FlagSet<LuaTypeFlag>,
         id: LuaTypeDeclId,
     ) -> Self {
+        let location = LuaDeclLocation {
+            file_id,
+            range,
+            flag,
+        };
         Self {
             simple_name: name,
-            locations: vec![LuaDeclLocation {
-                file_id,
-                range,
-                flag,
-            }],
+            locations: vec![location],
             id,
             extra: match kind {
                 LuaDeclTypeKind::Enum => LuaTypeExtra::Enum { base: None },
@@ -238,6 +241,7 @@ impl LuaTypeDecl {
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum LuaTypeIdentifier {
     Global(SmolStr),
+    Internal(WorkspaceId, SmolStr),
     Local(FileId, SmolStr),
 }
 
@@ -259,6 +263,12 @@ impl LuaTypeDeclId {
         }
     }
 
+    pub fn internal(workspace_id: WorkspaceId, str: &str) -> Self {
+        Self {
+            id: ArcIntern::new(LuaTypeIdentifier::Internal(workspace_id, SmolStr::new(str))),
+        }
+    }
+
     pub fn get_id(&self) -> &LuaTypeIdentifier {
         self.id.as_ref()
     }
@@ -266,6 +276,7 @@ impl LuaTypeDeclId {
     pub fn get_name(&self) -> &str {
         match self.id.as_ref() {
             LuaTypeIdentifier::Global(name) => name.as_ref(),
+            LuaTypeIdentifier::Internal(_, name) => name.as_ref(),
             LuaTypeIdentifier::Local(_, name) => name.as_ref(),
         }
     }
@@ -312,6 +323,10 @@ impl LuaTypeDeclId {
         self.collect_super_types(db, &mut collected_types);
         collected_types
     }
+
+    pub fn is_local(&self) -> bool {
+        matches!(self.id.as_ref(), LuaTypeIdentifier::Local(_, _))
+    }
 }
 
 impl Serialize for LuaTypeDeclId {
@@ -321,6 +336,10 @@ impl Serialize for LuaTypeDeclId {
     {
         match self.id.as_ref() {
             LuaTypeIdentifier::Global(name) => serializer.serialize_str(name.as_ref()),
+            LuaTypeIdentifier::Internal(workspace_id, name) => {
+                let s = format!("ws:{}|{}", workspace_id.id, &name);
+                serializer.serialize_str(&s)
+            }
             LuaTypeIdentifier::Local(file_id, name) => {
                 let s = format!("{}|{}", file_id.id, &name);
                 serializer.serialize_str(&s)
@@ -348,6 +367,13 @@ impl<'de> Deserialize<'de> for LuaTypeDeclId {
                 E: serde::de::Error,
             {
                 if let Some((file_id_str, name)) = value.split_once('|') {
+                    if let Some(workspace_id_str) = file_id_str.strip_prefix("ws:") {
+                        let workspace_id = workspace_id_str.parse::<u32>().map_err(E::custom)?;
+                        return Ok(LuaTypeDeclId::internal(
+                            WorkspaceId { id: workspace_id },
+                            name,
+                        ));
+                    }
                     let file_id = file_id_str.parse::<u32>().map_err(E::custom)?;
                     Ok(LuaTypeDeclId::local(FileId { id: file_id }, name))
                 } else {

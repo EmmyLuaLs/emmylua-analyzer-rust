@@ -226,10 +226,13 @@ fn validate_str_tpl_ref(
                 str,
                 str_tpl_ref.get_suffix()
             );
-            let founded_type_decl = semantic_model
-                .get_db()
-                .get_type_index()
-                .find_type_decl(semantic_model.get_file_id(), &full_type_name);
+            let founded_type_decl = semantic_model.get_db().get_type_index().find_type_decl(
+                semantic_model.get_file_id(),
+                &full_type_name,
+                semantic_model
+                    .get_db()
+                    .resolve_workspace_id(semantic_model.get_file_id()),
+            );
             if founded_type_decl.is_none() {
                 context.add_diagnostic(
                     DiagnosticCode::GenericConstraintMismatch,

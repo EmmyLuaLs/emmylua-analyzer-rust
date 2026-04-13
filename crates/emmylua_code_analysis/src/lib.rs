@@ -105,12 +105,16 @@ impl EmmyLuaAnalysis {
             .add_workspace_root(root, WorkspaceId::MAIN);
     }
 
-    pub fn add_library_workspace(&mut self, root: PathBuf) {
+    pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
         let module_index = self.compilation.get_db_mut().get_module_index_mut();
         let id = WorkspaceId {
             id: module_index.next_library_workspace_id(),
         };
-        module_index.add_workspace_root(root, id);
+        module_index.add_workspace_root_with_import(
+            workspace.root.clone(),
+            workspace.import.clone(),
+            id,
+        );
     }
 
     pub fn clear_non_std_workspaces(&mut self) {
@@ -438,6 +442,15 @@ unsafe impl Sync for EmmyLuaAnalysis {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::Arc,
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    static TEST_ANALYSIS_WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn reload_workspace_files_skips_reindex_when_bootstrapping_workspace() {
@@ -473,5 +486,72 @@ mod tests {
         );
 
         assert_eq!(analysis.reindex_count, 1);
+    }
+
+    #[test]
+    fn sibling_package_workspace_folders_keep_distinct_workspace_ids() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let counter = TEST_ANALYSIS_WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temp_root = std::env::temp_dir().join(format!(
+            "emmylua-analysis-package-scope-{}-{}-{}",
+            std::process::id(),
+            unique,
+            counter,
+        ));
+        let package_parent = temp_root.join("module");
+        let socket_file = package_parent.join("socket").join("init.lua");
+        let net_file = package_parent.join("net").join("init.lua");
+
+        fs::create_dir_all(socket_file.parent().unwrap()).unwrap();
+        fs::create_dir_all(net_file.parent().unwrap()).unwrap();
+        fs::write(&socket_file, "return true\n").unwrap();
+        fs::write(&net_file, "return true\n").unwrap();
+
+        let mut analysis = EmmyLuaAnalysis::new();
+        analysis.update_config(Arc::new(Emmyrc::default()));
+        analysis.add_library_workspace(&WorkspaceFolder::with_package(
+            package_parent.clone(),
+            PathBuf::from("socket"),
+        ));
+        analysis.add_library_workspace(&WorkspaceFolder::with_package(
+            package_parent.clone(),
+            PathBuf::from("net"),
+        ));
+        analysis.update_files_by_path(vec![
+            (socket_file.clone(), Some("return true\n".to_string())),
+            (net_file.clone(), Some("return true\n".to_string())),
+        ]);
+
+        let socket_file_id = analysis
+            .get_file_id(&file_path_to_uri(&socket_file).unwrap())
+            .unwrap();
+        let net_file_id = analysis
+            .get_file_id(&file_path_to_uri(&net_file).unwrap())
+            .unwrap();
+        let db = analysis.compilation.get_db();
+
+        assert_eq!(
+            db.get_module_index()
+                .get_module(socket_file_id)
+                .unwrap()
+                .full_module_name,
+            "socket"
+        );
+        assert_eq!(
+            db.get_module_index()
+                .get_module(net_file_id)
+                .unwrap()
+                .full_module_name,
+            "net"
+        );
+        assert_ne!(
+            db.get_module_index().get_workspace_id(socket_file_id),
+            db.get_module_index().get_workspace_id(net_file_id)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 }

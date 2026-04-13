@@ -84,16 +84,14 @@ fn supports_provider(builder: &CompletionBuilder) -> bool {
         };
         if let Some(prev_token) = builder.trigger_token.prev_token() {
             match prev_token.kind().into() {
-                LuaTokenKind::TkTagUsing
-                | LuaTokenKind::TkTagExport
-                | LuaTokenKind::TkTagNamespace => {
+                LuaTokenKind::TkTagUsing | LuaTokenKind::TkTagNamespace => {
                     return false;
                 }
                 _ => {}
             }
         }
 
-        // 即时是主动触发, 也不允许在函数定义的参数列表中添加
+        // 即使是主动触发, 也不允许在函数定义的参数列表中添加
         if trigger_text == "(" && LuaParamList::can_cast(parent.kind().into()) {
             return false;
         }

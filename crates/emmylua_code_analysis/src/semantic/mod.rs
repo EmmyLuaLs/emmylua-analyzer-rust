@@ -27,7 +27,10 @@ use lsp_types::Uri;
 pub use member::LuaMemberInfo;
 pub use member::find_index_operations;
 pub use member::get_member_map;
-use member::{find_member_origin_owner, find_members};
+use member::{
+    find_member_origin_owner, find_members_in_scope, find_members_with_key_in_scope,
+    get_member_map_in_scope,
+};
 use reference::is_reference_to;
 use rowan::{NodeOrToken, TextRange};
 pub use semantic_info::SemanticInfo;
@@ -37,7 +40,7 @@ use semantic_info::{
 };
 pub(crate) use type_check::check_type_compact;
 use type_check::is_sub_type_of;
-pub use visibility::check_export_visibility;
+pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
 pub use crate::semantic::member::find_members_with_key;
@@ -132,7 +135,7 @@ impl<'a> SemanticModel<'a> {
     }
 
     pub fn get_member_infos(&self, prefix_type: &LuaType) -> Option<Vec<LuaMemberInfo>> {
-        find_members(self.db, prefix_type)
+        find_members_in_scope(self.db, self.file_id, prefix_type)
     }
 
     pub fn get_member_info_with_key(
@@ -141,14 +144,14 @@ impl<'a> SemanticModel<'a> {
         member_key: LuaMemberKey,
         find_all: bool,
     ) -> Option<Vec<LuaMemberInfo>> {
-        find_members_with_key(self.db, prefix_type, member_key, find_all)
+        find_members_with_key_in_scope(self.db, self.file_id, prefix_type, member_key, find_all)
     }
 
     pub fn get_member_info_map(
         &self,
         prefix_type: &LuaType,
     ) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
-        get_member_map(self.db, prefix_type)
+        get_member_map_in_scope(self.db, self.file_id, prefix_type)
     }
 
     pub fn type_check(&self, source: &LuaType, compact_type: &LuaType) -> TypeCheckResult {

@@ -27,12 +27,23 @@ pub fn analyze_chunk_return(analyzer: &mut LuaAnalyzer, chunk: LuaChunk) -> Opti
 
             let semantic_id = get_semantic_id(analyzer, expr.clone());
 
+            let visibility = semantic_id.as_ref().and_then(|id| {
+                analyzer
+                    .db
+                    .get_property_index()
+                    .get_property(id)
+                    .map(|p| p.visibility.clone())
+            });
+
             let module_info = analyzer
                 .db
                 .get_module_index_mut()
                 .get_module_mut(analyzer.file_id)?;
             module_info.export_type = Some(expr_type.get_result_slot_type(0).unwrap_or(expr_type));
             module_info.semantic_id = semantic_id;
+            if let Some(visibility) = visibility {
+                module_info.merge_visibility(visibility);
+            }
             break;
         }
     }

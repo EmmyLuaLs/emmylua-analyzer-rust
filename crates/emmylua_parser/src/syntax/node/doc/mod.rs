@@ -52,7 +52,6 @@ fn is_additive_doc_tag(kind: LuaSyntaxKind) -> bool {
     matches!(
         kind,
         LuaSyntaxKind::DocTagVisibility
-            | LuaSyntaxKind::DocTagExport
             | LuaSyntaxKind::DocTagVersion
             | LuaSyntaxKind::DocTagNodiscard
     )

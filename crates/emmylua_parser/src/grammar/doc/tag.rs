@@ -56,7 +56,6 @@ fn parse_tag_detail(p: &mut LuaDocParser) -> DocParseResult {
         LuaTokenKind::TkTagNamespace => parse_tag_namespace(p),
         LuaTokenKind::TkTagUsing => parse_tag_using(p),
         LuaTokenKind::TkTagMeta => parse_tag_meta(p),
-        LuaTokenKind::TkTagExport => parse_tag_export(p),
         LuaTokenKind::TkLanguage => parse_tag_language(p),
         LuaTokenKind::TkTagAttribute => parse_tag_attribute(p),
         LuaTokenKind::TkDocAttributeUse => parse_tag_attribute_use(p, true),
@@ -664,19 +663,6 @@ fn parse_tag_meta(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTagMeta);
     p.bump();
     if_token_bump(p, LuaTokenKind::TkName);
-    Ok(m.complete(p))
-}
-
-fn parse_tag_export(p: &mut LuaDocParser) -> DocParseResult {
-    p.set_lexer_state(LuaDocLexerState::Normal);
-    let m = p.mark(LuaSyntaxKind::DocTagExport);
-    p.bump();
-    // @export 可以有可选的参数，如 @export namespace 或 @export global
-    if p.current_token() == LuaTokenKind::TkName {
-        p.bump();
-    }
-    p.set_lexer_state(LuaDocLexerState::Description);
-    parse_description(p);
     Ok(m.complete(p))
 }
 

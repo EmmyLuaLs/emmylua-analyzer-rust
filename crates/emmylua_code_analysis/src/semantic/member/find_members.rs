@@ -30,7 +30,16 @@ pub enum FindMemberFilter {
 }
 
 pub fn find_members(db: &DbIndex, prefix_type: &LuaType) -> FindMembersResult {
-    let ctx = FindMembersContext::new(InferGuard::new());
+    let ctx = FindMembersContext::new(FileId::VIRTUAL, InferGuard::new());
+    find_members_guard(db, prefix_type, &ctx, &FindMemberFilter::All)
+}
+
+pub fn find_members_in_scope(
+    db: &DbIndex,
+    file_id: FileId,
+    prefix_type: &LuaType,
+) -> FindMembersResult {
+    let ctx = FindMembersContext::new(file_id, InferGuard::new());
     find_members_guard(db, prefix_type, &ctx, &FindMemberFilter::All)
 }
 
@@ -40,7 +49,26 @@ pub fn find_members_with_key(
     member_key: LuaMemberKey,
     find_all: bool,
 ) -> FindMembersResult {
-    let ctx = FindMembersContext::new(InferGuard::new());
+    let ctx = FindMembersContext::new(FileId::VIRTUAL, InferGuard::new());
+    find_members_guard(
+        db,
+        prefix_type,
+        &ctx,
+        &FindMemberFilter::ByKey {
+            member_key,
+            find_all,
+        },
+    )
+}
+
+pub fn find_members_with_key_in_scope(
+    db: &DbIndex,
+    file_id: FileId,
+    prefix_type: &LuaType,
+    member_key: LuaMemberKey,
+    find_all: bool,
+) -> FindMembersResult {
+    let ctx = FindMembersContext::new(file_id, InferGuard::new());
     find_members_guard(
         db,
         prefix_type,
@@ -54,19 +82,22 @@ pub fn find_members_with_key(
 
 #[derive(Clone)]
 struct FindMembersContext {
+    file_id: FileId,
     infer_guard: InferGuardRef,
     substitutor: Option<TypeSubstitutor>,
 }
 
 impl FindMembersContext {
-    fn new(infer_guard: InferGuardRef) -> Self {
+    fn new(file_id: FileId, infer_guard: InferGuardRef) -> Self {
         Self {
+            file_id,
             infer_guard,
             substitutor: None,
         }
     }
     fn with_substitutor(&self, substitutor: TypeSubstitutor) -> Self {
         Self {
+            file_id: self.file_id,
             infer_guard: self.infer_guard.clone(),
             substitutor: Some(substitutor),
         }
@@ -74,6 +105,7 @@ impl FindMembersContext {
 
     fn fork_infer(&self) -> Self {
         Self {
+            file_id: self.file_id,
             infer_guard: self.infer_guard.fork(),
             substitutor: self.substitutor.clone(),
         }
@@ -89,6 +121,10 @@ impl FindMembersContext {
 
     fn infer_guard(&self) -> &InferGuardRef {
         &self.infer_guard
+    }
+
+    fn file_id(&self) -> FileId {
+        self.file_id
     }
 }
 
@@ -544,7 +580,9 @@ fn find_namespace_members(
 
     let prefix = format!("{}.", ns);
     let type_index = db.get_type_index();
-    let type_decl_id_map = type_index.find_type_decls(FileId::VIRTUAL, &prefix);
+    let file_id = ctx.file_id();
+    let type_decl_id_map =
+        type_index.find_type_decls(file_id, &prefix, db.resolve_workspace_id(file_id));
     for (name, type_decl_id) in type_decl_id_map {
         let member_key = LuaMemberKey::Name(name.clone().into());
 

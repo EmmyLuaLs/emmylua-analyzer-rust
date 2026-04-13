@@ -11,8 +11,10 @@ use crate::{
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxKind, LuaTableExpr, LuaTableField};
 pub use find_index::find_index_operations;
-pub use find_members::{find_members, find_members_with_key};
-pub use get_member_map::get_member_map;
+pub use find_members::{
+    find_members, find_members_in_scope, find_members_with_key, find_members_with_key_in_scope,
+};
+pub use get_member_map::{get_member_map, get_member_map_in_scope};
 pub use infer_raw_member::infer_raw_member_type;
 
 use super::{

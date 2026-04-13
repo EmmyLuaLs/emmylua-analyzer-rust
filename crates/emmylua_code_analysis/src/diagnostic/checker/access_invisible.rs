@@ -125,7 +125,7 @@ fn report_reason(
             t!("The property is package-private and cannot be accessed outside the package.")
         }
         VisibilityKind::Internal => {
-            t!("The property is internal and cannot be accessed outside the module.")
+            t!("The property is internal and cannot be accessed outside the current project.")
         }
         _ => {
             return None;

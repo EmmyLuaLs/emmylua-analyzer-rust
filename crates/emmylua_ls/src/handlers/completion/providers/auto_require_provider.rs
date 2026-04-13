@@ -1,5 +1,5 @@
 use emmylua_code_analysis::{
-    EmmyrcFilenameConvention, LuaSemanticDeclId, LuaType, ModuleInfo, check_export_visibility,
+    EmmyrcFilenameConvention, LuaSemanticDeclId, LuaType, ModuleInfo, check_module_visibility,
 };
 use emmylua_parser::{LuaAstNode, LuaNameExpr};
 use lsp_types::{CompletionItem, Position};
@@ -98,7 +98,7 @@ fn add_module_completion_item(
     position: Position,
     completions: &mut Vec<CompletionItem>,
 ) -> Option<()> {
-    if !check_export_visibility(&builder.semantic_model, module_info).unwrap_or(false) {
+    if !check_module_visibility(&builder.semantic_model, module_info).unwrap_or(false) {
         return None;
     }
 
@@ -157,8 +157,9 @@ fn add_completion_item_by_type(
     position: Position,
     completions: &mut Vec<CompletionItem>,
 ) -> Option<()> {
-    // 模块必须要有 export 标记
-    module_info.get_export(builder.semantic_model.get_db())?;
+    if !module_info.has_export_type() {
+        return None;
+    }
 
     if let Some(export_type) = &module_info.export_type {
         match export_type {
@@ -174,25 +175,7 @@ fn add_completion_item_by_type(
                         LuaType::Def(_) => {}
                         LuaType::Signature(_) => {}
                         LuaType::DocFunction(_) => {}
-                        LuaType::Ref(_) => {
-                            let Some(LuaSemanticDeclId::Member(member_id)) =
-                                member_info.property_owner_id.as_ref()
-                            else {
-                                continue;
-                            };
-                            let Some(property) = builder
-                                .semantic_model
-                                .get_db()
-                                .get_property_index()
-                                .get_property(&LuaSemanticDeclId::Member(member_id.clone()))
-                            else {
-                                continue;
-                            };
-                            // 允许标记有 export 标记的引用成员被自动导入捕获
-                            if property.export().is_none() {
-                                continue;
-                            }
-                        }
+                        LuaType::Ref(_) => {}
                         _ => {
                             continue;
                         }

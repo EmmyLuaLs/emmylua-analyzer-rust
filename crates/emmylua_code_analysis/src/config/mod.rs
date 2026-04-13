@@ -13,6 +13,7 @@ pub use configs::{
     EmmyrcExternalTool, EmmyrcFilenameConvention, EmmyrcHover, EmmyrcInlayHint, EmmyrcInlineValues,
     EmmyrcLuaVersion, EmmyrcReference, EmmyrcReformat, EmmyrcResource, EmmyrcRuntime,
     EmmyrcSemanticToken, EmmyrcSignature, EmmyrcStrict, EmmyrcWorkspace, EmmyrcWorkspaceModuleMap,
+    EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem,
 };
 use emmylua_parser::{LuaLanguageLevel, LuaNonStdSymbolSet, ParserConfig, SpecialFunction};
 use rowan::NodeCache;
@@ -110,10 +111,11 @@ impl Emmyrc {
         self.workspace.workspace_roots =
             context.process_and_dedup_string(self.workspace.workspace_roots.iter());
 
-        self.workspace.library = context.process_and_dedup_library(self.workspace.library.iter());
+        self.workspace.library =
+            context.process_and_dedup_workspace_path_items(self.workspace.library.iter());
 
-        self.workspace.package_dirs =
-            context.process_and_dedup_string(self.workspace.package_dirs.iter());
+        self.workspace.packages =
+            context.process_and_dedup_workspace_path_items(self.workspace.packages.iter());
 
         self.workspace.ignore_dir =
             context.process_and_dedup_string(self.workspace.ignore_dir.iter());

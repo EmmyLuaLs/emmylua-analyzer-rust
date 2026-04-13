@@ -31,6 +31,7 @@ mod redefined_local;
 mod require_module_visibility;
 mod return_type_mismatch;
 mod syntax_error;
+mod type_access_modifier;
 mod unbalanced_assignments;
 mod undefined_doc_param;
 mod undefined_global;
@@ -113,6 +114,10 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, semantic_model);
     run_check::<require_module_visibility::RequireModuleVisibilityChecker>(context, semantic_model);
     run_check::<unknown_doc_tag::UnknownDocTag>(context, semantic_model);
+    run_check::<type_access_modifier::InconsistentTypeAccessModifierChecker>(
+        context,
+        semantic_model,
+    );
     run_check::<enum_value_mismatch::EnumValueMismatchChecker>(context, semantic_model);
     run_check::<attribute_check::AttributeCheckChecker>(context, semantic_model);
 

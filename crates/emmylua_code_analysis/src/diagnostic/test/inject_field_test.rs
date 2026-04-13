@@ -177,7 +177,6 @@ mod test {
         ws.def_file(
             "a.lua",
             r#"
-            ---@export
             local export = {}
 
             export.a = 1
@@ -207,7 +206,6 @@ mod test {
         ws.def_file(
             "a.lua",
             r#"
-            ---@export
             return {
                 a = 1
             }

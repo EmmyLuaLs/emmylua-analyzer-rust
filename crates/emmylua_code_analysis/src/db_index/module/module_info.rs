@@ -1,8 +1,48 @@
-use emmylua_parser::{LuaVersionCondition, LuaVersionNumber};
+use emmylua_parser::{LuaVersionCondition, LuaVersionNumber, VisibilityKind};
 
-use crate::{DbIndex, FileId, LuaExport, LuaSemanticDeclId, db_index::LuaType};
+use crate::{FileId, LuaSemanticDeclId, db_index::LuaType};
 
 use super::{module_node::ModuleNodeId, workspace::WorkspaceId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModuleVisibility {
+    /// Public
+    #[default]
+    Default,
+    Public,
+    Internal,
+    Hide,
+}
+
+impl ModuleVisibility {
+    pub fn from_visibility_kind(visibility: VisibilityKind) -> Option<Self> {
+        match visibility {
+            VisibilityKind::Public => Some(Self::Public),
+            VisibilityKind::Internal => Some(Self::Internal),
+            _ => None,
+        }
+    }
+
+    pub fn merge(self, visibility: Self) -> Self {
+        match (self, visibility) {
+            (Self::Hide, _) | (_, Self::Hide) => Self::Hide,
+            (Self::Default, next) => next,
+            (current, Self::Default) => current,
+            (_, next) => next,
+        }
+    }
+
+    pub(self) fn resolve(self) -> Self {
+        match self {
+            Self::Default => Self::Public,
+            visibility => visibility,
+        }
+    }
+
+    pub fn is_hidden(self) -> bool {
+        self == Self::Hide
+    }
+}
 
 #[derive(Debug)]
 pub struct ModuleInfo {
@@ -10,7 +50,7 @@ pub struct ModuleInfo {
     pub full_module_name: String,
     pub name: String,
     pub module_id: ModuleNodeId,
-    pub visible: bool,
+    pub visible: ModuleVisibility,
     pub export_type: Option<LuaType>,
     pub version_conds: Option<Box<Vec<LuaVersionCondition>>>,
     pub workspace_id: WorkspaceId,
@@ -20,41 +60,39 @@ pub struct ModuleInfo {
 
 impl ModuleInfo {
     pub fn is_visible(&self, version_number: &LuaVersionNumber) -> bool {
-        if !self.visible {
-            return false;
-        }
+        !self.visible.is_hidden() && self.matches_version(version_number)
+    }
 
-        if let Some(version_conds) = &self.version_conds {
-            for cond in version_conds.iter() {
-                if cond.check(version_number) {
-                    return true;
-                }
+    pub fn merge_visibility(&mut self, visibility: VisibilityKind) {
+        if let Some(visibility) = ModuleVisibility::from_visibility_kind(visibility) {
+            self.set_visibility(self.visible.merge(visibility));
+        }
+    }
+
+    pub fn set_visibility(&mut self, visibility: ModuleVisibility) {
+        self.visible = visibility;
+    }
+
+    pub fn is_requireable_from(&self, workspace_id: WorkspaceId) -> bool {
+        match self.visible.resolve() {
+            ModuleVisibility::Public => true,
+            ModuleVisibility::Internal => {
+                // 如果当前模块并非库模块(即为内置模块), 则允许被 require
+                (!self.workspace_id.is_library() && !workspace_id.is_library())
+                    || self.workspace_id == workspace_id
             }
-
-            return false;
+            ModuleVisibility::Default => true,
+            ModuleVisibility::Hide => false,
         }
-
-        true
     }
 
-    pub fn is_export(&self, db: &DbIndex) -> bool {
-        let Some(property_owner_id) = &self.semantic_id else {
-            return false;
-        };
-
-        db.get_property_index()
-            .get_property(property_owner_id)
-            .and_then(|property| property.export())
-            .is_some()
+    pub fn has_export_type(&self) -> bool {
+        self.export_type.is_some()
     }
 
-    pub fn get_export<'a>(&self, db: &'a DbIndex) -> Option<&'a LuaExport> {
-        let property_owner_id = self.semantic_id.as_ref()?;
-        let export = db
-            .get_property_index()
-            .get_property(property_owner_id)?
-            .export()?;
-
-        Some(export)
+    fn matches_version(&self, version_number: &LuaVersionNumber) -> bool {
+        self.version_conds
+            .as_ref()
+            .is_none_or(|version_conds| version_conds.iter().any(|cond| cond.check(version_number)))
     }
 }

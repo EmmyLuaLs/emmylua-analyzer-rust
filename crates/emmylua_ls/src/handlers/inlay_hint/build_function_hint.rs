@@ -185,10 +185,13 @@ fn get_type_location(
 }
 
 fn get_base_type_location(semantic_model: &SemanticModel, name: &str) -> Option<Location> {
-    let type_decl = semantic_model
-        .get_db()
-        .get_type_index()
-        .find_type_decl(semantic_model.get_file_id(), name)?;
+    let type_decl = semantic_model.get_db().get_type_index().find_type_decl(
+        semantic_model.get_file_id(),
+        name,
+        semantic_model
+            .get_db()
+            .resolve_workspace_id(semantic_model.get_file_id()),
+    )?;
     let location = type_decl.get_locations().first()?;
     let document = semantic_model.get_document_by_file_id(location.file_id)?;
     let lsp_range = document.to_lsp_range(location.range)?;

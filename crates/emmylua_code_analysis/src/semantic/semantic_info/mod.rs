@@ -106,9 +106,12 @@ pub fn infer_node_semantic_info(
         name_type if LuaDocNameType::can_cast(name_type.kind().into()) => {
             let name_type = LuaDocNameType::cast(name_type)?;
             let name = name_type.get_name_text()?;
-            let type_decl = db
-                .get_type_index()
-                .find_type_decl(cache.get_file_id(), &name)?;
+            let file_id = cache.get_file_id();
+            let type_decl = db.get_type_index().find_type_decl(
+                file_id,
+                &name,
+                db.resolve_workspace_id(file_id),
+            )?;
             Some(SemanticInfo {
                 typ: LuaType::Ref(type_decl.get_id()),
                 semantic_decl: LuaSemanticDeclId::TypeDecl(type_decl.get_id()).into(),
@@ -145,9 +148,10 @@ pub fn infer_node_semantic_info(
 }
 
 fn type_def_tag_info(name: &str, db: &DbIndex, cache: &mut LuaInferCache) -> Option<SemanticInfo> {
-    let type_decl = db
-        .get_type_index()
-        .find_type_decl(cache.get_file_id(), name)?;
+    let file_id = cache.get_file_id();
+    let type_decl =
+        db.get_type_index()
+            .find_type_decl(file_id, name, db.resolve_workspace_id(file_id))?;
     Some(SemanticInfo {
         typ: LuaType::Ref(type_decl.get_id()),
         semantic_decl: LuaSemanticDeclId::TypeDecl(type_decl.get_id()).into(),
@@ -193,9 +197,12 @@ pub fn infer_node_semantic_decl(
         name_type if LuaDocNameType::can_cast(name_type.kind().into()) => {
             let name_type = LuaDocNameType::cast(name_type)?;
             let name = name_type.get_name_text()?;
-            let type_decl = db
-                .get_type_index()
-                .find_type_decl(cache.get_file_id(), &name)?;
+            let file_id = cache.get_file_id();
+            let type_decl = db.get_type_index().find_type_decl(
+                file_id,
+                &name,
+                db.resolve_workspace_id(file_id),
+            )?;
             LuaSemanticDeclId::TypeDecl(type_decl.get_id()).into()
         }
         tags if LuaDocTag::can_cast(tags.kind().into()) => {
@@ -236,8 +243,9 @@ fn type_def_tag_property_owner(
     db: &DbIndex,
     cache: &mut LuaInferCache,
 ) -> Option<LuaSemanticDeclId> {
-    let type_decl = db
-        .get_type_index()
-        .find_type_decl(cache.get_file_id(), name)?;
+    let file_id = cache.get_file_id();
+    let type_decl =
+        db.get_type_index()
+            .find_type_decl(file_id, name, db.resolve_workspace_id(file_id))?;
     LuaSemanticDeclId::TypeDecl(type_decl.get_id()).into()
 }

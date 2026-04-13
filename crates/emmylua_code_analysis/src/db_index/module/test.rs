@@ -2,9 +2,14 @@
 mod tests {
     use std::{path::Path, sync::Arc};
 
+    use emmylua_parser::VisibilityKind;
+
     use crate::{
         Emmyrc, FileId, WorkspaceId,
-        db_index::{module::LuaModuleIndex, traits::LuaIndex},
+        db_index::{
+            module::{LuaModuleIndex, ModuleVisibility},
+            traits::LuaIndex,
+        },
     };
 
     fn create_module() -> LuaModuleIndex {
@@ -25,21 +30,21 @@ mod tests {
         let module_info = m.get_module(file_id).unwrap();
         assert_eq!(module_info.name, "test");
         assert_eq!(module_info.full_module_name, "test");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
 
         let file_id = FileId { id: 2 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test2/init.lua");
         let module_info = m.get_module(file_id).unwrap();
         assert_eq!(module_info.name, "test2");
         assert_eq!(module_info.full_module_name, "test2");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
 
         let file_id = FileId { id: 3 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test3/hhhhiii.lua");
         let module_info = m.get_module(file_id).unwrap();
         assert_eq!(module_info.name, "hhhhiii");
         assert_eq!(module_info.full_module_name, "test3.hhhhiii");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
     }
 
     #[test]
@@ -58,21 +63,21 @@ mod tests {
         let module_info = m.get_module(file_id).unwrap();
         assert_eq!(module_info.name, "test");
         assert_eq!(module_info.full_module_name, "test");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
 
         let file_id = FileId { id: 2 };
         m.add_module_by_path(file_id, "C:/Users/username/Downloads/test2/init.lua");
         let module_info = m.get_module(file_id).unwrap();
         assert_eq!(module_info.name, "test2");
         assert_eq!(module_info.full_module_name, "test2");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
 
         let file_id = FileId { id: 3 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test3/hhhhiii.lua");
         let module_info = m.get_module(file_id).unwrap();
         assert_eq!(module_info.name, "hhhhiii");
         assert_eq!(module_info.full_module_name, "test3.hhhhiii");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
     }
 
     #[test]
@@ -87,21 +92,21 @@ mod tests {
         let module_info = m.find_module("test").unwrap();
         assert_eq!(module_info.name, "test");
         assert_eq!(module_info.full_module_name, "test");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
 
         let file_id = FileId { id: 2 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test2/init.lua");
         let module_info = m.find_module("test2").unwrap();
         assert_eq!(module_info.name, "test2");
         assert_eq!(module_info.full_module_name, "test2");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
 
         let file_id = FileId { id: 3 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test3/hhhhiii.lua");
         let module_info = m.find_module("test3.hhhhiii").unwrap();
         assert_eq!(module_info.name, "hhhhiii");
         assert_eq!(module_info.full_module_name, "test3.hhhhiii");
-        assert_eq!(module_info.visible, true);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
 
         let not_found = m.find_module("test3.hhhhiii.notfound");
         assert!(not_found.is_none());
@@ -138,9 +143,9 @@ mod tests {
         );
         let file_id = FileId { id: 1 };
         m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
-        m.set_module_visibility(file_id, false);
+        m.set_module_visibility(file_id, ModuleVisibility::Hide);
         let module_info = m.get_module(file_id).unwrap();
-        assert_eq!(module_info.visible, false);
+        assert_eq!(module_info.visible, ModuleVisibility::Hide);
     }
 
     #[test]
@@ -209,5 +214,173 @@ mod tests {
             let module_info = m.find_module("treesitter-context").unwrap();
             assert_eq!(module_info.full_module_name, "lua.treesitter-context");
         }
+    }
+
+    #[test]
+    fn test_merge_visibility_treats_default_as_neutral_state() {
+        assert_eq!(
+            ModuleVisibility::Default.merge(ModuleVisibility::Default),
+            ModuleVisibility::Default
+        );
+        assert_eq!(
+            ModuleVisibility::Default.merge(ModuleVisibility::Internal),
+            ModuleVisibility::Internal
+        );
+        assert_eq!(
+            ModuleVisibility::Default.merge(ModuleVisibility::Public),
+            ModuleVisibility::Public
+        );
+        assert_eq!(
+            ModuleVisibility::Internal.merge(ModuleVisibility::Internal),
+            ModuleVisibility::Internal
+        );
+        assert_eq!(
+            ModuleVisibility::Public.merge(ModuleVisibility::Internal),
+            ModuleVisibility::Internal
+        );
+        assert_eq!(
+            ModuleVisibility::Internal.merge(ModuleVisibility::Public),
+            ModuleVisibility::Public
+        );
+        assert_eq!(
+            ModuleVisibility::Public.merge(ModuleVisibility::Default),
+            ModuleVisibility::Public
+        );
+        assert_eq!(
+            ModuleVisibility::Internal.merge(ModuleVisibility::Default),
+            ModuleVisibility::Internal
+        );
+        assert_eq!(
+            ModuleVisibility::Hide.merge(ModuleVisibility::Public),
+            ModuleVisibility::Hide
+        );
+        assert_eq!(
+            ModuleVisibility::Public.merge(ModuleVisibility::Hide),
+            ModuleVisibility::Hide
+        );
+    }
+
+    #[test]
+    fn test_module_visibility_source_has_higher_priority_than_return_visibility() {
+        let mut m = create_module();
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+        let file_id = FileId { id: 1 };
+        m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
+        m.set_module_visibility(file_id, ModuleVisibility::Hide);
+
+        let module_info = m.get_module_mut(file_id).unwrap();
+        module_info.merge_visibility(VisibilityKind::Public);
+        assert_eq!(module_info.visible, ModuleVisibility::Hide);
+
+        module_info.merge_visibility(VisibilityKind::Internal);
+        assert_eq!(module_info.visible, ModuleVisibility::Hide);
+    }
+
+    #[test]
+    fn test_return_visibility_uses_latest_explicit_state() {
+        let mut m = create_module();
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+        let file_id = FileId { id: 1 };
+        m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
+
+        let module_info = m.get_module_mut(file_id).unwrap();
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
+
+        module_info.merge_visibility(VisibilityKind::Internal);
+        assert_eq!(module_info.visible, ModuleVisibility::Internal);
+
+        module_info.merge_visibility(VisibilityKind::Public);
+        assert_eq!(module_info.visible, ModuleVisibility::Public);
+    }
+
+    #[test]
+    fn test_explicit_internal_can_narrow_public_default_visibility() {
+        let mut m = create_module();
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+        let file_id = FileId { id: 1 };
+        m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
+
+        let module_info = m.get_module_mut(file_id).unwrap();
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
+
+        module_info.merge_visibility(VisibilityKind::Internal);
+        assert_eq!(module_info.visible, ModuleVisibility::Internal);
+    }
+
+    #[test]
+    fn test_explicit_public_preserves_default_public_visibility() {
+        let mut m = create_module();
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+        let file_id = FileId { id: 1 };
+        m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
+
+        let module_info = m.get_module_mut(file_id).unwrap();
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
+
+        module_info.merge_visibility(VisibilityKind::Public);
+        assert_eq!(module_info.visible, ModuleVisibility::Public);
+    }
+
+    #[test]
+    fn test_default_public_visibility_is_requireable_across_workspaces() {
+        let mut m = create_module();
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+        let file_id = FileId { id: 1 };
+        m.add_module_by_path(file_id, "C:/Users/username/Documents/test.lua");
+
+        let module_info = m.get_module(file_id).unwrap();
+        assert!(module_info.is_requireable_from(WorkspaceId::MAIN));
+        assert!(module_info.is_requireable_from(WorkspaceId { id: 99 }));
+    }
+
+    #[test]
+    fn test_sibling_packages_under_same_parent_keep_distinct_package_scopes() {
+        let mut m = create_module();
+        m.add_workspace_root_with_import(
+            Path::new("C:/Users/username/Documents/module").into(),
+            crate::WorkspaceImport::Package("socket".into()),
+            WorkspaceId { id: 3 },
+        );
+        m.add_workspace_root_with_import(
+            Path::new("C:/Users/username/Documents/module").into(),
+            crate::WorkspaceImport::Package("net".into()),
+            WorkspaceId { id: 4 },
+        );
+
+        let socket_file = FileId { id: 1 };
+        let net_file = FileId { id: 2 };
+        m.add_module_by_path(
+            socket_file,
+            "C:/Users/username/Documents/module/socket/init.lua",
+        );
+        m.add_module_by_path(net_file, "C:/Users/username/Documents/module/net/init.lua");
+        m.set_module_visibility(socket_file, ModuleVisibility::Internal);
+        m.set_module_visibility(net_file, ModuleVisibility::Internal);
+
+        let socket_info = m.get_module(socket_file).unwrap();
+        let net_info = m.get_module(net_file).unwrap();
+
+        assert_eq!(socket_info.full_module_name, "socket");
+        assert_eq!(net_info.full_module_name, "net");
+        assert_eq!(socket_info.workspace_id, WorkspaceId { id: 3 });
+        assert_eq!(net_info.workspace_id, WorkspaceId { id: 4 });
+        assert_ne!(socket_info.workspace_id, net_info.workspace_id);
+        assert!(!socket_info.is_requireable_from(net_info.workspace_id));
+        assert!(!net_info.is_requireable_from(socket_info.workspace_id));
     }
 }

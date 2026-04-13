@@ -8,7 +8,6 @@ pub enum VisibilityKind {
 }
 
 impl VisibilityKind {
-    #[allow(unused)]
     pub fn to_visibility_kind(visibility: &str) -> Option<VisibilityKind> {
         match visibility {
             "public" => Some(VisibilityKind::Public),
@@ -20,7 +19,6 @@ impl VisibilityKind {
         }
     }
 
-    #[allow(unused)]
     pub fn to_str(&self) -> Option<&'static str> {
         match self {
             VisibilityKind::Public => Some("public"),

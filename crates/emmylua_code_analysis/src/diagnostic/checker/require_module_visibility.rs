@@ -1,6 +1,6 @@
 use emmylua_parser::{LuaAstNode, LuaCallExpr};
 
-use crate::{DiagnosticCode, LuaType, SemanticModel, check_export_visibility};
+use crate::{DiagnosticCode, LuaType, SemanticModel, check_module_visibility};
 
 use super::{Checker, DiagnosticContext};
 
@@ -55,12 +55,12 @@ fn check_require_call_expr(
     };
 
     // 检查可见性
-    if !check_export_visibility(semantic_model, module_info).unwrap_or(false) {
+    if !check_module_visibility(semantic_model, module_info).unwrap_or(false) {
         context.add_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             arg_expr.get_range(),
             t!(
-                "Module '%{module}' is not visible. It has @export restrictions.",
+                "module '%{module}' visibility is not `public`",
                 module = module_info.full_module_name
             )
             .to_string(),

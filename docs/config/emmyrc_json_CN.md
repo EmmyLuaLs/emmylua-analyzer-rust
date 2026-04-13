@@ -396,7 +396,7 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
 | `ignoreDir` | `string[]` | `[]` | 忽略目录 |
 | `ignoreGlobs` | `string[]` | `[]` | 按 glob 忽略文件 |
 | `library` | `string[] | object[]` | `[]` | 库目录，支持字符串路径或带忽略规则的对象 |
-| `packageDirs` | `string[]` | `[]` | 包目录，父目录按 library 处理，但只导入指定子目录 |
+| `packages` | `string[] | object[]` | `[]` | 包目录，父目录按 library 处理，但只导入指定子目录 |
 | `workspaceRoots` | `string[]` | `[]` | 工作区源代码根目录 |
 | `preloadFileSize` | `number` | `0` | 预留字段，目前未使用 |
 | `encoding` | `string` | `"utf-8"` | 文件编码 |
@@ -404,7 +404,7 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
 | `reindexDuration` | `number` | `5000` | 全量重建索引延迟，单位毫秒 |
 | `enableReindex` | `boolean` | `false` | 文件变化后启用全量重建索引 |
 
-`library` 既可以写路径字符串，也可以写对象：
+`library` 和 `packages` 既可以写路径字符串，也可以写对象：
 
 ```json
 {

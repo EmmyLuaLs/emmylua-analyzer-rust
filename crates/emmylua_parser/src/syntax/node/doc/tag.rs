@@ -45,7 +45,6 @@ pub enum LuaDocTag {
     As(LuaDocTagAs),
     Visibility(LuaDocTagVisibility),
     ReturnCast(LuaDocTagReturnCast),
-    Export(LuaDocTagExport),
     Language(LuaDocTagLanguage),
 }
 
@@ -82,7 +81,6 @@ impl LuaAstNode for LuaDocTag {
             LuaDocTag::As(it) => it.syntax(),
             LuaDocTag::Visibility(it) => it.syntax(),
             LuaDocTag::ReturnCast(it) => it.syntax(),
-            LuaDocTag::Export(it) => it.syntax(),
             LuaDocTag::Language(it) => it.syntax(),
             LuaDocTag::AttributeUse(it) => it.syntax(),
         }
@@ -121,7 +119,6 @@ impl LuaAstNode for LuaDocTag {
             || kind == LuaSyntaxKind::DocTagAs
             || kind == LuaSyntaxKind::DocTagVisibility
             || kind == LuaSyntaxKind::DocTagReturnCast
-            || kind == LuaSyntaxKind::DocTagExport
             || kind == LuaSyntaxKind::DocTagLanguage
             || kind == LuaSyntaxKind::DocTagAttributeUse
             || kind == LuaSyntaxKind::DocTagSchema
@@ -221,9 +218,6 @@ impl LuaAstNode for LuaDocTag {
             LuaSyntaxKind::DocTagReturnCast => Some(LuaDocTag::ReturnCast(
                 LuaDocTagReturnCast::cast(syntax).unwrap(),
             )),
-            LuaSyntaxKind::DocTagExport => {
-                Some(LuaDocTag::Export(LuaDocTagExport::cast(syntax).unwrap()))
-            }
             LuaSyntaxKind::DocTagLanguage => Some(LuaDocTag::Language(
                 LuaDocTagLanguage::cast(syntax).unwrap(),
             )),
@@ -1591,48 +1585,6 @@ impl LuaDocTagReturnCast {
 
     pub fn get_name_token(&self) -> Option<LuaNameToken> {
         self.token()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LuaDocTagExport {
-    syntax: LuaSyntaxNode,
-}
-
-impl LuaAstNode for LuaDocTagExport {
-    fn syntax(&self) -> &LuaSyntaxNode {
-        &self.syntax
-    }
-
-    fn can_cast(kind: LuaSyntaxKind) -> bool
-    where
-        Self: Sized,
-    {
-        kind == LuaSyntaxKind::DocTagExport
-    }
-
-    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if Self::can_cast(syntax.kind().into()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-}
-
-impl LuaDocDescriptionOwner for LuaDocTagExport {}
-
-impl LuaDocTagExport {
-    pub fn get_name_token(&self) -> Option<LuaNameToken> {
-        self.token()
-    }
-
-    pub fn get_export_scope(&self) -> Option<String> {
-        self.get_name_token()
-            .map(|token| token.get_name_text().to_string())
     }
 }
 

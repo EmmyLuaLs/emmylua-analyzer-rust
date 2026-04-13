@@ -34,4 +34,5 @@ pub use signature::EmmyrcSignature;
 pub use strict::EmmyrcStrict;
 pub use workspace::{
     EmmyLibraryConfig, EmmyLibraryItem, EmmyrcWorkspace, EmmyrcWorkspaceModuleMap,
+    EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem,
 };

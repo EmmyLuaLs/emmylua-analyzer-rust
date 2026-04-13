@@ -44,10 +44,11 @@ fn goto_type_member(
     member_name: &str,
 ) -> Option<GotoDefinitionResponse> {
     let file_id = semantic_model.get_file_id();
-    let type_decl = semantic_model
-        .get_db()
-        .get_type_index()
-        .find_type_decl(file_id, type_name)?;
+    let type_decl = semantic_model.get_db().get_type_index().find_type_decl(
+        file_id,
+        type_name,
+        semantic_model.get_db().resolve_workspace_id(file_id),
+    )?;
     let type_id = type_decl.get_id();
     let typ = LuaType::Ref(type_id);
     let member_map = semantic_model.get_member_info_map(&typ)?;

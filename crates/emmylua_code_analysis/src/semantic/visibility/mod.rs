@@ -1,4 +1,5 @@
-mod export;
+#[cfg(test)]
+mod test;
 
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaFuncStat, LuaGeneralToken, LuaIndexExpr,
@@ -7,12 +8,10 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    try_extract_signature_id_from_field,
+    ModuleInfo, SemanticModel, try_extract_signature_id_from_field,
 };
 
 use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
-
-pub use export::check_export_visibility;
 
 pub fn check_visibility(
     db: &DbIndex,
@@ -57,8 +56,8 @@ pub fn check_visibility(
         }
         VisibilityKind::Internal => {
             let property_file_id = property_owner.get_file_id()?;
-            let property_workspace_id = db.get_module_index().get_workspace_id(property_file_id)?;
-            let current_workspace_id = db.get_module_index().get_workspace_id(file_id)?;
+            let property_workspace_id = db.resolve_workspace_id(property_file_id)?;
+            let current_workspace_id = db.resolve_workspace_id(file_id)?;
             if current_workspace_id != property_workspace_id {
                 return Some(false);
             }
@@ -255,4 +254,15 @@ fn check_member_name(
         }
     };
     Some(true)
+}
+
+pub fn check_module_visibility(
+    semantic_model: &SemanticModel,
+    module_info: &ModuleInfo,
+) -> Option<bool> {
+    let current_workspace_id = semantic_model
+        .get_db()
+        .get_module_index()
+        .get_workspace_id(semantic_model.get_file_id())?;
+    Some(module_info.is_requireable_from(current_workspace_id))
 }

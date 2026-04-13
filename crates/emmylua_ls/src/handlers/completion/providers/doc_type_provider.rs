@@ -56,7 +56,14 @@ pub fn complete_types_by_prefix(
     let completion_type = completion_type.or(Some(CompletionType::Type))?;
     let file_id = builder.semantic_model.get_file_id();
     let type_index = builder.semantic_model.get_db().get_type_index();
-    let results = type_index.find_type_decls(file_id, prefix);
+    let results = type_index.find_type_decls(
+        file_id,
+        prefix,
+        builder
+            .semantic_model
+            .get_db()
+            .resolve_workspace_id(file_id),
+    );
 
     for (name, type_decl) in results {
         if let Some(filter) = filter

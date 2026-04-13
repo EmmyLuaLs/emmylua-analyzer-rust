@@ -29,8 +29,11 @@ fn check_doc_tag_class(
 ) -> Option<()> {
     let type_index = context.db.get_type_index();
 
-    let class_decl =
-        type_index.find_type_decl(context.file_id, tag.get_name_token()?.get_name_text())?;
+    let class_decl = type_index.find_type_decl(
+        context.file_id,
+        tag.get_name_token()?.get_name_text(),
+        context.get_db().resolve_workspace_id(context.file_id),
+    )?;
 
     if !class_decl.is_class() {
         return Some(());
