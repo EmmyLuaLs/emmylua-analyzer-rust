@@ -74,8 +74,8 @@ function io.lines(filename, ...) end
 --- some systems to open the file in binary mode.
 ---@param filename string
 ---@param mode? iolib.OpenMode
----@return file?
----@return string? err
+---@return_overload file
+---@return_overload nil, string err
 function io.open(filename, mode) end
 
 ---
@@ -132,8 +132,8 @@ function io.type(obj) end
 ---
 --- Equivalent to `io.output():write(···)`.
 --- @param ... string | number
---- @return file?
---- @return string? err
+--- @return_overload file
+--- @return_overload nil, string err
 function io.write(...) end
 
 --- File object
@@ -148,9 +148,8 @@ local file = {}
 ---
 --- When closing a file handle created with `io.popen`, `file:close` returns the
 --- same values returned by `os.execute`.
---- @return true|nil
---- @return 'exit'|'signal'
---- @return integer
+--- @return_overload true, 'exit'|'signal', integer
+--- @return_overload nil, 'exit'|'signal', integer
 function file:close() end
 
 ---@version 5.1, JIT
@@ -158,14 +157,14 @@ function file:close() end
 --- Closes `file`. Note that files are automatically closed when their
 --- handles are garbage collected, but that takes an unpredictable amount of
 --- time to happen.
---- @return true|nil
---- @return string? err
+--- @return_overload true
+--- @return_overload nil, string err
 function file:close() end
 
 ---
 --- Saves any written data to `file`.
---- @return true|nil
---- @return string? err
+--- @return_overload true
+--- @return_overload nil, string err
 function file:flush() end
 
 ---
@@ -234,8 +233,8 @@ function file:read(...) end
 ---@overload fun()
 ---@param whence string | 'set' | 'cur' | 'end'
 ---@param offset integer
----@return integer? pos
----@return string? err
+---@return_overload integer pos
+---@return_overload nil, string err
 function file:seek(whence, offset) end
 
 ---
@@ -261,8 +260,8 @@ function file:setvbuf(mode, size) end
 --- In case of success, this function returns `file`. Otherwise it returns
 --- **nil** plus a string describing the error.
 --- @param ... string | number
---- @return file?
---- @return string? err
+--- @return_overload file
+--- @return_overload nil, string err
 function file:write(...) end
 
 --- * `io.stderr`: Standard error.
