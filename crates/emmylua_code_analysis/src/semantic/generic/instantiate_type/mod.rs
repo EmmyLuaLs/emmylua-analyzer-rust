@@ -7,7 +7,8 @@ use std::ops::Deref;
 
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
-    LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId, TypeOps,
+    LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
+    LuaTypeNode, TypeOps,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
         VariadicType,
@@ -65,15 +66,39 @@ pub(super) fn instantiate_type_generic_with_env(env: &GenericEvalEnv, ty: &LuaTy
     }
 }
 
+fn instantiate_types<'a, I>(env: &GenericEvalEnv, types: I) -> Vec<LuaType>
+where
+    I: IntoIterator<Item = &'a LuaType>,
+{
+    types
+        .into_iter()
+        .map(|ty| instantiate_type_generic_with_env(env, ty))
+        .collect()
+}
+
+fn instantiate_type_pairs<'a, I>(env: &GenericEvalEnv, pairs: I) -> Vec<(LuaType, LuaType)>
+where
+    I: IntoIterator<Item = &'a (LuaType, LuaType)>,
+{
+    pairs
+        .into_iter()
+        .map(|(key, value)| {
+            (
+                instantiate_type_generic_with_env(env, key),
+                instantiate_type_generic_with_env(env, value),
+            )
+        })
+        .collect()
+}
+
 fn instantiate_array(env: &GenericEvalEnv, base: &LuaType) -> LuaType {
     let base = instantiate_type_generic_with_env(env, base);
     LuaType::Array(LuaArrayType::from_base_type(base).into())
 }
 
 fn instantiate_tuple(env: &GenericEvalEnv, tuple: &LuaTupleType) -> LuaType {
-    let tuple_types = tuple.get_types();
     let mut new_types = Vec::new();
-    for t in tuple_types {
+    for t in tuple.get_types() {
         if let LuaType::Variadic(inner) = t {
             match inner.deref() {
                 VariadicType::Base(base) => {
@@ -103,7 +128,7 @@ fn instantiate_tuple(env: &GenericEvalEnv, tuple: &LuaTupleType) -> LuaType {
             break;
         }
 
-        let t = instantiate_type_generic_with_env(env, &t);
+        let t = instantiate_type_generic_with_env(env, t);
         new_types.push(t);
     }
     LuaType::Tuple(LuaTupleType::new(new_types, tuple.status).into())
@@ -243,45 +268,25 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
 }
 
 fn instantiate_object(env: &GenericEvalEnv, object: &LuaObjectType) -> LuaType {
-    let fields = object.get_fields();
-    let index_access = object.get_index_access();
+    let new_fields = object
+        .get_fields()
+        .iter()
+        .map(|(key, field)| (key.clone(), instantiate_type_generic_with_env(env, field)))
+        .collect::<HashMap<_, _>>();
 
-    let mut new_fields = HashMap::new();
-    for (key, field) in fields {
-        let new_field = instantiate_type_generic_with_env(env, field);
-        new_fields.insert(key.clone(), new_field);
-    }
-
-    let mut new_index_access = Vec::new();
-    for (key, value) in index_access {
-        let key = instantiate_type_generic_with_env(env, key);
-        let value = instantiate_type_generic_with_env(env, value);
-        new_index_access.push((key, value));
-    }
+    let new_index_access = instantiate_type_pairs(env, object.get_index_access().iter());
 
     LuaType::Object(LuaObjectType::new_with_fields(new_fields, new_index_access).into())
 }
 
 fn instantiate_union(env: &GenericEvalEnv, union: &LuaUnionType) -> LuaType {
-    let types = union.into_vec();
-    let mut result_types = Vec::new();
-    for t in types {
-        let t = instantiate_type_generic_with_env(env, &t);
-        result_types.push(t);
-    }
-
-    LuaType::from_vec(result_types)
+    LuaType::from_vec(instantiate_types(env, union.into_vec().iter()))
 }
 
 fn instantiate_intersection(env: &GenericEvalEnv, intersection: &LuaIntersectionType) -> LuaType {
-    let types = intersection.get_types();
-    let mut new_types = Vec::new();
-    for t in types {
-        let t = instantiate_type_generic_with_env(env, t);
-        new_types.push(t);
-    }
-
-    LuaType::Intersection(LuaIntersectionType::new(new_types).into())
+    LuaType::Intersection(
+        LuaIntersectionType::new(instantiate_types(env, intersection.get_types().iter())).into(),
+    )
 }
 
 pub fn instantiate_generic(
@@ -295,11 +300,7 @@ pub fn instantiate_generic(
 
 fn instantiate_generic_with_env(env: &GenericEvalEnv, generic: &LuaGenericType) -> LuaType {
     let generic_params = generic.get_params();
-    let mut new_params = Vec::new();
-    for param in generic_params {
-        let new_param = instantiate_type_generic_with_env(env, param);
-        new_params.push(new_param);
-    }
+    let new_params = instantiate_types(env, generic_params.iter());
 
     let base = generic.get_base_type();
     let type_decl_id = if let LuaType::Ref(id) = base {
@@ -340,14 +341,8 @@ fn instantiate_generic_with_env(env: &GenericEvalEnv, generic: &LuaGenericType) 
     LuaType::Generic(LuaGenericType::new(type_decl_id, new_params).into())
 }
 
-fn instantiate_table_generic(env: &GenericEvalEnv, table_params: &Vec<LuaType>) -> LuaType {
-    let mut new_params = Vec::new();
-    for param in table_params {
-        let new_param = instantiate_type_generic_with_env(env, param);
-        new_params.push(new_param);
-    }
-
-    LuaType::TableGeneric(new_params.into())
+fn instantiate_table_generic(env: &GenericEvalEnv, table_params: &[LuaType]) -> LuaType {
+    LuaType::TableGeneric(instantiate_types(env, table_params.iter()).into())
 }
 
 fn instantiate_tpl_ref(tpl: &GenericTpl, env: &GenericEvalEnv) -> LuaType {
@@ -479,7 +474,7 @@ fn instantiate_variadic_type(env: &GenericEvalEnv, variadic: &VariadicType) -> L
             _ => {}
         },
         VariadicType::Multi(types) => {
-            if types.iter().any(|it| it.contain_tpl()) {
+            if types.iter().any(LuaTypeNode::contains_tpl_node) {
                 let mut new_types = Vec::new();
                 for t in types {
                     let t = instantiate_type_generic_with_env(env, t);

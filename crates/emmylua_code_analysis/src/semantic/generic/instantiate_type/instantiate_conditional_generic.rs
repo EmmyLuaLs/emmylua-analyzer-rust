@@ -1,8 +1,8 @@
 use hashbrown::{HashMap, HashSet};
 
 use crate::{
-    DbIndex, GenericTplId, LuaAliasCallKind, LuaConditionalType, LuaTypeDeclId, TypeOps,
-    TypeVisitTrait, check_type_compact,
+    DbIndex, GenericTplId, LuaAliasCallKind, LuaConditionalType, LuaTypeDeclId, LuaTypeNode,
+    TypeOps, check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
     semantic::{
         generic::type_substitutor::SubstitutorValue, member::find_members_with_key,
@@ -135,7 +135,7 @@ fn resolve_conditional(
     // right_has_infer 表示右侧 pattern 里还带 infer.
     let right_has_infer = contains_conditional_infer(&right_rigid);
     // rigid_has_tpl 表示严格视图下至少一侧还依赖未解模板.
-    let rigid_has_tpl = left_rigid.contain_tpl() || right_rigid.contain_tpl();
+    let rigid_has_tpl = left_rigid.contains_tpl_node() || right_rigid.contains_tpl_node();
     if !rigid_has_tpl && right_has_infer {
         // 左右两侧都已经具体化时, infer pattern 可以直接做精确匹配, 成功就是 true, 失败就是 false.
         let mut infer_assignments = HashMap::new();
@@ -263,13 +263,7 @@ fn build_true_constraint_substitutor(
 }
 
 fn contains_conditional_infer(ty: &LuaType) -> bool {
-    let mut found = false;
-    ty.visit_type(&mut |inner| {
-        if matches!(inner, LuaType::ConditionalInfer(_)) {
-            found = true;
-        }
-    });
-    found
+    ty.any_type(|inner| matches!(inner, LuaType::ConditionalInfer(_)))
 }
 
 fn collect_infer_assignments(
@@ -595,7 +589,7 @@ fn resolve_infer_tpl_ids(
     infer_names: &HashSet<String>,
 ) -> HashMap<String, GenericTplId> {
     let mut map = HashMap::new();
-    let mut visit = |ty: &LuaType| {
+    conditional.visit_nested_types(&mut |ty: &LuaType| {
         if let LuaType::TplRef(tpl) = ty {
             if substitutor.get(tpl.get_tpl_id()).is_none() {
                 let name = tpl.get_name();
@@ -604,11 +598,7 @@ fn resolve_infer_tpl_ids(
                 }
             }
         }
-    };
-
-    conditional.get_true_type().visit_type(&mut visit);
-    conditional.get_condition().visit_type(&mut visit);
-    conditional.get_false_type().visit_type(&mut visit);
+    });
 
     map
 }

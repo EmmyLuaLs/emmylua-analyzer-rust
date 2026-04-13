@@ -164,8 +164,8 @@ function ipairs(t) end
 ---@param chunkname? string
 ---@param mode? std.loadmode
 ---@param env? table
----@return function? chunk
----@return string?   error_message
+---@return_overload function chunk
+---@return_overload nil, string error_message
 ---@nodiscard
 function load(chunk, chunkname, mode, env) end
 
@@ -175,8 +175,8 @@ function load(chunk, chunkname, mode, env) end
 ---@version 5.1, JIT
 ---@param text       Language<"Lua">
 ---@param chunkname? string
----@return function? chunk
----@return string?   error_message
+---@return_overload function chunk
+---@return_overload nil, string error_message
 ---@nodiscard
 function loadstring(text, chunkname) end
 
@@ -186,8 +186,8 @@ function loadstring(text, chunkname) end
 ---@param filename? string
 ---@param mode? std.loadmode
 ---@param env? table
----@return function? chunk
----@return string? error_message
+---@return_overload function chunk
+---@return_overload nil, string error_message
 function loadfile(filename, mode, env) end
 
 ---@version 5.1, JIT

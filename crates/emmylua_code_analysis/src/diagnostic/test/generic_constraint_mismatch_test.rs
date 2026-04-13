@@ -377,4 +377,33 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_overload_generic_constraint_merged_params() {
+        // When a generic signature has overloads, the merged main signature
+        // unions parameter types from all overloads. Constraint checks must
+        // run against the resolved overload, not the merged signature.
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "mylib.lua",
+            r#"
+            ---@meta mylib
+            local M = {}
+
+            ---@generic T: table
+            ---@overload fun(a: string, b: T?): T
+            ---@overload fun(a: string, b: integer, c: T?): T
+            function M.decode(a, b_or_c, c) end
+
+            return M
+        "#,
+        );
+        assert!(ws.check_code_for(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            local m = require("mylib")
+            local ret = m.decode("x", 42)
+        "#
+        ));
+    }
 }
