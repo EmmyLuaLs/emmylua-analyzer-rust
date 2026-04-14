@@ -480,82 +480,79 @@ pub fn analyze_local_func_stat(
     Some(())
 }
 
-fn register_expr_key_member(analyzer: &mut LuaAnalyzer, field: &LuaTableField) {
-    // Register expression-key members early so table-decl inference (and pairs)
-    // can see them even when the table itself has no explicit generic type.
-    let Some(field_key) = field.get_field_key() else {
-        return;
-    };
-    let LuaIndexKey::Expr(_) = &field_key else {
-        return;
-    };
-    let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
-    if analyzer
-        .db
-        .get_member_index()
-        .get_member(&member_id)
-        .is_some()
-    {
-        return;
-    }
-    let cache = analyzer
-        .context
-        .infer_manager
-        .get_infer_cache(analyzer.file_id);
-    let Ok(member_key) = LuaMemberKey::from_index_key(analyzer.db, cache, &field_key) else {
-        return;
-    };
-    if matches!(member_key, LuaMemberKey::ExprType(ref typ) if typ.is_unknown()) {
-        return;
-    }
-    let Some(table_expr) = field.get_parent::<LuaTableExpr>() else {
-        return;
-    };
-    let owner_id = LuaMemberOwner::Element(InFiled::new(analyzer.file_id, table_expr.get_range()));
-    let decl_feature = if analyzer.context.metas.contains(&analyzer.file_id) {
-        LuaMemberFeature::MetaDefine
-    } else {
-        LuaMemberFeature::FileDefine
-    };
-    let member = LuaMember::new(member_id, member_key, decl_feature, None);
-    analyzer
-        .db
-        .get_member_index_mut()
-        .add_member(owner_id, member);
-}
-
+/// Analyzes an assignment-style table field.
+///
+/// Table-declaration analysis already registers static keys and value fields, for
+/// example `{ name = value }`, `{ ["name"] = value }`, `{ [1] = value }`, and
+/// `{ value1, value2 }`.
+///
+/// This pass binds the field value type and eagerly materializes resolved
+/// bracket-key members such as `{ [key] = value }`, `{ [true] = value }`, or
+/// `{ [SomeEnum.A] = value }` so later consumers like table inference and
+/// `pairs` can see them before the unresolved table-field pass runs.
 pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> Option<()> {
-    register_expr_key_member(analyzer, &field);
-
-    if field.is_assign_field() {
-        let value_expr = field.get_value_expr()?;
-        let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
-        let value_type = match analyzer.infer_expr(&value_expr.clone()) {
-            Ok(value_type) => match value_type {
-                LuaType::Def(ref_id) => LuaType::Ref(ref_id),
-                _ => value_type,
-            },
-            Err(InferFailReason::None) => LuaType::Unknown,
-            Err(reason) => {
-                let unresolve = UnResolveMember {
-                    file_id: analyzer.file_id,
-                    member_id,
-                    expr: Some(value_expr.clone()),
-                    prefix: None,
-                    ret_idx: 0,
-                };
-
-                analyzer.context.add_unresolve(unresolve.into(), reason);
-                return None;
-            }
-        };
-
-        bind_type(
-            analyzer.db,
-            member_id.into(),
-            LuaTypeCache::InferType(value_type),
-        );
+    if !field.is_assign_field() {
+        return Some(());
     }
+
+    if let Some(field_key) = field.get_field_key() {
+        if let LuaIndexKey::Expr(_) = &field_key {
+            // Decl analysis leaves `[expr] = value` fields unresolved. If the key
+            // already resolves here, materialize the member now.
+            let db = &mut *analyzer.db;
+            let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
+            if db.get_member_index().get_member(&member_id).is_none() {
+                let cache = analyzer
+                    .context
+                    .infer_manager
+                    .get_infer_cache(analyzer.file_id);
+                if let Ok(member_key) = LuaMemberKey::from_index_key(db, cache, &field_key) {
+                    if !matches!(member_key, LuaMemberKey::ExprType(ref typ) if typ.is_unknown()) {
+                        if let Some(table_expr) = field.get_parent::<LuaTableExpr>() {
+                            let owner_id = LuaMemberOwner::Element(InFiled::new(
+                                analyzer.file_id,
+                                table_expr.get_range(),
+                            ));
+                            let decl_feature = if analyzer.context.metas.contains(&analyzer.file_id)
+                            {
+                                LuaMemberFeature::MetaDefine
+                            } else {
+                                LuaMemberFeature::FileDefine
+                            };
+                            let member = LuaMember::new(member_id, member_key, decl_feature, None);
+                            db.get_member_index_mut().add_member(owner_id, member);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let value_expr = field.get_value_expr()?;
+    let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
+    let value_type = match analyzer.infer_expr(&value_expr.clone()) {
+        Ok(value_type) => match value_type {
+            LuaType::Def(ref_id) => LuaType::Ref(ref_id),
+            _ => value_type,
+        },
+        Err(InferFailReason::None) => LuaType::Unknown,
+        Err(reason) => {
+            let unresolve = UnResolveMember {
+                file_id: analyzer.file_id,
+                member_id,
+                expr: Some(value_expr.clone()),
+                prefix: None,
+                ret_idx: 0,
+            };
+
+            analyzer.context.add_unresolve(unresolve.into(), reason);
+            return None;
+        }
+    };
+
+    let cache = LuaTypeCache::InferType(value_type);
+    bind_type(analyzer.db, member_id.into(), cache);
+
     Some(())
 }
 
