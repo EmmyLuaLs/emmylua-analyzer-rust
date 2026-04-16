@@ -13,7 +13,8 @@ use crate::{
 };
 use check_reason::{check_reach_reason, resolve_all_reason};
 use emmylua_parser::{
-    LuaAssignStat, LuaCallExpr, LuaExpr, LuaFuncStat, LuaNameToken, LuaTableExpr, LuaTableField,
+    LuaAssignStat, LuaBlock, LuaCallExpr, LuaExpr, LuaFuncStat, LuaNameToken, LuaTableExpr,
+    LuaTableField,
 };
 use resolve::{
     try_resolve_decl, try_resolve_iter_var, try_resolve_member, try_resolve_module,
@@ -23,7 +24,7 @@ use resolve_closure::{
     try_resolve_call_closure_params, try_resolve_closure_parent_params, try_resolve_closure_return,
 };
 
-use super::{AnalyzeContext, infer_cache_manager::InferCacheManager, lua::LuaReturnPoint};
+use super::{AnalyzeContext, infer_cache_manager::InferCacheManager};
 
 type ResolveResult = Result<(), InferFailReason>;
 
@@ -336,7 +337,7 @@ impl From<UnResolveModule> for UnResolve {
 pub struct UnResolveReturn {
     pub file_id: FileId,
     pub signature_id: LuaSignatureId,
-    pub return_points: Vec<LuaReturnPoint>,
+    pub body: LuaBlock,
 }
 
 impl From<UnResolveReturn> for UnResolve {
@@ -378,7 +379,7 @@ pub struct UnResolveClosureReturn {
     pub signature_id: LuaSignatureId,
     pub call_expr: LuaCallExpr,
     pub param_idx: usize,
-    pub return_points: Vec<LuaReturnPoint>,
+    pub body: LuaBlock,
 }
 
 impl From<UnResolveClosureReturn> for UnResolve {

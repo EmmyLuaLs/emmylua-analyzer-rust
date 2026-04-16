@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{ModuleVisibility, VirtualWorkspace};
+    use crate::{DiagnosticCode, ModuleVisibility, VirtualWorkspace};
 
     #[test]
     fn test_module_annotation() {
@@ -121,5 +121,53 @@ mod test {
             assert!(module.is_some());
             assert!(module.unwrap().visible == ModuleVisibility::Internal);
         }
+    }
+
+    #[test]
+    fn test_module_return_from_truthy_while_block() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+                while {} do
+                    return 1
+                end
+                "#,
+        );
+
+        // `def()` creates `virtual_0.lua`, so the block is requireable as `virtual_0`.
+        let ty = ws.expr_ty(r#"require("virtual_0")"#);
+        let integer = ws.ty("integer");
+        let nil = ws.ty("nil");
+        assert!(ws.check_type(&ty, &integer));
+        assert!(!ws.check_type(&ty, &nil));
+    }
+
+    #[test]
+    fn test_module_multiple_return_paths_preserve_export_metadata_block() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+                ---@class (partial) ModuleExport
+                ---@field private hidden integer
+                local export = {}
+
+                if flag then
+                    return export
+                end
+
+                return export
+                "#,
+        );
+
+        // `AccessInvisible` only fires if the export still points at `export`.
+        assert!(!ws.check_code_for(
+            DiagnosticCode::AccessInvisible,
+            r#"
+                local export = require("virtual_0")
+                export.hidden = 1
+                "#,
+        ));
     }
 }

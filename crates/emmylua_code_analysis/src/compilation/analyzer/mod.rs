@@ -6,6 +6,8 @@ mod infer_cache_manager;
 mod lua;
 mod unresolve;
 
+pub(crate) use lua::does_func_body_always_return_or_exit;
+
 use crate::{
     Emmyrc, FileId, InFiled, InferFailReason,
     db_index::{DbIndex, WorkspaceId},
