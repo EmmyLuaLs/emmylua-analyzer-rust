@@ -223,6 +223,14 @@ end
     }
 
     #[test]
+    fn test_if_end_inline_comment_is_preserved() {
+        assert_format!(
+            "function abi.get_pos()\nif false then\nreturn \"\" -- hhh\nend -- ennene\n\nreturn { yafafa = 1, x = 2 } -- ccc\nend\n",
+            "function abi.get_pos()\n    if false then\n        return \"\" -- hhh\n    end -- ennene\n\n    return { yafafa = 1, x = 2 } -- ccc\nend\n"
+        );
+    }
+
+    #[test]
     fn test_while_header_keeps_short_logical_tail_with_multiline_callback_call() {
         assert_format!(
             "while check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') and another_predicate do\n    print('ok')\nend\n",

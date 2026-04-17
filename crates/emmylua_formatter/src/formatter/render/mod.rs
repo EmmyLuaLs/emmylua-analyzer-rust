@@ -1466,7 +1466,7 @@ fn extract_trailing_comment_rendered(
     Some((docs, comment.syntax().text_range(), align_hint))
 }
 
-fn append_trailing_comment_suffix(
+pub(super) fn append_trailing_comment_suffix(
     ctx: &FormatContext,
     plan: &RootFormatPlan,
     docs: &mut Vec<DocIR>,
@@ -1505,7 +1505,7 @@ fn find_inline_trailing_comment_node(node: &LuaSyntaxNode) -> Option<LuaSyntaxNo
             continue;
         }
 
-        if has_inline_non_trivia_before(&child) && !has_inline_non_trivia_after(&child) {
+        if has_inline_non_trivia_before(&child) && !has_non_trivia_after_in_node(&child) {
             return Some(child);
         }
     }
@@ -1524,6 +1524,23 @@ fn find_inline_trailing_comment_node(node: &LuaSyntaxNode) -> Option<LuaSyntaxNo
     }
 
     None
+}
+
+fn has_non_trivia_after_in_node(node: &LuaSyntaxNode) -> bool {
+    let mut next = node.next_sibling_or_token();
+    while let Some(element) = next {
+        match element.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine) => {
+                next = element.next_sibling_or_token();
+            }
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => {
+                next = element.next_sibling_or_token();
+            }
+            _ => return true,
+        }
+    }
+
+    false
 }
 
 fn has_inline_non_trivia_before(node: &LuaSyntaxNode) -> bool {
@@ -1695,16 +1712,13 @@ fn normalize_single_normal_comment_line(
     ctx: &FormatContext,
     line: &str,
     prefix_override: Option<&str>,
-    normalized_line: Option<&str>,
+    _normalized_line: Option<&str>,
 ) -> String {
     let trimmed = line.trim_start();
     if !trimmed.starts_with("--") || trimmed.starts_with("---") {
         return trimmed.to_string();
     }
     let body_with_gap = &trimmed[2..];
-    if let Some(normalized_line) = normalized_line {
-        return normalized_line.to_string();
-    }
     let prefix = prefix_override.map(str::to_string).unwrap_or_else(|| {
         if ctx.config.comments.space_after_comment_dash {
             "-- ".to_string()
@@ -1773,8 +1787,6 @@ fn normalize_doc_comment_block(
                 ctx,
                 line,
                 normalized_lines.get(index).and_then(|line| line.as_deref()),
-                index == 0,
-                raw_lines.len() == 1,
             )
         })
         .collect();
@@ -1826,8 +1838,6 @@ fn parse_doc_comment_line(
     ctx: &FormatContext,
     line: &str,
     normalized_line: Option<&str>,
-    is_first_line: bool,
-    single_line_block: bool,
 ) -> DocLineKind {
     let trimmed_line = line.trim_start();
     let suffix = trimmed_line.strip_prefix("---").unwrap_or(trimmed_line);
@@ -1866,11 +1876,11 @@ fn parse_doc_comment_line(
         });
     }
 
-    let preserve_spacing = !single_line_block && !is_first_line && gap_after_dash.is_some();
+    let preserve_spacing = gap_after_dash.is_some();
     let content = if preserve_spacing {
         suffix.to_string()
     } else {
-        collapse_spaces(trimmed)
+        strip_single_comment_gap(suffix).to_string()
     };
     DocLineKind::Description {
         content,
@@ -1888,16 +1898,20 @@ fn parse_doc_tag_line(
     let tag = parts.next().unwrap_or_default().to_string();
     let normalized_rest = rest[tag.len()..].trim_start().to_string();
     let raw_rest = raw_rest_source[tag.len()..].trim_start().to_string();
+    let (normalized_head, raw_description) = split_doc_tag_description(&normalized_rest, &raw_rest);
     let mut columns = match tag.as_str() {
-        "param" => split_columns(&normalized_rest, &[1, 1]),
-        "field" => parse_field_columns(&normalized_rest),
-        "return" => parse_return_columns(&normalized_rest),
-        "class" => split_columns(&normalized_rest, &[1]),
-        "alias" => parse_alias_columns(&normalized_rest),
-        "generic" => parse_generic_columns(&normalized_rest),
-        "type" | "overload" => vec![normalized_rest.clone()],
-        _ => vec![collapse_spaces(&normalized_rest)],
+        "param" => parse_param_columns(&normalized_head),
+        "field" => parse_field_columns(&normalized_head),
+        "return" => parse_return_columns(&normalized_head),
+        "class" => split_columns(&normalized_head, &[1]),
+        "alias" => parse_alias_columns(&normalized_head),
+        "generic" => parse_generic_columns(&normalized_head),
+        "type" | "overload" => vec![normalized_head.clone()],
+        _ => vec![collapse_spaces(&normalized_head)],
     };
+    if let Some(description) = raw_description {
+        columns.push(description);
+    }
     columns.retain(|column| !column.is_empty());
 
     let align_key = match tag.as_str() {
@@ -2102,6 +2116,22 @@ fn parse_field_columns(input: &str) -> Vec<String> {
         Some("public" | "private" | "protected")
     );
     if visibility && tokens.len() >= 2 {
+        if let Some((name, ty)) = split_attached_field_name_and_type(tokens[1]) {
+            let mut columns = vec![format!("{} {}", tokens[0], name), ty.to_string()];
+            if tokens.len() >= 3 {
+                columns.push(tokens[2..].join(" "));
+            }
+            return columns;
+        }
+        if tokens
+            .get(2)
+            .is_some_and(|token| !looks_like_field_type_start(token))
+        {
+            return vec![
+                format!("{} {}", tokens[0], tokens[1]),
+                tokens[2..].join(" "),
+            ];
+        }
         let mut columns = vec![format!("{} {}", tokens[0], tokens[1])];
         if tokens.len() >= 3 {
             columns.push(tokens[2].to_string());
@@ -2111,11 +2141,56 @@ fn parse_field_columns(input: &str) -> Vec<String> {
         }
         columns
     } else {
-        split_columns(input, &[1, 1])
+        if let Some((name, ty)) = split_attached_field_name_and_type(tokens[0]) {
+            let mut columns = vec![name.to_string(), ty.to_string()];
+            if tokens.len() >= 2 {
+                columns.push(tokens[1..].join(" "));
+            }
+            return columns;
+        }
+        if tokens.len() >= 2 && !looks_like_field_type_start(tokens[1]) {
+            vec![tokens[0].to_string(), tokens[1..].join(" ")]
+        } else {
+            split_columns(input, &[1, 1])
+        }
     }
 }
 
+fn split_attached_field_name_and_type(token: &str) -> Option<(&str, &str)> {
+    let split_index = token.find('(')?;
+    if split_index == 0 {
+        return None;
+    }
+
+    let (name, ty) = token.split_at(split_index);
+    if !name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.'))
+    {
+        return None;
+    }
+
+    Some((name, ty))
+}
+
+fn parse_param_columns(input: &str) -> Vec<String> {
+    let tokens: Vec<_> = input.split_whitespace().collect();
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+
+    if tokens.len() >= 3 && matches!(tokens[1], "sync" | "async") && tokens[2].starts_with("fun") {
+        return vec![tokens[0].to_string(), tokens[1..].join(" ")];
+    }
+
+    split_columns(input, &[1, 1])
+}
+
 fn parse_return_columns(input: &str) -> Vec<String> {
+    parse_return_columns_without_raw_description(input)
+}
+
+fn parse_return_columns_without_raw_description(input: &str) -> Vec<String> {
     let tokens: Vec<_> = input.split_whitespace().collect();
     match tokens.len() {
         0 => Vec::new(),
@@ -2152,6 +2227,52 @@ fn parse_multiline_alias_continue_columns(input: &str) -> Vec<String> {
     vec![value.to_string(), format!("# {description}")]
 }
 
+fn looks_like_field_type_start(token: &str) -> bool {
+    if token.is_empty() || token.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+
+    token.starts_with("fun(")
+        || token.starts_with('[')
+        || token.starts_with('"')
+        || token.contains('|')
+        || token.contains('?')
+        || token.contains('<')
+        || token.contains('{')
+        || matches!(
+            token,
+            "any"
+                | "boolean"
+                | "function"
+                | "global"
+                | "integer"
+                | "lightuserdata"
+                | "nil"
+                | "number"
+                | "self"
+                | "string"
+                | "table"
+                | "thread"
+                | "unknown"
+                | "userdata"
+                | "void"
+        )
+}
+
+fn split_doc_tag_description(normalized_input: &str, raw_input: &str) -> (String, Option<String>) {
+    let normalized_head = normalized_input
+        .find('#')
+        .map(|index| normalized_input[..index].trim_end().to_string())
+        .unwrap_or_else(|| normalized_input.to_string());
+
+    let raw_description = raw_input.find('#').and_then(|index| {
+        let description = raw_input[index..].trim_start();
+        (!description.is_empty()).then(|| description.to_string())
+    });
+
+    (normalized_head, raw_description)
+}
+
 fn doc_continue_marker(text: &str) -> &str {
     if text.starts_with("|+") {
         "|+"
@@ -2174,6 +2295,13 @@ fn normalized_doc_continue_marker_prefix(ctx: &FormatContext, marker: &str) -> S
     } else {
         format!("---{marker}")
     }
+}
+
+fn strip_single_comment_gap(text_after_dash: &str) -> &str {
+    text_after_dash
+        .strip_prefix(' ')
+        .or_else(|| text_after_dash.strip_prefix('\t'))
+        .unwrap_or(text_after_dash)
 }
 
 fn parse_generic_columns(input: &str) -> Vec<String> {

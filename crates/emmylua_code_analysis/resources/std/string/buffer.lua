@@ -55,9 +55,9 @@
 ---           | int64 | uint64 | complex
 ---           | string
 ---
---- nil → 0x00
---- false → 0x01
---- true → 0x02
+--- nil     → 0x00
+--- false   → 0x01
+--- true    → 0x02
 ---
 --- null → 0x03 // NULL lightuserdata
 --- lightud32 → 0x04 data.I // 32 bit lightuserdata
@@ -201,7 +201,7 @@ function buf:free() end
 --- The reserved write space is not initialized. At least the used bytes must be written to before calling the commit method. There's no need to call the commit method, if nothing is added to the buffer (e.g. on error).
 --- @param size integer
 --- @return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to this space
---- @return integer len # available length                                      (bytes)
+--- @return integer len    # available length                                      (bytes)
 function buf:reserve(size) end
 
 --- Appends the used bytes of the previously returned write space to the buffer data.
@@ -248,7 +248,7 @@ function buf:tostring() end
 --- Unlike Lua strings, buffer data is not implicitly zero-terminated. It's not safe to pass ptr to C functions that expect zero-terminated strings. If you're not using len, then you're doing something wrong.
 ---
 --- @return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.
---- @return integer len # length of the buffer data in                                bytes
+--- @return integer len    # length of the buffer data in                                bytes
 function buf:ref() end
 
 --- Serializes (encodes) the Lua object to the buffer

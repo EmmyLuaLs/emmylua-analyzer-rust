@@ -2105,8 +2105,9 @@ fn render_closure_shell(
     }
 
     let rendered_body_docs = render::render_closure_block_body(ctx, expr, root_plan);
+    let has_body_content = !body_comment_lines.is_empty() || !rendered_body_docs.is_empty();
 
-    if !body_comment_lines.is_empty() || !rendered_body_docs.is_empty() {
+    if has_body_content {
         let mut block_docs = vec![ir::hard_line()];
         for comment_docs in body_comment_lines {
             block_docs.extend(comment_docs);
@@ -2119,7 +2120,7 @@ fn render_closure_shell(
         docs.push(ir::hard_line());
     }
 
-    if !saw_same_line_body_comment && expr.get_block().is_none() {
+    if !saw_same_line_body_comment && expr.get_block().is_none() && !has_body_content {
         docs.push(ir::space());
     }
 

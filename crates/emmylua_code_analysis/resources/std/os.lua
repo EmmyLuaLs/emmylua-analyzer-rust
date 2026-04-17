@@ -23,15 +23,15 @@ os = {}
 function os.clock() end
 
 --- @class std.osdateparam
---- @field year                  integer|string four digits
---- @field month                 integer|string 1-12
---- @field day                   integer|string 1-31
---- @field hour(integer|string)? 0-23
---- @field min(integer|string)?  0-59
---- @field sec(integer|string)?  0-61,          due to leap seconds
---- @field wday(integer|string)? 1-7,           Sunday is 1
---- @field yday(integer|string)? 1-366
---- @field isdst                 boolean?       daylight saving flag, a boolean.
+--- @field year  integer|string    four digits
+--- @field month integer|string    1-12
+--- @field day   integer|string    1-31
+--- @field hour  (integer|string)? 0-23
+--- @field min   (integer|string)? 0-59
+--- @field sec   (integer|string)? 0-61, due to leap seconds
+--- @field wday  (integer|string)? 1-7, Sunday is 1
+--- @field yday  (integer|string)? 1-366
+--- @field isdst boolean?          daylight saving flag, a boolean.
 
 --- @class std.osdate: std.osdateparam
 --- @field year  integer|string four digits

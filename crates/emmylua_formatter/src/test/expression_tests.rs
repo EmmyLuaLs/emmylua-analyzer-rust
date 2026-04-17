@@ -325,6 +325,14 @@ local b = t[1]
     }
 
     #[test]
+    fn test_closure_expr_comment_only_body_does_not_insert_space_before_end() {
+        assert_format!(
+            "Execute(function(data)\n    -- comment\n\n end)\n",
+            "Execute(function(data)\n    -- comment\n\nend)\n"
+        );
+    }
+
+    #[test]
     fn test_simple_inline_lambda_stays_inline() {
         assert_format!(
             "local f = function() return  true end\n",

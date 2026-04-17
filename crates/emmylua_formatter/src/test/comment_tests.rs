@@ -51,6 +51,14 @@ local a = 1
     }
 
     #[test]
+    fn test_single_line_normal_comment_preserves_body_tokens() {
+        assert_format!(
+            "-- ffi.cdata* ptr # an uint8_t * pointer\n",
+            "-- ffi.cdata* ptr # an uint8_t * pointer\n"
+        );
+    }
+
+    #[test]
     fn test_multiple_comments() {
         assert_format!(
             r#"
@@ -962,6 +970,14 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_param_sync_fun_stays_single_type_column() {
+        assert_format!(
+            "---@param f sync fun(...: T...): R...\n---@param g async fun(...: A...): B...\nlocal function apply(f, g) end\n",
+            "--- @param f sync fun(...: T...): R...\n--- @param g async fun(...: A...): B...\nlocal function apply(f, g) end\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_param_columns_with_interleaved_descriptions() {
         assert_format!(
             "--- first parameter docs\n---@param short string desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
@@ -1022,6 +1038,22 @@ local t = {
         assert_format!(
             "--- first return docs\n---@return number ok success\n--- second return docs\n---@return string, integer err failure\nfunction f() end\n",
             "--- first return docs\n--- @return number ok           success\n--- second return docs\n--- @return string, integer err failure\nfunction f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_return_hash_description_preserves_body_text() {
+        assert_format!(
+            "---@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.\n---@return integer len # length of the buffer data in bytes\nlocal function f()\nend\n",
+            "--- @return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.\n--- @return integer len    # length of the buffer data in bytes\nlocal function f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_param_hash_description_preserves_body_text() {
+        assert_format!(
+            "---@param f sync fun(...: T...): R... # async and sync should stay near the fun type body\nlocal function apply(f) end\n",
+            "--- @param f sync fun(...: T...): R... # async and sync should stay near the fun type body\nlocal function apply(f) end\n"
         );
     }
 
@@ -1178,10 +1210,10 @@ local t = {
     }
 
     #[test]
-    fn test_doc_comment_single_line_description_still_normalizes_whitespace() {
+    fn test_doc_comment_single_line_description_preserves_body_spacing() {
         assert_format!(
             "---   spaced    words\nlocal value = nil\n",
-            "--- spaced words\nlocal value = nil\n"
+            "---   spaced    words\nlocal value = nil\n"
         );
     }
 
@@ -1214,6 +1246,14 @@ local t = {
         assert_format!(
             "--- hihi\n---   jgiwigw\n---  jgiwigw\n---fjajwiofw\nlocal value = nil\n",
             "--- hihi\n---   jgiwigw\n---  jgiwigw\n--- fjajwiofw\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_field_range_description_preserves_commas() {
+        assert_format!(
+            "---@class std.osdateparam\n---@field year                  integer|string four digits\n---@field month                 integer|string 1-12\n---@field day                   integer|string 1-31\n---@field hour(integer|string)? 0-23\n---@field min(integer|string)?  0-59\n---@field sec(integer|string)?  0-61,due to leap seconds\n---@field wday(integer|string)? 1-7,Sunday is 1\n---@field yday(integer|string)? 1-366\n---@field isdst                 boolean? daylight saving flag, a boolean.\nlocal t = {}\n",
+            "--- @class std.osdateparam\n--- @field year  integer|string    four digits\n--- @field month integer|string    1-12\n--- @field day   integer|string    1-31\n--- @field hour  (integer|string)? 0-23\n--- @field min   (integer|string)? 0-59\n--- @field sec   (integer|string)? 0-61,due to leap seconds\n--- @field wday  (integer|string)? 1-7,Sunday is 1\n--- @field yday  (integer|string)? 1-366\n--- @field isdst boolean?          daylight saving flag, a boolean.\nlocal t = {}\n"
         );
     }
 
