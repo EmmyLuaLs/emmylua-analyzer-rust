@@ -61,9 +61,7 @@ fn check_doc(
     };
 
     if comment.is_none() {
-        if !is_global
-            && should_skip_incomplete_signature_doc(closure_expr, signature.get_return_type())
-        {
+        if !is_global && should_skip_incomplete_signature_doc(closure_expr, signature) {
             return Some(());
         }
 
@@ -135,14 +133,22 @@ fn check_doc(
 
 fn should_skip_incomplete_signature_doc(
     closure_expr: &LuaClosureExpr,
-    return_type: LuaType,
+    signature: &LuaSignature,
 ) -> bool {
-    let has_params = closure_expr
+    let mut skip_param = closure_expr
         .get_params_list()
         .map(|params_list| params_list.get_params().next().is_some())
-        .unwrap_or(false);
+        .unwrap_or(true);
+    if !skip_param {
+        // 如果全部参数都有具体的类型, 那么我们认为其是完整的
+        skip_param = signature
+            .param_docs
+            .values()
+            .all(|param_info| !matches!(param_info.type_ref, LuaType::Unknown));
+    }
 
-    !has_params && !matches!(return_type, LuaType::Unknown)
+    let return_type = signature.get_return_type();
+    skip_param && !matches!(return_type, LuaType::Unknown)
 }
 
 fn check_params(

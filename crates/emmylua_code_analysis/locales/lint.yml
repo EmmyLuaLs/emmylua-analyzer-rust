@@ -278,3 +278,8 @@ Cannot use `...` outside a vararg function.:
   en: "Type '%{name}' has inconsistent access modifiers: %{modifiers}."
   zh_CN: "类型 '%{name}' 具有不一致的访问修饰符: %{modifiers}."
   zh_HK: "類型 '%{name}' 具有不一致的訪問修飾符: %{modifiers}."
+
+"Missing comment for function `%{name}`.":
+  en: "Missing comment for function `%{name}`."
+  zh_CN: "函数 `%{name}` 缺少注解。"
+  zh_HK: "函式 `%{name}` 缺少註解。"
