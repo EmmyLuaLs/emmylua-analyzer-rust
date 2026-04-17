@@ -124,7 +124,7 @@ fn module_analyze(
         }
     }
 
-    contexts.sort_by(|a, b| a.0.cmp(&b.0));
+    contexts.sort_by_key(|a| a.0);
 
     contexts.extend(main_vec);
     contexts

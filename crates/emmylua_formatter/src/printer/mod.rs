@@ -355,22 +355,19 @@ impl Printer {
         for doc in docs {
             match doc {
                 DocIR::HardLine => return true,
-                DocIR::List(contents) | DocIR::Indent(contents) => {
-                    if self.has_hard_line(contents) {
+                DocIR::List(contents) | DocIR::Indent(contents)
+                    if self.has_hard_line(contents) => {
                         return true;
                     }
-                }
-                DocIR::Group { contents, .. } => {
-                    if self.has_hard_line(contents) {
+                DocIR::Group { contents, .. }
+                    if self.has_hard_line(contents) => {
                         return true;
                     }
-                }
-                DocIR::AlignGroup(group) => {
+                DocIR::AlignGroup(group)
                     // Alignment groups with 2+ entries always produce hard lines
-                    if group.entries.len() >= 2 {
+                    if group.entries.len() >= 2 => {
                         return true;
                     }
-                }
                 _ => {}
             }
         }

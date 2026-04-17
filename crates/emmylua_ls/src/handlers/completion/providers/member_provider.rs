@@ -92,7 +92,7 @@ pub fn add_completions_for_members(
 ) -> Option<()> {
     // 排序
     let mut sorted_entries: Vec<_> = members.iter().collect();
-    sorted_entries.sort_unstable_by(|(name1, _), (name2, _)| name1.cmp(name2));
+    sorted_entries.sort_unstable_by_key(|(name1, _)| *name1);
 
     for (_, member_infos) in sorted_entries {
         add_resolve_member_infos(builder, member_infos, completion_status);
