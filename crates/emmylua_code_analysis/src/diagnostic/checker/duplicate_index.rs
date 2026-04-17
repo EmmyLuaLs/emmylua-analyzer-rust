@@ -24,7 +24,7 @@ fn check_table_duplicate_index(
     _: &SemanticModel,
     table: LuaTableExpr,
 ) -> Option<()> {
-    let fields = table.get_fields().collect::<Vec<_>>();
+    let fields = table.get_fields_with_keys();
     if fields.len() > 50 {
         // Skip checking if there are too many fields to avoid performance issues
         return Some(());
@@ -32,11 +32,8 @@ fn check_table_duplicate_index(
 
     let mut index_map: HashMap<String, Vec<LuaIndexKey>> = HashMap::new();
 
-    for field in fields {
-        let key = field.get_field_key();
-        if let Some(key) = key {
-            index_map.entry(key.get_path_part()).or_default().push(key);
-        }
+    for (_, key) in fields {
+        index_map.entry(key.get_path_part()).or_default().push(key);
     }
 
     for (name, keys) in index_map {

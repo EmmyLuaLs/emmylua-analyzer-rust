@@ -515,6 +515,20 @@ impl LuaTableExpr {
     pub fn get_fields(&self) -> LuaAstChildren<LuaTableField> {
         self.children()
     }
+
+    pub fn get_fields_with_keys(&self) -> Vec<(LuaTableField, LuaIndexKey)> {
+        let mut sequence_index = 0usize;
+        self.get_fields()
+            .filter_map(|field| {
+                if field.is_value_field() {
+                    sequence_index += 1;
+                    return Some((field, LuaIndexKey::Idx(sequence_index)));
+                }
+
+                field.get_field_key().map(|key| (field, key))
+            })
+            .collect()
+    }
 }
 
 impl From<LuaTableExpr> for LuaSingleArgExpr {

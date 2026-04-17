@@ -72,15 +72,12 @@ fn check_table_expr(
         table_type => table_type,
     };
 
-    let fields = expr.get_fields().collect::<Vec<_>>();
+    let fields = expr.get_fields_with_keys();
     if fields.len() > 50 {
         return Some(());
     }
 
-    let current_fields = fields
-        .iter()
-        .filter_map(|field| field.get_field_key().map(|key| key.get_path_part()))
-        .collect();
+    let current_fields = fields.iter().map(|(_, key)| key.get_path_part()).collect();
 
     let required_fields = match &table_type {
         LuaType::Ref(type_decl_id) => type_cache.entry(table_type.clone()).or_insert_with(|| {
