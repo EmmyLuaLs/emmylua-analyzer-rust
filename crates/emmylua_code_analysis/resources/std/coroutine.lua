@@ -13,15 +13,15 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
----@class coroutinelib
+--- @class coroutinelib
 coroutine = {}
 
 ---
 --- Creates a new coroutine, with body `f`. `f` must be a Lua function. Returns
 --- this new coroutine, an object with type `"thread"`.
----@param f async fun(...):any...
----@return thread
----@nodiscard
+--- @param f async fun(...): any...
+--- @return thread
+--- @nodiscard
 function coroutine.create(f) end
 
 ---
@@ -29,18 +29,18 @@ function coroutine.create(f) end
 ---
 --- A running coroutine is yieldable if it is not the main thread and it is not
 --- inside a non-yieldable C function.
----@param co? thread
----@return boolean
----@nodiscard
+--- @param co? thread
+--- @return boolean
+--- @nodiscard
 function coroutine.isyieldable(co) end
 
----@version > 5.4
+--- @version > 5.4
 ---
----Closes coroutine `co` , closing all its pending to-be-closed variables and putting the coroutine in a dead state.
+--- Closes coroutine `co` , closing all its pending to-be-closed variables and putting the coroutine in a dead state.
 ---
----@param co thread
----@return boolean noerror
----@return any errorobject
+--- @param co thread
+--- @return boolean noerror
+--- @return any errorobject
 function coroutine.close(co) end
 
 ---
@@ -54,26 +54,26 @@ function coroutine.close(co) end
 --- values passed to `yield` (when the coroutine yields) or any values returned
 --- by the body function (when the coroutine terminates). If there is any error,
 --- `resume` returns **false** plus the error message.
----@param co thread
----@param val1? any
----@param ... any
----@return boolean success
----@return any ...
+--- @param co    thread
+--- @param val1? any
+--- @param ...   any
+--- @return boolean success
+--- @return any ...
 function coroutine.resume(co, val1, ...) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
 --- Returns the running coroutine, or nil when called by the main thread.
----@return thread?
----@nodiscard
+--- @return thread?
+--- @nodiscard
 function coroutine.running() end
 
----@version > 5.2
+--- @version > 5.2
 ---
 --- Returns the running coroutine plus a boolean, true when the running
 --- coroutine is the main one.
----@return thread, boolean
----@nodiscard
+--- @return thread, boolean
+--- @nodiscard
 function coroutine.running() end
 
 ---
@@ -83,13 +83,13 @@ function coroutine.running() end
 --- running yet; "`normal`" if the coroutine is active but not running (that
 --- is, it has resumed another coroutine); and "`dead`" if the coroutine has
 --- finished its body function, or if it has stopped with an error.
----@param co thread
----@return
----| "running"   # Is running.
----| "suspended" # Is suspended or not started.
----| "normal"    # Is active but not running.
----| "dead"      # Has finished or stopped with an error.
----@nodiscard
+--- @param co thread
+--- @return
+--- | "running" # Is running.
+--- | "suspended" # Is suspended or not started.
+--- | "normal" # Is active but not running.
+--- | "dead" # Has finished or stopped with an error.
+--- @nodiscard
 function coroutine.status(co) end
 
 ---
@@ -98,15 +98,15 @@ function coroutine.status(co) end
 --- passed to the function behave as the extra arguments to `resume`. Returns
 --- the same values returned by `resume`, except the first
 --- boolean. In case of error, propagates the error.
----@param f async fun(...):any...
----@return fun(...):any...
----@nodiscard
+--- @param f async fun(...): any...
+--- @return fun(...): any...
+--- @nodiscard
 function coroutine.wrap(f) end
 
 ---
 --- Suspends the execution of the calling coroutine. Any arguments to `yield`
 --- are passed as extra results to `resume`.
----@async
----@param ... any
----@return any ...
+--- @async
+--- @param ... any
+--- @return any ...
 function coroutine.yield(...) end

@@ -1,8 +1,8 @@
 --- Copy from Lua Sumneko Lua
----@meta string.buffer
----@version JIT
+--- @meta string.buffer
+--- @version JIT
 
----@version JIT
+--- @version JIT
 --- The string buffer library allows high-performance manipulation of string-like data.
 ---
 --- Unlike Lua strings, which are constants, string buffers are mutable sequences of 8-bit (binary-transparent) characters. Data can be stored, formatted and encoded into a string buffer and later converted, extracted or decoded.
@@ -49,36 +49,36 @@
 --- The specification is given below as a context-free grammar with a top-level object as the starting point. Alternatives are separated by the | symbol and * indicates repeats. Grouping is implicit or indicated by {…}. Terminals are either plain hex numbers, encoded as bytes, or have a .format suffix.
 ---
 --- ```
---- object    → nil | false | true
+--- object → nil | false | true
 ---           | null | lightud32 | lightud64
 ---           | int | num | tab | tab_mt
 ---           | int64 | uint64 | complex
 ---           | string
 ---
---- nil       → 0x00
---- false     → 0x01
---- true      → 0x02
+--- nil → 0x00
+--- false → 0x01
+--- true → 0x02
 ---
---- null      → 0x03                            // NULL lightuserdata
---- lightud32 → 0x04 data.I                   // 32 bit lightuserdata
---- lightud64 → 0x05 data.L                   // 64 bit lightuserdata
+--- null → 0x03 // NULL lightuserdata
+--- lightud32 → 0x04 data.I // 32 bit lightuserdata
+--- lightud64 → 0x05 data.L // 64 bit lightuserdata
 ---
---- int       → 0x06 int.I                                 // int32_t
---- num       → 0x07 double.L
+--- int → 0x06 int.I // int32_t
+--- num → 0x07 double.L
 ---
---- tab       → 0x08                                   // Empty table
+--- tab → 0x08 // Empty table
 ---           | 0x09 h.U h*{object object}          // Key/value hash
 ---           | 0x0a a.U a*object                    // 0-based array
 ---           | 0x0b a.U a*object h.U h*{object object}      // Mixed
 ---           | 0x0c a.U (a-1)*object                // 1-based array
 ---           | 0x0d a.U (a-1)*object h.U h*{object object}  // Mixed
---- tab_mt    → 0x0e (index-1).U tab          // Metatable dict entry
+--- tab_mt → 0x0e (index-1).U tab // Metatable dict entry
 ---
---- int64     → 0x10 int.L                             // FFI int64_t
---- uint64    → 0x11 uint.L                           // FFI uint64_t
---- complex   → 0x12 re.L im.L                         // FFI complex
+--- int64 → 0x10 int.L // FFI int64_t
+--- uint64 → 0x11 uint.L // FFI uint64_t
+--- complex → 0x12 re.L im.L // FFI complex
 ---
---- string    → (0x20+len).U len*char.B
+--- string → (0x20+len).U len*char.B
 ---           | 0x0f (index-1).U                 // String dict entry
 ---
 --- .B = 8 bit
@@ -128,40 +128,36 @@ local buffer = {}
 ---
 --- The maximum size of a single buffer is the same as the maximum size of a Lua string, which is slightly below two gigabytes. For huge data sizes, neither strings nor buffers are the right data structure — use the FFI library to directly map memory or files up to the virtual memory limit of your OS.
 ---
----@version JIT
----@class string.buffer : table
+--- @version JIT
+--- @class string.buffer: table
 local buf = {}
 
 --- A string, number, or any object obj with a __tostring metamethod to the buffer.
 ---
----@alias string.buffer.data string|number|table
-
+--- @alias string.buffer.data string|number|table
 
 --- Appends a string str, a number num or any object obj with a `__tostring` metamethod to the buffer. Multiple arguments are appended in the given order.
 ---
 --- Appending a buffer to a buffer is possible and short-circuited internally. But it still involves a copy. Better combine the buffer writes to use a single buffer.
 ---
----@param data string.buffer.data
----@param ...? string.buffer.data
----@return string.buffer
+--- @param data string.buffer.data
+--- @param ...? string.buffer.data
+--- @return string.buffer
 function buf:put(data, ...) end
-
 
 --- Appends the formatted arguments to the buffer. The format string supports the same options as string.format().
 ---
----@param format string
----@param ...    string.buffer.data
----@return string.buffer
+--- @param format string
+--- @param ...    string.buffer.data
+--- @return string.buffer
 function buf:putf(format, ...) end
-
 
 --- Appends the given len number of bytes from the memory pointed to by the FFI cdata object to the buffer. The object needs to be convertible to a (constant) pointer.
 ---
----@param cdata ffi.cdata*
----@param len   integer
----@return string.buffer
+--- @param cdata ffi.cdata*
+--- @param len   integer
+--- @return string.buffer
 function buf:putcdata(cdata, len) end
-
 
 --- This method allows zero-copy consumption of a string or an FFI cdata object as a buffer. It stores a reference to the passed string str or the FFI cdata object in the buffer. Any buffer space originally allocated is freed. This is not an append operation, unlike the `buf:put*()` methods.
 ---
@@ -171,21 +167,19 @@ function buf:putcdata(cdata, len) end
 ---
 --- The stored reference is an anchor for the garbage collector and keeps the originally passed string or FFI cdata object alive.
 ---
----@param str string.buffer.data
----@return string.buffer
----@overload fun(self:string.buffer, cdata:ffi.cdata*, len:integer):string.buffer
+--- @param str string.buffer.data
+--- @return string.buffer
+--- @overload fun(self: string.buffer, cdata: ffi.cdata*, len: integer): string.buffer
 function buf:set(str) end
 
 --- Reset (empty) the buffer. The allocated buffer space is not freed and may be reused.
----@return string.buffer
+--- @return string.buffer
 function buf:reset() end
-
 
 --- The buffer space of the buffer object is freed. The object itself remains intact, empty and may be reused.
 ---
 --- Note: you normally don't need to use this method. The garbage collector automatically frees the buffer space, when the buffer object is collected. Use this method, if you need to free the associated memory immediately.
 function buf:free() end
-
 
 --- The reserve method reserves at least size bytes of write space in the buffer. It returns an uint8_t * FFI cdata pointer ptr that points to this space.
 ---
@@ -205,38 +199,35 @@ function buf:free() end
 --- ```
 ---
 --- The reserved write space is not initialized. At least the used bytes must be written to before calling the commit method. There's no need to call the commit method, if nothing is added to the buffer (e.g. on error).
----@param size integer
----@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to this space
----@return integer len    # available length (bytes)
+--- @param size integer
+--- @return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to this space
+--- @return integer len # available length                                      (bytes)
 function buf:reserve(size) end
 
-
 --- Appends the used bytes of the previously returned write space to the buffer data.
----@param used integer
----@return string.buffer
+--- @param used integer
+--- @return string.buffer
 function buf:commit(used) end
 
-
 --- Skips (consumes) len bytes from the buffer up to the current length of the buffer data.
----@param len integer
----@return string.buffer
+--- @param len integer
+--- @return string.buffer
 function buf:skip(len) end
 
 --- Consumes the buffer data and returns one or more strings. If called without arguments, the whole buffer data is consumed. If called with a number, up to `len` bytes are consumed. A `nil` argument consumes the remaining buffer space (this only makes sense as the last argument). Multiple arguments consume the buffer data in the given order.
 ---
 --- Note: a zero length or no remaining buffer data returns an empty string and not `nil`.
 ---
----@param len? integer
----@param ... integer|nil
----@return string ...
+--- @param len? integer
+--- @param ...  integer|nil
+--- @return string ...
 function buf:get(len, ...) end
 
 --- Creates a string from the buffer data, but doesn't consume it. The buffer remains unchanged.
 ---
 --- Buffer objects also define a `__tostring metamethod`. This means buffers can be passed to the global `tostring()` function and many other functions that accept this in place of strings. The important internal uses in functions like `io.write()` are short-circuited to avoid the creation of an intermediate string object.
----@return string
+--- @return string
 function buf:tostring() end
-
 
 --- Returns an uint8_t * FFI cdata pointer ptr that points to the buffer data. The length of the buffer data in bytes is returned in len.
 ---
@@ -256,17 +247,16 @@ function buf:tostring() end
 ---
 --- Unlike Lua strings, buffer data is not implicitly zero-terminated. It's not safe to pass ptr to C functions that expect zero-terminated strings. If you're not using len, then you're doing something wrong.
 ---
----@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.
----@return integer len # length of the buffer data in bytes
+--- @return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.
+--- @return integer len # length of the buffer data in                                bytes
 function buf:ref() end
 
 --- Serializes (encodes) the Lua object to the buffer
 ---
 --- This function may throw an error when attempting to serialize unsupported object types, circular references or deeply nested tables.
----@param obj string.buffer.data
----@return string.buffer
+--- @param obj string.buffer.data
+--- @return string.buffer
 function buf:encode(obj) end
-
 
 --- De-serializes one object from the buffer.
 ---
@@ -278,15 +268,14 @@ function buf:encode(obj) end
 ---
 --- Attempting to de-serialize an FFI type will throw an error, if the FFI library is not built-in or has not been loaded, yet.
 ---
----@return string.buffer.data|nil obj
+--- @return string.buffer.data|nil obj
 function buf:decode() end
-
 
 --- Serializes (encodes) the Lua object obj
 ---
 --- This function may throw an error when attempting to serialize unsupported object types, circular references or deeply nested tables.
----@param obj string.buffer.data
----@return string
+--- @param obj string.buffer.data
+--- @return string
 function buffer.encode(obj) end
 
 --- De-serializes (decodes) the string to a Lua object
@@ -298,12 +287,9 @@ function buffer.encode(obj) end
 ---
 --- Attempting to de-serialize an FFI type will throw an error, if the FFI library is not built-in or has not been loaded, yet.
 ---
----@param str string
----@return string.buffer.data|nil obj
+--- @param str string
+--- @return string.buffer.data|nil obj
 function buffer.decode(str) end
-
-
-
 
 --- Creates a new buffer object.
 ---
@@ -311,9 +297,9 @@ function buffer.decode(str) end
 ---
 --- The optional table options sets various serialization options.
 ---
----@param size? integer
----@param options? string.buffer.serialization.opts
----@return string.buffer
+--- @param size?    integer
+--- @param options? string.buffer.serialization.opts
+--- @return string.buffer
 function buffer.new(size, options) end
 
 --- Serialization Options
@@ -347,9 +333,8 @@ function buffer.new(size, options) end
 ---   return buf_dec:set(str):decode()
 --- end
 --- ```
----@class string.buffer.serialization.opts
----@field dict string[]
----@field metatable table[]
-
+--- @class string.buffer.serialization.opts
+--- @field dict      string[]
+--- @field metatable table[]
 
 return buffer

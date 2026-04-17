@@ -970,6 +970,30 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_align_param_columns_does_not_duplicate_following_lines() {
+        assert_format!(
+            "    --- @param a     any\n    --- @param bbbbb string\n    --- @param c     any\nfunction f(a, bbbbb, c)\nend\n",
+            "--- @param a     any\n--- @param bbbbb string\n--- @param c     any\nfunction f(a, bbbbb, c) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_version_keeps_space_before_comparison() {
+        assert_format!(
+            "---@version >5.3\nlocal value = nil\n",
+            "--- @version >5.3\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_meta_doc_line_followed_by_normal_comment_block_stays_mixed() {
+        assert_format!(
+            "---@meta\n-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)\n--\n-- Licensed under the Apache License, Version 2.0 (the \"License\"); you may not\n-- use this file except in compliance with the License. You may obtain a copy of\n-- the License at\n--\n-- http://www.apache.org/licenses/LICENSE-2.0\n--\n-- Unless required by applicable law or agreed to in writing, software\n-- distributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\n-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\n-- License for the specific language governing permissions and limitations under\n-- the License.\n\nlocal value = nil\n",
+            "---@meta\n-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)\n--\n-- Licensed under the Apache License, Version 2.0 (the \"License\"); you may not\n-- use this file except in compliance with the License. You may obtain a copy of\n-- the License at\n--\n-- http://www.apache.org/licenses/LICENSE-2.0\n--\n-- Unless required by applicable law or agreed to in writing, software\n-- distributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\n-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\n-- License for the specific language governing permissions and limitations under\n-- the License.\n\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_field_columns() {
         assert_format!(
             "---@field x string desc\n---@field longer_name integer another desc\nlocal t = {}\n",
@@ -1186,6 +1210,14 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_multiline_description_only_preserves_explicit_indentation() {
+        assert_format!(
+            "--- hihi\n---   jgiwigw\n---  jgiwigw\n---fjajwiofw\nlocal value = nil\n",
+            "--- hihi\n---   jgiwigw\n---  jgiwigw\n--- fjajwiofw\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_generic_columns() {
         assert_format!(
             "---@generic T value type\n---@generic Value, Result: number mapped result\nlocal function f() end\n",
@@ -1254,6 +1286,41 @@ local t = {
         assert_format!(
             "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n",
             "--- @alias Complex\n--- | string\n--- | integer\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_multiline_alias_descriptions() {
+        assert_format!(
+            "---@alias schema.DiagnosticCode\n---| \"none\"\n---| \"syntax-error\" # Syntax error\n---| \"doc-syntax-error\" # Doc syntax error\n---| \"type-not-found\" # Type not found\n---| \"missing-return\" # Missing return statement\n---| \"param-type-mismatch\" # Param Type not match\n",
+            "--- @alias schema.DiagnosticCode\n--- | \"none\"\n--- | \"syntax-error\"        # Syntax error\n--- | \"doc-syntax-error\"    # Doc syntax error\n--- | \"type-not-found\"      # Type not found\n--- | \"missing-return\"      # Missing return statement\n--- | \"param-type-mismatch\" # Param Type not match\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_alias_continue_or_does_not_duplicate_marker() {
+        assert_format!(
+            "---@alias std.collectgarbage_opt\n---|>\"collect\" # performs a full garbage-collection cycle. This is the default option.\n",
+            "--- @alias std.collectgarbage_opt\n--- |> \"collect\" # performs a full garbage-collection cycle. This is the default option.\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_multiline_alias_description_alignment_can_be_disabled() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                align_multiline_alias_descriptions: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "---@alias schema.DiagnosticCode\n---| \"syntax-error\" # Syntax error\n---| \"doc-syntax-error\" # Doc syntax error\n",
+            "--- @alias schema.DiagnosticCode\n--- | \"syntax-error\" # Syntax error\n--- | \"doc-syntax-error\" # Doc syntax error\n",
+            config
         );
     }
 

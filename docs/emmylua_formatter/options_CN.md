@@ -144,6 +144,7 @@ line_comment_min_column = 0
 - `align_tag_columns`
 - `align_declaration_tags`
 - `align_reference_tags`
+- `align_multiline_alias_descriptions`
 - `tag_spacing`
 - `space_after_description_dash`
 
@@ -154,11 +155,14 @@ line_comment_min_column = 0
 align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
+align_multiline_alias_descriptions = true
 tag_spacing = 1
 space_after_description_dash = true
 ```
 
 当前已结构化处理的标签包括 `@param`、`@field`、`@return`、`@class`、`@alias`、`@type`、`@generic`、`@overload`。
+
+- `align_multiline_alias_descriptions` 默认开启，用于把多行 `@alias` 块里 `--- | value # description` 的 `# description` 列对齐。
 
 ## align
 
@@ -247,6 +251,7 @@ line_comment_min_column = 0
 align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
+align_multiline_alias_descriptions = true
 tag_spacing = 1
 space_after_description_dash = true
 

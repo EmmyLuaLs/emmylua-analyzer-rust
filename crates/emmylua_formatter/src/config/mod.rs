@@ -55,6 +55,10 @@ impl LuaFormatConfig {
         self.emmy_doc.align_tag_columns && self.emmy_doc.align_reference_tags
     }
 
+    pub fn should_align_emmy_doc_multiline_alias_descriptions(&self) -> bool {
+        self.emmy_doc.align_tag_columns && self.emmy_doc.align_multiline_alias_descriptions
+    }
+
     pub fn trailing_table_comma(&self) -> TrailingComma {
         match self.output.trailing_table_separator {
             TrailingTableSeparator::Inherit => self.output.trailing_comma.clone(),
@@ -195,6 +199,7 @@ pub struct EmmyDocConfig {
     pub align_tag_columns: bool,
     pub align_declaration_tags: bool,
     pub align_reference_tags: bool,
+    pub align_multiline_alias_descriptions: bool,
     pub tag_spacing: usize,
     pub space_after_description_dash: bool,
 }
@@ -205,6 +210,7 @@ impl Default for EmmyDocConfig {
             align_tag_columns: true,
             align_declaration_tags: true,
             align_reference_tags: true,
+            align_multiline_alias_descriptions: true,
             tag_spacing: 1,
             space_after_description_dash: true,
         }

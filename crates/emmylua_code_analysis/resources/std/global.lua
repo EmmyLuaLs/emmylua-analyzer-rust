@@ -18,31 +18,31 @@
 --- **false**); otherwise, returns all its arguments. In case of error,
 --- `message` is the error object; when absent, it defaults to "assertion
 --- failed!"
----@generic T, T1
----@param v T
----@param ... T1...
----@return std.NotNull<T>, T1...
+--- @generic T, T1
+--- @param v   T
+--- @param ... T1...
+--- @return std.NotNull<T>, T1...
 function assert(v, ...) end
 
----@alias std.collectgarbage_opt
----|>"collect" # performs a full garbage-collection cycle. This is the default option.
----| "stop" # stops automatic execution of the garbage collector. The collector will run only when explicitly invoked, until a call to restart it.
----| "restart" # restarts automatic execution of the garbage collector.
----| "count" # returns the total memory in use by Lua in Kbytes. The value has a fractional part, so that it multiplied by 1024 gives the exact number of bytes in use by Lua (except for overflows).
----| "step" # performs a garbage-collection step. The step "size" is controlled by `arg`. With a zero value, the collector will perform one basic (indivisible) step. For non-zero values, the collector will perform as if Lua had allocated that amount of memory (in KBytes). Returns true if the step finished a collection cycle.
----| "setpause" # sets `arg` as the new value for the *pause* of the collector (see §2.5). Returns the previous value for *pause*.
----| "setstepmul" # sets `arg` as the new value for the *step multiplier* of the collector (see §2.5). Returns the previous value for *step*.
----| "incremental" # Change the collector mode to incremental. This option can be followed by three numbers: the garbage-collector pause, the step multiplier, and the step size.
----| "generational" # Change the collector mode to generational. This option can be followed by two numbers: the garbage-collector minor multiplier and the major multiplier.
----| "isrunning" # returns a boolean that tells whether the collector is running (i.e., not stopped).
+--- @alias std.collectgarbage_opt
+--- |> "collect"      # performs a full garbage-collection cycle. This is the default option.
+--- | "stop"         # stops automatic execution of the garbage collector. The collector will run only when explicitly invoked, until a call to restart it.
+--- | "restart"      # restarts automatic execution of the garbage collector.
+--- | "count"        # returns the total memory in use by Lua in Kbytes. The value has a fractional part, so that it multiplied by 1024 gives the exact number of bytes in use by Lua (except for overflows).
+--- | "step"         # performs a garbage-collection step. The step "size" is controlled by `arg`. With a zero value, the collector will perform one basic (indivisible) step. For non-zero values, the collector will perform as if Lua had allocated that amount of memory (in KBytes). Returns true if the step finished a collection cycle.
+--- | "setpause"     # sets `arg` as the new value for the *pause* of the collector (see §2.5). Returns the previous value for *pause*.
+--- | "setstepmul"   # sets `arg` as the new value for the *step multiplier* of the collector (see §2.5). Returns the previous value for *step*.
+--- | "incremental"  # Change the collector mode to incremental. This option can be followed by three numbers: the garbage-collector pause, the step multiplier, and the step size.
+--- | "generational" # Change the collector mode to generational. This option can be followed by two numbers: the garbage-collector minor multiplier and the major multiplier.
+--- | "isrunning"    # returns a boolean that tells whether the collector is running (i.e., not stopped).
 
----@alias std.collectgarbage.param
----| "minormul" # minor multiplier
----| "majorminor" # major/minor ratio
----| "minormajor" # minor/major ratio
----| "pause" # collector pause
----| "stepmul" # step multiplier
----| "stepsize" # step size
+--- @alias std.collectgarbage.param
+--- | "minormul"   # minor multiplier
+--- | "majorminor" # major/minor ratio
+--- | "minormajor" # minor/major ratio
+--- | "pause"      # collector pause
+--- | "stepmul"    # step multiplier
+--- | "stepsize"   # step size
 
 ---
 --- This function is a generic interface to the garbage collector. It performs
@@ -71,10 +71,10 @@ function assert(v, ...) end
 --- the major multiplier.
 --- **"isrunning"**: returns a boolean that tells whether the collector is
 --- running (i.e., not stopped).
----@overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
----@param opt? std.collectgarbage_opt
----@param ... any
----@return any
+--- @overload fun(opt: "param", param: std.collectgarbage.param, value: integer): integer
+--- @param opt? std.collectgarbage_opt
+--- @param ...  any
+--- @return any
 function collectgarbage(opt, ...) end
 
 ---
@@ -83,8 +83,8 @@ function collectgarbage(opt, ...) end
 --- (`stdin`). Returns all values returned by the chunk. In case of errors,
 --- `dofile` propagates the error to its caller (that is, `dofile` does not run
 --- in protected mode).
----@param filename? string
----@return any ...
+--- @param filename? string
+--- @return any ...
 function dofile(filename) end
 
 ---
@@ -96,23 +96,23 @@ function dofile(filename) end
 --- `error` function was called. Level 2 points the error to where the function
 --- that called `error` was called; and so on. Passing a level 0 avoids the
 --- addition of error position information to the message.
----@param message any
----@param level? integer
+--- @param message any
+--- @param level?  integer
 function error(message, level) end
 
 ---
 --- A global variable (not a function) that holds the global environment. Lua
 --- itself does not use this variable; changing its value does not affect any
 --- environment, nor vice versa.
----@type global
+--- @type global
 _G = {}
 
 ---
 --- If `object` does not have a metatable, returns **nil**. Otherwise, if the
 --- object's metatable has a `"__metatable"` field, returns the associated
 --- value. Otherwise, returns the metatable of the given object.
----@param object any
----@return any
+--- @param object any
+--- @return any
 function getmetatable(object) end
 
 ---
@@ -121,15 +121,15 @@ function getmetatable(object) end
 --- > `for i,v in ipairs(t) do` *body* `end`
 --- will iterate over the key–value pairs (1,`t[1]`), (2,`t[2]`), ..., up to
 --- the first absent index.
----@generic V
----@param t V[] | table<int, V> | {[int]: V}
----@return fun(tbl: any):int, V
+--- @generic V
+--- @param t V[]|table<int, V>|{[int]: V }
+--- @return fun(tbl: any): int, V
 function ipairs(t) end
 
----@alias std.loadmode
----| "b" # only binary chunks
----| "t" # only text chunks
----| "bt" # both binary and text
+--- @alias std.loadmode
+--- | "b"  # only binary chunks
+--- | "t"  # only text chunks
+--- | "bt" # both binary and text
 
 ---
 --- Loads a chunk.
@@ -160,48 +160,48 @@ function ipairs(t) end
 ---
 --- Lua does not check the consistency of binary chunks. Maliciously crafted
 --- binary chunks can crash the interpreter.
----@param chunk (fun(...:any):string) | Language<"Lua">
----@param chunkname? string
----@param mode? std.loadmode
----@param env? table
----@return_overload function chunk
----@return_overload nil, string error_message
----@nodiscard
+--- @param chunk(fun(...: any): string)|Language<"Lua">
+--- @param chunkname?     string
+--- @param mode?          std.loadmode
+--- @param env?           table
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
 function load(chunk, chunkname, mode, env) end
 
 ---
----Loads a chunk from the given string.
+--- Loads a chunk from the given string.
 ---
----@version 5.1, JIT
----@param text       Language<"Lua">
----@param chunkname? string
----@return_overload function chunk
----@return_overload nil, string error_message
----@nodiscard
+--- @version 5.1, JIT
+--- @param text       Language<"Lua">
+--- @param chunkname? string
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
+--- @nodiscard
 function loadstring(text, chunkname) end
 
 ---
 --- Similar to `load`, but gets the chunk from file `filename` or from the
 --- standard input, if no file name is given.
----@param filename? string
----@param mode? std.loadmode
----@param env? table
----@return_overload function chunk
----@return_overload nil, string error_message
+--- @param filename? string
+--- @param mode?     std.loadmode
+--- @param env?      table
+--- @return_overload function chunk
+--- @return_overload nil, string error_message
 function loadfile(filename, mode, env) end
 
----@version 5.1, JIT
----@param proxy boolean|table|userdata
----@return userdata
+--- @version 5.1, JIT
+--- @param proxy boolean|table|userdata
+--- @return userdata
 function newproxy(proxy) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
----Creates a module.
+--- Creates a module.
 ---
 ---
----@param name string
----@param ...  any
+--- @param name string
+--- @param ...  any
 function module(name, ...) end
 
 ---
@@ -221,11 +221,11 @@ function module(name, ...) end
 --- The behavior of `next` is undefined if, during the traversal, you assign
 --- any value to a non-existent field in the table. You may however modify
 --- existing fields. In particular, you may set existing fields to nil.
----@generic K, V
----@overload fun(table:table<K, V>):K?,V?
----@param table table<K, V> | V[] | {[K]: V}
----@param index? K
----@return K?, V?
+--- @generic K, V
+--- @overload fun(table: table<K, V>): K?, V?
+--- @param table  table<K, V>|V[]|{[K]: V }
+--- @param index? K
+--- @return K?, V?
 function next(table, index) end
 
 ---
@@ -239,9 +239,9 @@ function next(table, index) end
 ---
 --- See function `next` for the caveats of modifying the table during its
 --- traversal.
----@generic K, V, I
----@param t table<K, V> | V[] | {[K]: V}
----@return (fun(tbl: table<I, V>, index: I?):K, V), table<I, V>, I?
+--- @generic K, V, I
+--- @param t table<K, V>|V[]|{[K]: V }
+--- @return (fun(tbl: table<I, V>, index: I?): K, V), table<I, V>, I?
 function pairs(t) end
 
 ---
@@ -251,11 +251,11 @@ function pairs(t) end
 --- boolean), which is true if the call succeeds without errors. In such case,
 --- `pcall` also returns all results from the call, after this first result. In
 --- case of any error, `pcall` returns **false** plus the error message.
----@generic T, R
----@param f sync fun(...: T...): R...
----@param ... T...
----@return_overload true, R...
----@return_overload false, string
+--- @generic T, R
+--- @param f   sync fun(...: T...): R...
+--- @param ... T...
+--- @return_overload true, R...
+--- @return_overload false, string
 function pcall(f, ...) end
 
 ---
@@ -269,36 +269,36 @@ function print(...) end
 ---
 --- Checks whether `v1` is equal to `v2`, without the `__eq` metamethod. Returns
 --- a boolean.
----@param v1 any
----@param v2 any
----@return boolean
+--- @param v1 any
+--- @param v2 any
+--- @return boolean
 function rawequal(v1, v2) end
 
 ---
 --- Gets the real value of `table[index]`, the `__index` metamethod. `table`
 --- must be a table; `index` may be any value.
----@generic T, K
----@param table T
----@param index std.ConstTpl<K>
----@return std.RawGet<T, K>
+--- @generic T, K
+--- @param table T
+--- @param index std.ConstTpl<K>
+--- @return std.RawGet<T, K>
 function rawget(table, index) end
 
----@version >5.2
+--- @version >5.2
 ---
 --- Returns the length of the object `v`, which must be a table or a string, without
 --- invoking any metamethod. Returns an integer number.
----@param v string|table
----@return integer
+--- @param v string|table
+--- @return integer
 function rawlen(v) end
 
 ---
 --- Sets the real value of `table[index]` to `value`, without invoking the
 --- `__newindex` metamethod. `table` must be a table, `index` any value
 --- different from **nil** and NaN, and `value` any Lua value.
----@param table table
----@param index any
----@param value any
----@return table
+--- @param table table
+--- @param index any
+--- @param value any
+--- @return table
 function rawset(table, index, value) end
 
 ---
@@ -331,8 +331,8 @@ function rawset(table, index, value) end
 ---
 --- If there is any error loading or running the module, or if it cannot find
 --- any loader for the module, then `require` raises an error.
----@param modname string
----@return any
+--- @param modname string
+--- @return any
 function require(modname) end
 
 ---
@@ -340,43 +340,43 @@ function require(modname) end
 --- `index`. a negative number indexes from the end (-1 is the last argument).
 --- Otherwise, `index` must be the string "#", and `select` returns
 --- the total number of extra arguments it received.
----@generic T, Num: integer | '#'
----@param index std.ConstTpl<Num>
----@param ... T...
----@return std.Select<T..., Num>
+--- @generic T, Num: integer|'#'
+--- @param index std.ConstTpl<Num>
+--- @param ...   T...
+--- @return std.Select<T..., Num>
 function select(index, ...) end
 
----@class std.metatable
----@field __mode? 'v'|'k'|'kv'
----@field __metatable? any
----@field __tostring? (fun(t):string)
----@field __gc? fun(t)
----@field __add? fun(t1,t2):any
----@field __sub? fun(t1,t2):any
----@field __mul? fun(t1,t2):any
----@field __div? fun(t1,t2):any
----@field __mod? fun(t1,t2):any
----@field __pow? fun(t1,t2):any
----@field __unm? fun(t):any
----@field __idiv? fun(t1,t2):any
----@field __band? fun(t1,t2):any
----@field __bor? fun(t1,t2):any
----@field __bxor? fun(t1,t2):any
----@field __bnot? fun(t):any
----@field __shl? fun(t1,t2):any
----@field __shr? fun(t1,t2):any
----@field __concat? fun(t1,t2):any
----@field __len? fun(t):integer
----@field __eq? fun(t1,t2):boolean
----@field __lt? fun(t1,t2):boolean
----@field __le? fun(t1,t2):boolean
----@field __index? table|fun(t,k):any
----@field __newindex? table|fun(t,k,v)
----@field __call? fun(t,...): any...
----@field __pairs? fun(t):((fun(t,k,v):any,any),any,any)
----@field __close? fun(t,errobj):any
+--- @class std.metatable
+--- @field __mode?             'v'|'k'|'kv'
+--- @field __metatable?        any
+--- @field __tostring?(fun(t): string)
+--- @field __gc?               fun(t)
+--- @field __add?              fun(t1,         t2): any
+--- @field __sub?              fun(t1,         t2): any
+--- @field __mul?              fun(t1,         t2): any
+--- @field __div?              fun(t1,         t2): any
+--- @field __mod?              fun(t1,         t2): any
+--- @field __pow?              fun(t1,         t2): any
+--- @field __unm?              fun(t):         any
+--- @field __idiv?             fun(t1,         t2): any
+--- @field __band?             fun(t1,         t2): any
+--- @field __bor?              fun(t1,         t2): any
+--- @field __bxor?             fun(t1,         t2): any
+--- @field __bnot?             fun(t):         any
+--- @field __shl?              fun(t1,         t2): any
+--- @field __shr?              fun(t1,         t2): any
+--- @field __concat?           fun(t1,         t2): any
+--- @field __len?              fun(t):         integer
+--- @field __eq?               fun(t1,         t2): boolean
+--- @field __lt?               fun(t1,         t2): boolean
+--- @field __le?               fun(t1,         t2): boolean
+--- @field __index?            table|fun(t,    k): any
+--- @field __newindex?         table|fun(t,    k, v)
+--- @field __call?             fun(t,          ...): any...
+--- @field __pairs?            fun(t):((fun(t, k, v): any, any), any, any)
+--- @field __close?            fun(t,          errobj): any
 
---NOTE: The actual implementation of setmetatable is provided by the language server
+-- NOTE: The actual implementation of setmetatable is provided by the language server
 
 ---
 --- Sets the metatable for the given table. (To change the metatable of other
@@ -385,10 +385,10 @@ function select(index, ...) end
 --- metatable has a `"__metatable"` field, raises an error.
 ---
 --- This function returns `table`.
----@generic T: table
----@param table T
----@param metatable std.metatable|table|nil
----@return T
+--- @generic T: table
+--- @param table     T
+--- @param metatable std.metatable|table|nil
+--- @return T
 function setmetatable(table, metatable) end
 
 ---
@@ -406,10 +406,10 @@ function setmetatable(table, metatable) end
 --- represents 10, 'B' represents 11, and so forth, with 'Z' representing 35. If
 --- the string `e` is not a valid numeral in the given base, the function
 --- returns **nil**.
----@overload fun(e: string, base: integer):integer?
----@param e any
----@return number?
----@nodiscard
+--- @overload fun(e: string, base: integer): integer?
+--- @param e any
+--- @return number?
+--- @nodiscard
 function tonumber(e) end
 
 ---
@@ -420,27 +420,27 @@ function tonumber(e) end
 --- If the metatable of `v` has a `__tostring` field, then `tostring` calls
 --- the corresponding value with `v` as argument, and uses the result of the
 --- call as its result.
----@param v any
----@return string
+--- @param v any
+--- @return string
 function tostring(v) end
 
----@alias std.type
----| "nil"
----| "number"
----| "string"
----| "boolean"
----| "table"
----| "function"
----| "thread"
----| "userdata"
+--- @alias std.type
+--- | "nil"
+--- | "number"
+--- | "string"
+--- | "boolean"
+--- | "table"
+--- | "function"
+--- | "thread"
+--- | "userdata"
 
 ---
 --- Returns the type of its only argument, coded as a string. The possible
 --- results of this function are "`nil`" (a string, not the value **nil**),
 --- "`number`", "`string`", "`boolean`", "`table`", "`function`", "`thread`",
 --- and "`userdata`".
----@param v any
----@return std.type type
+--- @param v any
+--- @return std.type type
 function type(v) end
 
 ---
@@ -451,23 +451,23 @@ _VERSION = "Lua 5.5"
 ---
 --- This function is similar to `pcall`, except that it sets a new message
 --- handler `msgh`.
----@generic T, R
----@param f sync fun(...:T...): R...
----@param msgh fun(err:any):any
----@param ... T...
----@return boolean, R...
+--- @generic T, R
+--- @param f    sync     fun(...: T...): R...
+--- @param msgh fun(err: any): any
+--- @param ...  T...
+--- @return boolean, R...
 function xpcall(f, msgh, ...) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
----@generic T, Start: integer, End: integer
----@param i? std.ConstTpl<Start>
----@param j? std.ConstTpl<End>
----@param list T
----@return std.Unpack<T, Start, End>
+--- @generic T, Start: integer, End: integer
+--- @param i?   std.ConstTpl<Start>
+--- @param j?   std.ConstTpl<End>
+--- @param list T
+--- @return std.Unpack<T, Start, End>
 function unpack(list, i, j) end
 
----@version > 5.4
+--- @version > 5.4
 ---
 --- Emits a warning with a message composed by the concatenation of all its arguments (which should be strings).
 ---
@@ -475,30 +475,29 @@ function unpack(list, i, j) end
 --- which is a message to the warning system itself. In particular,
 --- the standard warning function in Lua recognizes the control messages "@off", to stop the emission of warnings,
 --- and "@on", to (re)start the emission; it ignores unknown control messages.
----@param msg1 string|number
----@param ... string|number
+--- @param msg1 string|number
+--- @param ...  string|number
 function warn(msg1, ...) end
 
----@type string[]
+--- @type string[]
 arg = {}
 
 --- This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.
 --- For now, let's treat it as a global variable.
----@version > 5.3
----@type global
+--- @version > 5.3
+--- @type global
 _ENV = {}
 
-
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
 --- Sets the environment for the specified function.
----@param f function|integer The function for which the environment is to be set.
----@param env table The environment table to assign to the function.
+--- @param f   function|integer The function for which the environment is to be set.
+--- @param env table            The environment table to assign to the function.
 function setfenv(f, env) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
 --- Retrieves the environment table of the specified function.
----@param f function|integer The function whose environment is to be retrieved.
----@return table The environment table associated with the given function.
+--- @param f function|integer The function whose environment is to be retrieved.
+--- @return table The environment table associated with the given function.
 function getfenv(f) end

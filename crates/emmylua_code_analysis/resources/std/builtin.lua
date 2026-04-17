@@ -1,4 +1,4 @@
----@meta no-require
+--- @meta no-require
 
 -- Copyright (c) 2018. tangzx(love.tangzx@qq.com)
 --
@@ -20,12 +20,12 @@
 --- The type *nil* has one single value, **nil**, whose main property is to be
 --- different from any other value; it usually represents the absence of a
 --- useful value.
----@class nil
+--- @class nil
 
 ---
 --- The type *boolean* has two values, **false** and **true**. Both **nil** and
 --- **false** make a condition false; any other value makes it true.
----@class boolean
+--- @class boolean
 
 ---
 --- The type *number* uses two internal representations, or two subtypes, one
@@ -39,9 +39,9 @@
 --- floats. The option with 32 bits for both integers and floats is
 --- particularly attractive for small machines and embedded systems. (See
 --- macro LUA_32BITS in file luaconf.h.)
----@class number
+--- @class number
 
----@class integer
+--- @class integer
 
 ---
 --- The type *userdata* is provided to allow arbitrary C data to be stored in
@@ -53,16 +53,16 @@
 --- operations for full userdata values. Userdata values cannot be
 --- created or modified in Lua, only through the C API. This guarantees the
 --- integrity of data owned by the host program.
----@class userdata
+--- @class userdata
 
----@class lightuserdata
+--- @class lightuserdata
 
 ---
 --- The type *thread* represents independent threads of execution and it is
 --- used to implement coroutines. Lua threads are not related to
 --- operating-system threads. Lua supports coroutines on all systems, even those
 --- that do not support threads natively.
----@class thread
+--- @class thread
 
 ---
 --- The type *table* implements associative arrays, that is, arrays that can
@@ -94,76 +94,76 @@
 --- if you write `a[2.0] = true`, the actual key inserted into the table will
 --- be the integer `2`. (On the other hand, 2 and "`2`" are different Lua
 --- values and therefore denote different table entries.)
----@class table
+--- @class table
 
----@class any
+--- @class any
 
----@class void
+--- @class void
 
----@class unknown
+--- @class unknown
 
----@class never
+--- @class never
 
----@class self
+--- @class self
 
----@alias int integer
+--- @alias int integer
 
----@class namespace<T: string>
+--- @class namespace<T: string>
 
----@class function
+--- @class function
 
----@alias std.NotNull<T> T - ?
+--- @alias std.NotNull<T> T - ?
 
----@alias std.Nullable<T> T + ?
+--- @alias std.Nullable<T> T + ?
 
 ---
 --- built-in type for Select function
----@alias std.Select<T, StartOrLen> unknown
+--- @alias std.Select<T, StartOrLen> unknown
 
 ---
 --- built-in type for Unpack function
----@alias std.Unpack<T, Start, End> unknown
+--- @alias std.Unpack<T, Start, End> unknown
 
 ---
 --- built-in type for Rawget
----@alias std.RawGet<T, K> unknown
+--- @alias std.RawGet<T, K> unknown
 
 ---
 --- built-in type for generic template, for match integer const and true/false
----@alias std.ConstTpl<T> unknown
+--- @alias std.ConstTpl<T> unknown
 
 --- compact luals
 
----@alias type std.type
+--- @alias type std.type
 
----@alias collectgarbage_opt std.collectgarbage_opt
+--- @alias collectgarbage_opt std.collectgarbage_opt
 
----@alias metatable std.metatable
+--- @alias metatable std.metatable
 
----@alias TypeGuard<T> boolean
+--- @alias TypeGuard<T> boolean
 
----@alias Language<T: string> string
+--- @alias Language<T: string> string
 
 ---
 --- Get the parameters of a function as a tuple
----@alias Parameters<T extends function> T extends (fun(...: infer P): any) and P or never
+--- @alias Parameters<T extends function> T extends(fun(...: infer P): any) and P or never
 
 ---
 --- Get the parameters of a constructor as a tuple
----@alias ConstructorParameters<T> T extends new (fun(...: infer P): any) and P or never
+--- @alias ConstructorParameters<T> T extends new(fun(...: infer P): any) and P or never
 
 ---
----@alias ReturnType<T extends function> T extends (fun(...: any): infer R) and R or any
+--- @alias ReturnType<T extends function> T extends(fun(...: any): infer R) and R or any
 
 ---
 --- Make all properties in T optional
----@alias Partial<T> { [P in keyof T]?: T[P]; }
+--- @alias Partial<T> {[P in keyof T]?: T[P]; }
 
 --- attribute
 
 ---
 --- Deprecated. Receives an optional message parameter.
----@attribute deprecated(message: string?)
+--- @attribute deprecated(message: string?)
 
 ---
 --- Language Server Optimization Items.
@@ -172,13 +172,13 @@
 --- - `check_table_field`: Skip the assign check for table fields. It is recommended to use this option for all large configuration tables.
 --- - `delayed_definition`: Indicates that the type of the variable is determined by the first assignment.
 ---    Only valid for `local` declarations with no initial value.
----@attribute lsp_optimization(code: "check_table_field"|"delayed_definition")
+--- @attribute lsp_optimization(code: "check_table_field"|"delayed_definition")
 
 ---
 --- Index field alias, will be displayed in `hint` and `completion`.
 ---
 --- Receives a string parameter for the alias name.
----@attribute index_alias(name: string)
+--- @attribute index_alias(name: string)
 
 ---
 --- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
@@ -189,7 +189,7 @@
 --- - `root_class`: Used to mark the root class, will implicitly inherit this class, such as `System.Object` in c#. Defaults to empty.
 --- - `strip_self`: Whether the `self` parameter can be omitted when calling the constructor, defaults to `true`
 --- - `return_self`: Whether the constructor is forced to return `self`, defaults to `true`
----@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
+--- @attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_self: boolean?)
 
 ---
 --- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,
@@ -199,4 +199,4 @@
 --- - `convention`: Naming convention, defaults to `camelCase`. Implicitly adds `get` and `set` prefixes. eg: `_age` -> `getAge`, `setAge`.
 --- - `getter`: Getter method name. Takes precedence over `convention`.
 --- - `setter`: Setter method name. Takes precedence over `convention`.
----@attribute field_accessor(convention: "camelCase"|"PascalCase"|"snake_case"|nil, getter: string?, setter: string?)
+--- @attribute field_accessor(convention: "camelCase"|"PascalCase"|"snake_case"|nil, getter: string?, setter: string?)

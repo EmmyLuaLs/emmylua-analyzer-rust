@@ -607,6 +607,7 @@ align_line_comments = false
 space_after_comment_dash = false
 
 [emmy_doc]
+align_multiline_alias_descriptions = false
 space_after_description_dash = false
 
 [align]
@@ -635,6 +636,7 @@ table_field = false
         assert!(config.spacing.space_before_call_paren);
         assert!(!config.comments.align_line_comments);
         assert!(!config.comments.space_after_comment_dash);
+        assert!(!config.emmy_doc.align_multiline_alias_descriptions);
         assert!(!config.emmy_doc.space_after_description_dash);
         assert!(!config.align.table_field);
     }

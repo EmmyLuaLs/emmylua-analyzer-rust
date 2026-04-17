@@ -144,6 +144,7 @@ Behavior notes:
 - `align_tag_columns`
 - `align_declaration_tags`
 - `align_reference_tags`
+- `align_multiline_alias_descriptions`
 - `tag_spacing`
 - `space_after_description_dash`
 
@@ -154,11 +155,14 @@ Default:
 align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
+align_multiline_alias_descriptions = true
 tag_spacing = 1
 space_after_description_dash = true
 ```
 
 Structured handling currently covers `@param`, `@field`, `@return`, `@class`, `@alias`, `@type`, `@generic`, and `@overload`.
+
+- `align_multiline_alias_descriptions` is enabled by default and aligns the `# description` column in multiline `@alias` blocks such as `--- | value # description`.
 
 ## align
 
@@ -247,6 +251,7 @@ line_comment_min_column = 0
 align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
+align_multiline_alias_descriptions = true
 tag_spacing = 1
 space_after_description_dash = true
 

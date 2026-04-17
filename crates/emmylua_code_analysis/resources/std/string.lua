@@ -18,7 +18,7 @@
 --- clean: strings can contain any 8-bit value, including embedded zeros
 --- ('`\0`'). Lua is also encoding-agnostic; it makes no assumptions about
 --- the contents of a string.
----@class (partial) string
+--- @class (partial) string
 string = {}
 
 ---
@@ -28,10 +28,10 @@ string = {}
 --- `string.sub`.
 ---
 --- Note that numerical codes are not necessarily portable across platforms.
----@param s string
----@param i? integer
----@param j? integer
----@return integer
+--- @param s  string
+--- @param i? integer
+--- @param j? integer
+--- @return integer
 function string.byte(s, i, j) end
 
 ---
@@ -40,8 +40,8 @@ function string.byte(s, i, j) end
 --- code equal to its corresponding argument.
 ---
 --- Note that numerical codes are not necessarily portable across platforms.
----@param ... integer
----@return string
+--- @param ... integer
+--- @return string
 function string.char(...) end
 
 ---
@@ -55,9 +55,9 @@ function string.char(...) end
 --- loaded, those upvalues receive fresh instances containing **nil**. (You can
 --- use the debug library to serialize and reload the upvalues of a function in
 --- a way adequate to your needs.)
----@param func function
----@param strip? boolean
----@return string
+--- @param func   function
+--- @param strip? boolean
+--- @return string
 function string.dump(func, strip) end
 
 ---
@@ -73,14 +73,14 @@ function string.dump(func, strip) end
 ---
 --- If the pattern has captures, then in a successful match the captured values
 --- are also returned, after the two indices.
----@param s       string|number
----@param pattern string|number
----@param init?   integer
----@param plain?  boolean
----@return integer? start
----@return integer? end
----@return string?... captured
----@nodiscard
+--- @param s       string|number
+--- @param pattern string|number
+--- @param init?   integer
+--- @param plain?  boolean
+--- @return integer? start
+--- @return integer? end
+--- @return string?... captured
+--- @nodiscard
 function string.find(s, pattern, init, plain) end
 
 ---
@@ -112,10 +112,10 @@ function string.find(s, pattern, init, plain) end
 --- converted to one following the same rules of `tostring`. If the option
 --- has any modifier (flags, width, length), the string argument should not
 --- contain embedded zeros.
----@param fmt string
----@param ... any
----@return string
----@nodiscard
+--- @param fmt string
+--- @param ... any
+--- @return string
+--- @nodiscard
 function string.format(fmt, ...) end
 
 ---
@@ -142,16 +142,16 @@ function string.format(fmt, ...) end
 ---
 --- For this function, a caret '`^`' at the start of a pattern does not work as
 --- an anchor, as this would prevent the iteration.
----@param s string
----@param pattern string
----@return fun():string?...
+--- @param s       string
+--- @param pattern string
+--- @return fun(): string?...
 function string.gmatch(s, pattern) end
 
----@version > 5.4
----@param s string
----@param pattern string
----@param init? integer
----@return fun():string?...
+--- @version > 5.4
+--- @param s       string
+--- @param pattern string
+--- @param init?   integer
+--- @return fun(): string?...
 function string.gmatch(s, pattern, init) end
 
 ---
@@ -197,27 +197,27 @@ function string.gmatch(s, pattern, init) end
 --- `local t = {name="lua", version="5.3"}`
 --- `x = string.gsub("$name-$version.tar.gz", "%$(%w+)", t)`
 --- > x="lua-5.3.tar.gz"
----@param s       string|number
----@param pattern string|number
----@param repl string|number|table|fun(param:string)
----@param n? integer
----@return string
----@return integer count
+--- @param s       string|number
+--- @param pattern string|number
+--- @param repl    string|number|table|fun(param: string)
+--- @param n?      integer
+--- @return string
+--- @return integer count
 function string.gsub(s, pattern, repl, n) end
 
 ---
 --- Receives a string and returns its length. The empty string `""` has
 --- length 0. Embedded zeros are counted, so `"a\000bc\000"` has length 5.
----@param s string
----@return integer
+--- @param s string
+--- @return integer
 function string.len(s) end
 
 ---
 --- Receives a string and returns a copy of this string with all uppercase
 --- letters changed to lowercase. All other characters are left unchanged. The
 --- definition of what an uppercase letter is depends on the current locale.
----@param s string
----@return string
+--- @param s string
+--- @return string
 function string.lower(s) end
 
 ---
@@ -226,30 +226,30 @@ function string.lower(s) end
 --- it returns **nil**. If `pattern` specifies no captures, then the whole match
 --- is returned. A third, optional numerical argument `init` specifies where
 --- to start the search; its default value is 1 and can be negative.
----@param s string
----@param pattern string
----@param init? integer
----@return string?...
+--- @param s       string
+--- @param pattern string
+--- @param init?   integer
+--- @return string?...
 function string.match(s, pattern, init) end
 
----@version >5.3
+--- @version >5.3
 ---
 --- Returns a binary string containing the values `v1`, `v2`, etc. packed (that
 --- is, serialized in binary form) according to the format string `fmt`.
----@param fmt string
----@param v1 string|number|integer
----@param v2? string|number|integer
----@param ... string|number|integer
----@return string
+--- @param fmt string
+--- @param v1  string|number|integer
+--- @param v2? string|number|integer
+--- @param ... string|number|integer
+--- @return string
 function string.pack(fmt, v1, v2, ...) end
 
----@version >5.3
+--- @version >5.3
 ---
 --- Returns the size of a string resulting from `string.pack` with the given
 --- format. The format string cannot have the variable-length options '`s`' or
 --- '`z`'
----@param fmt string
----@return integer
+--- @param fmt string
+--- @return integer
 function string.packsize(fmt) end
 
 ---
@@ -260,16 +260,16 @@ function string.packsize(fmt) end
 ---
 --- Note that it is very easy to exhaust the memory of your machine with a
 --- single call to this function.
----@param s string
----@param n integer
----@param sep? string
----@return string
+--- @param s    string
+--- @param n    integer
+--- @param sep? string
+--- @return string
 function string.rep(s, n, sep) end
 
 ---
 --- Returns a string that is the string `s` reversed.
----@param s string
----@return string
+--- @param s string
+--- @return string
 function string.reverse(s) end
 
 ---
@@ -284,30 +284,30 @@ function string.reverse(s) end
 --- corrected to 1. If `j` is greater than the string length, it is corrected to
 --- that length. If, after these corrections, `i` is greater than `j`, the
 --- function returns the empty string.
----@param s  string|number
----@param i  integer
----@param j? integer
----@return string
----@nodiscard
+--- @param s  string|number
+--- @param i  integer
+--- @param j? integer
+--- @return string
+--- @nodiscard
 function string.sub(s, i, j) end
 
----@version >5.3
+--- @version >5.3
 ---
 --- Returns the values packed in string `s` according to the format string
 --- `fmt`. An optional `pos` marks where to start reading in `s` (default is 1).
 --- After the read values, this function also returns the index of the first
 --- unread byte in `s`.
----@param fmt string
----@param s string
----@param pos? integer
----@return any ...
----@return integer offset
+--- @param fmt  string
+--- @param s    string
+--- @param pos? integer
+--- @return any ...
+--- @return integer offset
 function string.unpack(fmt, s, pos) end
 
 ---
 --- Receives a string and returns a copy of this string with all lowercase
 --- letters changed to uppercase. All other characters are left unchanged. The
 --- definition of what a lowercase letter is depends on the current locale.
----@param s string
----@return string
+--- @param s string
+--- @return string
 function string.upper(s) end

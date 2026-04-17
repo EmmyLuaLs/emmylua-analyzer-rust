@@ -13,7 +13,7 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
----@class tablelib
+--- @class tablelib
 table = {}
 
 ---
@@ -21,12 +21,12 @@ table = {}
 --- `list[i]..sep..list[i+1] ... sep..list[j]`. The default value for
 --- `sep` is the empty string, the default for `i` is 1, and the default for
 --- `j` is #list. If `i` is greater than `j`, returns the empty string.
----@param list table
----@param sep? string
----@param i?   integer
----@param j?   integer
----@return string
----@nodiscard
+--- @param list table
+--- @param sep? string
+--- @param i?   integer
+--- @param j?   integer
+--- @return string
+--- @nodiscard
 function table.concat(list, sep, i, j) end
 
 ---
@@ -34,13 +34,13 @@ function table.concat(list, sep, i, j) end
 --- elements to `list[pos]`, `list[pos+1]`, `···`, `list[#list]`. The default
 --- value for `pos` is ``#list+1`, so that a call `table.insert(t,x)`` inserts
 --- `x` at the end of list `t`.
----@overload fun(list:table, value:any)
----@param list table
----@param pos integer
----@param value any
+--- @overload fun(list: table, value: any)
+--- @param list  table
+--- @param pos   integer
+--- @param value any
 function table.insert(list, pos, value) end
 
----@version > 5.3
+--- @version > 5.3
 ---
 --- Moves elements from table a1 to table `a2`, performing the equivalent to
 --- the following multiple assignment: `a2[t]`,`··· = a1[f]`,`···,a1[e]`. The
@@ -48,22 +48,22 @@ function table.insert(list, pos, value) end
 --- range. The number of elements to be moved must fit in a Lua integer.
 ---
 --- Returns the destination table `a2`.
----@overload fun(a1:table, f:integer, e:integer, t:integer):table
----@param a1 table
----@param f integer
----@param e integer
----@param t integer
----@param a2 table
----@return table
+--- @overload fun(a1: table, f: integer, e: integer, t: integer): table
+--- @param a1 table
+--- @param f  integer
+--- @param e  integer
+--- @param t  integer
+--- @param a2 table
+--- @return table
 function table.move(a1, f, e, t, a2) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
----Returns the largest positive numerical index of the given table, or zero if the table has no positive numerical indices.
+--- Returns the largest positive numerical index of the given table, or zero if the table has no positive numerical indices.
 ---
----@param table table
----@return integer
----@nodiscard
+--- @param table table
+--- @return integer
+--- @nodiscard
 function table.maxn(table) end
 
 ---
@@ -76,10 +76,10 @@ function table.maxn(table) end
 ---
 --- The default value for `pos` is `#list`, so that a call `table.remove(l)`
 --- removes the last element of list `l`.
----@generic V
----@param list table<integer, V> | V[]
----@param pos? integer
----@return V
+--- @generic V
+--- @param list table<integer, V>|V[]
+--- @param pos? integer
+--- @return V
 function table.remove(list, pos) end
 
 ---
@@ -96,77 +96,77 @@ function table.remove(list, pos) end
 ---
 --- The sort algorithm is not stable: elements considered equal by the given
 --- order may have their relative positions changed by the sort.
----@generic V
----@param list V[]
----@param comp? fun(a:V, b:V):boolean
+--- @generic V
+--- @param list  V[]
+--- @param comp? fun(a: V, b: V): boolean
 function table.sort(list, comp) end
 
----@version > 5.2, JIT
+--- @version > 5.2, JIT
 ---
 --- Returns the elements from the given list. This function is equivalent to
 --- return `list[i]`, `list[i+1]`, `···`, `list[j]`
 --- By default, i is 1 and j is #list.
----@generic T, Start: integer, End: integer
----@param i? std.ConstTpl<Start>
----@param j? std.ConstTpl<End>
----@param list T
----@return std.Unpack<T, Start, End>
+--- @generic T, Start: integer, End: integer
+--- @param i?   std.ConstTpl<Start>
+--- @param j?   std.ConstTpl<End>
+--- @param list T
+--- @return std.Unpack<T, Start, End>
 function table.unpack(list, i, j) end
 
----@version > 5.2, JIT
+--- @version > 5.2, JIT
 ---
----Returns a new table with all arguments stored into keys `1`, `2`, etc. and with a field `"n"` with the total number of arguments.
+--- Returns a new table with all arguments stored into keys `1`, `2`, etc. and with a field `"n"` with the total number of arguments.
 ---
----@generic T
----@param ... T...
----@return [T...] & { n: integer }
----@nodiscard
+--- @generic T
+--- @param ... T...
+--- @return [T...]&{ n: integer }
+--- @nodiscard
 function table.pack(...) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
----Executes the given f over all elements of table. For each element, f is called with the index and respective value as arguments. If f returns a non-nil value, then the loop is broken, and this value is returned as the final value of foreach.
+--- Executes the given f over all elements of table. For each element, f is called with the index and respective value as arguments. If f returns a non-nil value, then the loop is broken, and this value is returned as the final value of foreach.
 ---
 ---
----@generic T
----@param list any
----@param callback fun(key: string, value: any):T|nil
----@return T?
----@deprecated
+--- @generic T
+--- @param list     any
+--- @param callback fun(key: string, value: any): T|nil
+--- @return T?
+--- @deprecated
 function table.foreach(list, callback) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
----Executes the given f over the numerical indices of table. For each index, f is called with the index and respective value as arguments. Indices are visited in sequential order, from 1 to n, where n is the size of the table. If f returns a non-nil value, then the loop is broken and this value is returned as the result of foreachi.
+--- Executes the given f over the numerical indices of table. For each index, f is called with the index and respective value as arguments. Indices are visited in sequential order, from 1 to n, where n is the size of the table. If f returns a non-nil value, then the loop is broken and this value is returned as the result of foreachi.
 ---
----@generic T
----@param list any
----@param callback fun(key: string, value: any):T|nil
----@return T?
----@deprecated
+--- @generic T
+--- @param list     any
+--- @param callback fun(key: string, value: any): T|nil
+--- @return T?
+--- @deprecated
 function table.foreachi(list, callback) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
----Returns the number of elements in the table. This function is equivalent to `#list`.
+--- Returns the number of elements in the table. This function is equivalent to `#list`.
 ---
----[View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.getn"])
----@generic T
----@param list T[]
----@return integer
----@nodiscard
----@deprecated
+--- [View documents](command:extension.lua.doc?["en-us/54/manual.html/pdf-table.getn"])
+--- @generic T
+--- @param list T[]
+--- @return integer
+--- @nodiscard
+--- @deprecated
 function table.getn(list) end
 
----Creates a new empty table, preallocating memory. This preallocation may help
----performance and save memory when you know in advance how many elements the table will have.
----Parameter `nseq` is a hint for how many elements the table will have as a sequence. Optional parameter `nrec`
----is a hint for how many other elements the table will have; its default is zero.
----@version >5.5
----@param nseq integer
----@param nrec? integer
----@return table
----@nodiscard
+--- Creates a new empty table, preallocating memory. This preallocation may help
+--- performance and save memory when you know in advance how many elements the table will have.
+--- Parameter `nseq` is a hint for how many elements the table will have as a sequence. Optional parameter `nrec`
+--- is a hint for how many other elements the table will have; its default is zero.
+--- @version >5.5
+--- @param nseq  integer
+--- @param nrec? integer
+--- @return table
+--- @nodiscard
 function table.create(nseq, nrec) end
 
 return table
