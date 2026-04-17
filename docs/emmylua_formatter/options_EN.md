@@ -175,14 +175,14 @@ align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
 align_multiline_alias_descriptions = true
-space_between_tag_columns = true
+space_between_tag_columns = false
 space_after_description_dash = true
 ```
 
 Structured handling currently covers `@param`, `@field`, `@return`, `@class`, `@alias`, `@type`, `@generic`, and `@overload`.
 
 - `align_multiline_alias_descriptions` is enabled by default and aligns the `# description` column in multiline `@alias` blocks such as `--- | value # description`.
-- `space_between_tag_columns` controls whether EmmyLua tag lines keep a space between `---` and `@`, for example `--- @enum MyEnum` versus `---@enum MyEnum`.
+- `space_between_tag_columns` controls whether EmmyLua tag lines keep a space between `---` and `@`, for example `--- @enum MyEnum` versus `---@enum MyEnum`. The current default is `false`, so tag lines format as `---@tag` unless configured otherwise.
 - `space_after_description_dash` only affects plain doc description lines such as `--- text` versus `---text`, not tag-line prefixes.
 
 ## align

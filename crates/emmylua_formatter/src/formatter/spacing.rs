@@ -658,7 +658,7 @@ mod tests {
 
         assert_eq!(
             spacing.token_replace(LuaSyntaxId::from_token(&start)),
-            Some("--- @")
+            Some("---@")
         );
     }
 }
