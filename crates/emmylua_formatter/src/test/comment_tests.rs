@@ -51,6 +51,14 @@ local a = 1
     }
 
     #[test]
+    fn test_single_line_normal_comment_preserves_body_tokens() {
+        assert_format!(
+            "-- ffi.cdata* ptr # an uint8_t * pointer\n",
+            "-- ffi.cdata* ptr # an uint8_t * pointer\n"
+        );
+    }
+
+    #[test]
     fn test_multiple_comments() {
         assert_format!(
             r#"
@@ -919,7 +927,7 @@ local t = {
         // Extra spaces in doc comment should be normalized to single space
         assert_format!(
             "---@param  name   string\nlocal function f(name) end\n",
-            "--- @param name string\nlocal function f(name) end\n"
+            "---@param name string\nlocal function f(name) end\n"
         );
     }
 
@@ -928,7 +936,7 @@ local t = {
         // Well-formatted doc comment should be unchanged
         assert_format!(
             "---@param name string\nlocal function f(name) end\n",
-            "--- @param name string\nlocal function f(name) end\n"
+            "---@param name string\nlocal function f(name) end\n"
         );
     }
 
@@ -949,7 +957,7 @@ local t = {
     fn test_doc_comment_multi_tag() {
         assert_format!(
             "---@param a number\n---@param b string\n---@return boolean\nlocal function f(a, b) end\n",
-            "--- @param a number\n--- @param b string\n--- @return boolean\nlocal function f(a, b) end\n"
+            "---@param a number\n---@param b string\n---@return boolean\nlocal function f(a, b) end\n"
         );
     }
 
@@ -957,7 +965,15 @@ local t = {
     fn test_doc_comment_align_param_columns() {
         assert_format!(
             "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "--- @param short       string  desc\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
+            "---@param short       string  desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_param_sync_fun_stays_single_type_column() {
+        assert_format!(
+            "---@param f sync fun(...: T...): R...\n---@param g async fun(...: A...): B...\nlocal function apply(f, g) end\n",
+            "---@param f sync fun(...: T...): R...\n---@param g async fun(...: A...): B...\nlocal function apply(f, g) end\n"
         );
     }
 
@@ -965,7 +981,31 @@ local t = {
     fn test_doc_comment_align_param_columns_with_interleaved_descriptions() {
         assert_format!(
             "--- first parameter docs\n---@param short string desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "--- first parameter docs\n--- @param short       string  desc\n--- second parameter docs\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
+            "--- first parameter docs\n---@param short       string  desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_param_columns_does_not_duplicate_following_lines() {
+        assert_format!(
+            "    --- @param a     any\n    --- @param bbbbb string\n    --- @param c     any\nfunction f(a, bbbbb, c)\nend\n",
+            "---@param a     any\n---@param bbbbb string\n---@param c     any\nfunction f(a, bbbbb, c) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_version_keeps_space_before_comparison() {
+        assert_format!(
+            "---@version >5.3\nlocal value = nil\n",
+            "---@version >5.3\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_meta_doc_line_followed_by_normal_comment_block_stays_mixed() {
+        assert_format!(
+            "---@meta\n-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)\n--\n-- Licensed under the Apache License, Version 2.0 (the \"License\"); you may not\n-- use this file except in compliance with the License. You may obtain a copy of\n-- the License at\n--\n-- http://www.apache.org/licenses/LICENSE-2.0\n--\n-- Unless required by applicable law or agreed to in writing, software\n-- distributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\n-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\n-- License for the specific language governing permissions and limitations under\n-- the License.\n\nlocal value = nil\n",
+            "---@meta\n-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)\n--\n-- Licensed under the Apache License, Version 2.0 (the \"License\"); you may not\n-- use this file except in compliance with the License. You may obtain a copy of\n-- the License at\n--\n-- http://www.apache.org/licenses/LICENSE-2.0\n--\n-- Unless required by applicable law or agreed to in writing, software\n-- distributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\n-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\n-- License for the specific language governing permissions and limitations under\n-- the License.\n\nlocal value = nil\n"
         );
     }
 
@@ -973,7 +1013,7 @@ local t = {
     fn test_doc_comment_align_field_columns() {
         assert_format!(
             "---@field x string desc\n---@field longer_name integer another desc\nlocal t = {}\n",
-            "--- @field x           string  desc\n--- @field longer_name integer another desc\nlocal t = {}\n"
+            "---@field x           string  desc\n---@field longer_name integer another desc\nlocal t = {}\n"
         );
     }
 
@@ -981,7 +1021,7 @@ local t = {
     fn test_doc_comment_align_field_columns_with_interleaved_descriptions() {
         assert_format!(
             "---@class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n---@field arrayIndex boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n---@field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n---@field metaOverrideFileDefine boolean?\n",
-            "--- @class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n--- @field arrayIndex                boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n--- @field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n--- @field metaOverrideFileDefine    boolean?\n"
+            "---@class schema.EmmyrcStrict\n--- Whether to enable strict mode array indexing.\n---@field arrayIndex                boolean?\n--- Base constant types defined in doc can match base types, allowing int to match `---@alias id 1|2|3`, same for string.\n---@field docBaseConstMatchBaseType boolean?\n--- meta define overrides file define\n---@field metaOverrideFileDefine    boolean?\n"
         );
     }
 
@@ -989,7 +1029,7 @@ local t = {
     fn test_doc_comment_align_return_columns() {
         assert_format!(
             "---@return number ok success\n---@return string, integer err failure\nfunction f() end\n",
-            "--- @return number ok           success\n--- @return string, integer err failure\nfunction f() end\n"
+            "---@return number ok           success\n---@return string, integer err failure\nfunction f() end\n"
         );
     }
 
@@ -997,7 +1037,23 @@ local t = {
     fn test_doc_comment_align_return_columns_with_interleaved_descriptions() {
         assert_format!(
             "--- first return docs\n---@return number ok success\n--- second return docs\n---@return string, integer err failure\nfunction f() end\n",
-            "--- first return docs\n--- @return number ok           success\n--- second return docs\n--- @return string, integer err failure\nfunction f() end\n"
+            "--- first return docs\n---@return number ok           success\n--- second return docs\n---@return string, integer err failure\nfunction f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_return_hash_description_preserves_body_text() {
+        assert_format!(
+            "---@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.\n---@return integer len # length of the buffer data in bytes\nlocal function f()\nend\n",
+            "---@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.\n---@return integer len    # length of the buffer data in bytes\nlocal function f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_param_hash_description_preserves_body_text() {
+        assert_format!(
+            "---@param f sync fun(...: T...): R... # async and sync should stay near the fun type body\nlocal function apply(f) end\n",
+            "---@param f sync fun(...: T...): R... # async and sync should stay near the fun type body\nlocal function apply(f) end\n"
         );
     }
 
@@ -1005,7 +1061,7 @@ local t = {
     fn test_doc_comment_align_complex_field_columns() {
         assert_format!(
             "---@field public [\"foo\"] string?\n---@field private [bar] integer\n---@field protected baz fun(x: string): boolean\nlocal t = {}\n",
-            "--- @field public [\"foo\"] string?\n--- @field private [bar]  integer\n--- @field protected baz  fun(x: string): boolean\nlocal t = {}\n"
+            "---@field public [\"foo\"] string?\n---@field private [bar]  integer\n---@field protected baz  fun(x: string): boolean\nlocal t = {}\n"
         );
     }
 
@@ -1022,7 +1078,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "--- @param short string desc\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
+            "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
             config
         );
     }
@@ -1040,7 +1096,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@class Short short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n",
-            "--- @class Short short desc\n--- @class LongerName<T> longer desc\nlocal value = {}\n",
+            "---@class Short short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n",
             config
         );
     }
@@ -1058,7 +1114,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "--- @param short string desc\n--- @param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
+            "---@param short string desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
             config
         );
     }
@@ -1067,7 +1123,23 @@ local t = {
     fn test_doc_comment_align_class_columns() {
         assert_format!(
             "---@class Short short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n",
-            "--- @class Short         short desc\n--- @class LongerName<T> longer desc\nlocal value = {}\n"
+            "---@class Short         short desc\n---@class LongerName<T> longer desc\nlocal value = {}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_enum_attached_table_prefers_expanded_declaration() {
+        assert_format!(
+            "---@enum MyEnum\nlocal cc = { xxx = 123 }\n",
+            "---@enum MyEnum\nlocal cc = {\n    xxx = 123\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_class_attached_table_prefers_expanded_declaration() {
+        assert_format!(
+            "---@class MyClass\nlocal cc = { xxx = 123 }\n",
+            "---@class MyClass\nlocal cc = {\n    xxx = 123\n}\n"
         );
     }
 
@@ -1075,7 +1147,7 @@ local t = {
     fn test_doc_comment_align_alias_columns() {
         assert_format!(
             "---@alias Id integer identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n",
-            "--- @alias Id integer         identifier\n--- @alias DisplayName string user facing name\nlocal value = nil\n"
+            "---@alias Id integer         identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n"
         );
     }
 
@@ -1092,7 +1164,7 @@ local t = {
         };
         assert_format_with_config!(
             "---@alias Id   integer|nil identifier\n---@alias DisplayName    string user facing name\nlocal value = nil\n",
-            "--- @alias Id   integer|nil identifier\n--- @alias DisplayName    string user facing name\nlocal value = nil\n",
+            "---@alias Id   integer|nil identifier\n---@alias DisplayName    string user facing name\nlocal value = nil\n",
             config
         );
     }
@@ -1103,6 +1175,7 @@ local t = {
 
         let config = LuaFormatConfig {
             emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
                 space_after_description_dash: false,
                 ..Default::default()
             },
@@ -1121,7 +1194,7 @@ local t = {
 
         let config = LuaFormatConfig {
             emmy_doc: crate::config::EmmyDocConfig {
-                space_after_description_dash: false,
+                space_between_tag_columns: false,
                 ..Default::default()
             },
             ..Default::default()
@@ -1135,11 +1208,32 @@ local t = {
     }
 
     #[test]
+    fn test_doc_tag_prefix_is_independent_from_description_spacing() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
+                space_after_description_dash: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "---@enum MyEnum\nlocal cc = { xxx = 123 }\n",
+            "---@enum MyEnum\nlocal cc = {\n    xxx = 123\n}\n",
+            config
+        );
+    }
+
+    #[test]
     fn test_doc_continue_or_prefix_can_omit_space() {
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
             emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
                 space_after_description_dash: false,
                 ..Default::default()
             },
@@ -1154,10 +1248,10 @@ local t = {
     }
 
     #[test]
-    fn test_doc_comment_single_line_description_still_normalizes_whitespace() {
+    fn test_doc_comment_single_line_description_preserves_body_spacing() {
         assert_format!(
             "---   spaced    words\nlocal value = nil\n",
-            "--- spaced words\nlocal value = nil\n"
+            "---   spaced    words\nlocal value = nil\n"
         );
     }
 
@@ -1170,10 +1264,30 @@ local t = {
     }
 
     #[test]
-    fn test_doc_tag_prefix_inserts_space_before_at_by_default() {
+    fn test_doc_tag_prefix_omits_space_before_at_by_default() {
         assert_format!(
             "---@param  name   string\nlocal function f(name) end\n",
-            "--- @param name string\nlocal function f(name) end\n"
+            "---@param name string\nlocal function f(name) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_description_spacing_is_independent_from_tag_prefix_spacing() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: true,
+                space_after_description_dash: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "---@enum MyEnum\n--- keep tight\nlocal value = nil\n",
+            "--- @enum MyEnum\n---keep tight\nlocal value = nil\n",
+            config
         );
     }
 
@@ -1181,7 +1295,23 @@ local t = {
     fn test_doc_comment_multiline_description_preserves_line_structure() {
         assert_format!(
             "---@class Test first line\n---   second   line\nlocal value = {}\n",
-            "--- @class Test first line\n---   second   line\nlocal value = {}\n"
+            "---@class Test first line\n---   second   line\nlocal value = {}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_multiline_description_only_preserves_explicit_indentation() {
+        assert_format!(
+            "--- hihi\n---   jgiwigw\n---  jgiwigw\n---fjajwiofw\nlocal value = nil\n",
+            "--- hihi\n---   jgiwigw\n---  jgiwigw\n--- fjajwiofw\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_field_range_description_preserves_commas() {
+        assert_format!(
+            "---@class std.osdateparam\n---@field year                  integer|string four digits\n---@field month                 integer|string 1-12\n---@field day                   integer|string 1-31\n---@field hour(integer|string)? 0-23\n---@field min(integer|string)?  0-59\n---@field sec(integer|string)?  0-61,due to leap seconds\n---@field wday(integer|string)? 1-7,Sunday is 1\n---@field yday(integer|string)? 1-366\n---@field isdst                 boolean? daylight saving flag, a boolean.\nlocal t = {}\n",
+            "---@class std.osdateparam\n---@field year  integer|string    four digits\n---@field month integer|string    1-12\n---@field day   integer|string    1-31\n---@field hour  (integer|string)? 0-23\n---@field min   (integer|string)? 0-59\n---@field sec   (integer|string)? 0-61,due to leap seconds\n---@field wday  (integer|string)? 1-7,Sunday is 1\n---@field yday  (integer|string)? 1-366\n---@field isdst boolean?          daylight saving flag, a boolean.\nlocal t = {}\n"
         );
     }
 
@@ -1189,7 +1319,7 @@ local t = {
     fn test_doc_comment_align_generic_columns() {
         assert_format!(
             "---@generic T value type\n---@generic Value, Result: number mapped result\nlocal function f() end\n",
-            "--- @generic T                     value type\n--- @generic Value, Result: number mapped result\nlocal function f() end\n"
+            "---@generic T                     value type\n---@generic Value, Result: number mapped result\nlocal function f() end\n"
         );
     }
 
@@ -1197,7 +1327,7 @@ local t = {
     fn test_doc_comment_format_type_and_overload() {
         assert_format!(
             "---@type   string|integer value\n---@overload   fun(x: string): integer callable\nlocal fn = nil\n",
-            "--- @type string|integer value\n--- @overload fun(x: string): integer callable\nlocal fn = nil\n"
+            "---@type string|integer value\n---@overload fun(x: string): integer callable\nlocal fn = nil\n"
         );
     }
 
@@ -1205,7 +1335,7 @@ local t = {
     fn test_doc_comment_type_normalizes_generic_spacing() {
         assert_format!(
             "--- @type table < number, Person >\nlocal d = {}\n",
-            "--- @type table<number, Person>\nlocal d = {}\n"
+            "---@type table<number, Person>\nlocal d = {}\n"
         );
     }
 
@@ -1213,7 +1343,7 @@ local t = {
     fn test_doc_comment_type_normalizes_group_and_array_spacing() {
         assert_format!(
             "--- @type ( string|number)[]\nlocal c\n",
-            "--- @type (string|number)[]\nlocal c\n"
+            "---@type (string|number)[]\nlocal c\n"
         );
     }
 
@@ -1221,7 +1351,7 @@ local t = {
     fn test_doc_comment_generic_uses_spacing_normalization() {
         assert_format!(
             "--- @generic Value , Result : number mapped result\nlocal function f() end\n",
-            "--- @generic Value, Result: number mapped result\nlocal function f() end\n"
+            "---@generic Value, Result: number mapped result\nlocal function f() end\n"
         );
     }
 
@@ -1229,7 +1359,7 @@ local t = {
     fn test_doc_comment_type_uses_spacing_normalization_for_function_types() {
         assert_format!(
             "--- @type fun( x : string ) : integer\nlocal fn\n",
-            "--- @type fun(x: string): integer\nlocal fn\n"
+            "---@type fun(x: string): integer\nlocal fn\n"
         );
     }
 
@@ -1253,7 +1383,42 @@ local t = {
     fn test_doc_comment_multiline_alias_falls_back() {
         assert_format!(
             "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n",
-            "--- @alias Complex\n--- | string\n--- | integer\nlocal value = nil\n"
+            "---@alias Complex\n--- | string\n--- | integer\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_multiline_alias_descriptions() {
+        assert_format!(
+            "---@alias schema.DiagnosticCode\n---| \"none\"\n---| \"syntax-error\" # Syntax error\n---| \"doc-syntax-error\" # Doc syntax error\n---| \"type-not-found\" # Type not found\n---| \"missing-return\" # Missing return statement\n---| \"param-type-mismatch\" # Param Type not match\n",
+            "---@alias schema.DiagnosticCode\n--- | \"none\"\n--- | \"syntax-error\"        # Syntax error\n--- | \"doc-syntax-error\"    # Doc syntax error\n--- | \"type-not-found\"      # Type not found\n--- | \"missing-return\"      # Missing return statement\n--- | \"param-type-mismatch\" # Param Type not match\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_alias_continue_or_does_not_duplicate_marker() {
+        assert_format!(
+            "---@alias std.collectgarbage_opt\n---|>\"collect\" # performs a full garbage-collection cycle. This is the default option.\n",
+            "---@alias std.collectgarbage_opt\n--- |> \"collect\" # performs a full garbage-collection cycle. This is the default option.\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_multiline_alias_description_alignment_can_be_disabled() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                align_multiline_alias_descriptions: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "---@alias schema.DiagnosticCode\n---| \"syntax-error\" # Syntax error\n---| \"doc-syntax-error\" # Doc syntax error\n",
+            "---@alias schema.DiagnosticCode\n--- | \"syntax-error\" # Syntax error\n--- | \"doc-syntax-error\" # Doc syntax error\n",
+            config
         );
     }
 

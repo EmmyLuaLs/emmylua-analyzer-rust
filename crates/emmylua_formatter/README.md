@@ -1,199 +1,203 @@
 # EmmyLua Formatter
 
-EmmyLua Formatter is the structured Lua and EmmyLua formatter in the EmmyLua Analyzer Rust workspace. It is designed for deterministic output, conservative comment handling, and width-aware layout decisions that remain stable under repeated formatting.
+EmmyLua Formatter is the Lua and EmmyLua formatter used by the EmmyLua Analyzer Rust workspace.
 
-The formatter pipeline is built in three stages:
+It focuses on three practical goals:
 
-1. Parse source text into syntax nodes.
-2. Lower syntax into DocIR.
-3. Print DocIR back to text with configurable layout selection.
+- deterministic output across repeated runs
+- width-aware layout selection instead of one fixed broken shape
+- structured handling for common EmmyLua doc tags without normalizing unrelated comment text too aggressively
 
-The current implementation covers statements, expressions, table literals, chained calls, binary-expression chains, trailing comments, and a practical subset of EmmyLua doc tags.
+The crate provides both:
 
-Sequence-layout redesign notes are documented in `SEQUENCE_LAYOUT_DESIGN.md`.
+- a `luafmt` CLI for files, directories, and stdin
+- a library API for callers that want to resolve config, collect files, and format in-process
 
-## Design Goals
+## Current Capabilities
 
-The formatter currently prioritizes the following properties:
+The formatter currently handles:
 
-- stable formatting for repeated runs
-- conservative preservation around comments and ambiguous syntax
-- width-aware packing before fully expanded one-item-per-line output
-- configuration that is narrow in scope and predictable in effect
+- normal Lua statements and expressions
+- tables, chained calls, function parameter lists, and statement expression lists
+- trailing line comments and input-sensitive comment alignment
+- common EmmyLua tags such as `@param`, `@field`, `@return`, `@class`, `@alias`, `@type`, `@generic`, and `@overload`
 
-Recent layout work introduced candidate-based selection for sequence-like constructs. Instead of committing to a single hard-coded broken layout, the formatter can compare fill, packed, aligned, and one-per-line candidates and choose the best result for the active width.
+The layout engine does not rely on a single multiline fallback. For sequence-like constructs it can compare several candidate layouts and choose between:
 
-## Layout Behavior
+- flat output when everything fits
+- progressive fill layouts
+- more balanced packed layouts
+- full one-item-per-line expansion when narrower candidates are clearly worse
 
-The formatter now uses candidate selection in several important paths:
-
-- call arguments
-- function parameters
-- table fields
-- binary-expression chains
-- statement expression lists used by `return`, assignment right-hand sides, and loop headers
-
-In practice this means the formatter can prefer:
-
-- a flat layout when everything fits
-- progressive fill when a compact multi-line layout is sufficient
-- a more balanced packed layout when it avoids ragged trailing lines
-- one-item-per-line expansion only when the narrower layouts are clearly worse
-
-Comment-sensitive paths remain conservative. Standalone comments still block aggressive repacking, and trailing line comment alignment only activates when the input already shows alignment intent.
-
-## Configuration Overview
-
-The public formatter configuration is exposed through `LuaFormatConfig`:
-
-- `indent`
-- `layout`
-- `output`
-- `spacing`
-- `comments`
-- `emmy_doc`
-- `align`
-
-Key defaults:
-
-- `layout.max_line_width = 120`
-- `layout.table_expand = "Auto"`
-- `layout.call_args_expand = "Auto"`
-- `layout.func_params_expand = "Auto"`
-- `output.trailing_comma = "Never"`
-- `output.trailing_table_separator = "Inherit"`
-- `output.quote_style = "Preserve"`
-- `output.single_arg_call_parens = "Preserve"`
-- `output.simple_lambda_single_line = "Preserve"`
-- `comments.align_in_statements = false`
-- `comments.space_after_comment_dash = true`
-- `align.continuous_assign_statement = false`
-- `align.table_field = true`
-
-These defaults intentionally favor conservative rewrites. Alignment-heavy output is not enabled broadly unless the source already indicates that alignment should be preserved.
-
-`output.simple_lambda_single_line` controls whether eligible closures of the form `function(...) return expr end` stay on one line only when the source was already inline, collapse back to one line whenever they fit, or always expand to a multiline body.
-
-## Comment Alignment
-
-Trailing line comment behavior is configured under `LuaFormatConfig.comments`:
-
-- `align_line_comments`
-- `align_in_statements`
-- `align_in_table_fields`
-- `align_in_call_args`
-- `align_in_params`
-- `align_across_standalone_comments`
-- `align_same_kind_only`
-- `line_comment_min_spaces_before`
-- `line_comment_min_column`
-
-Current alignment rules are intentionally scoped:
-
-- statement alignment is disabled by default
-- call-arg, parameter, and table-field alignment only activate when the input already contains extra spacing that signals alignment intent
-- standalone comments break alignment groups by default
-- table comment alignment is limited to contiguous subgroups rather than the entire table body
-
-## EmmyLua Doc Tags
-
-Structured handling currently exists for:
-
-- `@param`
-- `@field`
-- `@return`
-- `@class`
-- `@alias`
-- `@type`
-- `@generic`
-- `@overload`
-
-Doc-tag behavior is controlled under `LuaFormatConfig.emmy_doc`:
-
-- `align_tag_columns`
-- `align_declaration_tags`
-- `align_reference_tags`
-- `tag_spacing`
-- `space_after_description_dash`
-
-Notes:
-
-- declaration tags are `@class`, `@alias`, `@type`, `@generic`, `@overload`
-- reference tags are `@param`, `@field`, `@return`
-- `@alias` keeps its original single-line body text and only participates in description-column alignment
-- `space_after_description_dash` controls whether plain doc lines render as `--- text` or `---text`
-- multiline or complex doc-tag forms fall back to raw preservation instead of speculative rewriting
+That behavior is used in places like call arguments, function parameters, table fields, binary-expression chains, assignment right-hand sides, `return` lists, and loop headers.
 
 ## CLI
 
-The `luafmt` binary supports:
-
-- `--config <FILE>` with `toml`, `json`, `yml`, or `yaml`
-- automatic discovery of `.luafmt.toml` or `luafmt.toml`
-- `--dump-default-config`
-- recursive directory input
-- `--include` and `--exclude` glob filters
-- `.luafmtignore`
-- `--check` and `--list-different`
-- `--color auto|always|never`
-- `--diff-style marker|git`
+The workspace binary is `luafmt`.
 
 Typical usage:
 
 ```powershell
 luafmt src --write
 luafmt . --check --exclude "vendor/**"
-luafmt game --list-different
+Get-Content script.lua | luafmt --stdin
+Get-Content script.lua | luafmt --stdin --output formatted.lua
+```
+
+Main CLI features:
+
+- reads files, directories, or stdin
+- `--write`, `--check`, and `--list-different`
+- `--config <FILE>` for explicit TOML, JSON, YML, or YAML config files
+- automatic discovery of `.luafmt.toml` and `luafmt.toml`
+- `.luafmtignore` support when walking directories
+- `--include` and `--exclude` glob filters
+- `--dump-default-config`
+- `--color auto|always|never`
+- `--diff-style marker|git`
+- `--level <Lua51|Lua52|Lua53|Lua54|Lua55|LuaJIT>` as an explicit parser-level override
+
+Config discovery rules:
+
+- when formatting a file path, `luafmt` searches upward from that path
+- when formatting stdin without a source path, `luafmt` searches upward from the current working directory
+- when `--config` is provided, that file wins
+
+## Configuration
+
+The public config root is `LuaFormatConfig`.
+
+```rust
+pub struct LuaFormatConfig {
+	pub syntax: SyntaxConfig,
+	pub indent: IndentConfig,
+	pub layout: LayoutConfig,
+	pub output: OutputConfig,
+	pub spacing: SpacingConfig,
+	pub comments: CommentConfig,
+	pub emmy_doc: EmmyDocConfig,
+	pub align: AlignConfig,
+}
+```
+
+Important defaults:
+
+```toml
+[syntax]
+level = "Lua55"
+
+[layout]
+max_line_width = 120
+max_blank_lines = 1
+table_expand = "Auto"
+call_args_expand = "Auto"
+func_params_expand = "Auto"
+
+[output]
+insert_final_newline = true
+trailing_comma = "Never"
+trailing_table_separator = "Inherit"
+quote_style = "Preserve"
+single_arg_call_parens = "Preserve"
+simple_lambda_single_line = "Preserve"
+end_of_line = "LF"
+
+[comments]
+align_line_comments = true
+align_in_statements = false
+align_in_table_fields = true
+align_in_call_args = true
+align_in_params = true
+align_across_standalone_comments = false
+align_same_kind_only = false
+space_after_comment_dash = true
+line_comment_min_spaces_before = 1
+line_comment_min_column = 0
+
+[emmy_doc]
+align_tag_columns = true
+align_declaration_tags = true
+align_reference_tags = true
+align_multiline_alias_descriptions = true
+space_between_tag_columns = false
+space_after_description_dash = true
+
+[align]
+continuous_assign_statement = false
+table_field = true
+```
+
+Notes that matter in practice:
+
+- `syntax.level` controls parser grammar and defaults to `Lua55`
+- CLI `--level` overrides `syntax.level` from config
+- `emmy_doc.space_between_tag_columns = false` means the default tag prefix is `---@tag`, not `--- @tag`
+- `emmy_doc.space_after_description_dash` only affects plain doc description lines such as `--- text` vs `---text`
+- trailing line comment alignment is intentionally conservative and often only activates when the input already signals alignment intent
+
+To inspect the exact current default config:
+
+```powershell
+luafmt --dump-default-config
 ```
 
 ## Library API
 
-The crate exposes workspace-friendly helpers so callers do not need to shell out to `luafmt`:
+The crate exposes two useful layers.
+
+Low-level formatting helpers:
+
+- `check_text`
+- `format_text`
+- `reformat_lua_code`
+- `reformat_chunk`
+
+Path-aware workspace helpers:
 
 - `resolve_config_for_path`
-- `format_text_for_path`
+- `discover_config_path`
+- `load_format_config`
+- `parse_format_config`
 - `check_text_for_path`
-- `format_file`
+- `format_text_for_path`
 - `check_file`
+- `format_file`
 - `collect_lua_files`
 
-Example:
+If you want library behavior that matches `luafmt`, resolve config first and then use the resolved syntax level:
 
 ```rust
 use std::path::Path;
 
-use emmylua_formatter::{format_text_for_path, resolve_config_for_path};
+use emmylua_formatter::{check_text, resolve_config_for_path};
 
-let source_path = Path::new("workspace/scripts/main.lua");
-let resolved = resolve_config_for_path(Some(source_path), None)?;
-let result = format_text_for_path("local x=1\n", Some(source_path), None)?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let source_path = Path::new("workspace/scripts/main.lua");
+	let source = "---@param value string\nlocal function f(value) end\n";
 
-assert!(resolved.source_path.is_some());
-assert!(result.output.changed);
+	let resolved = resolve_config_for_path(Some(source_path), None)?;
+	let result = check_text(source, resolved.config.syntax.level.into(), &resolved.config);
+
+	assert!(resolved.source_path.is_some());
+	assert!(result.changed);
+	Ok(())
+}
 ```
 
-## Documentation
-
-Additional formatter documentation is available in the workspace docs directory:
-
-- `../../docs/emmylua_formatter/README_EN.md`
-- `../../docs/emmylua_formatter/examples_EN.md`
-- `../../docs/emmylua_formatter/options_EN.md`
-- `../../docs/emmylua_formatter/profiles_EN.md`
-- `../../docs/emmylua_formatter/tutorial_EN.md`
-
-The examples page is the best place to review actual before-and-after output for tables, call arguments, binary chains, and statement expression lists.
-
+That pattern is important because the path-aware config can now carry the Lua syntax level through `syntax.level`.
 
 ## Example Config
 
 ```toml
+[syntax]
+level = "Lua55"
+
 [indent]
 kind = "Space"
 width = 4
 
 [layout]
-max_line_width = 120
+max_line_width = 100
 max_blank_lines = 1
 table_expand = "Auto"
 call_args_expand = "Auto"
@@ -234,10 +238,28 @@ line_comment_min_column = 0
 align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
-tag_spacing = 1
+align_multiline_alias_descriptions = true
+space_between_tag_columns = false
 space_after_description_dash = true
 
 [align]
 continuous_assign_statement = false
 table_field = true
 ```
+
+## More Documentation
+
+Additional formatter docs live in the workspace documentation directory:
+
+- `../../docs/emmylua_formatter/README_EN.md`
+- `../../docs/emmylua_formatter/README_CN.md`
+- `../../docs/emmylua_formatter/options_EN.md`
+- `../../docs/emmylua_formatter/options_CN.md`
+- `../../docs/emmylua_formatter/examples_EN.md`
+- `../../docs/emmylua_formatter/examples_CN.md`
+- `../../docs/emmylua_formatter/profiles_EN.md`
+- `../../docs/emmylua_formatter/profiles_CN.md`
+- `../../docs/emmylua_formatter/tutorial_EN.md`
+- `../../docs/emmylua_formatter/tutorial_CN.md`
+
+For real before-and-after output, start with the examples and options documents.

@@ -14,7 +14,7 @@ use crate::{
     infer_expr,
 };
 
-use super::{LuaAnalyzer, LuaReturnPoint, func_body::analyze_func_body_returns};
+use super::{LuaAnalyzer, LuaReturnPoint, analyze_func_body_returns_with};
 
 pub fn analyze_closure(analyzer: &mut LuaAnalyzer, closure: LuaClosureExpr) -> Option<()> {
     let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
@@ -136,15 +136,26 @@ fn analyze_return(
         }
     };
 
-    let return_points = analyze_func_body_returns(block);
-    let returns = match analyze_return_point(
-        analyzer.db,
-        analyzer
-            .context
-            .infer_manager
-            .get_infer_cache(analyzer.file_id),
-        &return_points,
-    ) {
+    let cache = analyzer
+        .context
+        .infer_manager
+        .get_infer_cache(analyzer.file_id);
+    let return_points = match analyze_func_body_returns_with(block.clone(), &mut |expr| {
+        infer_expr(analyzer.db, cache, expr.clone())
+    }) {
+        Ok(return_points) => return_points,
+        Err(reason) => {
+            let unresolve = UnResolveReturn {
+                file_id: analyzer.file_id,
+                signature_id: *signature_id,
+                body: block,
+            };
+
+            analyzer.context.add_unresolve(unresolve.into(), reason);
+            return None;
+        }
+    };
+    let returns = match analyze_return_point(analyzer.db, cache, &return_points) {
         Ok(returns) => returns,
         Err(InferFailReason::None) => {
             vec![LuaDocReturnInfo {
@@ -158,7 +169,7 @@ fn analyze_return(
             let unresolve = UnResolveReturn {
                 file_id: analyzer.file_id,
                 signature_id: *signature_id,
-                return_points,
+                body: block,
             };
 
             analyzer.context.add_unresolve(unresolve.into(), reason);
@@ -189,13 +200,12 @@ fn analyze_lambda_returns(
         .get_args()
         .position(|arg| arg.get_position() == pos)?;
     let block = closure.get_block()?;
-    let return_points = analyze_func_body_returns(block);
     let unresolved = UnResolveClosureReturn {
         file_id: analyzer.file_id,
         signature_id: *signature_id,
         call_expr,
         param_idx: founded_idx,
-        return_points,
+        body: block,
     };
 
     analyzer

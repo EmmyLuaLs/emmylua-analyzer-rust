@@ -13,7 +13,7 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
----@class debuglib
+--- @class debuglib
 debug = {}
 
 ---
@@ -27,54 +27,53 @@ debug = {}
 --- function, and so have no direct access to local variables.
 function debug.debug() end
 
----@version 5.1
+--- @version 5.1
 ---
----Returns the environment of object `o` .
+--- Returns the environment of object `o` .
 ---
----@param o any
----@return table
----@nodiscard
+--- @param o any
+--- @return table
+--- @nodiscard
 function debug.getfenv(o) end
 
 ---
 --- Returns the current hook settings of the thread, as three values: the
 --- current hook function, the current hook mask, and the current hook count
 --- (as set by the `debug.sethook` function).
----@overload fun():function?, string, integer
----@param thread thread
----@return function? hook
----@return string mask
----@return integer count
+--- @param thread? thread
+--- @return function? hook
+--- @return string mask
+--- @return integer count
 function debug.gethook(thread) end
 
----@class debuglib.DebugInfo
----@field name            string
----@field namewhat        string
----@field source          string
----@field short_src       string
----@field linedefined     integer
----@field lastlinedefined integer
----@field what            string
----@field currentline     integer
----@field istailcall      boolean
----@field nups            integer
----@field nparams         integer
----@field isvararg        boolean
----@field func            function
----@field ftransfer       integer
----@field ntransfer       integer
----@field activelines     table
+--- @class debuglib.DebugInfo
+--- @field name            string
+--- @field namewhat        string
+--- @field source          string
+--- @field short_src       string
+--- @field linedefined     integer
+--- @field lastlinedefined integer
+--- @field what            string
+--- @field currentline     integer
+--- @field istailcall      boolean
+--- @field nups            integer
+--- @field nparams         integer
+--- @field isvararg        boolean
+--- @field func            function
+--- @field ftransfer       integer
+--- @field ntransfer       integer
+--- @field activelines     table
 
----@alias debuglib.InfoWhat
----|+"n"     # `name`, `namewhat`
----|+"S"     # `source`, `short_src`, `linedefined`, `lastlinedefined`, `what`
----|+"l"     # `currentline`
----|+"t"     # `istailcall`
----|+"u"     # `nups`, `nparams`, `isvararg`
----|+"f"     # `func`
----|+"r"     # `ftransfer`, `ntransfer`
----|+"L"     # `activelines`
----| string
+--- @alias debuglib.InfoWhat
+--- |+ "n" # `name`, `namewhat`
+--- |+ "S" # `source`, `short_src`, `linedefined`, `lastlinedefined`, `what`
+--- |+ "l" # `currentline`
+--- |+ "t" # `istailcall`
+--- |+ "u" # `nups`, `nparams`, `isvararg`
+--- |+ "f" # `func`
+--- |+ "r" # `ftransfer`, `ntransfer`
+--- |+ "L" # `activelines`
+--- | string
 
 ---
 --- Returns a table with information about a function. You can give the
@@ -96,15 +95,15 @@ function debug.gethook(thread) end
 --- with a name for the current function, if a reasonable name can be found,
 --- and the expression `debug.getinfo(print)` returns a table with all available
 --- information about the `print` function.
----@overload fun(f: int|function, what?: debuglib.InfoWhat):debuglib.DebugInfo?
----@param thread thread
----@param f integer|function
----@param what? debuglib.InfoWhat
----@return debuglib.DebugInfo?
----@nodiscard
+--- @overload fun(f: int|function, what?: debuglib.InfoWhat): debuglib.DebugInfo?
+--- @param thread thread
+--- @param f      integer|function
+--- @param what?  debuglib.InfoWhat
+--- @return debuglib.DebugInfo?
+--- @nodiscard
 function debug.getinfo(thread, f, what) end
 
----@version >5.2, JIT
+--- @version >5.2, JIT
 ---
 --- This function returns the name and the value of the local variable with
 --- index `local` of the function at level `level f` of the stack. This function
@@ -129,14 +128,14 @@ function debug.getinfo(thread, f, what) end
 --- @overload fun(f: function, integer): string?
 --- @overload fun(thread: thread, f: function, integer): string?
 --- @param thread thread
---- @param f integer
---- @param index integer
+--- @param f      integer
+--- @param index  integer
 --- @return string? name
 --- @return any? value
 --- @nodiscard
 function debug.getlocal(thread, f, index) end
 
----@version 5.1
+--- @version 5.1
 ---
 --- This function returns the name and the value of the local variable with
 --- index `index` of the function at level `level` of the stack. (The first
@@ -149,8 +148,8 @@ function debug.getlocal(thread, f, index) end
 --- variables (loop control variables, temporaries, and C function locals).
 --- @overload fun(f: integer, integer): string, any
 --- @param thread thread
---- @param lvl integer
---- @param index integer
+--- @param lvl    integer
+--- @param index  integer
 --- @return string? name
 --- @return any? value
 --- @nodiscard
@@ -159,15 +158,15 @@ function debug.getlocal(thread, lvl, index) end
 ---
 --- Returns the metatable of the given `value` or **nil** if it does not have
 --- a metatable.
----@param object any
----@return table?
----@nodiscard
+--- @param object any
+--- @return table?
+--- @nodiscard
 function debug.getmetatable(object) end
 
 ---
 --- Returns the registry table.
----@return table
----@nodiscard
+--- @return table
+--- @nodiscard
 function debug.getregistry() end
 
 ---
@@ -177,49 +176,49 @@ function debug.getregistry() end
 ---
 --- Variable names starting with '(' (open parenthesis) represent variables with
 --- no known names (variables from chunks saved without debug information).
----@param f function
----@param up integer
----@return string? name
----@return any?    value
----@nodiscard
+--- @param f  function
+--- @param up integer
+--- @return string? name
+--- @return any? value
+--- @nodiscard
 function debug.getupvalue(f, up) end
 
 ---
 --- Returns the `n`-th user value associated to the userdata `u` plus a boolean,
 --- **false** if the userdata does not have that value.
----@param u userdata
----@param n integer
----@return any
----@return boolean
+--- @param u userdata
+--- @param n integer
+--- @return any
+--- @return boolean
 function debug.getuservalue(u, n) end
 
 ---
----### **Deprecated in `Lua 5.4.2`**
+--- ### **Deprecated in `Lua 5.4.2`**
 ---
----Sets a new limit for the C stack. This limit controls how deeply nested calls can go in Lua, with the intent of avoiding a stack overflow.
+--- Sets a new limit for the C stack. This limit controls how deeply nested calls can go in Lua, with the intent of avoiding a stack overflow.
 ---
----In case of success, this function returns the old limit. In case of error, it returns `false`.
+--- In case of success, this function returns the old limit. In case of error, it returns `false`.
 ---
 ---
----@deprecated
----@param limit integer
----@return integer|boolean
+--- @deprecated
+--- @param limit integer
+--- @return integer|boolean
 function debug.setcstacklimit(limit) end
 
 ---
----Sets the environment of the given `object` to the given `table` .
+--- Sets the environment of the given `object` to the given `table` .
 ---
----@version 5.1, JIT
----@generic T
----@param object T
----@param env    table
----@return T object
+--- @version 5.1, JIT
+--- @generic T
+--- @param object T
+--- @param env    table
+--- @return T object
 function debug.setfenv(object, env) end
 
----@alias debuglib.Hookmask
----|+"c" # Calls hook when Lua calls a function.
----|+"r" # Calls hook when Lua returns from a function.
----|+"l" # Calls hook when Lua enters a new line of code.
+--- @alias debuglib.Hookmask
+--- |+ "c" # Calls hook when Lua calls a function.
+--- |+ "r" # Calls hook when Lua returns from a function.
+--- |+ "l" # Calls hook when Lua enters a new line of code.
 
 ---
 --- Sets the given function as a hook. The string `mask` and the number `count`
@@ -242,11 +241,11 @@ function debug.setfenv(object, env) end
 --- call `getinfo` with level 2 to get more information about the running
 --- function (level 0 is the `getinfo` function, and level 1 is the hook
 --- function)
----@overload fun(hook:(fun():any), mask:debuglib.Hookmask)
----@param thread thread
----@param hook fun():any
----@param mask? debuglib.Hookmask
----@param count? integer
+--- @overload fun(hook:(fun(event: string): any), mask: debuglib.Hookmask|string)
+--- @param thread thread
+--- @param hook   fun(): any
+--- @param mask?  debuglib.Hookmask|string
+--- @param count? integer
 function debug.sethook(thread, hook, mask, count) end
 
 ---
@@ -256,76 +255,76 @@ function debug.sethook(thread, hook, mask, count) end
 --- raises an error when called with a `level` out of range. (You can call
 --- `getinfo` to check whether the level is valid.) Otherwise, it returns the
 --- name of the local variable.
----@overload fun(level:integer, index:integer, value:any):string?
----@param thread thread
----@param level integer
----@param index integer
----@param value any
----@return string?
+--- @overload fun(level: integer, index: integer, value: any): string?
+--- @param thread thread
+--- @param level  integer
+--- @param index  integer
+--- @param value  any
+--- @return string?
 function debug.setlocal(thread, level, index, value) end
 
 ---
 --- Sets the metatable for the given `object` to the given `table` (which
 --- can be **nil**). Returns value.
----@generic T
----@param value T
----@param meta? table
----@return T value
----@overload fun(value: table, meta: T): T
+--- @generic T
+--- @param value T
+--- @param meta? table
+--- @return T value
+--- @overload fun(value: table, meta: T): T
 function debug.setmetatable(value, meta) end
 
 ---
 --- This function assigns the value `value` to the upvalue with index `up`
 --- of the function `f`. The function returns **nil** if there is no upvalue
 --- with the given index. Otherwise, it returns the name of the upvalue.
----@param f fun():any
----@param up integer
----@param value any
----@return string?
+--- @param f     fun(): any
+--- @param up    integer
+--- @param value any
+--- @return string?
 function debug.setupvalue(f, up, value) end
 
 --- Sets the given `value` as the `n`-th associated to the given `udata`.
 --- `udata` must be a full userdata.
 ---
 --- Returns `udata`, or **nil** if the userdata does not have that value.
----@param udata userdata
----@param value any
----@param n integer
----@return userdata?
+--- @param udata userdata
+--- @param value any
+--- @param n     integer
+--- @return userdata?
 function debug.setuservalue(udata, value, n) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
 --- Returns a string with a traceback of the call stack. An optional message
 --- string is appended at the beginning of the traceback. An optional level
 --- number tells at which level to start the traceback (default is 1, the
 --- function calling traceback).
----@overload fun(): string
----@overload fun(message?: string, level?: integer): string
----@param thread? thread
----@param message? string
----@param level? integer
----@return string
+--- @overload fun(): string
+--- @overload fun(message?: string, level?: integer): string
+--- @param thread?  thread
+--- @param message? string
+--- @param level?   integer
+--- @return string
 function debug.traceback(thread, message, level) end
 
----@version > 5.2
+--- @version > 5.2
 ---
 --- If message is present but is neither a string nor nil, this function
 --- returns message without further processing. Otherwise, it returns a string
 --- with a traceback of the call stack. The optional message string is appended
 --- at the beginning of the traceback. An optional level number tells at which
 --- level to start the traceback (default is 1, the function calling traceback).
----@generic T
----@overload fun(): string
----@overload fun(message?: string, level?: integer): string
----@overload fun(message: T, level?: integer): T
----@overload fun(thread: thread): string
----@overload fun(thread: thread, message?: string, level?: integer): string
----@overload fun(thread: thread, message: T, level?: integer): T
----@param thread? thread
----@param message? string|T
----@param level? integer
----@return string
+--- @generic T
+--- @overload fun(): string
+--- @overload fun(message?: string, level?: integer): string
+--- @overload fun(message: T, level?: integer): T
+--- @overload fun(thread: thread): string
+--- @overload fun(thread: thread, message?: string, level?: integer): string
+--- @overload fun(thread: thread, message: T, level?: integer): T
+--- @param thread?  thread
+--- @param message? string|T
+--- @param level?   integer
+--- @return string
 function debug.traceback(thread, message, level) end
 
 --- Returns a unique identifier (as a light userdata) for the upvalue numbered
@@ -335,19 +334,19 @@ function debug.traceback(thread, message, level) end
 --- closures share upvalues. Lua closures that share an upvalue (that is, that
 --- access a same external local variable) will return identical ids for those
 --- upvalue indices.
----@version >5.2, JIT
----@param f function
----@param n integer
----@return lightuserdata id
----@nodiscard
+--- @version >5.2, JIT
+--- @param f function
+--- @param n integer
+--- @return lightuserdata id
+--- @nodiscard
 function debug.upvalueid(f, n) end
 
 ---
 --- Make the `n1`-th upvalue of the Lua closure f1 refer to the `n2`-th upvalue
 --- of the Lua closure f2.
----@version >5.2, JIT
----@param f1 fun():any
----@param n1 integer
----@param f2 fun():any
----@param n2 integer
+--- @version >5.2, JIT
+--- @param f1 fun(): any
+--- @param n1 integer
+--- @param f2 fun(): any
+--- @param n2 integer
 function debug.upvaluejoin(f1, n1, f2, n2) end

@@ -1,5 +1,5 @@
----@meta
----@version >5.3
+--- @meta
+--- @version > 5.3
 
 -- Copyright (c) 2018. tangzx(love.tangzx@qq.com)
 --
@@ -15,22 +15,22 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
----@version >5.3
----@class utf8lib
+--- @version > 5.3
+--- @class utf8lib
 utf8 = {}
 
 ---
 --- Receives zero or more integers, converts each one to its corresponding
 --- UTF-8 byte sequence and returns a string with the concatenation of all
 --- these sequences.
----@return string
+--- @return string
 function utf8.char(...) end
 
 ---
 --- The pattern (a string, not a function) "`[\0-\x7F\xC2-\xF4][\x80-\xBF]*`",
 --- which matches exactly one UTF-8 byte sequence, assuming that the subject
 --- is a valid UTF-8 string.
----@type string
+--- @type string
 utf8.charpattern = ""
 
 ---
@@ -39,35 +39,35 @@ utf8.charpattern = ""
 --- will iterate over all characters in string `s`, with `p` being the position
 --- (in bytes) and `c` the code point of each character. It raises an error if
 --- it meets any invalid byte sequence.
----@param s string
----@return fun(s: string, i?: integer): integer, integer
+--- @param s string
+--- @return fun(s: string, i?: integer): integer, integer
 function utf8.codes(s) end
 
----@version > 5.4
----@param s string
----@param lax? boolean
----@return fun(s: string, i?: integer): integer, integer
+--- @version > 5.4
+--- @param s    string
+--- @param lax? boolean
+--- @return fun(s: string, i?: integer): integer, integer
 function utf8.codes(s, lax) end
 
 ---
 --- Returns the codepoints (as integers) from all characters in `s` that start
 --- between byte position `i` and `j` (both included). The default for `i` is
---- 1  and for `j` is `i`. It raises an error if it meets any invalid byte
+--- 1 and for `j` is `i`. It raises an error if it meets any invalid byte
 --- sequence.
----@overload fun(s:string):integer
----@param s string
----@param i? integer
----@param j? integer
----@return integer
+--- @overload fun(s: string): integer
+--- @param s  string
+--- @param i? integer
+--- @param j? integer
+--- @return integer
 function utf8.codepoint(s, i, j) end
 
----@version > 5.4
----@overload fun(s:string):integer
----@param s string
----@param i? integer
----@param j? integer
----@param lax? boolean
----@return integer
+--- @version > 5.4
+--- @overload fun(s: string): integer
+--- @param s    string
+--- @param i?   integer
+--- @param j?   integer
+--- @param lax? boolean
+--- @return integer
 function utf8.codepoint(s, i, j, lax) end
 
 ---
@@ -75,22 +75,22 @@ function utf8.codepoint(s, i, j, lax) end
 --- positions `i` and `j` (both inclusive). The default for `i` is 1 and for
 --- `j` is -1. If it finds any invalid byte sequence, returns a false value
 --- plus the position of the first invalid byte.
----@param s    string
----@param i?   integer
----@param j?   integer
----@return_overload integer
----@return_overload nil, integer errpos
----@nodiscard
+--- @param s  string
+--- @param i? integer
+--- @param j? integer
+--- @return_overload integer
+--- @return_overload nil, integer errpos
+--- @nodiscard
 function utf8.len(s, i, j) end
 
----@version > 5.4
----@param s    string
----@param i?   integer
----@param j?   integer
----@param lax? boolean
----@return_overload integer
----@return_overload nil, integer errpos
----@nodiscard
+--- @version > 5.4
+--- @param s    string
+--- @param i?   integer
+--- @param j?   integer
+--- @param lax? boolean
+--- @return_overload integer
+--- @return_overload nil, integer errpos
+--- @nodiscard
 function utf8.len(s, i, j, lax) end
 
 ---
@@ -105,9 +105,9 @@ function utf8.len(s, i, j, lax) end
 --- byte of `s`.
 ---
 --- This function assumes that `s` is a valid UTF-8 string.
----@overload fun(s:string):integer
----@param s string
----@param n integer
----@param i? integer
----@return integer
+--- @overload fun(s: string): integer
+--- @param s  string
+--- @param n  integer
+--- @param i? integer
+--- @return integer
 function utf8.offset(s, n, i) end

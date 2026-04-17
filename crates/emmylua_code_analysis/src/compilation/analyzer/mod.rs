@@ -6,6 +6,8 @@ mod infer_cache_manager;
 mod lua;
 mod unresolve;
 
+pub(crate) use lua::does_func_body_always_return_or_exit;
+
 use crate::{
     Emmyrc, FileId, InFiled, InferFailReason,
     db_index::{DbIndex, WorkspaceId},
@@ -124,7 +126,7 @@ fn module_analyze(
         }
     }
 
-    contexts.sort_by(|a, b| a.0.cmp(&b.0));
+    contexts.sort_by_key(|a| a.0);
 
     contexts.extend(main_vec);
     contexts

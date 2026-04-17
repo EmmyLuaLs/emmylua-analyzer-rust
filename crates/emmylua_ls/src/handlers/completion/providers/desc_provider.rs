@@ -105,7 +105,7 @@ fn add_global_completions(builder: &mut CompletionBuilder) -> Option<()> {
         .semantic_model
         .get_member_info_map(&LuaType::Ref(scope))
     {
-        seen_types.extend(member_info_map.iter().flat_map(|(_, members)| {
+        seen_types.extend(member_info_map.values().flat_map(|members| {
             members.iter().filter_map(|member| match &member.typ {
                 LuaType::Def(type_id) => Some(type_id.clone()),
                 _ => None,
@@ -123,7 +123,7 @@ fn add_global_completions(builder: &mut CompletionBuilder) -> Option<()> {
             .semantic_model
             .get_member_info_map(module.export_type.as_ref().unwrap_or(&LuaType::Nil))
     {
-        seen_types.extend(member_info_map.iter().flat_map(|(_, members)| {
+        seen_types.extend(member_info_map.values().flat_map(|members| {
             members.iter().filter_map(|member| match &member.typ {
                 LuaType::Def(type_id) => Some(type_id.clone()),
                 _ => None,
@@ -172,7 +172,7 @@ fn add_by_prefix(
             .semantic_model
             .get_member_info_map(&semantic_info.typ)
         {
-            seen_types.extend(member_info_map.iter().flat_map(|(_, members)| {
+            seen_types.extend(member_info_map.values().flat_map(|members| {
                 members.iter().filter_map(|member| match &member.typ {
                     LuaType::Def(type_id) => Some(type_id.clone()),
                     _ => None,

@@ -17,9 +17,10 @@ use super::helpers::{
     render_expr, token_left_spacing_docs, token_right_spacing_docs,
 };
 use super::{
-    comment_is_inline_after_anchor, first_direct_token, format_statement_value_expr,
-    has_direct_comment_before_token, render_block_plan_without_excluded_comments,
-    render_comment_with_spacing, render_direct_body_comment, render_header_exprs_with_leading_docs,
+    append_trailing_comment_suffix, comment_is_inline_after_anchor, first_direct_token,
+    format_statement_value_expr, has_direct_comment_before_token,
+    render_block_plan_without_excluded_comments, render_comment_with_spacing,
+    render_direct_body_comment, render_header_exprs_with_leading_docs,
 };
 
 pub(super) fn render_while_stat(
@@ -35,7 +36,9 @@ pub(super) fn render_while_stat(
         return Vec::new();
     };
 
-    render_while_source_order(ctx, root, stat.syntax(), syntax_plan, plan)
+    let mut docs = render_while_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_while_source_order(
@@ -166,7 +169,7 @@ pub(super) fn render_for_stat(
         return vec![ir::source_node_trimmed(stat.syntax().clone())];
     };
 
-    render_for_source_order(
+    let mut docs = render_for_source_order(
         ctx,
         root,
         stat.syntax(),
@@ -174,7 +177,9 @@ pub(super) fn render_for_stat(
         plan,
         &stat,
         expr_list_plan,
-    )
+    );
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_for_source_order(
@@ -324,7 +329,7 @@ pub(super) fn render_for_range_stat(
         return vec![ir::source_node_trimmed(stat.syntax().clone())];
     };
 
-    render_for_range_source_order(
+    let mut docs = render_for_range_source_order(
         ctx,
         root,
         stat.syntax(),
@@ -332,7 +337,9 @@ pub(super) fn render_for_range_stat(
         plan,
         &stat,
         expr_list_plan,
-    )
+    );
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_for_range_source_order(
@@ -474,7 +481,9 @@ pub(super) fn render_repeat_stat(
         return Vec::new();
     };
 
-    render_repeat_source_order(ctx, root, stat.syntax(), syntax_plan, plan)
+    let mut docs = render_repeat_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_repeat_source_order(
@@ -603,7 +612,10 @@ pub(super) fn render_func_stat(
         return vec![ir::source_node_trimmed(stat.syntax().clone())];
     }
 
-    render_named_function_stat_source_order(ctx, root, stat.syntax(), syntax_plan, plan)
+    let mut docs =
+        render_named_function_stat_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 pub(super) fn render_local_func_stat(
@@ -629,7 +641,10 @@ pub(super) fn render_local_func_stat(
         return vec![ir::source_node_trimmed(stat.syntax().clone())];
     }
 
-    render_named_function_stat_source_order(ctx, root, stat.syntax(), syntax_plan, plan)
+    let mut docs =
+        render_named_function_stat_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_named_function_stat_source_order(
@@ -718,7 +733,9 @@ pub(super) fn render_do_stat(
         return Vec::new();
     };
 
-    render_do_source_order(ctx, root, stat.syntax(), syntax_plan, plan)
+    let mut docs = render_do_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_do_source_order(
@@ -837,10 +854,13 @@ pub(super) fn render_if_stat(
     };
 
     if let Some(preserved) = try_preserve_single_line_if_body(ctx, &stat) {
-        return preserved;
+        let mut docs = preserved;
+        append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+        return docs;
     }
-
-    render_if_clause_source_order(ctx, root, stat.syntax(), syntax_plan, plan)
+    let mut docs = render_if_clause_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
+    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    docs
 }
 
 fn render_if_clause_source_order(

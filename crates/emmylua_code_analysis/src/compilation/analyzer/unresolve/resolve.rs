@@ -11,7 +11,9 @@ use crate::{
     SignatureReturnStatus, TypeOps,
     compilation::analyzer::{
         common::{add_member, bind_type},
-        lua::{analyze_return_point, infer_for_range_iter_expr_func},
+        lua::{
+            analyze_func_body_returns_with, analyze_return_point, infer_for_range_iter_expr_func,
+        },
         unresolve::{UnResolveCall, UnResolveConstructor},
     },
     db_index::{DbIndex, LuaMemberOwner, LuaType},
@@ -181,7 +183,10 @@ pub fn try_resolve_return_point(
     cache: &mut LuaInferCache,
     return_: &mut UnResolveReturn,
 ) -> ResolveResult {
-    let return_docs = analyze_return_point(db, cache, &return_.return_points)?;
+    let return_points = analyze_func_body_returns_with(return_.body.clone(), &mut |expr| {
+        infer_expr(db, cache, expr.clone())
+    })?;
+    let return_docs = analyze_return_point(db, cache, &return_points)?;
 
     let signature = db
         .get_signature_index_mut()

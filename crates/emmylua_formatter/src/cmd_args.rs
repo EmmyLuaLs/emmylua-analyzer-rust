@@ -1,9 +1,11 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, Parser, ValueEnum};
 use emmylua_parser::LuaLanguageLevel;
 
-use crate::{FileCollectorOptions, IndentKind, ResolvedConfig, resolve_config_for_path};
+use crate::{
+    FileCollectorOptions, IndentKind, LuaSyntaxLevel, ResolvedConfig, resolve_config_for_path,
+};
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -94,8 +96,8 @@ pub struct CliArgs {
     #[arg(long, value_name = "GLOB")]
     pub exclude: Vec<String>,
 
-    #[arg(long, value_enum, default_value_t = LanguageLevel::Lua55)]
-    pub level: LanguageLevel,
+    #[arg(long, value_enum)]
+    pub level: Option<LanguageLevel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
@@ -137,12 +139,23 @@ impl From<LanguageLevel> for LuaLanguageLevel {
     }
 }
 
-pub fn resolve_style(args: &CliArgs) -> Result<ResolvedConfig, String> {
-    let mut resolved = resolve_config_for_path(
-        args.paths.first().map(PathBuf::as_path),
-        args.config.as_deref(),
-    )
-    .map_err(|err| err.to_string())?;
+impl From<LanguageLevel> for LuaSyntaxLevel {
+    fn from(level: LanguageLevel) -> Self {
+        match level {
+            LanguageLevel::Lua51 => LuaSyntaxLevel::Lua51,
+            LanguageLevel::Lua52 => LuaSyntaxLevel::Lua52,
+            LanguageLevel::Lua53 => LuaSyntaxLevel::Lua53,
+            LanguageLevel::Lua54 => LuaSyntaxLevel::Lua54,
+            LanguageLevel::Lua55 => LuaSyntaxLevel::Lua55,
+            LanguageLevel::LuaJIT => LuaSyntaxLevel::LuaJIT,
+        }
+    }
+}
+
+fn apply_style_overrides(args: &CliArgs, resolved: &mut ResolvedConfig) -> Result<(), String> {
+    if let Some(level) = args.level {
+        resolved.config.syntax.level = level.into();
+    }
 
     // Indent overrides
     match (args.tab, args.spaces) {
@@ -159,6 +172,13 @@ pub fn resolve_style(args: &CliArgs) -> Result<ResolvedConfig, String> {
         resolved.config.layout.max_line_width = w;
     }
 
+    Ok(())
+}
+
+pub fn resolve_style(args: &CliArgs, source_path: Option<&Path>) -> Result<ResolvedConfig, String> {
+    let mut resolved = resolve_config_for_path(source_path, args.config.as_deref())
+        .map_err(|err| err.to_string())?;
+    apply_style_overrides(args, &mut resolved)?;
     Ok(resolved)
 }
 

@@ -11,11 +11,30 @@
 - `.luafmt.toml`
 - `luafmt.toml`
 
+当输入来自 stdin 且没有源文件路径时，`luafmt` 会从当前工作目录开始向上查找最近的配置文件。
+
 显式传入配置文件时，支持：
 
 - TOML
 - JSON
 - YAML
+
+## syntax
+
+- `level`：Lua 语法等级，支持 `Lua51`、`Lua52`、`Lua53`、`Lua54`、`Lua55`、`LuaJIT`
+
+默认值：
+
+```toml
+[syntax]
+level = "Lua55"
+```
+
+说明：
+
+- 这个选项决定格式化前使用哪一种 Lua 语法进行解析。
+- 如果配置文件里没有写 `syntax.level`，默认按 `Lua55` 解析。
+- CLI 的 `--level` 会覆盖配置文件里的 `syntax.level`。
 
 ## indent
 
@@ -144,7 +163,8 @@ line_comment_min_column = 0
 - `align_tag_columns`
 - `align_declaration_tags`
 - `align_reference_tags`
-- `tag_spacing`
+- `align_multiline_alias_descriptions`
+- `space_between_tag_columns`
 - `space_after_description_dash`
 
 默认值：
@@ -154,11 +174,16 @@ line_comment_min_column = 0
 align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
-tag_spacing = 1
+align_multiline_alias_descriptions = true
+space_between_tag_columns = false
 space_after_description_dash = true
 ```
 
 当前已结构化处理的标签包括 `@param`、`@field`、`@return`、`@class`、`@alias`、`@type`、`@generic`、`@overload`。
+
+- `align_multiline_alias_descriptions` 默认开启，用于把多行 `@alias` 块里 `--- | value # description` 的 `# description` 列对齐。
+- `space_between_tag_columns` 控制 EmmyLua tag 行里 `---` 和 `@` 之间是否保留空格，例如 `--- @enum MyEnum` 和 `---@enum MyEnum` 的区别。当前默认值是 `false`，所以不额外配置时会输出 `---@tag`。
+- `space_after_description_dash` 只影响普通 doc 描述行 `--- text` / `---text`，不影响 tag 行前缀。
 
 ## align
 
@@ -247,6 +272,7 @@ line_comment_min_column = 0
 align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
+align_multiline_alias_descriptions = true
 tag_spacing = 1
 space_after_description_dash = true
 

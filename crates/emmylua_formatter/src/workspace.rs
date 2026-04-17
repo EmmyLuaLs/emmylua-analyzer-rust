@@ -313,6 +313,15 @@ pub fn resolve_config_for_path(
         });
     }
 
+    if let Ok(current_dir) = std::env::current_dir()
+        && let Some(path) = discover_config_path(&current_dir)
+    {
+        return Ok(ResolvedConfig {
+            config: load_format_config(&path)?,
+            source_path: Some(path),
+        });
+    }
+
     Ok(ResolvedConfig {
         config: LuaFormatConfig::default(),
         source_path: None,
@@ -626,6 +635,24 @@ mod tests {
         let resolved = resolve_config_for_path(Some(&file_path), None).unwrap();
 
         assert_eq!(resolved.config.layout.max_line_width, 88);
+        assert_eq!(resolved.source_path, Some(root.join(".luafmt.toml")));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn test_resolve_config_for_path_discovers_current_dir_when_source_is_missing() {
+        let root = make_temp_dir("luafmt-config-cwd");
+        fs::create_dir_all(root.join("nested")).unwrap();
+        fs::write(root.join(".luafmt.toml"), "[layout]\nmax_line_width = 72\n").unwrap();
+
+        let old_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(root.join("nested")).unwrap();
+
+        let resolved = resolve_config_for_path(None, None).unwrap();
+
+        std::env::set_current_dir(old_cwd).unwrap();
+
+        assert_eq!(resolved.config.layout.max_line_width, 72);
         assert_eq!(resolved.source_path, Some(root.join(".luafmt.toml")));
         fs::remove_dir_all(root).unwrap();
     }

@@ -13,7 +13,7 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
----@class packagelib
+--- @class packagelib
 package = {}
 
 ---
@@ -46,7 +46,6 @@ package.config = [[
 --- `luaconf.h`.
 package.cpath = ""
 
-
 ---
 --- A table used by `require` to control which modules are already
 --- loaded. When you require a module `modname` and `package.loaded[modname]``
@@ -75,9 +74,9 @@ package.loaded = {}
 --- This function is not supported by Standard C. As such, it is only available
 --- on some platforms (Windows, Linux, Mac OS X, Solaris, BSD, plus other Unix
 --- systems that support the `dlfcn` standard).
----@param libname string
----@param funcname string
----@return function?, string?
+--- @param libname  string
+--- @param funcname string
+--- @return function?, string?
 function package.loadlib(libname, funcname) end
 
 ---
@@ -97,10 +96,10 @@ package.path = ""
 --- variable do not change the table used by `require`.
 package.preload = {}
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 package.loaders = {}
 
----@version > 5.2
+--- @version > 5.2
 ---
 --- A table used by require to control how to load modules.
 ---
@@ -120,7 +119,7 @@ package.loaders = {}
 --- `package.searchpath`.
 ---
 --- The third searcher looks for a loader as a C library, using the path given
---- by the variable  package.cpath`. Again, the search is done as described in
+--- by the variable package.cpath`. Again, the search is done as described in
 --- function `package.searchpath`. For instance, if the C path is the string
 --- > "`./?.so;./?.dll;/usr/local/?/init.so`"
 --- the searcher for module foo will try to open the files ``./foo.so, ./foo
@@ -146,7 +145,7 @@ package.loaders = {}
 --- The first searcher returns no extra value.
 package.searchers = {}
 
----@version > 5.2,JIT
+--- @version > 5.2, JIT
 ---
 --- Searches for the given name in the given path.
 ---
@@ -164,19 +163,19 @@ package.searchers = {}
 --- Returns the resulting name of the first file that it can open in read mode
 --- (after closing the file), or **nil** plus an error message if none succeeds.
 --- (This error message lists all file names it tried to open.)
----@param name string
----@param path? string
----@param sep? string
----@param rep? string
----@return_overload string filename
----@return_overload nil, string err
+--- @param name  string
+--- @param path? string
+--- @param sep?  string
+--- @param rep?  string
+--- @return_overload string filename
+--- @return_overload nil, string err
 function package.searchpath(name, path, sep, rep) end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
----Sets a metatable for `module` with its `__index` field referring to the global environment, so that this module inherits values from the global environment. To be used as an option to function `module` .
+--- Sets a metatable for `module` with its `__index` field referring to the global environment, so that this module inherits values from the global environment. To be used as an option to function `module` .
 ---
----@param module table
+--- @param module table
 function package.seeall(module) end
 
 return package

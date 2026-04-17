@@ -247,9 +247,9 @@ fn check_table_expr_content(
     let mut check_count = 0;
     let mut has_diagnostic = false;
 
-    let fields = table_expr.get_fields().collect::<Vec<_>>();
+    let fields = table_expr.get_fields_with_keys();
 
-    for (idx, field) in fields.iter().enumerate() {
+    for (idx, (field, field_key)) in fields.iter().enumerate() {
         check_count += 1;
         if check_count > MAX_CHECK_COUNT {
             return Some(has_diagnostic);
@@ -280,10 +280,7 @@ fn check_table_expr_content(
             continue;
         }
 
-        let Some(field_key) = field.get_field_key() else {
-            continue;
-        };
-        let Some(member_key) = semantic_model.get_member_key(&field_key) else {
+        let Some(member_key) = semantic_model.get_member_key(field_key) else {
             continue;
         };
 

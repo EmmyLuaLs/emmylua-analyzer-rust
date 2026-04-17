@@ -13,13 +13,13 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
----@class iolib
+--- @class iolib
 io = {}
 
 ---
 --- Equivalent to `file:close()`. Without a file, closes the default output
 --- file.
----@param file? file
+--- @param file? file
 function io.close(file) end
 
 ---
@@ -34,8 +34,8 @@ function io.flush() end
 ---
 --- In case of errors this function raises the error, instead of returning an
 --- error code.
----@param file? file | string
----@return file
+--- @param file? file|string
+--- @return file
 function io.input(file) end
 
 ---
@@ -51,14 +51,14 @@ function io.input(file) end
 ---
 --- In case of errors this function raises the error, instead of returning an
 --- error code.
----@param filename? string
----@return fun():any
+--- @param filename? string
+--- @return fun(): any
 function io.lines(filename, ...) end
 
----@alias iolib.OpenMode "r" | "w" | "a" | "r+" | "w+" | "a+" | "rb" | "wb" | "ab" | "rb+" | "wb+" | "ab+" | "r+b" | "w+b" | "a+b"
+--- @alias iolib.OpenMode "r"|"w"|"a"|"r+"|"w+"|"a+"|"rb"|"wb"|"ab"|"rb+"|"wb+"|"ab+"|"r+b"|"w+b"|"a+b"
 
 ---
---- This function opens a file, in the mode specified in the string `mode`.  In
+--- This function opens a file, in the mode specified in the string `mode`. In
 --- case of success, it returns a new file handle. The `mode` string can be
 --- any of the following:
 ---
@@ -72,16 +72,16 @@ function io.lines(filename, ...) end
 ---
 --- The `mode` string can also have a '`b`' at the end, which is needed in
 --- some systems to open the file in binary mode.
----@param filename string
----@param mode? iolib.OpenMode
----@return_overload file
----@return_overload nil, string err
+--- @param filename string
+--- @param mode?    iolib.OpenMode
+--- @return_overload file
+--- @return_overload nil, string err
 function io.open(filename, mode) end
 
 ---
 --- Similar to `io.input`, but operates over the default output file.
----@param file? file | string
----@return file
+--- @param file? file|string
+--- @return file
 function io.output(file) end
 
 ---
@@ -90,29 +90,29 @@ function io.output(file) end
 --- Starts program `prog` in a separated process and returns a file handle that
 --- you can use to read data from this program (if `mode` is "`r`", the default)
 --- or to write data to this program (if `mode` is "`w`").
----@param prog string
----@param mode? string | 'r' | 'w'
----@return file
+--- @param prog  string
+--- @param mode? string|'r'|'w'
+--- @return file
 function io.popen(prog, mode) end
 
----@alias std.readmode
----| integer
----| string
----| "n"   # Reads a number, returning a float or integer based on Lua's conversion grammar.
----| "a"   # Reads the entire file starting from the current position.
----| "l"   # Reads a line and ignores the end-of-line marker.
----| "L"   # Reads a line and preserves the end-of-line marker.
----| "*n"  # Reads a number, returning a float or integer based on Lua's conversion grammar.
----| "*a"  # Reads the entire file starting from the current position.
----| "*l"  # Reads a line and ignores the end-of-line marker.
----| "*L"  # Reads a line and preserves the end-of-line marker.
+--- @alias std.readmode
+--- | integer
+--- | string
+--- | "n"  # Reads a number, returning a float or integer based on Lua's conversion grammar.
+--- | "a"  # Reads the entire file starting from the current position.
+--- | "l"  # Reads a line and ignores the end-of-line marker.
+--- | "L"  # Reads a line and preserves the end-of-line marker.
+--- | "*n" # Reads a number, returning a float or integer based on Lua's conversion grammar.
+--- | "*a" # Reads the entire file starting from the current position.
+--- | "*l" # Reads a line and ignores the end-of-line marker.
+--- | "*L" # Reads a line and preserves the end-of-line marker.
 
 ---
 --- Equivalent to `io.input():read(···)`.
----@param ... std.readmode
----@return any
----@return any ...
----@nodiscard
+--- @param ... std.readmode
+--- @return any
+--- @return any ...
+--- @nodiscard
 function io.read(...) end
 
 ---
@@ -125,22 +125,22 @@ function io.tmpfile() end
 --- Checks whether `obj` is a valid file handle. Returns the string "`file`"
 --- if `obj` is an open file handle, "`closed file`" if `obj` is a closed file
 --- handle, or **nil** if `obj` is not a file handle.
----@param obj file
----@return 'file' | 'closed file' | nil
+--- @param obj file
+--- @return 'file'|'closed file'|nil
 function io.type(obj) end
 
 ---
 --- Equivalent to `io.output():write(···)`.
---- @param ... string | number
+--- @param ... string|number
 --- @return_overload file
 --- @return_overload nil, string err
 function io.write(...) end
 
 --- File object
----@class file
+--- @class file
 local file = {}
 
----@version > 5.2
+--- @version > 5.2
 ---
 --- Closes `file`. Note that files are automatically closed when their
 --- handles are garbage collected, but that takes an unpredictable amount of
@@ -152,7 +152,7 @@ local file = {}
 --- @return_overload nil, 'exit'|'signal', integer
 function file:close() end
 
----@version 5.1, JIT
+--- @version 5.1, JIT
 ---
 --- Closes `file`. Note that files are automatically closed when their
 --- handles are garbage collected, but that takes an unpredictable amount of
@@ -178,7 +178,7 @@ function file:flush() end
 ---
 --- In case of errors this function raises the error, instead of returning an
 --- error code.
----@return fun():string | integer | nil
+--- @return fun(): string|integer|nil
 function file:lines(...) end
 
 -- TODO: file:read() can accept vararg params and return varargs
@@ -190,7 +190,7 @@ function file:lines(...) end
 --- specified format. (In this latter case, the function does not read
 --- subsequent formats.) When called without parameters, it uses a default
 --- format that reads the next line (see below).
-----
+--- -
 --- The available formats are:
 --- **"n"**: reads a numeral and returns it as a float or an integer, following
 --- the lexical conventions of Lua. (The numeral may have leading spaces and a
@@ -207,10 +207,10 @@ function file:lines(...) end
 --- *number*: reads a string with up to this number of bytes, returning **nil**
 --- on end of file. If `number` is zero, it reads nothing and returns an
 --- empty string, or **nil** on end of file.
----@param ... std.readmode
----@return any
----@return any ...
----@nodiscard
+--- @param ... std.readmode
+--- @return any
+--- @return any ...
+--- @nodiscard
 function file:read(...) end
 
 ---
@@ -230,11 +230,11 @@ function file:read(...) end
 --- it; the call `file:seek("set")` sets the position to the beginning of the
 --- file (and returns 0); and the call `file:seek("end")` sets the position
 --- to the end of the file, and returns its size.
----@overload fun()
----@param whence string | 'set' | 'cur' | 'end'
----@param offset integer
----@return_overload integer pos
----@return_overload nil, string err
+--- @overload fun()
+--- @param whence string|'set'|'cur'|'end'
+--- @param offset integer
+--- @return_overload integer pos
+--- @return_overload nil, string err
 function file:seek(whence, offset) end
 
 ---
@@ -249,8 +249,8 @@ function file:seek(whence, offset) end
 ---
 --- For the last two cases, `size` specifies the size of the buffer, in
 --- bytes. The default is an appropriate size.
----@param mode string | 'no' | 'full' | 'line'
----@param size? integer
+--- @param mode  string|'no'|'full'|'line'
+--- @param size? integer
 function file:setvbuf(mode, size) end
 
 ---
@@ -259,19 +259,19 @@ function file:setvbuf(mode, size) end
 ---
 --- In case of success, this function returns `file`. Otherwise it returns
 --- **nil** plus a string describing the error.
---- @param ... string | number
+--- @param ... string|number
 --- @return_overload file
 --- @return_overload nil, string err
 function file:write(...) end
 
---- * `io.stderr`: Standard error.
----@type file
+--- `io.stderr`: Standard error.
+--- @type file
 io.stderr = nil
 
---- * `io.stdin`: Standard in.
----@type file
+--- `io.stdin`: Standard in.
+--- @type file
 io.stdin = nil
 
---- * `io.stdout`: Standard out.
----@type file
+--- `io.stdout`: Standard out.
+--- @type file
 io.stdout = nil

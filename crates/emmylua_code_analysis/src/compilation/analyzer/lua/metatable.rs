@@ -27,8 +27,8 @@ pub fn analyze_setmetatable(analyzer: &mut LuaAnalyzer, call_expr: LuaCallExpr) 
     );
 
     let operator_owner = LuaOperatorOwner::Table(InFiled::new(file_id, metatable.get_range()));
-    for field in metatable.get_fields() {
-        analyze_metable_field(analyzer, &field, &operator_owner);
+    for (field, field_key) in metatable.get_fields_with_keys() {
+        analyze_metable_field(analyzer, &field, &field_key, &operator_owner);
     }
 
     Some(())
@@ -37,9 +37,10 @@ pub fn analyze_setmetatable(analyzer: &mut LuaAnalyzer, call_expr: LuaCallExpr) 
 fn analyze_metable_field(
     analyzer: &mut LuaAnalyzer,
     field: &LuaTableField,
+    field_key: &LuaIndexKey,
     operator_owner: &LuaOperatorOwner,
 ) -> Option<()> {
-    let field_name = match field.get_field_key()? {
+    let field_name = match field_key {
         LuaIndexKey::Name(n) => n.get_name_text().to_string(),
         LuaIndexKey::String(s) => s.get_value(),
         _ => return None,
