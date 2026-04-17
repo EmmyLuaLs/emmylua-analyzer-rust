@@ -1,9 +1,12 @@
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaCallExprStat, LuaClosureExpr, LuaGeneralToken,
-    LuaIfStat, LuaReturnStat, LuaTokenKind, LuaWhileStat,
+    LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaExpr, LuaGeneralToken,
+    LuaReturnStat, LuaTokenKind,
 };
 
-use crate::{DiagnosticCode, LuaSignatureId, LuaType, SemanticModel, SignatureReturnStatus};
+use crate::{
+    DiagnosticCode, LuaSignatureId, LuaType, SemanticModel, SignatureReturnStatus,
+    compilation::does_func_body_always_return_or_exit,
+};
 
 use super::{Checker, DiagnosticContext, get_return_stats};
 
@@ -108,15 +111,19 @@ fn check_missing_return(
     // 检测缺少返回语句需要处理 if while
     if min_expected_return_count > 0 {
         let range = if let Some(block) = closure_expr.get_block() {
-            let result = check_return_block(context, semantic_model, block);
-            match result {
-                Ok(_) => return Some(()),
-                Err(block) => {
-                    let token = get_block_end_token(&block)
-                        .unwrap_or(block.tokens::<LuaGeneralToken>().last()?);
-                    Some(token.get_range())
-                }
+            if does_func_body_always_return_or_exit(block.clone(), &mut |expr: &LuaExpr| {
+                Ok(semantic_model
+                    .infer_expr(expr.clone())
+                    .unwrap_or(LuaType::Unknown))
+            })
+            .ok()?
+            {
+                return Some(());
             }
+
+            let token =
+                get_block_end_token(&block).unwrap_or(block.tokens::<LuaGeneralToken>().last()?);
+            Some(token.get_range())
         } else {
             Some(closure_expr.token_by_kind(LuaTokenKind::TkEnd)?.get_range())
         };
@@ -138,114 +145,6 @@ fn get_block_end_token(block: &LuaBlock) -> Option<LuaGeneralToken> {
         .token_by_kind(LuaTokenKind::TkEnd)
         .unwrap_or(LuaAst::cast(block.syntax().parent()?)?.token_by_kind(LuaTokenKind::TkEnd)?);
     Some(token)
-}
-
-fn check_return_block(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    block: LuaBlock,
-) -> Result<(), LuaBlock> {
-    // 检查是否存在return语句
-    if block.children::<LuaReturnStat>().count() > 0 {
-        return Ok(());
-    }
-
-    // 检查是否 error() 了
-    for call_expr_stat in block.children::<LuaCallExprStat>() {
-        if let Some(call_expr) = call_expr_stat.get_call_expr()
-            && call_expr.is_error()
-        {
-            return Ok(());
-        }
-    }
-
-    // 检查`if`和`while`语句
-    let has_return = check_if_stat(context, semantic_model, &block)?
-        | check_while_stat(context, semantic_model, &block)?;
-
-    if has_return { Ok(()) } else { Err(block) }
-}
-
-fn check_if_stat(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    block: &LuaBlock,
-) -> Result<bool, LuaBlock> {
-    let mut has_return = false;
-    for if_stat in block.children::<LuaIfStat>() {
-        // 检查`if`的主块
-        if let Some(if_block) = if_stat.get_block() {
-            if check_return_block(context, semantic_model, if_block.clone()).is_err() {
-                has_return = false;
-            }
-        } else {
-            return Err(block.clone());
-        }
-
-        // 检查所有条件分支
-        for clause in if_stat.get_all_clause() {
-            if let Some(clause_block) = clause.get_block() {
-                if check_return_block(context, semantic_model, clause_block.clone()).is_err() {
-                    has_return = false;
-                }
-            } else {
-                return Err(block.clone());
-            }
-        }
-
-        // 检查是否存在`else`分支, 如果存在则上面已经检查过
-        if if_stat.get_else_clause().is_some() {
-            has_return = true;
-        }
-    }
-
-    if has_return {
-        Ok(has_return)
-    } else {
-        Err(block.clone())
-    }
-}
-
-fn check_while_stat(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    block: &LuaBlock,
-) -> Result<bool, LuaBlock> {
-    let mut has_return = false;
-    for while_stat in block.children::<LuaWhileStat>() {
-        if let Some(while_block) = while_stat.get_block() {
-            check_return_block(context, semantic_model, while_block.clone())?;
-        } else {
-            return Err(block.clone());
-        }
-
-        // 检查`while`条件是否恒真, 如果恒真则代表存在返回语句(上面已经检查过子块)
-        if is_while_condition_true(semantic_model, &while_stat).is_some() {
-            has_return = true;
-        }
-    }
-    Ok(has_return)
-}
-
-/// 确定 LuaWhileStat 的条件表达式是否为`true`
-fn is_while_condition_true(
-    semantic_model: &SemanticModel,
-    while_stat: &LuaWhileStat,
-) -> Option<()> {
-    let condition_expr = while_stat.get_condition_expr()?;
-    let condition_type = semantic_model
-        .infer_expr(condition_expr.clone())
-        .unwrap_or(LuaType::Any);
-    match condition_type {
-        LuaType::BooleanConst(value) => {
-            if value {
-                Some(())
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
 }
 
 /// 检查返回值数量

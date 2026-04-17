@@ -3,6 +3,8 @@ mod test;
 
 use std::sync::Arc;
 
+pub(crate) use analyzer::does_func_body_always_return_or_exit;
+
 use crate::{
     Emmyrc, FileId, InFiled, LuaIndex, LuaInferCache, db_index::DbIndex, semantic::SemanticModel,
 };

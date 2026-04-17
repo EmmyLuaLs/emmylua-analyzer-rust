@@ -2,6 +2,18 @@
 mod test {
     use crate::{DiagnosticCode, VirtualWorkspace};
 
+    fn assert_inferred_return_without_nil(code: &str) {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(code);
+
+        let ty = ws.expr_ty("result");
+        let expected = ws.ty("integer");
+        let nil = ws.ty("nil");
+        assert!(ws.check_type(&ty, &expected));
+        assert!(!ws.check_type(&ty, &nil));
+    }
+
     #[test]
     fn test_flow() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
@@ -124,5 +136,226 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("result"), ws.ty("never"));
+    }
+
+    #[test]
+    fn test_inferred_return_from_truthy_loops() {
+        for code in [
+            r#"
+        local function f()
+            while true do
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            while (true) do
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            while 1 == 1 do
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            while 1 do
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            while {} do
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            repeat
+                return 1
+            until true
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            repeat
+                return 1
+            until 1 == 1
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            repeat
+                return 1
+            until "done"
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            repeat
+                return 1
+            until function() end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f(a)
+            repeat
+                if a then
+                    return 1
+                end
+            until true
+
+            return 2
+        end
+
+        result = f()
+        "#,
+        ] {
+            assert_inferred_return_without_nil(code);
+        }
+    }
+
+    #[test]
+    fn test_inferred_return_from_truthy_ifs() {
+        for code in [
+            r#"
+        local function f()
+            if 1 == 1 then
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            if 1 then
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            if {} then
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+            r#"
+        local function f()
+            if "done" then
+                return 1
+            end
+        end
+
+        result = f()
+        "#,
+        ] {
+            assert_inferred_return_without_nil(code);
+        }
+    }
+
+    #[test]
+    fn test_inferred_return_from_infinite_repeat_does_not_assume_nil() {
+        assert_inferred_return_without_nil(
+            r#"
+        local function f(a)
+            repeat
+                if a then
+                    return 1
+                end
+            until false
+        end
+
+        result = f()
+        "#,
+        );
+    }
+
+    #[test]
+    fn test_return_flow_keeps_local_while_call_condition_dynamic() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        local should_enter_loop = function()
+            return true
+        end
+
+        local function f()
+            while should_enter_loop() do
+                return 1
+            end
+
+            return ""
+        end
+
+        result = f()
+        "#,
+        );
+
+        let ty = ws.expr_ty("result");
+        let expected = ws.ty("integer|string");
+        let nil = ws.ty("nil");
+        assert!(ws.check_type(&ty, &expected));
+        assert!(!ws.check_type(&ty, &nil));
+    }
+
+    #[test]
+    fn test_return_flow_keeps_global_if_call_condition_dynamic() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        function should_take_branch()
+            return true
+        end
+
+        local function f()
+            if should_take_branch() then
+                return 1
+            else
+                return ""
+            end
+        end
+
+        result = f()
+        "#,
+        );
+
+        let ty = ws.expr_ty("result");
+        let expected = ws.ty("integer|string");
+        let nil = ws.ty("nil");
+        assert!(ws.check_type(&ty, &expected));
+        assert!(!ws.check_type(&ty, &nil));
     }
 }
