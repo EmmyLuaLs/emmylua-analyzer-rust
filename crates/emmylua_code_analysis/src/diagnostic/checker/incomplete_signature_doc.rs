@@ -135,20 +135,21 @@ fn should_skip_incomplete_signature_doc(
     closure_expr: &LuaClosureExpr,
     signature: &LuaSignature,
 ) -> bool {
-    let mut skip_param = closure_expr
+    let has_params = closure_expr
         .get_params_list()
         .map(|params_list| params_list.get_params().next().is_some())
         .unwrap_or(true);
-    if !skip_param {
-        // 如果全部参数都有具体的类型, 那么我们认为其是完整的
-        skip_param = signature
-            .param_docs
-            .values()
-            .all(|param_info| !matches!(param_info.type_ref, LuaType::Unknown));
-    }
+    let skip_param = if has_params {
+        !signature.param_docs.is_empty()
+            && signature
+                .param_docs
+                .values()
+                .all(|param_info| !matches!(param_info.type_ref, LuaType::Unknown))
+    } else {
+        true
+    };
 
-    let return_type = signature.get_return_type();
-    skip_param && !matches!(return_type, LuaType::Unknown)
+    skip_param && signature.is_resolve_return()
 }
 
 fn check_params(
