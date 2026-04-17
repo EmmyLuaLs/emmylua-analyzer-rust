@@ -24,25 +24,32 @@ enum ConditionState {
 #[derive(Debug, Default)]
 struct ReturnFlow {
     return_points: Vec<LuaReturnPoint>,
-    can_continue: bool,
+    can_fall_through: bool,
     can_break: bool,
-    // `can_stall` means control can get stuck without returning, e.g. `while true do end`.
-    can_stall: bool,
+    // Some reachable path is proven to loop forever instead of returning or
+    // reaching the following statements, e.g. `while true do end`.
+    is_infinite: bool,
+    // Some reachable path can stay inside a runtime-dependent loop without
+    // proving the body itself is infinite. Keep this separate from
+    // reachability so stricter loop diagnostics can opt into it later without
+    // affecting inferred return types.
+    may_diverge: bool,
 }
 
 impl ReturnFlow {
-    fn continue_flow() -> Self {
+    fn fallthrough() -> Self {
         Self {
-            can_continue: true,
+            can_fall_through: true,
             ..Default::default()
         }
     }
 
     fn merge_choice(&mut self, mut other: Self) {
         self.return_points.append(&mut other.return_points);
-        self.can_continue |= other.can_continue;
+        self.can_fall_through |= other.can_fall_through;
         self.can_break |= other.can_break;
-        self.can_stall |= other.can_stall;
+        self.is_infinite |= other.is_infinite;
+        self.may_diverge |= other.may_diverge;
     }
 }
 
@@ -54,22 +61,22 @@ where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     let mut flow = analyze_block_returns(body, infer_expr_type)?;
-    if flow.can_continue || flow.can_break {
+    if flow.can_fall_through || flow.can_break {
         flow.return_points.push(LuaReturnPoint::Nil);
     }
 
     Ok(flow.return_points)
 }
 
-pub fn does_func_body_always_return_or_exit<F>(
+pub(in crate::compilation::analyzer) fn analyze_func_body_missing_return_flags_with<F>(
     body: LuaBlock,
     infer_expr_type: &mut F,
-) -> Result<bool, InferFailReason>
+) -> Result<(bool, bool, bool), InferFailReason>
 where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     let flow = analyze_block_returns(body, infer_expr_type)?;
-    Ok(!flow.can_continue && !flow.can_break && !flow.can_stall)
+    Ok((flow.can_fall_through, flow.can_break, flow.is_infinite))
 }
 
 fn analyze_block_returns<F>(
@@ -80,21 +87,22 @@ where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     let mut flow = ReturnFlow::default();
-    let mut can_continue = true;
+    let mut can_fall_through = true;
 
     for stat in block.get_stats() {
-        if !can_continue {
+        if !can_fall_through {
             break;
         }
 
         let stat_flow = analyze_stat_returns(stat, infer_expr_type)?;
         flow.return_points.extend(stat_flow.return_points);
         flow.can_break |= stat_flow.can_break;
-        flow.can_stall |= stat_flow.can_stall;
-        can_continue = stat_flow.can_continue;
+        flow.is_infinite |= stat_flow.is_infinite;
+        flow.may_diverge |= stat_flow.may_diverge;
+        can_fall_through = stat_flow.can_fall_through;
     }
 
-    flow.can_continue = can_continue;
+    flow.can_fall_through = can_fall_through;
     Ok(flow)
 }
 
@@ -107,7 +115,7 @@ where
 {
     match block {
         Some(block) => analyze_block_returns(block, infer_expr_type),
-        None => Ok(ReturnFlow::continue_flow()),
+        None => Ok(ReturnFlow::fallthrough()),
     }
 }
 
@@ -135,7 +143,7 @@ where
             ..Default::default()
         }),
         LuaStat::ReturnStat(return_stat) => Ok(analyze_return_stat_returns(return_stat)),
-        _ => Ok(ReturnFlow::continue_flow()),
+        _ => Ok(ReturnFlow::fallthrough()),
     }
 }
 
@@ -159,15 +167,31 @@ where
     let condition_state =
         analyze_condition_state(while_stat.get_condition_expr(), infer_expr_type)?;
     match condition_state {
-        ConditionState::Falsy => Ok(ReturnFlow::continue_flow()),
+        ConditionState::Falsy => Ok(ReturnFlow::fallthrough()),
         ConditionState::Never => Ok(ReturnFlow::default()),
-        ConditionState::Truthy | ConditionState::Dynamic => {
+        ConditionState::Truthy => {
             let body = analyze_optional_block_returns(while_stat.get_block(), infer_expr_type)?;
             Ok(ReturnFlow {
                 return_points: body.return_points,
-                can_continue: matches!(condition_state, ConditionState::Dynamic) || body.can_break,
+                can_fall_through: body.can_break,
                 can_break: false,
-                can_stall: body.can_continue || body.can_stall,
+                is_infinite: (body.can_fall_through && !body.can_break) || body.is_infinite,
+                may_diverge: (body.can_fall_through && body.can_break) || body.may_diverge,
+            })
+        }
+        ConditionState::Dynamic => {
+            let body = analyze_optional_block_returns(while_stat.get_block(), infer_expr_type)?;
+            Ok(ReturnFlow {
+                return_points: body.return_points,
+                can_fall_through: true,
+                can_break: false,
+                // A dynamic condition may skip the loop entirely, but a body
+                // that is already proven infinite remains infinite once
+                // entered.
+                is_infinite: body.is_infinite,
+                // We keep dynamic loops in `may_diverge` rather than trying to
+                // prove exit from body progress here.
+                may_diverge: body.can_fall_through || body.may_diverge,
             })
         }
     }
@@ -183,25 +207,32 @@ where
     let body = analyze_optional_block_returns(repeat_stat.get_block(), infer_expr_type)?;
     let mut flow = ReturnFlow {
         return_points: body.return_points,
-        can_continue: body.can_break,
+        can_fall_through: body.can_break,
         can_break: false,
-        can_stall: body.can_stall,
+        is_infinite: body.is_infinite,
+        may_diverge: body.may_diverge,
     };
 
-    if !body.can_continue {
+    if !body.can_fall_through {
         return Ok(flow);
     }
 
     match analyze_condition_state(repeat_stat.get_condition_expr(), infer_expr_type)? {
         ConditionState::Truthy => {
-            flow.can_continue = true;
+            flow.can_fall_through = true;
         }
         ConditionState::Falsy => {
-            flow.can_stall = true;
+            if body.can_break {
+                flow.may_diverge = true;
+            } else {
+                flow.is_infinite = true;
+            }
         }
         ConditionState::Dynamic => {
-            flow.can_continue = true;
-            flow.can_stall = true;
+            flow.can_fall_through = true;
+            // Same rule as dynamic `while`: the loop body is reachable, but
+            // the exit still depends on runtime state.
+            flow.may_diverge = true;
         }
         ConditionState::Never => {}
     }
@@ -217,7 +248,7 @@ where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     let mut flow = analyze_optional_block_returns(for_stat.get_block(), infer_expr_type)?;
-    flow.can_continue = true;
+    flow.can_fall_through = true;
     flow.can_break = false;
     Ok(flow)
 }
@@ -286,7 +317,7 @@ where
     }
 
     if can_reach_next_clause {
-        flow.can_continue = true;
+        flow.can_fall_through = true;
     }
 
     Ok(flow)
@@ -300,7 +331,7 @@ where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     let mut flow = analyze_optional_block_returns(for_range_stat.get_block(), infer_expr_type)?;
-    flow.can_continue = true;
+    flow.can_fall_through = true;
     flow.can_break = false;
     Ok(flow)
 }
@@ -309,7 +340,7 @@ fn analyze_call_expr_stat_returns(
     call_expr_stat: LuaCallExprStat,
 ) -> Result<ReturnFlow, InferFailReason> {
     let Some(call_expr) = call_expr_stat.get_call_expr() else {
-        return Ok(ReturnFlow::continue_flow());
+        return Ok(ReturnFlow::fallthrough());
     };
 
     if call_expr.is_error() {
@@ -319,7 +350,7 @@ fn analyze_call_expr_stat_returns(
         });
     }
 
-    Ok(ReturnFlow::continue_flow())
+    Ok(ReturnFlow::fallthrough())
 }
 
 fn analyze_return_stat_returns(return_stat: LuaReturnStat) -> ReturnFlow {
