@@ -1,5 +1,5 @@
 --- @meta
---- @version >5.3
+--- @version > 5.3
 
 -- Copyright (c) 2018. tangzx(love.tangzx@qq.com)
 --
@@ -15,7 +15,7 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
---- @version >5.3
+--- @version > 5.3
 --- @class utf8lib
 utf8 = {}
 

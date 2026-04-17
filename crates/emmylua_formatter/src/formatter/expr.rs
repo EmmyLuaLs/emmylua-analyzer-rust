@@ -1,9 +1,9 @@
 use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallArgList, LuaCallExpr,
-    LuaClosureExpr, LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind, LuaLiteralExpr,
-    LuaLiteralToken, LuaNameExpr, LuaParamList, LuaParenExpr, LuaSingleArgExpr, LuaStat,
-    LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTableExpr, LuaTableField,
-    LuaTokenKind, LuaUnaryExpr, UnaryOperator,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallArgList,
+    LuaCallExpr, LuaClosureExpr, LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind,
+    LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaParamList, LuaParenExpr,
+    LuaSingleArgExpr, LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken,
+    LuaTableExpr, LuaTableField, LuaTokenKind, LuaUnaryExpr, UnaryOperator,
 };
 use rowan::TextRange;
 
@@ -1237,22 +1237,24 @@ fn format_table_expr(
     let has_multiline_field = field_docs
         .iter()
         .any(|docs| crate::ir::ir_has_forced_line_break(docs));
+    let prefer_declaration_expand = should_prefer_expanded_declaration_table(expr);
     let (open, close) = brace_tokens(expr.syntax());
     let comma = first_direct_token(expr.syntax(), LuaTokenKind::TkComma);
     let layout_plan = expr_sequence_layout_plan(plan, expr.syntax());
+    let effective_expand = if prefer_declaration_expand || has_multiline_field {
+        ExpandStrategy::Always
+    } else if expr.is_empty() {
+        ExpandStrategy::Never
+    } else {
+        ctx.config.layout.table_expand.clone()
+    };
 
     if has_assign_alignment {
         let layout = DelimitedSequenceLayout {
             open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
             close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
             items: field_docs.clone(),
-            strategy: if has_multiline_field {
-                ExpandStrategy::Always
-            } else if expr.is_empty() {
-                ExpandStrategy::Never
-            } else {
-                ctx.config.layout.table_expand.clone()
-            },
+            strategy: effective_expand.clone(),
             preserve_multiline: layout_plan.preserve_multiline,
             flat_separator: comma_flat_separator(plan, comma.as_ref()),
             fill_separator: comma_fill_separator(comma.as_ref()),
@@ -1264,7 +1266,7 @@ fn format_table_expr(
             grouped_trailing: trailing_comma_ir(ctx.config.trailing_table_comma()),
         };
 
-        return match ctx.config.layout.table_expand {
+        return match effective_expand {
             ExpandStrategy::Always => wrap_table_multiline_docs(
                 token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
                 token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
@@ -1320,13 +1322,7 @@ fn format_table_expr(
         open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
         close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
         items: field_docs,
-        strategy: if has_multiline_field {
-            ExpandStrategy::Always
-        } else if expr.is_empty() {
-            ExpandStrategy::Never
-        } else {
-            ctx.config.layout.table_expand.clone()
-        },
+        strategy: effective_expand.clone(),
         preserve_multiline: layout_plan.preserve_multiline,
         flat_separator: comma_flat_separator(plan, comma.as_ref()),
         fill_separator: comma_fill_separator(comma.as_ref()),
@@ -1340,6 +1336,7 @@ fn format_table_expr(
 
     if has_assign_fields
         && !has_multiline_field
+        && !prefer_declaration_expand
         && matches!(ctx.config.layout.table_expand, ExpandStrategy::Auto)
     {
         let mut flat_layout = layout.clone();
@@ -1365,6 +1362,89 @@ fn format_table_expr(
     }
 
     format_delimited_sequence(ctx, layout)
+}
+
+fn should_prefer_expanded_declaration_table(expr: &LuaTableExpr) -> bool {
+    let table_syntax = expr.syntax();
+    let Some(statement) = table_syntax.ancestors().find(|node| {
+        matches!(
+            node.kind(),
+            LuaKind::Syntax(LuaSyntaxKind::LocalStat | LuaSyntaxKind::AssignStat)
+        )
+    }) else {
+        return false;
+    };
+
+    if !is_first_statement_value_expr(table_syntax, &statement) {
+        return false;
+    }
+
+    has_tightly_attached_doc_declaration_comment(&statement)
+}
+
+fn is_first_statement_value_expr(expr: &LuaSyntaxNode, statement: &LuaSyntaxNode) -> bool {
+    if let Some(local_stat) = LuaLocalStat::cast(statement.clone()) {
+        return local_stat
+            .get_value_exprs()
+            .next()
+            .is_some_and(|first| first.syntax() == expr);
+    }
+
+    if let Some(assign_stat) = LuaAssignStat::cast(statement.clone()) {
+        return assign_stat
+            .get_var_and_expr_list()
+            .1
+            .first()
+            .is_some_and(|first| first.syntax() == expr);
+    }
+
+    false
+}
+
+fn has_tightly_attached_doc_declaration_comment(statement: &LuaSyntaxNode) -> bool {
+    let mut previous = statement.prev_sibling_or_token();
+    let mut blank_lines = 0usize;
+    let mut seen_newline = false;
+
+    while let Some(element) = previous {
+        match element.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace) => {
+                previous = element.prev_sibling_or_token();
+            }
+            LuaKind::Token(LuaTokenKind::TkEndOfLine) => {
+                if seen_newline {
+                    blank_lines += 1;
+                }
+                seen_newline = true;
+                if blank_lines > 0 {
+                    return false;
+                }
+                previous = element.prev_sibling_or_token();
+            }
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => {
+                let Some(comment) = element.as_node() else {
+                    return false;
+                };
+                return comment_contains_enum_or_class_tag(comment);
+            }
+            _ => return false,
+        }
+    }
+
+    false
+}
+
+fn comment_contains_enum_or_class_tag(comment: &LuaSyntaxNode) -> bool {
+    comment.descendants_with_tokens().any(|element| {
+        let Some(token) = element.into_token() else {
+            return false;
+        };
+
+        matches!(
+            token.kind().to_token(),
+            LuaTokenKind::TkTagEnum | LuaTokenKind::TkTagClass
+        )
+    })
 }
 
 fn format_multiline_table_expr(

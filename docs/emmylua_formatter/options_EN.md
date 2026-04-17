@@ -11,11 +11,30 @@ This document describes the public formatter configuration groups and the intend
 - `.luafmt.toml`
 - `luafmt.toml`
 
+When input comes from stdin and no source path is available, `luafmt` starts discovery from the current working directory.
+
 Supported explicit config formats are:
 
 - TOML
 - JSON
 - YAML
+
+## syntax
+
+- `level`: Lua grammar level. Supported values are `Lua51`, `Lua52`, `Lua53`, `Lua54`, `Lua55`, and `LuaJIT`
+
+Default:
+
+```toml
+[syntax]
+level = "Lua55"
+```
+
+Notes:
+
+- This option controls which Lua grammar is used during parsing before formatting.
+- If `syntax.level` is omitted from the config file, the formatter defaults to `Lua55`.
+- The CLI `--level` flag overrides `syntax.level` from config.
 
 ## indent
 
@@ -145,7 +164,7 @@ Behavior notes:
 - `align_declaration_tags`
 - `align_reference_tags`
 - `align_multiline_alias_descriptions`
-- `tag_spacing`
+- `space_between_tag_columns`
 - `space_after_description_dash`
 
 Default:
@@ -156,13 +175,15 @@ align_tag_columns = true
 align_declaration_tags = true
 align_reference_tags = true
 align_multiline_alias_descriptions = true
-tag_spacing = 1
+space_between_tag_columns = true
 space_after_description_dash = true
 ```
 
 Structured handling currently covers `@param`, `@field`, `@return`, `@class`, `@alias`, `@type`, `@generic`, and `@overload`.
 
 - `align_multiline_alias_descriptions` is enabled by default and aligns the `# description` column in multiline `@alias` blocks such as `--- | value # description`.
+- `space_between_tag_columns` controls whether EmmyLua tag lines keep a space between `---` and `@`, for example `--- @enum MyEnum` versus `---@enum MyEnum`.
+- `space_after_description_dash` only affects plain doc description lines such as `--- text` versus `---text`, not tag-line prefixes.
 
 ## align
 

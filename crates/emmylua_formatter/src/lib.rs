@@ -13,8 +13,8 @@ use printer::Printer;
 
 pub use config::{
     AlignConfig, CommentConfig, EmmyDocConfig, EndOfLine, ExpandStrategy, IndentConfig, IndentKind,
-    LayoutConfig, LuaFormatConfig, OutputConfig, QuoteStyle, SingleArgCallParens, SpacingConfig,
-    TrailingComma, TrailingTableSeparator,
+    LayoutConfig, LuaFormatConfig, LuaSyntaxLevel, OutputConfig, QuoteStyle, SingleArgCallParens,
+    SpacingConfig, SyntaxConfig, TrailingComma, TrailingTableSeparator,
 };
 pub use workspace::{
     ChangedLineRange, FileCollectorOptions, FormatCheckPathResult, FormatCheckResult, FormatOutput,

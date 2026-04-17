@@ -4,8 +4,8 @@ mod tests {
         assert_format_with_config,
         config::{
             EndOfLine, ExpandStrategy, IndentConfig, IndentKind, LayoutConfig, LuaFormatConfig,
-            OutputConfig, QuoteStyle, SimpleLambdaSingleLine, SingleArgCallParens, SpacingConfig,
-            TrailingComma, TrailingTableSeparator,
+            LuaSyntaxLevel, OutputConfig, QuoteStyle, SimpleLambdaSingleLine, SingleArgCallParens,
+            SpacingConfig, TrailingComma, TrailingTableSeparator,
         },
     };
 
@@ -585,6 +585,9 @@ local b = 2
     fn test_structured_toml_deserialize() {
         let config: LuaFormatConfig = toml_edit::de::from_str(
             r#"
+[syntax]
+level = "Lua54"
+
 [indent]
 kind = "Space"
 width = 2
@@ -608,6 +611,7 @@ space_after_comment_dash = false
 
 [emmy_doc]
 align_multiline_alias_descriptions = false
+space_between_tag_columns = false
 space_after_description_dash = false
 
 [align]
@@ -616,6 +620,7 @@ table_field = false
         )
         .expect("structured toml config should deserialize");
 
+        assert_eq!(config.syntax.level, LuaSyntaxLevel::Lua54);
         assert_eq!(config.indent.kind, IndentKind::Space);
         assert_eq!(config.indent.width, 2);
         assert_eq!(config.layout.max_line_width, 88);
@@ -637,6 +642,7 @@ table_field = false
         assert!(!config.comments.align_line_comments);
         assert!(!config.comments.space_after_comment_dash);
         assert!(!config.emmy_doc.align_multiline_alias_descriptions);
+        assert!(!config.emmy_doc.space_between_tag_columns);
         assert!(!config.emmy_doc.space_after_description_dash);
         assert!(!config.align.table_field);
     }

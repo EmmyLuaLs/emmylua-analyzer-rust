@@ -1986,10 +1986,7 @@ fn format_doc_comment_line(
                     let padding = widths
                         .get(key)
                         .and_then(|widths| widths.get(source_index))
-                        .map(|width| {
-                            width.saturating_sub(line.columns[source_index].len())
-                                + ctx.config.emmy_doc.tag_spacing
-                        })
+                        .map(|width| width.saturating_sub(line.columns[source_index].len()) + 1)
                         .unwrap_or(1);
                     rendered.extend(std::iter::repeat_n(' ', padding));
                     rendered.push_str(column);
@@ -2008,7 +2005,7 @@ fn format_doc_comment_line(
                 format!("---{gap_after_dash}@{}", tag.tag)
             } else if let Some(prefix) = prefix_override {
                 format!("{prefix}{}", tag.tag)
-            } else if ctx.config.emmy_doc.space_after_description_dash {
+            } else if ctx.config.emmy_doc.space_between_tag_columns {
                 format!("--- @{}", tag.tag)
             } else {
                 format!("---@{}", tag.tag)
@@ -2037,8 +2034,7 @@ fn format_doc_comment_line(
                     let padding = target_widths
                         .and_then(|widths: &Vec<usize>| widths.get(source_index))
                         .map(|width: &usize| {
-                            width.saturating_sub(tag.columns[source_index].len())
-                                + ctx.config.emmy_doc.tag_spacing
+                            width.saturating_sub(tag.columns[source_index].len()) + 1
                         })
                         .unwrap_or(1);
                     rendered.extend(std::iter::repeat_n(' ', padding));

@@ -1,0 +1,13 @@
+[layout]
+max_line_width = 100
+table_expand = "Auto"
+call_args_expand = "Auto"
+func_params_expand = "Auto"
+
+[output]
+quote_style = "Preserve"
+trailing_table_separator = "Multiline"
+single_arg_call_parens = "Preserve"
+
+[emmy_doc]
+space_between_tag_columns = true

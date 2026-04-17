@@ -1128,6 +1128,22 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_enum_attached_table_prefers_expanded_declaration() {
+        assert_format!(
+            "---@enum MyEnum\nlocal cc = { xxx = 123 }\n",
+            "--- @enum MyEnum\nlocal cc = {\n    xxx = 123\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_class_attached_table_prefers_expanded_declaration() {
+        assert_format!(
+            "---@class MyClass\nlocal cc = { xxx = 123 }\n",
+            "--- @class MyClass\nlocal cc = {\n    xxx = 123\n}\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_alias_columns() {
         assert_format!(
             "---@alias Id integer identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n",
@@ -1159,6 +1175,7 @@ local t = {
 
         let config = LuaFormatConfig {
             emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
                 space_after_description_dash: false,
                 ..Default::default()
             },
@@ -1177,7 +1194,7 @@ local t = {
 
         let config = LuaFormatConfig {
             emmy_doc: crate::config::EmmyDocConfig {
-                space_after_description_dash: false,
+                space_between_tag_columns: false,
                 ..Default::default()
             },
             ..Default::default()
@@ -1191,11 +1208,32 @@ local t = {
     }
 
     #[test]
+    fn test_doc_tag_prefix_is_independent_from_description_spacing() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
+                space_after_description_dash: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "---@enum MyEnum\nlocal cc = { xxx = 123 }\n",
+            "---@enum MyEnum\nlocal cc = {\n    xxx = 123\n}\n",
+            config
+        );
+    }
+
+    #[test]
     fn test_doc_continue_or_prefix_can_omit_space() {
         use crate::{assert_format_with_config, config::LuaFormatConfig};
 
         let config = LuaFormatConfig {
             emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
                 space_after_description_dash: false,
                 ..Default::default()
             },
@@ -1230,6 +1268,26 @@ local t = {
         assert_format!(
             "---@param  name   string\nlocal function f(name) end\n",
             "--- @param name string\nlocal function f(name) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_description_spacing_is_independent_from_tag_prefix_spacing() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: true,
+                space_after_description_dash: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "---@enum MyEnum\n--- keep tight\nlocal value = nil\n",
+            "--- @enum MyEnum\n---keep tight\nlocal value = nil\n",
+            config
         );
     }
 

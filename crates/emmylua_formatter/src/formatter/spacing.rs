@@ -467,7 +467,7 @@ fn normalized_comment_prefix(ctx: &FormatContext, prefix_text: &str) -> Option<S
 }
 
 fn normalized_doc_tag_prefix(ctx: &FormatContext) -> String {
-    if ctx.config.emmy_doc.space_after_description_dash {
+    if ctx.config.emmy_doc.space_between_tag_columns {
         "--- @".to_string()
     } else {
         "---@".to_string()

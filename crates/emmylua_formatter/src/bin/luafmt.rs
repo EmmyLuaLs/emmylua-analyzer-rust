@@ -5,9 +5,7 @@ use std::{
 };
 
 use clap::Parser;
-use emmylua_formatter::{
-    check_text_for_path, cmd_args, collect_lua_files, default_config_toml, format_file,
-};
+use emmylua_formatter::{check_text, cmd_args, collect_lua_files, default_config_toml};
 use similar::{ChangeTag, TextDiff};
 
 #[derive(Clone, Copy)]
@@ -222,15 +220,19 @@ fn main() {
             }
         };
 
-        let result =
-            match check_text_for_path(&content, args.level.into(), None, args.config.as_deref()) {
-                Ok(result) => result,
-                Err(err) => {
-                    eprintln!("Error: {err}");
-                    exit(2);
-                }
-            };
-        let changed = result.output.changed;
+        let resolved = match cmd_args::resolve_style(&args, None) {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                eprintln!("Error: {err}");
+                exit(2);
+            }
+        };
+        let output = check_text(
+            &content,
+            resolved.config.syntax.level.into(),
+            &resolved.config,
+        );
+        let changed = output.changed;
 
         if args.check || args.list_different {
             if changed {
@@ -241,14 +243,14 @@ fn main() {
                         format_unified_diff(
                             "<stdin>",
                             &content,
-                            &result.output.formatted,
+                            &output.formatted,
                             diff_render_options,
                         )
                     );
                 }
             }
         } else if let Some(out) = &args.output {
-            if let Err(e) = fs::write(out, result.output.formatted) {
+            if let Err(e) = fs::write(out, output.formatted) {
                 eprintln!("Failed to write output to {out:?}: {e}");
                 exit(2);
             }
@@ -257,7 +259,7 @@ fn main() {
             exit(2);
         } else {
             let mut stdout = io::stdout();
-            if let Err(e) = stdout.write_all(result.output.formatted.as_bytes()) {
+            if let Err(e) = stdout.write_all(output.formatted.as_bytes()) {
                 eprintln!("Failed to write to stdout: {e}");
                 exit(2);
             }
@@ -293,35 +295,20 @@ fn main() {
     let mut different_paths: Vec<String> = Vec::new();
 
     for path in &files {
-        let format_result = if args.check || args.list_different {
-            fs::read_to_string(path)
-                .map_err(emmylua_formatter::FormatterError::from)
-                .and_then(|source| {
-                    check_text_for_path(
-                        &source,
-                        args.level.into(),
-                        Some(path),
-                        args.config.as_deref(),
-                    )
-                    .map(|result| {
-                        (
-                            result.path,
-                            source,
-                            result.output.formatted,
-                            result.output.changed,
-                        )
+        let format_result = cmd_args::resolve_style(&args, Some(path.as_path()))
+            .map_err(emmylua_formatter::FormatterError::SyntaxError)
+            .and_then(|resolved| {
+                fs::read_to_string(path)
+                    .map_err(emmylua_formatter::FormatterError::from)
+                    .map(|source| {
+                        let output = check_text(
+                            &source,
+                            resolved.config.syntax.level.into(),
+                            &resolved.config,
+                        );
+                        (path.clone(), source, output.formatted, output.changed)
                     })
-                })
-        } else {
-            format_file(path, args.level.into(), args.config.as_deref()).map(|result| {
-                (
-                    result.path,
-                    String::new(),
-                    result.output.formatted,
-                    result.output.changed,
-                )
-            })
-        };
+            });
 
         match format_result {
             Ok(result) => {
