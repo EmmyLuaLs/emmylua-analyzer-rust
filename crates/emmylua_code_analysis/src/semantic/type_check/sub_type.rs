@@ -88,7 +88,11 @@ pub fn get_base_type_id(typ: &LuaType) -> Option<LuaTypeDeclId> {
         | LuaType::TableGeneric(_)
         | LuaType::TableConst(_)
         | LuaType::Tuple(_)
-        | LuaType::Array(_) => Some(LuaTypeDeclId::global("table")),
+        | LuaType::Array(_)
+        | LuaType::Object(_) => Some(LuaTypeDeclId::global("table")),
+        LuaType::Intersection(intersection) => {
+            intersection.get_types().iter().find_map(get_base_type_id)
+        }
         LuaType::DocFunction(_) | LuaType::Function | LuaType::Signature(_) => {
             Some(LuaTypeDeclId::global("function"))
         }
