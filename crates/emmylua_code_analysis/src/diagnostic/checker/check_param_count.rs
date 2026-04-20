@@ -182,6 +182,19 @@ fn check_call_expr(
             min_call_args_count = min_call_args_count.saturating_sub(1);
         }
 
+        // 检查最后一个参数是否是多返回值函数调用（如 table.unpack()）
+        // 多返回值调用在最后一个参数位置时可能展开为 0 个或多个值
+        let last_arg_is_multi_return = if let Some(last_arg) = call_args.last()
+            && !last_arg_is_dots
+            && matches!(last_arg, LuaExpr::CallExpr(_))
+            && let Ok(LuaType::Variadic(_)) = semantic_model.infer_expr(last_arg.clone())
+        {
+            min_call_args_count = min_call_args_count.saturating_sub(1);
+            true
+        } else {
+            false
+        };
+
         if min_call_args_count <= fake_params.len() {
             return Some(());
         }
@@ -199,7 +212,7 @@ fn check_call_expr(
         }
 
         for (i, arg) in call_args.iter().enumerate() {
-            if last_arg_is_dots && i + 1 == call_args.len() {
+            if (last_arg_is_dots || last_arg_is_multi_return) && i + 1 == call_args.len() {
                 continue;
             }
 
