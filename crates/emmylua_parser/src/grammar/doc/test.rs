@@ -1899,6 +1899,97 @@ Syntax(Chunk)@0..88
     }
 
     #[test]
+    fn test_cast_bracket_index() {
+        let code = r#"
+---@cast a[1] -nil
+---@cast a["key"] string
+---@cast a.b[1].c number
+---@cast a[index] -nil
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..101
+  Syntax(Block)@0..101
+    Token(TkEndOfLine)@0..1 "\n"
+    Syntax(Comment)@1..92
+      Token(TkDocStart)@1..5 "---@"
+      Syntax(DocTagCast)@5..19
+        Token(TkTagCast)@5..9 "cast"
+        Token(TkWhitespace)@9..10 " "
+        Syntax(IndexExpr)@10..14
+          Syntax(NameExpr)@10..11
+            Token(TkName)@10..11 "a"
+          Token(TkLeftBracket)@11..12 "["
+          Syntax(LiteralExpr)@12..13
+            Token(TkInt)@12..13 "1"
+          Token(TkRightBracket)@13..14 "]"
+        Token(TkWhitespace)@14..15 " "
+        Syntax(DocOpType)@15..19
+          Token(TkMinus)@15..16 "-"
+          Syntax(TypeName)@16..19
+            Token(TkName)@16..19 "nil"
+      Token(TkEndOfLine)@19..20 "\n"
+      Token(TkDocStart)@20..24 "---@"
+      Syntax(DocTagCast)@24..44
+        Token(TkTagCast)@24..28 "cast"
+        Token(TkWhitespace)@28..29 " "
+        Syntax(IndexExpr)@29..37
+          Syntax(NameExpr)@29..30
+            Token(TkName)@29..30 "a"
+          Token(TkLeftBracket)@30..31 "["
+          Syntax(LiteralExpr)@31..36
+            Token(TkString)@31..36 "\"key\""
+          Token(TkRightBracket)@36..37 "]"
+        Token(TkWhitespace)@37..38 " "
+        Syntax(DocOpType)@38..44
+          Syntax(TypeName)@38..44
+            Token(TkName)@38..44 "string"
+      Token(TkEndOfLine)@44..45 "\n"
+      Token(TkDocStart)@45..49 "---@"
+      Syntax(DocTagCast)@49..69
+        Token(TkTagCast)@49..53 "cast"
+        Token(TkWhitespace)@53..54 " "
+        Syntax(IndexExpr)@54..62
+          Syntax(IndexExpr)@54..60
+            Syntax(IndexExpr)@54..57
+              Syntax(NameExpr)@54..55
+                Token(TkName)@54..55 "a"
+              Token(TkDot)@55..56 "."
+              Token(TkName)@56..57 "b"
+            Token(TkLeftBracket)@57..58 "["
+            Syntax(LiteralExpr)@58..59
+              Token(TkInt)@58..59 "1"
+            Token(TkRightBracket)@59..60 "]"
+          Token(TkDot)@60..61 "."
+          Token(TkName)@61..62 "c"
+        Token(TkWhitespace)@62..63 " "
+        Syntax(DocOpType)@63..69
+          Syntax(TypeName)@63..69
+            Token(TkName)@63..69 "number"
+      Token(TkEndOfLine)@69..70 "\n"
+      Token(TkDocStart)@70..74 "---@"
+      Syntax(DocTagCast)@74..92
+        Token(TkTagCast)@74..78 "cast"
+        Token(TkWhitespace)@78..79 " "
+        Syntax(IndexExpr)@79..87
+          Syntax(NameExpr)@79..80
+            Token(TkName)@79..80 "a"
+          Token(TkLeftBracket)@80..81 "["
+          Syntax(NameExpr)@81..86
+            Token(TkName)@81..86 "index"
+          Token(TkRightBracket)@86..87 "]"
+        Token(TkWhitespace)@87..88 " "
+        Syntax(DocOpType)@88..92
+          Token(TkMinus)@88..89 "-"
+          Syntax(TypeName)@89..92
+            Token(TkName)@89..92 "nil"
+    Token(TkEndOfLine)@92..93 "\n"
+    Token(TkWhitespace)@93..101 "        "
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
     fn test_compact_luals_param() {
         let code = r#"
         ---@param a
