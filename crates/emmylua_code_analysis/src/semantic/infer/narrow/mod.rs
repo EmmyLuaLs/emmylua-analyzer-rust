@@ -18,6 +18,8 @@ pub use get_type_at_cast_flow::get_type_at_call_expr_inline_cast;
 pub use narrow_type::{narrow_down_type, narrow_false_or_nil, remove_false_or_nil};
 pub use var_ref_id::{VarRefId, get_var_expr_var_ref_id};
 
+const MAX_NARROW_FLOW_NODES: usize = 512;
+
 pub fn infer_expr_narrow_type(
     db: &DbIndex,
     cache: &mut LuaInferCache,
@@ -32,6 +34,10 @@ pub fn infer_expr_narrow_type(
     let Some(flow_id) = flow_tree.get_flow_id(expr.get_syntax_id()) else {
         return get_var_ref_type(db, cache, &var_ref_id);
     };
+
+    if flow_tree.node_count() > MAX_NARROW_FLOW_NODES {
+        return get_var_ref_type(db, cache, &var_ref_id);
+    }
 
     let root = LuaChunk::cast(expr.get_root()).ok_or(InferFailReason::None)?;
     get_type_at_flow::get_type_at_flow(db, flow_tree, cache, &root, &var_ref_id, flow_id)

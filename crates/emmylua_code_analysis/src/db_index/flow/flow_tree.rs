@@ -41,6 +41,10 @@ impl FlowTree {
         self.flow_nodes.get(flow_id.0 as usize)
     }
 
+    pub fn node_count(&self) -> usize {
+        self.flow_nodes.len()
+    }
+
     pub fn get_multi_antecedents(&self, id: u32) -> Option<&[FlowId]> {
         self.multiple_antecedents
             .get(id as usize)

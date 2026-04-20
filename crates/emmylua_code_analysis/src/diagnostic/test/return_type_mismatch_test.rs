@@ -672,4 +672,42 @@ mod tests {
             "#
         ));
     }
+
+    #[test]
+    fn test_large_flow_tree_falls_back_without_stack_overflow() {
+        let mut ws = VirtualWorkspace::new();
+        let mut code = String::from(
+            r#"
+                ---@param tag integer
+                ---@return integer
+                local function test(tag)
+                    local result = 0
+            "#,
+        );
+
+        for i in 0..700 {
+            if i == 0 {
+                code.push_str(&format!(
+                    "\n                    if tag == {i} then\n                        result = {i}"
+                ));
+            } else {
+                code.push_str(&format!(
+                    "\n                    elseif tag == {i} then\n                        result = {i}"
+                ));
+            }
+        }
+
+        code.push_str(
+            r#"
+                    else
+                        result = 701
+                    end
+
+                    return result
+                end
+            "#,
+        );
+
+        assert!(ws.check_code_for(DiagnosticCode::ReturnTypeMismatch, &code));
+    }
 }

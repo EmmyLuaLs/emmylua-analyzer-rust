@@ -24,6 +24,8 @@ use crate::{
     },
 };
 
+const MAX_FLOW_CHAIN_DEPTH: usize = 2048;
+
 pub fn get_type_at_flow(
     db: &DbIndex,
     tree: &FlowTree,
@@ -32,7 +34,7 @@ pub fn get_type_at_flow(
     var_ref_id: &VarRefId,
     flow_id: FlowId,
 ) -> InferResult {
-    get_type_at_flow_internal(db, tree, cache, root, var_ref_id, flow_id, true)
+    get_type_at_flow_internal(db, tree, cache, root, var_ref_id, flow_id, true, 0)
 }
 
 fn can_reuse_narrowed_assignment_source(
@@ -118,7 +120,12 @@ fn get_type_at_flow_internal(
     var_ref_id: &VarRefId,
     flow_id: FlowId,
     use_condition_narrowing: bool,
+    depth: usize,
 ) -> InferResult {
+    if depth >= MAX_FLOW_CHAIN_DEPTH {
+        return get_var_ref_type(db, cache, var_ref_id).or(Err(InferFailReason::RecursiveInfer));
+    }
+
     let key = (var_ref_id.clone(), flow_id, use_condition_narrowing);
     if let Some(cache_entry) = cache.flow_node_cache.get(&key) {
         return match cache_entry {
@@ -159,6 +166,7 @@ fn get_type_at_flow_internal(
                             var_ref_id,
                             flow_id,
                             use_condition_narrowing,
+                            depth + 1,
                         )?;
                         branch_result_type =
                             TypeOps::Union.apply(db, &branch_result_type, &branch_type);
@@ -199,6 +207,7 @@ fn get_type_at_flow_internal(
                         var_ref_id,
                         flow_node,
                         assign_stat,
+                        depth + 1,
                     )?;
 
                     if let ResultTypeOrContinue::Result(assign_type) = result_or_continue {
@@ -361,6 +370,7 @@ fn get_type_at_assign_stat(
     var_ref_id: &VarRefId,
     flow_node: &FlowNode,
     assign_stat: LuaAssignStat,
+    depth: usize,
 ) -> Result<ResultTypeOrContinue, InferFailReason> {
     let (vars, exprs) = assign_stat.get_var_and_expr_list();
     for (i, var) in vars.iter().cloned().enumerate() {
@@ -408,12 +418,21 @@ fn get_type_at_assign_stat(
                             var_ref_id,
                             antecedent_flow_id,
                             false,
+                            depth + 1,
                         )?,
                         false,
                     )
                 } else {
-                    let narrowed_source_type =
-                        get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
+                    let narrowed_source_type = get_type_at_flow_internal(
+                        db,
+                        tree,
+                        cache,
+                        root,
+                        var_ref_id,
+                        antecedent_flow_id,
+                        true,
+                        depth + 1,
+                    )?;
                     if can_reuse_narrowed_assignment_source(db, &narrowed_source_type, &expr_type) {
                         (narrowed_source_type, true)
                     } else {
@@ -426,6 +445,7 @@ fn get_type_at_assign_stat(
                                 var_ref_id,
                                 antecedent_flow_id,
                                 false,
+                                depth + 1,
                             )?,
                             false,
                         )
