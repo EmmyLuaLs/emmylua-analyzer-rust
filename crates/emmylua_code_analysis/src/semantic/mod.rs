@@ -14,7 +14,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub use cache::{CacheEntry, CacheOptions, LuaAnalysisPhase, LuaInferCache};
+pub use cache::{CacheEntry, CacheOptions, LuaAnalysisPhase, LuaInferCache, NoFlowCacheEntry};
 pub use decl::{enum_variable_is_param, parse_require_module_info};
 use emmylua_parser::{
     LuaCallExpr, LuaChunk, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaParseError, LuaSyntaxNode,
@@ -57,7 +57,8 @@ pub use infer::InferFailReason;
 pub use infer::infer_call_expr_func;
 pub(crate) use infer::infer_expr;
 pub use infer::infer_param;
-use overload_resolve::resolve_signature;
+pub(crate) use infer::try_infer_expr_for_index;
+pub(crate) use overload_resolve::resolve_signature;
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 

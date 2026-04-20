@@ -193,6 +193,38 @@ mod test {
     }
 
     #[test]
+    fn test_stacked_local_call_alias_type_guards_build_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_guards = "if not pred(value) then return end\n".repeat(STACKED_TYPE_GUARDS);
+        let block = format!(
+            r#"
+        ---@param v any
+        ---@return TypeGuard<string>
+        local function is_string(v)
+            return true
+        end
+
+        local pred = is_string
+        local value ---@type string|integer|boolean
+
+        {repeated_guards}
+        after_guard = value
+        "#,
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for stacked local call alias type guard repro"
+        );
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
+    }
+
+    #[test]
     fn test_stacked_same_var_call_type_guard_eq_false_build_semantic_model() {
         let mut ws = VirtualWorkspace::new();
         let repeated_guards = "if instance_of(value, 'string') == false then return end\n"
@@ -1910,6 +1942,28 @@ end
     }
 
     #[test]
+    fn test_feature_initializer_alias_keeps_flow_type() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            local x --- @type string | integer
+
+            if type(x) ~= "string" then
+                return
+            end
+
+            local y = x
+            after = y
+            "#,
+        );
+
+        let after = ws.expr_ty("after");
+        let after_expected = ws.ty("string");
+        assert_eq!(after, after_expected);
+    }
+
+    #[test]
     fn test_feature_const_local_alias_chain_does_not_inherit_flow() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
@@ -2651,6 +2705,55 @@ _2 = a[1]
 
         assert_eq!(ws.expr_ty("before_assign"), ws.ty("string"));
         assert_eq!(ws.expr_ty("after_assign"), ws.ty("string|integer|boolean"));
+    }
+
+    #[test]
+    fn test_eq_uses_branch_narrowed_rhs_ref_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local x ---@type string|integer
+            local y ---@type string|integer
+
+            if type(y) ~= "string" then
+                return
+            end
+
+            if x == y then
+                after_guard = x
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_eq_uses_branch_narrowed_rhs_index_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Foo
+            ---@field kind "foo"
+
+            ---@class Bar
+            ---@field kind "bar"
+
+            local x ---@type "foo"|"bar"
+            local y ---@type Foo|Bar
+
+            if y.kind == "foo" then
+                if x == y.kind then
+                    after_guard = x
+                end
+            end
+            "#,
+        );
+
+        let after_guard = ws.expr_ty("after_guard");
+        assert_eq!(ws.humanize_type(after_guard), r#""foo""#);
     }
 
     #[test]

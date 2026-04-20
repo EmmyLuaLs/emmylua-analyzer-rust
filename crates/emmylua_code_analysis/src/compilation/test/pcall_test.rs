@@ -177,6 +177,31 @@ mod test {
     }
 
     #[test]
+    fn test_pcall_alias_callee_narrows_return_after_error_guard() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@return integer
+        local function foo()
+            return 1
+        end
+
+        local runner = pcall
+        local ok, result = runner(foo)
+
+        if not ok then
+            error(result)
+        end
+
+        narrowed = result
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("narrowed"), ws.ty("integer"));
+    }
+
+    #[test]
     fn test_pcall_any_callable_splits_success_unknown_and_failure_string() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

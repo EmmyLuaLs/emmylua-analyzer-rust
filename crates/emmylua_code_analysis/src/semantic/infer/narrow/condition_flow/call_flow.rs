@@ -1,25 +1,30 @@
 use std::{ops::Deref, sync::Arc};
 
-use emmylua_parser::{LuaCallExpr, LuaExpr, LuaIndexMemberExpr};
+use emmylua_parser::{LuaCallExpr, LuaChunk, LuaExpr, LuaIndexMemberExpr};
 
 use crate::{
-    DbIndex, InferFailReason, InferGuard, LuaAliasCallKind, LuaAliasCallType, LuaFunctionType,
-    LuaInferCache, LuaSignatureId, LuaType, infer_call_expr_func, infer_expr,
+    DbIndex, FlowNode, FlowTree, InferFailReason, InferGuard, LuaAliasCallKind, LuaAliasCallType,
+    LuaFunctionType, LuaInferCache, LuaSignatureId, LuaType,
     semantic::infer::{
         VarRefId,
         infer_index::infer_member_by_member_key,
         narrow::{
             condition_flow::{ConditionFlowAction, InferConditionFlow, PendingConditionNarrow},
-            get_var_ref_type, narrow_false_or_nil, remove_false_or_nil,
+            get_var_ref_type, infer_expr_at_antecedent_flow, narrow_false_or_nil,
+            remove_false_or_nil,
             var_ref_id::get_var_expr_var_ref_id,
         },
     },
+    semantic::instantiate_func_generic,
 };
 
 pub fn get_type_at_call_expr(
     db: &DbIndex,
+    tree: &FlowTree,
     cache: &mut LuaInferCache,
+    root: &LuaChunk,
     var_ref_id: &VarRefId,
+    flow_node: &FlowNode,
     call_expr: LuaCallExpr,
     condition_flow: InferConditionFlow,
 ) -> Result<ConditionFlowAction, InferFailReason> {
@@ -27,43 +32,41 @@ pub fn get_type_at_call_expr(
         return Ok(ConditionFlowAction::Continue);
     };
 
-    let maybe_func = if call_expr.is_colon_call() {
-        match &prefix_expr {
-            LuaExpr::IndexExpr(index_expr) => {
-                if let Some(self_expr) = index_expr.get_prefix_expr()
-                    && let Some(self_var_ref_id) = get_var_expr_var_ref_id(db, cache, self_expr)
-                    && self_var_ref_id == *var_ref_id
-                {
-                    let self_type = get_var_ref_type(db, cache, var_ref_id)?;
-                    let member_type = infer_member_by_member_key(
-                        db,
-                        cache,
-                        &self_type,
-                        LuaIndexMemberExpr::IndexExpr(index_expr.clone()),
-                        &InferGuard::new(),
-                    )?;
+    let maybe_func = if call_expr.is_colon_call()
+        && let LuaExpr::IndexExpr(index_expr) = &prefix_expr
+        && let Some(self_expr) = index_expr.get_prefix_expr()
+        && let Some(self_var_ref_id) = get_var_expr_var_ref_id(db, cache, self_expr)
+        && self_var_ref_id == *var_ref_id
+    {
+        let self_type = get_var_ref_type(db, cache, var_ref_id)?;
+        let member_type = infer_member_by_member_key(
+            db,
+            cache,
+            &self_type,
+            LuaIndexMemberExpr::IndexExpr(index_expr.clone()),
+            &InferGuard::new(),
+        )?;
 
-                    if needs_antecedent_same_var_colon_lookup(&member_type) {
-                        // Keep the dedicated pending case here: replay needs the antecedent type
-                        // for member lookup itself, not just for applying a cast after lookup.
-                        return Ok(ConditionFlowAction::Pending(
-                            PendingConditionNarrow::SameVarColonCall {
-                                idx: LuaIndexMemberExpr::IndexExpr(index_expr.clone()),
-                                condition_flow,
-                            },
-                        ));
-                    } else {
-                        member_type
-                    }
-                } else {
-                    infer_expr(db, cache, prefix_expr.clone())?
-                }
-            }
-            _ => infer_expr(db, cache, prefix_expr.clone())?,
+        if needs_antecedent_same_var_colon_lookup(&member_type) {
+            // Keep the dedicated pending case here: replay needs the antecedent type
+            // for member lookup itself, not just for applying a cast after lookup.
+            return Ok(ConditionFlowAction::Pending(
+                PendingConditionNarrow::SameVarColonCall {
+                    idx: LuaIndexMemberExpr::IndexExpr(index_expr.clone()),
+                    condition_flow,
+                },
+            ));
         }
+        member_type
     } else {
-        infer_expr(db, cache, prefix_expr.clone())?
+        let Some(maybe_func) =
+            infer_expr_at_antecedent_flow(db, tree, cache, root, flow_node, prefix_expr.clone())?
+        else {
+            return Ok(ConditionFlowAction::Continue);
+        };
+        maybe_func
     };
+
     match maybe_func {
         LuaType::DocFunction(f) => {
             let return_type = f.get_ret();
@@ -176,16 +179,11 @@ fn get_type_guard_call_info(
 
     let mut return_type = func_type.get_ret().clone();
     if return_type.contain_tpl() {
-        let call_expr_type = LuaType::DocFunction(func_type);
-        let inst_func = infer_call_expr_func(
-            db,
-            cache,
-            call_expr,
-            call_expr_type,
-            &InferGuard::new(),
-            None,
-        )?;
-
+        let Ok(inst_func) = cache.with_no_flow(|cache| {
+            instantiate_func_generic(db, cache, func_type.as_ref(), call_expr)
+        }) else {
+            return Ok(None);
+        };
         return_type = inst_func.get_ret().clone();
     }
 
@@ -331,7 +329,7 @@ fn get_type_at_call_expr_by_call(
     }
 
     if alias_call_type.get_call_kind() == LuaAliasCallKind::RawGet {
-        let antecedent_type = infer_expr(db, cache, LuaExpr::CallExpr(call_expr))?;
+        let antecedent_type = get_var_ref_type(db, cache, var_ref_id)?;
         let result_type = match condition_flow {
             InferConditionFlow::FalseCondition => narrow_false_or_nil(db, antecedent_type),
             InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_type),

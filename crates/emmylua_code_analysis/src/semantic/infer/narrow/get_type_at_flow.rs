@@ -6,7 +6,7 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::{
     CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
-    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact, infer_expr,
+    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
     semantic::{
         cache::{FlowAssignmentInfo, FlowConditionInfo, FlowMode, FlowVarCache},
         infer::{
@@ -22,7 +22,7 @@ use crate::{
                 },
                 get_multi_antecedents, get_single_antecedent,
                 get_type_at_cast_flow::cast_type,
-                get_var_ref_type, narrow_down_type,
+                get_var_ref_type, infer_expr_at_expr_flow, narrow_down_type,
                 var_ref_id::get_var_expr_var_ref_id,
             },
         },
@@ -678,9 +678,23 @@ impl<'a> FlowTypeEngine<'a> {
                                 return Ok(self.finish_walk(walk, var_type));
                             }
                             Err(err) => {
-                                if let Some(init_type) = try_infer_decl_initializer_type(
-                                    self.db, self.cache, self.root, var_ref_id,
-                                )? {
+                                let Some(decl_id) = var_ref_id.get_decl_id_ref() else {
+                                    return self.fail_query(&walk.query, err);
+                                };
+                                let decl = self
+                                    .db
+                                    .get_decl_index()
+                                    .get_decl(&decl_id)
+                                    .ok_or(InferFailReason::None)?;
+                                if let Some(value_syntax_id) = decl.get_value_syntax_id()
+                                    && let Some(node) =
+                                        value_syntax_id.to_node_from_root(self.root.syntax())
+                                    && let Some(expr) = LuaExpr::cast(node)
+                                    && let Some(expr_type) = infer_expr_at_expr_flow(
+                                        self.db, self.tree, self.cache, self.root, expr,
+                                    )?
+                                    && let Some(init_type) = expr_type.get_result_slot_type(0)
+                                {
                                     return Ok(self.finish_walk(walk, init_type));
                                 }
 
@@ -1159,39 +1173,6 @@ fn finish_assignment_result(
     } else {
         expr_type.clone()
     }
-}
-
-fn try_infer_decl_initializer_type(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-) -> Result<Option<LuaType>, InferFailReason> {
-    let Some(decl_id) = var_ref_id.get_decl_id_ref() else {
-        return Ok(None);
-    };
-
-    let decl = db
-        .get_decl_index()
-        .get_decl(&decl_id)
-        .ok_or(InferFailReason::None)?;
-
-    let Some(value_syntax_id) = decl.get_value_syntax_id() else {
-        return Ok(None);
-    };
-
-    let Some(node) = value_syntax_id.to_node_from_root(root.syntax()) else {
-        return Ok(None);
-    };
-
-    let Some(expr) = LuaExpr::cast(node) else {
-        return Ok(None);
-    };
-
-    let expr_type = infer_expr(db, cache, expr.clone())?;
-    let init_type = expr_type.get_result_slot_type(0);
-
-    Ok(init_type)
 }
 
 #[cfg(test)]

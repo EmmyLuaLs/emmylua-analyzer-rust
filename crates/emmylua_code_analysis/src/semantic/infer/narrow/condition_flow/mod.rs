@@ -360,7 +360,16 @@ pub(super) fn get_type_at_condition_flow(
                 continue;
             }
             LuaExpr::CallExpr(call_expr) => {
-                return get_type_at_call_expr(db, cache, var_ref_id, call_expr, condition_flow);
+                return get_type_at_call_expr(
+                    db,
+                    tree,
+                    cache,
+                    root,
+                    var_ref_id,
+                    flow_node,
+                    call_expr,
+                    condition_flow,
+                );
             }
             LuaExpr::IndexExpr(index_expr) => {
                 return get_type_at_index_expr(db, cache, var_ref_id, index_expr, condition_flow);

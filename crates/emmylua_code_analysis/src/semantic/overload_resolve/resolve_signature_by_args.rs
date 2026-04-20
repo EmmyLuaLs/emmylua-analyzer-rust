@@ -12,6 +12,7 @@ pub fn resolve_signature_by_args(
     expr_types: &[LuaType],
     is_colon_call: bool,
     arg_count: Option<usize>,
+    unknown_as_any: bool,
 ) -> InferCallFuncResult {
     let expr_len = expr_types.len();
     let arg_count = arg_count.unwrap_or(expr_len);
@@ -49,38 +50,19 @@ pub fn resolve_signature_by_args(
                 continue;
             }
 
-            let colon_define = func.is_colon_define();
-            let mut param_index = arg_index;
-            match (colon_define, is_colon_call) {
-                (true, false) => {
-                    if param_index == 0 {
-                        continue;
-                    }
-                    param_index -= 1;
-                }
-                (false, true) => {
-                    param_index += 1;
-                }
-                _ => {}
-            }
-            let param_type = if param_index < param_len {
-                let param_info = func.get_params().get(param_index);
-                param_info
-                    .map(|it| it.1.clone().unwrap_or(LuaType::Any))
-                    .unwrap_or(LuaType::Any)
-            } else if let Some(last_param_info) = func.get_params().last() {
-                if last_param_info.0 == "..." {
-                    last_param_info.1.clone().unwrap_or(LuaType::Any)
-                } else {
-                    *opt_func = None;
-                    continue;
-                }
-            } else {
+            let Some(param_index) = get_call_param_index(func, arg_index, is_colon_call) else {
+                continue;
+            };
+            let Some(param_type) = get_call_arg_param_type(func, param_index) else {
                 *opt_func = None;
                 continue;
             };
 
-            let match_result = if param_type.is_any() {
+            let match_result = if unknown_as_any && expr_type.is_unknown() {
+                // Declined no-flow args are compatible with any overload, but they do
+                // not prove that a specific row won.
+                ParamMatchResult::Any
+            } else if param_type.is_any() {
                 ParamMatchResult::Any
             } else if check_type_compact(db, &param_type, expr_type).is_ok() {
                 ParamMatchResult::Type
@@ -98,7 +80,8 @@ pub fn resolve_signature_by_args(
                 continue;
             }
 
-            if match_result > ParamMatchResult::Any
+            if !unknown_as_any
+                && match_result > ParamMatchResult::Any
                 && arg_index + 1 == expr_len
                 && param_index + 1 == func.get_params().len()
             {
@@ -119,7 +102,12 @@ pub fn resolve_signature_by_args(
 
     let rest_len = rest_need_resolve_funcs.len();
     match rest_len {
-        0 => return Ok(best_match_result),
+        0 => {
+            if unknown_as_any {
+                return Err(InferFailReason::None);
+            }
+            return Ok(best_match_result);
+        }
         1 => {
             return Ok(rest_need_resolve_funcs[0]
                 .clone()
@@ -145,41 +133,34 @@ pub fn resolve_signature_by_args(
                 Some(func) => func,
             };
             let param_len = func.get_params().len();
-            let colon_define = func.is_colon_define();
-            let mut param_index = param_index;
-            match (colon_define, is_colon_call) {
-                (true, false) => {
-                    if param_index == 0 {
-                        continue;
-                    }
-                    param_index -= 1;
-                }
-                (false, true) => {
-                    param_index += 1;
-                }
-                _ => {}
-            }
-            let param_type = if param_index < param_len {
-                let param_info = func.get_params().get(param_index);
-                param_info
-                    .map(|it| it.1.clone().unwrap_or(LuaType::Any))
-                    .unwrap_or(LuaType::Any)
-            } else if let Some(last_param_info) = func.get_params().last() {
-                if last_param_info.0 == "..." {
-                    last_param_info.1.clone().unwrap_or(LuaType::Any)
+            let Some(param_index) = get_call_param_index(func, param_index, is_colon_call) else {
+                continue;
+            };
+            let match_result = if param_index >= param_len {
+                if func
+                    .get_params()
+                    .last()
+                    .is_some_and(|last_param_info| last_param_info.0 == "...")
+                {
+                    ParamMatchResult::Any
+                } else if unknown_as_any {
+                    ParamMatchResult::Type
                 } else {
                     return Ok(func.clone());
                 }
             } else {
-                return Ok(func.clone());
-            };
-
-            let match_result = if param_type.is_any() {
-                ParamMatchResult::Any
-            } else if param_type.is_nullable() {
-                ParamMatchResult::Type
-            } else {
-                ParamMatchResult::Not
+                let param_info = func
+                    .get_params()
+                    .get(param_index)
+                    .expect("Param index should exist");
+                let param_type = param_info.1.clone().unwrap_or(LuaType::Any);
+                if param_type.is_any() {
+                    ParamMatchResult::Any
+                } else if param_type.is_nullable() {
+                    ParamMatchResult::Type
+                } else {
+                    ParamMatchResult::Not
+                }
             };
 
             if match_result > current_match_result {
@@ -192,7 +173,8 @@ pub fn resolve_signature_by_args(
                 continue;
             }
 
-            if match_result >= ParamMatchResult::Any
+            if !unknown_as_any
+                && match_result >= ParamMatchResult::Any
                 && i + 1 == rest_len
                 && param_index + 1 == func.get_params().len()
             {
@@ -205,7 +187,20 @@ pub fn resolve_signature_by_args(
         }
     }
 
-    Ok(best_match_result)
+    if !unknown_as_any {
+        return Ok(best_match_result);
+    }
+
+    let mut remaining_funcs = rest_need_resolve_funcs.into_iter().flatten();
+    let Some(first) = remaining_funcs.next() else {
+        return Err(InferFailReason::None);
+    };
+
+    if remaining_funcs.all(|func| func.get_ret() == first.get_ret()) {
+        Ok(first)
+    } else {
+        Err(InferFailReason::None)
+    }
 }
 
 fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
@@ -213,6 +208,40 @@ fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
         last_param.0 == "..."
     } else {
         false
+    }
+}
+
+fn get_call_param_index(
+    func: &LuaFunctionType,
+    arg_index: usize,
+    is_colon_call: bool,
+) -> Option<usize> {
+    let mut param_index = arg_index;
+    match (func.is_colon_define(), is_colon_call) {
+        (true, false) => {
+            if param_index == 0 {
+                return None;
+            }
+            param_index -= 1;
+        }
+        (false, true) => {
+            param_index += 1;
+        }
+        _ => {}
+    }
+    Some(param_index)
+}
+
+fn get_call_arg_param_type(func: &LuaFunctionType, param_index: usize) -> Option<LuaType> {
+    if let Some(param_info) = func.get_params().get(param_index) {
+        return Some(param_info.1.clone().unwrap_or(LuaType::Any));
+    }
+
+    let last_param_info = func.get_params().last()?;
+    if last_param_info.0 == "..." {
+        Some(last_param_info.1.clone().unwrap_or(LuaType::Any))
+    } else {
+        None
     }
 }
 

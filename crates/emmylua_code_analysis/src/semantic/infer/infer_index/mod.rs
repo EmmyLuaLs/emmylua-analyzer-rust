@@ -31,7 +31,49 @@ use crate::{
     },
 };
 
-use super::{InferFailReason, InferResult, infer_expr, infer_name::infer_global_type};
+use super::{
+    InferFailReason, InferResult, infer_expr, infer_name::infer_global_type, supports_no_flow_expr,
+    try_infer_expr_no_flow,
+};
+
+pub(crate) fn try_infer_expr_for_index(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+) -> Result<Option<LuaType>, InferFailReason> {
+    if cache.is_no_flow() {
+        if !supports_no_flow_index_expr(&expr) {
+            return Ok(None);
+        }
+
+        return match try_infer_expr_no_flow(db, cache, expr) {
+            Ok(result) => Ok(result),
+            Err(err) if err.is_need_resolve() => Ok(None),
+            Err(err) => Err(err),
+        };
+    }
+
+    Ok(Some(infer_expr(db, cache, expr)?))
+}
+
+fn infer_expr_for_index(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> InferResult {
+    let Some(expr_type) = try_infer_expr_for_index(db, cache, expr)? else {
+        return Err(InferFailReason::None);
+    };
+    Ok(expr_type)
+}
+
+fn supports_no_flow_index_expr(expr: &LuaExpr) -> bool {
+    match expr {
+        LuaExpr::ParenExpr(paren_expr) => paren_expr
+            .get_expr()
+            .is_some_and(|expr| supports_no_flow_index_expr(&expr)),
+        _ => {
+            supports_no_flow_expr(expr)
+                && !matches!(expr, LuaExpr::CallExpr(_) | LuaExpr::ClosureExpr(_))
+        }
+    }
+}
 
 pub fn infer_index_expr(
     db: &DbIndex,
@@ -40,56 +82,36 @@ pub fn infer_index_expr(
     pass_flow: bool,
 ) -> InferResult {
     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let prefix_type = infer_expr(db, cache, prefix_expr)?;
+    let prefix_type = infer_expr_for_index(db, cache, prefix_expr)?;
     let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
 
-    let reason = match infer_member_by_member_key(
+    let member_type = match infer_member_by_member_key(
         db,
         cache,
         &prefix_type,
         index_member_expr.clone(),
         &InferGuard::new(),
     ) {
-        Ok(member_type) => {
-            if pass_flow {
-                return infer_member_type_pass_flow(
-                    db,
-                    cache,
-                    index_expr,
-                    // &prefix_type,
-                    member_type,
-                );
-            }
-            return Ok(member_type);
-        }
-        Err(InferFailReason::FieldNotFound) => InferFailReason::FieldNotFound,
+        Ok(member_type) => member_type,
+        Err(InferFailReason::FieldNotFound) => match infer_member_by_operator(
+            db,
+            cache,
+            &prefix_type,
+            index_member_expr,
+            &InferGuard::new(),
+        ) {
+            Ok(member_type) => member_type,
+            Err(InferFailReason::FieldNotFound) => return Err(InferFailReason::FieldNotFound),
+            Err(err) => return Err(err),
+        },
         Err(err) => return Err(err),
     };
 
-    match infer_member_by_operator(
-        db,
-        cache,
-        &prefix_type,
-        index_member_expr,
-        &InferGuard::new(),
-    ) {
-        Ok(member_type) => {
-            if pass_flow {
-                return infer_member_type_pass_flow(
-                    db,
-                    cache,
-                    index_expr,
-                    // &prefix_type,
-                    member_type,
-                );
-            }
-            return Ok(member_type);
-        }
-        Err(InferFailReason::FieldNotFound) => {}
-        Err(err) => return Err(err),
+    if pass_flow {
+        infer_member_type_pass_flow(db, cache, index_expr, member_type)
+    } else {
+        Ok(member_type)
     }
-
-    Err(reason)
 }
 
 fn infer_member_type_pass_flow(
@@ -141,6 +163,30 @@ pub fn get_index_expr_var_ref_id(
     }
 
     None
+}
+
+fn infer_index_key_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    index_key: &LuaIndexKey,
+) -> Result<Option<LuaType>, InferFailReason> {
+    match index_key {
+        LuaIndexKey::Name(name) => Ok(Some(LuaType::StringConst(
+            SmolStr::new(name.get_name_text()).into(),
+        ))),
+        LuaIndexKey::String(s) => Ok(Some(LuaType::StringConst(
+            SmolStr::new(s.get_value()).into(),
+        ))),
+        LuaIndexKey::Integer(i) => {
+            if let NumberResult::Int(index_value) = i.get_number_value() {
+                Ok(Some(LuaType::IntegerConst(index_value)))
+            } else {
+                Err(InferFailReason::FieldNotFound)
+            }
+        }
+        LuaIndexKey::Idx(i) => Ok(Some(LuaType::IntegerConst(*i as i64))),
+        LuaIndexKey::Expr(expr) => try_infer_expr_for_index(db, cache, expr.clone()),
+    }
 }
 
 pub fn infer_member_by_member_key(
@@ -227,7 +273,7 @@ fn infer_table_member(
 ) -> InferResult {
     let owner = LuaMemberOwner::Element(inst);
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
-    let key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
+    let key = LuaMemberKey::from_index_key_with_mode(db, cache, &index_key, cache.is_no_flow())?;
     let member_item = match db.get_member_index().get_member_item(&owner, &key) {
         Some(member_item) => member_item,
         None => return Err(InferFailReason::FieldNotFound),
@@ -270,7 +316,7 @@ fn infer_custom_type_member(
 
     let owner = LuaMemberOwner::Type(prefix_type_id.clone());
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
-    let key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
+    let key = LuaMemberKey::from_index_key_with_mode(db, cache, &index_key, cache.is_no_flow())?;
 
     if let Some(member_item) = db.get_member_index().get_member_item(&owner, &key) {
         return member_item.resolve_type(db);
@@ -278,27 +324,9 @@ fn infer_custom_type_member(
 
     // 解决`key`为表达式的情况
     if let LuaIndexKey::Expr(expr) = index_key
-        && let Some(keys) = get_expr_member_key(db, cache, &expr)
+        && let Some(result_type) = infer_expr_key_member_type(db, cache, &expr, &owner)?
     {
-        let mut result_types = Vec::new();
-        for key in keys {
-            // 解决 enum[enum] | class[class] 的情况
-            if let Some(member_type) = get_expr_key_members(db, &key, &owner) {
-                result_types.push(member_type);
-                continue;
-            }
-
-            if let Some(member_item) = db.get_member_index().get_member_item(&owner, &key)
-                && let Ok(member_type) = member_item.resolve_type(db)
-            {
-                result_types.push(member_type);
-            }
-        }
-        match &result_types[..] {
-            [] => {}
-            [first] => return Ok(first.clone()),
-            _ => return Ok(LuaType::from_vec(result_types)),
-        }
+        return Ok(result_type);
     }
 
     if type_decl.is_class()
@@ -353,6 +381,38 @@ fn get_expr_key_members(
         1 => Some(result[0].clone()),
         _ => Some(LuaType::from_vec(result)),
     }
+}
+
+fn infer_expr_key_member_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: &LuaExpr,
+    owner: &LuaMemberOwner,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let Some(keys) = get_expr_member_key(db, cache, expr)? else {
+        return Ok(None);
+    };
+
+    let mut result_types = Vec::new();
+    for key in keys {
+        // 解决 enum[enum] | class[class] 的情况
+        if let Some(member_type) = get_expr_key_members(db, &key, owner) {
+            result_types.push(member_type);
+            continue;
+        }
+
+        if let Some(member_item) = db.get_member_index().get_member_item(owner, &key)
+            && let Ok(member_type) = member_item.resolve_type(db)
+        {
+            result_types.push(member_type);
+        }
+    }
+
+    Ok(match &result_types[..] {
+        [] => None,
+        [first] => Some(first.clone()),
+        _ => Some(LuaType::from_vec(result_types)),
+    })
 }
 
 fn get_all_member_key(db: &DbIndex, origin_type: &LuaType) -> Option<Vec<LuaMemberKey>> {
@@ -432,7 +492,7 @@ fn infer_tuple_member(
     index_expr: LuaIndexMemberExpr,
 ) -> InferResult {
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
-    let key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
+    let key = LuaMemberKey::from_index_key_with_mode(db, cache, &index_key, cache.is_no_flow())?;
     match &key {
         LuaMemberKey::Integer(i) => {
             let index = if *i > 0 { *i - 1 } else { 0 };
@@ -465,7 +525,7 @@ fn infer_tuple_member(
                     LuaIndexKey::Expr(expr) => expr,
                     _ => return Ok(result),
                 };
-                if check_iter_var_range(db, cache, &maybe_iter_var, index_prefix_expr)
+                if check_iter_var_range(db, cache, maybe_iter_var, index_prefix_expr)
                     .unwrap_or(false)
                 {
                     return Ok(result);
@@ -489,7 +549,8 @@ fn infer_object_member(
     index_expr: LuaIndexMemberExpr,
 ) -> InferResult {
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
-    let member_key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
+    let member_key =
+        LuaMemberKey::from_index_key_with_mode(db, cache, &index_key, cache.is_no_flow())?;
     if let Some(member_type) = object_type.get_field(&member_key) {
         return Ok(member_type.clone());
     }
@@ -519,18 +580,8 @@ fn infer_index_metamethod(
     key_type: &LuaType,
     value_type: &LuaType,
 ) -> InferResult {
-    let access_key_type = match &index_key {
-        LuaIndexKey::Name(name) => LuaType::StringConst(SmolStr::new(name.get_name_text()).into()),
-        LuaIndexKey::String(s) => LuaType::StringConst(SmolStr::new(s.get_value()).into()),
-        LuaIndexKey::Integer(i) => {
-            if let NumberResult::Int(index_value) = i.get_number_value() {
-                LuaType::IntegerConst(index_value)
-            } else {
-                return Err(InferFailReason::FieldNotFound);
-            }
-        }
-        LuaIndexKey::Idx(i) => LuaType::IntegerConst(*i as i64),
-        LuaIndexKey::Expr(expr) => infer_expr(db, cache, expr.clone())?,
+    let Some(access_key_type) = infer_index_key_type(db, cache, index_key)? else {
+        return Err(InferFailReason::None);
     };
 
     if check_type_compact(db, key_type, &access_key_type).is_ok() {
@@ -817,11 +868,19 @@ fn infer_member_by_index_table(
         }
         None => {
             let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
-            if let LuaIndexKey::Expr(expr) = index_key {
-                let key_type = infer_expr(db, cache, expr.clone())?;
-                let members = db
-                    .get_member_index()
-                    .get_members(&LuaMemberOwner::Element(table_range.clone()));
+            let owner = LuaMemberOwner::Element(table_range.clone());
+            if let LuaIndexKey::Expr(expr) = &index_key
+                && let Some(result_type) = infer_expr_key_member_type(db, cache, expr, &owner)?
+            {
+                return Ok(result_type);
+            }
+
+            if matches!(index_key, LuaIndexKey::Expr(_)) {
+                let Some(key_type) = infer_index_key_type(db, cache, &index_key)? else {
+                    return Err(InferFailReason::None);
+                };
+
+                let members = db.get_member_index().get_members(&owner);
                 if let Some(mut members) = members {
                     members.sort_by(|a, b| a.get_key().cmp(b.get_key()));
                     let mut result_type = LuaType::Never;
@@ -936,7 +995,7 @@ fn infer_member_by_index_array(
         return Ok(expression_type);
     } else if member_key.is_expr() {
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
-        let expr_type = infer_expr(db, cache, expr.clone())?;
+        let expr_type = infer_expr_for_index(db, cache, expr.clone())?;
         if check_type_compact(db, &LuaType::Number, &expr_type).is_ok() {
             return Ok(expression_type);
         }
@@ -955,7 +1014,7 @@ fn infer_member_by_index_object(
     let access_member_type = object.get_index_access();
     if member_key.is_expr() {
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
-        let expr_type = infer_expr(db, cache, expr.clone())?;
+        let expr_type = infer_expr_for_index(db, cache, expr.clone())?;
         for (key, field) in access_member_type {
             if type_check::check_type_compact(db, key, &expr_type).is_ok() {
                 return Ok(field.clone());
@@ -1145,7 +1204,8 @@ fn infer_namespace_member(
     index_expr: LuaIndexMemberExpr,
 ) -> InferResult {
     let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
-    let member_key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
+    let member_key =
+        LuaMemberKey::from_index_key_with_mode(db, cache, &index_key, cache.is_no_flow())?;
     let member_key = match member_key {
         LuaMemberKey::Name(name) => name.to_string(),
         LuaMemberKey::Integer(i) => i.to_string(),
@@ -1167,8 +1227,10 @@ fn get_expr_member_key(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     expr: &LuaExpr,
-) -> Option<Vec<LuaMemberKey>> {
-    let expr_type = infer_expr(db, cache, expr.clone()).ok()?;
+) -> Result<Option<Vec<LuaMemberKey>>, InferFailReason> {
+    let Some(expr_type) = try_infer_expr_for_index(db, cache, expr.clone())? else {
+        return Ok(None);
+    };
     let mut keys: HashSet<LuaMemberKey> = HashSet::new();
     let mut stack = vec![expr_type.clone()];
     let mut visited = HashSet::new();
@@ -1233,7 +1295,7 @@ fn get_expr_member_key(
     // 转换为 Vec 并排序以确保顺序确定性
     let mut keys: Vec<_> = keys.into_iter().collect();
     keys.sort();
-    Some(keys)
+    Ok(Some(keys))
 }
 
 fn infer_tpl_ref_member(
