@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod test {
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use emmylua_parser::{LuaAstToken, LuaLocalName};
 
     const STACKED_TYPE_GUARDS: usize = 180;
     const LARGE_LINEAR_ASSIGNMENT_STEPS: usize = 2048;
+    const MAXWELLHOME_ARRAY_VALUES: usize = 2048;
 
     #[test]
     fn test_closure_return() {
@@ -386,6 +388,47 @@ mod test {
         );
         let after_assign = ws.expr_ty("after_assign");
         assert_eq!(ws.humanize_type(after_assign), "integer");
+    }
+
+    #[test]
+    fn test_issue_1028_maxwellhome_like_large_array_builds_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let mut block = String::from(
+            r#"
+        ---@type integer
+        local tile = ({
+            layers = {
+                {
+                    data = {
+        "#,
+        );
+
+        for i in 0..MAXWELLHOME_ARRAY_VALUES {
+            block.push_str(&format!("                        {},\n", i % 3));
+        }
+
+        block.push_str(
+            r#"
+                    },
+                },
+            },
+        }).layers[1].data[1024]
+        "#,
+        );
+
+        let file_id = ws.def_file("maxwellhome.lua", &block);
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("expected semantic model for maxwellhome-like large array stress case");
+        let local_name = ws.get_node::<LuaLocalName>(file_id);
+        let token = local_name.get_name_token().expect("name token must exist");
+        let info = semantic_model
+            .get_semantic_info(token.syntax().clone().into())
+            .expect("semantic info must exist");
+
+        assert_eq!(ws.humanize_type(info.typ), "integer");
     }
 
     #[test]
@@ -1864,6 +1907,27 @@ end
         let b = ws.expr_ty("b");
         let b_expected = ws.ty("string");
         assert_eq!(b, b_expected);
+    }
+
+    #[test]
+    fn test_feature_const_local_alias_chain_does_not_inherit_flow() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            local ret --- @type string | nil
+
+            local is_string = type(ret) == "string"
+            local ok = is_string
+            if ok then
+                a = ret
+            end
+            "#,
+        );
+
+        let a = ws.expr_ty("a");
+        let a_expected = ws.ty("string?");
+        assert_eq!(a, a_expected);
     }
 
     #[test]

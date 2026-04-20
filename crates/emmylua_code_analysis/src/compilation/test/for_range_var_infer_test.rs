@@ -169,6 +169,49 @@ mod test {
     }
 
     #[test]
+    fn test_pairs_value_field_integer_keys() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            local t = { 10, 20, 30 }
+
+            for k, v in pairs(t) do
+                key_out = k
+                value_out = v
+            end
+        "#,
+        );
+
+        let key_out = ws.expr_ty("key_out");
+        let value_out = ws.expr_ty("value_out");
+        let LuaType::Union(key_union) = key_out else {
+            panic!("expected integer key union, got {:?}", key_out);
+        };
+        let LuaType::Union(value_union) = value_out else {
+            panic!("expected value union, got {:?}", value_out);
+        };
+
+        let expected_keys: HashSet<_> = vec![
+            LuaType::IntegerConst(1),
+            LuaType::IntegerConst(2),
+            LuaType::IntegerConst(3),
+        ]
+        .into_iter()
+        .collect();
+        let expected_values: HashSet<_> = vec![
+            LuaType::DocIntegerConst(10),
+            LuaType::DocIntegerConst(20),
+            LuaType::DocIntegerConst(30),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(key_union.into_set(), expected_keys);
+        assert_eq!(value_union.into_set(), expected_values);
+    }
+
+    #[test]
     fn test_issue_291() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

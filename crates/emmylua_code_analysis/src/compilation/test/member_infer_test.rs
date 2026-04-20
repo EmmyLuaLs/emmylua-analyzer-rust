@@ -368,4 +368,99 @@ mod test {
 
         assert_eq!(ws.expr_ty("result"), ws.ty("never"));
     }
+
+    #[test]
+    fn test_rawget_guard_narrows_matching_index_expr() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@class T
+        ---@field x? integer
+
+        ---@type T
+        local t = {}
+
+        if rawget(t, "x") then
+            result = t.x
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), LuaType::Integer);
+    }
+
+    #[test]
+    fn test_type_guard_call_narrows_matching_index_expr() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@generic T
+        ---@param inst any
+        ---@param type `T`
+        ---@return TypeGuard<T>
+        local function instance_of(inst, type)
+            return true
+        end
+
+        ---@class T
+        ---@field x? string|integer
+
+        ---@type T
+        local t = {}
+
+        if instance_of(t.x, "string") then
+            result = t.x
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), LuaType::String);
+    }
+
+    #[test]
+    fn test_alias_predicate_guard_narrows_matching_index_expr() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class T
+        ---@field x? integer
+
+        ---@type T
+        local t = {}
+
+        local ok = t.x ~= nil
+        if ok then
+            result = t.x
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), LuaType::Integer);
+    }
+
+    #[test]
+    fn test_alias_chain_predicate_guard_keeps_matching_index_expr_wide() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class T
+        ---@field x? integer
+
+        ---@type T
+        local t = {}
+
+        local has_x = t.x ~= nil
+        local ok = has_x
+        if ok then
+            result = t.x
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("integer?"));
+    }
 }

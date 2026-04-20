@@ -1,15 +1,14 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, rc::Rc};
 
 use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaChunk};
 
 use crate::{
-    DbIndex, FlowId, FlowNode, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType,
-    LuaInferCache, LuaSignature, LuaType, TypeOps, infer_expr, instantiate_func_generic,
-    semantic::infer::{
-        VarRefId,
-        narrow::{get_single_antecedent, get_type_at_flow::get_type_at_flow, narrow_down_type},
-    },
+    DbIndex, FlowId, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType, LuaInferCache,
+    LuaSignature, LuaType, TypeOps, infer_expr, instantiate_func_generic,
+    semantic::infer::{InferResult, VarRefId, narrow::narrow_down_type},
 };
+
+use super::{ConditionFlowAction, PendingConditionNarrow};
 
 #[derive(Debug, Clone)]
 pub(in crate::semantic) struct CorrelatedConditionNarrowing {
@@ -30,6 +29,24 @@ struct CollectedCorrelatedTypes {
     unmatched_target_types: Vec<LuaType>,
     has_unmatched_discriminant_origin: bool,
     has_opaque_target_origin: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::semantic) struct PendingCorrelatedCondition {
+    search_root_states: Vec<PendingSearchRootState>,
+    next_pending_index: usize,
+    pub(in crate::semantic::infer::narrow) current_search_root_flow_id: FlowId,
+}
+
+#[derive(Debug, Clone)]
+enum PendingSearchRootState {
+    Ready(SearchRootCorrelatedTypes),
+    NeedRootType {
+        flow_id: FlowId,
+        matching_target_types: Vec<LuaType>,
+        uncorrelated_target_types: Vec<LuaType>,
+        known_call_target_types: Vec<LuaType>,
+    },
 }
 
 impl CorrelatedConditionNarrowing {
@@ -118,37 +135,35 @@ pub(in crate::semantic::infer::narrow) fn prepare_var_from_return_overload_condi
     cache: &mut LuaInferCache,
     root: &LuaChunk,
     var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
     discriminant_decl_id: LuaDeclId,
     condition_position: rowan::TextSize,
+    antecedent_flow_id: FlowId,
     narrowed_discriminant_type: &LuaType,
-) -> Result<Option<CorrelatedConditionNarrowing>, InferFailReason> {
+) -> Result<ConditionFlowAction, InferFailReason> {
     let Some(target_decl_id) = var_ref_id.get_decl_id_ref() else {
-        return Ok(None);
+        return Ok(ConditionFlowAction::Continue);
     };
     if !tree.has_decl_multi_return_refs(&discriminant_decl_id)
         || !tree.has_decl_multi_return_refs(&target_decl_id)
     {
-        return Ok(None);
+        return Ok(ConditionFlowAction::Continue);
     }
 
-    let antecedent_flow_id = get_single_antecedent(flow_node)?;
     let search_root_flow_ids = tree.get_decl_multi_return_search_roots(
         &discriminant_decl_id,
         &target_decl_id,
         condition_position,
         antecedent_flow_id,
     );
-    let root_correlated_types = search_root_flow_ids
+    let search_root_states = search_root_flow_ids
         .iter()
         .copied()
         .map(|search_root_flow_id| {
-            collect_correlated_types_from_search_root(
+            prepare_search_root_correlated_types(
                 db,
                 tree,
                 cache,
                 root,
-                var_ref_id,
                 discriminant_decl_id,
                 target_decl_id,
                 condition_position,
@@ -159,32 +174,35 @@ pub(in crate::semantic::infer::narrow) fn prepare_var_from_return_overload_condi
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    if root_correlated_types
+    if let Some(next_pending_index) = search_root_states
         .iter()
-        .all(|root_types| root_types.matching_target_types.is_empty())
+        .position(|root_state| matches!(root_state, PendingSearchRootState::NeedRootType { .. }))
     {
-        return Ok(None);
+        Ok(ConditionFlowAction::NeedCorrelated(
+            PendingCorrelatedCondition {
+                search_root_states,
+                next_pending_index,
+                current_search_root_flow_id: search_root_flow_ids[next_pending_index],
+            },
+        ))
+    } else {
+        Ok(finish_correlated_condition(search_root_states))
     }
-
-    Ok(Some(CorrelatedConditionNarrowing {
-        search_root_correlated_types: root_correlated_types,
-    }))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn collect_correlated_types_from_search_root(
+fn prepare_search_root_correlated_types(
     db: &DbIndex,
     tree: &FlowTree,
     cache: &mut LuaInferCache,
     root: &LuaChunk,
-    var_ref_id: &VarRefId,
     discriminant_decl_id: LuaDeclId,
     target_decl_id: LuaDeclId,
     condition_position: rowan::TextSize,
     antecedent_flow_id: FlowId,
     search_root_flow_id: FlowId,
     narrowed_discriminant_type: &LuaType,
-) -> Result<SearchRootCorrelatedTypes, InferFailReason> {
+) -> Result<PendingSearchRootState, InferFailReason> {
     let (discriminant_refs, discriminant_has_non_reference_origin) = tree
         .get_decl_multi_return_ref_summary_at(
             &discriminant_decl_id,
@@ -211,47 +229,115 @@ fn collect_correlated_types_from_search_root(
         narrowed_discriminant_type,
     )?;
 
-    let mut root_uncorrelated_target_types = root_unmatched_target_types;
     let has_uncorrelated_origin = discriminant_has_non_reference_origin
         || target_has_non_reference_origin
         || has_opaque_target_origin
         || has_unmatched_discriminant_origin;
-    let correlated_candidate_types_is_empty = root_correlated_candidate_types.is_empty();
-    let deferred_known_call_target_types =
-        if has_uncorrelated_origin && search_root_flow_id == antecedent_flow_id {
-            let mut known_call_target_types = root_correlated_candidate_types.clone();
-            known_call_target_types.extend(root_uncorrelated_target_types.iter().cloned());
-            Some(known_call_target_types)
-        } else {
-            None
-        };
-    if has_uncorrelated_origin && deferred_known_call_target_types.is_none() {
-        if correlated_candidate_types_is_empty && root_uncorrelated_target_types.is_empty() {
-            if let Ok(root_type) =
-                get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id)
-            {
-                root_uncorrelated_target_types.push(root_type);
-            }
-        } else {
-            let mut known_call_target_types = root_correlated_candidate_types.clone();
-            known_call_target_types.extend(root_uncorrelated_target_types.iter().cloned());
-            if let Some(remaining_root_type) =
-                get_type_at_flow(db, tree, cache, root, var_ref_id, search_root_flow_id)
-                    .ok()
-                    .and_then(|root_type| {
-                        subtract_correlated_candidate_types(db, root_type, &known_call_target_types)
-                    })
-            {
-                root_uncorrelated_target_types.push(remaining_root_type);
-            }
-        }
+    if !has_uncorrelated_origin {
+        return Ok(PendingSearchRootState::Ready(SearchRootCorrelatedTypes {
+            matching_target_types: root_matching_target_types,
+            uncorrelated_target_types: root_unmatched_target_types,
+            deferred_known_call_target_types: None,
+        }));
     }
 
-    Ok(SearchRootCorrelatedTypes {
+    let mut known_call_target_types = root_correlated_candidate_types;
+    known_call_target_types.extend(root_unmatched_target_types.iter().cloned());
+    if search_root_flow_id == antecedent_flow_id {
+        return Ok(PendingSearchRootState::Ready(SearchRootCorrelatedTypes {
+            matching_target_types: root_matching_target_types,
+            uncorrelated_target_types: root_unmatched_target_types,
+            deferred_known_call_target_types: Some(known_call_target_types),
+        }));
+    }
+
+    Ok(PendingSearchRootState::NeedRootType {
+        flow_id: search_root_flow_id,
         matching_target_types: root_matching_target_types,
-        uncorrelated_target_types: root_uncorrelated_target_types,
-        deferred_known_call_target_types,
+        uncorrelated_target_types: root_unmatched_target_types,
+        known_call_target_types,
     })
+}
+
+pub(in crate::semantic::infer::narrow) fn advance_pending_correlated_condition(
+    db: &DbIndex,
+    mut pending: PendingCorrelatedCondition,
+    root_result: InferResult,
+) -> ConditionFlowAction {
+    let next_pending_index = pending.next_pending_index;
+    let root_state = std::mem::replace(
+        &mut pending.search_root_states[next_pending_index],
+        PendingSearchRootState::Ready(SearchRootCorrelatedTypes {
+            matching_target_types: Vec::new(),
+            uncorrelated_target_types: Vec::new(),
+            deferred_known_call_target_types: None,
+        }),
+    );
+    let PendingSearchRootState::NeedRootType {
+        matching_target_types,
+        mut uncorrelated_target_types,
+        known_call_target_types,
+        ..
+    } = root_state
+    else {
+        unreachable!();
+    };
+
+    if let Ok(root_type) = root_result
+        && let Some(remaining_root_type) =
+            subtract_correlated_candidate_types(db, root_type, &known_call_target_types)
+    {
+        uncorrelated_target_types.push(remaining_root_type);
+    }
+
+    pending.search_root_states[next_pending_index] =
+        PendingSearchRootState::Ready(SearchRootCorrelatedTypes {
+            matching_target_types,
+            uncorrelated_target_types,
+            deferred_known_call_target_types: None,
+        });
+
+    if let Some(next_pending_index) = pending.search_root_states[next_pending_index + 1..]
+        .iter()
+        .position(|root_state| matches!(root_state, PendingSearchRootState::NeedRootType { .. }))
+        .map(|idx| idx + next_pending_index + 1)
+    {
+        pending.next_pending_index = next_pending_index;
+        pending.current_search_root_flow_id = match &pending.search_root_states[next_pending_index]
+        {
+            PendingSearchRootState::NeedRootType { flow_id, .. } => *flow_id,
+            PendingSearchRootState::Ready(_) => unreachable!(),
+        };
+        ConditionFlowAction::NeedCorrelated(pending)
+    } else {
+        finish_correlated_condition(pending.search_root_states)
+    }
+}
+
+fn finish_correlated_condition(
+    search_root_states: Vec<PendingSearchRootState>,
+) -> ConditionFlowAction {
+    let search_root_correlated_types = search_root_states
+        .into_iter()
+        .map(|root_state| match root_state {
+            PendingSearchRootState::Ready(root_types) => root_types,
+            PendingSearchRootState::NeedRootType { .. } => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+
+    if search_root_correlated_types
+        .iter()
+        .all(|root_types| root_types.matching_target_types.is_empty())
+    {
+        return ConditionFlowAction::Continue;
+    }
+
+    // Correlated narrows can hold large per-root type sets, so keep cache hits cheap.
+    ConditionFlowAction::Pending(PendingConditionNarrow::Correlated(Rc::new(
+        CorrelatedConditionNarrowing {
+            search_root_correlated_types,
+        },
+    )))
 }
 
 fn subtract_correlated_candidate_types(
