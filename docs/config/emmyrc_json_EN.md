@@ -395,8 +395,8 @@ Supported `special` values: `none`, `require`, `error`, `assert`, `type`, `setme
 | --- | --- | --- | --- |
 | `ignoreDir` | `string[]` | `[]` | Ignored directories |
 | `ignoreGlobs` | `string[]` | `[]` | Glob patterns to ignore |
-| `library` | `string[] | object[]` | `[]` | Library roots, either plain strings or objects with ignore rules |
-| `packages` | `string[] | object[]` | `[]` | Package directories; the parent is treated as a library, but only the selected subdirectory is imported |
+| `library` | `string[]` | `object[]` | `[]` | Library roots, either plain strings or objects with ignore rules |
+| `packages` | `string[]` | `object[]` | `[]` | Package directories; the parent is treated as a library, but only the selected subdirectory is imported |
 | `workspaceRoots` | `string[]` | `[]` | Workspace source roots |
 | `preloadFileSize` | `number` | `0` | Reserved field, currently unused |
 | `encoding` | `string` | `"utf-8"` | File encoding |
