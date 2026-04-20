@@ -5,7 +5,7 @@ use emmylua_parser::{
 
 use crate::{
     DiagnosticCode, LuaSignatureId, LuaType, SemanticModel, SignatureReturnStatus,
-    compilation::does_func_body_always_return_or_exit,
+    compilation::analyze_func_body_missing_return_flags_with,
 };
 
 use super::{Checker, DiagnosticContext, get_return_stats};
@@ -111,13 +111,20 @@ fn check_missing_return(
     // 检测缺少返回语句需要处理 if while
     if min_expected_return_count > 0 {
         let range = if let Some(block) = closure_expr.get_block() {
-            if does_func_body_always_return_or_exit(block.clone(), &mut |expr: &LuaExpr| {
-                Ok(semantic_model
-                    .infer_expr(expr.clone())
-                    .unwrap_or(LuaType::Unknown))
-            })
-            .ok()?
-            {
+            let (can_fall_through, can_break, is_infinite) =
+                analyze_func_body_missing_return_flags_with(
+                    block.clone(),
+                    &mut |expr: &LuaExpr| {
+                        Ok(semantic_model
+                            .infer_expr(expr.clone())
+                            .unwrap_or(LuaType::Unknown))
+                    },
+                )
+                .ok()?;
+
+            // `MissingReturn` currently ignores runtime-dependent divergence if
+            // a later `return` is still reachable.
+            if !can_fall_through && !can_break && !is_infinite {
                 return Some(());
             }
 

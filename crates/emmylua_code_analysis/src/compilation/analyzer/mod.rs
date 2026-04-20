@@ -6,18 +6,26 @@ mod infer_cache_manager;
 mod lua;
 mod unresolve;
 
-pub(crate) use lua::does_func_body_always_return_or_exit;
-
 use crate::{
-    Emmyrc, FileId, InFiled, InferFailReason,
+    Emmyrc, FileId, InFiled, InferFailReason, LuaType,
     db_index::{DbIndex, WorkspaceId},
     profile::Profile,
 };
-use emmylua_parser::LuaChunk;
+use emmylua_parser::{LuaBlock, LuaChunk, LuaExpr};
 use hashbrown::{HashMap, HashSet};
 use infer_cache_manager::InferCacheManager;
 use std::sync::Arc;
 use unresolve::UnResolve;
+
+pub(super) fn analyze_func_body_missing_return_flags_with<F>(
+    body: LuaBlock,
+    infer_expr_type: &mut F,
+) -> Result<(bool, bool, bool), InferFailReason>
+where
+    F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
+{
+    lua::func_body::analyze_func_body_missing_return_flags_with(body, infer_expr_type)
+}
 
 pub fn analyze(db: &mut DbIndex, need_analyzed_files: Vec<InFiled<LuaChunk>>, config: Arc<Emmyrc>) {
     if need_analyzed_files.is_empty() {

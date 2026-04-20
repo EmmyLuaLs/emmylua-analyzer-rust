@@ -277,7 +277,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(ws.check_code_for(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return number
@@ -657,6 +657,124 @@ mod tests {
                 if should_take_branch() then
                     return 1
                 end
+            end
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_missing_return_accepts_dynamic_parent_walk_before_return() {
+        // This matches the current `MissingReturn` check: runtime-dependent
+        // loops are allowed when the function still reaches a later `return`.
+        assert_missing_return_ok(
+            r#"
+            ---@class Node
+            local Node = {}
+
+            ---@return Node?
+            function Node:parent()
+                return nil
+            end
+
+            ---@param node Node?
+            ---@return integer
+            local function get_indent(node)
+                local indent = 0
+
+                while node do
+                    node = node:parent()
+                end
+
+                return indent
+            end
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_missing_return_accepts_dynamic_repeat_before_return() {
+        assert_missing_return_ok(
+            r#"
+            ---@return number
+            local function foo(done)
+                repeat
+                until done
+
+                return 1
+            end
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_missing_return_accepts_truthy_while_with_break_before_return() {
+        assert_missing_return_ok(
+            r#"
+            ---@return number
+            local function foo(done)
+                while true do
+                    if done then
+                        break
+                    end
+                end
+
+                return 1
+            end
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_missing_return_accepts_infinite_repeat_with_break_before_return() {
+        assert_missing_return_ok(
+            r#"
+            ---@return number
+            local function foo(done)
+                repeat
+                    if done then
+                        break
+                    end
+                until false
+
+                return 1
+            end
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_missing_return_rejects_dynamic_while_with_infinite_body_before_return() {
+        assert_missing_return_error(
+            r#"
+            ---@return number
+            local function foo(a)
+                while a do
+                    while true do
+                    end
+                end
+
+                return 1
+            end
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_missing_return_rejects_dynamic_while_with_break_or_infinite_body_before_return() {
+        assert_missing_return_error(
+            r#"
+            ---@return number
+            local function foo(a, b)
+                while a do
+                    if b then
+                        break
+                    end
+
+                    while true do
+                    end
+                end
+
+                return 1
             end
             "#,
         );

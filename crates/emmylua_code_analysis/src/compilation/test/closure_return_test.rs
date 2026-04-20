@@ -302,6 +302,44 @@ mod test {
     }
 
     #[test]
+    fn test_inferred_return_from_truthy_while_with_break_before_return() {
+        assert_inferred_return_without_nil(
+            r#"
+        local function f(done)
+            while true do
+                if done then
+                    break
+                end
+            end
+
+            return 1
+        end
+
+        result = f()
+        "#,
+        );
+    }
+
+    #[test]
+    fn test_inferred_return_from_infinite_repeat_with_break_before_return() {
+        assert_inferred_return_without_nil(
+            r#"
+        local function f(done)
+            repeat
+                if done then
+                    break
+                end
+            until false
+
+            return 1
+        end
+
+        result = f()
+        "#,
+        );
+    }
+
+    #[test]
     fn test_return_flow_keeps_local_while_call_condition_dynamic() {
         let mut ws = VirtualWorkspace::new();
 
