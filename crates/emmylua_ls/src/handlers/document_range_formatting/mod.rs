@@ -36,15 +36,6 @@ pub async fn on_range_formatting_handler(
     let workspace_manager = context.workspace_manager().read().await;
     let client_id = workspace_manager.client_config.client_id;
     let file_id = analysis.get_file_id(&uri)?;
-    let syntax_tree = analysis
-        .compilation
-        .get_db()
-        .get_vfs()
-        .get_syntax_tree(&file_id)?;
-
-    if syntax_tree.has_syntax_errors() {
-        return None;
-    }
     let emmyrc = analysis.get_emmyrc();
     let document = analysis
         .compilation
@@ -70,8 +61,9 @@ pub async fn on_range_formatting_handler(
         .await?
     } else {
         let formatted_text = format_with_workspace_formatter(
-            syntax_tree,
+            document.get_text(),
             Some(file_path.as_path()),
+            &emmyrc,
             params.options.tab_size as usize,
             params.options.insert_spaces,
             params.options.insert_final_newline.unwrap_or(true),

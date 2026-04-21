@@ -1912,7 +1912,7 @@ fn parse_doc_block_line(ctx: &FormatContext, line_input: &DocBlockLineInput) -> 
     }
 
     let tag_rest = if line_input.prefix_kind == DocLinePrefixKind::Start {
-        Some(trimmed)
+        Some(trimmed.strip_prefix('@').unwrap_or(trimmed))
     } else {
         trimmed.strip_prefix('@')
     };
@@ -1920,6 +1920,8 @@ fn parse_doc_block_line(ctx: &FormatContext, line_input: &DocBlockLineInput) -> 
     if let Some(rest) = tag_rest {
         let normalized_rest = if line_input.prefix_kind == DocLinePrefixKind::Start {
             normalized_trimmed
+                .strip_prefix('@')
+                .unwrap_or(normalized_trimmed)
         } else {
             normalized_trimmed
                 .strip_prefix('@')
@@ -2629,10 +2631,26 @@ fn structured_param_columns(tag: &LuaDocTagParam) -> Vec<String> {
         ];
     };
 
-    let name = head_token.text().to_string();
-    let type_text = slice_node_text(node, head_token.text_range().end(), node.text_range().end())
+    let mut name = head_token.text().to_string();
+    if tag.is_nullable() {
+        name.push('?');
+    }
+
+    let type_text = if let Some(type_node) = tag.get_type() {
+        slice_node_text(
+            node,
+            type_node.syntax().text_range().start(),
+            node.text_range().end(),
+        )
         .trim()
-        .to_string();
+        .to_string()
+    } else {
+        slice_node_text(node, head_token.text_range().end(), node.text_range().end())
+            .trim()
+            .trim_start_matches('?')
+            .trim()
+            .to_string()
+    };
 
     if type_text.is_empty() {
         vec![name]

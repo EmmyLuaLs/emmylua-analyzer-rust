@@ -1040,6 +1040,14 @@ local function f(short, much_longer) end
     }
 
     #[test]
+    fn test_doc_comment_align_param_columns_keeps_nullable_marker_attached_to_name() {
+        assert_format!(
+            "--- @param name     string   The name parameter\n--- @param age      number   The age parameter\n--- @param optional ? string Optional parameter\n",
+            "---@param name      string The name parameter\n---@param age       number The age parameter\n---@param optional? string Optional parameter\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_version_keeps_space_before_comparison() {
         assert_format!(
             "---@version >5.3\nlocal value = nil\n",
@@ -1070,6 +1078,14 @@ local function f(short, much_longer) end
         assert_format!(
             "---@field x string desc\n---@field longer_name integer another desc\nlocal t = {}\n",
             "---@field x           string  desc\n---@field longer_name integer another desc\nlocal t = {}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_field_columns_with_spaced_tag_prefix() {
+        assert_format!(
+            "--- @class Position1\n--- @field x integer\n--- @field yafafa integer\n",
+            "---@class Position1\n---@field x      integer\n---@field yafafa integer\n"
         );
     }
 
