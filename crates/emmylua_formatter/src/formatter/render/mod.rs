@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::formatter::model::{StatementExprListLayoutKind, StatementExprListLayoutPlan};
 use crate::ir::{self, AlignEntry, DocIR};
 use emmylua_parser::*;
-use rowan::TextRange;
+use rowan::{TextRange, TextSize};
 
 use super::FormatContext;
 use crate::formatter::model::{
@@ -1584,7 +1584,13 @@ fn render_comment_with_spacing(
     let prefix_replacements = collect_comment_line_prefix_replacements(comment, plan);
     let normalized_lines = collect_comment_line_spacing_normalized_texts(comment, plan);
     let lines = if is_pure_doc_comment_block(&raw) {
-        normalize_doc_comment_block(ctx, &raw, &prefix_replacements, normalized_lines.as_slice())
+        normalize_doc_comment_block(
+            ctx,
+            comment,
+            &raw,
+            &prefix_replacements,
+            normalized_lines.as_slice(),
+        )
     } else {
         normalize_normal_comment_block(ctx, &raw, &prefix_replacements, normalized_lines.as_slice())
     };
@@ -1763,6 +1769,14 @@ struct DocTagLine {
     gap_after_dash: Option<String>,
 }
 
+#[derive(Clone)]
+struct StructuredDocTagColumns {
+    tag: String,
+    head_columns: Vec<String>,
+    description: Option<String>,
+    use_normalized_head_as_single_column: bool,
+}
+
 fn should_preserve_doc_comment_block_raw(comment: &LuaComment) -> bool {
     let raw = comment.syntax().text().to_string();
     raw.lines().any(|line| {
@@ -1774,22 +1788,42 @@ fn should_preserve_doc_comment_block_raw(comment: &LuaComment) -> bool {
 
 fn normalize_doc_comment_block(
     ctx: &FormatContext,
+    comment: &LuaComment,
     raw: &str,
     prefix_replacements: &[Option<String>],
     normalized_lines: &[Option<String>],
 ) -> Vec<String> {
     let raw_lines: Vec<&str> = raw.lines().collect();
-    let parsed: Vec<DocLineKind> = raw_lines
-        .iter()
-        .enumerate()
-        .map(|(index, line)| {
-            parse_doc_comment_line(
-                ctx,
-                line,
-                normalized_lines.get(index).and_then(|line| line.as_deref()),
-            )
-        })
-        .collect();
+    let structured_tags = collect_structured_doc_tag_columns(comment);
+    let mut structured_index = 0usize;
+    let mut parsed = Vec::with_capacity(raw_lines.len());
+
+    for (index, line) in raw_lines.iter().enumerate() {
+        let current_tag = line
+            .trim_start()
+            .strip_prefix("---")
+            .map(str::trim_start)
+            .and_then(|suffix| suffix.strip_prefix('@'))
+            .and_then(|suffix| suffix.split_whitespace().next());
+        let structured_tag = if let Some(current_tag) = current_tag {
+            let next = structured_tags
+                .get(structured_index)
+                .filter(|structured| structured.tag == current_tag);
+            if next.is_some() {
+                structured_index += 1;
+            }
+            next
+        } else {
+            None
+        };
+
+        parsed.push(parse_doc_comment_line(
+            ctx,
+            line,
+            normalized_lines.get(index).and_then(|line| line.as_deref()),
+            structured_tag,
+        ));
+    }
 
     let parsed = annotate_multiline_alias_continue_lines(ctx, parsed);
 
@@ -1838,6 +1872,7 @@ fn parse_doc_comment_line(
     ctx: &FormatContext,
     line: &str,
     normalized_line: Option<&str>,
+    structured_tag: Option<&StructuredDocTagColumns>,
 ) -> DocLineKind {
     let trimmed_line = line.trim_start();
     let suffix = trimmed_line.strip_prefix("---").unwrap_or(trimmed_line);
@@ -1860,6 +1895,7 @@ fn parse_doc_comment_line(
             normalized_rest,
             rest.trim_start(),
             gap_after_dash,
+            structured_tag,
         ));
     }
     if let Some(rest) = trimmed.strip_prefix('|') {
@@ -1893,23 +1929,36 @@ fn parse_doc_tag_line(
     rest: &str,
     raw_rest_source: &str,
     gap_after_dash: Option<String>,
+    structured_tag: Option<&StructuredDocTagColumns>,
 ) -> DocTagLine {
     let mut parts = rest.split_whitespace();
     let tag = parts.next().unwrap_or_default().to_string();
     let normalized_rest = rest[tag.len()..].trim_start().to_string();
     let raw_rest = raw_rest_source[tag.len()..].trim_start().to_string();
     let (normalized_head, raw_description) = split_doc_tag_description(&normalized_rest, &raw_rest);
-    let mut columns = match tag.as_str() {
-        "param" => parse_param_columns(&normalized_head),
-        "field" => parse_field_columns(&normalized_head),
-        "return" => parse_return_columns(&normalized_head),
-        "class" => split_columns(&normalized_head, &[1]),
-        "alias" => parse_alias_columns(&normalized_head),
-        "generic" => parse_generic_columns(&normalized_head),
-        "type" | "overload" => vec![normalized_head.clone()],
-        _ => vec![collapse_spaces(&normalized_head)],
-    };
-    if let Some(description) = raw_description {
+    let structured_tag = structured_tag.filter(|structured| structured.tag == tag);
+    let structured_description = structured_tag
+        .and_then(|structured| structured.description.clone())
+        .and_then(first_structured_description_line);
+    let mut columns = structured_tag
+        .map(|structured| {
+            if structured.use_normalized_head_as_single_column {
+                structured_single_head_columns(&normalized_head, structured_description.as_deref())
+            } else {
+                structured.head_columns.clone()
+            }
+        })
+        .unwrap_or_else(|| match tag.as_str() {
+            "param" => parse_param_columns(&normalized_head),
+            "field" => parse_field_columns(&normalized_head),
+            "return" => parse_return_columns(&normalized_head),
+            "class" => split_columns(&normalized_head, &[1]),
+            "alias" => parse_alias_columns(&normalized_head),
+            "generic" => parse_generic_columns(&normalized_head),
+            "type" | "overload" => vec![normalized_head.clone()],
+            _ => vec![collapse_spaces(&normalized_head)],
+        });
+    if let Some(description) = raw_description.or(structured_description) {
         columns.push(description);
     }
     columns.retain(|column| !column.is_empty());
@@ -2311,6 +2360,210 @@ fn parse_generic_columns(input: &str) -> Vec<String> {
             tokens[tokens.len() - 2..].join(" "),
         ],
     }
+}
+
+fn collect_structured_doc_tag_columns(comment: &LuaComment) -> Vec<StructuredDocTagColumns> {
+    comment
+        .syntax()
+        .children()
+        .filter_map(|child| {
+            LuaDocTag::cast(child).and_then(|tag| structured_doc_tag_columns_from_ast(&tag))
+        })
+        .collect()
+}
+
+fn structured_doc_tag_columns_from_ast(tag: &LuaDocTag) -> Option<StructuredDocTagColumns> {
+    match tag {
+        LuaDocTag::Class(tag) => Some(StructuredDocTagColumns {
+            tag: "class".to_string(),
+            head_columns: Vec::new(),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: true,
+        }),
+        LuaDocTag::Alias(tag) => Some(StructuredDocTagColumns {
+            tag: "alias".to_string(),
+            head_columns: Vec::new(),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: true,
+        }),
+        LuaDocTag::Generic(tag) => Some(StructuredDocTagColumns {
+            tag: "generic".to_string(),
+            head_columns: Vec::new(),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: true,
+        }),
+        LuaDocTag::Type(tag) => Some(StructuredDocTagColumns {
+            tag: "type".to_string(),
+            head_columns: Vec::new(),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: true,
+        }),
+        LuaDocTag::Overload(tag) => Some(StructuredDocTagColumns {
+            tag: "overload".to_string(),
+            head_columns: Vec::new(),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: true,
+        }),
+        LuaDocTag::Param(tag) => Some(StructuredDocTagColumns {
+            tag: "param".to_string(),
+            head_columns: structured_param_columns(tag),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: false,
+        }),
+        LuaDocTag::Field(tag) => Some(StructuredDocTagColumns {
+            tag: "field".to_string(),
+            head_columns: structured_field_columns(tag),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: false,
+        }),
+        LuaDocTag::Return(tag) => Some(StructuredDocTagColumns {
+            tag: "return".to_string(),
+            head_columns: structured_return_columns(tag),
+            description: tag.get_description().map(|it| it.get_description_text()),
+            use_normalized_head_as_single_column: false,
+        }),
+        _ => None,
+    }
+}
+
+fn structured_single_head_columns(
+    normalized_head: &str,
+    structured_description: Option<&str>,
+) -> Vec<String> {
+    let head = structured_description
+        .and_then(|description| strip_structured_description_suffix(normalized_head, description))
+        .unwrap_or_else(|| normalized_head.trim().to_string());
+
+    if head.is_empty() {
+        Vec::new()
+    } else {
+        vec![head]
+    }
+}
+
+fn strip_structured_description_suffix(normalized_head: &str, description: &str) -> Option<String> {
+    let trimmed_head = normalized_head.trim_end();
+    let trimmed_description = description.trim();
+    if trimmed_description.is_empty() {
+        return Some(trimmed_head.to_string());
+    }
+
+    trimmed_head
+        .strip_suffix(trimmed_description)
+        .map(str::trim_end)
+        .map(str::to_string)
+}
+
+fn structured_param_columns(tag: &LuaDocTagParam) -> Vec<String> {
+    let node = tag.syntax();
+    let Some(content_start) = structured_tag_content_start(node) else {
+        return Vec::new();
+    };
+
+    let head_token = tag
+        .get_name_token()
+        .map(|token| token.syntax().clone())
+        .or_else(|| {
+            node.children_with_tokens()
+                .filter_map(|element| element.into_token())
+                .find(|token| token.kind() == LuaTokenKind::TkDots.into())
+        });
+
+    let Some(head_token) = head_token else {
+        return vec![slice_node_text(node, content_start, node.text_range().end())
+            .trim()
+            .to_string()];
+    };
+
+    let name = head_token.text().to_string();
+    let type_text = slice_node_text(node, head_token.text_range().end(), node.text_range().end())
+        .trim()
+        .to_string();
+
+    if type_text.is_empty() {
+        vec![name]
+    } else {
+        vec![name, type_text]
+    }
+}
+
+fn structured_field_columns(tag: &LuaDocTagField) -> Vec<String> {
+    let node = tag.syntax();
+    let Some(content_start) = structured_tag_content_start(node) else {
+        return Vec::new();
+    };
+    let Some(type_node) = tag.get_type() else {
+        return vec![slice_node_text(node, content_start, node.text_range().end())
+            .trim()
+            .to_string()];
+    };
+
+    let type_start = adjust_attached_field_type_start(node, type_node.syntax().text_range().start());
+
+    let key = slice_node_text(node, content_start, type_start)
+        .trim()
+        .to_string();
+    let type_text = slice_node_text(node, type_start, node.text_range().end())
+        .trim()
+        .to_string();
+
+    if type_text.is_empty() {
+        vec![key]
+    } else {
+        vec![key, type_text]
+    }
+}
+
+fn structured_return_columns(tag: &LuaDocTagReturn) -> Vec<String> {
+    let node = tag.syntax();
+    let Some(content_start) = structured_tag_content_start(node) else {
+        return Vec::new();
+    };
+
+    let head = slice_node_text(node, content_start, node.text_range().end())
+        .trim()
+        .to_string();
+
+    if head.is_empty() {
+        Vec::new()
+    } else {
+        vec![head]
+    }
+}
+
+fn structured_tag_content_start(node: &LuaSyntaxNode) -> Option<TextSize> {
+    node.first_token().map(|token| token.text_range().end())
+}
+
+fn first_structured_description_line(text: String) -> Option<String> {
+    text.lines()
+        .next()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+}
+
+fn adjust_attached_field_type_start(node: &LuaSyntaxNode, type_start: TextSize) -> TextSize {
+    let base = u32::from(node.text_range().start());
+    let relative = u32::from(type_start).saturating_sub(base) as usize;
+    if relative == 0 {
+        return type_start;
+    }
+
+    let text = node.text().to_string();
+    if text.as_bytes().get(relative.saturating_sub(1)) == Some(&b'(') {
+        TextSize::from((u32::from(type_start)).saturating_sub(1))
+    } else {
+        type_start
+    }
+}
+
+fn slice_node_text(node: &LuaSyntaxNode, start: TextSize, end: TextSize) -> String {
+    let base = u32::from(node.text_range().start());
+    let start = u32::from(start).saturating_sub(base) as usize;
+    let end = u32::from(end).saturating_sub(base) as usize;
+    let text = node.text().to_string();
+    text.get(start..end).unwrap_or("").to_string()
 }
 
 fn collect_comment_line_spacing_normalized_texts(

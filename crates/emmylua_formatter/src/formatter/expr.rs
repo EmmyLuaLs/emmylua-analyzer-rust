@@ -1208,7 +1208,12 @@ fn format_table_expr(
     plan: &RootFormatPlan,
     expr: &LuaTableExpr,
 ) -> Vec<DocIR> {
-    if expr.is_empty() {
+    let has_direct_comments = expr
+        .syntax()
+        .children()
+        .any(|child| LuaComment::cast(child).is_some());
+
+    if expr.is_empty() && !has_direct_comments {
         let (open, close) = brace_tokens(expr.syntax());
         return vec![
             token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),

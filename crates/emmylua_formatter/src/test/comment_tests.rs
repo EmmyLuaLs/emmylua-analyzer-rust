@@ -148,6 +148,22 @@ local t = {
     }
 
     #[test]
+    fn test_empty_table_standalone_comment_is_preserved() {
+        assert_format!(
+            r#"
+local t = {
+    --123
+}
+"#,
+            r#"
+local t = {
+    --123
+}
+"#
+        );
+    }
+
+    #[test]
     fn test_comment_only_block() {
         assert_format!(
             r#"
@@ -978,6 +994,14 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_align_param_columns_keeps_complex_type_intact() {
+        assert_format!(
+            "---@param short fun(x: string, y: number): table<string, number> desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
+            "---@param short       fun(x: string, y: number): table<string, number> desc\n---@param much_longer integer                                          longer desc\nlocal function f(short, much_longer) end\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_param_columns_with_interleaved_descriptions() {
         assert_format!(
             "--- first parameter docs\n---@param short string desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
@@ -1128,6 +1152,14 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_align_class_columns_keeps_complex_generic_head_intact() {
+        assert_format!(
+            "---@class ExtremelyLongSimpleName short desc\n---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc\nlocal value = {}\n",
+            "---@class ExtremelyLongSimpleName                                        short desc\n---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc\nlocal value = {}\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_enum_attached_table_prefers_expanded_declaration() {
         assert_format!(
             "---@enum MyEnum\nlocal cc = { xxx = 123 }\n",
@@ -1148,6 +1180,14 @@ local t = {
         assert_format!(
             "---@alias Id integer identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n",
             "---@alias Id integer         identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_alias_columns_keeps_function_type_intact() {
+        assert_format!(
+            "---@alias ExtremelyLongAliasName string description\n---@alias H fun(x: string, y: number): table<string, number> handler desc\nlocal value = nil\n",
+            "---@alias ExtremelyLongAliasName string                      description\n---@alias H fun(x: string, y: number): table<string, number> handler desc\nlocal value = nil\n"
         );
     }
 
