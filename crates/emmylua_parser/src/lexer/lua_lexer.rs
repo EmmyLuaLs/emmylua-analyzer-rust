@@ -669,7 +669,9 @@ impl<'a> LuaLexer<'a> {
             }
         }
 
-        if self.lexer_config.support_complex_number() && self.reader.current_char() == 'i' {
+        if self.lexer_config.support_complex_number()
+            && matches!(self.reader.current_char(), 'i' | 'I')
+        {
             self.reader.bump();
             return LuaTokenKind::TkComplex;
         }

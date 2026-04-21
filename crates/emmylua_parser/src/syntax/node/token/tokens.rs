@@ -116,7 +116,9 @@ impl LuaAstToken for LuaNumberToken {
     where
         Self: Sized,
     {
-        kind == LuaTokenKind::TkFloat || kind == LuaTokenKind::TkInt
+        kind == LuaTokenKind::TkFloat
+            || kind == LuaTokenKind::TkInt
+            || kind == LuaTokenKind::TkComplex
     }
 
     fn cast(syntax: LuaSyntaxToken) -> Option<Self>
@@ -140,12 +142,17 @@ impl LuaNumberToken {
         self.token.kind() == LuaTokenKind::TkInt.into()
     }
 
+    pub fn is_complex(&self) -> bool {
+        self.token.kind() == LuaTokenKind::TkComplex.into()
+    }
+
     pub fn get_number_value(&self) -> NumberResult {
         match self.token.kind().into() {
             LuaTokenKind::TkFloat => float_token_value(&self.token)
                 .map(NumberResult::Float)
                 .unwrap_or(NumberResult::Float(0.0)),
             LuaTokenKind::TkInt => int_token_value(&self.token).unwrap_or(NumberResult::Int(0)),
+            LuaTokenKind::TkComplex => NumberResult::Number,
             _ => NumberResult::Int(0),
         }
     }

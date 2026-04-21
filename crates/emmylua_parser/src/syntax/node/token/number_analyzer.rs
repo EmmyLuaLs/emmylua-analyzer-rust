@@ -93,6 +93,7 @@ pub enum NumberResult {
     Int(i64),
     Uint(u64),
     Float(f64),
+    Number,
 }
 
 impl NumberResult {
@@ -122,6 +123,7 @@ impl Display for NumberResult {
             NumberResult::Int(v) => write!(f, "{}", v),
             NumberResult::Uint(v) => write!(f, "{}", v),
             NumberResult::Float(v) => write!(f, "{}", v),
+            NumberResult::Number => write!(f, "number"),
         }
     }
 }
