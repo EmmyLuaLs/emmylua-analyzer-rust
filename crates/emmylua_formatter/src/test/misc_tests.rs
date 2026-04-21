@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use emmylua_parser::LuaLanguageLevel;
-
     use crate::{SourceText, assert_format, config::LuaFormatConfig, reformat_lua_code};
+    use emmylua_parser::LuaLanguageLevel;
 
     // ========== shebang ==========
 
@@ -216,6 +215,22 @@ local cc = 3 -- comment c
         assert_eq!(
             first, second,
             "Formatter is not idempotent for method chains!\nFirst pass:\n{first}\nSecond pass:\n{second}"
+        );
+    }
+
+    #[test]
+    fn test_format_disable_range_preserves_block_contents() {
+        assert_format!(
+            "local a=1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\nprint(  ugly [ 1 ] )\n-- fmt: on\nlocal b=2\n",
+            "local a = 1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\nprint(  ugly [ 1 ] )\n-- fmt: on\nlocal b = 2\n"
+        );
+    }
+
+    #[test]
+    fn test_format_disable_range_can_cover_single_statement() {
+        assert_format!(
+            "local a=1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\n-- fmt: on\nlocal c=3\n",
+            "local a = 1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\n-- fmt: on\nlocal c = 3\n"
         );
     }
 

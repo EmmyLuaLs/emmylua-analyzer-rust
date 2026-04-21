@@ -22,7 +22,8 @@ pub fn analyze_root_layout(
     mut plan: RootFormatPlan,
 ) -> RootFormatPlan {
     plan.layout.format_block_with_legacy = true;
-    plan.layout.root_nodes = tree::collect_root_layout_nodes(chunk);
+    plan.layout.root_nodes =
+        tree::collect_root_layout_nodes(chunk, &mut plan.layout.format_disabled);
     analyze_node_layouts(chunk, &mut plan);
     plan
 }

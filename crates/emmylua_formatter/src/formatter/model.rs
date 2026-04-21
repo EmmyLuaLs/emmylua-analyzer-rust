@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use emmylua_parser::{LuaSyntaxId, LuaSyntaxKind, LuaTokenKind};
 
@@ -113,6 +113,7 @@ pub struct ExprSequenceLayoutPlan {
 pub struct RootLayoutModel {
     pub format_block_with_legacy: bool,
     pub root_nodes: Vec<LayoutNodePlan>,
+    pub format_disabled: HashSet<LuaSyntaxId>,
     pub statement_trivia: HashMap<LuaSyntaxId, StatementTriviaLayoutPlan>,
     pub statement_expr_lists: HashMap<LuaSyntaxId, StatementExprListLayoutPlan>,
     pub expr_sequences: HashMap<LuaSyntaxId, ExprSequenceLayoutPlan>,
@@ -141,6 +142,7 @@ impl RootFormatPlan {
             layout: RootLayoutModel {
                 format_block_with_legacy: true,
                 root_nodes: Vec::new(),
+                format_disabled: HashSet::new(),
                 statement_trivia: HashMap::new(),
                 statement_expr_lists: HashMap::new(),
                 expr_sequences: HashMap::new(),

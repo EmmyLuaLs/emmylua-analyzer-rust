@@ -72,6 +72,10 @@ fn render_layout_node(
     node: &LayoutNodePlan,
     plan: &RootFormatPlan,
 ) -> Vec<DocIR> {
+    if let Some(disabled) = render_format_disabled_layout_node(root, node, plan) {
+        return disabled;
+    }
+
     match node {
         LayoutNodePlan::Comment(comment) => {
             let Some(syntax) = find_node_by_id(root, comment.syntax_id) else {
@@ -103,6 +107,24 @@ fn render_layout_node(
             _ => render_unmigrated_syntax_leaf(root, syntax_plan.syntax_id),
         },
     }
+}
+
+fn render_format_disabled_layout_node(
+    root: &LuaSyntaxNode,
+    node: &LayoutNodePlan,
+    plan: &RootFormatPlan,
+) -> Option<Vec<DocIR>> {
+    let syntax_id = match node {
+        LayoutNodePlan::Comment(comment) => comment.syntax_id,
+        LayoutNodePlan::Syntax(syntax) => syntax.syntax_id,
+    };
+
+    if !plan.layout.format_disabled.contains(&syntax_id) {
+        return None;
+    }
+
+    let syntax = find_node_by_id(root, syntax_id)?;
+    Some(vec![ir::source_node_trimmed(syntax)])
 }
 
 struct StatementAssignSplit {
@@ -1154,6 +1176,10 @@ fn try_render_aligned_statement_group(
     start: usize,
     plan: &RootFormatPlan,
 ) -> Option<(Vec<DocIR>, usize)> {
+    if layout_node_is_format_disabled(&nodes[start], plan) {
+        return None;
+    }
+
     let anchor_kind = statement_alignment_node_kind(&nodes[start])?;
     let allow_eq_alignment = ctx.config.align.continuous_assign_statement;
     let mut entries = Vec::new();
@@ -1168,6 +1194,9 @@ fn try_render_aligned_statement_group(
         }
 
         let node = &nodes[end];
+        if layout_node_is_format_disabled(node, plan) {
+            break;
+        }
         if end > start && count_blank_lines_before_layout_node(root, node) > 0 {
             break;
         }
@@ -1224,6 +1253,15 @@ fn try_render_aligned_statement_group(
     }
 
     Some((vec![ir::align_group(entries)], end))
+}
+
+fn layout_node_is_format_disabled(node: &LayoutNodePlan, plan: &RootFormatPlan) -> bool {
+    let syntax_id = match node {
+        LayoutNodePlan::Comment(comment) => comment.syntax_id,
+        LayoutNodePlan::Syntax(syntax) => syntax.syntax_id,
+    };
+
+    plan.layout.format_disabled.contains(&syntax_id)
 }
 
 fn layout_comment_is_inline_trailing(

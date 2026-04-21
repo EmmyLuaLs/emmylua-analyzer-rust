@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod test {
-    use crate::{LuaAstNode, LuaComment, LuaKind, LuaParser, LuaTokenKind, ParserConfig};
+    use crate::{
+        LuaAstNode, LuaComment, LuaCommentFormatDirective, LuaKind, LuaParser, LuaTokenKind,
+        ParserConfig,
+    };
 
     #[allow(unused)]
     fn print_ast(lua_code: &str) {
@@ -120,5 +123,33 @@ mod test {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn test_comment_format_directive_only_recognizes_fmt_on_off() {
+        let tree = LuaParser::parse(
+            "-- fmt: off\nlocal a = 1\n-- fmt: on\n",
+            ParserConfig::default(),
+        );
+        let root = tree.get_chunk_node();
+        let mut comments = root.descendants::<LuaComment>();
+
+        assert_eq!(
+            comments.next().unwrap().get_format_directive(),
+            Some(LuaCommentFormatDirective::FormatOff)
+        );
+        assert_eq!(
+            comments.next().unwrap().get_format_directive(),
+            Some(LuaCommentFormatDirective::FormatOn)
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_is_not_treated_as_format_directive() {
+        let tree = LuaParser::parse("--- fmt: off\nlocal a = 1\n", ParserConfig::default());
+        let root = tree.get_chunk_node();
+        let comment = root.descendants::<LuaComment>().next().unwrap();
+
+        assert_eq!(comment.get_format_directive(), None);
     }
 }
