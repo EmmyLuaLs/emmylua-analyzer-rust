@@ -1,9 +1,6 @@
 use std::time::Duration;
 
-use luars::{
-    LuaResult, LuaVM, LuaValue, SandboxConfig,
-    lua_vm::{LuaState, SafeOption},
-};
+use luars::{LuaResult, LuaState, LuaVM, LuaValue, SafeOption, SandboxConfig};
 use serde_json::Value;
 
 pub fn load_lua_config(content: &str) -> Result<Value, String> {

@@ -8,6 +8,7 @@ members = [
 [workspace.dependencies]
 # local
 emmylua_code_analysis = { path = "crates/emmylua_code_analysis", version = "0.22.0" }
+emmylua_formatter = { path = "crates/emmylua_formatter", version = "0.1.0" }
 emmylua_parser = { path = "crates/emmylua_parser", version = "0.25.0" }
 emmylua_parser_desc = { path = "crates/emmylua_parser_desc", version = "0.25.0" }
 emmylua_diagnostic_macro = { path = "crates/emmylua_diagnostic_macro", version = "0.5.0" }
@@ -32,7 +33,6 @@ tokio-util = "0.7.16"
 walkdir = "2.5.0"
 serde_yml = "0.0.12"
 dirs = "6"
-emmylua_codestyle = "0.6.0"
 wax = "0.6.0"
 percent-encoding = "2.3"
 flagset = "0.4.7"
@@ -54,7 +54,7 @@ num-traits = { version = "0.2", features = ["std"] }
 mimalloc = { version = "0.1.48", features = ["v3"] }
 googletest = "0.14.2"
 unicode-general-category = "1.0.0"
-luars = { version = "0.17.0", features = ["serde", "sandbox"] }
+luars = { version = "0.18.1", features = ["serde", "sandbox"] }
 # request's default-tls feature pulls in a dependency on aws-lc-rs,
 # which causes a linking error on Windows
 reqwest = { version = "0.13.1", default-features = false, features = [

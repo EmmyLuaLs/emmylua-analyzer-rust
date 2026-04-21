@@ -1,18 +1,26 @@
 mod external_format;
 mod format_diff;
 
-use emmylua_code_analysis::{FormattingOptions, reformat_code};
+use emmylua_formatter::{IndentKind, LuaFormatConfig, reformat_chunk, resolve_config_for_path};
+use emmylua_parser::LuaSyntaxTree;
 use lsp_types::{
     ClientCapabilities, DocumentFormattingParams, OneOf, ServerCapabilities, TextEdit,
 };
+use std::path::Path;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    context::ServerContextSnapshot, handlers::document_formatting::format_diff::format_diff,
-};
+use crate::context::ServerContextSnapshot;
 pub use external_format::{FormattingRange, external_tool_format};
+pub(crate) use format_diff::format_diff;
 
 use super::RegisterCapabilities;
+
+pub struct FormattingOptions {
+    pub indent_size: u32,
+    pub use_tabs: bool,
+    pub insert_final_newline: bool,
+    pub non_standard_symbol: bool,
+}
 
 pub async fn on_formatting_handler(
     context: ServerContextSnapshot,
@@ -61,7 +69,13 @@ pub async fn on_formatting_handler(
         )
         .await?
     } else {
-        reformat_code(text, &normalized_path, formatting_options)
+        format_with_workspace_formatter(
+            syntax_tree,
+            Some(file_path.as_path()),
+            params.options.tab_size as usize,
+            params.options.insert_spaces,
+            params.options.insert_final_newline.unwrap_or(true),
+        )
     };
 
     if client_id.is_intellij() || client_id.is_other() {
@@ -81,6 +95,27 @@ pub async fn on_formatting_handler(
     };
 
     Some(text_edits)
+}
+
+pub(crate) fn format_with_workspace_formatter(
+    tree: &LuaSyntaxTree,
+    source_path: Option<&Path>,
+    tab_size: usize,
+    insert_spaces: bool,
+    insert_final_newline: bool,
+) -> String {
+    let mut config = resolve_config_for_path(source_path, None)
+        .map(|resolved| resolved.config)
+        .unwrap_or_else(|_| LuaFormatConfig::default());
+    config.indent.kind = if insert_spaces {
+        IndentKind::Space
+    } else {
+        IndentKind::Tab
+    };
+    config.indent.width = tab_size.max(1);
+    config.output.insert_final_newline = insert_final_newline;
+
+    reformat_chunk(&tree.get_chunk_node(), &config)
 }
 
 pub struct DocumentFormattingCapabilities;

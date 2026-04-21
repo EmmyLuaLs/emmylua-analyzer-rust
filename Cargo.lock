@@ -564,7 +564,6 @@ version = "0.22.0"
 dependencies = [
  "dirs",
  "emmy_lsp_types",
- "emmylua_codestyle",
  "emmylua_diagnostic_macro",
  "emmylua_parser",
  "encoding_rs",
@@ -591,17 +590,6 @@ dependencies = [
  "url",
  "walkdir",
  "wax",
-]
-
-[[package]]
-name = "emmylua_codestyle"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2fb179dd808be6e4da3dfc7dcbb058a9f3ee840e238e1bce62d317d0afdfca8"
-dependencies = [
- "cc",
- "glob",
- "libc",
 ]
 
 [[package]]
@@ -660,6 +648,7 @@ dependencies = [
  "dirs",
  "emmy_lsp_types",
  "emmylua_code_analysis",
+ "emmylua_formatter",
  "emmylua_parser",
  "emmylua_parser_desc",
  "fern",
@@ -1526,9 +1515,9 @@ dependencies = [
 
 [[package]]
 name = "luars"
-version = "0.17.0"
+version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e48e2f276047ed2b75edf7fd051634d693c0b4ad747c37b9b267133be05f767"
+checksum = "b8417a6501e6578bdab579afcdfda7a8e070565b479d5e518c2ac5e29ecad9ed"
 dependencies = [
  "ahash",
  "chrono",
@@ -1541,9 +1530,9 @@ dependencies = [
 
 [[package]]
 name = "luars-derive"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14c1ccef6c678ea324ae6afa818f077c9883f6695e2df61199604b30bc6981e0"
+checksum = "04124844ae8f94ba81c6daa9bd858b5841b4e76b5cbcf2252562be0cdd948985"
 dependencies = [
  "proc-macro2",
  "quote",

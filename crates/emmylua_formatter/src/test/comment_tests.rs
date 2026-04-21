@@ -996,8 +996,30 @@ local t = {
     #[test]
     fn test_doc_comment_align_param_columns_keeps_complex_type_intact() {
         assert_format!(
-            "---@param short fun(x: string, y: number): table<string, number> desc\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
-            "---@param short       fun(x: string, y: number): table<string, number> desc\n---@param much_longer integer                                          longer desc\nlocal function f(short, much_longer) end\n"
+            r#"---@param short fun(x: string, y: number): table<string, number> desc
+---@param much_longer integer longer desc
+local function f(short, much_longer) end
+"#,
+            r#"---@param short       fun(x: string, y: number): table<string, number> desc
+---@param much_longer integer                                          longer desc
+local function f(short, much_longer) end
+"#
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_structured_tag_mapping_survives_unstructured_tag_between_lines() {
+        assert_format!(
+            r#"---@param short fun(x: string, y: number): table<string, number> desc
+---@version >5.3
+---@param much_longer integer longer desc
+local function f(short, much_longer) end
+"#,
+            r#"---@param short       fun(x: string, y: number): table<string, number> desc
+---@version >5.3
+---@param much_longer integer                                          longer desc
+local function f(short, much_longer) end
+"#
         );
     }
 
@@ -1030,6 +1052,16 @@ local t = {
         assert_format!(
             "---@meta\n-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)\n--\n-- Licensed under the Apache License, Version 2.0 (the \"License\"); you may not\n-- use this file except in compliance with the License. You may obtain a copy of\n-- the License at\n--\n-- http://www.apache.org/licenses/LICENSE-2.0\n--\n-- Unless required by applicable law or agreed to in writing, software\n-- distributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\n-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\n-- License for the specific language governing permissions and limitations under\n-- the License.\n\nlocal value = nil\n",
             "---@meta\n-- Copyright (c) 2018. tangzx(love.tangzx@qq.com)\n--\n-- Licensed under the Apache License, Version 2.0 (the \"License\"); you may not\n-- use this file except in compliance with the License. You may obtain a copy of\n-- the License at\n--\n-- http://www.apache.org/licenses/LICENSE-2.0\n--\n-- Unless required by applicable law or agreed to in writing, software\n-- distributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\n-- WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\n-- License for the specific language governing permissions and limitations under\n-- the License.\n\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_pure_doc_meta_line_does_not_panic() {
+        assert_format!(
+            r#"---@meta
+"#,
+            r#"---@meta
+"#
         );
     }
 
@@ -1154,8 +1186,14 @@ local t = {
     #[test]
     fn test_doc_comment_align_class_columns_keeps_complex_generic_head_intact() {
         assert_format!(
-            "---@class ExtremelyLongSimpleName short desc\n---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc\nlocal value = {}\n",
-            "---@class ExtremelyLongSimpleName                                        short desc\n---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc\nlocal value = {}\n"
+            r#"---@class ExtremelyLongSimpleName short desc
+---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc
+local value = {}
+"#,
+            r#"---@class ExtremelyLongSimpleName                                        short desc
+---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc
+local value = {}
+"#
         );
     }
 
@@ -1186,8 +1224,14 @@ local t = {
     #[test]
     fn test_doc_comment_align_alias_columns_keeps_function_type_intact() {
         assert_format!(
-            "---@alias ExtremelyLongAliasName string description\n---@alias H fun(x: string, y: number): table<string, number> handler desc\nlocal value = nil\n",
-            "---@alias ExtremelyLongAliasName string                      description\n---@alias H fun(x: string, y: number): table<string, number> handler desc\nlocal value = nil\n"
+            r#"---@alias ExtremelyLongAliasName string description
+---@alias H fun(x: string, y: number): table<string, number> handler desc
+local value = nil
+"#,
+            r#"---@alias ExtremelyLongAliasName string                      description
+---@alias H fun(x: string, y: number): table<string, number> handler desc
+local value = nil
+"#
         );
     }
 
@@ -1283,6 +1327,34 @@ local t = {
         assert_format_with_config!(
             "--- @alias Complex\n--- | string\n--- | integer\nlocal value = nil\n",
             "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_doc_continue_or_variants_are_detected_from_tokens() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
+                space_after_description_dash: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"--- @alias Complex
+--- |+ string
+--- |> integer
+local value = nil
+"#,
+            r#"---@alias Complex
+---|+ string
+---|> integer
+local value = nil
+"#,
             config
         );
     }

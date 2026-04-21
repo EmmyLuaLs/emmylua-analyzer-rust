@@ -1,7 +1,8 @@
-use crate::handlers::document_formatting::{FormattingRange, external_tool_format};
-use emmylua_code_analysis::{
-    EmmyrcExternalTool, FormattingOptions, LuaDocument, RangeFormatResult,
+use crate::handlers::{
+    document_formatting::{FormattingOptions, FormattingRange, external_tool_format},
+    document_range_formatting::RangeFormatResult,
 };
+use emmylua_code_analysis::{EmmyrcExternalTool, LuaDocument};
 
 pub async fn external_tool_range_format(
     emmyrc_external_tool: &EmmyrcExternalTool,

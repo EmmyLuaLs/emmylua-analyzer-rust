@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
     EmmyLuaAnalysis, WorkspaceFolder, build_workspace_folders, collect_workspace_files,
-    load_configs, update_code_style,
+    load_configs,
 };
 use fern::Dispatch;
 use log::LevelFilter;
@@ -120,23 +120,7 @@ pub fn load_workspace(
     );
     let files = file_infos
         .into_iter()
-        .filter_map(|file| {
-            if file.path.ends_with(".editorconfig") {
-                let file_path = PathBuf::from(file.path);
-                let parent_dir = file_path
-                    .parent()
-                    .unwrap()
-                    .to_path_buf()
-                    .to_string_lossy()
-                    .to_string()
-                    .replace("\\", "/");
-                let file_normalized = file_path.to_string_lossy().to_string().replace("\\", "/");
-                update_code_style(&parent_dir, &file_normalized);
-                None
-            } else {
-                Some(file.into_tuple())
-            }
-        })
+        .map(|file| file.into_tuple())
         .collect();
     analysis.update_files_by_path(files);
 

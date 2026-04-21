@@ -15,7 +15,7 @@ use crate::context::lsp_features::LspFeatures;
 use crate::handlers::{ClientConfig, init_analysis, register_files_watch};
 use emmylua_code_analysis::{
     EmmyLuaAnalysis, Emmyrc, WorkspaceFileMatcher, WorkspaceFolder, load_configs,
-    read_file_with_encoding, update_code_style, uri_to_file_path,
+    read_file_with_encoding, uri_to_file_path,
 };
 use lsp_types::Uri;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
@@ -148,19 +148,6 @@ impl WorkspaceManager {
             spawn_workspace_reload_task(reload_task_handles, context, workspace_folders, emmyrc);
             config_reload_token.clear(&cancel_token);
         });
-    }
-
-    pub fn update_editorconfig(&self, path: PathBuf) {
-        let parent_dir = path
-            .parent()
-            .unwrap()
-            .to_path_buf()
-            .to_string_lossy()
-            .to_string()
-            .replace("\\", "/");
-        let file_normalized = path.to_string_lossy().to_string().replace("\\", "/");
-        log::info!("update code style: {:?}", file_normalized);
-        update_code_style(&parent_dir, &file_normalized);
     }
 
     pub fn add_reload_workspace_task(&self, context: ServerContextSnapshot) {
