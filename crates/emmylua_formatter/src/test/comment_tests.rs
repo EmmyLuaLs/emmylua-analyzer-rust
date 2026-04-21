@@ -110,6 +110,72 @@ local t = {
     }
 
     #[test]
+    fn test_table_field_trailing_comment_alignment() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                table_expand: crate::config::ExpandStrategy::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123, -- ookko
+}
+"#,
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123   -- ookko
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_field_trailing_comment_alignment_with_multiline_trailing_comma() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig, OutputConfig, TrailingTableSeparator},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                table_expand: crate::config::ExpandStrategy::Always,
+                ..Default::default()
+            },
+            output: OutputConfig {
+                trailing_table_separator: TrailingTableSeparator::Multiline,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123,   -- ookko
+}
+"#,
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123,  -- ookko
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_table_field_comment_forces_expand() {
         assert_format!(
             r#"
@@ -1504,6 +1570,14 @@ local value = nil
         assert_format!(
             "--- @type ( string|number)[]\nlocal c\n",
             "---@type (string|number)[]\nlocal c\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_type_normalizes_object_index_field_spacing() {
+        assert_format!(
+            "--- @type {[string]: number,[number]: string }\nlocal x\n",
+            "---@type { [string]: number, [number]: string }\nlocal x\n"
         );
     }
 

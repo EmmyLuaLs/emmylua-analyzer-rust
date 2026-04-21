@@ -1811,7 +1811,7 @@ fn normalize_doc_comment_block(
     prefix_replacements: &[Option<String>],
     normalized_lines: &[Option<String>],
 ) -> Vec<String> {
-    let line_inputs = collect_doc_block_line_inputs(comment, raw, normalized_lines);
+    let line_inputs = collect_doc_block_line_inputs(ctx, comment, raw, normalized_lines);
     let mut parsed = Vec::with_capacity(line_inputs.len());
 
     for line_input in &line_inputs {
@@ -1866,12 +1866,13 @@ fn normalize_doc_comment_block(
 }
 
 fn collect_doc_block_line_inputs<'a>(
+    ctx: &FormatContext,
     comment: &'a LuaComment,
     raw: &'a str,
     normalized_lines: &'a [Option<String>],
 ) -> Vec<DocBlockLineInput<'a>> {
     let raw_lines: Vec<&str> = raw.lines().collect();
-    let structured_tags_by_line = collect_structured_doc_tag_columns_by_line(comment, raw);
+    let structured_tags_by_line = collect_structured_doc_tag_columns_by_line(ctx, comment, raw);
     let prefix_kinds = collect_doc_line_prefix_kinds(comment, raw_lines.len());
 
     raw_lines
@@ -2490,6 +2491,7 @@ fn parse_generic_columns(input: &str) -> Vec<String> {
 }
 
 fn collect_structured_doc_tag_columns_by_line(
+    ctx: &FormatContext,
     comment: &LuaComment,
     raw: &str,
 ) -> Vec<Option<StructuredDocTagColumns>> {
@@ -2505,7 +2507,7 @@ fn collect_structured_doc_tag_columns_by_line(
         let relative_start =
             u32::from(child.text_range().start()).saturating_sub(u32::from(comment_start)) as usize;
         let line_index = line_index_for_offset(&line_start_offsets, relative_start);
-        let Some(columns) = structured_doc_tag_columns_from_ast(&tag) else {
+        let Some(columns) = structured_doc_tag_columns_from_ast(ctx, &tag) else {
             continue;
         };
         if let Some(slot) = structured_tags.get_mut(line_index) {
@@ -2533,7 +2535,10 @@ fn line_index_for_offset(line_start_offsets: &[usize], offset: usize) -> usize {
     }
 }
 
-fn structured_doc_tag_columns_from_ast(tag: &LuaDocTag) -> Option<StructuredDocTagColumns> {
+fn structured_doc_tag_columns_from_ast(
+    ctx: &FormatContext,
+    tag: &LuaDocTag,
+) -> Option<StructuredDocTagColumns> {
     match tag {
         LuaDocTag::Class(tag) => Some(StructuredDocTagColumns {
             tag: "class".to_string(),
@@ -2553,12 +2558,15 @@ fn structured_doc_tag_columns_from_ast(tag: &LuaDocTag) -> Option<StructuredDocT
             description: tag.get_description().map(|it| it.get_description_text()),
             use_normalized_head_as_single_column: true,
         }),
-        LuaDocTag::Type(tag) => Some(StructuredDocTagColumns {
-            tag: "type".to_string(),
-            head_columns: Vec::new(),
-            description: tag.get_description().map(|it| it.get_description_text()),
-            use_normalized_head_as_single_column: true,
-        }),
+        LuaDocTag::Type(tag) => {
+            let head_columns = structured_type_columns(ctx, tag);
+            Some(StructuredDocTagColumns {
+                tag: "type".to_string(),
+                use_normalized_head_as_single_column: head_columns.is_empty(),
+                head_columns,
+                description: tag.get_description().map(|it| it.get_description_text()),
+            })
+        }
         LuaDocTag::Overload(tag) => Some(StructuredDocTagColumns {
             tag: "overload".to_string(),
             head_columns: Vec::new(),
@@ -2584,6 +2592,39 @@ fn structured_doc_tag_columns_from_ast(tag: &LuaDocTag) -> Option<StructuredDocT
             use_normalized_head_as_single_column: false,
         }),
         _ => None,
+    }
+}
+
+fn structured_type_columns(ctx: &FormatContext, tag: &LuaDocTagType) -> Vec<String> {
+    let mut types = tag.get_type_list();
+    let Some(first_type) = types.next() else {
+        return Vec::new();
+    };
+
+    if types.next().is_some() {
+        return Vec::new();
+    }
+
+    match first_type {
+        LuaDocType::Object(object) => vec![format_doc_object_type_inline(ctx, &object)],
+        _ => Vec::new(),
+    }
+}
+
+fn format_doc_object_type_inline(ctx: &FormatContext, object: &LuaDocObjectType) -> String {
+    let fields = object
+        .get_fields()
+        .map(|field| field.syntax().text().to_string().trim().to_string())
+        .collect::<Vec<_>>();
+
+    if fields.is_empty() {
+        return "{}".to_string();
+    }
+
+    if ctx.config.spacing.space_inside_braces {
+        format!("{{ {} }}", fields.join(", "))
+    } else {
+        format!("{{{}}}", fields.join(", "))
     }
 }
 
@@ -2626,7 +2667,7 @@ fn structured_columns_from_normalized_head(
 
     match structured_head_columns.len() {
         0 => Vec::new(),
-        1 => vec![normalized_head],
+        1 => structured_head_columns.to_vec(),
         2 => {
             let raw_first = structured_head_columns[0].trim();
             let normalized_first = collapse_spaces(raw_first);

@@ -1795,6 +1795,15 @@ fn build_table_expanded_inner(
 ) -> Vec<DocIR> {
     let mut inner = Vec::new();
     let last_field_idx = entries.iter().rposition(|_| true);
+    let trailing_comment_widths = aligned_trailing_comment_widths_for_widths(
+        align_comments && entries.iter().any(|entry| entry.trailing_comment.is_some()),
+        entries.iter().enumerate().map(|(index, entry)| {
+            (
+                table_entry_comment_alignment_width(ctx, &entry.doc, last_field_idx == Some(index)),
+                entry.trailing_comment.is_some(),
+            )
+        }),
+    );
 
     if align_eq {
         let mut index = 0usize;
@@ -1884,6 +1893,7 @@ fn build_table_expanded_inner(
                 index,
                 last_field_idx,
                 trailing,
+                trailing_comment_widths.get(index).copied().flatten(),
             );
             index += 1;
         }
@@ -1892,7 +1902,15 @@ fn build_table_expanded_inner(
     }
 
     for (index, entry) in entries.iter().enumerate() {
-        push_table_entry_line(ctx, &mut inner, entry, index, last_field_idx, trailing);
+        push_table_entry_line(
+            ctx,
+            &mut inner,
+            entry,
+            index,
+            last_field_idx,
+            trailing,
+            trailing_comment_widths.get(index).copied().flatten(),
+        );
     }
 
     inner
@@ -1905,6 +1923,7 @@ fn push_table_entry_line(
     index: usize,
     last_field_idx: Option<usize>,
     trailing: &DocIR,
+    aligned_content_width: Option<usize>,
 ) {
     inner.push(ir::hard_line());
     for comment_docs in &entry.leading_comments {
@@ -1918,10 +1937,31 @@ fn push_table_entry_line(
         inner.push(ir::syntax_token(LuaTokenKind::TkComma));
     }
     if let Some(comment_docs) = &entry.trailing_comment {
-        let mut suffix = trailing_comment_prefix(ctx);
+        let mut suffix = trailing_comment_prefix_for_width(
+            ctx,
+            table_entry_comment_alignment_width(ctx, &entry.doc, last_field_idx == Some(index)),
+            aligned_content_width,
+        );
         suffix.extend(comment_docs.clone());
         inner.push(ir::line_suffix(suffix));
     }
+}
+
+fn table_entry_comment_alignment_width(
+    ctx: &FormatContext,
+    entry_docs: &[DocIR],
+    is_last: bool,
+) -> usize {
+    let separator_width = if is_last {
+        match ctx.config.trailing_table_comma() {
+            TrailingComma::Never => 0,
+            TrailingComma::Multiline | TrailingComma::Always => 1,
+        }
+    } else {
+        1
+    };
+
+    crate::ir::ir_flat_width(entry_docs) + separator_width
 }
 
 fn aligned_table_comment_widths(
@@ -2837,6 +2877,30 @@ where
         .iter()
         .filter(|(_, has_comment)| *has_comment)
         .map(|(docs, _)| crate::ir::ir_flat_width(docs))
+        .max();
+
+    entries
+        .into_iter()
+        .map(|(_, has_comment)| has_comment.then_some(max_width.unwrap_or(0)))
+        .collect()
+}
+
+fn aligned_trailing_comment_widths_for_widths<I>(
+    allow_alignment: bool,
+    entries: I,
+) -> Vec<Option<usize>>
+where
+    I: IntoIterator<Item = (usize, bool)>,
+{
+    let entries: Vec<_> = entries.into_iter().collect();
+    if !allow_alignment {
+        return entries.into_iter().map(|_| None).collect();
+    }
+
+    let max_width = entries
+        .iter()
+        .filter(|(_, has_comment)| *has_comment)
+        .map(|(width, _)| *width)
         .max();
 
     entries
