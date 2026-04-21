@@ -1972,8 +1972,12 @@ fn parse_doc_tag_line(
         .unwrap_or("")
         .trim_start()
         .to_string();
-    let (normalized_head, raw_description) = split_doc_tag_description(&normalized_rest, &raw_rest);
     let structured_tag = structured_tag.filter(|structured| structured.tag == tag);
+    let (normalized_head, raw_description) = if structured_tag.is_some() {
+        (normalized_rest.clone(), None)
+    } else {
+        split_doc_tag_description(&normalized_rest, &raw_rest)
+    };
     let structured_description = structured_tag
         .and_then(|structured| structured.description.clone())
         .and_then(first_structured_description_line);
@@ -1982,7 +1986,11 @@ fn parse_doc_tag_line(
             if structured.use_normalized_head_as_single_column {
                 structured_single_head_columns(&normalized_head, structured_description.as_deref())
             } else {
-                structured.head_columns.clone()
+                structured_columns_from_normalized_head(
+                    &normalized_head,
+                    &structured.head_columns,
+                    structured_description.as_deref(),
+                )
             }
         })
         .unwrap_or_else(|| match tag.as_str() {
@@ -2494,13 +2502,12 @@ fn collect_structured_doc_tag_columns_by_line(
         let Some(tag) = LuaDocTag::cast(child.clone()) else {
             continue;
         };
-        let Some(columns) = structured_doc_tag_columns_from_ast(&tag) else {
-            continue;
-        };
-
         let relative_start =
             u32::from(child.text_range().start()).saturating_sub(u32::from(comment_start)) as usize;
         let line_index = line_index_for_offset(&line_start_offsets, relative_start);
+        let Some(columns) = structured_doc_tag_columns_from_ast(&tag) else {
+            continue;
+        };
         if let Some(slot) = structured_tags.get_mut(line_index) {
             *slot = Some(columns);
         }
@@ -2608,6 +2615,53 @@ fn strip_structured_description_suffix(normalized_head: &str, description: &str)
         .map(str::to_string)
 }
 
+fn structured_columns_from_normalized_head(
+    normalized_head: &str,
+    structured_head_columns: &[String],
+    structured_description: Option<&str>,
+) -> Vec<String> {
+    let normalized_head = structured_description
+        .and_then(|description| strip_structured_description_suffix(normalized_head, description))
+        .unwrap_or_else(|| normalized_head.trim().to_string());
+
+    match structured_head_columns.len() {
+        0 => Vec::new(),
+        1 => vec![normalized_head],
+        2 => {
+            let raw_first = structured_head_columns[0].trim();
+            let normalized_first = collapse_spaces(raw_first);
+            let first_variants = structured_first_column_variants(raw_first, &normalized_first);
+            let rest = first_variants
+                .iter()
+                .find_map(|candidate| normalized_head.strip_prefix(candidate.as_str()))
+                .map(str::trim_start)
+                .unwrap_or(normalized_head.as_str());
+
+            if rest.is_empty() {
+                vec![normalized_first]
+            } else {
+                vec![normalized_first, rest.to_string()]
+            }
+        }
+        _ => structured_head_columns.to_vec(),
+    }
+}
+
+fn structured_first_column_variants(raw_first: &str, normalized_first: &str) -> Vec<String> {
+    let mut variants = vec![raw_first.to_string()];
+    if normalized_first != raw_first {
+        variants.push(normalized_first.to_string());
+    }
+
+    if let Some(base) = normalized_first.strip_suffix('?') {
+        variants.push(format!("{base} ?"));
+    }
+
+    variants.sort();
+    variants.dedup();
+    variants
+}
+
 fn structured_param_columns(tag: &LuaDocTagParam) -> Vec<String> {
     let node = tag.syntax();
     let Some(content_start) = structured_tag_content_start(node) else {
@@ -2637,13 +2691,10 @@ fn structured_param_columns(tag: &LuaDocTagParam) -> Vec<String> {
     }
 
     let type_text = if let Some(type_node) = tag.get_type() {
-        slice_node_text(
-            node,
-            type_node.syntax().text_range().start(),
-            node.text_range().end(),
-        )
-        .trim()
-        .to_string()
+        let type_start = adjust_attached_type_start(node, type_node.syntax().text_range().start());
+        slice_same_line_node_text(node, type_start, node.text_range().end())
+            .trim()
+            .to_string()
     } else {
         slice_node_text(node, head_token.text_range().end(), node.text_range().end())
             .trim()
@@ -2672,13 +2723,12 @@ fn structured_field_columns(tag: &LuaDocTagField) -> Vec<String> {
         ];
     };
 
-    let type_start =
-        adjust_attached_field_type_start(node, type_node.syntax().text_range().start());
+    let type_start = adjust_attached_type_start(node, type_node.syntax().text_range().start());
 
     let key = slice_node_text(node, content_start, type_start)
         .trim()
         .to_string();
-    let type_text = slice_node_text(node, type_start, node.text_range().end())
+    let type_text = slice_same_line_node_text(node, type_start, node.text_range().end())
         .trim()
         .to_string();
 
@@ -2696,6 +2746,9 @@ fn structured_return_columns(tag: &LuaDocTagReturn) -> Vec<String> {
     };
 
     let head = slice_node_text(node, content_start, node.text_range().end())
+        .lines()
+        .next()
+        .unwrap_or_default()
         .trim()
         .to_string();
 
@@ -2710,6 +2763,14 @@ fn structured_tag_content_start(node: &LuaSyntaxNode) -> Option<TextSize> {
     node.first_token().map(|token| token.text_range().end())
 }
 
+fn slice_same_line_node_text(node: &LuaSyntaxNode, start: TextSize, end: TextSize) -> String {
+    slice_node_text(node, start, end)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_string()
+}
+
 fn first_structured_description_line(text: String) -> Option<String> {
     text.lines()
         .next()
@@ -2718,7 +2779,7 @@ fn first_structured_description_line(text: String) -> Option<String> {
         .map(str::to_string)
 }
 
-fn adjust_attached_field_type_start(node: &LuaSyntaxNode, type_start: TextSize) -> TextSize {
+fn adjust_attached_type_start(node: &LuaSyntaxNode, type_start: TextSize) -> TextSize {
     let base = u32::from(node.text_range().start());
     let relative = u32::from(type_start).saturating_sub(base) as usize;
     if relative == 0 {

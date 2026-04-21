@@ -1048,6 +1048,22 @@ local function f(short, much_longer) end
     }
 
     #[test]
+    fn test_doc_comment_param_parenthesized_function_type_keeps_leading_paren() {
+        assert_format!(
+            "--- @param chunk      (fun(...: any): string)|Language<\"Lua\">\nlocal function f(chunk) end\n",
+            "---@param chunk (fun(...: any): string)|Language<\"Lua\">\nlocal function f(chunk) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_param_type_uses_spacing_normalization() {
+        assert_format!(
+            "--- @param value table<K, V>  |V[]|{[K]: V }\nlocal function f(value) end\n",
+            "---@param value table<K, V>|V[]|{[K]: V }\nlocal function f(value) end\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_version_keeps_space_before_comparison() {
         assert_format!(
             "---@version >5.3\nlocal value = nil\n",
@@ -1114,6 +1130,14 @@ local function f(short, much_longer) end
     }
 
     #[test]
+    fn test_doc_comment_empty_return_keeps_following_continue_or_lines_separate() {
+        assert_format!(
+            "--- @param co thread\n--- @return\n--- | \"running\" # Is running.\n--- | \"suspended\" # Is suspended or not started.\nlocal function status(co) end\n",
+            "---@param co thread\n---@return\n--- | \"running\" # Is running.\n--- | \"suspended\" # Is suspended or not started.\nlocal function status(co) end\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_return_hash_description_preserves_body_text() {
         assert_format!(
             "---@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.\n---@return integer len # length of the buffer data in bytes\nlocal function f()\nend\n",
@@ -1134,6 +1158,14 @@ local function f(short, much_longer) end
         assert_format!(
             "---@field public [\"foo\"] string?\n---@field private [bar] integer\n---@field protected baz fun(x: string): boolean\nlocal t = {}\n",
             "---@field public [\"foo\"] string?\n---@field private [bar]  integer\n---@field protected baz  fun(x: string): boolean\nlocal t = {}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_field_function_type_spacing_stays_inside_type_column() {
+        assert_format!(
+            "--- @class std.metatable\n--- @field __mode?      'v'|'k'|'kv'\n--- @field __metatable? any\n--- @field __tostring?  (fun(t): string)\n--- @field __gc?        fun(t)\n--- @field __add?       fun(t1,         t2): any\n--- @field __sub?       fun(t1,         t2): any\n",
+            "---@class std.metatable\n---@field __mode?      'v'|'k'|'kv'\n---@field __metatable? any\n---@field __tostring?  (fun(t): string)\n---@field __gc?        fun(t)\n---@field __add?       fun(t1, t2): any\n---@field __sub?       fun(t1, t2): any\n"
         );
     }
 
@@ -1480,6 +1512,14 @@ local value = nil
         assert_format!(
             "--- @generic Value , Result : number mapped result\nlocal function f() end\n",
             "---@generic Value, Result: number mapped result\nlocal function f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_generic_hash_string_literal_is_not_treated_as_description() {
+        assert_format!(
+            "--- @generic T, Num: integer|'#'\nlocal function f() end\n",
+            "---@generic T, Num: integer|'#'\nlocal function f() end\n"
         );
     }
 

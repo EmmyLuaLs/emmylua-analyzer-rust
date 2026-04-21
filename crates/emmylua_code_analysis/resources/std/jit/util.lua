@@ -23,12 +23,15 @@ local funcinfo = {
     source = "",
     loc = "",
     ---@type Proto[]
-    proto = {}
+    proto = {},
 }
 
 --- @class jit.funcinfo.c
 --- @field ffid integer|nil
-local funcinfo2 = { addr = 0, upvalues = 0 }
+local funcinfo2 = {
+    addr = 0,
+    upvalues = 0,
+}
 
 --- @param func function
 --- @param pc?  integer
@@ -52,7 +55,13 @@ function util.funck(func, idx) end
 function util.funcuvname(func, idx) end
 
 --- @class jit.traceinfo
-local traceinfo = { nins = 0, nk = 0, link = 0, nexit = 0, linktype = "" }
+local traceinfo = {
+    nins = 0,
+    nk = 0,
+    link = 0,
+    nexit = 0,
+    linktype = "",
+}
 
 --- @param tr Trace
 --- @return jit.traceinfo? info
