@@ -1498,6 +1498,25 @@ end
     }
 
     #[test]
+    fn test_issue_1045() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            local f = {
+                [8] = function(aaa)
+                    ---@cast aaa number
+                    b = aaa
+                end
+            }
+            "#,
+        );
+
+        let b = ws.expr_ty("b");
+        let b_desc = ws.humanize_type(b);
+        assert_eq!(b_desc, "number");
+    }
+
+    #[test]
     fn test_issue_364() {
         let mut ws = VirtualWorkspace::new();
 

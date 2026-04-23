@@ -363,7 +363,9 @@ impl<'a> FlowTypeEngine<'a> {
     ) -> Result<SchedulerStep, InferFailReason> {
         let mut cast_input_type = match antecedent_result {
             Ok(resolved_type) => resolved_type,
-            Err(err) => return self.fail_query(&walk.query, err),
+            // `---@cast` is an explicit assertion, so unresolved source types
+            // should still be narrowed by applying the cast from `unknown`.
+            Err(_) => LuaType::Unknown,
         };
         for cast_op_type in cast_op_types {
             cast_input_type = match cast_type(
