@@ -11,7 +11,6 @@ mod check_param_count;
 mod check_return_count;
 mod circle_doc_class;
 mod code_style;
-mod code_style_check;
 mod deprecated;
 mod discard_returns;
 mod duplicate_field;
@@ -91,7 +90,6 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
     run_check::<param_type_check::ParamTypeCheckChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
-    run_check::<code_style_check::CodeStyleCheckChecker>(context, semantic_model);
     run_check::<return_type_mismatch::ReturnTypeMismatch>(context, semantic_model);
     run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, semantic_model);
     run_check::<redefined_local::RedefinedLocalChecker>(context, semantic_model);

@@ -1,5 +1,4 @@
 mod client_config;
-mod codestyle;
 mod locale;
 mod std_i18n;
 
@@ -17,7 +16,6 @@ use crate::{
     logger::init_logger,
 };
 pub use client_config::{ClientConfig, get_client_config};
-use codestyle::load_editorconfig;
 use emmylua_code_analysis::{
     EmmyLuaAnalysis, Emmyrc, WorkspaceFolder, build_workspace_folders, collect_workspace_files,
     uri_to_file_path,
@@ -73,7 +71,6 @@ pub async fn initialized_handler(
     let config_root: Option<PathBuf> = main_root.map(PathBuf::from);
 
     let emmyrc = load_emmy_config(config_root, client_config.clone());
-    load_editorconfig(workspace_folders.clone());
 
     // init std lib
     init_std_lib(context.analysis(), &cmd_args, emmyrc.clone()).await;

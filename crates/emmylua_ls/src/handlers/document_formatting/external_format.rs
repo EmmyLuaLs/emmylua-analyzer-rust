@@ -1,10 +1,12 @@
-use emmylua_code_analysis::{EmmyrcExternalTool, FormattingOptions};
+use emmylua_code_analysis::EmmyrcExternalTool;
 use rowan::TextSize;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
+
+use crate::handlers::document_formatting::FormattingOptions;
 
 pub struct FormattingRange {
     pub start_offset: TextSize,

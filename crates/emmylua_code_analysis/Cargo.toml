@@ -47,7 +47,6 @@ url.workspace = true
 smol_str.workspace = true
 serde_with.workspace = true
 include_dir.workspace = true
-emmylua_codestyle.workspace = true
 itertools.workspace = true
 luars.workspace = true
 reqwest = { workspace = true, optional = true }

@@ -9,7 +9,6 @@ use crate::{
         VarRefId,
         infer_index::infer_member_by_member_key,
         narrow::{
-            ResultTypeOrContinue,
             condition_flow::{ConditionFlowAction, InferConditionFlow, PendingConditionNarrow},
             get_var_ref_type, narrow_false_or_nil, remove_false_or_nil,
             var_ref_id::get_var_expr_var_ref_id,
@@ -47,9 +46,9 @@ pub fn get_type_at_call_expr(
                     if needs_antecedent_same_var_colon_lookup(&member_type) {
                         // Keep the dedicated pending case here: replay needs the antecedent type
                         // for member lookup itself, not just for applying a cast after lookup.
-                        return Ok(ConditionFlowAction::pending(
+                        return Ok(ConditionFlowAction::Pending(
                             PendingConditionNarrow::SameVarColonCall {
-                                index: LuaIndexMemberExpr::IndexExpr(index_expr.clone()),
+                                idx: LuaIndexMemberExpr::IndexExpr(index_expr.clone()),
                                 condition_flow,
                             },
                         ));
@@ -98,15 +97,14 @@ pub fn get_type_at_call_expr(
                     );
                 }
                 LuaType::Call(call) => {
-                    return Ok(get_type_at_call_expr_by_call(
+                    return get_type_at_call_expr_by_call(
                         db,
                         cache,
                         var_ref_id,
                         call_expr,
                         &call,
                         condition_flow,
-                    )?
-                    .into());
+                    );
                 }
                 _ => {}
             }
@@ -216,7 +214,7 @@ fn get_type_at_call_expr_by_type_guard(
         return Ok(ConditionFlowAction::Continue);
     }
 
-    Ok(ConditionFlowAction::pending(
+    Ok(ConditionFlowAction::Pending(
         PendingConditionNarrow::TypeGuard {
             narrow: guard_type,
             condition_flow,
@@ -248,7 +246,12 @@ fn get_type_at_call_expr_by_signature_self(
         return Ok(ConditionFlowAction::Continue);
     }
 
-    Ok(get_signature_cast_pending(signature_id, condition_flow))
+    Ok(ConditionFlowAction::Pending(
+        PendingConditionNarrow::SignatureCast {
+            signature_id,
+            condition_flow,
+        },
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -301,17 +304,12 @@ fn get_type_at_call_expr_by_signature_param_name(
         return Ok(ConditionFlowAction::Continue);
     }
 
-    Ok(get_signature_cast_pending(signature_id, condition_flow))
-}
-
-fn get_signature_cast_pending(
-    signature_id: LuaSignatureId,
-    condition_flow: InferConditionFlow,
-) -> ConditionFlowAction {
-    ConditionFlowAction::pending(PendingConditionNarrow::SignatureCast {
-        signature_id,
-        condition_flow,
-    })
+    Ok(ConditionFlowAction::Pending(
+        PendingConditionNarrow::SignatureCast {
+            signature_id,
+            condition_flow,
+        },
+    ))
 }
 
 fn get_type_at_call_expr_by_call(
@@ -321,15 +319,15 @@ fn get_type_at_call_expr_by_call(
     call_expr: LuaCallExpr,
     alias_call_type: &Arc<LuaAliasCallType>,
     condition_flow: InferConditionFlow,
-) -> Result<ResultTypeOrContinue, InferFailReason> {
+) -> Result<ConditionFlowAction, InferFailReason> {
     let Some(maybe_ref_id) =
         get_var_expr_var_ref_id(db, cache, LuaExpr::CallExpr(call_expr.clone()))
     else {
-        return Ok(ResultTypeOrContinue::Continue);
+        return Ok(ConditionFlowAction::Continue);
     };
 
     if maybe_ref_id != *var_ref_id {
-        return Ok(ResultTypeOrContinue::Continue);
+        return Ok(ConditionFlowAction::Continue);
     }
 
     if alias_call_type.get_call_kind() == LuaAliasCallKind::RawGet {
@@ -338,8 +336,8 @@ fn get_type_at_call_expr_by_call(
             InferConditionFlow::FalseCondition => narrow_false_or_nil(db, antecedent_type),
             InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_type),
         };
-        return Ok(ResultTypeOrContinue::Result(result_type));
+        return Ok(ConditionFlowAction::Result(result_type));
     };
 
-    Ok(ResultTypeOrContinue::Continue)
+    Ok(ConditionFlowAction::Continue)
 }

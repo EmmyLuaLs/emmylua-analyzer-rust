@@ -25,7 +25,7 @@ pub fn get_type_at_index_expr(
     };
 
     if name_var_ref_id == *var_ref_id {
-        return Ok(ConditionFlowAction::pending(
+        return Ok(ConditionFlowAction::Pending(
             PendingConditionNarrow::Truthiness(condition_flow),
         ));
     }
@@ -43,9 +43,9 @@ pub fn get_type_at_index_expr(
         return Ok(ConditionFlowAction::Continue);
     }
 
-    Ok(ConditionFlowAction::pending(
+    Ok(ConditionFlowAction::Pending(
         PendingConditionNarrow::FieldTruthy {
-            index: LuaIndexMemberExpr::IndexExpr(index_expr),
+            idx: LuaIndexMemberExpr::IndexExpr(index_expr),
             condition_flow,
         },
     ))

@@ -26,8 +26,8 @@ pub use infer_name::{find_self_decl_or_member_id, infer_param};
 use infer_table::infer_table_expr;
 pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
 use infer_unary::infer_unary_expr;
-pub(in crate::semantic) use narrow::ConditionFlowAction;
 pub use narrow::VarRefId;
+pub(in crate::semantic) use narrow::{ConditionFlowAction, InferConditionFlow};
 
 use rowan::TextRange;
 use smol_str::SmolStr;

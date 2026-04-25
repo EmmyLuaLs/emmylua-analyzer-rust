@@ -160,10 +160,10 @@ function ipairs(t) end
 ---
 --- Lua does not check the consistency of binary chunks. Maliciously crafted
 --- binary chunks can crash the interpreter.
---- @param chunk(fun(...: any): string)|Language<"Lua">
---- @param chunkname?     string
---- @param mode?          std.loadmode
---- @param env?           table
+--- @param chunk      (fun(...: any): string)|Language<"Lua">
+--- @param chunkname? string
+--- @param mode?      std.loadmode
+--- @param env?       table
 --- @return_overload function chunk
 --- @return_overload nil, string error_message
 --- @nodiscard
@@ -347,34 +347,34 @@ function require(modname) end
 function select(index, ...) end
 
 --- @class std.metatable
---- @field __mode?             'v'|'k'|'kv'
---- @field __metatable?        any
---- @field __tostring?(fun(t): string)
---- @field __gc?               fun(t)
---- @field __add?              fun(t1,         t2): any
---- @field __sub?              fun(t1,         t2): any
---- @field __mul?              fun(t1,         t2): any
---- @field __div?              fun(t1,         t2): any
---- @field __mod?              fun(t1,         t2): any
---- @field __pow?              fun(t1,         t2): any
---- @field __unm?              fun(t):         any
---- @field __idiv?             fun(t1,         t2): any
---- @field __band?             fun(t1,         t2): any
---- @field __bor?              fun(t1,         t2): any
---- @field __bxor?             fun(t1,         t2): any
---- @field __bnot?             fun(t):         any
---- @field __shl?              fun(t1,         t2): any
---- @field __shr?              fun(t1,         t2): any
---- @field __concat?           fun(t1,         t2): any
---- @field __len?              fun(t):         integer
---- @field __eq?               fun(t1,         t2): boolean
---- @field __lt?               fun(t1,         t2): boolean
---- @field __le?               fun(t1,         t2): boolean
---- @field __index?            table|fun(t,    k): any
---- @field __newindex?         table|fun(t,    k, v)
---- @field __call?             fun(t,          ...): any...
---- @field __pairs?            fun(t):((fun(t, k, v): any, any), any, any)
---- @field __close?            fun(t,          errobj): any
+--- @field __mode?      'v'|'k'|'kv'
+--- @field __metatable? any
+--- @field __tostring?  (fun(t): string)
+--- @field __gc?        fun(t)
+--- @field __add?       fun(t1, t2): any
+--- @field __sub?       fun(t1, t2): any
+--- @field __mul?       fun(t1, t2): any
+--- @field __div?       fun(t1, t2): any
+--- @field __mod?       fun(t1, t2): any
+--- @field __pow?       fun(t1, t2): any
+--- @field __unm?       fun(t): any
+--- @field __idiv?      fun(t1, t2): any
+--- @field __band?      fun(t1, t2): any
+--- @field __bor?       fun(t1, t2): any
+--- @field __bxor?      fun(t1, t2): any
+--- @field __bnot?      fun(t): any
+--- @field __shl?       fun(t1, t2): any
+--- @field __shr?       fun(t1, t2): any
+--- @field __concat?    fun(t1, t2): any
+--- @field __len?       fun(t): integer
+--- @field __eq?        fun(t1, t2): boolean
+--- @field __lt?        fun(t1, t2): boolean
+--- @field __le?        fun(t1, t2): boolean
+--- @field __index?     table|fun(t, k): any
+--- @field __newindex?  table|fun(t, k, v)
+--- @field __call?      fun(t, ...): any...
+--- @field __pairs?     fun(t):((fun(t, k, v): any, any), any, any)
+--- @field __close?     fun(t, errobj): any
 
 -- NOTE: The actual implementation of setmetatable is provided by the language server
 
@@ -452,7 +452,7 @@ _VERSION = "Lua 5.5"
 --- This function is similar to `pcall`, except that it sets a new message
 --- handler `msgh`.
 --- @generic T, R
---- @param f    sync     fun(...: T...): R...
+--- @param f    sync fun(...: T...): R...
 --- @param msgh fun(err: any): any
 --- @param ...  T...
 --- @return boolean, R...

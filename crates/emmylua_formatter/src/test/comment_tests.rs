@@ -110,6 +110,72 @@ local t = {
     }
 
     #[test]
+    fn test_table_field_trailing_comment_alignment() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                table_expand: crate::config::ExpandStrategy::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123, -- ookko
+}
+"#,
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123   -- ookko
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_field_trailing_comment_alignment_with_multiline_trailing_comma() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig, OutputConfig, TrailingTableSeparator},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                table_expand: crate::config::ExpandStrategy::Always,
+                ..Default::default()
+            },
+            output: OutputConfig {
+                trailing_table_separator: TrailingTableSeparator::Multiline,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123,   -- ookko
+}
+"#,
+            r#"
+local dd = {
+    aaa = 123, -- hihi
+    cc = 123,  -- ookko
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_table_field_comment_forces_expand() {
         assert_format!(
             r#"
@@ -142,6 +208,22 @@ local t = {
     a = 1,
     -- separator
     b = 2
+}
+"#
+        );
+    }
+
+    #[test]
+    fn test_empty_table_standalone_comment_is_preserved() {
+        assert_format!(
+            r#"
+local t = {
+    --123
+}
+"#,
+            r#"
+local t = {
+    --123
 }
 "#
         );
@@ -978,6 +1060,36 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_align_param_columns_keeps_complex_type_intact() {
+        assert_format!(
+            r#"---@param short fun(x: string, y: number): table<string, number> desc
+---@param much_longer integer longer desc
+local function f(short, much_longer) end
+"#,
+            r#"---@param short       fun(x: string, y: number): table<string, number> desc
+---@param much_longer integer                                          longer desc
+local function f(short, much_longer) end
+"#
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_structured_tag_mapping_survives_unstructured_tag_between_lines() {
+        assert_format!(
+            r#"---@param short fun(x: string, y: number): table<string, number> desc
+---@version >5.3
+---@param much_longer integer longer desc
+local function f(short, much_longer) end
+"#,
+            r#"---@param short       fun(x: string, y: number): table<string, number> desc
+---@version >5.3
+---@param much_longer integer                                          longer desc
+local function f(short, much_longer) end
+"#
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_param_columns_with_interleaved_descriptions() {
         assert_format!(
             "--- first parameter docs\n---@param short string desc\n--- second parameter docs\n---@param much_longer integer longer desc\nlocal function f(short, much_longer) end\n",
@@ -990,6 +1102,30 @@ local t = {
         assert_format!(
             "    --- @param a     any\n    --- @param bbbbb string\n    --- @param c     any\nfunction f(a, bbbbb, c)\nend\n",
             "---@param a     any\n---@param bbbbb string\n---@param c     any\nfunction f(a, bbbbb, c) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_param_columns_keeps_nullable_marker_attached_to_name() {
+        assert_format!(
+            "--- @param name     string   The name parameter\n--- @param age      number   The age parameter\n--- @param optional ? string Optional parameter\n",
+            "---@param name      string The name parameter\n---@param age       number The age parameter\n---@param optional? string Optional parameter\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_param_parenthesized_function_type_keeps_leading_paren() {
+        assert_format!(
+            "--- @param chunk      (fun(...: any): string)|Language<\"Lua\">\nlocal function f(chunk) end\n",
+            "---@param chunk (fun(...: any): string)|Language<\"Lua\">\nlocal function f(chunk) end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_param_type_uses_spacing_normalization() {
+        assert_format!(
+            "--- @param value table<K, V>  |V[]|{[K]: V }\nlocal function f(value) end\n",
+            "---@param value table<K, V>|V[]|{[K]: V }\nlocal function f(value) end\n"
         );
     }
 
@@ -1010,10 +1146,28 @@ local t = {
     }
 
     #[test]
+    fn test_pure_doc_meta_line_does_not_panic() {
+        assert_format!(
+            r#"---@meta
+"#,
+            r#"---@meta
+"#
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_field_columns() {
         assert_format!(
             "---@field x string desc\n---@field longer_name integer another desc\nlocal t = {}\n",
             "---@field x           string  desc\n---@field longer_name integer another desc\nlocal t = {}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_field_columns_with_spaced_tag_prefix() {
+        assert_format!(
+            "--- @class Position1\n--- @field x integer\n--- @field yafafa integer\n",
+            "---@class Position1\n---@field x      integer\n---@field yafafa integer\n"
         );
     }
 
@@ -1042,6 +1196,14 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_empty_return_keeps_following_continue_or_lines_separate() {
+        assert_format!(
+            "--- @param co thread\n--- @return\n--- | \"running\" # Is running.\n--- | \"suspended\" # Is suspended or not started.\nlocal function status(co) end\n",
+            "---@param co thread\n---@return\n--- | \"running\" # Is running.\n--- | \"suspended\" # Is suspended or not started.\nlocal function status(co) end\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_return_hash_description_preserves_body_text() {
         assert_format!(
             "---@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.\n---@return integer len # length of the buffer data in bytes\nlocal function f()\nend\n",
@@ -1062,6 +1224,14 @@ local t = {
         assert_format!(
             "---@field public [\"foo\"] string?\n---@field private [bar] integer\n---@field protected baz fun(x: string): boolean\nlocal t = {}\n",
             "---@field public [\"foo\"] string?\n---@field private [bar]  integer\n---@field protected baz  fun(x: string): boolean\nlocal t = {}\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_field_function_type_spacing_stays_inside_type_column() {
+        assert_format!(
+            "--- @class std.metatable\n--- @field __mode?      'v'|'k'|'kv'\n--- @field __metatable? any\n--- @field __tostring?  (fun(t): string)\n--- @field __gc?        fun(t)\n--- @field __add?       fun(t1,         t2): any\n--- @field __sub?       fun(t1,         t2): any\n",
+            "---@class std.metatable\n---@field __mode?      'v'|'k'|'kv'\n---@field __metatable? any\n---@field __tostring?  (fun(t): string)\n---@field __gc?        fun(t)\n---@field __add?       fun(t1, t2): any\n---@field __sub?       fun(t1, t2): any\n"
         );
     }
 
@@ -1128,6 +1298,20 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_align_class_columns_keeps_complex_generic_head_intact() {
+        assert_format!(
+            r#"---@class ExtremelyLongSimpleName short desc
+---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc
+local value = {}
+"#,
+            r#"---@class ExtremelyLongSimpleName                                        short desc
+---@class H<T, Result: fun(x: string, y: number): table<string, number>> handler desc
+local value = {}
+"#
+        );
+    }
+
+    #[test]
     fn test_doc_comment_enum_attached_table_prefers_expanded_declaration() {
         assert_format!(
             "---@enum MyEnum\nlocal cc = { xxx = 123 }\n",
@@ -1148,6 +1332,20 @@ local t = {
         assert_format!(
             "---@alias Id integer identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n",
             "---@alias Id integer         identifier\n---@alias DisplayName string user facing name\nlocal value = nil\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_align_alias_columns_keeps_function_type_intact() {
+        assert_format!(
+            r#"---@alias ExtremelyLongAliasName string description
+---@alias H fun(x: string, y: number): table<string, number> handler desc
+local value = nil
+"#,
+            r#"---@alias ExtremelyLongAliasName string                      description
+---@alias H fun(x: string, y: number): table<string, number> handler desc
+local value = nil
+"#
         );
     }
 
@@ -1243,6 +1441,34 @@ local t = {
         assert_format_with_config!(
             "--- @alias Complex\n--- | string\n--- | integer\nlocal value = nil\n",
             "---@alias Complex\n---| string\n---| integer\nlocal value = nil\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_doc_continue_or_variants_are_detected_from_tokens() {
+        use crate::{assert_format_with_config, config::LuaFormatConfig};
+
+        let config = LuaFormatConfig {
+            emmy_doc: crate::config::EmmyDocConfig {
+                space_between_tag_columns: false,
+                space_after_description_dash: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"--- @alias Complex
+--- |+ string
+--- |> integer
+local value = nil
+"#,
+            r#"---@alias Complex
+---|+ string
+---|> integer
+local value = nil
+"#,
             config
         );
     }
@@ -1348,10 +1574,26 @@ local t = {
     }
 
     #[test]
+    fn test_doc_comment_type_normalizes_object_index_field_spacing() {
+        assert_format!(
+            "--- @type {[string]: number,[number]: string }\nlocal x\n",
+            "---@type { [string]: number, [number]: string }\nlocal x\n"
+        );
+    }
+
+    #[test]
     fn test_doc_comment_generic_uses_spacing_normalization() {
         assert_format!(
             "--- @generic Value , Result : number mapped result\nlocal function f() end\n",
             "---@generic Value, Result: number mapped result\nlocal function f() end\n"
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_generic_hash_string_literal_is_not_treated_as_description() {
+        assert_format!(
+            "--- @generic T, Num: integer|'#'\nlocal function f() end\n",
+            "---@generic T, Num: integer|'#'\nlocal function f() end\n"
         );
     }
 

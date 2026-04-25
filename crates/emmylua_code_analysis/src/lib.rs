@@ -23,7 +23,6 @@ pub use compilation::*;
 pub use config::*;
 pub use db_index::*;
 pub use diagnostic::*;
-pub use emmylua_codestyle::*;
 use hashbrown::HashMap;
 pub use locale::get_locale_code;
 use lsp_types::Uri;

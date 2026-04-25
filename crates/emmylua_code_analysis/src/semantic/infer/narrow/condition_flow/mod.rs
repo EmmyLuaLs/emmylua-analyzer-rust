@@ -6,27 +6,26 @@ mod index_flow;
 use std::rc::Rc;
 
 use self::{
-    binary_flow::get_type_at_binary_expr,
-    correlated_flow::{CorrelatedConditionNarrowing, prepare_var_from_return_overload_condition},
+    binary_flow::{get_type_at_binary_expr, narrow_eq_condition},
+    correlated_flow::{
+        CorrelatedConditionNarrowing, PendingCorrelatedCondition,
+        prepare_var_from_return_overload_condition,
+    },
 };
-use emmylua_parser::{
-    LuaAstNode, LuaChunk, LuaExpr, LuaIndexMemberExpr, LuaNameExpr, LuaUnaryExpr, UnaryOperator,
-};
+use emmylua_parser::{LuaAstNode, LuaChunk, LuaExpr, LuaIndexMemberExpr, UnaryOperator};
 
 use crate::{
-    DbIndex, FlowNode, FlowTree, InferFailReason, InferGuard, LuaInferCache, LuaSignatureCast,
-    LuaSignatureId, LuaType,
+    DbIndex, FlowId, FlowNode, FlowTree, InferFailReason, InferGuard, LuaArrayLen, LuaArrayType,
+    LuaDeclId, LuaInferCache, LuaSignatureCast, LuaSignatureId, LuaType, TypeOps,
     semantic::infer::{
         VarRefId,
         infer_index::infer_member_by_member_key,
         narrow::{
-            ResultTypeOrContinue,
             condition_flow::{
                 call_flow::get_type_at_call_expr, index_flow::get_type_at_index_expr,
             },
             get_single_antecedent,
             get_type_at_cast_flow::cast_type,
-            get_type_at_flow::get_type_at_flow,
             narrow_down_type, narrow_false_or_nil, remove_false_or_nil,
             var_ref_id::get_var_expr_var_ref_id,
         },
@@ -34,63 +33,70 @@ use crate::{
     semantic::type_check::is_sub_type_of,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InferConditionFlow {
     TrueCondition,
     FalseCondition,
 }
 
-impl InferConditionFlow {
-    pub fn get_negated(&self) -> Self {
-        match self {
-            InferConditionFlow::TrueCondition => InferConditionFlow::FalseCondition,
-            InferConditionFlow::FalseCondition => InferConditionFlow::TrueCondition,
-        }
-    }
+#[derive(Debug, Clone)]
+pub(in crate::semantic) enum ConditionSubquery {
+    ArrayLen {
+        var_ref_id: VarRefId,
+        antecedent_flow_id: FlowId,
+        // This is the effective narrowing polarity after rewrites like `not` and `~=`.
+        subquery_condition_flow: InferConditionFlow,
+        right_expr_type: LuaType,
+        max_adjustment: i64,
+    },
+    FieldLiteralEq {
+        var_ref_id: VarRefId,
+        antecedent_flow_id: FlowId,
+        subquery_condition_flow: InferConditionFlow,
+        idx: LuaIndexMemberExpr,
+        right_expr_type: LuaType,
+    },
+    Correlated {
+        var_ref_id: VarRefId,
+        antecedent_flow_id: FlowId,
+        subquery_condition_flow: InferConditionFlow,
+        discriminant_decl_id: LuaDeclId,
+        condition_position: rowan::TextSize,
+        narrow: CorrelatedDiscriminantNarrow,
+        fallback_expr: Option<LuaExpr>,
+    },
+}
 
-    #[allow(unused)]
-    pub fn is_true(&self) -> bool {
-        matches!(self, InferConditionFlow::TrueCondition)
-    }
-
-    pub fn is_false(&self) -> bool {
-        matches!(self, InferConditionFlow::FalseCondition)
-    }
+#[derive(Debug, Clone)]
+pub(in crate::semantic) enum CorrelatedDiscriminantNarrow {
+    Truthiness,
+    TypeGuard {
+        narrow: LuaType,
+    },
+    Eq {
+        right_expr_type: LuaType,
+        allow_literal_equivalence: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub(in crate::semantic) enum ConditionFlowAction {
     Continue,
     Result(LuaType),
-    Pending(Rc<PendingConditionNarrow>),
-}
-
-impl From<ResultTypeOrContinue> for ConditionFlowAction {
-    fn from(result_or_continue: ResultTypeOrContinue) -> Self {
-        match result_or_continue {
-            ResultTypeOrContinue::Continue => ConditionFlowAction::Continue,
-            ResultTypeOrContinue::Result(result_type) => ConditionFlowAction::Result(result_type),
-        }
-    }
-}
-
-impl ConditionFlowAction {
-    pub(in crate::semantic::infer::narrow) fn pending(
-        pending_condition_narrow: PendingConditionNarrow,
-    ) -> Self {
-        ConditionFlowAction::Pending(Rc::new(pending_condition_narrow))
-    }
+    Pending(PendingConditionNarrow),
+    NeedSubquery(ConditionSubquery),
+    NeedCorrelated(PendingCorrelatedCondition),
 }
 
 #[derive(Debug, Clone)]
 pub(in crate::semantic) enum PendingConditionNarrow {
     Truthiness(InferConditionFlow),
     FieldTruthy {
-        index: LuaIndexMemberExpr,
+        idx: LuaIndexMemberExpr,
         condition_flow: InferConditionFlow,
     },
     SameVarColonCall {
-        index: LuaIndexMemberExpr,
+        idx: LuaIndexMemberExpr,
         condition_flow: InferConditionFlow,
     },
     SignatureCast {
@@ -105,7 +111,7 @@ pub(in crate::semantic) enum PendingConditionNarrow {
         narrow: LuaType,
         condition_flow: InferConditionFlow,
     },
-    Correlated(CorrelatedConditionNarrowing),
+    Correlated(Rc<CorrelatedConditionNarrowing>),
 }
 
 impl PendingConditionNarrow {
@@ -121,7 +127,7 @@ impl PendingConditionNarrow {
                 InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_type),
             },
             PendingConditionNarrow::FieldTruthy {
-                index,
+                idx,
                 condition_flow,
             } => {
                 let LuaType::Union(union_type) = &antecedent_type else {
@@ -135,7 +141,7 @@ impl PendingConditionNarrow {
                         db,
                         cache,
                         sub_type,
-                        index.clone(),
+                        idx.clone(),
                         &InferGuard::new(),
                     ) {
                         Ok(member_type) => member_type,
@@ -160,14 +166,14 @@ impl PendingConditionNarrow {
                 }
             }
             PendingConditionNarrow::SameVarColonCall {
-                index,
+                idx,
                 condition_flow,
             } => {
                 let Ok(member_type) = infer_member_by_member_key(
                     db,
                     cache,
                     &antecedent_type,
-                    index.clone(),
+                    idx.clone(),
                     &InferGuard::new(),
                 ) else {
                     return antecedent_type;
@@ -345,7 +351,7 @@ fn apply_signature_cast(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn get_type_at_condition_flow(
+pub(super) fn get_type_at_condition_flow(
     db: &DbIndex,
     tree: &FlowTree,
     cache: &mut LuaInferCache,
@@ -355,50 +361,239 @@ pub fn get_type_at_condition_flow(
     condition: LuaExpr,
     condition_flow: InferConditionFlow,
 ) -> Result<ConditionFlowAction, InferFailReason> {
-    match condition {
-        LuaExpr::NameExpr(name_expr) => get_type_at_name_expr(
-            db,
-            tree,
-            cache,
-            root,
-            var_ref_id,
-            flow_node,
-            name_expr,
-            condition_flow,
-        ),
-        LuaExpr::CallExpr(call_expr) => {
-            get_type_at_call_expr(db, cache, var_ref_id, call_expr, condition_flow)
+    let mut condition = condition;
+    let mut condition_flow = condition_flow;
+
+    loop {
+        match condition {
+            LuaExpr::NameExpr(name_expr) => {
+                let Some(name_var_ref_id) =
+                    get_var_expr_var_ref_id(db, cache, LuaExpr::NameExpr(name_expr.clone()))
+                else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+
+                if name_var_ref_id == *var_ref_id {
+                    return Ok(ConditionFlowAction::Pending(
+                        PendingConditionNarrow::Truthiness(condition_flow),
+                    ));
+                }
+
+                let Some(decl_id) = db
+                    .get_reference_index()
+                    .get_var_reference_decl(&cache.get_file_id(), name_expr.get_range())
+                else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+
+                if let Some(target_decl_id) = var_ref_id.get_decl_id_ref()
+                    && tree.has_decl_multi_return_refs(&decl_id)
+                    && tree.has_decl_multi_return_refs(&target_decl_id)
+                {
+                    let antecedent_flow_id = get_single_antecedent(flow_node)?;
+                    let fallback_expr = tree
+                        .get_decl_ref_expr(&decl_id)
+                        .and_then(|expr_ptr| expr_ptr.to_node(root));
+                    return Ok(ConditionFlowAction::NeedSubquery(
+                        ConditionSubquery::Correlated {
+                            var_ref_id: VarRefId::VarRef(decl_id),
+                            antecedent_flow_id,
+                            subquery_condition_flow: condition_flow,
+                            discriminant_decl_id: decl_id,
+                            condition_position: name_expr.get_position(),
+                            narrow: CorrelatedDiscriminantNarrow::Truthiness,
+                            fallback_expr,
+                        },
+                    ));
+                }
+
+                let Some(expr_ptr) = tree.get_decl_ref_expr(&decl_id) else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+                let Some(expr) = expr_ptr.to_node(root) else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+                condition = expr;
+                continue;
+            }
+            LuaExpr::CallExpr(call_expr) => {
+                return get_type_at_call_expr(db, cache, var_ref_id, call_expr, condition_flow);
+            }
+            LuaExpr::IndexExpr(index_expr) => {
+                return get_type_at_index_expr(db, cache, var_ref_id, index_expr, condition_flow);
+            }
+            LuaExpr::TableExpr(_) | LuaExpr::LiteralExpr(_) | LuaExpr::ClosureExpr(_) => {
+                return Ok(ConditionFlowAction::Continue);
+            }
+            LuaExpr::BinaryExpr(binary_expr) => {
+                return get_type_at_binary_expr(
+                    db,
+                    tree,
+                    cache,
+                    root,
+                    var_ref_id,
+                    flow_node,
+                    binary_expr,
+                    condition_flow,
+                );
+            }
+            LuaExpr::UnaryExpr(unary_expr) => {
+                let Some(inner_expr) = unary_expr.get_expr() else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+                let Some(op) = unary_expr.get_op_token() else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+                if op.get_op() != UnaryOperator::OpNot {
+                    return Ok(ConditionFlowAction::Continue);
+                }
+
+                condition = inner_expr;
+                condition_flow = match condition_flow {
+                    InferConditionFlow::TrueCondition => InferConditionFlow::FalseCondition,
+                    InferConditionFlow::FalseCondition => InferConditionFlow::TrueCondition,
+                };
+                continue;
+            }
+            LuaExpr::ParenExpr(paren_expr) => {
+                let Some(inner_expr) = paren_expr.get_expr() else {
+                    return Ok(ConditionFlowAction::Continue);
+                };
+                condition = inner_expr;
+                continue;
+            }
         }
-        LuaExpr::IndexExpr(index_expr) => {
-            get_type_at_index_expr(db, cache, var_ref_id, index_expr, condition_flow)
-        }
-        LuaExpr::TableExpr(_) | LuaExpr::LiteralExpr(_) | LuaExpr::ClosureExpr(_) => {
-            Ok(ConditionFlowAction::Continue)
-        }
-        LuaExpr::BinaryExpr(binary_expr) => get_type_at_binary_expr(
-            db,
-            tree,
-            cache,
-            root,
-            var_ref_id,
-            flow_node,
-            binary_expr,
-            condition_flow,
-        ),
-        LuaExpr::UnaryExpr(unary_expr) => get_type_at_unary_flow(
-            db,
-            tree,
-            cache,
-            root,
-            var_ref_id,
-            flow_node,
-            unary_expr,
-            condition_flow,
-        ),
-        LuaExpr::ParenExpr(paren_expr) => {
-            let Some(inner_expr) = paren_expr.get_expr() else {
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(in crate::semantic::infer::narrow) fn resolve_condition_subquery(
+    db: &DbIndex,
+    tree: &FlowTree,
+    cache: &mut LuaInferCache,
+    root: &LuaChunk,
+    var_ref_id: &VarRefId,
+    flow_node: &FlowNode,
+    subquery: ConditionSubquery,
+    antecedent_type: LuaType,
+) -> Result<ConditionFlowAction, InferFailReason> {
+    match subquery {
+        ConditionSubquery::ArrayLen {
+            subquery_condition_flow,
+            right_expr_type,
+            max_adjustment,
+            ..
+        } => match (&antecedent_type, &right_expr_type) {
+            (
+                LuaType::Array(array_type),
+                LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i),
+            ) if matches!(subquery_condition_flow, InferConditionFlow::TrueCondition) => {
+                let new_array_type = LuaArrayType::new(
+                    array_type.get_base().clone(),
+                    LuaArrayLen::Max(*i + max_adjustment),
+                );
+                Ok(ConditionFlowAction::Result(LuaType::Array(
+                    new_array_type.into(),
+                )))
+            }
+            _ => Ok(ConditionFlowAction::Continue),
+        },
+        ConditionSubquery::FieldLiteralEq {
+            subquery_condition_flow,
+            idx,
+            right_expr_type,
+            ..
+        } => {
+            let LuaType::Union(union_type) = antecedent_type else {
                 return Ok(ConditionFlowAction::Continue);
             };
+
+            let mut opt_result = None;
+            let mut union_types = union_type.into_vec();
+            for (i, sub_type) in union_types.iter().enumerate() {
+                let member_type = match infer_member_by_member_key(
+                    db,
+                    cache,
+                    sub_type,
+                    idx.clone(),
+                    &InferGuard::new(),
+                ) {
+                    Ok(member_type) => member_type,
+                    Err(_) => continue,
+                };
+                if always_literal_equal(&member_type, &right_expr_type) {
+                    opt_result = Some(i);
+                }
+            }
+
+            let action = match subquery_condition_flow {
+                InferConditionFlow::TrueCondition => opt_result
+                    .map(|i| ConditionFlowAction::Result(union_types[i].clone()))
+                    .unwrap_or(ConditionFlowAction::Continue),
+                InferConditionFlow::FalseCondition => opt_result
+                    .map(|i| {
+                        union_types.remove(i);
+                        ConditionFlowAction::Result(LuaType::from_vec(union_types))
+                    })
+                    .unwrap_or(ConditionFlowAction::Continue),
+            };
+            Ok(action)
+        }
+        ConditionSubquery::Correlated {
+            antecedent_flow_id,
+            subquery_condition_flow,
+            discriminant_decl_id,
+            condition_position,
+            narrow,
+            fallback_expr,
+            ..
+        } => {
+            let narrowed_discriminant_type = match narrow {
+                CorrelatedDiscriminantNarrow::Truthiness => match subquery_condition_flow {
+                    InferConditionFlow::FalseCondition => narrow_false_or_nil(db, antecedent_type),
+                    InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_type),
+                },
+                CorrelatedDiscriminantNarrow::TypeGuard { narrow } => match subquery_condition_flow
+                {
+                    InferConditionFlow::TrueCondition => {
+                        narrow_down_type(db, antecedent_type, narrow.clone(), None)
+                            .unwrap_or(narrow)
+                    }
+                    InferConditionFlow::FalseCondition => {
+                        TypeOps::Remove.apply(db, &antecedent_type, &narrow)
+                    }
+                },
+                CorrelatedDiscriminantNarrow::Eq {
+                    right_expr_type,
+                    allow_literal_equivalence,
+                } => narrow_eq_condition(
+                    db,
+                    antecedent_type,
+                    right_expr_type,
+                    subquery_condition_flow,
+                    allow_literal_equivalence,
+                ),
+            };
+
+            let action = prepare_var_from_return_overload_condition(
+                db,
+                tree,
+                cache,
+                root,
+                var_ref_id,
+                discriminant_decl_id,
+                condition_position,
+                antecedent_flow_id,
+                &narrowed_discriminant_type,
+            )?;
+
+            let Some(fallback_expr) = fallback_expr else {
+                return Ok(action);
+            };
+
+            if !matches!(action, ConditionFlowAction::Continue) {
+                return Ok(action);
+            }
 
             get_type_at_condition_flow(
                 db,
@@ -407,121 +602,11 @@ pub fn get_type_at_condition_flow(
                 root,
                 var_ref_id,
                 flow_node,
-                inner_expr,
-                condition_flow,
+                fallback_expr,
+                subquery_condition_flow,
             )
         }
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn get_type_at_name_expr(
-    db: &DbIndex,
-    tree: &FlowTree,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
-    name_expr: LuaNameExpr,
-    condition_flow: InferConditionFlow,
-) -> Result<ConditionFlowAction, InferFailReason> {
-    let Some(name_var_ref_id) =
-        get_var_expr_var_ref_id(db, cache, LuaExpr::NameExpr(name_expr.clone()))
-    else {
-        return Ok(ConditionFlowAction::Continue);
-    };
-
-    if name_var_ref_id != *var_ref_id {
-        return get_type_at_name_ref(
-            db,
-            tree,
-            cache,
-            root,
-            var_ref_id,
-            flow_node,
-            name_expr,
-            condition_flow,
-        );
-    }
-
-    Ok(ConditionFlowAction::pending(
-        PendingConditionNarrow::Truthiness(condition_flow),
-    ))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn get_type_at_name_ref(
-    db: &DbIndex,
-    tree: &FlowTree,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
-    name_expr: LuaNameExpr,
-    condition_flow: InferConditionFlow,
-) -> Result<ConditionFlowAction, InferFailReason> {
-    let Some(decl_id) = db
-        .get_reference_index()
-        .get_var_reference_decl(&cache.get_file_id(), name_expr.get_range())
-    else {
-        return Ok(ConditionFlowAction::Continue);
-    };
-
-    if let Some(target_decl_id) = var_ref_id.get_decl_id_ref()
-        && tree.has_decl_multi_return_refs(&decl_id)
-        && tree.has_decl_multi_return_refs(&target_decl_id)
-    {
-        let antecedent_flow_id = get_single_antecedent(flow_node)?;
-        let antecedent_discriminant_type = get_type_at_flow(
-            db,
-            tree,
-            cache,
-            root,
-            &VarRefId::VarRef(decl_id),
-            antecedent_flow_id,
-        )?;
-        let narrowed_discriminant_type = match condition_flow {
-            InferConditionFlow::FalseCondition => {
-                narrow_false_or_nil(db, antecedent_discriminant_type)
-            }
-            InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_discriminant_type),
-        };
-
-        if let Some(correlated_narrowing) = prepare_var_from_return_overload_condition(
-            db,
-            tree,
-            cache,
-            root,
-            var_ref_id,
-            flow_node,
-            decl_id,
-            name_expr.get_position(),
-            &narrowed_discriminant_type,
-        )? {
-            return Ok(ConditionFlowAction::pending(
-                PendingConditionNarrow::Correlated(correlated_narrowing),
-            ));
-        }
-    }
-
-    let Some(expr_ptr) = tree.get_decl_ref_expr(&decl_id) else {
-        return Ok(ConditionFlowAction::Continue);
-    };
-
-    let Some(expr) = expr_ptr.to_node(root) else {
-        return Ok(ConditionFlowAction::Continue);
-    };
-
-    get_type_at_condition_flow(
-        db,
-        tree,
-        cache,
-        root,
-        var_ref_id,
-        flow_node,
-        expr,
-        condition_flow,
-    )
 }
 
 pub(super) fn always_literal_equal(left: &LuaType, right: &LuaType) -> bool {
@@ -548,42 +633,4 @@ pub(super) fn always_literal_equal(left: &LuaType, right: &LuaType) -> bool {
         ) => l == r,
         _ => left == right,
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn get_type_at_unary_flow(
-    db: &DbIndex,
-    tree: &FlowTree,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-    flow_node: &FlowNode,
-    unary_expr: LuaUnaryExpr,
-    condition_flow: InferConditionFlow,
-) -> Result<ConditionFlowAction, InferFailReason> {
-    let Some(inner_expr) = unary_expr.get_expr() else {
-        return Ok(ConditionFlowAction::Continue);
-    };
-
-    let Some(op) = unary_expr.get_op_token() else {
-        return Ok(ConditionFlowAction::Continue);
-    };
-
-    match op.get_op() {
-        UnaryOperator::OpNot => {}
-        _ => {
-            return Ok(ConditionFlowAction::Continue);
-        }
-    }
-
-    get_type_at_condition_flow(
-        db,
-        tree,
-        cache,
-        root,
-        var_ref_id,
-        flow_node,
-        inner_expr,
-        condition_flow.get_negated(),
-    )
 }

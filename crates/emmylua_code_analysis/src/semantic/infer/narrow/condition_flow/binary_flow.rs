@@ -4,21 +4,16 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DbIndex, FlowNode, FlowTree, InferFailReason, InferGuard, LuaArrayLen, LuaArrayType,
-    LuaInferCache, LuaType, TypeOps, infer_expr,
+    DbIndex, FlowNode, FlowTree, InferFailReason, LuaInferCache, LuaType, TypeOps, infer_expr,
     semantic::infer::{
         VarRefId,
-        infer_index::infer_member_by_member_key,
         narrow::{
-            ResultTypeOrContinue,
             condition_flow::{
-                ConditionFlowAction, InferConditionFlow, PendingConditionNarrow,
-                always_literal_equal, call_flow::get_type_at_call_expr,
-                correlated_flow::prepare_var_from_return_overload_condition,
+                ConditionFlowAction, ConditionSubquery, CorrelatedDiscriminantNarrow,
+                InferConditionFlow, PendingConditionNarrow, always_literal_equal,
+                call_flow::get_type_at_call_expr,
             },
-            get_single_antecedent,
-            get_type_at_flow::get_type_at_flow,
-            get_var_ref_type, narrow_down_type,
+            get_single_antecedent, get_var_ref_type,
             var_ref_id::get_var_expr_var_ref_id,
         },
     },
@@ -64,34 +59,31 @@ pub fn get_type_at_binary_expr(
             flow_node,
             left_expr,
             right_expr,
-            condition_flow.get_negated(),
+            match condition_flow {
+                InferConditionFlow::TrueCondition => InferConditionFlow::FalseCondition,
+                InferConditionFlow::FalseCondition => InferConditionFlow::TrueCondition,
+            },
         ),
         BinaryOperator::OpGt => try_get_at_gt_or_ge_expr(
             db,
-            tree,
             cache,
-            root,
             var_ref_id,
             flow_node,
             left_expr,
             right_expr,
             condition_flow,
             true,
-        )
-        .map(Into::into),
+        ),
         BinaryOperator::OpGe => try_get_at_gt_or_ge_expr(
             db,
-            tree,
             cache,
-            root,
             var_ref_id,
             flow_node,
             left_expr,
             right_expr,
             condition_flow,
             false,
-        )
-        .map(Into::into),
+        ),
         _ => Ok(ConditionFlowAction::Continue),
     }
 }
@@ -136,9 +128,7 @@ fn try_get_at_eq_or_neq_expr(
 
     if let Some(action) = maybe_field_literal_eq_action(
         db,
-        tree,
         cache,
-        root,
         var_ref_id,
         flow_node,
         left_expr.clone(),
@@ -152,7 +142,6 @@ fn try_get_at_eq_or_neq_expr(
         db,
         tree,
         cache,
-        root,
         var_ref_id,
         flow_node,
         left_expr,
@@ -164,66 +153,51 @@ fn try_get_at_eq_or_neq_expr(
 #[allow(clippy::too_many_arguments)]
 fn try_get_at_gt_or_ge_expr(
     db: &DbIndex,
-    tree: &FlowTree,
     cache: &mut LuaInferCache,
-    root: &LuaChunk,
     var_ref_id: &VarRefId,
     flow_node: &FlowNode,
     left_expr: LuaExpr,
     right_expr: LuaExpr,
     condition_flow: InferConditionFlow,
     gt: bool,
-) -> Result<ResultTypeOrContinue, InferFailReason> {
+) -> Result<ConditionFlowAction, InferFailReason> {
     match left_expr {
         LuaExpr::UnaryExpr(unary_expr) => {
             let Some(op) = unary_expr.get_op_token() else {
-                return Ok(ResultTypeOrContinue::Continue);
+                return Ok(ConditionFlowAction::Continue);
             };
 
             match op.get_op() {
                 UnaryOperator::OpLen => {}
-                _ => return Ok(ResultTypeOrContinue::Continue),
+                _ => return Ok(ConditionFlowAction::Continue),
             };
 
             let Some(expr) = unary_expr.get_expr() else {
-                return Ok(ResultTypeOrContinue::Continue);
+                return Ok(ConditionFlowAction::Continue);
             };
 
             let Some(maybe_ref_id) = get_var_expr_var_ref_id(db, cache, expr) else {
-                return Ok(ResultTypeOrContinue::Continue);
+                return Ok(ConditionFlowAction::Continue);
             };
 
             if maybe_ref_id != *var_ref_id {
                 // If the reference declaration ID does not match, we cannot narrow it
-                return Ok(ResultTypeOrContinue::Continue);
+                return Ok(ConditionFlowAction::Continue);
             }
 
             let right_expr_type = infer_expr(db, cache, right_expr)?;
             let antecedent_flow_id = get_single_antecedent(flow_node)?;
-            let antecedent_type =
-                get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-            match (&antecedent_type, &right_expr_type) {
-                (
-                    LuaType::Array(array_type),
-                    LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i),
-                ) => {
-                    let add = if gt { 1 } else { 0 };
-                    if condition_flow.is_true() {
-                        let new_array_type = LuaArrayType::new(
-                            array_type.get_base().clone(),
-                            LuaArrayLen::Max(*i + add),
-                        );
-                        return Ok(ResultTypeOrContinue::Result(LuaType::Array(
-                            new_array_type.into(),
-                        )));
-                    }
-                }
-                _ => return Ok(ResultTypeOrContinue::Continue),
-            }
-
-            Ok(ResultTypeOrContinue::Continue)
+            Ok(ConditionFlowAction::NeedSubquery(
+                ConditionSubquery::ArrayLen {
+                    var_ref_id: var_ref_id.clone(),
+                    antecedent_flow_id,
+                    subquery_condition_flow: condition_flow,
+                    right_expr_type,
+                    max_adjustment: if gt { 1 } else { 0 },
+                },
+            ))
         }
-        _ => Ok(ResultTypeOrContinue::Continue),
+        _ => Ok(ConditionFlowAction::Continue),
     }
 }
 
@@ -289,7 +263,7 @@ fn maybe_type_guard_binary_action(
     };
 
     if maybe_var_ref_id == *var_ref_id {
-        return Ok(Some(ConditionFlowAction::pending(
+        return Ok(Some(ConditionFlowAction::Pending(
             PendingConditionNarrow::TypeGuard {
                 narrow,
                 condition_flow,
@@ -310,28 +284,17 @@ fn maybe_type_guard_binary_action(
     }
 
     let antecedent_flow_id = get_single_antecedent(flow_node)?;
-    let antecedent_type =
-        get_type_at_flow(db, tree, cache, root, &maybe_var_ref_id, antecedent_flow_id)?;
-    let narrowed_discriminant_type = match condition_flow {
-        InferConditionFlow::TrueCondition => {
-            narrow_down_type(db, antecedent_type, narrow.clone(), None).unwrap_or(narrow.clone())
-        }
-        InferConditionFlow::FalseCondition => TypeOps::Remove.apply(db, &antecedent_type, &narrow),
-    };
-
-    Ok(prepare_var_from_return_overload_condition(
-        db,
-        tree,
-        cache,
-        root,
-        var_ref_id,
-        flow_node,
-        discriminant_decl_id,
-        type_guard_expr.get_position(),
-        &narrowed_discriminant_type,
-    )?
-    .map(PendingConditionNarrow::Correlated)
-    .map(ConditionFlowAction::pending))
+    Ok(Some(ConditionFlowAction::NeedSubquery(
+        ConditionSubquery::Correlated {
+            var_ref_id: maybe_var_ref_id,
+            antecedent_flow_id,
+            subquery_condition_flow: condition_flow,
+            discriminant_decl_id,
+            condition_position: type_guard_expr.get_position(),
+            narrow: CorrelatedDiscriminantNarrow::TypeGuard { narrow },
+            fallback_expr: None,
+        },
+    )))
 }
 
 /// Maps the string result of Lua's builtin `type()` call to the corresponding `LuaType`.
@@ -349,7 +312,7 @@ fn type_call_name_to_type(literal_string: &str) -> Option<LuaType> {
     })
 }
 
-fn narrow_eq_condition(
+pub(super) fn narrow_eq_condition(
     db: &DbIndex,
     antecedent_type: LuaType,
     right_expr_type: LuaType,
@@ -395,7 +358,6 @@ fn get_var_eq_condition_action(
     db: &DbIndex,
     tree: &FlowTree,
     cache: &mut LuaInferCache,
-    root: &LuaChunk,
     var_ref_id: &VarRefId,
     flow_node: &FlowNode,
     left_expr: LuaExpr,
@@ -425,24 +387,20 @@ fn get_var_eq_condition_action(
                 }
                 let antecedent_flow_id = get_single_antecedent(flow_node)?;
                 let right_expr_type = infer_expr(db, cache, right_expr)?;
-                let antecedent_type =
-                    get_type_at_flow(db, tree, cache, root, &maybe_ref_id, antecedent_flow_id)?;
-                let narrowed_discriminant_type =
-                    narrow_eq_condition(db, antecedent_type, right_expr_type, condition_flow, true);
-                return Ok(prepare_var_from_return_overload_condition(
-                    db,
-                    tree,
-                    cache,
-                    root,
-                    var_ref_id,
-                    flow_node,
-                    discriminant_decl_id,
-                    left_name_expr.get_position(),
-                    &narrowed_discriminant_type,
-                )?
-                .map(PendingConditionNarrow::Correlated)
-                .map(ConditionFlowAction::pending)
-                .unwrap_or(ConditionFlowAction::Continue));
+                return Ok(ConditionFlowAction::NeedSubquery(
+                    ConditionSubquery::Correlated {
+                        var_ref_id: maybe_ref_id,
+                        antecedent_flow_id,
+                        subquery_condition_flow: condition_flow,
+                        discriminant_decl_id,
+                        condition_position: left_name_expr.get_position(),
+                        narrow: CorrelatedDiscriminantNarrow::Eq {
+                            right_expr_type,
+                            allow_literal_equivalence: true,
+                        },
+                        fallback_expr: None,
+                    },
+                ));
             }
 
             let right_expr_type = infer_expr(db, cache, right_expr)?;
@@ -452,14 +410,14 @@ fn get_var_eq_condition_action(
                     if var_ref_id.is_self_ref() && !right_expr_type.is_nil() {
                         TypeOps::Remove.apply(db, &right_expr_type, &LuaType::Nil)
                     } else {
-                        return Ok(ConditionFlowAction::pending(PendingConditionNarrow::Eq {
+                        return Ok(ConditionFlowAction::Pending(PendingConditionNarrow::Eq {
                             right_expr_type,
                             condition_flow,
                         }));
                     }
                 }
                 InferConditionFlow::FalseCondition => {
-                    return Ok(ConditionFlowAction::pending(PendingConditionNarrow::Eq {
+                    return Ok(ConditionFlowAction::Pending(PendingConditionNarrow::Eq {
                         right_expr_type,
                         condition_flow,
                     }));
@@ -474,7 +432,14 @@ fn get_var_eq_condition_action(
                         let flow = if b.is_true() {
                             condition_flow
                         } else {
-                            condition_flow.get_negated()
+                            match condition_flow {
+                                InferConditionFlow::TrueCondition => {
+                                    InferConditionFlow::FalseCondition
+                                }
+                                InferConditionFlow::FalseCondition => {
+                                    InferConditionFlow::TrueCondition
+                                }
+                            }
                         };
 
                         return get_type_at_call_expr(db, cache, var_ref_id, left_call_expr, flow);
@@ -498,8 +463,8 @@ fn get_var_eq_condition_action(
             }
 
             let right_expr_type = infer_expr(db, cache, right_expr)?;
-            if condition_flow.is_false() {
-                return Ok(ConditionFlowAction::pending(PendingConditionNarrow::Eq {
+            if matches!(condition_flow, InferConditionFlow::FalseCondition) {
+                return Ok(ConditionFlowAction::Pending(PendingConditionNarrow::Eq {
                     right_expr_type,
                     condition_flow,
                 }));
@@ -532,25 +497,15 @@ fn get_var_eq_condition_action(
 
             let right_expr_type = infer_expr(db, cache, right_expr)?;
             let antecedent_flow_id = get_single_antecedent(flow_node)?;
-            let antecedent_type =
-                get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-            match (&antecedent_type, &right_expr_type) {
-                (
-                    LuaType::Array(array_type),
-                    LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i),
-                ) => {
-                    if condition_flow.is_true() {
-                        let new_array_type =
-                            LuaArrayType::new(array_type.get_base().clone(), LuaArrayLen::Max(*i));
-                        return Ok(ConditionFlowAction::Result(LuaType::Array(
-                            new_array_type.into(),
-                        )));
-                    }
-                }
-                _ => return Ok(ConditionFlowAction::Continue),
-            }
-
-            Ok(ConditionFlowAction::Continue)
+            Ok(ConditionFlowAction::NeedSubquery(
+                ConditionSubquery::ArrayLen {
+                    var_ref_id: var_ref_id.clone(),
+                    antecedent_flow_id,
+                    subquery_condition_flow: condition_flow,
+                    right_expr_type,
+                    max_adjustment: 0,
+                },
+            ))
         }
         _ => {
             // If the left expression is not a name or call expression, we cannot narrow it
@@ -559,12 +514,9 @@ fn get_var_eq_condition_action(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn maybe_field_literal_eq_action(
     db: &DbIndex,
-    tree: &FlowTree,
     cache: &mut LuaInferCache,
-    root: &LuaChunk,
     var_ref_id: &VarRefId,
     flow_node: &FlowNode,
     left_expr: LuaExpr,
@@ -582,6 +534,9 @@ fn maybe_field_literal_eq_action(
         }
         _ => return Ok(None),
     };
+    if matches!(literal_expr.get_literal(), Some(LuaLiteralToken::Nil(_))) {
+        return Ok(None);
+    }
 
     let Some(prefix_expr) = index_expr.get_prefix_expr() else {
         return Ok(None);
@@ -607,51 +562,17 @@ fn maybe_field_literal_eq_action(
     }
 
     let antecedent_flow_id = get_single_antecedent(flow_node)?;
-    let left_type = get_type_at_flow(db, tree, cache, root, var_ref_id, antecedent_flow_id)?;
-    let LuaType::Union(union_type) = left_type else {
-        return Ok(None);
-    };
-
     cache
         .narrow_by_literal_stop_position_cache
         .insert(syntax_id);
-
     let right_type = infer_expr(db, cache, LuaExpr::LiteralExpr(literal_expr))?;
-    let index = LuaIndexMemberExpr::IndexExpr(index_expr);
-    let mut opt_result = None;
-    let mut union_types = union_type.into_vec();
-    for (i, sub_type) in union_types.iter().enumerate() {
-        let member_type = match infer_member_by_member_key(
-            db,
-            cache,
-            sub_type,
-            index.clone(),
-            &InferGuard::new(),
-        ) {
-            Ok(member_type) => member_type,
-            Err(_) => continue, // If we cannot infer the member type, skip this type
-        };
-        if always_literal_equal(&member_type, &right_type) {
-            // If the right type matches the member type, we can narrow it
-            opt_result = Some(i);
-        }
-    }
-
-    match condition_flow {
-        InferConditionFlow::TrueCondition => {
-            if let Some(i) = opt_result {
-                return Ok(Some(ConditionFlowAction::Result(union_types[i].clone())));
-            }
-        }
-        InferConditionFlow::FalseCondition => {
-            if let Some(i) = opt_result {
-                union_types.remove(i);
-                return Ok(Some(ConditionFlowAction::Result(LuaType::from_vec(
-                    union_types,
-                ))));
-            }
-        }
-    }
-
-    Ok(None)
+    Ok(Some(ConditionFlowAction::NeedSubquery(
+        ConditionSubquery::FieldLiteralEq {
+            var_ref_id: var_ref_id.clone(),
+            antecedent_flow_id,
+            subquery_condition_flow: condition_flow,
+            idx: LuaIndexMemberExpr::IndexExpr(index_expr),
+            right_expr_type: right_type,
+        },
+    )))
 }

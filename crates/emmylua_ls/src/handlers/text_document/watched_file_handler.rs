@@ -42,17 +42,6 @@ pub async fn on_did_change_watched_files(
                     );
                 }
             }
-            Some(WatchedFileType::Editorconfig) => {
-                if file_event.typ == FileChangeType::DELETED {
-                    continue;
-                }
-                let editorconfig_path = uri_to_file_path(&file_event.uri).unwrap();
-                context
-                    .workspace_manager()
-                    .read()
-                    .await
-                    .update_editorconfig(editorconfig_path);
-            }
             Some(WatchedFileType::Emmyrc) => {
                 if file_event.typ == FileChangeType::DELETED {
                     continue;
@@ -99,7 +88,6 @@ fn collect_lua_files(
 
 enum WatchedFileType {
     Lua,
-    Editorconfig,
     Emmyrc,
 }
 
@@ -107,7 +95,6 @@ fn get_file_type(uri: &Uri) -> Option<WatchedFileType> {
     let path = uri_to_file_path(uri)?;
     let file_name = path.file_name()?.to_str()?;
     match file_name {
-        ".editorconfig" => Some(WatchedFileType::Editorconfig),
         ".emmyrc.json" | ".luarc.json" | ".emmyrc.lua" => Some(WatchedFileType::Emmyrc),
         _ => Some(WatchedFileType::Lua),
     }
