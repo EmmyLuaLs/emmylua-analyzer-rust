@@ -100,8 +100,8 @@ mod tests {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
             r#"
-            ---@class Matchers
-            ---@field toBe fun(self: Assertion, expected: any) -- 测试
+            ---@class Matchers<T>
+            ---@field toBe fun(self: Assertion<T>, expected: any) -- 测试
 
             ---@class Inverse<T>
             ---@field not_ T

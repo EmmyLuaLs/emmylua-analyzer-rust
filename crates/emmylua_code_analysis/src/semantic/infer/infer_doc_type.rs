@@ -163,7 +163,16 @@ fn infer_buildin_or_ref_type(
                 LuaTypeDeclId::global(name)
             };
 
-            LuaType::Ref(type_id)
+            if ctx
+                .db
+                .get_type_index()
+                .get_generic_params(&type_id)
+                .is_some_and(|generic_params| !generic_params.is_empty())
+            {
+                LuaType::Any
+            } else {
+                LuaType::Ref(type_id)
+            }
         }
     }
 }

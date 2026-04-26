@@ -1,13 +1,14 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute,
-    LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
-    LuaDocTypeFlag,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocGenericDeclList, LuaDocTag, LuaDocTagAlias,
+    LuaDocTagAttribute, LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace,
+    LuaDocTagUsing, LuaDocTypeFlag,
 };
 use flagset::FlagSet;
 use rowan::TextRange;
+use smol_str::SmolStr;
 
 use crate::{
-    LuaTypeDecl, LuaTypeDeclId, ModuleVisibility,
+    GenericParam, LuaTypeDecl, LuaTypeDeclId, ModuleVisibility,
     db_index::{LuaDeclTypeKind, LuaTypeFlag, WorkspaceId},
 };
 
@@ -19,7 +20,17 @@ pub fn analyze_doc_tag_class(analyzer: &mut DeclAnalyzer, class: LuaDocTagClass)
     let range = name_token.syntax().text_range();
     let type_flag = get_type_flag_value(analyzer, class.get_type_flag());
 
-    add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Class, type_flag);
+    let decl_id = add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Class, type_flag);
+    if let Some(generic_decl) = class.get_generic_decl() {
+        let generic_params = get_generic_params(generic_decl);
+        if !generic_params.is_empty() {
+            analyzer
+                .db
+                .get_type_index_mut()
+                .add_generic_params(decl_id, generic_params);
+        }
+    }
+
     Some(())
 }
 
@@ -80,7 +91,17 @@ pub fn analyze_doc_tag_alias(analyzer: &mut DeclAnalyzer, alias: LuaDocTagAlias)
     let name = name_token.get_name_text().to_string();
     let range = name_token.syntax().text_range();
     let type_flag = get_type_flag_value(analyzer, alias.get_type_flag());
-    add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Alias, type_flag);
+    let decl_id = add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Alias, type_flag);
+    if let Some(generic_decl) = alias.get_generic_decl_list() {
+        let generic_params = get_generic_params(generic_decl);
+        if !generic_params.is_empty() {
+            analyzer
+                .db
+                .get_type_index_mut()
+                .add_generic_params(decl_id, generic_params);
+        }
+    }
+
     Some(())
 }
 
@@ -187,7 +208,7 @@ fn add_type_decl(
     range: TextRange,
     kind: LuaDeclTypeKind,
     flag: FlagSet<LuaTypeFlag>,
-) {
+) -> LuaTypeDeclId {
     let file_id = analyzer.get_file_id();
     let workspace_id = analyzer
         .db
@@ -212,6 +233,26 @@ fn add_type_decl(
     let simple_name = id.get_simple_name();
     type_index.add_type_decl(
         file_id,
-        LuaTypeDecl::new(file_id, range, simple_name.to_string(), kind, flag, id),
+        LuaTypeDecl::new(
+            file_id,
+            range,
+            simple_name.to_string(),
+            kind,
+            flag,
+            id.clone(),
+        ),
     );
+
+    id
+}
+
+fn get_generic_params(params: LuaDocGenericDeclList) -> Vec<GenericParam> {
+    params
+        .get_generic_decl()
+        .filter_map(|param| {
+            let name_token = param.get_name_token()?;
+            let name = name_token.get_name_text();
+            Some(GenericParam::new(SmolStr::new(name), None, None))
+        })
+        .collect()
 }

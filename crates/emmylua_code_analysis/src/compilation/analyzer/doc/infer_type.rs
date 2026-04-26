@@ -202,7 +202,39 @@ fn infer_buildin_or_ref_type(
                 range,
             );
 
-            LuaType::Ref(type_id)
+            // 如果该类型具有泛型定义, 而这里我们没有提供泛型参数, 那么视为 any 并报告错误
+            if let Some(generic_params) = analyzer
+                .db
+                .get_type_index()
+                .get_generic_params(&type_id)
+                .filter(|generic_params| !generic_params.is_empty())
+            {
+                let generic_name = format!(
+                    "{}<{}>",
+                    type_id.get_name(),
+                    generic_params
+                        .iter()
+                        .map(|param| param.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                let generic_count = generic_params.len();
+                analyzer.db.get_diagnostic_index_mut().add_diagnostic(
+                    analyzer.file_id,
+                    AnalyzeError::new(
+                        DiagnosticCode::MissingTypeArgument,
+                        &t!(
+                            "Generic type '%{name}' requires %{count} type argument(s)",
+                            name = generic_name,
+                            count = generic_count
+                        ),
+                        range,
+                    ),
+                );
+                LuaType::Any
+            } else {
+                LuaType::Ref(type_id)
+            }
         }
     }
 }

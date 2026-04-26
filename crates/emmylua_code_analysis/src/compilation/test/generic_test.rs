@@ -888,7 +888,7 @@ mod test {
             ---@class Mock<T>
             ---@field ctx MockContext<T>
 
-            ---@type Mock
+            ---@type Mock<fun(...: any...): any>
             local mock
 
             Calls = mock.ctx.calls
@@ -912,7 +912,7 @@ mod test {
             ---@class Wrapper<U>
             ---@field inner Inner<{ foo: U }>
 
-            ---@type Wrapper
+            ---@type Wrapper<string>
             local wrapper
 
             Value = wrapper.inner.value
@@ -927,5 +927,42 @@ mod test {
         let foo_ty = ws.expr_ty("Foo");
         let foo_desc = ws.humanize_type(foo_ty);
         assert_ne!(foo_desc, "any", "{foo_desc}");
+    }
+
+    #[test]
+    fn test_generic_type_infer() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Base<T>
+            ---@alias Holder<V> V
+            "#,
+        );
+        {
+            // 根据 TS 的做法, 如果 Base<T> 没有声明约束, 那么这里应该是 any 并报错
+            ws.def(
+                r#"
+            ---@type Base
+            Base_A = {}
+            "#,
+            );
+
+            let v_ty = ws.expr_ty("Base_A");
+            assert_eq!(ws.humanize_type_detailed(v_ty), "any");
+            assert!(!ws.check_code_for(
+                DiagnosticCode::MissingTypeArgument,
+                r#"
+            ---@type Base
+            local a
+            "#,
+            ));
+            assert!(!ws.check_code_for(
+                DiagnosticCode::MissingTypeArgument,
+                r#"
+            ---@type Holder
+            local h
+            "#,
+            ));
+        }
     }
 }

@@ -245,6 +245,10 @@ Cannot use `...` outside a vararg function.:
   en: "type `%{found}` does not satisfy the constraint `%{source}`. %{reason}"
   zh_CN: "泛型约束要求为 `%{source}` 的子类, 但找到了 `%{found}`. %{reason}"
   zh_HK: "泛型约束要求为 `%{source}` 的子类, 但找到了 `%{found}`. %{reason}"
+"Generic type '%{name}' requires %{count} type argument(s)":
+  en: "Generic type '%{name}' requires %{count} type argument(s)"
+  zh_CN: "泛型类型“%{name}”需要 %{count} 个类型参数"
+  zh_HK: "泛型類型「%{name}」需要 %{count} 個類型參數"
 "the string template type does not match any type declaration":
   en: "the string template type does not match any type declaration"
   zh_CN: "字符串模板类型与任何类型声明不匹配"
