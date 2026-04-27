@@ -498,16 +498,41 @@ fn parse_cast_expr(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::NameExpr);
     p.bump();
     let mut cm = m.complete(p);
-    // 处理多级字段访问
-    while p.current_token() == LuaTokenKind::TkDot {
-        let index_m = cm.precede(p, LuaSyntaxKind::IndexExpr);
-        p.bump();
-        if p.current_token() == LuaTokenKind::TkName {
-            p.bump();
-        } else {
-            // 找不到也不报错
+    // 处理多级字段访问（支持 `.` 和 `[]` 索引）
+    loop {
+        match p.current_token() {
+            LuaTokenKind::TkDot => {
+                let index_m = cm.precede(p, LuaSyntaxKind::IndexExpr);
+                p.bump();
+                if p.current_token() == LuaTokenKind::TkName {
+                    p.bump();
+                }
+                cm = index_m.complete(p);
+            }
+            LuaTokenKind::TkLeftBracket => {
+                let index_m = cm.precede(p, LuaSyntaxKind::IndexExpr);
+                p.bump();
+                // Wrap the index value in a LiteralExpr/NameExpr node so that
+                // LuaIndexExpr::get_index_key() can find it (it expects
+                // a child Node, not a bare token).
+                if p.current_token() == LuaTokenKind::TkInt
+                    || p.current_token() == LuaTokenKind::TkString
+                {
+                    let literal_m = p.mark(LuaSyntaxKind::LiteralExpr);
+                    p.bump();
+                    literal_m.complete(p);
+                } else if p.current_token() == LuaTokenKind::TkName {
+                    let name_m = p.mark(LuaSyntaxKind::NameExpr);
+                    p.bump();
+                    name_m.complete(p);
+                }
+                if p.current_token() == LuaTokenKind::TkRightBracket {
+                    p.bump();
+                }
+                cm = index_m.complete(p);
+            }
+            _ => break,
         }
-        cm = index_m.complete(p);
     }
 
     Ok(cm)

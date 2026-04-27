@@ -1555,4 +1555,36 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_cast_bracket_index_narrows_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        // @cast addresses[1] -nil should narrow addresses[1] from string|nil to string
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param addr string
+            local function connect(addr) end
+
+            ---@type string[]
+            local addresses = { "127.0.0.1" }
+            ---@cast addresses[1] -nil
+            connect(addresses[1])
+        "#,
+        ));
+
+        // Without @cast, addresses[1] is string|nil, should report param-type-mismatch
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param addr string
+            local function connect(addr) end
+
+            ---@type string[]
+            local addresses = { "127.0.0.1" }
+            connect(addresses[1])
+        "#,
+        ));
+    }
 }

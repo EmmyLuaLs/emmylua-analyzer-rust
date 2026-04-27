@@ -815,4 +815,30 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_array_index_with_cast() {
+        let mut ws = VirtualWorkspace::new();
+
+        // Accessing [1] on a string[] should not report undefined-field
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@type string[]
+            local addresses
+            local a = addresses[1]
+            "#
+        ));
+
+        // Accessing [1] on a string[] with @cast should not report undefined-field
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@type string[]
+            local addresses
+            ---@cast addresses[1] -nil
+            local a = addresses[1]
+            "#
+        ));
+    }
 }

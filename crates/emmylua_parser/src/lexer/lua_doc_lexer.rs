@@ -599,10 +599,23 @@ impl LuaDocLexer<'_> {
                 reader.bump();
                 LuaTokenKind::TkDot
             }
+            '[' => {
+                reader.bump();
+                LuaTokenKind::TkLeftBracket
+            }
+            ']' => {
+                reader.bump();
+                LuaTokenKind::TkRightBracket
+            }
             ch if is_name_start(ch) => {
                 reader.bump();
                 reader.eat_while(is_name_continue);
                 LuaTokenKind::TkName
+            }
+            '0'..='9' => {
+                reader.bump();
+                reader.eat_while(|c| c.is_ascii_digit());
+                LuaTokenKind::TkInt
             }
             _ => self.lex_normal(),
         }
