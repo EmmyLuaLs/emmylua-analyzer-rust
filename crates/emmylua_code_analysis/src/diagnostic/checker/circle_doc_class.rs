@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaDocTagClass};
 use rowan::TextRange;
 
-use crate::{DiagnosticCode, LuaType, SemanticModel};
+use crate::{DiagnosticCode, SemanticModel, super_type_base_decl_id};
 
 use super::{Checker, DiagnosticContext};
 
@@ -39,22 +39,21 @@ fn check_doc_tag_class(
         return Some(());
     }
 
-    let name = class_decl.get_full_name();
-
+    let class_id = class_decl.get_id();
     let mut queue = Vec::new();
     let mut visited = HashSet::new();
 
-    queue.push(class_decl.get_id());
+    queue.push(class_id.clone());
     while let Some(current_id) = queue.pop() {
         if !visited.insert(current_id.clone()) {
             continue;
         }
 
-        let super_types = type_index.get_super_types(&current_id);
+        let super_types = type_index.get_super_types_raw(&current_id);
         if let Some(super_types) = super_types {
             for super_type in super_types {
-                if let LuaType::Ref(super_type_id) = &super_type {
-                    if super_type_id.get_name() == name {
+                if let Some(super_type_id) = super_type_base_decl_id(&super_type) {
+                    if super_type_id == &class_id {
                         context.add_diagnostic(
                             DiagnosticCode::CircleDocClass,
                             get_lint_range(tag).unwrap_or(tag.get_range()),

@@ -126,6 +126,48 @@ mod test {
     }
 
     #[test]
+    fn test_class_super_cycle_filters_query_supers() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::CircleDocClass,
+            r#"
+            ---@class ClassCycleA: ClassCycleB
+            ---@class ClassCycleB: ClassCycleA
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_generic_class_super_cycle_reports_diagnostic() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::CircleDocClass,
+            r#"
+            ---@class GenericCycleA<T>: GenericCycleB<T>
+            ---@class GenericCycleB<T>: GenericCycleA<T>
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_pure_alias_cycle_collapses_to_any() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@alias AliasCycleA AliasCycleB
+            ---@alias AliasCycleB AliasCycleA
+            ---@type AliasCycleA
+            AliasValue = nil
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("AliasValue.field"), ws.ty("any"));
+    }
+
+    #[test]
     fn test_generic_type_extends() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         ws.def(
