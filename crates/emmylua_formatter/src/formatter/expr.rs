@@ -297,9 +297,12 @@ fn format_index_expr(
         .map(|prefix| format_expr(ctx, plan, &prefix))
         .unwrap_or_default();
     let access_docs = format_index_access_ir(ctx, plan, expr);
-    let indent_tail = expr
-        .get_index_token()
-        .is_some_and(|token| token.is_dot() || token.is_colon());
+    let indent_tail = matches!(
+        access_docs.first(),
+        Some(DocIR::SyntaxToken(
+            LuaTokenKind::TkDot | LuaTokenKind::TkColon
+        ))
+    );
 
     let bridge = analyze_expr_bridge(expr.syntax());
     if bridge.has_line_break || !bridge.comment_fragments.is_empty() {
@@ -347,6 +350,12 @@ pub fn format_param_list_ir(
             grouped_trailing: trailing_comma_ir(ctx.config.output.trailing_comma.clone()),
         },
     )
+}
+
+enum CompactCallArgListAttempt {
+    Formatted(Vec<DocIR>),
+    ReuseDocs(Vec<Vec<DocIR>>),
+    CommentsPresent,
 }
 
 #[derive(Default)]
@@ -665,10 +674,6 @@ fn format_call_arg_list(
     }
 
     let preserve_multiline_args = args_list.syntax().text().contains_char('\n');
-    let first_arg_is_multiline_table = matches!(
-        args.first(),
-        Some(LuaExpr::TableExpr(table)) if table.syntax().text().contains_char('\n')
-    );
     let attach_first_arg = preserve_multiline_args && should_attach_first_call_arg(&args);
     let arg_docs: Vec<Vec<DocIR>> = args
         .iter()
@@ -684,6 +689,22 @@ fn format_call_arg_list(
             )
         })
         .collect();
+
+    format_call_arg_list_from_docs(ctx, plan, args_list, &args, attach_first_arg, arg_docs)
+}
+
+fn format_call_arg_list_from_docs(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    args_list: &LuaCallArgList,
+    args: &[LuaExpr],
+    attach_first_arg: bool,
+    arg_docs: Vec<Vec<DocIR>>,
+) -> Vec<DocIR> {
+    let first_arg_is_multiline_table = matches!(
+        args.first(),
+        Some(LuaExpr::TableExpr(table)) if table.syntax().text().contains_char('\n')
+    );
     let (open, close) = paren_tokens(args_list.syntax());
     let comma = first_direct_token(args_list.syntax(), LuaTokenKind::TkComma);
     let layout_plan = expr_sequence_layout_plan(plan, args_list.syntax());
@@ -770,22 +791,23 @@ fn format_call_args_with_inline_block_item(
     close: DocIR,
     comma: Option<&LuaSyntaxToken>,
 ) -> Vec<DocIR> {
-    let prefix_items = arg_docs[..block_index].to_vec();
-    let block_item = arg_docs[block_index].clone();
-    let tail_items = arg_docs[block_index + 1..].to_vec();
+    let prefix_items = &arg_docs[..block_index];
+    let block_item = &arg_docs[block_index];
+    let tail_items = &arg_docs[block_index + 1..];
 
     let mut anchored_docs = vec![open.clone()];
     if !prefix_items.is_empty() {
-        anchored_docs.extend(ir::intersperse(
+        append_docs_with_separator(
+            &mut anchored_docs,
             prefix_items,
-            comma_flat_separator(plan, comma),
-        ));
+            &comma_flat_separator(plan, comma),
+        );
         anchored_docs.extend(comma_flat_separator(plan, comma));
     }
-    anchored_docs.extend(block_item);
+    anchored_docs.extend(block_item.clone());
     if !tail_items.is_empty() {
         anchored_docs.push(ir::indent(vec![ir::fill(
-            build_fill_parts_with_leading_separator(&tail_items, &comma_fill_separator(comma)),
+            build_fill_parts_with_leading_separator(tail_items, &comma_fill_separator(comma)),
         )]));
         anchored_docs.push(ir::hard_line());
         anchored_docs.push(close.clone());
@@ -794,22 +816,7 @@ fn format_call_args_with_inline_block_item(
     }
 
     let anchored = vec![ir::group_break(anchored_docs)];
-
-    let mut one_per_line_inner = Vec::new();
-    for (index, item_docs) in arg_docs.iter().enumerate() {
-        one_per_line_inner.push(ir::hard_line());
-        one_per_line_inner.extend(item_docs.clone());
-        if index + 1 < arg_docs.len() {
-            one_per_line_inner.extend(comma_token_docs(comma));
-        }
-    }
-
-    let one_per_line = vec![ir::group_break(vec![
-        open,
-        ir::indent(one_per_line_inner),
-        ir::hard_line(),
-        close,
-    ])];
+    let one_per_line = build_one_per_line_call_args(&arg_docs, open, close, comma);
 
     choose_sequence_layout(
         ctx,
@@ -875,22 +882,7 @@ fn format_call_args_with_block_items(
         ir::hard_line(),
         close.clone(),
     ])];
-
-    let mut one_per_line_inner = Vec::new();
-    for (index, item_docs) in arg_docs.iter().enumerate() {
-        one_per_line_inner.push(ir::hard_line());
-        one_per_line_inner.extend(item_docs.clone());
-        if index + 1 < arg_docs.len() {
-            one_per_line_inner.extend(comma_token_docs(comma));
-        }
-    }
-
-    let one_per_line = vec![ir::group_break(vec![
-        open,
-        ir::indent(one_per_line_inner),
-        ir::hard_line(),
-        close,
-    ])];
+    let one_per_line = build_one_per_line_call_args(&arg_docs, open, close, comma);
 
     choose_sequence_layout(
         ctx,
@@ -922,6 +914,30 @@ fn render_blocked_call_arg_chunk(items_with_trailing: Vec<Vec<DocIR>>) -> Vec<Do
         }
     }
     vec![ir::fill(parts)]
+}
+
+fn build_one_per_line_call_args(
+    arg_docs: &[Vec<DocIR>],
+    open: DocIR,
+    close: DocIR,
+    comma: Option<&LuaSyntaxToken>,
+) -> Vec<DocIR> {
+    let item_count = arg_docs.len();
+    let mut one_per_line_inner = Vec::new();
+    for (index, item_docs) in arg_docs.iter().enumerate() {
+        one_per_line_inner.push(ir::hard_line());
+        one_per_line_inner.extend(item_docs.clone());
+        if index + 1 < item_count {
+            one_per_line_inner.extend(comma_token_docs(comma));
+        }
+    }
+
+    vec![ir::group_break(vec![
+        open,
+        ir::indent(one_per_line_inner),
+        ir::hard_line(),
+        close,
+    ])]
 }
 
 fn should_attach_first_call_arg(args: &[LuaExpr]) -> bool {
@@ -976,8 +992,9 @@ fn format_call_args_with_attached_first_arg(
         return docs;
     }
 
-    let first_arg = arg_docs[0].clone();
-    let tail_items = arg_docs[1..].to_vec();
+    let Some((first_arg, tail_items)) = arg_docs.split_first() else {
+        return vec![open, close];
+    };
     let tail_is_single_line = allow_inline_tail_after_first_arg
         && tail_items
             .iter()
@@ -987,10 +1004,7 @@ fn format_call_args_with_attached_first_arg(
         let mut docs = vec![open.clone()];
         docs.extend(first_arg.clone());
         docs.extend(comma_flat_separator(plan, comma));
-        docs.extend(ir::intersperse(
-            tail_items.clone(),
-            comma_flat_separator(plan, comma),
-        ));
+        append_docs_with_separator(&mut docs, tail_items, &comma_flat_separator(plan, comma));
         docs.push(close.clone());
         docs
     });
@@ -1000,31 +1014,18 @@ fn format_call_args_with_attached_first_arg(
     fill_docs.extend(comma_token_docs(comma));
     fill_docs.push(ir::indent(vec![
         ir::soft_line(),
-        ir::fill(build_fill_parts(&tail_items, &comma_fill_separator(comma))),
+        ir::fill(build_fill_parts(tail_items, &comma_fill_separator(comma))),
     ]));
     fill_docs.push(close.clone());
-
-    let mut one_per_line_docs = vec![open];
-    one_per_line_docs.extend(first_arg);
-    one_per_line_docs.extend(comma_token_docs(comma));
-    let mut rest = Vec::new();
-    for (index, item_docs) in tail_items.iter().enumerate() {
-        rest.push(ir::hard_line());
-        rest.extend(item_docs.clone());
-        if index + 1 < tail_items.len() {
-            rest.extend(comma_token_docs(comma));
-        }
-    }
-    one_per_line_docs.push(ir::indent(rest));
-    one_per_line_docs.push(ir::hard_line());
-    one_per_line_docs.push(close);
 
     choose_sequence_layout(
         ctx,
         SequenceLayoutCandidates {
             flat,
             fill: Some(vec![ir::group(fill_docs)]),
-            one_per_line: Some(vec![ir::group_break(one_per_line_docs)]),
+            one_per_line: Some(build_attached_first_arg_one_per_line(
+                &arg_docs, open, close, comma,
+            )),
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -1034,6 +1035,45 @@ fn format_call_args_with_attached_first_arg(
             ..Default::default()
         },
     )
+}
+
+fn build_attached_first_arg_one_per_line(
+    arg_docs: &[Vec<DocIR>],
+    open: DocIR,
+    close: DocIR,
+    comma: Option<&LuaSyntaxToken>,
+) -> Vec<DocIR> {
+    let mut one_per_line_docs = vec![open];
+    let Some((first_arg, rest_args)) = arg_docs.split_first() else {
+        one_per_line_docs.push(close);
+        return vec![ir::group_break(one_per_line_docs)];
+    };
+    one_per_line_docs.extend(first_arg.clone());
+    one_per_line_docs.extend(comma_token_docs(comma));
+
+    let rest_count = rest_args.len();
+    let mut rest = Vec::new();
+    for (index, item_docs) in rest_args.iter().enumerate() {
+        rest.push(ir::hard_line());
+        rest.extend(item_docs.clone());
+        if index + 1 < rest_count {
+            rest.extend(comma_token_docs(comma));
+        }
+    }
+
+    one_per_line_docs.push(ir::indent(rest));
+    one_per_line_docs.push(ir::hard_line());
+    one_per_line_docs.push(close);
+    vec![ir::group_break(one_per_line_docs)]
+}
+
+fn append_docs_with_separator(docs: &mut Vec<DocIR>, items: &[Vec<DocIR>], separator: &[DocIR]) {
+    for (index, item_docs) in items.iter().enumerate() {
+        if index > 0 {
+            docs.extend(separator.to_vec());
+        }
+        docs.extend(item_docs.clone());
+    }
 }
 
 #[derive(Default)]
@@ -2438,8 +2478,23 @@ fn format_call_suffix_ir(
     }
 
     let docs = if !args_list.syntax().text().contains_char('\n') {
-        format_compact_call_arg_list(ctx, plan, &args_list)
-            .unwrap_or_else(|| format_call_arg_list(ctx, plan, &args_list))
+        match format_compact_call_arg_list(ctx, plan, &args_list, &args) {
+            CompactCallArgListAttempt::Formatted(docs) => docs,
+            CompactCallArgListAttempt::ReuseDocs(arg_docs) => {
+                let attach_first_arg = false;
+                format_call_arg_list_from_docs(
+                    ctx,
+                    plan,
+                    &args_list,
+                    &args,
+                    attach_first_arg,
+                    arg_docs,
+                )
+            }
+            CompactCallArgListAttempt::CommentsPresent => {
+                format_call_arg_list(ctx, plan, &args_list)
+            }
+        }
     } else {
         format_call_arg_list(ctx, plan, &args_list)
     };
@@ -2466,11 +2521,11 @@ fn format_compact_call_arg_list(
     ctx: &FormatContext,
     plan: &RootFormatPlan,
     args_list: &LuaCallArgList,
-) -> Option<Vec<DocIR>> {
-    let args: Vec<_> = args_list.get_args().collect();
+    args: &[LuaExpr],
+) -> CompactCallArgListAttempt {
     let collected = collect_call_arg_entries(ctx, plan, args_list);
     if collected.has_comments {
-        return None;
+        return CompactCallArgListAttempt::CommentsPresent;
     }
 
     let arg_docs: Vec<Vec<DocIR>> = args.iter().map(|arg| format_expr(ctx, plan, arg)).collect();
@@ -2478,12 +2533,12 @@ fn format_compact_call_arg_list(
         .iter()
         .any(|docs| ir::ir_has_forced_line_break(docs))
     {
-        return None;
+        return CompactCallArgListAttempt::ReuseDocs(arg_docs);
     }
 
     let (open, close) = paren_tokens(args_list.syntax());
     let comma = first_direct_token(args_list.syntax(), LuaTokenKind::TkComma);
-    Some(format_delimited_sequence(
+    CompactCallArgListAttempt::Formatted(format_delimited_sequence(
         ctx,
         DelimitedSequenceLayout {
             open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),

@@ -7,15 +7,14 @@ mod printer;
 mod test;
 mod workspace;
 
-use emmylua_parser::{LuaChunk, LuaLanguageLevel, LuaParser, ParserConfig};
-use formatter::FormatContext;
-use printer::Printer;
-
 pub use config::{
     AlignConfig, CommentConfig, EmmyDocConfig, EndOfLine, ExpandStrategy, IndentConfig, IndentKind,
     LayoutConfig, LuaFormatConfig, LuaSyntaxLevel, OutputConfig, QuoteStyle, SingleArgCallParens,
     SpacingConfig, SyntaxConfig, TrailingComma, TrailingTableSeparator,
 };
+use emmylua_parser::{LuaChunk, LuaLanguageLevel, LuaParser, ParserConfig};
+use formatter::FormatContext;
+use printer::Printer;
 pub use workspace::{
     ChangedLineRange, FileCollectorOptions, FormatCheckPathResult, FormatCheckResult, FormatOutput,
     FormatPathResult, FormatterError, ResolvedConfig, check_file, check_text, check_text_for_path,
@@ -37,7 +36,6 @@ pub fn reformat_lua_code(source: &SourceText, config: &LuaFormatConfig) -> Strin
     let ctx = FormatContext::new(config);
     let chunk = tree.get_chunk_node();
     let ir = formatter::format_chunk(&ctx, &chunk);
-
     Printer::new(config).print(&ir)
 }
 

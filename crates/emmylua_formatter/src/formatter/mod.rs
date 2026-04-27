@@ -23,5 +23,6 @@ impl<'a> FormatContext<'a> {
 pub fn format_chunk(ctx: &FormatContext, chunk: &LuaChunk) -> Vec<DocIR> {
     let spacing_plan = spacing::analyze_root_spacing(ctx, chunk);
     let layout_plan = layout::analyze_root_layout(ctx, chunk, spacing_plan);
+
     render::render_root(ctx, chunk, &layout_plan)
 }
