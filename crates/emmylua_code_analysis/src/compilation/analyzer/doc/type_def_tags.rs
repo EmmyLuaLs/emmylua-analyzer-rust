@@ -224,7 +224,7 @@ fn get_generic_params(
         };
 
         let type_constraint = param
-            .get_type()
+            .get_constraint_type()
             .map(|type_ref| infer_type(analyzer, type_ref));
 
         let param = GenericParam::new(name, type_constraint, None);
@@ -378,7 +378,7 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
                 .append_generic_param(scope_id, GenericParam::new(smol_name.clone(), None, None));
 
             let type_ref = param
-                .get_type()
+                .get_constraint_type()
                 .map(|type_ref| infer_type(analyzer, type_ref));
 
             analyzer.generic_index.set_param_constraint(

@@ -607,7 +607,9 @@ fn register_inline_func_generics(
             continue;
         };
 
-        let constraint = param.get_type().map(|ty| infer_type(analyzer, ty));
+        let constraint = param
+            .get_constraint_type()
+            .map(|ty| infer_type(analyzer, ty));
         generics.push(GenericParam::new(
             SmolStr::new(name_token.get_name_text()),
             constraint,
@@ -840,7 +842,7 @@ fn infer_mapped_type(
     let name_token = generic_decl.get_name_token()?;
     let name = name_token.get_name_text();
     let constraint = generic_decl
-        .get_type()
+        .get_constraint_type()
         .map(|constraint| infer_type(analyzer, constraint));
     let param = GenericParam::new(SmolStr::new(name), constraint, None);
 

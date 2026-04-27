@@ -195,6 +195,10 @@ impl LuaDocLexer<'_> {
                 reader.bump();
                 LuaTokenKind::TkComma
             }
+            '=' => {
+                reader.bump();
+                LuaTokenKind::TkDocMatch
+            }
             ';' => {
                 reader.bump();
                 LuaTokenKind::TkSemicolon
