@@ -137,6 +137,21 @@ fn format_binary_expr(
         return docs;
     }
 
+    if should_attach_short_binary_tail(op_token.get_op(), &right, &right_docs)
+        && should_attach_after_multiline_left_expr(&left)
+    {
+        let mut docs = left_docs;
+        if force_space_before {
+            docs.push(ir::space());
+        } else {
+            docs.push(space_rule.to_ir());
+        }
+        docs.push(ir::source_token(op_token.syntax().clone()));
+        docs.push(space_rule.to_ir());
+        docs.extend(right_docs);
+        return docs;
+    }
+
     vec![ir::group(vec![
         ir::list(left_docs),
         ir::indent(vec![
@@ -236,6 +251,18 @@ fn should_attach_short_binary_tail(
         }
         _ => false,
     }
+}
+
+fn should_attach_after_multiline_left_expr(left: &LuaExpr) -> bool {
+    left.syntax().text().contains_char('\n')
+        && matches!(
+            left,
+            LuaExpr::CallExpr(_)
+                | LuaExpr::ParenExpr(_)
+                | LuaExpr::IndexExpr(_)
+                | LuaExpr::TableExpr(_)
+                | LuaExpr::ClosureExpr(_)
+        )
 }
 
 fn format_unary_expr(
@@ -2477,7 +2504,7 @@ fn format_call_suffix_ir(
         return docs;
     }
 
-    let docs = if !args_list.syntax().text().contains_char('\n') {
+    if !args_list.syntax().text().contains_char('\n') {
         match format_compact_call_arg_list(ctx, plan, &args_list, &args) {
             CompactCallArgListAttempt::Formatted(docs) => docs,
             CompactCallArgListAttempt::ReuseDocs(arg_docs) => {
@@ -2497,23 +2524,6 @@ fn format_call_suffix_ir(
         }
     } else {
         format_call_arg_list(ctx, plan, &args_list)
-    };
-
-    let is_single_multiline_table_payload = args.len() == 1
-        && matches!(args.first(), Some(LuaExpr::TableExpr(table)) if table.syntax().text().contains_char('\n'));
-
-    let has_multiline_block_payload = args.iter().any(|arg| {
-        matches!(arg, LuaExpr::ClosureExpr(_) | LuaExpr::TableExpr(_))
-            && arg.syntax().text().contains_char('\n')
-    });
-
-    if ir::ir_has_forced_line_break(&docs)
-        && !is_single_multiline_table_payload
-        && !has_multiline_block_payload
-    {
-        vec![ir::indent(docs)]
-    } else {
-        docs
     }
 }
 

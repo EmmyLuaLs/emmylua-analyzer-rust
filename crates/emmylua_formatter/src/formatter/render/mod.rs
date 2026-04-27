@@ -1775,6 +1775,15 @@ fn normalize_single_normal_comment_line(
         }
     });
     let body = body_with_gap.trim_start();
+    if prefix.trim_end() == "--"
+        && body_with_gap
+            .chars()
+            .next()
+            .is_some_and(char::is_whitespace)
+        && body.starts_with('[')
+    {
+        return format!("-- {body}");
+    }
     if body.is_empty() {
         prefix.trim_end().to_string()
     } else {

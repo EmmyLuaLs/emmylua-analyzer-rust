@@ -364,6 +364,10 @@ fn apply_comment_start_spacing(
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
+    if comment_start_looks_like_spaced_long_comment(token) {
+        return;
+    }
+
     if let Some(replacement) = normalized_comment_prefix(ctx, token.text()) {
         spacing.add_token_replace(syntax_id, replacement);
         spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
@@ -455,6 +459,27 @@ fn get_prev_sibling_token_without_space(token: &LuaSyntaxToken) -> Option<LuaSyn
     }
 
     None
+}
+
+fn comment_start_looks_like_spaced_long_comment(token: &LuaSyntaxToken) -> bool {
+    if token.kind().to_token() != LuaTokenKind::TkNormalStart || token.text() != "--" {
+        return false;
+    }
+
+    let mut current = token.next_token();
+    let mut saw_whitespace = false;
+    while let Some(next) = current {
+        match next.kind().to_token() {
+            LuaTokenKind::TkWhitespace => {
+                saw_whitespace = true;
+                current = next.next_token();
+            }
+            LuaTokenKind::TkEndOfLine => return false,
+            _ => return saw_whitespace && next.text().starts_with('['),
+        }
+    }
+
+    false
 }
 
 fn normalized_comment_prefix(ctx: &FormatContext, prefix_text: &str) -> Option<String> {
@@ -650,6 +675,22 @@ mod tests {
             spacing.right_expected(start_id),
             Some(&TokenSpacingExpected::Space(0))
         );
+    }
+
+    #[test]
+    fn test_spacing_does_not_normalize_spaced_long_comment_prefix() {
+        let config = LuaFormatConfig::default();
+        let tree = LuaParser::parse(
+            "-- [[ not a long comment ]]\n",
+            ParserConfig::with_level(LuaLanguageLevel::Lua54),
+        );
+        let chunk = tree.get_chunk_node();
+        let spacing = analyze_root_spacing(&FormatContext::new(&config), &chunk).spacing;
+        let start = find_token(&chunk, LuaTokenKind::TkNormalStart);
+        let start_id = LuaSyntaxId::from_token(&start);
+
+        assert_eq!(spacing.token_replace(start_id), None);
+        assert_eq!(spacing.right_expected(start_id), None);
     }
 
     #[test]

@@ -3,9 +3,11 @@ mod tests {
     // ========== unary / binary / concat ==========
 
     use crate::{
-        assert_format, assert_format_with_config,
+        SourceText, assert_format, assert_format_with_config,
         config::{LayoutConfig, LuaFormatConfig},
+        reformat_lua_code,
     };
+    use emmylua_parser::LuaLanguageLevel;
 
     #[test]
     fn test_unary_expr() {
@@ -764,6 +766,120 @@ end)
     }
 
     #[test]
+    fn test_chained_call_suffix_does_not_double_indent_multiline_args() {
+        assert_format!(
+            r#"a.a = function()
+    return function(l)
+        a.Add(
+                aaaa,
+                bbbb,
+                cccc,
+                dddd,
+                eeee,
+                nil,
+                nil,
+                nil,
+                aafafa -- comment
+            )()
+    end
+end
+"#,
+            r#"a.a = function()
+    return function(l)
+        a.Add(
+            aaaa,
+            bbbb,
+            cccc,
+            dddd,
+            eeee,
+            nil,
+            nil,
+            nil,
+            aafafa -- comment
+        )()
+    end
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_chained_index_after_multiline_call_does_not_double_indent_args() {
+        assert_format!(
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+                aaaa,
+                bbbb,
+                cccc,
+                dddd,
+                eeee,
+                nil,
+                nil,
+                nil,
+                aafafa -- comment
+            )[1]
+    end
+end
+"#,
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+            aaaa,
+            bbbb,
+            cccc,
+            dddd,
+            eeee,
+            nil,
+            nil,
+            nil,
+            aafafa -- comment
+        )[1]
+    end
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_chained_method_after_multiline_call_does_not_double_indent_args() {
+        assert_format!(
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+                aaaa,
+                bbbb,
+                cccc,
+                dddd,
+                eeee,
+                nil,
+                nil,
+                nil,
+                aafafa -- comment
+            ):next()
+    end
+end
+"#,
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+            aaaa,
+            bbbb,
+            cccc,
+            dddd,
+            eeee,
+            nil,
+            nil,
+            nil,
+            aafafa -- comment
+        ):next()
+    end
+end
+"#
+        );
+    }
+
+    #[test]
     fn test_multiline_call_comparison_keeps_short_rhs_on_closing_line() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {
@@ -784,6 +900,41 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
         'LOADTRUE', 'RETURN1') == "hiho")
 "#,
             config
+        );
+    }
+
+    #[test]
+    fn test_user_multiline_assert_comparison_keeps_eq_on_call_closing_line() {
+        let input = r#"assert(
+        T.checkpanic(
+            [[
+            pushstring "return {__close = function () Y = 'ho'; end}"
+      newtable
+      loadstring -2
+      call 0 1
+      setmetatable -2
+      toclose -1
+            pushstring "hi"
+      error
+    ]], [[
+      getglobal Y
+      concat 2         # concat original error with global Y
+    ]]
+        )
+                        == "hiho"
+    )
+"#;
+        let result = reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &LuaFormatConfig::default(),
+        );
+
+        assert!(
+            result.contains(") == \"hiho\"") || result.contains(") == \"hiho\""),
+            "expected comparison tail to stay on the call closing line, got:\n{result}"
         );
     }
 
