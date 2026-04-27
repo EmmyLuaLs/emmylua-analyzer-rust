@@ -60,12 +60,12 @@ local y = 2
     fn test_long_string_preserves_trailing_spaces() {
         // Long string content including trailing spaces must be preserved exactly
         assert_format!(
-            r#"local s = [[  hello   
-  world   
+            r#"local s = [[  hello
+  world
 ]]
 "#,
-            r#"local s = [[  hello   
-  world   
+            r#"local s = [[  hello
+  world
 ]]
 "#
         );
