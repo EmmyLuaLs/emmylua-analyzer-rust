@@ -382,6 +382,14 @@ local b = t[1]
     }
 
     #[test]
+    fn test_call_expr_keeps_simple_tail_arg_on_same_line_after_multiline_first_arg() {
+        assert_format!(
+            "local self = setmetatable({\n    _obj = obj,\n    __flags = {\n        message = msg,\n    },\n}, Assertion)\n",
+            "local self = setmetatable({\n    _obj = obj,\n    __flags = {\n        message = msg\n    }\n}, Assertion)\n"
+        );
+    }
+
+    #[test]
     fn test_call_args_use_progressive_fill_before_full_expansion() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {
@@ -410,7 +418,7 @@ local b = t[1]
     fn test_first_table_arg_keeps_short_tail_packed_after_multiline_block() {
         assert_format!(
             "configure({\n    key = value,\n    another = other,\n}, option_one, option_two)\n",
-            "configure({\n    key = value,\n    another = other\n},\n    option_one, option_two)\n"
+            "configure({\n    key = value,\n    another = other\n}, option_one, option_two)\n"
         );
     }
 

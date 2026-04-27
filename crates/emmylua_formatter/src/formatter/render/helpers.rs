@@ -4,6 +4,7 @@ use emmylua_parser::{
 };
 use rowan::NodeOrToken;
 
+use crate::formatter::render::comment_is_inline_after_anchor;
 use crate::ir::{self, DocIR};
 
 use super::super::expr;
@@ -138,12 +139,8 @@ pub(super) fn leading_inline_block_comment(
             }
             NodeOrToken::Node(node) if node.kind() == LuaKind::Syntax(LuaSyntaxKind::Comment) => {
                 let comment = LuaComment::cast(node)?;
-                return super::comment_is_inline_after_anchor(
-                    root,
-                    Some(anchor_token),
-                    comment.syntax(),
-                )
-                .then_some(comment);
+                return comment_is_inline_after_anchor(root, Some(anchor_token), comment.syntax())
+                    .then_some(comment);
             }
             _ => return None,
         }
@@ -338,6 +335,5 @@ pub(super) fn find_node_by_id(
         return Some(root.clone());
     }
 
-    root.descendants()
-        .find(|node| LuaSyntaxId::from_node(node) == syntax_id)
+    syntax_id.to_node_from_root(root)
 }

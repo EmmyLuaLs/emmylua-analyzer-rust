@@ -218,7 +218,7 @@ end
     fn test_if_block_reindents_attached_multiline_table_call_arg() {
         assert_format!(
             "if ok then\n    configure({\nkey = value,\nanother = other,\n}, option_one, option_two)\nend\n",
-            "if ok then\n    configure({\n        key = value,\n        another = other\n    },\n        option_one, option_two)\nend\n"
+            "if ok then\n    configure({\n        key = value,\n        another = other\n    }, option_one, option_two)\nend\n"
         );
     }
 
