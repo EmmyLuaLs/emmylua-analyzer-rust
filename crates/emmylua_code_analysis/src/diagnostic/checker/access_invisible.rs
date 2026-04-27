@@ -86,7 +86,7 @@ fn report_reason(
     property_owner_id: LuaSemanticDeclId,
 ) -> Option<()> {
     let property = context
-        .db
+        .db()
         .get_property_index()
         .get_property(&property_owner_id)?;
 

@@ -4,12 +4,12 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType, SemanticDeclLevel, SemanticModel,
-    SignatureReturnStatus, TypeCheckFailReason, TypeCheckResult,
+    DiagnosticCode, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
+    TypeCheckFailReason, TypeCheckResult,
     diagnostic::checker::{assign_type_mismatch::check_table_expr, humanize_lint_type},
 };
 
-use super::{Checker, DiagnosticContext, get_return_stats};
+use super::{Checker, DiagnosticContext, get_closure_return_info, get_return_stats};
 
 pub struct ReturnTypeMismatch;
 
@@ -32,12 +32,11 @@ fn check_closure_expr(
     semantic_model: &SemanticModel,
     closure_expr: &LuaClosureExpr,
 ) -> Option<()> {
-    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
-    let signature = context.db.get_signature_index().get(&signature_id)?;
-    if signature.resolve_return != SignatureReturnStatus::DocResolve {
+    let (is_doc_resolve_return, return_type) =
+        get_closure_return_info(context, semantic_model, closure_expr)?;
+    if !is_doc_resolve_return {
         return None;
     }
-    let return_type = signature.get_return_type();
     let self_type = get_self_type(semantic_model, closure_expr);
     for return_stat in get_return_stats(closure_expr) {
         check_return_stat(
@@ -165,7 +164,7 @@ fn add_type_check_diagnostic(
     expr_type: &LuaType,
     result: TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     match result {
         Ok(_) => (),
         Err(reason) => {
@@ -207,7 +206,7 @@ fn has_setmetatable(semantic_model: &SemanticModel, return_stat: &LuaReturnStat)
                     SemanticDeclLevel::Trace(50),
                 );
                 if let Some(LuaSemanticDeclId::LuaDecl(decl_id)) = decl {
-                    let decl = semantic_model.get_db().get_decl_index().get_decl(&decl_id);
+                    let decl = semantic_model.get_decl(&decl_id);
                     if let Some(decl) = decl
                         && decl.get_value_syntax_id()?.get_kind()
                             == LuaSyntaxKind::SetmetatableCallExpr

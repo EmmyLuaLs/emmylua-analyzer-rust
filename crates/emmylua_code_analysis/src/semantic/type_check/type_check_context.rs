@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{DbIndex, LuaMemberKey};
+use crate::{DbIndex, LuaCompilation, LuaMemberKey};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeCheckCheckLevel {
@@ -10,20 +10,33 @@ pub enum TypeCheckCheckLevel {
 
 #[derive(Debug, Clone)]
 pub struct TypeCheckContext<'db> {
+    pub compilation: Option<&'db LuaCompilation>,
     pub detail: bool,
-    pub db: &'db DbIndex,
+    legacy_db: &'db DbIndex,
     pub level: TypeCheckCheckLevel,
     pub table_member_checked: Option<HashSet<LuaMemberKey>>,
 }
 
 impl<'db> TypeCheckContext<'db> {
-    pub fn new(db: &'db DbIndex, detail: bool, level: TypeCheckCheckLevel) -> Self {
+    pub fn new(
+        compilation: Option<&'db LuaCompilation>,
+        db: &'db DbIndex,
+        detail: bool,
+        level: TypeCheckCheckLevel,
+    ) -> Self {
         Self {
+            compilation,
             detail,
-            db,
+            legacy_db: db,
             level,
             table_member_checked: None,
         }
+    }
+
+    pub fn db(&self) -> &'db DbIndex {
+        self.compilation
+            .map(LuaCompilation::legacy_db)
+            .unwrap_or(self.legacy_db)
     }
 
     pub fn is_key_checked(&self, key: &LuaMemberKey) -> bool {

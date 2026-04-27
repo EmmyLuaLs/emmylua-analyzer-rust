@@ -1,5 +1,8 @@
-use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr};
 use rowan::TextRange;
+
+#[cfg(test)]
+use std::io::Write;
 
 use crate::{
     DiagnosticCode, LuaSemanticDeclId, LuaType, RenderLevel, SemanticDeclLevel, SemanticModel,
@@ -10,6 +13,22 @@ use crate::{
 use super::{Checker, DiagnosticContext};
 
 pub struct ParamTypeCheckChecker;
+
+#[cfg(test)]
+fn debug_param_check_log(message: impl AsRef<str>) {
+    if std::env::var_os("EMMY_TRACE_PARAM_CHECK").is_none() {
+        return;
+    }
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("C:/Users/zc/Desktop/github/emmylua-analyzer-rust/target/logs/param-check-trace.log")
+    {
+        let _ = writeln!(file, "{}", message.as_ref());
+        let _ = file.flush();
+    }
+}
 
 impl Checker for ParamTypeCheckChecker {
     const CODES: &[DiagnosticCode] = &[
@@ -33,16 +52,35 @@ fn check_call_expr(
     semantic_model: &SemanticModel,
     call_expr: LuaCallExpr,
 ) -> Option<()> {
+    #[cfg(test)]
+    debug_param_check_log(format!(
+        "enter check_call_expr pos={} text={}",
+        u32::from(call_expr.get_position()),
+        call_expr.syntax().text()
+    ));
     let func = semantic_model.infer_call_expr_func(call_expr.clone(), None)?;
+    #[cfg(test)]
+    debug_param_check_log(format!(
+        "resolved func pos={} params={}",
+        u32::from(call_expr.get_position()),
+        func.get_params().len()
+    ));
     let mut params = func.get_params().to_vec();
     let arg_exprs = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
     let (mut arg_types, mut arg_ranges): (Vec<LuaType>, Vec<TextRange>) = semantic_model
         .infer_expr_list_types(&arg_exprs, None)
         .into_iter()
         .unzip();
+    #[cfg(test)]
+    debug_param_check_log(format!(
+        "inferred args pos={} arg_count={}",
+        u32::from(call_expr.get_position()),
+        arg_types.len()
+    ));
 
     let colon_call = call_expr.is_colon_call();
     let colon_define = func.is_colon_define();
+    let call_explain = semantic_model.call_explain(call_expr.clone());
     match (colon_call, colon_define) {
         (true, true) | (false, false) => {}
         (false, true) => {
@@ -85,8 +123,29 @@ fn check_call_expr(
             {
                 check_type = result;
             }
+            #[cfg(test)]
+            debug_param_check_log(format!(
+                "type_check_detail pos={} idx={} param_self={} arg_is_table={} arg_is_object={} param_is_ref={} param_is_table_generic={}",
+                u32::from(call_expr.get_position()),
+                idx,
+                param_type.is_self_infer(),
+                arg_type.is_table(),
+                matches!(arg_type, LuaType::Object(_)),
+                matches!(check_type, LuaType::Ref(_) | LuaType::Def(_)),
+                matches!(check_type, LuaType::TableGeneric(_))
+            ));
             let result = semantic_model.type_check_detail(&check_type, arg_type);
             if result.is_err() {
+                let param_name = call_arg_explain_for_param_idx(
+                    call_explain.as_ref(),
+                    idx,
+                    colon_call,
+                    colon_define,
+                )
+                .and_then(|arg| {
+                    arg.expected_doc_type.as_ref()?;
+                    arg.expected_param.as_ref().map(|param| param.name.as_str())
+                });
                 // 这里执行了`AssignTypeMismatch`的检查
                 if arg_type.is_table() {
                     let arg_expr_idx = match (colon_call, colon_define) {
@@ -119,6 +178,7 @@ fn check_call_expr(
                     context,
                     semantic_model,
                     *arg_ranges.get(idx)?,
+                    param_name,
                     &param_type,
                     arg_type,
                     result,
@@ -144,6 +204,7 @@ fn check_variadic_param_match_args(
                 context,
                 semantic_model,
                 *arg_range,
+                None,
                 variadic_type,
                 arg_type,
                 result,
@@ -156,6 +217,7 @@ fn try_add_diagnostic(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     range: TextRange,
+    param_name: Option<&str>,
     param_type: &LuaType,
     expr_type: &LuaType,
     result: TypeCheckResult,
@@ -170,6 +232,7 @@ fn try_add_diagnostic(
         context,
         semantic_model,
         range,
+        param_name,
         param_type,
         expr_type,
         result,
@@ -180,11 +243,12 @@ fn add_type_check_diagnostic(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     range: TextRange,
+    param_name: Option<&str>,
     param_type: &LuaType,
     expr_type: &LuaType,
     result: TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     match result {
         Ok(_) => (),
         Err(reason) => {
@@ -195,20 +259,47 @@ fn add_type_check_diagnostic(
                 }
                 TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
             };
-            context.add_diagnostic(
-                DiagnosticCode::ParamTypeMismatch,
-                range,
+            let message = if let Some(param_name) = param_name {
+                t!(
+                    "parameter `%{name}` expected `%{source}` but found `%{found}`. %{reason}",
+                    name = param_name,
+                    source = humanize_type(db, param_type, RenderLevel::Simple),
+                    found = humanize_type(db, expr_type, RenderLevel::Simple),
+                    reason = reason_message
+                )
+                .to_string()
+            } else {
                 t!(
                     "expected `%{source}` but found `%{found}`. %{reason}",
                     source = humanize_type(db, param_type, RenderLevel::Simple),
                     found = humanize_type(db, expr_type, RenderLevel::Simple),
                     reason = reason_message
                 )
-                .to_string(),
-                None,
-            );
+                .to_string()
+            };
+            context.add_diagnostic(DiagnosticCode::ParamTypeMismatch, range, message, None);
         }
     }
+}
+
+fn call_arg_explain_for_param_idx(
+    call_explain: Option<&crate::SalsaCallExplainSummary>,
+    param_idx: usize,
+    colon_call: bool,
+    colon_define: bool,
+) -> Option<&crate::SalsaCallArgExplainSummary> {
+    let arg_idx = match (colon_call, colon_define) {
+        (false, true) => param_idx.checked_sub(1)?,
+        (true, false) => {
+            if param_idx == 0 {
+                return None;
+            }
+            param_idx - 1
+        }
+        _ => param_idx,
+    };
+
+    call_explain?.args.get(arg_idx)
 }
 
 pub fn get_call_source_type(
@@ -223,22 +314,9 @@ pub fn get_call_source_type(
             )?;
 
             if let LuaSemanticDeclId::Member(member_id) = decl
-                && let Some(LuaSemanticDeclId::Member(member_id)) =
-                    semantic_model.get_member_origin_owner(member_id)
+                && let Some(owner_type) = semantic_model.infer_member_access_owner_type(member_id)
             {
-                let root = semantic_model
-                    .get_db()
-                    .get_vfs()
-                    .get_syntax_tree(&member_id.file_id)?
-                    .get_red_root();
-                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
-                let index_expr = LuaIndexExpr::cast(cur_node)?;
-
-                return index_expr.get_prefix_expr().map(|prefix_expr| {
-                    semantic_model
-                        .infer_expr(prefix_expr.clone())
-                        .unwrap_or(LuaType::SelfInfer)
-                });
+                return Some(owner_type);
             }
 
             return if let Some(prefix_expr) = index_expr.get_prefix_expr() {
@@ -256,19 +334,7 @@ pub fn get_call_source_type(
                 SemanticDeclLevel::default(),
             )?;
             if let LuaSemanticDeclId::Member(member_id) = decl {
-                let root = semantic_model
-                    .get_db()
-                    .get_vfs()
-                    .get_syntax_tree(&member_id.file_id)?
-                    .get_red_root();
-                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
-                let index_expr = LuaIndexExpr::cast(cur_node)?;
-
-                return index_expr.get_prefix_expr().map(|prefix_expr| {
-                    semantic_model
-                        .infer_expr(prefix_expr.clone())
-                        .unwrap_or(LuaType::SelfInfer)
-                });
+                return semantic_model.infer_member_access_owner_type(member_id);
             }
 
             return None;

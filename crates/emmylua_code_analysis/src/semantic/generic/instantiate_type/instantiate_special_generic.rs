@@ -1,9 +1,9 @@
 use crate::{
-    DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
-    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
+    DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaCompilation, LuaMemberInfo, LuaMemberKey,
+    LuaObjectType, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType,
     semantic::{
         generic::key_type_to_member_key,
-        member::{find_members, infer_raw_member_type},
+        member::{find_members_root, get_member_map_inner, infer_raw_member_type},
         type_check,
     },
 };
@@ -43,7 +43,7 @@ pub fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
-            let members = get_keyof_members(db, &operands[0]).unwrap_or_default();
+            let members = get_keyof_members_inner(db, &operands[0]).unwrap_or_default();
             let member_key_types = members
                 .iter()
                 .filter_map(|m| match &m.key {
@@ -106,8 +106,8 @@ fn instantiate_merge_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
         return LuaType::Unknown;
     }
 
-    let left_members = find_members(db, &operands[0]);
-    let right_members = find_members(db, &operands[1]);
+    let left_members = find_members_root(None, db, &operands[0]);
+    let right_members = find_members_root(None, db, &operands[1]);
     if left_members.is_none() && right_members.is_none() {
         return LuaType::Unknown;
     }
@@ -275,7 +275,7 @@ fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
         _ => {
             // may cost many
             let mut multi_types = vec![];
-            let members = match get_member_map(db, need_unpack_type) {
+            let members = match get_member_map_inner(None, db, need_unpack_type) {
                 Some(members) => members,
                 None => return LuaType::Unknown,
             };
@@ -335,7 +335,17 @@ fn instantiate_index_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaTy
     }
 }
 
-pub fn get_keyof_members(db: &DbIndex, prefix_type: &LuaType) -> Option<Vec<LuaMemberInfo>> {
+pub fn get_keyof_members(
+    compilation: &LuaCompilation,
+    prefix_type: &LuaType,
+) -> Option<Vec<LuaMemberInfo>> {
+    get_keyof_members_inner(compilation.legacy_db(), prefix_type)
+}
+
+pub(crate) fn get_keyof_members_inner(
+    db: &DbIndex,
+    prefix_type: &LuaType,
+) -> Option<Vec<LuaMemberInfo>> {
     match prefix_type {
         LuaType::Variadic(variadic) => match variadic.deref() {
             VariadicType::Base(base) => Some(vec![LuaMemberInfo {
@@ -360,6 +370,6 @@ pub fn get_keyof_members(db: &DbIndex, prefix_type: &LuaType) -> Option<Vec<LuaM
                 Some(members)
             }
         },
-        _ => find_members(db, prefix_type),
+        _ => find_members_root(None, db, prefix_type),
     }
 }

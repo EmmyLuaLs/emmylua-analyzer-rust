@@ -1,9 +1,10 @@
 use hashbrown::{HashMap, HashSet};
 
 use crate::{
-    DbIndex, InFiled, InferGuardRef, LuaGenericType, LuaIntersectionType, LuaMemberKey,
+    DbIndex, InFiled, InferGuardRef, LuaCompilation, LuaGenericType, LuaIntersectionType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId,
     LuaType, LuaTypeDeclId, LuaUnionType, TypeOps,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -13,11 +14,21 @@ use crate::{
 use super::{FindMembersResult, LuaMemberInfo, intersect_member_types};
 use rowan::TextRange;
 
-pub fn find_index_operations(db: &DbIndex, prefix_type: &LuaType) -> FindMembersResult {
+pub fn find_index_operations(
+    compilation: &LuaCompilation,
+    prefix_type: &LuaType,
+) -> FindMembersResult {
+    find_index_operations_inner(compilation.legacy_db(), prefix_type)
+}
+
+pub(crate) fn find_index_operations_inner(
+    db: &DbIndex,
+    prefix_type: &LuaType,
+) -> FindMembersResult {
     find_index_operations_guard(db, prefix_type, &InferGuard::new())
 }
 
-pub fn find_index_operations_guard(
+pub(crate) fn find_index_operations_guard(
     db: &DbIndex,
     prefix_type: &LuaType,
     infer_guard: &InferGuardRef,
@@ -39,11 +50,8 @@ pub fn find_index_operations_guard(
             find_index_operations_guard(db, base, infer_guard)
         }
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info
-                && let Some(export_type) = &module_info.export_type
-            {
-                return find_index_operations_guard(db, export_type, infer_guard);
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
+                return find_index_operations_guard(db, &export_type, infer_guard);
             }
 
             None
@@ -123,7 +131,9 @@ fn find_index_custom_type(
     let type_decl = type_index.get_type_decl(prefix_type_id)?;
 
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
+        {
             return find_index_operations_guard(db, &origin_type, infer_guard);
         }
         return None;
@@ -315,7 +325,9 @@ fn find_index_generic(
     let type_decl = type_index.get_type_decl(&type_decl_id)?;
 
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+        if let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&substitutor))
+        {
             let instantiated_type = instantiate_type_generic(db, &origin_type, &substitutor);
             return find_index_operations_guard(db, &instantiated_type, infer_guard);
         }

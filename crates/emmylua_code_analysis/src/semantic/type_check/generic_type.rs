@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     LuaGenericType, LuaMemberOwner, LuaType, LuaTypeCache, LuaTypeDeclId, RenderLevel,
     TypeSubstitutor, humanize_type, instantiate_type_generic,
-    semantic::{member::find_members, type_check::type_check_context::TypeCheckContext},
+    semantic::{member::find_members_root, type_check::type_check_context::TypeCheckContext},
 };
 
 use super::{
@@ -19,14 +19,16 @@ pub fn check_generic_type_compact(
 ) -> TypeCheckResult {
     let base_id = source_generic.get_base_type_id();
     if let Some(decl) = context
-        .db
+        .db()
         .get_type_index()
         .get_type_decl(&source_generic.get_base_type_id())
         && decl.is_alias()
     {
         let substitutor =
             TypeSubstitutor::from_alias(source_generic.get_params().clone(), base_id.clone());
-        if let Some(alias_origin) = decl.get_alias_origin(context.db, Some(&substitutor)) {
+        if let Some(alias_origin) =
+            crate::semantic::type_queries::get_alias_origin(context.db(), decl, Some(&substitutor))
+        {
             return check_general_type_compact(
                 context,
                 &alias_origin,
@@ -55,7 +57,7 @@ pub fn check_generic_type_compact(
             }
 
             if let Some(supers) = context
-                .db
+                .db()
                 .get_type_index()
                 .get_super_types(&compact_generic.get_base_type_id())
             {
@@ -64,7 +66,7 @@ pub fn check_generic_type_compact(
                         let substitutor =
                             TypeSubstitutor::from_type_array(compact_generic.get_params().clone());
                         super_type =
-                            instantiate_type_generic(context.db, &super_type, &substitutor);
+                            instantiate_type_generic(context.db(), &super_type, &substitutor);
                     }
 
                     let result = check_generic_type_compact(
@@ -134,7 +136,7 @@ fn check_generic_type_compact_table(
     table_owner: LuaMemberOwner,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let member_index = context.db.get_member_index();
+    let member_index = context.db().get_member_index();
 
     // 构建表成员映射
     let table_member_map: HashMap<_, _> = member_index
@@ -149,7 +151,7 @@ fn check_generic_type_compact_table(
 
     // 获取泛型类型的成员, 使用 find_members 来获取包括继承的所有成员
     let source_type = LuaType::Generic(Arc::new(source_generic.clone()));
-    let Some(source_type_members) = find_members(context.db, &source_type) else {
+    let Some(source_type_members) = find_members_root(context.compilation, context.db(), &source_type) else {
         return Ok(()); // 空成员无需检查
     };
 
@@ -166,7 +168,7 @@ fn check_generic_type_compact_table(
                     .get_member(table_member_id)
                     .ok_or(TypeCheckFailReason::TypeNotMatch)?;
                 let table_member_type = context
-                    .db
+                    .db()
                     .get_type_index()
                     .get_type_cache(&table_member.get_id().into())
                     .unwrap_or(&LuaTypeCache::InferType(LuaType::Any))
@@ -187,8 +189,8 @@ fn check_generic_type_compact_table(
                             "member %{name} type not match, expect %{expect}, got %{got}",
                             name = key.to_path(),
                             expect =
-                                humanize_type(context.db, &source_member_type, RenderLevel::Simple),
-                            got = humanize_type(context.db, table_member_type, RenderLevel::Simple)
+                                humanize_type(context.db(), &source_member_type, RenderLevel::Simple),
+                            got = humanize_type(context.db(), table_member_type, RenderLevel::Simple)
                         )
                         .to_string(),
                     ));
@@ -209,7 +211,7 @@ fn check_generic_type_compact_table(
 
     // 检查超类型
     let source_base_id = source_generic.get_base_type_id();
-    if let Some(supers) = context.db.get_type_index().get_super_types(&source_base_id) {
+    if let Some(supers) = context.db().get_type_index().get_super_types(&source_base_id) {
         let element_range = table_owner
             .get_element_range()
             .ok_or(TypeCheckFailReason::TypeNotMatch)?;
@@ -230,13 +232,15 @@ fn check_generic_type_compact_ref_type(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     let type_decl = context
-        .db
+        .db()
         .get_type_index()
         .get_type_decl(ref_id)
         .ok_or(TypeCheckFailReason::TypeNotMatch)?;
 
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(context.db, None) {
+        if let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(context.db(), type_decl, None)
+        {
             return check_general_type_compact(
                 context,
                 &LuaType::Generic(source_generic.clone().into()),
@@ -247,7 +251,7 @@ fn check_generic_type_compact_ref_type(
     }
 
     for super_type in context
-        .db
+        .db()
         .get_type_index()
         .get_super_types(ref_id)
         .unwrap_or_default()

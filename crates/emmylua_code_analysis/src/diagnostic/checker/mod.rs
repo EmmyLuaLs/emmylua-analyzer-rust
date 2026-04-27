@@ -47,7 +47,10 @@ use rowan::TextRange;
 use std::sync::Arc;
 
 use crate::{
-    FileId, LuaType, RenderLevel, db_index::DbIndex, humanize_type, semantic::SemanticModel,
+    FileId, LuaCompilation, LuaDeclId, LuaMember, LuaMemberId, LuaMemberOwner, LuaSignature,
+    LuaSignatureId, LuaType, LuaTypeDecl, LuaTypeDeclId, RenderLevel, WorkspaceId,
+    db_index::DbIndex, humanize_type, module_query::identity::db_module_is_meta_file,
+    semantic::SemanticModel,
 };
 
 use super::{
@@ -135,27 +138,67 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
 
 pub struct DiagnosticContext<'a> {
     file_id: FileId,
-    db: &'a DbIndex,
+    compilation: &'a LuaCompilation,
     diagnostics: Vec<Diagnostic>,
     pub config: Arc<LuaDiagnosticConfig>,
 }
 
 impl<'a> DiagnosticContext<'a> {
-    pub fn new(file_id: FileId, db: &'a DbIndex, config: Arc<LuaDiagnosticConfig>) -> Self {
+    pub fn new(
+        file_id: FileId,
+        compilation: &'a LuaCompilation,
+        config: Arc<LuaDiagnosticConfig>,
+    ) -> Self {
         Self {
             file_id,
-            db,
+            compilation,
             diagnostics: Vec::new(),
             config,
         }
     }
 
-    pub fn get_db(&self) -> &DbIndex {
-        self.db
+    pub(crate) fn db(&self) -> &DbIndex {
+        self.compilation.legacy_db()
+    }
+
+    pub fn get_compilation(&self) -> &LuaCompilation {
+        self.compilation
     }
 
     pub fn get_file_id(&self) -> FileId {
         self.file_id
+    }
+
+    pub fn find_type_decl(&self, name: &str) -> Option<&LuaTypeDecl> {
+        self.compilation.find_type_decl(self.file_id, name)
+    }
+
+    pub fn get_type_decl(&self, decl_id: &LuaTypeDeclId) -> Option<&LuaTypeDecl> {
+        self.compilation.get_type_decl(decl_id)
+    }
+
+    pub fn get_signature(&self, signature_id: &LuaSignatureId) -> Option<&LuaSignature> {
+        self.compilation.get_signature(signature_id)
+    }
+
+    pub fn get_decl_type(&self, decl_id: &LuaDeclId) -> Option<&LuaType> {
+        self.compilation.get_decl_type(decl_id)
+    }
+
+    pub fn get_member_type(&self, member_id: &LuaMemberId) -> Option<&LuaType> {
+        self.compilation.get_member_type(member_id)
+    }
+
+    pub fn get_members(&self, owner: &LuaMemberOwner) -> Option<Vec<&LuaMember>> {
+        self.compilation.get_members(owner)
+    }
+
+    pub fn get_super_types(&self, decl_id: &LuaTypeDeclId) -> Option<Vec<LuaType>> {
+        self.compilation.get_super_types(decl_id)
+    }
+
+    pub fn type_lookup_workspace_id(&self) -> Option<WorkspaceId> {
+        self.compilation.module_workspace_id(self.file_id)
     }
 
     pub fn add_diagnostic(
@@ -197,7 +240,7 @@ impl<'a> DiagnosticContext<'a> {
     }
 
     fn should_report_diagnostic(&self, code: &DiagnosticCode, range: &TextRange) -> bool {
-        let diagnostic_index = self.get_db().get_diagnostic_index();
+        let diagnostic_index = self.db().get_diagnostic_index();
 
         !diagnostic_index.is_file_diagnostic_code_disabled(&self.get_file_id(), code, range)
     }
@@ -221,7 +264,7 @@ impl<'a> DiagnosticContext<'a> {
     }
 
     fn translate_range(&self, range: TextRange) -> Option<lsp_types::Range> {
-        let document = self.db.get_vfs().get_document(&self.file_id)?;
+        let document = self.db().get_vfs().get_document(&self.file_id)?;
         let (start_line, start_character) = document.get_line_col(range.start())?;
         let (end_line, end_character) = document.get_line_col(range.end())?;
 
@@ -243,7 +286,7 @@ impl<'a> DiagnosticContext<'a> {
 
     pub fn is_checker_enable_by_code(&self, code: &DiagnosticCode) -> bool {
         let file_id = self.get_file_id();
-        let db = self.get_db();
+        let db = self.db();
         let diagnostic_index = db.get_diagnostic_index();
         // force enable
         if diagnostic_index.is_file_enabled(&file_id, code) {
@@ -255,9 +298,8 @@ impl<'a> DiagnosticContext<'a> {
             return false;
         }
 
-        let module_index = db.get_module_index();
         // ignore meta file diagnostic
-        if module_index.is_meta_file(&file_id) {
+        if db_module_is_meta_file(db, file_id) {
             return false;
         }
 
@@ -300,6 +342,14 @@ pub fn get_return_stats(closure_expr: &LuaClosureExpr) -> impl Iterator<Item = L
                 .next()
                 .is_some_and(|expr| &expr == closure_expr)
         })
+}
+
+pub fn get_closure_return_info(
+    _context: &DiagnosticContext,
+    semantic_model: &SemanticModel,
+    closure_expr: &LuaClosureExpr,
+) -> Option<(bool, LuaType)> {
+    semantic_model.infer_closure_return_info(closure_expr.clone())
 }
 
 pub fn humanize_lint_type(db: &DbIndex, typ: &LuaType) -> String {

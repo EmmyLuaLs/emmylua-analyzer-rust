@@ -9,7 +9,7 @@ use crate::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    infer_expr, instantiate_type_generic,
+    infer_expr_root, instantiate_type_generic,
     semantic::InferGuard,
 };
 
@@ -161,7 +161,7 @@ fn find_array_function(
     match key {
         LuaIndexKey::Integer(_) => Ok(array_type.clone()),
         LuaIndexKey::Expr(expr) => {
-            let expr_type = infer_expr(db, cache, expr.clone())?;
+            let expr_type = infer_expr_root(db, cache, expr.clone())?;
             if expr_type.is_integer() {
                 Ok(array_type.clone())
             } else {
@@ -186,7 +186,7 @@ fn find_custom_type_function_member(
         .get_type_decl(&prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) = crate::semantic::type_queries::get_alias_origin(db, type_decl, None) {
             return find_function_type_by_member_key(
                 db,
                 cache,
@@ -312,7 +312,7 @@ fn find_index_metamethod(
             }
         }
         LuaIndexKey::Idx(i) => LuaType::IntegerConst(*i as i64),
-        LuaIndexKey::Expr(expr) => infer_expr(db, cache, expr.clone())?,
+        LuaIndexKey::Expr(expr) => infer_expr_root(db, cache, expr.clone())?,
     };
 
     if check_type_compact(db, key_type, &access_key_type).is_ok() {
@@ -535,7 +535,7 @@ fn find_member_by_index_table(
         None => {
             let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
             if let LuaIndexKey::Expr(expr) = index_key {
-                let key_type = infer_expr(db, cache, expr.clone())?;
+                let key_type = infer_expr_root(db, cache, expr.clone())?;
                 let members = db
                     .get_member_index()
                     .get_members(&LuaMemberOwner::Element(table_range.clone()));
@@ -590,7 +590,7 @@ fn find_member_by_index_custom_type(
         .get_type_decl(prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) = crate::semantic::type_queries::get_alias_origin(db, type_decl, None) {
             return find_function_type_by_operator(
                 db,
                 cache,
@@ -660,7 +660,7 @@ fn infer_member_by_index_array(
         return Ok(base.clone());
     } else if member_key.is_expr() {
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
-        let expr_type = infer_expr(db, cache, expr.clone())?;
+        let expr_type = infer_expr_root(db, cache, expr.clone())?;
         if check_type_compact(db, &LuaType::Number, &expr_type).is_ok() {
             return Ok(base.clone());
         }
@@ -679,7 +679,7 @@ fn infer_member_by_index_object(
     let access_member_type = object.get_index_access();
     if member_key.is_expr() {
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
-        let expr_type = infer_expr(db, cache, expr.clone())?;
+        let expr_type = infer_expr_root(db, cache, expr.clone())?;
         for (key, field) in access_member_type {
             if check_type_compact(db, key, &expr_type).is_ok() {
                 return Ok(field.clone());
@@ -775,7 +775,7 @@ fn find_member_by_index_generic(
         .get_type_decl(&type_decl_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+        if let Some(origin_type) = crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&substitutor)) {
             return find_function_type_by_operator(
                 db,
                 cache,

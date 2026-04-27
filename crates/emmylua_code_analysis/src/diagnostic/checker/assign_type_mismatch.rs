@@ -9,7 +9,6 @@ use rowan::{NodeOrToken, TextRange};
 use crate::{
     DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey, LuaSemanticDeclId, LuaType,
     SemanticDeclLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult, VariadicType,
-    infer_index_expr,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -80,26 +79,16 @@ fn check_name_expr(
     )?;
     let source_type = match semantic_decl.clone() {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
-            let decl = semantic_model
-                .get_db()
-                .get_decl_index()
-                .get_decl(&decl_id)?;
+            let decl = semantic_model.get_decl(&decl_id)?;
             match decl.extra {
                 LuaDeclExtra::Param {
                     idx, signature_id, ..
                 } => {
-                    let signature = semantic_model
-                        .get_db()
-                        .get_signature_index()
-                        .get(&signature_id)?;
+                    let signature = context.get_signature(&signature_id)?;
                     let param_type = signature.get_param_info_by_id(idx)?;
                     Some(param_type.type_ref.clone())
                 }
-                _ => semantic_model
-                    .get_db()
-                    .get_type_index()
-                    .get_type_cache(&decl_id.into())
-                    .map(|cache| cache.as_type().clone()),
+                _ => context.get_decl_type(&decl_id).cloned(),
             }
         }
         _ => None,
@@ -132,13 +121,9 @@ fn check_index_expr(
     expr: Option<LuaExpr>,
     value_type: LuaType,
 ) -> Option<()> {
-    let source_type = infer_index_expr(
-        semantic_model.get_db(),
-        &mut semantic_model.get_cache().borrow_mut(),
-        index_expr.clone(),
-        false,
-    )
-    .ok();
+    let source_type = semantic_model
+        .infer_expr(LuaExpr::IndexExpr(index_expr.clone()))
+        .ok();
 
     check_assign_type_mismatch(
         context,
@@ -172,16 +157,8 @@ fn check_local_stat(
     for (idx, var) in vars.iter().enumerate() {
         let name_token = var.get_name_token()?;
         let decl_id = LuaDeclId::new(semantic_model.get_file_id(), name_token.get_position());
-        let range = semantic_model
-            .get_db()
-            .get_decl_index()
-            .get_decl(&decl_id)?
-            .get_range();
-        let var_type = semantic_model
-            .get_db()
-            .get_type_index()
-            .get_type_cache(&decl_id.into())
-            .map(|cache| cache.as_type().clone())?;
+        let range = semantic_model.get_decl(&decl_id)?.get_range();
+        let var_type = context.get_decl_type(&decl_id).cloned()?;
         let value_type = value_types.get(idx)?.0.clone();
         check_assign_type_mismatch(
             context,
@@ -215,7 +192,8 @@ pub fn check_table_expr(
     // 检查是否附加了元数据以跳过诊断
     if let Some(semantic_decl) = semantic_model.find_decl(decl_node, SemanticDeclLevel::default()) {
         if let Some(property) = semantic_model
-            .get_db()
+            .get_compilation()
+            .legacy_db()
             .get_property_index()
             .get_property(&semantic_decl)
         {
@@ -418,7 +396,7 @@ fn add_type_check_diagnostic(
     value_type: &LuaType,
     result: TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     match result {
         Ok(_) => (),
         Err(reason) => {

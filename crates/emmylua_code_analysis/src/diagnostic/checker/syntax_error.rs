@@ -170,7 +170,7 @@ fn check_dots_literal_error(
             let closure_expr = literal_expr.ancestors::<LuaClosureExpr>().next()?;
             let signature_id =
                 LuaSignatureId::from_closure(semantic_model.get_file_id(), &closure_expr);
-            let signature = context.db.get_signature_index().get(&signature_id)?;
+            let signature = context.get_signature(&signature_id)?;
             if !signature.params.iter().any(|param| param == "...") {
                 context.add_diagnostic(
                     DiagnosticCode::SyntaxError,

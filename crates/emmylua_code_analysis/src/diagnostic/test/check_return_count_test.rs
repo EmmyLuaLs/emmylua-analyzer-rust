@@ -974,4 +974,21 @@ mod tests {
         "#,
         ));
     }
+
+    #[test]
+    fn test_call_arg_closure_expected_missing_return() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::MissingReturn,
+            r#"
+                ---@param cb fun(): string
+                local function call(cb)
+                end
+
+                call(function()
+                end)
+        "#,
+        ));
+    }
 }

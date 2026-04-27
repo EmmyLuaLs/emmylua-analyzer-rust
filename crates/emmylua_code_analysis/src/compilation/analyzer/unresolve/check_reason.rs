@@ -5,7 +5,7 @@ use emmylua_parser::LuaAstNode;
 use crate::{
     DbIndex, InFiled, InferFailReason, LuaDocReturnInfo, LuaSemanticDeclId, LuaType, LuaTypeCache,
     SignatureReturnStatus, compilation::analyzer::infer_cache_manager::InferCacheManager,
-    infer_expr, infer_param,
+    infer_expr_root, infer_param, module_query::export::infer_module_export_type,
 };
 
 use super::UnResolve;
@@ -41,15 +41,14 @@ pub fn check_reach_reason(
         }
         InferFailReason::UnResolveExpr(expr) => {
             let cache = infer_manager.get_infer_cache(expr.file_id);
-            Some(infer_expr(db, cache, expr.value.clone()).is_ok())
+            Some(infer_expr_root(db, cache, expr.value.clone()).is_ok())
         }
         InferFailReason::UnResolveSignatureReturn(signature_id) => {
             let signature = db.get_signature_index().get(signature_id)?;
             Some(signature.is_resolve_return())
         }
         InferFailReason::UnResolveModuleExport(file_id) => {
-            let module = db.get_module_index().get_module(*file_id)?;
-            Some(module.export_type.is_some())
+            Some(infer_module_export_type(db, *file_id).is_some())
         }
     }
 }

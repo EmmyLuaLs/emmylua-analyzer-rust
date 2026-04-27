@@ -4,7 +4,7 @@ use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaChunk};
 
 use crate::{
     DbIndex, FlowId, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType, LuaInferCache,
-    LuaSignature, LuaType, TypeOps, infer_expr, instantiate_func_generic,
+    LuaSignature, LuaType, TypeOps, infer_expr_root, instantiate_func_generic,
     semantic::infer::{InferResult, VarRefId, narrow::narrow_down_type},
 };
 
@@ -547,7 +547,7 @@ fn infer_signature_for_call_ptr<'a>(
     let Some(prefix_expr) = call_expr.get_prefix_expr() else {
         return Ok(None);
     };
-    let signature_id = match infer_expr(db, cache, prefix_expr)? {
+    let signature_id = match infer_expr_root(db, cache, prefix_expr)? {
         LuaType::Signature(signature_id) => signature_id,
         _ => return Ok(None),
     };

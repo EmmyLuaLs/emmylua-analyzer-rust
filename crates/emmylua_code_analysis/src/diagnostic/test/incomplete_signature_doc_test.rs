@@ -140,6 +140,28 @@ mod tests {
     }
 
     #[test]
+    fn test_expected_variadic_return_closure_does_not_trigger_incomplete_signature_doc() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_full_diagnostic();
+
+        assert!(ws.check_code_for(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+            ---@param cb fun(): integer...
+            local function accept(cb)
+            end
+
+            accept(
+                ---@return integer...
+                function()
+                    return 1, 2, 3
+                end
+            )
+            "#
+        ));
+    }
+
+    #[test]
     fn test_global() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();

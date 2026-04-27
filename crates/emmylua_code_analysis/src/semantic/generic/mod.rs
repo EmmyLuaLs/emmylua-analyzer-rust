@@ -11,6 +11,7 @@ pub use call_constraint::{
 use emmylua_parser::LuaAstNode;
 use emmylua_parser::LuaExpr;
 pub use instantiate_type::*;
+pub(crate) use instantiate_type::{build_self_type_inner, get_keyof_members_inner};
 use rowan::NodeOrToken;
 pub use tpl_context::TplContext;
 pub use tpl_pattern::tpl_pattern_match_args;

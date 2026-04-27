@@ -103,8 +103,7 @@ pub fn build_table_symbol(
     };
 
     if table.is_object() {
-        for field in table.get_fields() {
-            let key = field.get_field_key()?;
+        for (field, key) in table.get_fields_with_keys() {
             let str_key = match key {
                 LuaIndexKey::String(key) => key.get_value(),
                 LuaIndexKey::Name(key) => key.get_name_text().to_string(),

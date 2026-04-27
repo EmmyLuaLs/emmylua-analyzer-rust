@@ -260,19 +260,8 @@ impl LuaTableField {
     }
 
     pub fn get_field_key(&self) -> Option<LuaIndexKey> {
+        // remove bad performance code
         if !self.is_assign_field() {
-            let parent_table = self.get_parent::<LuaTableExpr>()?;
-            let fields = parent_table.get_fields();
-            let mut idx = 1;
-            for field in fields {
-                if field.is_value_field() {
-                    if field.syntax() == self.syntax() {
-                        return Some(LuaIndexKey::Idx(idx));
-                    }
-                    idx += 1;
-                }
-            }
-
             return None;
         }
 
@@ -307,6 +296,24 @@ impl LuaTableField {
                     return Some(LuaIndexKey::Name(
                         LuaNameToken::cast(token.clone()).unwrap(),
                     ));
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn get_array_index(&self) -> Option<usize> {
+        if self.is_value_field() {
+            let parent_table = self.get_parent::<LuaTableExpr>()?;
+            let fields = parent_table.get_fields();
+            let mut idx = 1;
+            for field in fields {
+                if field.is_value_field() {
+                    if field.syntax() == self.syntax() {
+                        return Some(idx);
+                    }
+                    idx += 1;
                 }
             }
         }

@@ -86,7 +86,9 @@ fn infer_custom_type_raw_member_type(
         .get_type_decl(type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
+        {
             return infer_raw_member_type_guard(db, &origin_type, member_key, infer_guard);
         } else {
             return Err(InferFailReason::None);
@@ -220,7 +222,9 @@ fn infer_generic_raw_member_type(
         .get_type_decl(&base_ref_id)
         .ok_or(InferFailReason::None)?;
 
-    if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+    if let Some(origin) =
+        crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&substitutor))
+    {
         return infer_raw_member_type(db, &origin, member_key);
     }
 

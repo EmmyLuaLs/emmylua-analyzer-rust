@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 
 use crate::{
     DbIndex, LuaAliasCallKind, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaMemberId, LuaType,
-    infer_expr,
+    infer_expr_root,
     semantic::infer::{
         infer_index::get_index_expr_var_ref_id, infer_name::get_name_expr_var_ref_id,
     },
@@ -74,7 +74,7 @@ fn get_call_expr_var_ref_id(
     call_expr: &LuaCallExpr,
 ) -> Option<VarRefId> {
     let prefix_expr = call_expr.get_prefix_expr()?;
-    let maybe_func = infer_expr(db, cache, prefix_expr.clone()).ok()?;
+    let maybe_func = infer_expr_root(db, cache, prefix_expr.clone()).ok()?;
 
     let ret = match maybe_func {
         LuaType::DocFunction(f) => f.get_ret().clone(),

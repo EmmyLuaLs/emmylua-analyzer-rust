@@ -19,7 +19,7 @@ use crate::{
             tpl_context::TplContext, tpl_pattern::generic_tpl_pattern::generic_tpl_pattern_match,
             type_substitutor::SubstitutorValue,
         },
-        member::{find_index_operations, get_member_map},
+        member::{find_index_operations_inner, get_member_map_inner},
     },
 };
 
@@ -131,7 +131,7 @@ pub fn tpl_pattern_match(
     pattern: &LuaType,
     target: &LuaType,
 ) -> TplPatternMatchResult {
-    let target = escape_alias(context.db, target);
+    let target = escape_alias(context.db(), target);
     if !pattern.contains_tpl_node() {
         return Ok(());
     }
@@ -219,7 +219,7 @@ fn object_tpl_pattern_match(
             for (origin_key, v) in origin_obj.get_index_access() {
                 // 先匹配 key 类型进行转换
                 let target_access = target_index_access.iter().find(|(target_key, _)| {
-                    check_type_compact(context.db, origin_key, target_key).is_ok()
+                    check_type_compact(context.db(), origin_key, target_key).is_ok()
                 });
                 if let Some(target_access) = target_access {
                     tpl_pattern_match(context, origin_key, &target_access.0)?;
@@ -250,7 +250,7 @@ fn object_tpl_pattern_match_member_owner_match(
         }
     };
 
-    let members = get_member_map(context.db, &owner_type).ok_or(InferFailReason::None)?;
+    let members = get_member_map_inner(context.compilation, context.db(), &owner_type).ok_or(InferFailReason::None)?;
     for (k, v) in members {
         let resolve_key = match &k {
             LuaMemberKey::Integer(i) => Some(LuaType::IntegerConst(*i)),
@@ -297,12 +297,12 @@ fn array_tpl_pattern_match(
             tpl_pattern_match(context, base, target_array_type.get_base())?;
         }
         LuaType::Tuple(target_tuple) => {
-            let target_base = target_tuple.cast_down_array_base(context.db);
+            let target_base = target_tuple.cast_down_array_base();
             tpl_pattern_match(context, base, &target_base)?;
         }
         LuaType::Object(target_object) => {
             let target_base = target_object
-                .cast_down_array_base(context.db)
+                .cast_down_array_base()
                 .ok_or(InferFailReason::None)?;
             tpl_pattern_match(context, base, &target_base)?;
         }
@@ -350,7 +350,7 @@ fn table_generic_tpl_pattern_match(
             }
 
             let key_type = LuaType::Union(LuaUnionType::from_vec(keys).into());
-            let target_base = target_tuple.cast_down_array_base(context.db);
+            let target_base = target_tuple.cast_down_array_base();
             tpl_pattern_match(context, &table_generic_params[0], &key_type)?;
             tpl_pattern_match(context, &table_generic_params[1], &target_base)?;
         }
@@ -453,7 +453,7 @@ fn table_generic_tpl_pattern_member_owner_match(
         }
     };
 
-    let members = get_member_map(context.db, &owner_type).ok_or(InferFailReason::None)?;
+    let members = get_member_map_inner(context.compilation, context.db(), &owner_type).ok_or(InferFailReason::None)?;
     // 如果是 pairs 调用, 我们需要尝试寻找元方法, 但目前`__pairs` 被放进成员表中
     if is_pairs_call(context).unwrap_or(false)
         && try_handle_pairs_metamethod(context, table_generic_params, &members).is_ok()
@@ -473,7 +473,7 @@ fn table_generic_tpl_pattern_member_owner_match(
         };
 
         if !target_key_type.is_generic()
-            && check_type_compact(context.db, &target_key_type, &key_type).is_err()
+            && check_type_compact(context.db(), &target_key_type, &key_type).is_err()
         {
             continue;
         }
@@ -496,7 +496,7 @@ fn table_generic_tpl_pattern_member_owner_match(
     }
 
     if keys.is_empty() {
-        find_index_operations(context.db, &owner_type)
+        find_index_operations_inner(context.db(), &owner_type)
             .ok_or(InferFailReason::None)?
             .iter()
             .for_each(|m| {
@@ -507,7 +507,7 @@ fn table_generic_tpl_pattern_member_owner_match(
                     LuaMemberKey::ExprType(typ) => typ.clone(),
                     _ => return,
                 };
-                if check_type_compact(context.db, &target_key_type, &key_type).is_ok() {
+                if check_type_compact(context.db(), &target_key_type, &key_type).is_ok() {
                     keys.push(key_type);
                     values.push(m.typ.clone());
                 }
@@ -566,7 +566,7 @@ fn func_tpl_pattern_match(
         }
         LuaType::Signature(signature_id) => {
             let signature = context
-                .db
+                .db()
                 .get_signature_index()
                 .get(signature_id)
                 .ok_or(InferFailReason::None)?;
@@ -949,7 +949,8 @@ fn escape_alias(db: &DbIndex, may_alias: &LuaType) -> LuaType {
     if let LuaType::Ref(type_id) = may_alias
         && let Some(type_decl) = db.get_type_index().get_type_decl(type_id)
         && type_decl.is_alias()
-        && let Some(origin_type) = type_decl.get_alias_origin(db, None)
+        && let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
     {
         return origin_type.clone();
     }
@@ -962,7 +963,7 @@ fn is_pairs_call(context: &mut TplContext) -> Option<bool> {
     let prefix_expr = call_expr.get_prefix_expr()?;
     let semantic_decl = match prefix_expr.syntax().clone().into() {
         NodeOrToken::Node(node) => infer_node_semantic_decl(
-            context.db,
+            context.db(),
             context.cache,
             node,
             SemanticDeclLevel::default(),
@@ -973,8 +974,8 @@ fn is_pairs_call(context: &mut TplContext) -> Option<bool> {
     let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl else {
         return None;
     };
-    let decl = context.db.get_decl_index().get_decl(&decl_id)?;
-    if !context.db.get_module_index().is_std(&decl.get_file_id()) {
+    let decl = context.db().get_decl_index().get_decl(&decl_id)?;
+    if !context.db().get_module_index().is_std(&decl.get_file_id()) {
         return None;
     }
     let name = decl.get_name();
@@ -997,7 +998,7 @@ fn try_handle_pairs_metamethod(
     // 获取迭代函数返回类型
     let meta_return = match &pairs_member.typ {
         LuaType::Signature(signature_id) => context
-            .db
+            .db()
             .get_signature_index()
             .get(signature_id)
             .map(|s| s.get_return_type()),
@@ -1010,7 +1011,7 @@ fn try_handle_pairs_metamethod(
     let final_return_type = match meta_return {
         LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
         LuaType::Signature(signature_id) => context
-            .db
+            .db()
             .get_signature_index()
             .get(&signature_id)
             .map(|s| s.get_return_type()),

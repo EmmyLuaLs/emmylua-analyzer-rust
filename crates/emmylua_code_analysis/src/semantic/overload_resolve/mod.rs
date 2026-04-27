@@ -7,7 +7,7 @@ use emmylua_parser::{LuaCallExpr, LuaExpr};
 use crate::{
     VariadicType,
     db_index::{DbIndex, LuaFunctionType, LuaType},
-    infer_expr,
+    infer_expr_root,
 };
 
 use super::{
@@ -76,7 +76,7 @@ fn infer_expr_list_types(
 ) -> Vec<LuaType> {
     let mut value_types = Vec::new();
     for (idx, expr) in exprs.iter().enumerate() {
-        let expr_type = infer_expr(db, cache, expr.clone()).unwrap_or(LuaType::Unknown);
+        let expr_type = infer_expr_root(db, cache, expr.clone()).unwrap_or(LuaType::Unknown);
         match expr_type {
             LuaType::Variadic(variadic) => {
                 if let Some(var_count) = var_count {

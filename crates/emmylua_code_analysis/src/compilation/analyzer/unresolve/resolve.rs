@@ -8,16 +8,15 @@ use crate::{
     InFiled, InferFailReason, LuaDeclId, LuaMember, LuaMemberId, LuaMemberInfo, LuaMemberKey,
     LuaOperator, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaTypeCache,
     LuaTypeDeclId, OperatorFunction, SignatureReturnStatus, TypeOps,
+    compilation::analyze_func_body_returns_with,
     compilation::analyzer::{
         common::{add_member, bind_type},
-        lua::{
-            analyze_func_body_returns_with, analyze_return_point, infer_for_range_iter_expr_func,
-        },
+        lua::{analyze_return_point, infer_for_range_iter_expr_func},
         unresolve::UnResolveConstructor,
     },
     db_index::{DbIndex, LuaMemberOwner, LuaType},
-    find_members_with_key,
-    semantic::{LuaInferCache, infer_expr},
+    module_query::export::infer_module_export_type,
+    semantic::{LuaInferCache, find_members_with_key_inner, infer_expr_root},
 };
 
 use super::{
@@ -31,7 +30,7 @@ pub fn try_resolve_decl(
     decl: &mut UnResolveDecl,
 ) -> ResolveResult {
     let expr = decl.expr.clone();
-    let expr_type = infer_expr(db, cache, expr)?;
+    let expr_type = infer_expr_root(db, cache, expr)?;
     let decl_id = decl.decl_id;
     let expr_type = expr_type
         .get_result_slot_type(decl.ret_idx)
@@ -47,7 +46,7 @@ pub fn try_resolve_member(
     unresolve_member: &mut UnResolveMember,
 ) -> ResolveResult {
     if let Some(prefix_expr) = &unresolve_member.prefix {
-        let prefix_type = infer_expr(db, cache, prefix_expr.clone())?;
+        let prefix_type = infer_expr_root(db, cache, prefix_expr.clone())?;
         let member_owner = match prefix_type {
             LuaType::TableConst(in_file_range) => LuaMemberOwner::Element(in_file_range),
             LuaType::Def(def_id) => {
@@ -73,7 +72,7 @@ pub fn try_resolve_member(
     }
 
     if let Some(expr) = unresolve_member.expr.clone() {
-        let expr_type = infer_expr(db, cache, expr)?;
+        let expr_type = infer_expr_root(db, cache, expr)?;
         let expr_type = expr_type
             .get_result_slot_type(unresolve_member.ret_idx)
             .unwrap_or(LuaType::Unknown);
@@ -93,7 +92,7 @@ pub fn try_resolve_table_field(
     let field = unresolve_table_field.field.clone();
     let field_key = field.get_field_key().ok_or(InferFailReason::None)?;
     let field_expr = field_key.get_expr().ok_or(InferFailReason::None)?;
-    let field_type = infer_expr(db, cache, field_expr.clone())?;
+    let field_type = infer_expr_root(db, cache, field_expr.clone())?;
     let member_key: LuaMemberKey = match field_type {
         LuaType::StringConst(s) => LuaMemberKey::Name((*s).clone()),
         LuaType::IntegerConst(i) => LuaMemberKey::Integer(i),
@@ -119,7 +118,7 @@ pub fn try_resolve_table_field(
     );
 
     let decl_type = match field.get_value_expr() {
-        Some(expr) => infer_expr(db, cache, expr)?,
+        Some(expr) => infer_expr_root(db, cache, expr)?,
         None => return Err(InferFailReason::None),
     };
 
@@ -167,7 +166,7 @@ pub fn try_resolve_module(
     module: &mut UnResolveModule,
 ) -> ResolveResult {
     let expr = module.expr.clone();
-    let expr_type = infer_expr(db, cache, expr)?;
+    let expr_type = infer_expr_root(db, cache, expr)?;
     let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
     let module_info = db
         .get_module_index_mut()
@@ -183,7 +182,7 @@ pub fn try_resolve_return_point(
     return_: &mut UnResolveReturn,
 ) -> ResolveResult {
     let return_points = analyze_func_body_returns_with(return_.body.clone(), &mut |expr| {
-        infer_expr(db, cache, expr.clone())
+        infer_expr_root(db, cache, expr.clone())
     })?;
     let return_docs = analyze_return_point(db, cache, &return_points)?;
 
@@ -226,11 +225,8 @@ pub fn try_resolve_module_ref(
     _: &mut LuaInferCache,
     module_ref: &UnResolveModuleRef,
 ) -> ResolveResult {
-    let module_index = db.get_module_index();
-    let module = module_index
-        .get_module(module_ref.module_file_id)
-        .ok_or(InferFailReason::None)?;
-    let export_type = module.export_type.clone().ok_or(InferFailReason::None)?;
+    let export_type =
+        infer_module_export_type(db, module_ref.module_file_id).ok_or(InferFailReason::None)?;
     match &module_ref.owner_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
             db.get_type_index_mut()
@@ -333,8 +329,8 @@ pub fn try_resolve_constructor(
     // 添加构造函数
     let target_type = LuaType::Ref(target_id);
     let member_key = LuaMemberKey::Name(target_signature_name);
-    let members =
-        find_members_with_key(db, &target_type, member_key, false).ok_or(InferFailReason::None)?;
+    let members = find_members_with_key_inner(None, db, &target_type, member_key, false)
+        .ok_or(InferFailReason::None)?;
     let ctor_signature_member = members.first().ok_or(InferFailReason::None)?;
 
     set_signature_to_default_call(db, cache, ctor_signature_member, strip_self, return_self)
@@ -363,7 +359,7 @@ fn set_signature_to_default_call(
         .get_red_root();
     let index_expr = LuaIndexExpr::cast(member_id.get_syntax_id().to_node_from_root(&root)?)?;
     let prefix_expr = index_expr.get_prefix_expr()?;
-    let prefix_type = infer_expr(db, cache, prefix_expr.clone()).ok()?;
+    let prefix_type = infer_expr_root(db, cache, prefix_expr.clone()).ok()?;
     let LuaType::Def(decl_id) = prefix_type else {
         return None;
     };
@@ -406,7 +402,7 @@ fn get_constructor_target_type(
                 .get_args()
                 .nth(call_index)?
                 .clone();
-            let name = infer_expr(db, cache, arg_expr).ok()?;
+            let name = infer_expr_root(db, cache, arg_expr).ok()?;
             match name {
                 LuaType::StringConst(s) => s.to_string(),
                 _ => return None,

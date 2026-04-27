@@ -1,27 +1,16 @@
-mod basic_union;
-mod generic_param;
-mod humanize_type;
 mod test;
-mod type_decl;
-mod type_ops;
-mod type_owner;
-mod type_visit_trait;
-mod types;
+pub mod type_decl;
+pub mod type_owner;
 
 use super::traits::LuaIndex;
-use crate::{DbIndex, FileId, InFiled, db_index::WorkspaceId};
-pub use basic_union::{BasicTypeKind, BasicTypeUnion};
-pub use generic_param::GenericParam;
+pub(crate) use crate::compilation::union_type_shallow;
+use crate::{DbIndex, FileId, GenericParam, InFiled, LuaType, db_index::WorkspaceId};
 use hashbrown::{HashMap, HashSet};
-pub use humanize_type::{RenderLevel, TypeHumanizer, format_union_type, humanize_type};
+#[allow(unused_imports)]
 pub use type_decl::{
     LuaDeclLocation, LuaDeclTypeKind, LuaTypeDecl, LuaTypeDeclId, LuaTypeFlag, LuaTypeIdentifier,
 };
-pub use type_ops::TypeOps;
-pub(crate) use type_ops::union_type_shallow;
 pub use type_owner::{LuaTypeCache, LuaTypeOwner};
-pub use type_visit_trait::TypeVisitTrait;
-pub use types::*;
 
 #[derive(Debug)]
 pub struct LuaTypeIndex {
@@ -465,7 +454,10 @@ impl LuaTypeIndex {
     }
 
     pub fn bind_type(&mut self, owner: LuaTypeOwner, cache: LuaTypeCache) {
-        if self.types.contains_key(&owner) {
+        if let Some(existing) = self.types.get(&owner) {
+            if existing.is_infer() && cache.is_doc() {
+                self.types.insert(owner, cache);
+            }
             return;
         }
         self.types.insert(owner.clone(), cache);
@@ -533,30 +525,7 @@ impl LuaIndex for LuaTypeIndex {
 }
 
 pub fn get_real_type<'a>(db: &'a DbIndex, typ: &'a LuaType) -> Option<&'a LuaType> {
-    get_real_type_with_depth(db, typ, 0)
-}
-
-fn get_real_type_with_depth<'a>(
-    db: &'a DbIndex,
-    typ: &'a LuaType,
-    depth: u32,
-) -> Option<&'a LuaType> {
-    const MAX_RECURSION_DEPTH: u32 = 10;
-
-    if depth >= MAX_RECURSION_DEPTH {
-        return Some(typ);
-    }
-
-    match typ {
-        LuaType::Ref(type_decl_id) => {
-            let type_decl = db.get_type_index().get_type_decl(type_decl_id)?;
-            if type_decl.is_alias() {
-                return get_real_type_with_depth(db, type_decl.get_alias_ref()?, depth + 1);
-            }
-            Some(typ)
-        }
-        _ => Some(typ),
-    }
+    crate::semantic::type_queries::get_real_type(db, typ)
 }
 
 // 第一个参数是否不应该视为 self

@@ -17,6 +17,14 @@ mod r#type;
 
 use std::sync::Arc;
 
+#[allow(unused_imports)]
+pub use crate::compilation::{
+    BasicTypeKind, BasicTypeUnion, GenericParam, GenericTpl, LuaAliasCallType, LuaArrayType,
+    LuaAttributeType, LuaConditionalType, LuaFunctionType, LuaGenericType, LuaInstanceType,
+    LuaIntersectionType, LuaMappedType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType,
+    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, LuaUnionType, RenderLevel, TypeHumanizer,
+    TypeOps, TypeVisitTrait, VariadicType, format_union_type, humanize_type,
+};
 use crate::{Emmyrc, FileId, Vfs};
 pub use declaration::*;
 pub use dependency::LuaDependencyIndex;

@@ -27,7 +27,7 @@ fn check_assign_stat(
     let (vars, _) = assign_stat.get_var_and_expr_list();
     for var in vars {
         let decl_id = LuaDeclId::new(file_id, var.get_position());
-        if let Some(decl) = semantic_model.get_db().get_decl_index().get_decl(&decl_id)
+        if let Some(decl) = semantic_model.get_decl(&decl_id)
             && decl.is_global()
             && is_global_define_in_non_module_scope(semantic_model, var.clone(), decl_id)
         {
@@ -63,7 +63,7 @@ fn is_global_define_in_non_module_scope(
 
     let name = var.get_text();
     let Some(global_id) = resolve_global_decl_id(
-        semantic_model.get_db(),
+        semantic_model.get_compilation().legacy_db(),
         &mut semantic_model.get_cache().borrow_mut(),
         &name,
         None,

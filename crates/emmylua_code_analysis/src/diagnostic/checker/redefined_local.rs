@@ -17,7 +17,8 @@ impl Checker for RedefinedLocalChecker {
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
         let file_id = semantic_model.get_file_id();
         let Some(decl_tree) = semantic_model
-            .get_db()
+            .get_compilation()
+            .legacy_db()
             .get_decl_index()
             .get_decl_tree(&file_id)
         else {

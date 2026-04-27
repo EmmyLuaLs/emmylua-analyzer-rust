@@ -6,8 +6,8 @@ use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{
-    DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
-    LuaTypeNode,
+    DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaCompilation, LuaFunctionType,
+    LuaGenericType, LuaTypeNode,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
     semantic::{
@@ -21,7 +21,7 @@ use crate::{
             },
         },
         infer::InferFailReason,
-        infer_expr,
+        infer_expr_root,
     },
 };
 use crate::{
@@ -53,7 +53,8 @@ pub fn instantiate_func_generic(
         .collect::<Vec<_>>();
     let mut substitutor = TypeSubstitutor::new();
     let mut context = TplContext {
-        db,
+        compilation: None,
+        legacy_db: db,
         cache,
         substitutor: &mut substitutor,
         call_expr: Some(call_expr.clone()),
@@ -140,7 +141,7 @@ pub fn infer_callable_return_from_remaining_args(
         return Ok(None);
     }
 
-    let Some(callable) = as_doc_function_type(context.db, callable_type)? else {
+    let Some(callable) = as_doc_function_type(context.db(), callable_type)? else {
         return Ok(None);
     };
 
@@ -156,10 +157,10 @@ pub fn infer_callable_return_from_remaining_args(
 
     let mut callable_substitutor = TypeSubstitutor::new();
     callable_substitutor.add_need_infer_tpls(callable_tpls);
-    let fallback_return = infer_return_from_callable(context.db, &callable, &callable_substitutor);
+    let fallback_return = infer_return_from_callable(context.db(), &callable, &callable_substitutor);
 
     let call_arg_types =
-        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
+        match infer_expr_list_types(context.db(), context.cache, arg_exprs, None, infer_expr_root) {
             Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
             Err(_) => return Ok(Some(fallback_return)),
         };
@@ -174,7 +175,8 @@ pub fn infer_callable_return_from_remaining_args(
         .collect::<Vec<_>>();
 
     let mut callable_context = TplContext {
-        db: context.db,
+        compilation: context.compilation,
+        legacy_db: context.db(),
         cache: context.cache,
         substitutor: &mut callable_substitutor,
         call_expr: context.call_expr.clone(),
@@ -190,7 +192,7 @@ pub fn infer_callable_return_from_remaining_args(
     }
 
     Ok(Some(infer_return_from_callable(
-        context.db,
+        context.db(),
         &callable,
         &callable_substitutor,
     )))
@@ -263,14 +265,14 @@ fn infer_generic_types_from_call(
             continue;
         }
 
-        let arg_type = match infer_expr(db, context.cache, call_arg_expr.clone()) {
+        let arg_type = match infer_expr_root(db, context.cache, call_arg_expr.clone()) {
             Ok(t) => t,
             Err(InferFailReason::FieldNotFound) => LuaType::Nil, // 对于未找到的字段, 我们认为是 nil 以执行后续推断
             Err(e) => return Err(e),
         };
 
         if let Some(return_pattern) =
-            as_doc_function_type(context.db, func_param_type)?.map(|func| func.get_ret().clone())
+            as_doc_function_type(context.db(), func_param_type)?.map(|func| func.get_ret().clone())
         {
             if let Some(inferred_return_type) =
                 infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
@@ -289,7 +291,7 @@ fn infer_generic_types_from_call(
             (LuaType::Variadic(variadic), _) => {
                 let mut arg_types = vec![];
                 for arg_expr in &arg_exprs[i..] {
-                    let arg_type = infer_expr(db, context.cache, arg_expr.clone())?;
+                    let arg_type = infer_expr_root(db, context.cache, arg_expr.clone())?;
                     arg_types.push(arg_type);
                 }
                 variadic_tpl_pattern_match(context, variadic, &arg_types)?;
@@ -312,7 +314,7 @@ fn infer_generic_types_from_call(
 
     if !context.substitutor.is_infer_all_tpl() {
         for (func_param_type, call_arg_expr) in unresolve_tpls {
-            let closure_type = infer_expr(db, context.cache, call_arg_expr)?;
+            let closure_type = infer_expr_root(db, context.cache, call_arg_expr)?;
 
             tpl_pattern_match(context, &func_param_type, &closure_type)?;
         }
@@ -321,7 +323,11 @@ fn infer_generic_types_from_call(
     Ok(())
 }
 
-pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
+pub fn build_self_type(compilation: &LuaCompilation, self_type: &LuaType) -> LuaType {
+    build_self_type_inner(compilation.legacy_db(), self_type)
+}
+
+pub(crate) fn build_self_type_inner(db: &DbIndex, self_type: &LuaType) -> LuaType {
     match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
             if let Some(generic) = db.get_type_index().get_generic_params(id) {
@@ -355,8 +361,8 @@ pub fn infer_self_type(
     match prefix_expr {
         LuaExpr::IndexExpr(index) => {
             let self_expr = index.get_prefix_expr()?;
-            let self_type = infer_expr(db, cache, self_expr).ok()?;
-            let self_type = build_self_type(db, &self_type);
+            let self_type = infer_expr_root(db, cache, self_expr).ok()?;
+            let self_type = build_self_type_inner(db, &self_type);
             return Some(self_type);
         }
         LuaExpr::NameExpr(name) => {
@@ -370,7 +376,7 @@ pub fn infer_self_type(
                 let owner = db.get_member_index().get_current_owner(&member_id)?;
                 if let LuaMemberOwner::Type(id) = owner {
                     let typ = LuaType::Ref(id.clone());
-                    let self_type = build_self_type(db, &typ);
+                    let self_type = build_self_type_inner(db, &typ);
                     return Some(self_type);
                 }
                 return None;
@@ -387,7 +393,7 @@ fn check_expr_can_later_infer(
     func_param_type: &LuaType,
     call_arg_expr: &LuaExpr,
 ) -> Result<bool, InferFailReason> {
-    let Some(doc_function) = as_doc_function_type(context.db, func_param_type)? else {
+    let Some(doc_function) = as_doc_function_type(context.db(), func_param_type)? else {
         return Ok(false);
     };
 

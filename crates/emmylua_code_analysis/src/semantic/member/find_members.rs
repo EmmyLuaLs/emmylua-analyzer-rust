@@ -3,9 +3,10 @@ use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, FileId, InferGuardRef, LuaGenericType, LuaInstanceType, LuaIntersectionType,
-    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
-    LuaTypeDeclId, LuaUnionType,
+    DbIndex, FileId, InferGuardRef, LuaCompilation, LuaGenericType, LuaInstanceType,
+    LuaIntersectionType, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId,
+    LuaTupleType, LuaType, LuaTypeCache, LuaTypeDecl, LuaTypeDeclId, LuaTypeOwner, LuaUnionType,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -15,6 +16,17 @@ use crate::{
 use super::{
     FindMembersResult, LuaMemberInfo, get_buildin_type_map_type_id, intersect_member_types,
 };
+
+fn type_lookup_workspace_id(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    file_id: FileId,
+) -> Option<crate::WorkspaceId> {
+    compilation
+        .map(|compilation| compilation.resolved_workspace_id(file_id))
+        .or_else(|| db.resolve_workspace_id(file_id))
+        .or(Some(crate::WorkspaceId::MAIN))
+}
 
 #[derive(Debug, Clone)]
 pub enum FindMemberFilter {
@@ -29,21 +41,70 @@ pub enum FindMemberFilter {
     },
 }
 
-pub fn find_members(db: &DbIndex, prefix_type: &LuaType) -> FindMembersResult {
+pub fn find_members(compilation: &LuaCompilation, prefix_type: &LuaType) -> FindMembersResult {
     let ctx = FindMembersContext::new(FileId::VIRTUAL, InferGuard::new());
-    find_members_guard(db, prefix_type, &ctx, &FindMemberFilter::All)
+    find_members_inner(Some(compilation), compilation.legacy_db(), prefix_type, &ctx)
 }
 
-pub fn find_members_in_scope(
+fn find_members_inner(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    prefix_type: &LuaType,
+    ctx: &FindMembersContext,
+) -> FindMembersResult {
+    find_members_guard(compilation, db, prefix_type, ctx, &FindMemberFilter::All)
+}
+
+#[allow(dead_code)]
+pub(crate) fn find_members_root(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    prefix_type: &LuaType,
+) -> FindMembersResult {
+    let ctx = FindMembersContext::new(FileId::VIRTUAL, InferGuard::new());
+    find_members_inner(compilation, db, prefix_type, &ctx)
+}
+
+#[allow(dead_code)]
+pub(crate) fn find_members_in_scope_inner(
     db: &DbIndex,
     file_id: FileId,
     prefix_type: &LuaType,
 ) -> FindMembersResult {
     let ctx = FindMembersContext::new(file_id, InferGuard::new());
-    find_members_guard(db, prefix_type, &ctx, &FindMemberFilter::All)
+    find_members_inner(None, db, prefix_type, &ctx)
+}
+
+pub fn find_members_in_scope(
+    compilation: &LuaCompilation,
+    file_id: FileId,
+    prefix_type: &LuaType,
+) -> FindMembersResult {
+    let ctx = FindMembersContext::new(file_id, InferGuard::new());
+    find_members_inner(Some(compilation), compilation.legacy_db(), prefix_type, &ctx)
 }
 
 pub fn find_members_with_key(
+    compilation: &LuaCompilation,
+    prefix_type: &LuaType,
+    member_key: LuaMemberKey,
+    find_all: bool,
+) -> FindMembersResult {
+    let ctx = FindMembersContext::new(FileId::VIRTUAL, InferGuard::new());
+    find_members_guard(
+        Some(compilation),
+        compilation.legacy_db(),
+        prefix_type,
+        &ctx,
+        &FindMemberFilter::ByKey {
+            member_key,
+            find_all,
+        },
+    )
+}
+
+pub(crate) fn find_members_with_key_inner(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     prefix_type: &LuaType,
     member_key: LuaMemberKey,
@@ -51,6 +112,28 @@ pub fn find_members_with_key(
 ) -> FindMembersResult {
     let ctx = FindMembersContext::new(FileId::VIRTUAL, InferGuard::new());
     find_members_guard(
+        compilation,
+        db,
+        prefix_type,
+        &ctx,
+        &FindMemberFilter::ByKey {
+            member_key,
+            find_all,
+        },
+    )
+}
+
+#[allow(dead_code)]
+pub(crate) fn find_members_with_key_in_scope_inner(
+    db: &DbIndex,
+    file_id: FileId,
+    prefix_type: &LuaType,
+    member_key: LuaMemberKey,
+    find_all: bool,
+) -> FindMembersResult {
+    let ctx = FindMembersContext::new(file_id, InferGuard::new());
+    find_members_guard(
+        None,
         db,
         prefix_type,
         &ctx,
@@ -62,7 +145,7 @@ pub fn find_members_with_key(
 }
 
 pub fn find_members_with_key_in_scope(
-    db: &DbIndex,
+    compilation: &LuaCompilation,
     file_id: FileId,
     prefix_type: &LuaType,
     member_key: LuaMemberKey,
@@ -70,7 +153,8 @@ pub fn find_members_with_key_in_scope(
 ) -> FindMembersResult {
     let ctx = FindMembersContext::new(file_id, InferGuard::new());
     find_members_guard(
-        db,
+        Some(compilation),
+        compilation.legacy_db(),
         prefix_type,
         &ctx,
         &FindMemberFilter::ByKey {
@@ -78,6 +162,36 @@ pub fn find_members_with_key_in_scope(
             find_all,
         },
     )
+}
+
+fn get_type_cache<'a>(
+    compilation: Option<&'a LuaCompilation>,
+    db: &'a DbIndex,
+    owner: &LuaTypeOwner,
+) -> Option<&'a LuaTypeCache> {
+    compilation
+        .and_then(|compilation| compilation.get_type_cache(owner))
+        .or_else(|| db.get_type_index().get_type_cache(owner))
+}
+
+fn get_type_decl<'a>(
+    compilation: Option<&'a LuaCompilation>,
+    db: &'a DbIndex,
+    decl_id: &LuaTypeDeclId,
+) -> Option<&'a LuaTypeDecl> {
+    compilation
+        .and_then(|compilation| compilation.get_type_decl(decl_id))
+        .or_else(|| db.get_type_index().get_type_decl(decl_id))
+}
+
+fn get_super_types(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    decl_id: &LuaTypeDeclId,
+) -> Option<Vec<LuaType>> {
+    compilation
+        .and_then(|compilation| compilation.get_super_types(decl_id))
+        .or_else(|| db.get_type_index().get_super_types(decl_id))
 }
 
 #[derive(Clone)]
@@ -129,6 +243,7 @@ impl FindMembersContext {
 }
 
 fn find_members_guard(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     prefix_type: &LuaType,
     ctx: &FindMembersContext,
@@ -137,7 +252,7 @@ fn find_members_guard(
     match &prefix_type {
         LuaType::TableConst(id) => {
             let member_owner = LuaMemberOwner::Element(id.clone());
-            find_normal_members(db, ctx, member_owner, filter)
+            find_normal_members(compilation, db, ctx, member_owner, filter)
         }
         LuaType::TableGeneric(table_type) => {
             find_table_generic_members(db, ctx, table_type, filter)
@@ -148,34 +263,37 @@ fn find_members_guard(
         | LuaType::DocStringConst(_)
         | LuaType::Language(_) => {
             let type_decl_id = get_buildin_type_map_type_id(prefix_type)?;
-            find_custom_type_members(db, ctx, &type_decl_id, filter)
+            find_custom_type_members(compilation, db, ctx, &type_decl_id, filter)
         }
-        LuaType::Ref(type_decl_id) => find_custom_type_members(db, ctx, type_decl_id, filter),
-        LuaType::Def(type_decl_id) => find_custom_type_members(db, ctx, type_decl_id, filter),
+        LuaType::Ref(type_decl_id) => {
+            find_custom_type_members(compilation, db, ctx, type_decl_id, filter)
+        }
+        LuaType::Def(type_decl_id) => {
+            find_custom_type_members(compilation, db, ctx, type_decl_id, filter)
+        }
         LuaType::Tuple(tuple_type) => find_tuple_members(db, ctx, tuple_type, filter),
         LuaType::Object(object_type) => find_object_members(db, ctx, object_type, filter),
-        LuaType::Union(union_type) => find_union_members(db, union_type, ctx, filter),
+        LuaType::Union(union_type) => find_union_members(compilation, db, union_type, ctx, filter),
         LuaType::MultiLineUnion(multi_union) => {
             let union_type = multi_union.to_union();
             if let LuaType::Union(union_type) = union_type {
-                find_union_members(db, &union_type, ctx, filter)
+                find_union_members(compilation, db, &union_type, ctx, filter)
             } else {
                 None
             }
         }
         LuaType::Intersection(intersection_type) => {
-            find_intersection_members(db, intersection_type, ctx, filter)
+            find_intersection_members(compilation, db, intersection_type, ctx, filter)
         }
-        LuaType::Generic(generic_type) => find_generic_members(db, generic_type, ctx, filter),
-        LuaType::Global => find_global_members(db, ctx, filter),
-        LuaType::Instance(inst) => find_instance_members(db, inst, ctx, filter),
-        LuaType::Namespace(ns) => find_namespace_members(db, ctx, ns, filter),
+        LuaType::Generic(generic_type) => {
+            find_generic_members(compilation, db, generic_type, ctx, filter)
+        }
+        LuaType::Global => find_global_members(compilation, db, ctx, filter),
+        LuaType::Instance(inst) => find_instance_members(compilation, db, inst, ctx, filter),
+        LuaType::Namespace(ns) => find_namespace_members(compilation, db, ctx, ns, filter),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info
-                && let Some(export_type) = &module_info.export_type
-            {
-                return find_members_guard(db, export_type, ctx, filter);
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
+                return find_members_guard(compilation, db, &export_type, ctx, filter);
             }
 
             None
@@ -228,6 +346,7 @@ fn find_table_generic_members(
 }
 
 fn find_normal_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     ctx: &FindMembersContext,
     member_owner: LuaMemberOwner,
@@ -241,9 +360,7 @@ fn find_normal_members(
         let member_key = member.get_key().clone();
 
         if should_include_member(&member_key, filter) {
-            let raw_type = db
-                .get_type_index()
-                .get_type_cache(&member.get_id().into())
+            let raw_type = get_type_cache(compilation, db, &member.get_id().into())
                 .map(|t| t.as_type().clone())
                 .unwrap_or(LuaType::Unknown);
             members.push(LuaMemberInfo {
@@ -264,19 +381,19 @@ fn find_normal_members(
 }
 
 fn find_custom_type_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     ctx: &FindMembersContext,
     type_decl_id: &LuaTypeDeclId,
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
     ctx.infer_guard().check(type_decl_id).ok()?;
-    let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(type_decl_id)?;
+    let type_decl = get_type_decl(compilation, db, type_decl_id)?;
     if type_decl.is_alias() {
-        if let Some(origin) = type_decl.get_alias_origin(db, None) {
-            return find_members_guard(db, &origin, ctx, filter);
+        if let Some(origin) = crate::semantic::type_queries::get_alias_origin(db, type_decl, None) {
+            return find_members_guard(compilation, db, &origin, ctx, filter);
         } else {
-            return find_members_guard(db, &LuaType::String, ctx, filter);
+            return find_members_guard(compilation, db, &LuaType::String, ctx, filter);
         }
     }
 
@@ -289,9 +406,7 @@ fn find_custom_type_members(
             let member_key = member.get_key().clone();
 
             if should_include_member(&member_key, filter) {
-                let raw_type = db
-                    .get_type_index()
-                    .get_type_cache(&member.get_id().into())
+                let raw_type = get_type_cache(compilation, db, &member.get_id().into())
                     .map(|t| t.as_type().clone())
                     .unwrap_or(LuaType::Unknown);
                 members.push(LuaMemberInfo {
@@ -310,11 +425,13 @@ fn find_custom_type_members(
     }
 
     if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(type_decl_id)
+        && let Some(super_types) = get_super_types(compilation, db, type_decl_id)
     {
         for super_type in super_types {
             let instantiated_super = ctx.instantiate_type(db, &super_type);
-            if let Some(super_members) = find_members_guard(db, &instantiated_super, ctx, filter) {
+            if let Some(super_members) =
+                find_members_guard(compilation, db, &instantiated_super, ctx, filter)
+            {
                 members.extend(super_members);
 
                 if should_stop_collecting(members.len(), filter) {
@@ -382,6 +499,7 @@ fn find_object_members(
 }
 
 fn find_union_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     union_type: &LuaUnionType,
     ctx: &FindMembersContext,
@@ -399,7 +517,8 @@ fn find_union_members(
         }
 
         let fork_ctx = ctx.fork_infer();
-        let sub_members = find_members_guard(db, &instantiated_type, &fork_ctx, filter);
+        let sub_members =
+            find_members_guard(compilation, db, &instantiated_type, &fork_ctx, filter);
         if let Some(sub_members) = sub_members {
             members.extend(sub_members);
 
@@ -413,6 +532,7 @@ fn find_union_members(
 }
 
 fn find_intersection_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     intersection_type: &LuaIntersectionType,
     ctx: &FindMembersContext,
@@ -424,7 +544,8 @@ fn find_intersection_members(
     for typ in intersection_type.get_types().iter() {
         let instantiated_type = ctx.instantiate_type(db, typ);
         let fork_ctx = ctx.fork_infer();
-        let sub_members = find_members_guard(db, &instantiated_type, &fork_ctx, filter);
+        let sub_members =
+            find_members_guard(compilation, db, &instantiated_type, &fork_ctx, filter);
         let Some(sub_members) = sub_members else {
             continue;
         };
@@ -484,6 +605,7 @@ fn find_intersection_members(
 }
 
 fn find_generic_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     generic_type: &LuaGenericType,
     ctx: &FindMembersContext,
@@ -496,13 +618,16 @@ fn find_generic_members(
         .map(|param| ctx.instantiate_type(db, param))
         .collect();
     let substitutor = TypeSubstitutor::from_type_array(instantiated_params);
-    let type_decl = db.get_type_index().get_type_decl(&base_ref_id)?;
+    let type_decl = get_type_decl(compilation, db, &base_ref_id)?;
     let ctx_with_substitutor = ctx.with_substitutor(substitutor.clone());
-    if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor)) {
-        return find_members_guard(db, &origin, &ctx_with_substitutor, filter);
+    if let Some(origin) =
+        crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&substitutor))
+    {
+        return find_members_guard(compilation, db, &origin, &ctx_with_substitutor, filter);
     }
 
     find_members_guard(
+        compilation,
         db,
         &LuaType::Ref(base_ref_id.clone()),
         &ctx_with_substitutor,
@@ -511,6 +636,7 @@ fn find_generic_members(
 }
 
 fn find_global_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     ctx: &FindMembersContext,
     filter: &FindMemberFilter,
@@ -522,9 +648,7 @@ fn find_global_members(
             let member_key = LuaMemberKey::Name(decl.get_name().to_string().into());
 
             if should_include_member(&member_key, filter) {
-                let raw_type = db
-                    .get_type_index()
-                    .get_type_cache(&decl_id.into())
+                let raw_type = get_type_cache(compilation, db, &decl_id.into())
                     .map(|t| t.as_type().clone())
                     .unwrap_or(LuaType::Unknown);
                 members.push(LuaMemberInfo {
@@ -546,6 +670,7 @@ fn find_global_members(
 }
 
 fn find_instance_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     inst: &LuaInstanceType,
     ctx: &FindMembersContext,
@@ -554,7 +679,7 @@ fn find_instance_members(
     let mut members = Vec::new();
     let range = inst.get_range();
     let member_owner = LuaMemberOwner::Element(range.clone());
-    if let Some(normal_members) = find_normal_members(db, ctx, member_owner, filter) {
+    if let Some(normal_members) = find_normal_members(compilation, db, ctx, member_owner, filter) {
         members.extend(normal_members);
 
         if should_stop_collecting(members.len(), filter) {
@@ -563,7 +688,7 @@ fn find_instance_members(
     }
 
     let origin_type = ctx.instantiate_type(db, inst.get_base());
-    if let Some(origin_members) = find_members_guard(db, &origin_type, ctx, filter) {
+    if let Some(origin_members) = find_members_guard(compilation, db, &origin_type, ctx, filter) {
         members.extend(origin_members);
     }
 
@@ -571,6 +696,7 @@ fn find_instance_members(
 }
 
 fn find_namespace_members(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     ctx: &FindMembersContext,
     ns: &str,
@@ -581,8 +707,11 @@ fn find_namespace_members(
     let prefix = format!("{}.", ns);
     let type_index = db.get_type_index();
     let file_id = ctx.file_id();
-    let type_decl_id_map =
-        type_index.find_type_decls(file_id, &prefix, db.resolve_workspace_id(file_id));
+    let type_decl_id_map = type_index.find_type_decls(
+        file_id,
+        &prefix,
+        type_lookup_workspace_id(compilation, db, file_id),
+    );
     for (name, type_decl_id) in type_decl_id_map {
         let member_key = LuaMemberKey::Name(name.clone().into());
 

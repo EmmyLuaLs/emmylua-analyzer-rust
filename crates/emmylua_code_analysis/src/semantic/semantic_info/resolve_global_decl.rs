@@ -61,7 +61,7 @@ fn resolve_global_func_decl_id(
             }
 
             if let LuaType::Signature(signature) = typ {
-                let signature = db.get_signature_index().get(signature)?;
+                let signature = db.get_signature_index().get(&signature)?;
                 overload_signature.push((decl_id.clone(), signature.to_doc_func_type()));
             }
         }

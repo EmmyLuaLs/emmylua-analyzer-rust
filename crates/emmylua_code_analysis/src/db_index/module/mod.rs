@@ -411,6 +411,10 @@ impl LuaModuleIndex {
         self.workspaces.retain(|workspace| workspace.id.is_std());
     }
 
+    pub fn get_workspaces(&self) -> &[Workspace] {
+        self.workspaces.as_slice()
+    }
+
     pub fn next_library_workspace_id(&self) -> u32 {
         let used: HashSet<u32> = self.workspaces.iter().map(|w| w.id.id).collect();
         let mut candidate = WorkspaceId::LIBRARY_START.id;

@@ -2,9 +2,12 @@ use std::ops::Deref;
 
 use crate::{
     DbIndex, LuaType, LuaTypeDeclId, TypeSubstitutor, VariadicType,
-    semantic::type_check::{
-        is_sub_type_of,
-        type_check_context::{TypeCheckCheckLevel, TypeCheckContext},
+    semantic::{
+        type_check::{
+            is_sub_type_of,
+            type_check_context::{TypeCheckCheckLevel, TypeCheckContext},
+        },
+        type_queries::get_enum_field_type,
     },
 };
 
@@ -166,7 +169,7 @@ pub fn check_simple_type_compact(
             }
             LuaType::Integer => {
                 if context
-                    .db
+                    .db()
                     .get_emmyrc()
                     .strict
                     .doc_base_const_match_base_type
@@ -184,7 +187,7 @@ pub fn check_simple_type_compact(
             }
             LuaType::Ref(_) => {
                 if context
-                    .db
+                    .db()
                     .get_emmyrc()
                     .strict
                     .doc_base_const_match_base_type
@@ -221,7 +224,7 @@ pub fn check_simple_type_compact(
             }
             LuaType::Ref(_) => {
                 if context
-                    .db
+                    .db()
                     .get_emmyrc()
                     .strict
                     .doc_base_const_match_base_type
@@ -307,14 +310,16 @@ pub fn check_simple_type_compact(
         LuaType::Generic(generic) => {
             if !generic.contain_tpl() {
                 let base_id = generic.get_base_type_id();
-                if let Some(decl) = context.db.get_type_index().get_type_decl(&base_id)
+                if let Some(decl) = context.db().get_type_index().get_type_decl(&base_id)
                     && decl.is_alias()
                 {
                     let substitutor =
                         TypeSubstitutor::from_alias(generic.get_params().clone(), base_id.clone());
-                    if let Some(alias_origin) =
-                        decl.get_alias_origin(context.db, Some(&substitutor))
-                    {
+                    if let Some(alias_origin) = crate::semantic::type_queries::get_alias_origin(
+                        context.db(),
+                        decl,
+                        Some(&substitutor),
+                    ) {
                         return check_general_type_compact(
                             context,
                             source,
@@ -364,7 +369,7 @@ fn check_base_type_for_ref_compact(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     if let LuaType::Ref(_) = compact_type {
-        let real_type = get_alias_real_type(context.db, compact_type, check_guard.next_level()?)?;
+        let real_type = get_alias_real_type(context.db(), compact_type, check_guard.next_level()?)?;
         match &real_type {
             LuaType::MultiLineUnion(multi_line_union) => {
                 for (sub_type, _) in multi_line_union.get_unions() {
@@ -383,11 +388,11 @@ fn check_base_type_for_ref_compact(
             }
             LuaType::Ref(type_decl_id) => {
                 if let Some(source_id) = get_base_type_id(source)
-                    && is_sub_type_of(context.db, type_decl_id, &source_id)
+                    && is_sub_type_of(context.db(), type_decl_id, &source_id)
                 {
                     return Ok(());
                 }
-                if let Some(decl) = context.db.get_type_index().get_type_decl(type_decl_id)
+                if let Some(decl) = context.db().get_type_index().get_type_decl(type_decl_id)
                     && decl.is_enum()
                 {
                     return check_enum_fields_match_source(
@@ -411,8 +416,8 @@ fn check_enum_fields_match_source(
     enum_type_decl_id: &LuaTypeDeclId,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    if let Some(decl) = context.db.get_type_index().get_type_decl(enum_type_decl_id)
-        && let Some(LuaType::Union(enum_fields)) = decl.get_enum_field_type(context.db)
+    if let Some(decl) = context.db().get_type_index().get_type_decl(enum_type_decl_id)
+        && let Some(LuaType::Union(enum_fields)) = get_enum_field_type(context.db(), decl)
     {
         for field in enum_fields.into_vec() {
             check_general_type_compact(context, source, &field, check_guard.next_level()?)?;

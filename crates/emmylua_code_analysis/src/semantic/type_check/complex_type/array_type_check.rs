@@ -1,9 +1,11 @@
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaType, TypeCheckFailReason, TypeCheckResult, TypeOps,
-    find_index_operations,
-    semantic::type_check::{
+    semantic::{
+        member::find_index_operations_inner,
+        type_check::{
         check_general_type_compact, type_check_context::TypeCheckContext,
         type_check_guard::TypeCheckGuard,
+        },
     },
 };
 
@@ -13,8 +15,8 @@ pub fn check_array_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let source_base = if context.db.get_emmyrc().strict.array_index {
-        TypeOps::Union.apply(context.db, source_base, &LuaType::Nil)
+    let source_base = if context.db().get_emmyrc().strict.array_index {
+        TypeOps::Union.apply(context.db(), source_base, &LuaType::Nil)
     } else {
         source_base.clone()
     };
@@ -51,7 +53,7 @@ pub fn check_array_type_compact(
         }
         LuaType::Object(compact_object) => {
             let compact_base = compact_object
-                .cast_down_array_base(context.db)
+                .cast_down_array_base()
                 .ok_or(TypeCheckFailReason::TypeNotMatch)?;
             return check_general_type_compact(
                 context,
@@ -96,7 +98,7 @@ fn check_array_type_compact_ref_def(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let Some(members) = find_index_operations(context.db, compact_type) else {
+    let Some(members) = find_index_operations_inner(context.db(), compact_type) else {
         return Err(TypeCheckFailReason::TypeNotMatch);
     };
 
@@ -119,14 +121,14 @@ fn check_array_type_compact_table(
     table_owner: LuaMemberOwner,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let member_index = context.db.get_member_index();
+    let member_index = context.db().get_member_index();
 
     let member_len = member_index.get_member_len(&table_owner);
     for i in 0..member_len {
         let key = LuaMemberKey::Integer((i + 1) as i64);
         if let Some(member_item) = member_index.get_member_item(&table_owner, &key) {
             let member_type = member_item
-                .resolve_type(context.db)
+                .resolve_type(context.db())
                 .map_err(|_| TypeCheckFailReason::TypeNotMatch)?;
             check_general_type_compact(
                 context,

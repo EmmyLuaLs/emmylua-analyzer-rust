@@ -81,7 +81,8 @@ fn check_deprecated(
     range: rowan::TextRange,
 ) {
     let property = semantic_model
-        .get_db()
+        .get_compilation()
+        .legacy_db()
         .get_property_index()
         .get_property(semantic_decl);
     let Some(property) = property else {

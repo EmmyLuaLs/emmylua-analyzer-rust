@@ -12,7 +12,7 @@ use crate::{
     get_real_type,
 };
 
-use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
+use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr_root};
 
 pub fn infer_binary_expr(
     db: &DbIndex,
@@ -21,8 +21,8 @@ pub fn infer_binary_expr(
 ) -> InferResult {
     let op = expr.get_op_token().ok_or(InferFailReason::None)?.get_op();
     let (left, right) = expr.get_exprs().ok_or(InferFailReason::None)?;
-    let left_type = infer_expr(db, cache, left.clone())?;
-    let right_type = infer_expr(db, cache, right.clone())?;
+    let left_type = infer_expr_root(db, cache, left.clone())?;
+    let right_type = infer_expr_root(db, cache, right.clone())?;
     let real_left_type = get_real_type(db, &left_type);
     let real_right_type = get_real_type(db, &right_type);
     let left_type_ref = real_left_type.unwrap_or(&left_type);

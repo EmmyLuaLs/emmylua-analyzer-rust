@@ -72,7 +72,8 @@ fn collect_local_alias(
         if is_only_dot_index_expr(value_expr).unwrap_or(false) {
             let decl_id = LuaDeclId::new(semantic_model.get_file_id(), local_name.get_position());
             let decl_refs = semantic_model
-                .get_db()
+                .get_compilation()
+                .legacy_db()
                 .get_reference_index()
                 .get_decl_references(&semantic_model.get_file_id(), &decl_id);
             if let Some(decl_refs) = decl_refs

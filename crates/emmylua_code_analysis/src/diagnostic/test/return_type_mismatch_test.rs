@@ -192,6 +192,24 @@ mod tests {
     }
 
     #[test]
+    fn test_call_arg_closure_expected_return_type_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.check_code_for(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@param cb fun(): string
+            local function call(cb)
+            end
+
+            call(function()
+                return 1
+            end)
+        "#,
+        ));
+    }
+
+    #[test]
     fn test_discriminated_union_partial_literal_assignment_keeps_branch_narrowing() {
         let mut ws = VirtualWorkspace::new();
 

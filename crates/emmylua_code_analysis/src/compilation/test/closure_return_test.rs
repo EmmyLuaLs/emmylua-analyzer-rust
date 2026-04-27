@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod test {
+    use emmylua_parser::{LuaAstNode, LuaClosureExpr};
+
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     fn assert_inferred_return_without_nil(code: &str) {
@@ -395,5 +397,39 @@ mod test {
         let nil = ws.ty("nil");
         assert!(ws.check_type(&ty, &expected));
         assert!(!ws.check_type(&ty, &nil));
+    }
+
+    #[test]
+    fn test_semantic_model_infer_closure_return_info_prefers_expected_return_type() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@param cb fun(value: integer): string
+            local function call(cb)
+            end
+
+            call(function(value)
+                return tostring(value)
+            end)
+            "#,
+        );
+
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("semantic model");
+        let closure = semantic_model
+            .get_root()
+            .descendants::<LuaClosureExpr>()
+            .last()
+            .expect("closure expr");
+
+        let (is_doc_resolved, ret) = semantic_model
+            .infer_closure_return_info(closure)
+            .expect("closure return info");
+
+        assert!(is_doc_resolved);
+        assert_eq!(ws.humanize_type(ret), "string");
     }
 }

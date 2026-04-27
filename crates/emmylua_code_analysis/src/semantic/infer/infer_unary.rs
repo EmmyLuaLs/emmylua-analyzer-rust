@@ -5,7 +5,7 @@ use crate::{
     db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
 };
 
-use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
+use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr_root};
 
 pub fn infer_unary_expr(
     db: &DbIndex,
@@ -17,7 +17,7 @@ pub fn infer_unary_expr(
         .ok_or(InferFailReason::None)?
         .get_op();
     let inner_expr = unary_expr.get_expr().ok_or(InferFailReason::None)?;
-    let inner_type = infer_expr(db, cache, inner_expr)?;
+    let inner_type = infer_expr_root(db, cache, inner_expr)?;
     match op {
         UnaryOperator::OpNot => infer_unary_expr_not(inner_type),
         UnaryOperator::OpLen => Ok(LuaType::Integer),

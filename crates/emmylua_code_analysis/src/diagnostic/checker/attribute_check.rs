@@ -36,16 +36,16 @@ fn check_attribute_use(
     attribute_use: &LuaDocAttributeUse,
 ) -> Option<()> {
     let attribute_type = infer_doc_type(
-        DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id()),
+        DocTypeInferContext::new(
+            semantic_model.get_compilation().legacy_db(),
+            semantic_model.get_file_id(),
+        ),
         &LuaDocType::Name(attribute_use.get_type()?),
     );
     let LuaType::Ref(type_id) = attribute_type else {
         return None;
     };
-    let type_decl = semantic_model
-        .get_db()
-        .get_type_index()
-        .get_type_decl(&type_id)?;
+    let type_decl = semantic_model.get_type_decl(&type_id)?;
     if !type_decl.is_attribute() {
         return None;
     }
@@ -186,7 +186,7 @@ fn add_type_check_diagnostic(
     expr_type: &LuaType,
     result: TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     match result {
         Ok(_) => (),
         Err(reason) => {

@@ -17,9 +17,11 @@ use crate::{
 
 use super::type_substitutor::{SubstitutorValue, TypeSubstitutor};
 use crate::LuaTypeNode;
-use crate::semantic::member::find_members_with_key;
+use crate::semantic::member::find_members_with_key_inner;
 pub use instantiate_func_generic::{build_self_type, infer_self_type, instantiate_func_generic};
+pub(crate) use instantiate_func_generic::build_self_type_inner;
 pub use instantiate_special_generic::get_keyof_members;
+pub(crate) use instantiate_special_generic::get_keyof_members_inner;
 pub use instantiate_special_generic::instantiate_alias_call;
 
 pub fn instantiate_type_generic(
@@ -315,7 +317,9 @@ pub fn instantiate_generic(
         && type_decl.is_alias()
     {
         let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
-        if let Some(origin) = type_decl.get_alias_origin(db, Some(&new_substitutor)) {
+        if let Some(origin) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&new_substitutor))
+        {
             return origin;
         }
     }
@@ -725,7 +729,8 @@ fn collect_infer_assignments(
                 LuaType::Ref(type_decl_id) => {
                     if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id) {
                         if type_decl.is_alias()
-                            && let Some(origin) = type_decl.get_alias_origin(db, None)
+                            && let Some(origin) =
+                                crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
                         {
                             return collect_infer_assignments(db, &origin, &pattern, assignments);
                         }
@@ -804,7 +809,7 @@ fn collect_infer_from_class_to_object(
     let source_type = LuaType::Ref(type_id.clone());
 
     for (key, pattern_field_ty) in pattern_fields {
-        if let Some(member_infos) = find_members_with_key(db, &source_type, key.clone(), false) {
+        if let Some(member_infos) = find_members_with_key_inner(None, db, &source_type, key.clone(), false) {
             if let Some(member_info) = member_infos.first() {
                 if !collect_infer_assignments(db, &member_info.typ, pattern_field_ty, assignments) {
                     return false;
@@ -831,7 +836,7 @@ fn collect_infer_from_table_to_object(
     let source_type = LuaType::TableConst(table_id.clone());
 
     for (key, pattern_field_ty) in pattern_fields {
-        if let Some(member_infos) = find_members_with_key(db, &source_type, key.clone(), false) {
+        if let Some(member_infos) = find_members_with_key_inner(None, db, &source_type, key.clone(), false) {
             if let Some(member_info) = member_infos.first() {
                 if !collect_infer_assignments(db, &member_info.typ, pattern_field_ty, assignments) {
                     return false;

@@ -43,7 +43,7 @@ fn generic_tpl_pattern_match_inner(
             }
 
             let target_decl = context
-                .db
+                .db()
                 .get_type_index()
                 .get_type_decl(target_base)
                 .ok_or(InferFailReason::None)?;
@@ -52,9 +52,11 @@ fn generic_tpl_pattern_match_inner(
                     target_generic.get_params().clone(),
                     target_base.clone(),
                 );
-                if let Some(origin_type) =
-                    target_decl.get_alias_origin(context.db, Some(&substitutor))
-                {
+                if let Some(origin_type) = crate::semantic::type_queries::get_alias_origin(
+                    context.db(),
+                    target_decl,
+                    Some(&substitutor),
+                ) {
                     return generic_tpl_pattern_match_inner(
                         context,
                         source_generic,
@@ -63,14 +65,14 @@ fn generic_tpl_pattern_match_inner(
                     );
                 }
             } else if let Some(super_types) =
-                context.db.get_type_index().get_super_types(target_base)
+                context.db().get_type_index().get_super_types(target_base)
             {
                 for mut super_type in super_types {
                     if super_type.contains_tpl_node() {
                         let substitutor =
                             TypeSubstitutor::from_type_array(target_generic.get_params().clone());
                         super_type =
-                            instantiate_type_generic(context.db, &super_type, &substitutor);
+                            instantiate_type_generic(context.db(), &super_type, &substitutor);
                     }
 
                     generic_tpl_pattern_match_inner(
@@ -85,11 +87,13 @@ fn generic_tpl_pattern_match_inner(
         LuaType::Ref(type_id) | LuaType::Def(type_id) => {
             infer_guard.check(type_id)?;
             let type_decl = context
-                .db
+                .db()
                 .get_type_index()
                 .get_type_decl(type_id)
                 .ok_or(InferFailReason::None)?;
-            if let Some(origin_type) = type_decl.get_alias_origin(context.db, None) {
+            if let Some(origin_type) =
+                crate::semantic::type_queries::get_alias_origin(context.db(), type_decl, None)
+            {
                 return generic_tpl_pattern_match_inner(
                     context,
                     source_generic,
@@ -99,7 +103,7 @@ fn generic_tpl_pattern_match_inner(
             }
 
             for super_type in context
-                .db
+                .db()
                 .get_type_index()
                 .get_super_types(type_id)
                 .unwrap_or_default()
@@ -125,7 +129,7 @@ fn generic_tpl_pattern_match_inner(
         _ => {
             // 对于 @alias 类型, 我们能拿到的 target 实际上很有可能是实例化后的类型, 因此我们需要实例化后再进行匹配
             let substitutor = TypeSubstitutor::new();
-            let typ = instantiate_generic(context.db, source_generic, &substitutor);
+            let typ = instantiate_generic(context.db(), source_generic, &substitutor);
             if LuaType::from(source_generic.clone()) != typ {
                 tpl_pattern_match(context, &typ, target)?;
             }

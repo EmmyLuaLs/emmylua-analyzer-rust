@@ -812,12 +812,12 @@ mod tests {
         assert_ne!(
             analysis
                 .compilation
-                .get_db()
+                .legacy_db()
                 .get_module_index()
                 .get_workspace_id(socket_file_id),
             analysis
                 .compilation
-                .get_db()
+                .legacy_db()
                 .get_module_index()
                 .get_workspace_id(net_file_id)
         );

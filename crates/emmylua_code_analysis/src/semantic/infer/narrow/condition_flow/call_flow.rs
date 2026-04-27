@@ -4,7 +4,7 @@ use emmylua_parser::{LuaCallExpr, LuaExpr, LuaIndexMemberExpr};
 
 use crate::{
     DbIndex, InferFailReason, InferGuard, LuaAliasCallKind, LuaAliasCallType, LuaFunctionType,
-    LuaInferCache, LuaSignatureId, LuaType, infer_call_expr_func, infer_expr,
+    LuaInferCache, LuaSignatureId, LuaType, infer_call_expr_func, infer_expr_root,
     semantic::infer::{
         VarRefId,
         infer_index::infer_member_by_member_key,
@@ -56,13 +56,13 @@ pub fn get_type_at_call_expr(
                         member_type
                     }
                 } else {
-                    infer_expr(db, cache, prefix_expr.clone())?
+                    infer_expr_root(db, cache, prefix_expr.clone())?
                 }
             }
-            _ => infer_expr(db, cache, prefix_expr.clone())?,
+            _ => infer_expr_root(db, cache, prefix_expr.clone())?,
         }
     } else {
-        infer_expr(db, cache, prefix_expr.clone())?
+        infer_expr_root(db, cache, prefix_expr.clone())?
     };
     match maybe_func {
         LuaType::DocFunction(f) => {
@@ -331,7 +331,7 @@ fn get_type_at_call_expr_by_call(
     }
 
     if alias_call_type.get_call_kind() == LuaAliasCallKind::RawGet {
-        let antecedent_type = infer_expr(db, cache, LuaExpr::CallExpr(call_expr))?;
+        let antecedent_type = infer_expr_root(db, cache, LuaExpr::CallExpr(call_expr))?;
         let result_type = match condition_flow {
             InferConditionFlow::FalseCondition => narrow_false_or_nil(db, antecedent_type),
             InferConditionFlow::TrueCondition => remove_false_or_nil(antecedent_type),

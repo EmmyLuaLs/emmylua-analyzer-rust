@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaClosureExpr, LuaDocTagParam};
 
 use crate::{DiagnosticCode, LuaSignatureId, SemanticModel};
@@ -23,26 +25,33 @@ fn check_doc_param(
     closure_expr: &LuaClosureExpr,
 ) -> Option<()> {
     let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
-    let signature = context.db.get_signature_index().get(&signature_id)?;
+    let defined_params = context
+        .get_signature(&signature_id)?
+        .params
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
 
-    get_closure_expr_comment(closure_expr)?
+    let undefined_params = get_closure_expr_comment(closure_expr)?
         .children::<LuaDocTagParam>()
-        .for_each(|tag| {
-            if let Some(name_token) = tag.get_name_token() {
-                let info = signature.get_param_info_by_name(name_token.get_name_text());
-                if info.is_none() {
-                    context.add_diagnostic(
-                        DiagnosticCode::UndefinedDocParam,
-                        name_token.get_range(),
-                        t!(
-                            "Undefined doc param: `%{name}`",
-                            name = name_token.get_name_text()
-                        )
-                        .to_string(),
-                        None,
-                    );
-                }
-            }
-        });
+        .filter_map(|tag| {
+            let name_token = tag.get_name_token()?;
+            (!defined_params.contains(name_token.get_name_text())).then(|| {
+                (
+                    name_token.get_range(),
+                    name_token.get_name_text().to_string(),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for (range, name) in undefined_params {
+        context.add_diagnostic(
+            DiagnosticCode::UndefinedDocParam,
+            range,
+            t!("Undefined doc param: `%{name}`", name = name).to_string(),
+            None,
+        );
+    }
     Some(())
 }

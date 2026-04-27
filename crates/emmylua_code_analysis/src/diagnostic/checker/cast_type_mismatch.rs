@@ -5,6 +5,7 @@ use rowan::TextRange;
 use crate::{
     DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType, SemanticModel,
     TypeCheckFailReason, TypeCheckResult, get_real_type, infer_doc_type,
+    semantic::type_queries::get_enum_field_type,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -31,10 +32,13 @@ fn check_cast_tag(
     let key_expr = cast_tag.get_key_expr()?;
     let origin_type = {
         let typ = semantic_model.infer_expr(key_expr).ok()?;
-        expand_type(semantic_model.get_db(), &typ).unwrap_or(typ)
+        expand_type(semantic_model.get_compilation().legacy_db(), &typ).unwrap_or(typ)
     };
 
-    let doc_ctx = DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
+    let doc_ctx = DocTypeInferContext::new(
+        semantic_model.get_compilation().legacy_db(),
+        semantic_model.get_file_id(),
+    );
 
     // 检查每个 cast 操作类型
     for op_type in cast_tag.get_op_types() {
@@ -45,7 +49,7 @@ fn check_cast_tag(
         if let Some(target_doc_type) = op_type.get_type() {
             let target_type = {
                 let typ = infer_doc_type(doc_ctx, &target_doc_type);
-                expand_type(semantic_model.get_db(), &typ).unwrap_or(typ)
+                expand_type(semantic_model.get_compilation().legacy_db(), &typ).unwrap_or(typ)
             };
             check_cast_compatibility(
                 context,
@@ -110,7 +114,7 @@ fn add_cast_type_mismatch_diagnostic(
     target_type: &LuaType,
     result: TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     match result {
         Ok(_) => (),
         Err(reason) => {
@@ -232,7 +236,7 @@ fn expand_type_recursive(
         LuaType::Ref(id) | LuaType::Def(id) => {
             let type_decl = db.get_type_index().get_type_decl(id)?;
             if type_decl.is_enum()
-                && let Some(typ) = type_decl.get_enum_field_type(db)
+                && let Some(typ) = get_enum_field_type(db, type_decl)
             {
                 return expand_type_recursive(db, &typ, visited);
             };

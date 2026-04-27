@@ -18,9 +18,10 @@ use crate::{
     VariadicType,
     db_index::{
         AnalyzeError, LuaAliasCallType, LuaConditionalType, LuaFunctionType, LuaGenericType,
-        LuaIndexAccessKey, LuaIntersectionType, LuaMappedType, LuaObjectType, LuaStringTplType,
-        LuaTupleType, LuaType,
+        LuaIntersectionType, LuaMappedType, LuaObjectType, LuaStringTplType, LuaTupleType,
+        LuaType,
     },
+    LuaIndexAccessKey,
 };
 
 use super::{DocAnalyzer, preprocess_description};

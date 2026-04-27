@@ -7,7 +7,7 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, DiagnosticCode, InferFailReason, LuaAliasCallKind, LuaAliasCallType, LuaMemberKey,
-    LuaType, SemanticModel, enum_variable_is_param, get_keyof_members,
+    LuaType, SemanticModel, enum_variable_is_param, get_keyof_members_inner,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -59,7 +59,7 @@ fn check_index_expr(
     index_expr: &LuaIndexExpr,
     code: DiagnosticCode,
 ) -> Option<()> {
-    let db = context.db;
+    let db = context.db();
     let prefix_typ = semantic_model
         .infer_expr(index_expr.get_prefix_expr()?)
         .unwrap_or(LuaType::Unknown);
@@ -151,9 +151,7 @@ pub(super) fn is_valid_member(
                 // 此时为 [] 访问, 大部分类型都可以直接通行
                 match prefix_typ {
                     LuaType::Ref(id) | LuaType::Def(id) => {
-                        if let Some(decl) =
-                            semantic_model.get_db().get_type_index().get_type_decl(id)
-                        {
+                        if let Some(decl) = semantic_model.get_type_decl(id) {
                             // enum 仍然需要检查
                             if decl.is_enum() {
                                 break;
@@ -215,7 +213,7 @@ pub(super) fn is_valid_member(
 
     // 一些类型组合需要特殊处理
     if let (LuaType::Def(id), _) = (prefix_typ, &key_type)
-        && let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(id)
+        && let Some(decl) = semantic_model.get_type_decl(id)
         && decl.is_class()
     {
         if code == DiagnosticCode::InjectField {
@@ -232,7 +230,7 @@ pub(super) fn is_valid_member(
             local field
             local a = Class[field]
     */
-    let key_types = get_key_types(&semantic_model.get_db(), &key_type);
+    let key_types = get_key_types(semantic_model.get_compilation().legacy_db(), &key_type);
     if key_types.is_empty() {
         return None;
     }
@@ -291,7 +289,7 @@ fn check_enum_self_reference(
     key_types: &HashSet<LuaType>,
 ) -> Option<()> {
     if let LuaType::Ref(id) | LuaType::Def(id) = prefix_type
-        && let Some(decl) = semantic_model.get_db().get_type_index().get_type_decl(id)
+        && let Some(decl) = semantic_model.get_type_decl(id)
         && decl.is_enum()
         && key_types.iter().any(|typ| match typ {
             LuaType::Ref(key_id) | LuaType::Def(key_id) => *id == *key_id,
@@ -452,7 +450,7 @@ fn check_enum_is_param(
     index_expr: &LuaIndexExpr,
 ) -> Option<()> {
     enum_variable_is_param(
-        semantic_model.get_db(),
+        semantic_model.get_compilation().legacy_db(),
         &mut semantic_model.get_cache().borrow_mut(),
         index_expr,
         prefix_typ,
@@ -467,7 +465,7 @@ fn get_keyof_keys(db: &DbIndex, alias_call: &LuaAliasCallType) -> Option<Vec<Lua
     if source_operands.len() != 1 {
         return None;
     }
-    let members = get_keyof_members(db, &source_operands[0]).unwrap_or_default();
+    let members = get_keyof_members_inner(db, &source_operands[0]).unwrap_or_default();
     let key_types = members
         .iter()
         .filter_map(|m| match &m.key {

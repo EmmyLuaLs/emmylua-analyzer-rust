@@ -4,7 +4,7 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DbIndex, FlowNode, FlowTree, InferFailReason, LuaInferCache, LuaType, TypeOps, infer_expr,
+    DbIndex, FlowNode, FlowTree, InferFailReason, LuaInferCache, LuaType, TypeOps, infer_expr_root,
     semantic::infer::{
         VarRefId,
         narrow::{
@@ -185,7 +185,7 @@ fn try_get_at_gt_or_ge_expr(
                 return Ok(ConditionFlowAction::Continue);
             }
 
-            let right_expr_type = infer_expr(db, cache, right_expr)?;
+            let right_expr_type = infer_expr_root(db, cache, right_expr)?;
             let antecedent_flow_id = get_single_antecedent(flow_node)?;
             Ok(ConditionFlowAction::NeedSubquery(
                 ConditionSubquery::ArrayLen {
@@ -386,7 +386,7 @@ fn get_var_eq_condition_action(
                     return Ok(ConditionFlowAction::Continue);
                 }
                 let antecedent_flow_id = get_single_antecedent(flow_node)?;
-                let right_expr_type = infer_expr(db, cache, right_expr)?;
+                let right_expr_type = infer_expr_root(db, cache, right_expr)?;
                 return Ok(ConditionFlowAction::NeedSubquery(
                     ConditionSubquery::Correlated {
                         var_ref_id: maybe_ref_id,
@@ -403,7 +403,7 @@ fn get_var_eq_condition_action(
                 ));
             }
 
-            let right_expr_type = infer_expr(db, cache, right_expr)?;
+            let right_expr_type = infer_expr_root(db, cache, right_expr)?;
             let result_type = match condition_flow {
                 InferConditionFlow::TrueCondition => {
                     // self 是特殊的, 我们删除其 nil 类型
@@ -462,7 +462,7 @@ fn get_var_eq_condition_action(
                 return Ok(ConditionFlowAction::Continue);
             }
 
-            let right_expr_type = infer_expr(db, cache, right_expr)?;
+            let right_expr_type = infer_expr_root(db, cache, right_expr)?;
             if matches!(condition_flow, InferConditionFlow::FalseCondition) {
                 return Ok(ConditionFlowAction::Pending(PendingConditionNarrow::Eq {
                     right_expr_type,
@@ -495,7 +495,7 @@ fn get_var_eq_condition_action(
                 return Ok(ConditionFlowAction::Continue);
             }
 
-            let right_expr_type = infer_expr(db, cache, right_expr)?;
+            let right_expr_type = infer_expr_root(db, cache, right_expr)?;
             let antecedent_flow_id = get_single_antecedent(flow_node)?;
             Ok(ConditionFlowAction::NeedSubquery(
                 ConditionSubquery::ArrayLen {
@@ -565,7 +565,7 @@ fn maybe_field_literal_eq_action(
     cache
         .narrow_by_literal_stop_position_cache
         .insert(syntax_id);
-    let right_type = infer_expr(db, cache, LuaExpr::LiteralExpr(literal_expr))?;
+    let right_type = infer_expr_root(db, cache, LuaExpr::LiteralExpr(literal_expr))?;
     Ok(Some(ConditionFlowAction::NeedSubquery(
         ConditionSubquery::FieldLiteralEq {
             var_ref_id: var_ref_id.clone(),

@@ -2,8 +2,8 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexKey};
 
 use crate::{
     DbIndex, InFiled, InferFailReason, LuaInferCache, LuaInstanceType, LuaMemberKey, LuaType,
-    infer_expr,
-    semantic::{infer::InferResult, member::find_members_with_key},
+    infer_expr_root,
+    semantic::{infer::InferResult, member::find_members_with_key_inner},
 };
 
 pub fn infer_setmetatable_call(
@@ -45,7 +45,7 @@ pub fn infer_setmetatable_call(
         }
         _ => {
             if meta_type.is_unknown() {
-                return infer_expr(db, cache, basic_table);
+                return infer_expr_root(db, cache, basic_table);
             }
 
             Ok(meta_type)
@@ -104,16 +104,16 @@ fn infer_metatable_index_type(
                         | LuaExpr::IndexExpr(_)
                         | LuaExpr::NameExpr(_)
                 ) {
-                    let meta_type = infer_expr(db, cache, field_value)?;
+                    let meta_type = infer_expr_root(db, cache, field_value)?;
                     return Ok((meta_type, true));
                 }
             }
         }
     };
 
-    let meta_type = infer_expr(db, cache, metatable)?;
+    let meta_type = infer_expr_root(db, cache, metatable)?;
     if let Some(meta_members) =
-        find_members_with_key(db, &meta_type, LuaMemberKey::Name("__index".into()), false)
+        find_members_with_key_inner(None, db, &meta_type, LuaMemberKey::Name("__index".into()), false)
         && let Some(meta_member) = meta_members.first()
         && meta_member.typ.is_custom_type()
     {

@@ -10,19 +10,19 @@ mod type_check_context;
 mod type_check_fail_reason;
 mod type_check_guard;
 
-use std::ops::Deref;
-
 use complex_type::check_complex_type_compact;
 use func_type::{check_doc_func_type_compact, check_sig_type_compact};
 use generic_type::check_generic_type_compact;
 use ref_type::check_ref_type_compact;
 use simple_type::check_simple_type_compact;
+use std::ops::Deref;
 pub use type_check_fail_reason::TypeCheckFailReason;
 use type_check_guard::TypeCheckGuard;
 
 use crate::{
     LuaUnionType,
     db_index::{DbIndex, LuaType},
+    module_query::export::infer_module_export_type,
     semantic::type_check::type_check_context::TypeCheckContext,
 };
 pub use sub_type::is_sub_type_of;
@@ -34,7 +34,7 @@ pub fn check_type_compact(
     source: &LuaType,
     compact_type: &LuaType,
 ) -> TypeCheckResult {
-    let mut context = TypeCheckContext::new(db, false, TypeCheckCheckLevel::Normal);
+    let mut context = TypeCheckContext::new(None, db, false, TypeCheckCheckLevel::Normal);
     check_general_type_compact(&mut context, source, compact_type, TypeCheckGuard::new())
 }
 
@@ -44,7 +44,7 @@ pub fn check_type_compact_detail(
     compact_type: &LuaType,
 ) -> TypeCheckResult {
     let guard = TypeCheckGuard::new();
-    let mut context = TypeCheckContext::new(db, true, TypeCheckCheckLevel::Normal);
+    let mut context = TypeCheckContext::new(None, db, true, TypeCheckCheckLevel::Normal);
     check_general_type_compact(&mut context, source, compact_type, guard)
 }
 
@@ -54,7 +54,7 @@ pub fn check_type_compact_with_level(
     compact_type: &LuaType,
     level: TypeCheckCheckLevel,
 ) -> TypeCheckResult {
-    let mut context = TypeCheckContext::new(db, false, level);
+    let mut context = TypeCheckContext::new(None, db, false, level);
     check_general_type_compact(&mut context, source, compact_type, TypeCheckGuard::new())
 }
 
@@ -72,7 +72,7 @@ fn check_general_type_compact(
         return Ok(());
     }
 
-    if let Some(origin_type) = escape_type(context.db, compact_type) {
+    if let Some(origin_type) = escape_type(context.db(), compact_type) {
         return check_general_type_compact(
             context,
             source,
@@ -215,7 +215,8 @@ fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
         LuaType::Ref(type_id) => {
             let type_decl = db.get_type_index().get_type_decl(type_id)?;
             if type_decl.is_alias()
-                && let Some(origin_type) = type_decl.get_alias_origin(db, None)
+                && let Some(origin_type) =
+                    crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
             {
                 return Some(origin_type.clone());
             }
@@ -231,10 +232,7 @@ fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
         }
         LuaType::TypeGuard(_) => return Some(LuaType::Boolean),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id)?;
-            if let Some(export_type) = &module_info.export_type {
-                return Some(export_type.clone());
-            }
+            return infer_module_export_type(db, *file_id);
         }
         _ => {}
     }

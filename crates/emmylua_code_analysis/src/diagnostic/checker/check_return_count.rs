@@ -4,11 +4,11 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DiagnosticCode, LuaSignatureId, LuaType, SemanticModel, SignatureReturnStatus,
+    DiagnosticCode, LuaSignatureId, LuaType, SalsaDocTypeLoweredKind, SemanticModel,
     compilation::analyze_func_body_missing_return_flags_with,
 };
 
-use super::{Checker, DiagnosticContext, get_return_stats};
+use super::{Checker, DiagnosticContext, get_closure_return_info, get_return_stats};
 
 pub struct CheckReturnCount;
 
@@ -28,46 +28,13 @@ impl Checker for CheckReturnCount {
     }
 }
 
-// 获取(是否doc标注过返回值, 返回值类型)
-fn get_function_return_info(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    closure_expr: &LuaClosureExpr,
-) -> Option<(bool, LuaType)> {
-    let typ = semantic_model
-        .infer_bind_value_type(closure_expr.clone().into())
-        .unwrap_or(LuaType::Unknown);
-
-    match typ {
-        LuaType::DocFunction(func_type) => {
-            return Some((true, func_type.get_ret().clone()));
-        }
-        LuaType::Signature(signature) => {
-            let signature = context.db.get_signature_index().get(&signature)?;
-            return Some((
-                signature.resolve_return == SignatureReturnStatus::DocResolve,
-                signature.get_return_type(),
-            ));
-        }
-        _ => {}
-    };
-
-    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
-    let signature = context.db.get_signature_index().get(&signature_id)?;
-
-    Some((
-        signature.resolve_return == SignatureReturnStatus::DocResolve,
-        signature.get_return_type(),
-    ))
-}
-
 fn check_missing_return(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     closure_expr: &LuaClosureExpr,
 ) -> Option<()> {
     let (is_doc_resolve_return, return_type) =
-        get_function_return_info(context, semantic_model, closure_expr)?;
+        get_closure_return_info(context, semantic_model, closure_expr)?;
 
     // 如果返回状态不是 DocResolve, 则跳过检查
     if !is_doc_resolve_return {
@@ -96,6 +63,12 @@ fn check_missing_return(
         LuaType::Nil | LuaType::Any | LuaType::Unknown => 0,
         _ if return_type.is_nullable() => 0,
         _ => 1,
+    };
+    let min_expected_return_count = if min_expected_return_count == 0 {
+        summary_min_required_return_slot_count(semantic_model, closure_expr)
+            .unwrap_or(min_expected_return_count)
+    } else {
+        min_expected_return_count
     };
 
     for return_stat in get_return_stats(closure_expr) {
@@ -145,6 +118,40 @@ fn check_missing_return(
     }
 
     Some(())
+}
+
+fn summary_min_required_return_slot_count(
+    semantic_model: &SemanticModel,
+    closure_expr: &LuaClosureExpr,
+) -> Option<usize> {
+    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
+    let summary = semantic_model.signature_summary(signature_id)?;
+    let required_slots = summary
+        .explain
+        .returns
+        .iter()
+        .flat_map(|ret| ret.items.iter())
+        .map(
+            |item| match item.doc_type.lowered.as_ref().map(|lowered| &lowered.kind) {
+                Some(SalsaDocTypeLoweredKind::Nullable { .. }) => false,
+                Some(SalsaDocTypeLoweredKind::Unknown) => false,
+                Some(SalsaDocTypeLoweredKind::Name { name })
+                    if name == "any" || name == "unknown" || name == "nil" =>
+                {
+                    false
+                }
+                _ => true,
+            },
+        )
+        .collect::<Vec<_>>();
+
+    let slot_count = required_slots
+        .iter()
+        .rposition(|required| *required)
+        .map(|index| index + 1)
+        .unwrap_or(0);
+
+    (slot_count > 0).then_some(slot_count)
 }
 
 fn get_block_end_token(block: &LuaBlock) -> Option<LuaGeneralToken> {

@@ -31,15 +31,10 @@ impl Checker for DuplicateTypeChecker {
 }
 
 fn check_duplicate_class(context: &mut DiagnosticContext, class_tag: LuaDocTagClass) -> Option<()> {
-    let file_id = context.file_id;
     let name_token = class_tag.get_name_token()?;
     let name = name_token.get_name_text();
     let range = name_token.get_range();
-    let type_decl = context.get_db().get_type_index().find_type_decl(
-        file_id,
-        name,
-        context.get_db().resolve_workspace_id(file_id),
-    )?;
+    let type_decl = context.find_type_decl(name)?;
     let locations = type_decl.get_locations();
     if locations.len() > 1 {
         let mut type_times = 0;
@@ -92,15 +87,10 @@ fn check_duplicate_class(context: &mut DiagnosticContext, class_tag: LuaDocTagCl
 }
 
 fn check_duplicate_enum(context: &mut DiagnosticContext, enum_tag: LuaDocTagEnum) -> Option<()> {
-    let file_id = context.file_id;
     let name_token = enum_tag.get_name_token()?;
     let name = name_token.get_name_text();
     let range = name_token.get_range();
-    let type_decl = context.get_db().get_type_index().find_type_decl(
-        file_id,
-        name,
-        context.get_db().resolve_workspace_id(file_id),
-    )?;
+    let type_decl = context.find_type_decl(name)?;
     let locations = type_decl.get_locations();
     if locations.len() > 1 {
         let mut type_times = 0;
@@ -138,15 +128,10 @@ fn check_duplicate_enum(context: &mut DiagnosticContext, enum_tag: LuaDocTagEnum
 }
 
 fn check_duplicate_alias(context: &mut DiagnosticContext, alias_tag: LuaDocTagAlias) -> Option<()> {
-    let file_id = context.file_id;
     let name_token = alias_tag.get_name_token()?;
     let name = name_token.get_name_text();
     let range = name_token.get_range();
-    let type_decl = context.get_db().get_type_index().find_type_decl(
-        file_id,
-        name,
-        context.get_db().resolve_workspace_id(file_id),
-    )?;
+    let type_decl = context.find_type_decl(name)?;
     let locations = type_decl.get_locations();
     if locations.len() > 1 {
         let mut type_times = 0;

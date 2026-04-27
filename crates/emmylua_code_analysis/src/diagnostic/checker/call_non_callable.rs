@@ -28,7 +28,7 @@ fn check_call_expr(
     call_expr: LuaCallExpr,
 ) -> Option<()> {
     let prefix_expr = call_expr.get_prefix_expr()?;
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     let call_expr_type = infer_call_target_type(semantic_model, &prefix_expr)?;
     let mut cache = semantic_model.get_cache().borrow_mut();
     let call_result = infer_call_expr_func(
@@ -92,7 +92,7 @@ fn infer_call_target_type(
     ) {
         return Some(typ);
     }
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     let file_id = semantic_model.get_file_id();
     let expr_range = if let LuaExpr::NameExpr(name_expr) = prefix_expr {
         name_expr
@@ -129,7 +129,7 @@ fn infer_call_target_type(
             Some(decl.get_id())
         })?;
 
-    let decl = db.get_decl_index().get_decl(&decl_id)?;
+    let decl = semantic_model.get_decl(&decl_id)?;
     let value_syntax_id = decl.get_value_syntax_id()?;
     let root = db
         .get_vfs()

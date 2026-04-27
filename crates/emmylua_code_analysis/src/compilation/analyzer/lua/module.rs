@@ -2,17 +2,21 @@ use emmylua_parser::{LuaAstNode, LuaChunk, LuaExpr};
 
 use crate::{
     InferFailReason, LuaDeclId, LuaSemanticDeclId, LuaSignatureId,
-    compilation::analyzer::unresolve::UnResolveModule, db_index::LuaType, infer_expr,
+    compilation::{
+        LuaReturnPoint, analyze_func_body_returns_with, analyzer::unresolve::UnResolveModule,
+    },
+    db_index::LuaType,
+    infer_expr_root,
 };
 
-use super::{LuaAnalyzer, LuaReturnPoint, analyze_func_body_returns_with};
+use super::LuaAnalyzer;
 
 pub fn analyze_chunk_return(analyzer: &mut LuaAnalyzer, chunk: LuaChunk) -> Option<()> {
     let block = chunk.get_block()?;
     let file_id = analyzer.file_id;
     let cache = analyzer.context.infer_manager.get_infer_cache(file_id);
     let return_exprs = analyze_func_body_returns_with(block, &mut |expr| {
-        Ok(infer_expr(analyzer.db, cache, expr.clone()).unwrap_or(LuaType::Unknown))
+        Ok(infer_expr_root(analyzer.db, cache, expr.clone()).unwrap_or(LuaType::Unknown))
     })
     .unwrap_or_default();
     for point in return_exprs {

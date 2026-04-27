@@ -122,7 +122,7 @@ fn check_table_generic_compact_member_owner(
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
 
-    let member_index = context.db.get_member_index();
+    let member_index = context.db().get_member_index();
     let members = match member_index.get_members(&member_owner) {
         Some(members) => members,
         None => return Ok(()),
@@ -140,7 +140,7 @@ fn check_table_generic_compact_member_owner(
         };
 
         let member_type = context
-            .db
+            .db()
             .get_type_index()
             .get_type_cache(&member.get_id().into())
             .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown))

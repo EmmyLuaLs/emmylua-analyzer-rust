@@ -3,13 +3,10 @@ use std::collections::{HashMap, hash_map::Entry};
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, RenderLevel,
     TypeCheckFailReason, TypeCheckResult, humanize_type,
-    semantic::{
-        member::find_members,
-        type_check::{
-            check_general_type_compact, type_check_context::TypeCheckContext,
-            type_check_guard::TypeCheckGuard,
-        },
-    },
+    semantic::{member::find_members_root, type_check::{
+        check_general_type_compact, type_check_context::TypeCheckContext,
+        type_check_guard::TypeCheckGuard,
+    }},
 };
 
 pub fn check_object_type_compact(
@@ -107,7 +104,7 @@ fn collect_type_members(
     type_id: &crate::LuaTypeDeclId,
     collect_index_keys: bool,
 ) -> Option<TypeMembers> {
-    let type_members = find_members(context.db, &LuaType::Ref(type_id.clone()))?;
+    let type_members = find_members_root(context.compilation, context.db(), &LuaType::Ref(type_id.clone()))?;
 
     // Build a merged view of class members (including supertypes). When the same key appears
     // multiple times (override), keep the first one (subclass wins).
@@ -147,7 +144,7 @@ fn check_member_value(
             if key_display.is_empty() {
                 if let Some(key_type_for_display) = key_type_for_display {
                     key_display =
-                        humanize_type(context.db, key_type_for_display, RenderLevel::Simple);
+                        humanize_type(context.db(), key_type_for_display, RenderLevel::Simple);
                 }
             }
 
@@ -155,8 +152,8 @@ fn check_member_value(
                 t!(
                     "member %{key} not match, expect %{typ}, but got %{got}",
                     key = key_display,
-                    typ = humanize_type(context.db, source_type, RenderLevel::Simple),
-                    got = humanize_type(context.db, member_type, RenderLevel::Simple)
+                    typ = humanize_type(context.db(), source_type, RenderLevel::Simple),
+                    got = humanize_type(context.db(), member_type, RenderLevel::Simple)
                 )
                 .to_string(),
             ))
@@ -180,7 +177,7 @@ fn check_object_type_compact_table_const(
     table_range: &crate::InFiled<rowan::TextRange>,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let db = context.db;
+    let db = context.db();
     let member_owner = LuaMemberOwner::Element(table_range.clone());
     let member_index = db.get_member_index();
     let source_fields = source_object.get_fields();
@@ -246,7 +243,7 @@ fn check_object_type_compact_table_const(
             }
 
             let member_type = match context
-                .db
+                .db()
                 .get_type_index()
                 .get_type_cache(&member.get_id().into())
             {

@@ -5,7 +5,7 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DiagnosticCode, LuaDecl, LuaDeclExtra, LuaMember, LuaMemberFeature, LuaMemberKey,
+    DiagnosticCode, LuaDecl, LuaDeclExtra, LuaMemberFeature, LuaMemberId, LuaMemberKey,
     LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
 };
 
@@ -38,7 +38,8 @@ struct DeclInfo {
 fn get_decl_set(semantic_model: &SemanticModel) -> Option<HashSet<DeclInfo>> {
     let file_id = semantic_model.get_file_id();
     let decl_tree = semantic_model
-        .get_db()
+        .get_compilation()
+        .legacy_db()
         .get_decl_index()
         .get_decl_tree(&file_id)?;
     let mut type_decl_id_set = HashSet::new();
@@ -88,10 +89,12 @@ fn is_require_decl(decl: &LuaDecl) -> bool {
     expr_id.get_kind() == LuaSyntaxKind::RequireCallExpr
 }
 
-struct DiagnosticMemberInfo<'a> {
+struct DiagnosticMemberInfo {
     typ: LuaType,
     feature: LuaMemberFeature,
-    member: &'a LuaMember,
+    member_id: LuaMemberId,
+    member_range: rowan::TextRange,
+    member_file_id: crate::FileId,
 }
 
 fn check_decl_duplicate_field(
@@ -99,18 +102,11 @@ fn check_decl_duplicate_field(
     semantic_model: &SemanticModel,
     decl_info: &DeclInfo,
 ) -> Option<()> {
-    let type_decl = context
-        .get_db()
-        .get_type_index()
-        .get_type_decl(&decl_info.id)?;
-    let file_id = context.file_id;
+    let file_id = context.get_file_id();
 
-    let members = semantic_model
-        .get_db()
-        .get_member_index()
-        .get_members(&type_decl.get_id().into())?;
+    let members = context.get_members(&decl_info.id.clone().into())?;
 
-    let mut member_map: HashMap<&LuaMemberKey, Vec<&LuaMember>> = HashMap::new();
+    let mut member_map: HashMap<LuaMemberKey, Vec<DiagnosticMemberInfo>> = HashMap::new();
 
     for member in members.iter() {
         // 过滤掉 meta 定义的 signature
@@ -118,44 +114,47 @@ fn check_decl_duplicate_field(
             continue;
         }
 
+        let member_info = DiagnosticMemberInfo {
+            typ: semantic_model.get_type(member.get_id().into()),
+            feature: member.get_feature(),
+            member_id: member.get_id(),
+            member_range: member.get_range(),
+            member_file_id: member.get_file_id(),
+        };
+
         member_map
-            .entry(member.get_key())
+            .entry(member.get_key().clone())
             .or_default()
-            .push(*member);
+            .push(member_info);
     }
 
     for (key, members) in member_map.iter() {
         if members.len() < 2 {
             // 需要特殊处理: require("a").fun = function() end
             if let Some(member) = members.first() {
-                check_one_member(context, semantic_model, member, decl_info.is_require);
+                check_one_member(
+                    context,
+                    semantic_model,
+                    member.member_id,
+                    key.clone(),
+                    decl_info.is_require,
+                );
             }
             continue;
         }
 
-        let mut member_infos = Vec::with_capacity(members.len());
-        for member in members.iter() {
-            let typ = semantic_model.get_type(member.get_id().into());
-            let feature = member.get_feature();
-            member_infos.push(DiagnosticMemberInfo {
-                typ,
-                feature,
-                member,
-            });
-        }
-
         // 1. 检查 signature
-        let signatures = member_infos
+        let signatures = members
             .iter()
             .filter(|info| matches!(info.typ, LuaType::Signature(_)));
         if signatures.clone().count() > 1 {
             for signature in signatures {
-                if signature.member.get_file_id() != file_id {
+                if signature.member_file_id != file_id {
                     continue;
                 }
                 context.add_diagnostic(
                     DiagnosticCode::DuplicateSetField,
-                    signature.member.get_range(),
+                    signature.member_range,
                     t!("Duplicate field `%{name}`.", name = key.to_path()).to_string(),
                     None,
                 );
@@ -163,7 +162,7 @@ fn check_decl_duplicate_field(
         }
 
         // 2. 检查 ---@field 成员
-        let field_decls = member_infos
+        let field_decls = members
             .iter()
             .filter(|info| info.feature.is_field_decl())
             .collect::<Vec<_>>();
@@ -177,11 +176,11 @@ fn check_decl_duplicate_field(
             // 如果不全是 DocFunction，则报错
             if !all_doc_functions {
                 for field_decl in &field_decls {
-                    if field_decl.member.get_file_id() == file_id {
+                    if field_decl.member_file_id == file_id {
                         context.add_diagnostic(
                             DiagnosticCode::DuplicateDocField,
                             // TODO: 范围缩小到名称而不是整个 ---@field
-                            field_decl.member.get_range(),
+                            field_decl.member_range,
                             t!("Duplicate field `%{name}`.", name = key.to_path()).to_string(),
                             None,
                         );
@@ -198,23 +197,23 @@ fn check_decl_duplicate_field(
 fn check_one_member(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    member: &LuaMember,
+    member_id: LuaMemberId,
+    key: LuaMemberKey,
     is_require: bool,
 ) -> Option<()> {
     if !is_require {
         return None;
     }
-    let key = member.get_key();
-    let member_id = member.get_id();
-    let typ = semantic_model.get_type(member.get_id().into());
+    let typ = semantic_model.get_type(member_id.into());
     // 如果不是 signature 则不需要检查
     if !matches!(typ, LuaType::Signature(_)) {
         return None;
     }
     let references = semantic_model
-        .get_db()
+        .get_compilation()
+        .legacy_db()
         .get_reference_index()
-        .get_index_references(key)?;
+        .get_index_references(&key)?;
     let root = semantic_model.get_root().syntax();
     let property_owner = LuaSemanticDeclId::Member(member_id);
 

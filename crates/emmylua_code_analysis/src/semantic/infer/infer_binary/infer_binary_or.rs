@@ -24,7 +24,7 @@ fn can_empty_table_satisfy_type(db: &DbIndex, ty: &LuaType) -> bool {
         // For class/ref types, check if all fields (including inherited) are optional
         LuaType::Ref(type_decl_id) => {
             // Collect this type and all its super types (includes inheritance)
-            let all_types = type_decl_id.collect_super_types_with_self(db, ty.clone());
+            let all_types = collect_super_types_with_self(db, type_decl_id, ty.clone());
 
             // Check each type in the hierarchy for required fields
             for typ in all_types {
@@ -85,6 +85,39 @@ fn has_required_fields(db: &DbIndex, type_decl_id: &LuaTypeDeclId) -> bool {
     }
 
     false // No required fields in this type
+}
+
+fn collect_super_types_with_self(
+    db: &DbIndex,
+    decl_id: &LuaTypeDeclId,
+    ty: LuaType,
+) -> Vec<LuaType> {
+    let mut collected_types = vec![ty];
+    let mut queue = vec![decl_id.clone()];
+
+    while let Some(current_id) = queue.pop() {
+        let Some(super_types) = db.get_type_index().get_super_types(&current_id) else {
+            continue;
+        };
+
+        for super_type in super_types {
+            match &super_type {
+                LuaType::Ref(super_type_id) => {
+                    if !collected_types.contains(&super_type) {
+                        collected_types.push(super_type.clone());
+                        queue.push(super_type_id.clone());
+                    }
+                }
+                _ => {
+                    if !collected_types.contains(&super_type) {
+                        collected_types.push(super_type.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    collected_types
 }
 
 pub fn special_or_rule(

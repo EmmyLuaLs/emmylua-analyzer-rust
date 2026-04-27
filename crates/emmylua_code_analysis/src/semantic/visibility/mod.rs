@@ -7,11 +7,12 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    ModuleInfo, SemanticModel, try_extract_signature_id_from_field,
+    CompilationModuleInfo, DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner,
+    LuaSemanticDeclId, LuaType, SemanticModel,
+    try_extract_signature_id_from_field,
 };
 
-use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
+use super::{LuaInferCache, infer_expr_root, type_check::is_sub_type_of};
 
 pub fn check_visibility(
     db: &DbIndex,
@@ -56,8 +57,12 @@ pub fn check_visibility(
         }
         VisibilityKind::Internal => {
             let property_file_id = property_owner.get_file_id()?;
-            let property_workspace_id = db.resolve_workspace_id(property_file_id)?;
-            let current_workspace_id = db.resolve_workspace_id(file_id)?;
+            let property_workspace_id = db
+                .resolve_workspace_id(property_file_id)
+                .unwrap_or(crate::WorkspaceId::MAIN);
+            let current_workspace_id = db
+                .resolve_workspace_id(file_id)
+                .unwrap_or(crate::WorkspaceId::MAIN);
             if current_workspace_id != property_workspace_id {
                 return Some(false);
             }
@@ -122,7 +127,7 @@ fn check_block_visibility(
     let func_name = func_stat.get_func_name()?;
     if let LuaVarExpr::IndexExpr(index_expr) = func_name {
         let prefix_expr = index_expr.get_prefix_expr()?;
-        let typ = infer_expr(db, infer_config, prefix_expr).ok()?;
+        let typ = infer_expr_root(db, infer_config, prefix_expr).ok()?;
         if visibility == VisibilityKind::Protected {
             if let (LuaType::Def(left), LuaMemberOwner::Type(right)) = (typ, member_owner) {
                 if left == *right {
@@ -159,7 +164,7 @@ fn check_def_visibility(
 ) -> Option<bool> {
     let index_expr = token.get_parent::<LuaIndexExpr>()?;
     let prefix_expr = index_expr.get_prefix_expr()?;
-    let typ = infer_expr(db, infer_config, prefix_expr).ok()?;
+    let typ = infer_expr_root(db, infer_config, prefix_expr).ok()?;
 
     // 这是为解决 require 后仍然是`Def`类型的问题, 但现在不需要了, 不过还是留着以防万一
     // if !in_def_file(db, &typ, file_id) {
@@ -258,11 +263,10 @@ fn check_member_name(
 
 pub fn check_module_visibility(
     semantic_model: &SemanticModel,
-    module_info: &ModuleInfo,
+    module_info: &CompilationModuleInfo,
 ) -> Option<bool> {
     let current_workspace_id = semantic_model
-        .get_db()
-        .get_module_index()
-        .get_workspace_id(semantic_model.get_file_id())?;
+        .get_compilation()
+        .module_workspace_id(semantic_model.get_file_id())?;
     Some(module_info.is_requireable_from(current_workspace_id))
 }

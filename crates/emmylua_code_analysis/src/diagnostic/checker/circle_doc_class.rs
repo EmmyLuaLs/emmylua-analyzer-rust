@@ -27,13 +27,7 @@ fn check_doc_tag_class(
     _: &SemanticModel,
     tag: &LuaDocTagClass,
 ) -> Option<()> {
-    let type_index = context.db.get_type_index();
-
-    let class_decl = type_index.find_type_decl(
-        context.file_id,
-        tag.get_name_token()?.get_name_text(),
-        context.get_db().resolve_workspace_id(context.file_id),
-    )?;
+    let class_decl = context.find_type_decl(tag.get_name_token()?.get_name_text())?;
 
     if !class_decl.is_class() {
         return Some(());
@@ -50,7 +44,7 @@ fn check_doc_tag_class(
             continue;
         }
 
-        let super_types = type_index.get_super_types(&current_id);
+        let super_types = context.get_super_types(&current_id);
         if let Some(super_types) = super_types {
             for super_type in super_types {
                 if let LuaType::Ref(super_type_id) = &super_type {

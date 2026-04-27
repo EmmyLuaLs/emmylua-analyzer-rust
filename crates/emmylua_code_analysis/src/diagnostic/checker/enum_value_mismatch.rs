@@ -75,7 +75,7 @@ fn check_enum_value_pair(
         LuaType::Ref(id) | LuaType::Def(id) => id,
         _ => return None,
     };
-    let type_decl = context.db.get_type_index().get_type_decl(enum_decl_id)?;
+    let type_decl = context.get_type_decl(enum_decl_id)?;
     if !type_decl.is_enum() {
         return None;
     }
@@ -84,10 +84,10 @@ fn check_enum_value_pair(
     let enum_value_types = get_enum_value_types(context, enum_decl_id)?;
 
     if !enum_value_types.contains(constant_type) {
-        let constant_value_str = humanize_lint_type(context.db, constant_type);
+        let constant_value_str = humanize_lint_type(context.db(), constant_type);
         let enum_values_str: Vec<String> = enum_value_types
             .iter()
-            .map(|typ| humanize_lint_type(context.db, typ))
+            .map(|typ| humanize_lint_type(context.db(), typ))
             .collect();
         context.add_diagnostic(
             DiagnosticCode::EnumValueMismatch,
@@ -109,15 +109,11 @@ fn get_enum_value_types(
     context: &DiagnosticContext,
     enum_decl_id: &LuaTypeDeclId,
 ) -> Option<Vec<LuaType>> {
-    let type_decl = context.db.get_type_index().get_type_decl(enum_decl_id)?;
+    let type_decl = context.get_type_decl(enum_decl_id)?;
     let mut values = Vec::new();
     let is_enum_key = type_decl.is_enum_key();
 
-    if let Some(members) = context
-        .db
-        .get_member_index()
-        .get_members(&enum_decl_id.clone().into())
-    {
+    if let Some(members) = context.get_members(&enum_decl_id.clone().into()) {
         for member in members {
             if is_enum_key {
                 let key = member.get_key();
@@ -135,11 +131,8 @@ fn get_enum_value_types(
                     }
                     _ => {}
                 }
-            } else if let Some(type_cache) = context
-                .db
-                .get_type_index()
-                .get_type_cache(&member.get_id().into())
-                && let Some(value) = get_constant_type(type_cache.as_type())
+            } else if let Some(member_type) = context.get_member_type(&member.get_id())
+                && let Some(value) = get_constant_type(member_type)
             {
                 values.push(value.clone());
             }

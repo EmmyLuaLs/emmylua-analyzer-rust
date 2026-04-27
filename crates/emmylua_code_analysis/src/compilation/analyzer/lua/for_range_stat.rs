@@ -3,7 +3,7 @@ use emmylua_parser::{LuaAstToken, LuaExpr, LuaForRangeStat};
 use crate::{
     DbIndex, InferFailReason, LuaDeclId, LuaInferCache, LuaOperatorMetaMethod, LuaType,
     LuaTypeCache, TplContext, TypeOps, TypeSubstitutor, VariadicType,
-    compilation::analyzer::unresolve::UnResolveIterVar, infer_expr, instantiate_doc_function,
+    compilation::analyzer::unresolve::UnResolveIterVar, infer_expr_root, instantiate_doc_function,
     tpl_pattern_match_args,
 };
 
@@ -75,11 +75,11 @@ pub fn infer_for_range_iter_expr_func(
     let mut status_param = None;
     if iter_exprs.len() > 1 {
         let status_param_expr = iter_exprs[1].clone();
-        status_param = Some(infer_expr(db, cache, status_param_expr)?);
+        status_param = Some(infer_expr_root(db, cache, status_param_expr)?);
     }
 
     let iter_func_expr = iter_exprs[0].clone();
-    let first_expr_type = infer_expr(db, cache, iter_func_expr)?;
+    let first_expr_type = infer_expr_root(db, cache, iter_func_expr)?;
     let doc_function = match first_expr_type {
         LuaType::DocFunction(func) => func,
         LuaType::Signature(sig_id) => {
@@ -98,8 +98,11 @@ pub fn infer_for_range_iter_expr_func(
                 .get_type_decl(&type_decl_id)
                 .ok_or(InferFailReason::None)?;
             if type_decl.is_alias() {
-                let alias_origin = type_decl
-                    .get_alias_origin(db, None)
+                let alias_origin = crate::semantic::type_queries::get_alias_origin(
+                    db,
+                    type_decl,
+                    None,
+                )
                     .ok_or(InferFailReason::None)?;
                 match alias_origin {
                     LuaType::DocFunction(doc_func) => doc_func,
@@ -146,7 +149,8 @@ pub fn infer_for_range_iter_expr_func(
     };
     let mut substitutor = TypeSubstitutor::new();
     let mut context = TplContext {
-        db,
+        compilation: None,
+        legacy_db: db,
         cache,
         substitutor: &mut substitutor,
         call_expr: None,

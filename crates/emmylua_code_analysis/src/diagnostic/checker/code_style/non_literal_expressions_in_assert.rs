@@ -39,7 +39,8 @@ fn check_assert_rule(
             LuaExpr::NameExpr(name_expr) => {
                 let name = name_expr.get_name_text()?;
                 let decl_tree = semantic_model
-                    .get_db()
+                    .get_compilation()
+                    .legacy_db()
                     .get_decl_index()
                     .get_decl_tree(&semantic_model.get_file_id())?;
                 if let Some(decl) = decl_tree.find_local_decl(&name, name_expr.get_position())

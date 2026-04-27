@@ -109,7 +109,10 @@ fn check_doc_tag_type(
     doc_tag_type: LuaDocTagType,
 ) -> Option<()> {
     let type_list = doc_tag_type.get_type_list();
-    let doc_ctx = DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
+    let doc_ctx = DocTypeInferContext::new(
+        semantic_model.get_compilation().legacy_db(),
+        semantic_model.get_file_id(),
+    );
     for doc_type in type_list {
         let type_ref = infer_doc_type(doc_ctx, &doc_type);
         let generic_type = match type_ref {
@@ -118,8 +121,7 @@ fn check_doc_tag_type(
         };
 
         let generic_params = semantic_model
-            .get_db()
-            .get_type_index()
+            .get_compilation()
             .get_generic_params(&generic_type.get_base_type_id())?;
         for (i, param_type) in generic_type.get_params().iter().enumerate() {
             let extend_type = generic_params.get(i)?.type_constraint.clone()?;
@@ -155,10 +157,11 @@ fn check_param(
     match param_type {
         LuaType::StrTplRef(str_tpl_ref) => {
             let extend_type = str_tpl_ref.get_constraint().cloned().map(|ty| {
-                normalize_constraint_type(
-                    semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), &ty, substitutor),
-                )
+                normalize_constraint_type(instantiate_type_generic(
+                    semantic_model.get_compilation().legacy_db(),
+                    &ty,
+                    substitutor,
+                ))
             });
             let arg_expr = call_expr.get_args_list()?.get_args().nth(param_index)?;
             let arg_type = semantic_model.infer_expr(arg_expr.clone()).ok()?;
@@ -178,10 +181,11 @@ fn check_param(
         }
         LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => {
             let extend_type = tpl_ref.get_constraint().cloned().map(|ty| {
-                normalize_constraint_type(
-                    semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), &ty, substitutor),
-                )
+                normalize_constraint_type(instantiate_type_generic(
+                    semantic_model.get_compilation().legacy_db(),
+                    &ty,
+                    substitutor,
+                ))
             });
             let arg_type = arg_infos.get(param_index);
             let arg_range = arg_ranges.get(param_index).copied();
@@ -226,13 +230,7 @@ fn validate_str_tpl_ref(
                 str,
                 str_tpl_ref.get_suffix()
             );
-            let founded_type_decl = semantic_model.get_db().get_type_index().find_type_decl(
-                semantic_model.get_file_id(),
-                &full_type_name,
-                semantic_model
-                    .get_db()
-                    .resolve_workspace_id(semantic_model.get_file_id()),
-            );
+            let founded_type_decl = semantic_model.find_type_decl(&full_type_name);
             if founded_type_decl.is_none() {
                 context.add_diagnostic(
                     DiagnosticCode::GenericConstraintMismatch,
@@ -305,7 +303,7 @@ fn add_type_check_diagnostic(
     expr_type: &LuaType,
     result: TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     match result {
         Ok(_) => (),
         Err(reason) => {

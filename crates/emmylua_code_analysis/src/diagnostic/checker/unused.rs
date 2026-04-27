@@ -13,7 +13,8 @@ impl Checker for UnusedChecker {
     fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
         let file_id = semantic_model.get_file_id();
         let Some(decl_tree) = semantic_model
-            .get_db()
+            .get_compilation()
+            .legacy_db()
             .get_decl_index()
             .get_decl_tree(&file_id)
         else {
@@ -21,7 +22,7 @@ impl Checker for UnusedChecker {
         };
 
         let root = semantic_model.get_root();
-        let ref_index = semantic_model.get_db().get_reference_index();
+        let ref_index = semantic_model.get_compilation().legacy_db().get_reference_index();
         for (_, decl) in decl_tree.get_decls().iter() {
             if decl.is_global() || decl.is_param() && decl.get_name() == "..." {
                 continue;

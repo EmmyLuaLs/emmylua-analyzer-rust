@@ -5,7 +5,9 @@ use emmylua_parser::{
     LuaLiteralToken,
 };
 
-use crate::{DbIndex, DiagnosticCode, LuaSignatureId, LuaType, SemanticModel};
+use crate::{
+    DbIndex, DiagnosticCode, LuaSignatureId, LuaType, SemanticModel,
+};
 
 use super::{Checker, DiagnosticContext};
 
@@ -38,13 +40,13 @@ fn check_closure_expr(
     semantic_model: &SemanticModel,
     closure_expr: &LuaClosureExpr,
 ) -> Option<()> {
-    let current_signature = context
-        .db
-        .get_signature_index()
-        .get(&LuaSignatureId::from_closure(
+    let current_param_len = {
+        let signature = context.get_signature(&LuaSignatureId::from_closure(
             semantic_model.get_file_id(),
             closure_expr,
         ))?;
+        signature.params.len()
+    };
 
     let source_typ = semantic_model.infer_bind_value_type(closure_expr.clone().into())?;
 
@@ -54,15 +56,17 @@ fn check_closure_expr(
             get_params_len(params)
         }
         LuaType::Signature(signature_id) => {
-            let signature = context.db.get_signature_index().get(signature_id)?;
-            let params = signature.get_type_params();
+            let params = {
+                let signature = context.get_signature(signature_id)?;
+                signature.get_type_params()
+            };
             get_params_len(&params)
         }
         _ => return Some(()),
     }?;
 
     // 只检查右值参数多于左值参数的情况, 右值参数少于左值参数的情况是能够接受的
-    if source_params_len > current_signature.params.len() {
+    if source_params_len > current_param_len {
         return Some(());
     }
     let params = closure_expr
@@ -77,7 +81,7 @@ fn check_closure_expr(
             t!(
                 "expected %{num} parameters but found %{found_num}",
                 num = source_params_len,
-                found_num = current_signature.params.len(),
+                found_num = current_param_len,
             )
             .to_string(),
             None,
@@ -146,7 +150,7 @@ fn check_call_expr(
 
             let typ = param_info.1.clone();
             if let Some(typ) = typ
-                && !is_nullable(context.db, &typ)
+                && !is_nullable(context.db(), &typ)
             {
                 miss_parameter_info.push(t!("missing parameter: %{name}", name = param_info.0,));
             }

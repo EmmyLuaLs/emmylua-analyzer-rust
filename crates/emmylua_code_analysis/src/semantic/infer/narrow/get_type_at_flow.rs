@@ -6,7 +6,7 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::{
     CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
-    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact, infer_expr,
+    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact, infer_expr_root,
     semantic::{
         cache::{FlowAssignmentInfo, FlowConditionInfo, FlowMode, FlowVarCache},
         infer::{
@@ -26,14 +26,14 @@ use crate::{
                 var_ref_id::get_var_expr_var_ref_id,
             },
         },
-        member::find_members,
+        member::find_members_root,
     },
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 // One cached flow query: one ref at one flow node, optionally without replaying
 // pending condition narrows.
 // Example: "what is `x` at flow 42, with current guards applied?"
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct FlowQuery {
     var_ref_id: VarRefId,
     var_cache_idx: u32,
@@ -948,13 +948,13 @@ fn is_partial_assignment_expr_compatible(
         return false;
     }
 
-    let expr_members = find_members(db, expr_type).unwrap_or_default();
+    let expr_members = find_members_root(None, db, expr_type).unwrap_or_default();
 
     if expr_members.is_empty() {
         return true;
     }
 
-    let Some(source_members) = find_members(db, source_type) else {
+    let Some(source_members) = find_members_root(None, db, source_type) else {
         return false;
     };
 
@@ -1190,7 +1190,7 @@ fn try_infer_decl_initializer_type(
         return Ok(None);
     };
 
-    let expr_type = infer_expr(db, cache, expr.clone())?;
+    let expr_type = infer_expr_root(db, cache, expr.clone())?;
     let init_type = expr_type.get_result_slot_type(0);
 
     Ok(init_type)

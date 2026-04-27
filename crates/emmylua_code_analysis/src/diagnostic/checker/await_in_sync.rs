@@ -71,7 +71,7 @@ fn check_call_as_arg(
                 let async_state = match &arg_type {
                     LuaType::DocFunction(f) => f.get_async_state(),
                     LuaType::Signature(sig) => {
-                        let signature = semantic_model.get_db().get_signature_index().get(sig)?;
+                        let signature = semantic_model.get_signature(sig)?;
                         signature.async_state
                     }
                     _ => continue,
@@ -102,11 +102,7 @@ fn check_async_func_in_sync_call(
     let closures = call_expr.ancestors::<LuaClosureExpr>();
     for closure in closures {
         let signature_id = LuaSignatureId::from_closure(file_id, &closure);
-        let Some(signature) = semantic_model
-            .get_db()
-            .get_signature_index()
-            .get(&signature_id)
-        else {
+        let Some(signature) = semantic_model.get_signature(&signature_id) else {
             return Ok(());
         };
 

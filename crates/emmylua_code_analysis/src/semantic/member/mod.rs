@@ -15,11 +15,14 @@ pub use find_members::{
     find_members, find_members_in_scope, find_members_with_key, find_members_with_key_in_scope,
 };
 pub use get_member_map::{get_member_map, get_member_map_in_scope};
+pub(crate) use find_index::find_index_operations_inner;
+pub(crate) use find_members::{find_members_root, find_members_with_key_inner};
+pub(crate) use get_member_map::get_member_map_inner;
 pub use infer_raw_member::infer_raw_member_type;
 
 use super::{
     InferFailReason, LuaInferCache, SemanticDeclLevel, infer_node_semantic_decl,
-    infer_table_should_be,
+    infer_table_should_be_root,
 };
 
 pub fn get_buildin_type_map_type_id(type_: &LuaType) -> Option<LuaTypeDeclId> {
@@ -142,7 +145,7 @@ fn resolve_table_field_through_type_inference(
 ) -> Option<LuaSemanticDeclId> {
     let parent = table_field.syntax().parent()?;
     let table_expr = LuaTableExpr::cast(parent)?;
-    let table_type = infer_table_should_be(db, infer_config, table_expr).ok()?;
+    let table_type = infer_table_should_be_root(db, infer_config, table_expr).ok()?;
 
     if !matches!(table_type, LuaType::Ref(_) | LuaType::Def(_)) {
         return None;
@@ -150,7 +153,7 @@ fn resolve_table_field_through_type_inference(
 
     let field_key = table_field.get_field_key()?;
     let key = LuaMemberKey::from_index_key(db, infer_config, &field_key).ok()?;
-    let member_infos = find_members_with_key(db, &table_type, key, false)?;
+    let member_infos = find_members_with_key_inner(None, db, &table_type, key, false)?;
 
     member_infos
         .first()

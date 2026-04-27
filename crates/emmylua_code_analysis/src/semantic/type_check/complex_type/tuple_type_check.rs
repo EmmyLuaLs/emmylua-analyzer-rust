@@ -154,12 +154,12 @@ fn check_tuple_types_compact_tuple_types(
                                 "tuple member %{idx} not match, expect %{typ}, but got %{got}",
                                 idx = i + source_start + 1,
                                 typ = humanize_type(
-                                    context.db,
+                                    context.db(),
                                     source_tuple_member_type,
                                     RenderLevel::Simple
                                 ),
                                 got = humanize_type(
-                                    context.db,
+                                    context.db(),
                                     compact_tuple_member_type,
                                     RenderLevel::Simple
                                 )
@@ -184,13 +184,13 @@ fn check_tuple_type_compact_table(
     table_owner: LuaMemberOwner,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let member_index = context.db.get_member_index();
+    let member_index = context.db().get_member_index();
     let tuple_members = source_tuple.get_types();
     for (i, source_tuple_member_type) in tuple_members.iter().enumerate() {
         let key = LuaMemberKey::Integer((i + 1) as i64);
         if let Some(member_item) = member_index.get_member_item(&table_owner, &key) {
             let member_type = member_item
-                .resolve_type(context.db)
+                .resolve_type(context.db())
                 .map_err(|_| TypeCheckFailReason::TypeNotMatch)?;
             match check_general_type_compact(
                 context,
@@ -205,11 +205,11 @@ fn check_tuple_type_compact_table(
                             "tuple member %{idx} not match, expect %{typ}, but got %{got}",
                             idx = i + 1,
                             typ = humanize_type(
-                                context.db,
+                                context.db(),
                                 source_tuple_member_type,
                                 RenderLevel::Simple
                             ),
-                            got = humanize_type(context.db, &member_type, RenderLevel::Simple)
+                            got = humanize_type(context.db(), &member_type, RenderLevel::Simple)
                         )
                         .to_string(),
                     ));
@@ -256,12 +256,12 @@ fn check_tuple_type_compact_object_type(
                             "tuple member %{idx} not match, expect %{typ}, but got %{got}",
                             idx = i + 1,
                             typ = humanize_type(
-                                context.db,
+                                context.db(),
                                 source_tuple_member_type,
                                 RenderLevel::Simple
                             ),
                             got =
-                                humanize_type(context.db, object_member_type, RenderLevel::Simple)
+                                humanize_type(context.db(), object_member_type, RenderLevel::Simple)
                         )
                         .to_string(),
                     ));

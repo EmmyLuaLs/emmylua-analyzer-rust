@@ -1,9 +1,7 @@
 use emmylua_parser::{LuaAstNode, LuaCallExprStat};
 use rowan::NodeOrToken;
 
-use crate::{
-    DiagnosticCode, LuaNoDiscard, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
-};
+use crate::{DiagnosticCode, LuaNoDiscard, SemanticDeclLevel, SemanticModel};
 
 use super::{Checker, DiagnosticContext};
 
@@ -32,45 +30,8 @@ fn check_call_expr(
         SemanticDeclLevel::default(),
     )?;
 
-    let signature_id = match semantic_decl {
-        LuaSemanticDeclId::LuaDecl(decl_id) => {
-            let type_cache = semantic_model
-                .get_db()
-                .get_type_index()
-                .get_type_cache(&decl_id.into());
-            if let Some(type_cache) = type_cache {
-                if let LuaType::Signature(signature_id) = type_cache.as_type() {
-                    *signature_id
-                } else {
-                    return Some(());
-                }
-            } else {
-                return Some(());
-            }
-        }
-        LuaSemanticDeclId::Member(member_id) => {
-            let type_cache = semantic_model
-                .get_db()
-                .get_type_index()
-                .get_type_cache(&member_id.into());
-            if let Some(type_cache) = type_cache {
-                if let LuaType::Signature(signature_id) = type_cache.as_type() {
-                    *signature_id
-                } else {
-                    return Some(());
-                }
-            } else {
-                return Some(());
-            }
-        }
-        LuaSemanticDeclId::Signature(signature_id) => signature_id,
-        _ => return Some(()),
-    };
-
-    let signature = semantic_model
-        .get_db()
-        .get_signature_index()
-        .get(&signature_id)?;
+    let signature_id = semantic_model.signature_id_of_decl(semantic_decl)?;
+    let signature = semantic_model.get_signature(&signature_id)?;
     if let Some(nodiscard) = &signature.nodiscard {
         let nodiscard_message = match nodiscard {
             LuaNoDiscard::NoDiscard => "no discard".to_string(),

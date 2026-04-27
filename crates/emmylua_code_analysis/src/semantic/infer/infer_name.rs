@@ -1,9 +1,9 @@
-use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaNameExpr};
+use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaNameExpr};
 
-use super::{InferFailReason, InferResult};
+use super::{InferFailReason, InferResult, infer_bind_value_type_root};
 use crate::{
-    LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, TypeOps,
+    LuaCompilation, LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId, LuaType,
+    LuaTypeCache, LuaTypeOwner, SemanticDeclLevel, TypeOps,
     db_index::{DbIndex, LuaDeclOrMemberId},
     infer_node_semantic_decl,
     semantic::{
@@ -12,7 +12,35 @@ use crate::{
     },
 };
 
+fn get_type_cache<'a>(
+    compilation: Option<&'a LuaCompilation>,
+    db: &'a DbIndex,
+    owner: &LuaTypeOwner,
+) -> Option<&'a LuaTypeCache> {
+    compilation
+        .and_then(|compilation| compilation.get_type_cache(owner))
+        .or_else(|| db.get_type_index().get_type_cache(owner))
+}
+
+pub(crate) fn infer_name_expr_root(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    name_expr: LuaNameExpr,
+) -> InferResult {
+    infer_name_expr_inner(None, db, cache, name_expr)
+}
+
 pub fn infer_name_expr(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    name_expr: LuaNameExpr,
+) -> InferResult {
+    infer_name_expr_inner(Some(compilation), db, cache, name_expr)
+}
+
+fn infer_name_expr_inner(
+    compilation: Option<&LuaCompilation>,
     db: &DbIndex,
     cache: &mut LuaInferCache,
     name_expr: LuaNameExpr,
@@ -40,7 +68,10 @@ pub fn infer_name_expr(
             VarRefId::VarRef(decl_id),
         )
     } else {
-        infer_global_type(db, name)
+        match compilation {
+            Some(compilation) => infer_global_type(compilation, db, name),
+            None => infer_global_type_root(db, name),
+        }
     }
 }
 
@@ -122,6 +153,85 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
     }
 
     Err(InferFailReason::UnResolveDeclType(decl.get_id()))
+}
+
+pub fn infer_param_with_cache(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    decl: &LuaDecl,
+) -> InferResult {
+    let (param_idx, signature_id, member_id) = match &decl.extra {
+        LuaDeclExtra::Param {
+            idx,
+            signature_id,
+            owner_member_id: closure_owner_syntax_id,
+        } => (*idx, *signature_id, *closure_owner_syntax_id),
+        _ => unreachable!(),
+    };
+
+    let mut colon_define = false;
+    if let Some(signature) = db.get_signature_index().get(&signature_id) {
+        colon_define = signature.is_colon_define;
+        if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
+            let mut typ = param_info.type_ref.clone();
+            if param_info.nullable && !typ.is_nullable() {
+                typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
+            }
+
+            return Ok(typ);
+        }
+    }
+
+    if let Some(current_member_id) = member_id {
+        let member_decl_type = find_decl_member_type(db, current_member_id)?;
+        let param_type = find_param_type_from_type(
+            db,
+            member_decl_type,
+            param_idx,
+            colon_define,
+            decl.get_name() == "...",
+        );
+        if let Some(param_type) = param_type {
+            return Ok(param_type);
+        }
+    }
+
+    if let Some(param_type) = infer_param_type_from_closure_expected_type(
+        db,
+        cache,
+        signature_id,
+        param_idx,
+        colon_define,
+        decl.get_name() == "...",
+    ) {
+        return Ok(param_type);
+    }
+
+    Err(InferFailReason::UnResolveDeclType(decl.get_id()))
+}
+
+fn infer_param_type_from_closure_expected_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    signature_id: crate::LuaSignatureId,
+    param_idx: usize,
+    colon_define: bool,
+    is_dots: bool,
+) -> Option<LuaType> {
+    let closure = find_closure_expr_by_signature_id(db, signature_id)?;
+    let source_type = infer_bind_value_type_root(db, cache, closure.into())?;
+    find_param_type_from_type(db, source_type, param_idx, colon_define, is_dots)
+}
+
+fn find_closure_expr_by_signature_id(
+    db: &DbIndex,
+    signature_id: crate::LuaSignatureId,
+) -> Option<LuaClosureExpr> {
+    let syntax_tree = db.get_vfs().get_syntax_tree(&signature_id.get_file_id())?;
+    syntax_tree
+        .get_chunk_node()
+        .descendants::<LuaClosureExpr>()
+        .find(|closure| closure.get_position() == signature_id.get_position())
 }
 
 pub fn find_decl_member_type(db: &DbIndex, member_id: LuaMemberId) -> InferResult {
@@ -332,14 +442,30 @@ fn find_param_type_from_union(
     }
 }
 
-pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
+pub(crate) fn infer_global_type_root(db: &DbIndex, name: &str) -> InferResult {
+    infer_global_type_inner(None, db, name)
+}
+
+pub fn infer_global_type(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    name: &str,
+) -> InferResult {
+    infer_global_type_inner(Some(compilation), db, name)
+}
+
+fn infer_global_type_inner(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    name: &str,
+) -> InferResult {
     let decl_ids = db
         .get_global_index()
         .get_global_decl_ids(name)
         .ok_or(InferFailReason::None)?;
     if decl_ids.len() == 1 {
         let id = decl_ids[0];
-        let typ = match db.get_type_index().get_type_cache(&id.into()) {
+        let typ = match get_type_cache(compilation, db, &id.into()) {
             Some(type_cache) => type_cache.as_type().clone(),
             None => return Err(InferFailReason::UnResolveDeclType(id)),
         };
@@ -364,7 +490,7 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
     let mut valid_type = LuaType::Never;
     let mut last_resolve_reason = InferFailReason::None;
     for decl_id in sorted_decl_ids {
-        let decl_type_cache = db.get_type_index().get_type_cache(&decl_id.into());
+        let decl_type_cache = get_type_cache(compilation, db, &decl_id.into());
         match decl_type_cache {
             Some(type_cache) => {
                 let typ = type_cache.as_type();

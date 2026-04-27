@@ -7,8 +7,9 @@ use super::{
     super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
     InferFailReason, InferResult,
 };
+
 use crate::{
-    CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
+    CacheEntry, DbIndex, InFiled, LuaCompilation, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
     LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait,
 };
@@ -19,7 +20,11 @@ use crate::{
         infer::narrow::get_type_at_call_expr_inline_cast,
     },
 };
-use crate::{build_self_type, infer_self_type, instantiate_func_generic, semantic::infer_expr};
+use crate::{
+    build_self_type_inner, infer_expr, infer_self_type,
+    instantiate_func_generic,
+    semantic::infer_expr_root,
+};
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
 
@@ -276,8 +281,7 @@ fn infer_type_doc_function(
         .get_type_decl(&type_id)
         .ok_or_else(|| InferFailReason::UnResolveTypeDecl(type_id.clone()))?;
     if type_decl.is_alias() {
-        let origin_type = type_decl
-            .get_alias_origin(db, None)
+        let origin_type = crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
             .ok_or(InferFailReason::None)?;
         return infer_call_expr_func(
             db,
@@ -319,7 +323,7 @@ fn infer_type_doc_function(
                     overloads.push(Arc::new(result));
                 } else if f.contain_self() {
                     let mut substitutor = TypeSubstitutor::new();
-                    let self_type = build_self_type(db, call_expr_type);
+                    let self_type = build_self_type_inner(db, call_expr_type);
                     substitutor.add_self_type(self_type);
                     if let LuaType::DocFunction(f) = instantiate_doc_function(db, &f, &substitutor)
                     {
@@ -365,9 +369,9 @@ fn infer_generic_type_doc_function(
         .get_type_decl(&type_id)
         .ok_or_else(|| InferFailReason::UnResolveTypeDecl(type_id.clone()))?;
     if type_decl.is_alias() {
-        let origin_type = type_decl
-            .get_alias_origin(db, Some(&substitutor))
-            .ok_or(InferFailReason::None)?;
+        let origin_type =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&substitutor))
+                .ok_or(InferFailReason::None)?;
         return infer_call_expr_func(
             db,
             cache,
@@ -695,7 +699,24 @@ fn is_last_call_expr(call_expr: &LuaCallExpr) -> bool {
     false
 }
 
+pub(crate) fn infer_call_expr_root(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: LuaCallExpr,
+) -> InferResult {
+    infer_call_expr_legacy(db, cache, call_expr)
+}
+
 pub fn infer_call_expr(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: LuaCallExpr,
+) -> InferResult {
+    infer_call_expr_inner(compilation, db, cache, call_expr)
+}
+
+fn infer_call_expr_legacy(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,
@@ -709,7 +730,45 @@ pub fn infer_call_expr(
     check_can_infer(db, cache, &call_expr)?;
 
     let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let prefix_type = infer_expr(db, cache, prefix_expr)?;
+    let prefix_type = infer_expr_root(db, cache, prefix_expr)?;
+    let ret_type = infer_call_expr_func(
+        db,
+        cache,
+        call_expr.clone(),
+        prefix_type,
+        &InferGuard::new(),
+        None,
+    )?
+    .get_ret()
+    .clone();
+
+    if let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
+        && let Some(flow_id) = tree.get_flow_id(call_expr.get_syntax_id())
+        && let Some(flow_ret_type) =
+            get_type_at_call_expr_inline_cast(db, cache, tree, call_expr, flow_id, ret_type.clone())
+    {
+        return Ok(flow_ret_type);
+    }
+
+    Ok(ret_type)
+}
+
+fn infer_call_expr_inner(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: LuaCallExpr,
+) -> InferResult {
+    if call_expr.is_require() {
+        return infer_require_call(db, cache, call_expr);
+    } else if call_expr.is_setmetatable() {
+        return infer_setmetatable_call(db, cache, call_expr);
+    }
+
+    check_can_infer(db, cache, &call_expr)?;
+
+    let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
+    let prefix_type = infer_expr(compilation, db, cache, prefix_expr)?;
     let ret_type = infer_call_expr_func(
         db,
         cache,
@@ -769,7 +828,7 @@ fn signature_is_generic(
     let LuaExpr::IndexExpr(index_expr) = call_expr.get_prefix_expr()? else {
         return None;
     };
-    let prefix_type = infer_expr(db, cache, index_expr.get_prefix_expr()?).ok()?;
+    let prefix_type = infer_expr_root(db, cache, index_expr.get_prefix_expr()?).ok()?;
     match prefix_type {
         // 对于 Generic 直接认为是泛型
         LuaType::Generic(_) => Some(true),
@@ -789,7 +848,7 @@ mod tests {
         let file_id = ws.def("local i = 1\n i()\n");
         let call_expr = ws.get_node::<emmylua_parser::LuaCallExpr>(file_id);
         let semantic_model = ws.analysis.compilation.get_semantic_model(file_id).unwrap();
-        let db = semantic_model.get_db();
+        let db = semantic_model.get_compilation().legacy_db();
         let mut cache = semantic_model.get_cache().borrow_mut();
         let call_expr_type = LuaType::IntegerConst(1);
 

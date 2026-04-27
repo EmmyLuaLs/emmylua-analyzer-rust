@@ -3,7 +3,10 @@ use std::collections::HashSet;
 use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaVarExpr};
 
 use crate::{
-    DiagnosticCode, LuaSemanticDeclId, LuaType, ModuleInfo, SemanticDeclLevel, SemanticModel,
+    CompilationModuleInfo, DiagnosticCode, LuaMemberKey, LuaSemanticDeclId, LuaType,
+    SemanticDeclLevel, SemanticModel,
+    module_query::export::{compilation_module_has_export_type, compilation_module_semantic_id},
+    module_query::identity::find_compilation_module_by_path,
     parse_require_module_info,
 };
 
@@ -56,52 +59,28 @@ fn check_export_index_expr(
     index_expr: &LuaIndexExpr,
     code: DiagnosticCode,
 ) -> Option<()> {
-    let db = context.db;
+    let db = context.db();
     let prefix_expr = index_expr.get_prefix_expr()?;
     let prefix_info = semantic_model.get_semantic_info(prefix_expr.syntax().clone().into())?;
     let prefix_typ = prefix_info.typ.clone();
-
-    // `check_export` 仅需要处理 `TableConst, 其它类型由 `check_field` 负责.
-    let LuaType::TableConst(table_const) = &prefix_typ else {
-        return Some(());
-    };
+    let imported_export_surface =
+        check_require_table_const_with_export_surface(semantic_model, index_expr).is_some();
 
     let index_key = index_expr.get_index_key()?;
+    let index_name = index_key.get_path_part();
 
-    if let Some(module_info) =
-        check_require_table_const_with_export_surface(semantic_model, index_expr)
-    {
-        if code == DiagnosticCode::InjectField {
-            // 检查字段定义是否来自导入的表.
-            if let Some(info) = semantic_model.get_semantic_info(index_expr.syntax().clone().into())
-                && is_cross_file_member_from_imported_export_table_const(
-                    module_info,
-                    info.semantic_decl,
-                )
-            {
-                let index_name = index_key.get_path_part();
-                context.add_diagnostic(
-                    DiagnosticCode::InjectField,
-                    index_key.get_range()?,
-                    t!(
-                        "Fields cannot be injected into the reference of `%{class}` for `%{field}`. ",
-                        class = humanize_lint_type(db, &prefix_typ),
-                        field = index_name,
-                    )
-                    .to_string(),
-                    None,
-                );
-                return Some(());
-            }
-        }
-
-        if check_field::is_valid_member(semantic_model, &prefix_typ, index_expr, &index_key, code)
+    if imported_export_surface {
+        if semantic_model
+            .get_member_info_with_key(
+                &prefix_typ,
+                LuaMemberKey::Name(index_name.clone().into()),
+                false,
+            )
             .is_some()
         {
             return Some(());
         }
 
-        let index_name = index_key.get_path_part();
         match code {
             DiagnosticCode::InjectField => {
                 context.add_diagnostic(
@@ -130,6 +109,11 @@ fn check_export_index_expr(
         return Some(());
     }
 
+    // `check_export` 仅需要处理 `TableConst, 其它类型由 `check_field` 负责.
+    let LuaType::TableConst(table_const) = &prefix_typ else {
+        return Some(());
+    };
+
     // 不是导入表, 且定义位于当前文件中, 则尝试检查本地表.
     if code != DiagnosticCode::UndefinedField && table_const.file_id != semantic_model.get_file_id()
     {
@@ -140,18 +124,16 @@ fn check_export_index_expr(
         return Some(());
     };
     // 必须为 local 声明
-    let decl = semantic_model
-        .get_db()
-        .get_decl_index()
-        .get_decl(&decl_id)?;
+    let decl = semantic_model.get_decl(&decl_id)?;
     if !decl.is_local() {
         return Some(());
     }
     let Some(module_info) = semantic_model.get_module() else {
         return Some(());
     };
-    if !module_info.has_export_type()
-        || module_info.semantic_id.as_ref() != Some(&LuaSemanticDeclId::LuaDecl(decl_id))
+    if !compilation_module_has_export_type(semantic_model.get_compilation(), module_info.file_id)
+        || compilation_module_semantic_id(semantic_model.get_compilation(), module_info.file_id)
+            != Some(LuaSemanticDeclId::LuaDecl(decl_id))
     {
         return Some(());
     }
@@ -176,20 +158,23 @@ fn check_export_index_expr(
 fn check_require_table_const_with_export_surface<'a>(
     semantic_model: &'a SemanticModel,
     index_expr: &LuaIndexExpr,
-) -> Option<&'a ModuleInfo> {
+) -> Option<&'a CompilationModuleInfo> {
     // 获取前缀表达式的语义信息
     let prefix_expr = index_expr.get_prefix_expr()?;
     if let Some(call_expr) = LuaCallExpr::cast(prefix_expr.syntax().clone()) {
         let module_info = parse_require_expr_module_info(semantic_model, &call_expr)?;
-        if module_info.has_export_type() {
+        if compilation_module_has_export_type(semantic_model.get_compilation(), module_info.file_id)
+        {
             return Some(module_info);
         }
     }
 
-    let semantic_decl_id = semantic_model.find_decl(
-        prefix_expr.syntax().clone().into(),
-        SemanticDeclLevel::NoTrace,
-    )?;
+    let semantic_decl_id = semantic_model
+        .get_semantic_info(prefix_expr.syntax().clone().into())
+        .and_then(|info| info.semantic_decl)
+        .or_else(|| {
+            semantic_model.find_decl(prefix_expr.syntax().clone().into(), SemanticDeclLevel::NoTrace)
+        })?;
     // 检查是否是声明引用
     let decl_id = match semantic_decl_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => decl_id,
@@ -197,13 +182,10 @@ fn check_require_table_const_with_export_surface<'a>(
     };
 
     // 获取声明
-    let decl = semantic_model
-        .get_db()
-        .get_decl_index()
-        .get_decl(&decl_id)?;
+    let decl = semantic_model.get_decl(&decl_id)?;
 
     let module_info = parse_require_module_info(semantic_model, &decl)?;
-    if module_info.has_export_type() {
+    if compilation_module_has_export_type(semantic_model.get_compilation(), module_info.file_id) {
         return Some(module_info);
     }
     None
@@ -212,7 +194,7 @@ fn check_require_table_const_with_export_surface<'a>(
 fn parse_require_expr_module_info<'a>(
     semantic_model: &'a SemanticModel,
     call_expr: &LuaCallExpr,
-) -> Option<&'a ModuleInfo> {
+) -> Option<&'a CompilationModuleInfo> {
     let arg_list = call_expr.get_args_list()?;
     let first_arg = arg_list.get_args().next()?;
     let require_path_type = semantic_model.infer_expr(first_arg.clone()).ok()?;
@@ -221,21 +203,5 @@ fn parse_require_expr_module_info<'a>(
         _ => return None,
     };
 
-    semantic_model
-        .get_db()
-        .get_module_index()
-        .find_module(&module_path)
-}
-
-fn is_cross_file_member_from_imported_export_table_const(
-    module_info: &ModuleInfo,
-    semantic_decl: Option<LuaSemanticDeclId>,
-) -> bool {
-    if let Some(LuaSemanticDeclId::Member(member_id)) = semantic_decl
-        && module_info.file_id != member_id.file_id
-    {
-        return true;
-    }
-
-    false
+    find_compilation_module_by_path(semantic_model.get_compilation(), &module_path)
 }

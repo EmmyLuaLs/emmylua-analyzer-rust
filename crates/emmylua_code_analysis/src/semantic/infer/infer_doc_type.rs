@@ -13,7 +13,7 @@ use crate::{
     AsyncState, DbIndex, FileId, InFiled, LuaAliasCallKind, LuaAliasCallType, LuaArrayLen,
     LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
     LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus,
-    LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType,
+    LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType, WorkspaceId,
 };
 
 #[derive(Clone, Copy)]
@@ -152,16 +152,16 @@ fn infer_buildin_or_ref_type(
         }
         _ => {
             let file_id = ctx.file_id;
-            let workspace_id = ctx.db.resolve_workspace_id(file_id);
-            let type_id = if let Some(name_type_decl) =
-                ctx.db
-                    .get_type_index()
-                    .find_type_decl(file_id, name, workspace_id)
-            {
-                name_type_decl.get_id()
-            } else {
-                LuaTypeDeclId::global(name)
-            };
+            let type_id =
+                if let Some(name_type_decl) = ctx.db.get_type_index().find_type_decl(
+                    file_id,
+                    name,
+                    ctx.db.resolve_workspace_id(file_id).or(Some(WorkspaceId::MAIN)),
+                ) {
+                    name_type_decl.get_id()
+                } else {
+                    LuaTypeDeclId::global(name)
+                };
 
             LuaType::Ref(type_id)
         }
@@ -196,12 +196,11 @@ fn infer_generic_type(ctx: DocTypeInferContext<'_>, generic_type: &LuaDocGeneric
         }
 
         let file_id = ctx.file_id;
-        let workspace_id = ctx.db.resolve_workspace_id(file_id);
-        let id = if let Some(name_type_decl) =
-            ctx.db
-                .get_type_index()
-                .find_type_decl(file_id, &name, workspace_id)
-        {
+        let id = if let Some(name_type_decl) = ctx.db.get_type_index().find_type_decl(
+            file_id,
+            &name,
+            ctx.db.resolve_workspace_id(file_id).or(Some(WorkspaceId::MAIN)),
+        ) {
             name_type_decl.get_id()
         } else {
             return LuaType::Unknown;

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{DbIndex, FileId, LuaMemberKey, LuaType};
+use crate::{DbIndex, FileId, LuaCompilation, LuaMemberKey, LuaType};
 
 use super::{
     LuaMemberInfo,
@@ -8,19 +8,42 @@ use super::{
 };
 
 pub fn get_member_map(
-    db: &DbIndex,
+    compilation: &LuaCompilation,
     prefix_type: &LuaType,
 ) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
-    let members = find_members::find_members(db, prefix_type)?;
+    let members = find_members::find_members(compilation, prefix_type)?;
     build_member_map(members)
 }
 
-pub fn get_member_map_in_scope(
+pub(crate) fn get_member_map_inner(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    prefix_type: &LuaType,
+) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
+    let members = find_members::find_members_root(compilation, db, prefix_type)?;
+    build_member_map(members)
+}
+
+#[allow(dead_code)]
+pub(crate) fn get_member_map_in_scope_inner(
     db: &DbIndex,
     file_id: FileId,
     prefix_type: &LuaType,
 ) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
-    let members = find_members::find_members_in_scope(db, file_id, prefix_type)?;
+    let members = find_members::find_members_in_scope_inner(db, file_id, prefix_type)?;
+    build_member_map(members)
+}
+
+pub fn get_member_map_in_scope(
+    compilation: &LuaCompilation,
+    file_id: FileId,
+    prefix_type: &LuaType,
+) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
+    let members = find_members::find_members_in_scope(
+        compilation,
+        file_id,
+        prefix_type,
+    )?;
     build_member_map(members)
 }
 

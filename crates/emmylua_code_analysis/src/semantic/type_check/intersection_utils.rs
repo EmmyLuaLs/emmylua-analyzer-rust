@@ -1,13 +1,13 @@
 use hashbrown::HashMap;
 
-use crate::{DbIndex, LuaIntersectionType, LuaObjectType, LuaType, semantic::member::find_members};
+use crate::{DbIndex, LuaIntersectionType, LuaObjectType, LuaType, semantic::member::find_members_root};
 
 pub(super) fn intersection_to_object(
     db: &DbIndex,
     intersection: &LuaIntersectionType,
 ) -> Option<LuaObjectType> {
     let intersection_type: LuaType = intersection.clone().into();
-    let members = find_members(db, &intersection_type)?;
+    let members = find_members_root(None, db, &intersection_type)?;
     let mut fields: HashMap<_, _> = HashMap::new();
     for member in members {
         fields

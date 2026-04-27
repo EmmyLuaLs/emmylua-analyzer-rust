@@ -5,7 +5,7 @@ use emmylua_parser::{LuaAstNode, LuaIndexMemberExpr, LuaTableExpr, LuaVarExpr};
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaDocParamInfo, LuaDocReturnInfo,
     LuaFunctionType, LuaInferCache, LuaSignature, LuaType, SignatureReturnStatus, TypeOps,
-    get_real_type, infer_call_expr_func, infer_expr, infer_table_should_be,
+    get_real_type, infer_call_expr_func, infer_expr_root, infer_table_should_be_root,
 };
 
 use super::{
@@ -21,7 +21,7 @@ pub fn try_resolve_call_closure_params(
 ) -> ResolveResult {
     let call_expr = closure_params.call_expr.clone();
     let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let call_expr_type = infer_expr(db, cache, prefix_expr)?;
+    let call_expr_type = infer_expr_root(db, cache, prefix_expr)?;
 
     let call_doc_func = infer_call_expr_func(
         db,
@@ -111,7 +111,7 @@ pub fn try_resolve_closure_return(
 ) -> ResolveResult {
     let call_expr = closure_return.call_expr.clone();
     let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let call_expr_type = infer_expr(db, cache, prefix_expr)?;
+    let call_expr_type = infer_expr_root(db, cache, prefix_expr)?;
     let mut param_idx = closure_return.param_idx;
     let call_doc_func = infer_call_expr_func(
         db,
@@ -212,7 +212,7 @@ pub fn try_resolve_closure_parent_params(
             match func_name {
                 LuaVarExpr::IndexExpr(index_expr) => {
                     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-                    let prefix_type = infer_expr(db, cache, prefix_expr)?;
+                    let prefix_type = infer_expr_root(db, cache, prefix_expr)?;
                     self_type = Some(prefix_type.clone());
                     find_best_function_type(
                         db,
@@ -230,7 +230,7 @@ pub fn try_resolve_closure_parent_params(
             let parnet_table_expr = table_field
                 .get_parent::<LuaTableExpr>()
                 .ok_or(InferFailReason::None)?;
-            let parent_table_type = infer_table_should_be(db, cache, parnet_table_expr)?;
+            let parent_table_type = infer_table_should_be_root(db, cache, parnet_table_expr)?;
             self_type = Some(parent_table_type.clone());
             find_best_function_type(
                 db,
@@ -252,7 +252,7 @@ pub fn try_resolve_closure_parent_params(
             match var {
                 LuaVarExpr::IndexExpr(index_expr) => {
                     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-                    let prefix_expr_type = infer_expr(db, cache, prefix_expr)?;
+                    let prefix_expr_type = infer_expr_root(db, cache, prefix_expr)?;
                     self_type = Some(prefix_expr_type.clone());
                     find_best_function_type(
                         db,
@@ -325,7 +325,7 @@ fn resolve_closure_member_type(
                             .get_type_decl(&ref_id)
                             .ok_or(InferFailReason::None)?;
 
-                        if let Some(origin) = type_decl.get_alias_origin(db, None)
+                        if let Some(origin) = crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
                             && let LuaType::DocFunction(f) = origin
                         {
                             multi_function_type.push(f);
@@ -421,7 +421,7 @@ fn resolve_closure_member_type(
                 .ok_or(InferFailReason::None)?;
 
             if type_decl.is_alias()
-                && let Some(origin) = type_decl.get_alias_origin(db, None)
+                && let Some(origin) = crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
             {
                 return resolve_closure_member_type(
                     db,
@@ -521,7 +521,7 @@ fn filter_signature_type(db: &DbIndex, typ: &LuaType) -> Option<Vec<Arc<LuaFunct
             LuaType::Ref(type_ref_id) => {
                 guard.check(&type_ref_id).ok()?;
                 let type_decl = db.get_type_index().get_type_decl(&type_ref_id)?;
-                if let Some(func) = type_decl.get_alias_origin(db, None) {
+                if let Some(func) = crate::semantic::type_queries::get_alias_origin(db, type_decl, None) {
                     match func {
                         LuaType::DocFunction(f) => {
                             result.push(f.clone());

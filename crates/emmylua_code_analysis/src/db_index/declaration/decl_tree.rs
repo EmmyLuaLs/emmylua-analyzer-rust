@@ -271,6 +271,10 @@ impl LuaDeclarationTree {
     pub fn get_decls(&self) -> &HashMap<LuaDeclId, LuaDecl> {
         &self.decls
     }
+
+    pub fn get_scopes(&self) -> &[LuaScope] {
+        self.scopes.as_slice()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

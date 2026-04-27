@@ -13,6 +13,7 @@ mod config;
 mod db_index;
 mod diagnostic;
 mod locale;
+mod module_query;
 mod profile;
 mod resources;
 mod semantic;
@@ -71,10 +72,11 @@ impl EmmyLuaAnalysis {
     pub fn init_std_lib(&mut self, create_resources_dir: Option<String>) {
         let is_jit = matches!(self.emmyrc.runtime.version, EmmyrcLuaVersion::LuaJIT);
         let (std_root, files) = load_resource_std(create_resources_dir, is_jit);
-        self.compilation
-            .get_db_mut()
-            .get_module_index_mut()
-            .add_workspace_root(std_root, WorkspaceId::STD);
+        self.compilation.add_workspace(Workspace::new(
+            std_root,
+            WorkspaceImport::All,
+            WorkspaceId::STD,
+        ));
 
         let files = files
             .into_iter()
@@ -90,68 +92,42 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn get_file_id(&self, uri: &Uri) -> Option<FileId> {
-        self.compilation.get_db().get_vfs().get_file_id(uri)
+        self.compilation.file_id_by_uri(uri)
     }
 
     pub fn get_uri(&self, file_id: FileId) -> Option<Uri> {
-        self.compilation.get_db().get_vfs().get_uri(&file_id)
+        self.compilation.get_uri(file_id)
     }
 
     pub fn add_main_workspace(&mut self, root: PathBuf) {
-        self.compilation
-            .get_db_mut()
-            .get_module_index_mut()
-            .add_workspace_root(root, WorkspaceId::MAIN);
+        self.compilation.add_workspace(Workspace::new(
+            root,
+            WorkspaceImport::All,
+            WorkspaceId::MAIN,
+        ));
     }
 
     pub fn add_library_workspace(&mut self, workspace: &WorkspaceFolder) {
-        let module_index = self.compilation.get_db_mut().get_module_index_mut();
         let id = WorkspaceId {
-            id: module_index.next_library_workspace_id(),
+            id: self.compilation.next_library_workspace_id(),
         };
-        module_index.add_workspace_root_with_import(
+        self.compilation.add_workspace(Workspace::new(
             workspace.root.clone(),
             workspace.import.clone(),
             id,
-        );
+        ));
     }
 
     pub fn clear_non_std_workspaces(&mut self) {
-        self.compilation
-            .get_db_mut()
-            .get_module_index_mut()
-            .clear_non_std_workspaces();
+        self.compilation.clear_non_std_workspaces();
     }
 
     pub fn update_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> Option<FileId> {
-        let is_removed = text.is_none();
-        let file_id = self
-            .compilation
-            .get_db_mut()
-            .get_vfs_mut()
-            .set_file_content(uri, text);
-
-        self.compilation.remove_index(vec![file_id]);
-        if !is_removed {
-            self.compilation.update_index(vec![file_id]);
-        }
-
-        Some(file_id)
+        self.compilation.update_file_by_uri(uri, text)
     }
 
     pub fn update_remote_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> FileId {
-        let is_removed = text.is_none();
-        let fid = self
-            .compilation
-            .get_db_mut()
-            .get_vfs_mut()
-            .set_remote_file_content(uri, text);
-
-        self.compilation.remove_index(vec![fid]);
-        if !is_removed {
-            self.compilation.update_index(vec![fid]);
-        }
-        fid
+        self.compilation.update_remote_file_by_uri(uri, text)
     }
 
     pub fn update_file_by_path(&mut self, path: &PathBuf, text: Option<String>) -> Option<FileId> {
@@ -160,28 +136,8 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn update_files_by_uri(&mut self, files: Vec<(Uri, Option<String>)>) -> Vec<FileId> {
-        let mut removed_files = HashSet::new();
-        let mut updated_files = HashSet::new();
-        {
-            let _p = Profile::new("update files");
-            for (uri, text) in files {
-                let is_new_text = text.is_some();
-                let file_id = self
-                    .compilation
-                    .get_db_mut()
-                    .get_vfs_mut()
-                    .set_file_content(&uri, text);
-                removed_files.insert(file_id);
-                if is_new_text {
-                    updated_files.insert(file_id);
-                }
-            }
-        }
-        self.compilation
-            .remove_index(removed_files.into_iter().collect());
-        let updated_files: Vec<FileId> = updated_files.into_iter().collect();
-        self.compilation.update_index(updated_files.clone());
-        updated_files
+        let _p = Profile::new("update files");
+        self.compilation.update_files_by_uri(files)
     }
 
     #[allow(unused)]
@@ -189,38 +145,12 @@ impl EmmyLuaAnalysis {
         &mut self,
         files: Vec<(Uri, Option<String>)>,
     ) -> Vec<FileId> {
-        let mut removed_files = HashSet::new();
-        let mut updated_files = HashSet::new();
-        {
-            let _p = Profile::new("update files");
-            for (uri, text) in files {
-                let is_new_text = text.is_some();
-                let file_id = self
-                    .compilation
-                    .get_db_mut()
-                    .get_vfs_mut()
-                    .set_file_content(&uri, text);
-                removed_files.insert(file_id);
-                if is_new_text {
-                    updated_files.insert(file_id);
-                }
-            }
-        }
-        self.compilation
-            .remove_index(removed_files.into_iter().collect());
-        let mut updated_files: Vec<FileId> = updated_files.into_iter().collect();
-        updated_files.sort();
-        self.compilation.update_index(updated_files.clone());
-        updated_files
+        let _p = Profile::new("update files");
+        self.compilation.update_files_by_uri_sorted(files)
     }
 
     pub fn remove_file_by_uri(&mut self, uri: &Uri) -> Option<FileId> {
-        if let Some(file_id) = self.compilation.get_db_mut().get_vfs_mut().remove_file(uri) {
-            self.compilation.remove_index(vec![file_id]);
-            return Some(file_id);
-        }
-
-        None
+        self.compilation.remove_file_by_uri(uri)
     }
 
     pub fn update_files_by_path(&mut self, files: Vec<(PathBuf, Option<String>)>) -> Vec<FileId> {
@@ -247,19 +177,17 @@ impl EmmyLuaAnalysis {
         kept_paths.extend(files.iter().map(|(path, _)| path.clone()));
 
         let (had_existing_non_std_local_files, stale_uris) = {
-            let db = self.compilation.get_db();
-            let vfs = db.get_vfs();
-            let module_index = db.get_module_index();
+            let compilation = &self.compilation;
             let mut had_existing_non_std_local_files = false;
-            let stale_uris = vfs
-                .get_all_local_file_ids()
+            let stale_uris = compilation
+                .all_local_file_ids()
                 .into_iter()
                 .filter(|file_id| {
-                    let is_non_std = !module_index.is_std(file_id);
+                    let is_non_std = !compilation.module_is_std(*file_id);
                     had_existing_non_std_local_files |= is_non_std;
                     is_non_std
                 })
-                .filter_map(|file_id| vfs.get_file_path(&file_id).cloned())
+                .filter_map(|file_id| compilation.get_document(file_id).map(|doc| doc.get_file_path().to_path_buf()))
                 .filter(|path| !kept_paths.contains(path))
                 .filter_map(|path| file_path_to_uri(&path))
                 .collect::<Vec<_>>();
@@ -311,7 +239,7 @@ impl EmmyLuaAnalysis {
         {
             self.reindex_count += 1;
         }
-        let file_ids = self.compilation.get_db().get_vfs().get_all_file_ids();
+        let file_ids = self.compilation.all_file_ids();
         self.compilation.clear_index();
         self.compilation.update_index(file_ids);
     }
@@ -321,18 +249,16 @@ impl EmmyLuaAnalysis {
         let mut files_to_remove = Vec::new();
 
         // 获取所有当前在VFS中的文件
-        let vfs = self.compilation.get_db().get_vfs();
-        for file_id in vfs.get_all_local_file_ids() {
-            if self
-                .compilation
-                .get_db()
-                .get_module_index()
-                .is_std(&file_id)
-            {
+        for file_id in self.compilation.all_local_file_ids() {
+            if self.compilation.module_is_std(file_id) {
                 continue;
             }
-            if let Some(path) = vfs.get_file_path(&file_id).filter(|path| !path.exists())
-                && let Some(uri) = file_path_to_uri(path)
+            if let Some(path) = self
+                .compilation
+                .get_document(file_id)
+                .map(|doc| doc.get_file_path().to_path_buf())
+                .filter(|path| !path.exists())
+                && let Some(uri) = file_path_to_uri(&path)
             {
                 files_to_remove.push(uri);
             }
@@ -346,7 +272,7 @@ impl EmmyLuaAnalysis {
 
     pub fn check_schema_update(&self) -> bool {
         self.compilation
-            .get_db()
+            .legacy_db()
             .get_json_schema_index()
             .has_need_resolve_schemas()
     }
@@ -354,7 +280,7 @@ impl EmmyLuaAnalysis {
     pub async fn update_schema(&mut self) {
         let urls = self
             .compilation
-            .get_db()
+            .legacy_db()
             .get_json_schema_index()
             .get_need_resolve_schemas();
         let mut url_contents = HashMap::new();
@@ -406,7 +332,7 @@ impl EmmyLuaAnalysis {
                         self.update_remote_file_by_uri(&uri, Some(convert_result.annotation_text));
                     if let Some(f) = self
                         .compilation
-                        .get_db_mut()
+                        .legacy_db_mut()
                         .get_json_schema_index_mut()
                         .get_schema_file_mut(&url)
                     {
@@ -423,7 +349,7 @@ impl EmmyLuaAnalysis {
         }
 
         self.compilation
-            .get_db_mut()
+            .legacy_db_mut()
             .get_json_schema_index_mut()
             .reset_rest_schemas();
     }
@@ -530,25 +456,25 @@ mod tests {
         let net_file_id = analysis
             .get_file_id(&file_path_to_uri(&net_file).unwrap())
             .unwrap();
-        let db = analysis.compilation.get_db();
-
         assert_eq!(
-            db.get_module_index()
-                .get_module(socket_file_id)
+            analysis
+                .compilation
+                .find_module_by_file_id(socket_file_id)
                 .unwrap()
                 .full_module_name,
             "socket"
         );
         assert_eq!(
-            db.get_module_index()
-                .get_module(net_file_id)
+            analysis
+                .compilation
+                .find_module_by_file_id(net_file_id)
                 .unwrap()
                 .full_module_name,
             "net"
         );
         assert_ne!(
-            db.get_module_index().get_workspace_id(socket_file_id),
-            db.get_module_index().get_workspace_id(net_file_id)
+            analysis.compilation.module_workspace_id(socket_file_id),
+            analysis.compilation.module_workspace_id(net_file_id)
         );
 
         let _ = fs::remove_dir_all(temp_root);

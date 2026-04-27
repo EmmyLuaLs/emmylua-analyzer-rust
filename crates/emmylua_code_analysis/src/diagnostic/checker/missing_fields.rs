@@ -2,7 +2,7 @@ use hashbrown::{HashMap, HashSet};
 
 use emmylua_parser::{LuaAstNode, LuaTableExpr};
 
-use crate::{DiagnosticCode, LuaMemberOwner, LuaType, LuaTypeCache, LuaTypeDeclId, SemanticModel};
+use crate::{DiagnosticCode, LuaMemberOwner, LuaType, LuaTypeDeclId, SemanticModel};
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
 use itertools::Itertools;
@@ -28,8 +28,6 @@ fn check_table_expr(
     expr: &LuaTableExpr,
     type_cache: &mut HashMap<LuaType, HashSet<String>>,
 ) -> Option<()> {
-    let db = context.db;
-
     let table_type = match semantic_model.infer_table_should_be(expr.clone())? {
         LuaType::Union(union) => {
             let mut set = HashSet::new();
@@ -81,14 +79,17 @@ fn check_table_expr(
 
     let required_fields = match &table_type {
         LuaType::Ref(type_decl_id) => type_cache.entry(table_type.clone()).or_insert_with(|| {
-            let types = type_decl_id.collect_super_types_with_self(context.db, table_type.clone());
+            let types = context
+                .get_compilation()
+                .collect_super_types_with_self(type_decl_id, table_type.clone());
             get_required_fields(context, &types).unwrap_or_default()
         }),
         LuaType::Generic(generic_type) => {
             let type_decl_id = generic_type.get_base_type_id();
             type_cache.entry(table_type.clone()).or_insert_with(|| {
-                let types =
-                    type_decl_id.collect_super_types_with_self(context.db, table_type.clone());
+                let types = context
+                    .get_compilation()
+                    .collect_super_types_with_self(&type_decl_id, table_type.clone());
                 get_required_fields(context, &types).unwrap_or_default()
             })
         }
@@ -122,7 +123,7 @@ fn check_table_expr(
             expr.get_range(),
             t!(
                 "Missing required fields in type `%{typ}`: %{fields}",
-                typ = humanize_lint_type(db, &table_type),
+                typ = humanize_lint_type(context.db(), &table_type),
                 fields = missing_fields
             )
             .to_string(),
@@ -138,7 +139,6 @@ fn get_required_fields(
     // types 应为广度优先, 子类型会先于父类型被遍历, 而子类型的优先级高于父类型
     types: &Vec<LuaType>,
 ) -> Option<HashSet<String>> {
-    let member_index = context.db.get_member_index();
     let mut required_fields: HashSet<String> = HashSet::new();
 
     let mut optional_type = HashSet::new();
@@ -146,14 +146,12 @@ fn get_required_fields(
         match super_type {
             LuaType::Ref(type_decl_id) => process_type_decl_id(
                 context,
-                member_index,
                 &mut required_fields,
                 &mut optional_type,
                 type_decl_id.clone(),
             ),
             LuaType::Generic(generic_type) => process_type_decl_id(
                 context,
-                member_index,
                 &mut required_fields,
                 &mut optional_type,
                 generic_type.get_base_type_id().clone(),
@@ -178,21 +176,17 @@ fn get_required_fields(
 
     fn process_type_decl_id(
         context: &DiagnosticContext,
-        member_index: &crate::LuaMemberIndex,
         required_fields: &mut HashSet<String>,
         optional_type: &mut HashSet<String>,
         type_decl_id: LuaTypeDeclId,
     ) -> Option<()> {
-        let members = member_index.get_members(&LuaMemberOwner::Type(type_decl_id))?;
+        let members = context.get_members(&LuaMemberOwner::Type(type_decl_id))?;
         for member in members {
             let name = member.get_key().to_path();
             let decl_type = context
-                .db
-                .get_type_index()
-                .get_type_cache(&member.get_id().into())
-                .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown))
-                .as_type()
-                .clone();
+                .get_member_type(&member.get_id())
+                .cloned()
+                .unwrap_or(LuaType::Unknown);
             record_required_fields(required_fields, optional_type, name, decl_type);
         }
 

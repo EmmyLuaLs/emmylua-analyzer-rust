@@ -10,11 +10,12 @@ use crate::{
         UnResolveCallClosureParams, UnResolveClosureReturn, UnResolveParentAst,
         UnResolveParentClosureParams, UnResolveReturn,
     },
+    compilation::{LuaReturnPoint, analyze_func_body_returns_with},
     db_index::{LuaDocReturnInfo, LuaSignatureId},
-    infer_expr,
+    infer_expr_root,
 };
 
-use super::{LuaAnalyzer, LuaReturnPoint, analyze_func_body_returns_with};
+use super::LuaAnalyzer;
 
 pub fn analyze_closure(analyzer: &mut LuaAnalyzer, closure: LuaClosureExpr) -> Option<()> {
     let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
@@ -141,7 +142,7 @@ fn analyze_return(
         .infer_manager
         .get_infer_cache(analyzer.file_id);
     let return_points = match analyze_func_body_returns_with(block.clone(), &mut |expr| {
-        infer_expr(analyzer.db, cache, expr.clone())
+        infer_expr_root(analyzer.db, cache, expr.clone())
     }) {
         Ok(return_points) => return_points,
         Err(reason) => {
@@ -223,11 +224,11 @@ pub fn analyze_return_point(
     let mut return_type = None;
     for point in return_points {
         let point_type = match point {
-            LuaReturnPoint::Expr(expr) => Some(infer_expr(db, cache, expr.clone())?),
+            LuaReturnPoint::Expr(expr) => Some(infer_expr_root(db, cache, expr.clone())?),
             LuaReturnPoint::MuliExpr(exprs) => {
                 let mut multi_return = Vec::with_capacity(exprs.len());
                 for expr in exprs {
-                    multi_return.push(infer_expr(db, cache, expr.clone())?);
+                    multi_return.push(infer_expr_root(db, cache, expr.clone())?);
                 }
                 Some(LuaType::Variadic(VariadicType::Multi(multi_return).into()))
             }

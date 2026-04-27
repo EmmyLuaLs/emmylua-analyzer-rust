@@ -9,13 +9,14 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
-    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
-    LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
+    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaCompilation,
+    LuaDeclOrMemberId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type,
+    enum_variable_is_param, get_keyof_members_inner, get_tpl_ref_extend_type,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -31,16 +32,53 @@ use crate::{
     },
 };
 
-use super::{InferFailReason, InferResult, infer_expr, infer_name::infer_global_type};
+use super::{
+    InferFailReason, InferResult, infer_expr_root,
+    infer_name::{infer_global_type_root, infer_global_type},
+};
 
-pub fn infer_index_expr(
+pub(crate) fn infer_index_expr_root(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     index_expr: LuaIndexExpr,
     pass_flow: bool,
 ) -> InferResult {
     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let prefix_type = infer_expr(db, cache, prefix_expr)?;
+    let prefix_type = infer_expr_root(db, cache, prefix_expr)?;
+    infer_index_expr_from_prefix_type(db, cache, index_expr, prefix_type, pass_flow)
+}
+
+pub fn infer_index_expr(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    index_expr: LuaIndexExpr,
+    pass_flow: bool,
+) -> InferResult {
+    let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
+    let prefix_type = infer_expr_root(db, cache, prefix_expr)?;
+
+    if let Some(result) = infer_index_expr_compilation_fast_path(
+        compilation,
+        db,
+        cache,
+        &prefix_type,
+        index_expr.clone(),
+        pass_flow,
+    ) {
+        return result;
+    }
+
+    infer_index_expr_from_prefix_type(db, cache, index_expr, prefix_type, pass_flow)
+}
+
+fn infer_index_expr_from_prefix_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    index_expr: LuaIndexExpr,
+    prefix_type: LuaType,
+    pass_flow: bool,
+) -> InferResult {
     let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
 
     let reason = match infer_member_by_member_key(
@@ -90,6 +128,33 @@ pub fn infer_index_expr(
     }
 
     Err(reason)
+}
+
+fn infer_index_expr_compilation_fast_path(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    prefix_type: &LuaType,
+    index_expr: LuaIndexExpr,
+    pass_flow: bool,
+) -> Option<InferResult> {
+    let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
+    let member_type = match prefix_type {
+        LuaType::Global => infer_global_field_member_compilation(compilation, db, cache, index_member_expr),
+        LuaType::Namespace(ns) => infer_namespace_member_compilation(compilation, db, cache, ns, index_member_expr),
+        _ => return None,
+    };
+
+    Some(match member_type {
+        Ok(member_type) => {
+            if pass_flow {
+                infer_member_type_pass_flow(db, cache, index_expr, member_type)
+            } else {
+                Ok(member_type)
+            }
+        }
+        Err(err) => Err(err),
+    })
 }
 
 fn infer_member_type_pass_flow(
@@ -194,26 +259,21 @@ pub fn infer_member_by_member_key(
         LuaType::Array(array_type) => infer_array_member(db, cache, array_type, index_expr),
         LuaType::TplRef(tpl) => infer_tpl_ref_member(db, cache, tpl, index_expr, infer_guard),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info {
-                if let Some(export_type) = &module_info.export_type {
-                    if export_type.is_module_ref() {
-                        return Err(InferFailReason::RecursiveInfer);
-                    }
-
-                    return infer_member_by_member_key(
-                        db,
-                        cache,
-                        export_type,
-                        index_expr,
-                        infer_guard,
-                    );
-                } else {
-                    return Err(InferFailReason::UnResolveModuleExport(*file_id));
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
+                if export_type.is_module_ref() {
+                    return Err(InferFailReason::RecursiveInfer);
                 }
+
+                return infer_member_by_member_key(
+                    db,
+                    cache,
+                    &export_type,
+                    index_expr,
+                    infer_guard,
+                );
             }
 
-            Err(InferFailReason::FieldNotFound)
+            Err(InferFailReason::UnResolveModuleExport(*file_id))
         }
         _ => Err(InferFailReason::FieldNotFound),
     }
@@ -249,7 +309,9 @@ fn infer_custom_type_member(
         .get_type_decl(&prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
+        {
             return infer_member_by_member_key(
                 db,
                 cache,
@@ -333,7 +395,7 @@ fn get_expr_key_members(
     let mut result = Vec::new();
 
     let origin_type = if index_type_decl.is_alias() {
-        index_type_decl.get_alias_origin(db, None)?
+        crate::semantic::type_queries::get_alias_origin(db, index_type_decl, None)?
     } else {
         LuaType::Ref(index_id.clone())
     };
@@ -530,7 +592,7 @@ fn infer_index_metamethod(
             }
         }
         LuaIndexKey::Idx(i) => LuaType::IntegerConst(*i as i64),
-        LuaIndexKey::Expr(expr) => infer_expr(db, cache, expr.clone())?,
+        LuaIndexKey::Expr(expr) => infer_expr_root(db, cache, expr.clone())?,
     };
 
     if check_type_compact(db, key_type, &access_key_type).is_ok() {
@@ -665,7 +727,8 @@ fn infer_generic_member(
         let type_index = db.get_type_index();
         if let Some(type_decl) = type_index.get_type_decl(base_type_decl_id)
             && type_decl.is_alias()
-            && let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor))
+            && let Some(origin_type) =
+                crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&substitutor))
         {
             return infer_member_by_member_key(
                 db,
@@ -763,22 +826,11 @@ pub fn infer_member_by_operator(
             infer_member_by_operator(db, cache, base, index_expr, infer_guard)
         }
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info {
-                if let Some(export_type) = &module_info.export_type {
-                    return infer_member_by_operator(
-                        db,
-                        cache,
-                        export_type,
-                        index_expr,
-                        infer_guard,
-                    );
-                } else {
-                    return Err(InferFailReason::UnResolveModuleExport(*file_id));
-                }
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
+                return infer_member_by_operator(db, cache, &export_type, index_expr, infer_guard);
             }
 
-            Err(InferFailReason::FieldNotFound)
+            Err(InferFailReason::UnResolveModuleExport(*file_id))
         }
         _ => Err(InferFailReason::FieldNotFound),
     }
@@ -818,7 +870,7 @@ fn infer_member_by_index_table(
         None => {
             let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
             if let LuaIndexKey::Expr(expr) = index_key {
-                let key_type = infer_expr(db, cache, expr.clone())?;
+                let key_type = infer_expr_root(db, cache, expr.clone())?;
                 let members = db
                     .get_member_index()
                     .get_members(&LuaMemberOwner::Element(table_range.clone()));
@@ -875,7 +927,9 @@ fn infer_member_by_index_custom_type(
         .get_type_decl(prefix_type_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+        if let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
+        {
             return infer_member_by_operator(db, cache, &origin_type, index_expr, infer_guard);
         }
         return Err(InferFailReason::None);
@@ -936,7 +990,7 @@ fn infer_member_by_index_array(
         return Ok(expression_type);
     } else if member_key.is_expr() {
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
-        let expr_type = infer_expr(db, cache, expr.clone())?;
+        let expr_type = infer_expr_root(db, cache, expr.clone())?;
         if check_type_compact(db, &LuaType::Number, &expr_type).is_ok() {
             return Ok(expression_type);
         }
@@ -955,7 +1009,7 @@ fn infer_member_by_index_object(
     let access_member_type = object.get_index_access();
     if member_key.is_expr() {
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
-        let expr_type = infer_expr(db, cache, expr.clone())?;
+        let expr_type = infer_expr_root(db, cache, expr.clone())?;
         for (key, field) in access_member_type {
             if type_check::check_type_compact(db, key, &expr_type).is_ok() {
                 return Ok(field.clone());
@@ -1045,7 +1099,9 @@ fn infer_member_by_index_generic(
         .get_type_decl(&type_decl_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+        if let Some(origin_type) =
+            crate::semantic::type_queries::get_alias_origin(db, type_decl, Some(&substitutor))
+        {
             return infer_member_by_operator(
                 db,
                 cache,
@@ -1135,7 +1191,21 @@ fn infer_global_field_member(
         .get_name()
         .ok_or(InferFailReason::None)?
         .get_name_text();
-    infer_global_type(db, name)
+    infer_global_type_root(db, name)
+}
+
+fn infer_global_field_member_compilation(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    _: &LuaInferCache,
+    index_expr: LuaIndexMemberExpr,
+) -> InferResult {
+    let member_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
+    let name = member_key
+        .get_name()
+        .ok_or(InferFailReason::None)?
+        .get_name_text();
+    infer_global_type(compilation, db, name)
 }
 
 fn infer_namespace_member(
@@ -1163,12 +1233,38 @@ fn infer_namespace_member(
     ))
 }
 
+fn infer_namespace_member_compilation(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    ns: &str,
+    index_expr: LuaIndexMemberExpr,
+) -> InferResult {
+    let index_key = index_expr.get_index_key().ok_or(InferFailReason::None)?;
+    let member_key = LuaMemberKey::from_index_key(db, cache, &index_key)?;
+    let member_key = match member_key {
+        LuaMemberKey::Name(name) => name.to_string(),
+        LuaMemberKey::Integer(i) => i.to_string(),
+        _ => return Err(InferFailReason::None),
+    };
+
+    let namespace_or_type_id = format!("{}.{}", ns, member_key);
+    let type_id = LuaTypeDeclId::global(&namespace_or_type_id);
+    if compilation.get_type_decl(&type_id).is_some() {
+        return Ok(LuaType::Def(type_id));
+    }
+
+    Ok(LuaType::Namespace(
+        SmolStr::new(namespace_or_type_id).into(),
+    ))
+}
+
 fn get_expr_member_key(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     expr: &LuaExpr,
 ) -> Option<Vec<LuaMemberKey>> {
-    let expr_type = infer_expr(db, cache, expr.clone()).ok()?;
+    let expr_type = infer_expr_root(db, cache, expr.clone()).ok()?;
     let mut keys: HashSet<LuaMemberKey> = HashSet::new();
     let mut stack = vec![expr_type.clone()];
     let mut visited = HashSet::new();
@@ -1188,7 +1284,7 @@ fn get_expr_member_key(
                 if alias_call.get_call_kind() == LuaAliasCallKind::KeyOf {
                     let operands = alias_call.get_operands();
                     if operands.len() == 1 {
-                        if let Some(members) = get_keyof_members(db, &operands[0]) {
+                        if let Some(members) = get_keyof_members_inner(db, &operands[0]) {
                             keys.extend(members.into_iter().map(|member| member.key));
                         }
                     }
@@ -1214,7 +1310,9 @@ fn get_expr_member_key(
             LuaType::Ref(id) => {
                 if let Some(type_decl) = db.get_type_index().get_type_decl(id) {
                     if type_decl.is_alias() {
-                        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+                        if let Some(origin_type) =
+                            crate::semantic::type_queries::get_alias_origin(db, type_decl, None)
+                        {
                             if !visited.contains(&origin_type) {
                                 stack.push(origin_type);
                             }

@@ -2,6 +2,9 @@
 mod test {
     use std::{ops::Deref, sync::Arc};
 
+    use lsp_types::NumberOrString;
+    use tokio_util::sync::CancellationToken;
+
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
@@ -723,6 +726,36 @@ mod test {
                 enable_global_lua_trigger(a)
         "#
         ));
+    }
+
+    #[test]
+    fn test_empty_class_probe_class_decl_only() {
+        let mut ws = VirtualWorkspace::new();
+        let _ = ws.def(
+            r#"
+                ---@class D4.A: table<integer, string>
+        "#,
+        );
+    }
+
+    #[test]
+    fn test_empty_class_probe_class_decl_simple_super() {
+        let mut ws = VirtualWorkspace::new();
+        let _ = ws.def(
+            r#"
+                ---@class D4.A: table
+        "#,
+        );
+    }
+
+    #[test]
+    fn test_empty_class_probe_class_decl_array_super() {
+        let mut ws = VirtualWorkspace::new();
+        let _ = ws.def(
+            r#"
+                ---@class D4.A: string[]
+        "#,
+        );
     }
 
     #[test]
@@ -1554,5 +1587,43 @@ mod test {
                 local value = iter(paths)
         "#,
         ));
+    }
+
+    #[test]
+    fn test_param_type_mismatch_message_uses_call_explain_param_name() {
+        let mut ws = VirtualWorkspace::new();
+        ws.analysis
+            .diagnostic
+            .enable_only(DiagnosticCode::ParamTypeMismatch);
+
+        let file_id = ws.def(
+            r#"
+                ---@class Box
+                local Box = {}
+
+                ---@param value integer
+                function Box.run(value) end
+
+                Box.run("bad")
+            "#,
+        );
+
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .expect("diagnostics");
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::ParamTypeMismatch.get_name().to_string(),
+        ));
+        let diagnostic = diagnostics
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == code)
+            .expect("param type mismatch diagnostic");
+
+        assert!(
+            diagnostic.message.contains("parameter `value` expected"),
+            "{}",
+            diagnostic.message
+        );
     }
 }

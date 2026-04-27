@@ -173,11 +173,8 @@ fn add_table_field_key_completion(builder: &mut CompletionBuilder) -> Option<()>
     let member_infos = builder.semantic_model.get_member_infos(&table_type)?;
 
     let mut duplicated_set = HashSet::new();
-    for field in table_expr.get_fields() {
-        let key = field.get_field_key();
-        if let Some(key) = key {
-            duplicated_set.insert(key.get_path_part());
-        }
+    for (_, key) in table_expr.get_fields_with_keys() {
+        duplicated_set.insert(key.get_path_part());
     }
 
     for member_info in member_infos {

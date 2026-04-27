@@ -5,7 +5,7 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaType, TypeOps,
-    infer_expr, semantic::infer::narrow::get_var_expr_var_ref_id,
+    infer_expr_root, semantic::infer::narrow::get_var_expr_var_ref_id,
 };
 
 pub fn infer_array_member(
@@ -52,7 +52,7 @@ pub fn infer_array_member(
             Ok(result_type)
         }
         LuaIndexKey::Expr(expr) => {
-            let expr_type = infer_expr(db, cache, expr.clone())?;
+            let expr_type = infer_expr_root(db, cache, expr.clone())?;
             if expr_type.is_integer() {
                 let base_type = array_type.get_base();
                 match (array_type.get_len(), expr_type) {
@@ -135,7 +135,7 @@ fn check_index_var_in_range(
             unary_expr
         }
         3 => {
-            let step_type = infer_expr(db, cache, iter_exprs[2].clone()).ok()?;
+            let step_type = infer_expr_root(db, cache, iter_exprs[2].clone()).ok()?;
             let LuaType::IntegerConst(step_value) = step_type else {
                 return None;
             };

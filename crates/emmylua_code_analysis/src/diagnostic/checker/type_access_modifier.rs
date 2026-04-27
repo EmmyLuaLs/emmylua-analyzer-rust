@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashSet};
 
-use crate::{DiagnosticCode, LuaTypeFlag, SemanticModel, db_index::LuaTypeIdentifier};
+use crate::{DiagnosticCode, LuaTypeFlag, SemanticModel};
 
 use super::{Checker, DiagnosticContext};
 
@@ -11,8 +11,8 @@ impl Checker for InconsistentTypeAccessModifierChecker {
 
     fn check(context: &mut DiagnosticContext, _: &SemanticModel) {
         let file_id = context.get_file_id();
-        let current_workspace_id = context.get_db().resolve_workspace_id(file_id);
-        let type_index = context.get_db().get_type_index();
+        let workspace_id = context.type_lookup_workspace_id();
+        let type_index = context.db().get_type_index();
         let mut visited_type_names = HashSet::new();
         let mut pending_diagnostics = Vec::new();
 
@@ -21,19 +21,12 @@ impl Checker for InconsistentTypeAccessModifierChecker {
             if !visited_type_names.insert(type_name.to_string()) {
                 continue;
             }
-            let visible_type_decls = type_index.get_visible_type_decls_by_full_name(
-                file_id,
-                type_name,
-                current_workspace_id,
-            );
+            let visible_type_decls =
+                type_index.get_visible_type_decls_by_full_name(file_id, type_name, workspace_id);
             let mut modifiers = BTreeSet::new();
             let mut current_file_ranges = Vec::new();
 
             for visible_type_decl in visible_type_decls {
-                modifiers.insert(TypeAccessModifier::from_type_identifier(
-                    visible_type_decl.get_id().get_id(),
-                ));
-
                 for location in visible_type_decl.get_locations() {
                     modifiers.insert(TypeAccessModifier::from_location_flags(location.flag));
 
@@ -90,14 +83,6 @@ impl TypeAccessModifier {
             Self::Internal
         } else {
             Self::Public
-        }
-    }
-
-    fn from_type_identifier(type_identifier: &LuaTypeIdentifier) -> Self {
-        match type_identifier {
-            LuaTypeIdentifier::Global(_) => Self::Public,
-            LuaTypeIdentifier::Internal(_, _) => Self::Internal,
-            LuaTypeIdentifier::Local(_, _) => Self::Private,
         }
     }
 

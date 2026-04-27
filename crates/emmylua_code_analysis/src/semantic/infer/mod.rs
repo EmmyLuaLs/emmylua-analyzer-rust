@@ -13,17 +13,21 @@ use std::ops::Deref;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken,
-    LuaTableExpr, LuaVarExpr, NumberResult,
+    LuaTableField, LuaVarExpr, NumberResult,
 };
 use infer_binary::infer_binary_expr;
-use infer_call::infer_call_expr;
 pub use infer_call::infer_call_expr_func;
+use infer_call::{infer_call_expr_root, infer_call_expr};
 pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
 pub use infer_fail_reason::InferFailReason;
 pub use infer_index::infer_index_expr;
-use infer_name::infer_name_expr;
-pub use infer_name::{find_self_decl_or_member_id, infer_param};
-use infer_table::infer_table_expr;
+use infer_index::infer_index_expr_root;
+pub use infer_name::{find_self_decl_or_member_id, infer_param, infer_param_with_cache};
+use infer_name::{infer_name_expr_root, infer_name_expr};
+use infer_table::{
+    infer_table_expr_root, infer_table_expr, infer_table_field_value_should_be_root,
+};
+pub(crate) use infer_table::infer_table_should_be_root;
 pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
 use infer_unary::infer_unary_expr;
 pub use narrow::VarRefId;
@@ -33,16 +37,44 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
-    InFiled, InferGuard, LuaMemberKey, VariadicType,
+    InFiled, InferGuard, LuaCompilation, LuaTypeCache, LuaTypeOwner, VariadicType,
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
 };
 
-use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
+use super::{CacheEntry, LuaInferCache};
 
 pub type InferResult = Result<LuaType, InferFailReason>;
 pub use infer_call::InferCallFuncResult;
 
-pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> InferResult {
+fn get_type_cache<'a>(
+    compilation: Option<&'a LuaCompilation>,
+    db: &'a DbIndex,
+    owner: &LuaTypeOwner,
+) -> Option<&'a LuaTypeCache> {
+    compilation
+        .and_then(|compilation| compilation.get_type_cache(owner))
+        .or_else(|| db.get_type_index().get_type_cache(owner))
+}
+
+pub(crate) fn infer_expr_root(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> InferResult {
+    infer_expr_inner(None, db, cache, expr)
+}
+
+pub fn infer_expr(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+) -> InferResult {
+    infer_expr_inner(Some(compilation), db, cache, expr)
+}
+
+fn infer_expr_inner(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+) -> InferResult {
     let syntax_id = expr.get_syntax_id();
     let key = syntax_id;
     if let Some(cache) = cache.expr_cache.get(&key) {
@@ -55,10 +87,7 @@ pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> Inf
     // for @as
     let file_id = cache.get_file_id();
     let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
-    if let Some(bind_type_cache) = db
-        .get_type_index()
-        .get_type_cache(&in_filed_syntax_id.into())
-    {
+    if let Some(bind_type_cache) = get_type_cache(compilation, db, &in_filed_syntax_id.into()) {
         cache
             .expr_cache
             .insert(key, CacheEntry::Cache(bind_type_cache.as_type().clone()));
@@ -67,19 +96,40 @@ pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> Inf
 
     cache.expr_cache.insert(key, CacheEntry::Ready);
     let result_type = match expr {
-        LuaExpr::CallExpr(call_expr) => infer_call_expr(db, cache, call_expr),
-        LuaExpr::TableExpr(table_expr) => infer_table_expr(db, cache, table_expr),
+        LuaExpr::CallExpr(call_expr) => match compilation {
+            Some(compilation) => {
+                infer_call_expr(compilation, db, cache, call_expr)
+            }
+            None => infer_call_expr_root(db, cache, call_expr),
+        },
+        LuaExpr::TableExpr(table_expr) => match compilation {
+            Some(compilation) => {
+                infer_table_expr(compilation, db, cache, table_expr)
+            }
+            None => infer_table_expr_root(db, cache, table_expr),
+        },
         LuaExpr::LiteralExpr(literal_expr) => infer_literal_expr(db, cache, literal_expr),
         LuaExpr::BinaryExpr(binary_expr) => infer_binary_expr(db, cache, binary_expr),
         LuaExpr::UnaryExpr(unary_expr) => infer_unary_expr(db, cache, unary_expr),
         LuaExpr::ClosureExpr(closure_expr) => infer_closure_expr(db, cache, closure_expr),
-        LuaExpr::ParenExpr(paren_expr) => infer_expr(
+        LuaExpr::ParenExpr(paren_expr) => infer_expr_inner(
+            compilation,
             db,
             cache,
             paren_expr.get_expr().ok_or(InferFailReason::None)?,
         ),
-        LuaExpr::NameExpr(name_expr) => infer_name_expr(db, cache, name_expr),
-        LuaExpr::IndexExpr(index_expr) => infer_index_expr(db, cache, index_expr, true),
+        LuaExpr::NameExpr(name_expr) => match compilation {
+            Some(compilation) => {
+                infer_name_expr(compilation, db, cache, name_expr)
+            }
+            None => infer_name_expr_root(db, cache, name_expr),
+        },
+        LuaExpr::IndexExpr(index_expr) => match compilation {
+            Some(compilation) => {
+                infer_index_expr(compilation, db, cache, index_expr, true)
+            }
+            None => infer_index_expr_root(db, cache, index_expr, true),
+        },
     };
 
     match &result_type {
@@ -188,7 +238,7 @@ pub fn infer_expr_list_value_type_at(
         Ok(None)
     } else if value_idx < exprs_len {
         Ok(
-            infer_expr_list_types(db, cache, &exprs[value_idx..], Some(1), infer_expr)?
+            infer_expr_list_types(db, cache, &exprs[value_idx..], Some(1), infer_expr_root)?
                 .first()
                 .map(|(ty, _)| ty.clone()),
         )
@@ -196,7 +246,7 @@ pub fn infer_expr_list_value_type_at(
         let last_idx = exprs_len - 1;
         let offset = value_idx - last_idx;
         Ok(
-            infer_expr_list_types(db, cache, &exprs[last_idx..], Some(offset + 1), infer_expr)?
+            infer_expr_list_types(db, cache, &exprs[last_idx..], Some(offset + 1), infer_expr_root)?
                 .get(offset)
                 .map(|(ty, _)| ty.clone()),
         )
@@ -261,11 +311,42 @@ where
 }
 
 /// 推断值已经绑定的类型(不是推断值的类型). 例如从右值推断左值类型, 从调用参数推断函数参数类型参数类型
-pub fn infer_bind_value_type(
+pub(crate) fn infer_bind_value_type_root(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     expr: LuaExpr,
 ) -> Option<LuaType> {
+    infer_bind_value_type_inner(None, db, cache, expr)
+}
+
+pub fn infer_bind_value_type(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+) -> Option<LuaType> {
+    infer_bind_value_type_inner(Some(compilation), db, cache, expr)
+}
+
+fn infer_bind_value_type_inner(
+    compilation: Option<&LuaCompilation>,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+) -> Option<LuaType> {
+    if let Some(table_field) = expr.ancestors::<LuaTableField>().next() {
+        return match compilation {
+            Some(compilation) => infer_table::infer_table_field_value_should_be(
+                compilation,
+                db,
+                cache,
+                table_field,
+            )
+            .ok(),
+            None => infer_table_field_value_should_be_root(db, cache, table_field).ok(),
+        };
+    }
+
     let parent_node = expr.syntax().parent().and_then(LuaAst::cast)?;
 
     match parent_node {
@@ -278,13 +359,16 @@ pub fn infer_bind_value_type(
                     if let Some(var) = var {
                         if let LuaVarExpr::IndexExpr(index_expr) = var {
                             let prefix_expr = index_expr.get_prefix_expr()?;
-                            let prefix_type = infer_expr(db, cache, prefix_expr).ok()?;
+                            let prefix_type =
+                                infer_expr_inner(compilation, db, cache, prefix_expr).ok()?;
                             // 如果前缀类型是定义类型, 则不认为存在左值绑定
                             if let LuaType::Def(_) = prefix_type {
                                 return None;
                             }
                         };
-                        typ = Some(infer_expr(db, cache, var.clone().into()).ok()?);
+                        typ = Some(
+                            infer_expr_inner(compilation, db, cache, var.clone().into()).ok()?,
+                        );
                         break;
                     }
                 }
@@ -292,18 +376,7 @@ pub fn infer_bind_value_type(
             typ
         }
         LuaAst::LuaTableField(table_field) => {
-            let field_key = table_field.get_field_key()?;
-            let table_expr = table_field.get_parent::<LuaTableExpr>()?;
-            let table_type = infer_table_should_be(db, cache, table_expr.clone()).ok()?;
-            let member_key = match LuaMemberKey::from_index_key(db, cache, &field_key) {
-                Ok(key) => key,
-                Err(_) => return None,
-            };
-            match infer_raw_member_type(db, &table_type, &member_key) {
-                Ok(typ) => Some(typ),
-                Err(InferFailReason::FieldNotFound) => None,
-                Err(_) => Some(LuaType::Unknown),
-            }
+            infer_table_field_value_should_be_root(db, cache, table_field).ok()
         }
         LuaAst::LuaCallArgList(call_arg_list) => {
             let call_expr = call_arg_list.get_parent::<LuaCallExpr>()?;
@@ -317,7 +390,8 @@ pub fn infer_bind_value_type(
             }
             let is_colon_call = call_expr.is_colon_call();
 
-            let expr_type = infer_expr(db, cache, call_expr.get_prefix_expr()?).ok()?;
+            let expr_type =
+                infer_expr_inner(compilation, db, cache, call_expr.get_prefix_expr()?).ok()?;
             let func_type = infer_call_expr_func(
                 db,
                 cache,

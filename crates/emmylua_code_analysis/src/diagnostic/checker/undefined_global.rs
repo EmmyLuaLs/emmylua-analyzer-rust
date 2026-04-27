@@ -27,7 +27,7 @@ fn calc_name_expr_ref(
     use_range_set: &mut HashSet<TextRange>,
 ) -> Option<()> {
     let file_id = semantic_model.get_file_id();
-    let db = semantic_model.get_db();
+    let db = semantic_model.get_compilation().legacy_db();
     let refs_index = db.get_reference_index().get_local_reference(&file_id)?;
     for decl_refs in refs_index.get_decl_references_map().values() {
         for decl_ref in &decl_refs.cells {
@@ -55,7 +55,8 @@ fn check_name_expr(
     }
 
     if semantic_model
-        .get_db()
+        .get_compilation()
+        .legacy_db()
         .get_global_index()
         .is_exist_global_decl(&name_text)
     {
@@ -98,10 +99,7 @@ fn check_self_name(semantic_model: &SemanticModel, name_expr: LuaNameExpr) -> Op
     for closure_expr in closure_expr {
         let signature_id =
             LuaSignatureId::from_closure(semantic_model.get_file_id(), &closure_expr);
-        let signature = semantic_model
-            .get_db()
-            .get_signature_index()
-            .get(&signature_id)?;
+        let signature = semantic_model.get_signature(&signature_id)?;
         if signature.is_method(semantic_model, None) {
             return Some(());
         }

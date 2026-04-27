@@ -6,24 +6,26 @@ use emmylua_parser::{
 };
 
 use crate::{
-    InFiled, InferGuard, LuaArrayType, LuaDeclId, LuaInferCache, LuaMemberId, LuaTupleStatus,
-    LuaTupleType, LuaUnionType, TypeOps, VariadicType, check_type_compact,
+    InFiled, InferGuard, LuaArrayType, LuaCompilation, LuaDeclId, LuaInferCache, LuaMemberId,
+    LuaTupleStatus, LuaTupleType, LuaTypeCache, LuaTypeOwner, LuaUnionType, TypeOps, VariadicType,
+    check_type_compact,
     db_index::{DbIndex, LuaType},
-    infer_call_expr_func, infer_expr,
+    infer_call_expr_func, infer_expr_root, infer_expr,
 };
 
 use super::{
     InferFailReason, InferResult,
     infer_index::{infer_member_by_member_key, infer_member_by_operator},
 };
+use crate::semantic::member::find_members_with_key_in_scope;
 
-pub fn infer_table_expr(
+pub(crate) fn infer_table_expr_root(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     table: LuaTableExpr,
 ) -> InferResult {
     if table.is_array() {
-        return infer_table_tuple_or_array(db, cache, table);
+        return infer_table_tuple_or_array_legacy(db, cache, table);
     }
 
     Ok(LuaType::TableConst(crate::InFiled {
@@ -32,14 +34,46 @@ pub fn infer_table_expr(
     }))
 }
 
-fn infer_table_tuple_or_array(
+pub fn infer_table_expr(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table: LuaTableExpr,
+) -> InferResult {
+    infer_table_expr_inner(compilation, db, cache, table)
+}
+
+fn get_compilation_type_cache<'a>(
+    compilation: &'a LuaCompilation,
+    owner: &LuaTypeOwner,
+) -> Option<&'a LuaTypeCache> {
+    compilation.get_type_cache(owner)
+}
+
+fn infer_table_expr_inner(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table: LuaTableExpr,
+) -> InferResult {
+    if table.is_array() {
+        return infer_table_tuple_or_array(compilation, db, cache, table);
+    }
+
+    Ok(LuaType::TableConst(crate::InFiled {
+        file_id: cache.get_file_id(),
+        value: table.get_range(),
+    }))
+}
+
+fn infer_table_tuple_or_array_legacy(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     table: LuaTableExpr,
 ) -> InferResult {
     let fields = table.get_fields().collect::<Vec<_>>();
     if fields.len() > 50 {
-        let first_type = infer_expr(
+        let first_type = infer_expr_root(
             db,
             cache,
             fields[0].get_value_expr().ok_or(InferFailReason::None)?,
@@ -53,7 +87,7 @@ fn infer_table_tuple_or_array(
         let first_value_expr = first_field.get_value_expr().ok_or(InferFailReason::None)?;
 
         if is_dots_expr(&first_value_expr).unwrap_or(false) {
-            let first_expr_type = infer_expr(db, cache, first_value_expr)?;
+            let first_expr_type = infer_expr_root(db, cache, first_value_expr)?;
             match &first_expr_type {
                 LuaType::Variadic(multi) => match &multi.deref() {
                     VariadicType::Base(base) => {
@@ -78,7 +112,7 @@ fn infer_table_tuple_or_array(
 
     if let Some(last_field) = fields.last() {
         let last_value_expr = last_field.get_value_expr().ok_or(InferFailReason::None)?;
-        let last_expr_type = infer_expr(db, cache, last_value_expr)?;
+        let last_expr_type = infer_expr_root(db, cache, last_value_expr)?;
         if let LuaType::Variadic(multi) = last_expr_type
             && let VariadicType::Base(base) = &multi.deref()
         {
@@ -93,7 +127,7 @@ fn infer_table_tuple_or_array(
             for i in 0..len {
                 let field = fields.get(i).ok_or(InferFailReason::None)?;
                 let value_expr = field.get_value_expr().ok_or(InferFailReason::None)?;
-                let typ = infer_expr(db, cache, value_expr)?;
+                let typ = infer_expr_root(db, cache, value_expr)?;
                 if check_type_compact(db, &non_nil_base, &typ).is_err() {
                     all_can_accept_base = false;
                     break;
@@ -111,7 +145,103 @@ fn infer_table_tuple_or_array(
     let mut types = Vec::new();
     for field in fields {
         let value_expr = field.get_value_expr().ok_or(InferFailReason::None)?;
-        let typ = infer_expr(db, cache, value_expr)?;
+        let typ = infer_expr_root(db, cache, value_expr)?;
+        match typ {
+            LuaType::Variadic(multi) => flatten_multi_into_tuple(&mut types, &multi),
+            _ => {
+                types.push(typ);
+            }
+        }
+    }
+
+    Ok(LuaType::Tuple(
+        LuaTupleType::new(types, LuaTupleStatus::InferResolve).into(),
+    ))
+}
+
+fn infer_table_tuple_or_array(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table: LuaTableExpr,
+) -> InferResult {
+    let fields = table.get_fields().collect::<Vec<_>>();
+    if fields.len() > 50 {
+        let first_type = infer_expr(
+            compilation,
+            db,
+            cache,
+            fields[0].get_value_expr().ok_or(InferFailReason::None)?,
+        )?;
+        return Ok(LuaType::Array(
+            LuaArrayType::from_base_type(first_type).into(),
+        ));
+    }
+
+    if let Some(first_field) = fields.first() {
+        let first_value_expr = first_field.get_value_expr().ok_or(InferFailReason::None)?;
+
+        if is_dots_expr(&first_value_expr).unwrap_or(false) {
+            let first_expr_type =
+                infer_expr(compilation, db, cache, first_value_expr)?;
+            match &first_expr_type {
+                LuaType::Variadic(multi) => match &multi.deref() {
+                    VariadicType::Base(base) => {
+                        return Ok(LuaType::Array(
+                            LuaArrayType::from_base_type(base.clone()).into(),
+                        ));
+                    }
+                    VariadicType::Multi(tuple) => {
+                        return Ok(LuaType::Tuple(
+                            LuaTupleType::new(tuple.clone(), LuaTupleStatus::InferResolve).into(),
+                        ));
+                    }
+                },
+                _ => {
+                    return Ok(LuaType::Array(
+                        LuaArrayType::from_base_type(first_expr_type).into(),
+                    ));
+                }
+            };
+        }
+    }
+
+    if let Some(last_field) = fields.last() {
+        let last_value_expr = last_field.get_value_expr().ok_or(InferFailReason::None)?;
+        let last_expr_type = infer_expr(compilation, db, cache, last_value_expr)?;
+        if let LuaType::Variadic(multi) = last_expr_type
+            && let VariadicType::Base(base) = &multi.deref()
+        {
+            let non_nil_base = TypeOps::Remove.apply(db, base, &LuaType::Nil);
+            if fields.len() <= 1 {
+                return Ok(LuaType::Array(
+                    LuaArrayType::from_base_type(non_nil_base).into(),
+                ));
+            }
+            let len = fields.len() - 1;
+            let mut all_can_accept_base = true;
+            for i in 0..len {
+                let field = fields.get(i).ok_or(InferFailReason::None)?;
+                let value_expr = field.get_value_expr().ok_or(InferFailReason::None)?;
+                let typ = infer_expr(compilation, db, cache, value_expr)?;
+                if check_type_compact(db, &non_nil_base, &typ).is_err() {
+                    all_can_accept_base = false;
+                    break;
+                }
+            }
+
+            if all_can_accept_base {
+                return Ok(LuaType::Array(
+                    LuaArrayType::from_base_type(non_nil_base).into(),
+                ));
+            }
+        };
+    }
+
+    let mut types = Vec::new();
+    for field in fields {
+        let value_expr = field.get_value_expr().ok_or(InferFailReason::None)?;
+        let typ = infer_expr(compilation, db, cache, value_expr)?;
         match typ {
             LuaType::Variadic(multi) => flatten_multi_into_tuple(&mut types, &multi),
             _ => {
@@ -155,19 +285,19 @@ fn is_dots_expr(expr: &LuaExpr) -> Option<bool> {
     Some(false)
 }
 
-pub fn infer_table_should_be(
+pub(crate) fn infer_table_should_be_root(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     table: LuaTableExpr,
 ) -> InferResult {
     match table.get_parent::<LuaAst>().ok_or(InferFailReason::None)? {
         LuaAst::LuaCallArgList(call_arg_list) => {
-            infer_table_type_by_callee(db, cache, call_arg_list, table)
+            infer_table_type_by_callee_legacy(db, cache, call_arg_list, table)
         }
-        LuaAst::LuaTableField(field) => infer_table_field_type_by_parent(db, cache, field),
+        LuaAst::LuaTableField(field) => infer_table_field_type_by_parent_legacy(db, cache, field),
         LuaAst::LuaLocalStat(local) => infer_table_type_by_local(db, cache, local, table),
         LuaAst::LuaAssignStat(assign_stat) => {
-            infer_table_type_by_assign_stat(db, cache, assign_stat, table)
+            infer_table_type_by_assign_stat_legacy(db, cache, assign_stat, table)
         }
         LuaAst::LuaReturnStat(return_stat) => {
             infer_table_type_by_return_stat(db, cache, return_stat, table)
@@ -176,7 +306,56 @@ pub fn infer_table_should_be(
     }
 }
 
+pub fn infer_table_should_be(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table: LuaTableExpr,
+) -> InferResult {
+    infer_table_should_be_inner(compilation, db, cache, table)
+}
+
+fn infer_table_should_be_inner(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table: LuaTableExpr,
+) -> InferResult {
+    match table.get_parent::<LuaAst>().ok_or(InferFailReason::None)? {
+        LuaAst::LuaCallArgList(call_arg_list) => {
+            infer_table_type_by_callee(compilation, db, cache, call_arg_list, table)
+        }
+        LuaAst::LuaTableField(field) => {
+            infer_table_field_type_by_parent(compilation, db, cache, field)
+        }
+        LuaAst::LuaLocalStat(local) => infer_table_type_by_local_compilation(compilation, cache, local, table),
+        LuaAst::LuaAssignStat(assign_stat) => {
+            infer_table_type_by_assign_stat(compilation, db, cache, assign_stat, table)
+        }
+        LuaAst::LuaReturnStat(return_stat) => infer_table_type_by_return_stat_compilation(compilation, cache, return_stat, table),
+        _ => Err(InferFailReason::None),
+    }
+}
+
+pub(crate) fn infer_table_field_value_should_be_root(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table_field: LuaTableField,
+) -> InferResult {
+    infer_table_field_value_should_be_inner_legacy(db, cache, table_field)
+}
+
 pub fn infer_table_field_value_should_be(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table_field: LuaTableField,
+) -> InferResult {
+    infer_table_field_value_should_be_inner(compilation, db, cache, table_field)
+}
+
+fn infer_table_field_value_should_be_inner(
+    compilation: &LuaCompilation,
     db: &DbIndex,
     cache: &mut LuaInferCache,
     table_field: LuaTableField,
@@ -184,7 +363,39 @@ pub fn infer_table_field_value_should_be(
     let parnet_table_expr = table_field
         .get_parent::<LuaTableExpr>()
         .ok_or(InferFailReason::None)?;
-    let parent_table_expr_type = infer_table_should_be(db, cache, parnet_table_expr)?;
+    let parent_table_expr_type =
+        infer_table_should_be_inner(compilation, db, cache, parnet_table_expr)?;
+    if let Some(field_key) = table_field.get_field_key()
+        && let Ok(member_key) = crate::LuaMemberKey::from_index_key(db, cache, &field_key)
+        && let Some(mut members) = find_members_with_key_in_scope(
+            compilation,
+            cache.get_file_id(),
+            &parent_table_expr_type,
+            member_key,
+            false,
+        )
+        && let Some(member) = members.pop()
+    {
+        return Ok(member.typ);
+    }
+
+    let member_id = LuaMemberId::new(table_field.get_syntax_id(), cache.get_file_id());
+    if let Some(type_cache) = get_compilation_type_cache(compilation, &member_id.into()) {
+        return Ok(type_cache.as_type().clone());
+    };
+
+    Err(InferFailReason::FieldNotFound)
+}
+
+fn infer_table_field_value_should_be_inner_legacy(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    table_field: LuaTableField,
+) -> InferResult {
+    let parnet_table_expr = table_field
+        .get_parent::<LuaTableExpr>()
+        .ok_or(InferFailReason::None)?;
+    let parent_table_expr_type = infer_table_should_be_root(db, cache, parnet_table_expr)?;
     let index = LuaIndexMemberExpr::TableField(table_field.clone());
     let reason = match infer_member_by_member_key(
         db,
@@ -219,6 +430,7 @@ pub fn infer_table_field_value_should_be(
 }
 
 fn infer_table_type_by_callee(
+    compilation: &LuaCompilation,
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_arg_list: LuaCallArgList,
@@ -228,7 +440,7 @@ fn infer_table_type_by_callee(
         .get_parent::<LuaCallExpr>()
         .ok_or(InferFailReason::None)?;
     let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let prefix_type = infer_expr(db, cache, prefix_expr)?;
+    let prefix_type = infer_expr(compilation, db, cache, prefix_expr)?;
     let func_type = infer_call_expr_func(
         db,
         cache,
@@ -271,6 +483,58 @@ fn infer_table_type_by_callee(
     Ok(typ)
 }
 
+fn infer_table_type_by_callee_legacy(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_arg_list: LuaCallArgList,
+    table_expr: LuaTableExpr,
+) -> InferResult {
+    let call_expr = call_arg_list
+        .get_parent::<LuaCallExpr>()
+        .ok_or(InferFailReason::None)?;
+    let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
+    let prefix_type = infer_expr_root(db, cache, prefix_expr)?;
+    let func_type = infer_call_expr_func(
+        db,
+        cache,
+        call_expr.clone(),
+        prefix_type,
+        &InferGuard::new(),
+        None,
+    )?;
+    let param_types = func_type.get_params();
+    let mut call_arg_number = call_arg_list
+        .children::<LuaAst>()
+        .enumerate()
+        .find(|(_, arg)| arg.get_position() == table_expr.get_position())
+        .ok_or(InferFailReason::None)?
+        .0;
+    match (func_type.is_colon_define(), call_expr.is_colon_call()) {
+        (true, true) | (false, false) => {}
+        (false, true) => {
+            call_arg_number += 1;
+        }
+        (true, false) => {
+            call_arg_number = call_arg_number.saturating_sub(1);
+        }
+    }
+    let typ = param_types
+        .get(call_arg_number)
+        .ok_or(InferFailReason::None)?
+        .1
+        .clone()
+        .unwrap_or(LuaType::Any);
+    match &typ {
+        LuaType::TableConst(_) => {}
+        LuaType::Union(union) => {
+            return Ok(union_remove_non_table_type(db, union));
+        }
+        _ => {}
+    }
+
+    Ok(typ)
+}
+
 /// 移除掉一些非`table`类型
 fn union_remove_non_table_type(db: &DbIndex, union: &Arc<LuaUnionType>) -> LuaType {
     let mut result = None;
@@ -290,12 +554,13 @@ fn union_remove_non_table_type(db: &DbIndex, union: &Arc<LuaUnionType>) -> LuaTy
 }
 
 fn infer_table_field_type_by_parent(
+    compilation: &LuaCompilation,
     db: &DbIndex,
     cache: &mut LuaInferCache,
     field: LuaTableField,
 ) -> InferResult {
     let member_id = LuaMemberId::new(field.get_syntax_id(), cache.get_file_id());
-    if let Some(type_cache) = db.get_type_index().get_type_cache(&member_id.into()) {
+    if let Some(type_cache) = get_compilation_type_cache(compilation, &member_id.into()) {
         if type_cache.is_doc() {
             let typ = type_cache.as_type();
             match typ {
@@ -312,7 +577,7 @@ fn infer_table_field_type_by_parent(
             }
         }
     } else if field.is_value_field() {
-        return infer_table_field_value_should_be(db, cache, field);
+        return infer_table_field_value_should_be_inner(compilation, db, cache, field);
     } else {
         return Err(InferFailReason::UnResolveMemberType(member_id));
     }
@@ -320,7 +585,57 @@ fn infer_table_field_type_by_parent(
     let parnet_table_expr = field
         .get_parent::<LuaTableExpr>()
         .ok_or(InferFailReason::None)?;
-    let parent_table_expr_type = infer_table_should_be(db, cache, parnet_table_expr)?;
+    let parent_table_expr_type =
+        infer_table_should_be_inner(compilation, db, cache, parnet_table_expr)?;
+
+    if let Some(field_key) = field.get_field_key()
+        && let Ok(member_key) = crate::LuaMemberKey::from_index_key(db, cache, &field_key)
+        && let Some(mut members) = find_members_with_key_in_scope(
+            compilation,
+            cache.get_file_id(),
+            &parent_table_expr_type,
+            member_key,
+            false,
+        )
+        && let Some(member) = members.pop()
+    {
+        return Ok(member.typ);
+    }
+
+    Err(InferFailReason::FieldNotFound)
+}
+
+fn infer_table_field_type_by_parent_legacy(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    field: LuaTableField,
+) -> InferResult {
+    let member_id = LuaMemberId::new(field.get_syntax_id(), cache.get_file_id());
+    if let Some(type_cache) = db.get_type_index().get_type_cache(&member_id.into()) {
+        if type_cache.is_doc() {
+            let typ = type_cache.as_type();
+            match typ {
+                LuaType::TableConst(_) => {}
+                LuaType::Tuple(tuple) => {
+                    let types = tuple.get_types();
+                    if tuple.is_infer_resolve() && types.len() == 1 && types[0].is_unknown() {
+                    } else {
+                        return Ok(typ.clone());
+                    }
+                }
+                typ => return Ok(typ.clone()),
+            }
+        }
+    } else if field.is_value_field() {
+        return infer_table_field_value_should_be_inner_legacy(db, cache, field);
+    } else {
+        return Err(InferFailReason::UnResolveMemberType(member_id));
+    }
+
+    let parnet_table_expr = field
+        .get_parent::<LuaTableExpr>()
+        .ok_or(InferFailReason::None)?;
+    let parent_table_expr_type = infer_table_should_be_root(db, cache, parnet_table_expr)?;
 
     let index = LuaIndexMemberExpr::TableField(field);
     let reason = match infer_member_by_member_key(
@@ -376,7 +691,64 @@ fn infer_table_type_by_local(
     }
 }
 
+fn infer_table_type_by_local_compilation(
+    compilation: &LuaCompilation,
+    cache: &mut LuaInferCache,
+    local: LuaLocalStat,
+    table_expr: LuaTableExpr,
+) -> InferResult {
+    let local_names = local.get_local_name_list().collect::<Vec<_>>();
+    let values = local.get_value_exprs().collect::<Vec<_>>();
+    let num = values
+        .iter()
+        .enumerate()
+        .find(|(_, value)| value.get_position() == table_expr.get_position())
+        .ok_or(InferFailReason::None)?
+        .0;
+
+    let local_name = local_names.get(num).ok_or(InferFailReason::None)?;
+    let decl_id = LuaDeclId::new(cache.get_file_id(), local_name.get_position());
+    match get_compilation_type_cache(compilation, &decl_id.into()) {
+        Some(type_cache) => match type_cache.as_type() {
+            LuaType::TableConst(_) => Err(InferFailReason::None),
+            typ => Ok(typ.clone()),
+        },
+        None => Err(InferFailReason::UnResolveDeclType(decl_id)),
+    }
+}
+
 fn infer_table_type_by_assign_stat(
+    compilation: &LuaCompilation,
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    assign_stat: LuaAssignStat,
+    table_expr: LuaTableExpr,
+) -> InferResult {
+    let (vars, exprs) = assign_stat.get_var_and_expr_list();
+    let num = exprs
+        .iter()
+        .enumerate()
+        .find(|(_, expr)| expr.get_position() == table_expr.get_position())
+        .ok_or(InferFailReason::None)?
+        .0;
+    let name = vars.get(num).ok_or(InferFailReason::None)?;
+
+    let decl_id = LuaDeclId::new(cache.get_file_id(), name.get_position());
+    if db.get_decl_index().get_decl(&decl_id).is_some() {
+        match get_compilation_type_cache(compilation, &decl_id.into()) {
+            Some(type_cache) => match type_cache.as_type() {
+                LuaType::TableConst(_) => Err(InferFailReason::None),
+                typ => Ok(typ.clone()),
+            },
+            None => Err(InferFailReason::UnResolveDeclType(decl_id)),
+        }
+    } else {
+        let expr = LuaExpr::cast(name.syntax().clone()).ok_or(InferFailReason::None)?;
+        infer_expr(compilation, db, cache, expr)
+    }
+}
+
+fn infer_table_type_by_assign_stat_legacy(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     assign_stat: LuaAssignStat,
@@ -401,7 +773,7 @@ fn infer_table_type_by_assign_stat(
             None => Err(InferFailReason::UnResolveDeclType(decl_id)),
         }
     } else {
-        infer_expr(
+        infer_expr_root(
             db,
             cache,
             LuaExpr::cast(name.syntax().clone()).ok_or(InferFailReason::None)?,
@@ -420,6 +792,23 @@ fn infer_table_type_by_return_stat(
         .get_type_index()
         .get_type_cache(&in_file_syntax_id.into())
     {
+        Some(cache) => cache,
+        None => {
+            let in_file_range = InFiled::new(cache.get_file_id(), table_expr.get_range());
+            return Ok(LuaType::TableConst(in_file_range));
+        }
+    };
+    Ok(cache_type.as_type().clone())
+}
+
+fn infer_table_type_by_return_stat_compilation(
+    compilation: &LuaCompilation,
+    cache: &mut LuaInferCache,
+    return_stat: LuaReturnStat,
+    table_expr: LuaTableExpr,
+) -> InferResult {
+    let in_file_syntax_id = InFiled::new(cache.get_file_id(), return_stat.get_syntax_id());
+    let cache_type = match get_compilation_type_cache(compilation, &in_file_syntax_id.into()) {
         Some(cache) => cache,
         None => {
             let in_file_range = InFiled::new(cache.get_file_id(), table_expr.get_range());

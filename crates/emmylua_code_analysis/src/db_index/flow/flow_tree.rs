@@ -51,6 +51,26 @@ impl FlowTree {
         self.decl_bind_expr_ref.get(decl_id).cloned()
     }
 
+    pub fn get_flow_nodes(&self) -> &[FlowNode] {
+        self.flow_nodes.as_slice()
+    }
+
+    pub fn get_multiple_antecedents(&self) -> &[Vec<FlowId>] {
+        self.multiple_antecedents.as_slice()
+    }
+
+    pub fn get_bindings(&self) -> &HashMap<LuaSyntaxId, FlowId> {
+        &self.bindings
+    }
+
+    pub fn get_decl_bind_expr_refs(&self) -> &HashMap<LuaDeclId, LuaAstPtr<LuaExpr>> {
+        &self.decl_bind_expr_ref
+    }
+
+    pub fn get_decl_multi_return_refs(&self) -> &HashMap<LuaDeclId, Vec<DeclMultiReturnRefAt>> {
+        &self.decl_multi_return_ref
+    }
+
     pub fn has_decl_multi_return_refs(&self, decl_id: &LuaDeclId) -> bool {
         self.decl_multi_return_ref.contains_key(decl_id)
     }

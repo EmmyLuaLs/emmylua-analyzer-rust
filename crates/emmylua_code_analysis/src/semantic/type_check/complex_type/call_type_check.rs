@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     LuaAliasCallKind, LuaAliasCallType, LuaMemberKey, LuaType, LuaUnionType, TypeCheckFailReason,
-    TypeCheckResult, get_keyof_members,
+    TypeCheckResult, get_keyof_members_inner,
     semantic::type_check::{
         check_general_type_compact, type_check_context::TypeCheckContext,
         type_check_guard::TypeCheckGuard,
@@ -69,7 +69,7 @@ pub fn check_call_type_compact(
 }
 
 fn get_keyof_keys(context: &TypeCheckContext, prefix_type: &LuaType) -> Vec<LuaType> {
-    let members = get_keyof_members(context.db, prefix_type).unwrap_or_default();
+    let members = get_keyof_members_inner(context.db(), prefix_type).unwrap_or_default();
     let key_types = members
         .iter()
         .filter_map(|m| match &m.key {

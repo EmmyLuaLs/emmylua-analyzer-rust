@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use super::lua_member_feature::LuaMemberFeature;
-use crate::{DbIndex, FileId, GlobalId, InferFailReason, LuaInferCache, LuaType, infer_expr};
+use crate::{DbIndex, FileId, GlobalId, InferFailReason, LuaInferCache, LuaType, infer_expr_root};
 
 #[derive(Debug)]
 pub struct LuaMember {
@@ -116,7 +116,7 @@ impl LuaMemberKey {
             }
             LuaIndexKey::Idx(idx) => Ok(LuaMemberKey::Integer(*idx as i64)),
             LuaIndexKey::Expr(expr) => {
-                let expr_type = infer_expr(db, cache, expr.clone())?;
+                let expr_type = infer_expr_root(db, cache, expr.clone())?;
                 match expr_type {
                     LuaType::StringConst(s) => Ok(LuaMemberKey::Name(s.deref().clone())),
                     LuaType::DocStringConst(s) => Ok(LuaMemberKey::Name(s.deref().clone())),

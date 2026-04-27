@@ -2,7 +2,7 @@ use rowan::TextRange;
 
 use crate::DiagnosticCode;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticAction {
     range: TextRange,
     kind: DiagnosticActionKind,
@@ -50,7 +50,7 @@ impl DiagnosticAction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticActionKind {
     Disable(DiagnosticCode),
     Enable(DiagnosticCode), // donot use this
