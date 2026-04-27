@@ -8,31 +8,50 @@ mod tests {
     #[test]
     fn test_shebang_preserved() {
         assert_format!(
-            "#!/usr/bin/lua\nlocal a=1\n",
-            "#!/usr/bin/lua\nlocal a = 1\n"
+            r#"#!/usr/bin/lua
+local a=1
+"#,
+            r#"#!/usr/bin/lua
+local a = 1
+"#
         );
     }
 
     #[test]
     fn test_shebang_env() {
         assert_format!(
-            "#!/usr/bin/env lua\nprint(1)\n",
-            "#!/usr/bin/env lua\nprint(1)\n"
+            r#"#!/usr/bin/env lua
+print(1)
+"#,
+            r#"#!/usr/bin/env lua
+print(1)
+"#
         );
     }
 
     #[test]
     fn test_shebang_with_code() {
         assert_format!(
-            "#!/usr/bin/lua\nlocal x=1\nlocal y=2\n",
-            "#!/usr/bin/lua\nlocal x = 1\nlocal y = 2\n"
+            r#"#!/usr/bin/lua
+local x=1
+local y=2
+"#,
+            r#"#!/usr/bin/lua
+local x = 1
+local y = 2
+"#
         );
     }
 
     #[test]
     fn test_no_shebang() {
         // Ensure normal code without shebang still works
-        assert_format!("local a = 1\n", "local a = 1\n");
+        assert_format!(
+            r#"local a = 1
+"#,
+            r#"local a = 1
+"#
+        );
     }
 
     // ========== long string preservation ==========
@@ -41,8 +60,14 @@ mod tests {
     fn test_long_string_preserves_trailing_spaces() {
         // Long string content including trailing spaces must be preserved exactly
         assert_format!(
-            "local s = [[  hello   \n  world   \n]]\n",
-            "local s = [[  hello   \n  world   \n]]\n"
+            r#"local s = [[  hello   
+  world   
+]]
+"#,
+            r#"local s = [[  hello   
+  world   
+]]
+"#
         );
     }
 
@@ -77,7 +102,11 @@ end
         );
         assert_eq!(
             first, second,
-            "Formatter is not idempotent!\nFirst pass:\n{first}\nSecond pass:\n{second}"
+            r#"Formatter is not idempotent!
+First pass:
+{first}
+Second pass:
+{second}"#
         );
     }
 
@@ -109,7 +138,11 @@ local t = {
         );
         assert_eq!(
             first, second,
-            "Formatter is not idempotent for tables!\nFirst pass:\n{first}\nSecond pass:\n{second}"
+            r#"Formatter is not idempotent for tables!
+First pass:
+{first}
+Second pass:
+{second}"#
         );
     }
 
@@ -153,7 +186,11 @@ end
         );
         assert_eq!(
             first, second,
-            "Formatter is not idempotent for complex code!\nFirst pass:\n{first}\nSecond pass:\n{second}"
+            r#"Formatter is not idempotent for complex code!
+First pass:
+{first}
+Second pass:
+{second}"#
         );
     }
 
@@ -183,7 +220,11 @@ local cc = 3 -- comment c
         );
         assert_eq!(
             first, second,
-            "Formatter is not idempotent for aligned code!\nFirst pass:\n{first}\nSecond pass:\n{second}"
+            r#"Formatter is not idempotent for aligned code!
+First pass:
+{first}
+Second pass:
+{second}"#
         );
     }
 
@@ -196,7 +237,8 @@ local cc = 3 -- comment c
             },
             ..Default::default()
         };
-        let input = "local x = obj:method1():method2():method3()\n";
+        let input = r#"local x = obj:method1():method2():method3()
+"#;
 
         let first = crate::reformat_lua_code(
             &SourceText {
@@ -214,30 +256,58 @@ local cc = 3 -- comment c
         );
         assert_eq!(
             first, second,
-            "Formatter is not idempotent for method chains!\nFirst pass:\n{first}\nSecond pass:\n{second}"
+            r#"Formatter is not idempotent for method chains!
+First pass:
+{first}
+Second pass:
+{second}"#
         );
     }
 
     #[test]
     fn test_format_disable_range_preserves_block_contents() {
         assert_format!(
-            "local a=1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\nprint(  ugly [ 1 ] )\n-- fmt: on\nlocal b=2\n",
-            "local a = 1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\nprint(  ugly [ 1 ] )\n-- fmt: on\nlocal b = 2\n"
+            r#"local a=1
+-- fmt: off
+local   ugly   =    { 1,2,3 }
+print(  ugly [ 1 ] )
+-- fmt: on
+local b=2
+"#,
+            r#"local a = 1
+-- fmt: off
+local   ugly   =    { 1,2,3 }
+print(  ugly [ 1 ] )
+-- fmt: on
+local b = 2
+"#
         );
     }
 
     #[test]
     fn test_format_disable_range_can_cover_single_statement() {
         assert_format!(
-            "local a=1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\n-- fmt: on\nlocal c=3\n",
-            "local a = 1\n-- fmt: off\nlocal   ugly   =    { 1,2,3 }\n-- fmt: on\nlocal c = 3\n"
+            r#"local a=1
+-- fmt: off
+local   ugly   =    { 1,2,3 }
+-- fmt: on
+local c=3
+"#,
+            r#"local a = 1
+-- fmt: off
+local   ugly   =    { 1,2,3 }
+-- fmt: on
+local c = 3
+"#
         );
     }
 
     #[test]
     fn test_idempotency_shebang() {
         let config = LuaFormatConfig::default();
-        let input = "#!/usr/bin/lua\nlocal a   =   1\n";
+        let input = r#"#!/usr/bin/lua
+local a   =   1
+"#;
 
         let first = crate::reformat_lua_code(
             &SourceText {
@@ -255,7 +325,11 @@ local cc = 3 -- comment c
         );
         assert_eq!(
             first, second,
-            "Formatter is not idempotent with shebang!\nFirst pass:\n{first}\nSecond pass:\n{second}"
+            r#"Formatter is not idempotent with shebang!
+First pass:
+{first}
+Second pass:
+{second}"#
         );
     }
 
@@ -263,7 +337,8 @@ local cc = 3 -- comment c
     fn test_new_formatter_root_pipeline_smoke() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local value = 1\n",
+            text: r#"local value = 1
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -277,7 +352,9 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_comment_and_block_path() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "--hello\nlocal value=1\n",
+            text: r#"--hello
+local value=1
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -291,7 +368,10 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_local_assign_return_statements() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local a,b=foo,bar\na,b=foo(),bar()\nreturn foo, bar, baz\n",
+            text: r#"local a,b=foo,bar
+a,b=foo(),bar()
+return foo, bar, baz
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -307,7 +387,10 @@ local cc = 3 -- comment c
         config.spacing.space_around_assign_operator = false;
 
         let source = SourceText {
-            text: "local a, b = foo, bar\nx, y = 1, 2\nreturn a, y\n",
+            text: r#"local a, b = foo, bar
+x, y = 1, 2
+return a, y
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -321,7 +404,18 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_trivia_aware_statement_sequences() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local a, -- lhs\n    b = -- eq\n    foo, -- rhs\n    bar\na, -- lhs\n    b = -- eq\n    foo, -- rhs\n    bar\nreturn -- head\n    foo, -- rhs\n    bar\n",
+            text: r#"local a, -- lhs
+    b = -- eq
+    foo, -- rhs
+    bar
+a, -- lhs
+    b = -- eq
+    foo, -- rhs
+    bar
+return -- head
+    foo, -- rhs
+    bar
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -343,7 +437,14 @@ local cc = 3 -- comment c
         config.spacing.space_around_assign_operator = false;
 
         let source = SourceText {
-            text: "local a, -- lhs\n    b = -- eq\n    foo, -- rhs\n    bar\nreturn -- head\n    foo, -- rhs\n    bar\n",
+            text: r#"local a, -- lhs
+    b = -- eq
+    foo, -- rhs
+    bar
+return -- head
+    foo, -- rhs
+    bar
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -357,7 +458,9 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_call_and_table_sequences() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local result=foo(1,2,3)\nlocal tbl={1,2,3}\n",
+            text: r#"local result=foo(1,2,3)
+local tbl={1,2,3}
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -371,7 +474,11 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_while_statements() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "while foo(a, b) do\n    local x = 1\n    return x\nend\n",
+            text: r#"while foo(a, b) do
+    local x = 1
+    return x
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -385,7 +492,13 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_for_statements() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "for i = foo(), bar, baz do\n    local x = i\nend\nfor k, v in pairs(tbl), next(tbl) do\n    return v\nend\n",
+            text: r#"for i = foo(), bar, baz do
+    local x = i
+end
+for k, v in pairs(tbl), next(tbl) do
+    return v
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -399,7 +512,10 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_repeat_statements() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "repeat\n    local x = foo()\nuntil bar(x)\n",
+            text: r#"repeat
+    local x = foo()
+until bar(x)
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -413,7 +529,15 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_if_statements() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "if ok then return value end\nif foo(a, b) then\n    local x = 1\nelseif bar then\n    return baz\nelse\n    return qux\nend\n",
+            text: r#"if ok then return value end
+if foo(a, b) then
+    local x = 1
+elseif bar then
+    return baz
+else
+    return qux
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -427,7 +551,11 @@ local cc = 3 -- comment c
     fn test_new_formatter_trivia_aware_while_header_parity() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "while foo -- cond\ndo\n    return bar\nend\n",
+            text: r#"while foo -- cond
+do
+    return bar
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -441,7 +569,19 @@ local cc = 3 -- comment c
     fn test_new_formatter_trivia_aware_for_header_parity() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "for i, -- lhs\n    j = -- eq\n    foo, -- rhs\n    bar do\n    return i\nend\nfor k, -- lhs\n    v in -- in\n    pairs(tbl), -- rhs\n    next(tbl) do\n    return v\nend\n",
+            text: r#"for i, -- lhs
+    j = -- eq
+    foo, -- rhs
+    bar do
+    return i
+end
+for k, -- lhs
+    v in -- in
+    pairs(tbl), -- rhs
+    next(tbl) do
+    return v
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -455,7 +595,11 @@ local cc = 3 -- comment c
     fn test_new_formatter_trivia_aware_repeat_header_parity() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "repeat\n    return foo\nuntil -- cond\n    bar(baz)\n",
+            text: r#"repeat
+    return foo
+until -- cond
+    bar(baz)
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -469,7 +613,16 @@ local cc = 3 -- comment c
     fn test_new_formatter_trivia_aware_if_parity() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "if foo -- cond\nthen\n    return a\nelseif bar -- cond\nthen\n    return b\nelse\n    return c\nend\n",
+            text: r#"if foo -- cond
+then
+    return a
+elseif bar -- cond
+then
+    return b
+else
+    return c
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -483,7 +636,8 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_basic_call_arg_shapes() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local result = foo(a, {1,2}, bar(b, c))\n",
+            text: r#"local result = foo(a, {1,2}, bar(b, c))
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -497,7 +651,13 @@ local cc = 3 -- comment c
     fn test_new_formatter_call_arg_comment_attachment_idempotent() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local result = foo(\n    -- first\n    a, -- trailing a\n    b,\n    -- last\n)\n",
+            text: r#"local result = foo(
+    -- first
+    a, -- trailing a
+    b,
+    -- last
+)
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -517,7 +677,10 @@ local cc = 3 -- comment c
     fn test_new_formatter_closure_params_idempotent() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local fn = function(a,b,c)\nreturn a\nend\n",
+            text: r#"local fn = function(a,b,c)
+return a
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -537,7 +700,15 @@ local cc = 3 -- comment c
     fn test_new_formatter_param_comment_attachment_idempotent() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local fn = function(\n    -- first\n    a, -- trailing a\n    b,\n    -- tail\n)\nreturn a\nend\n",
+            text: r#"local fn = function(
+    -- first
+    a, -- trailing a
+    b,
+    -- tail
+)
+return a
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -557,7 +728,12 @@ local cc = 3 -- comment c
     fn test_new_formatter_closure_shell_comments_idempotent() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local fn = function -- before params\n(a) -- before body\n-- body comment\nreturn a\nend\n",
+            text: r#"local fn = function -- before params
+(a) -- before body
+-- body comment
+return a
+end
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -577,7 +753,8 @@ local cc = 3 -- comment c
     fn test_new_formatter_renders_table_field_key_value_shapes() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local tbl={a=1,[\"b\"]=2,[3]=4,[foo]=bar}\n",
+            text: r#"local tbl={a=1,["b"]=2,[3]=4,[foo]=bar}
+"#,
             level: LuaLanguageLevel::default(),
         };
 
@@ -591,7 +768,13 @@ local cc = 3 -- comment c
     fn test_new_formatter_table_comment_attachment_idempotent() {
         let config = LuaFormatConfig::default();
         let source = SourceText {
-            text: "local tbl = {\n    -- lead\n    a = 1, -- trailing\n    b = 2,\n    -- tail\n}\n",
+            text: r#"local tbl = {
+    -- lead
+    a = 1, -- trailing
+    b = 2,
+    -- tail
+}
+"#,
             level: LuaLanguageLevel::default(),
         };
 

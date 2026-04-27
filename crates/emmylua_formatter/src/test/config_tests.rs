@@ -44,7 +44,13 @@ end
             },
             ..Default::default()
         };
-        assert_format_with_config!("print(1)\n", "print (1)\n", config);
+        assert_format_with_config!(
+            r#"print(1)
+"#,
+            r#"print (1)
+"#,
+            config
+        );
     }
 
     #[test]
@@ -56,7 +62,13 @@ end
             },
             ..Default::default()
         };
-        assert_format_with_config!("local a = (1 + 2)\n", "local a = ( 1 + 2 )\n", config);
+        assert_format_with_config!(
+            r#"local a = (1 + 2)
+"#,
+            r#"local a = ( 1 + 2 )
+"#,
+            config
+        );
     }
 
     #[test]
@@ -68,7 +80,13 @@ end
             },
             ..Default::default()
         };
-        assert_format_with_config!("local t = {1, 2, 3}\n", "local t = { 1, 2, 3 }\n", config);
+        assert_format_with_config!(
+            r#"local t = {1, 2, 3}
+"#,
+            r#"local t = { 1, 2, 3 }
+"#,
+            config
+        );
     }
 
     #[test]
@@ -80,7 +98,13 @@ end
             },
             ..Default::default()
         };
-        assert_format_with_config!("local t = { 1, 2, 3 }\n", "local t = {1, 2, 3}\n", config);
+        assert_format_with_config!(
+            r#"local t = { 1, 2, 3 }
+"#,
+            r#"local t = {1, 2, 3}
+"#,
+            config
+        );
     }
 
     // ========== table expand strategy ==========
@@ -95,7 +119,8 @@ end
             ..Default::default()
         };
         assert_format_with_config!(
-            "local t = {a = 1, b = 2}\n",
+            r#"local t = {a = 1, b = 2}
+"#,
             r#"
 local t = {
     a = 1,
@@ -122,7 +147,8 @@ a = 1,
 b = 2
 }
 "#,
-            "local t = { a = 1, b = 2 }\n",
+            r#"local t = { a = 1, b = 2 }
+"#,
             config
         );
     }
@@ -206,12 +232,26 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local t = { a = 1, b = 2 }\n",
-            "local t = {\n    a = 1,\n    b = 2,\n}\n",
+            r#"local t = { a = 1, b = 2 }
+"#,
+            r#"local t = {
+    a = 1,
+    b = 2,
+}
+"#,
             config.clone()
         );
 
-        assert_format_with_config!("foo(a, b)\n", "foo(\n    a,\n    b\n)\n", config);
+        assert_format_with_config!(
+            r#"foo(a, b)
+"#,
+            r#"foo(
+    a,
+    b
+)
+"#,
+            config
+        );
     }
 
     // ========== quote style ===========
@@ -226,7 +266,13 @@ local t = {
             ..Default::default()
         };
 
-        assert_format_with_config!("local s = 'hello'\n", "local s = \"hello\"\n", config);
+        assert_format_with_config!(
+            r#"local s = 'hello'
+"#,
+            r#"local s = "hello"
+"#,
+            config
+        );
     }
 
     #[test]
@@ -240,8 +286,10 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local s = 'hello \\\"lua\\\"'\n",
-            "local s = \"hello \\\"lua\\\"\"\n",
+            r#"local s = 'hello \"lua\"'
+"#,
+            r#"local s = "hello \"lua\""
+"#,
             config
         );
     }
@@ -257,8 +305,10 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local s = \"it's \\\"ok\\\"\"\n",
-            "local s = \"it's \\\"ok\\\"\"\n",
+            r#"local s = "it's \"ok\""
+"#,
+            r#"local s = "it's \"ok\""
+"#,
             config
         );
     }
@@ -274,8 +324,10 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local s = \"it\\'s fine\"\n",
-            "local s = 'it\\'s fine'\n",
+            r#"local s = "it\'s fine"
+"#,
+            r#"local s = 'it\'s fine'
+"#,
             config
         );
     }
@@ -291,8 +343,10 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local s = \"hello \\\"lua\\\"\"\n",
-            "local s = 'hello \"lua\"'\n",
+            r#"local s = "hello \"lua\""
+"#,
+            r#"local s = 'hello "lua"'
+"#,
             config
         );
     }
@@ -308,8 +362,14 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local s = [[a\n\"b\"\n]]\n",
-            "local s = [[a\n\"b\"\n]]\n",
+            r#"local s = [[a
+"b"
+]]
+"#,
+            r#"local s = [[a
+"b"
+]]
+"#,
             config
         );
     }
@@ -327,11 +387,19 @@ local t = {
         };
 
         assert_format_with_config!(
-            "require \"module\"\n",
-            "require(\"module\")\n",
+            r#"require "module"
+"#,
+            r#"require("module")
+"#,
             config.clone()
         );
-        assert_format_with_config!("foo {1, 2, 3}\n", "foo({ 1, 2, 3 })\n", config);
+        assert_format_with_config!(
+            r#"foo {1, 2, 3}
+"#,
+            r#"foo({ 1, 2, 3 })
+"#,
+            config
+        );
     }
 
     #[test]
@@ -345,11 +413,19 @@ local t = {
         };
 
         assert_format_with_config!(
-            "require(\"module\")\n",
-            "require \"module\"\n",
+            r#"require("module")
+"#,
+            r#"require "module"
+"#,
             config.clone()
         );
-        assert_format_with_config!("foo({1, 2, 3})\n", "foo { 1, 2, 3 }\n", config);
+        assert_format_with_config!(
+            r#"foo({1, 2, 3})
+"#,
+            r#"foo { 1, 2, 3 }
+"#,
+            config
+        );
     }
 
     #[test]
@@ -363,8 +439,12 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local f = function(x)\n    return x + 1\nend\n",
-            "local f = function(x) return x + 1 end\n",
+            r#"local f = function(x)
+    return x + 1
+end
+"#,
+            r#"local f = function(x) return x + 1 end
+"#,
             config
         );
     }
@@ -380,8 +460,12 @@ local t = {
         };
 
         assert_format_with_config!(
-            "local f = function() return x + 1 end\n",
-            "local f = function()\n    return x + 1\nend\n",
+            r#"local f = function() return x + 1 end
+"#,
+            r#"local f = function()
+    return x + 1
+end
+"#,
             config
         );
     }
@@ -399,7 +483,10 @@ local t = {
         };
         // Keep escaped strings: raw strings can't represent \t visually
         assert_format_with_config!(
-            "if true then\nprint(1)\nend\n",
+            r#"if true then
+print(1)
+end
+"#,
             "if true then\n\tprint(1)\nend\n",
             config
         );
@@ -447,7 +534,10 @@ local b = 2
         };
         // Keep escaped strings: raw strings can't represent \r\n distinctly
         assert_format_with_config!(
-            "if true then\nprint(1)\nend\n",
+            r#"if true then
+print(1)
+end
+"#,
             "if true then\r\n    print(1)\r\nend\r\n",
             config
         );
@@ -465,8 +555,10 @@ local b = 2
             ..Default::default()
         };
         assert_format_with_config!(
-            "local a = 1 + 2 * 3 - 4 / 5\n",
-            "local a = 1+2*3-4/5\n",
+            r#"local a = 1 + 2 * 3 - 4 / 5
+"#,
+            r#"local a = 1+2*3-4/5
+"#,
             config
         );
     }
@@ -475,8 +567,10 @@ local b = 2
     fn test_space_around_math_operator_default() {
         // Default: spaces around math operators
         assert_format_with_config!(
-            "local a = 1+2*3\n",
-            "local a = 1 + 2 * 3\n",
+            r#"local a = 1+2*3
+"#,
+            r#"local a = 1 + 2 * 3
+"#,
             LuaFormatConfig::default()
         );
     }
@@ -490,14 +584,22 @@ local b = 2
             },
             ..Default::default()
         };
-        assert_format_with_config!("local s = a .. b .. c\n", "local s = a..b..c\n", config);
+        assert_format_with_config!(
+            r#"local s = a .. b .. c
+"#,
+            r#"local s = a..b..c
+"#,
+            config
+        );
     }
 
     #[test]
     fn test_space_around_concat_operator_default() {
         assert_format_with_config!(
-            "local s = a..b\n",
-            "local s = a .. b\n",
+            r#"local s = a..b
+"#,
+            r#"local s = a .. b
+"#,
             LuaFormatConfig::default()
         );
     }
@@ -514,8 +616,10 @@ local b = 2
             ..Default::default()
         };
         assert_format_with_config!(
-            "local s = 1. .. \"str\"\n",
-            "local s = 1. ..\"str\"\n",
+            r#"local s = 1. .. "str"
+"#,
+            r#"local s = 1. .."str"
+"#,
             config
         );
     }
@@ -530,7 +634,13 @@ local b = 2
             },
             ..Default::default()
         };
-        assert_format_with_config!("local x = a+b == c*d\n", "local x = a+b == c*d\n", config);
+        assert_format_with_config!(
+            r#"local x = a+b == c*d
+"#,
+            r#"local x = a+b == c*d
+"#,
+            config
+        );
     }
 
     #[test]
@@ -544,8 +654,10 @@ local b = 2
             ..Default::default()
         };
         assert_format_with_config!(
-            "local a = b and c or d\n",
-            "local a = b and c or d\n",
+            r#"local a = b and c or d
+"#,
+            r#"local a = b and c or d
+"#,
             config
         );
     }
@@ -561,7 +673,13 @@ local b = 2
             },
             ..Default::default()
         };
-        assert_format_with_config!("local a = 1\n", "local a=1\n", config);
+        assert_format_with_config!(
+            r#"local a = 1
+"#,
+            r#"local a=1
+"#,
+            config
+        );
     }
 
     #[test]
@@ -573,12 +691,24 @@ local b = 2
             },
             ..Default::default()
         };
-        assert_format_with_config!("local t = { a = 1 }\n", "local t={ a=1 }\n", config);
+        assert_format_with_config!(
+            r#"local t = { a = 1 }
+"#,
+            r#"local t={ a=1 }
+"#,
+            config
+        );
     }
 
     #[test]
     fn test_space_around_assign_default() {
-        assert_format_with_config!("local a=1\n", "local a = 1\n", LuaFormatConfig::default());
+        assert_format_with_config!(
+            r#"local a=1
+"#,
+            r#"local a = 1
+"#,
+            LuaFormatConfig::default()
+        );
     }
 
     #[test]
