@@ -1063,6 +1063,27 @@ mod test {
     }
 
     #[test]
+    fn test_function_generic_default_can_reference_earlier_param_at_call_sites() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T = string, U = T[]
+            ---@return U
+            function use_nested_default()
+            end
+
+            DefaultResult = use_nested_default()
+            ExplicitResult = use_nested_default--[[@<number>]]()
+            "#,
+        );
+
+        let default_result = ws.expr_ty("DefaultResult");
+        assert_eq!(ws.humanize_type(default_result), "string[]");
+        let explicit_result = ws.expr_ty("ExplicitResult");
+        assert_eq!(ws.humanize_type(explicit_result), "number[]");
+    }
+
+    #[test]
     fn test_function_variadic_generic_default_at_call_sites() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1339,5 +1360,34 @@ mod test {
             "#,
             ));
         }
+    }
+
+    #[test]
+    fn test_overload_self_generic_class_instance() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            --- @class A<T>
+            --- @overload fun(): self
+            local ClassA
+
+            --- @type A
+            a1 = {}
+
+            a2 = ClassA()
+
+            ---@type A<string>
+            a3 = ClassA()
+            "#,
+        );
+
+        let a1_ty = ws.expr_ty("a1");
+        assert!(a1_ty.is_any(), "{a1_ty:?}");
+
+        let a2_ty = ws.expr_ty("a2");
+        assert_eq!(ws.humanize_type(a2_ty), "A<unknown>");
+
+        let a3_ty = ws.expr_ty("a3");
+        assert_eq!(ws.humanize_type(a3_ty), "A<string>");
     }
 }
