@@ -61,7 +61,7 @@ mod test {
     }
 
     #[test]
-    fn test_higher_order_return_infer_uses_callable_constraint() {
+    fn test_higher_order_return_infer_does_not_use_callable_constraint_as_default() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
@@ -80,6 +80,32 @@ mod test {
             end
 
             result = call_once(constrained_return, 1)
+            "#,
+        );
+
+        assert!(ws.expr_ty("result").is_unknown());
+    }
+
+    #[test]
+    fn test_higher_order_return_infer_uses_callable_default() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T, R
+            ---@param f fun(...: T...): R
+            ---@param ... T...
+            ---@return R
+            local function call_once(f, ...)
+                return f(...)
+            end
+
+            ---@generic U = string
+            ---@param n integer
+            ---@return U
+            local function default_return(n)
+            end
+
+            result = call_once(default_return, 1)
             "#,
         );
 

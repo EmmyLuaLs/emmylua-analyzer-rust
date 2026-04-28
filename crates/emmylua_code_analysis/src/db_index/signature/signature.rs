@@ -311,6 +311,7 @@ pub enum SignatureReturnStatus {
 pub struct LuaGenericParamInfo {
     pub name: String,
     pub constraint: Option<LuaType>,
+    pub default_type: Option<LuaType>,
     pub attributes: Option<Vec<LuaAttributeUse>>,
 }
 
@@ -318,11 +319,13 @@ impl LuaGenericParamInfo {
     pub fn new(
         name: String,
         constraint: Option<LuaType>,
+        default_type: Option<LuaType>,
         attributes: Option<Vec<LuaAttributeUse>>,
     ) -> Self {
         Self {
             name,
             constraint,
+            default_type,
             attributes,
         }
     }

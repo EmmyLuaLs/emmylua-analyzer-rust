@@ -743,6 +743,7 @@ pub struct GenericTpl {
     tpl_id: GenericTplId,
     name: ArcIntern<SmolStr>,
     constraint: Option<LuaType>,
+    default_type: Option<LuaType>,
 }
 
 impl GenericTpl {
@@ -750,11 +751,13 @@ impl GenericTpl {
         tpl_id: GenericTplId,
         name: ArcIntern<SmolStr>,
         constraint: Option<LuaType>,
+        default_type: Option<LuaType>,
     ) -> Self {
         Self {
             tpl_id,
             name,
             constraint,
+            default_type,
         }
     }
 
@@ -768,6 +771,10 @@ impl GenericTpl {
 
     pub fn get_constraint(&self) -> Option<&LuaType> {
         self.constraint.as_ref()
+    }
+
+    pub fn get_default_type(&self) -> Option<&LuaType> {
+        self.default_type.as_ref()
     }
 }
 

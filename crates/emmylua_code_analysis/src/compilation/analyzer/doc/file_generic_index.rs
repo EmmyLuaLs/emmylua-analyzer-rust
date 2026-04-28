@@ -4,77 +4,58 @@ use rowan::{TextRange, TextSize};
 
 use crate::{GenericParam, GenericTplId, LuaType};
 
+pub trait GenericIndex: std::fmt::Debug {
+    fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericScopeId;
+
+    fn append_generic_param(&mut self, scope_id: GenericScopeId, param: GenericParam);
+
+    fn append_generic_params(&mut self, scope_id: GenericScopeId, params: Vec<GenericParam>) {
+        for param in params {
+            self.append_generic_param(scope_id, param);
+        }
+    }
+
+    fn append_pending_type_param(&mut self, _param: GenericParam) {}
+
+    fn clear_pending_type_params(&mut self) {}
+
+    fn find_generic(
+        &self,
+        position: TextSize,
+        name: &str,
+    ) -> Option<(GenericTplId, Option<LuaType>, Option<LuaType>)>;
+}
+
 #[derive(Debug, Clone)]
 pub struct FileGenericIndex {
-    generic_params: Vec<TagGenericParams>,
-    root_node_ids: Vec<GenericEffectId>,
-    effect_nodes: Vec<GenericEffectRangeNode>,
+    scopes: Vec<FileGenericScope>,
     pending_type_params: Vec<GenericParam>,
 }
 
 impl FileGenericIndex {
     pub fn new() -> Self {
         Self {
-            generic_params: Vec::new(),
-            root_node_ids: Vec::new(),
-            effect_nodes: Vec::new(),
+            scopes: Vec::new(),
             pending_type_params: Vec::new(),
         }
     }
 
-    pub fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericParamId {
-        let params_index = self.generic_params.len();
-        let start = self.get_start(&ranges).unwrap_or(0);
-        self.generic_params
-            .push(TagGenericParams::new(is_func, start));
-        let params_id = GenericParamId::new(params_index);
-        let root_node_ids: Vec<_> = self.root_node_ids.clone();
-        for range in ranges {
-            let mut added = false;
-            for effect_id in root_node_ids.iter() {
-                if self.try_add_range_to_effect_node(range, params_id, *effect_id) {
-                    added = true;
-                }
-            }
-
-            if !added {
-                let child_node = GenericEffectRangeNode {
-                    range,
-                    params_id,
-                    children: Vec::new(),
-                };
-
-                let child_node_id = self.effect_nodes.len();
-                self.effect_nodes.push(child_node);
-                self.root_node_ids.push(GenericEffectId::new(child_node_id));
-            }
-        }
-
-        params_id
+    pub fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericScopeId {
+        let scope_id = GenericScopeId::new(self.scopes.len());
+        let next_tpl_id = self.next_tpl_id(&ranges, is_func);
+        self.scopes.push(FileGenericScope::new(ranges, next_tpl_id));
+        scope_id
     }
 
-    pub fn append_generic_param(&mut self, scope_id: GenericParamId, param: GenericParam) {
-        if let Some(scope) = self.generic_params.get_mut(scope_id.id) {
+    pub fn append_generic_param(&mut self, scope_id: GenericScopeId, param: GenericParam) {
+        if let Some(scope) = self.scopes.get_mut(scope_id.id) {
             scope.insert_param(param);
         }
     }
 
-    pub fn append_generic_params(&mut self, scope_id: GenericParamId, params: Vec<GenericParam>) {
+    pub fn append_generic_params(&mut self, scope_id: GenericScopeId, params: Vec<GenericParam>) {
         for param in params {
             self.append_generic_param(scope_id, param);
-        }
-    }
-
-    pub fn set_param_constraint(
-        &mut self,
-        scope_id: GenericParamId,
-        name: &str,
-        constraint: Option<LuaType>,
-    ) {
-        if let Some(scope) = self.generic_params.get_mut(scope_id.id)
-            && let Some((_idx, stored_param)) = scope.params.get_mut(name)
-        {
-            stored_param.type_constraint = constraint;
         }
     }
 
@@ -86,76 +67,44 @@ impl FileGenericIndex {
         self.pending_type_params.clear();
     }
 
-    fn get_start(&self, ranges: &[TextRange]) -> Option<usize> {
-        let params_ids = self.find_generic_params(ranges.first()?.start())?;
-        let mut start = 0;
-        for params_id in params_ids.iter() {
-            if let Some(params) = self.generic_params.get(*params_id) {
-                start += params.params.len();
-            }
+    fn next_tpl_id(&self, ranges: &[TextRange], is_func: bool) -> GenericTplId {
+        let next_index = self.next_index(ranges, is_func).unwrap_or(0) as u32;
+        if is_func {
+            GenericTplId::Func(next_index)
+        } else {
+            GenericTplId::Type(next_index)
         }
-        Some(start)
     }
 
-    fn try_add_range_to_effect_node(
-        &mut self,
-        range: TextRange,
-        id: GenericParamId,
-        effect_id: GenericEffectId,
-    ) -> bool {
-        let effect_node = match self.effect_nodes.get(effect_id.id) {
-            Some(node) => node,
-            None => return false,
-        };
-
-        if effect_node.range.contains_range(range) {
-            let children = effect_node.children.clone();
-            for child_effect_id in children {
-                if self.try_add_range_to_effect_node(range, id, child_effect_id) {
-                    return true;
-                }
-            }
-
-            let child_node = GenericEffectRangeNode {
-                range,
-                params_id: id,
-                children: Vec::new(),
-            };
-
-            let child_node_id = self.effect_nodes.len();
-            self.effect_nodes.push(child_node);
-            let effect_node = match self.effect_nodes.get_mut(effect_id.id) {
-                Some(node) => node,
-                None => return false,
-            };
-            effect_node
-                .children
-                .push(GenericEffectId::new(child_node_id));
-            return true;
-        }
-
-        false
+    fn next_index(&self, ranges: &[TextRange], is_func: bool) -> Option<usize> {
+        let position = ranges.first()?.start();
+        Some(
+            self.scopes
+                .iter()
+                .filter(|scope| scope.is_func_scope() == is_func && scope.contains(position))
+                .map(|scope| scope.params.len())
+                .sum(),
+        )
     }
 
     /// Find generic parameter by position and name.
-    /// return (GenericTplId, constraint)
+    /// return (GenericTplId, constraint, default)
     pub fn find_generic(
         &self,
         position: TextSize,
         name: &str,
-    ) -> Option<(GenericTplId, Option<LuaType>)> {
-        if let Some(params_ids) = self.find_generic_params(position) {
-            for params_id in params_ids.iter().rev() {
-                if let Some(params) = self.generic_params.get(*params_id)
-                    && let Some((id, param)) = params.params.get(name)
-                {
-                    let tpl_id = if params.is_func {
-                        GenericTplId::Func(*id as u32)
-                    } else {
-                        GenericTplId::Type(*id as u32)
-                    };
-                    return Some((tpl_id, param.type_constraint.clone()));
-                }
+    ) -> Option<(GenericTplId, Option<LuaType>, Option<LuaType>)> {
+        for scope in self.scopes.iter().rev() {
+            if !scope.contains(position) {
+                continue;
+            }
+
+            if let Some((id, param)) = scope.params.get(name) {
+                return Some((
+                    *id,
+                    param.type_constraint.clone(),
+                    param.default_type.clone(),
+                ));
             }
         }
 
@@ -169,95 +118,80 @@ impl FileGenericIndex {
                 (
                     GenericTplId::Type(idx as u32),
                     param.type_constraint.clone(),
+                    param.default_type.clone(),
                 )
             })
     }
+}
 
-    fn find_generic_params(&self, position: TextSize) -> Option<Vec<usize>> {
-        for effect_id in self.root_node_ids.iter() {
-            if self
-                .effect_nodes
-                .get(effect_id.id)?
-                .range
-                .contains(position)
-            {
-                let mut result = Vec::new();
-                self.try_find_generic_params(position, *effect_id, &mut result);
-                return Some(result);
-            }
-        }
-
-        None
+impl GenericIndex for FileGenericIndex {
+    fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericScopeId {
+        FileGenericIndex::add_generic_scope(self, ranges, is_func)
     }
 
-    fn try_find_generic_params(
+    fn append_generic_param(&mut self, scope_id: GenericScopeId, param: GenericParam) {
+        FileGenericIndex::append_generic_param(self, scope_id, param);
+    }
+
+    fn append_generic_params(&mut self, scope_id: GenericScopeId, params: Vec<GenericParam>) {
+        FileGenericIndex::append_generic_params(self, scope_id, params);
+    }
+
+    fn append_pending_type_param(&mut self, param: GenericParam) {
+        FileGenericIndex::append_pending_type_param(self, param);
+    }
+
+    fn clear_pending_type_params(&mut self) {
+        FileGenericIndex::clear_pending_type_params(self);
+    }
+
+    fn find_generic(
         &self,
         position: TextSize,
-        effect_id: GenericEffectId,
-        result: &mut Vec<usize>,
-    ) -> Option<()> {
-        let effect_node = self.effect_nodes.get(effect_id.id)?;
-        result.push(effect_node.params_id.id);
-        for child_effect_id in effect_node.children.iter() {
-            let child_effect_node = self.effect_nodes.get(child_effect_id.id)?;
-            if child_effect_node.range.contains(position) {
-                self.try_find_generic_params(position, *child_effect_id, result);
-            }
-        }
-
-        Some(())
+        name: &str,
+    ) -> Option<(GenericTplId, Option<LuaType>, Option<LuaType>)> {
+        FileGenericIndex::find_generic(self, position, name)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub struct GenericParamId {
+pub struct GenericScopeId {
     pub id: usize,
 }
 
-impl GenericParamId {
+impl GenericScopeId {
     fn new(id: usize) -> Self {
         Self { id }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct GenericEffectRangeNode {
-    range: TextRange,
-    params_id: GenericParamId,
-    children: Vec<GenericEffectId>,
+struct FileGenericScope {
+    ranges: Vec<TextRange>,
+    params: HashMap<String, (GenericTplId, GenericParam)>,
+    next_tpl_id: GenericTplId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-struct GenericEffectId {
-    id: usize,
-}
-
-impl GenericEffectId {
-    fn new(id: usize) -> Self {
-        Self { id }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TagGenericParams {
-    params: HashMap<String, (usize, GenericParam)>,
-    is_func: bool,
-    next_index: usize,
-}
-
-impl TagGenericParams {
-    pub fn new(is_func: bool, start: usize) -> Self {
+impl FileGenericScope {
+    fn new(ranges: Vec<TextRange>, next_tpl_id: GenericTplId) -> Self {
         Self {
+            ranges,
             params: HashMap::new(),
-            is_func,
-            next_index: start,
+            next_tpl_id,
         }
     }
 
+    fn is_func_scope(&self) -> bool {
+        self.next_tpl_id.is_func()
+    }
+
     fn insert_param(&mut self, param: GenericParam) {
-        let current_index = self.next_index;
-        self.next_index += 1;
-        self.params
-            .insert(param.name.to_string(), (current_index, param));
+        let tpl_id = self.next_tpl_id;
+        self.next_tpl_id = self.next_tpl_id.with_idx((tpl_id.get_idx() + 1) as u32);
+        self.params.insert(param.name.to_string(), (tpl_id, param));
+    }
+
+    fn contains(&self, position: TextSize) -> bool {
+        self.ranges.iter().any(|range| range.contains(position))
     }
 }

@@ -181,12 +181,35 @@ mod test {
         {
             ws.def(
                 r#"
-            C = StateMachine:abc()
+            ---@class DefaultBox<T = string>
+            local DefaultBox = {}
+
+            ---@return self
+            function DefaultBox:clone()
+            end
+
+            DefaultBoxResult = DefaultBox:clone()
             "#,
             );
-            let ty = ws.expr_ty("C");
-            let expected = ws.ty("StateMachine<State>");
+            let ty = ws.expr_ty("DefaultBoxResult");
+            let expected = ws.ty("DefaultBox<string>");
             assert_eq!(ty, expected);
+        }
+        {
+            ws.def(
+                r#"
+            ---@class UnknownBox<T>
+            local UnknownBox = {}
+
+            ---@return self
+            function UnknownBox:clone()
+            end
+
+            UnknownBoxResult = UnknownBox:clone()
+            "#,
+            );
+            let ty = ws.expr_ty("UnknownBoxResult");
+            assert_eq!(ws.humanize_type(ty), "UnknownBox<unknown>");
         }
     }
 

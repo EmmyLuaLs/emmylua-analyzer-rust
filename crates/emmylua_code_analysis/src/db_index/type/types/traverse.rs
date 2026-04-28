@@ -246,6 +246,9 @@ impl LuaTypeNode for LuaMappedType {
         if let Some(constraint) = self.param.1.type_constraint.as_ref() {
             stack.push(constraint);
         }
+        if let Some(default_type) = self.param.1.default_type.as_ref() {
+            stack.push(default_type);
+        }
     }
 }
 

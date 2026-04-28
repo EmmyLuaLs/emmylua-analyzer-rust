@@ -13,7 +13,7 @@ use crate::{
     AsyncState, DbIndex, FileId, InFiled, LuaAliasCallKind, LuaAliasCallType, LuaArrayLen,
     LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
     LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus,
-    LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType,
+    LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType, complete_type_generic_args,
 };
 
 #[derive(Clone, Copy)]
@@ -169,7 +169,12 @@ fn infer_buildin_or_ref_type(
                 .get_generic_params(&type_id)
                 .is_some_and(|generic_params| !generic_params.is_empty())
             {
-                LuaType::Any
+                let completion = complete_type_generic_args(ctx.db, &type_id, Vec::new());
+                if let Some(completed_args) = completion.completed_args {
+                    LuaType::Generic(LuaGenericType::new(type_id, completed_args).into())
+                } else {
+                    LuaType::Any
+                }
             } else {
                 LuaType::Ref(type_id)
             }
@@ -227,7 +232,12 @@ fn infer_generic_type(ctx: DocTypeInferContext<'_>, generic_type: &LuaDocGeneric
             }
         }
 
-        return LuaType::Generic(LuaGenericType::new(id, generic_params).into());
+        let completion = complete_type_generic_args(ctx.db, &id, generic_params);
+        if let Some(completed_args) = completion.completed_args {
+            return LuaType::Generic(LuaGenericType::new(id, completed_args).into());
+        }
+
+        return LuaType::Any;
     }
 
     LuaType::Unknown

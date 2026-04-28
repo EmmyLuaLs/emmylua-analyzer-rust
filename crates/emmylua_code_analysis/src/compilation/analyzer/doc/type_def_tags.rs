@@ -24,40 +24,30 @@ use std::vec;
 
 pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<()> {
     let file_id = analyzer.file_id;
+    let workspace_id = analyzer.workspace_id;
     let name = tag.get_name_token()?.get_name_text().to_string();
 
     let class_decl =
         analyzer
-            .db
+            .get_db()
             .get_type_index()
-            .find_type_decl(file_id, &name, Some(analyzer.workspace_id))?;
+            .find_type_decl(file_id, &name, Some(workspace_id))?;
 
     let class_decl_id = class_decl.get_id();
     analyzer.current_type_id = Some(class_decl_id.clone());
     if let Some(generic_params) = tag.get_generic_decl() {
-        let generic_params = get_generic_params(analyzer, generic_params);
-
-        if generic_params
-            .iter()
-            .any(|param| param.type_constraint.is_some())
-        {
-            analyzer
-                .db
-                .get_type_index_mut()
-                .add_generic_params(class_decl_id.clone(), generic_params.clone());
-        }
-
+        let generic_params = get_type_generic_params(analyzer, &class_decl_id, generic_params);
         add_generic_index(analyzer, generic_params, &tag);
     }
 
     if let Some(supers) = tag.get_supers() {
         for super_doc_type in supers.get_types() {
-            let super_type = infer_type(analyzer, super_doc_type);
+            let super_type = infer_type(&mut analyzer.type_context, super_doc_type);
             if super_type.is_unknown() {
                 continue;
             }
 
-            analyzer.db.get_type_index_mut().add_super_type(
+            analyzer.get_db().get_type_index_mut().add_super_type(
                 class_decl_id.clone(),
                 file_id,
                 super_type,
@@ -76,6 +66,7 @@ fn add_description_for_type_decl(
     type_decl_id: &LuaTypeDeclId,
     descriptions: Vec<LuaDocDescription>,
 ) {
+    let file_id = analyzer.file_id;
     let mut description_text = String::new();
     for description in descriptions {
         let description = preprocess_description(&description.get_description_text(), None);
@@ -88,8 +79,8 @@ fn add_description_for_type_decl(
         }
     }
 
-    analyzer.db.get_property_index_mut().add_description(
-        analyzer.file_id,
+    analyzer.get_db().get_property_index_mut().add_description(
+        file_id,
         LuaSemanticDeclId::TypeDecl(type_decl_id.clone()),
         description_text,
     );
@@ -97,13 +88,14 @@ fn add_description_for_type_decl(
 
 pub fn analyze_enum(analyzer: &mut DocAnalyzer, tag: LuaDocTagEnum) -> Option<()> {
     let file_id = analyzer.file_id;
+    let workspace_id = analyzer.workspace_id;
     let name = tag.get_name_token()?.get_name_text().to_string();
 
     let enum_decl_id = {
-        let enum_decl = analyzer.db.get_type_index().find_type_decl(
+        let enum_decl = analyzer.get_db().get_type_index().find_type_decl(
             file_id,
             &name,
-            Some(analyzer.workspace_id),
+            Some(workspace_id),
         )?;
         if !enum_decl.is_enum() {
             return None;
@@ -114,13 +106,13 @@ pub fn analyze_enum(analyzer: &mut DocAnalyzer, tag: LuaDocTagEnum) -> Option<()
     analyzer.current_type_id = Some(enum_decl_id.clone());
 
     if let Some(base_type) = tag.get_base_type() {
-        let base_type = infer_type(analyzer, base_type);
+        let base_type = infer_type(&mut analyzer.type_context, base_type);
         if base_type.is_unknown() {
             return None;
         }
 
         let enum_decl = analyzer
-            .db
+            .get_db()
             .get_type_index_mut()
             .get_type_decl_mut(&enum_decl_id)?;
         enum_decl.add_enum_base(base_type);
@@ -135,13 +127,14 @@ pub fn analyze_enum(analyzer: &mut DocAnalyzer, tag: LuaDocTagEnum) -> Option<()
 
 pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<()> {
     let file_id = analyzer.file_id;
+    let workspace_id = analyzer.workspace_id;
     let name = tag.get_name_token()?.get_name_text().to_string();
 
     let alias_decl_id = {
-        let alias_decl = analyzer.db.get_type_index().find_type_decl(
+        let alias_decl = analyzer.get_db().get_type_index().find_type_decl(
             file_id,
             &name,
-            Some(analyzer.workspace_id),
+            Some(workspace_id),
         )?;
         if !alias_decl.is_alias() {
             return None;
@@ -151,28 +144,22 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
     };
 
     if let Some(generic_params) = tag.get_generic_decl_list() {
-        let generic_params = get_generic_params(analyzer, generic_params);
-
-        if generic_params
-            .iter()
-            .any(|param| param.type_constraint.is_some())
-        {
-            analyzer
-                .db
-                .get_type_index_mut()
-                .add_generic_params(alias_decl_id.clone(), generic_params.clone());
-        }
+        let generic_params = get_type_generic_params(analyzer, &alias_decl_id, generic_params);
         let range = analyzer.comment.get_range();
-        let scope_id = analyzer.generic_index.add_generic_scope(vec![range], false);
+        let scope_id = analyzer
+            .type_context
+            .generic_index
+            .add_generic_scope(vec![range], false);
         analyzer
+            .type_context
             .generic_index
             .append_generic_params(scope_id, generic_params);
     }
 
-    let origin_type = infer_type(analyzer, tag.get_type()?);
+    let origin_type = infer_type(&mut analyzer.type_context, tag.get_type()?);
 
     let alias = analyzer
-        .db
+        .get_db()
         .get_type_index_mut()
         .get_type_decl_mut(&alias_decl_id)?;
 
@@ -186,22 +173,23 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
 /// 分析属性定义
 pub fn analyze_attribute(analyzer: &mut DocAnalyzer, tag: LuaDocTagAttribute) -> Option<()> {
     let file_id = analyzer.file_id;
+    let workspace_id = analyzer.workspace_id;
     let name = tag.get_name_token()?.get_name_text().to_string();
 
     let decl_id = {
-        let decl = analyzer.db.get_type_index().find_type_decl(
+        let decl = analyzer.get_db().get_type_index().find_type_decl(
             file_id,
             &name,
-            Some(analyzer.workspace_id),
+            Some(workspace_id),
         )?;
         if !decl.is_attribute() {
             return None;
         }
         decl.get_id()
     };
-    let attribute_type = infer_type(analyzer, tag.get_type()?);
+    let attribute_type = infer_type(&mut analyzer.type_context, tag.get_type()?);
     let attribute_decl = analyzer
-        .db
+        .get_db()
         .get_type_index_mut()
         .get_type_decl_mut(&decl_id)?;
     attribute_decl.add_attribute_type(attribute_type);
@@ -214,7 +202,10 @@ fn get_generic_params(
     analyzer: &mut DocAnalyzer,
     params: LuaDocGenericDeclList,
 ) -> Vec<GenericParam> {
-    analyzer.generic_index.clear_pending_type_params();
+    analyzer
+        .type_context
+        .generic_index
+        .clear_pending_type_params();
     let mut params_result = Vec::new();
     for param in params.get_generic_decl() {
         let name = if let Some(param) = param.get_name_token() {
@@ -225,18 +216,50 @@ fn get_generic_params(
 
         let type_constraint = param
             .get_constraint_type()
-            .map(|type_ref| infer_type(analyzer, type_ref));
+            .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
 
-        let param = GenericParam::new(name, type_constraint, None);
+        let default_type = param
+            .get_default_type()
+            .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
+
+        let param = GenericParam::new(name, type_constraint, default_type, None);
         analyzer
+            .type_context
             .generic_index
             .append_pending_type_param(param.clone());
 
         params_result.push(param);
     }
-    analyzer.generic_index.clear_pending_type_params();
+    analyzer
+        .type_context
+        .generic_index
+        .clear_pending_type_params();
 
     params_result
+}
+
+fn get_type_generic_params(
+    analyzer: &mut DocAnalyzer,
+    type_decl_id: &LuaTypeDeclId,
+    params: LuaDocGenericDeclList,
+) -> Vec<GenericParam> {
+    if let Some(generic_params) = analyzer
+        .get_db()
+        .get_type_index()
+        .get_generic_params(type_decl_id)
+        .cloned()
+    {
+        return generic_params;
+    }
+
+    let generic_params = get_generic_params(analyzer, params);
+    if !generic_params.is_empty() {
+        analyzer
+            .get_db()
+            .get_type_index_mut()
+            .add_generic_params(type_decl_id.clone(), generic_params.clone());
+    }
+    generic_params
 }
 
 fn add_generic_index(
@@ -264,8 +287,12 @@ fn add_generic_index(
         }
     }
 
-    let scope_id = analyzer.generic_index.add_generic_scope(ranges, false);
+    let scope_id = analyzer
+        .type_context
+        .generic_index
+        .add_generic_scope(ranges, false);
     analyzer
+        .type_context
         .generic_index
         .append_generic_params(scope_id, generic_params);
 }
@@ -278,11 +305,13 @@ fn get_local_stat_reference_ranges(
     let first_local = local_stat.child::<LuaLocalName>()?;
     let decl_id = LuaDeclId::new(file_id, first_local.get_position());
     let mut ranges = Vec::new();
-    let decl_ref = analyzer
-        .db
+    let decl_ref_cells = analyzer
+        .get_db()
         .get_reference_index_mut()
-        .get_decl_references(&file_id, &decl_id)?;
-    for decl_ref in &decl_ref.cells {
+        .get_decl_references(&file_id, &decl_id)?
+        .cells
+        .clone();
+    for decl_ref in &decl_ref_cells {
         let syntax_id = LuaSyntaxId::new(LuaSyntaxKind::NameExpr.into(), decl_ref.range);
         let name_node = syntax_id.to_node_from_root(&analyzer.root)?;
         if let Some(parent1) = name_node.parent()
@@ -322,7 +351,7 @@ fn get_global_reference_ranges(
     let mut ranges = Vec::new();
 
     let ref_syntax_ids = analyzer
-        .db
+        .get_db()
         .get_reference_index_mut()
         .get_global_file_references(&name, file_id)?;
     for syntax_id in ref_syntax_ids {
@@ -360,7 +389,7 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
         return None;
     };
 
-    let scope_id = analyzer.generic_index.add_generic_scope(
+    let scope_id = analyzer.type_context.generic_index.add_generic_scope(
         vec![analyzer.comment.get_range(), comment_owner.get_range()],
         true,
     );
@@ -373,22 +402,29 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
             };
             let name_text = name_token.get_name_text().to_string();
             let smol_name = SmolStr::new(name_text.as_str());
-            analyzer
-                .generic_index
-                .append_generic_param(scope_id, GenericParam::new(smol_name.clone(), None, None));
 
             let type_ref = param
                 .get_constraint_type()
-                .map(|type_ref| infer_type(analyzer, type_ref));
+                .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
+            let default_type = param
+                .get_default_type()
+                .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
 
-            analyzer.generic_index.set_param_constraint(
+            analyzer.type_context.generic_index.append_generic_param(
                 scope_id,
-                name_text.as_str(),
-                type_ref.clone(),
+                GenericParam::new(
+                    smol_name.clone(),
+                    type_ref.clone(),
+                    default_type.clone(),
+                    None,
+                ),
             );
 
             param_info.push(Arc::new(LuaGenericParamInfo::new(
-                name_text, type_ref, None,
+                name_text,
+                type_ref,
+                default_type,
+                None,
             )));
         }
     }
@@ -396,7 +432,7 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
     let closure = find_owner_closure(analyzer)?;
     let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
     let signature = analyzer
-        .db
+        .get_db()
         .get_signature_index_mut()
         .get_or_create(signature_id);
     signature.generic_params = param_info;
@@ -413,18 +449,26 @@ fn bind_def_type(analyzer: &mut DocAnalyzer, type_def: LuaType) -> Option<()> {
             let file_id = analyzer.file_id;
             let decl_id = LuaDeclId::new(file_id, position);
 
-            bind_type(analyzer.db, decl_id.into(), LuaTypeCache::DocType(type_def));
+            bind_type(
+                analyzer.get_db(),
+                decl_id.into(),
+                LuaTypeCache::DocType(type_def),
+            );
         }
         LuaAst::LuaAssignStat(assign_stat) => {
             if let LuaVarExpr::NameExpr(name_expr) = assign_stat.child::<LuaVarExpr>()? {
                 let position = name_expr.get_position();
                 let file_id = analyzer.file_id;
                 let decl_id = LuaDeclId::new(file_id, position);
-                bind_type(analyzer.db, decl_id.into(), LuaTypeCache::DocType(type_def));
+                bind_type(
+                    analyzer.get_db(),
+                    decl_id.into(),
+                    LuaTypeCache::DocType(type_def),
+                );
             } else if let LuaVarExpr::IndexExpr(index_expr) = assign_stat.child::<LuaVarExpr>()? {
                 let member_id = LuaMemberId::new(index_expr.get_syntax_id(), analyzer.file_id);
                 bind_type(
-                    analyzer.db,
+                    analyzer.get_db(),
                     member_id.into(),
                     LuaTypeCache::DocType(type_def),
                 );
@@ -433,7 +477,7 @@ fn bind_def_type(analyzer: &mut DocAnalyzer, type_def: LuaType) -> Option<()> {
         LuaAst::LuaTableField(field) => {
             let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
             bind_type(
-                analyzer.db,
+                analyzer.get_db(),
                 member_id.into(),
                 LuaTypeCache::DocType(type_def),
             );

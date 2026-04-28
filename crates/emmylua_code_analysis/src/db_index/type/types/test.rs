@@ -27,6 +27,7 @@ mod tests {
                 GenericTplId::Type(0),
                 ArcIntern::new(SmolStr::new("T")),
                 None,
+                None,
             )
             .into(),
         );

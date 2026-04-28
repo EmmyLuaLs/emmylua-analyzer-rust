@@ -1,14 +1,13 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocGenericDeclList, LuaDocTag, LuaDocTagAlias,
-    LuaDocTagAttribute, LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace,
-    LuaDocTagUsing, LuaDocTypeFlag,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute,
+    LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
+    LuaDocTypeFlag,
 };
 use flagset::FlagSet;
 use rowan::TextRange;
-use smol_str::SmolStr;
 
 use crate::{
-    GenericParam, LuaTypeDecl, LuaTypeDeclId, ModuleVisibility,
+    LuaTypeDecl, LuaTypeDeclId, ModuleVisibility,
     db_index::{LuaDeclTypeKind, LuaTypeFlag, WorkspaceId},
 };
 
@@ -22,13 +21,11 @@ pub fn analyze_doc_tag_class(analyzer: &mut DeclAnalyzer, class: LuaDocTagClass)
 
     let decl_id = add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Class, type_flag);
     if let Some(generic_decl) = class.get_generic_decl() {
-        let generic_params = get_generic_params(generic_decl);
-        if !generic_params.is_empty() {
-            analyzer
-                .db
-                .get_type_index_mut()
-                .add_generic_params(decl_id, generic_params);
-        }
+        analyzer.context.add_pending_type_generic_header(
+            analyzer.get_file_id(),
+            decl_id,
+            generic_decl,
+        );
     }
 
     Some(())
@@ -93,13 +90,11 @@ pub fn analyze_doc_tag_alias(analyzer: &mut DeclAnalyzer, alias: LuaDocTagAlias)
     let type_flag = get_type_flag_value(analyzer, alias.get_type_flag());
     let decl_id = add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Alias, type_flag);
     if let Some(generic_decl) = alias.get_generic_decl_list() {
-        let generic_params = get_generic_params(generic_decl);
-        if !generic_params.is_empty() {
-            analyzer
-                .db
-                .get_type_index_mut()
-                .add_generic_params(decl_id, generic_params);
-        }
+        analyzer.context.add_pending_type_generic_header(
+            analyzer.get_file_id(),
+            decl_id,
+            generic_decl,
+        );
     }
 
     Some(())
@@ -244,15 +239,4 @@ fn add_type_decl(
     );
 
     id
-}
-
-fn get_generic_params(params: LuaDocGenericDeclList) -> Vec<GenericParam> {
-    params
-        .get_generic_decl()
-        .filter_map(|param| {
-            let name_token = param.get_name_token()?;
-            let name = name_token.get_name_text();
-            Some(GenericParam::new(SmolStr::new(name), None, None))
-        })
-        .collect()
 }

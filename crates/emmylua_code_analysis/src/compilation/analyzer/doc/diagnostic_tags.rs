@@ -35,8 +35,9 @@ fn analyze_diagnostic_disable(
     let owner_block = comment.ancestors::<LuaBlock>().next()?;
     let owner_block_range = owner_block.get_range();
     let is_file_disable = owner_block.get_parent::<LuaChunk>().is_some();
+    let file_id = analyzer.file_id;
 
-    let diagnostic_index = analyzer.db.get_diagnostic_index_mut();
+    let diagnostic_index = analyzer.get_db().get_diagnostic_index_mut();
     if let Some(diagnostic_code_list) = diagnostic.get_code_list() {
         for code in diagnostic_code_list.get_codes() {
             let name = code.get_name_text();
@@ -47,10 +48,10 @@ fn analyze_diagnostic_disable(
             };
 
             if is_file_disable {
-                diagnostic_index.add_file_diagnostic_disabled(analyzer.file_id, diagnostic_code);
+                diagnostic_index.add_file_diagnostic_disabled(file_id, diagnostic_code);
             } else {
                 diagnostic_index.add_diagnostic_action(
-                    analyzer.file_id,
+                    file_id,
                     DiagnosticAction::new(
                         owner_block_range,
                         DiagnosticActionKind::Disable(diagnostic_code),
@@ -60,7 +61,7 @@ fn analyze_diagnostic_disable(
         }
     } else {
         diagnostic_index.add_diagnostic_action(
-            analyzer.file_id,
+            file_id,
             DiagnosticAction::new(owner_block_range, DiagnosticActionKind::DisableAll),
         );
     }
@@ -74,12 +75,13 @@ fn analyze_diagnostic_disable_next_line(
 ) -> Option<()> {
     let comment = analyzer.comment.clone();
     let comment_range = comment.get_range();
-    let document = analyzer.db.get_vfs().get_document(&analyzer.file_id)?;
+    let file_id = analyzer.file_id;
+    let document = analyzer.get_db().get_vfs().get_document(&file_id)?;
     let comment_end_line = document.get_line(comment_range.end())?;
     let line_range = document.get_line_range(comment_end_line + 1)?;
     let valid_range = TextRange::new(comment_range.start(), line_range.end());
 
-    let diagnostic_index = analyzer.db.get_diagnostic_index_mut();
+    let diagnostic_index = analyzer.get_db().get_diagnostic_index_mut();
     if let Some(diagnostic_code_list) = diagnostic.get_code_list() {
         for code in diagnostic_code_list.get_codes() {
             let name = code.get_name_text();
@@ -90,13 +92,13 @@ fn analyze_diagnostic_disable_next_line(
             };
 
             diagnostic_index.add_diagnostic_action(
-                analyzer.file_id,
+                file_id,
                 DiagnosticAction::new(valid_range, DiagnosticActionKind::Disable(diagnostic_code)),
             );
         }
     } else {
         diagnostic_index.add_diagnostic_action(
-            analyzer.file_id,
+            file_id,
             DiagnosticAction::new(valid_range, DiagnosticActionKind::DisableAll),
         );
     }
@@ -110,11 +112,12 @@ fn analyze_diagnostic_disable_line(
 ) -> Option<()> {
     let comment = analyzer.comment.clone();
     let comment_range = comment.get_range();
-    let document = analyzer.db.get_vfs().get_document(&analyzer.file_id)?;
+    let file_id = analyzer.file_id;
+    let document = analyzer.get_db().get_vfs().get_document(&file_id)?;
     let comment_end_line = document.get_line(comment_range.end())?;
     let valid_range = document.get_line_range(comment_end_line)?;
 
-    let diagnostic_index = analyzer.db.get_diagnostic_index_mut();
+    let diagnostic_index = analyzer.get_db().get_diagnostic_index_mut();
     if let Some(diagnostic_code_list) = diagnostic.get_code_list() {
         for code in diagnostic_code_list.get_codes() {
             let name = code.get_name_text();
@@ -125,13 +128,13 @@ fn analyze_diagnostic_disable_line(
             };
 
             diagnostic_index.add_diagnostic_action(
-                analyzer.file_id,
+                file_id,
                 DiagnosticAction::new(valid_range, DiagnosticActionKind::Disable(diagnostic_code)),
             );
         }
     } else {
         diagnostic_index.add_diagnostic_action(
-            analyzer.file_id,
+            file_id,
             DiagnosticAction::new(valid_range, DiagnosticActionKind::DisableAll),
         );
     }
@@ -143,7 +146,8 @@ fn analyze_diagnostic_enable(
     analyzer: &mut DocAnalyzer,
     diagnostic: LuaDocTagDiagnostic,
 ) -> Option<()> {
-    let diagnostic_index = analyzer.db.get_diagnostic_index_mut();
+    let file_id = analyzer.file_id;
+    let diagnostic_index = analyzer.get_db().get_diagnostic_index_mut();
     let diagnostic_code_list = diagnostic.get_code_list()?;
     for code in diagnostic_code_list.get_codes() {
         let name = code.get_name_text();
@@ -153,7 +157,7 @@ fn analyze_diagnostic_enable(
             continue;
         };
 
-        diagnostic_index.add_file_diagnostic_enabled(analyzer.file_id, diagnostic_code);
+        diagnostic_index.add_file_diagnostic_enabled(file_id, diagnostic_code);
     }
 
     Some(())

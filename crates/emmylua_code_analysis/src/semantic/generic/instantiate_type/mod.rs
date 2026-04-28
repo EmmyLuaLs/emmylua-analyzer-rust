@@ -1,3 +1,4 @@
+mod complete_generic_args;
 mod instantiate_conditional_generic;
 mod instantiate_func_generic;
 mod instantiate_special_generic;
@@ -17,6 +18,9 @@ use crate::{
 
 use super::type_substitutor::{
     ConditionalCheckMode, GenericEvalEnv, SubstitutorValue, TypeSubstitutor,
+};
+pub use complete_generic_args::{
+    GenericArgumentCompletion, complete_type_generic_args, complete_type_generic_args_in_type,
 };
 pub use instantiate_func_generic::{build_self_type, infer_self_type, instantiate_func_generic};
 pub use instantiate_special_generic::get_keyof_members;
@@ -105,7 +109,15 @@ fn instantiate_tuple(env: &GenericEvalEnv, tuple: &LuaTupleType) -> LuaType {
                     if let LuaType::TplRef(tpl) = base {
                         if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
                             match value {
-                                SubstitutorValue::None => {}
+                                SubstitutorValue::None => {
+                                    if let Some(default_type) = tpl.get_default_type() {
+                                        let default_type =
+                                            instantiate_type_generic_with_env(env, default_type);
+                                        new_types.push(default_type);
+                                    } else {
+                                        new_types.push(LuaType::Variadic(inner.clone()));
+                                    }
+                                }
                                 SubstitutorValue::MultiTypes(types) => {
                                     for typ in types {
                                         new_types.push(typ.clone());
@@ -119,6 +131,8 @@ fn instantiate_tuple(env: &GenericEvalEnv, tuple: &LuaTupleType) -> LuaType {
                                 SubstitutorValue::Type(ty) => new_types.push(ty.default().clone()),
                                 SubstitutorValue::MultiBase(base) => new_types.push(base.clone()),
                             }
+                        } else {
+                            new_types.push(LuaType::Variadic(inner.clone()));
                         }
                     }
                 }
@@ -163,6 +177,17 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
                     LuaType::TplRef(tpl) => {
                         if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
                             match value {
+                                SubstitutorValue::None => {
+                                    let ty = tpl
+                                        .get_default_type()
+                                        .map(|ty| instantiate_type_generic_with_env(env, ty))
+                                        .unwrap_or_else(|| {
+                                            LuaType::Variadic(
+                                                VariadicType::Base(base.clone()).into(),
+                                            )
+                                        });
+                                    new_params.push((origin_param.0.clone(), Some(ty)));
+                                }
                                 SubstitutorValue::Type(ty) => {
                                     let resolved_type = ty.default();
                                     // 如果参数是 `...: T...` 且类型是 tuple, 那么我们将展开 tuple
@@ -176,9 +201,9 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
                                         continue;
                                     }
                                     new_params.push((
-                                        "...".to_string(),
+                                        origin_param.0.clone(),
                                         Some(LuaType::Variadic(
-                                            VariadicType::Base(LuaType::Any).into(),
+                                            VariadicType::Base(resolved_type.clone()).into(),
                                         )),
                                     ));
                                 }
@@ -202,6 +227,9 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
                                     ));
                                 }
                             }
+                        } else {
+                            new_params
+                                .push((origin_param.0.clone(), Some(origin_param_type.clone())));
                         }
                     }
                     LuaType::Generic(generic) => {
@@ -349,9 +377,8 @@ fn instantiate_tpl_ref(tpl: &GenericTpl, env: &GenericEvalEnv) -> LuaType {
     if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
         match value {
             SubstitutorValue::None => {
-                // 如果存在泛型约束, 那么返回约束
-                if let Some(constraint) = tpl.get_constraint() {
-                    return constraint.clone();
+                if let Some(default_type) = tpl.get_default_type() {
+                    return instantiate_type_generic_with_env(env, default_type);
                 }
 
                 if env.conditional_check_mode == ConditionalCheckMode::Permissive {
@@ -381,8 +408,8 @@ fn instantiate_const_tpl_ref(tpl: &GenericTpl, env: &GenericEvalEnv) -> LuaType 
     if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
         match value {
             SubstitutorValue::None => {
-                if let Some(constraint) = tpl.get_constraint() {
-                    return constraint.clone();
+                if let Some(default_type) = tpl.get_default_type() {
+                    return instantiate_type_generic_with_env(env, default_type);
                 }
 
                 if env.conditional_check_mode == ConditionalCheckMode::Permissive {
@@ -436,7 +463,16 @@ fn instantiate_variadic_type(env: &GenericEvalEnv, variadic: &VariadicType) -> L
                 if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
                     match value {
                         SubstitutorValue::None => {
-                            return LuaType::Never;
+                            if let Some(default_type) = tpl.get_default_type() {
+                                let default_type =
+                                    instantiate_type_generic_with_env(env, default_type);
+                                return match default_type {
+                                    LuaType::Variadic(_) => default_type,
+                                    LuaType::Never => LuaType::Never,
+                                    _ => LuaType::Variadic(VariadicType::Base(default_type).into()),
+                                };
+                            }
+                            return LuaType::Variadic(variadic.clone().into());
                         }
                         SubstitutorValue::Type(ty) => {
                             let resolved_type = ty.default();

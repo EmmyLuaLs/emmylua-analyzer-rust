@@ -1,12 +1,11 @@
 use emmylua_parser::{LuaAstNode, LuaDocTypeList};
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
-use internment::ArcIntern;
 use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{
-    DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
+    DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
     LuaTypeNode,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
@@ -29,7 +28,7 @@ use crate::{
     tpl_pattern_match_args,
 };
 
-use super::TypeSubstitutor;
+use super::{TypeSubstitutor, instantiate_type_generic};
 
 pub fn instantiate_func_generic(
     db: &DbIndex,
@@ -325,17 +324,13 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
     match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
             if let Some(generic) = db.get_type_index().get_generic_params(id) {
-                let mut params = Vec::new();
+                let mut params = Vec::with_capacity(generic.len());
+                let mut substitutor = TypeSubstitutor::new();
                 for (i, generic_param) in generic.iter().enumerate() {
-                    if let Some(t) = &generic_param.type_constraint {
-                        params.push(t.clone());
-                    } else {
-                        params.push(LuaType::TplRef(Arc::new(GenericTpl::new(
-                            GenericTplId::Type(i as u32),
-                            ArcIntern::new(generic_param.name.clone()),
-                            None,
-                        ))));
-                    }
+                    let tpl_id = GenericTplId::Type(i as u32);
+                    let param = build_self_generic_arg(db, generic_param, &substitutor);
+                    substitutor.insert_type(tpl_id, param.clone(), true);
+                    params.push(param);
                 }
                 let generic = LuaGenericType::new(id.clone(), params);
                 return LuaType::Generic(Arc::new(generic));
@@ -344,6 +339,22 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
         _ => {}
     };
     self_type.clone()
+}
+
+fn build_self_generic_arg(
+    db: &DbIndex,
+    generic_param: &GenericParam,
+    substitutor: &TypeSubstitutor,
+) -> LuaType {
+    let Some(arg) = generic_param
+        .type_constraint
+        .as_ref()
+        .or(generic_param.default_type.as_ref())
+    else {
+        return LuaType::Unknown;
+    };
+
+    instantiate_type_generic(db, arg, substitutor)
 }
 
 pub fn infer_self_type(

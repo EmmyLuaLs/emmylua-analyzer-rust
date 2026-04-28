@@ -824,7 +824,7 @@ mod tests {
             ---@return boolean, R...
             local function wrap(f, ...) end
 
-            ---@generic U: string
+            ---@generic U: string = string
             ---@param x U
             ---@return U
             local function id(x) end
