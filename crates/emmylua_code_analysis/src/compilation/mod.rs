@@ -9,7 +9,7 @@ mod summary_builder;
 mod test;
 mod types;
 
-use emmylua_parser::{LuaChunk, LuaParseError};
+use emmylua_parser::{LuaChunk, LuaExpr, LuaIndexKey, LuaParseError};
 use hashbrown::HashMap;
 use hashbrown::HashSet;
 use lsp_types::Uri;
@@ -436,6 +436,138 @@ impl LuaCompilation {
     pub fn find_required_module_semantic_id(&self, module_path: &str) -> Option<LuaSemanticDeclId> {
         let module = self.find_module_by_require_path(module_path)?;
         semantic_id_from_compilation_module(module)
+    }
+
+    pub fn module_has_export_surface(&self, file_id: FileId) -> bool {
+        if self.summary.semantic().file().module_export_query(file_id).is_some() {
+            return true;
+        }
+
+        let Some(root) = self.get_root(file_id) else {
+            return false;
+        };
+        let Some(block) = root.get_block() else {
+            return false;
+        };
+
+        analyze_module_return_points(block).into_iter().next().is_some()
+    }
+
+    pub fn module_export_has_member(&self, file_id: FileId, member_name: &str) -> bool {
+        let key = SalsaPropertyKeySummary::Name(member_name.into());
+        let Some((decl_id, member_target)) = self.module_export_member_target(file_id, member_name)
+        else {
+            return self.module_export_table_has_member(file_id, member_name);
+        };
+
+        if self.summary.file().members(file_id).is_some_and(|members| {
+            members.members.iter().any(|member| member.target == member_target)
+        }) {
+            return true;
+        }
+
+        if self
+            .summary
+            .file()
+            .properties_for_member_and_key(file_id, member_target.clone(), key.clone())
+            .is_some_and(|properties| !properties.is_empty())
+        {
+            return true;
+        }
+
+        decl_id.is_some_and(|decl_id| {
+            self.summary
+                .file()
+                .properties_for_decl_and_key(file_id, decl_id, key)
+                .is_some_and(|properties| !properties.is_empty())
+        })
+    }
+
+    pub fn module_export_member_visibility(
+        &self,
+        file_id: FileId,
+        member_name: &str,
+    ) -> Option<SalsaDocVisibilityKindSummary> {
+        let (_, member_target) = self.module_export_member_target(file_id, member_name)?;
+        let semantic_summary = self.summary.semantic().file().summary(file_id)?;
+        semantic_summary
+            .targets
+            .iter()
+            .find_map(|target_info| match &target_info.target {
+                SalsaSemanticTargetSummary::Member(target) if *target == member_target => {
+                    target_info
+                        .tag_properties
+                        .iter()
+                        .find_map(|property| property.visibility().cloned())
+                }
+                _ => None,
+            })
+    }
+
+    fn module_export_member_target(
+        &self,
+        file_id: FileId,
+        member_name: &str,
+    ) -> Option<(Option<SalsaDeclId>, SalsaMemberTargetId)> {
+        let export = self.summary.semantic().file().module_export(file_id)?;
+        let key = SalsaPropertyKeySummary::Name(member_name.into());
+        match (&export.export, export.semantic_target.as_ref()?) {
+            (
+                SalsaModuleExportSummary::LocalDecl { name, decl_id },
+                SalsaSemanticTargetSummary::Decl(_),
+            ) => {
+                let owner = SalsaPropertyOwnerSummary::Decl {
+                    name: name.clone(),
+                    decl_id: decl_id.clone(),
+                    is_global: false,
+                };
+                Some((Some(decl_id.clone()), extend_property_owner_with_key(&owner, &key)?))
+            }
+            (_, SalsaSemanticTargetSummary::Decl(decl_id)) => {
+                let property = self
+                    .summary
+                    .file()
+                    .properties_for_decl_and_key(file_id, decl_id.clone(), key)?
+                    .into_iter()
+                    .next()?;
+                Some((
+                    Some(decl_id.clone()),
+                    extend_property_owner_with_key(&property.owner, &property.key)?,
+                ))
+            }
+            (_, SalsaSemanticTargetSummary::Member(target)) => Some((
+                None,
+                extend_property_owner_with_key(
+                    &SalsaPropertyOwnerSummary::Member(target.clone()),
+                    &key,
+                )?,
+            )),
+            (_, SalsaSemanticTargetSummary::Signature(_)) => None,
+        }
+    }
+
+    fn module_export_table_has_member(&self, file_id: FileId, member_name: &str) -> bool {
+        let Some(root) = self.get_root(file_id) else {
+            return false;
+        };
+        let Some(block) = root.get_block() else {
+            return false;
+        };
+        let Some(first_return_expr) = analyze_module_return_points(block)
+            .into_iter()
+            .next()
+        else {
+            return false;
+        };
+        let LuaExpr::TableExpr(table_expr) = first_return_expr else {
+            return false;
+        };
+
+        table_expr.get_fields_with_keys().into_iter().any(|(_, key)| match key {
+            LuaIndexKey::Name(name) => name.get_name_text() == member_name,
+            LuaIndexKey::String(string) => string.get_value() == member_name,
+            _ => false,
+        })
     }
 
     pub fn type_index(&self) -> &CompilationTypeIndex {

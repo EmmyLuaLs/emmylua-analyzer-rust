@@ -667,8 +667,7 @@ fn module_uses_return_visibility(
     if let Some(query) = export_query {
         return matches!(
             query.export,
-            Some(SalsaModuleExportSummary::LocalDecl { .. })
-                | Some(SalsaModuleExportSummary::Closure { .. })
+            Some(SalsaModuleExportSummary::Closure { .. })
                 | Some(SalsaModuleExportSummary::Table { .. })
         );
     }

@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
-use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaVarExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaNameExpr, LuaVarExpr};
 
 use crate::{
-    CompilationModuleInfo, DiagnosticCode, LuaMemberKey, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, SemanticModel,
+    CompilationModuleInfo, DiagnosticCode, LuaSemanticDeclId, LuaType, SemanticDeclLevel,
+    SemanticModel,
     module_query::export::{compilation_module_has_export_type, compilation_module_semantic_id},
     module_query::identity::find_compilation_module_by_path,
-    parse_require_module_info,
+    parse_require_module_info, parse_require_module_info_by_name_expr,
 };
 
 use super::{Checker, DiagnosticContext, check_field, humanize_lint_type};
@@ -61,8 +61,6 @@ fn check_export_index_expr(
 ) -> Option<()> {
     let db = context.db();
     let prefix_expr = index_expr.get_prefix_expr()?;
-    let prefix_info = semantic_model.get_semantic_info(prefix_expr.syntax().clone().into())?;
-    let prefix_typ = prefix_info.typ.clone();
     let imported_export_surface =
         check_require_table_const_with_export_surface(semantic_model, index_expr).is_some();
 
@@ -70,44 +68,48 @@ fn check_export_index_expr(
     let index_name = index_key.get_path_part();
 
     if imported_export_surface {
-        if semantic_model
-            .get_member_info_with_key(
-                &prefix_typ,
-                LuaMemberKey::Name(index_name.clone().into()),
-                false,
-            )
-            .is_some()
-        {
-            return Some(());
-        }
-
+        let module_info = find_required_export_surface_module(semantic_model, index_expr)?;
+        let has_member = semantic_model
+            .get_compilation()
+            .module_export_has_member(module_info.file_id, index_name.as_str());
+        let prefix_typ = semantic_model
+            .get_semantic_info(prefix_expr.syntax().clone().into())
+            .map(|info| info.typ.clone())
+            .unwrap_or(LuaType::Unknown);
         match code {
             DiagnosticCode::InjectField => {
-                context.add_diagnostic(
-                    DiagnosticCode::InjectField,
-                    index_key.get_range()?,
-                    t!(
-                        "Fields cannot be injected into the reference of `%{class}` for `%{field}`. ",
-                        class = humanize_lint_type(db, &prefix_typ),
-                        field = index_name,
-                    )
-                    .to_string(),
-                    None,
-                );
+                if !has_member {
+                    context.add_diagnostic(
+                        DiagnosticCode::InjectField,
+                        index_key.get_range()?,
+                        t!(
+                            "Fields cannot be injected into the reference of `%{class}` for `%{field}`. ",
+                            class = humanize_lint_type(db, &prefix_typ),
+                            field = index_name,
+                        )
+                        .to_string(),
+                        None,
+                    );
+                }
             }
-            DiagnosticCode::UndefinedField => {
-                context.add_diagnostic(
-                    DiagnosticCode::UndefinedField,
-                    index_key.get_range()?,
-                    t!("Undefined field `%{field}`. ", field = index_name,).to_string(),
-                    None,
-                );
-            }
+                DiagnosticCode::UndefinedField => {
+                    if !has_member {
+                        context.add_diagnostic(
+                            DiagnosticCode::UndefinedField,
+                            index_key.get_range()?,
+                            t!("Undefined field `%{field}`. ", field = index_name,).to_string(),
+                            None,
+                        );
+                    }
+                }
             _ => {}
         }
 
         return Some(());
     }
+
+    let prefix_info = semantic_model.get_semantic_info(prefix_expr.syntax().clone().into())?;
+    let prefix_typ = prefix_info.typ.clone();
 
     // `check_export` 仅需要处理 `TableConst, 其它类型由 `check_field` 负责.
     let LuaType::TableConst(table_const) = &prefix_typ else {
@@ -155,6 +157,13 @@ fn check_export_index_expr(
     Some(())
 }
 
+fn find_required_export_surface_module<'a>(
+    semantic_model: &'a SemanticModel,
+    index_expr: &LuaIndexExpr,
+) -> Option<&'a CompilationModuleInfo> {
+    check_require_table_const_with_export_surface(semantic_model, index_expr)
+}
+
 fn check_require_table_const_with_export_surface<'a>(
     semantic_model: &'a SemanticModel,
     index_expr: &LuaIndexExpr,
@@ -162,9 +171,10 @@ fn check_require_table_const_with_export_surface<'a>(
     // 获取前缀表达式的语义信息
     let prefix_expr = index_expr.get_prefix_expr()?;
     if let Some(call_expr) = LuaCallExpr::cast(prefix_expr.syntax().clone()) {
-        let module_info = parse_require_expr_module_info(semantic_model, &call_expr)?;
-        if compilation_module_has_export_type(semantic_model.get_compilation(), module_info.file_id)
-        {
+        return parse_require_expr_module_info(semantic_model, &call_expr);
+    }
+    if let Some(name_expr) = LuaNameExpr::cast(prefix_expr.syntax().clone()) {
+        if let Some(module_info) = parse_require_module_info_by_name_expr(semantic_model, &name_expr) {
             return Some(module_info);
         }
     }
@@ -184,11 +194,7 @@ fn check_require_table_const_with_export_surface<'a>(
     // 获取声明
     let decl = semantic_model.get_decl(&decl_id)?;
 
-    let module_info = parse_require_module_info(semantic_model, &decl)?;
-    if compilation_module_has_export_type(semantic_model.get_compilation(), module_info.file_id) {
-        return Some(module_info);
-    }
-    None
+    parse_require_module_info(semantic_model, &decl)
 }
 
 fn parse_require_expr_module_info<'a>(

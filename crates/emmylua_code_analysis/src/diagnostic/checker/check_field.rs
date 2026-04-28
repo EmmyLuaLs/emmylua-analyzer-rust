@@ -2,12 +2,16 @@ use std::collections::HashSet;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaElseIfClauseStat, LuaForRangeStat, LuaForStat, LuaIfStat, LuaIndexExpr,
-    LuaIndexKey, LuaRepeatStat, LuaSyntaxKind, LuaTokenKind, LuaVarExpr, LuaWhileStat,
+    LuaIndexKey, LuaNameExpr, LuaRepeatStat, LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
+    LuaWhileStat,
 };
 
 use crate::{
     DbIndex, DiagnosticCode, InferFailReason, LuaAliasCallKind, LuaAliasCallType, LuaMemberKey,
-    LuaType, SemanticModel, enum_variable_is_param, get_keyof_members_inner,
+    LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, enum_variable_is_param,
+    get_keyof_members_inner,
+    module_query::identity::find_compilation_module_by_path,
+    parse_require_module_info, parse_require_module_info_by_name_expr,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -59,6 +63,10 @@ fn check_index_expr(
     index_expr: &LuaIndexExpr,
     code: DiagnosticCode,
 ) -> Option<()> {
+    if is_required_export_surface(semantic_model, index_expr) {
+        return Some(());
+    }
+
     let db = context.db();
     let prefix_typ = semantic_model
         .infer_expr(index_expr.get_prefix_expr()?)
@@ -101,6 +109,55 @@ fn check_index_expr(
     }
 
     Some(())
+}
+
+fn is_required_export_surface(semantic_model: &SemanticModel, index_expr: &LuaIndexExpr) -> bool {
+    let Some(prefix_expr) = index_expr.get_prefix_expr() else {
+        return false;
+    };
+
+    if let Some(call_expr) = emmylua_parser::LuaCallExpr::cast(prefix_expr.syntax().clone()) {
+        let Some(arg_expr) = call_expr.get_args_list().and_then(|args| args.get_args().next()) else {
+            return false;
+        };
+        let Ok(crate::LuaType::StringConst(module_path)) = semantic_model.infer_expr(arg_expr) else {
+            return false;
+        };
+        return find_compilation_module_by_path(semantic_model.get_compilation(), module_path.as_ref())
+            .is_some_and(|module_info| {
+                semantic_model
+                    .get_compilation()
+                    .module_has_export_surface(module_info.file_id)
+            });
+    }
+
+    if let Some(name_expr) = LuaNameExpr::cast(prefix_expr.syntax().clone())
+        && let Some(module_info) = parse_require_module_info_by_name_expr(semantic_model, &name_expr)
+    {
+        return semantic_model
+            .get_compilation()
+            .module_has_export_surface(module_info.file_id);
+    }
+
+    let Some(LuaSemanticDeclId::LuaDecl(decl_id)) = semantic_model
+        .get_semantic_info(prefix_expr.syntax().clone().into())
+        .and_then(|info| info.semantic_decl)
+        .or_else(|| {
+            semantic_model.find_decl(prefix_expr.syntax().clone().into(), SemanticDeclLevel::NoTrace)
+        })
+    else {
+        return false;
+    };
+
+    let Some(decl) = semantic_model.get_decl(&decl_id) else {
+        return false;
+    };
+
+    parse_require_module_info(semantic_model, &decl).is_some_and(|module_info| {
+        semantic_model
+            .get_compilation()
+            .module_has_export_surface(module_info.file_id)
+    })
 }
 
 fn is_invalid_prefix_type(typ: &LuaType) -> bool {

@@ -16,7 +16,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub use cache::{CacheEntry, CacheOptions, LuaAnalysisPhase, LuaInferCache};
-pub use decl::{enum_variable_is_param, parse_require_module_info};
+pub use decl::{
+    enum_variable_is_param, parse_require_module_info, parse_require_module_info_by_name_expr,
+};
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaChunk, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaIndexKey,
     LuaLocalStat, LuaParseError, LuaSyntaxNode, LuaSyntaxToken, LuaTableExpr,
