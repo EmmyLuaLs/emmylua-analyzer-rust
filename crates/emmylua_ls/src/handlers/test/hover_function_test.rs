@@ -739,7 +739,7 @@ mod tests {
                 ---@class Matchers<T>
                 ---@field toBe fun(self: self, expected: any)
 
-                ---@class Assertions<T>: Matchers<T> & number
+                ---@class Assertions<T>: Matchers<T>
                 Assertions = {}
         "#,
         );
