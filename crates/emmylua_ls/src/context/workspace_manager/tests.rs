@@ -112,7 +112,7 @@ fn collect_watch_registration_methods(client: &Connection, expected: usize) -> V
 
 fn recv_publish_diagnostics_for_uri(
     client: &Connection,
-    uri: &lsp_types::Uri,
+    uri: &Uri,
     timeout: Duration,
 ) -> Option<PublishDiagnosticsParams> {
     let deadline = Instant::now() + timeout;
@@ -136,7 +136,7 @@ fn recv_publish_diagnostics_for_uri(
     None
 }
 
-async fn file_text(snapshot: &ServerContextSnapshot, uri: &lsp_types::Uri) -> Option<String> {
+async fn file_text(snapshot: &ServerContextSnapshot, uri: &Uri) -> Option<String> {
     let analysis = snapshot.analysis().read().await;
     let file_id = analysis.get_file_id(uri)?;
     analysis

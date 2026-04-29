@@ -26,7 +26,7 @@ pub fn infer_table_expr(
         return infer_table_tuple_or_array(db, cache, table);
     }
 
-    Ok(LuaType::TableConst(crate::InFiled {
+    Ok(LuaType::TableConst(InFiled {
         file_id: cache.get_file_id(),
         value: table.get_range(),
     }))

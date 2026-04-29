@@ -19,7 +19,7 @@ pub async fn on_execute_command_handler(
 ) -> Option<Value> {
     let args = params.arguments;
     let command_name = params.command.as_str();
-    commands::dispatch_command(context, command_name, args).await;
+    dispatch_command(context, command_name, args).await;
     Some(Value::Null)
 }
 

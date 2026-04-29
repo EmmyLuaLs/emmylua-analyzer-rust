@@ -57,7 +57,7 @@ pub fn init_logger(root: Option<&str>, cmd_args: &CmdArgs) {
 
     let log_file_path = log_dir.join(format!("{}.log", filename));
 
-    let log_file = match std::fs::OpenOptions::new()
+    let log_file = match fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)

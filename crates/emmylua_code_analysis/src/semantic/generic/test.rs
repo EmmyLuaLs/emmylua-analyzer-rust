@@ -4,7 +4,7 @@ mod test {
 
     #[test]
     fn test_variadic_func() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
         ---@generic T, R
@@ -32,7 +32,7 @@ mod test {
 
     #[test]
     fn test_select_type() {
-        let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
         ws.def(
             r#"
         ---@param ... string
@@ -89,7 +89,7 @@ mod test {
 
     #[test]
     fn test_unpack() {
-        let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
         ws.def(
             r#"
@@ -111,7 +111,7 @@ mod test {
 
     #[test]
     fn test_return() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
                 ---@class ab
@@ -210,7 +210,7 @@ result = {
 
     #[test]
     fn test_call_generic() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
             ---@alias Warp<T> T
@@ -243,7 +243,7 @@ result = {
 
     #[test]
     fn test_generic_alias_instantiation() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
             ---@alias Arrayable<T> T | T[]
@@ -274,7 +274,7 @@ result = {
 
     #[test]
     fn test_generic_alias_instantiation2() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
             ---@alias Arrayable<T> T | T[]
