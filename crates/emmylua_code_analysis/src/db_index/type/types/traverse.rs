@@ -236,7 +236,8 @@ impl LuaTypeNode for LuaConditionalType {
     fn push_direct_children<'a>(&'a self, stack: &mut Vec<&'a LuaType>) {
         stack.push(self.get_false_type());
         stack.push(self.get_true_type());
-        stack.push(self.get_condition());
+        stack.push(self.get_extends_type());
+        stack.push(self.get_checked_type());
     }
 }
 

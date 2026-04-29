@@ -10,16 +10,16 @@ use crate::{
 use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
-use super::{GenericEvalEnv, TypeSubstitutor, instantiate_type_generic_with_env};
+use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_with_context};
 
 pub(super) fn instantiate_alias_call(
-    env: &GenericEvalEnv,
+    context: &GenericInstantiateContext,
     alias_call: &LuaAliasCallType,
 ) -> LuaType {
     let operand_exprs = alias_call.get_operands();
     let operands = operand_exprs
         .iter()
-        .map(|it| instantiate_type_generic_with_env(env, it))
+        .map(|it| instantiate_type_generic_with_context(context, it))
         .collect::<Vec<_>>();
 
     match alias_call.get_call_kind() {
@@ -28,21 +28,21 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
             // 如果类型为`Union`且只有一个类型, 则会解开`Union`包装
-            TypeOps::Remove.apply(env.db, &operands[0], &operands[1])
+            TypeOps::Remove.apply(context.db, &operands[0], &operands[1])
         }
         LuaAliasCallKind::Add => {
             if operands.len() != 2 {
                 return LuaType::Unknown;
             }
 
-            TypeOps::Union.apply(env.db, &operands[0], &operands[1])
+            TypeOps::Union.apply(context.db, &operands[0], &operands[1])
         }
         LuaAliasCallKind::KeyOf => {
             if operands.len() != 1 {
                 return LuaType::Unknown;
             }
 
-            let members = get_keyof_members(env.db, &operands[0]).unwrap_or_default();
+            let members = get_keyof_members(context.db, &operands[0]).unwrap_or_default();
             let member_key_types = members
                 .iter()
                 .filter_map(|m| match &m.key {
@@ -66,7 +66,7 @@ pub(super) fn instantiate_alias_call(
             }
 
             let compact =
-                type_check::check_type_compact(env.db, &operands[0], &operands[1]).is_ok();
+                type_check::check_type_compact(context.db, &operands[0], &operands[1]).is_ok();
             LuaType::BooleanConst(compact)
         }
         LuaAliasCallKind::Select => {
@@ -76,28 +76,28 @@ pub(super) fn instantiate_alias_call(
 
             instantiate_select_call(&operands[0], &operands[1])
         }
-        LuaAliasCallKind::Unpack => instantiate_unpack_call(env.db, &operands),
+        LuaAliasCallKind::Unpack => instantiate_unpack_call(context.db, &operands),
         LuaAliasCallKind::RawGet => {
             if operands.len() != 2 {
                 return LuaType::Unknown;
             }
 
-            let key = resolve_literal_operand(operand_exprs.get(1), env.substitutor)
+            let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
                 .unwrap_or_else(|| operands[1].clone());
 
-            instantiate_rawget_call(env.db, &operands[0], &key)
+            instantiate_rawget_call(context.db, &operands[0], &key)
         }
         LuaAliasCallKind::Index => {
             if operands.len() != 2 {
                 return LuaType::Unknown;
             }
 
-            let key = resolve_literal_operand(operand_exprs.get(1), env.substitutor)
+            let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
                 .unwrap_or_else(|| operands[1].clone());
 
-            instantiate_index_call(env.db, &operands[0], &key)
+            instantiate_index_call(context.db, &operands[0], &key)
         }
-        LuaAliasCallKind::Merge => instantiate_merge_call(env.db, &operands),
+        LuaAliasCallKind::Merge => instantiate_merge_call(context.db, &operands),
     }
 }
 

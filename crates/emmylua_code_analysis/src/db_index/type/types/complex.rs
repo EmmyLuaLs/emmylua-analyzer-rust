@@ -712,6 +712,7 @@ impl LuaInstanceType {
 pub enum GenericTplId {
     Type(u32),
     Func(u32),
+    ConditionalInfer(u32),
 }
 
 impl GenericTplId {
@@ -719,6 +720,7 @@ impl GenericTplId {
         match self {
             GenericTplId::Type(idx) => *idx as usize,
             GenericTplId::Func(idx) => *idx as usize,
+            GenericTplId::ConditionalInfer(idx) => *idx as usize,
         }
     }
 
@@ -730,10 +732,15 @@ impl GenericTplId {
         matches!(self, GenericTplId::Type(_))
     }
 
+    pub fn is_conditional_infer(&self) -> bool {
+        matches!(self, GenericTplId::ConditionalInfer(_))
+    }
+
     pub fn with_idx(&self, idx: u32) -> Self {
         match self {
             GenericTplId::Type(_) => GenericTplId::Type(idx),
             GenericTplId::Func(_) => GenericTplId::Func(idx),
+            GenericTplId::ConditionalInfer(_) => GenericTplId::ConditionalInfer(idx),
         }
     }
 }
@@ -907,7 +914,8 @@ impl LuaAttributeType {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaConditionalType {
-    condition: LuaType,
+    checked_type: LuaType,
+    extends_type: LuaType,
     true_type: LuaType,
     false_type: LuaType,
     infer_params: Vec<GenericParam>,
@@ -916,14 +924,16 @@ pub struct LuaConditionalType {
 
 impl LuaConditionalType {
     pub fn new(
-        condition: LuaType,
+        checked_type: LuaType,
+        extends_type: LuaType,
         true_type: LuaType,
         false_type: LuaType,
         infer_params: Vec<GenericParam>,
         has_new: bool,
     ) -> Self {
         Self {
-            condition,
+            checked_type,
+            extends_type,
             true_type,
             false_type,
             infer_params,
@@ -931,8 +941,12 @@ impl LuaConditionalType {
         }
     }
 
-    pub fn get_condition(&self) -> &LuaType {
-        &self.condition
+    pub fn get_checked_type(&self) -> &LuaType {
+        &self.checked_type
+    }
+
+    pub fn get_extends_type(&self) -> &LuaType {
+        &self.extends_type
     }
 
     pub fn get_true_type(&self) -> &LuaType {

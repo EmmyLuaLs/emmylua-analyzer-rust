@@ -3,12 +3,11 @@ use std::sync::Arc;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaDocAttributeType, LuaDocBinaryType, LuaDocConditionalType,
     LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericDecl, LuaDocGenericDeclList,
-    LuaDocGenericType, LuaDocIndexAccessType, LuaDocInferType, LuaDocMappedType,
-    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
-    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaDocGenericType, LuaDocIndexAccessType, LuaDocMappedType, LuaDocMultiLineUnionType,
+    LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType,
+    LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
     LuaTypeUnaryOperator, LuaVarExpr, NumberResult,
 };
-use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
 
@@ -23,7 +22,10 @@ use crate::{
     },
 };
 
-use super::{file_generic_index::GenericIndex, preprocess_description};
+use super::{
+    file_generic_index::{ConditionalInferIndex, GenericIndex},
+    preprocess_description,
+};
 
 #[derive(Debug)]
 pub struct DocTypeAnalyzeContext<'a> {
@@ -33,6 +35,7 @@ pub struct DocTypeAnalyzeContext<'a> {
     pub workspace_id: WorkspaceId,
     comment: Option<LuaComment>,
     options: DocTypeAnalyzeOptions,
+    conditional_infer_index: ConditionalInferIndex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +80,7 @@ impl<'a> DocTypeAnalyzeContext<'a> {
             workspace_id,
             comment: None,
             options: DocTypeAnalyzeOptions::default(),
+            conditional_infer_index: ConditionalInferIndex::new(),
         }
     }
 
@@ -203,7 +207,9 @@ pub fn infer_type(analyzer: &mut DocTypeAnalyzeContext<'_>, node: LuaDocType) ->
         }
         LuaDocType::Infer(infer_type) => {
             if let Some(name) = infer_type.get_generic_decl_name_text() {
-                return LuaType::ConditionalInfer(ArcIntern::new(SmolStr::new(&name)));
+                if let Some(tpl) = analyzer.conditional_infer_index.declare(&name) {
+                    return LuaType::TplRef(tpl);
+                }
             }
         }
         LuaDocType::Mapped(mapped_type) => {
@@ -246,6 +252,10 @@ fn infer_buildin_or_ref_type(
             LuaType::Table
         }
         _ => {
+            if let Some(tpl) = analyzer.conditional_infer_index.find_ref(name) {
+                return LuaType::TplRef(tpl);
+            }
+
             if let Some((tpl_id, constraint, default_type)) =
                 analyzer.generic_index.find_generic(position, name)
             {
@@ -899,26 +909,37 @@ fn infer_conditional_type(
     cond_type: &LuaDocConditionalType,
 ) -> LuaType {
     if let Some((condition, when_true, when_false)) = cond_type.get_types() {
-        // 收集条件中的所有 infer 声明
-        let infer_params = collect_cond_infer_params(&condition);
-        if !infer_params.is_empty() {
-            // 条件表达式中 infer 声明的类型参数只允许在`true`分支中使用
-            let true_range = when_true.get_range();
-            let scope_id = analyzer
-                .generic_index
-                .add_generic_scope(vec![true_range], false);
-            analyzer
-                .generic_index
-                .append_generic_params(scope_id, infer_params.clone());
-        }
+        analyzer.conditional_infer_index.enter_scope();
 
-        // 处理条件和分支类型
         let condition_type = infer_type(analyzer, condition);
+        let LuaType::Call(alias_call) = condition_type else {
+            analyzer.conditional_infer_index.leave_scope();
+            return LuaType::Unknown;
+        };
+        if alias_call.get_call_kind() != LuaAliasCallKind::Extends
+            || alias_call.get_operands().len() != 2
+        {
+            analyzer.conditional_infer_index.leave_scope();
+            return LuaType::Unknown;
+        }
+        let operands = alias_call.get_operands();
+        let checked_type = operands[0].clone();
+        let extends_type = operands[1].clone();
+
+        analyzer
+            .conditional_infer_index
+            .set_current_refs_visible(true);
         let true_type = infer_type(analyzer, when_true);
+        let infer_params = analyzer
+            .conditional_infer_index
+            .leave_scope() // 退出当前作用域
+            .map(|scope| scope.into_params())
+            .unwrap_or_default();
         let false_type = infer_type(analyzer, when_false);
 
         return LuaConditionalType::new(
-            condition_type,
+            checked_type,
+            extends_type,
             true_type,
             false_type,
             infer_params,
@@ -928,18 +949,6 @@ fn infer_conditional_type(
     }
 
     LuaType::Unknown
-}
-
-/// 收集条件类型中的条件表达式中所有 infer 声明
-fn collect_cond_infer_params(doc_type: &LuaDocType) -> Vec<GenericParam> {
-    let mut params = Vec::new();
-    let doc_infer_types = doc_type.descendants::<LuaDocInferType>();
-    for infer_type in doc_infer_types {
-        if let Some(name) = infer_type.get_generic_decl_name_text() {
-            params.push(GenericParam::new(SmolStr::new(&name), None, None, None));
-        }
-    }
-    params
 }
 
 fn infer_mapped_type(

@@ -425,18 +425,25 @@ fn complete_conditional_type(
     conditional: &LuaConditionalType,
     visiting: &mut HashSet<LuaTypeDeclId>,
 ) -> CompletedType {
-    let condition =
-        complete_type_generic_args_in_type_inner(db, conditional.get_condition(), visiting);
+    let checked_type =
+        complete_type_generic_args_in_type_inner(db, conditional.get_checked_type(), visiting);
+    let extends_type =
+        complete_type_generic_args_in_type_inner(db, conditional.get_extends_type(), visiting);
     let true_type =
         complete_type_generic_args_in_type_inner(db, conditional.get_true_type(), visiting);
     let false_type =
         complete_type_generic_args_in_type_inner(db, conditional.get_false_type(), visiting);
     let infer_params = complete_generic_param_list(db, conditional.get_infer_params(), visiting);
-    let cycled = condition.cycled || true_type.cycled || false_type.cycled || infer_params.cycled;
+    let cycled = checked_type.cycled
+        || extends_type.cycled
+        || true_type.cycled
+        || false_type.cycled
+        || infer_params.cycled;
     CompletedType::new(
         LuaType::Conditional(
             LuaConditionalType::new(
-                condition.ty,
+                checked_type.ty,
+                extends_type.ty,
                 true_type.ty,
                 false_type.ty,
                 infer_params.params,

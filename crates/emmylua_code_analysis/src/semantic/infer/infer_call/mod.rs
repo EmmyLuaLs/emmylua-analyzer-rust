@@ -8,7 +8,7 @@ use super::{
     InferFailReason, InferResult,
 };
 use crate::{
-    CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
+    AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
     LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait,
 };
@@ -97,6 +97,13 @@ pub fn infer_call_expr_func(
             infer_guard,
             args_count,
         ),
+        LuaType::Any => Ok(Arc::new(LuaFunctionType::new(
+            AsyncState::None,
+            false,
+            true,
+            vec![],
+            LuaType::Any,
+        ))),
         LuaType::Union(union) => {
             // 此时我们将其视为泛型实例化联合体
             if union

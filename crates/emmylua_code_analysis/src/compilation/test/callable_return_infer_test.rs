@@ -61,7 +61,7 @@ mod test {
     }
 
     #[test]
-    fn test_higher_order_return_infer_does_not_use_callable_constraint_as_default() {
+    fn test_higher_order_return_infer_uses_callable_constraint_fallback() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
@@ -83,7 +83,7 @@ mod test {
             "#,
         );
 
-        assert!(ws.expr_ty("result").is_unknown());
+        assert_eq!(ws.expr_ty("result"), ws.ty("string"));
     }
 
     #[test]

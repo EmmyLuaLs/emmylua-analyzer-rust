@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::type_substitutor::{
-    ConditionalCheckMode, GenericEvalEnv, SubstitutorValue, TypeSubstitutor,
+    GenericInstantiateContext, SubstitutorValue, TypeSubstitutor, UninferredTplPolicy,
 };
 pub use complete_generic_args::{
     GenericArgumentCompletion, complete_type_generic_args, complete_type_generic_args_in_type,
@@ -30,57 +30,66 @@ pub fn instantiate_type_generic(
     ty: &LuaType,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
-    let env = GenericEvalEnv::new(db, substitutor);
-    instantiate_type_generic_with_env(&env, ty)
+    let context = GenericInstantiateContext::new(db, substitutor);
+    instantiate_type_generic_with_context(&context, ty)
 }
 
-pub(super) fn instantiate_type_generic_with_env(env: &GenericEvalEnv, ty: &LuaType) -> LuaType {
+pub(super) fn instantiate_type_generic_with_context(
+    context: &GenericInstantiateContext,
+    ty: &LuaType,
+) -> LuaType {
     match ty {
-        LuaType::Array(array_type) => instantiate_array(env, array_type.get_base()),
-        LuaType::Tuple(tuple) => instantiate_tuple(env, tuple),
-        LuaType::DocFunction(doc_func) => instantiate_doc_function_with_env(env, doc_func),
-        LuaType::Object(object) => instantiate_object(env, object),
-        LuaType::Union(union) => instantiate_union(env, union),
-        LuaType::Intersection(intersection) => instantiate_intersection(env, intersection),
-        LuaType::Generic(generic) => instantiate_generic_with_env(env, generic),
-        LuaType::TableGeneric(table_params) => instantiate_table_generic(env, table_params),
-        LuaType::TplRef(tpl) => instantiate_tpl_ref(tpl, env),
-        LuaType::ConstTplRef(tpl) => instantiate_const_tpl_ref(tpl, env),
-        LuaType::Signature(sig_id) => instantiate_signature(env, sig_id),
+        LuaType::Array(array_type) => instantiate_array(context, array_type.get_base()),
+        LuaType::Tuple(tuple) => instantiate_tuple(context, tuple),
+        LuaType::DocFunction(doc_func) => instantiate_doc_function_with_context(
+            &context.with_policy(UninferredTplPolicy::PreserveTplRef),
+            doc_func,
+        ),
+        LuaType::Object(object) => instantiate_object(context, object),
+        LuaType::Union(union) => instantiate_union(context, union),
+        LuaType::Intersection(intersection) => instantiate_intersection(context, intersection),
+        LuaType::Generic(generic) => instantiate_generic_with_context(context, generic),
+        LuaType::TableGeneric(table_params) => instantiate_table_generic(context, table_params),
+        LuaType::TplRef(tpl) => instantiate_tpl_ref(tpl, context),
+        LuaType::ConstTplRef(tpl) => instantiate_const_tpl_ref(tpl, context),
+        LuaType::Signature(sig_id) => instantiate_signature(context, sig_id),
         LuaType::Call(alias_call) => {
-            instantiate_special_generic::instantiate_alias_call(env, alias_call)
+            instantiate_special_generic::instantiate_alias_call(context, alias_call)
         }
-        LuaType::Variadic(variadic) => instantiate_variadic_type(env, variadic),
+        LuaType::Variadic(variadic) => instantiate_variadic_type(context, variadic),
         LuaType::SelfInfer => {
-            if let Some(typ) = env.substitutor.get_self_type() {
+            if let Some(typ) = context.substitutor.get_self_type() {
                 typ.clone()
             } else {
                 LuaType::SelfInfer
             }
         }
         LuaType::TypeGuard(guard) => {
-            let inner = instantiate_type_generic_with_env(env, guard.deref());
+            let inner = instantiate_type_generic_with_context(context, guard.deref());
             LuaType::TypeGuard(inner.into())
         }
         LuaType::Conditional(conditional) => {
-            instantiate_conditional_generic::instantiate_conditional(env, conditional)
+            instantiate_conditional_generic::instantiate_conditional(context, conditional)
         }
-        LuaType::Mapped(mapped) => instantiate_mapped_type(env, mapped.deref()),
+        LuaType::Mapped(mapped) => instantiate_mapped_type(context, mapped.deref()),
         _ => ty.clone(),
     }
 }
 
-fn instantiate_types<'a, I>(env: &GenericEvalEnv, types: I) -> Vec<LuaType>
+fn instantiate_types<'a, I>(context: &GenericInstantiateContext, types: I) -> Vec<LuaType>
 where
     I: IntoIterator<Item = &'a LuaType>,
 {
     types
         .into_iter()
-        .map(|ty| instantiate_type_generic_with_env(env, ty))
+        .map(|ty| instantiate_type_generic_with_context(context, ty))
         .collect()
 }
 
-fn instantiate_type_pairs<'a, I>(env: &GenericEvalEnv, pairs: I) -> Vec<(LuaType, LuaType)>
+fn instantiate_type_pairs<'a, I>(
+    context: &GenericInstantiateContext,
+    pairs: I,
+) -> Vec<(LuaType, LuaType)>
 where
     I: IntoIterator<Item = &'a (LuaType, LuaType)>,
 {
@@ -88,36 +97,29 @@ where
         .into_iter()
         .map(|(key, value)| {
             (
-                instantiate_type_generic_with_env(env, key),
-                instantiate_type_generic_with_env(env, value),
+                instantiate_type_generic_with_context(context, key),
+                instantiate_type_generic_with_context(context, value),
             )
         })
         .collect()
 }
 
-fn instantiate_array(env: &GenericEvalEnv, base: &LuaType) -> LuaType {
-    let base = instantiate_type_generic_with_env(env, base);
+fn instantiate_array(context: &GenericInstantiateContext, base: &LuaType) -> LuaType {
+    let base = instantiate_type_generic_with_context(context, base);
     LuaType::Array(LuaArrayType::from_base_type(base).into())
 }
 
-fn instantiate_tuple(env: &GenericEvalEnv, tuple: &LuaTupleType) -> LuaType {
+fn instantiate_tuple(context: &GenericInstantiateContext, tuple: &LuaTupleType) -> LuaType {
     let mut new_types = Vec::new();
     for t in tuple.get_types() {
         if let LuaType::Variadic(inner) = t {
             match inner.deref() {
                 VariadicType::Base(base) => {
                     if let LuaType::TplRef(tpl) = base {
-                        if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
+                        if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
                             match value {
-                                SubstitutorValue::None => {
-                                    if let Some(default_type) = tpl.get_default_type() {
-                                        let default_type =
-                                            instantiate_type_generic_with_env(env, default_type);
-                                        new_types.push(default_type);
-                                    } else {
-                                        new_types.push(LuaType::Variadic(inner.clone()));
-                                    }
-                                }
+                                SubstitutorValue::None => new_types
+                                    .push(instantiate_uninferred_tpl_fallback(tpl, context)),
                                 SubstitutorValue::MultiTypes(types) => {
                                     for typ in types {
                                         new_types.push(typ.clone());
@@ -142,7 +144,7 @@ fn instantiate_tuple(env: &GenericEvalEnv, tuple: &LuaTupleType) -> LuaType {
             break;
         }
 
-        let t = instantiate_type_generic_with_env(env, t);
+        let t = instantiate_type_generic_with_context(context, t);
         new_types.push(t);
     }
     LuaType::Tuple(LuaTupleType::new(new_types, tuple.status).into())
@@ -153,11 +155,14 @@ pub fn instantiate_doc_function(
     doc_func: &LuaFunctionType,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
-    let env = GenericEvalEnv::new(db, substitutor);
-    instantiate_doc_function_with_env(&env, doc_func)
+    let context = GenericInstantiateContext::new(db, substitutor);
+    instantiate_doc_function_with_context(&context, doc_func)
 }
 
-fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctionType) -> LuaType {
+fn instantiate_doc_function_with_context(
+    context: &GenericInstantiateContext,
+    doc_func: &LuaFunctionType,
+) -> LuaType {
     let tpl_func_params = doc_func.get_params();
     let tpl_ret = doc_func.get_ret();
     let async_state = doc_func.get_async_state();
@@ -175,17 +180,10 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
             LuaType::Variadic(variadic) => match variadic.deref() {
                 VariadicType::Base(base) => match base {
                     LuaType::TplRef(tpl) => {
-                        if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
+                        if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
                             match value {
                                 SubstitutorValue::None => {
-                                    let ty = tpl
-                                        .get_default_type()
-                                        .map(|ty| instantiate_type_generic_with_env(env, ty))
-                                        .unwrap_or_else(|| {
-                                            LuaType::Variadic(
-                                                VariadicType::Base(base.clone()).into(),
-                                            )
-                                        });
+                                    let ty = instantiate_uninferred_tpl_fallback(tpl, context);
                                     new_params.push((origin_param.0.clone(), Some(ty)));
                                 }
                                 SubstitutorValue::Type(ty) => {
@@ -233,7 +231,7 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
                         }
                     }
                     LuaType::Generic(generic) => {
-                        let new_type = instantiate_generic_with_env(env, generic);
+                        let new_type = instantiate_generic_with_context(context, generic);
                         // 如果是 rest 参数且实例化后的类型是 tuple, 那么我们将展开 tuple
                         if let LuaType::Tuple(tuple_type) = &new_type {
                             let base_index = new_params.len();
@@ -251,13 +249,13 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
                 VariadicType::Multi(_) => (),
             },
             _ => {
-                let new_type = instantiate_type_generic_with_env(env, origin_param_type);
+                let new_type = instantiate_type_generic_with_context(context, origin_param_type);
                 new_params.push((origin_param.0.clone(), Some(new_type)));
             }
         }
     }
 
-    let mut inst_ret_type = instantiate_type_generic_with_env(env, tpl_ret);
+    let mut inst_ret_type = instantiate_type_generic_with_context(context, tpl_ret);
     // 对于可变返回值, 如果实例化是 tuple, 那么我们将展开 tuple
     if let LuaType::Variadic(_) = &&tpl_ret
         && let LuaType::Tuple(tuple) = &inst_ret_type
@@ -295,25 +293,34 @@ fn instantiate_doc_function_with_env(env: &GenericEvalEnv, doc_func: &LuaFunctio
     )
 }
 
-fn instantiate_object(env: &GenericEvalEnv, object: &LuaObjectType) -> LuaType {
+fn instantiate_object(context: &GenericInstantiateContext, object: &LuaObjectType) -> LuaType {
     let new_fields = object
         .get_fields()
         .iter()
-        .map(|(key, field)| (key.clone(), instantiate_type_generic_with_env(env, field)))
+        .map(|(key, field)| {
+            (
+                key.clone(),
+                instantiate_type_generic_with_context(context, field),
+            )
+        })
         .collect::<HashMap<_, _>>();
 
-    let new_index_access = instantiate_type_pairs(env, object.get_index_access().iter());
+    let new_index_access = instantiate_type_pairs(context, object.get_index_access().iter());
 
     LuaType::Object(LuaObjectType::new_with_fields(new_fields, new_index_access).into())
 }
 
-fn instantiate_union(env: &GenericEvalEnv, union: &LuaUnionType) -> LuaType {
-    LuaType::from_vec(instantiate_types(env, union.into_vec().iter()))
+fn instantiate_union(context: &GenericInstantiateContext, union: &LuaUnionType) -> LuaType {
+    LuaType::from_vec(instantiate_types(context, union.into_vec().iter()))
 }
 
-fn instantiate_intersection(env: &GenericEvalEnv, intersection: &LuaIntersectionType) -> LuaType {
+fn instantiate_intersection(
+    context: &GenericInstantiateContext,
+    intersection: &LuaIntersectionType,
+) -> LuaType {
     LuaType::Intersection(
-        LuaIntersectionType::new(instantiate_types(env, intersection.get_types().iter())).into(),
+        LuaIntersectionType::new(instantiate_types(context, intersection.get_types().iter()))
+            .into(),
     )
 }
 
@@ -322,13 +329,16 @@ pub fn instantiate_generic(
     generic: &LuaGenericType,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
-    let env = GenericEvalEnv::new(db, substitutor);
-    instantiate_generic_with_env(&env, generic)
+    let context = GenericInstantiateContext::new(db, substitutor);
+    instantiate_generic_with_context(&context, generic)
 }
 
-fn instantiate_generic_with_env(env: &GenericEvalEnv, generic: &LuaGenericType) -> LuaType {
+fn instantiate_generic_with_context(
+    context: &GenericInstantiateContext,
+    generic: &LuaGenericType,
+) -> LuaType {
     let generic_params = generic.get_params();
-    let new_params = instantiate_types(env, generic_params.iter());
+    let new_params = instantiate_types(context, generic_params.iter());
 
     let base = generic.get_base_type();
     let type_decl_id = if let LuaType::Ref(id) = base {
@@ -337,31 +347,12 @@ fn instantiate_generic_with_env(env: &GenericEvalEnv, generic: &LuaGenericType) 
         return LuaType::Unknown;
     };
 
-    if !env.substitutor.check_recursion(&type_decl_id)
-        && let Some(type_decl) = env.db.get_type_index().get_type_decl(&type_decl_id)
+    if !context.substitutor.check_recursion(&type_decl_id)
+        && let Some(type_decl) = context.db.get_type_index().get_type_decl(&type_decl_id)
         && type_decl.is_alias()
     {
-        let mut new_substitutor =
-            TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
-        // true 分支里为 outer tpl 收集到的 conditional overlay 需要继续映射到 inner alias 参数位,
-        // 这样像 `ParametersNew<T>` 这类嵌套 conditional 才能看到 "T 已满足外层 extends 约束" 的局部事实.
-        for (i, origin_param) in generic_params.iter().enumerate() {
-            let outer_tpl = match origin_param {
-                LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl,
-                _ => continue,
-            };
-
-            let Some(conditional_raw) = env
-                .substitutor
-                .get_conditional_raw_type(outer_tpl.get_tpl_id())
-            else {
-                continue;
-            };
-
-            new_substitutor
-                .insert_conditional_type(GenericTplId::Type(i as u32), conditional_raw.clone());
-        }
-        if let Some(origin) = type_decl.get_alias_origin(env.db, Some(&new_substitutor)) {
+        let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
+        if let Some(origin) = type_decl.get_alias_origin(context.db, Some(&new_substitutor)) {
             return origin;
         }
     }
@@ -369,21 +360,39 @@ fn instantiate_generic_with_env(env: &GenericEvalEnv, generic: &LuaGenericType) 
     LuaType::Generic(LuaGenericType::new(type_decl_id, new_params).into())
 }
 
-fn instantiate_table_generic(env: &GenericEvalEnv, table_params: &[LuaType]) -> LuaType {
-    LuaType::TableGeneric(instantiate_types(env, table_params.iter()).into())
+fn instantiate_table_generic(
+    context: &GenericInstantiateContext,
+    table_params: &[LuaType],
+) -> LuaType {
+    LuaType::TableGeneric(instantiate_types(context, table_params.iter()).into())
 }
 
-fn instantiate_tpl_ref(tpl: &GenericTpl, env: &GenericEvalEnv) -> LuaType {
-    if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
+fn instantiate_uninferred_tpl_fallback(
+    tpl: &GenericTpl,
+    context: &GenericInstantiateContext,
+) -> LuaType {
+    // 一些情况下需要保留 TplRef, 例如高阶函数调用
+    if context.should_preserve_tpl_ref() && tpl.get_default_type().is_none() {
+        return LuaType::TplRef(tpl.clone().into());
+    }
+
+    // 显式默认值优先, 然后是 extends 约束, 最后才是 unknown.
+    if let Some(default_type) = tpl.get_default_type() {
+        return instantiate_type_generic_with_context(context, default_type);
+    }
+
+    if let Some(constraint) = tpl.get_constraint() {
+        return instantiate_type_generic_with_context(context, constraint);
+    }
+
+    LuaType::Unknown
+}
+
+fn instantiate_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) -> LuaType {
+    if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
         match value {
             SubstitutorValue::None => {
-                if let Some(default_type) = tpl.get_default_type() {
-                    return instantiate_type_generic_with_env(env, default_type);
-                }
-
-                if env.conditional_check_mode == ConditionalCheckMode::Permissive {
-                    return LuaType::Any;
-                }
+                return instantiate_uninferred_tpl_fallback(tpl, context);
             }
             SubstitutorValue::Type(ty) => return ty.default().clone(),
             SubstitutorValue::MultiTypes(types) => {
@@ -404,17 +413,11 @@ fn instantiate_tpl_ref(tpl: &GenericTpl, env: &GenericEvalEnv) -> LuaType {
     LuaType::TplRef(tpl.clone().into())
 }
 
-fn instantiate_const_tpl_ref(tpl: &GenericTpl, env: &GenericEvalEnv) -> LuaType {
-    if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
+fn instantiate_const_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) -> LuaType {
+    if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
         match value {
             SubstitutorValue::None => {
-                if let Some(default_type) = tpl.get_default_type() {
-                    return instantiate_type_generic_with_env(env, default_type);
-                }
-
-                if env.conditional_check_mode == ConditionalCheckMode::Permissive {
-                    return LuaType::Any;
-                }
+                return instantiate_uninferred_tpl_fallback(tpl, context);
             }
             SubstitutorValue::Type(ty) => return ty.raw().clone(),
             SubstitutorValue::MultiTypes(types) => {
@@ -435,18 +438,24 @@ fn instantiate_const_tpl_ref(tpl: &GenericTpl, env: &GenericEvalEnv) -> LuaType 
     LuaType::ConstTplRef(tpl.clone().into())
 }
 
-fn instantiate_signature(env: &GenericEvalEnv, signature_id: &LuaSignatureId) -> LuaType {
-    if let Some(signature) = env.db.get_signature_index().get(signature_id) {
+fn instantiate_signature(
+    context: &GenericInstantiateContext,
+    signature_id: &LuaSignatureId,
+) -> LuaType {
+    if let Some(signature) = context.db.get_signature_index().get(signature_id) {
         let origin_type = {
             let fake_doc_function = signature.to_doc_func_type();
-            instantiate_doc_function_with_env(env, &fake_doc_function)
+            instantiate_doc_function_with_context(context, &fake_doc_function)
         };
         if signature.overloads.is_empty() {
             return origin_type;
         } else {
             let mut result = Vec::new();
             for overload in signature.overloads.iter() {
-                result.push(instantiate_doc_function_with_env(env, &(*overload).clone()));
+                result.push(instantiate_doc_function_with_context(
+                    context,
+                    &(*overload).clone(),
+                ));
             }
             result.push(origin_type); // 我们需要将原始类型放到最后
             return LuaType::from_vec(result);
@@ -456,23 +465,22 @@ fn instantiate_signature(env: &GenericEvalEnv, signature_id: &LuaSignatureId) ->
     LuaType::Signature(*signature_id)
 }
 
-fn instantiate_variadic_type(env: &GenericEvalEnv, variadic: &VariadicType) -> LuaType {
+fn instantiate_variadic_type(
+    context: &GenericInstantiateContext,
+    variadic: &VariadicType,
+) -> LuaType {
     match variadic {
         VariadicType::Base(base) => match base {
             LuaType::TplRef(tpl) => {
-                if let Some(value) = env.substitutor.get(tpl.get_tpl_id()) {
+                if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
                     match value {
                         SubstitutorValue::None => {
-                            if let Some(default_type) = tpl.get_default_type() {
-                                let default_type =
-                                    instantiate_type_generic_with_env(env, default_type);
-                                return match default_type {
-                                    LuaType::Variadic(_) => default_type,
-                                    LuaType::Never => LuaType::Never,
-                                    _ => LuaType::Variadic(VariadicType::Base(default_type).into()),
-                                };
-                            }
-                            return LuaType::Variadic(variadic.clone().into());
+                            let fallback = instantiate_uninferred_tpl_fallback(tpl, context);
+                            return match fallback {
+                                LuaType::Variadic(_) | LuaType::Never => fallback,
+                                LuaType::Nil | LuaType::Any | LuaType::Unknown => fallback,
+                                _ => LuaType::Variadic(VariadicType::Base(fallback).into()),
+                            };
                         }
                         SubstitutorValue::Type(ty) => {
                             let resolved_type = ty.default();
@@ -505,7 +513,7 @@ fn instantiate_variadic_type(env: &GenericEvalEnv, variadic: &VariadicType) -> L
                 }
             }
             LuaType::Generic(generic) => {
-                return instantiate_generic_with_env(env, generic);
+                return instantiate_generic_with_context(context, generic);
             }
             _ => {}
         },
@@ -513,7 +521,7 @@ fn instantiate_variadic_type(env: &GenericEvalEnv, variadic: &VariadicType) -> L
             if types.iter().any(LuaTypeNode::contains_tpl_node) {
                 let mut new_types = Vec::new();
                 for t in types {
-                    let t = instantiate_type_generic_with_env(env, t);
+                    let t = instantiate_type_generic_with_context(context, t);
                     match t {
                         LuaType::Never => {}
                         LuaType::Variadic(variadic) => match variadic.deref() {
@@ -535,13 +543,13 @@ fn instantiate_variadic_type(env: &GenericEvalEnv, variadic: &VariadicType) -> L
     LuaType::Variadic(variadic.clone().into())
 }
 
-fn instantiate_mapped_type(env: &GenericEvalEnv, mapped: &LuaMappedType) -> LuaType {
+fn instantiate_mapped_type(context: &GenericInstantiateContext, mapped: &LuaMappedType) -> LuaType {
     let constraint = mapped
         .param
         .1
         .type_constraint
         .as_ref()
-        .map(|ty| instantiate_type_generic_with_env(env, ty));
+        .map(|ty| instantiate_type_generic_with_context(context, ty));
 
     if let Some(constraint) = constraint {
         let mut key_types = Vec::new();
@@ -556,7 +564,7 @@ fn instantiate_mapped_type(env: &GenericEvalEnv, mapped: &LuaMappedType) -> LuaT
                 continue;
             }
 
-            let value_ty = instantiate_mapped_value(env, mapped, mapped.param.0, &key_ty);
+            let value_ty = instantiate_mapped_value(context, mapped, mapped.param.0, &key_ty);
 
             if let Some(member_key) = key_type_to_member_key(&key_ty) {
                 if let Some((_, existing)) = fields.iter_mut().find(|(key, _)| key == &member_key) {
@@ -599,26 +607,22 @@ fn instantiate_mapped_type(env: &GenericEvalEnv, mapped: &LuaMappedType) -> LuaT
         }
     }
 
-    instantiate_type_generic_with_env(env, &mapped.value)
+    instantiate_type_generic_with_context(context, &mapped.value)
 }
 
 fn instantiate_mapped_value(
-    env: &GenericEvalEnv,
+    context: &GenericInstantiateContext,
     mapped: &LuaMappedType,
     tpl_id: GenericTplId,
     replacement: &LuaType,
 ) -> LuaType {
-    let mut local_substitutor = env.substitutor.clone();
+    let mut local_substitutor = context.substitutor.clone();
     local_substitutor.insert_type(tpl_id, replacement.clone(), true);
-    let local_env = GenericEvalEnv {
-        db: env.db,
-        substitutor: &local_substitutor,
-        conditional_check_mode: env.conditional_check_mode,
-    };
-    let mut result = instantiate_type_generic_with_env(&local_env, &mapped.value);
+    let local_context = context.with_substitutor(&local_substitutor);
+    let mut result = instantiate_type_generic_with_context(&local_context, &mapped.value);
     // 根据 readonly 和 optional 属性进行处理
     if mapped.is_optional {
-        result = TypeOps::Union.apply(env.db, &result, &LuaType::Nil);
+        result = TypeOps::Union.apply(context.db, &result, &LuaType::Nil);
     }
     // TODO: 处理 readonly, 但目前 readonly 的实现存在问题, 这里我们先跳过
 

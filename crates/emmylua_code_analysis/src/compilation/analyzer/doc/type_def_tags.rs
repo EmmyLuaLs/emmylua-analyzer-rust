@@ -1,8 +1,8 @@
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCommentOwner, LuaDocDescription,
-    LuaDocDescriptionOwner, LuaDocGenericDeclList, LuaDocTagAlias, LuaDocTagAttribute,
-    LuaDocTagClass, LuaDocTagEnum, LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat,
-    LuaNameExpr, LuaSyntaxId, LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
+    LuaDocDescriptionOwner, LuaDocTagAlias, LuaDocTagAttribute, LuaDocTagClass, LuaDocTagEnum,
+    LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat, LuaNameExpr, LuaSyntaxId,
+    LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -35,8 +35,8 @@ pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<
 
     let class_decl_id = class_decl.get_id();
     analyzer.current_type_id = Some(class_decl_id.clone());
-    if let Some(generic_params) = tag.get_generic_decl() {
-        let generic_params = get_type_generic_params(analyzer, &class_decl_id, generic_params);
+    if tag.get_generic_decl().is_some() {
+        let generic_params = get_type_generic_params(analyzer, &class_decl_id);
         add_generic_index(analyzer, generic_params, &tag);
     }
 
@@ -143,8 +143,8 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
         alias_decl.get_id()
     };
 
-    if let Some(generic_params) = tag.get_generic_decl_list() {
-        let generic_params = get_type_generic_params(analyzer, &alias_decl_id, generic_params);
+    if tag.get_generic_decl_list().is_some() {
+        let generic_params = get_type_generic_params(analyzer, &alias_decl_id);
         let range = analyzer.comment.get_range();
         let scope_id = analyzer
             .type_context
@@ -198,68 +198,16 @@ pub fn analyze_attribute(analyzer: &mut DocAnalyzer, tag: LuaDocTagAttribute) ->
     Some(())
 }
 
-fn get_generic_params(
-    analyzer: &mut DocAnalyzer,
-    params: LuaDocGenericDeclList,
-) -> Vec<GenericParam> {
-    analyzer
-        .type_context
-        .generic_index
-        .clear_pending_type_params();
-    let mut params_result = Vec::new();
-    for param in params.get_generic_decl() {
-        let name = if let Some(param) = param.get_name_token() {
-            SmolStr::new(param.get_name_text())
-        } else {
-            continue;
-        };
-
-        let type_constraint = param
-            .get_constraint_type()
-            .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
-
-        let default_type = param
-            .get_default_type()
-            .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
-
-        let param = GenericParam::new(name, type_constraint, default_type, None);
-        analyzer
-            .type_context
-            .generic_index
-            .append_pending_type_param(param.clone());
-
-        params_result.push(param);
-    }
-    analyzer
-        .type_context
-        .generic_index
-        .clear_pending_type_params();
-
-    params_result
-}
-
 fn get_type_generic_params(
     analyzer: &mut DocAnalyzer,
     type_decl_id: &LuaTypeDeclId,
-    params: LuaDocGenericDeclList,
 ) -> Vec<GenericParam> {
-    if let Some(generic_params) = analyzer
+    analyzer
         .get_db()
         .get_type_index()
         .get_generic_params(type_decl_id)
         .cloned()
-    {
-        return generic_params;
-    }
-
-    let generic_params = get_generic_params(analyzer, params);
-    if !generic_params.is_empty() {
-        analyzer
-            .get_db()
-            .get_type_index_mut()
-            .add_generic_params(type_decl_id.clone(), generic_params.clone());
-    }
-    generic_params
+        .unwrap_or_default()
 }
 
 fn add_generic_index(

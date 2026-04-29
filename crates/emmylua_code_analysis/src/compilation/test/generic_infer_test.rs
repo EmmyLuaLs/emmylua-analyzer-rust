@@ -254,4 +254,99 @@ mod test {
         let a_ty = ws.expr_ty("A");
         assert_eq!(ws.humanize_type(a_ty), "Test<integer>");
     }
+
+    #[test]
+    fn test_conditional_infer_shadowed_name_uses_inner_scope() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Shadow<T> T extends { outer: infer P } and (P extends { inner: infer P } and P or never) or never
+
+            ---@generic T
+            ---@param value T
+            ---@return Shadow<T>
+            function shadow(value) end
+
+            ---@type { outer: { inner: string } }
+            local value
+
+            A = shadow(value)
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "string");
+    }
+
+    #[test]
+    fn test_conditional_infer_same_name_covariant_candidates_union() {
+        let mut ws = VirtualWorkspace::new();
+        // 协变, 所有候选联合
+        ws.def(
+            r#"
+            ---@alias PairValue<T> T extends { left: infer P, right: infer P } and P or never
+
+            ---@generic T
+            ---@param value T
+            ---@return PairValue<T>
+            function pairValue(value) end
+
+            ---@type { left: string, right: number }
+            local value
+
+            A = pairValue(value)
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "(string|number)");
+    }
+
+    #[test]
+    fn test_conditional_infer_same_name_contravariant_candidates_intersect() {
+        let mut ws = VirtualWorkspace::new();
+        // 函数参数逆变, 求交集
+        ws.def(
+            r#"
+            ---@alias ParamSame<T> T extends (fun(left: infer P, right: infer P)) and P or boolean
+
+            ---@generic T
+            ---@param value T
+            ---@return ParamSame<T>
+            function paramSame(value) end
+
+            ---@type fun(left: string, right: number)
+            local value
+
+            A = paramSame(value)
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "never");
+    }
+
+    #[test]
+    fn test_conditional_infer_false_branch_uses_outer_scope() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Choose<P, T> T extends { foo: infer P } and P or P
+
+            ---@generic P, T
+            ---@param fallback P
+            ---@param value T
+            ---@return Choose<P, T>
+            function choose(fallback, value) end
+
+            ---@type { bar: string }
+            local value
+
+            A = choose(1, value)
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "integer");
+    }
 }

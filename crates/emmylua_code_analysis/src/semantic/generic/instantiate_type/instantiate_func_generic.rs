@@ -201,7 +201,7 @@ fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool)
 
     func.visit_nested_types(&mut |ty| match ty {
         LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            collect_func_tpl_with_default_deps(generic_tpl, &mut generic_tpls);
+            collect_func_tpl_with_fallback_deps(generic_tpl, &mut generic_tpls);
         }
         LuaType::StrTplRef(str_tpl) => {
             generic_tpls.insert(str_tpl.get_tpl_id());
@@ -213,7 +213,7 @@ fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool)
     (generic_tpls, contain_self)
 }
 
-fn collect_func_tpl_with_default_deps(
+fn collect_func_tpl_with_fallback_deps(
     generic_tpl: &GenericTpl,
     generic_tpls: &mut HashSet<GenericTplId>,
 ) {
@@ -224,44 +224,47 @@ fn collect_func_tpl_with_default_deps(
 
     generic_tpls.insert(tpl_id);
 
-    let Some(default_type) = generic_tpl.get_default_type() else {
+    let Some(fallback_type) = generic_tpl
+        .get_default_type()
+        .or(generic_tpl.get_constraint())
+    else {
         return;
     };
 
-    // 只有提前加入的泛型才有 None 占位, 默认值展开时才能继续使用它自己的默认值.
-    // 例如 `U = T[]` 中, 即使函数返回值只直接引用了 `U`, 也需要把 `T` 一并加入.
-    let mut default_deps = HashSet::new();
-    let mut visiting_defaults = HashSet::new();
-    visiting_defaults.insert(tpl_id);
-    if collect_func_tpl_deps_from_default_type(
-        default_type,
-        &mut default_deps,
-        &mut visiting_defaults,
+    // 只有提前加入的泛型才有 None 占位, fallback 展开时才能继续使用它自己的 default/constraint.
+    // 例如 `U = T[]` 或 `U: T[]` 中, 即使函数返回值只直接引用了 `U`, 也需要把 `T` 一并加入.
+    let mut fallback_deps = HashSet::new();
+    let mut visiting_fallbacks = HashSet::new();
+    visiting_fallbacks.insert(tpl_id);
+    if collect_func_tpl_deps_from_fallback_type(
+        fallback_type,
+        &mut fallback_deps,
+        &mut visiting_fallbacks,
     ) {
-        generic_tpls.extend(default_deps);
+        generic_tpls.extend(fallback_deps);
     }
 }
 
-fn collect_func_tpl_deps_from_default_type(
+fn collect_func_tpl_deps_from_fallback_type(
     ty: &LuaType,
     generic_tpls: &mut HashSet<GenericTplId>,
-    visiting_defaults: &mut HashSet<GenericTplId>,
+    visiting_fallbacks: &mut HashSet<GenericTplId>,
 ) -> bool {
-    // 返回 false 表示默认值依赖链里发现循环.
+    // 返回 false 表示 fallback 依赖链里发现循环.
     // visit_nested_types 只访问子节点, 所以这里先处理类型自身, 再处理嵌套类型.
-    let mut no_default_cycle =
-        collect_func_tpl_dep_from_default_type(ty, generic_tpls, visiting_defaults);
+    let mut no_fallback_cycle =
+        collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
     ty.visit_nested_types(&mut |ty| {
-        no_default_cycle &=
-            collect_func_tpl_dep_from_default_type(ty, generic_tpls, visiting_defaults);
+        no_fallback_cycle &=
+            collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
     });
-    no_default_cycle
+    no_fallback_cycle
 }
 
-fn collect_func_tpl_dep_from_default_type(
+fn collect_func_tpl_dep_from_fallback_type(
     ty: &LuaType,
     generic_tpls: &mut HashSet<GenericTplId>,
-    visiting_defaults: &mut HashSet<GenericTplId>,
+    visiting_fallbacks: &mut HashSet<GenericTplId>,
 ) -> bool {
     let (LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl)) = ty else {
         return true;
@@ -272,20 +275,25 @@ fn collect_func_tpl_dep_from_default_type(
     }
 
     let tpl_id = generic_tpl.get_tpl_id();
-    if !visiting_defaults.insert(tpl_id) {
-        // 遇到 `T = U, U = T` 这类循环默认值时, 放弃合并本轮默认依赖避免递归展开.
+    if !visiting_fallbacks.insert(tpl_id) {
+        // 遇到 `T = U, U = T` 这类循环 fallback 时, 放弃合并本轮依赖避免递归展开.
         return false;
     }
 
     generic_tpls.insert(tpl_id);
-    let no_default_cycle = match generic_tpl.get_default_type() {
-        Some(default_type) => {
-            collect_func_tpl_deps_from_default_type(default_type, generic_tpls, visiting_defaults)
-        }
+    let no_fallback_cycle = match generic_tpl
+        .get_default_type()
+        .or(generic_tpl.get_constraint())
+    {
+        Some(fallback_type) => collect_func_tpl_deps_from_fallback_type(
+            fallback_type,
+            generic_tpls,
+            visiting_fallbacks,
+        ),
         None => true,
     };
-    visiting_defaults.remove(&tpl_id);
-    no_default_cycle
+    visiting_fallbacks.remove(&tpl_id);
+    no_fallback_cycle
 }
 
 fn infer_generic_types_from_call(
@@ -419,9 +427,9 @@ fn build_self_generic_arg(
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
     let Some(arg) = generic_param
-        .type_constraint
+        .default_type
         .as_ref()
-        .or(generic_param.default_type.as_ref())
+        .or(generic_param.type_constraint.as_ref())
     else {
         return LuaType::Unknown;
     };

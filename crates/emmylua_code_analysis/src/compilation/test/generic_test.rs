@@ -703,7 +703,7 @@ mod test {
     }
 
     #[test]
-    fn test_generic_constraint_is_not_default() {
+    fn test_function_generic_constraint_is_fallback() {
         let mut ws = VirtualWorkspace::new();
         {
             ws.def(
@@ -718,13 +718,14 @@ mod test {
             );
 
             let result_ty = ws.expr_ty("result");
-            assert!(result_ty.is_unknown(), "{result_ty:?}");
+            assert_eq!(ws.humanize_type(result_ty), "number");
         }
     }
 
     #[test]
-    fn test_class_generic_constraint_is_not_self_arg() {
+    fn test_type_annotation_generic_constraint_is_not_default() {
         let mut ws = VirtualWorkspace::new();
+        // 根据 ts 的行为, any调用函数的结果必然是any
         ws.def(
             r#"
             ---@class Box<T: number>
@@ -742,7 +743,7 @@ mod test {
         );
 
         let result_ty = ws.expr_ty("Result");
-        assert!(result_ty.is_unknown(), "{result_ty:?}");
+        assert!(result_ty.is_any(), "{result_ty:?}");
     }
 
     #[test]
@@ -1108,7 +1109,7 @@ mod test {
         let default_b = ws.expr_ty("DefaultB");
         assert_eq!(ws.humanize_type(default_b), "string");
         let constraint_result = ws.expr_ty("ConstraintResult");
-        assert!(constraint_result.is_unknown(), "{constraint_result:?}");
+        assert_eq!(ws.humanize_type(constraint_result), "string");
     }
 
     #[test]
@@ -1187,10 +1188,13 @@ mod test {
                 ---@return Mock<T>
                 local function fn(a)
                 end
+                fnresult = fn()
 
                 result = fn().calls
             "#,
             );
+            let fnresult_ty = ws.expr_ty("fnresult");
+            assert_eq!(ws.humanize_type(fnresult_ty), "Mock<Procedure>");
 
             let result_ty = ws.expr_ty("result");
             assert_eq!(ws.humanize_type(result_ty), "any[][]");
@@ -1389,5 +1393,70 @@ mod test {
 
         let a3_ty = ws.expr_ty("a3");
         assert_eq!(ws.humanize_type(a3_ty), "A<string>");
+    }
+
+    #[test]
+    fn test_conditional_generic_missing_class_arg_uses_unknown_operand() {
+        let mut ws = VirtualWorkspace::new();
+        // `extends unknown` 几乎等效于返回`true`分支结果
+        // 只有在分发`never`时才返回`never`, 但本质上 `never` 分发并没有对`unknown`做判断
+        ws.def(
+            r#"
+            ---@alias IsString<T> T extends string and number or boolean
+            ---@alias ExtendsUnknown<T> T extends unknown and number or boolean
+
+            ---@class Box<T = unknown>
+            ---@field value T
+
+            ---@generic T
+            ---@param box Box<T>
+            ---@return IsString<T>
+            function get(box) end
+
+            ---@generic T
+            ---@param value T
+            ---@return ExtendsUnknown<T>
+            function getExtendsUnknown(value) end
+
+            ---@type Box
+            local box
+
+            Result = get(box)
+
+            ---@type string
+            local value
+
+            ExtendsUnknownResult = getExtendsUnknown(value)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "boolean");
+
+        let extends_unknown_ty = ws.expr_ty("ExtendsUnknownResult");
+        assert_eq!(ws.humanize_type(extends_unknown_ty), "number");
+    }
+
+    #[test]
+    fn test_conditional_generic_concrete_type_extends_any_selects_true_branch() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias ExtendsAny<T> T extends any and number or boolean
+
+            ---@generic T
+            ---@param value T
+            ---@return ExtendsAny<T>
+            function getExtendsAny(value) end
+
+            ---@type string
+            local value
+
+            Result = getExtendsAny(value)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "number");
     }
 }
