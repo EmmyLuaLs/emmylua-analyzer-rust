@@ -54,7 +54,7 @@ mod test {
     fn test_issue_219() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
         local a --- @type integer?

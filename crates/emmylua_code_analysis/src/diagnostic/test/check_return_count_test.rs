@@ -4,19 +4,19 @@ mod tests {
 
     fn assert_missing_return_ok(code: &str) {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(DiagnosticCode::MissingReturn, code));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::MissingReturn, code));
     }
 
     fn assert_missing_return_error(code: &str) {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(DiagnosticCode::MissingReturn, code));
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::MissingReturn, code));
     }
 
     #[test]
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
             ---@class Completion2.A
@@ -36,7 +36,7 @@ mod tests {
     fn test_2() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturnValue,
             r#"
             ---@return integer a
@@ -53,7 +53,7 @@ mod tests {
     fn test_missing_return_value() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturnValue,
             r#"
             ---@return number
@@ -63,7 +63,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturnValue,
             r#"
             ---@return number
@@ -79,7 +79,7 @@ mod tests {
     fn test_missing_return_value_variadic() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturnValue,
             r#"
             --- @return integer?
@@ -95,7 +95,7 @@ mod tests {
     fn test_return_expr_list_missing() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturnValue,
             r#"
             ---@return integer, integer
@@ -108,7 +108,7 @@ mod tests {
             end
         "#
         ));
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturnValue,
             r#"
             ---@return integer
@@ -127,7 +127,7 @@ mod tests {
     fn test_dots() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
             ---@return number, any...
@@ -142,7 +142,7 @@ mod tests {
     fn test_redundant_return_value() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
             ---@return number
@@ -157,7 +157,7 @@ mod tests {
     fn test_not_return_anno() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturnValue,
             r#"
             local function baz()
@@ -169,7 +169,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
             function bar(a)
@@ -183,7 +183,7 @@ mod tests {
     fn test_return_expr_list_redundant() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
             ---@return integer, integer
@@ -197,7 +197,7 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
             ---@return integer, integer, integer
@@ -216,7 +216,7 @@ mod tests {
     fn test_missing_return() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -231,7 +231,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return number
@@ -243,7 +243,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -260,7 +260,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -277,7 +277,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return number
@@ -290,7 +290,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -305,7 +305,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -326,7 +326,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -343,7 +343,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -362,7 +362,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -379,7 +379,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return number
@@ -388,7 +388,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
 
@@ -398,7 +398,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return any ...
@@ -407,7 +407,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return number
@@ -417,7 +417,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -430,7 +430,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A, B
@@ -445,7 +445,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A, B
@@ -462,7 +462,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A, B
@@ -478,7 +478,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return any
@@ -488,7 +488,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return any, number
@@ -498,7 +498,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             ---@return any, any
@@ -508,7 +508,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -825,7 +825,7 @@ mod tests {
     #[test]
     fn test_issue_236() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::MissingReturn,
             r#"
             --- @param a number
@@ -861,7 +861,7 @@ mod tests {
         "#,
         );
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local M = {}
@@ -877,7 +877,7 @@ mod tests {
     fn test_miss_return_2() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             os.exit = function(...)
@@ -890,7 +890,7 @@ mod tests {
     fn test_miss_return_3() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
                 ---@class Point
@@ -924,7 +924,7 @@ mod tests {
     fn test_pcall_missing_return() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
                 pcall(function() end)
@@ -935,7 +935,7 @@ mod tests {
     #[test]
     fn test_missing_return_1() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
                 ---@generic T
@@ -951,7 +951,7 @@ mod tests {
     #[test]
     fn test_issue_567() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
                 local function fnil()
@@ -964,7 +964,7 @@ mod tests {
         "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
                 --- @return nil

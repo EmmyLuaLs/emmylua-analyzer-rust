@@ -6,7 +6,7 @@ mod test {
     fn test_duplicate_field() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateDocField,
             r#"
             ---@class Test
@@ -18,7 +18,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateDocField,
             r#"
             ---@class Test
@@ -28,7 +28,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateDocField,
             r#"
             ---@class Test
@@ -38,7 +38,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateDocField,
             r#"
             ---@class Test1
@@ -54,7 +54,7 @@ mod test {
     fn test_duplicate_function_1() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateDocField,
             r#"
             ---@class Test
@@ -66,7 +66,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateDocField,
             r#"
             ---@class Test
@@ -79,7 +79,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::DuplicateSetField,
             r#"
             ---@class Test
@@ -113,7 +113,7 @@ mod test {
                 return A
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::DuplicateSetField,
             r#"
             local A = require("1")
@@ -127,7 +127,7 @@ mod test {
     #[test]
     fn test_duplicate_function_3() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::DuplicateSetField,
             r#"
                 ---@class D31.A
@@ -146,7 +146,7 @@ mod test {
     fn test_duplicate_function_4() {
         let mut ws = VirtualWorkspace::new();
         // 如果是 .member = 参数, 则不报错
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::DuplicateSetField,
             r#"
                 ---@class D31.A
@@ -164,7 +164,7 @@ mod test {
     #[test]
     fn test_return_self() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::DuplicateSetField,
             r#"
                 ---@class test

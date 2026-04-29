@@ -6,7 +6,7 @@ mod test {
     fn test_issue_223() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
         --- @return integer
@@ -117,7 +117,7 @@ mod test {
     fn test_generic_type_inference() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::TypeNotFound,
             r#"
             ---@class AnonymousObserver<T>: Observer<T>
@@ -129,7 +129,7 @@ mod test {
     fn test_class_super_cycle_filters_query_supers() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CircleDocClass,
             r#"
             ---@class ClassCycleA: ClassCycleB
@@ -142,7 +142,7 @@ mod test {
     fn test_generic_class_super_cycle_reports_diagnostic() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CircleDocClass,
             r#"
             ---@class GenericCycleA<T>: GenericCycleB<T>
@@ -322,7 +322,7 @@ mod test {
     fn test_type_return_usage() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AnnotationUsageError,
             r#"
             ---@type string

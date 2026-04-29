@@ -19,7 +19,7 @@ mod tests {
                 "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             r#"
                 local a = require("test")
@@ -48,7 +48,7 @@ mod tests {
                 "#,
             );
 
-            assert!(ws.check_code_for(
+            assert!(ws.has_no_diagnostic(
                 DiagnosticCode::RequireModuleNotVisible,
                 r#"
                 local a = require("testA")
@@ -67,7 +67,7 @@ mod tests {
                 "#,
             );
 
-            assert!(!ws.check_code_for(
+            assert!(!ws.has_no_diagnostic(
                 DiagnosticCode::RequireModuleNotVisible,
                 r#"
                 local a = require("testB")
@@ -95,7 +95,7 @@ mod tests {
                 "#,
         );
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             r#"
                 local a = require("test")
@@ -122,7 +122,7 @@ mod tests {
                 "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             r#"
                 local a = require("test")
@@ -148,7 +148,7 @@ mod tests {
                 "#,
         );
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             r#"
                 local a = require("test")
@@ -182,7 +182,7 @@ mod tests {
                 "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             r#"
                 local a = require("test")
@@ -218,7 +218,7 @@ mod tests {
                 "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             r#"
                 local a = require("test")
@@ -255,7 +255,7 @@ mod tests {
                 "#,
         );
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RequireModuleNotVisible,
             r#"
                 local a = require("test")

@@ -6,7 +6,7 @@ mod test {
     fn test_await_in_sync() {
         let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         local function name(callback)
@@ -19,7 +19,7 @@ mod test {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         local function name(callback)
@@ -33,7 +33,7 @@ mod test {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         ---@param callback async fun()
@@ -47,7 +47,7 @@ mod test {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
             ---@generic T, R
@@ -63,7 +63,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         ---@param callback async fun()
@@ -78,7 +78,7 @@ mod test {
     fn test_issue_99() {
         let mut ws = crate::VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         ---@async
@@ -105,7 +105,7 @@ mod test {
         "#,
         );
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         --- @async
@@ -117,7 +117,7 @@ mod test {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         function baz()
@@ -130,7 +130,7 @@ mod test {
     #[test]
     fn test_issue_161() {
         let mut ws = crate::VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
         local function create(_f) end
@@ -153,7 +153,7 @@ mod test {
     #[test]
     fn test_issue_721() {
         let mut ws = crate::VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AwaitInSync,
             r#"
             --- @param f sync fun()

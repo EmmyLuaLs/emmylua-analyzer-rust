@@ -162,7 +162,7 @@ mod test {
         );
 
         // `AccessInvisible` only fires if the export still points at `export`.
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AccessInvisible,
             r#"
                 local export = require("virtual_0")

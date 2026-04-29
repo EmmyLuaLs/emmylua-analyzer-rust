@@ -152,7 +152,7 @@ impl VirtualWorkspace {
     }
 
     /// 只执行对应诊断代码的检查, 必须要在对应的`Checker`中为`const CODES`添加对应的诊断代码
-    pub fn check_code_for(&mut self, diagnostic_code: DiagnosticCode, block_str: &str) -> bool {
+    pub fn has_no_diagnostic(&mut self, diagnostic_code: DiagnosticCode, block_str: &str) -> bool {
         // 只启用对应的诊断
         self.analysis.diagnostic.enable_only(diagnostic_code);
         let file_id = self.def(block_str);
@@ -173,12 +173,12 @@ impl VirtualWorkspace {
         true
     }
 
-    pub fn check_code_for_namespace(
+    pub fn has_no_diagnostic_in_namespace(
         &mut self,
         diagnostic_code: DiagnosticCode,
         block_str: &str,
     ) -> bool {
-        self.check_code_for(
+        self.has_no_diagnostic(
             diagnostic_code,
             &format!(
                 "---@namespace TestNamespace{}\n{}",

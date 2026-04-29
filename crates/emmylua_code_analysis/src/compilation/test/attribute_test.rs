@@ -33,7 +33,7 @@ mod test {
     fn test_def_attribute() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         ---@[lsp_optimization("check_table_field")]

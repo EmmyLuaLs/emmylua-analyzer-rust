@@ -134,7 +134,7 @@ mod test {
     fn test_issue_484() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         --- @type integer,integer,integer
@@ -149,7 +149,7 @@ mod test {
         let mut emmyrc = ws.get_emmyrc();
         emmyrc.runtime.version = EmmyrcLuaVersion::Lua51;
         ws.analysis.update_config(emmyrc.into());
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         --- @type string[]

@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_missing_fields() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test
@@ -16,7 +16,7 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test1
@@ -29,7 +29,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test3
@@ -46,7 +46,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test5
@@ -62,7 +62,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test7
@@ -72,7 +72,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test8
@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn test_override_optional() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test1
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn test_generic() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test1<T>
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn test_object_type() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class test1: { a: number }
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn test_issue_262() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
 --- @class D11.Opts
@@ -153,7 +153,7 @@ foo({})
     #[test]
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
                 ---@type table
@@ -167,7 +167,7 @@ foo({})
     #[test]
     fn test_issue_296() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UndefinedField,
             r#"
                 ---@generic T
@@ -192,7 +192,7 @@ foo({})
     #[test]
     fn test_issue_302() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
                 ---@class data
@@ -218,7 +218,7 @@ foo({})
     #[test]
     fn test_issue_449() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@class D31.A
@@ -249,7 +249,7 @@ foo({})
         ---@field list table<integer, T> | RingBuffer<T>
         "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
             r#"
             ---@type LiveList

@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_unresolved_require() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnresolvedRequire,
             r#"
             local a = require("missing.module")
@@ -24,7 +24,7 @@ mod tests {
             "#,
         );
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnresolvedRequire,
             r#"
             local a = require("test")
@@ -35,7 +35,7 @@ mod tests {
     #[test]
     fn test_non_literal_require() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnresolvedRequire,
             r#"
             local function module_name()

@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn test_remove_type() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@return string[]

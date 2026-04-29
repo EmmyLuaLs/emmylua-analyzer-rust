@@ -6,7 +6,7 @@ mod test {
     fn test_feat_724() {
         let mut ws = crate::VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::PreferredLocalAlias,
             r#"
             local gsub = string.gsub
@@ -14,7 +14,7 @@ mod test {
             "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::PreferredLocalAlias,
             r#"
             local t = {

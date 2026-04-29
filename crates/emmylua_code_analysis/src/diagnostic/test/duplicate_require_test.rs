@@ -6,7 +6,7 @@ mod tests {
     fn test() {
         let mut ws = VirtualWorkspace::new();
         // 作用域不同
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::DuplicateRequire,
             r#"
             if true then
@@ -18,7 +18,7 @@ mod tests {
         ));
 
         // 父作用域已存在
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::DuplicateRequire,
             r#"
             require("a")
@@ -34,7 +34,7 @@ mod tests {
     #[test]
     fn test_field() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::DuplicateRequire,
             r#"
             require("a").a

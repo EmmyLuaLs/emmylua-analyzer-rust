@@ -7,7 +7,7 @@ mod test {
     fn test_table() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
         table.concat({'', ''}, ' ')
@@ -19,7 +19,7 @@ mod test {
     fn test_sub_string() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingParameter,
             r#"
         local t = ("m2"):sub(1)
@@ -62,7 +62,7 @@ mod test {
     #[test]
     fn test_issue_770() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
         local table = {1,2}

@@ -8,7 +8,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
                 ---@param a string
@@ -24,7 +24,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             local c = function(x, y)
@@ -33,7 +33,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             local function do_add(x, y)
@@ -42,7 +42,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             local function noop()
@@ -50,7 +50,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             ---@param p number
@@ -60,7 +60,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             ---@param p number
@@ -70,7 +70,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             --- function without param signature
@@ -80,7 +80,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
 
@@ -99,7 +99,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             ---@return_overload true, integer
@@ -110,7 +110,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             ---@return_overload true, integer
@@ -127,7 +127,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::IncompleteSignatureDoc,
             r#"
             ---@return_overload true, integer...
@@ -144,7 +144,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingGlobalDoc,
             r#"
                 function FLPR1()
@@ -152,7 +152,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingGlobalDoc,
             r#"
                 ---
@@ -160,7 +160,7 @@ mod tests {
                 end
             "#
         ));
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::MissingGlobalDoc,
             r#"
                 ---
@@ -170,7 +170,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingGlobalDoc,
             r#"
                 ---

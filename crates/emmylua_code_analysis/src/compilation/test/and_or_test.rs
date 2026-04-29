@@ -6,7 +6,7 @@ mod test {
     fn test_issue_221() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
         --- @param opts table|nil
@@ -30,7 +30,7 @@ mod test {
     fn test_issue_222() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local a --- @type boolean
@@ -111,7 +111,7 @@ mod test {
     fn test_issue_482() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local command_provider --- @type {commands: string[]}?
@@ -126,7 +126,7 @@ mod test {
     fn test_issue_644() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
             --- @alias mapfn fun()

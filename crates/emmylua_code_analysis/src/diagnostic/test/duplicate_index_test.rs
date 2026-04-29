@@ -6,7 +6,7 @@ mod test {
     fn test_duplicate_index() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::DuplicateIndex,
             r#"
                 local a = {
@@ -16,7 +16,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::DuplicateIndex,
             r#"
                 local a = {
