@@ -7,11 +7,11 @@ mod lua;
 mod unresolve;
 
 use crate::{
-    Emmyrc, FileId, InFiled, InferFailReason, LuaType,
+    Emmyrc, FileId, InFiled, InferFailReason, LuaType, LuaTypeDeclId,
     db_index::{DbIndex, WorkspaceId},
     profile::Profile,
 };
-use emmylua_parser::{LuaBlock, LuaChunk, LuaExpr};
+use emmylua_parser::{LuaBlock, LuaChunk, LuaDocGenericDeclList, LuaExpr};
 use hashbrown::{HashMap, HashSet};
 use infer_cache_manager::InferCacheManager;
 use std::sync::Arc;
@@ -149,6 +149,7 @@ pub struct AnalyzeContext {
     unresolves: Vec<(UnResolve, InferFailReason)>,
     infer_manager: InferCacheManager,
     pub workspace_id: Option<WorkspaceId>,
+    pending_type_generic_headers: Vec<PendingTypeGenericHeader>,
 }
 
 impl AnalyzeContext {
@@ -160,6 +161,7 @@ impl AnalyzeContext {
             unresolves: Vec::new(),
             infer_manager: InferCacheManager::new(),
             workspace_id: None,
+            pending_type_generic_headers: Vec::new(),
         }
     }
 
@@ -174,4 +176,29 @@ impl AnalyzeContext {
     pub fn add_unresolve(&mut self, un_resolve: UnResolve, reason: InferFailReason) {
         self.unresolves.push((un_resolve, reason));
     }
+
+    pub fn add_pending_type_generic_header(
+        &mut self,
+        file_id: FileId,
+        type_id: LuaTypeDeclId,
+        generic_decl_list: LuaDocGenericDeclList,
+    ) {
+        self.pending_type_generic_headers
+            .push(PendingTypeGenericHeader {
+                file_id,
+                type_id,
+                generic_decl_list,
+            });
+    }
+
+    pub(super) fn take_pending_type_generic_headers(&mut self) -> Vec<PendingTypeGenericHeader> {
+        std::mem::take(&mut self.pending_type_generic_headers)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct PendingTypeGenericHeader {
+    pub file_id: FileId,
+    pub type_id: LuaTypeDeclId,
+    pub generic_decl_list: LuaDocGenericDeclList,
 }

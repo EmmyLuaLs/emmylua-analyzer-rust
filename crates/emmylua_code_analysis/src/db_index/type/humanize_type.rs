@@ -218,7 +218,6 @@ impl<'a> TypeHumanizer<'a> {
             LuaType::ConstTplRef(const_tpl) => w.write_str(const_tpl.get_name()),
             LuaType::Language(s) => w.write_str(s),
             LuaType::Conditional(c) => self.write_conditional_type(c, w),
-            LuaType::ConditionalInfer(s) => w.write_str(s),
             LuaType::Never => w.write_str("never"),
             LuaType::ModuleRef(file_id) => self.write_module_ref(*file_id, w),
             _ => w.write_str("unknown"),
@@ -997,7 +996,9 @@ impl<'a> TypeHumanizer<'a> {
     ) -> fmt::Result {
         let saved = self.level;
         self.level = self.child_level();
-        self.write_type(conditional.get_condition(), w)?;
+        self.write_type(conditional.get_checked_type(), w)?;
+        w.write_str(" extends ")?;
+        self.write_type(conditional.get_extends_type(), w)?;
         w.write_str(" and ")?;
         self.write_type(conditional.get_true_type(), w)?;
         w.write_str(" or ")?;

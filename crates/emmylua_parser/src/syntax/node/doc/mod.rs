@@ -16,6 +16,8 @@ use crate::{
     syntax::traits::LuaAstNode,
 };
 
+use rowan::SyntaxElement;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LuaComment {
     syntax: LuaSyntaxNode,
@@ -313,8 +315,51 @@ impl LuaDocGenericDecl {
         self.token()
     }
 
-    pub fn get_type(&self) -> Option<LuaDocType> {
-        self.child()
+    pub fn get_constraint_type(&self) -> Option<LuaDocType> {
+        let mut seen_constraint = false;
+
+        for element in self.syntax().children_with_tokens() {
+            match element {
+                SyntaxElement::Token(token) => {
+                    let kind: LuaTokenKind = token.kind().into();
+                    match kind {
+                        LuaTokenKind::TkColon | LuaTokenKind::TkDocExtends | LuaTokenKind::TkIn => {
+                            seen_constraint = true;
+                        }
+                        LuaTokenKind::TkDocMatch => return None,
+                        _ => {}
+                    }
+                }
+                SyntaxElement::Node(node) => {
+                    if seen_constraint && LuaDocType::can_cast(node.kind().into()) {
+                        return LuaDocType::cast(node);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn get_default_type(&self) -> Option<LuaDocType> {
+        let mut seen_assign = false;
+
+        for element in self.syntax().children_with_tokens() {
+            match element {
+                SyntaxElement::Token(token) => {
+                    if LuaTokenKind::from(token.kind()) == LuaTokenKind::TkDocMatch {
+                        seen_assign = true;
+                    }
+                }
+                SyntaxElement::Node(node) => {
+                    if seen_assign && LuaDocType::can_cast(node.kind().into()) {
+                        return LuaDocType::cast(node);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     pub fn is_variadic(&self) -> bool {

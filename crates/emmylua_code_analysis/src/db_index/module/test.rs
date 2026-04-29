@@ -383,4 +383,28 @@ mod tests {
         assert!(!socket_info.is_requireable_from(net_info.workspace_id));
         assert!(!net_info.is_requireable_from(socket_info.workspace_id));
     }
+
+    #[test]
+    fn test_find_module_prefers_non_hidden_candidate_when_multiple_modules_share_name() {
+        let mut m = create_module();
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Downloads").into(),
+            WorkspaceId::MAIN,
+        );
+
+        let hidden_file_id = FileId { id: 1 };
+        m.add_module_by_path(hidden_file_id, "C:/Users/username/Documents/test.lua");
+        m.set_module_visibility(hidden_file_id, ModuleVisibility::Hide);
+
+        let visible_file_id = FileId { id: 2 };
+        m.add_module_by_path(visible_file_id, "C:/Users/username/Downloads/test.lua");
+
+        let module_info = m.find_module("test").unwrap();
+        assert_eq!(module_info.file_id, visible_file_id);
+        assert_eq!(module_info.visible, ModuleVisibility::Default);
+    }
 }

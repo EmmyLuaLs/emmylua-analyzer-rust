@@ -19,7 +19,15 @@ pub fn analyze_doc_tag_class(analyzer: &mut DeclAnalyzer, class: LuaDocTagClass)
     let range = name_token.syntax().text_range();
     let type_flag = get_type_flag_value(analyzer, class.get_type_flag());
 
-    add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Class, type_flag);
+    let decl_id = add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Class, type_flag);
+    if let Some(generic_decl) = class.get_generic_decl() {
+        analyzer.context.add_pending_type_generic_header(
+            analyzer.get_file_id(),
+            decl_id,
+            generic_decl,
+        );
+    }
+
     Some(())
 }
 
@@ -80,7 +88,15 @@ pub fn analyze_doc_tag_alias(analyzer: &mut DeclAnalyzer, alias: LuaDocTagAlias)
     let name = name_token.get_name_text().to_string();
     let range = name_token.syntax().text_range();
     let type_flag = get_type_flag_value(analyzer, alias.get_type_flag());
-    add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Alias, type_flag);
+    let decl_id = add_type_decl(analyzer, &name, range, LuaDeclTypeKind::Alias, type_flag);
+    if let Some(generic_decl) = alias.get_generic_decl_list() {
+        analyzer.context.add_pending_type_generic_header(
+            analyzer.get_file_id(),
+            decl_id,
+            generic_decl,
+        );
+    }
+
     Some(())
 }
 
@@ -187,7 +203,7 @@ fn add_type_decl(
     range: TextRange,
     kind: LuaDeclTypeKind,
     flag: FlagSet<LuaTypeFlag>,
-) {
+) -> LuaTypeDeclId {
     let file_id = analyzer.get_file_id();
     let workspace_id = analyzer
         .db
@@ -212,6 +228,15 @@ fn add_type_decl(
     let simple_name = id.get_simple_name();
     type_index.add_type_decl(
         file_id,
-        LuaTypeDecl::new(file_id, range, simple_name.to_string(), kind, flag, id),
+        LuaTypeDecl::new(
+            file_id,
+            range,
+            simple_name.to_string(),
+            kind,
+            flag,
+            id.clone(),
+        ),
     );
+
+    id
 }

@@ -195,6 +195,10 @@ impl LuaDocLexer<'_> {
                 reader.bump();
                 LuaTokenKind::TkComma
             }
+            '=' => {
+                reader.bump();
+                LuaTokenKind::TkDocMatch
+            }
             ';' => {
                 reader.bump();
                 LuaTokenKind::TkSemicolon
@@ -639,24 +643,18 @@ impl LuaDocLexer<'_> {
                 }
                 LuaTokenKind::TkString
             }
-            ch if ch.is_ascii_digit() => {
-                reader.eat_while(|ch| ch.is_ascii_digit());
-                LuaTokenKind::TkInt
-            }
+            '.' if reader.next_char().is_ascii_digit() => self.lex_number(),
+            ch if ch.is_ascii_digit() => self.lex_number(),
             ch if is_name_start(ch) => {
-                reader.bump();
-                reader.eat_while(is_name_continue);
-                let text = reader.current_text();
-                if text == "nil" {
-                    LuaTokenKind::TkNil
-                } else {
-                    LuaTokenKind::TkName
+                let (text, _) = read_doc_name(reader);
+                match text {
+                    "true" => LuaTokenKind::TkTrue,
+                    "false" => LuaTokenKind::TkFalse,
+                    "nil" => LuaTokenKind::TkNil,
+                    _ => LuaTokenKind::TkName,
                 }
             }
-            _ => {
-                reader.bump();
-                LuaTokenKind::TkDocTrivia
-            }
+            _ => self.lex_normal(),
         }
     }
 
@@ -696,6 +694,102 @@ impl LuaDocLexer<'_> {
                 }
             }
             _ => self.lex_normal(),
+        }
+    }
+
+    fn lex_number(&mut self) -> LuaTokenKind {
+        enum NumberState {
+            Int,
+            Float,
+            Hex,
+            HexFloat,
+            WithExpo,
+        }
+
+        let reader = self.reader.as_mut().unwrap();
+        let mut state = NumberState::Int;
+        let first = reader.current_char();
+        reader.bump();
+
+        match first {
+            '0' if matches!(reader.current_char(), 'X' | 'x') => {
+                reader.bump();
+                state = NumberState::Hex;
+            }
+            '.' => {
+                state = NumberState::Float;
+            }
+            _ => {}
+        }
+
+        while !reader.is_eof() {
+            let ch = reader.current_char();
+            let continue_ = match state {
+                NumberState::Int => match ch {
+                    '0'..='9' => true,
+                    '.' => {
+                        state = NumberState::Float;
+                        true
+                    }
+                    _ if matches!(ch, 'e' | 'E') => {
+                        if matches!(reader.next_char(), '+' | '-') {
+                            reader.bump();
+                        }
+                        state = NumberState::WithExpo;
+                        true
+                    }
+                    _ => false,
+                },
+                NumberState::Float => match ch {
+                    '0'..='9' => true,
+                    _ if matches!(ch, 'e' | 'E') => {
+                        if matches!(reader.next_char(), '+' | '-') {
+                            reader.bump();
+                        }
+                        state = NumberState::WithExpo;
+                        true
+                    }
+                    _ => false,
+                },
+                NumberState::Hex => match ch {
+                    '0'..='9' | 'a'..='f' | 'A'..='F' => true,
+                    '.' => {
+                        state = NumberState::HexFloat;
+                        true
+                    }
+                    _ if matches!(ch, 'P' | 'p') => {
+                        if matches!(reader.next_char(), '+' | '-') {
+                            reader.bump();
+                        }
+                        state = NumberState::WithExpo;
+                        true
+                    }
+                    _ => false,
+                },
+                NumberState::HexFloat => match ch {
+                    '0'..='9' | 'a'..='f' | 'A'..='F' => true,
+                    _ if matches!(ch, 'P' | 'p') => {
+                        if matches!(reader.next_char(), '+' | '-') {
+                            reader.bump();
+                        }
+                        state = NumberState::WithExpo;
+                        true
+                    }
+                    _ => false,
+                },
+                NumberState::WithExpo => ch.is_ascii_digit(),
+            };
+
+            if continue_ {
+                reader.bump();
+            } else {
+                break;
+            }
+        }
+
+        match state {
+            NumberState::Int | NumberState::Hex => LuaTokenKind::TkInt,
+            _ => LuaTokenKind::TkFloat,
         }
     }
 }

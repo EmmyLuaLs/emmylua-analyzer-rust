@@ -20,7 +20,10 @@ coroutinelib.resume: |
   `yield` 的任何值（当协程让出时）或主体函数返回的任何值（当协程
   终止时）。如果有任何错误，`resume` 返回 **false** 加上错误消息。
 
-coroutinelib.running: |
+# Returns the running coroutine, or nil when called by the main thread.
+coroutinelib.running@5.1,JIT: ""
+
+coroutinelib.running@>5.2: |
   返回正在运行的协程加上一个布尔值，当正在运行的协程是主协程时为 true。
 
 coroutinelib.status: |

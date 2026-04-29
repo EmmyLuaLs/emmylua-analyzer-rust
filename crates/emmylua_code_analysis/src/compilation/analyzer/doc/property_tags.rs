@@ -51,11 +51,11 @@ pub fn analyze_visibility(
 
     let visibility_kind = visibility.get_visibility_token()?.get_visibility()?;
 
-    analyzer.db.get_property_index_mut().add_visibility(
-        analyzer.file_id,
-        owner_id,
-        visibility_kind,
-    );
+    analyzer
+        .type_context
+        .db
+        .get_property_index_mut()
+        .add_visibility(analyzer.file_id, owner_id, visibility_kind);
 
     Some(())
 }
@@ -65,6 +65,7 @@ pub fn analyze_source(analyzer: &mut DocAnalyzer, source: LuaDocTagSource) -> Op
     let owner_id = get_owner_id_or_report(analyzer, &source)?;
 
     analyzer
+        .type_context
         .db
         .get_property_index_mut()
         .add_source(analyzer.file_id, owner_id, path);
@@ -76,6 +77,7 @@ pub fn analyze_nodiscard(analyzer: &mut DocAnalyzer, nodiscard: LuaDocTagNodisca
     let closure = find_owner_closure_or_report(analyzer, &nodiscard)?;
     let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
     let signature = analyzer
+        .type_context
         .db
         .get_signature_index_mut()
         .get_mut(&signature_id)?;
@@ -106,6 +108,7 @@ pub fn analyze_deprecated(analyzer: &mut DocAnalyzer, tag: LuaDocTagDeprecated) 
     let owner_id = get_owner_id_or_report(analyzer, &tag)?;
 
     analyzer
+        .type_context
         .db
         .get_property_index_mut()
         .add_deprecated(analyzer.file_id, owner_id, message);
@@ -124,6 +127,7 @@ pub fn analyze_version(analyzer: &mut DocAnalyzer, version: LuaDocTagVersion) ->
     }
 
     analyzer
+        .type_context
         .db
         .get_property_index_mut()
         .add_version(analyzer.file_id, owner_id, version_set);
@@ -135,6 +139,7 @@ pub fn analyze_async(analyzer: &mut DocAnalyzer, tag: LuaDocTagAsync) -> Option<
     let closure = find_owner_closure_or_report(analyzer, &tag)?;
     let signature_id = LuaSignatureId::from_closure(analyzer.file_id, &closure);
     let signature = analyzer
+        .type_context
         .db
         .get_signature_index_mut()
         .get_mut(&signature_id)?;
@@ -147,11 +152,11 @@ pub fn analyze_async(analyzer: &mut DocAnalyzer, tag: LuaDocTagAsync) -> Option<
 pub fn analyze_readonly(analyzer: &mut DocAnalyzer, readonly: LuaDocTagReadonly) -> Option<()> {
     let owner_id = get_owner_id_or_report(analyzer, &readonly)?;
 
-    analyzer.db.get_property_index_mut().add_decl_feature(
-        analyzer.file_id,
-        owner_id,
-        PropertyDeclFeature::ReadOnly,
-    );
+    analyzer
+        .type_context
+        .db
+        .get_property_index_mut()
+        .add_decl_feature(analyzer.file_id, owner_id, PropertyDeclFeature::ReadOnly);
 
     Some(())
 }

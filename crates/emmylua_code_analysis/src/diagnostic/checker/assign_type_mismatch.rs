@@ -7,9 +7,9 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult, VariadicType,
-    infer_index_expr,
+    DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaLspOptimizationCode,
+    LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
+    TypeCheckFailReason, TypeCheckResult, VariadicType, infer_index_expr,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -219,14 +219,12 @@ pub fn check_table_expr(
             .get_property_index()
             .get_property(&semantic_decl)
         {
-            if let Some(lsp_optimization) = property.find_attribute_use("lsp_optimization") {
-                if let Some(LuaType::DocStringConst(code)) =
-                    lsp_optimization.get_param_by_name("code")
-                {
-                    if code.as_ref() == "check_table_field" {
-                        return Some(false);
-                    }
-                };
+            if property
+                .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
+                .and_then(|attribute_use| attribute_use.as_lsp_optimization())
+                .is_some_and(|attribute| attribute.code == LuaLspOptimizationCode::CheckTableField)
+            {
+                return Some(false);
             }
         }
     }

@@ -446,6 +446,11 @@
           "description": "inconsistent-type-access-modifier",
           "type": "string",
           "const": "inconsistent-type-access-modifier"
+        },
+        {
+          "description": "missing-type-argument",
+          "type": "string",
+          "const": "missing-type-argument"
         }
       ]
     },

@@ -132,6 +132,23 @@ m.foo()
     }
 
     #[gtest]
+    fn test_local_function() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let data = ws.get_semantic_token_data(
+            r#"
+            local function fix()
+            end
+            "#,
+        )?;
+        let tokens = decode(&data);
+        let keyword = SemanticTokenTypeKind::Function.to_u32();
+        let declaration = SemanticTokenModifierKind::DECLARATION.to_u32();
+
+        verify_that!(&tokens, contains(eq(&(1, 27, 3, keyword, declaration))))?;
+        Ok(())
+    }
+
+    #[gtest]
     fn test_issue_1028_i18n_semantic_tokens_repeated_prefix_guard_chain() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         let content = make_issue_1028_repeated_prefix_guard_chain_content();

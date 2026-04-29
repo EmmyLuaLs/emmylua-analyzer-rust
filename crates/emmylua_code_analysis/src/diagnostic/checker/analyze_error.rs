@@ -8,6 +8,7 @@ impl Checker for AnalyzeErrorChecker {
     const CODES: &[DiagnosticCode] = &[
         DiagnosticCode::TypeNotFound,
         DiagnosticCode::AnnotationUsageError,
+        DiagnosticCode::MissingTypeArgument,
     ];
 
     fn check(context: &mut DiagnosticContext, _: &SemanticModel) {

@@ -29,7 +29,7 @@ entries:
       col: 0
   hash: a11c6144655d15b2
   context_hash: de7cc417de1b3246
-- key: utf8lib.codes
+- key: utf8lib.codes@@1
   kind:
     type: doc_block
     indent: ''
@@ -42,29 +42,29 @@ entries:
       col: 0
   hash: c57cefb975fbd3bb
   context_hash: de7cc417de1b3246
-- key: utf8lib.codepoint
+- key: utf8lib.codepoint@@1
   kind:
     type: doc_block
     indent: ''
   range:
     start:
-      line: 45
+      line: 51
       col: 0
     end:
-      line: 50
+      line: 56
       col: 0
   hash: eff46239f32f51bb
   context_hash: de7cc417de1b3246
-- key: utf8lib.len
+- key: utf8lib.len@@1
   kind:
     type: doc_block
     indent: ''
   range:
     start:
-      line: 57
+      line: 72
       col: 0
     end:
-      line: 62
+      line: 77
       col: 0
   hash: '6f1924e1e29490a7'
   context_hash: de7cc417de1b3246
@@ -74,10 +74,10 @@ entries:
     indent: ''
   range:
     start:
-      line: 71
+      line: 95
       col: 0
     end:
-      line: 83
+      line: 107
       col: 0
   hash: '373cd5d885e68978'
   context_hash: de7cc417de1b3246

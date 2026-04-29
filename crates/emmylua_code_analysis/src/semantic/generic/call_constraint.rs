@@ -89,10 +89,14 @@ fn record_generic_assignment(
 ) {
     match param_type {
         LuaType::TplRef(tpl_ref) => {
-            substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), true);
+            if !tpl_ref.get_tpl_id().is_conditional_infer() {
+                substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), true);
+            }
         }
         LuaType::ConstTplRef(tpl_ref) => {
-            substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), false);
+            if !tpl_ref.get_tpl_id().is_conditional_infer() {
+                substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), false);
+            }
         }
         LuaType::StrTplRef(str_tpl_ref) => {
             substitutor.insert_type(str_tpl_ref.get_tpl_id(), arg_type.clone(), true);

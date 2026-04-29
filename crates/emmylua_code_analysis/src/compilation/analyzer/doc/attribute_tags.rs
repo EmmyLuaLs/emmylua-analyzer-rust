@@ -43,11 +43,11 @@ pub fn analyze_tag_attribute_use(
 
     let attribute_uses = infer_attribute_uses(analyzer, tag_use)?;
     for attribute_use in attribute_uses {
-        analyzer.db.get_property_index_mut().add_attribute_use(
-            analyzer.file_id,
-            owner_id.clone(),
-            attribute_use,
-        );
+        analyzer
+            .type_context
+            .db
+            .get_property_index_mut()
+            .add_attribute_use(analyzer.file_id, owner_id.clone(), attribute_use);
     }
     Some(())
 }
@@ -59,13 +59,17 @@ pub fn infer_attribute_uses(
     let attribute_uses = tag_use.get_attribute_uses();
     let mut result = Vec::new();
     for attribute_use in attribute_uses {
-        let attribute_type = infer_type(analyzer, LuaDocType::Name(attribute_use.get_type()?));
+        let attribute_type = infer_type(
+            &mut analyzer.type_context,
+            LuaDocType::Name(attribute_use.get_type()?),
+        );
         if let LuaType::Ref(type_id) = attribute_type {
             let arg_types: Vec<LuaType> = attribute_use
                 .get_arg_list()
                 .map(|arg_list| arg_list.get_args().map(infer_attribute_arg_type).collect())
                 .unwrap_or_default();
             let param_names = analyzer
+                .type_context
                 .db
                 .get_type_index()
                 .get_type_decl(&type_id)

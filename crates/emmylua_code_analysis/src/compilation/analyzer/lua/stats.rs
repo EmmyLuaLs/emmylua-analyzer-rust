@@ -5,7 +5,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    InFiled, InferFailReason, LuaMemberKey, LuaSemanticDeclId, LuaTypeCache, LuaTypeOwner,
+    InFiled, InferFailReason, LuaBuiltinAttributeKind, LuaLspOptimizationCode, LuaMemberKey,
+    LuaSemanticDeclId, LuaTypeCache, LuaTypeOwner,
     compilation::analyzer::{
         common::{add_member, bind_type},
         unresolve::{UnResolveDecl, UnResolveMember},
@@ -596,14 +597,10 @@ fn has_delayed_definition_attribute(analyzer: &LuaAnalyzer, decl_id: LuaDeclId) 
         .get_property_index()
         .get_property(&LuaSemanticDeclId::LuaDecl(decl_id))
     {
-        if let Some(lsp_optimization) = property.find_attribute_use("lsp_optimization") {
-            if let Some(LuaType::DocStringConst(code)) = lsp_optimization.get_param_by_name("code")
-            {
-                if code.as_ref() == "delayed_definition" {
-                    return true;
-                }
-            };
-        }
+        return property
+            .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
+            .and_then(|attribute_use| attribute_use.as_lsp_optimization())
+            .is_some_and(|attribute| attribute.code == LuaLspOptimizationCode::DelayedDefinition);
     }
     false
 }

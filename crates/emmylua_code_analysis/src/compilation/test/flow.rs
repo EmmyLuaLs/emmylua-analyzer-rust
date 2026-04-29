@@ -1976,6 +1976,35 @@ end
     }
 
     #[test]
+    fn test_feature_type_guard_narrows_parent_to_child() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@alias TypeGuard<T> boolean
+
+            ---@class Parent
+            ---@class Child : Parent
+            ---@field test fun(): void
+
+            ---@param instance Parent
+            ---@return TypeGuard<Child>
+            local function instance_of_child(instance)
+                return true
+            end
+
+            local value ---@type Parent
+
+            if instance_of_child(value) then
+                narrowed = value
+            end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("narrowed"), ws.ty("Child"));
+    }
+
+    #[test]
     fn test_issue_598() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         ws.def(

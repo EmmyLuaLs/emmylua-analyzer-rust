@@ -182,7 +182,11 @@ pub fn get_owner_id(
             match first_var {
                 LuaVarExpr::NameExpr(name_expr) => {
                     let decl_id = LuaDeclId::new(analyzer.file_id, name_expr.get_position());
-                    let _ = analyzer.db.get_decl_index_mut().get_decl_mut(&decl_id)?;
+                    let _ = analyzer
+                        .type_context
+                        .db
+                        .get_decl_index_mut()
+                        .get_decl_mut(&decl_id)?;
                     Some(LuaSemanticDeclId::LuaDecl(decl_id))
                 }
                 LuaVarExpr::IndexExpr(index_expr) => {
@@ -244,12 +248,16 @@ pub fn get_owner_id_or_report(
 }
 
 pub fn report_orphan_tag(analyzer: &mut DocAnalyzer, tag: &impl LuaAstNode) {
-    analyzer.db.get_diagnostic_index_mut().add_diagnostic(
-        analyzer.file_id,
-        AnalyzeError {
-            kind: DiagnosticCode::AnnotationUsageError,
-            message: t!("`@%{name}` can't be used here", name = tag.get_text()).to_string(),
-            range: tag.get_range(),
-        },
-    );
+    analyzer
+        .type_context
+        .db
+        .get_diagnostic_index_mut()
+        .add_diagnostic(
+            analyzer.file_id,
+            AnalyzeError {
+                kind: DiagnosticCode::AnnotationUsageError,
+                message: t!("`@%{name}` can't be used here", name = tag.get_text()).to_string(),
+                range: tag.get_range(),
+            },
+        );
 }
