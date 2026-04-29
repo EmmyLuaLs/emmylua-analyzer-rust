@@ -210,6 +210,94 @@ mod test {
     }
 
     #[test]
+    fn test_intersection_is_table_subtype() {
+        let mut ws = VirtualWorkspace::new();
+
+        // [integer] & { n: integer } should be assignable to table
+        let intersection_ty = ws.ty("integer[] & { n: integer }");
+        let table_ty = ws.ty("table");
+        assert!(
+            ws.check_type(&table_ty, &intersection_ty),
+            "integer[] & {{ n: integer }} should be a subtype of table"
+        );
+
+        // Verify via diagnostic: passing intersection type to a table parameter should not error
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param t table
+            local function foo(t) end
+
+            ---@type integer[] & { n: integer }
+            local packed
+            foo(packed)
+            "#
+        ));
+
+        // Also verify: assigning intersection to table should not error
+        assert!(ws.check_code_for(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type integer[] & { n: integer }
+            local packed
+
+            ---@type table
+            local t = packed
+            "#
+        ));
+
+        // Intersection type should be assignable to an array type (non-generic)
+        let array_ty = ws.ty("integer[]");
+        assert!(
+            ws.check_type(&array_ty, &intersection_ty),
+            "integer[] & {{ n: integer }} should be assignable to integer[]"
+        );
+
+        // Intersection type should be assignable to an array parameter (non-generic)
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@param t integer[]
+            local function foo2(t) end
+
+            ---@type integer[] & { n: integer }
+            local packed
+            foo2(packed)
+            "#
+        ));
+
+        // Intersection type should be assignable to a generic array parameter
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@generic V
+            ---@param t V[]
+            ---@return fun(): integer, V
+            local function my_ipairs(t) end
+
+            ---@type integer[] & { n: integer }
+            local packed
+            my_ipairs(packed)
+            "#
+        ));
+
+        // Intersection type should be assignable to table<int, V>
+        assert!(ws.check_code_for(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@generic V
+            ---@param t table<integer, V>
+            ---@return fun(): integer, V
+            local function my_iter(t) end
+
+            ---@type integer[] & { n: integer }
+            local packed
+            my_iter(packed)
+            "#
+        ));
+    }
+
+    #[test]
     fn test_set_index_expr_owner_prefers_declared_global_type() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

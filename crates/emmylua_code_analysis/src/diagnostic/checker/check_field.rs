@@ -116,6 +116,9 @@ fn is_invalid_prefix_type(typ: &LuaType) -> bool {
             LuaType::Instance(instance_typ) => {
                 current_typ = instance_typ.get_base();
             }
+            LuaType::Intersection(intersection) => {
+                return intersection.get_types().iter().any(is_invalid_prefix_type);
+            }
             _ => return false,
         }
     }
@@ -139,6 +142,25 @@ pub(super) fn is_valid_member(
             // 如果类型是 Ref 的 enum, 那么需要检查变量是否为参数, 因为作为参数的 enum 本质上是 value 而不是 enum
             if check_enum_is_param(semantic_model, prefix_typ, index_expr).is_some() {
                 return None;
+            }
+        }
+        LuaType::Intersection(intersection) => {
+            // If any component of the intersection would pass the member check on its own,
+            // the intersection should also pass (e.g. unknown[] & { n: integer }).
+            for component in intersection.get_types() {
+                if is_valid_member(semantic_model, component, index_expr, index_key, code).is_some()
+                {
+                    return Some(());
+                }
+            }
+            // Even if no single component passes the early checks, the intersection's
+            // member lookup may still succeed (e.g. Tuple([Unknown]) & Object).
+            // Try inferring the index expression type directly.
+            if semantic_model
+                .get_index_decl_type(index_expr.clone())
+                .is_some()
+            {
+                return Some(());
             }
         }
         _ => {}

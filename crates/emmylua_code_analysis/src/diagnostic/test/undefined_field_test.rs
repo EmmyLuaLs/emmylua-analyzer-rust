@@ -815,4 +815,30 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_intersection_array_index_access() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        // Accessing [1] on an intersection type containing an array should not report undefined-field
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+            function test(...)
+                local values = table.pack(...)
+                local e = values[1]
+            end
+            "#
+        ));
+
+        // Explicit intersection type annotation
+        assert!(ws.check_code_for(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@type integer[] & { n: integer }
+            local values
+            local e = values[1]
+            "#
+        ));
+    }
 }
