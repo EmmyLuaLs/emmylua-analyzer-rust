@@ -4,7 +4,7 @@ mod tests {
     #[test]
     fn test_issue_226() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
                 function foo(...)
@@ -20,7 +20,7 @@ mod tests {
     #[test]
     fn test() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
                 local x = 1
@@ -28,7 +28,7 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
             local function aaa()
@@ -39,7 +39,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
             local function aaa(a, b)
@@ -49,7 +49,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
             ---@class Test
@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn test_do_end() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
                 do
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn test_for() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
             local function aaa()
@@ -96,7 +96,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
                 for k, v in pairs({}) do
@@ -110,14 +110,14 @@ mod tests {
     #[test]
     fn test_issue_481() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
                 local a = function(a) -- 不应该报错, 参数`a`先被定义, 然后再是局部变量`a`
                 end
         "#
         ));
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedefinedLocal,
             r#"
                 local a

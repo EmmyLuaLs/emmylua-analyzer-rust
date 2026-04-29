@@ -155,7 +155,7 @@ mod test {
     fn test_issue_634() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             --- @class A
@@ -190,7 +190,7 @@ mod test {
         "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Holder<string>, NumberHolder
@@ -199,7 +199,7 @@ mod test {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Holder<string>, StringHolderWith<table>
@@ -222,7 +222,7 @@ mod test {
         );
 
         // Verify via diagnostic: passing intersection type to a table parameter should not error
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@param t table
@@ -235,7 +235,7 @@ mod test {
         ));
 
         // Also verify: assigning intersection to table should not error
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type integer[] & { n: integer }
@@ -254,7 +254,7 @@ mod test {
         );
 
         // Intersection type should be assignable to an array parameter (non-generic)
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@param t integer[]
@@ -267,7 +267,7 @@ mod test {
         ));
 
         // Intersection type should be assignable to a generic array parameter
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@generic V
@@ -282,7 +282,7 @@ mod test {
         ));
 
         // Intersection type should be assignable to table<int, V>
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@generic V

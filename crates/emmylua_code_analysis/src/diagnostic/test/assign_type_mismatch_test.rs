@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@generic T: string
@@ -24,7 +24,7 @@ mod tests {
     #[test]
     fn test_2() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class Diagnostic.Test7
@@ -45,7 +45,7 @@ mod tests {
     // #[test]
     // fn test_3() {
     //     let mut ws = VirtualWorkspace::new();
-    //     assert!(ws.check_code_for_namespace(
+    //     assert!(ws.has_no_diagnostic_in_namespace(
     //         DiagnosticCode::AssignTypeMismatch,
     //         r#"
     //             ---@param s    string
@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn test_enum() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@enum SubscriberFlags
@@ -90,7 +90,7 @@ mod tests {
 
         // TODO: 解决枚举值运算结果的推断问题
         // 暂时没有好的方式去处理这个警告, 在 ts 中, 枚举值运算的结果不是实际值, 但我们目前的结果是实际值, 所以难以处理
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@enum SubscriberFlags
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn test_intersection_assign_to_class() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             --- @class A
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn test_intersection_assign_from_class() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             --- @class A
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn test_intersection_assign_from_class_inherited_members() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class Base
@@ -196,7 +196,7 @@ mod tests {
     fn test_intersection_assign_tableconst_conflict() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class A
@@ -215,7 +215,7 @@ mod tests {
     fn test_intersection_assign_tableconst_requires_right_only_members() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class A
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn test_issue_193() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 --- @return string?
@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn test_issue_196() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class A
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn test_issue_197() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 local a = setmetatable({}, {})
@@ -279,7 +279,7 @@ mod tests {
         // let mut ws = VirtualWorkspace::new();
 
         // 推断类型异常
-        // assert!(ws.check_code_for_namespace(
+        // assert!(ws.has_no_diagnostic_in_namespace(
         //     DiagnosticCode::AssignTypeMismatch,
         //     r#"
         // local n
@@ -302,7 +302,7 @@ mod tests {
         let mut ws = VirtualWorkspace::new();
 
         // Test cases that should pass (no type mismatch)
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 local m = {}
@@ -311,7 +311,7 @@ m.ints = {}
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -325,7 +325,7 @@ t.x = {}
         ));
 
         // Test cases that should fail (type mismatch)
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -338,7 +338,7 @@ t.x = true
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -354,7 +354,7 @@ t.x = y
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -369,7 +369,7 @@ t.x = true
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -382,7 +382,7 @@ m.x = true
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -397,7 +397,7 @@ end
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -410,7 +410,7 @@ local t = {
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type boolean[]
@@ -419,7 +419,7 @@ local t = {}
 t[5] = nil
             "#
         ));
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type table<string, true>
@@ -429,7 +429,7 @@ t['x'] = nil
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type [boolean]
@@ -439,7 +439,7 @@ t = nil
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 local t = { true }
@@ -448,7 +448,7 @@ t[1] = nil
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -460,7 +460,7 @@ t.x = true
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type number
@@ -470,7 +470,7 @@ t = 1
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type number
@@ -483,7 +483,7 @@ t = y
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -496,7 +496,7 @@ m.x = {}
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type boolean[]
@@ -510,7 +510,7 @@ t[#t+1] = x
         ));
 
         // Additional test cases
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type number
@@ -522,7 +522,7 @@ i = n
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type number|boolean
@@ -535,7 +535,7 @@ n = nb
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type number
@@ -543,7 +543,7 @@ local x = 'aaa'
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class X
@@ -555,7 +555,7 @@ local mt = G
 mt._x = nil
             "#
         ));
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -566,7 +566,7 @@ local b = a
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -579,7 +579,7 @@ local b = setmetatable({}, a)
         ));
 
         // Continue with more test cases as needed
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class A
@@ -594,7 +594,7 @@ b.x = a.x
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 local mt = {}
@@ -603,7 +603,7 @@ mt.x = nil
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@alias test boolean
@@ -613,7 +613,7 @@ local test = 4
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class MyClass
@@ -630,7 +630,7 @@ end
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@class T
@@ -642,7 +642,7 @@ t.x = 1
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type {[1]: string, [10]: number, xx: boolean}
@@ -654,7 +654,7 @@ local t = {
             "#
         ));
 
-        assert!(!ws.check_code_for_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 ---@type boolean[]
@@ -662,7 +662,7 @@ local t = { 1, 2, 3 }
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 local t = {}
@@ -672,7 +672,7 @@ return t
             "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local function name()
@@ -688,7 +688,7 @@ return t
     #[test]
     fn test_pending() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class A
@@ -701,7 +701,7 @@ return t
 
         // 允许接受父类.
         // TODO: 接受父类时应该检查是否具有子类的所有非可空成员.
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class Option: string
@@ -717,7 +717,7 @@ return t
         ));
 
         // 数组类型匹配允许可空, 但在初始化赋值时, 不允许直接赋值`nil`(其实是偷懒了, table_expr 推断没有处理边缘情况, 可能后续会做处理允许)
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         ---@type boolean[]
@@ -729,7 +729,7 @@ return t
     #[test]
     fn test_issue_247() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         local a --- @type boolean
@@ -742,7 +742,7 @@ return t
     #[test]
     fn test_issue_246() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         --- @alias Type1 'add' | 'change' | 'delete'
@@ -761,7 +761,7 @@ return t
         let mut ws = VirtualWorkspace::new();
         // TODO: 解决枚举值运算结果的推断问题
         // 暂时没有好的方式去处理这个警告, 在 ts 中, 枚举值运算的结果不是实际值, 但我们目前的结果是实际值, 所以难以处理
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 
@@ -785,7 +785,7 @@ return t
     #[test]
     fn test_issue_285() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 --- @return string, integer
@@ -803,7 +803,7 @@ return t
     #[test]
     fn test_issue_338() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local t ---@type 0|-1
@@ -816,7 +816,7 @@ return t
     #[test]
     fn test_return_self() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@class UI
@@ -832,7 +832,7 @@ return t
     #[test]
     fn test_table_pack_in_function() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@param ... any
@@ -846,7 +846,7 @@ return t
     #[test]
     fn test_assign_field_with_flow() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class M
@@ -868,7 +868,7 @@ return t
     #[test]
     fn test_flow_1() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class Unit
@@ -891,7 +891,7 @@ return t
     #[test]
     fn test_flow_2() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class Unit
@@ -914,7 +914,7 @@ return t
     #[test]
     fn test_table_array() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@type  { [1]: string, [integer]: any }
@@ -931,7 +931,7 @@ return t
     #[test]
     fn test_issue_330() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@enum MyEnum
@@ -948,7 +948,7 @@ return t
     #[test]
     fn test_issue_393() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@alias SortByScoreCallback fun(o: any): integer
@@ -967,7 +967,7 @@ return t
     #[test]
     fn test_issue_374() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 --- @param x? integer
@@ -993,7 +993,7 @@ return t
             ---@field xx number
         "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type T1
@@ -1015,7 +1015,7 @@ return t
             ---@field x number
         "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type T1
@@ -1031,7 +1031,7 @@ return t
     #[test]
     fn test_issue_525() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@type table<integer,true|string>
@@ -1048,7 +1048,7 @@ return t
     #[test]
     fn test_param_tbale() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class ability
@@ -1074,7 +1074,7 @@ return t
     #[test]
     fn test_table_field_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local export = {
@@ -1097,7 +1097,7 @@ return t
         end
         "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             name({
@@ -1115,7 +1115,7 @@ return t
             ---@alias array<T> T[]
         "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             ---@type array<number>
@@ -1130,7 +1130,7 @@ return t
     fn test_ref_index_key_match_tuple() {
         let mut ws = crate::VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class Item
@@ -1153,7 +1153,7 @@ return t
     fn test_ref_index_access_assign_class_to_object_mismatch() {
         let mut ws = crate::VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class A
@@ -1171,7 +1171,7 @@ return t
     fn test_ref_index_access_assign_object_to_class_mismatch() {
         let mut ws = crate::VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@class A
@@ -1189,7 +1189,7 @@ return t
     fn test_exact_string_reassignment_in_narrowed_branch_keeps_assign_literal() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 local x ---@type string|number
@@ -1208,7 +1208,7 @@ return t
     fn test_return_overload_mixed_guards_keep_assign_narrowing() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@generic T, E

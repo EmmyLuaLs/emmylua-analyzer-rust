@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_issue_231() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 
@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn test_issue_595() {
         let mut ws = VirtualWorkspace::new();
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 local ret           --- @type [integer?]

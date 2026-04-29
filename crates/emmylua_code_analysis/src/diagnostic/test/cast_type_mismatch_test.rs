@@ -13,7 +13,7 @@ mod tests {
 ---@cast -?
         "#;
 
-        assert!(ws.check_code_for(DiagnosticCode::CastTypeMismatch, code));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::CastTypeMismatch, code));
     }
 
     #[test]
@@ -25,7 +25,7 @@ mod tests {
             A = "1"
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@cast A number
@@ -36,7 +36,7 @@ mod tests {
     #[test]
     fn test_valid_cast_from_union_to_member() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type string|number|boolean
@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn test_invalid_cast_to_non_member() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type string|boolean
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn test_cast_with_nil() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type string?
@@ -78,7 +78,7 @@ mod tests {
     #[test]
     fn test_cast_same_type() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type string
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn test_cast_multiple_operations() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type string|boolean
@@ -112,7 +112,7 @@ mod tests {
             ---@class Dog : Animal
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type Animal
@@ -132,7 +132,7 @@ mod tests {
             ---@class Car
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type Animal
@@ -151,7 +151,7 @@ mod tests {
             ---@class Animal.Dog
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
             ---@type any
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn test_cast_alias_1() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
                 ---@alias KV.SupportType
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_cast_alias_2() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
                 ---@alias KeyAlias
@@ -207,7 +207,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
                 ---@alias IdAlias
@@ -221,7 +221,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
                 ---@alias IdAndKeyAlias IdAlias|KeyAlias
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn test_issue_565() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CastTypeMismatch,
             r#"
                 local a --- @type table?

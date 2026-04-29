@@ -13,7 +13,7 @@ mod tests {
             .enables
             .push(DiagnosticCode::UnknownDocTag);
         ws.analysis.update_config(Arc::new(emmyrc));
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnknownDocTag,
             r#"
             ---@foobar
@@ -30,7 +30,7 @@ mod tests {
         emmyrc.doc.known_tags.push("foobar".into());
         ws.analysis.update_config(Arc::new(emmyrc));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnknownDocTag,
             r#"
             ---@foobar

@@ -7,7 +7,7 @@ mod test {
         let mut ws = crate::VirtualWorkspace::new();
         ws.enable_check(DiagnosticCode::NonLiteralExpressionsInAssert);
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::NonLiteralExpressionsInAssert,
             r#"
             -- msg is global or unknown
@@ -15,7 +15,7 @@ mod test {
             "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NonLiteralExpressionsInAssert,
             r#"
             local msg = "msg"
@@ -24,21 +24,21 @@ mod test {
             "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NonLiteralExpressionsInAssert,
             r#"
             local a = assert(foo(), "msg")
             "#,
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::NonLiteralExpressionsInAssert,
             r#"
             local a = assert(foo(), "msg" .. "msg2")
             "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NonLiteralExpressionsInAssert,
             r#"
             local t = { a = "msg" }
@@ -47,7 +47,7 @@ mod test {
             "#,
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::NonLiteralExpressionsInAssert,
             r#"
             local function get_des() return "msg" end

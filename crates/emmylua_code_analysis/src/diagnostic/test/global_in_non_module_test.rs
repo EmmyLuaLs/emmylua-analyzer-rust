@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_global_in_non_module() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GlobalInNonModule,
             r#"
             local function name()

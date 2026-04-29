@@ -60,7 +60,7 @@ mod test {
     fn test_issue_140_2() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
         local msgBody ---@type { _hgQuiteMsg : 1 }?
@@ -74,7 +74,7 @@ mod test {
     fn test_issue_140_3() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
         local SELF ---@type unknown
@@ -88,7 +88,7 @@ mod test {
     #[test]
     fn test_issue_107() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
         ---@type {bar?: fun():string}
@@ -130,7 +130,7 @@ mod test {
                 .is_some(),
             "expected semantic model for stacked same-variable type guard repro"
         );
-        assert!(ws.check_code_for(DiagnosticCode::AssignTypeMismatch, &block));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, &block));
     }
 
     #[test]
@@ -739,7 +739,7 @@ mod test {
     #[test]
     fn test_issue_100() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
         local f = io.open('', 'wb')
@@ -755,7 +755,7 @@ mod test {
     #[test]
     fn test_issue_93() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
         local text    --- @type string[]?
@@ -782,7 +782,7 @@ mod test {
     #[test]
     fn test_null_function_field() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
         ---@class A
@@ -801,7 +801,7 @@ mod test {
     #[test]
     fn test_issue_162() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             --- @class Foo
@@ -818,7 +818,7 @@ mod test {
     #[test]
     fn test_redefine() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UndefinedField,
             r#"
             ---@class AA
@@ -839,7 +839,7 @@ mod test {
     fn test_issue_165() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
 local a --- @type table?
@@ -856,7 +856,7 @@ print(a.h)
     fn test_issue_160() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
 local a --- @type table?
@@ -874,7 +874,7 @@ print(a.field)
     fn test_issue_210() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
         --- @class A
@@ -971,8 +971,8 @@ print(a.field)
 
         ws.def(code);
 
-        assert!(ws.check_code_for(DiagnosticCode::CallNonCallable, code));
-        assert!(ws.check_code_for(DiagnosticCode::NeedCheckNil, code));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::CallNonCallable, code));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::NeedCheckNil, code));
 
         let a = ws.expr_ty("A");
         let a_desc = ws.humanize_type_detailed(a);
@@ -983,7 +983,7 @@ print(a.field)
     fn test_issue_224() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
         --- @class A
@@ -1002,7 +1002,7 @@ print(a.field)
     fn test_elseif() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
 ---@class D11
@@ -1024,7 +1024,7 @@ end
     fn test_issue_266() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         --- @return string
@@ -1371,7 +1371,7 @@ end
     fn test_issue_347() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
         --- @param x 'a'|'b'
@@ -1520,7 +1520,7 @@ end
     fn test_issue_364() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
             ---@param k integer
@@ -1542,7 +1542,7 @@ end
     #[test]
     fn test_issue_382() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
             ---@class Trigger
@@ -1705,7 +1705,7 @@ end
     fn test_issue_423() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
         --- @return string?
@@ -1729,7 +1729,7 @@ end
     fn test_issue_472() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryIf,
             r#"
             worldLightLevel = 0
@@ -1756,7 +1756,7 @@ end
     fn test_issue_478() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             --- @param line string
@@ -1773,7 +1773,7 @@ end
     fn test_issue_491() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@param srow integer?
@@ -1815,7 +1815,7 @@ end
     fn test_issue_480() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             --- @param a integer?
@@ -1863,7 +1863,7 @@ end
     fn test_issue_583() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             --- @param sha string
@@ -1882,7 +1882,7 @@ end
     fn test_issue_584() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local function foo()
@@ -1993,7 +1993,7 @@ end
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@param observer fun(value: T) | B<T>
@@ -2013,7 +2013,7 @@ end
             "#,
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@param observer fun(value: T) | B<T>
@@ -2068,7 +2068,7 @@ end
     #[test]
     fn test_issue_600() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
             ---@class Test2
@@ -2085,7 +2085,7 @@ end
     #[test]
     fn test_issue_585() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local a --- @type type?
@@ -2118,7 +2118,7 @@ end
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
                 ---@param target A | B
@@ -2255,7 +2255,7 @@ end
     #[test]
     fn test_error_function() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
                 ---@class Result
@@ -2277,7 +2277,7 @@ end
     #[test]
     fn test_array_flow() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
             for i = 1, #_G.arg do
@@ -2290,7 +2290,7 @@ end
     #[test]
     fn test_issue_641() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local b --- @type boolean
@@ -2365,7 +2365,7 @@ end
     #[test]
     fn test_issue_734() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
 local a --- @type string[]
@@ -2494,7 +2494,7 @@ _2 = a[1]
     fn test_issue_868() {
         let mut ws = VirtualWorkspace::new();
 
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local a --- @type string|{foo:boolean, bar:string}

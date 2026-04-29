@@ -28,7 +28,7 @@ mod test {
     fn test_issue_280() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
         ---@class D11.AAA

@@ -26,7 +26,7 @@ mod tests {
     fn explicit_public_and_internal_access_modifiers_report_inconsistency() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::InconsistentTypeAccessModifier,
             r#"
                 ---@class (public) Foo
@@ -42,7 +42,7 @@ mod tests {
     fn implicit_and_explicit_public_access_modifiers_stay_consistent() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::InconsistentTypeAccessModifier,
             r#"
                 ---@class Foo
@@ -58,7 +58,7 @@ mod tests {
     fn implicit_public_and_internal_access_modifiers_report_inconsistency() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::InconsistentTypeAccessModifier,
             r#"
                 ---@class Foo
@@ -74,7 +74,7 @@ mod tests {
     fn private_and_implicit_public_access_modifiers_report_inconsistency() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::InconsistentTypeAccessModifier,
             r#"
                 ---@class (private) Foo
@@ -90,7 +90,7 @@ mod tests {
     fn partial_internal_access_modifiers_stay_consistent_within_same_workspace() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::InconsistentTypeAccessModifier,
             r#"
                 ---@class (partial,internal) Foo
@@ -106,7 +106,7 @@ mod tests {
     fn partial_public_and_internal_access_modifiers_report_inconsistency() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::InconsistentTypeAccessModifier,
             r#"
                 ---@class (partial,public) Foo

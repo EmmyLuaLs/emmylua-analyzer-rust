@@ -9,7 +9,7 @@ mod test {
         config.strict.array_index = true;
         ws.analysis.update_config(config.into());
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             ---@type boolean
@@ -47,14 +47,14 @@ mod test {
     fn test_2() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             assert(true)
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             ---@return integer
@@ -65,14 +65,14 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             assert({}, 'hi')
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             ---@type [integer, integer]
@@ -86,28 +86,28 @@ mod test {
     fn test_impossible_assert() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             assert(false)
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             assert(nil)
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             assert(nil and 5)
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             local a = false ---@type false
@@ -115,7 +115,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnnecessaryAssert,
             r#"
             ---@type integer[]

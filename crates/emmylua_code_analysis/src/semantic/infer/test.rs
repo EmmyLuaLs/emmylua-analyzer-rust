@@ -94,8 +94,8 @@ mod test {
             x, y = t.b, 1
         "#;
 
-        assert!(!ws.check_code_for(DiagnosticCode::UndefinedField, code));
-        assert!(!ws.check_code_for(DiagnosticCode::AssignTypeMismatch, code));
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::UndefinedField, code));
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, code));
     }
 
     #[test]

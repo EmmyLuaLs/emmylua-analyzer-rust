@@ -169,8 +169,8 @@ mod test {
             pred = function() end
             "#,
         );
-        assert!(ws.check_code_for(DiagnosticCode::ParamTypeMismatch, r#"pred('hello', 1, {})"#));
-        assert!(!ws.check_code_for(
+        assert!(ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, r#"pred('hello', 1, {})"#));
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"pred('hello',"1", {})"#
         ));
@@ -188,7 +188,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type A01<number>
@@ -210,7 +210,7 @@ mod test {
             end
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type A02<number>
@@ -232,7 +232,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type A02<fun(v0: number, v1: number)>
@@ -254,7 +254,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type A01<number>
@@ -278,7 +278,7 @@ mod test {
             end
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type fun(name: string, age: number)
@@ -287,7 +287,7 @@ mod test {
             "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type fun(name: string, age: number)
@@ -311,7 +311,7 @@ mod test {
             end
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type A01<fun(a: A02, b: string)>
@@ -340,7 +340,7 @@ mod test {
             end
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type fun(): number
@@ -350,7 +350,7 @@ mod test {
             "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type fun(): string
@@ -374,7 +374,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Pick<{name: string, age: number, email: string}, "name" | "age">
@@ -397,7 +397,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Partial<{name: string, age: number}>
@@ -423,7 +423,7 @@ mod test {
             function unwrap(...) end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Wrapper<int>, Wrapper<int>, Wrapper<string>
@@ -451,7 +451,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@class A
@@ -463,7 +463,7 @@ mod test {
 
             "#,
         ));
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             f("A", "b", "1")
@@ -483,7 +483,7 @@ mod test {
             function f1(...) end
             "#,
             );
-            assert!(ws.check_code_for(
+            assert!(ws.has_no_diagnostic(
                 DiagnosticCode::ParamTypeMismatch,
                 r#"
               A, B, C =  f1(1, "2", true)
@@ -502,7 +502,7 @@ mod test {
                 function f2(...) end
             "#,
             );
-            assert!(ws.check_code_for(
+            assert!(ws.has_no_diagnostic(
                 DiagnosticCode::ParamTypeMismatch,
                 r#"
               D, E, F =  f2(1, "2", true)
@@ -522,7 +522,7 @@ mod test {
             function f3(...) end
             "#,
             );
-            assert!(!ws.check_code_for(
+            assert!(!ws.has_no_diagnostic(
                 DiagnosticCode::ParamTypeMismatch,
                 r#"
               G, H =  f3(1, "2")
@@ -541,7 +541,7 @@ mod test {
             function f4(...) end
             "#,
             );
-            assert!(!ws.check_code_for(
+            assert!(!ws.has_no_diagnostic(
                 DiagnosticCode::ParamTypeMismatch,
                 r#"
               I, J, K =  f4(1, "2")
@@ -571,7 +571,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type IsTypeGuard<"number">
@@ -621,7 +621,7 @@ mod test {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             local a
@@ -651,7 +651,7 @@ mod test {
             function return_params(f) end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             result = return_params(pow)
@@ -665,7 +665,7 @@ mod test {
     fn test_overload() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@class Expect
@@ -838,7 +838,7 @@ mod test {
     #[test]
     fn test_extends_true() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::TypeNotFound,
             r#"
             ---@alias TestA<T> T extends "test" and number or string

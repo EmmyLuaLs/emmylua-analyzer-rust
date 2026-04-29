@@ -22,7 +22,7 @@ mod test {
         "#,
         );
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
                 local a = items[index]
@@ -54,7 +54,7 @@ mod test {
     #[test]
     fn test_array_for_flow() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::NeedCheckNil,
             r#"
         --- @param _x string

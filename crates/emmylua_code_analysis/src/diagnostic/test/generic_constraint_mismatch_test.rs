@@ -6,7 +6,7 @@ mod test {
     #[test]
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class Component
@@ -28,7 +28,7 @@ mod test {
     #[test]
     fn test_2() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class Component
@@ -50,7 +50,7 @@ mod test {
     #[test]
     fn test_3() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             local nargs = select('#')
@@ -61,7 +61,7 @@ mod test {
     #[test]
     fn test_4() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class Component
@@ -84,7 +84,7 @@ mod test {
     #[test]
     fn test_class_1() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class Component
@@ -105,7 +105,7 @@ mod test {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
 
@@ -123,7 +123,7 @@ mod test {
     #[test]
     fn test_class_2() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             ---@class Component
@@ -146,7 +146,7 @@ mod test {
     #[test]
     fn test_extend_string() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class ABC1
@@ -165,7 +165,7 @@ mod test {
     #[test]
     fn test_str_tpl_ref_param() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@generic T
@@ -185,7 +185,7 @@ mod test {
     #[test]
     fn test_issue_516() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@generic T: table
@@ -216,7 +216,7 @@ mod test {
             end
         "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             ---@type ab
@@ -225,14 +225,14 @@ mod test {
             name(a)
         "#
         ));
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             name("ab")
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             name("a")
@@ -253,7 +253,7 @@ mod test {
             ---@class GCNode
         "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             ---@generic T: table
@@ -284,7 +284,7 @@ mod test {
 
         "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
 
@@ -305,7 +305,7 @@ mod test {
         let mut ws = VirtualWorkspace::new();
         // A @class whose inferred Def type (e.g. from `return self`) should satisfy
         // an object constraint via structural duck typing, same as Ref types do.
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
                 ---@class MyPos
@@ -357,7 +357,7 @@ mod test {
                 ---@field name string
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             ---@type Person
@@ -367,7 +367,7 @@ mod test {
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             ---@type Person
@@ -398,7 +398,7 @@ mod test {
             return M
         "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::GenericConstraintMismatch,
             r#"
             local m = require("mylib")

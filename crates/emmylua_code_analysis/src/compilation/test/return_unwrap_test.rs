@@ -29,7 +29,7 @@ mod test {
     fn test_issue_476() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             crate::DiagnosticCode::ParamTypeMismatch,
             r#"
         ---Converts hex to char
@@ -46,7 +46,7 @@ mod test {
     fn test_issue_659() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
         --- @async
@@ -76,7 +76,7 @@ mod test {
     fn test_issue_643() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
             local function foo(b)

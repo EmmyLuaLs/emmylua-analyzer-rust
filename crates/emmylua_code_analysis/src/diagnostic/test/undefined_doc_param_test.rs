@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_undefined_doc_param() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UndefinedDocParam,
             r#"
             ---@param a number
@@ -15,7 +15,7 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UndefinedDocParam,
             r#"
             ---@param a string

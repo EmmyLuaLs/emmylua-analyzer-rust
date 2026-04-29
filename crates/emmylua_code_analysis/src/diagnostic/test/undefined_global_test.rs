@@ -5,7 +5,7 @@ mod test {
     #[test]
     fn test_issue_250() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UndefinedGlobal,
             r#"
             --- @class A
@@ -24,7 +24,7 @@ mod test {
     #[test]
     fn test_globals() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UndefinedGlobal,
             r#"
             local fact = function(n)

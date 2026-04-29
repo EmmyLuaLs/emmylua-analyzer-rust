@@ -565,7 +565,7 @@ mod test {
     fn test_swapped_literal_eq_narrow_without_return_overload() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@return "x"
@@ -584,7 +584,7 @@ mod test {
     fn test_var_eq_var_narrow_right_operand_without_return_overload() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@return "x"
