@@ -8,7 +8,7 @@ mod test {
     fn test_call_non_callable() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 local i = 1
@@ -16,7 +16,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 local s = "hi"
@@ -24,7 +24,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 local b = true
@@ -32,7 +32,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ---@type thread
@@ -41,7 +41,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 local function f() end
@@ -49,7 +49,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ---@type function
@@ -58,7 +58,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ---@type function|integer
@@ -67,7 +67,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 local f ---@type { field: string } & fun()
@@ -76,7 +76,7 @@ mod test {
         ));
 
         // nil is covered by need-check-nil instead of call-non-callable
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ---@type function|nil
@@ -85,35 +85,35 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 (1)()
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ("hi")()
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 (true)()
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 (function() end)()
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 local i --- @type integer|fun():string
@@ -121,7 +121,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ---@class Callable
@@ -132,7 +132,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 local c = {}
@@ -140,7 +140,7 @@ mod test {
             "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ---@class NonCallable
@@ -150,7 +150,7 @@ mod test {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
                 ---@type any
@@ -182,7 +182,7 @@ mod test {
     #[test]
     fn test_no_call_non_callable_on_undefined_type() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
             local a --- @type NotDefined
@@ -194,7 +194,7 @@ mod test {
     #[test]
     fn test_no_call_non_callable_on_alias() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
             ---@alias FunAlias function
@@ -207,7 +207,7 @@ mod test {
     #[test]
     fn test_no_call_non_callable_for_generic_function_param_in_a_lua() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::CallNonCallable,
             r#"
             --- @generic F: function

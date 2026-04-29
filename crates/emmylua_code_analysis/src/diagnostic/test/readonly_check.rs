@@ -6,7 +6,7 @@ mod test {
     fn test_issue_760() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReadOnly,
             r#"
             ---@readonly

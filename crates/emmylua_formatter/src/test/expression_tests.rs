@@ -3,9 +3,11 @@ mod tests {
     // ========== unary / binary / concat ==========
 
     use crate::{
-        assert_format, assert_format_with_config,
+        SourceText, assert_format, assert_format_with_config,
         config::{LayoutConfig, LuaFormatConfig},
+        reformat_lua_code,
     };
+    use emmylua_parser::LuaLanguageLevel;
 
     #[test]
     fn test_unary_expr() {
@@ -25,43 +27,67 @@ local e = #t
 
     #[test]
     fn test_binary_expr() {
-        assert_format!("local a = 1 + 2 * 3\n", "local a = 1 + 2 * 3\n");
+        assert_format!(
+            r#"local a = 1 + 2 * 3
+"#,
+            r#"local a = 1 + 2 * 3
+"#
+        );
     }
 
     #[test]
     fn test_concat_expr() {
-        assert_format!("local s = a .. b .. c\n", "local s = a .. b .. c\n");
+        assert_format!(
+            r#"local s = a .. b .. c
+"#,
+            r#"local s = a .. b .. c
+"#
+        );
     }
 
     #[test]
     fn test_multiline_binary_layout_reflows_when_width_allows() {
         assert_format!(
-            "local result = first\n    + second\n    + third\n",
-            "local result = first + second + third\n"
+            r#"local result = first
+    + second
+    + third
+"#,
+            r#"local result = first + second + third
+"#
         );
     }
 
     #[test]
     fn test_binary_expr_preserves_standalone_comment_before_operator() {
         assert_format!(
-            "local result = a\n-- separator\n+ b\n",
-            "local result = a\n-- separator\n+ b\n"
+            r#"local result = a
+-- separator
++ b
+"#,
+            r#"local result = a
+-- separator
++ b
+"#
         );
     }
 
     #[test]
     fn test_binary_expr_keeps_inline_doc_long_comment_before_operator() {
         assert_format!(
-            "local x = x--[[@cast -?]] * 60\n",
-            "local x = x--[[@cast -?]] * 60\n"
+            r#"local x = x--[[@cast -?]] * 60
+"#,
+            r#"local x = x--[[@cast -?]] * 60
+"#
         );
     }
 
     #[test]
     fn test_binary_expr_keeps_inline_long_comment_before_operator() {
         assert_format!(
-            "local x = x--[[cast]] * 60\n",
-            "local x = x--[[cast]] * 60\n"
+            r#"local x = x--[[cast]] * 60
+"#,
+            r#"local x = x--[[cast]] * 60
+"#
         );
     }
 
@@ -76,8 +102,11 @@ local e = #t
         };
 
         assert_format_with_config!(
-            "local value = alpha_beta_gamma + delta_theta + epsilon + zeta\n",
-            "local value = alpha_beta_gamma + delta_theta\n    + epsilon + zeta\n",
+            r#"local value = alpha_beta_gamma + delta_theta + epsilon + zeta
+"#,
+            r#"local value = alpha_beta_gamma + delta_theta
+    + epsilon + zeta
+"#,
             config
         );
     }
@@ -93,8 +122,11 @@ local e = #t
         };
 
         assert_format_with_config!(
-            "local total = alpha + beta + gamma + delta\n",
-            "local total = alpha + beta\n    + gamma + delta\n",
+            r#"local total = alpha + beta + gamma + delta
+"#,
+            r#"local total = alpha + beta
+    + gamma + delta
+"#,
             config
         );
     }
@@ -110,8 +142,12 @@ local e = #t
         };
 
         assert_format_with_config!(
-            "local value = aaaa + bbbb + cccc + dddd + eeee + ffff\n",
-            "local value = aaaa + bbbb\n    + cccc + dddd\n    + eeee + ffff\n",
+            r#"local value = aaaa + bbbb + cccc + dddd + eeee + ffff
+"#,
+            r#"local value = aaaa + bbbb
+    + cccc + dddd
+    + eeee + ffff
+"#,
             config
         );
     }
@@ -135,24 +171,46 @@ local b = t[1]
     #[test]
     fn test_index_expr_preserves_standalone_comment_inside_brackets() {
         assert_format!(
-            "local value = t[\n-- separator\nkey\n]\n",
-            "local value = t[\n-- separator\nkey\n]\n"
+            r#"local value = t[
+-- separator
+key
+]
+"#,
+            r#"local value = t[
+-- separator
+key
+]
+"#
         );
     }
 
     #[test]
     fn test_index_expr_preserves_standalone_comment_before_suffix() {
         assert_format!(
-            "local value = t\n-- separator\n[key]\n",
-            "local value = t\n-- separator\n[key]\n"
+            r#"local value = t
+-- separator
+[key]
+"#,
+            r#"local value = t
+-- separator
+[key]
+"#
         );
     }
 
     #[test]
     fn test_paren_expr_preserves_standalone_comment_inside() {
         assert_format!(
-            "local value = (\n-- separator\na\n)\n",
-            "local value = (\n-- separator\na\n)\n"
+            r#"local value = (
+-- separator
+a
+)
+"#,
+            r#"local value = (
+-- separator
+a
+)
+"#
         );
     }
 
@@ -161,85 +219,139 @@ local b = t[1]
     #[test]
     fn test_table_expr() {
         assert_format!(
-            "local t = { a = 1, b = 2, c = 3 }\n",
-            "local t = { a = 1, b = 2, c = 3 }\n"
+            r#"local t = { a = 1, b = 2, c = 3 }
+"#,
+            r#"local t = { a = 1, b = 2, c = 3 }
+"#
         );
     }
 
     #[test]
     fn test_table_expr_preserves_inline_comment_after_open_brace() {
         assert_format!(
-            "local d = { -- enne\n    a = 1, -- hf\n    b = 2,\n}\n",
-            "local d = { -- enne\n    a = 1, -- hf\n    b = 2\n}\n"
+            r#"local d = { -- enne
+    a = 1, -- hf
+    b = 2,
+}
+"#,
+            r#"local d = { -- enne
+    a = 1, -- hf
+    b = 2
+}
+"#
         );
     }
 
     #[test]
     fn test_table_expr_formats_body_with_after_open_delimiter_comment() {
         assert_format!(
-            "local d = { -- enne\na=1,-- hf\nb=2,\n}\n",
-            "local d = { -- enne\n    a = 1, -- hf\n    b = 2\n}\n"
+            r#"local d = { -- enne
+a=1,-- hf
+b=2,
+}
+"#,
+            r#"local d = { -- enne
+    a = 1, -- hf
+    b = 2
+}
+"#
         );
     }
 
     #[test]
     fn test_table_expr_formats_separator_comment_with_attached_field() {
         assert_format!(
-            "local t = {\na=1,\n-- separator\nb=2\n}\n",
-            "local t = {\n    a = 1,\n    -- separator\n    b = 2\n}\n"
+            r#"local t = {
+a=1,
+-- separator
+b=2
+}
+"#,
+            r#"local t = {
+    a = 1,
+    -- separator
+    b = 2
+}
+"#
         );
     }
 
     #[test]
     fn test_table_expr_formats_before_close_comment_attachment() {
         assert_format!(
-            "local t = {\na=1,\n-- tail\n}\n",
-            "local t = {\n    a = 1\n    -- tail\n}\n"
+            r#"local t = {
+a=1,
+-- tail
+}
+"#,
+            r#"local t = {
+    a = 1
+    -- tail
+}
+"#
         );
     }
 
     #[test]
     fn test_empty_table() {
-        assert_format!("local t = {}\n", "local t = {}\n");
+        assert_format!(
+            r#"local t = {}
+"#,
+            r#"local t = {}
+"#
+        );
     }
 
     #[test]
     fn test_multiline_table_layout_reflows_when_width_allows() {
         assert_format!(
-            "local t = {\n    a = 1,\n    b = 2,\n}\n",
-            "local t = { a = 1, b = 2 }\n"
+            r#"local t = {
+    a = 1,
+    b = 2,
+}
+"#,
+            r#"local t = { a = 1, b = 2 }
+"#
         );
     }
 
     #[test]
     fn test_table_with_nested_table_expands_by_shape() {
         assert_format!(
-            "local t = { user = { name = \"a\", age = 1 }, enabled = true }\n",
-            "local t = { user = { name = \"a\", age = 1 }, enabled = true }\n"
+            r#"local t = { user = { name = "a", age = 1 }, enabled = true }
+"#,
+            r#"local t = { user = { name = "a", age = 1 }, enabled = true }
+"#
         );
     }
 
     #[test]
     fn test_mixed_table_style_expands_by_shape() {
         assert_format!(
-            "local t = { answer = 42, compute() }\n",
-            "local t = { answer = 42, compute() }\n"
+            r#"local t = { answer = 42, compute() }
+"#,
+            r#"local t = { answer = 42, compute() }
+"#
         );
     }
 
     #[test]
     fn test_mixed_named_and_bracket_key_table_expands_by_shape() {
         assert_format!(
-            "local t = { answer = 42, [\"name\"] = user_name }\n",
-            "local t = { answer = 42, [\"name\"] = user_name }\n"
+            r#"local t = { answer = 42, ["name"] = user_name }
+"#,
+            r#"local t = { answer = 42, ["name"] = user_name }
+"#
         );
     }
 
     #[test]
     fn test_dsl_style_call_list_table_expands_by_shape() {
         assert_format!(
-            "local pipeline = { step_one(), step_two(), step_three() }\n",
-            "local pipeline = { step_one(), step_two(), step_three() }\n"
+            r#"local pipeline = { step_one(), step_two(), step_three() }
+"#,
+            r#"local pipeline = { step_one(), step_two(), step_three() }
+"#
         );
     }
 
@@ -247,120 +359,227 @@ local b = t[1]
 
     #[test]
     fn test_string_call() {
-        assert_format!("require \"module\"\n", "require \"module\"\n");
+        assert_format!(
+            r#"require "module"
+"#,
+            r#"require "module"
+"#
+        );
     }
 
     #[test]
     fn test_table_call() {
-        assert_format!("foo { 1, 2, 3 }\n", "foo { 1, 2, 3 }\n");
+        assert_format!(
+            r#"foo { 1, 2, 3 }
+"#,
+            r#"foo { 1, 2, 3 }
+"#
+        );
     }
 
     #[test]
     fn test_call_expr_preserves_inline_comment_in_args() {
         assert_format!(
-            "foo(a -- first\n, b)\n",
-            "foo(\n    a, -- first\n    b\n)\n"
+            r#"foo(a -- first
+, b)
+"#,
+            r#"foo(
+    a, -- first
+    b
+)
+"#
         );
     }
 
     #[test]
     fn test_call_expr_formats_after_open_comment_attachment() {
         assert_format!(
-            "foo( -- first\na,-- second\nb\n)\n",
-            "foo( -- first\n    a, -- second\n    b\n)\n"
+            r#"foo( -- first
+a,-- second
+b
+)
+"#,
+            r#"foo( -- first
+    a, -- second
+    b
+)
+"#
         );
     }
 
     #[test]
     fn test_call_expr_formats_separator_comment_attachment() {
         assert_format!(
-            "foo(\na,\n-- separator\nb\n)\n",
-            "foo(\n    a,\n    -- separator\n    b\n)\n"
+            r#"foo(
+a,
+-- separator
+b
+)
+"#,
+            r#"foo(
+    a,
+    -- separator
+    b
+)
+"#
         );
     }
 
     #[test]
     fn test_call_expr_preserves_before_close_comment_attachment() {
-        assert_format!("foo(\na,\n-- tail\n)\n", "foo(\na,\n-- tail\n)\n");
+        assert_format!(
+            r#"foo(
+a,
+-- tail
+)
+"#,
+            r#"foo(
+a,
+-- tail
+)
+"#
+        );
     }
 
     #[test]
     fn test_call_expr_formats_inline_comment_between_prefix_and_args() {
         assert_format!(
-            "local value = foo -- note\n(a, b)\n",
-            "local value = foo -- note\n(a, b)\n"
+            r#"local value = foo -- note
+(a, b)
+"#,
+            r#"local value = foo -- note
+(a, b)
+"#
         );
     }
 
     #[test]
     fn test_closure_expr_preserves_inline_comment_in_params() {
         assert_format!(
-            "local f = function(a -- first\n, b)\n    return a + b\nend\n",
-            "local f = function(\n    a, -- first\n    b\n)\n    return a + b\nend\n"
+            r#"local f = function(a -- first
+, b)
+    return a + b
+end
+"#,
+            r#"local f = function(
+    a, -- first
+    b
+)
+    return a + b
+end
+"#
         );
     }
 
     #[test]
     fn test_closure_expr_formats_after_open_comment_in_params() {
         assert_format!(
-            "local f = function( -- first\na,-- second\nb\n)\n    return a + b\nend\n",
-            "local f = function( -- first\n    a, -- second\n    b\n)\n    return a + b\nend\n"
+            r#"local f = function( -- first
+a,-- second
+b
+)
+    return a + b
+end
+"#,
+            r#"local f = function( -- first
+    a, -- second
+    b
+)
+    return a + b
+end
+"#
         );
     }
 
     #[test]
     fn test_closure_expr_preserves_before_close_comment_in_params() {
         assert_format!(
-            "local f = function(\na,\n-- tail\n)\n    return a\nend\n",
-            "local f = function(\na,\n-- tail\n)\n    return a\nend\n"
+            r#"local f = function(
+a,
+-- tail
+)
+    return a
+end
+"#,
+            r#"local f = function(
+a,
+-- tail
+)
+    return a
+end
+"#
         );
     }
 
     #[test]
     fn test_closure_expr_formats_inline_comment_before_end() {
         assert_format!(
-            "local f = function() -- note\nend\n",
-            "local f = function() -- note\nend\n"
+            r#"local f = function() -- note
+end
+"#,
+            r#"local f = function() -- note
+end
+"#
         );
     }
 
     #[test]
     fn test_closure_expr_comment_only_body_does_not_insert_space_before_end() {
         assert_format!(
-            "Execute(function(data)\n    -- comment\n\n end)\n",
-            "Execute(function(data)\n    -- comment\n\nend)\n"
+            r#"Execute(function(data)
+    -- comment
+
+ end)
+"#,
+            r#"Execute(function(data)
+    -- comment
+
+end)
+"#
         );
     }
 
     #[test]
     fn test_simple_inline_lambda_stays_inline() {
         assert_format!(
-            "local f = function() return  true end\n",
-            "local f = function() return true end\n"
+            r#"local f = function() return  true end
+"#,
+            r#"local f = function() return true end
+"#
         );
     }
 
     #[test]
     fn test_simple_inline_lambda_callback_stays_inline() {
         assert_format!(
-            "map(items, function(x) return  x + 1 end)\n",
-            "map(items, function(x) return x + 1 end)\n"
+            r#"map(items, function(x) return  x + 1 end)
+"#,
+            r#"map(items, function(x) return x + 1 end)
+"#
         );
     }
 
     #[test]
     fn test_multiline_call_args_layout_reflow_when_width_allows() {
         assert_format!(
-            "some_function(\n    first,\n    second,\n    third\n)\n",
-            "some_function(first, second, third)\n"
+            r#"some_function(
+    first,
+    second,
+    third
+)
+"#,
+            r#"some_function(first, second, third)
+"#
         );
     }
 
     #[test]
     fn test_nested_call_args_do_not_force_outer_multiline_by_shape() {
         assert_format!(
-            "cannotload(\"attempt to load a text chunk\", load(read1(x), \"modname\", \"b\", {}))\n",
-            "cannotload(\"attempt to load a text chunk\", load(read1(x), \"modname\", \"b\", {}))\n"
+            r#"cannotload("attempt to load a text chunk", load(read1(x), "modname", "b", {}))
+"#,
+            r#"cannotload("attempt to load a text chunk", load(read1(x), "modname", "b", {}))
+"#
         );
     }
 
@@ -375,9 +594,34 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "cannotload(\"attempt to load a text chunk\", load(read1(x), \"modname\", \"b\", {}))\n",
-            "cannotload(\n    \"attempt to load a text chunk\",\n    load(read1(x), \"modname\", \"b\", {})\n)\n",
+            r#"cannotload("attempt to load a text chunk", load(read1(x), "modname", "b", {}))
+"#,
+            r#"cannotload(
+    "attempt to load a text chunk",
+    load(read1(x), "modname", "b", {})
+)
+"#,
             config
+        );
+    }
+
+    #[test]
+    fn test_call_expr_keeps_simple_tail_arg_on_same_line_after_multiline_first_arg() {
+        assert_format!(
+            r#"local self = setmetatable({
+    _obj = obj,
+    __flags = {
+        message = msg,
+    },
+}, Assertion)
+"#,
+            r#"local self = setmetatable({
+    _obj = obj,
+    __flags = {
+        message = msg
+    }
+}, Assertion)
+"#
         );
     }
 
@@ -392,8 +636,13 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "some_function(first_arg, second_arg, third_arg, fourth_arg)\n",
-            "some_function(\n    first_arg, second_arg, third_arg,\n    fourth_arg\n)\n",
+            r#"some_function(first_arg, second_arg, third_arg, fourth_arg)
+"#,
+            r#"some_function(
+    first_arg, second_arg, third_arg,
+    fourth_arg
+)
+"#,
             config
         );
     }
@@ -401,16 +650,31 @@ local b = t[1]
     #[test]
     fn test_callback_arg_with_multiline_closure_resets_tail_width() {
         assert_format!(
-            "check(function()\n    return not not k3\nend, 'LOADTRUE', 'RETURN1')\n",
-            "check(function()\n    return not not k3\nend,\n    'LOADTRUE', 'RETURN1')\n"
+            r#"check(function()
+    return not not k3
+end, 'LOADTRUE', 'RETURN1')
+"#,
+            r#"check(function()
+    return not not k3
+end,
+    'LOADTRUE', 'RETURN1')
+"#
         );
     }
 
     #[test]
     fn test_first_table_arg_keeps_short_tail_packed_after_multiline_block() {
         assert_format!(
-            "configure({\n    key = value,\n    another = other,\n}, option_one, option_two)\n",
-            "configure({\n    key = value,\n    another = other\n},\n    option_one, option_two)\n"
+            r#"configure({
+    key = value,
+    another = other,
+}, option_one, option_two)
+"#,
+            r#"configure({
+    key = value,
+    another = other
+}, option_one, option_two)
+"#
         );
     }
 
@@ -425,8 +689,16 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "check(function()\n    return not not k3\nend, 'LOADTRUE', 'RETURN1', 'EXTRA')\n",
-            "check(function()\n    return not not k3\nend,\n    'LOADTRUE', 'RETURN1',\n    'EXTRA')\n",
+            r#"check(function()
+    return not not k3
+end, 'LOADTRUE', 'RETURN1', 'EXTRA')
+"#,
+            r#"check(function()
+    return not not k3
+end,
+    'LOADTRUE', 'RETURN1',
+    'EXTRA')
+"#,
             config
         );
     }
@@ -442,8 +714,15 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "test(1, \"hello\", function()\n        return 1, 2, 34\n    end, 4, 5, 6, 7, 8, 9, 10)\n",
-            "test(1, \"hello\", function()\n    return 1, 2, 34\nend, 4, 5, 6, 7, 8, 9, 10\n)\n",
+            r#"test(1, "hello", function()
+        return 1, 2, 34
+    end, 4, 5, 6, 7, 8, 9, 10)
+"#,
+            r#"test(1, "hello", function()
+    return 1, 2, 34
+end, 4, 5, 6, 7, 8, 9, 10
+)
+"#,
             config
         );
     }
@@ -459,8 +738,15 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "test(1, \"hello\", function()\n        return 1, 2, 34\n    end, 4, 5, 6, 7, 8, 9, 10)\n",
-            "test(1, \"hello\", function()\n    return 1, 2, 34\nend, 4, 5, 6, 7, 8, 9, 10\n)\n",
+            r#"test(1, "hello", function()
+        return 1, 2, 34
+    end, 4, 5, 6, 7, 8, 9, 10)
+"#,
+            r#"test(1, "hello", function()
+    return 1, 2, 34
+end, 4, 5, 6, 7, 8, 9, 10
+)
+"#,
             config
         );
     }
@@ -468,8 +754,128 @@ local b = t[1]
     #[test]
     fn test_non_first_multiline_callback_end_aligns_with_call_anchor() {
         assert_format!(
-            "table.sort({ 3, 1, 2 }, function(a, b)\n        return a < b\n    end)\n",
-            "table.sort({ 3, 1, 2 }, function(a, b)\n    return a < b\nend)\n"
+            r#"table.sort({ 3, 1, 2 }, function(a, b)
+        return a < b
+    end)
+"#,
+            r#"table.sort({ 3, 1, 2 }, function(a, b)
+    return a < b
+end)
+"#
+        );
+    }
+
+    #[test]
+    fn test_chained_call_suffix_does_not_double_indent_multiline_args() {
+        assert_format!(
+            r#"a.a = function()
+    return function(l)
+        a.Add(
+                aaaa,
+                bbbb,
+                cccc,
+                dddd,
+                eeee,
+                nil,
+                nil,
+                nil,
+                aafafa -- comment
+            )()
+    end
+end
+"#,
+            r#"a.a = function()
+    return function(l)
+        a.Add(
+            aaaa,
+            bbbb,
+            cccc,
+            dddd,
+            eeee,
+            nil,
+            nil,
+            nil,
+            aafafa -- comment
+        )()
+    end
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_chained_index_after_multiline_call_does_not_double_indent_args() {
+        assert_format!(
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+                aaaa,
+                bbbb,
+                cccc,
+                dddd,
+                eeee,
+                nil,
+                nil,
+                nil,
+                aafafa -- comment
+            )[1]
+    end
+end
+"#,
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+            aaaa,
+            bbbb,
+            cccc,
+            dddd,
+            eeee,
+            nil,
+            nil,
+            nil,
+            aafafa -- comment
+        )[1]
+    end
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_chained_method_after_multiline_call_does_not_double_indent_args() {
+        assert_format!(
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+                aaaa,
+                bbbb,
+                cccc,
+                dddd,
+                eeee,
+                nil,
+                nil,
+                nil,
+                aafafa -- comment
+            ):next()
+    end
+end
+"#,
+            r#"a.a = function()
+    return function(l)
+        return a.Add(
+            aaaa,
+            bbbb,
+            cccc,
+            dddd,
+            eeee,
+            nil,
+            nil,
+            nil,
+            aafafa -- comment
+        ):next()
+    end
+end
+"#
         );
     }
 
@@ -484,9 +890,51 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "assert(check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') == \"hiho\")\n",
-            "assert(check(function()\n        return true\n    end,\n        'LOADTRUE', 'RETURN1') == \"hiho\")\n",
+            r#"assert(check(function()
+    return true
+end, 'LOADTRUE', 'RETURN1') == "hiho")
+"#,
+            r#"assert(check(function()
+        return true
+    end,
+        'LOADTRUE', 'RETURN1') == "hiho")
+"#,
             config
+        );
+    }
+
+    #[test]
+    fn test_user_multiline_assert_comparison_keeps_eq_on_call_closing_line() {
+        let input = r#"assert(
+        T.checkpanic(
+            [[
+            pushstring "return {__close = function () Y = 'ho'; end}"
+      newtable
+      loadstring -2
+      call 0 1
+      setmetatable -2
+      toclose -1
+            pushstring "hi"
+      error
+    ]], [[
+      getglobal Y
+      concat 2         # concat original error with global Y
+    ]]
+        )
+                        == "hiho"
+    )
+"#;
+        let result = reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &LuaFormatConfig::default(),
+        );
+
+        assert!(
+            result.contains(") == \"hiho\"") || result.contains(") == \"hiho\""),
+            "expected comparison tail to stay on the call closing line, got:\n{result}"
         );
     }
 
@@ -505,8 +953,13 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "local t = { alpha, beta, gamma, delta }\n",
-            "local t = {\n    alpha, beta, gamma,\n    delta\n}\n",
+            r#"local t = { alpha, beta, gamma, delta }
+"#,
+            r#"local t = {
+    alpha, beta, gamma,
+    delta
+}
+"#,
             config
         );
     }
@@ -514,40 +967,123 @@ local b = t[1]
     #[test]
     fn test_table_field_preserves_multiline_closure_value_shape() {
         assert_format!(
-            "local spec = {\n    callback = function()\n        return true\n    end,\n    fallback = another_value,\n}\n",
-            "local spec = {\n    callback = function()\n        return true\n    end,\n    fallback = another_value\n}\n"
+            r#"local spec = {
+    callback = function()
+        return true
+    end,
+    fallback = another_value,
+}
+"#,
+            r#"local spec = {
+    callback = function()
+        return true
+    end,
+    fallback = another_value
+}
+"#
         );
     }
 
     #[test]
     fn test_table_field_multiline_closure_value_still_formats_interior() {
         assert_format!(
-            "local mt = {\n    __eq = function (a, b)\n        coroutine.yield(nil, \"eq\")\n        return  val(a) ==       val(b)\n    end\n}\n",
-            "local mt = {\n    __eq = function(a, b)\n        coroutine.yield(nil, \"eq\")\n        return val(a) == val(b)\n    end\n}\n"
+            r#"local mt = {
+    __eq = function (a, b)
+        coroutine.yield(nil, "eq")
+        return  val(a) ==       val(b)
+    end
+}
+"#,
+            r#"local mt = {
+    __eq = function(a, b)
+        coroutine.yield(nil, "eq")
+        return val(a) == val(b)
+    end
+}
+"#
         );
     }
 
     #[test]
     fn test_table_field_preserves_multiline_nested_table_value_shape() {
         assert_format!(
-            "local spec = {\n    nested = {\n        foo=1,\n        bar =    2,\n    },\n    fallback = another_value,\n}\n",
-            "local spec = {\n    nested = {\n        foo = 1,\n        bar = 2\n    },\n    fallback = another_value\n}\n"
+            r#"local spec = {
+    nested = {
+        foo=1,
+        bar =    2,
+    },
+    fallback = another_value,
+}
+"#,
+            r#"local spec = {
+    nested = {
+        foo = 1,
+        bar = 2
+    },
+    fallback = another_value
+}
+"#
         );
     }
 
     #[test]
     fn test_deep_nested_table_field_keeps_expanded_shape_and_formats_interior() {
         assert_format!(
-            "local spec = {\n    outer = {\n        callback = function (a, b)\n            return  val(a) ==       val(b)\n        end,\n        nested = {\n            foo=1,\n            bar =    2,\n        },\n    },\n}\n",
-            "local spec = {\n    outer = {\n        callback = function(a, b)\n            return val(a) == val(b)\n        end,\n        nested = {\n            foo = 1,\n            bar = 2\n        }\n    }\n}\n"
+            r#"local spec = {
+    outer = {
+        callback = function (a, b)
+            return  val(a) ==       val(b)
+        end,
+        nested = {
+            foo=1,
+            bar =    2,
+        },
+    },
+}
+"#,
+            r#"local spec = {
+    outer = {
+        callback = function(a, b)
+            return val(a) == val(b)
+        end,
+        nested = {
+            foo = 1,
+            bar = 2
+        }
+    }
+}
+"#
         );
     }
 
     #[test]
     fn test_multiline_call_arg_nested_table_keeps_expanded_shape_and_formats_interior() {
         assert_format!(
-            "local spec = {\n    outer = {\n        callback = wrap(function (a, b)\n            return  val(a) ==       val(b)\n        end, {\n            foo=1,\n            bar =    2,\n        }),\n        fallback = another_value,\n    },\n}\n",
-            "local spec = {\n    outer = {\n        callback = wrap(function(a, b)\n            return val(a) == val(b)\n        end,\n            {\n                foo = 1,\n                bar = 2\n            }),\n        fallback = another_value\n    }\n}\n"
+            r#"local spec = {
+    outer = {
+        callback = wrap(function (a, b)
+            return  val(a) ==       val(b)
+        end, {
+            foo=1,
+            bar =    2,
+        }),
+        fallback = another_value,
+    },
+}
+"#,
+            r#"local spec = {
+    outer = {
+        callback = wrap(function(a, b)
+            return val(a) == val(b)
+        end,
+            {
+                foo = 1,
+                bar = 2
+            }),
+        fallback = another_value
+    }
+}
+"#
         );
     }
 
@@ -555,32 +1091,54 @@ local b = t[1]
 
     #[test]
     fn test_method_chain_short() {
-        assert_format!("a:b():c():d()\n", "a:b():c():d()\n");
+        assert_format!(
+            r#"a:b():c():d()
+"#,
+            r#"a:b():c():d()
+"#
+        );
     }
 
     #[test]
     fn test_method_chain_with_args() {
         assert_format!(
-            "builder:setName(\"foo\"):setAge(25):build()\n",
-            "builder:setName(\"foo\"):setAge(25):build()\n"
+            r#"builder:setName("foo"):setAge(25):build()
+"#,
+            r#"builder:setName("foo"):setAge(25):build()
+"#
         );
     }
 
     #[test]
     fn test_property_chain() {
-        assert_format!("local a = t.x.y.z\n", "local a = t.x.y.z\n");
+        assert_format!(
+            r#"local a = t.x.y.z
+"#,
+            r#"local a = t.x.y.z
+"#
+        );
     }
 
     #[test]
     fn test_mixed_chain() {
-        assert_format!("a.b:c():d()\n", "a.b:c():d()\n");
+        assert_format!(
+            r#"a.b:c():d()
+"#,
+            r#"a.b:c():d()
+"#
+        );
     }
 
     #[test]
     fn test_multiline_chain_layout_reflows_when_width_allows() {
         assert_format!(
-            "builder\n    :set_name(name)\n    :set_age(age)\n    :build()\n",
-            "builder:set_name(name):set_age(age):build()\n"
+            r#"builder
+    :set_name(name)
+    :set_age(age)
+    :build()
+"#,
+            r#"builder:set_name(name):set_age(age):build()
+"#
         );
     }
 
@@ -595,8 +1153,12 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "builder:set_name(name):set_age(age):build()\n",
-            "builder\n    :set_name(name):set_age(age)\n    :build()\n",
+            r#"builder:set_name(name):set_age(age):build()
+"#,
+            r#"builder
+    :set_name(name):set_age(age)
+    :build()
+"#,
             config
         );
     }
@@ -612,8 +1174,13 @@ local b = t[1]
         };
 
         assert_format_with_config!(
-            "builder:set_name(name):set_age(age):build()\n",
-            "builder\n    :set_name(name)\n    :set_age(age)\n    :build()\n",
+            r#"builder:set_name(name):set_age(age):build()
+"#,
+            r#"builder
+    :set_name(name)
+    :set_age(age)
+    :build()
+"#,
             config
         );
     }
@@ -621,32 +1188,77 @@ local b = t[1]
     #[test]
     fn test_chain_keeps_single_multiline_table_payload_attached() {
         assert_format!(
-            "builder:with_config({\n    key = value,\n    another = other,\n}):set_name(name):build()\n",
-            "builder:with_config({\n    key = value,\n    another = other\n}):set_name(name):build()\n"
+            r#"builder:with_config({
+    key = value,
+    another = other,
+}):set_name(name):build()
+"#,
+            r#"builder:with_config({
+    key = value,
+    another = other
+}):set_name(name):build()
+"#
         );
     }
 
     #[test]
     fn test_chain_keeps_mixed_closure_and_multiline_table_payloads_expanded() {
         assert_format!(
-            "builder:with_config(function (a, b)\n    return  val(a) ==       val(b)\nend, {\n    foo=1,\n    bar =    2,\n}):set_name(name):build()\n",
-            "builder:with_config(function(a, b)\n    return val(a) == val(b)\nend,\n    {\n        foo = 1,\n        bar = 2\n    }):set_name(name):build()\n"
+            r#"builder:with_config(function (a, b)
+    return  val(a) ==       val(b)
+end, {
+    foo=1,
+    bar =    2,
+}):set_name(name):build()
+"#,
+            r#"builder:with_config(function(a, b)
+    return val(a) == val(b)
+end,
+    {
+        foo = 1,
+        bar = 2
+    }):set_name(name):build()
+"#
         );
     }
 
     #[test]
     fn test_chain_keeps_mixed_closure_table_and_fallback_payloads_expanded() {
         assert_format!(
-            "builder:with_config(function (a, b)\n    return  val(a) ==       val(b)\nend, {\n    foo=1,\n    bar =    2,\n}, fallback):set_name(name):build()\n",
-            "builder:with_config(function(a, b)\n    return val(a) == val(b)\nend,\n    {\n        foo = 1,\n        bar = 2\n    }, fallback):set_name(name):build()\n"
+            r#"builder:with_config(function (a, b)
+    return  val(a) ==       val(b)
+end, {
+    foo=1,
+    bar =    2,
+}, fallback):set_name(name):build()
+"#,
+            r#"builder:with_config(function(a, b)
+    return val(a) == val(b)
+end,
+    {
+        foo = 1,
+        bar = 2
+    }, fallback):set_name(name):build()
+"#
         );
     }
 
     #[test]
     fn test_if_header_keeps_short_comparison_tail_with_multiline_callback_call() {
         assert_format!(
-            "if check(function()\n    return true\nend, 'LOADTRUE', 'RETURN1') == \"hiho\" then\n    print('ok')\nend\n",
-            "if check(function()\n    return true\nend,\n    'LOADTRUE', 'RETURN1') == \"hiho\" then\n    print('ok')\nend\n"
+            r#"if check(function()
+    return true
+end, 'LOADTRUE', 'RETURN1') == "hiho" then
+    print('ok')
+end
+"#,
+            r#"if check(function()
+    return true
+end,
+    'LOADTRUE', 'RETURN1') == "hiho" then
+    print('ok')
+end
+"#
         );
     }
 
@@ -655,8 +1267,10 @@ local b = t[1]
     #[test]
     fn test_and_or_expr() {
         assert_format!(
-            "local x = condition_one and value_one or condition_two and value_two or default_value\n",
-            "local x = condition_one and value_one or condition_two and value_two or default_value\n"
+            r#"local x = condition_one and value_one or condition_two and value_two or default_value
+"#,
+            r#"local x = condition_one and value_one or condition_two and value_two or default_value
+"#
         );
     }
 }

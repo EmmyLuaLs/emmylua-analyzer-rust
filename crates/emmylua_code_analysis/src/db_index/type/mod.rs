@@ -329,18 +329,64 @@ impl LuaTypeIndex {
     }
 
     pub fn get_super_types(&self, decl_id: &LuaTypeDeclId) -> Option<Vec<LuaType>> {
+        self.get_super_types_iter(decl_id)
+            .map(|supers| supers.cloned().collect())
+    }
+
+    pub fn get_super_types_raw(&self, decl_id: &LuaTypeDeclId) -> Option<Vec<LuaType>> {
         self.supers
             .get(decl_id)
             .map(|supers| supers.iter().map(|s| s.value.clone()).collect())
     }
 
-    pub fn get_super_types_iter(
+    pub fn get_super_types_iter<'a>(
+        &'a self,
+        decl_id: &'a LuaTypeDeclId,
+    ) -> Option<impl Iterator<Item = &'a LuaType> + 'a> {
+        self.supers.get(decl_id).map(move |supers| {
+            let mut visited = HashSet::new();
+            supers.iter().map(|s| &s.value).filter(move |super_type| {
+                visited.clear();
+                !self.is_cyclic_super_edge(decl_id, super_type, &mut visited)
+            })
+        })
+    }
+
+    fn is_cyclic_super_edge(
         &self,
         decl_id: &LuaTypeDeclId,
-    ) -> Option<impl Iterator<Item = &LuaType> + '_> {
-        self.supers
-            .get(decl_id)
-            .map(|supers| supers.iter().map(|s| &s.value))
+        super_type: &LuaType,
+        visited: &mut HashSet<LuaTypeDeclId>,
+    ) -> bool {
+        let Some(super_id) = super_type_base_decl_id(super_type) else {
+            return false;
+        };
+
+        self.super_reaches(super_id, decl_id, visited)
+    }
+
+    fn super_reaches(
+        &self,
+        current_id: &LuaTypeDeclId,
+        target_id: &LuaTypeDeclId,
+        visited: &mut HashSet<LuaTypeDeclId>,
+    ) -> bool {
+        if current_id == target_id {
+            return true;
+        }
+
+        if !visited.insert(current_id.clone()) {
+            return false;
+        }
+
+        let Some(supers) = self.supers.get(current_id) else {
+            return false;
+        };
+
+        supers
+            .iter()
+            .filter_map(|super_type| super_type_base_decl_id(&super_type.value))
+            .any(|super_id| self.super_reaches(super_id, target_id, visited))
     }
 
     /// Get all direct subclasses of a given type
@@ -477,6 +523,14 @@ impl LuaTypeIndex {
 
     pub fn get_type_cache(&self, owner: &LuaTypeOwner) -> Option<&LuaTypeCache> {
         self.types.get(owner)
+    }
+}
+
+pub(crate) fn super_type_base_decl_id(super_type: &LuaType) -> Option<&LuaTypeDeclId> {
+    match super_type {
+        LuaType::Ref(id) => Some(id),
+        LuaType::Generic(generic) => Some(generic.get_base_type_id_ref()),
+        _ => None,
     }
 }
 

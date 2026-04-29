@@ -64,7 +64,7 @@ mod test {
     fn test_issue_237() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             crate::DiagnosticCode::UnbalancedAssignments,
             r#"
         local fmt = ""

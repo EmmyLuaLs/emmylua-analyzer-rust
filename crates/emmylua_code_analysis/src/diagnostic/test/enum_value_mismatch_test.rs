@@ -6,7 +6,7 @@ mod tests {
     fn test_enum_value_mismatch_string() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::EnumValueMismatch,
             r#"
                 ---@enum Status
@@ -29,7 +29,7 @@ mod tests {
     fn test_enum_value_mismatch_number() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::EnumValueMismatch,
             r#"
                 ---@enum ErrorCode
@@ -52,7 +52,7 @@ mod tests {
     fn test_enum_value_mismatch_elseif() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::EnumValueMismatch,
             r#"
             ---@enum State
@@ -75,7 +75,7 @@ mod tests {
     fn test_enum_value_mismatch_reverse_order() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::EnumValueMismatch,
             r#"
             ---@enum Color
@@ -98,7 +98,7 @@ mod tests {
     fn test_enum_value_valid_cases() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::EnumValueMismatch,
             r#"
                 ---@enum Status
@@ -121,7 +121,7 @@ mod tests {
     fn test_enum_value_valid_exact_matches() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::EnumValueMismatch,
             r#"
                 ---@enum Numbers

@@ -81,6 +81,25 @@ fn check_general_type_compact(
         );
     }
 
+    // When compact_type is an Intersection, the value satisfies all components simultaneously.
+    // So it can be assigned to any target that accepts at least one component.
+    // This must be handled before the source-based dispatch, because individual source branches
+    // (e.g. Array, Ref) do not know how to decompose an intersection compact_type.
+    if let LuaType::Intersection(compact_intersection) = compact_type {
+        // Skip if source is also Intersection — that case is handled symmetrically in
+        // check_intersection_type_compact.
+        if !matches!(source, LuaType::Intersection(_)) {
+            for component in compact_intersection.get_types() {
+                if check_general_type_compact(context, source, component, check_guard.next_level()?)
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+            }
+            return Err(TypeCheckFailReason::TypeNotMatch);
+        }
+    }
+
     match source {
         LuaType::Unknown | LuaType::Any => Ok(()),
         // simple type

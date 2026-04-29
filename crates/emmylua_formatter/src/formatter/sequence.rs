@@ -1,6 +1,6 @@
 use crate::config::ExpandStrategy;
 use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break};
-use crate::printer::Printer;
+use crate::printer::measure_docs;
 
 #[derive(Clone)]
 pub struct SequenceComment {
@@ -163,13 +163,18 @@ pub fn choose_sequence_layout(
             .unwrap_or_default();
     }
 
-    if let Some(flat_candidate) = ordered.first()
-        && flat_candidate.kind == SequenceLayoutKind::Flat
-        && !ir_has_forced_line_break(&flat_candidate.docs)
-        && ir_flat_width(&flat_candidate.docs) + policy.first_line_prefix_width
-            <= ctx.config.layout.max_line_width
-    {
-        return flat_candidate.docs.clone();
+    let flat_candidate_fits = ordered.first().is_some_and(|flat_candidate| {
+        flat_candidate.kind == SequenceLayoutKind::Flat
+            && !ir_has_forced_line_break(&flat_candidate.docs)
+            && ir_flat_width(&flat_candidate.docs) + policy.first_line_prefix_width
+                <= ctx.config.layout.max_line_width
+    });
+    if flat_candidate_fits {
+        return ordered
+            .into_iter()
+            .next()
+            .map(|candidate| candidate.docs)
+            .unwrap_or_default();
     }
 
     choose_best_sequence_candidate(ctx, ordered, policy)
@@ -179,66 +184,44 @@ fn ordered_sequence_candidates(
     candidates: SequenceLayoutCandidates,
     policy: SequenceLayoutPolicy,
 ) -> Vec<RankedSequenceCandidate> {
+    let SequenceLayoutCandidates {
+        flat,
+        fill,
+        packed,
+        one_per_line,
+        aligned,
+        preserve,
+    } = candidates;
     let mut ordered = Vec::new();
 
     if policy.prefer_preserve_multiline {
-        if let Some(packed) = candidates.packed.clone() {
-            ordered.push(RankedSequenceCandidate {
-                kind: SequenceLayoutKind::Packed,
-                docs: packed,
-            });
-        }
+        push_sequence_candidate(&mut ordered, SequenceLayoutKind::Packed, packed);
         if policy.allow_alignment
-            && let Some(aligned) = candidates.aligned.clone()
+            && let Some(aligned) = aligned
         {
             ordered.push(RankedSequenceCandidate {
                 kind: SequenceLayoutKind::Aligned,
                 docs: aligned,
             });
         }
-        if let Some(one_per_line) = candidates.one_per_line.clone() {
-            ordered.push(RankedSequenceCandidate {
-                kind: SequenceLayoutKind::OnePerLine,
-                docs: one_per_line,
-            });
-        }
-        push_flat_and_fill_candidates(
-            &mut ordered,
-            candidates.flat.clone(),
-            candidates.fill.clone(),
-            policy,
-        );
+        push_sequence_candidate(&mut ordered, SequenceLayoutKind::OnePerLine, one_per_line);
+        push_flat_and_fill_candidates(&mut ordered, flat, fill, policy);
     } else {
-        push_flat_and_fill_candidates(
-            &mut ordered,
-            candidates.flat.clone(),
-            candidates.fill.clone(),
-            policy,
-        );
-        if let Some(packed) = candidates.packed.clone() {
-            ordered.push(RankedSequenceCandidate {
-                kind: SequenceLayoutKind::Packed,
-                docs: packed,
-            });
-        }
+        push_flat_and_fill_candidates(&mut ordered, flat, fill, policy);
+        push_sequence_candidate(&mut ordered, SequenceLayoutKind::Packed, packed);
         if policy.allow_alignment
-            && let Some(aligned) = candidates.aligned.clone()
+            && let Some(aligned) = aligned
         {
             ordered.push(RankedSequenceCandidate {
                 kind: SequenceLayoutKind::Aligned,
                 docs: aligned,
             });
         }
-        if let Some(one_per_line) = candidates.one_per_line.clone() {
-            ordered.push(RankedSequenceCandidate {
-                kind: SequenceLayoutKind::OnePerLine,
-                docs: one_per_line,
-            });
-        }
+        push_sequence_candidate(&mut ordered, SequenceLayoutKind::OnePerLine, one_per_line);
     }
 
     if policy.allow_preserve
-        && let Some(preserve) = candidates.preserve
+        && let Some(preserve) = preserve
     {
         ordered.push(RankedSequenceCandidate {
             kind: SequenceLayoutKind::Preserve,
@@ -247,6 +230,16 @@ fn ordered_sequence_candidates(
     }
 
     ordered
+}
+
+fn push_sequence_candidate(
+    ordered: &mut Vec<RankedSequenceCandidate>,
+    kind: SequenceLayoutKind,
+    docs: Option<Vec<DocIR>>,
+) {
+    if let Some(docs) = docs {
+        ordered.push(RankedSequenceCandidate { kind, docs });
+    }
 }
 
 fn push_flat_and_fill_candidates(
@@ -299,16 +292,16 @@ fn score_sequence_candidate(
     docs: &[DocIR],
     policy: SequenceLayoutPolicy,
 ) -> SequenceCandidateScore {
-    let rendered = Printer::new(ctx.config).print(docs);
+    let metrics = measure_docs(ctx.config, docs);
     let mut line_count = 0usize;
     let mut overflow_penalty = 0usize;
     let mut widest_line_width = 0usize;
     let mut narrowest_line_width = usize::MAX;
 
-    for line in rendered.lines() {
+    for (index, measured_width) in metrics.line_widths.iter().enumerate() {
         line_count += 1;
-        let mut line_width = line.len();
-        if line_count == 1 {
+        let mut line_width = *measured_width;
+        if index == 0 {
             line_width += policy.first_line_prefix_width;
         }
         widest_line_width = widest_line_width.max(line_width);
@@ -359,45 +352,56 @@ pub fn format_delimited_sequence(
         return vec![layout.open, layout.close];
     }
 
-    let flat_inner = ir::intersperse(layout.items.clone(), layout.flat_separator.clone());
-    let fill_inner = ir::fill(build_fill_parts(&layout.items, &layout.fill_separator));
+    let DelimitedSequenceLayout {
+        open,
+        close,
+        items,
+        strategy,
+        preserve_multiline,
+        flat_separator,
+        fill_separator,
+        break_separator,
+        flat_open_padding,
+        flat_close_padding,
+        grouped_padding,
+        flat_trailing,
+        grouped_trailing,
+    } = layout;
 
-    let flat_doc = build_flat_doc(
-        &layout.open,
-        &layout.close,
-        &layout.flat_open_padding,
-        flat_inner,
-        &layout.flat_trailing,
-        &layout.flat_close_padding,
-    );
-
-    match layout.strategy {
-        ExpandStrategy::Never => flat_doc,
+    match strategy {
+        ExpandStrategy::Never => build_flat_doc(
+            &open,
+            &close,
+            &flat_open_padding,
+            build_interspersed_docs(&items, &flat_separator),
+            &flat_trailing,
+            &flat_close_padding,
+        ),
         ExpandStrategy::Always => format_expanded_delimited_sequence(
-            layout.open,
-            layout.close,
+            open,
+            close,
             default_break_contents(
-                ir::intersperse(layout.items, layout.break_separator),
-                layout.grouped_trailing,
+                build_interspersed_docs(&items, &break_separator),
+                grouped_trailing,
             ),
         ),
-        ExpandStrategy::Auto if layout.preserve_multiline => format_expanded_delimited_sequence(
-            layout.open,
-            layout.close,
+        ExpandStrategy::Auto if preserve_multiline => format_expanded_delimited_sequence(
+            open,
+            close,
             default_break_contents(
-                ir::intersperse(layout.items, layout.break_separator),
-                layout.grouped_trailing,
+                build_interspersed_docs(&items, &break_separator),
+                grouped_trailing,
             ),
         ),
         ExpandStrategy::Auto => vec![ir::group(vec![
-            layout.open,
+            open,
             ir::indent(vec![
-                layout.grouped_padding.clone(),
-                fill_inner,
-                layout.grouped_trailing,
+                grouped_padding.clone(),
+                ir::fill(build_fill_parts(&items, &fill_separator)),
+                grouped_trailing,
             ]),
-            layout.grouped_padding,
-            layout.close,
+            grouped_padding,
+            close,
         ])],
     }
 }
@@ -443,4 +447,17 @@ fn build_fill_parts(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
     }
 
     parts
+}
+
+fn build_interspersed_docs(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
+    let mut docs = Vec::new();
+
+    for (index, item) in items.iter().enumerate() {
+        if index > 0 {
+            docs.extend(separator.to_vec());
+        }
+        docs.extend(item.clone());
+    }
+
+    docs
 }

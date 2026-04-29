@@ -6,7 +6,7 @@ mod test {
     fn test_generic() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        ws.check_code_for(
+        ws.has_no_diagnostic(
             DiagnosticCode::TypeNotFound,
             r#"
         --- @generic T

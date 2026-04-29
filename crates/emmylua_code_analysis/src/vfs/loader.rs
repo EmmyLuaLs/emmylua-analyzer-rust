@@ -67,6 +67,7 @@ pub fn load_workspace_files(
     };
 
     for entry in WalkDir::new(root)
+        .follow_links(true)
         .into_iter()
         .filter_entry(|e| !exclude_dir.iter().any(|dir| e.path().starts_with(dir)))
         .filter_map(|e| e.ok())

@@ -163,7 +163,7 @@ fn analyze_token_spacing(
             if is_parent_syntax(token, LuaSyntaxKind::IndexExpr) {
                 spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
                 spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
-            } else if in_comment(token) {
+            } else {
                 spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
                 spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
             }
@@ -202,10 +202,10 @@ fn analyze_token_spacing(
         | LuaTokenKind::TkNe
         | LuaTokenKind::TkAnd
         | LuaTokenKind::TkOr => apply_operator_spacing(ctx, spacing, token, syntax_id),
-        LuaTokenKind::TkDocOr | LuaTokenKind::TkDocAnd => {
+        LuaTokenKind::TkDocOr => {
             apply_space_rule(spacing, syntax_id, SpaceRule::NoSpace);
         }
-        LuaTokenKind::TkDocExtends | LuaTokenKind::TkDocIn => {
+        LuaTokenKind::TkDocAnd | LuaTokenKind::TkDocExtends | LuaTokenKind::TkDocIn => {
             apply_space_rule(spacing, syntax_id, SpaceRule::Space);
         }
         LuaTokenKind::TkAssign => {
@@ -226,6 +226,10 @@ fn analyze_token_spacing(
         | LuaTokenKind::TkIn
         | LuaTokenKind::TkNot => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(1));
+            spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
+        }
+        LuaTokenKind::TkDocQuestion => {
+            spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
         }
         _ => {}
@@ -309,11 +313,11 @@ fn apply_operator_spacing(
     syntax_id: LuaSyntaxId,
 ) {
     match token.kind().to_token() {
-        LuaTokenKind::TkLt if in_comment(token) => {
+        LuaTokenKind::TkLt if is_generic_angle_bracket(token) => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
         }
-        LuaTokenKind::TkGt if in_comment(token) => {
+        LuaTokenKind::TkGt if is_generic_angle_bracket(token) => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
         }
         LuaTokenKind::TkLt | LuaTokenKind::TkGt
@@ -327,6 +331,11 @@ fn apply_operator_spacing(
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(left));
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(right));
         }
+        LuaTokenKind::TkLt | LuaTokenKind::TkGt
+            if is_parent_syntax(token, LuaSyntaxKind::DocVersion) =>
+        {
+            spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
+        }
         _ => {
             let Some(rule) = binary_space_rule_for_token(ctx, token) else {
                 return;
@@ -336,13 +345,26 @@ fn apply_operator_spacing(
     }
 }
 
+fn is_generic_angle_bracket(token: &LuaSyntaxToken) -> bool {
+    let token_kind = token.kind().to_token();
+    if !matches!(token_kind, LuaTokenKind::TkLt | LuaTokenKind::TkGt) {
+        return false;
+    }
+    token.parent().is_some_and(|parent| {
+        matches!(
+            parent.kind().to_syntax(),
+            LuaSyntaxKind::DocGenericDeclareList | LuaSyntaxKind::TypeGeneric
+        )
+    })
+}
+
 fn apply_comment_start_spacing(
     ctx: &FormatContext,
     spacing: &mut RootSpacingModel,
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
-    if !in_comment(token) {
+    if comment_start_looks_like_spaced_long_comment(token) {
         return;
     }
 
@@ -424,18 +446,6 @@ fn is_parent_syntax(token: &LuaSyntaxToken, kind: LuaSyntaxKind) -> bool {
         .is_some_and(|parent| parent.kind().to_syntax() == kind)
 }
 
-fn in_comment(token: &LuaSyntaxToken) -> bool {
-    let mut current = token.parent();
-    while let Some(node) = current {
-        if node.kind().to_syntax() == LuaSyntaxKind::Comment {
-            return true;
-        }
-        current = node.parent();
-    }
-
-    false
-}
-
 fn get_prev_sibling_token_without_space(token: &LuaSyntaxToken) -> Option<LuaSyntaxToken> {
     let mut current = token.clone();
     while let Some(prev) = current.prev_token() {
@@ -449,6 +459,27 @@ fn get_prev_sibling_token_without_space(token: &LuaSyntaxToken) -> Option<LuaSyn
     }
 
     None
+}
+
+fn comment_start_looks_like_spaced_long_comment(token: &LuaSyntaxToken) -> bool {
+    if token.kind().to_token() != LuaTokenKind::TkNormalStart || token.text() != "--" {
+        return false;
+    }
+
+    let mut current = token.next_token();
+    let mut saw_whitespace = false;
+    while let Some(next) = current {
+        match next.kind().to_token() {
+            LuaTokenKind::TkWhitespace => {
+                saw_whitespace = true;
+                current = next.next_token();
+            }
+            LuaTokenKind::TkEndOfLine => return false,
+            _ => return saw_whitespace && next.text().starts_with('['),
+        }
+    }
+
+    false
 }
 
 fn normalized_comment_prefix(ctx: &FormatContext, prefix_text: &str) -> Option<String> {
@@ -644,6 +675,22 @@ mod tests {
             spacing.right_expected(start_id),
             Some(&TokenSpacingExpected::Space(0))
         );
+    }
+
+    #[test]
+    fn test_spacing_does_not_normalize_spaced_long_comment_prefix() {
+        let config = LuaFormatConfig::default();
+        let tree = LuaParser::parse(
+            "-- [[ not a long comment ]]\n",
+            ParserConfig::with_level(LuaLanguageLevel::Lua54),
+        );
+        let chunk = tree.get_chunk_node();
+        let spacing = analyze_root_spacing(&FormatContext::new(&config), &chunk).spacing;
+        let start = find_token(&chunk, LuaTokenKind::TkNormalStart);
+        let start_id = LuaSyntaxId::from_token(&start);
+
+        assert_eq!(spacing.token_replace(start_id), None);
+        assert_eq!(spacing.right_expected(start_id), None);
     }
 
     #[test]

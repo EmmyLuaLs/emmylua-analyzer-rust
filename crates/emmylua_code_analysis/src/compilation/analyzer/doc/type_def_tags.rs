@@ -13,14 +13,13 @@ use super::{
 use crate::GenericParam;
 use crate::compilation::analyzer::doc::tags::report_orphan_tag;
 use crate::{
-    LuaTypeCache, LuaTypeDeclId,
+    DbIndex, LuaTypeCache, LuaTypeDeclId,
     compilation::analyzer::common::bind_type,
     db_index::{
         LuaDeclId, LuaGenericParamInfo, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType,
     },
 };
-use std::sync::Arc;
-use std::vec;
+use std::{collections::HashSet, sync::Arc, vec};
 
 pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<()> {
     let file_id = analyzer.file_id;
@@ -156,7 +155,10 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
             .append_generic_params(scope_id, generic_params);
     }
 
-    let origin_type = infer_type(&mut analyzer.type_context, tag.get_type()?);
+    let mut origin_type = infer_type(&mut analyzer.type_context, tag.get_type()?);
+    if alias_origin_reaches(analyzer.get_db(), &origin_type, &alias_decl_id) {
+        origin_type = LuaType::Any;
+    }
 
     let alias = analyzer
         .get_db()
@@ -168,6 +170,40 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
     add_description_for_type_decl(analyzer, &alias_decl_id, tag.get_descriptions());
 
     Some(())
+}
+
+fn alias_origin_reaches(db: &DbIndex, origin: &LuaType, target_id: &LuaTypeDeclId) -> bool {
+    // Collapse only pure alias chains. Structural recursive aliases can be
+    // meaningful, but `A = B; B = A` has no useful declaration skeleton.
+    let mut seen_aliases = HashSet::new();
+    let mut current = alias_chain_ref(origin);
+
+    while let Some(ref_id) = current {
+        if &ref_id == target_id {
+            return true;
+        }
+
+        if !seen_aliases.insert(ref_id.clone()) {
+            return false;
+        }
+
+        current = db
+            .get_type_index()
+            .get_type_decl(&ref_id)
+            .filter(|type_decl| type_decl.is_alias())
+            .and_then(|type_decl| type_decl.get_alias_ref())
+            .and_then(alias_chain_ref);
+    }
+
+    false
+}
+
+fn alias_chain_ref(typ: &LuaType) -> Option<LuaTypeDeclId> {
+    match typ {
+        LuaType::Ref(id) => Some(id.clone()),
+        LuaType::Generic(generic) => Some(generic.get_base_type_id()),
+        _ => None,
+    }
 }
 
 /// 分析属性定义

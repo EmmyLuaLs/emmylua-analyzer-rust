@@ -6,14 +6,14 @@ mod tests {
     fn test() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             local x, y, z = print()
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             local x, y, z
@@ -21,21 +21,21 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             local x, y, z = 1
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             local x, y, z
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
                 local x, y, z
@@ -43,14 +43,14 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
                 X, Y, Z = 1
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             T = {}
@@ -58,7 +58,7 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             T = {}
@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn test_issue_232() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             local a, b, c = string.match("hello world", "(%w+) (%w+)")
@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn test_2() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             ---@return any
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn test_3() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
             ---@class D18
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn test_pcall() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
                 ---@type any
@@ -120,7 +120,7 @@ mod tests {
             "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::UnbalancedAssignments,
             r#"
                 ---@type any

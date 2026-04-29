@@ -8,7 +8,7 @@ mod tests {
         let mut config = Emmyrc::default();
         config.runtime.version = EmmyrcLuaVersion::LuaJIT;
         ws.analysis.update_config(config.into());
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AccessInvisible,
             r#"
             local file = io.open("test.txt", "r")
@@ -22,7 +22,7 @@ mod tests {
     #[test]
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AccessInvisible,
             r#"
                 ---@class (partial) Log
@@ -56,7 +56,7 @@ mod tests {
         "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AccessInvisible,
             r#"
                 local Log = require("test")
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn test_3() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::AccessInvisible,
             r#"
                 local M = {}

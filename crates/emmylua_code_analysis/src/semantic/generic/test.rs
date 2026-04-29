@@ -222,7 +222,7 @@ result = {
         "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Warp<number>, Warp<string>
@@ -231,7 +231,7 @@ result = {
         "#,
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             ---@type Warp<number>, Warp<string>
@@ -287,7 +287,7 @@ result = {
             end
         "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
 

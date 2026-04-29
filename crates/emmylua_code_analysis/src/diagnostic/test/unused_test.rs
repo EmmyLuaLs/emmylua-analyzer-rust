@@ -5,7 +5,7 @@ mod test {
     #[test]
     fn test_749() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::Unused,
             r#"
             --- @alias Timer {start: fun(timer, delay: integer, cb: function), stop: fun()}

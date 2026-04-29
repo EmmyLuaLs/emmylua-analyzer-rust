@@ -6,6 +6,7 @@ use emmylua_parser::{
 };
 use rowan::NodeOrToken;
 
+use crate::formatter::model::StatementExprListLayoutPlan;
 use crate::ir::{self, DocIR};
 
 use super::super::expr;
@@ -189,7 +190,7 @@ fn render_for_source_order(
     syntax_plan: &SyntaxNodeLayoutPlan,
     plan: &RootFormatPlan,
     stat: &LuaForStat,
-    expr_list_plan: super::super::model::StatementExprListLayoutPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
 ) -> Vec<DocIR> {
     let children = syntax.children_with_tokens().collect::<Vec<_>>();
     let exprs: Vec<_> = stat.get_iter_expr().collect();
@@ -349,7 +350,7 @@ fn render_for_range_source_order(
     syntax_plan: &SyntaxNodeLayoutPlan,
     plan: &RootFormatPlan,
     stat: &LuaForRangeStat,
-    expr_list_plan: super::super::model::StatementExprListLayoutPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
 ) -> Vec<DocIR> {
     let children = syntax.children_with_tokens().collect::<Vec<_>>();
     let exprs: Vec<_> = stat.get_expr_list().collect();
@@ -1135,7 +1136,7 @@ fn format_local_name_ir(local_name: &LuaLocalName) -> Vec<DocIR> {
 fn render_source_order_header_expr_list(
     ctx: &FormatContext,
     plan: &RootFormatPlan,
-    expr_list_plan: super::super::model::StatementExprListLayoutPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
     comma_token: Option<&LuaSyntaxToken>,
     exprs: &[LuaExpr],
 ) -> Vec<DocIR> {

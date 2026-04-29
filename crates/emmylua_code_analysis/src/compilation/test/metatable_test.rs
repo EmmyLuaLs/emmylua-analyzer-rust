@@ -21,21 +21,21 @@ mod test {
             "#,
         );
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             cmd(1)
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             cmd("hello)
         "#
         ));
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
             cmd({ "hello", "world" })

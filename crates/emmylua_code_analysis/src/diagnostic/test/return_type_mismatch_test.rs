@@ -5,7 +5,7 @@ mod tests {
     #[test]
     fn test_issue_242() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@class A
@@ -22,7 +22,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 local setmetatable = setmetatable
@@ -38,7 +38,7 @@ mod tests {
         "#
         ));
 
-        assert!(ws.check_code_for_namespace(
+        assert!(ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@class A
@@ -59,7 +59,7 @@ mod tests {
     fn test_issue_220() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             --- @class A
@@ -80,7 +80,7 @@ mod tests {
     fn test_return_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@class diagnostic.Test1
@@ -93,7 +93,7 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@return string
@@ -103,7 +103,7 @@ mod tests {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@class diagnostic.Test2
@@ -115,7 +115,7 @@ mod tests {
             end
         "#
         ));
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@return number
@@ -135,7 +135,7 @@ mod tests {
     fn test_discriminated_union_assignment_keeps_branch_narrowing() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@class Foo
@@ -164,7 +164,7 @@ mod tests {
     fn test_discriminated_union_partial_assignment_keeps_branch_narrowing() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@class Foo
@@ -195,7 +195,7 @@ mod tests {
     fn test_discriminated_union_partial_literal_assignment_keeps_branch_narrowing() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@class Foo
@@ -225,7 +225,7 @@ mod tests {
     fn test_exact_string_reassignment_in_narrowed_branch_keeps_return_literal() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@param x string|number
@@ -246,7 +246,7 @@ mod tests {
     fn test_return_overload_mixed_guards_keep_return_narrowing() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@generic T, E
@@ -287,7 +287,7 @@ mod tests {
     fn test_variadic_return_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@return number, any...
@@ -302,7 +302,7 @@ mod tests {
     fn test_issue_146() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             local function bar()
@@ -323,7 +323,7 @@ mod tests {
     fn test_issue_150() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantReturnValue,
             r#"
             function bar(a)
@@ -337,7 +337,7 @@ mod tests {
     fn test_return_dots_syntax_error() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::SyntaxError,
             r#"
             function bar()
@@ -345,7 +345,7 @@ mod tests {
             end
             "#
         ));
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::SyntaxError,
             r#"
             function bar()
@@ -359,7 +359,7 @@ mod tests {
     fn test_issue_167() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             --- @return integer?, integer?
@@ -378,7 +378,7 @@ mod tests {
     fn test_as_return_type() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             local function dd()
@@ -398,7 +398,7 @@ mod tests {
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@return string?
@@ -415,7 +415,7 @@ mod tests {
     fn test_2() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@return any[]
@@ -432,7 +432,7 @@ mod tests {
     fn test_3() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@return table<string, {old: any, new: any}>
@@ -449,7 +449,7 @@ mod tests {
     fn test_4() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         // TODO 该测试被`setmetatable`强行覆盖, 未正常诊断`debug.setmetatable`
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@generic T
@@ -481,7 +481,7 @@ mod tests {
     fn test_issue_341() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             --- @return integer
@@ -498,7 +498,7 @@ mod tests {
     fn test_supper() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@class key: integer
@@ -515,7 +515,7 @@ mod tests {
     fn test_return_self() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@class UI
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn test_issue_343() {
         let mut ws = VirtualWorkspace::new();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 --- @return integer, integer
@@ -556,7 +556,7 @@ mod tests {
     #[test]
     fn test_issue_474() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
             ---@class Range4
@@ -579,7 +579,7 @@ mod tests {
     #[test]
     fn test_super_alias() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@namespace Test
@@ -602,7 +602,7 @@ mod tests {
     #[test]
     fn test_generic_type_extends() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@class AnonymousObserver<T>: Observer<T>
@@ -636,7 +636,7 @@ mod tests {
             end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
 
@@ -662,7 +662,7 @@ mod tests {
                 end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::ReturnTypeMismatch,
             r#"
                 ---@return Observable<integer>

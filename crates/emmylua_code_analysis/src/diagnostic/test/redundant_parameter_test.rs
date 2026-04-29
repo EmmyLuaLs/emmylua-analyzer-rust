@@ -6,7 +6,7 @@ mod test {
     fn test() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
             ---@class Test
@@ -20,7 +20,7 @@ mod test {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
             ---@class Test2
@@ -34,7 +34,7 @@ mod test {
         "#
         ));
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
             ---@class A
@@ -53,7 +53,7 @@ mod test {
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
                 ---@type fun(...)[]
@@ -69,7 +69,7 @@ mod test {
     fn test_dots() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
             ---@class Test
@@ -91,7 +91,7 @@ mod test {
     fn test_issue_360() {
         let mut ws = VirtualWorkspace::new();
 
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
                 ---@alias buz number
@@ -109,7 +109,7 @@ mod test {
     #[test]
     fn test_function_param() {
         let mut ws = VirtualWorkspace::new();
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
                 ---@class D30
@@ -152,7 +152,7 @@ mod test {
             end)
             "#,
         );
-        assert!(!ws.check_code_for(
+        assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
             sum(1, 2, 3)
@@ -168,7 +168,7 @@ mod test {
             _nop = function() end
             "#,
         );
-        assert!(ws.check_code_for(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
             function a(...) _nop(...) end

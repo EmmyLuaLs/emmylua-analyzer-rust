@@ -798,14 +798,13 @@ fn format_statement_expr_list(
         return docs;
     }
 
-    let fill_parts =
-        build_statement_expr_fill_parts(comma_token, leading_docs.clone(), expr_docs.clone());
-    let packed = expr_list_plan.allow_packed.then(|| {
-        build_statement_expr_packed(plan, comma_token, leading_docs.clone(), expr_docs.clone())
-    });
+    let fill_parts = build_statement_expr_fill_parts(comma_token, leading_docs.clone(), &expr_docs);
+    let packed = expr_list_plan
+        .allow_packed
+        .then(|| build_statement_expr_packed(plan, comma_token, leading_docs.clone(), &expr_docs));
     let one_per_line = expr_list_plan
         .allow_one_per_line
-        .then(|| build_statement_expr_one_per_line(comma_token, leading_docs, expr_docs));
+        .then(|| build_statement_expr_one_per_line(comma_token, leading_docs, &expr_docs));
 
     choose_sequence_layout(
         ctx,
@@ -898,16 +897,18 @@ fn render_statement_exprs(
 fn build_statement_expr_fill_parts(
     comma_token: Option<&LuaSyntaxToken>,
     leading_docs: Vec<DocIR>,
-    expr_docs: Vec<Vec<DocIR>>,
+    expr_docs: &[Vec<DocIR>],
 ) -> Vec<DocIR> {
     let mut parts = Vec::with_capacity(expr_docs.len().saturating_mul(2));
-    let mut expr_docs = expr_docs.into_iter();
     let mut first_chunk = leading_docs;
-    first_chunk.extend(expr_docs.next().unwrap_or_default());
+    let Some((first_expr, remaining)) = expr_docs.split_first() else {
+        return parts;
+    };
+    first_chunk.extend(first_expr.clone());
     parts.push(ir::list(first_chunk));
-    for expr_doc in expr_docs {
+    for expr_doc in remaining {
         parts.push(ir::list(comma_fill_separator(comma_token)));
-        parts.push(ir::list(expr_doc));
+        parts.push(ir::list(expr_doc.clone()));
     }
     parts
 }
@@ -915,17 +916,19 @@ fn build_statement_expr_fill_parts(
 fn build_statement_expr_one_per_line(
     comma_token: Option<&LuaSyntaxToken>,
     leading_docs: Vec<DocIR>,
-    expr_docs: Vec<Vec<DocIR>>,
+    expr_docs: &[Vec<DocIR>],
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
-    let mut expr_docs = expr_docs.into_iter();
     let mut first_chunk = leading_docs;
-    first_chunk.extend(expr_docs.next().unwrap_or_default());
+    let Some((first_expr, remaining)) = expr_docs.split_first() else {
+        return vec![ir::group_break(vec![ir::indent(docs)])];
+    };
+    first_chunk.extend(first_expr.clone());
     docs.push(ir::list(first_chunk));
-    for expr_doc in expr_docs {
+    for expr_doc in remaining {
         docs.push(ir::list(comma_token_docs(comma_token)));
         docs.push(ir::hard_line());
-        docs.push(ir::list(expr_doc));
+        docs.push(ir::list(expr_doc.clone()));
     }
     vec![ir::group_break(vec![ir::indent(docs)])]
 }
@@ -934,29 +937,30 @@ fn build_statement_expr_packed(
     plan: &RootFormatPlan,
     comma_token: Option<&LuaSyntaxToken>,
     leading_docs: Vec<DocIR>,
-    expr_docs: Vec<Vec<DocIR>>,
+    expr_docs: &[Vec<DocIR>],
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
-    let mut expr_docs = expr_docs.into_iter().peekable();
     let mut first_chunk = leading_docs;
-    first_chunk.extend(expr_docs.next().unwrap_or_default());
-    if expr_docs.peek().is_some() {
+    let Some((first_expr, remaining)) = expr_docs.split_first() else {
+        return vec![ir::group_break(vec![ir::indent(docs)])];
+    };
+    first_chunk.extend(first_expr.clone());
+    if !remaining.is_empty() {
         first_chunk.extend(comma_token_docs(comma_token));
     }
     docs.push(ir::list(first_chunk));
-    let mut remaining = Vec::new();
-    while let Some(expr_doc) = expr_docs.next() {
-        let has_more = expr_docs.peek().is_some();
-        remaining.push((expr_doc, has_more));
-    }
-    for chunk in remaining.chunks(2) {
+
+    for (chunk_index, chunk) in remaining.chunks(2).enumerate() {
         let mut line = Vec::new();
-        for (index, (expr_doc, has_more)) in chunk.iter().enumerate() {
+        let chunk_start = chunk_index * 2;
+        for (index, expr_doc) in chunk.iter().enumerate() {
             if index > 0 {
                 line.extend(token_right_spacing_docs(plan, comma_token));
             }
             line.extend(expr_doc.clone());
-            if *has_more {
+            let absolute_index = chunk_start + index;
+            let has_more = absolute_index + 1 < remaining.len();
+            if has_more {
                 line.extend(comma_token_docs(comma_token));
             }
         }
@@ -1771,6 +1775,15 @@ fn normalize_single_normal_comment_line(
         }
     });
     let body = body_with_gap.trim_start();
+    if prefix.trim_end() == "--"
+        && body_with_gap
+            .chars()
+            .next()
+            .is_some_and(char::is_whitespace)
+        && body.starts_with('[')
+    {
+        return format!("-- {body}");
+    }
     if body.is_empty() {
         prefix.trim_end().to_string()
     } else {
