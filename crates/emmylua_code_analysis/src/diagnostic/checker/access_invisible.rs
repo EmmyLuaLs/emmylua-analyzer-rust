@@ -221,7 +221,10 @@ fn report_reason(
     range: TextRange,
     property_owner_id: LuaSemanticDeclId,
 ) -> Option<()> {
-    let property = get_visibility_property(context.db(), &property_owner_id)?;
+    let property = get_visibility_property(
+        context.get_compilation().legacy_db(),
+        &property_owner_id,
+    )?;
 
     if let Some(version_conds) = &property.version_conds() {
         let version_number = emmyrc.runtime.version.to_lua_version_number();

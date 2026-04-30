@@ -52,13 +52,7 @@ pub fn instantiate_func_generic(
         .get_args()
         .collect::<Vec<_>>();
     let mut substitutor = TypeSubstitutor::new();
-    let mut context = TplContext {
-        compilation: None,
-        legacy_db: db,
-        cache,
-        substitutor: &mut substitutor,
-        call_expr: Some(call_expr.clone()),
-    };
+    let mut context = TplContext::from_db(db, cache, &mut substitutor, Some(call_expr.clone()));
     if !generic_tpls.is_empty() {
         context.substitutor.add_need_infer_tpls(generic_tpls);
 
@@ -174,12 +168,20 @@ pub fn infer_callable_return_from_remaining_args(
         .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
         .collect::<Vec<_>>();
 
-    let mut callable_context = TplContext {
-        compilation: context.compilation,
-        legacy_db: context.db(),
-        cache: context.cache,
-        substitutor: &mut callable_substitutor,
-        call_expr: context.call_expr.clone(),
+    let mut callable_context = if let Some(compilation) = context.compilation {
+        TplContext::from_compilation(
+            compilation,
+            context.cache,
+            &mut callable_substitutor,
+            context.call_expr.clone(),
+        )
+    } else {
+        TplContext::from_db(
+            context.db(),
+            context.cache,
+            &mut callable_substitutor,
+            context.call_expr.clone(),
+        )
     };
     if tpl_pattern_match_args(
         &mut callable_context,

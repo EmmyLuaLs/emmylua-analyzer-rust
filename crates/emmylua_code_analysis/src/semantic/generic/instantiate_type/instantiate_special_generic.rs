@@ -3,7 +3,7 @@ use crate::{
     LuaObjectType, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType,
     semantic::{
         generic::key_type_to_member_key,
-        member::{find_members_root, get_member_map_inner, infer_raw_member_type},
+        member::{find_members_root, get_member_map_with_db, infer_raw_member_type},
         type_check,
     },
 };
@@ -275,7 +275,7 @@ fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
         _ => {
             // may cost many
             let mut multi_types = vec![];
-            let members = match get_member_map_inner(None, db, need_unpack_type) {
+            let members = match get_member_map_with_db(db, need_unpack_type) {
                 Some(members) => members,
                 None => return LuaType::Unknown,
             };

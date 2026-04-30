@@ -123,7 +123,7 @@ fn check_table_expr(
             expr.get_range(),
             t!(
                 "Missing required fields in type `%{typ}`: %{fields}",
-                typ = humanize_lint_type(context.db(), &table_type),
+                typ = humanize_lint_type(context.get_compilation().legacy_db(), &table_type),
                 fields = missing_fields
             )
             .to_string(),

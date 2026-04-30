@@ -17,8 +17,9 @@ use std::sync::Arc;
 
 pub(crate) use self::summary_builder::analyze_module_return_points;
 use crate::{
-    DbIndex, Emmyrc, FileId, InFiled, LuaDocument, LuaIndex, LuaInferCache, LuaMember,
-    LuaMemberId, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaSignatureId,
+    DbIndex, DiagnosticAction, DiagnosticActionKind, Emmyrc, FileId, InFiled, LuaDocument,
+    LuaIndex, LuaInferCache, LuaMember, LuaMemberId, LuaMemberOwner, LuaSemanticDeclId,
+    LuaSignature, LuaSignatureId,
     Workspace as LuaWorkspace, WorkspaceId as LuaWorkspaceId,
     module_query::{
         export::semantic_id_from_compilation_module,
@@ -49,7 +50,6 @@ pub struct LuaCompilation {
     emmyrc: Arc<Emmyrc>,
     legacy: DbIndex,
     summary: SalsaSummaryHost,
-    decls: CompilationDeclIndex,
     modules: CompilationModuleIndex,
     types: CompilationTypeIndex,
     members: CompilationMemberIndex,
@@ -61,7 +61,6 @@ impl LuaCompilation {
             emmyrc: emmyrc.clone(),
             legacy: DbIndex::new(),
             summary: SalsaSummaryHost::new(emmyrc.clone()),
-            decls: CompilationDeclIndex::new(),
             modules: CompilationModuleIndex::new(),
             types: CompilationTypeIndex::new(),
             members: CompilationMemberIndex::new(),
@@ -84,7 +83,6 @@ impl LuaCompilation {
         for file_id in file_ids {
             if !self.summary.sync_file(*file_id) {
                 self.summary.remove_file(*file_id);
-                FileBackedIndex::remove_file(&mut self.decls, *file_id);
                 FileBackedIndex::remove_file(&mut self.modules, *file_id);
                 FileBackedIndex::remove_file(&mut self.types, *file_id);
                 FileBackedIndex::remove_file(&mut self.members, *file_id);
@@ -93,7 +91,6 @@ impl LuaCompilation {
             }
 
             let base_ctx = CompilationIndexContext::new(&self.summary, self.summary.vfs());
-            FileBackedIndex::sync_file(&mut self.decls, &base_ctx, *file_id);
             FileBackedIndex::sync_file(&mut self.modules, &base_ctx, *file_id);
 
             let type_ctx = base_ctx.with_modules(&self.modules);
@@ -198,17 +195,33 @@ impl LuaCompilation {
 
     fn apply_summary_doc_diagnostic(
         &mut self,
-        _file_id: FileId,
-        owner: &SalsaDocOwnerSummary,
-        _diagnostic: SalsaResolvedDocDiagnosticActionSummary,
+        file_id: FileId,
+        _owner: &SalsaDocOwnerSummary,
+        diagnostic: SalsaResolvedDocDiagnosticActionSummary,
     ) {
-        let _ = owner.syntax_offset.is_none();
+        let kind = match diagnostic.kind {
+            crate::SalsaDocDiagnosticActionKindSummary::Disable
+            | crate::SalsaDocDiagnosticActionKindSummary::DisableNextLine
+            | crate::SalsaDocDiagnosticActionKindSummary::DisableLine => diagnostic
+                .code
+                .map(DiagnosticActionKind::Disable)
+                .unwrap_or(DiagnosticActionKind::DisableAll),
+            crate::SalsaDocDiagnosticActionKindSummary::Enable => {
+                let Some(code) = diagnostic.code else {
+                    return;
+                };
+                DiagnosticActionKind::Enable(code)
+            }
+        };
+
+        self.legacy_db_mut()
+            .get_diagnostic_index_mut()
+            .add_diagnostic_action(file_id, DiagnosticAction::new(diagnostic.range, kind));
     }
 
     pub fn remove_index(&mut self, file_ids: Vec<FileId>) {
         for file_id in &file_ids {
             self.summary.remove_file(*file_id);
-            FileBackedIndex::remove_file(&mut self.decls, *file_id);
             FileBackedIndex::remove_file(&mut self.modules, *file_id);
             FileBackedIndex::remove_file(&mut self.types, *file_id);
             FileBackedIndex::remove_file(&mut self.members, *file_id);
@@ -219,7 +232,6 @@ impl LuaCompilation {
     pub fn clear_index(&mut self) {
         self.legacy.clear();
         self.summary.clear();
-        FileBackedIndex::clear(&mut self.decls);
         FileBackedIndex::clear(&mut self.modules);
         FileBackedIndex::clear(&mut self.types);
         FileBackedIndex::clear(&mut self.members);
@@ -420,8 +432,8 @@ impl LuaCompilation {
         self.modules.next_library_workspace_id()
     }
 
-    pub fn decl_index(&self) -> &CompilationDeclIndex {
-        &self.decls
+    pub fn decl_index(&self) -> CompilationDeclIndex<'_> {
+        CompilationDeclIndex::new(&self.summary)
     }
 
     pub fn find_module_by_require_path(&self, module_path: &str) -> Option<&CompilationModuleInfo> {
@@ -637,16 +649,25 @@ impl LuaCompilation {
     pub fn get_super_types(&self, decl_id: &LuaTypeDeclId) -> Option<Vec<LuaType>> {
         let compilation_decl_id = CompilationTypeDeclId::from(decl_id);
         let super_type_ids = self.types.get_super_type_ids(&compilation_decl_id);
-        if !super_type_ids.is_empty() {
-            return Some(
-                super_type_ids
-                    .iter()
-                    .map(|super_id| LuaType::Ref(LuaTypeDeclId::from(super_id)))
-                    .collect(),
-            );
+        let mut super_types = super_type_ids
+            .iter()
+            .map(|super_id| LuaType::Ref(LuaTypeDeclId::from(super_id)))
+            .collect::<Vec<_>>();
+
+        if let Some(legacy_super_types) = self.legacy_db().get_type_index().get_super_types(decl_id)
+        {
+            for legacy_super_type in legacy_super_types {
+                if !super_types.contains(&legacy_super_type) {
+                    super_types.push(legacy_super_type);
+                }
+            }
         }
 
-        None
+        if super_types.is_empty() {
+            None
+        } else {
+            Some(super_types)
+        }
     }
 
     pub fn collect_super_types(&self, decl_id: &LuaTypeDeclId, collected_types: &mut Vec<LuaType>) {

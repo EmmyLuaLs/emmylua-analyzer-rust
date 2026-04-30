@@ -17,7 +17,7 @@ pub use find_members::{
 pub use get_member_map::{get_member_map, get_member_map_in_scope};
 pub(crate) use find_index::find_index_operations_inner;
 pub(crate) use find_members::{find_members_root, find_members_with_key_inner};
-pub(crate) use get_member_map::get_member_map_inner;
+pub(crate) use get_member_map::{get_member_map_with_compilation, get_member_map_with_db};
 pub use infer_raw_member::infer_raw_member_type;
 
 use super::{

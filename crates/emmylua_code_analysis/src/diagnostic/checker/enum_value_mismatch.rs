@@ -84,10 +84,11 @@ fn check_enum_value_pair(
     let enum_value_types = get_enum_value_types(context, enum_decl_id)?;
 
     if !enum_value_types.contains(constant_type) {
-        let constant_value_str = humanize_lint_type(context.db(), constant_type);
+        let db = context.get_compilation().legacy_db();
+        let constant_value_str = humanize_lint_type(db, constant_type);
         let enum_values_str: Vec<String> = enum_value_types
             .iter()
-            .map(|typ| humanize_lint_type(context.db(), typ))
+            .map(|typ| humanize_lint_type(db, typ))
             .collect();
         context.add_diagnostic(
             DiagnosticCode::EnumValueMismatch,

@@ -59,7 +59,7 @@ fn check_export_index_expr(
     index_expr: &LuaIndexExpr,
     code: DiagnosticCode,
 ) -> Option<()> {
-    let db = context.db();
+    let db = context.get_compilation().legacy_db();
     let prefix_expr = index_expr.get_prefix_expr()?;
     let imported_export_surface =
         check_require_table_const_with_export_surface(semantic_model, index_expr).is_some();

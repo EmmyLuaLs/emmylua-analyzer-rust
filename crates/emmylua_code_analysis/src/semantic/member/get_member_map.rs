@@ -15,12 +15,19 @@ pub fn get_member_map(
     build_member_map(members)
 }
 
-pub(crate) fn get_member_map_inner(
-    compilation: Option<&LuaCompilation>,
+pub(crate) fn get_member_map_with_compilation(
+    compilation: &LuaCompilation,
+    prefix_type: &LuaType,
+) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
+    let members = find_members::find_members(compilation, prefix_type)?;
+    build_member_map(members)
+}
+
+pub(crate) fn get_member_map_with_db(
     db: &DbIndex,
     prefix_type: &LuaType,
 ) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
-    let members = find_members::find_members_root(compilation, db, prefix_type)?;
+    let members = find_members::find_members_root(None, db, prefix_type)?;
     build_member_map(members)
 }
 

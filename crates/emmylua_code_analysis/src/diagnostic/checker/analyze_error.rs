@@ -11,7 +11,7 @@ impl Checker for AnalyzeErrorChecker {
     ];
 
     fn check(context: &mut DiagnosticContext, _: &SemanticModel) {
-        let db = context.db();
+        let db = context.get_compilation().legacy_db();
         let file_id = context.get_file_id();
         let diagnostic_index = db.get_diagnostic_index();
         let Some(diagnostics) = diagnostic_index.get_diagnostics(&file_id) else {

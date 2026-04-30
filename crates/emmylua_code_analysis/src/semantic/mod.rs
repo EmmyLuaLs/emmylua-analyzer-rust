@@ -1090,7 +1090,7 @@ impl<'a> SemanticModel<'a> {
         property_owner: LuaSemanticDeclId,
     ) -> bool {
         check_visibility(
-            self.db(),
+            self.compilation,
             self.file_id,
             &self.emmyrc,
             &mut self.infer_cache.borrow_mut(),

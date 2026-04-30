@@ -117,10 +117,8 @@ pub fn parse_require_module_info<'a>(
                 .and_then(|syntax_id| {
                     semantic_model
                         .get_compilation()
-                        .legacy_db()
-                        .get_vfs()
-                        .get_syntax_tree(&decl.get_file_id())
-                        .and_then(|tree| syntax_id.to_node_from_root(&tree.get_red_root()))
+                        .get_root(decl.get_file_id())
+                        .and_then(|root| syntax_id.to_node_from_root(root.syntax()))
                 })
                 .and_then(|node| {
                     LuaCallExpr::cast(node.clone())

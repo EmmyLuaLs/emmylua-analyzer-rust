@@ -125,24 +125,24 @@ fn check_call_expr(
             }
         }
         // 对调用参数的最后一个参数进行特殊处理
+        let mut max_call_args_count = call_args_count;
         if let Some(last_arg) = call_args.last()
-            && let Ok(LuaType::Variadic(variadic)) = semantic_model.infer_expr(last_arg.clone())
+            && let Some(last_arg_count) = get_max_last_arg_count(semantic_model, last_arg, fake_params.len())
         {
-            let len = match variadic.get_max_len() {
-                Some(len) => len,
-                None => {
-                    return Some(());
+            match last_arg_count {
+                Some(last_arg_count) => {
+                    max_call_args_count = max_call_args_count.saturating_sub(1) + last_arg_count;
+                    if max_call_args_count >= fake_params.len() {
+                        return Some(());
+                    }
                 }
-            };
-            call_args_count = call_args_count + len - 1;
-            if call_args_count >= fake_params.len() {
-                return Some(());
+                None => return Some(()),
             }
         }
 
         let mut miss_parameter_info = Vec::new();
 
-        for i in call_args_count..fake_params.len() {
+        for i in max_call_args_count..fake_params.len() {
             let param_info = fake_params.get(i)?;
             if param_info.0 == "..." {
                 break;
@@ -150,7 +150,7 @@ fn check_call_expr(
 
             let typ = param_info.1.clone();
             if let Some(typ) = typ
-                && !is_nullable(context.db(), &typ)
+                && !is_nullable(context.get_compilation().legacy_db(), &typ)
             {
                 miss_parameter_info.push(t!("missing parameter: %{name}", name = param_info.0,));
             }
@@ -167,7 +167,7 @@ fn check_call_expr(
                 t!(
                     "expected %{num} parameters but found %{found_num}. %{infos}",
                     num = fake_params.len(),
-                    found_num = call_args_count,
+                    found_num = max_call_args_count,
                     infos = miss_parameter_info.join(" \n ")
                 )
                 .to_string(),
@@ -228,6 +228,45 @@ fn check_call_expr(
     }
 
     Some(())
+}
+
+fn get_max_last_arg_count(
+    semantic_model: &SemanticModel,
+    last_arg: &LuaExpr,
+    expected_param_len: usize,
+) -> Option<Option<usize>> {
+    if let LuaExpr::CallExpr(call_expr) = last_arg
+        && let Some(func) = semantic_model.infer_call_expr_func(call_expr.clone(), None)
+    {
+        return get_max_multi_return_count(func.get_ret(), expected_param_len);
+    }
+
+    let last_arg_type = semantic_model.infer_expr(last_arg.clone()).ok()?;
+    get_max_multi_return_count(&last_arg_type, expected_param_len)
+}
+
+fn get_max_multi_return_count(
+    last_arg_type: &LuaType,
+    expected_param_len: usize,
+) -> Option<Option<usize>> {
+    if !last_arg_type.contain_multi_return() {
+        return Some(Some(1));
+    }
+
+    if let LuaType::Variadic(variadic) = last_arg_type {
+        return Some(variadic.get_max_len());
+    }
+
+    let mut result_count = 0;
+    while result_count < expected_param_len {
+        if last_arg_type.get_result_slot_type(result_count).is_none() {
+            break;
+        }
+
+        result_count += 1;
+    }
+
+    Some(Some(result_count))
 }
 
 fn is_dots_expr(expr: &LuaExpr) -> bool {

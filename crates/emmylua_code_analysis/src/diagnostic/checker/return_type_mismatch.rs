@@ -79,7 +79,7 @@ fn check_return_stat(
             for (index, return_expr_type) in return_expr_types.iter().enumerate() {
                 let doc_return_type = variadic.get_type(index)?;
                 let mut check_type = doc_return_type;
-                if doc_return_type.is_self_infer()
+                if is_doc_self_type(doc_return_type)
                     && let Some(self_type) = self_type
                 {
                     check_type = self_type;
@@ -115,7 +115,7 @@ fn check_return_stat(
         }
         _ => {
             let mut check_type = return_type;
-            if return_type.is_self_infer()
+            if is_doc_self_type(return_type)
                 && let Some(self_type) = self_type
             {
                 check_type = self_type;
@@ -153,6 +153,14 @@ fn check_return_stat(
     }
 
     Some(())
+}
+
+fn is_doc_self_type(typ: &LuaType) -> bool {
+    if typ.is_self_infer() {
+        return true;
+    }
+
+    matches!(typ, LuaType::Ref(type_id) if *type_id == crate::LuaTypeDeclId::global("self"))
 }
 
 fn add_type_check_diagnostic(

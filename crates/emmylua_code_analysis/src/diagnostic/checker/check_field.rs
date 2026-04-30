@@ -7,8 +7,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DbIndex, DiagnosticCode, InferFailReason, LuaAliasCallKind, LuaAliasCallType, LuaMemberKey,
-    LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, enum_variable_is_param,
+    DbIndex, DiagnosticCode, InferFailReason, LuaAliasCallKind, LuaAliasCallType, LuaMemberId,
+    LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, enum_variable_is_param,
     get_keyof_members_inner,
     module_query::identity::find_compilation_module_by_path,
     parse_require_module_info, parse_require_module_info_by_name_expr,
@@ -67,7 +67,7 @@ fn check_index_expr(
         return Some(());
     }
 
-    let db = context.db();
+    let db = context.get_compilation().legacy_db();
     let prefix_typ = semantic_model
         .infer_expr(index_expr.get_prefix_expr()?)
         .unwrap_or(LuaType::Unknown);
@@ -227,10 +227,20 @@ pub(super) fn is_valid_member(
     let need_add_diagnostic =
         match semantic_model.get_semantic_info(index_expr.syntax().clone().into()) {
             Some(info) => {
-                let mut need = info.semantic_decl.is_none();
+                let current_member_id = LuaMemberId::new(
+                    index_expr.get_syntax_id(),
+                    semantic_model.get_file_id(),
+                );
+                let semantic_decl_is_current_member = matches!(
+                    info.semantic_decl,
+                    Some(LuaSemanticDeclId::Member(ref member_id)) if *member_id == current_member_id
+                );
+                let mut need = info.semantic_decl.is_none() || semantic_decl_is_current_member;
                 if need {
                     let decl_type = semantic_model.get_index_decl_type(index_expr.clone());
-                    if decl_type.is_some_and(|typ| !typ.is_unknown()) {
+                    if decl_type.is_some_and(|typ| !typ.is_unknown())
+                        && !semantic_decl_is_current_member
+                    {
                         need = false;
                     };
                 }
@@ -244,8 +254,8 @@ pub(super) fn is_valid_member(
         return Some(());
     }
 
-    let key_type = if let LuaIndexKey::Expr(expr) = index_key {
-        match semantic_model.infer_expr(expr.clone()) {
+    let key_type = match index_key {
+        LuaIndexKey::Expr(expr) => match semantic_model.infer_expr(expr.clone()) {
             Ok(
                 LuaType::Any
                 | LuaType::Unknown
@@ -263,9 +273,8 @@ pub(super) fn is_valid_member(
             Err(_) => {
                 return None;
             }
-        }
-    } else {
-        return None;
+        },
+        _ => LuaType::DocStringConst(smol_str::SmolStr::new(index_key.get_path_part()).into()),
     };
 
     // 一些类型组合需要特殊处理
@@ -273,9 +282,6 @@ pub(super) fn is_valid_member(
         && let Some(decl) = semantic_model.get_type_decl(id)
         && decl.is_class()
     {
-        if code == DiagnosticCode::InjectField {
-            return Some(());
-        }
         if index_key.is_string() || matches!(key_type, LuaType::String) {
             return Some(());
         }
@@ -310,10 +316,13 @@ pub(super) fn is_valid_member(
                         }
                     }
                     LuaMemberKey::Name(_) => {
-                        if key_types
-                            .iter()
-                            .any(|typ| typ.is_string() || typ.is_str_tpl_ref())
-                        {
+                        if key_types.iter().any(|typ| match typ {
+                            LuaType::String | LuaType::StrTplRef(_) => true,
+                            LuaType::DocStringConst(key_name) => {
+                                info.key.get_name().is_some_and(|name| name == key_name.as_ref())
+                            }
+                            _ => false,
+                        }) {
                             return Some(());
                         }
                     }

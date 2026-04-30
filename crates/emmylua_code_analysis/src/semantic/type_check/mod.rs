@@ -34,7 +34,7 @@ pub fn check_type_compact(
     source: &LuaType,
     compact_type: &LuaType,
 ) -> TypeCheckResult {
-    let mut context = TypeCheckContext::new(None, db, false, TypeCheckCheckLevel::Normal);
+    let mut context = TypeCheckContext::from_db(db, false, TypeCheckCheckLevel::Normal);
     check_general_type_compact(&mut context, source, compact_type, TypeCheckGuard::new())
 }
 
@@ -44,7 +44,7 @@ pub fn check_type_compact_detail(
     compact_type: &LuaType,
 ) -> TypeCheckResult {
     let guard = TypeCheckGuard::new();
-    let mut context = TypeCheckContext::new(None, db, true, TypeCheckCheckLevel::Normal);
+    let mut context = TypeCheckContext::from_db(db, true, TypeCheckCheckLevel::Normal);
     check_general_type_compact(&mut context, source, compact_type, guard)
 }
 
@@ -54,7 +54,7 @@ pub fn check_type_compact_with_level(
     compact_type: &LuaType,
     level: TypeCheckCheckLevel,
 ) -> TypeCheckResult {
-    let mut context = TypeCheckContext::new(None, db, false, level);
+    let mut context = TypeCheckContext::from_db(db, false, level);
     check_general_type_compact(&mut context, source, compact_type, TypeCheckGuard::new())
 }
 
@@ -64,6 +64,18 @@ fn check_general_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
+    if compact_type.contain_multi_return()
+        && let Some(result_slot_type) = compact_type.get_result_slot_type(0)
+        && &result_slot_type != compact_type
+    {
+        return check_general_type_compact(
+            context,
+            source,
+            &result_slot_type,
+            check_guard.next_level()?,
+        );
+    }
+
     if is_like_any(compact_type) {
         return Ok(());
     }

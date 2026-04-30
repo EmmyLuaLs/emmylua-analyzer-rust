@@ -7,7 +7,7 @@ use emmylua_parser::{
 };
 
 use crate::{
-    CompilationModuleInfo, DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner,
+    CompilationModuleInfo, DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaCompilation, LuaMemberOwner,
     LuaSemanticDeclId, LuaType, SemanticModel,
     try_extract_signature_id_from_field,
 };
@@ -15,17 +15,25 @@ use crate::{
 use super::{LuaInferCache, infer_expr_root, type_check::is_sub_type_of};
 
 pub fn check_visibility(
-    db: &DbIndex,
+    compilation: &LuaCompilation,
     file_id: FileId,
     emmyrc: &Emmyrc,
     infer_config: &mut LuaInferCache,
     token: LuaSyntaxToken,
     property_owner: LuaSemanticDeclId,
 ) -> Option<bool> {
+    let db = compilation.legacy_db();
     let property = match get_property(db, &property_owner) {
         Some(property) => property,
         None => {
-            return check_member_name(db, file_id, emmyrc, infer_config, token, property_owner);
+            return check_member_name(
+                compilation,
+                file_id,
+                emmyrc,
+                infer_config,
+                token,
+                property_owner,
+            );
         }
     };
 
@@ -42,7 +50,7 @@ pub fn check_visibility(
         VisibilityKind::Protected | VisibilityKind::Private => {
             return Some(
                 check_visibility_by_visibility(
-                    db,
+                    compilation,
                     infer_config,
                     file_id,
                     property_owner.clone(),
@@ -57,29 +65,26 @@ pub fn check_visibility(
         }
         VisibilityKind::Internal => {
             let property_file_id = property_owner.get_file_id()?;
-            let property_workspace_id = db
-                .resolve_workspace_id(property_file_id)
-                .unwrap_or(crate::WorkspaceId::MAIN);
-            let current_workspace_id = db
-                .resolve_workspace_id(file_id)
-                .unwrap_or(crate::WorkspaceId::MAIN);
+            let property_workspace_id = compilation.resolved_workspace_id(property_file_id);
+            let current_workspace_id = compilation.resolved_workspace_id(file_id);
             if current_workspace_id != property_workspace_id {
                 return Some(false);
             }
         }
     }
 
-    check_member_name(db, file_id, emmyrc, infer_config, token, property_owner)
+    check_member_name(compilation, file_id, emmyrc, infer_config, token, property_owner)
 }
 
 fn check_visibility_by_visibility(
-    db: &DbIndex,
+    compilation: &LuaCompilation,
     infer_config: &mut LuaInferCache,
     file_id: FileId,
     property_owner: LuaSemanticDeclId,
     token: LuaSyntaxToken,
     visibility: VisibilityKind,
 ) -> Option<bool> {
+    let db = compilation.legacy_db();
     let member_owner = match property_owner {
         LuaSemanticDeclId::Member(member_id) => {
             db.get_member_index().get_current_owner(&member_id)?
@@ -89,7 +94,7 @@ fn check_visibility_by_visibility(
 
     let token = LuaGeneralToken::cast(token)?;
     if check_def_visibility(
-        db,
+        compilation,
         infer_config,
         file_id,
         member_owner,
@@ -103,7 +108,7 @@ fn check_visibility_by_visibility(
 
     let blocks = token.ancestors::<LuaBlock>();
     for block in blocks {
-        if check_block_visibility(db, infer_config, member_owner, block, visibility)
+        if check_block_visibility(compilation, infer_config, member_owner, block, visibility)
             .unwrap_or(false)
         {
             return Some(true);
@@ -114,12 +119,13 @@ fn check_visibility_by_visibility(
 }
 
 fn check_block_visibility(
-    db: &DbIndex,
+    compilation: &LuaCompilation,
     infer_config: &mut LuaInferCache,
     member_owner: &LuaMemberOwner,
     block: LuaBlock,
     visibility: VisibilityKind,
 ) -> Option<bool> {
+    let db = compilation.legacy_db();
     let func_stat = block
         .get_parent::<LuaClosureExpr>()?
         .get_parent::<LuaFuncStat>()?;
@@ -155,13 +161,14 @@ fn check_block_visibility(
 }
 
 fn check_def_visibility(
-    db: &DbIndex,
+    compilation: &LuaCompilation,
     infer_config: &mut LuaInferCache,
     _file_id: FileId,
     member_owner: &LuaMemberOwner,
     token: LuaGeneralToken,
     visibility: VisibilityKind,
 ) -> Option<bool> {
+    let db = compilation.legacy_db();
     let index_expr = token.get_parent::<LuaIndexExpr>()?;
     let prefix_expr = index_expr.get_prefix_expr()?;
     let typ = infer_expr_root(db, infer_config, prefix_expr).ok()?;
@@ -223,13 +230,14 @@ fn get_property<'a>(
 }
 
 fn check_member_name(
-    db: &DbIndex,
+    compilation: &LuaCompilation,
     file_id: FileId,
     emmyrc: &Emmyrc,
     infer_config: &mut LuaInferCache,
     token: LuaSyntaxToken,
     property_owner: LuaSemanticDeclId,
 ) -> Option<bool> {
+    let db = compilation.legacy_db();
     if let LuaSemanticDeclId::Member(member_id) = property_owner
         && let Some(member) = db.get_member_index().get_member(&member_id)
         && let Some(name) = member.get_key().get_name()
@@ -246,7 +254,7 @@ fn check_member_name(
             if is_match {
                 return Some(
                     check_visibility_by_visibility(
-                        db,
+                        compilation,
                         infer_config,
                         file_id,
                         property_owner,

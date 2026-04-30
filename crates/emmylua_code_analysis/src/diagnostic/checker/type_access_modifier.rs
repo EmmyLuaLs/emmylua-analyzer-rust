@@ -12,7 +12,7 @@ impl Checker for InconsistentTypeAccessModifierChecker {
     fn check(context: &mut DiagnosticContext, _: &SemanticModel) {
         let file_id = context.get_file_id();
         let workspace_id = context.type_lookup_workspace_id();
-        let type_index = context.db().get_type_index();
+        let type_index = context.get_compilation().legacy_db().get_type_index();
         let mut visited_type_names = HashSet::new();
         let mut pending_diagnostics = Vec::new();
 

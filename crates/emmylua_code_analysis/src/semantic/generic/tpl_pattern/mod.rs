@@ -19,7 +19,9 @@ use crate::{
             tpl_context::TplContext, tpl_pattern::generic_tpl_pattern::generic_tpl_pattern_match,
             type_substitutor::SubstitutorValue,
         },
-        member::{find_index_operations_inner, get_member_map_inner},
+        member::{
+            find_index_operations_inner, get_member_map_with_compilation, get_member_map_with_db,
+        },
     },
 };
 
@@ -250,7 +252,11 @@ fn object_tpl_pattern_match_member_owner_match(
         }
     };
 
-    let members = get_member_map_inner(context.compilation, context.db(), &owner_type).ok_or(InferFailReason::None)?;
+    let members = match context.compilation {
+        Some(compilation) => get_member_map_with_compilation(compilation, &owner_type),
+        None => get_member_map_with_db(context.db(), &owner_type),
+    }
+    .ok_or(InferFailReason::None)?;
     for (k, v) in members {
         let resolve_key = match &k {
             LuaMemberKey::Integer(i) => Some(LuaType::IntegerConst(*i)),
@@ -274,7 +280,7 @@ fn object_tpl_pattern_match_member_owner_match(
             && !v.is_empty()
             && let Some(LuaSemanticDeclId::Member(member_id)) = &v[0].property_owner_id
         {
-            return Err(InferFailReason::UnResolveMemberType(*member_id));
+            return Err(InferFailReason::UnResolveMemberType(member_id.to_owned()));
         }
 
         if let Some(_) = resolve_key
@@ -453,7 +459,11 @@ fn table_generic_tpl_pattern_member_owner_match(
         }
     };
 
-    let members = get_member_map_inner(context.compilation, context.db(), &owner_type).ok_or(InferFailReason::None)?;
+    let members = match context.compilation {
+        Some(compilation) => get_member_map_with_compilation(compilation, &owner_type),
+        None => get_member_map_with_db(context.db(), &owner_type),
+    }
+    .ok_or(InferFailReason::None)?;
     // 如果是 pairs 调用, 我们需要尝试寻找元方法, 但目前`__pairs` 被放进成员表中
     if is_pairs_call(context).unwrap_or(false)
         && try_handle_pairs_metamethod(context, table_generic_params, &members).is_ok()

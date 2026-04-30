@@ -122,8 +122,8 @@ fn check_index_expr(
     value_type: LuaType,
 ) -> Option<()> {
     let source_type = semantic_model
-        .infer_expr(LuaExpr::IndexExpr(index_expr.clone()))
-        .ok();
+        .get_index_decl_type(index_expr.clone())
+        .or_else(|| semantic_model.infer_expr(LuaExpr::IndexExpr(index_expr.clone())).ok());
 
     check_assign_type_mismatch(
         context,

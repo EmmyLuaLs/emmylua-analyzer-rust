@@ -53,7 +53,7 @@ fn check_and_report_semantic_id(
     }
 
     // TODO filter self
-    let property_index = context.db().get_property_index();
+    let property_index = context.get_compilation().legacy_db().get_property_index();
     if let Some(property) = property_index.get_property(&semantic_decl_id) {
         if property
             .decl_features

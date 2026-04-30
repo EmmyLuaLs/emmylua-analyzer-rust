@@ -157,10 +157,6 @@ impl<'a> DiagnosticContext<'a> {
         }
     }
 
-    pub(crate) fn db(&self) -> &DbIndex {
-        self.compilation.legacy_db()
-    }
-
     pub fn get_compilation(&self) -> &LuaCompilation {
         self.compilation
     }
@@ -240,7 +236,7 @@ impl<'a> DiagnosticContext<'a> {
     }
 
     fn should_report_diagnostic(&self, code: &DiagnosticCode, range: &TextRange) -> bool {
-        let diagnostic_index = self.db().get_diagnostic_index();
+        let diagnostic_index = self.compilation.legacy_db().get_diagnostic_index();
 
         !diagnostic_index.is_file_diagnostic_code_disabled(&self.get_file_id(), code, range)
     }
@@ -264,7 +260,7 @@ impl<'a> DiagnosticContext<'a> {
     }
 
     fn translate_range(&self, range: TextRange) -> Option<lsp_types::Range> {
-        let document = self.db().get_vfs().get_document(&self.file_id)?;
+        let document = self.compilation.legacy_db().get_vfs().get_document(&self.file_id)?;
         let (start_line, start_character) = document.get_line_col(range.start())?;
         let (end_line, end_character) = document.get_line_col(range.end())?;
 
@@ -286,7 +282,7 @@ impl<'a> DiagnosticContext<'a> {
 
     pub fn is_checker_enable_by_code(&self, code: &DiagnosticCode) -> bool {
         let file_id = self.get_file_id();
-        let db = self.db();
+        let db = self.compilation.legacy_db();
         let diagnostic_index = db.get_diagnostic_index();
         // force enable
         if diagnostic_index.is_file_enabled(&file_id, code) {

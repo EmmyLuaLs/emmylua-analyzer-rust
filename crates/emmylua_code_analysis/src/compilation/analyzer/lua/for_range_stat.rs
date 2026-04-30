@@ -148,13 +148,7 @@ pub fn infer_for_range_iter_expr_func(
         return Ok(doc_function.get_variadic_ret());
     };
     let mut substitutor = TypeSubstitutor::new();
-    let mut context = TplContext {
-        compilation: None,
-        legacy_db: db,
-        cache,
-        substitutor: &mut substitutor,
-        call_expr: None,
-    };
+    let mut context = TplContext::from_db(db, cache, &mut substitutor, None);
     let params = doc_function
         .get_params()
         .iter()

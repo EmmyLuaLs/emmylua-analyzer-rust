@@ -1,13 +1,10 @@
-use hashbrown::HashMap;
 use rowan::TextSize;
 use std::sync::Arc;
 
 use crate::{
     FileId, SalsaDeclId, SalsaDeclKindSummary, SalsaDeclSummary, SalsaDeclTreeSummary,
-    SalsaScopeChildSummary, SalsaScopeKindSummary, SalsaScopeSummary,
+    SalsaScopeChildSummary, SalsaScopeKindSummary, SalsaScopeSummary, SalsaSummaryHost,
 };
-
-use super::{CompilationIndexContext, FileBackedIndex};
 
 #[derive(Debug, Clone)]
 pub struct CompilationDeclTree {
@@ -198,52 +195,21 @@ impl CompilationDeclTree {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct CompilationDeclIndex {
-    decl_trees: HashMap<FileId, CompilationDeclTree>,
+#[derive(Debug, Clone, Copy)]
+pub struct CompilationDeclIndex<'a> {
+    summary: &'a SalsaSummaryHost,
 }
 
-impl CompilationDeclIndex {
-    pub fn new() -> Self {
-        Self::default()
+impl<'a> CompilationDeclIndex<'a> {
+    pub fn new(summary: &'a SalsaSummaryHost) -> Self {
+        Self { summary }
     }
 
-    pub fn get_decl_tree(&self, file_id: FileId) -> Option<&CompilationDeclTree> {
-        self.decl_trees.get(&file_id)
+    pub fn get_decl_tree(&self, file_id: FileId) -> Option<CompilationDeclTree> {
+        Some(CompilationDeclTree::new(self.summary.file().decl_tree(file_id)?))
     }
 
-    pub fn get_decl(&self, decl_id: &SalsaDeclId, file_id: FileId) -> Option<&SalsaDeclSummary> {
-        self.get_decl_tree(file_id)?.get_decl(decl_id)
-    }
-
-    pub fn remove(&mut self, file_id: FileId) {
-        self.decl_trees.remove(&file_id);
-    }
-
-    pub fn clear(&mut self) {
-        self.decl_trees.clear();
-    }
-
-    fn rebuild_file(&mut self, summary: &crate::SalsaSummaryHost, file_id: FileId) {
-        let Some(decl_tree) = summary.file().decl_tree(file_id) else {
-            return;
-        };
-
-        self.decl_trees
-            .insert(file_id, CompilationDeclTree::new(decl_tree));
-    }
-}
-
-impl FileBackedIndex for CompilationDeclIndex {
-    fn remove_file(&mut self, file_id: FileId) {
-        CompilationDeclIndex::remove(self, file_id);
-    }
-
-    fn rebuild_file(&mut self, ctx: &CompilationIndexContext<'_>, file_id: FileId) {
-        CompilationDeclIndex::rebuild_file(self, ctx.summary, file_id);
-    }
-
-    fn clear(&mut self) {
-        CompilationDeclIndex::clear(self);
+    pub fn get_decl(&self, decl_id: &SalsaDeclId, file_id: FileId) -> Option<SalsaDeclSummary> {
+        self.get_decl_tree(file_id)?.get_decl(decl_id).cloned()
     }
 }
