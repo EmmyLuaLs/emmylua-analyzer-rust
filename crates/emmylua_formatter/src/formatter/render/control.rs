@@ -10,7 +10,7 @@ use crate::formatter::model::StatementExprListLayoutPlan;
 use crate::ir::{self, DocIR};
 
 use super::super::expr;
-use super::super::model::{RootFormatPlan, StatementExprListLayoutKind, SyntaxNodeLayoutPlan};
+use super::super::model::{RootFormatPlan, SyntaxNodeLayoutPlan};
 use super::FormatContext;
 use super::helpers::{
     find_direct_child_plan_by_id, find_node_by_id, leading_inline_block_comment,
@@ -19,9 +19,9 @@ use super::helpers::{
 };
 use super::{
     append_trailing_comment_suffix, comment_is_inline_after_anchor, first_direct_token,
-    format_statement_value_expr, has_direct_comment_before_token,
-    render_block_plan_without_excluded_comments, render_comment_with_spacing,
-    render_direct_body_comment, render_header_exprs_with_leading_docs,
+    has_direct_comment_before_token, render_block_plan_without_excluded_comments,
+    render_comment_with_spacing, render_direct_body_comment,
+    render_header_exprs_with_leading_docs_from_exprs,
 };
 
 pub(super) fn render_while_stat(
@@ -1140,30 +1140,13 @@ fn render_source_order_header_expr_list(
     comma_token: Option<&LuaSyntaxToken>,
     exprs: &[LuaExpr],
 ) -> Vec<DocIR> {
-    let expr_docs: Vec<Vec<DocIR>> = exprs
-        .iter()
-        .enumerate()
-        .map(|(index, expr)| {
-            format_statement_value_expr(
-                ctx,
-                plan,
-                expr,
-                index == 0
-                    && matches!(
-                        expr_list_plan.kind,
-                        StatementExprListLayoutKind::PreserveFirstMultiline
-                    ),
-            )
-        })
-        .collect();
-
-    render_header_exprs_with_leading_docs(
+    render_header_exprs_with_leading_docs_from_exprs(
         ctx,
         plan,
         expr_list_plan,
         Vec::new(),
         comma_token,
-        expr_docs,
+        exprs,
     )
 }
 

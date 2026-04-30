@@ -1,6 +1,12 @@
-use emmylua_parser::{LuaAstNode, LuaComment, LuaLanguageLevel, LuaParser, LuaSyntaxId, ParserConfig};
+use emmylua_parser::{
+    LuaAstNode, LuaComment, LuaLanguageLevel, LuaParser, LuaSyntaxId, ParserConfig,
+};
 
-use crate::{config::LuaFormatConfig, formatter::{FormatContext, model::RootFormatPlan, render::render_comment_with_spacing}, printer::Printer};
+use crate::{
+    config::LuaFormatConfig,
+    formatter::{FormatContext, model::RootFormatPlan, render::render_comment_with_spacing},
+    printer::Printer,
+};
 
 fn parse_comment(input: &str) -> LuaComment {
     let tree = LuaParser::parse(input, ParserConfig::with_level(LuaLanguageLevel::Lua54));

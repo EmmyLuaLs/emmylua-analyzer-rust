@@ -628,6 +628,7 @@ dependencies = [
  "clap",
  "emmylua_parser",
  "glob",
+ "hashbrown 0.16.1",
  "mimalloc",
  "rowan",
  "serde",

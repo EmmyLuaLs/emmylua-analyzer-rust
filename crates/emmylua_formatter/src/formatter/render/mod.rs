@@ -1,10 +1,11 @@
-
 mod control;
 mod helpers;
 #[cfg(test)]
 mod test;
 
-use std::collections::HashMap;
+use std::rc::Rc;
+
+use hashbrown::HashMap;
 
 use crate::formatter::model::{StatementExprListLayoutKind, StatementExprListLayoutPlan};
 use crate::ir::{self, AlignEntry, DocIR};
@@ -17,7 +18,6 @@ use crate::formatter::model::{
 };
 use crate::formatter::sequence::*;
 use crate::formatter::trivia::*;
-
 
 use self::control::{
     render_do_stat, render_for_range_stat, render_for_stat, render_func_stat, render_if_stat,
@@ -187,30 +187,13 @@ fn render_local_stat(
             LuaTokenKind::TkAssign,
         ));
 
-        let expr_docs: Vec<Vec<DocIR>> = exprs
-            .iter()
-            .enumerate()
-            .map(|(index, expr)| {
-                format_statement_value_expr(
-                    ctx,
-                    plan,
-                    expr,
-                    index == 0
-                        && matches!(
-                            expr_list_plan.kind,
-                            StatementExprListLayoutKind::PreserveFirstMultiline
-                        ),
-                )
-            })
-            .collect();
-
-        docs.extend(render_statement_exprs(
+        docs.extend(render_statement_exprs_from_exprs(
             ctx,
             plan,
             expr_list_plan,
             assign_token.as_ref(),
             comma_token.as_ref(),
-            expr_docs,
+            &exprs,
         ));
     }
 
@@ -260,30 +243,13 @@ fn render_assign_stat(
         docs.push(ir::source_token(op.syntax().clone()));
     }
 
-    let expr_docs: Vec<Vec<DocIR>> = exprs
-        .iter()
-        .enumerate()
-        .map(|(index, expr)| {
-            format_statement_value_expr(
-                ctx,
-                plan,
-                expr,
-                index == 0
-                    && matches!(
-                        expr_list_plan.kind,
-                        StatementExprListLayoutKind::PreserveFirstMultiline
-                    ),
-            )
-        })
-        .collect();
-
-    docs.extend(render_statement_exprs(
+    docs.extend(render_statement_exprs_from_exprs(
         ctx,
         plan,
         expr_list_plan,
         assign_token.as_ref(),
         comma_token.as_ref(),
-        expr_docs,
+        &exprs,
     ));
 
     append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
@@ -323,30 +289,13 @@ fn render_return_stat(
             .get(&syntax_id)
             .copied()
             .expect("missing return statement expr-list layout plan");
-        let expr_docs: Vec<Vec<DocIR>> = exprs
-            .iter()
-            .enumerate()
-            .map(|(index, expr)| {
-                format_statement_value_expr(
-                    ctx,
-                    plan,
-                    expr,
-                    index == 0
-                        && matches!(
-                            expr_list_plan.kind,
-                            StatementExprListLayoutKind::PreserveFirstMultiline
-                        ),
-                )
-            })
-            .collect();
-
-        docs.extend(render_statement_exprs(
+        docs.extend(render_statement_exprs_from_exprs(
             ctx,
             plan,
             expr_list_plan,
             return_token.as_ref(),
             comma_token.as_ref(),
-            expr_docs,
+            &exprs,
         ));
     }
 
@@ -769,6 +718,96 @@ fn render_header_exprs_with_leading_docs(
     }
 }
 
+pub(super) fn render_header_exprs_with_leading_docs_from_exprs(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
+    leading_docs: Vec<DocIR>,
+    comma_token: Option<&LuaSyntaxToken>,
+    exprs: &[LuaExpr],
+) -> Vec<DocIR> {
+    if exprs.is_empty() {
+        return leading_docs;
+    }
+
+    let preserve_first_multiline = matches!(
+        expr_list_plan.kind,
+        StatementExprListLayoutKind::PreserveFirstMultiline
+    );
+    if exprs.len() == 1 || expr_list_plan.attach_single_value_head {
+        let mut docs = leading_docs;
+        docs.push(ir::list(format_statement_value_expr(
+            ctx,
+            plan,
+            &exprs[0],
+            preserve_first_multiline,
+        )));
+        return docs;
+    }
+
+    let expr_docs: Vec<Vec<DocIR>> = exprs
+        .iter()
+        .enumerate()
+        .map(|(index, expr)| {
+            format_statement_value_expr(ctx, plan, expr, index == 0 && preserve_first_multiline)
+        })
+        .collect();
+
+    render_header_exprs_with_leading_docs(
+        ctx,
+        plan,
+        expr_list_plan,
+        leading_docs,
+        comma_token,
+        expr_docs,
+    )
+}
+
+pub(super) fn render_statement_exprs_from_exprs(
+    ctx: &FormatContext,
+    plan: &RootFormatPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
+    leading_token: Option<&LuaSyntaxToken>,
+    comma_token: Option<&LuaSyntaxToken>,
+    exprs: &[LuaExpr],
+) -> Vec<DocIR> {
+    if exprs.is_empty() {
+        return Vec::new();
+    }
+
+    let preserve_first_multiline = matches!(
+        expr_list_plan.kind,
+        StatementExprListLayoutKind::PreserveFirstMultiline
+    );
+    if exprs.len() == 1 || expr_list_plan.attach_single_value_head {
+        let mut docs = token_right_spacing_docs(plan, leading_token);
+        docs.push(ir::list(format_statement_value_expr(
+            ctx,
+            plan,
+            &exprs[0],
+            preserve_first_multiline,
+        )));
+        return docs;
+    }
+
+    let expr_docs: Vec<Vec<DocIR>> = exprs
+        .iter()
+        .enumerate()
+        .map(|(index, expr)| {
+            format_statement_value_expr(ctx, plan, expr, index == 0 && preserve_first_multiline)
+        })
+        .collect();
+
+    render_statement_exprs(
+        ctx,
+        plan,
+        expr_list_plan,
+        leading_token,
+        comma_token,
+        expr_docs,
+    )
+}
+
 fn format_local_name_ir(local_name: &LuaLocalName) -> Vec<DocIR> {
     let mut docs = Vec::new();
     if let Some(token) = local_name.get_name_token() {
@@ -802,22 +841,74 @@ fn format_statement_expr_list(
         return docs;
     }
 
-    let fill_parts = build_statement_expr_fill_parts(comma_token, leading_docs.clone(), &expr_docs);
-    let packed = expr_list_plan
-        .allow_packed
-        .then(|| build_statement_expr_packed(plan, comma_token, leading_docs.clone(), &expr_docs));
-    let one_per_line = expr_list_plan
-        .allow_one_per_line
-        .then(|| build_statement_expr_one_per_line(comma_token, leading_docs, &expr_docs));
+    let enabled_candidate_count = usize::from(expr_list_plan.allow_fill)
+        + usize::from(expr_list_plan.allow_packed)
+        + usize::from(expr_list_plan.allow_one_per_line);
+
+    if enabled_candidate_count == 1 {
+        if expr_list_plan.allow_fill {
+            let fill_parts = build_statement_expr_fill_parts(comma_token, leading_docs, &expr_docs);
+            return vec![ir::group(vec![ir::indent(vec![ir::fill(fill_parts)])])];
+        }
+
+        if expr_list_plan.allow_packed {
+            return build_statement_expr_packed(plan, comma_token, leading_docs, &expr_docs);
+        }
+
+        return build_statement_expr_one_per_line(comma_token, leading_docs, &expr_docs);
+    }
+
+    let fill = expr_list_plan.allow_fill.then(|| {
+        let fill_parts =
+            build_statement_expr_fill_parts(comma_token, leading_docs.clone(), &expr_docs);
+        vec![ir::group(vec![ir::indent(vec![ir::fill(fill_parts)])])]
+    });
+    let packed_hint = SequenceCandidateHint {
+        min_line_count: Some(1 + expr_docs.len().saturating_sub(1).div_ceil(2)),
+        ..Default::default()
+    };
+    let one_per_line_hint = SequenceCandidateHint {
+        min_line_count: Some(expr_docs.len()),
+        ..Default::default()
+    };
+    let shared_expr_docs = Rc::new(expr_docs);
+    let comma_docs = comma_token_docs(comma_token);
+    let comma_spaced_docs = token_right_spacing_docs(plan, comma_token);
+    let packed_builder = expr_list_plan.allow_packed.then(|| {
+        let shared_expr_docs = Rc::clone(&shared_expr_docs);
+        let leading_docs = leading_docs.clone();
+        let comma_docs = comma_docs.clone();
+        let comma_spaced_docs = comma_spaced_docs.clone();
+        Box::new(move || {
+            build_statement_expr_packed_from_docs(
+                leading_docs,
+                shared_expr_docs.as_slice(),
+                &comma_docs,
+                &comma_spaced_docs,
+            )
+        }) as SequenceDocsBuilder
+    });
+    let one_per_line_builder = expr_list_plan.allow_one_per_line.then(|| {
+        let shared_expr_docs = Rc::clone(&shared_expr_docs);
+        let leading_docs = leading_docs.clone();
+        let comma_docs = comma_docs.clone();
+        Box::new(move || {
+            build_statement_expr_one_per_line_from_docs(
+                leading_docs,
+                shared_expr_docs.as_slice(),
+                &comma_docs,
+            )
+        }) as SequenceDocsBuilder
+    });
 
     choose_sequence_layout(
         ctx,
         SequenceLayoutCandidates {
-            fill: Some(vec![ir::group(vec![ir::indent(vec![ir::fill(
-                fill_parts,
-            )])])]),
-            packed,
-            one_per_line,
+            fill,
+            packed_builder,
+            one_per_line_builder,
+            packed_hint: Some(packed_hint),
+            one_per_line_hint: Some(one_per_line_hint),
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -922,6 +1013,18 @@ fn build_statement_expr_one_per_line(
     leading_docs: Vec<DocIR>,
     expr_docs: &[Vec<DocIR>],
 ) -> Vec<DocIR> {
+    build_statement_expr_one_per_line_from_docs(
+        leading_docs,
+        expr_docs,
+        &comma_token_docs(comma_token),
+    )
+}
+
+fn build_statement_expr_one_per_line_from_docs(
+    leading_docs: Vec<DocIR>,
+    expr_docs: &[Vec<DocIR>],
+    comma_docs: &[DocIR],
+) -> Vec<DocIR> {
     let mut docs = Vec::new();
     let mut first_chunk = leading_docs;
     let Some((first_expr, remaining)) = expr_docs.split_first() else {
@@ -930,7 +1033,7 @@ fn build_statement_expr_one_per_line(
     first_chunk.extend(first_expr.clone());
     docs.push(ir::list(first_chunk));
     for expr_doc in remaining {
-        docs.push(ir::list(comma_token_docs(comma_token)));
+        docs.push(ir::list(comma_docs.to_vec()));
         docs.push(ir::hard_line());
         docs.push(ir::list(expr_doc.clone()));
     }
@@ -943,6 +1046,20 @@ fn build_statement_expr_packed(
     leading_docs: Vec<DocIR>,
     expr_docs: &[Vec<DocIR>],
 ) -> Vec<DocIR> {
+    build_statement_expr_packed_from_docs(
+        leading_docs,
+        expr_docs,
+        &comma_token_docs(comma_token),
+        &token_right_spacing_docs(plan, comma_token),
+    )
+}
+
+fn build_statement_expr_packed_from_docs(
+    leading_docs: Vec<DocIR>,
+    expr_docs: &[Vec<DocIR>],
+    comma_docs: &[DocIR],
+    comma_spaced_docs: &[DocIR],
+) -> Vec<DocIR> {
     let mut docs = Vec::new();
     let mut first_chunk = leading_docs;
     let Some((first_expr, remaining)) = expr_docs.split_first() else {
@@ -950,7 +1067,7 @@ fn build_statement_expr_packed(
     };
     first_chunk.extend(first_expr.clone());
     if !remaining.is_empty() {
-        first_chunk.extend(comma_token_docs(comma_token));
+        first_chunk.extend(comma_docs.to_vec());
     }
     docs.push(ir::list(first_chunk));
 
@@ -959,13 +1076,13 @@ fn build_statement_expr_packed(
         let chunk_start = chunk_index * 2;
         for (index, expr_doc) in chunk.iter().enumerate() {
             if index > 0 {
-                line.extend(token_right_spacing_docs(plan, comma_token));
+                line.extend(comma_spaced_docs.to_vec());
             }
             line.extend(expr_doc.clone());
             let absolute_index = chunk_start + index;
             let has_more = absolute_index + 1 < remaining.len();
             if has_more {
-                line.extend(comma_token_docs(comma_token));
+                line.extend(comma_docs.to_vec());
             }
         }
         docs.push(ir::hard_line());
@@ -1400,34 +1517,17 @@ fn render_local_stat_align_split(
         before.extend(format_local_name_ir(local_name));
     }
 
-    let expr_docs: Vec<Vec<DocIR>> = exprs
-        .iter()
-        .enumerate()
-        .map(|(index, expr)| {
-            format_statement_value_expr(
-                ctx,
-                plan,
-                expr,
-                index == 0
-                    && matches!(
-                        expr_list_plan.kind,
-                        StatementExprListLayoutKind::PreserveFirstMultiline
-                    ),
-            )
-        })
-        .collect();
-
     let mut after = vec![token_or_kind_doc(
         assign_token.as_ref(),
         LuaTokenKind::TkAssign,
     )];
-    after.extend(render_statement_exprs(
+    after.extend(render_statement_exprs_from_exprs(
         ctx,
         plan,
         expr_list_plan,
         assign_token.as_ref(),
         comma_token.as_ref(),
-        expr_docs,
+        &exprs,
     ));
 
     Some((before, after))
@@ -1456,34 +1556,17 @@ fn render_assign_stat_align_split(
         before.extend(render_expr(ctx, plan, &var.clone().into()));
     }
 
-    let expr_docs: Vec<Vec<DocIR>> = exprs
-        .iter()
-        .enumerate()
-        .map(|(index, expr)| {
-            format_statement_value_expr(
-                ctx,
-                plan,
-                expr,
-                index == 0
-                    && matches!(
-                        expr_list_plan.kind,
-                        StatementExprListLayoutKind::PreserveFirstMultiline
-                    ),
-            )
-        })
-        .collect();
-
     let mut after = vec![token_or_kind_doc(
         assign_token.as_ref(),
         LuaTokenKind::TkAssign,
     )];
-    after.extend(render_statement_exprs(
+    after.extend(render_statement_exprs_from_exprs(
         ctx,
         plan,
         expr_list_plan,
         assign_token.as_ref(),
         comma_token.as_ref(),
-        expr_docs,
+        &exprs,
     ));
 
     Some((before, after))

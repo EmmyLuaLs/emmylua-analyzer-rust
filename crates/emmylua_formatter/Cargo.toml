@@ -13,6 +13,7 @@ toml_edit.workspace = true
 smol_str.workspace = true
 glob.workspace = true
 walkdir.workspace = true
+hashbrown.workspace = true
 
 [dependencies.clap]
 workspace = true

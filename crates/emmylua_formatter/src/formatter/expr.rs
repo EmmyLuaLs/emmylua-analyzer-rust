@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallArgList,
     LuaCallExpr, LuaClosureExpr, LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind,
@@ -17,7 +19,7 @@ use super::FormatContext;
 use super::model::{ExprSequenceLayoutPlan, RootFormatPlan, TokenSpacingExpected};
 use super::render;
 use super::sequence::{
-    DelimitedSequenceLayout, SequenceLayoutCandidates, SequenceLayoutPolicy,
+    DelimitedSequenceLayout, SequenceCandidateHint, SequenceLayoutCandidates, SequenceLayoutPolicy,
     choose_sequence_layout, format_delimited_sequence,
 };
 use super::spacing::{SpaceRule, space_around_binary_op};
@@ -51,6 +53,11 @@ fn format_name_expr(expr: &LuaNameExpr) -> Vec<DocIR> {
     expr.get_name_token()
         .map(|token| vec![ir::source_token(token.syntax().clone())])
         .unwrap_or_default()
+}
+
+fn flat_docs_fit(ctx: &FormatContext, docs: &[DocIR], first_line_prefix_width: usize) -> bool {
+    !ir::ir_has_forced_line_break(docs)
+        && ir::ir_flat_width(docs) + first_line_prefix_width <= ctx.config.layout.max_line_width
 }
 
 type EqSplitDocs = (Vec<DocIR>, Vec<DocIR>);
@@ -843,13 +850,32 @@ fn format_call_args_with_inline_block_item(
     }
 
     let anchored = vec![ir::group_break(anchored_docs)];
-    let one_per_line = build_one_per_line_call_args(&arg_docs, open, close, comma);
+    let one_per_line_hint = SequenceCandidateHint {
+        min_line_count: Some(arg_docs.len() + 1),
+        ..Default::default()
+    };
+    let shared_arg_docs = Rc::new(arg_docs);
+    let comma_docs = comma_token_docs(comma);
 
     choose_sequence_layout(
         ctx,
         SequenceLayoutCandidates {
             fill: Some(anchored),
-            one_per_line: Some(one_per_line),
+            one_per_line_builder: Some(Box::new({
+                let shared_arg_docs = Rc::clone(&shared_arg_docs);
+                let open = open.clone();
+                let close = close.clone();
+                let comma_docs = comma_docs.clone();
+                move || {
+                    build_one_per_line_call_args_from_docs(
+                        shared_arg_docs.as_slice(),
+                        open,
+                        close,
+                        &comma_docs,
+                    )
+                }
+            })),
+            one_per_line_hint: Some(one_per_line_hint),
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -909,13 +935,32 @@ fn format_call_args_with_block_items(
         ir::hard_line(),
         close.clone(),
     ])];
-    let one_per_line = build_one_per_line_call_args(&arg_docs, open, close, comma);
+    let one_per_line_hint = SequenceCandidateHint {
+        min_line_count: Some(arg_docs.len() + 1),
+        ..Default::default()
+    };
+    let shared_arg_docs = Rc::new(arg_docs);
+    let comma_docs = comma_token_docs(comma);
 
     choose_sequence_layout(
         ctx,
         SequenceLayoutCandidates {
             fill: Some(blocked),
-            one_per_line: Some(one_per_line),
+            one_per_line_builder: Some(Box::new({
+                let shared_arg_docs = Rc::clone(&shared_arg_docs);
+                let open = open.clone();
+                let close = close.clone();
+                let comma_docs = comma_docs.clone();
+                move || {
+                    build_one_per_line_call_args_from_docs(
+                        shared_arg_docs.as_slice(),
+                        open,
+                        close,
+                        &comma_docs,
+                    )
+                }
+            })),
+            one_per_line_hint: Some(one_per_line_hint),
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -943,11 +988,11 @@ fn render_blocked_call_arg_chunk(items_with_trailing: Vec<Vec<DocIR>>) -> Vec<Do
     vec![ir::fill(parts)]
 }
 
-fn build_one_per_line_call_args(
+fn build_one_per_line_call_args_from_docs(
     arg_docs: &[Vec<DocIR>],
     open: DocIR,
     close: DocIR,
-    comma: Option<&LuaSyntaxToken>,
+    comma_docs: &[DocIR],
 ) -> Vec<DocIR> {
     let item_count = arg_docs.len();
     let mut one_per_line_inner = Vec::new();
@@ -955,7 +1000,7 @@ fn build_one_per_line_call_args(
         one_per_line_inner.push(ir::hard_line());
         one_per_line_inner.extend(item_docs.clone());
         if index + 1 < item_count {
-            one_per_line_inner.extend(comma_token_docs(comma));
+            one_per_line_inner.extend(comma_docs.to_vec());
         }
     }
 
@@ -1036,23 +1081,81 @@ fn format_call_args_with_attached_first_arg(
         docs
     });
 
-    let mut fill_docs = vec![open.clone()];
-    fill_docs.extend(first_arg.clone());
-    fill_docs.extend(comma_token_docs(comma));
-    fill_docs.push(ir::indent(vec![
-        ir::soft_line(),
-        ir::fill(build_fill_parts(tail_items, &comma_fill_separator(comma))),
-    ]));
-    fill_docs.push(close.clone());
+    if let Some(flat_docs) = flat.as_ref()
+        && flat_docs_fit(ctx, flat_docs, layout_plan.first_line_prefix_width)
+    {
+        return flat_docs.clone();
+    }
+
+    let one_per_line_hint = SequenceCandidateHint {
+        min_line_count: Some(arg_docs.len() + 1),
+        ..Default::default()
+    };
+    let shared_arg_docs = Rc::new(arg_docs);
+    let fill_separator = comma_fill_separator(comma);
+    let comma_docs = comma_token_docs(comma);
 
     choose_sequence_layout(
         ctx,
         SequenceLayoutCandidates {
             flat,
-            fill: Some(vec![ir::group(fill_docs)]),
-            one_per_line: Some(build_attached_first_arg_one_per_line(
-                &arg_docs, open, close, comma,
-            )),
+            fill_builder: Some(Box::new({
+                let shared_arg_docs = Rc::clone(&shared_arg_docs);
+                let open = open.clone();
+                let close = close.clone();
+                let fill_separator = fill_separator.clone();
+                let comma_docs = comma_docs.clone();
+                move || {
+                    let mut fill_docs = vec![open.clone()];
+                    let Some((first_arg, tail_items)) = shared_arg_docs.as_slice().split_first()
+                    else {
+                        fill_docs.push(close.clone());
+                        return vec![ir::group(fill_docs)];
+                    };
+
+                    fill_docs.extend(first_arg.clone());
+                    fill_docs.extend(comma_docs.clone());
+                    fill_docs.push(ir::indent(vec![
+                        ir::soft_line(),
+                        ir::fill(build_fill_parts(tail_items, &fill_separator)),
+                    ]));
+                    fill_docs.push(close.clone());
+                    vec![ir::group(fill_docs)]
+                }
+            })),
+            one_per_line_builder: Some(Box::new({
+                let shared_arg_docs = Rc::clone(&shared_arg_docs);
+                let open = open.clone();
+                let close = close.clone();
+                let comma_docs = comma_docs.clone();
+                move || {
+                    let mut one_per_line_docs = vec![open.clone()];
+                    let Some((first_arg, rest_args)) = shared_arg_docs.as_slice().split_first()
+                    else {
+                        one_per_line_docs.push(close.clone());
+                        return vec![ir::group_break(one_per_line_docs)];
+                    };
+
+                    one_per_line_docs.extend(first_arg.clone());
+                    one_per_line_docs.extend(comma_docs.clone());
+
+                    let rest_count = rest_args.len();
+                    let mut rest = Vec::new();
+                    for (index, item_docs) in rest_args.iter().enumerate() {
+                        rest.push(ir::hard_line());
+                        rest.extend(item_docs.clone());
+                        if index + 1 < rest_count {
+                            rest.extend(comma_docs.clone());
+                        }
+                    }
+
+                    one_per_line_docs.push(ir::indent(rest));
+                    one_per_line_docs.push(ir::hard_line());
+                    one_per_line_docs.push(close.clone());
+                    vec![ir::group_break(one_per_line_docs)]
+                }
+            })),
+            one_per_line_hint: Some(one_per_line_hint),
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -1062,36 +1165,6 @@ fn format_call_args_with_attached_first_arg(
             ..Default::default()
         },
     )
-}
-
-fn build_attached_first_arg_one_per_line(
-    arg_docs: &[Vec<DocIR>],
-    open: DocIR,
-    close: DocIR,
-    comma: Option<&LuaSyntaxToken>,
-) -> Vec<DocIR> {
-    let mut one_per_line_docs = vec![open];
-    let Some((first_arg, rest_args)) = arg_docs.split_first() else {
-        one_per_line_docs.push(close);
-        return vec![ir::group_break(one_per_line_docs)];
-    };
-    one_per_line_docs.extend(first_arg.clone());
-    one_per_line_docs.extend(comma_token_docs(comma));
-
-    let rest_count = rest_args.len();
-    let mut rest = Vec::new();
-    for (index, item_docs) in rest_args.iter().enumerate() {
-        rest.push(ir::hard_line());
-        rest.extend(item_docs.clone());
-        if index + 1 < rest_count {
-            rest.extend(comma_token_docs(comma));
-        }
-    }
-
-    one_per_line_docs.push(ir::indent(rest));
-    one_per_line_docs.push(ir::hard_line());
-    one_per_line_docs.push(close);
-    vec![ir::group_break(one_per_line_docs)]
 }
 
 fn append_docs_with_separator(docs: &mut Vec<DocIR>, items: &[Vec<DocIR>], separator: &[DocIR]) {
@@ -1348,22 +1421,6 @@ fn format_table_expr(
     };
 
     if has_assign_alignment {
-        let layout = DelimitedSequenceLayout {
-            open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
-            close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
-            items: field_docs.clone(),
-            strategy: effective_expand.clone(),
-            preserve_multiline: layout_plan.preserve_multiline,
-            flat_separator: comma_flat_separator(plan, comma.as_ref()),
-            fill_separator: comma_fill_separator(comma.as_ref()),
-            break_separator: comma_break_separator(comma.as_ref()),
-            flat_open_padding: token_right_spacing_docs(plan, open.as_ref()),
-            flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
-            grouped_padding: grouped_padding_from_pair(plan, open.as_ref(), close.as_ref()),
-            flat_trailing: vec![],
-            grouped_trailing: trailing_comma_ir(ctx.config.trailing_table_comma()),
-        };
-
         return match effective_expand {
             ExpandStrategy::Always => wrap_table_multiline_docs(
                 token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
@@ -1376,7 +1433,24 @@ fn format_table_expr(
                     ctx.config.should_align_table_line_comments(),
                 ),
             ),
-            ExpandStrategy::Never => format_delimited_sequence(ctx, layout),
+            ExpandStrategy::Never => format_delimited_sequence(
+                ctx,
+                DelimitedSequenceLayout {
+                    open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
+                    close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
+                    items: field_docs.clone(),
+                    strategy: ExpandStrategy::Never,
+                    preserve_multiline: layout_plan.preserve_multiline,
+                    flat_separator: comma_flat_separator(plan, comma.as_ref()),
+                    fill_separator: comma_fill_separator(comma.as_ref()),
+                    break_separator: comma_break_separator(comma.as_ref()),
+                    flat_open_padding: token_right_spacing_docs(plan, open.as_ref()),
+                    flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
+                    grouped_padding: grouped_padding_from_pair(plan, open.as_ref(), close.as_ref()),
+                    flat_trailing: vec![],
+                    grouped_trailing: trailing_comma_ir(ctx.config.trailing_table_comma()),
+                },
+            ),
             ExpandStrategy::Auto => {
                 if has_multiline_field {
                     return wrap_table_multiline_docs(
@@ -1392,9 +1466,28 @@ fn format_table_expr(
                     );
                 }
 
-                let mut flat_layout = layout;
-                flat_layout.strategy = ExpandStrategy::Never;
-                let flat_docs = format_delimited_sequence(ctx, flat_layout);
+                let flat_docs = format_delimited_sequence(
+                    ctx,
+                    DelimitedSequenceLayout {
+                        open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
+                        close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
+                        items: field_docs.clone(),
+                        strategy: ExpandStrategy::Never,
+                        preserve_multiline: layout_plan.preserve_multiline,
+                        flat_separator: comma_flat_separator(plan, comma.as_ref()),
+                        fill_separator: comma_fill_separator(comma.as_ref()),
+                        break_separator: comma_break_separator(comma.as_ref()),
+                        flat_open_padding: token_right_spacing_docs(plan, open.as_ref()),
+                        flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
+                        grouped_padding: grouped_padding_from_pair(
+                            plan,
+                            open.as_ref(),
+                            close.as_ref(),
+                        ),
+                        flat_trailing: vec![],
+                        grouped_trailing: trailing_comma_ir(ctx.config.trailing_table_comma()),
+                    },
+                );
                 if ir::ir_flat_width(&flat_docs) + source_line_prefix_width(expr.syntax())
                     <= ctx.config.layout.max_line_width
                 {
@@ -2417,24 +2510,47 @@ fn try_format_chain_expr(
         return Some(flat);
     }
 
-    let fill_tail = ir::fill(build_fill_parts(&segments, &[ir::soft_line_or_empty()]));
-    let one_per_line_tail = ir::intersperse(segments.clone(), vec![ir::hard_line()]);
+    if flat_docs_fit(ctx, &flat, source_line_prefix_width(expr.syntax())) {
+        return Some(flat);
+    }
 
-    let fill = vec![ir::group(vec![
-        ir::list(root_docs.clone()),
-        ir::indent(vec![ir::soft_line(), fill_tail]),
-    ])];
-    let one_per_line = vec![ir::group_break(vec![
-        ir::list(root_docs),
-        ir::indent(vec![ir::hard_line(), ir::list(one_per_line_tail)]),
-    ])];
+    let shared_segments = Rc::new(segments);
+    let one_per_line_hint = SequenceCandidateHint {
+        min_line_count: Some(shared_segments.len() + 1),
+        ..Default::default()
+    };
 
     Some(choose_sequence_layout(
         ctx,
         SequenceLayoutCandidates {
             flat: Some(flat),
-            fill: Some(fill),
-            one_per_line: Some(one_per_line),
+            fill_builder: Some(Box::new({
+                let root_docs = root_docs.clone();
+                let shared_segments = Rc::clone(&shared_segments);
+                move || {
+                    let fill_tail = ir::fill(build_fill_parts(
+                        shared_segments.as_slice(),
+                        &[ir::soft_line_or_empty()],
+                    ));
+                    vec![ir::group(vec![
+                        ir::list(root_docs.clone()),
+                        ir::indent(vec![ir::soft_line(), fill_tail]),
+                    ])]
+                }
+            })),
+            one_per_line_builder: Some(Box::new({
+                let root_docs = root_docs.clone();
+                let shared_segments = Rc::clone(&shared_segments);
+                move || {
+                    let one_per_line_tail =
+                        ir::intersperse(shared_segments.as_ref().clone(), vec![ir::hard_line()]);
+                    vec![ir::group_break(vec![
+                        ir::list(root_docs.clone()),
+                        ir::indent(vec![ir::hard_line(), ir::list(one_per_line_tail)]),
+                    ])]
+                }
+            })),
+            one_per_line_hint: Some(one_per_line_hint),
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -2609,9 +2725,18 @@ fn try_format_flat_binary_chain(
         return None;
     }
 
-    let fill_parts =
-        build_binary_chain_fill_parts(ctx, plan, &operands, &op_token.syntax().clone(), op);
-    let packed = build_binary_chain_packed(ctx, plan, &operands, &op_token.syntax().clone(), op);
+    let layout_segments = Rc::new(build_binary_chain_layout_segments(
+        ctx,
+        plan,
+        &operands,
+        &op_token.syntax().clone(),
+        op,
+    ));
+    let fill_parts = build_binary_chain_fill_parts(layout_segments.as_ref());
+    let packed_hint = SequenceCandidateHint {
+        min_line_count: Some(1 + layout_segments.continuation_segments.len().div_ceil(2)),
+        ..Default::default()
+    };
 
     Some(choose_sequence_layout(
         ctx,
@@ -2619,7 +2744,11 @@ fn try_format_flat_binary_chain(
             fill: Some(vec![ir::group(vec![ir::indent(vec![ir::fill(
                 fill_parts,
             )])])]),
-            packed: Some(packed),
+            packed_builder: Some(Box::new({
+                let layout_segments = Rc::clone(&layout_segments);
+                move || build_binary_chain_packed(layout_segments.as_ref())
+            })),
+            packed_hint: Some(packed_hint),
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -2650,16 +2779,21 @@ fn collect_binary_chain_operands(expr: &LuaExpr, op: BinaryOperator, out: &mut V
     out.push(expr.clone());
 }
 
-fn build_binary_chain_fill_parts(
+struct BinaryChainLayoutSegments {
+    first_chunk: Vec<DocIR>,
+    continuation_segments: Vec<(bool, Vec<DocIR>)>,
+}
+
+fn build_binary_chain_layout_segments(
     ctx: &FormatContext,
     plan: &RootFormatPlan,
     operands: &[LuaExpr],
     op_token: &LuaSyntaxToken,
     op: BinaryOperator,
-) -> Vec<DocIR> {
-    let mut parts = Vec::new();
+) -> BinaryChainLayoutSegments {
     let mut previous = &operands[0];
     let mut first_chunk = format_expr(ctx, plan, &operands[0]);
+    let mut continuation_segments = Vec::new();
 
     for (index, operand) in operands.iter().enumerate().skip(1) {
         let (space_before_segment, segment) =
@@ -2670,48 +2804,36 @@ fn build_binary_chain_fill_parts(
                 first_chunk.push(ir::space());
             }
             first_chunk.extend(segment);
-            parts.push(ir::list(first_chunk.clone()));
         } else {
-            parts.push(ir::list(vec![continuation_break_ir(space_before_segment)]));
-            parts.push(ir::list(segment));
+            continuation_segments.push((space_before_segment, segment));
         }
 
         previous = operand;
     }
 
-    if parts.is_empty() {
-        parts.push(ir::list(first_chunk));
+    BinaryChainLayoutSegments {
+        first_chunk,
+        continuation_segments,
+    }
+}
+
+fn build_binary_chain_fill_parts(layout_segments: &BinaryChainLayoutSegments) -> Vec<DocIR> {
+    let mut parts = Vec::new();
+    parts.push(ir::list(layout_segments.first_chunk.clone()));
+
+    for (space_before_segment, segment) in &layout_segments.continuation_segments {
+        parts.push(ir::list(vec![continuation_break_ir(*space_before_segment)]));
+        parts.push(ir::list(segment.clone()));
     }
 
     parts
 }
 
-fn build_binary_chain_packed(
-    ctx: &FormatContext,
-    plan: &RootFormatPlan,
-    operands: &[LuaExpr],
-    op_token: &LuaSyntaxToken,
-    op: BinaryOperator,
-) -> Vec<DocIR> {
-    let mut first_line = format_expr(ctx, plan, &operands[0]);
-    let (space_before, segment) =
-        build_binary_chain_segment(ctx, plan, &operands[0], &operands[1], op_token, op);
-    if space_before {
-        first_line.push(ir::space());
-    }
-    first_line.extend(segment);
+fn build_binary_chain_packed(layout_segments: &BinaryChainLayoutSegments) -> Vec<DocIR> {
+    let first_line = layout_segments.first_chunk.clone();
 
     let mut tail = Vec::new();
-    let mut previous = &operands[1];
-    let mut remaining = Vec::new();
-    for operand in operands.iter().skip(2) {
-        remaining.push(build_binary_chain_segment(
-            ctx, plan, previous, operand, op_token, op,
-        ));
-        previous = operand;
-    }
-
-    for chunk in remaining.chunks(2) {
+    for chunk in layout_segments.continuation_segments.chunks(2) {
         let mut line = Vec::new();
         for (index, (space_before_segment, segment)) in chunk.iter().enumerate() {
             if index > 0 && *space_before_segment {

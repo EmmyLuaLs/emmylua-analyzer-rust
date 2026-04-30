@@ -153,6 +153,17 @@ pub fn ir_has_forced_line_break(docs: &[DocIR]) -> bool {
     docs.iter().any(doc_has_forced_line_break)
 }
 
+pub fn ir_min_line_count(docs: &[DocIR]) -> usize {
+    if docs.is_empty() {
+        return 1;
+    }
+
+    1 + docs
+        .iter()
+        .map(doc_guaranteed_line_break_count)
+        .sum::<usize>()
+}
+
 fn doc_has_forced_line_break(doc: &DocIR) -> bool {
     match doc {
         DocIR::HardLine => true,
@@ -197,6 +208,58 @@ fn doc_has_forced_line_break(doc: &DocIR) -> bool {
         | DocIR::SoftLine
         | DocIR::SoftLineOrEmpty
         | DocIR::Space => false,
+    }
+}
+
+fn doc_guaranteed_line_break_count(doc: &DocIR) -> usize {
+    match doc {
+        DocIR::HardLine => 1,
+        DocIR::Indent(items) | DocIR::List(items) | DocIR::Fill { parts: items } => {
+            items.iter().map(doc_guaranteed_line_break_count).sum()
+        }
+        DocIR::Group { contents, .. } => contents.iter().map(doc_guaranteed_line_break_count).sum(),
+        DocIR::IfBreak {
+            break_contents,
+            flat_contents,
+            ..
+        } => doc_guaranteed_line_break_count(break_contents.as_ref())
+            .min(doc_guaranteed_line_break_count(flat_contents.as_ref())),
+        DocIR::LineSuffix(contents) => contents.iter().map(doc_guaranteed_line_break_count).sum(),
+        DocIR::AlignGroup(group) => {
+            let entry_breaks: usize = group
+                .entries
+                .iter()
+                .map(|entry| match entry {
+                    AlignEntry::Aligned {
+                        before,
+                        after,
+                        trailing,
+                    } => {
+                        ir_min_line_count(before).saturating_sub(1)
+                            + ir_min_line_count(after).saturating_sub(1)
+                            + trailing
+                                .as_ref()
+                                .map(|trail| ir_min_line_count(trail).saturating_sub(1))
+                                .unwrap_or(0)
+                    }
+                    AlignEntry::Line { content, trailing } => {
+                        ir_min_line_count(content).saturating_sub(1)
+                            + trailing
+                                .as_ref()
+                                .map(|trail| ir_min_line_count(trail).saturating_sub(1))
+                                .unwrap_or(0)
+                    }
+                })
+                .sum();
+            entry_breaks + group.entries.len().saturating_sub(1)
+        }
+        DocIR::Text(_)
+        | DocIR::SourceNode { .. }
+        | DocIR::SourceToken(_)
+        | DocIR::SyntaxToken(_)
+        | DocIR::SoftLine
+        | DocIR::SoftLineOrEmpty
+        | DocIR::Space => 0,
     }
 }
 

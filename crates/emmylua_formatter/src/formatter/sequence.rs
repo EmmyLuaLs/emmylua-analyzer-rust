@@ -1,6 +1,15 @@
 use crate::config::ExpandStrategy;
-use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break};
-use crate::printer::measure_docs;
+use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break, ir_min_line_count};
+use crate::printer::{MeasureLimits, measure_docs, measure_docs_with_limits};
+
+pub type SequenceDocsBuilder = Box<dyn FnOnce() -> Vec<DocIR>>;
+
+#[derive(Clone, Copy, Default)]
+pub struct SequenceCandidateHint {
+    pub min_line_count: Option<usize>,
+    pub has_forced_line_break: Option<bool>,
+    pub flat_width: Option<usize>,
+}
 
 #[derive(Clone)]
 pub struct SequenceComment {
@@ -81,7 +90,7 @@ pub fn sequence_starts_with_inline_comment(entries: &[SequenceEntry]) -> bool {
     )
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct SequenceLayoutCandidates {
     pub flat: Option<Vec<DocIR>>,
     pub fill: Option<Vec<DocIR>>,
@@ -89,6 +98,18 @@ pub struct SequenceLayoutCandidates {
     pub one_per_line: Option<Vec<DocIR>>,
     pub aligned: Option<Vec<DocIR>>,
     pub preserve: Option<Vec<DocIR>>,
+    pub flat_builder: Option<SequenceDocsBuilder>,
+    pub fill_builder: Option<SequenceDocsBuilder>,
+    pub packed_builder: Option<SequenceDocsBuilder>,
+    pub one_per_line_builder: Option<SequenceDocsBuilder>,
+    pub aligned_builder: Option<SequenceDocsBuilder>,
+    pub preserve_builder: Option<SequenceDocsBuilder>,
+    pub flat_hint: Option<SequenceCandidateHint>,
+    pub fill_hint: Option<SequenceCandidateHint>,
+    pub packed_hint: Option<SequenceCandidateHint>,
+    pub one_per_line_hint: Option<SequenceCandidateHint>,
+    pub aligned_hint: Option<SequenceCandidateHint>,
+    pub preserve_hint: Option<SequenceCandidateHint>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -101,10 +122,51 @@ enum SequenceLayoutKind {
     Preserve,
 }
 
-#[derive(Clone)]
 struct RankedSequenceCandidate {
     kind: SequenceLayoutKind,
-    docs: Vec<DocIR>,
+    docs: Option<Vec<DocIR>>,
+    builder: Option<SequenceDocsBuilder>,
+    hint: SequenceCandidateHint,
+}
+
+impl RankedSequenceCandidate {
+    fn docs(&mut self) -> &[DocIR] {
+        if self.docs.is_none()
+            && let Some(builder) = self.builder.take()
+        {
+            self.docs = Some(builder());
+        }
+
+        self.docs.as_deref().unwrap_or(&[])
+    }
+
+    fn into_docs(mut self) -> Vec<DocIR> {
+        if let Some(docs) = self.docs.take() {
+            docs
+        } else if let Some(builder) = self.builder.take() {
+            builder()
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn min_line_count(&mut self) -> usize {
+        self.hint
+            .min_line_count
+            .unwrap_or_else(|| ir_min_line_count(self.docs()))
+    }
+
+    fn has_forced_line_break(&mut self) -> bool {
+        self.hint
+            .has_forced_line_break
+            .unwrap_or_else(|| ir_has_forced_line_break(self.docs()))
+    }
+
+    fn flat_width(&mut self) -> usize {
+        self.hint
+            .flat_width
+            .unwrap_or_else(|| ir_flat_width(self.docs()))
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -149,7 +211,7 @@ pub fn choose_sequence_layout(
     candidates: SequenceLayoutCandidates,
     policy: SequenceLayoutPolicy,
 ) -> Vec<DocIR> {
-    let ordered = ordered_sequence_candidates(candidates, policy);
+    let mut ordered = ordered_sequence_candidates(candidates, policy);
 
     if ordered.is_empty() {
         return vec![];
@@ -159,21 +221,21 @@ pub fn choose_sequence_layout(
         return ordered
             .into_iter()
             .next()
-            .map(|candidate| candidate.docs)
+            .map(RankedSequenceCandidate::into_docs)
             .unwrap_or_default();
     }
 
-    let flat_candidate_fits = ordered.first().is_some_and(|flat_candidate| {
+    let flat_candidate_fits = ordered.first_mut().is_some_and(|flat_candidate| {
         flat_candidate.kind == SequenceLayoutKind::Flat
-            && !ir_has_forced_line_break(&flat_candidate.docs)
-            && ir_flat_width(&flat_candidate.docs) + policy.first_line_prefix_width
+            && !flat_candidate.has_forced_line_break()
+            && flat_candidate.flat_width() + policy.first_line_prefix_width
                 <= ctx.config.layout.max_line_width
     });
     if flat_candidate_fits {
         return ordered
             .into_iter()
             .next()
-            .map(|candidate| candidate.docs)
+            .map(RankedSequenceCandidate::into_docs)
             .unwrap_or_default();
     }
 
@@ -191,43 +253,97 @@ fn ordered_sequence_candidates(
         one_per_line,
         aligned,
         preserve,
+        flat_builder,
+        fill_builder,
+        packed_builder,
+        one_per_line_builder,
+        aligned_builder,
+        preserve_builder,
+        flat_hint,
+        fill_hint,
+        packed_hint,
+        one_per_line_hint,
+        aligned_hint,
+        preserve_hint,
     } = candidates;
     let mut ordered = Vec::new();
 
     if policy.prefer_preserve_multiline {
-        push_sequence_candidate(&mut ordered, SequenceLayoutKind::Packed, packed);
-        if policy.allow_alignment
-            && let Some(aligned) = aligned
-        {
-            ordered.push(RankedSequenceCandidate {
-                kind: SequenceLayoutKind::Aligned,
-                docs: aligned,
-            });
-        }
-        push_sequence_candidate(&mut ordered, SequenceLayoutKind::OnePerLine, one_per_line);
-        push_flat_and_fill_candidates(&mut ordered, flat, fill, policy);
+        push_sequence_candidate(
+            &mut ordered,
+            SequenceLayoutKind::Packed,
+            packed,
+            packed_builder,
+            packed_hint.unwrap_or_default(),
+        );
+        push_sequence_candidate_if_allowed(
+            &mut ordered,
+            policy.allow_alignment,
+            SequenceLayoutKind::Aligned,
+            aligned,
+            aligned_builder,
+            aligned_hint.unwrap_or_default(),
+        );
+        push_sequence_candidate(
+            &mut ordered,
+            SequenceLayoutKind::OnePerLine,
+            one_per_line,
+            one_per_line_builder,
+            one_per_line_hint.unwrap_or_default(),
+        );
+        push_flat_and_fill_candidates(
+            &mut ordered,
+            flat,
+            fill,
+            flat_builder,
+            fill_builder,
+            flat_hint,
+            fill_hint,
+            policy,
+        );
     } else {
-        push_flat_and_fill_candidates(&mut ordered, flat, fill, policy);
-        push_sequence_candidate(&mut ordered, SequenceLayoutKind::Packed, packed);
-        if policy.allow_alignment
-            && let Some(aligned) = aligned
-        {
-            ordered.push(RankedSequenceCandidate {
-                kind: SequenceLayoutKind::Aligned,
-                docs: aligned,
-            });
-        }
-        push_sequence_candidate(&mut ordered, SequenceLayoutKind::OnePerLine, one_per_line);
+        push_flat_and_fill_candidates(
+            &mut ordered,
+            flat,
+            fill,
+            flat_builder,
+            fill_builder,
+            flat_hint,
+            fill_hint,
+            policy,
+        );
+        push_sequence_candidate(
+            &mut ordered,
+            SequenceLayoutKind::Packed,
+            packed,
+            packed_builder,
+            packed_hint.unwrap_or_default(),
+        );
+        push_sequence_candidate_if_allowed(
+            &mut ordered,
+            policy.allow_alignment,
+            SequenceLayoutKind::Aligned,
+            aligned,
+            aligned_builder,
+            aligned_hint.unwrap_or_default(),
+        );
+        push_sequence_candidate(
+            &mut ordered,
+            SequenceLayoutKind::OnePerLine,
+            one_per_line,
+            one_per_line_builder,
+            one_per_line_hint.unwrap_or_default(),
+        );
     }
 
-    if policy.allow_preserve
-        && let Some(preserve) = preserve
-    {
-        ordered.push(RankedSequenceCandidate {
-            kind: SequenceLayoutKind::Preserve,
-            docs: preserve,
-        });
-    }
+    push_sequence_candidate_if_allowed(
+        &mut ordered,
+        policy.allow_preserve,
+        SequenceLayoutKind::Preserve,
+        preserve,
+        preserve_builder,
+        preserve_hint.unwrap_or_default(),
+    );
 
     ordered
 }
@@ -236,9 +352,29 @@ fn push_sequence_candidate(
     ordered: &mut Vec<RankedSequenceCandidate>,
     kind: SequenceLayoutKind,
     docs: Option<Vec<DocIR>>,
+    builder: Option<SequenceDocsBuilder>,
+    hint: SequenceCandidateHint,
 ) {
-    if let Some(docs) = docs {
-        ordered.push(RankedSequenceCandidate { kind, docs });
+    if docs.is_some() || builder.is_some() {
+        ordered.push(RankedSequenceCandidate {
+            kind,
+            docs,
+            builder,
+            hint,
+        });
+    }
+}
+
+fn push_sequence_candidate_if_allowed(
+    ordered: &mut Vec<RankedSequenceCandidate>,
+    allowed: bool,
+    kind: SequenceLayoutKind,
+    docs: Option<Vec<DocIR>>,
+    builder: Option<SequenceDocsBuilder>,
+    hint: SequenceCandidateHint,
+) {
+    if allowed {
+        push_sequence_candidate(ordered, kind, docs, builder, hint);
     }
 }
 
@@ -246,25 +382,30 @@ fn push_flat_and_fill_candidates(
     ordered: &mut Vec<RankedSequenceCandidate>,
     flat: Option<Vec<DocIR>>,
     fill: Option<Vec<DocIR>>,
+    flat_builder: Option<SequenceDocsBuilder>,
+    fill_builder: Option<SequenceDocsBuilder>,
+    flat_hint: Option<SequenceCandidateHint>,
+    fill_hint: Option<SequenceCandidateHint>,
     policy: SequenceLayoutPolicy,
 ) {
     if policy.force_break_on_standalone_comments {
         return;
     }
-    if let Some(flat) = flat {
-        ordered.push(RankedSequenceCandidate {
-            kind: SequenceLayoutKind::Flat,
-            docs: flat,
-        });
-    }
-    if policy.allow_fill
-        && let Some(fill) = fill
-    {
-        ordered.push(RankedSequenceCandidate {
-            kind: SequenceLayoutKind::Fill,
-            docs: fill,
-        });
-    }
+    push_sequence_candidate(
+        ordered,
+        SequenceLayoutKind::Flat,
+        flat,
+        flat_builder,
+        flat_hint.unwrap_or_default(),
+    );
+    push_sequence_candidate_if_allowed(
+        ordered,
+        policy.allow_fill,
+        SequenceLayoutKind::Fill,
+        fill,
+        fill_builder,
+        fill_hint.unwrap_or_default(),
+    );
 }
 
 fn choose_best_sequence_candidate(
@@ -275,15 +416,43 @@ fn choose_best_sequence_candidate(
     let mut best_docs = None;
     let mut best_score = None;
 
-    for candidate in candidates {
-        let score = score_sequence_candidate(ctx, candidate.kind, &candidate.docs, policy);
+    for mut candidate in candidates {
+        let kind = candidate.kind;
+        let min_line_count = candidate.min_line_count();
+
+        if let Some(current_best) = best_score
+            && candidate_can_be_pruned(min_line_count, kind, current_best)
+        {
+            continue;
+        }
+
+        let docs = candidate.docs();
+        let score = score_sequence_candidate(ctx, kind, docs, policy, best_score);
         if best_score.is_none_or(|current| score < current) {
             best_score = Some(score);
-            best_docs = Some(candidate.docs);
+            best_docs = Some(candidate.into_docs());
         }
     }
 
     best_docs.unwrap_or_default()
+}
+
+fn candidate_can_be_pruned(
+    min_line_count: usize,
+    kind: SequenceLayoutKind,
+    best_score: SequenceCandidateScore,
+) -> bool {
+    if best_score.overflow_penalty != 0 {
+        return false;
+    }
+
+    if min_line_count > best_score.line_count {
+        return true;
+    }
+
+    min_line_count == best_score.line_count
+        && best_score.line_balance_penalty == 0
+        && sequence_layout_kind_penalty(kind) > best_score.kind_penalty
 }
 
 fn score_sequence_candidate(
@@ -291,8 +460,38 @@ fn score_sequence_candidate(
     kind: SequenceLayoutKind,
     docs: &[DocIR],
     policy: SequenceLayoutPolicy,
+    best_score: Option<SequenceCandidateScore>,
 ) -> SequenceCandidateScore {
-    let metrics = measure_docs(ctx.config, docs);
+    let candidate_kind_penalty = sequence_layout_kind_penalty(kind);
+    let limits = best_score.map(|current_best| MeasureLimits {
+        max_lines: (current_best.overflow_penalty == 0
+            && candidate_kind_penalty >= current_best.kind_penalty)
+            .then_some(current_best.line_count),
+        max_overflow_penalty: Some(current_best.overflow_penalty),
+        first_line_prefix_width: policy.first_line_prefix_width,
+    });
+    let (metrics, truncated) = if let Some(limits) = limits {
+        measure_docs_with_limits(ctx.config, docs, limits)
+    } else {
+        (measure_docs(ctx.config, docs), false)
+    };
+
+    if truncated {
+        let overflow_penalty = limits
+            .and_then(|limits| limits.max_overflow_penalty)
+            .unwrap_or_default();
+        return SequenceCandidateScore {
+            overflow_penalty: overflow_penalty.saturating_add(1),
+            line_count: limits
+                .and_then(|limits| limits.max_lines)
+                .unwrap_or_default()
+                .saturating_add(1),
+            line_balance_penalty: usize::MAX,
+            kind_penalty: candidate_kind_penalty,
+            widest_line_slack: ctx.config.layout.max_line_width,
+        };
+    }
+
     let mut line_count = 0usize;
     let mut overflow_penalty = 0usize;
     let mut widest_line_width = 0usize;
@@ -324,7 +523,7 @@ fn score_sequence_candidate(
         } else {
             0
         },
-        kind_penalty: sequence_layout_kind_penalty(kind),
+        kind_penalty: candidate_kind_penalty,
         widest_line_slack: ctx
             .config
             .layout

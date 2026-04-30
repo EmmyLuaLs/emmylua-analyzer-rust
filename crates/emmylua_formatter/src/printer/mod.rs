@@ -1,6 +1,6 @@
 mod test;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use crate::config::LuaFormatConfig;
 use crate::ir::{AlignEntry, DocIR, GroupId, ir_flat_width, syntax_text_trimmed_end};
@@ -12,6 +12,16 @@ pub struct PrintedDocMetrics {
 
 pub fn measure_docs(config: &LuaFormatConfig, docs: &[DocIR]) -> PrintedDocMetrics {
     MeasuringPrinter::new(config).measure(docs)
+}
+
+pub fn measure_docs_with_limits(
+    config: &LuaFormatConfig,
+    docs: &[DocIR],
+    limits: MeasureLimits,
+) -> (PrintedDocMetrics, bool) {
+    MeasuringPrinter::new(config)
+        .with_limits(limits)
+        .measure_with_truncation(docs)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +68,16 @@ struct MeasuringPrinter {
     group_break_map: HashMap<GroupId, bool>,
     line_suffixes: Vec<Vec<DocIR>>,
     metrics: PrintedDocMetrics,
+    limits: MeasureLimits,
+    truncated: bool,
+    overflow_penalty: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MeasureLimits {
+    pub max_lines: Option<usize>,
+    pub max_overflow_penalty: Option<usize>,
+    pub first_line_prefix_width: usize,
 }
 
 impl Printer {
@@ -90,6 +110,19 @@ impl Printer {
         }
 
         self.output
+    }
+
+    pub fn print_with_profile(mut self, docs: &[DocIR]) -> (String, PrinterProfile) {
+        self.print_docs(docs, PrintMode::Break);
+
+        if !self.line_suffixes.is_empty() {
+            let suffixes = std::mem::take(&mut self.line_suffixes);
+            for suffix in &suffixes {
+                self.print_docs(suffix, PrintMode::Break);
+            }
+        }
+
+        (self.output, self.profile)
     }
 
     fn print_docs(&mut self, docs: &[DocIR], mode: PrintMode) {
@@ -576,32 +609,51 @@ impl MeasuringPrinter {
             metrics: PrintedDocMetrics {
                 line_widths: Vec::new(),
             },
+            limits: MeasureLimits::default(),
+            truncated: false,
+            overflow_penalty: 0,
         }
     }
 
-    fn measure(mut self, docs: &[DocIR]) -> PrintedDocMetrics {
+    fn with_limits(mut self, limits: MeasureLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    fn measure(self, docs: &[DocIR]) -> PrintedDocMetrics {
+        self.measure_with_truncation(docs).0
+    }
+
+    fn measure_with_truncation(mut self, docs: &[DocIR]) -> (PrintedDocMetrics, bool) {
         self.measure_docs(docs, PrintMode::Break);
-        if !self.line_suffixes.is_empty() {
+        if !self.truncated && !self.line_suffixes.is_empty() {
             let suffixes = std::mem::take(&mut self.line_suffixes);
             for suffix in &suffixes {
                 self.measure_docs(suffix, PrintMode::Break);
             }
         }
 
-        if self.current_column > 0 || self.metrics.line_widths.is_empty() {
+        if !self.truncated && (self.current_column > 0 || self.metrics.line_widths.is_empty()) {
             self.record_line();
         }
 
-        self.metrics
+        (self.metrics, self.truncated)
     }
 
     fn measure_docs(&mut self, docs: &[DocIR], mode: PrintMode) {
         for doc in docs {
+            if self.truncated {
+                break;
+            }
             self.measure_doc(doc, mode);
         }
     }
 
     fn measure_doc(&mut self, doc: &DocIR, mode: PrintMode) {
+        if self.truncated {
+            return;
+        }
+
         match doc {
             DocIR::Text(s) => self.measure_text(s),
             DocIR::SourceNode { node, trim_end } => {
@@ -722,8 +774,35 @@ impl MeasuringPrinter {
     }
 
     fn record_line(&mut self) {
+        let line_index = self.metrics.line_widths.len();
         let line_width = self.current_column.saturating_sub(self.trailing_spaces);
         self.metrics.line_widths.push(line_width);
+
+        let effective_width = if line_index == 0 {
+            line_width + self.limits.first_line_prefix_width
+        } else {
+            line_width
+        };
+        if effective_width > self.max_line_width {
+            self.overflow_penalty += effective_width - self.max_line_width;
+        }
+
+        if self
+            .limits
+            .max_lines
+            .is_some_and(|max_lines| self.metrics.line_widths.len() > max_lines)
+        {
+            self.truncated = true;
+            return;
+        }
+
+        if self
+            .limits
+            .max_overflow_penalty
+            .is_some_and(|max_overflow_penalty| self.overflow_penalty > max_overflow_penalty)
+        {
+            self.truncated = true;
+        }
     }
 
     fn flush_line_suffixes(&mut self) {
