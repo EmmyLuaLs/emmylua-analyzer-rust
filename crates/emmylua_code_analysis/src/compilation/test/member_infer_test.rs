@@ -418,6 +418,28 @@ mod test {
     }
 
     #[test]
+    fn test_rawget_alias_guard_narrows_matching_index_expr() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@class T
+        ---@field x? integer
+
+        ---@type T
+        local t = {}
+        local get = rawget
+
+        if get(t, "x") then
+            result = t.x
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), LuaType::Integer);
+    }
+
+    #[test]
     fn test_type_guard_call_narrows_matching_index_expr() {
         let mut ws = VirtualWorkspace::new();
 

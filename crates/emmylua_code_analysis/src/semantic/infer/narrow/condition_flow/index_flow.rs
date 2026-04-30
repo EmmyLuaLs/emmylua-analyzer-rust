@@ -5,7 +5,9 @@ use crate::{
     semantic::infer::{
         VarRefId,
         narrow::{
-            condition_flow::{ConditionFlowAction, InferConditionFlow, PendingConditionNarrow},
+            condition_flow::{
+                ConditionFlowAction, FieldConditionKind, InferConditionFlow, PendingConditionNarrow,
+            },
             var_ref_id::get_var_expr_var_ref_id,
         },
     },
@@ -43,10 +45,13 @@ pub fn get_type_at_index_expr(
         return Ok(ConditionFlowAction::Continue);
     }
 
+    let idx = LuaIndexMemberExpr::IndexExpr(index_expr);
     Ok(ConditionFlowAction::Pending(
-        PendingConditionNarrow::FieldTruthy {
-            idx: LuaIndexMemberExpr::IndexExpr(index_expr),
+        PendingConditionNarrow::Field {
+            idx,
+            key_type: None,
             condition_flow,
+            kind: FieldConditionKind::Truthy,
         },
     ))
 }

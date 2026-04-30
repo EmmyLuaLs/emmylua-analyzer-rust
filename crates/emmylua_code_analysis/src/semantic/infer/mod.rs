@@ -13,7 +13,7 @@ use std::ops::Deref;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken,
-    LuaTableExpr, LuaVarExpr, NumberResult,
+    LuaSyntaxId, LuaTableExpr, LuaVarExpr, NumberResult,
 };
 use infer_binary::infer_binary_expr;
 use infer_call::infer_call_expr;
@@ -21,6 +21,7 @@ pub use infer_call::infer_call_expr_func;
 pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
 pub use infer_fail_reason::InferFailReason;
 pub use infer_index::infer_index_expr;
+pub(crate) use infer_index::try_infer_expr_for_index;
 use infer_name::infer_name_expr;
 pub use infer_name::{find_self_decl_or_member_id, infer_param};
 use infer_table::infer_table_expr;
@@ -42,30 +43,81 @@ use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
 pub type InferResult = Result<LuaType, InferFailReason>;
 pub use infer_call::InferCallFuncResult;
 
-pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> InferResult {
-    let syntax_id = expr.get_syntax_id();
-    let key = syntax_id;
-    if let Some(cache) = cache.expr_cache.get(&key) {
-        match cache {
-            CacheEntry::Cache(ty) => return Ok(ty.clone()),
-            _ => return Err(InferFailReason::RecursiveInfer),
+fn prepare_expr_cache(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    syntax_id: LuaSyntaxId,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let file_id = cache.get_file_id();
+    if cache.is_no_flow() {
+        if let Some(ty) = cache.replay_expr_type(syntax_id) {
+            return Ok(Some(ty.clone()));
+        }
+
+        if let Some(cache_entry) = cache.expr_no_flow_cache.get(&syntax_id) {
+            match cache_entry {
+                CacheEntry::Cache(Some(ty)) => return Ok(Some(ty.clone())),
+                CacheEntry::Cache(None) => return Err(InferFailReason::None),
+                CacheEntry::Ready => return Err(InferFailReason::RecursiveInfer),
+            }
+        }
+
+        let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
+        if let Some(bind_type_cache) = db
+            .get_type_index()
+            .get_type_cache(&in_filed_syntax_id.into())
+        {
+            let ty = bind_type_cache.as_type().clone();
+            cache
+                .expr_no_flow_cache
+                .insert(syntax_id, CacheEntry::Cache(Some(ty.clone())));
+            return Ok(Some(ty));
+        }
+
+        cache
+            .expr_no_flow_cache
+            .insert(syntax_id, CacheEntry::Ready);
+        return Ok(None);
+    }
+
+    if let Some(cache_entry) = cache.expr_cache.get(&syntax_id) {
+        match cache_entry {
+            CacheEntry::Cache(ty) => return Ok(Some(ty.clone())),
+            CacheEntry::Ready => return Err(InferFailReason::RecursiveInfer),
         }
     }
 
-    // for @as
-    let file_id = cache.get_file_id();
     let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
     if let Some(bind_type_cache) = db
         .get_type_index()
         .get_type_cache(&in_filed_syntax_id.into())
     {
+        let ty = bind_type_cache.as_type().clone();
         cache
             .expr_cache
-            .insert(key, CacheEntry::Cache(bind_type_cache.as_type().clone()));
-        return Ok(bind_type_cache.as_type().clone());
+            .insert(syntax_id, CacheEntry::Cache(ty.clone()));
+        return Ok(Some(ty));
     }
 
-    cache.expr_cache.insert(key, CacheEntry::Ready);
+    cache.expr_cache.insert(syntax_id, CacheEntry::Ready);
+    Ok(None)
+}
+
+pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> InferResult {
+    let no_flow = cache.is_no_flow();
+    let syntax_id = expr.get_syntax_id();
+    if let Some(result_type) = prepare_expr_cache(db, cache, syntax_id)? {
+        return Ok(result_type);
+    }
+    if no_flow
+        && matches!(expr, LuaExpr::TableExpr(_))
+        && !cache.no_flow_table_exprs.contains(&syntax_id)
+    {
+        cache
+            .expr_no_flow_cache
+            .insert(syntax_id, CacheEntry::Cache(None));
+        return Err(InferFailReason::None);
+    }
     let result_type = match expr {
         LuaExpr::CallExpr(call_expr) => infer_call_expr(db, cache, call_expr),
         LuaExpr::TableExpr(table_expr) => infer_table_expr(db, cache, table_expr),
@@ -79,37 +131,67 @@ pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> Inf
             paren_expr.get_expr().ok_or(InferFailReason::None)?,
         ),
         LuaExpr::NameExpr(name_expr) => infer_name_expr(db, cache, name_expr),
-        LuaExpr::IndexExpr(index_expr) => infer_index_expr(db, cache, index_expr, true),
+        LuaExpr::IndexExpr(index_expr) => infer_index_expr(db, cache, index_expr, !no_flow),
     };
 
     match &result_type {
         Ok(result_type) => {
-            cache
-                .expr_cache
-                .insert(key, CacheEntry::Cache(result_type.clone()));
-        }
-        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) => {
-            cache
-                .expr_cache
-                .insert(key, CacheEntry::Cache(LuaType::Unknown));
-            return Ok(LuaType::Unknown);
-        }
-        Err(InferFailReason::FieldNotFound) => {
-            if cache.get_config().analysis_phase.is_force() {
+            if no_flow {
+                cache
+                    .expr_no_flow_cache
+                    .insert(syntax_id, CacheEntry::Cache(Some(result_type.clone())));
+            } else {
                 cache
                     .expr_cache
-                    .insert(key, CacheEntry::Cache(LuaType::Nil));
+                    .insert(syntax_id, CacheEntry::Cache(result_type.clone()));
+            }
+        }
+        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) => {
+            if no_flow {
+                cache
+                    .expr_no_flow_cache
+                    .insert(syntax_id, CacheEntry::Cache(None));
+            } else {
+                cache
+                    .expr_cache
+                    .insert(syntax_id, CacheEntry::Cache(LuaType::Unknown));
+                return Ok(LuaType::Unknown);
+            }
+        }
+        Err(InferFailReason::FieldNotFound) => {
+            if no_flow {
+                cache.expr_no_flow_cache.remove(&syntax_id);
+            } else if cache.get_config().analysis_phase.is_force() {
+                cache
+                    .expr_cache
+                    .insert(syntax_id, CacheEntry::Cache(LuaType::Nil));
                 return Ok(LuaType::Nil);
             } else {
-                cache.expr_cache.remove(&key);
+                cache.expr_cache.remove(&syntax_id);
             }
         }
         _ => {
-            cache.expr_cache.remove(&key);
+            if no_flow {
+                cache.expr_no_flow_cache.remove(&syntax_id);
+            } else {
+                cache.expr_cache.remove(&syntax_id);
+            }
         }
     }
 
     result_type
+}
+
+pub(in crate::semantic) fn try_infer_expr_no_flow(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+) -> Result<Option<LuaType>, InferFailReason> {
+    match cache.with_no_flow(|cache| infer_expr(db, cache, expr)) {
+        Ok(result_type) => Ok(Some(result_type)),
+        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) => Ok(None),
+        Err(err) => Err(err),
+    }
 }
 
 fn infer_literal_expr(db: &DbIndex, config: &LuaInferCache, expr: LuaLiteralExpr) -> InferResult {
@@ -174,32 +256,6 @@ fn get_custom_type_operator(
         Some(operators)
     } else {
         None
-    }
-}
-
-pub fn infer_expr_list_value_type_at(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    exprs: &[LuaExpr],
-    value_idx: usize,
-) -> Result<Option<LuaType>, InferFailReason> {
-    let exprs_len = exprs.len();
-    if exprs_len == 0 {
-        Ok(None)
-    } else if value_idx < exprs_len {
-        Ok(
-            infer_expr_list_types(db, cache, &exprs[value_idx..], Some(1), infer_expr)?
-                .first()
-                .map(|(ty, _)| ty.clone()),
-        )
-    } else {
-        let last_idx = exprs_len - 1;
-        let offset = value_idx - last_idx;
-        Ok(
-            infer_expr_list_types(db, cache, &exprs[last_idx..], Some(offset + 1), infer_expr)?
-                .get(offset)
-                .map(|(ty, _)| ty.clone()),
-        )
     }
 }
 

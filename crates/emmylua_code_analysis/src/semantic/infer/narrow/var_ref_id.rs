@@ -7,9 +7,10 @@ use smol_str::SmolStr;
 
 use crate::{
     DbIndex, LuaAliasCallKind, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaMemberId,
-    LuaMemberKey, LuaType, infer_expr,
+    LuaMemberKey, LuaType,
     semantic::infer::{
         infer_index::get_index_expr_var_ref_id, infer_name::get_name_expr_var_ref_id,
+        try_infer_expr_no_flow,
     },
 };
 
@@ -63,9 +64,6 @@ impl VarRefId {
         }
     }
 
-    // 计算从 prefix 到当前索引引用的相对字段路径。
-    // 例如 `target.handle.name` 相对 `target` 得到 `handle.name`，
-    // 后续可在已经被判别字段窄化过的 prefix 类型上逐级投影。
     pub fn relative_index_path(&self, prefix: &VarRefId) -> Option<Vec<LuaMemberKey>> {
         let (decl_or_member_id, path) = match self {
             VarRefId::IndexRef(decl_or_member_id, path) => {
@@ -127,7 +125,7 @@ fn get_call_expr_var_ref_id(
     call_expr: &LuaCallExpr,
 ) -> Option<VarRefId> {
     let prefix_expr = call_expr.get_prefix_expr()?;
-    let maybe_func = infer_expr(db, cache, prefix_expr.clone()).ok()?;
+    let maybe_func = try_infer_expr_no_flow(db, cache, prefix_expr.clone()).ok()??;
 
     let ret = match maybe_func {
         LuaType::DocFunction(f) => f.get_ret().clone(),

@@ -57,6 +57,7 @@ pub use infer::InferFailReason;
 pub use infer::infer_call_expr_func;
 pub(crate) use infer::infer_expr;
 pub use infer::infer_param;
+pub(crate) use infer::try_infer_expr_for_index;
 use overload_resolve::resolve_signature;
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
