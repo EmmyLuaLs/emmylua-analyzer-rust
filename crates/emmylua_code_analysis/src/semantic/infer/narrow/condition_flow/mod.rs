@@ -56,6 +56,17 @@ pub(in crate::semantic) enum ConditionSubquery {
         idx: LuaIndexMemberExpr,
         right_expr_type: LuaType,
     },
+    // 查询 `target.handle` 时遇到 `target.type == "point"` 这类同级判别字段条件.
+    // 这里先对子查询中的 `target` 应用当前判别条件, 再把结果投影回 `target.handle`
+    // 避免直接禁用条件导致外层对 `target.handle` 的 nil/赋值 guard 被丢掉.
+    FieldLiteralSibling {
+        var_ref_id: VarRefId,
+        discriminant_prefix_var_ref_id: VarRefId,
+        antecedent_flow_id: FlowId,
+        subquery_condition_flow: InferConditionFlow,
+        idx: LuaIndexMemberExpr,
+        right_expr_type: LuaType,
+    },
     Correlated {
         var_ref_id: VarRefId,
         antecedent_flow_id: FlowId,
@@ -111,6 +122,7 @@ pub(in crate::semantic) enum PendingConditionNarrow {
         narrow: LuaType,
         condition_flow: InferConditionFlow,
     },
+    NarrowTo(LuaType),
     Correlated(Rc<CorrelatedConditionNarrowing>),
 }
 
@@ -245,6 +257,10 @@ impl PendingConditionNarrow {
                     crate::TypeOps::Remove.apply(db, &antecedent_type, narrow)
                 }
             },
+            PendingConditionNarrow::NarrowTo(target_type) => {
+                narrow_down_type(db, antecedent_type.clone(), target_type.clone(), None)
+                    .unwrap_or(antecedent_type)
+            }
             PendingConditionNarrow::Correlated(correlated_narrowing) => {
                 correlated_narrowing.apply(db, antecedent_type)
             }
@@ -503,41 +519,48 @@ pub(in crate::semantic::infer::narrow) fn resolve_condition_subquery(
             idx,
             right_expr_type,
             ..
+        } => Ok(narrow_union_by_field_literal_condition(
+            db,
+            cache,
+            antecedent_type,
+            idx,
+            right_expr_type,
+            subquery_condition_flow,
+        )?
+        .map(ConditionFlowAction::Result)
+        .unwrap_or(ConditionFlowAction::Continue)),
+        ConditionSubquery::FieldLiteralSibling {
+            var_ref_id,
+            discriminant_prefix_var_ref_id,
+            subquery_condition_flow,
+            idx,
+            right_expr_type,
+            ..
         } => {
-            let LuaType::Union(union_type) = antecedent_type else {
+            let Some(narrowed_prefix_type) = narrow_union_by_field_literal_condition(
+                db,
+                cache,
+                antecedent_type,
+                idx,
+                right_expr_type,
+                subquery_condition_flow,
+            )?
+            else {
                 return Ok(ConditionFlowAction::Continue);
             };
 
-            let mut opt_result = None;
-            let mut union_types = union_type.into_vec();
-            for (i, sub_type) in union_types.iter().enumerate() {
-                let member_type = match infer_member_by_member_key(
-                    db,
-                    cache,
-                    sub_type,
-                    idx.clone(),
-                    &InferGuard::new(),
-                ) {
-                    Ok(member_type) => member_type,
-                    Err(_) => continue,
-                };
-                if always_literal_equal(&member_type, &right_expr_type) {
-                    opt_result = Some(i);
-                }
-            }
-
-            let action = match subquery_condition_flow {
-                InferConditionFlow::TrueCondition => opt_result
-                    .map(|i| ConditionFlowAction::Result(union_types[i].clone()))
-                    .unwrap_or(ConditionFlowAction::Continue),
-                InferConditionFlow::FalseCondition => opt_result
-                    .map(|i| {
-                        union_types.remove(i);
-                        ConditionFlowAction::Result(LuaType::from_vec(union_types))
-                    })
-                    .unwrap_or(ConditionFlowAction::Continue),
+            let Some(projected_type) = project_relative_member_type(
+                db,
+                &narrowed_prefix_type,
+                &var_ref_id,
+                &discriminant_prefix_var_ref_id,
+            )?
+            else {
+                return Ok(ConditionFlowAction::Continue);
             };
-            Ok(action)
+            Ok(ConditionFlowAction::Pending(
+                PendingConditionNarrow::NarrowTo(projected_type),
+            ))
         }
         ConditionSubquery::Correlated {
             antecedent_flow_id,
@@ -607,6 +630,144 @@ pub(in crate::semantic::infer::narrow) fn resolve_condition_subquery(
             )
         }
     }
+}
+
+fn narrow_union_by_field_literal_condition(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    antecedent_type: LuaType,
+    idx: LuaIndexMemberExpr,
+    right_expr_type: LuaType,
+    condition_flow: InferConditionFlow,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let LuaType::Union(union_type) = antecedent_type else {
+        return Ok(None);
+    };
+
+    let union_types = union_type.into_vec();
+    let mut matched = Vec::new();
+    let mut unmatched = Vec::new();
+    let mut has_matched = false;
+    for sub_type in union_types {
+        let member_type =
+            match infer_member_by_member_key(db, cache, &sub_type, idx.clone(), &InferGuard::new())
+            {
+                Ok(member_type) => member_type,
+                Err(_) => {
+                    unmatched.push(sub_type);
+                    continue;
+                }
+            };
+
+        if always_literal_equal(&member_type, &right_expr_type) {
+            has_matched = true;
+            matched.push(sub_type);
+        } else {
+            unmatched.push(sub_type);
+        }
+    }
+
+    let result = match condition_flow {
+        InferConditionFlow::TrueCondition => matched,
+        InferConditionFlow::FalseCondition => unmatched,
+    };
+    if !has_matched {
+        Ok(None)
+    } else if result.is_empty() {
+        Ok(Some(LuaType::Never))
+    } else {
+        Ok(Some(LuaType::from_vec(result)))
+    }
+}
+
+fn project_relative_member_type(
+    db: &DbIndex,
+    prefix_type: &LuaType,
+    field_ref_id: &VarRefId,
+    prefix_ref_id: &VarRefId,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let Some(path) = field_ref_id.relative_index_path(prefix_ref_id) else {
+        return Ok(None);
+    };
+    if path.is_empty() {
+        return Ok(Some(prefix_type.clone()));
+    }
+    if prefix_type.is_never() {
+        return Ok(Some(LuaType::Never));
+    }
+
+    let mut current_type = prefix_type.clone();
+    for member_key in path {
+        let Some(projected_type) = project_member_type(db, &current_type, member_key)? else {
+            return Ok(None);
+        };
+        current_type = projected_type;
+    }
+    Ok(Some(current_type))
+}
+
+fn project_member_type(
+    db: &DbIndex,
+    prefix_type: &LuaType,
+    member_key: crate::LuaMemberKey,
+) -> Result<Option<LuaType>, InferFailReason> {
+    match prefix_type {
+        LuaType::Never => return Ok(Some(LuaType::Never)),
+        LuaType::Nil => return Ok(None),
+        LuaType::Union(union_type) => {
+            return project_union_member_type(db, union_type.into_vec(), member_key);
+        }
+        LuaType::MultiLineUnion(multi_union) => {
+            let union_type = multi_union.to_union();
+            if let LuaType::Union(union_type) = union_type {
+                return project_union_member_type(db, union_type.into_vec(), member_key);
+            }
+        }
+        _ => {}
+    }
+
+    let Some(members) =
+        crate::semantic::member::find_members_with_key(db, prefix_type, member_key, true)
+    else {
+        return Ok(None);
+    };
+    if members.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(LuaType::from_vec(
+        members.into_iter().map(|member| member.typ).collect(),
+    )))
+}
+
+fn project_union_member_type(
+    db: &DbIndex,
+    union_types: Vec<LuaType>,
+    member_key: crate::LuaMemberKey,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let mut result_type = LuaType::Never;
+    let mut has_member = false;
+    let mut has_missing_member = false;
+
+    for sub_type in union_types {
+        match project_member_type(db, &sub_type, member_key.clone())? {
+            Some(member_type) => {
+                has_member = true;
+                result_type = TypeOps::Union.apply(db, &result_type, &member_type);
+            }
+            None => {
+                has_missing_member = true;
+            }
+        }
+    }
+
+    if !has_member {
+        return Ok(None);
+    }
+    if has_missing_member {
+        result_type = TypeOps::Union.apply(db, &result_type, &LuaType::Nil);
+    }
+    Ok(Some(result_type))
 }
 
 pub(super) fn always_literal_equal(left: &LuaType, right: &LuaType) -> bool {

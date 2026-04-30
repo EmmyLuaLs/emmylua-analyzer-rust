@@ -2897,4 +2897,223 @@ _2 = a[1]
 
         assert_eq!(ws.expr_ty("after_assign"), ws.ty("Foo|Bar"));
     }
+
+    #[test]
+    fn test_issue_1048() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @alias RunMode 'run'|'skip'
+
+            --- @class Suite
+            --- @field result string?
+            --- @field mode   RunMode
+
+            --- @param a string
+            function TestSuite(a) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            --- @type Suite
+            local suite
+
+            suite.result = 'a'
+            if suite.mode == "run" then
+                TestSuite(suite.result)
+            end
+        "#,
+        ));
+    }
+
+    #[test]
+    fn test_discriminant_narrowed_sibling_field_keeps_prior_assignment_flow() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field type "point"
+            ---@field handle string?
+
+            ---@class B
+            ---@field type "unit"
+            ---@field handle integer?
+
+            ---@param a string
+            function testA(a) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param target A | B
+                function test(target)
+                    target.handle = "ready"
+                    if target.type == "point" then
+                        testA(target.handle)
+                    end
+                end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_discriminant_narrowed_sibling_field_keeps_prior_truthiness_flow() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field type "point"
+            ---@field handle string?
+
+            ---@class B
+            ---@field type "unit"
+            ---@field handle integer?
+
+            ---@param a string
+            function testA(a) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param target A | B
+                function test(target)
+                    if target.handle then
+                        if target.type == "point" then
+                            testA(target.handle)
+                        end
+                    end
+                end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_discriminant_narrowed_sibling_field_keeps_prior_nil_guard_flow() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field type "point"
+            ---@field handle string?
+
+            ---@class B
+            ---@field type "unit"
+            ---@field handle integer?
+
+            ---@param a string
+            function testA(a) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param target A | B
+                function test(target)
+                    if target.handle ~= nil then
+                        if target.type == "point" then
+                            testA(target.handle)
+                        end
+                    end
+                end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_discriminant_narrowed_sibling_field_keeps_prior_literal_guard_flow() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field type "point"
+            ---@field handle string?
+
+            ---@class B
+            ---@field type "unit"
+            ---@field handle integer?
+
+            ---@param a string
+            function testA(a) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param target A | B
+                function test(target)
+                    if target.handle == "ready" then
+                        if target.type == "point" then
+                            testA(target.handle)
+                        end
+                    end
+                end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_discriminant_false_branch_all_members_match_is_never() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field kind "foo"
+
+            ---@class B
+            ---@field kind "foo"
+            "#,
+        );
+
+        ws.def(
+            r#"
+                ---@param target A | B
+                function test(target)
+                    if target.kind ~= "foo" then
+                        impossible = target
+                    end
+                end
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("impossible"), ws.ty("never"));
+    }
+
+    #[test]
+    fn test_discriminant_sibling_projection_preserves_missing_member_nil() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field type "point"
+            ---@field handle string
+
+            ---@class C
+            ---@field type "point"
+
+            ---@param a string
+            function testA(a) end
+            "#,
+        );
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@param target A | C
+                function test(target)
+                    if target.type == "point" then
+                        testA(target.handle)
+                    end
+                end
+            "#,
+        ));
+    }
 }
