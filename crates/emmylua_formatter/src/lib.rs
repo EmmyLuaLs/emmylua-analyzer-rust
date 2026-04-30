@@ -62,6 +62,8 @@ pub fn reformat_lua_code(source: &SourceText, config: &LuaFormatConfig) -> Strin
             printer_profile.line_suffix_clones,
             ir.len(),
         );
+        eprintln!("{}", format_profile.sequence.summary());
+        eprintln!("{}", format_profile.render_hotspots.summary());
 
         output
     } else {

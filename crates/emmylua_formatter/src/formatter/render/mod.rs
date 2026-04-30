@@ -12,7 +12,7 @@ use crate::ir::{self, AlignEntry, DocIR};
 use emmylua_parser::*;
 use rowan::{TextRange, TextSize};
 
-use super::FormatContext;
+use super::{FormatContext, RenderHotspotKind, profile_render_hotspot};
 use crate::formatter::model::{
     LayoutNodePlan, RootFormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
 };
@@ -736,12 +736,12 @@ pub(super) fn render_header_exprs_with_leading_docs_from_exprs(
     );
     if exprs.len() == 1 || expr_list_plan.attach_single_value_head {
         let mut docs = leading_docs;
-        docs.push(ir::list(format_statement_value_expr(
+        docs.extend(format_statement_value_expr(
             ctx,
             plan,
             &exprs[0],
             preserve_first_multiline,
-        )));
+        ));
         return docs;
     }
 
@@ -781,12 +781,12 @@ pub(super) fn render_statement_exprs_from_exprs(
     );
     if exprs.len() == 1 || expr_list_plan.attach_single_value_head {
         let mut docs = token_right_spacing_docs(plan, leading_token);
-        docs.push(ir::list(format_statement_value_expr(
+        docs.extend(format_statement_value_expr(
             ctx,
             plan,
             &exprs[0],
             preserve_first_multiline,
-        )));
+        ));
         return docs;
     }
 
@@ -832,95 +832,98 @@ fn format_statement_expr_list(
     leading_docs: Vec<DocIR>,
     expr_docs: Vec<Vec<DocIR>>,
 ) -> Vec<DocIR> {
-    if expr_docs.is_empty() {
-        return Vec::new();
-    }
-    if expr_docs.len() == 1 {
-        let mut docs = leading_docs;
-        docs.extend(expr_docs.into_iter().next().unwrap_or_default());
-        return docs;
-    }
-
-    let enabled_candidate_count = usize::from(expr_list_plan.allow_fill)
-        + usize::from(expr_list_plan.allow_packed)
-        + usize::from(expr_list_plan.allow_one_per_line);
-
-    if enabled_candidate_count == 1 {
-        if expr_list_plan.allow_fill {
-            let fill_parts = build_statement_expr_fill_parts(comma_token, leading_docs, &expr_docs);
-            return vec![ir::group(vec![ir::indent(vec![ir::fill(fill_parts)])])];
+    profile_render_hotspot(RenderHotspotKind::StatementExpr, || {
+        if expr_docs.is_empty() {
+            return Vec::new();
+        }
+        if expr_docs.len() == 1 {
+            let mut docs = leading_docs;
+            docs.extend(expr_docs.into_iter().next().unwrap_or_default());
+            return docs;
         }
 
-        if expr_list_plan.allow_packed {
-            return build_statement_expr_packed(plan, comma_token, leading_docs, &expr_docs);
+        let enabled_candidate_count = usize::from(expr_list_plan.allow_fill)
+            + usize::from(expr_list_plan.allow_packed)
+            + usize::from(expr_list_plan.allow_one_per_line);
+
+        if enabled_candidate_count == 1 {
+            if expr_list_plan.allow_fill {
+                let fill_parts =
+                    build_statement_expr_fill_parts(comma_token, leading_docs, &expr_docs);
+                return vec![ir::group(vec![ir::indent(vec![ir::fill(fill_parts)])])];
+            }
+
+            if expr_list_plan.allow_packed {
+                return build_statement_expr_packed(plan, comma_token, leading_docs, &expr_docs);
+            }
+
+            return build_statement_expr_one_per_line(comma_token, leading_docs, &expr_docs);
         }
 
-        return build_statement_expr_one_per_line(comma_token, leading_docs, &expr_docs);
-    }
-
-    let fill = expr_list_plan.allow_fill.then(|| {
-        let fill_parts =
-            build_statement_expr_fill_parts(comma_token, leading_docs.clone(), &expr_docs);
-        vec![ir::group(vec![ir::indent(vec![ir::fill(fill_parts)])])]
-    });
-    let packed_hint = SequenceCandidateHint {
-        min_line_count: Some(1 + expr_docs.len().saturating_sub(1).div_ceil(2)),
-        ..Default::default()
-    };
-    let one_per_line_hint = SequenceCandidateHint {
-        min_line_count: Some(expr_docs.len()),
-        ..Default::default()
-    };
-    let shared_expr_docs = Rc::new(expr_docs);
-    let comma_docs = comma_token_docs(comma_token);
-    let comma_spaced_docs = token_right_spacing_docs(plan, comma_token);
-    let packed_builder = expr_list_plan.allow_packed.then(|| {
-        let shared_expr_docs = Rc::clone(&shared_expr_docs);
-        let leading_docs = leading_docs.clone();
-        let comma_docs = comma_docs.clone();
-        let comma_spaced_docs = comma_spaced_docs.clone();
-        Box::new(move || {
-            build_statement_expr_packed_from_docs(
-                leading_docs,
-                shared_expr_docs.as_slice(),
-                &comma_docs,
-                &comma_spaced_docs,
-            )
-        }) as SequenceDocsBuilder
-    });
-    let one_per_line_builder = expr_list_plan.allow_one_per_line.then(|| {
-        let shared_expr_docs = Rc::clone(&shared_expr_docs);
-        let leading_docs = leading_docs.clone();
-        let comma_docs = comma_docs.clone();
-        Box::new(move || {
-            build_statement_expr_one_per_line_from_docs(
-                leading_docs,
-                shared_expr_docs.as_slice(),
-                &comma_docs,
-            )
-        }) as SequenceDocsBuilder
-    });
-
-    choose_sequence_layout(
-        ctx,
-        SequenceLayoutCandidates {
-            fill,
-            packed_builder,
-            one_per_line_builder,
-            packed_hint: Some(packed_hint),
-            one_per_line_hint: Some(one_per_line_hint),
+        let fill = expr_list_plan.allow_fill.then(|| {
+            let fill_parts =
+                build_statement_expr_fill_parts(comma_token, leading_docs.clone(), &expr_docs);
+            vec![ir::group(vec![ir::indent(vec![ir::fill(fill_parts)])])]
+        });
+        let packed_hint = SequenceCandidateHint {
+            min_line_count: Some(1 + expr_docs.len().saturating_sub(1).div_ceil(2)),
             ..Default::default()
-        },
-        SequenceLayoutPolicy {
-            allow_alignment: false,
-            allow_fill: expr_list_plan.allow_fill,
-            allow_preserve: false,
-            prefer_preserve_multiline: false,
-            force_break_on_standalone_comments: false,
-            prefer_balanced_break_lines: expr_list_plan.prefer_balanced_break_lines,
-            first_line_prefix_width: expr_list_plan.first_line_prefix_width,
-        },
-    )
+        };
+        let one_per_line_hint = SequenceCandidateHint {
+            min_line_count: Some(expr_docs.len()),
+            ..Default::default()
+        };
+        let shared_expr_docs = Rc::new(expr_docs);
+        let comma_docs = comma_token_docs(comma_token);
+        let comma_spaced_docs = token_right_spacing_docs(plan, comma_token);
+        let packed_builder = expr_list_plan.allow_packed.then(|| {
+            let shared_expr_docs = Rc::clone(&shared_expr_docs);
+            let leading_docs = leading_docs.clone();
+            let comma_docs = comma_docs.clone();
+            let comma_spaced_docs = comma_spaced_docs.clone();
+            Box::new(move || {
+                build_statement_expr_packed_from_docs(
+                    leading_docs,
+                    shared_expr_docs.as_slice(),
+                    &comma_docs,
+                    &comma_spaced_docs,
+                )
+            }) as SequenceDocsBuilder
+        });
+        let one_per_line_builder = expr_list_plan.allow_one_per_line.then(|| {
+            let shared_expr_docs = Rc::clone(&shared_expr_docs);
+            let leading_docs = leading_docs.clone();
+            let comma_docs = comma_docs.clone();
+            Box::new(move || {
+                build_statement_expr_one_per_line_from_docs(
+                    leading_docs,
+                    shared_expr_docs.as_slice(),
+                    &comma_docs,
+                )
+            }) as SequenceDocsBuilder
+        });
+
+        choose_sequence_layout(
+            ctx,
+            SequenceLayoutCandidates {
+                fill,
+                packed_builder,
+                one_per_line_builder,
+                packed_hint: Some(packed_hint),
+                one_per_line_hint: Some(one_per_line_hint),
+                ..Default::default()
+            },
+            SequenceLayoutPolicy {
+                allow_alignment: false,
+                allow_fill: expr_list_plan.allow_fill,
+                allow_preserve: false,
+                prefer_preserve_multiline: false,
+                force_break_on_standalone_comments: false,
+                prefer_balanced_break_lines: expr_list_plan.prefer_balanced_break_lines,
+                first_line_prefix_width: expr_list_plan.first_line_prefix_width,
+            },
+        )
+    })
 }
 
 fn format_statement_expr_list_with_attached_first_multiline(
@@ -963,7 +966,7 @@ fn render_statement_exprs(
 ) -> Vec<DocIR> {
     if expr_list_plan.attach_single_value_head {
         let mut docs = token_right_spacing_docs(plan, leading_token);
-        docs.push(ir::list(expr_docs.into_iter().next().unwrap_or_default()));
+        docs.extend(expr_docs.into_iter().next().unwrap_or_default());
         return docs;
     }
 
@@ -995,6 +998,7 @@ fn build_statement_expr_fill_parts(
     expr_docs: &[Vec<DocIR>],
 ) -> Vec<DocIR> {
     let mut parts = Vec::with_capacity(expr_docs.len().saturating_mul(2));
+    let comma_fill_doc = ir::list(comma_fill_separator(comma_token));
     let mut first_chunk = leading_docs;
     let Some((first_expr, remaining)) = expr_docs.split_first() else {
         return parts;
@@ -1002,7 +1006,7 @@ fn build_statement_expr_fill_parts(
     first_chunk.extend(first_expr.clone());
     parts.push(ir::list(first_chunk));
     for expr_doc in remaining {
-        parts.push(ir::list(comma_fill_separator(comma_token)));
+        parts.push(comma_fill_doc.clone());
         parts.push(ir::list(expr_doc.clone()));
     }
     parts
@@ -1026,6 +1030,7 @@ fn build_statement_expr_one_per_line_from_docs(
     comma_docs: &[DocIR],
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
+    let comma_doc = ir::list(comma_docs.to_vec());
     let mut first_chunk = leading_docs;
     let Some((first_expr, remaining)) = expr_docs.split_first() else {
         return vec![ir::group_break(vec![ir::indent(docs)])];
@@ -1033,7 +1038,7 @@ fn build_statement_expr_one_per_line_from_docs(
     first_chunk.extend(first_expr.clone());
     docs.push(ir::list(first_chunk));
     for expr_doc in remaining {
-        docs.push(ir::list(comma_docs.to_vec()));
+        docs.push(comma_doc.clone());
         docs.push(ir::hard_line());
         docs.push(ir::list(expr_doc.clone()));
     }

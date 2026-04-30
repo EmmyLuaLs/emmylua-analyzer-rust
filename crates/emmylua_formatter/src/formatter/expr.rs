@@ -15,7 +15,7 @@ use crate::config::{
 use crate::ir;
 use ir::{AlignEntry, DocIR};
 
-use super::FormatContext;
+use super::{FormatContext, RenderHotspotKind, profile_render_hotspot};
 use super::model::{ExprSequenceLayoutPlan, RootFormatPlan, TokenSpacingExpected};
 use super::render;
 use super::sequence::{
@@ -700,31 +700,33 @@ fn format_call_arg_list(
     plan: &RootFormatPlan,
     args_list: &LuaCallArgList,
 ) -> Vec<DocIR> {
-    let args: Vec<_> = args_list.get_args().collect();
-    let collected = collect_call_arg_entries(ctx, plan, args_list);
+    profile_render_hotspot(RenderHotspotKind::CallArgs, || {
+        let args: Vec<_> = args_list.get_args().collect();
+        let collected = collect_call_arg_entries(ctx, plan, args_list);
 
-    if collected.has_comments {
-        return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
-    }
+        if collected.has_comments {
+            return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
+        }
 
-    let preserve_multiline_args = args_list.syntax().text().contains_char('\n');
-    let attach_first_arg = preserve_multiline_args && should_attach_first_call_arg(&args);
-    let arg_docs: Vec<Vec<DocIR>> = args
-        .iter()
-        .enumerate()
-        .map(|(index, arg)| {
-            format_call_arg_value_ir(
-                ctx,
-                plan,
-                arg,
-                attach_first_arg,
-                preserve_multiline_args,
-                index,
-            )
-        })
-        .collect();
+        let preserve_multiline_args = args_list.syntax().text().contains_char('\n');
+        let attach_first_arg = preserve_multiline_args && should_attach_first_call_arg(&args);
+        let arg_docs: Vec<Vec<DocIR>> = args
+            .iter()
+            .enumerate()
+            .map(|(index, arg)| {
+                format_call_arg_value_ir(
+                    ctx,
+                    plan,
+                    arg,
+                    attach_first_arg,
+                    preserve_multiline_args,
+                    index,
+                )
+            })
+            .collect();
 
-    format_call_arg_list_from_docs(ctx, plan, args_list, &args, attach_first_arg, arg_docs)
+        format_call_arg_list_from_docs(ctx, plan, args_list, &args, attach_first_arg, arg_docs)
+    })
 }
 
 fn format_call_arg_list_from_docs(
@@ -1374,54 +1376,55 @@ fn format_table_expr(
     plan: &RootFormatPlan,
     expr: &LuaTableExpr,
 ) -> Vec<DocIR> {
-    let has_direct_comments = expr
-        .syntax()
-        .children()
-        .any(|child| LuaComment::cast(child).is_some());
+    profile_render_hotspot(RenderHotspotKind::TableExpr, || {
+        let has_direct_comments = expr
+            .syntax()
+            .children()
+            .any(|child| LuaComment::cast(child).is_some());
 
-    if expr.is_empty() && !has_direct_comments {
+        if expr.is_empty() && !has_direct_comments {
+            let (open, close) = brace_tokens(expr.syntax());
+            return vec![
+                token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
+                token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
+            ];
+        }
+
+        let collected = collect_table_entries(ctx, plan, expr);
+        let has_assign_fields = collected
+            .entries
+            .iter()
+            .any(|entry| entry.eq_split.is_some());
+        let has_assign_alignment = ctx.config.align.table_field
+            && has_assign_fields
+            && table_group_requests_alignment(&collected.entries);
+
+        if collected.has_comments {
+            return format_table_with_comments(ctx, expr, collected);
+        }
+
+        let field_docs: Vec<Vec<DocIR>> = collected
+            .entries
+            .iter()
+            .map(|entry| entry.doc.clone())
+            .collect();
+        let has_multiline_field = field_docs
+            .iter()
+            .any(|docs| ir::ir_has_forced_line_break(docs));
+        let prefer_declaration_expand = should_prefer_expanded_declaration_table(expr);
         let (open, close) = brace_tokens(expr.syntax());
-        return vec![
-            token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
-            token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
-        ];
-    }
+        let comma = first_direct_token(expr.syntax(), LuaTokenKind::TkComma);
+        let layout_plan = expr_sequence_layout_plan(plan, expr.syntax());
+        let effective_expand = if prefer_declaration_expand || has_multiline_field {
+            ExpandStrategy::Always
+        } else if expr.is_empty() {
+            ExpandStrategy::Never
+        } else {
+            ctx.config.layout.table_expand.clone()
+        };
 
-    let collected = collect_table_entries(ctx, plan, expr);
-    let has_assign_fields = collected
-        .entries
-        .iter()
-        .any(|entry| entry.eq_split.is_some());
-    let has_assign_alignment = ctx.config.align.table_field
-        && has_assign_fields
-        && table_group_requests_alignment(&collected.entries);
-
-    if collected.has_comments {
-        return format_table_with_comments(ctx, expr, collected);
-    }
-
-    let field_docs: Vec<Vec<DocIR>> = collected
-        .entries
-        .iter()
-        .map(|entry| entry.doc.clone())
-        .collect();
-    let has_multiline_field = field_docs
-        .iter()
-        .any(|docs| ir::ir_has_forced_line_break(docs));
-    let prefer_declaration_expand = should_prefer_expanded_declaration_table(expr);
-    let (open, close) = brace_tokens(expr.syntax());
-    let comma = first_direct_token(expr.syntax(), LuaTokenKind::TkComma);
-    let layout_plan = expr_sequence_layout_plan(plan, expr.syntax());
-    let effective_expand = if prefer_declaration_expand || has_multiline_field {
-        ExpandStrategy::Always
-    } else if expr.is_empty() {
-        ExpandStrategy::Never
-    } else {
-        ctx.config.layout.table_expand.clone()
-    };
-
-    if has_assign_alignment {
-        return match effective_expand {
+        if has_assign_alignment {
+            return match effective_expand {
             ExpandStrategy::Always => wrap_table_multiline_docs(
                 token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
                 token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
@@ -1506,13 +1509,13 @@ fn format_table_expr(
                     )
                 }
             }
-        };
-    }
+            };
+        }
 
-    let layout = DelimitedSequenceLayout {
-        open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
-        close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
-        items: field_docs,
+        let layout = DelimitedSequenceLayout {
+            open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
+            close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
+            items: field_docs,
         strategy: effective_expand.clone(),
         preserve_multiline: layout_plan.preserve_multiline,
         flat_separator: comma_flat_separator(plan, comma.as_ref()),
@@ -1552,7 +1555,8 @@ fn format_table_expr(
         );
     }
 
-    format_delimited_sequence(ctx, layout)
+        format_delimited_sequence(ctx, layout)
+    })
 }
 
 fn should_prefer_expanded_declaration_table(expr: &LuaTableExpr) -> bool {
@@ -2490,76 +2494,80 @@ fn try_format_chain_expr(
     plan: &RootFormatPlan,
     expr: &LuaExpr,
 ) -> Option<Vec<DocIR>> {
-    let (root, segments) = collect_chain_segments(ctx, plan, expr)?;
-    if segments.len() <= 1 {
-        return None;
-    }
+    profile_render_hotspot(RenderHotspotKind::ChainExpr, || {
+        let (root, segments) = collect_chain_segments(ctx, plan, expr)?;
+        if segments.len() <= 1 {
+            return None;
+        }
 
-    let root_docs = format_expr(ctx, plan, &root);
-    let flat_tail = segments.concat();
-    let flat = {
-        let mut docs = root_docs.clone();
-        docs.extend(flat_tail);
-        docs
-    };
+        let root_docs = format_expr(ctx, plan, &root);
+        let flat_tail = segments.concat();
+        let flat = {
+            let mut docs = root_docs.clone();
+            docs.extend(flat_tail);
+            docs
+        };
 
-    if segments
-        .iter()
-        .any(|docs| ir::ir_has_forced_line_break(docs))
-    {
-        return Some(flat);
-    }
+        if segments
+            .iter()
+            .any(|docs| ir::ir_has_forced_line_break(docs))
+        {
+            return Some(flat);
+        }
 
-    if flat_docs_fit(ctx, &flat, source_line_prefix_width(expr.syntax())) {
-        return Some(flat);
-    }
+        if flat_docs_fit(ctx, &flat, source_line_prefix_width(expr.syntax())) {
+            return Some(flat);
+        }
 
-    let shared_segments = Rc::new(segments);
-    let one_per_line_hint = SequenceCandidateHint {
-        min_line_count: Some(shared_segments.len() + 1),
-        ..Default::default()
-    };
-
-    Some(choose_sequence_layout(
-        ctx,
-        SequenceLayoutCandidates {
-            flat: Some(flat),
-            fill_builder: Some(Box::new({
-                let root_docs = root_docs.clone();
-                let shared_segments = Rc::clone(&shared_segments);
-                move || {
-                    let fill_tail = ir::fill(build_fill_parts(
-                        shared_segments.as_slice(),
-                        &[ir::soft_line_or_empty()],
-                    ));
-                    vec![ir::group(vec![
-                        ir::list(root_docs.clone()),
-                        ir::indent(vec![ir::soft_line(), fill_tail]),
-                    ])]
-                }
-            })),
-            one_per_line_builder: Some(Box::new({
-                let root_docs = root_docs.clone();
-                let shared_segments = Rc::clone(&shared_segments);
-                move || {
-                    let one_per_line_tail =
-                        ir::intersperse(shared_segments.as_ref().clone(), vec![ir::hard_line()]);
-                    vec![ir::group_break(vec![
-                        ir::list(root_docs.clone()),
-                        ir::indent(vec![ir::hard_line(), ir::list(one_per_line_tail)]),
-                    ])]
-                }
-            })),
-            one_per_line_hint: Some(one_per_line_hint),
+        let shared_segments = Rc::new(segments);
+        let one_per_line_hint = SequenceCandidateHint {
+            min_line_count: Some(shared_segments.len() + 1),
             ..Default::default()
-        },
-        SequenceLayoutPolicy {
-            allow_fill: true,
-            prefer_balanced_break_lines: true,
-            first_line_prefix_width: source_line_prefix_width(expr.syntax()),
-            ..Default::default()
-        },
-    ))
+        };
+
+        Some(choose_sequence_layout(
+            ctx,
+            SequenceLayoutCandidates {
+                flat: Some(flat),
+                fill_builder: Some(Box::new({
+                    let root_docs = root_docs.clone();
+                    let shared_segments = Rc::clone(&shared_segments);
+                    move || {
+                        let fill_tail = ir::fill(build_fill_parts(
+                            shared_segments.as_slice(),
+                            &[ir::soft_line_or_empty()],
+                        ));
+                        vec![ir::group(vec![
+                            ir::list(root_docs.clone()),
+                            ir::indent(vec![ir::soft_line(), fill_tail]),
+                        ])]
+                    }
+                })),
+                one_per_line_builder: Some(Box::new({
+                    let root_docs = root_docs.clone();
+                    let shared_segments = Rc::clone(&shared_segments);
+                    move || {
+                        let one_per_line_tail = ir::intersperse(
+                            shared_segments.as_ref().clone(),
+                            vec![ir::hard_line()],
+                        );
+                        vec![ir::group_break(vec![
+                            ir::list(root_docs.clone()),
+                            ir::indent(vec![ir::hard_line(), ir::list(one_per_line_tail)]),
+                        ])]
+                    }
+                })),
+                one_per_line_hint: Some(one_per_line_hint),
+                ..Default::default()
+            },
+            SequenceLayoutPolicy {
+                allow_fill: true,
+                prefer_balanced_break_lines: true,
+                first_line_prefix_width: source_line_prefix_width(expr.syntax()),
+                ..Default::default()
+            },
+        ))
+    })
 }
 
 fn collect_chain_segments(
@@ -2686,11 +2694,12 @@ fn format_compact_call_arg_list(
 
 fn build_fill_parts(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
     let mut parts = Vec::with_capacity(items.len().saturating_mul(2));
+    let separator_doc = ir::list(separator.to_vec());
 
     for (index, item) in items.iter().enumerate() {
         parts.push(ir::list(item.clone()));
         if index + 1 < items.len() {
-            parts.push(ir::list(separator.to_vec()));
+            parts.push(separator_doc.clone());
         }
     }
 
@@ -2702,10 +2711,12 @@ fn build_fill_parts_with_leading_separator(
     separator: &[DocIR],
 ) -> Vec<DocIR> {
     let mut parts = Vec::with_capacity(items.len().saturating_mul(2) + 1);
-    parts.push(ir::list(Vec::new()));
+    let empty_doc = ir::list(Vec::new());
+    let separator_doc = ir::list(separator.to_vec());
+    parts.push(empty_doc);
 
     for item in items {
-        parts.push(ir::list(separator.to_vec()));
+        parts.push(separator_doc.clone());
         parts.push(ir::list(item.clone()));
     }
 
@@ -2717,50 +2728,52 @@ fn try_format_flat_binary_chain(
     plan: &RootFormatPlan,
     expr: &LuaBinaryExpr,
 ) -> Option<Vec<DocIR>> {
-    let op_token = expr.get_op_token()?;
-    let op = op_token.get_op();
-    let mut operands = Vec::new();
-    collect_binary_chain_operands(&LuaExpr::BinaryExpr(expr.clone()), op, &mut operands);
-    if operands.len() < 3 {
-        return None;
-    }
+    profile_render_hotspot(RenderHotspotKind::BinaryChain, || {
+        let op_token = expr.get_op_token()?;
+        let op = op_token.get_op();
+        let mut operands = Vec::new();
+        collect_binary_chain_operands(&LuaExpr::BinaryExpr(expr.clone()), op, &mut operands);
+        if operands.len() < 3 {
+            return None;
+        }
 
-    let layout_segments = Rc::new(build_binary_chain_layout_segments(
-        ctx,
-        plan,
-        &operands,
-        &op_token.syntax().clone(),
-        op,
-    ));
-    let fill_parts = build_binary_chain_fill_parts(layout_segments.as_ref());
-    let packed_hint = SequenceCandidateHint {
-        min_line_count: Some(1 + layout_segments.continuation_segments.len().div_ceil(2)),
-        ..Default::default()
-    };
-
-    Some(choose_sequence_layout(
-        ctx,
-        SequenceLayoutCandidates {
-            fill: Some(vec![ir::group(vec![ir::indent(vec![ir::fill(
-                fill_parts,
-            )])])]),
-            packed_builder: Some(Box::new({
-                let layout_segments = Rc::clone(&layout_segments);
-                move || build_binary_chain_packed(layout_segments.as_ref())
-            })),
-            packed_hint: Some(packed_hint),
+        let layout_segments = Rc::new(build_binary_chain_layout_segments(
+            ctx,
+            plan,
+            &operands,
+            &op_token.syntax().clone(),
+            op,
+        ));
+        let fill_parts = build_binary_chain_fill_parts(layout_segments.as_ref());
+        let packed_hint = SequenceCandidateHint {
+            min_line_count: Some(1 + layout_segments.continuation_segments.len().div_ceil(2)),
             ..Default::default()
-        },
-        SequenceLayoutPolicy {
-            allow_alignment: false,
-            allow_fill: true,
-            allow_preserve: false,
-            prefer_preserve_multiline: false,
-            force_break_on_standalone_comments: false,
-            prefer_balanced_break_lines: true,
-            first_line_prefix_width: source_line_prefix_width(expr.syntax()),
-        },
-    ))
+        };
+
+        Some(choose_sequence_layout(
+            ctx,
+            SequenceLayoutCandidates {
+                fill: Some(vec![ir::group(vec![ir::indent(vec![ir::fill(
+                    fill_parts,
+                )])])]),
+                packed_builder: Some(Box::new({
+                    let layout_segments = Rc::clone(&layout_segments);
+                    move || build_binary_chain_packed(layout_segments.as_ref())
+                })),
+                packed_hint: Some(packed_hint),
+                ..Default::default()
+            },
+            SequenceLayoutPolicy {
+                allow_alignment: false,
+                allow_fill: true,
+                allow_preserve: false,
+                prefer_preserve_multiline: false,
+                force_break_on_standalone_comments: false,
+                prefer_balanced_break_lines: true,
+                first_line_prefix_width: source_line_prefix_width(expr.syntax()),
+            },
+        ))
+    })
 }
 
 fn collect_binary_chain_operands(expr: &LuaExpr, op: BinaryOperator, out: &mut Vec<LuaExpr>) {
@@ -2818,11 +2831,17 @@ fn build_binary_chain_layout_segments(
 }
 
 fn build_binary_chain_fill_parts(layout_segments: &BinaryChainLayoutSegments) -> Vec<DocIR> {
-    let mut parts = Vec::new();
+    let mut parts = Vec::with_capacity(1 + layout_segments.continuation_segments.len() * 2);
+    let break_with_space = ir::list(vec![continuation_break_ir(true)]);
+    let break_without_space = ir::list(vec![continuation_break_ir(false)]);
     parts.push(ir::list(layout_segments.first_chunk.clone()));
 
     for (space_before_segment, segment) in &layout_segments.continuation_segments {
-        parts.push(ir::list(vec![continuation_break_ir(*space_before_segment)]));
+        parts.push(if *space_before_segment {
+            break_with_space.clone()
+        } else {
+            break_without_space.clone()
+        });
         parts.push(ir::list(segment.clone()));
     }
 

@@ -1,8 +1,56 @@
 use crate::config::ExpandStrategy;
 use crate::ir::{self, DocIR, ir_flat_width, ir_has_forced_line_break, ir_min_line_count};
 use crate::printer::{MeasureLimits, measure_docs, measure_docs_with_limits};
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 pub type SequenceDocsBuilder = Box<dyn FnOnce() -> Vec<DocIR>>;
+
+const SEQUENCE_LAYOUT_KIND_COUNT: usize = 6;
+
+#[derive(Debug, Clone, Default)]
+pub struct SequenceProfile {
+    pub docs_built_count: [u64; SEQUENCE_LAYOUT_KIND_COUNT],
+    pub docs_built_ns: [u64; SEQUENCE_LAYOUT_KIND_COUNT],
+    pub measured_count: [u64; SEQUENCE_LAYOUT_KIND_COUNT],
+    pub measured_ns: [u64; SEQUENCE_LAYOUT_KIND_COUNT],
+    pub pruned_count: [u64; SEQUENCE_LAYOUT_KIND_COUNT],
+    pub truncated_count: [u64; SEQUENCE_LAYOUT_KIND_COUNT],
+    pub selected_count: [u64; SEQUENCE_LAYOUT_KIND_COUNT],
+    pub flat_fast_path_hits: u64,
+    pub single_candidate_fast_path_hits: u64,
+}
+
+#[derive(Default)]
+struct SequenceProfileState {
+    enabled: bool,
+    profile: SequenceProfile,
+}
+
+fn sequence_profile_state() -> &'static Mutex<SequenceProfileState> {
+    static STATE: OnceLock<Mutex<SequenceProfileState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(SequenceProfileState::default()))
+}
+
+pub fn reset_sequence_profile(enabled: bool) {
+    let mut state = sequence_profile_state().lock().unwrap();
+    state.enabled = enabled;
+    state.profile = SequenceProfile::default();
+}
+
+pub fn take_sequence_profile() -> SequenceProfile {
+    let mut state = sequence_profile_state().lock().unwrap();
+    let profile = std::mem::take(&mut state.profile);
+    state.enabled = false;
+    profile
+}
+
+fn with_sequence_profile(mut update: impl FnMut(&mut SequenceProfile)) {
+    let mut state = sequence_profile_state().lock().unwrap();
+    if state.enabled {
+        update(&mut state.profile);
+    }
+}
 
 #[derive(Clone, Copy, Default)]
 pub struct SequenceCandidateHint {
@@ -122,6 +170,73 @@ enum SequenceLayoutKind {
     Preserve,
 }
 
+impl SequenceLayoutKind {
+    fn index(self) -> usize {
+        match self {
+            SequenceLayoutKind::Flat => 0,
+            SequenceLayoutKind::Fill => 1,
+            SequenceLayoutKind::Packed => 2,
+            SequenceLayoutKind::Aligned => 3,
+            SequenceLayoutKind::OnePerLine => 4,
+            SequenceLayoutKind::Preserve => 5,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            SequenceLayoutKind::Flat => "flat",
+            SequenceLayoutKind::Fill => "fill",
+            SequenceLayoutKind::Packed => "packed",
+            SequenceLayoutKind::Aligned => "aligned",
+            SequenceLayoutKind::OnePerLine => "one_per_line",
+            SequenceLayoutKind::Preserve => "preserve",
+        }
+    }
+}
+
+impl SequenceProfile {
+    pub fn summary(&self) -> String {
+        let mut segments = Vec::new();
+        for kind in [
+            SequenceLayoutKind::Flat,
+            SequenceLayoutKind::Fill,
+            SequenceLayoutKind::Packed,
+            SequenceLayoutKind::Aligned,
+            SequenceLayoutKind::OnePerLine,
+            SequenceLayoutKind::Preserve,
+        ] {
+            let index = kind.index();
+            let built = self.docs_built_count[index];
+            let measured = self.measured_count[index];
+            let pruned = self.pruned_count[index];
+            let truncated = self.truncated_count[index];
+            let selected = self.selected_count[index];
+            if built == 0 && measured == 0 && pruned == 0 && truncated == 0 && selected == 0 {
+                continue;
+            }
+
+            segments.push(format!(
+                "{}{{built={},build_ms={:.3},measured={},measure_ms={:.3},pruned={},truncated={},selected={}}}",
+                kind.label(),
+                built,
+                self.docs_built_ns[index] as f64 / 1_000_000.0,
+                measured,
+                self.measured_ns[index] as f64 / 1_000_000.0,
+                pruned,
+                truncated,
+                selected,
+            ));
+        }
+
+        format!(
+            "sequence_profile fast_single={} flat_hits={} {}",
+            self.single_candidate_fast_path_hits,
+            self.flat_fast_path_hits,
+            segments.join(" ")
+        )
+    }
+}
+
 struct RankedSequenceCandidate {
     kind: SequenceLayoutKind,
     docs: Option<Vec<DocIR>>,
@@ -130,21 +245,32 @@ struct RankedSequenceCandidate {
 }
 
 impl RankedSequenceCandidate {
-    fn docs(&mut self) -> &[DocIR] {
+    fn materialize_docs(&mut self) {
         if self.docs.is_none()
             && let Some(builder) = self.builder.take()
         {
-            self.docs = Some(builder());
+            let start = Instant::now();
+            let docs = builder();
+            let elapsed = start.elapsed().as_nanos() as u64;
+            let index = self.kind.index();
+            with_sequence_profile(|profile| {
+                profile.docs_built_count[index] += 1;
+                profile.docs_built_ns[index] += elapsed;
+            });
+            self.docs = Some(docs);
         }
+    }
+
+    fn docs(&mut self) -> &[DocIR] {
+        self.materialize_docs();
 
         self.docs.as_deref().unwrap_or(&[])
     }
 
     fn into_docs(mut self) -> Vec<DocIR> {
+        self.materialize_docs();
         if let Some(docs) = self.docs.take() {
             docs
-        } else if let Some(builder) = self.builder.take() {
-            builder()
         } else {
             Vec::new()
         }
@@ -218,6 +344,9 @@ pub fn choose_sequence_layout(
     }
 
     if ordered.len() == 1 {
+        with_sequence_profile(|profile| {
+            profile.single_candidate_fast_path_hits += 1;
+        });
         return ordered
             .into_iter()
             .next()
@@ -232,6 +361,10 @@ pub fn choose_sequence_layout(
                 <= ctx.config.layout.max_line_width
     });
     if flat_candidate_fits {
+        with_sequence_profile(|profile| {
+            profile.flat_fast_path_hits += 1;
+            profile.selected_count[SequenceLayoutKind::Flat.index()] += 1;
+        });
         return ordered
             .into_iter()
             .next()
@@ -423,6 +556,10 @@ fn choose_best_sequence_candidate(
         if let Some(current_best) = best_score
             && candidate_can_be_pruned(min_line_count, kind, current_best)
         {
+            let index = kind.index();
+            with_sequence_profile(|profile| {
+                profile.pruned_count[index] += 1;
+            });
             continue;
         }
 
@@ -430,6 +567,10 @@ fn choose_best_sequence_candidate(
         let score = score_sequence_candidate(ctx, kind, docs, policy, best_score);
         if best_score.is_none_or(|current| score < current) {
             best_score = Some(score);
+            let index = kind.index();
+            with_sequence_profile(|profile| {
+                profile.selected_count[index] += 1;
+            });
             best_docs = Some(candidate.into_docs());
         }
     }
@@ -463,6 +604,7 @@ fn score_sequence_candidate(
     best_score: Option<SequenceCandidateScore>,
 ) -> SequenceCandidateScore {
     let candidate_kind_penalty = sequence_layout_kind_penalty(kind);
+    let kind_index = kind.index();
     let limits = best_score.map(|current_best| MeasureLimits {
         max_lines: (current_best.overflow_penalty == 0
             && candidate_kind_penalty >= current_best.kind_penalty)
@@ -470,11 +612,20 @@ fn score_sequence_candidate(
         max_overflow_penalty: Some(current_best.overflow_penalty),
         first_line_prefix_width: policy.first_line_prefix_width,
     });
+    let measure_start = Instant::now();
     let (metrics, truncated) = if let Some(limits) = limits {
         measure_docs_with_limits(ctx.config, docs, limits)
     } else {
         (measure_docs(ctx.config, docs), false)
     };
+    let measure_elapsed = measure_start.elapsed().as_nanos() as u64;
+    with_sequence_profile(|profile| {
+        profile.measured_count[kind_index] += 1;
+        profile.measured_ns[kind_index] += measure_elapsed;
+        if truncated {
+            profile.truncated_count[kind_index] += 1;
+        }
+    });
 
     if truncated {
         let overflow_penalty = limits
@@ -637,11 +788,12 @@ fn build_flat_doc(
 
 fn build_fill_parts(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<DocIR> {
     let mut parts = Vec::with_capacity(items.len().saturating_mul(2));
+    let separator_doc = ir::list(separator.to_vec());
 
     for (index, item) in items.iter().enumerate() {
         parts.push(ir::list(item.clone()));
         if index + 1 < items.len() {
-            parts.push(ir::list(separator.to_vec()));
+            parts.push(separator_doc.clone());
         }
     }
 
