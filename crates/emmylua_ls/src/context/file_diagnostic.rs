@@ -86,7 +86,7 @@ impl FileDiagnostic {
     }
 
     /// 清除指定文件的诊断信息
-    pub fn clear_push_file_diagnostics(&self, uri: lsp_types::Uri) {
+    pub fn clear_push_file_diagnostics(&self, uri: Uri) {
         let diagnostic_param = lsp_types::PublishDiagnosticsParams {
             uri,
             diagnostics: vec![],

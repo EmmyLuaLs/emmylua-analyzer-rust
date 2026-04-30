@@ -196,7 +196,7 @@ fn build_sig_id_signature_help(
             None
         } else {
             Some(Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: MarkupKind::Markdown,
                 value: documentation_string,
             }))
         };

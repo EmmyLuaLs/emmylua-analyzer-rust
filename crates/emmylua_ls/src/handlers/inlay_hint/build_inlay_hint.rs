@@ -460,7 +460,7 @@ pub fn get_override_lsp_location(
     semantic_model: &SemanticModel,
     file_id: FileId,
     syntax_id: LuaSyntaxId,
-) -> Option<lsp_types::Location> {
+) -> Option<Location> {
     let document = semantic_model.get_document_by_file_id(file_id)?;
     let root = semantic_model.get_root_by_file_id(file_id)?;
     let node = syntax_id.to_node_from_root(root.syntax())?;

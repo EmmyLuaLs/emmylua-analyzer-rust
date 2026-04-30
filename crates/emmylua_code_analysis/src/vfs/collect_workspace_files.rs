@@ -253,7 +253,7 @@ impl WorkspaceFileMatcher {
         build_workspace_file_matcher(&workspace_folders, emmyrc, None, None)
     }
 
-    pub fn is_match(&self, path: &std::path::Path) -> bool {
+    pub fn is_match(&self, path: &Path) -> bool {
         let include_set = match wax::any(self.include.iter().map(|s| s.as_str())) {
             Ok(include_set) => include_set,
             Err(_) => {

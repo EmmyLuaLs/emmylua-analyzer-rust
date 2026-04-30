@@ -75,7 +75,7 @@ fn check_name_expr(
     value_type: LuaType,
 ) -> Option<()> {
     let semantic_decl = semantic_model.find_decl(
-        rowan::NodeOrToken::Node(name_expr.syntax().clone()),
+        NodeOrToken::Node(name_expr.syntax().clone()),
         SemanticDeclLevel::default(),
     )?;
     let source_type = match semantic_decl.clone() {
@@ -116,7 +116,7 @@ fn check_name_expr(
         check_table_expr(
             context,
             semantic_model,
-            rowan::NodeOrToken::Node(name_expr.syntax().clone()),
+            NodeOrToken::Node(name_expr.syntax().clone()),
             &expr,
             source_type.as_ref(),
         );
@@ -152,7 +152,7 @@ fn check_index_expr(
         check_table_expr(
             context,
             semantic_model,
-            rowan::NodeOrToken::Node(index_expr.syntax().clone()),
+            NodeOrToken::Node(index_expr.syntax().clone()),
             &expr,
             source_type.as_ref(),
         );
@@ -195,7 +195,7 @@ fn check_local_stat(
             check_table_expr(
                 context,
                 semantic_model,
-                rowan::NodeOrToken::Node(var.syntax().clone()),
+                NodeOrToken::Node(var.syntax().clone()),
                 expr,
                 Some(&var_type),
             );
