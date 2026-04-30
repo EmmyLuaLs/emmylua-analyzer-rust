@@ -1,20 +1,25 @@
-use emmylua_parser::LuaCallExpr;
+use emmylua_parser::{LuaCallExpr, LuaExpr};
 
 use crate::{
     DbIndex, InFiled, InferFailReason, LuaInferCache, LuaType, infer_expr,
     semantic::infer::InferResult,
 };
 
-pub fn infer_require_call(
+pub(super) fn infer_require_call(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,
 ) -> InferResult {
     let arg_list = call_expr.get_args_list().ok_or(InferFailReason::None)?;
     let first_arg = arg_list.get_args().next().ok_or(InferFailReason::None)?;
-    let require_path_type = infer_expr(db, cache, first_arg)?;
+    let require_path_type = infer_expr(db, cache, LuaExpr::from(first_arg))?;
     let module_path: String = match &require_path_type {
-        LuaType::StringConst(module_path) => module_path.as_ref().to_string(),
+        LuaType::StringConst(module_path) | LuaType::DocStringConst(module_path) => {
+            module_path.as_ref().to_string()
+        }
+        _ if cache.is_no_flow() => {
+            return Err(InferFailReason::None);
+        }
         _ => {
             return Ok(LuaType::Any);
         }

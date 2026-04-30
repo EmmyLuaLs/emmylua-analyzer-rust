@@ -10,7 +10,7 @@ use super::{
 use crate::{
     CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait,
+    LuaType, LuaTypeDeclId, LuaUnionType, NoFlowCacheEntry, TypeVisitTrait,
 };
 use crate::{
     InferGuardRef,
@@ -38,18 +38,31 @@ pub fn infer_call_expr_func(
 ) -> InferCallFuncResult {
     let syntax_id = call_expr.get_syntax_id();
     let key = (syntax_id, args_count, call_expr_type.clone());
-    if let Some(cache) = cache.call_cache.get(&key) {
-        match cache {
+    let is_no_flow = cache.is_no_flow();
+    if is_no_flow {
+        if let Some(cache_entry) = cache.call_no_flow_cache.get(&key) {
+            match cache_entry {
+                NoFlowCacheEntry::Cache(ty) => return Ok(ty.clone()),
+                NoFlowCacheEntry::Declined => return Err(InferFailReason::None),
+                NoFlowCacheEntry::Ready => return Err(InferFailReason::RecursiveInfer),
+            }
+        }
+    } else if let Some(cache_entry) = cache.call_cache.get(&key) {
+        match cache_entry {
             CacheEntry::Cache(ty) => return Ok(ty.clone()),
-            _ => return Err(InferFailReason::RecursiveInfer),
+            CacheEntry::Ready => return Err(InferFailReason::RecursiveInfer),
         }
     }
 
-    cache.call_cache.insert(key.clone(), CacheEntry::Ready);
+    if is_no_flow {
+        cache
+            .call_no_flow_cache
+            .insert(key.clone(), NoFlowCacheEntry::Ready);
+    } else {
+        cache.call_cache.insert(key.clone(), CacheEntry::Ready);
+    }
     let result = match &call_expr_type {
-        LuaType::DocFunction(func) => {
-            infer_doc_function(db, cache, func, call_expr.clone(), args_count)
-        }
+        LuaType::DocFunction(func) => infer_doc_function(db, cache, func, call_expr.clone()),
         LuaType::Signature(signature_id) => {
             infer_signature_doc_function(db, cache, *signature_id, call_expr.clone(), args_count)
         }
@@ -143,15 +156,34 @@ pub fn infer_call_expr_func(
 
     match &result {
         Ok(func_ty) => {
+            if is_no_flow {
+                cache
+                    .call_no_flow_cache
+                    .insert(key, NoFlowCacheEntry::Cache(func_ty.clone()));
+            } else {
+                cache
+                    .call_cache
+                    .insert(key, CacheEntry::Cache(func_ty.clone()));
+            }
+        }
+        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) if is_no_flow => {
             cache
-                .call_cache
-                .insert(key, CacheEntry::Cache(func_ty.clone()));
+                .call_no_flow_cache
+                .insert(key, NoFlowCacheEntry::Declined);
         }
         Err(r) if r.is_need_resolve() => {
-            cache.call_cache.remove(&key);
+            if is_no_flow {
+                cache.call_no_flow_cache.remove(&key);
+            } else {
+                cache.call_cache.remove(&key);
+            }
         }
         Err(InferFailReason::None) => {
-            cache.call_cache.remove(&key);
+            if is_no_flow {
+                cache.call_no_flow_cache.remove(&key);
+            } else {
+                cache.call_cache.remove(&key);
+            }
         }
         _ => {}
     }
@@ -181,7 +213,6 @@ fn infer_doc_function(
     cache: &mut LuaInferCache,
     func: &LuaFunctionType,
     call_expr: LuaCallExpr,
-    _: Option<usize>,
 ) -> InferCallFuncResult {
     if func.contain_tpl() {
         let result = instantiate_func_generic(db, cache, func, call_expr)?;
@@ -597,7 +628,7 @@ fn infer_intersection(
     resolve_signature(db, cache, overloads, call_expr, false, args_count)
 }
 
-pub(crate) fn unwrapp_return_type(
+fn unwrapp_return_type(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     return_type: LuaType,
@@ -721,7 +752,8 @@ pub fn infer_call_expr(
     .get_ret()
     .clone();
 
-    if let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
+    if !cache.is_no_flow()
+        && let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
         && let Some(flow_id) = tree.get_flow_id(call_expr.get_syntax_id())
         && let Some(flow_ret_type) =
             get_type_at_call_expr_inline_cast(db, cache, tree, call_expr, flow_id, ret_type.clone())
@@ -780,7 +812,8 @@ fn signature_is_generic(
 #[cfg(test)]
 mod tests {
     use crate::{
-        InferFailReason, InferGuard, LuaType, VirtualWorkspace, semantic::infer_call_expr_func,
+        InferFailReason, InferGuard, LuaType, NoFlowCacheEntry, VirtualWorkspace,
+        semantic::infer_call_expr_func,
     };
 
     #[test]
@@ -840,5 +873,47 @@ mod tests {
 
         assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
         assert_eq!(ws.expr_ty("payload"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_call_cache_no_flow_decline_is_cached() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@overload fun(x: string): string
+            ---@param x integer
+            ---@return integer
+            local function pick(x) end
+
+            local value = pick({})
+            "#,
+        );
+        let call_expr = ws.get_node::<emmylua_parser::LuaCallExpr>(file_id);
+        let semantic_model = ws.analysis.compilation.get_semantic_model(file_id).unwrap();
+        let db = semantic_model.get_db();
+        let mut cache = semantic_model.get_cache().borrow_mut();
+        let prefix_expr = call_expr.get_prefix_expr().unwrap();
+        let call_expr_type = cache
+            .with_no_flow(|cache| crate::infer_expr(db, cache, prefix_expr))
+            .unwrap();
+
+        let result = cache.with_no_flow(|cache| {
+            infer_call_expr_func(
+                db,
+                cache,
+                call_expr,
+                call_expr_type,
+                &InferGuard::new(),
+                None,
+            )
+        });
+
+        assert!(matches!(result, Err(InferFailReason::None)));
+        assert!(
+            cache
+                .call_no_flow_cache
+                .values()
+                .any(|entry| matches!(entry, NoFlowCacheEntry::Declined))
+        );
     }
 }

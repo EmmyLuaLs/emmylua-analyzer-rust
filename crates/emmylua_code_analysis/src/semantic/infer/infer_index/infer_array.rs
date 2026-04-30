@@ -5,10 +5,12 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaType, TypeOps,
-    infer_expr, semantic::infer::narrow::get_var_expr_var_ref_id,
+    semantic::infer::narrow::get_var_expr_var_ref_id,
 };
 
-pub fn infer_array_member(
+use super::infer_expr_for_index;
+
+pub(super) fn infer_array_member(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     array_type: &LuaArrayType,
@@ -52,7 +54,7 @@ pub fn infer_array_member(
             Ok(result_type)
         }
         LuaIndexKey::Expr(expr) => {
-            let expr_type = infer_expr(db, cache, expr.clone())?;
+            let expr_type = infer_expr_for_index(db, cache, expr.clone())?;
             if expr_type.is_integer() {
                 let base_type = array_type.get_base();
                 match (array_type.get_len(), expr_type) {
@@ -93,7 +95,7 @@ pub fn infer_array_member(
     }
 }
 
-pub fn check_iter_var_range(
+pub(super) fn check_iter_var_range(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     may_iter_var: &LuaExpr,
@@ -135,7 +137,7 @@ fn check_index_var_in_range(
             unary_expr
         }
         3 => {
-            let step_type = infer_expr(db, cache, iter_exprs[2].clone()).ok()?;
+            let step_type = infer_expr_for_index(db, cache, iter_exprs[2].clone()).ok()?;
             let LuaType::IntegerConst(step_value) = step_type else {
                 return None;
             };

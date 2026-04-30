@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use super::lua_member_feature::LuaMemberFeature;
-use crate::{DbIndex, FileId, GlobalId, InferFailReason, LuaInferCache, LuaType, infer_expr};
+use crate::{
+    DbIndex, FileId, GlobalId, InferFailReason, LuaInferCache, LuaType, infer_expr,
+    semantic::try_infer_expr_for_index,
+};
 
 #[derive(Debug)]
 pub struct LuaMember {
@@ -99,10 +102,29 @@ pub enum LuaMemberKey {
 }
 
 impl LuaMemberKey {
+    pub(crate) fn from_type(expr_type: LuaType) -> Self {
+        match expr_type {
+            LuaType::StringConst(s) => LuaMemberKey::Name(s.deref().clone()),
+            LuaType::DocStringConst(s) => LuaMemberKey::Name(s.deref().clone()),
+            LuaType::IntegerConst(i) => LuaMemberKey::Integer(i),
+            LuaType::DocIntegerConst(i) => LuaMemberKey::Integer(i),
+            _ => LuaMemberKey::ExprType(expr_type),
+        }
+    }
+
     pub fn from_index_key(
         db: &DbIndex,
         cache: &mut LuaInferCache,
         key: &LuaIndexKey,
+    ) -> Result<Self, InferFailReason> {
+        Self::from_index_key_with_mode(db, cache, key, false)
+    }
+
+    pub(crate) fn from_index_key_with_mode(
+        db: &DbIndex,
+        cache: &mut LuaInferCache,
+        key: &LuaIndexKey,
+        no_flow: bool,
     ) -> Result<Self, InferFailReason> {
         match key {
             LuaIndexKey::Name(name) => Ok(LuaMemberKey::Name(name.get_name_text().into())),
@@ -116,14 +138,15 @@ impl LuaMemberKey {
             }
             LuaIndexKey::Idx(idx) => Ok(LuaMemberKey::Integer(*idx as i64)),
             LuaIndexKey::Expr(expr) => {
-                let expr_type = infer_expr(db, cache, expr.clone())?;
-                match expr_type {
-                    LuaType::StringConst(s) => Ok(LuaMemberKey::Name(s.deref().clone())),
-                    LuaType::DocStringConst(s) => Ok(LuaMemberKey::Name(s.deref().clone())),
-                    LuaType::IntegerConst(i) => Ok(LuaMemberKey::Integer(i)),
-                    LuaType::DocIntegerConst(i) => Ok(LuaMemberKey::Integer(i)),
-                    _ => Ok(LuaMemberKey::ExprType(expr_type)),
-                }
+                let expr_type = if no_flow {
+                    let Some(expr_type) = try_infer_expr_for_index(db, cache, expr.clone())? else {
+                        return Err(InferFailReason::None);
+                    };
+                    expr_type
+                } else {
+                    infer_expr(db, cache, expr.clone())?
+                };
+                Ok(LuaMemberKey::from_type(expr_type))
             }
         }
     }

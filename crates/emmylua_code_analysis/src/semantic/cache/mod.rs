@@ -17,6 +17,13 @@ pub enum CacheEntry<T> {
     Cache(T),
 }
 
+#[derive(Debug)]
+pub enum NoFlowCacheEntry<T> {
+    Ready,
+    Declined,
+    Cache(T),
+}
+
 #[derive(Debug, Clone)]
 pub(in crate::semantic) struct FlowConditionInfo {
     pub expr: LuaExpr,
@@ -53,9 +60,13 @@ pub(in crate::semantic) struct FlowVarCache {
 pub struct LuaInferCache {
     file_id: FileId,
     config: CacheOptions,
+    no_flow_mode: bool,
     pub expr_cache: HashMap<LuaSyntaxId, CacheEntry<LuaType>>,
+    pub expr_no_flow_cache: HashMap<LuaSyntaxId, NoFlowCacheEntry<LuaType>>,
     pub call_cache:
         HashMap<(LuaSyntaxId, Option<usize>, LuaType), CacheEntry<Arc<LuaFunctionType>>>,
+    pub call_no_flow_cache:
+        HashMap<(LuaSyntaxId, Option<usize>, LuaType), NoFlowCacheEntry<Arc<LuaFunctionType>>>,
     pub(in crate::semantic) flow_cache_var_ref_ids: HashMap<VarRefId, u32>,
     pub(in crate::semantic) next_flow_cache_var_ref_id: u32,
     pub(in crate::semantic) flow_var_caches: Vec<FlowVarCache>,
@@ -72,8 +83,11 @@ impl LuaInferCache {
         Self {
             file_id,
             config,
+            no_flow_mode: false,
             expr_cache: HashMap::new(),
+            expr_no_flow_cache: HashMap::new(),
             call_cache: HashMap::new(),
+            call_no_flow_cache: HashMap::new(),
             flow_cache_var_ref_ids: HashMap::new(),
             next_flow_cache_var_ref_id: 0,
             flow_var_caches: Vec::new(),
@@ -94,13 +108,30 @@ impl LuaInferCache {
         self.file_id
     }
 
+    pub(in crate::semantic) fn is_no_flow(&self) -> bool {
+        self.no_flow_mode
+    }
+
+    pub(in crate::semantic) fn with_no_flow<R>(
+        &mut self,
+        f: impl FnOnce(&mut LuaInferCache) -> R,
+    ) -> R {
+        let previous_mode = std::mem::replace(&mut self.no_flow_mode, true);
+        let result = f(self);
+        self.no_flow_mode = previous_mode;
+        result
+    }
+
     pub fn set_phase(&mut self, phase: LuaAnalysisPhase) {
         self.config.analysis_phase = phase;
     }
 
     pub fn clear(&mut self) {
+        self.no_flow_mode = false;
         self.expr_cache.clear();
+        self.expr_no_flow_cache.clear();
         self.call_cache.clear();
+        self.call_no_flow_cache.clear();
         self.flow_cache_var_ref_ids.clear();
         self.next_flow_cache_var_ref_id = 0;
         self.flow_var_caches.clear();
