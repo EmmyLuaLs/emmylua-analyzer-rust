@@ -840,6 +840,21 @@ mod test {
     }
 
     #[test]
+    fn test_bare_generic_type_uses_default_with_extends() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Base<T extends number = string>
+            ---@type Base
+            Base_A = {}
+            "#,
+        );
+
+        let value_ty = ws.expr_ty("Base_A");
+        assert_eq!(ws.humanize_type(value_ty), "Base<string>");
+    }
+
+    #[test]
     fn test_partial_generic_type_fills_trailing_default() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

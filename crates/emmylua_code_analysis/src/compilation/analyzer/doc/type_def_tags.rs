@@ -1,8 +1,8 @@
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCommentOwner, LuaDocDescription,
-    LuaDocDescriptionOwner, LuaDocTagAlias, LuaDocTagAttribute, LuaDocTagClass, LuaDocTagEnum,
-    LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat, LuaNameExpr, LuaSyntaxId,
-    LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
+    LuaDocDescriptionOwner, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute, LuaDocTagClass,
+    LuaDocTagEnum, LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat, LuaNameExpr,
+    LuaSyntaxId, LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -425,6 +425,10 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
 }
 
 fn bind_def_type(analyzer: &mut DocAnalyzer, type_def: LuaType) -> Option<()> {
+    if comment_has_explicit_type_tag(analyzer) {
+        return Some(());
+    }
+
     let owner = analyzer.comment.get_owner()?;
     match owner {
         LuaAst::LuaLocalStat(local_stat) => {
@@ -469,4 +473,11 @@ fn bind_def_type(analyzer: &mut DocAnalyzer, type_def: LuaType) -> Option<()> {
         _ => {}
     }
     Some(())
+}
+
+fn comment_has_explicit_type_tag(analyzer: &DocAnalyzer) -> bool {
+    analyzer
+        .comment
+        .get_doc_tags()
+        .any(|tag| matches!(tag, LuaDocTag::Type(_)))
 }
