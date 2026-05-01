@@ -1127,9 +1127,6 @@ impl<'a> FlowTypeEngine<'a> {
             return Ok(SchedulerStep::ContinueWalk(walk));
         }
 
-        let condition = condition_ptr
-            .to_node(self.root)
-            .ok_or(InferFailReason::None)?;
         walk.antecedent_flow_id = antecedent_flow_id;
         let q = &walk.query;
         let var_ref_id = &q.var_ref_id;
@@ -1152,6 +1149,9 @@ impl<'a> FlowTypeEngine<'a> {
                 return self.fail_query(q, InferFailReason::RecursiveInfer);
             }
             None => {
+                let condition = condition_ptr
+                    .to_node(self.root)
+                    .ok_or(InferFailReason::None)?;
                 get_flow_var_cache(self.cache, cache_id)
                     .condition_cache
                     .insert(cache_key, CacheEntry::Ready);

@@ -10,8 +10,10 @@ use crate::{
 
 pub fn analyze_call(analyzer: &mut LuaAnalyzer, call_expr: LuaCallExpr) -> Option<()> {
     let prefix_expr = call_expr.clone().get_prefix_expr()?;
-    match analyzer.infer_expr(&prefix_expr) {
-        Ok(LuaType::Signature(signature_id)) => {
+    // Constructor discovery only needs the callee's declared signature. Full
+    // flow inference here replays narrowing for every call in call-dense files.
+    match analyzer.infer_expr_no_flow(&prefix_expr) {
+        Ok(Some(LuaType::Signature(signature_id))) => {
             let signature = analyzer.db.get_signature_index().get(&signature_id)?;
             for (idx, param_info) in signature.param_docs.iter() {
                 if param_info

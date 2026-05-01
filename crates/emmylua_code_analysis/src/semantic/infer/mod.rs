@@ -182,7 +182,7 @@ pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> Inf
     result_type
 }
 
-pub(in crate::semantic) fn try_infer_expr_no_flow(
+pub(crate) fn try_infer_expr_no_flow(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     expr: LuaExpr,
