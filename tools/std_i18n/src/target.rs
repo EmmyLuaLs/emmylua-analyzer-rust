@@ -1,48 +1,40 @@
-use crate::comment_syntax::{
-    LineInfo, build_tag_line_indexes, is_doc_tag_line, normalize_optional_name,
-    split_lines_with_offsets,
-};
-use crate::extractor::analyze_lua_doc_file;
-use crate::model::{ExtractedEntry, ExtractedKind, SourceSpan};
+use crate::diagnostics::Diagnostics;
+use crate::doc_text::{DocBlockView, is_doc_continue_or_line, is_doc_tag_line};
+use crate::model::{EntrySelector, ExtractedEntry, ReplaceStrategy, ReplaceTarget};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone)]
-pub(crate) struct ReplaceTarget {
-    pub key: String,
-    pub start: usize,
-    pub end: usize,
-    pub strategy: ReplaceStrategy,
-}
-
-/// 基于 analyzer 的精确 span，为单文件计算“可替换的目标列表”。
+/// 基于分析结果为单文件计算“可替换的目标列表”。
 ///
 /// 注意：这里不关心具体翻译文本，仅计算每个 key 对应的替换范围和替换策略。
 pub(crate) fn compute_replace_targets(
+    file_label: &str,
     content: &str,
-    file_name: &str,
-    include_empty: bool,
+    comments: &[crate::model::ExtractedComment],
+    entries: &[ExtractedEntry],
+    diagnostics: &mut Diagnostics,
 ) -> Vec<ReplaceTarget> {
-    let analyzed = analyze_lua_doc_file(file_name, content, include_empty);
-
     let mut targets: Vec<ReplaceTarget> = Vec::new();
     let mut used_spans: HashSet<(usize, usize)> = HashSet::new();
 
-    let mut comment_ctx: HashMap<SourceSpan, CommentReplaceContext> = HashMap::new();
-    for c in analyzed.comments {
-        let ctx = CommentReplaceContext::new(c.raw);
+    let mut comment_ctx: HashMap<crate::model::SourceSpan, CommentReplaceContext> = HashMap::new();
+    for c in comments {
+        let ctx = CommentReplaceContext::new(&c.raw);
         comment_ctx.insert(c.span, ctx);
     }
 
-    for entry in analyzed.entries {
-        let Some((start, end, strategy)) = compute_replace_target(content, &comment_ctx, &entry)
+    for entry in entries {
+        let Some((start, end, strategy)) = compute_replace_target(content, &comment_ctx, entry)
         else {
+            diagnostics.missing_replacement_target(file_label, &entry.locale_key);
             continue;
         };
         if !used_spans.insert((start, end)) {
             continue;
         }
         targets.push(ReplaceTarget {
-            key: entry.locale_key,
+            locale_key: entry.locale_key.clone(),
+            comment_span: entry.comment_span,
+            selector: entry.selector.clone(),
             start,
             end,
             strategy,
@@ -53,61 +45,53 @@ pub(crate) fn compute_replace_targets(
     targets
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum ReplaceStrategy {
-    DocBlock { indent: String },
-    LineCommentTail { prefix: String },
-}
-
 struct CommentReplaceContext {
-    raw: String,
-    lines: Vec<LineInfo>,
-    indexes: crate::comment_syntax::TagLineIndexes,
+    view: DocBlockView,
 }
 
 impl CommentReplaceContext {
-    fn new(raw: String) -> Self {
-        let lines = split_lines_with_offsets(&raw);
-        let indexes = build_tag_line_indexes(&raw, &lines);
+    fn new(raw: &str) -> Self {
         Self {
-            raw,
-            lines,
-            indexes,
+            view: DocBlockView::new(raw),
         }
+    }
+
+    fn raw(&self) -> &str {
+        &self.view.raw
     }
 }
 
 fn compute_replace_target(
     file_content: &str,
-    ctx_map: &HashMap<SourceSpan, CommentReplaceContext>,
+    ctx_map: &HashMap<crate::model::SourceSpan, CommentReplaceContext>,
     entry: &ExtractedEntry,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
     let ctx = ctx_map.get(&entry.comment_span)?;
-    match &entry.kind {
-        ExtractedKind::Desc => desc_replace_target(ctx, entry.comment_span),
-        ExtractedKind::Param { name } => tag_attached_replace_target_for_param(
+    match &entry.selector {
+        EntrySelector::Desc => desc_replace_target(ctx, entry.comment_span),
+        EntrySelector::Param { name } => tag_attached_replace_target_for_param(
             ctx,
             entry.comment_span,
             name,
             &entry.raw,
             file_content,
         ),
-        ExtractedKind::Return { index } => tag_attached_replace_target_for_return(
+        EntrySelector::Return { index } => tag_attached_replace_target_for_return(
             ctx,
             entry.comment_span,
             *index,
             &entry.raw,
             file_content,
         ),
-        ExtractedKind::Field { name } => tag_attached_replace_target_for_field(
+        EntrySelector::Field { name } => tag_attached_replace_target_for_field(
             ctx,
             entry.comment_span,
             name,
             &entry.raw,
             file_content,
         ),
-        ExtractedKind::Item { value } => union_item_replace_target(ctx, entry.comment_span, value),
-        ExtractedKind::ReturnItem { value, .. } => {
+        EntrySelector::Item { value } => union_item_replace_target(ctx, entry.comment_span, value),
+        EntrySelector::ReturnItem { value, .. } => {
             union_item_replace_target(ctx, entry.comment_span, value)
         }
     }
@@ -115,14 +99,14 @@ fn compute_replace_target(
 
 fn desc_replace_target(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
-    let (rel_start, rel_end) = if let Some((start, end)) = ctx.indexes.desc_block {
-        let start_off = ctx.lines.get(start)?.start;
-        let end_off = if end < ctx.lines.len() {
-            ctx.lines.get(end)?.start
+    let (rel_start, rel_end) = if let Some((start, end)) = ctx.view.indexes.desc_block {
+        let start_off = ctx.view.lines.get(start)?.start;
+        let end_off = if end < ctx.view.lines.len() {
+            ctx.view.lines.get(end)?.start
         } else {
-            ctx.raw.len()
+            ctx.raw().len()
         };
         (start_off, end_off)
     } else {
@@ -135,44 +119,45 @@ fn desc_replace_target(
         start,
         end,
         ReplaceStrategy::DocBlock {
-            indent: ctx.indexes.default_indent.clone(),
+            indent: ctx.view.indexes.default_indent.clone(),
         },
     ))
 }
 
 fn tag_attached_replace_target_for_param(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     name: &str,
     raw_desc: &str,
     file_content: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
-    let name = normalize_optional_name(name);
-    let tag_idx = *ctx.indexes.param_line.get(&name)?;
+    let name = crate::doc_text::normalize_optional_name(name);
+    let tag_idx = *ctx.view.indexes.param_line.get(&name)?;
 
     tag_attached_replace_target_after(ctx, comment_span, tag_idx, raw_desc, file_content)
 }
 
 fn tag_attached_replace_target_for_field(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     name: &str,
     raw_desc: &str,
     file_content: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
-    let name = normalize_optional_name(name);
-    let tag_idx = *ctx.indexes.field_line.get(&name)?;
+    let name = crate::doc_text::normalize_optional_name(name);
+    let tag_idx = *ctx.view.indexes.field_line.get(&name)?;
     tag_attached_replace_target_after(ctx, comment_span, tag_idx, raw_desc, file_content)
 }
 
 fn tag_attached_replace_target_for_return(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     index: usize,
     raw_desc: &str,
     file_content: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
     let tag_idx = ctx
+        .view
         .indexes
         .return_lines
         .get(index.saturating_sub(1))
@@ -182,7 +167,7 @@ fn tag_attached_replace_target_for_return(
 
 fn tag_attached_replace_target_after(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     tag_idx: usize,
     raw_desc: &str,
     file_content: &str,
@@ -204,7 +189,7 @@ fn tag_attached_replace_target_after(
 
 fn inline_tag_description_replace_target(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     tag_idx: usize,
     raw_desc: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
@@ -212,8 +197,8 @@ fn inline_tag_description_replace_target(
     if desc.is_empty() || desc.contains('\n') {
         return None;
     }
-    let li = *ctx.lines.get(tag_idx)?;
-    let line_text = li.text(&ctx.raw);
+    let li = *ctx.view.lines.get(tag_idx)?;
+    let line_text = li.text(ctx.raw());
     let pos = line_text.rfind(desc)?;
     let start = comment_span.start + li.start + pos;
     let end = start + desc.len();
@@ -228,11 +213,11 @@ fn inline_tag_description_replace_target(
 
 fn inline_tag_description_insert_target(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     tag_idx: usize,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
-    let li = *ctx.lines.get(tag_idx)?;
-    let line_text = li.text(&ctx.raw);
+    let li = *ctx.view.lines.get(tag_idx)?;
+    let line_text = li.text(ctx.raw());
     let start = comment_span.start + li.end;
     let prefix = if line_text.ends_with(|c: char| c.is_whitespace()) {
         ""
@@ -250,24 +235,24 @@ fn inline_tag_description_insert_target(
 
 fn attached_doc_block_target_after(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     tag_idx: usize,
     file_content: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
-    let indent = ctx.lines.get(tag_idx)?.indent(&ctx.raw);
+    let indent = ctx.view.lines.get(tag_idx)?.indent(ctx.raw());
 
     let mut start = tag_idx + 1;
-    while start < ctx.lines.len() && ctx.lines[start].text(&ctx.raw).trim().is_empty() {
+    while start < ctx.view.lines.len() && ctx.view.lines[start].text(ctx.raw()).trim().is_empty() {
         start += 1;
     }
 
     let mut end = start;
-    while end < ctx.lines.len() {
-        let t = ctx.lines[end].trim_start_text(&ctx.raw);
-        if is_doc_tag_line(t) || t.starts_with("---|") {
+    while end < ctx.view.lines.len() {
+        let t = ctx.view.lines[end].trim_start_text(ctx.raw());
+        if is_doc_tag_line(t) || is_doc_continue_or_line(t) {
             break;
         }
-        if t.starts_with("---") {
+        if crate::doc_text::is_doc_comment_line(t) {
             end += 1;
             continue;
         }
@@ -275,18 +260,18 @@ fn attached_doc_block_target_after(
     }
 
     let (abs_start, abs_end) = if start < end {
-        let rel_s = ctx.lines.get(start)?.start;
-        let rel_e = if end < ctx.lines.len() {
-            ctx.lines.get(end)?.start
+        let rel_s = ctx.view.lines.get(start)?.start;
+        let rel_e = if end < ctx.view.lines.len() {
+            ctx.view.lines.get(end)?.start
         } else {
-            ctx.raw.len()
+            ctx.raw().len()
         };
         (comment_span.start + rel_s, comment_span.start + rel_e)
     } else {
-        let rel_insert = if start < ctx.lines.len() {
-            ctx.lines.get(start)?.start
+        let rel_insert = if start < ctx.view.lines.len() {
+            ctx.view.lines.get(start)?.start
         } else {
-            ctx.raw.len()
+            ctx.raw().len()
         };
         let mut abs_insert = comment_span.start + rel_insert;
         if abs_insert == comment_span.end {
@@ -300,15 +285,15 @@ fn attached_doc_block_target_after(
 
 fn union_item_replace_target(
     ctx: &CommentReplaceContext,
-    comment_span: SourceSpan,
+    comment_span: crate::model::SourceSpan,
     value: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
-    let line_idx = ctx.indexes.union_line.get(value).copied()?;
-    if ctx.lines.is_empty() {
+    let line_idx = ctx.view.indexes.union_line.get(value).copied()?;
+    if ctx.view.lines.is_empty() {
         return None;
     }
-    let li = ctx.lines.get(line_idx.min(ctx.lines.len() - 1))?;
-    let line_text = li.text(&ctx.raw);
+    let li = ctx.view.lines.get(line_idx.min(ctx.view.lines.len() - 1))?;
+    let line_text = li.text(ctx.raw());
     if let Some(hash_pos) = line_text.find('#') {
         let start = comment_span.start + li.start + hash_pos + 1;
         let end = comment_span.start + li.end;

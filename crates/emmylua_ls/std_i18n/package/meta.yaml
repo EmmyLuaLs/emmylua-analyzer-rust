@@ -1,122 +1,48 @@
-version: 1
-line_base: 0
-col_base: 0
-file: package.lua
-entries:
-- key: packagelib.config
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 31
-      col: 43
-  hash: '99dcc3d5945c2f62'
-  context_hash: de7cc417de1b3246
-- key: packagelib.cpath
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 39
-      col: 0
-    end:
-      line: 45
-      col: 16
-  hash: e9dcc7a0e4b7131c
-  context_hash: de7cc417de1b3246
-- key: packagelib.loaded
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 49
-      col: 0
-    end:
-      line: 55
-      col: 55
-  hash: '43e40c3e74a6b5b1'
-  context_hash: de7cc417de1b3246
-- key: packagelib.loadlib
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 58
-      col: 0
-    end:
-      line: 77
-      col: 0
-  hash: '3ba962f5ba70f54e'
-  context_hash: de7cc417de1b3246
-- key: packagelib.path
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 82
-      col: 0
-    end:
-      line: 89
-      col: 21
-  hash: '71bb304c9691ddb4'
-  context_hash: de7cc417de1b3246
-- key: packagelib.preload
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 92
-      col: 0
-    end:
-      line: 96
-      col: 55
-  hash: '32d7fb054c43a96e'
-  context_hash: de7cc417de1b3246
-- key: packagelib.searchers
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 103
-      col: 0
-    end:
-      line: 145
-      col: 46
-  hash: '9715fac064e1ab65'
-  context_hash: de7cc417de1b3246
-- key: packagelib.searchpath
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 149
-      col: 0
-    end:
-      line: 166
-      col: 0
-  hash: e3a24a24ba7ced35
-  context_hash: de7cc417de1b3246
-- key: packagelib.seeall
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 175
-      col: 0
-    end:
-      line: 178
-      col: 0
-  hash: dac20d6d3e907ba3
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'package.lua'
+b:
+- a: 'package.config = [['
+  g: 'A string describing some compile-time configurations for packages. This'
+  r: [18, 0, 31, 43]
+  e:
+  - ['packagelib.config', 'd', doc, [18, 0, 31, 43], '99dcc3d5945c2f62']
+- a: 'package.cpath = ""'
+  g: 'The path used by `require` to search for a C loader.'
+  r: [39, 0, 45, 16]
+  e:
+  - ['packagelib.cpath', 'd', doc, [39, 0, 45, 16], 'e9dcc7a0e4b7131c']
+- a: 'package.loaded = {}'
+  g: 'A table used by `require` to control which modules are already'
+  r: [48, 0, 54, 55]
+  e:
+  - ['packagelib.loaded', 'd', doc, [48, 0, 54, 55], '43e40c3e74a6b5b1']
+- a: 'function package.loadlib(libname, funcname) end'
+  g: 'Dynamically links the host program with the C library `libname`.'
+  r: [57, 0, 78, 30]
+  e:
+  - ['packagelib.loadlib', 'd', doc, [57, 0, 76, 0], '3ba962f5ba70f54e']
+- a: 'package.path = ""'
+  g: 'The path used by `require` to search for a Lua loader.'
+  r: [81, 0, 88, 21]
+  e:
+  - ['packagelib.path', 'd', doc, [81, 0, 88, 21], '71bb304c9691ddb4']
+- a: 'package.preload = {}'
+  g: 'A table to store loaders for specific modules (see `require`).'
+  r: [91, 0, 95, 55]
+  e:
+  - ['packagelib.preload', 'd', doc, [91, 0, 95, 55], '32d7fb054c43a96e']
+- a: 'package.searchers = {}'
+  g: '@version > 5.2'
+  r: [101, 0, 144, 46]
+  e:
+  - ['packagelib.searchers', 'd', doc, [102, 0, 144, 46], 'd329697db2376aef']
+- a: 'function package.searchpath(name, path, sep, rep) end'
+  g: '@version > 5.2, JIT'
+  r: [147, 0, 170, 36]
+  e:
+  - ['packagelib.searchpath', 'd', doc, [148, 0, 165, 0], 'e3a24a24ba7ced35']
+- a: 'function package.seeall(module) end'
+  g: '@version 5.1, JIT'
+  r: [173, 0, 177, 23]
+  e:
+  - ['packagelib.seeall', 'd', doc, [174, 0, 177, 0], 'bcae0763f42ba887']

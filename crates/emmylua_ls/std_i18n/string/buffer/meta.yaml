@@ -1,330 +1,112 @@
-version: 1
-line_base: 0
-col_base: 0
-file: string/buffer.lua
-entries:
-- key: buffer
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 5
-      col: 0
-    end:
-      line: 119
-      col: 464
-  hash: '3f1fb290916e15e3'
-  context_hash: '0ffffd55da93e0dd'
-- key: buf
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 122
-      col: 0
-    end:
-      line: 130
-      col: 0
-  hash: b876ec9e1fe5d76e
-  context_hash: '1cdc5f30a0bc1868'
-- key: string.buffer.data
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 134
-      col: 0
-    end:
-      line: 136
-      col: 0
-  hash: '4921c42ac9b4e6ba'
-  context_hash: bf68051f04c19a9f
-- key: buf.put
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 139
-      col: 0
-    end:
-      line: 143
-      col: 0
-  hash: '6759e329f138d41c'
-  context_hash: '7f31a0cf523f80b6'
-- key: buf.putf
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 149
-      col: 0
-    end:
-      line: 151
-      col: 0
-  hash: '134720a52ebbce50'
-  context_hash: b7465420402bad59
-- key: buf.putcdata
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 157
-      col: 0
-    end:
-      line: 159
-      col: 0
-  hash: '8d9ba1e277b6ffd1'
-  context_hash: '05d9961b521b6552'
-- key: buf.set
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 165
-      col: 0
-    end:
-      line: 173
-      col: 0
-  hash: baf4bbe32512a07f
-  context_hash: a1772f562f581e13
-- key: buf.reset
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 178
-      col: 0
-    end:
-      line: 179
-      col: 0
-  hash: '6383ef1d75c1fbd4'
-  context_hash: '4e35a14b657e62d6'
-- key: buf.free
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 183
-      col: 0
-    end:
-      line: 185
-      col: 222
-  hash: b79f21749a622ecf
-  context_hash: a267daf18bd68655
-- key: buf.reserve
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 189
-      col: 0
-    end:
-      line: 207
-      col: 0
-  hash: '5b5a385de244ace2'
-  context_hash: '18f3e3808bf6d879'
-- key: buf.reserve.return.1
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 208
-      col: 26
-    end:
-      line: 208
-      col: 84
-  hash: '606a76765af0a5fe'
-  context_hash: '8e6f550d60044373'
-- key: buf.reserve.return.2
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 209
-      col: 26
-    end:
-      line: 209
-      col: 52
-  hash: c9ff7b760da02fe1
-  context_hash: '7058075639983595'
-- key: buf.commit
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 213
-      col: 0
-    end:
-      line: 214
-      col: 0
-  hash: '6f6b683663e06a74'
-  context_hash: '294d8a1b3240a9b6'
-- key: buf.skip
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 219
-      col: 0
-    end:
-      line: 220
-      col: 0
-  hash: '2baf988594a98193'
-  context_hash: c65bbb20161dd0ab
-- key: buf.get
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 224
-      col: 0
-    end:
-      line: 228
-      col: 0
-  hash: b695a85360eb9976
-  context_hash: dfe1b276c890bc83
-- key: buf.tostring
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 233
-      col: 0
-    end:
-      line: 236
-      col: 0
-  hash: be09e35cc640a966
-  context_hash: '23d9f8a403da35b3'
-- key: buf.ref
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 240
-      col: 0
-    end:
-      line: 258
-      col: 0
-  hash: ec59ac6395339033
-  context_hash: '1f64bfaedf7538d6'
-- key: buf.ref.return.1
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 258
-      col: 26
-    end:
-      line: 258
-      col: 90
-  hash: '14518ff520084405'
-  context_hash: '0b00828802cffd98'
-- key: buf.ref.return.2
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 259
-      col: 23
-    end:
-      line: 259
-      col: 59
-  hash: afbd7c3182b59c06
-  context_hash: ccd63ba92ed9427c
-- key: buf.encode
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 262
-      col: 0
-    end:
-      line: 265
-      col: 0
-  hash: a38b8742aae7dbe7
-  context_hash: c397c8c88a124c49
-- key: buf.decode
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 270
-      col: 0
-    end:
-      line: 280
-      col: 0
-  hash: '4e30c26d847cb8a9'
-  context_hash: '1f16a1deba621209'
-- key: buffer.encode
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 284
-      col: 0
-    end:
-      line: 287
-      col: 0
-  hash: cc0765fe93da76b2
-  context_hash: a78581f832d11af0
-- key: buffer.decode
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 291
-      col: 0
-    end:
-      line: 300
-      col: 0
-  hash: '33e0c0c0e0812524'
-  context_hash: '4247bd38d3781068'
-- key: buffer.new
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 307
-      col: 0
-    end:
-      line: 313
-      col: 0
-  hash: '570e5bee37744a67'
-  context_hash: '2a2cd9d61df2a763'
-- key: string.buffer.serialization.opts
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 318
-      col: 0
-    end:
-      line: 349
-      col: 0
-  hash: e021fbee65992fe5
-  context_hash: '556dcc131bdfaac4'
+v: 2
+f: 'string/buffer.lua'
+b:
+- a: 'local buffer = {}'
+  g: '@version JIT'
+  r: [4, 0, 119, 464]
+  e:
+  - ['buffer', 'd', doc, [5, 0, 52, 0], '55b93760ea623918']
+- a: 'local buf = {}'
+  g: 'A buffer object is a garbage-collected Lua object. After creation with `buffer.new()`, it can (and should) be reused for many operations. When the last reference to a buffer object is gone, it will eventually be freed by the garbage collector, along with the allocated buffer space.'
+  r: [122, 0, 131, 31]
+  e:
+  - ['buf', 'd', doc, [122, 0, 130, 0], 'de3a26bc54bff1d6']
+- a: '--- Appends a string str, a number num or any object obj with a `__tostring` metamethod to the buffer. Multiple arguments are appended in the given order.'
+  g: 'A string, number, or any object obj with a __tostring metamethod to the buffer.'
+  r: [134, 0, 136, 49]
+  e:
+  - ['string.buffer.data', 'd', doc, [134, 0, 136, 0], 'f38347d61f3333ce']
+- a: 'function buf:put(data, ...) end'
+  g: 'Appends a string str, a number num or any object obj with a `__tostring` metamethod to the buffer. Multiple arguments are appended in the given order.'
+  r: [138, 0, 144, 25]
+  e:
+  - ['buf.put', 'd', doc, [138, 0, 142, 0], 'c71066ba590d7c28']
+- a: 'function buf:putf(format, ...) end'
+  g: 'Appends the formatted arguments to the buffer. The format string supports the same options as string.format().'
+  r: [147, 0, 151, 25]
+  e:
+  - ['buf.putf', 'd', doc, [147, 0, 149, 0], '36710e3fdfe0983c']
+- a: 'function buf:putcdata(cdata, len) end'
+  g: 'Appends the given len number of bytes from the memory pointed to by the FFI cdata object to the buffer. The object needs to be convertible to a (constant) pointer.'
+  r: [154, 0, 158, 25]
+  e:
+  - ['buf.putcdata', 'd', doc, [154, 0, 156, 0], '07100e103b038161']
+- a: 'function buf:set(str) end'
+  g: 'This method allows zero-copy consumption of a string or an FFI cdata object as a buffer. It stores a reference to the passed string str or the FFI cdata object in the buffer. Any buffer space originally allocated is freed. This is not an append operation, unlike the `buf:put*()` methods.'
+  r: [161, 0, 171, 86]
+  e:
+  - ['buf.set', 'd', doc, [161, 0, 169, 0], 'ff3f9876df0cc45b']
+- a: 'function buf:reset() end'
+  g: 'Reset (empty) the buffer. The allocated buffer space is not freed and may be reused.'
+  r: [174, 0, 175, 25]
+  e:
+  - ['buf.reset', 'd', doc, [174, 0, 175, 0], 'db27c70f189c1711']
+- a: 'function buf:free() end'
+  g: 'The buffer space of the buffer object is freed. The object itself remains intact, empty and may be reused.'
+  r: [178, 0, 180, 222]
+  e:
+  - ['buf.free', 'd', doc, [178, 0, 180, 222], '78a6f3b393a58abb']
+- a: 'function buf:reserve(size) end'
+  g: 'The reserve method reserves at least size bytes of write space in the buffer. It returns an uint8_t * FFI cdata pointer ptr that points to this space.'
+  r: [183, 0, 203, 90]
+  e:
+  - ['buf.reserve', 'd', doc, [183, 0, 201, 0], 'f202893dcbed2ecc']
+  - ['buf.reserve.return.1', 'r:1', tail, [202, 27, 202, 85], '606a76765af0a5fe']
+  - ['buf.reserve.return.2', 'r:2', tail, [203, 27, 203, 90], 'd32adfadef7993c7']
+- a: 'function buf:commit(used) end'
+  g: 'Appends the used bytes of the previously returned write space to the buffer data.'
+  r: [206, 0, 208, 25]
+  e:
+  - ['buf.commit', 'd', doc, [206, 0, 207, 0], '33e92c6bb65210f1']
+- a: 'function buf:skip(len) end'
+  g: 'Skips (consumes) len bytes from the buffer up to the current length of the buffer data.'
+  r: [211, 0, 213, 25]
+  e:
+  - ['buf.skip', 'd', doc, [211, 0, 212, 0], 'e4f2c1fb9c15a6c8']
+- a: 'function buf:get(len, ...) end'
+  g: 'Consumes the buffer data and returns one or more strings. If called without arguments, the whole buffer data is consumed. If called with a number, up to `len` bytes are consumed. A `nil` argument consumes the remaining buffer space (this only makes sense as the last argument). Multiple arguments consume the buffer data in the given order.'
+  r: [216, 0, 222, 22]
+  e:
+  - ['buf.get', 'd', doc, [216, 0, 220, 0], 'fdd07da6e229f9a6']
+- a: 'function buf:tostring() end'
+  g: 'Creates a string from the buffer data, but doesn''t consume it. The buffer remains unchanged.'
+  r: [225, 0, 228, 18]
+  e:
+  - ['buf.tostring', 'd', doc, [225, 0, 228, 0], 'e510351610d6f28b']
+- a: 'function buf:ref() end'
+  g: 'Returns an uint8_t * FFI cdata pointer ptr that points to the buffer data. The length of the buffer data in bytes is returned in len.'
+  r: [231, 0, 250, 94]
+  e:
+  - ['buf.ref', 'd', doc, [231, 0, 249, 0], 'de9f9dda6acff90d']
+  - ['buf.ref.return.1', 'r:1', tail, [249, 27, 249, 91], '14518ff520084405']
+  - ['buf.ref.return.2', 'r:2', tail, [250, 27, 250, 94], '71b35f4504ca8538']
+- a: 'function buf:encode(obj) end'
+  g: 'Serializes (encodes) the Lua object to the buffer'
+  r: [253, 0, 257, 25]
+  e:
+  - ['buf.encode', 'd', doc, [253, 0, 256, 0], '472abd6e09286a78']
+- a: 'function buf:decode() end'
+  g: 'De-serializes one object from the buffer.'
+  r: [260, 0, 270, 38]
+  e:
+  - ['buf.decode', 'd', doc, [260, 0, 270, 0], 'f0cb3f74417d2965']
+- a: 'function buffer.encode(obj) end'
+  g: 'Serializes (encodes) the Lua object obj'
+  r: [273, 0, 277, 18]
+  e:
+  - ['buffer.encode', 'd', doc, [273, 0, 276, 0], '277b82c3a9eb685b']
+- a: 'function buffer.decode(str) end'
+  g: 'De-serializes (decodes) the string to a Lua object'
+  r: [280, 0, 290, 38]
+  e:
+  - ['buffer.decode', 'd', doc, [280, 0, 289, 0], '5ca95cda9df49f6d']
+- a: 'function buffer.new(size, options) end'
+  g: 'Creates a new buffer object.'
+  r: [293, 0, 301, 25]
+  e:
+  - ['buffer.new', 'd', doc, [293, 0, 299, 0], 'd95e71569079fe6f']
+- a: 'return buffer'
+  g: 'Serialization Options'
+  r: [304, 0, 337, 28]
+  e:
+  - ['string.buffer.serialization.opts', 'd', doc, [304, 0, 335, 0], '995b77870d74adec']

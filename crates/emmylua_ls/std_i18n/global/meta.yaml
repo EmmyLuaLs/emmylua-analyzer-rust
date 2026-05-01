@@ -1,707 +1,193 @@
-version: 1
-line_base: 0
-col_base: 0
-file: global.lua
-entries:
-- key: assert
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 15
-      col: 0
-    end:
-      line: 20
-      col: 0
-  hash: f03a861ce68b284a
-  context_hash: de7cc417de1b3246
-- key: std.collectgarbage_opt.item.collect
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 27
-      col: 16
-    end:
-      line: 27
-      col: 86
-  hash: '229e8488ba07e8ea'
-  context_hash: '2a8e36ec8d36c53c'
-- key: std.collectgarbage_opt.item.stop
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 28
-      col: 13
-    end:
-      line: 28
-      col: 146
-  hash: '96adf3b32ca6e135'
-  context_hash: e123261b824452c7
-- key: std.collectgarbage_opt.item.restart
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 29
-      col: 16
-    end:
-      line: 29
-      col: 71
-  hash: b48fe98ac44cdf12
-  context_hash: baca979775fae0df
-- key: std.collectgarbage_opt.item.count
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 30
-      col: 14
-    end:
-      line: 30
-      col: 197
-  hash: '177a9a4fd31e4486'
-  context_hash: d8e5af7a88d3b8ff
-- key: std.collectgarbage_opt.item.step
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 31
-      col: 13
-    end:
-      line: 31
-      col: 326
-  hash: b4f96b76a038d88b
-  context_hash: '15f7c492d32e7ef7'
-- key: std.collectgarbage_opt.item.setpause
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 32
-      col: 17
-    end:
-      line: 32
-      col: 131
-  hash: '3727b48717039660'
-  context_hash: '3531792cf8357d54'
-- key: std.collectgarbage_opt.item.setstepmul
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 33
-      col: 19
-    end:
-      line: 33
-      col: 142
-  hash: '8a91801d3f89e5cb'
-  context_hash: b97374f2edd288c9
-- key: std.collectgarbage_opt.item.incremental
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 34
-      col: 20
-    end:
-      line: 34
-      col: 177
-  hash: b74ab58b9c276d37
-  context_hash: f40f73f844e18fe1
-- key: std.collectgarbage_opt.item.generational
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 35
-      col: 21
-    end:
-      line: 35
-      col: 173
-  hash: '6f28b79368adc435'
-  context_hash: '3c71032e0436c962'
-- key: std.collectgarbage_opt.item.isrunning
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 36
-      col: 18
-    end:
-      line: 36
-      col: 101
-  hash: ffcec93fe4c3260d
-  context_hash: e728581e6d3b89a0
-- key: std.collectgarbage.param.item.minormul
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 39
-      col: 17
-    end:
-      line: 39
-      col: 34
-  hash: '17c912903d2b33e7'
-  context_hash: '347dbdc05e9d61fc'
-- key: std.collectgarbage.param.item.majorminor
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 40
-      col: 19
-    end:
-      line: 40
-      col: 37
-  hash: ca29b001e432351d
-  context_hash: aae259d24bc4e5cd
-- key: std.collectgarbage.param.item.minormajor
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 41
-      col: 19
-    end:
-      line: 41
-      col: 37
-  hash: '45e16901f0e1c945'
-  context_hash: '8d26b6ec034acd6d'
-- key: std.collectgarbage.param.item.pause
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 42
-      col: 14
-    end:
-      line: 42
-      col: 30
-  hash: '035f4092820a2d28'
-  context_hash: eaf41c3acfd833e4
-- key: std.collectgarbage.param.item.stepmul
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 43
-      col: 16
-    end:
-      line: 43
-      col: 32
-  hash: f0701f65388feb8c
-  context_hash: f1f84e457e031946
-- key: std.collectgarbage.param.item.stepsize
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 44
-      col: 17
-    end:
-      line: 44
-      col: 27
-  hash: '92c7a59e2065582e'
-  context_hash: '24078253f4b35579'
-- key: collectgarbage
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 46
-      col: 0
-    end:
-      line: 73
-      col: 0
-  hash: bd476771d729520d
-  context_hash: de7cc417de1b3246
-- key: dofile
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 79
-      col: 0
-    end:
-      line: 85
-      col: 0
-  hash: '17eaac532d0d8b7f'
-  context_hash: de7cc417de1b3246
-- key: error
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 89
-      col: 0
-    end:
-      line: 98
-      col: 0
-  hash: '2ed38bdf5647d7e6'
-  context_hash: de7cc417de1b3246
-- key: _G
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 102
-      col: 0
-    end:
-      line: 106
-      col: 0
-  hash: ed6170e60c7d1e6c
-  context_hash: de7cc417de1b3246
-- key: getmetatable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 109
-      col: 0
-    end:
-      line: 113
-      col: 0
-  hash: fb34ddfee855c143
-  context_hash: de7cc417de1b3246
-- key: ipairs
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 117
-      col: 0
-    end:
-      line: 123
-      col: 0
-  hash: '81cc1b7ba3316736'
-  context_hash: de7cc417de1b3246
-- key: std.loadmode.item.b
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 129
-      col: 10
-    end:
-      line: 129
-      col: 29
-  hash: a7b23db765875ab4
-  context_hash: d05225bac089de1c
-- key: std.loadmode.item.t
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 130
-      col: 10
-    end:
-      line: 130
-      col: 27
-  hash: '3f888b84d5ff9cb6'
-  context_hash: '4c16fff1406dca0c'
-- key: std.loadmode.item.bt
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 131
-      col: 11
-    end:
-      line: 131
-      col: 32
-  hash: '6281255a2e74d843'
-  context_hash: '36a85bed624ee77b'
-- key: load
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 133
-      col: 0
-    end:
-      line: 162
-      col: 0
-  hash: '4ab0788de1108e49'
-  context_hash: de7cc417de1b3246
-- key: loadstring
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 171
-      col: 0
-    end:
-      line: 174
-      col: 0
-  hash: '284dd88d29965057'
-  context_hash: de7cc417de1b3246
-- key: loadfile
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 182
-      col: 0
-    end:
-      line: 185
-      col: 0
-  hash: '2509b32c0559be2b'
-  context_hash: de7cc417de1b3246
-- key: module
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 198
-      col: 0
-    end:
-      line: 202
-      col: 0
-  hash: b87ca1c9dd074609
-  context_hash: de7cc417de1b3246
-- key: next
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 206
-      col: 0
-    end:
-      line: 223
-      col: 0
-  hash: '0c06915c244a9fc7'
-  context_hash: de7cc417de1b3246
-- key: pairs
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 230
-      col: 0
-    end:
-      line: 241
-      col: 0
-  hash: '05ca1b5e9206cb2b'
-  context_hash: de7cc417de1b3246
-- key: pcall
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 246
-      col: 0
-    end:
-      line: 253
-      col: 0
-  hash: fc6ad4dc0c8dd9eb
-  context_hash: de7cc417de1b3246
-- key: print
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 260
-      col: 0
-    end:
-      line: 265
-      col: 35
-  hash: bb19bb9c28d20e8b
-  context_hash: de7cc417de1b3246
-- key: rawequal
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 268
-      col: 0
-    end:
-      line: 271
-      col: 0
-  hash: '40261afe4c5e2460'
-  context_hash: de7cc417de1b3246
-- key: rawget
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 276
-      col: 0
-    end:
-      line: 279
-      col: 0
-  hash: '3d0e3f29adb567bf'
-  context_hash: de7cc417de1b3246
-- key: rawlen
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 286
-      col: 0
-    end:
-      line: 289
-      col: 0
-  hash: '3bb95a6d6f8d5477'
-  context_hash: de7cc417de1b3246
-- key: rawset
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 293
-      col: 0
-    end:
-      line: 297
-      col: 0
-  hash: c726cd5a8ed490a8
-  context_hash: de7cc417de1b3246
-- key: require
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 303
-      col: 0
-    end:
-      line: 333
-      col: 0
-  hash: '1dd74d532228044d'
-  context_hash: de7cc417de1b3246
-- key: select
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 337
-      col: 0
-    end:
-      line: 342
-      col: 0
-  hash: '70e32f7a9c40be28'
-  context_hash: de7cc417de1b3246
-- key: setmetatable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 380
-      col: 0
-    end:
-      line: 387
-      col: 0
-  hash: '6cb51df47e53ad08'
-  context_hash: de7cc417de1b3246
-- key: tonumber
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 393
-      col: 0
-    end:
-      line: 408
-      col: 0
-  hash: '23e0d900a782af87'
-  context_hash: de7cc417de1b3246
-- key: tostring
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 414
-      col: 0
-    end:
-      line: 422
-      col: 0
-  hash: adc137af28e53d37
-  context_hash: de7cc417de1b3246
-- key: type
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 436
-      col: 0
-    end:
-      line: 441
-      col: 0
-  hash: '0800556f7051218b'
-  context_hash: de7cc417de1b3246
-- key: _VERSION
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 445
-      col: 0
-    end:
-      line: 447
-      col: 75
-  hash: '97152d055df02054'
-  context_hash: de7cc417de1b3246
-- key: xpcall
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 450
-      col: 0
-    end:
-      line: 453
-      col: 0
-  hash: '8f9f463f8371a2f0'
-  context_hash: de7cc417de1b3246
-- key: warn
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 470
-      col: 0
-    end:
-      line: 477
-      col: 0
-  hash: b218e0d598d2986d
-  context_hash: de7cc417de1b3246
-- key: _ENV
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 484
-      col: 0
-    end:
-      line: 486
-      col: 0
-  hash: '450d61ac9994e275'
-  context_hash: ff924cd5098e706f
-- key: setfenv
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 492
-      col: 0
-    end:
-      line: 494
-      col: 0
-  hash: '79ac6333c6044892'
-  context_hash: de7cc417de1b3246
-- key: setfenv.param.f
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 494
-      col: 29
-    end:
-      line: 494
-      col: 81
-  hash: '45534d1ea636fab4'
-  context_hash: d75ed448e13441d6
-- key: setfenv.param.env
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 495
-      col: 20
-    end:
-      line: 495
-      col: 68
-  hash: '405f4286ea2c7329'
-  context_hash: '152a311703ac5ea8'
-- key: getfenv
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 499
-      col: 0
-    end:
-      line: 501
-      col: 0
-  hash: '3c8b579e5297fcd6'
-  context_hash: de7cc417de1b3246
-- key: getfenv.param.f
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 501
-      col: 29
-    end:
-      line: 501
-      col: 79
-  hash: '61d794dd7c91d37d'
-  context_hash: '467b302d8fefaf8f'
-- key: getfenv.return.1
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 502
-      col: 21
-    end:
-      line: 502
-      col: 74
-  hash: '41910412fe03bad4'
-  context_hash: '570039d3c1c43398'
+v: 2
+f: 'global.lua'
+b:
+- a: 'function assert(v, ...) end'
+  g: 'Calls error if the value of its argument `v` is false (i.e., **nil** or'
+  r: [15, 0, 23, 33]
+  e:
+  - ['assert', 'd', doc, [15, 0, 20, 0], 'f03a861ce68b284a']
+- a: '--- @alias std.collectgarbage.param'
+  g: '@alias std.collectgarbage_opt'
+  r: [26, 0, 36, 105]
+  e:
+  - ['std.collectgarbage_opt.item.collect', 'i:collect', tail, [27, 23, 27, 93], '229e8488ba07e8ea', ' ']
+  - ['std.collectgarbage_opt.item.stop', 'i:stop', tail, [28, 22, 28, 155], '96adf3b32ca6e135', ' ']
+  - ['std.collectgarbage_opt.item.restart', 'i:restart', tail, [29, 22, 29, 77], 'b48fe98ac44cdf12', ' ']
+  - ['std.collectgarbage_opt.item.count', 'i:count', tail, [30, 22, 30, 205], '177a9a4fd31e4486', ' ']
+  - ['std.collectgarbage_opt.item.step', 'i:step', tail, [31, 22, 31, 335], 'b4f96b76a038d88b', ' ']
+  - ['std.collectgarbage_opt.item.setpause', 'i:setpause', tail, [32, 22, 32, 136], '3727b48717039660', ' ']
+  - ['std.collectgarbage_opt.item.setstepmul', 'i:setstepmul', tail, [33, 22, 33, 145], '8a91801d3f89e5cb', ' ']
+  - ['std.collectgarbage_opt.item.incremental', 'i:incremental', tail, [34, 22, 34, 179], 'b74ab58b9c276d37', ' ']
+  - ['std.collectgarbage_opt.item.generational', 'i:generational', tail, [35, 22, 35, 174], '6f28b79368adc435', ' ']
+  - ['std.collectgarbage_opt.item.isrunning', 'i:isrunning', tail, [36, 22, 36, 105], 'ffcec93fe4c3260d', ' ']
+- a: '---'
+  g: '@alias std.collectgarbage.param'
+  r: [38, 0, 44, 30]
+  e:
+  - ['std.collectgarbage.param.item.minormul', 'i:minormul', tail, [39, 20, 39, 37], '17c912903d2b33e7', ' ']
+  - ['std.collectgarbage.param.item.majorminor', 'i:majorminor', tail, [40, 20, 40, 38], 'ca29b001e432351d', ' ']
+  - ['std.collectgarbage.param.item.minormajor', 'i:minormajor', tail, [41, 20, 41, 38], '45e16901f0e1c945', ' ']
+  - ['std.collectgarbage.param.item.pause', 'i:pause', tail, [42, 20, 42, 36], '035f4092820a2d28', ' ']
+  - ['std.collectgarbage.param.item.stepmul', 'i:stepmul', tail, [43, 20, 43, 36], 'f0701f65388feb8c', ' ']
+  - ['std.collectgarbage.param.item.stepsize', 'i:stepsize', tail, [44, 20, 44, 30], '92c7a59e2065582e', ' ']
+- a: 'function collectgarbage(opt, ...) end'
+  g: 'This function is a generic interface to the garbage collector. It performs'
+  r: [46, 0, 76, 15]
+  e:
+  - ['collectgarbage', 'd', doc, [46, 0, 73, 0], 'bd476771d729520d']
+- a: 'function dofile(filename) end'
+  g: 'Opens the named file and executes its contents as a Lua chunk. When called'
+  r: [79, 0, 86, 19]
+  e:
+  - ['dofile', 'd', doc, [79, 0, 85, 0], '17eaac532d0d8b7f']
+- a: 'function error(message, level) end'
+  g: 'Terminates the last protected function called and returns `message` as the'
+  r: [89, 0, 99, 26]
+  e:
+  - ['error', 'd', doc, [89, 0, 98, 0], '2ed38bdf5647d7e6']
+- a: '_G = {}'
+  g: 'A global variable (not a function) that holds the global environment. Lua'
+  r: [102, 0, 106, 16]
+  e:
+  - ['_G', 'd', doc, [102, 0, 106, 0], 'ed6170e60c7d1e6c']
+- a: 'function getmetatable(object) end'
+  g: 'If `object` does not have a metatable, returns **nil**. Otherwise, if the'
+  r: [109, 0, 114, 15]
+  e:
+  - ['getmetatable', 'd', doc, [109, 0, 113, 0], 'fb34ddfee855c143']
+- a: 'function ipairs(t) end'
+  g: 'Returns three values (an iterator function, the table `t`, and 0) so that'
+  r: [117, 0, 125, 33]
+  e:
+  - ['ipairs', 'd', doc, [117, 0, 123, 0], '81cc1b7ba3316736']
+- a: '---'
+  g: '@alias std.loadmode'
+  r: [128, 0, 131, 33]
+  e:
+  - ['std.loadmode.item.b', 'i:b', tail, [129, 12, 129, 31], 'a7b23db765875ab4', ' ']
+  - ['std.loadmode.item.t', 'i:t', tail, [130, 12, 130, 29], '3f888b84d5ff9cb6', ' ']
+  - ['std.loadmode.item.bt', 'i:bt', tail, [131, 12, 131, 33], '6281255a2e74d843', ' ']
+- a: 'function load(chunk, chunkname, mode, env) end'
+  g: 'Loads a chunk.'
+  r: [133, 0, 168, 14]
+  e:
+  - ['load', 'd', doc, [133, 0, 162, 0], '4ab0788de1108e49']
+- a: 'function loadstring(text, chunkname) end'
+  g: 'Loads a chunk from the given string.'
+  r: [171, 0, 179, 14]
+  e:
+  - ['loadstring', 'd', doc, [171, 0, 174, 0], 'f9c240ab77d6350b']
+- a: 'function loadfile(filename, mode, env) end'
+  g: 'Similar to `load`, but gets the chunk from file `filename` or from the'
+  r: [182, 0, 189, 46]
+  e:
+  - ['loadfile', 'd', doc, [182, 0, 185, 0], '2509b32c0559be2b']
+- a: 'function module(name, ...) end'
+  g: '@version 5.1, JIT'
+  r: [197, 0, 203, 19]
+  e:
+  - ['module', 'd', doc, [198, 0, 202, 0], '665ae14ece7dc59d']
+- a: 'function next(table, index) end'
+  g: 'Allows a program to traverse all fields of a table. Its first argument is'
+  r: [206, 0, 227, 18]
+  e:
+  - ['next', 'd', doc, [206, 0, 223, 0], '0c06915c244a9fc7']
+- a: 'function pairs(t) end'
+  g: 'If `t` has a metamethod `__pairs`, calls it with `t` as argument and returns'
+  r: [230, 0, 243, 69]
+  e:
+  - ['pairs', 'd', doc, [230, 0, 241, 0], '05ca1b5e9206cb2b']
+- a: 'function pcall(f, ...) end'
+  g: 'Calls function `f` with the given arguments in *protected mode*. This'
+  r: [246, 0, 257, 34]
+  e:
+  - ['pcall', 'd', doc, [246, 0, 253, 0], 'fc6ad4dc0c8dd9eb']
+- a: 'function print(...) end'
+  g: 'Receives any number of arguments, and prints their values to `stdout`,'
+  r: [260, 0, 265, 35]
+  e:
+  - ['print', 'd', doc, [260, 0, 265, 35], 'bb19bb9c28d20e8b']
+- a: 'function rawequal(v1, v2) end'
+  g: 'Checks whether `v1` is equal to `v2`, without the `__eq` metamethod. Returns'
+  r: [268, 0, 273, 19]
+  e:
+  - ['rawequal', 'd', doc, [268, 0, 271, 0], '40261afe4c5e2460']
+- a: 'function rawget(table, index) end'
+  g: 'Gets the real value of `table[index]`, the `__index` metamethod. `table`'
+  r: [276, 0, 282, 28]
+  e:
+  - ['rawget', 'd', doc, [276, 0, 279, 0], '3d0e3f29adb567bf']
+- a: 'function rawlen(v) end'
+  g: '@version >5.2'
+  r: [285, 0, 290, 19]
+  e:
+  - ['rawlen', 'd', doc, [286, 0, 289, 0], '3bb95a6d6f8d5477']
+- a: 'function rawset(table, index, value) end'
+  g: 'Sets the real value of `table[index]` to `value`, without invoking the'
+  r: [293, 0, 300, 17]
+  e:
+  - ['rawset', 'd', doc, [293, 0, 297, 0], 'c726cd5a8ed490a8']
+- a: 'function require(modname) end'
+  g: 'Loads the given module. The function starts by looking into the'
+  r: [303, 0, 334, 15]
+  e:
+  - ['require', 'd', doc, [303, 0, 333, 0], '1dd74d532228044d']
+- a: 'function select(index, ...) end'
+  g: 'If `index` is a number, returns all arguments after argument number'
+  r: [337, 0, 345, 33]
+  e:
+  - ['select', 'd', doc, [337, 0, 342, 0], '70e32f7a9c40be28']
+- a: 'function setmetatable(table, metatable) end'
+  g: 'Sets the metatable for the given table. (To change the metatable of other'
+  r: [380, 0, 390, 13]
+  e:
+  - ['setmetatable', 'd', doc, [380, 0, 387, 0], '6cb51df47e53ad08']
+- a: 'function tonumber(e) end'
+  g: 'When called with no `base`, `tonumber` tries to convert its argument to a'
+  r: [393, 0, 411, 14]
+  e:
+  - ['tonumber', 'd', doc, [393, 0, 408, 0], '23e0d900a782af87']
+- a: 'function tostring(v) end'
+  g: 'Receives a value of any type and converts it to a string in a human-readable'
+  r: [414, 0, 423, 18]
+  e:
+  - ['tostring', 'd', doc, [414, 0, 422, 0], 'adc137af28e53d37']
+- a: 'function type(v) end'
+  g: 'Returns the type of its only argument, coded as a string. The possible'
+  r: [436, 0, 442, 25]
+  e:
+  - ['type', 'd', doc, [436, 0, 441, 0], '0800556f7051218b']
+- a: '_VERSION = "Lua 5.5"'
+  g: 'A global variable (not a function) that holds a string containing the'
+  r: [445, 0, 447, 75]
+  e:
+  - ['_VERSION', 'd', doc, [445, 0, 447, 75], '97152d055df02054']
+- a: 'function xpcall(f, msgh, ...) end'
+  g: 'This function is similar to `pcall`, except that it sets a new message'
+  r: [450, 0, 457, 25]
+  e:
+  - ['xpcall', 'd', doc, [450, 0, 453, 0], '8f9f463f8371a2f0']
+- a: 'function warn(msg1, ...) end'
+  g: '@version > 5.4'
+  r: [469, 0, 478, 29]
+  e:
+  - ['warn', 'd', doc, [470, 0, 477, 0], 'b218e0d598d2986d']
+- a: '_ENV = {}'
+  g: 'This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.'
+  r: [484, 0, 487, 16]
+  e:
+  - ['_ENV', 'd', doc, [484, 0, 486, 0], '450d61ac9994e275']
+- a: 'function setfenv(f, env) end'
+  g: '@version 5.1, JIT'
+  r: [490, 0, 494, 80]
+  e:
+  - ['setfenv', 'd', doc, [491, 0, 493, 0], '79ac6333c6044892']
+  - ['setfenv.param.f', 'p:f', tail, [493, 32, 493, 84], '45534d1ea636fab4']
+  - ['setfenv.param.env', 'p:env', tail, [494, 32, 494, 80], '405f4286ea2c7329']
+- a: 'function getfenv(f) end'
+  g: '@version 5.1, JIT'
+  r: [497, 0, 501, 75]
+  e:
+  - ['getfenv', 'd', doc, [498, 0, 500, 0], '3c8b579e5297fcd6']
+  - ['getfenv.param.f', 'p:f', tail, [500, 30, 500, 80], '61d794dd7c91d37d']
+  - ['getfenv.return.1', 'r:1', tail, [501, 22, 501, 75], '41910412fe03bad4']

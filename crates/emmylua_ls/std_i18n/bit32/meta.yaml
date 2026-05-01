@@ -1,174 +1,68 @@
-version: 1
-line_base: 0
-col_base: 0
-file: bit32.lua
-entries:
-- key: bit32lib
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 6
-      col: 0
-    end:
-      line: 11
-      col: 0
-  hash: b18b7281aaaec493
-  context_hash: de7cc417de1b3246
-- key: bit32lib.arshift
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 14
-      col: 0
-    end:
-      line: 22
-      col: 0
-  hash: ed2a88c4920f6d8c
-  context_hash: de7cc417de1b3246
-- key: bit32lib.band
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 28
-      col: 0
-    end:
-      line: 33
-      col: 0
-  hash: eda2ba432394c515
-  context_hash: de7cc417de1b3246
-- key: bit32lib.bnot
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 37
-      col: 0
-    end:
-      line: 48
-      col: 0
-  hash: c7a8cb7786df2b1c
-  context_hash: de7cc417de1b3246
-- key: bit32lib.bor
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 53
-      col: 0
-    end:
-      line: 58
-      col: 0
-  hash: '1d8f054ce3d49bb3'
-  context_hash: de7cc417de1b3246
-- key: bit32lib.btest
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 62
-      col: 0
-    end:
-      line: 67
-      col: 0
-  hash: '2278c16008c2f0db'
-  context_hash: de7cc417de1b3246
-- key: bit32lib.bxor
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 71
-      col: 0
-    end:
-      line: 76
-      col: 0
-  hash: '67aa98324af03d6d'
-  context_hash: de7cc417de1b3246
-- key: bit32lib.extract
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 80
-      col: 0
-    end:
-      line: 85
-      col: 0
-  hash: '124c816100c12d49'
-  context_hash: de7cc417de1b3246
-- key: bit32lib.replace
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 92
-      col: 0
-    end:
-      line: 97
-      col: 0
-  hash: '08d8a168ba912d23'
-  context_hash: de7cc417de1b3246
-- key: bit32lib.lrotate
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 104
-      col: 0
-    end:
-      line: 109
-      col: 0
-  hash: '72c73581e540b235'
-  context_hash: de7cc417de1b3246
-- key: bit32lib.lshift
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 115
-      col: 0
-    end:
-      line: 126
-      col: 0
-  hash: '8d2fb4426479558e'
-  context_hash: de7cc417de1b3246
-- key: bit32lib.rrotate
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 132
-      col: 0
-    end:
-      line: 137
-      col: 0
-  hash: aacf9ee540de85b3
-  context_hash: de7cc417de1b3246
-- key: bit32lib.rshift
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 143
-      col: 0
-    end:
-      line: 154
-      col: 0
-  hash: abecff6d17e2eaf9
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'bit32.lua'
+b:
+- a: 'bit32 = {}'
+  g: '@version 5.2'
+  r: [5, 0, 11, 19]
+  e:
+  - ['bit32lib', 'd', doc, [6, 0, 11, 0], 'f5e5baebb56debda']
+- a: 'function bit32.arshift(x, disp) end'
+  g: 'Returns the number `x` shifted `disp` bits to the right. Negative displacements shift to the left.'
+  r: [14, 0, 25, 14]
+  e:
+  - ['bit32lib.arshift', 'd', doc, [14, 0, 22, 0], 'e188a6229d80f34e']
+- a: 'function bit32.band(...) end'
+  g: 'Returns the bitwise *and* of its operands.'
+  r: [28, 0, 34, 14]
+  e:
+  - ['bit32lib.band', 'd', doc, [28, 0, 33, 0], 'b54b08e66a96d390']
+- a: 'function bit32.bnot(x) end'
+  g: 'Returns the bitwise negation of `x`.'
+  r: [37, 0, 50, 14]
+  e:
+  - ['bit32lib.bnot', 'd', doc, [37, 0, 48, 0], '9d6610b46c3bfa99']
+- a: 'function bit32.bor(...) end'
+  g: 'Returns the bitwise *or* of its operands.'
+  r: [53, 0, 59, 14]
+  e:
+  - ['bit32lib.bor', 'd', doc, [53, 0, 58, 0], '17efcd1bb2c3a1e6']
+- a: 'function bit32.btest(...) end'
+  g: 'Returns a boolean signaling whether the bitwise *and* of its operands is different from zero.'
+  r: [62, 0, 68, 14]
+  e:
+  - ['bit32lib.btest', 'd', doc, [62, 0, 67, 0], '06725561c7bcbbe0']
+- a: 'function bit32.bxor(...) end'
+  g: 'Returns the bitwise *exclusive or* of its operands.'
+  r: [71, 0, 77, 14]
+  e:
+  - ['bit32lib.bxor', 'd', doc, [71, 0, 76, 0], 'ea5cb5e06182919e']
+- a: 'function bit32.extract(n, field, width) end'
+  g: 'Returns the unsigned number formed by the bits `field` to `field + width - 1` from `n`.'
+  r: [80, 0, 89, 14]
+  e:
+  - ['bit32lib.extract', 'd', doc, [80, 0, 85, 0], 'c2abd73c36e4172c']
+- a: 'function bit32.replace(n, v, field, width) end'
+  g: 'Returns a copy of `n` with the bits `field` to `field + width - 1` replaced by the value `v` .'
+  r: [92, 0, 101, 14]
+  e:
+  - ['bit32lib.replace', 'd', doc, [92, 0, 97, 0], '8e0fdb89a2084d12']
+- a: 'function bit32.lrotate(x, distp) end'
+  g: 'Returns the number `x` rotated `disp` bits to the left. Negative displacements rotate to the right.'
+  r: [104, 0, 112, 14]
+  e:
+  - ['bit32lib.lrotate', 'd', doc, [104, 0, 109, 0], '274f1a8107be2ce8']
+- a: 'function bit32.lshift(x, distp) end'
+  g: 'Returns the number `x` shifted `disp` bits to the left. Negative displacements shift to the right. In any direction, vacant bits are filled with zeros.'
+  r: [115, 0, 129, 14]
+  e:
+  - ['bit32lib.lshift', 'd', doc, [115, 0, 126, 0], '046caf4cd74de29b']
+- a: 'function bit32.rrotate(x, distp) end'
+  g: 'Returns the number `x` rotated `disp` bits to the right. Negative displacements rotate to the left.'
+  r: [132, 0, 140, 14]
+  e:
+  - ['bit32lib.rrotate', 'd', doc, [132, 0, 137, 0], '50b89b02da103086']
+- a: 'function bit32.rshift(x, distp) end'
+  g: 'Returns the number `x` shifted `disp` bits to the right. Negative displacements shift to the left. In any direction, vacant bits are filled with zeros.'
+  r: [143, 0, 157, 14]
+  e:
+  - ['bit32lib.rshift', 'd', doc, [143, 0, 154, 0], '52d7e4adb09d6258']
