@@ -348,6 +348,11 @@ fn infer_table_member(
         return member_item.resolve_type(db);
     }
 
+    if matches!(key, LuaMemberKey::Name(_) | LuaMemberKey::Integer(_)) {
+        // Exact keys already missed above. The matching scan is only for broad keys.
+        return Err(InferFailReason::FieldNotFound);
+    }
+
     if let Some(result_type) = infer_type_key_member_type(db, key_type, &owner) {
         return Ok(result_type);
     }
@@ -386,7 +391,10 @@ fn infer_custom_type_member(
         return member_item.resolve_type(db);
     }
 
-    if let Some(result_type) = infer_type_key_member_type(db, &lookup.key_type, &owner) {
+    // Exact keys may still resolve through super types below; only broad keys need key-type matching here.
+    if !matches!(lookup.key, LuaMemberKey::Name(_) | LuaMemberKey::Integer(_))
+        && let Some(result_type) = infer_type_key_member_type(db, &lookup.key_type, &owner)
+    {
         return Ok(result_type);
     }
 
