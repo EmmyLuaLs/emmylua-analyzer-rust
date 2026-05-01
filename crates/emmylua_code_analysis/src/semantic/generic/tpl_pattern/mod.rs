@@ -591,11 +591,7 @@ fn func_tpl_pattern_match(
                 .get(signature_id)
                 .ok_or(InferFailReason::None)?;
             if !signature.is_resolve_return() {
-                return lambda_tpl_pattern::check_lambda_tpl_pattern(
-                    context,
-                    tpl_func,
-                    *signature_id,
-                );
+                return lambda_tpl_pattern::check_lambda_tpl_pattern(context, *signature_id);
             }
             let fake_doc_func = signature.to_doc_func_type();
             func_tpl_pattern_match_doc_func(context, tpl_func, &fake_doc_func)?;
