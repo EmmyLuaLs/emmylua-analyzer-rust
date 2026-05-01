@@ -10,10 +10,12 @@ pub use call_constraint::{
 };
 use emmylua_parser::LuaAstNode;
 use emmylua_parser::LuaExpr;
+pub(crate) use instantiate_type::collect_callable_overload_groups;
 pub use instantiate_type::*;
 use rowan::NodeOrToken;
 pub use tpl_context::TplContext;
 pub use tpl_pattern::tpl_pattern_match_args;
+pub use tpl_pattern::tpl_pattern_match_args_skip_unknown;
 pub use type_substitutor::TypeSubstitutor;
 
 use crate::DbIndex;
