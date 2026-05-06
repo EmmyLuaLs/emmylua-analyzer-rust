@@ -107,8 +107,8 @@ pub(crate) fn tracked_file_decl_type_query_index(
 ) -> Arc<SalsaDeclTypeQueryIndex> {
     let decl_tree = tracked_file_decl_tree_summary(db, file, config);
     let doc = tracked_file_doc_summary(db, file, config);
-    let signatures = super::doc::tracked_file_signature_summary(db, file, config);
-    let owner_resolves = super::doc::tracked_file_doc_owner_resolve_index(db, file, config);
+    let signatures = tracked_file_signature_summary(db, file, config);
+    let owner_resolves = tracked_file_doc_owner_resolve_index(db, file, config);
     Arc::new(build_decl_type_query_index(
         decl_tree.as_ref(),
         doc.as_ref(),
@@ -199,9 +199,9 @@ pub(crate) fn tracked_file_member_type_query_index(
 ) -> Arc<SalsaMemberTypeQueryIndex> {
     let members = tracked_file_member_summary(db, file, config);
     let properties = tracked_file_property_summary(db, file, config);
-    let signatures = super::doc::tracked_file_signature_summary(db, file, config);
+    let signatures = tracked_file_signature_summary(db, file, config);
     let doc = tracked_file_doc_summary(db, file, config);
-    let owner_resolves = super::doc::tracked_file_doc_owner_resolve_index(db, file, config);
+    let owner_resolves = tracked_file_doc_owner_resolve_index(db, file, config);
     Arc::new(build_member_type_query_index(
         members.as_ref(),
         properties.as_ref(),
@@ -247,12 +247,11 @@ pub(crate) fn tracked_file_member_type_at_program_point(
     let property_index = tracked_file_property_summary(db, file, config);
     let decl_index = tracked_file_decl_type_query_index(db, file, config);
     let doc = tracked_file_doc_summary(db, file, config);
-    let doc_types = super::doc::tracked_file_doc_type_summary(db, file, config);
-    let doc_tags = super::doc::tracked_file_doc_tag_query_index(db, file, config);
+    let doc_types = tracked_file_doc_type_summary(db, file, config);
+    let doc_tags = tracked_file_doc_tag_query_index(db, file, config);
     let assignments = tracked_file_local_assignment_query_index(db, file, config);
-    let lowered_types = super::doc::tracked_file_doc_type_lowered_index(db, file, config);
-    let signature_explain_index =
-        super::doc::tracked_file_signature_explain_index(db, file, config);
+    let lowered_types = tracked_file_doc_type_lowered_index(db, file, config);
+    let signature_explain_index = tracked_file_signature_explain_index(db, file, config);
     let parsed = parse_chunk(file.file_id(db), &file.text(db), &config.config(db));
     let chunk = parsed.value.clone();
     let decl_tree = tracked_file_decl_tree_summary(db, file, config);
@@ -285,11 +284,10 @@ pub(crate) fn tracked_file_name_type_at_program_point(
     let index = tracked_file_decl_type_query_index(db, file, config);
     let assignments = tracked_file_local_assignment_query_index(db, file, config);
     let properties = tracked_file_property_summary(db, file, config);
-    let doc_types = super::doc::tracked_file_doc_type_summary(db, file, config);
-    let doc_tags = super::doc::tracked_file_doc_tag_query_index(db, file, config);
-    let lowered_types = super::doc::tracked_file_doc_type_lowered_index(db, file, config);
-    let signature_explain_index =
-        super::doc::tracked_file_signature_explain_index(db, file, config);
+    let doc_types = tracked_file_doc_type_summary(db, file, config);
+    let doc_tags = tracked_file_doc_tag_query_index(db, file, config);
+    let lowered_types = tracked_file_doc_type_lowered_index(db, file, config);
+    let signature_explain_index = tracked_file_signature_explain_index(db, file, config);
     let parsed = parse_chunk(file.file_id(db), &file.text(db), &config.config(db));
     let chunk = parsed.value.clone();
     let decl_tree = tracked_file_decl_tree_summary(db, file, config);

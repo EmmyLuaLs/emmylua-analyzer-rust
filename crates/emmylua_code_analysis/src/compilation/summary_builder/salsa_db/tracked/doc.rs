@@ -151,7 +151,7 @@ pub(crate) fn tracked_file_signature_explain_index(
     let signatures = tracked_file_signature_summary(db, file, config);
     let owner_resolves = tracked_file_doc_owner_resolve_index(db, file, config);
     let lowered_types = tracked_file_doc_type_lowered_index(db, file, config);
-    let lexical_uses = super::lexical::tracked_file_lexical_use_index(db, file, config);
+    let lexical_uses = tracked_file_lexical_use_index(db, file, config);
     let doc = tracked_file_doc_summary(db, file, config);
     let doc_tag_query_index = tracked_file_doc_tag_query_index(db, file, config);
     let tag_properties = tracked_file_doc_tag_properties(db, file, config);
@@ -200,10 +200,10 @@ pub(crate) fn tracked_file_signature_return_query_index(
     let parsed = parse_chunk(file.file_id(db), &file.text(db), &config.config(db));
     let signatures = tracked_file_signature_summary(db, file, config);
     let signature_explain_index = tracked_file_signature_explain_index(db, file, config);
-    let use_sites = super::lexical::tracked_file_use_site_summary(db, file, config);
-    let decl_index = super::lexical::tracked_file_decl_type_query_index(db, file, config);
-    let member_index = super::lexical::tracked_file_member_type_query_index(db, file, config);
-    let assignments = super::lexical::tracked_file_local_assignment_query_index(db, file, config);
+    let use_sites = tracked_file_use_site_summary(db, file, config);
+    let decl_index = tracked_file_decl_type_query_index(db, file, config);
+    let member_index = tracked_file_member_type_query_index(db, file, config);
+    let assignments = tracked_file_local_assignment_query_index(db, file, config);
     let property_index = tracked_file_property_summary(db, file, config);
     let doc = tracked_file_doc_summary(db, file, config);
     let doc_types = tracked_file_doc_type_summary(db, file, config);
@@ -238,7 +238,7 @@ pub(crate) fn tracked_file_signature_return_query(
     if let Some(summary) =
         tracked_file_semantic_signature_return_summary(db, file, config, signature_offset)
     {
-        return Some(super::project_signature_return_query_from_semantic_summary(
+        return Some(project_signature_return_query_from_semantic_summary(
             &summary,
         ));
     }

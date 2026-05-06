@@ -1,13 +1,14 @@
 use super::*;
+use crate::*;
 
-fn first_for_range_loop_offset(compilation: &SalsaSummaryHost, file_id: FileId) -> rowan::TextSize {
+fn first_for_range_loop_offset(compilation: &SalsaSummaryHost, file_id: FileId) -> TextSize {
     compilation
         .flow()
         .summary(file_id)
         .expect("flow summary")
         .loops
         .iter()
-        .find(|loop_summary| matches!(loop_summary.kind, crate::SalsaFlowLoopKindSummary::ForRange))
+        .find(|loop_summary| matches!(loop_summary.kind, SalsaFlowLoopKindSummary::ForRange))
         .map(|loop_summary| loop_summary.syntax_offset)
         .expect("for range loop")
 }
@@ -37,12 +38,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Name,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Name,
             ..
         })
     ));
@@ -81,12 +82,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Member,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Member,
             ..
         })
     ));
@@ -121,12 +122,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::RecursiveDependency
+        SalsaForRangeIterResolveStateSummary::RecursiveDependency
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Call,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Call,
             ..
         })
     ));
@@ -172,12 +173,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Call,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Call,
             ..
         })
     ));
@@ -230,12 +231,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Name,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Name,
             ..
         })
     ));
@@ -289,12 +290,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Member,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Member,
             ..
         })
     ));
@@ -338,12 +339,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Name,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Name,
             ..
         })
     ));
@@ -380,7 +381,7 @@ end"#;
 
     assert_eq!(
         value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert!(!value_shell.candidate_type_offsets.is_empty());
     assert_eq!(summary.iter_vars.len(), 2);
@@ -428,12 +429,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Member,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Member,
             ..
         })
     ));
@@ -545,12 +546,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Name,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Name,
             ..
         })
     ));
@@ -600,7 +601,7 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert_eq!(summary.iter_vars.len(), 2);
     assert!(!summary.iter_vars[0].type_offsets.is_empty());
@@ -661,12 +662,12 @@ end"#;
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Name,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Name,
             ..
         })
     ));
@@ -730,12 +731,12 @@ fn test_summary_builder_for_range_iter_component_summary_merges_mixed_branch_ali
 
     assert_eq!(
         summary.state,
-        crate::SalsaForRangeIterResolveStateSummary::Resolved
+        SalsaForRangeIterResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.source,
-        Some(crate::SalsaForRangeIterSourceSummary {
-            kind: crate::SalsaForRangeIterSourceKindSummary::Name,
+        Some(SalsaForRangeIterSourceSummary {
+            kind: SalsaForRangeIterSourceKindSummary::Name,
             ..
         })
     ));

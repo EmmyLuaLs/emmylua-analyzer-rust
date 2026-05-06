@@ -1,4 +1,5 @@
 mod analyzer;
+mod summary_builder;
 mod test;
 
 use std::sync::Arc;
@@ -8,6 +9,7 @@ use crate::{
     semantic::SemanticModel,
 };
 use emmylua_parser::{LuaBlock, LuaExpr};
+pub use summary_builder::*;
 
 pub(crate) fn analyze_func_body_missing_return_flags_with<F>(
     body: LuaBlock,

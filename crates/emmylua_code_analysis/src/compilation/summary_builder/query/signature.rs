@@ -608,7 +608,7 @@ fn find_expr_at_offset(chunk: &LuaChunk, expr_offset: TextSize) -> Option<LuaExp
 fn build_signature_explain(
     signature: &SalsaSignatureSummary,
     owner_resolves: &SalsaDocOwnerResolveIndex,
-    tag_properties: &super::doc_tag::SalsaDocTagQueryIndex,
+    tag_properties: &SalsaDocTagQueryIndex,
     support_index: &SalsaSignatureSupportIndex,
 ) -> SalsaSignatureExplainSummary {
     let doc_owners =
@@ -1049,7 +1049,7 @@ fn find_lowered_type(
 
 fn collect_tag_properties_for_resolves(
     resolves: &[SalsaDocOwnerResolveSummary],
-    tag_properties: &super::doc_tag::SalsaDocTagQueryIndex,
+    tag_properties: &SalsaDocTagQueryIndex,
 ) -> Vec<SalsaDocTagPropertySummary> {
     let owners = resolves
         .iter()

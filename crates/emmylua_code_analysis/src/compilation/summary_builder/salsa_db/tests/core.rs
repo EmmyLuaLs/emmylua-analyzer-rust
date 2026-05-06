@@ -96,9 +96,15 @@ if x then return x end"#;
     assert_eq!(doc_type_summary.as_ref(), &summary.doc_types);
     assert_eq!(flow_summary.as_ref(), &summary.flow);
     assert_eq!(signature_summary.as_ref(), &summary.signatures);
-    assert_eq!(doc_owner_binding_summary.as_ref(), &summary.doc_owner_bindings);
+    assert_eq!(
+        doc_owner_binding_summary.as_ref(),
+        &summary.doc_owner_bindings
+    );
     assert_eq!(use_site_summary.as_ref(), &summary.use_sites);
-    assert_eq!(module_summary.as_ref(), summary.module.as_ref().expect("file summary module"));
+    assert_eq!(
+        module_summary.as_ref(),
+        summary.module.as_ref().expect("file summary module")
+    );
     let property_summary = file
         .properties(FileId::new(1))
         .expect("summary builder property summary");

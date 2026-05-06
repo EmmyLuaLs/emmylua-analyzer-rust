@@ -52,6 +52,7 @@ luars.workspace = true
 reqwest = { workspace = true, optional = true }
 schema_to_emmylua.workspace = true
 hashbrown.workspace = true
+salsa.workspace = true
 
 [features]
 default = []

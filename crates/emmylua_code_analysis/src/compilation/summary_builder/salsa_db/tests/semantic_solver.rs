@@ -1,7 +1,7 @@
 use emmylua_parser::LuaSyntaxKind;
 
 use super::*;
-
+use crate::*;
 #[test]
 fn test_summary_builder_semantic_solver_worklist_tracks_ready_components() {
     let mut compilation = setup_compilation();
@@ -52,7 +52,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(601),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(leaf_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(leaf_signature.syntax_offset),
         )
         .expect("leaf component");
     let mid_component = compilation
@@ -60,7 +60,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(601),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(mid_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(mid_signature.syntax_offset),
         )
         .expect("mid component");
     let cycle_component = compilation
@@ -68,7 +68,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(601),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(a_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(a_signature.syntax_offset),
         )
         .expect("cycle component");
 
@@ -146,7 +146,7 @@ end
         .expect("mid execution task");
     assert_eq!(
         mid_execution_task.state,
-        crate::SalsaSemanticSolverTaskStateSummary::Ready
+        SalsaSemanticSolverTaskStateSummary::Ready
     );
     let next_ready_task = compilation
         .semantic()
@@ -160,7 +160,7 @@ end
     );
     assert_eq!(
         next_ready_task.state,
-        crate::SalsaSemanticSolverTaskStateSummary::Ready
+        SalsaSemanticSolverTaskStateSummary::Ready
     );
     let step = compilation
         .semantic()
@@ -179,7 +179,7 @@ end
         .solver_component_result_summary(FileId::new(601), step.completed_component_id)
         .expect("tracked component result");
     assert_eq!(step_component_result, tracked_component_result);
-    let completed_with_result = crate::complete_semantic_solver_execution_task_with_result(
+    let completed_with_result = complete_semantic_solver_execution_task_with_result(
         &execution,
         step.completed_component_id,
         step_component_result.clone(),
@@ -196,22 +196,20 @@ end
             .iter()
             .any(|result| result.component_id == step.completed_component_id)
     );
-    let completed_step_task = crate::find_semantic_solver_execution_task(
-        &step.next_execution,
-        step.completed_component_id,
-    )
-    .expect("completed step task");
+    let completed_step_task =
+        find_semantic_solver_execution_task(&step.next_execution, step.completed_component_id)
+            .expect("completed step task");
     assert_eq!(
         completed_step_task.state,
-        crate::SalsaSemanticSolverTaskStateSummary::Completed
+        SalsaSemanticSolverTaskStateSummary::Completed
     );
     assert!(
         step.next_execution
             .ready_component_ids
             .iter()
             .all(|component_id| matches!(
-                crate::find_semantic_solver_execution_task(&step.next_execution, *component_id),
-                Some(task) if task.state == crate::SalsaSemanticSolverTaskStateSummary::Ready
+                find_semantic_solver_execution_task(&step.next_execution, *component_id),
+                Some(task) if task.state == SalsaSemanticSolverTaskStateSummary::Ready
             ))
     );
 
@@ -251,7 +249,7 @@ end
         .expect("semantic summary")
         .module_export
         .clone();
-    let mid_step = crate::build_semantic_solver_step_summary(
+    let mid_step = build_semantic_solver_step_summary(
         &execution,
         mid_component.component_id,
         &scc_index,
@@ -264,7 +262,7 @@ end
         module_export.as_ref(),
     )
     .expect("mid step");
-    let leaf_step = crate::build_semantic_solver_step_summary(
+    let leaf_step = build_semantic_solver_step_summary(
         &mid_step.next_execution,
         leaf_component.component_id,
         &scc_index,
@@ -285,32 +283,28 @@ end
     );
 
     let next_execution =
-        crate::complete_semantic_solver_execution_task(&execution, mid_component.component_id);
+        complete_semantic_solver_execution_task(&execution, mid_component.component_id);
     let next_leaf_task =
-        crate::find_semantic_solver_execution_task(&next_execution, leaf_component.component_id)
+        find_semantic_solver_execution_task(&next_execution, leaf_component.component_id)
             .expect("next leaf execution task");
     assert_eq!(
         next_leaf_task.state,
-        crate::SalsaSemanticSolverTaskStateSummary::Ready
+        SalsaSemanticSolverTaskStateSummary::Ready
     );
     assert!(
         next_execution
             .completed_component_ids
             .contains(&mid_component.component_id)
     );
-    assert!(!crate::semantic_solver_execution_is_complete(
-        &next_execution
-    ));
+    assert!(!semantic_solver_execution_is_complete(&next_execution));
 
     let final_execution = execution.tasks.iter().map(|task| task.component_id).fold(
         next_execution.clone(),
         |execution_state, component_id| {
-            crate::complete_semantic_solver_execution_task(&execution_state, component_id)
+            complete_semantic_solver_execution_task(&execution_state, component_id)
         },
     );
-    assert!(crate::semantic_solver_execution_is_complete(
-        &final_execution
-    ));
+    assert!(semantic_solver_execution_is_complete(&final_execution));
 }
 
 #[test]
@@ -385,7 +379,7 @@ return resolved
         .expect("flow summary")
         .loops
         .iter()
-        .find(|loop_summary| matches!(loop_summary.kind, crate::SalsaFlowLoopKindSummary::ForRange))
+        .find(|loop_summary| matches!(loop_summary.kind, SalsaFlowLoopKindSummary::ForRange))
         .map(|loop_summary| loop_summary.syntax_offset)
         .expect("for range loop");
 
@@ -396,7 +390,7 @@ return resolved
         .expect("resolved value shell");
     assert_eq!(
         resolved_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert!(!resolved_shell.candidate_type_offsets.is_empty());
 
@@ -407,7 +401,7 @@ return resolved
         .expect("recursive value shell");
     assert_eq!(
         recursive_shell.state,
-        crate::SalsaSemanticResolveStateSummary::RecursiveDependency
+        SalsaSemanticResolveStateSummary::RecursiveDependency
     );
 
     let iter_shell = compilation
@@ -415,10 +409,7 @@ return resolved
         .file()
         .for_range_iter_value_shell(FileId::new(602), loop_offset)
         .expect("for range value shell");
-    assert_eq!(
-        iter_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
-    );
+    assert_eq!(iter_shell.state, SalsaSemanticResolveStateSummary::Resolved);
     assert!(!iter_shell.candidate_type_offsets.is_empty());
 
     let export_shell = compilation
@@ -428,35 +419,33 @@ return resolved
         .expect("module export value shell");
     assert_eq!(
         export_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
 
-    let merged = crate::merge_semantic_value_shells(&[
+    let merged = merge_semantic_value_shells(&[
         resolved_shell.clone(),
         iter_shell.clone(),
         recursive_shell.clone(),
     ]);
     assert_eq!(
         merged.state,
-        crate::SalsaSemanticResolveStateSummary::RecursiveDependency
+        SalsaSemanticResolveStateSummary::RecursiveDependency
     );
     assert!(merged.candidate_type_offsets.len() >= resolved_shell.candidate_type_offsets.len());
 
     assert_eq!(
-        crate::join_semantic_resolve_states([
-            crate::SalsaSemanticResolveStateSummary::Unknown,
-            crate::SalsaSemanticResolveStateSummary::Resolved,
+        join_semantic_resolve_states([
+            SalsaSemanticResolveStateSummary::Unknown,
+            SalsaSemanticResolveStateSummary::Resolved,
         ]),
-        crate::SalsaSemanticResolveStateSummary::Partial
+        SalsaSemanticResolveStateSummary::Partial
     );
     let recursive_component = compilation
         .semantic()
         .file()
         .graph_scc_component(
             FileId::new(602),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(
-                recursive_signature.syntax_offset,
-            ),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(recursive_signature.syntax_offset),
         )
         .expect("recursive component");
     let recursive_component_summary = compilation
@@ -467,11 +456,11 @@ return resolved
     assert!(recursive_component_summary.is_cycle);
     assert_eq!(
         recursive_component_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::RecursiveDependency
+        SalsaSemanticResolveStateSummary::RecursiveDependency
     );
     assert_eq!(
         recursive_component_summary.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::RecursiveDependency
+        SalsaSemanticResolveStateSummary::RecursiveDependency
     );
     assert!(
         recursive_component_summary
@@ -484,7 +473,7 @@ return resolved
         .file()
         .graph_scc_component(
             FileId::new(602),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(resolved_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(resolved_signature.syntax_offset),
         )
         .expect("resolved component");
     let resolved_component_summary = compilation
@@ -494,11 +483,11 @@ return resolved
         .expect("resolved component summary");
     assert_eq!(
         resolved_component_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         resolved_component_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert!(
         !resolved_component_summary
@@ -549,7 +538,7 @@ return resolved
         .file()
         .graph_scc_component(
             FileId::new(602),
-            crate::SalsaSemanticGraphNodeSummary::DeclValue(value_decl.id),
+            SalsaSemanticGraphNodeSummary::DeclValue(value_decl.id),
         )
         .expect("value decl component");
     let value_decl_component_result = compilation
@@ -599,7 +588,7 @@ return resolved
     );
     assert_eq!(
         value_decl_component_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert!(
         !value_decl_component_result
@@ -612,7 +601,7 @@ return resolved
         .file()
         .graph_scc_component(
             FileId::new(602),
-            crate::SalsaSemanticGraphNodeSummary::MemberValue(alias_member.target.clone()),
+            SalsaSemanticGraphNodeSummary::MemberValue(alias_member.target.clone()),
         )
         .expect("alias member component");
     let alias_member_component_result = compilation
@@ -662,7 +651,7 @@ return resolved
     );
     assert_eq!(
         alias_member_component_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
 
     let for_range_component = compilation
@@ -670,7 +659,7 @@ return resolved
         .file()
         .graph_scc_component(
             FileId::new(602),
-            crate::SalsaSemanticGraphNodeSummary::ForRangeIter(loop_offset),
+            SalsaSemanticGraphNodeSummary::ForRangeIter(loop_offset),
         )
         .expect("for range component");
     let for_range_component_result = compilation
@@ -719,7 +708,7 @@ return resolved
     );
     assert_eq!(
         for_range_component_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
 
     let module_export_component = compilation
@@ -727,7 +716,7 @@ return resolved
         .file()
         .graph_scc_component(
             FileId::new(602),
-            crate::SalsaSemanticGraphNodeSummary::ModuleExport,
+            SalsaSemanticGraphNodeSummary::ModuleExport,
         )
         .expect("module export component");
     let module_export_component_result = compilation
@@ -785,7 +774,7 @@ return resolved
     );
     assert_eq!(
         module_export_component_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         export_shell,
@@ -836,14 +825,11 @@ return resolved
     let resolved_ready_execution = resolved_component.predecessor_component_ids.iter().fold(
         execution,
         |execution_state, predecessor_component_id| {
-            crate::complete_semantic_solver_execution_task(
-                &execution_state,
-                *predecessor_component_id,
-            )
-            .into()
+            complete_semantic_solver_execution_task(&execution_state, *predecessor_component_id)
+                .into()
         },
     );
-    let resolved_step = crate::build_semantic_solver_step_summary(
+    let resolved_step = build_semantic_solver_step_summary(
         &resolved_ready_execution,
         resolved_component.component_id,
         &scc_index,
@@ -865,7 +851,7 @@ return resolved
     );
     assert_ne!(
         resolved_step_component.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Unknown
+        SalsaSemanticResolveStateSummary::Unknown
     );
     assert_eq!(resolved_step_component.fixedpoint_iterations, 0);
     assert_eq!(
@@ -884,12 +870,12 @@ return resolved
             .contains(&resolved_component.component_id)
     );
 
-    let propagated_execution = crate::complete_semantic_solver_execution_task_with_result(
+    let propagated_execution = complete_semantic_solver_execution_task_with_result(
         &resolved_ready_execution,
         resolved_component.component_id,
         resolved_step_component.clone(),
     );
-    let module_export_step = crate::build_semantic_solver_step_summary(
+    let module_export_step = build_semantic_solver_step_summary(
         &propagated_execution,
         module_export_component.component_id,
         &scc_index,
@@ -908,7 +894,7 @@ return resolved
     assert!(module_export_step_result.includes_module_export);
     assert_eq!(
         module_export_step_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
 
     let recursive_component_result = compilation
@@ -920,7 +906,7 @@ return resolved
     assert!(recursive_component_result.fixedpoint_iterations >= 1);
     assert_eq!(
         recursive_component_result.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::RecursiveDependency
+        SalsaSemanticResolveStateSummary::RecursiveDependency
     );
     assert_eq!(
         recursive_shell,
@@ -963,7 +949,7 @@ return value
         .file()
         .graph_scc_component(
             FileId::new(604),
-            crate::SalsaSemanticGraphNodeSummary::ModuleExport,
+            SalsaSemanticGraphNodeSummary::ModuleExport,
         )
         .expect("module export component");
     let module_export_component_result = compilation
@@ -974,7 +960,7 @@ return value
 
     assert_eq!(
         export_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         export_shell,
@@ -1018,16 +1004,16 @@ local holder = {
             decl.name == "holder" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. })
         })
         .expect("holder decl");
-    let source_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let source_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "box".into(),
             decl_id: box_decl.id,
         },
         owner_segments: Vec::new().into(),
         member_name: "value".into(),
     });
-    let nested_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let nested_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
@@ -1053,15 +1039,15 @@ local holder = {
 
     assert_eq!(
         source_member_result.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         nested_member_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Partial
+        SalsaSemanticResolveStateSummary::Partial
     );
     assert_eq!(
         nested_member_result.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         nested_member_shell.value_shell,
@@ -1127,25 +1113,24 @@ local holder = {
             decl.name == "holder" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. })
         })
         .expect("holder decl");
-    let multihop_source_member =
-        crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-            root: crate::SalsaMemberRootSummary::LocalDecl {
-                name: "outer".into(),
-                decl_id: outer_decl.id,
-            },
-            owner_segments: vec!["nested".into()].into(),
-            member_name: "value".into(),
-        });
-    let forwarded_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let multihop_source_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
+            name: "outer".into(),
+            decl_id: outer_decl.id,
+        },
+        owner_segments: vec!["nested".into()].into(),
+        member_name: "value".into(),
+    });
+    let forwarded_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
         owner_segments: vec!["nested".into()].into(),
         member_name: "forwarded".into(),
     });
-    let made_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let made_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
@@ -1181,15 +1166,15 @@ local holder = {
 
     assert_eq!(
         source_member_result.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         forwarded_member_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Partial
+        SalsaSemanticResolveStateSummary::Partial
     );
     assert_eq!(
         forwarded_member_result.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         forwarded_member_shell.value_shell,
@@ -1206,11 +1191,11 @@ local holder = {
 
     assert_eq!(
         made_member_result.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         made_member_result.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         made_member_shell.value_shell,
@@ -1258,11 +1243,11 @@ end
 
     assert_eq!(
         member_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         member_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         member_summary.value_shell,
@@ -1302,11 +1287,11 @@ end
 
     assert_eq!(
         decl_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.value_shell,
@@ -1346,11 +1331,11 @@ fn test_summary_builder_semantic_solver_decl_summary_resolves_literal_initialize
 
     assert_eq!(
         decl_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.value_shell,
@@ -1392,7 +1377,7 @@ local alias = source
 
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert!(
         !decl_summary
@@ -1439,7 +1424,7 @@ local value = make()
 
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert!(
         !decl_summary
@@ -1487,7 +1472,7 @@ local value = make()
 
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.local_value_shell.candidate_type_offsets.len(),
@@ -1555,7 +1540,7 @@ local value = make(1)
 
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.local_value_shell.candidate_type_offsets,
@@ -1627,11 +1612,11 @@ local first, second = pair()
 
     assert_eq!(
         first_decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         second_decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         first_decl_summary.local_value_shell.candidate_type_offsets,
@@ -1696,11 +1681,11 @@ local first, second = pair()
 
     assert_eq!(
         first_decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         second_decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Partial
+        SalsaSemanticResolveStateSummary::Partial
     );
 }
 
@@ -1766,11 +1751,11 @@ holder.first, holder.second = pair()
 
     assert_eq!(
         first_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         second_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         first_summary.local_value_shell.candidate_type_offsets,
@@ -1824,11 +1809,11 @@ end
     assert!(decl_type.value_signature_offset.is_some());
     assert_eq!(
         decl_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.value_shell,
@@ -1863,15 +1848,15 @@ fn test_summary_builder_semantic_solver_member_summary_resolves_property_closure
             decl.name == "holder" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. })
         })
         .expect("holder decl");
-    let run_member_target = crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let run_member_target = SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
         owner_segments: Vec::new().into(),
         member_name: "run".into(),
     };
-    let run_member_target_handle = crate::SalsaMemberTargetId::from(&run_member_target);
+    let run_member_target_handle = SalsaMemberTargetId::from(&run_member_target);
 
     let member_summary = compilation
         .semantic()
@@ -1881,11 +1866,11 @@ fn test_summary_builder_semantic_solver_member_summary_resolves_property_closure
 
     assert_eq!(
         member_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         member_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         member_summary.value_shell,
@@ -1918,15 +1903,15 @@ fn test_summary_builder_semantic_solver_member_summary_resolves_property_table_i
             decl.name == "holder" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. })
         })
         .expect("holder decl");
-    let config_member_target = crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let config_member_target = SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
         owner_segments: Vec::new().into(),
         member_name: "config".into(),
     };
-    let config_member_target_handle = crate::SalsaMemberTargetId::from(&config_member_target);
+    let config_member_target_handle = SalsaMemberTargetId::from(&config_member_target);
 
     let member_summary = compilation
         .semantic()
@@ -1936,11 +1921,11 @@ fn test_summary_builder_semantic_solver_member_summary_resolves_property_table_i
 
     assert_eq!(
         member_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         member_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         member_summary.value_shell,
@@ -1984,53 +1969,53 @@ local Box
     assert_eq!(decl_type.named_type_names, vec!["Box"]);
     assert_eq!(
         decl_summary.value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
     assert!(decl_summary.value_shell.candidate_type_offsets.is_empty());
 }
 
 #[test]
 fn test_summary_builder_semantic_solver_weak_partial_cycle_drops_out_of_fixedpoint() {
-    let input_shell = crate::SalsaSemanticValueShellSummary {
-        state: crate::SalsaSemanticResolveStateSummary::Unknown,
+    let input_shell = SalsaSemanticValueShellSummary {
+        state: SalsaSemanticResolveStateSummary::Unknown,
         candidate_type_offsets: Vec::new(),
     };
-    let local_shell = crate::SalsaSemanticValueShellSummary {
-        state: crate::SalsaSemanticResolveStateSummary::Partial,
+    let local_shell = SalsaSemanticValueShellSummary {
+        state: SalsaSemanticResolveStateSummary::Partial,
         candidate_type_offsets: Vec::new(),
     };
 
     let (fixedpoint_shell, iterations) =
-        crate::solve_component_fixedpoint(&input_shell, &local_shell, true, false);
+        solve_component_fixedpoint(&input_shell, &local_shell, true, false);
 
     assert_eq!(
         fixedpoint_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Unknown
+        SalsaSemanticResolveStateSummary::Unknown
     );
     assert!(iterations >= 1);
 }
 
 #[test]
 fn test_summary_builder_semantic_solver_weak_partial_input_drops_out_of_propagation() {
-    let input_shell = crate::SalsaSemanticValueShellSummary {
-        state: crate::SalsaSemanticResolveStateSummary::Partial,
+    let input_shell = SalsaSemanticValueShellSummary {
+        state: SalsaSemanticResolveStateSummary::Partial,
         candidate_type_offsets: Vec::new(),
     };
-    let local_shell = crate::SalsaSemanticValueShellSummary {
-        state: crate::SalsaSemanticResolveStateSummary::Unknown,
+    let local_shell = SalsaSemanticValueShellSummary {
+        state: SalsaSemanticResolveStateSummary::Unknown,
         candidate_type_offsets: Vec::new(),
     };
 
     let (fixedpoint_shell, iterations) =
-        crate::solve_component_fixedpoint(&input_shell, &local_shell, true, true);
+        solve_component_fixedpoint(&input_shell, &local_shell, true, true);
 
     assert_eq!(
         fixedpoint_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Unknown
+        SalsaSemanticResolveStateSummary::Unknown
     );
     assert!(fixedpoint_shell.candidate_type_offsets.is_empty());
     assert!(iterations >= 1);
@@ -2068,7 +2053,7 @@ fn test_summary_builder_semantic_solver_preserves_weak_local_shell_before_transf
 
     assert_eq!(
         decl_summary.local_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Partial
+        SalsaSemanticResolveStateSummary::Partial
     );
     assert!(
         decl_summary
@@ -2078,7 +2063,7 @@ fn test_summary_builder_semantic_solver_preserves_weak_local_shell_before_transf
     );
     assert_eq!(
         decl_summary.fixedpoint_value_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Unknown
+        SalsaSemanticResolveStateSummary::Unknown
     );
     assert_eq!(
         decl_summary.value_shell,
@@ -2183,9 +2168,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(603),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(
-                from_name_signature.syntax_offset,
-            ),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(from_name_signature.syntax_offset),
         )
         .expect("from_name component");
     let from_member_component = compilation
@@ -2193,9 +2176,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(603),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(
-                from_member_signature.syntax_offset,
-            ),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(from_member_signature.syntax_offset),
         )
         .expect("from_member component");
     let value_component = compilation
@@ -2203,7 +2184,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(603),
-            crate::SalsaSemanticGraphNodeSummary::DeclValue(value_decl.id),
+            SalsaSemanticGraphNodeSummary::DeclValue(value_decl.id),
         )
         .expect("value component");
     let alias_component = compilation
@@ -2211,7 +2192,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(603),
-            crate::SalsaSemanticGraphNodeSummary::MemberValue(alias_member.target.clone()),
+            SalsaSemanticGraphNodeSummary::MemberValue(alias_member.target.clone()),
         )
         .expect("alias component");
 
@@ -2220,7 +2201,7 @@ end
         .file()
         .solver_execution(FileId::new(603))
         .expect("solver execution");
-    let after_name = crate::build_semantic_solver_step_summary(
+    let after_name = build_semantic_solver_step_summary(
         &execution,
         from_name_component.component_id,
         &scc_index,
@@ -2234,7 +2215,7 @@ end
     )
     .expect("from_name step")
     .next_execution;
-    let value_step = crate::build_semantic_solver_step_summary(
+    let value_step = build_semantic_solver_step_summary(
         &after_name,
         value_component.component_id,
         &scc_index,
@@ -2254,7 +2235,7 @@ end
             .contains(&from_name_component.component_id)
     );
 
-    let after_member = crate::build_semantic_solver_step_summary(
+    let after_member = build_semantic_solver_step_summary(
         &execution,
         from_member_component.component_id,
         &scc_index,
@@ -2268,7 +2249,7 @@ end
     )
     .expect("from_member step")
     .next_execution;
-    let alias_step = crate::build_semantic_solver_step_summary(
+    let alias_step = build_semantic_solver_step_summary(
         &after_member,
         alias_component.component_id,
         &scc_index,
@@ -2357,18 +2338,18 @@ end
 
 #[test]
 fn test_summary_builder_semantic_solver_member_shell_ignores_empty_candidates() {
-    let empty_member_target = crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let empty_member_target = SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
-            decl_id: crate::SalsaDeclId::new(TextSize::from(1)),
+            decl_id: SalsaDeclId::new(TextSize::from(1)),
         },
         owner_segments: Vec::new().into(),
         member_name: "value".into(),
     };
-    let empty_member_type = crate::SalsaMemberTypeInfoSummary {
+    let empty_member_type = SalsaMemberTypeInfoSummary {
         target: empty_member_target.clone().into(),
-        candidates: vec![crate::SalsaTypeCandidateSummary {
-            origin: crate::SalsaTypeCandidateOriginSummary::Member(empty_member_target.into()),
+        candidates: vec![SalsaTypeCandidateSummary {
+            origin: SalsaTypeCandidateOriginSummary::Member(empty_member_target.into()),
             explicit_type_offsets: Vec::new(),
             named_type_names: Vec::new(),
             initializer_offset: None,
@@ -2378,29 +2359,24 @@ fn test_summary_builder_semantic_solver_member_shell_ignores_empty_candidates() 
             signature_offset: None,
         }],
     };
-    let empty_shell = crate::build_semantic_value_shell_from_member_type(Some(&empty_member_type));
-    assert_eq!(
-        empty_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Unknown
-    );
+    let empty_shell = build_semantic_value_shell_from_member_type(Some(&empty_member_type));
+    assert_eq!(empty_shell.state, SalsaSemanticResolveStateSummary::Unknown);
 
-    let initialized_member_target = crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let initialized_member_target = SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
-            decl_id: crate::SalsaDeclId::new(TextSize::from(2)),
+            decl_id: SalsaDeclId::new(TextSize::from(2)),
         },
         owner_segments: Vec::new().into(),
         member_name: "value".into(),
     };
-    let initialized_member_type = crate::SalsaMemberTypeInfoSummary {
+    let initialized_member_type = SalsaMemberTypeInfoSummary {
         target: initialized_member_target.clone().into(),
-        candidates: vec![crate::SalsaTypeCandidateSummary {
-            origin: crate::SalsaTypeCandidateOriginSummary::Member(
-                initialized_member_target.into(),
-            ),
+        candidates: vec![SalsaTypeCandidateSummary {
+            origin: SalsaTypeCandidateOriginSummary::Member(initialized_member_target.into()),
             explicit_type_offsets: Vec::new(),
             named_type_names: Vec::new(),
-            initializer_offset: Some(rowan::TextSize::from(12)),
+            initializer_offset: Some(TextSize::from(12)),
             value_expr_syntax_id: None,
             value_result_index: 0,
             source_call_syntax_id: None,
@@ -2408,24 +2384,24 @@ fn test_summary_builder_semantic_solver_member_shell_ignores_empty_candidates() 
         }],
     };
     let initialized_shell =
-        crate::build_semantic_value_shell_from_member_type(Some(&initialized_member_type));
+        build_semantic_value_shell_from_member_type(Some(&initialized_member_type));
     assert_eq!(
         initialized_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Partial
+        SalsaSemanticResolveStateSummary::Partial
     );
 
-    let named_member_target = crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let named_member_target = SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
-            decl_id: crate::SalsaDeclId::new(TextSize::from(3)),
+            decl_id: SalsaDeclId::new(TextSize::from(3)),
         },
         owner_segments: Vec::new().into(),
         member_name: "value".into(),
     };
-    let named_member_type = crate::SalsaMemberTypeInfoSummary {
+    let named_member_type = SalsaMemberTypeInfoSummary {
         target: named_member_target.clone().into(),
-        candidates: vec![crate::SalsaTypeCandidateSummary {
-            origin: crate::SalsaTypeCandidateOriginSummary::Member(named_member_target.into()),
+        candidates: vec![SalsaTypeCandidateSummary {
+            origin: SalsaTypeCandidateOriginSummary::Member(named_member_target.into()),
             explicit_type_offsets: Vec::new(),
             named_type_names: vec!["Box".into()],
             initializer_offset: None,
@@ -2435,82 +2411,77 @@ fn test_summary_builder_semantic_solver_member_shell_ignores_empty_candidates() 
             signature_offset: None,
         }],
     };
-    let named_shell = crate::build_semantic_value_shell_from_member_type(Some(&named_member_type));
+    let named_shell = build_semantic_value_shell_from_member_type(Some(&named_member_type));
     assert_eq!(
         named_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
 }
 
 #[test]
 fn test_summary_builder_semantic_solver_candidate_shell_supports_property_like_candidates() {
-    let empty_shell = crate::build_semantic_value_shell_from_candidates(&[]);
-    assert_eq!(
-        empty_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Unknown
-    );
+    let empty_shell = build_semantic_value_shell_from_candidates(&[]);
+    assert_eq!(empty_shell.state, SalsaSemanticResolveStateSummary::Unknown);
 
-    let partial_candidates = vec![crate::SalsaTypeCandidateSummary {
-        origin: crate::SalsaTypeCandidateOriginSummary::Property(rowan::TextSize::from(10)),
+    let partial_candidates = vec![SalsaTypeCandidateSummary {
+        origin: SalsaTypeCandidateOriginSummary::Property(TextSize::from(10)),
         explicit_type_offsets: Vec::new(),
         named_type_names: Vec::new(),
-        initializer_offset: Some(rowan::TextSize::from(12)),
+        initializer_offset: Some(TextSize::from(12)),
         value_expr_syntax_id: None,
         value_result_index: 1,
         source_call_syntax_id: None,
         signature_offset: None,
     }];
-    let partial_shell = crate::build_semantic_value_shell_from_candidates(&partial_candidates);
+    let partial_shell = build_semantic_value_shell_from_candidates(&partial_candidates);
     assert_eq!(
         partial_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Partial
+        SalsaSemanticResolveStateSummary::Partial
     );
 
-    let resolved_candidates = vec![crate::SalsaTypeCandidateSummary {
-        origin: crate::SalsaTypeCandidateOriginSummary::Property(rowan::TextSize::from(20)),
+    let resolved_candidates = vec![SalsaTypeCandidateSummary {
+        origin: SalsaTypeCandidateOriginSummary::Property(TextSize::from(20)),
         explicit_type_offsets: Vec::new(),
         named_type_names: Vec::new(),
-        initializer_offset: Some(rowan::TextSize::from(22)),
+        initializer_offset: Some(TextSize::from(22)),
         value_expr_syntax_id: None,
         value_result_index: 1,
         source_call_syntax_id: None,
-        signature_offset: Some(rowan::TextSize::from(24)),
+        signature_offset: Some(TextSize::from(24)),
     }];
-    let resolved_shell = crate::build_semantic_value_shell_from_candidates(&resolved_candidates);
+    let resolved_shell = build_semantic_value_shell_from_candidates(&resolved_candidates);
     assert_eq!(
         resolved_shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
+        SalsaSemanticResolveStateSummary::Resolved
     );
 }
 
 #[test]
 fn test_summary_builder_semantic_solver_for_range_name_source_uses_shared_candidate_shell() {
-    let summary = crate::SalsaForRangeIterQuerySummary {
-        loop_offset: rowan::TextSize::from(10),
-        iter_expr_offsets: vec![rowan::TextSize::from(11)],
-        state: crate::SalsaForRangeIterResolveStateSummary::Resolved,
-        source: Some(crate::SalsaForRangeIterSourceSummary {
-            expr_offset: rowan::TextSize::from(11),
-            kind: crate::SalsaForRangeIterSourceKindSummary::Name,
-            name_type: Some(crate::SalsaProgramPointTypeInfoSummary {
-                syntax_offset: rowan::TextSize::from(11),
-                program_point_offset: rowan::TextSize::from(12),
-                name_use: crate::SalsaNameUseSummary {
-                    syntax_offset: rowan::TextSize::from(11),
-                    syntax_id: crate::SalsaSyntaxIdSummary {
+    let summary = SalsaForRangeIterQuerySummary {
+        loop_offset: TextSize::from(10),
+        iter_expr_offsets: vec![TextSize::from(11)],
+        state: SalsaForRangeIterResolveStateSummary::Resolved,
+        source: Some(SalsaForRangeIterSourceSummary {
+            expr_offset: TextSize::from(11),
+            kind: SalsaForRangeIterSourceKindSummary::Name,
+            name_type: Some(SalsaProgramPointTypeInfoSummary {
+                syntax_offset: TextSize::from(11),
+                program_point_offset: TextSize::from(12),
+                name_use: SalsaNameUseSummary {
+                    syntax_offset: TextSize::from(11),
+                    syntax_id: SalsaSyntaxIdSummary {
                         kind: LuaSyntaxKind::None,
-                        start_offset: rowan::TextSize::from(11),
-                        end_offset: rowan::TextSize::from(15),
+                        start_offset: TextSize::from(11),
+                        end_offset: TextSize::from(15),
                     },
                     name: "iter".into(),
-                    role: crate::SalsaUseSiteRoleSummary::Read,
-                    resolution: crate::SalsaNameUseResolutionSummary::Global,
+                    role: SalsaUseSiteRoleSummary::Read,
+                    resolution: SalsaNameUseResolutionSummary::Global,
                 },
                 base_decl_type: None,
-                candidates: vec![crate::SalsaTypeCandidateSummary {
-                    origin: crate::SalsaTypeCandidateOriginSummary::Assignment(
-                        rowan::TextSize::from(13),
-                    ),
+                candidates: vec![SalsaTypeCandidateSummary {
+                    origin: SalsaTypeCandidateOriginSummary::Assignment(TextSize::from(13)),
                     explicit_type_offsets: Vec::new(),
                     named_type_names: vec!["Box".into()],
                     initializer_offset: None,
@@ -2527,49 +2498,46 @@ fn test_summary_builder_semantic_solver_for_range_name_source_uses_shared_candid
         iter_vars: Vec::new(),
     };
 
-    let shell = crate::build_semantic_value_shell_from_for_range_iter_source(&summary, None);
-    assert_eq!(
-        shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
-    );
+    let shell = build_semantic_value_shell_from_for_range_iter_source(&summary, None);
+    assert_eq!(shell.state, SalsaSemanticResolveStateSummary::Resolved);
 }
 
 #[test]
 fn test_summary_builder_semantic_solver_for_range_member_source_uses_shared_candidate_shell() {
-    let member_target = crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let member_target = SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
-            decl_id: crate::SalsaDeclId::new(rowan::TextSize::from(9)),
+            decl_id: SalsaDeclId::new(TextSize::from(9)),
         },
         owner_segments: Vec::new().into(),
         member_name: "value".into(),
     };
-    let summary = crate::SalsaForRangeIterQuerySummary {
-        loop_offset: rowan::TextSize::from(20),
-        iter_expr_offsets: vec![rowan::TextSize::from(21)],
-        state: crate::SalsaForRangeIterResolveStateSummary::Resolved,
-        source: Some(crate::SalsaForRangeIterSourceSummary {
-            expr_offset: rowan::TextSize::from(21),
-            kind: crate::SalsaForRangeIterSourceKindSummary::Member,
+    let summary = SalsaForRangeIterQuerySummary {
+        loop_offset: TextSize::from(20),
+        iter_expr_offsets: vec![TextSize::from(21)],
+        state: SalsaForRangeIterResolveStateSummary::Resolved,
+        source: Some(SalsaForRangeIterSourceSummary {
+            expr_offset: TextSize::from(21),
+            kind: SalsaForRangeIterSourceKindSummary::Member,
             name_type: None,
-            member_type: Some(crate::SalsaProgramPointMemberTypeInfoSummary {
-                syntax_offset: rowan::TextSize::from(21),
-                program_point_offset: rowan::TextSize::from(22),
-                member_use: crate::SalsaMemberUseSummary {
-                    syntax_offset: rowan::TextSize::from(21),
-                    syntax_id: crate::SalsaSyntaxIdSummary {
+            member_type: Some(SalsaProgramPointMemberTypeInfoSummary {
+                syntax_offset: TextSize::from(21),
+                program_point_offset: TextSize::from(22),
+                member_use: SalsaMemberUseSummary {
+                    syntax_offset: TextSize::from(21),
+                    syntax_id: SalsaSyntaxIdSummary {
                         kind: LuaSyntaxKind::None,
-                        start_offset: rowan::TextSize::from(21),
-                        end_offset: rowan::TextSize::from(27),
+                        start_offset: TextSize::from(21),
+                        end_offset: TextSize::from(27),
                     },
-                    role: crate::SalsaUseSiteRoleSummary::Read,
+                    role: SalsaUseSiteRoleSummary::Read,
                     target: member_target.clone().into(),
                 },
                 base_member_type: None,
                 owner_decl_id: None,
                 owner_candidates: Vec::new(),
-                candidates: vec![crate::SalsaTypeCandidateSummary {
-                    origin: crate::SalsaTypeCandidateOriginSummary::Member(member_target.into()),
+                candidates: vec![SalsaTypeCandidateSummary {
+                    origin: SalsaTypeCandidateOriginSummary::Member(member_target.into()),
                     explicit_type_offsets: Vec::new(),
                     named_type_names: vec!["Box".into()],
                     initializer_offset: None,
@@ -2585,34 +2553,31 @@ fn test_summary_builder_semantic_solver_for_range_member_source_uses_shared_cand
         iter_vars: Vec::new(),
     };
 
-    let shell = crate::build_semantic_value_shell_from_for_range_iter_source(&summary, None);
-    assert_eq!(
-        shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
-    );
+    let shell = build_semantic_value_shell_from_for_range_iter_source(&summary, None);
+    assert_eq!(shell.state, SalsaSemanticResolveStateSummary::Resolved);
 }
 
 #[test]
 fn test_summary_builder_semantic_solver_for_range_call_source_treats_return_rows_as_resolved() {
-    let summary = crate::SalsaForRangeIterQuerySummary {
-        loop_offset: rowan::TextSize::from(30),
-        iter_expr_offsets: vec![rowan::TextSize::from(31)],
-        state: crate::SalsaForRangeIterResolveStateSummary::Resolved,
-        source: Some(crate::SalsaForRangeIterSourceSummary {
-            expr_offset: rowan::TextSize::from(31),
-            kind: crate::SalsaForRangeIterSourceKindSummary::Call,
+    let summary = SalsaForRangeIterQuerySummary {
+        loop_offset: TextSize::from(30),
+        iter_expr_offsets: vec![TextSize::from(31)],
+        state: SalsaForRangeIterResolveStateSummary::Resolved,
+        source: Some(SalsaForRangeIterSourceSummary {
+            expr_offset: TextSize::from(31),
+            kind: SalsaForRangeIterSourceKindSummary::Call,
             name_type: None,
             member_type: None,
-            call: Some(crate::SalsaCallExplainSummary {
-                call: crate::SalsaCallSummary {
-                    syntax_offset: rowan::TextSize::from(31),
-                    syntax_id: crate::SalsaSyntaxIdSummary {
+            call: Some(SalsaCallExplainSummary {
+                call: SalsaCallSummary {
+                    syntax_offset: TextSize::from(31),
+                    syntax_id: SalsaSyntaxIdSummary {
                         kind: LuaSyntaxKind::None,
-                        start_offset: rowan::TextSize::from(31),
-                        end_offset: rowan::TextSize::from(36),
+                        start_offset: TextSize::from(31),
+                        end_offset: TextSize::from(36),
                     },
-                    callee_offset: rowan::TextSize::from(32),
-                    kind: crate::SalsaCallKindSummary::Normal,
+                    callee_offset: TextSize::from(32),
+                    kind: SalsaCallKindSummary::Normal,
                     is_colon_call: false,
                     is_single_arg_no_parens: false,
                     arg_expr_offsets: Vec::new(),
@@ -2625,12 +2590,12 @@ fn test_summary_builder_semantic_solver_for_range_call_source_treats_return_rows
                 resolved_signature: None,
                 args: Vec::new(),
                 overload_returns: Vec::new(),
-                returns: vec![crate::SalsaSignatureReturnExplainSummary {
-                    syntax_offset: rowan::TextSize::from(33),
-                    items: vec![crate::SalsaSignatureReturnItemExplainSummary {
+                returns: vec![SalsaSignatureReturnExplainSummary {
+                    syntax_offset: TextSize::from(33),
+                    items: vec![SalsaSignatureReturnItemExplainSummary {
                         name: None,
-                        doc_type: crate::SalsaSignatureTypeExplainSummary {
-                            type_ref: crate::SalsaDocTypeRef::Incomplete,
+                        doc_type: SalsaSignatureTypeExplainSummary {
+                            type_ref: SalsaDocTypeRef::Incomplete,
                             lowered: None,
                         },
                     }],
@@ -2640,40 +2605,37 @@ fn test_summary_builder_semantic_solver_for_range_call_source_treats_return_rows
         iter_vars: Vec::new(),
     };
 
-    let empty_signature_returns = crate::SalsaSignatureReturnQueryIndex {
+    let empty_signature_returns = SalsaSignatureReturnQueryIndex {
         signatures: Vec::new(),
     };
-    let shell = crate::build_semantic_value_shell_from_for_range_iter_source(
+    let shell = build_semantic_value_shell_from_for_range_iter_source(
         &summary,
         Some(&empty_signature_returns),
     );
-    assert_eq!(
-        shell.state,
-        crate::SalsaSemanticResolveStateSummary::Resolved
-    );
+    assert_eq!(shell.state, SalsaSemanticResolveStateSummary::Resolved);
 }
 
 #[test]
 fn test_summary_builder_semantic_solver_for_range_call_source_keeps_candidate_only_partial() {
-    let summary = crate::SalsaForRangeIterQuerySummary {
-        loop_offset: rowan::TextSize::from(40),
-        iter_expr_offsets: vec![rowan::TextSize::from(41)],
-        state: crate::SalsaForRangeIterResolveStateSummary::Resolved,
-        source: Some(crate::SalsaForRangeIterSourceSummary {
-            expr_offset: rowan::TextSize::from(41),
-            kind: crate::SalsaForRangeIterSourceKindSummary::Call,
+    let summary = SalsaForRangeIterQuerySummary {
+        loop_offset: TextSize::from(40),
+        iter_expr_offsets: vec![TextSize::from(41)],
+        state: SalsaForRangeIterResolveStateSummary::Resolved,
+        source: Some(SalsaForRangeIterSourceSummary {
+            expr_offset: TextSize::from(41),
+            kind: SalsaForRangeIterSourceKindSummary::Call,
             name_type: None,
             member_type: None,
-            call: Some(crate::SalsaCallExplainSummary {
-                call: crate::SalsaCallSummary {
-                    syntax_offset: rowan::TextSize::from(41),
-                    syntax_id: crate::SalsaSyntaxIdSummary {
+            call: Some(SalsaCallExplainSummary {
+                call: SalsaCallSummary {
+                    syntax_offset: TextSize::from(41),
+                    syntax_id: SalsaSyntaxIdSummary {
                         kind: LuaSyntaxKind::None,
-                        start_offset: rowan::TextSize::from(41),
-                        end_offset: rowan::TextSize::from(46),
+                        start_offset: TextSize::from(41),
+                        end_offset: TextSize::from(46),
                     },
-                    callee_offset: rowan::TextSize::from(42),
-                    kind: crate::SalsaCallKindSummary::Normal,
+                    callee_offset: TextSize::from(42),
+                    kind: SalsaCallKindSummary::Normal,
                     is_colon_call: false,
                     is_single_arg_no_parens: false,
                     arg_expr_offsets: Vec::new(),
@@ -2681,7 +2643,7 @@ fn test_summary_builder_semantic_solver_for_range_call_source_keeps_candidate_on
                 },
                 lexical_call: None,
                 call_generic_types: Vec::new(),
-                candidate_signature_offsets: vec![rowan::TextSize::from(45)],
+                candidate_signature_offsets: vec![TextSize::from(45)],
                 resolved_signature_offset: None,
                 resolved_signature: None,
                 args: Vec::new(),
@@ -2692,31 +2654,28 @@ fn test_summary_builder_semantic_solver_for_range_call_source_keeps_candidate_on
         iter_vars: Vec::new(),
     };
 
-    let empty_signature_returns = crate::SalsaSignatureReturnQueryIndex {
+    let empty_signature_returns = SalsaSignatureReturnQueryIndex {
         signatures: Vec::new(),
     };
-    let shell = crate::build_semantic_value_shell_from_for_range_iter_source(
+    let shell = build_semantic_value_shell_from_for_range_iter_source(
         &summary,
         Some(&empty_signature_returns),
     );
-    assert_eq!(
-        shell.state,
-        crate::SalsaSemanticResolveStateSummary::Partial
-    );
+    assert_eq!(shell.state, SalsaSemanticResolveStateSummary::Partial);
 }
 
 #[test]
 fn test_summary_builder_call_explain_is_resolved_when_return_rows_exist() {
-    let call = crate::SalsaCallExplainSummary {
-        call: crate::SalsaCallSummary {
-            syntax_offset: rowan::TextSize::from(50),
-            syntax_id: crate::SalsaSyntaxIdSummary {
+    let call = SalsaCallExplainSummary {
+        call: SalsaCallSummary {
+            syntax_offset: TextSize::from(50),
+            syntax_id: SalsaSyntaxIdSummary {
                 kind: LuaSyntaxKind::None,
-                start_offset: rowan::TextSize::from(50),
-                end_offset: rowan::TextSize::from(55),
+                start_offset: TextSize::from(50),
+                end_offset: TextSize::from(55),
             },
-            callee_offset: rowan::TextSize::from(51),
-            kind: crate::SalsaCallKindSummary::Normal,
+            callee_offset: TextSize::from(51),
+            kind: SalsaCallKindSummary::Normal,
             is_colon_call: false,
             is_single_arg_no_parens: false,
             arg_expr_offsets: Vec::new(),
@@ -2729,33 +2688,33 @@ fn test_summary_builder_call_explain_is_resolved_when_return_rows_exist() {
         resolved_signature: None,
         args: Vec::new(),
         overload_returns: Vec::new(),
-        returns: vec![crate::SalsaSignatureReturnExplainSummary {
-            syntax_offset: rowan::TextSize::from(52),
-            items: vec![crate::SalsaSignatureReturnItemExplainSummary {
+        returns: vec![SalsaSignatureReturnExplainSummary {
+            syntax_offset: TextSize::from(52),
+            items: vec![SalsaSignatureReturnItemExplainSummary {
                 name: None,
-                doc_type: crate::SalsaSignatureTypeExplainSummary {
-                    type_ref: crate::SalsaDocTypeRef::Incomplete,
+                doc_type: SalsaSignatureTypeExplainSummary {
+                    type_ref: SalsaDocTypeRef::Incomplete,
                     lowered: None,
                 },
             }],
         }],
     };
 
-    assert!(crate::call_explain_is_resolved(&call));
+    assert!(call_explain_is_resolved(&call));
 }
 
 #[test]
 fn test_summary_builder_call_explain_is_not_resolved_for_candidate_only_calls() {
-    let call = crate::SalsaCallExplainSummary {
-        call: crate::SalsaCallSummary {
-            syntax_offset: rowan::TextSize::from(60),
-            syntax_id: crate::SalsaSyntaxIdSummary {
+    let call = SalsaCallExplainSummary {
+        call: SalsaCallSummary {
+            syntax_offset: TextSize::from(60),
+            syntax_id: SalsaSyntaxIdSummary {
                 kind: LuaSyntaxKind::None,
-                start_offset: rowan::TextSize::from(60),
-                end_offset: rowan::TextSize::from(65),
+                start_offset: TextSize::from(60),
+                end_offset: TextSize::from(65),
             },
-            callee_offset: rowan::TextSize::from(61),
-            kind: crate::SalsaCallKindSummary::Normal,
+            callee_offset: TextSize::from(61),
+            kind: SalsaCallKindSummary::Normal,
             is_colon_call: false,
             is_single_arg_no_parens: false,
             arg_expr_offsets: Vec::new(),
@@ -2763,7 +2722,7 @@ fn test_summary_builder_call_explain_is_not_resolved_for_candidate_only_calls() 
         },
         lexical_call: None,
         call_generic_types: Vec::new(),
-        candidate_signature_offsets: vec![rowan::TextSize::from(64)],
+        candidate_signature_offsets: vec![TextSize::from(64)],
         resolved_signature_offset: None,
         resolved_signature: None,
         args: Vec::new(),
@@ -2771,5 +2730,5 @@ fn test_summary_builder_call_explain_is_not_resolved_for_candidate_only_calls() 
         returns: Vec::new(),
     };
 
-    assert!(!crate::call_explain_is_resolved(&call));
+    assert!(!call_explain_is_resolved(&call));
 }

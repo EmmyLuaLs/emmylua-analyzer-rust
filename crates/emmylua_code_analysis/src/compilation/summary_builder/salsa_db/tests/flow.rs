@@ -224,11 +224,7 @@ end"#;
         .map(|statement| statement.syntax_offset)
         .expect("while statement offset");
 
-    assert!(
-        flow_query
-            .root_block_offsets
-            .contains(&rowan::TextSize::from(0))
-    );
+    assert!(flow_query.root_block_offsets.contains(&TextSize::from(0)));
     assert!(flow_query.root_block_offsets.contains(&func_block_offset));
     assert!(matches!(
         flow_api.block_at(FileId::new(11), func_block_offset),

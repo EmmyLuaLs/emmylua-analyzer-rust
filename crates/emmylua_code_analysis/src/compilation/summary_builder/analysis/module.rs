@@ -58,15 +58,13 @@ fn summarize_export_expr(expr: LuaExpr) -> Option<SalsaExportTargetSummary> {
     }
 }
 
-fn summarize_member_export(
-    index_expr: emmylua_parser::LuaIndexExpr,
-) -> Option<SalsaExportTargetSummary> {
+fn summarize_member_export(index_expr: LuaIndexExpr) -> Option<SalsaExportTargetSummary> {
     let path = extract_member_target_from_index_expr(&index_expr)?;
     Some(SalsaExportTargetSummary::Member(path))
 }
 
 fn extract_member_target_from_index_expr(
-    index_expr: &emmylua_parser::LuaIndexExpr,
+    index_expr: &LuaIndexExpr,
 ) -> Option<SalsaMemberPathSummary> {
     let (root, segments) = extract_member_path_from_index_expr(index_expr)?;
     let (member_name, owner_segments) = split_member_path(segments)?;
@@ -78,7 +76,7 @@ fn extract_member_target_from_index_expr(
 }
 
 fn extract_member_path_from_index_expr(
-    index_expr: &emmylua_parser::LuaIndexExpr,
+    index_expr: &LuaIndexExpr,
 ) -> Option<(SalsaMemberPathRootSummary, Vec<SmolStr>)> {
     let (root, mut segments) = extract_member_path_from_expr(&index_expr.get_prefix_expr()?)?;
     segments.push(get_member_name(index_expr)?);

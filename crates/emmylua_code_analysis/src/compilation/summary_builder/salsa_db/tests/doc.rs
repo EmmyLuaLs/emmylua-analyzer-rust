@@ -1,4 +1,6 @@
 use super::*;
+use crate::*;
+use rowan::TextRange;
 
 #[test]
 fn test_summary_builder_doc_structures() {
@@ -55,9 +57,9 @@ local result = map(1) ---@as string
 
     assert!(doc.type_defs.iter().any(|type_def| matches!(
         type_def,
-        crate::SalsaDocTypeDefSummary {
+        SalsaDocTypeDefSummary {
             name,
-            kind: crate::SalsaDocTypeDefKindSummary::Class,
+            kind: SalsaDocTypeDefKindSummary::Class,
             generic_params,
             super_type_offsets,
             ..
@@ -65,27 +67,27 @@ local result = map(1) ---@as string
     )));
     assert!(doc.type_defs.iter().any(|type_def| matches!(
         type_def,
-        crate::SalsaDocTypeDefSummary {
+        SalsaDocTypeDefSummary {
             name,
-            kind: crate::SalsaDocTypeDefKindSummary::Alias,
+            kind: SalsaDocTypeDefKindSummary::Alias,
             value_type_offset: Some(_),
             ..
         } if name == "Identifier"
     )));
     assert!(doc.type_defs.iter().any(|type_def| matches!(
         type_def,
-        crate::SalsaDocTypeDefSummary {
+        SalsaDocTypeDefSummary {
             name,
-            kind: crate::SalsaDocTypeDefKindSummary::Enum,
+            kind: SalsaDocTypeDefKindSummary::Enum,
             value_type_offset: Some(_),
             ..
         } if name == "Mode"
     )));
     assert!(doc.operators.iter().any(|operator| matches!(
         operator,
-        crate::SalsaDocOperatorSummary {
-            owner: crate::SalsaDocOwnerSummary {
-                kind: crate::SalsaDocOwnerKindSummary::LocalStat,
+        SalsaDocOperatorSummary {
+            owner: SalsaDocOwnerSummary {
+                kind: SalsaDocOwnerKindSummary::LocalStat,
                 syntax_offset: Some(_),
             },
             name,
@@ -96,9 +98,9 @@ local result = map(1) ---@as string
     )));
     assert!(doc.generics.iter().any(|generic| matches!(
         generic,
-        crate::SalsaDocGenericSummary {
-            owner: crate::SalsaDocOwnerSummary {
-                kind: crate::SalsaDocOwnerKindSummary::LocalFuncStat,
+        SalsaDocGenericSummary {
+            owner: SalsaDocOwnerSummary {
+                kind: SalsaDocOwnerKindSummary::LocalFuncStat,
                 syntax_offset: Some(_),
             },
             params,
@@ -107,9 +109,9 @@ local result = map(1) ---@as string
     )));
     assert!(doc.params.iter().any(|param| matches!(
         param,
-        crate::SalsaDocParamSummary {
-            owner: crate::SalsaDocOwnerSummary {
-                kind: crate::SalsaDocOwnerKindSummary::LocalFuncStat,
+        SalsaDocParamSummary {
+            owner: SalsaDocOwnerSummary {
+                kind: SalsaDocOwnerKindSummary::LocalFuncStat,
                 syntax_offset: Some(_),
             },
             name,
@@ -121,7 +123,7 @@ local result = map(1) ---@as string
     )));
     assert!(doc.params.iter().any(|param| matches!(
         param,
-        crate::SalsaDocParamSummary {
+        SalsaDocParamSummary {
             name,
             type_offset: Some(_),
             is_vararg: true,
@@ -130,9 +132,9 @@ local result = map(1) ---@as string
     )));
     assert!(doc.returns.iter().any(|return_info| matches!(
         return_info,
-        crate::SalsaDocReturnSummary {
-            owner: crate::SalsaDocOwnerSummary {
-                kind: crate::SalsaDocOwnerKindSummary::LocalFuncStat,
+        SalsaDocReturnSummary {
+            owner: SalsaDocOwnerSummary {
+                kind: SalsaDocOwnerKindSummary::LocalFuncStat,
                 syntax_offset: Some(_),
             },
             items,
@@ -140,85 +142,87 @@ local result = map(1) ---@as string
         } if items.len() == 2 && items[0].name.as_deref() == Some("result")
     )));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::ReturnOverload && !tag.type_offsets().is_empty()
+        tag.kind == SalsaDocTagKindSummary::ReturnOverload && !tag.type_offsets().is_empty()
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Overload && tag.type_offsets().len() == 1
+        tag.kind == SalsaDocTagKindSummary::Overload && tag.type_offsets().len() == 1
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Nodiscard
+        tag.kind == SalsaDocTagKindSummary::Nodiscard
             && tag.content().map(|value| value.as_str()) == Some("use the boolean result")
     }));
     assert!(
         doc.tags
             .iter()
-            .any(|tag| tag.kind == crate::SalsaDocTagKindSummary::Async)
+            .any(|tag| tag.kind == SalsaDocTagKindSummary::Async)
     );
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Deprecated
+        tag.kind == SalsaDocTagKindSummary::Deprecated
             && tag.content().map(|value| value.as_str()) == Some("prefer map2")
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Version && tag.version_conds().len() == 2
+        tag.kind == SalsaDocTagKindSummary::Version && tag.version_conds().len() == 2
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::See
+        tag.kind == SalsaDocTagKindSummary::See
             && tag.content().map(|value| value.as_str()) == Some("Box#add")
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Source
+        tag.kind == SalsaDocTagKindSummary::Source
             && tag.content().map(|value| value.as_str()) == Some("https://example.com/doc")
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Diagnostic
+        tag.kind == SalsaDocTagKindSummary::Diagnostic
             && tag.name().map(|value| value.as_str()) == Some("disable-next-line")
             && tag.items().len() == 2
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Other
+        tag.kind == SalsaDocTagKindSummary::Other
             && tag.name().map(|value| value.as_str()) == Some("other")
             && tag.content().map(|value| value.as_str()) == Some("custom payload")
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Language
+        tag.kind == SalsaDocTagKindSummary::Language
             && tag.name().map(|value| value.as_str()) == Some("lua")
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Module
+        tag.kind == SalsaDocTagKindSummary::Module
             && tag.name().map(|value| value.as_str()) == Some("socket.core")
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Cast
+        tag.kind == SalsaDocTagKindSummary::Cast
             && tag.name().map(|value| value.as_str()) == Some("value")
             && !tag.type_offsets().is_empty()
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::ReturnCast
+        tag.kind == SalsaDocTagKindSummary::ReturnCast
             && tag.name().map(|value| value.as_str()) == Some("value")
             && tag.type_offsets().len() == 2
     }));
     assert!(
         doc.tags
             .iter()
-            .any(|tag| tag.kind == crate::SalsaDocTagKindSummary::Readonly)
+            .any(|tag| tag.kind == SalsaDocTagKindSummary::Readonly)
     );
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Visibility
-            && tag.visibility() == Some(&crate::SalsaDocVisibilityKindSummary::Private)
+        tag.kind == SalsaDocTagKindSummary::Visibility
+            && tag.visibility() == Some(&SalsaDocVisibilityKindSummary::Private)
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Namespace
+        tag.kind == SalsaDocTagKindSummary::Namespace
             && tag.name().map(|value| value.as_str()) == Some("Demo")
     }));
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Using
+        tag.kind == SalsaDocTagKindSummary::Using
             && tag.name().map(|value| value.as_str()) == Some("Demo")
     }));
+    assert!(
+        doc.tags
+            .iter()
+            .any(|tag| { tag.kind == SalsaDocTagKindSummary::As && tag.type_offsets().len() == 1 })
+    );
     assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::As && tag.type_offsets().len() == 1
-    }));
-    assert!(doc.tags.iter().any(|tag| {
-        tag.kind == crate::SalsaDocTagKindSummary::Meta
+        tag.kind == SalsaDocTagKindSummary::Meta
             && tag.name().map(|value| value.as_str()) == Some("socket.io")
     }));
 
@@ -228,12 +232,12 @@ local result = map(1) ---@as string
         .tags
         .iter()
         .find(|tag| {
-            tag.kind == crate::SalsaDocTagKindSummary::Source
+            tag.kind == SalsaDocTagKindSummary::Source
                 && tag.content().map(|value| value.as_str()) == Some("https://example.com/doc")
                 && matches!(
                     tag.owner,
-                    crate::SalsaDocOwnerSummary {
-                        kind: crate::SalsaDocOwnerKindSummary::LocalFuncStat,
+                    SalsaDocOwnerSummary {
+                        kind: SalsaDocOwnerKindSummary::LocalFuncStat,
                         syntax_offset: Some(_),
                     }
                 )
@@ -249,7 +253,7 @@ local result = map(1) ---@as string
     );
 
     let source_tags = doc_queries
-        .tags_for_kind(FileId::new(8), crate::SalsaDocTagKindSummary::Source)
+        .tags_for_kind(FileId::new(8), SalsaDocTagKindSummary::Source)
         .expect("source tags");
     assert_eq!(source_tags, vec![source_tag.clone()]);
 
@@ -280,7 +284,7 @@ local result = map(1) ---@as string
     );
     assert_eq!(
         map_property.visibility(),
-        Some(&crate::SalsaDocVisibilityKindSummary::Private)
+        Some(&SalsaDocVisibilityKindSummary::Private)
     );
     assert_eq!(
         map_property.source().map(|value| value.as_str()),
@@ -336,7 +340,7 @@ local result = map(1) ---@as string
     assert_eq!(diagnostic_actions.len(), 2);
     assert!(diagnostic_actions.iter().all(|action| matches!(
         action.kind,
-        crate::SalsaDocDiagnosticActionKindSummary::DisableNextLine
+        SalsaDocDiagnosticActionKindSummary::DisableNextLine
     )));
     assert_eq!(
         diagnostic_actions
@@ -353,7 +357,7 @@ local result = map(1) ---@as string
     assert_eq!(resolved_diagnostics.len(), 2);
     assert!(resolved_diagnostics.iter().all(|diagnostic| matches!(
         diagnostic.kind,
-        crate::SalsaDocDiagnosticActionKindSummary::DisableNextLine
+        SalsaDocDiagnosticActionKindSummary::DisableNextLine
     )));
     assert!(
         resolved_diagnostics
@@ -365,14 +369,11 @@ local result = map(1) ---@as string
             .iter()
             .filter_map(|diagnostic| diagnostic.code)
             .collect::<Vec<_>>(),
-        vec![
-            crate::DiagnosticCode::MissingReturn,
-            crate::DiagnosticCode::Unused
-        ]
+        vec![DiagnosticCode::MissingReturn, DiagnosticCode::Unused]
     );
     assert_eq!(
         map_property.custom_tags().cloned().collect::<Vec<_>>(),
-        vec![crate::SalsaDocTagNameContentSummary {
+        vec![SalsaDocTagNameContentSummary {
             name: "other".into(),
             content: Some("custom payload".into()),
         }]
@@ -388,13 +389,13 @@ local result = map(1) ---@as string
         Some("socket.io")
     );
 
-    assert!(std::mem::size_of::<crate::SalsaDocTagSummary>() <= 128);
-    assert!(std::mem::size_of::<crate::SalsaDocTagPropertySummary>() <= 64);
+    assert!(size_of::<SalsaDocTagSummary>() <= 128);
+    assert!(size_of::<SalsaDocTagPropertySummary>() <= 64);
 
     assert!(doc_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeNodeSummary {
-            kind: crate::SalsaDocTypeKindSummary::Nullable {
+        SalsaDocTypeNodeSummary {
+            kind: SalsaDocTypeKindSummary::Nullable {
                 inner_type_offset: Some(_)
             },
             ..
@@ -402,16 +403,16 @@ local result = map(1) ---@as string
     )));
     assert!(doc_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeNodeSummary {
-            kind: crate::SalsaDocTypeKindSummary::Function { params, returns, .. },
+        SalsaDocTypeNodeSummary {
+            kind: SalsaDocTypeKindSummary::Function { params, returns, .. },
             ..
         } if !params.is_empty() && returns.len() == 2
     )));
     assert!(doc_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeNodeSummary {
-            kind: crate::SalsaDocTypeKindSummary::Binary {
-                op: crate::SalsaDocTypeBinaryOperatorSummary::Union,
+        SalsaDocTypeNodeSummary {
+            kind: SalsaDocTypeKindSummary::Binary {
+                op: SalsaDocTypeBinaryOperatorSummary::Union,
                 ..
             },
             ..
@@ -419,9 +420,9 @@ local result = map(1) ---@as string
     )));
     assert!(doc_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeNodeSummary {
-            kind: crate::SalsaDocTypeKindSummary::Unary {
-                op: crate::SalsaDocTypeUnaryOperatorSummary::Neg,
+        SalsaDocTypeNodeSummary {
+            kind: SalsaDocTypeKindSummary::Unary {
+                op: SalsaDocTypeUnaryOperatorSummary::Neg,
                 ..
             },
             ..
@@ -440,17 +441,17 @@ local result = map(1) ---@as string
 
     assert!(lowered_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Nullable {
-                inner_type: crate::SalsaDocTypeRef::Node(_),
+        SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Nullable {
+                inner_type: SalsaDocTypeRef::Node(_),
             },
             ..
         }
     )));
     assert!(lowered_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Function {
+        SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Function {
                 params,
                 returns,
                 ..
@@ -458,21 +459,21 @@ local result = map(1) ---@as string
             ..
         } if !params.is_empty()
             && returns.len() == 2
-            && matches!(params[0].doc_type, crate::SalsaDocTypeRef::Node(_))
+            && matches!(params[0].doc_type, SalsaDocTypeRef::Node(_))
     )));
     assert!(lowered_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Union { item_types },
+        SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Union { item_types },
             ..
         } if item_types.len() == 2
     )));
     assert!(lowered_types.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Unary {
-                op: crate::SalsaDocTypeUnaryOperatorSummary::Neg,
-                inner_type: crate::SalsaDocTypeRef::Node(_),
+        SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Unary {
+                op: SalsaDocTypeUnaryOperatorSummary::Neg,
+                inner_type: SalsaDocTypeRef::Node(_),
             },
             ..
         }
@@ -482,8 +483,8 @@ local result = map(1) ---@as string
         .types
         .iter()
         .find_map(|doc_type| match &doc_type.kind {
-            crate::SalsaDocTypeKindSummary::Binary {
-                op: crate::SalsaDocTypeBinaryOperatorSummary::Union,
+            SalsaDocTypeKindSummary::Binary {
+                op: SalsaDocTypeBinaryOperatorSummary::Union,
                 ..
             } => Some(doc_type.syntax_offset),
             _ => None,
@@ -491,23 +492,23 @@ local result = map(1) ---@as string
         .expect("union syntax offset");
     assert!(matches!(
         doc_queries.lowered_type_at(FileId::new(8), lowered_union_offset),
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Union { item_types },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Union { item_types },
             ..
         }) if item_types.len() == 2
     ));
     assert!(matches!(
         doc_queries.resolved_type_at(FileId::new(8), lowered_union_offset),
-        Some(crate::SalsaDocTypeResolvedSummary {
-            doc_type: crate::SalsaDocTypeNodeSummary {
-                kind: crate::SalsaDocTypeKindSummary::Binary {
-                    op: crate::SalsaDocTypeBinaryOperatorSummary::Union,
+        Some(SalsaDocTypeResolvedSummary {
+            doc_type: SalsaDocTypeNodeSummary {
+                kind: SalsaDocTypeKindSummary::Binary {
+                    op: SalsaDocTypeBinaryOperatorSummary::Union,
                     ..
                 },
                 ..
             },
-            lowered: crate::SalsaDocTypeLoweredNode {
-                kind: crate::SalsaDocTypeLoweredKind::Union { item_types },
+            lowered: SalsaDocTypeLoweredNode {
+                kind: SalsaDocTypeLoweredKind::Union { item_types },
                 ..
             },
             ..
@@ -518,8 +519,8 @@ local result = map(1) ---@as string
         .types
         .iter()
         .find_map(|doc_type| match &doc_type.kind {
-            crate::SalsaDocTypeKindSummary::Binary {
-                op: crate::SalsaDocTypeBinaryOperatorSummary::Union,
+            SalsaDocTypeKindSummary::Binary {
+                op: SalsaDocTypeBinaryOperatorSummary::Union,
                 ..
             } => Some(doc_type.node_key()),
             _ => None,
@@ -527,18 +528,18 @@ local result = map(1) ---@as string
         .expect("union type key");
     assert!(matches!(
         doc_queries.resolved_type_by_key(FileId::new(8), lowered_union_key),
-        Some(crate::SalsaDocTypeResolvedSummary {
+        Some(SalsaDocTypeResolvedSummary {
             type_key,
             syntax_offset,
-            lowered: crate::SalsaDocTypeLoweredNode { syntax_offset: lowered_offset, .. },
+            lowered: SalsaDocTypeLoweredNode { syntax_offset: lowered_offset, .. },
             ..
         }) if type_key == lowered_union_key && syntax_offset == lowered_union_offset && lowered_offset == lowered_union_offset
     ));
 
     assert!(signatures.signatures.iter().any(|signature| matches!(
         signature,
-        crate::SalsaSignatureSummary {
-            source: crate::SalsaSignatureSourceSummary::LocalFuncStat,
+        SalsaSignatureSummary {
+            source: SalsaSignatureSourceSummary::LocalFuncStat,
             name: Some(name),
             params,
             doc_generic_offsets,
@@ -576,8 +577,8 @@ local wrapped = fn(3)"#,
             .iter()
             .any(|signature| matches!(
                 signature,
-                crate::SalsaSignatureSummary {
-                    source: crate::SalsaSignatureSourceSummary::FuncStat,
+                SalsaSignatureSummary {
+                    source: SalsaSignatureSourceSummary::FuncStat,
                     name: Some(name),
                     is_method: true,
                     params,
@@ -592,8 +593,8 @@ local wrapped = fn(3)"#,
             .iter()
             .any(|signature| matches!(
                 signature,
-                crate::SalsaSignatureSummary {
-                    source: crate::SalsaSignatureSourceSummary::ClosureExpr,
+                SalsaSignatureSummary {
+                    source: SalsaSignatureSourceSummary::ClosureExpr,
                     name: None,
                     params,
                     ..
@@ -602,8 +603,8 @@ local wrapped = fn(3)"#,
     );
     assert!(signature_summary.calls.iter().any(|call| matches!(
         call,
-        crate::SalsaCallSummary {
-            kind: crate::SalsaCallKindSummary::Normal,
+        SalsaCallSummary {
+            kind: SalsaCallKindSummary::Normal,
             is_colon_call: true,
             arg_expr_offsets,
             ..
@@ -628,22 +629,22 @@ local wrapped = fn(3)"#,
         .expect("incomplete resolved doc type index");
     assert!(incomplete_lowered.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Function { params, .. },
+        SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Function { params, .. },
             ..
         } if params.len() == 1
-            && matches!(params[0].doc_type, crate::SalsaDocTypeRef::Incomplete)
+            && matches!(params[0].doc_type, SalsaDocTypeRef::Incomplete)
     )));
     assert!(incomplete_resolved.types.iter().any(|doc_type| matches!(
         doc_type,
-        crate::SalsaDocTypeResolvedSummary {
-            lowered: crate::SalsaDocTypeLoweredNode {
-                kind: crate::SalsaDocTypeLoweredKind::Function { params, .. },
+        SalsaDocTypeResolvedSummary {
+            lowered: SalsaDocTypeLoweredNode {
+                kind: SalsaDocTypeLoweredKind::Function { params, .. },
                 ..
             },
             ..
         } if params.len() == 1
-            && matches!(params[0].doc_type, crate::SalsaDocTypeRef::Incomplete)
+            && matches!(params[0].doc_type, SalsaDocTypeRef::Incomplete)
     )));
 }
 
@@ -680,20 +681,16 @@ local function f() end
 
     assert_eq!(resolved_diagnostics.len(), 2);
     assert!(resolved_diagnostics.iter().all(|diagnostic| {
-        diagnostic.range
-            == rowan::TextRange::new(
-                rowan::TextSize::new(0),
-                rowan::TextSize::new(source.len() as u32),
-            )
+        diagnostic.range == TextRange::new(TextSize::new(0), TextSize::new(source.len() as u32))
     }));
     assert!(resolved_diagnostics.iter().any(|diagnostic| matches!(
         diagnostic.kind,
-        crate::SalsaDocDiagnosticActionKindSummary::Disable
+        SalsaDocDiagnosticActionKindSummary::Disable
     ) && diagnostic.code
-        == Some(crate::DiagnosticCode::SyntaxError)));
+        == Some(DiagnosticCode::SyntaxError)));
     assert!(resolved_diagnostics.iter().any(|diagnostic| matches!(
         diagnostic.kind,
-        crate::SalsaDocDiagnosticActionKindSummary::Enable
+        SalsaDocDiagnosticActionKindSummary::Enable
     ) && diagnostic.code
-        == Some(crate::DiagnosticCode::SyntaxError)));
+        == Some(DiagnosticCode::SyntaxError)));
 }

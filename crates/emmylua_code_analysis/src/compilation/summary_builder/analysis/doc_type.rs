@@ -221,7 +221,7 @@ fn collect_generic_params(
         .filter_map(|generic_decl| {
             Some(SalsaDocGenericParamSummary {
                 name: generic_decl.get_name_token()?.get_name_text().into(),
-                type_offset: generic_decl.get_type().map(doc_type_node_key),
+                type_offset: generic_decl.get_constraint_type().map(doc_type_node_key),
             })
         })
         .collect()

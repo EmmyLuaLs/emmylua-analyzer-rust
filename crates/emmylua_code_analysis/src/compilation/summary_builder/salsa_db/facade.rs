@@ -1,4 +1,15 @@
-use crate::FileId;
+use crate::{
+    FileId, SalsaDeclSummary, SalsaDocTypeNodeKey, SalsaFlowBreakSummary, SalsaFlowNodeRefSummary,
+    SalsaGlobalFunctionSummary, SalsaGlobalVariableSummary, SalsaModuleExportQuerySummary,
+    SalsaModuleResolveIndex, SalsaSemanticDeclSummary, SalsaSemanticForRangeIterComponentSummary,
+    SalsaSemanticGraphEdgeSummary, SalsaSemanticGraphNodeSummary, SalsaSemanticGraphQueryIndex,
+    SalsaSemanticGraphSccComponentSummary, SalsaSemanticGraphSccIndex, SalsaSemanticGraphSummary,
+    SalsaSemanticMemberSummary, SalsaSemanticModuleExportComponentSummary,
+    SalsaSemanticSignatureReturnComponentSummary, SalsaSemanticSignatureReturnSummary,
+    SalsaSemanticSolverComponentResultSummary, SalsaSemanticSolverComponentTaskSummary,
+    SalsaSemanticSolverExecutionTaskSummary, SalsaSemanticSolverStepSummary,
+    SalsaSemanticTargetQueryIndex, SalsaUseSiteRoleSummary,
+};
 use rowan::TextSize;
 use std::sync::Arc;
 
@@ -53,7 +64,7 @@ impl<'db> SalsaSummaryFileQueries<'db> {
         &self,
         file_id: FileId,
         syntax_id: SalsaSyntaxIdSummary,
-    ) -> Option<crate::SalsaDeclSummary> {
+    ) -> Option<SalsaDeclSummary> {
         tracked::file_decl_by_syntax_id(self.db, file_id, syntax_id)
     }
 
@@ -242,7 +253,7 @@ impl<'db> SalsaSummaryDocQueries<'db> {
     pub fn lowered_type_by_key(
         &self,
         file_id: FileId,
-        type_key: crate::SalsaDocTypeNodeKey,
+        type_key: SalsaDocTypeNodeKey,
     ) -> Option<SalsaDocTypeLoweredNode> {
         tracked::file_doc_type_lowered_by_key(self.db, file_id, type_key)
     }
@@ -262,7 +273,7 @@ impl<'db> SalsaSummaryDocQueries<'db> {
     pub fn resolved_type_by_key(
         &self,
         file_id: FileId,
-        type_key: crate::SalsaDocTypeNodeKey,
+        type_key: SalsaDocTypeNodeKey,
     ) -> Option<SalsaDocTypeResolvedSummary> {
         tracked::file_doc_type_resolved_by_key(self.db, file_id, type_key)
     }
@@ -375,7 +386,7 @@ impl<'db> SalsaSummaryLexicalQueries<'db> {
     pub fn name_resolution_by_syntax_id(
         &self,
         file_id: FileId,
-        syntax_id: crate::SalsaSyntaxIdSummary,
+        syntax_id: SalsaSyntaxIdSummary,
     ) -> Option<SalsaNameUseSummary> {
         tracked::file_lexical_name_resolution_by_syntax_id(self.db, file_id, syntax_id)
     }
@@ -403,7 +414,7 @@ impl<'db> SalsaSummaryLexicalQueries<'db> {
     pub fn member_resolution_by_syntax_id(
         &self,
         file_id: FileId,
-        syntax_id: crate::SalsaSyntaxIdSummary,
+        syntax_id: SalsaSyntaxIdSummary,
     ) -> Option<SalsaMemberUseSummary> {
         tracked::file_lexical_member_resolution_by_syntax_id(self.db, file_id, syntax_id)
     }
@@ -415,7 +426,7 @@ impl<'db> SalsaSummaryLexicalQueries<'db> {
     pub fn call_at_by_syntax_id(
         &self,
         file_id: FileId,
-        syntax_id: crate::SalsaSyntaxIdSummary,
+        syntax_id: SalsaSyntaxIdSummary,
     ) -> Option<SalsaCallUseSummary> {
         tracked::file_lexical_call_use_by_syntax_id(self.db, file_id, syntax_id)
     }
@@ -439,7 +450,7 @@ impl<'db> SalsaSummaryLexicalQueries<'db> {
     pub fn name_references_by_role(
         &self,
         file_id: FileId,
-        role: crate::SalsaUseSiteRoleSummary,
+        role: SalsaUseSiteRoleSummary,
     ) -> Option<Vec<SalsaNameUseSummary>> {
         tracked::file_lexical_name_references_by_role(self.db, file_id, role)
     }
@@ -455,7 +466,7 @@ impl<'db> SalsaSummaryLexicalQueries<'db> {
     pub fn member_references_by_role(
         &self,
         file_id: FileId,
-        role: crate::SalsaUseSiteRoleSummary,
+        role: SalsaUseSiteRoleSummary,
     ) -> Option<Vec<SalsaMemberUseSummary>> {
         tracked::file_lexical_member_references_by_role(self.db, file_id, role)
     }
@@ -523,7 +534,7 @@ impl<'db> SalsaSummaryFlowQueries<'db> {
         &self,
         file_id: FileId,
         break_offset: TextSize,
-    ) -> Option<crate::SalsaFlowBreakSummary> {
+    ) -> Option<SalsaFlowBreakSummary> {
         tracked::file_flow_break(self.db, file_id, break_offset)
     }
 
@@ -565,15 +576,15 @@ impl<'db> SalsaSummaryFlowQueries<'db> {
     pub fn successors(
         &self,
         file_id: FileId,
-        node: crate::SalsaFlowNodeRefSummary,
-    ) -> Option<Vec<crate::SalsaFlowNodeRefSummary>> {
+        node: SalsaFlowNodeRefSummary,
+    ) -> Option<Vec<SalsaFlowNodeRefSummary>> {
         tracked::file_flow_successors(self.db, file_id, node)
     }
 
     pub fn outgoing_edges(
         &self,
         file_id: FileId,
-        node: crate::SalsaFlowNodeRefSummary,
+        node: SalsaFlowNodeRefSummary,
     ) -> Option<Vec<SalsaFlowEdgeSummary>> {
         tracked::file_flow_outgoing_edges(self.db, file_id, node)
     }
@@ -581,15 +592,15 @@ impl<'db> SalsaSummaryFlowQueries<'db> {
     pub fn predecessors(
         &self,
         file_id: FileId,
-        node: crate::SalsaFlowNodeRefSummary,
-    ) -> Option<Vec<crate::SalsaFlowNodeRefSummary>> {
+        node: SalsaFlowNodeRefSummary,
+    ) -> Option<Vec<SalsaFlowNodeRefSummary>> {
         tracked::file_flow_predecessors(self.db, file_id, node)
     }
 
     pub fn incoming_edges(
         &self,
         file_id: FileId,
-        node: crate::SalsaFlowNodeRefSummary,
+        node: SalsaFlowNodeRefSummary,
     ) -> Option<Vec<SalsaFlowEdgeSummary>> {
         tracked::file_flow_incoming_edges(self.db, file_id, node)
     }
@@ -597,16 +608,16 @@ impl<'db> SalsaSummaryFlowQueries<'db> {
     pub fn reachable_nodes(
         &self,
         file_id: FileId,
-        start: crate::SalsaFlowNodeRefSummary,
-    ) -> Option<Vec<crate::SalsaFlowNodeRefSummary>> {
+        start: SalsaFlowNodeRefSummary,
+    ) -> Option<Vec<SalsaFlowNodeRefSummary>> {
         tracked::file_flow_reachable_nodes(self.db, file_id, start)
     }
 
     pub fn can_reach(
         &self,
         file_id: FileId,
-        from: crate::SalsaFlowNodeRefSummary,
-        to: crate::SalsaFlowNodeRefSummary,
+        from: SalsaFlowNodeRefSummary,
+        to: SalsaFlowNodeRefSummary,
     ) -> Option<bool> {
         tracked::file_flow_can_reach(self.db, file_id, from, to)
     }
@@ -670,7 +681,7 @@ impl<'db> SalsaSummaryModuleQueries<'db> {
         Self { db }
     }
 
-    pub fn resolve_index(&self, file_id: FileId) -> Option<Arc<crate::SalsaModuleResolveIndex>> {
+    pub fn resolve_index(&self, file_id: FileId) -> Option<Arc<SalsaModuleResolveIndex>> {
         tracked::file_module_resolve_index(self.db, file_id)
     }
 
@@ -686,17 +697,11 @@ impl<'db> SalsaSummaryModuleQueries<'db> {
         tracked::file_module_export(self.db, file_id)
     }
 
-    pub fn exported_global_function(
-        &self,
-        file_id: FileId,
-    ) -> Option<crate::SalsaGlobalFunctionSummary> {
+    pub fn exported_global_function(&self, file_id: FileId) -> Option<SalsaGlobalFunctionSummary> {
         tracked::file_module_exported_global_function(self.db, file_id)
     }
 
-    pub fn exported_global_variable(
-        &self,
-        file_id: FileId,
-    ) -> Option<crate::SalsaGlobalVariableSummary> {
+    pub fn exported_global_variable(&self, file_id: FileId) -> Option<SalsaGlobalVariableSummary> {
         tracked::file_module_exported_global_variable(self.db, file_id)
     }
 
@@ -865,10 +870,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         tracked::file_semantic_module_export(self.db, file_id)
     }
 
-    pub fn module_export_query(
-        &self,
-        file_id: FileId,
-    ) -> Option<crate::SalsaModuleExportQuerySummary> {
+    pub fn module_export_query(&self, file_id: FileId) -> Option<SalsaModuleExportQuerySummary> {
         tracked::file_semantic_module_export_query(self.db, file_id)
     }
 
@@ -895,26 +897,23 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         tracked::file_semantic_signature_summary(self.db, file_id, signature_offset)
     }
 
-    pub fn graph(&self, file_id: FileId) -> Option<Arc<crate::SalsaSemanticGraphSummary>> {
+    pub fn graph(&self, file_id: FileId) -> Option<Arc<SalsaSemanticGraphSummary>> {
         tracked::file_semantic_graph(self.db, file_id)
     }
 
-    pub fn graph_index(&self, file_id: FileId) -> Option<Arc<crate::SalsaSemanticGraphQueryIndex>> {
+    pub fn graph_index(&self, file_id: FileId) -> Option<Arc<SalsaSemanticGraphQueryIndex>> {
         tracked::file_semantic_graph_query_index(self.db, file_id)
     }
 
-    pub fn graph_scc_index(
-        &self,
-        file_id: FileId,
-    ) -> Option<Arc<crate::SalsaSemanticGraphSccIndex>> {
+    pub fn graph_scc_index(&self, file_id: FileId) -> Option<Arc<SalsaSemanticGraphSccIndex>> {
         tracked::file_semantic_graph_scc_index(self.db, file_id)
     }
 
     pub fn graph_scc_component(
         &self,
         file_id: FileId,
-        node: crate::SalsaSemanticGraphNodeSummary,
-    ) -> Option<crate::SalsaSemanticGraphSccComponentSummary> {
+        node: SalsaSemanticGraphNodeSummary,
+    ) -> Option<SalsaSemanticGraphSccComponentSummary> {
         tracked::file_semantic_graph_scc_component(self.db, file_id, node)
     }
 
@@ -922,7 +921,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         component_id: usize,
-    ) -> Option<crate::SalsaSemanticGraphSccComponentSummary> {
+    ) -> Option<SalsaSemanticGraphSccComponentSummary> {
         tracked::file_semantic_graph_scc_component_by_id(self.db, file_id, component_id)
     }
 
@@ -930,7 +929,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         component_id: usize,
-    ) -> Option<Vec<crate::SalsaSemanticGraphSccComponentSummary>> {
+    ) -> Option<Vec<SalsaSemanticGraphSccComponentSummary>> {
         tracked::file_semantic_graph_scc_successors(self.db, file_id, component_id)
     }
 
@@ -938,7 +937,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         component_id: usize,
-    ) -> Option<Vec<crate::SalsaSemanticGraphSccComponentSummary>> {
+    ) -> Option<Vec<SalsaSemanticGraphSccComponentSummary>> {
         tracked::file_semantic_graph_scc_predecessors(self.db, file_id, component_id)
     }
 
@@ -960,14 +959,14 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         component_id: usize,
-    ) -> Option<crate::SalsaSemanticSolverExecutionTaskSummary> {
+    ) -> Option<SalsaSemanticSolverExecutionTaskSummary> {
         tracked::file_semantic_solver_execution_task(self.db, file_id, component_id)
     }
 
     pub fn solver_next_ready_execution_task(
         &self,
         file_id: FileId,
-    ) -> Option<crate::SalsaSemanticSolverExecutionTaskSummary> {
+    ) -> Option<SalsaSemanticSolverExecutionTaskSummary> {
         tracked::file_semantic_solver_next_ready_execution_task(self.db, file_id)
     }
 
@@ -975,7 +974,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         tracked::file_semantic_solver_execution_is_complete(self.db, file_id)
     }
 
-    pub fn solver_step(&self, file_id: FileId) -> Option<crate::SalsaSemanticSolverStepSummary> {
+    pub fn solver_step(&self, file_id: FileId) -> Option<SalsaSemanticSolverStepSummary> {
         tracked::file_semantic_solver_step(self.db, file_id)
     }
 
@@ -983,14 +982,14 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         component_id: usize,
-    ) -> Option<crate::SalsaSemanticSolverComponentTaskSummary> {
+    ) -> Option<SalsaSemanticSolverComponentTaskSummary> {
         tracked::file_semantic_solver_task(self.db, file_id, component_id)
     }
 
     pub fn solver_ready_tasks(
         &self,
         file_id: FileId,
-    ) -> Option<Vec<crate::SalsaSemanticSolverComponentTaskSummary>> {
+    ) -> Option<Vec<SalsaSemanticSolverComponentTaskSummary>> {
         tracked::file_semantic_solver_ready_tasks(self.db, file_id)
     }
 
@@ -1006,7 +1005,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         component_id: usize,
-    ) -> Option<crate::SalsaSemanticSignatureReturnComponentSummary> {
+    ) -> Option<SalsaSemanticSignatureReturnComponentSummary> {
         tracked::file_semantic_signature_return_component_summary(self.db, file_id, component_id)
     }
 
@@ -1014,7 +1013,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         signature_offset: TextSize,
-    ) -> Option<crate::SalsaSemanticSignatureReturnSummary> {
+    ) -> Option<SalsaSemanticSignatureReturnSummary> {
         tracked::file_semantic_signature_return_summary(self.db, file_id, signature_offset)
     }
 
@@ -1022,7 +1021,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         signature_offset: TextSize,
-    ) -> Option<crate::SalsaSemanticSolverComponentResultSummary> {
+    ) -> Option<SalsaSemanticSolverComponentResultSummary> {
         tracked::file_semantic_signature_return_component_result_summary(
             self.db,
             file_id,
@@ -1033,7 +1032,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
     pub fn decl_value_shell(
         &self,
         file_id: FileId,
-        decl_id: crate::SalsaDeclId,
+        decl_id: SalsaDeclId,
     ) -> Option<SalsaSemanticValueShellSummary> {
         tracked::file_semantic_decl_value_shell(self.db, file_id, decl_id)
     }
@@ -1041,16 +1040,16 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
     pub fn decl_component_result_summary(
         &self,
         file_id: FileId,
-        decl_id: crate::SalsaDeclId,
-    ) -> Option<crate::SalsaSemanticSolverComponentResultSummary> {
+        decl_id: SalsaDeclId,
+    ) -> Option<SalsaSemanticSolverComponentResultSummary> {
         tracked::file_semantic_decl_component_result_summary(self.db, file_id, decl_id)
     }
 
     pub fn decl_summary(
         &self,
         file_id: FileId,
-        decl_id: crate::SalsaDeclId,
-    ) -> Option<crate::SalsaSemanticDeclSummary> {
+        decl_id: SalsaDeclId,
+    ) -> Option<SalsaSemanticDeclSummary> {
         tracked::file_semantic_decl_summary(self.db, file_id, decl_id)
     }
 
@@ -1058,14 +1057,14 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         syntax_id: SalsaSyntaxIdSummary,
-    ) -> Option<crate::SalsaSemanticDeclSummary> {
+    ) -> Option<SalsaSemanticDeclSummary> {
         tracked::file_semantic_decl_summary_by_syntax_id(self.db, file_id, syntax_id)
     }
 
     pub fn member_value_shell(
         &self,
         file_id: FileId,
-        member_target: crate::SalsaMemberTargetId,
+        member_target: SalsaMemberTargetId,
     ) -> Option<SalsaSemanticValueShellSummary> {
         tracked::file_semantic_member_value_shell(self.db, file_id, member_target)
     }
@@ -1073,16 +1072,16 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
     pub fn member_component_result_summary(
         &self,
         file_id: FileId,
-        member_target: crate::SalsaMemberTargetId,
-    ) -> Option<crate::SalsaSemanticSolverComponentResultSummary> {
+        member_target: SalsaMemberTargetId,
+    ) -> Option<SalsaSemanticSolverComponentResultSummary> {
         tracked::file_semantic_member_component_result_summary(self.db, file_id, member_target)
     }
 
     pub fn member_summary(
         &self,
         file_id: FileId,
-        member_target: crate::SalsaMemberTargetId,
-    ) -> Option<crate::SalsaSemanticMemberSummary> {
+        member_target: SalsaMemberTargetId,
+    ) -> Option<SalsaSemanticMemberSummary> {
         tracked::file_semantic_member_summary(self.db, file_id, member_target)
     }
 
@@ -1090,7 +1089,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         syntax_id: SalsaSyntaxIdSummary,
-    ) -> Option<crate::SalsaSemanticMemberSummary> {
+    ) -> Option<SalsaSemanticMemberSummary> {
         tracked::file_semantic_member_summary_by_syntax_id(self.db, file_id, syntax_id)
     }
 
@@ -1098,7 +1097,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         component_id: usize,
-    ) -> Option<crate::SalsaSemanticSolverComponentResultSummary> {
+    ) -> Option<SalsaSemanticSolverComponentResultSummary> {
         tracked::file_semantic_solver_component_result_summary(self.db, file_id, component_id)
     }
 
@@ -1114,7 +1113,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         loop_offset: TextSize,
-    ) -> Option<crate::SalsaSemanticSolverComponentResultSummary> {
+    ) -> Option<SalsaSemanticSolverComponentResultSummary> {
         tracked::file_semantic_for_range_iter_component_result_summary(
             self.db,
             file_id,
@@ -1126,7 +1125,7 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
         &self,
         file_id: FileId,
         loop_offset: TextSize,
-    ) -> Option<crate::SalsaSemanticForRangeIterComponentSummary> {
+    ) -> Option<SalsaSemanticForRangeIterComponentSummary> {
         tracked::file_semantic_for_range_iter_component_summary(self.db, file_id, loop_offset)
     }
 
@@ -1140,46 +1139,46 @@ impl<'db> SalsaSummarySemanticFileQueries<'db> {
     pub fn module_export_component_result_summary(
         &self,
         file_id: FileId,
-    ) -> Option<crate::SalsaSemanticSolverComponentResultSummary> {
+    ) -> Option<SalsaSemanticSolverComponentResultSummary> {
         tracked::file_semantic_module_export_component_result_summary(self.db, file_id)
     }
 
     pub fn module_export_component_summary(
         &self,
         file_id: FileId,
-    ) -> Option<crate::SalsaSemanticModuleExportComponentSummary> {
+    ) -> Option<SalsaSemanticModuleExportComponentSummary> {
         tracked::file_semantic_module_export_component_summary(self.db, file_id)
     }
 
     pub fn graph_outgoing_edges(
         &self,
         file_id: FileId,
-        node: crate::SalsaSemanticGraphNodeSummary,
-    ) -> Option<Vec<crate::SalsaSemanticGraphEdgeSummary>> {
+        node: SalsaSemanticGraphNodeSummary,
+    ) -> Option<Vec<SalsaSemanticGraphEdgeSummary>> {
         tracked::file_semantic_graph_outgoing_edges(self.db, file_id, node)
     }
 
     pub fn graph_incoming_edges(
         &self,
         file_id: FileId,
-        node: crate::SalsaSemanticGraphNodeSummary,
-    ) -> Option<Vec<crate::SalsaSemanticGraphEdgeSummary>> {
+        node: SalsaSemanticGraphNodeSummary,
+    ) -> Option<Vec<SalsaSemanticGraphEdgeSummary>> {
         tracked::file_semantic_graph_incoming_edges(self.db, file_id, node)
     }
 
     pub fn graph_successors(
         &self,
         file_id: FileId,
-        node: crate::SalsaSemanticGraphNodeSummary,
-    ) -> Option<Vec<crate::SalsaSemanticGraphNodeSummary>> {
+        node: SalsaSemanticGraphNodeSummary,
+    ) -> Option<Vec<SalsaSemanticGraphNodeSummary>> {
         tracked::file_semantic_graph_successors(self.db, file_id, node)
     }
 
     pub fn graph_predecessors(
         &self,
         file_id: FileId,
-        node: crate::SalsaSemanticGraphNodeSummary,
-    ) -> Option<Vec<crate::SalsaSemanticGraphNodeSummary>> {
+        node: SalsaSemanticGraphNodeSummary,
+    ) -> Option<Vec<SalsaSemanticGraphNodeSummary>> {
         tracked::file_semantic_graph_predecessors(self.db, file_id, node)
     }
 }
@@ -1194,7 +1193,7 @@ impl<'db> SalsaSummarySemanticTargetQueries<'db> {
         Self { db }
     }
 
-    pub fn index(&self, file_id: FileId) -> Option<Arc<crate::SalsaSemanticTargetQueryIndex>> {
+    pub fn index(&self, file_id: FileId) -> Option<Arc<SalsaSemanticTargetQueryIndex>> {
         tracked::file_semantic_target_query_index(self.db, file_id)
     }
 

@@ -1,6 +1,7 @@
-use crate::SalsaDeclId;
+use SalsaDeclId;
 
 use super::*;
+use crate::*;
 
 #[test]
 fn test_summary_builder_decl_tree_and_globals() {
@@ -78,10 +79,7 @@ _G.baz = 1"#;
     assert!(members.members.iter().any(|member| {
         build_member_full_name(&member.target) == "t.bar"
             && member.is_method
-            && matches!(
-                member.target.root,
-                crate::SalsaMemberRootSummary::LocalDecl { .. }
-            )
+            && matches!(member.target.root, SalsaMemberRootSummary::LocalDecl { .. })
     }));
 }
 
@@ -115,7 +113,7 @@ _ENV.top = function() end"#;
     assert!(
         globals.members.iter().any(
             |member| build_member_full_name(&member.target) == "GG.value"
-                && matches!(member.kind, crate::SalsaMemberKindSummary::Variable)
+                && matches!(member.kind, SalsaMemberKindSummary::Variable)
         )
     );
     assert!(
@@ -123,7 +121,7 @@ _ENV.top = function() end"#;
             |member| build_member_full_name(&member.target) == "_ENV.top"
                 && matches!(
                     member.target.root,
-                    crate::SalsaMemberRootSummary::Global(crate::SalsaGlobalRootSummary::Env)
+                    SalsaMemberRootSummary::Global(SalsaGlobalRootSummary::Env)
                 )
         )
     );
@@ -209,19 +207,19 @@ return bar"#,
 
     assert!(matches!(
         module_member.export_target,
-        Some(crate::SalsaExportTargetSummary::Member(_))
+        Some(SalsaExportTargetSummary::Member(_))
     ));
     assert!(matches!(
         &module_member.export,
-        Some(crate::SalsaModuleExportSummary::Member(crate::SalsaMemberSummary {
+        Some(SalsaModuleExportSummary::Member(SalsaMemberSummary {
             target,
             ..
-        })) if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M")
+        })) if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M")
             && target.member_name == "run"
     ));
     assert!(matches!(
         &module_local.export,
-        Some(crate::SalsaModuleExportSummary::LocalDecl { name, .. }) if name == "x"
+        Some(SalsaModuleExportSummary::LocalDecl { name, .. }) if name == "x"
     ));
     assert_eq!(
         module_queries.export_target(FileId::new(4)),
@@ -236,7 +234,7 @@ return bar"#,
         module_local.export.clone()
     );
     let local_decl_id = match &module_local.export {
-        Some(crate::SalsaModuleExportSummary::LocalDecl { decl_id, .. }) => *decl_id,
+        Some(SalsaModuleExportSummary::LocalDecl { decl_id, .. }) => *decl_id,
         _ => unreachable!("module_local should export a local decl"),
     };
     assert_eq!(
@@ -246,13 +244,13 @@ return bar"#,
     assert_eq!(
         module_queries.exports_decl(
             FileId::new(5),
-            crate::SalsaDeclId::new(local_decl_id.as_position() + TextSize::from(1)),
+            SalsaDeclId::new(local_decl_id.as_position() + TextSize::from(1)),
         ),
         Some(false)
     );
 
     let exported_member_target = match &module_member.export {
-        Some(crate::SalsaModuleExportSummary::Member(member)) => member.target.clone(),
+        Some(SalsaModuleExportSummary::Member(member)) => member.target.clone(),
         _ => unreachable!("module_member should export a member"),
     };
     assert_eq!(
@@ -262,8 +260,8 @@ return bar"#,
     assert_eq!(
         module_queries.exports_member(
             FileId::new(4),
-            crate::SalsaMemberTargetSummary {
-                root: crate::SalsaMemberRootSummary::LocalDecl {
+            SalsaMemberTargetSummary {
+                root: SalsaMemberRootSummary::LocalDecl {
                     decl_id: 0.into(),
                     name: "M".into(),
                 },
@@ -275,7 +273,7 @@ return bar"#,
     );
 
     let closure_signature_offset = match &module_closure.export {
-        Some(crate::SalsaModuleExportSummary::Closure { signature_offset }) => *signature_offset,
+        Some(SalsaModuleExportSummary::Closure { signature_offset }) => *signature_offset,
         _ => unreachable!("module_closure should export a closure"),
     };
     assert_eq!(
@@ -291,7 +289,7 @@ return bar"#,
     );
 
     let table_offset = match &module_table.export {
-        Some(crate::SalsaModuleExportSummary::Table { table_offset }) => *table_offset,
+        Some(SalsaModuleExportSummary::Table { table_offset }) => *table_offset,
         _ => unreachable!("module_table should export a table"),
     };
     assert_eq!(
@@ -304,14 +302,14 @@ return bar"#,
     );
     assert!(matches!(
         &module_global_function.export,
-        Some(crate::SalsaModuleExportSummary::GlobalFunction(crate::SalsaGlobalFunctionSummary {
+        Some(SalsaModuleExportSummary::GlobalFunction(SalsaGlobalFunctionSummary {
             name,
             ..
         })) if name == "foo"
     ));
     assert!(matches!(
         &module_global_variable.export,
-        Some(crate::SalsaModuleExportSummary::GlobalVariable(crate::SalsaGlobalVariableSummary {
+        Some(SalsaModuleExportSummary::GlobalVariable(SalsaGlobalVariableSummary {
             name,
             ..
         })) if name == "bar"
@@ -319,16 +317,14 @@ return bar"#,
     assert_eq!(
         module_queries.exported_global_function(FileId::new(18)),
         match &module_global_function.export {
-            Some(crate::SalsaModuleExportSummary::GlobalFunction(function)) =>
-                Some(function.clone()),
+            Some(SalsaModuleExportSummary::GlobalFunction(function)) => Some(function.clone()),
             _ => None,
         }
     );
     assert_eq!(
         module_queries.exported_global_variable(FileId::new(19)),
         match &module_global_variable.export {
-            Some(crate::SalsaModuleExportSummary::GlobalVariable(variable)) =>
-                Some(variable.clone()),
+            Some(SalsaModuleExportSummary::GlobalVariable(variable)) => Some(variable.clone()),
             _ => None,
         }
     );
@@ -354,13 +350,13 @@ return bar"#,
         .expect("module global member summary");
     assert!(matches!(
         &module_global_member.export,
-        Some(crate::SalsaModuleExportSummary::Member(
-            crate::SalsaMemberSummary {
+        Some(SalsaModuleExportSummary::Member(
+            SalsaMemberSummary {
                 target,
                 ..
             }
-        )) if matches!(&target.root, crate::SalsaMemberRootSummary::Global(
-                crate::SalsaGlobalRootSummary::Name(_)
+        )) if matches!(&target.root, SalsaMemberRootSummary::Global(
+                SalsaGlobalRootSummary::Name(_)
             ))
     ));
 
@@ -370,7 +366,7 @@ return bar"#,
         .expect("member summary");
     assert!(member_summary.members.iter().any(|member| matches!(
         &member.target.root,
-        crate::SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M"
+        SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M"
     ) && member.target.member_name == "run"));
 }
 
@@ -414,30 +410,30 @@ fn test_summary_builder_module_export_query_tracks_state_by_export_kind() {
 
     assert_eq!(
         decl_query.state,
-        crate::SalsaModuleExportResolveStateSummary::Resolved
+        SalsaModuleExportResolveStateSummary::Resolved
     );
     assert!(matches!(
         decl_query.semantic_target,
-        Some(crate::SalsaSemanticTargetSummary::Decl(_))
+        Some(SalsaSemanticTargetSummary::Decl(_))
     ));
 
     assert_eq!(
         closure_query.state,
-        crate::SalsaModuleExportResolveStateSummary::Resolved
+        SalsaModuleExportResolveStateSummary::Resolved
     );
     assert!(matches!(
         closure_query.semantic_target,
-        Some(crate::SalsaSemanticTargetSummary::Signature(_))
+        Some(SalsaSemanticTargetSummary::Signature(_))
     ));
 
     assert_eq!(
         table_query.state,
-        crate::SalsaModuleExportResolveStateSummary::Partial
+        SalsaModuleExportResolveStateSummary::Partial
     );
     assert!(table_query.semantic_target.is_none());
     assert!(matches!(
         table_query.export,
-        Some(crate::SalsaModuleExportSummary::Table { .. })
+        Some(SalsaModuleExportSummary::Table { .. })
     ));
 }
 
@@ -468,10 +464,10 @@ return exported
 
     assert_eq!(
         summary.state,
-        crate::SalsaModuleExportResolveStateSummary::Resolved
+        SalsaModuleExportResolveStateSummary::Resolved
     );
     assert!(matches!(
         summary.semantic_target,
-        Some(crate::SalsaSemanticTargetSummary::Decl(_))
+        Some(SalsaSemanticTargetSummary::Decl(_))
     ));
 }

@@ -195,8 +195,8 @@ fn collect_table_expr_properties(
             && matches!(field_key, LuaIndexKey::Idx(_))
             && source_call_syntax_id.is_some();
         let kind = match &value_expr {
-            Some(emmylua_parser::LuaExpr::ClosureExpr(_)) => SalsaPropertyKindSummary::Function,
-            Some(emmylua_parser::LuaExpr::TableExpr(_)) => SalsaPropertyKindSummary::Table,
+            Some(LuaExpr::ClosureExpr(_)) => SalsaPropertyKindSummary::Function,
+            Some(LuaExpr::TableExpr(_)) => SalsaPropertyKindSummary::Table,
             _ => SalsaPropertyKindSummary::Value,
         };
 
@@ -217,7 +217,7 @@ fn collect_table_expr_properties(
             is_nullable: false,
         });
 
-        if let Some(emmylua_parser::LuaExpr::TableExpr(nested_table)) = value_expr
+        if let Some(LuaExpr::TableExpr(nested_table)) = value_expr
             && let Some(child_target) = extend_property_owner_with_key(&owner, &key)
         {
             collect_table_expr_properties(

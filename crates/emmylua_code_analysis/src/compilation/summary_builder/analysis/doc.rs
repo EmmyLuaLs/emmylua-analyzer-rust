@@ -1,8 +1,7 @@
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaChunk, LuaComment, LuaDocAttributeUse,
     LuaDocDescriptionOwner, LuaDocFieldKey, LuaDocGenericDeclList, LuaDocTag, LuaDocType,
-    LuaDocTypeFlag,
-    NumberResult, VisibilityKind,
+    LuaDocTypeFlag, NumberResult, VisibilityKind,
 };
 use smol_str::SmolStr;
 
@@ -513,7 +512,9 @@ fn collect_generic_params(
         .filter_map(|generic_decl| {
             Some(SalsaDocGenericParamSummary {
                 name: generic_decl.get_name_token()?.get_name_text().into(),
-                type_offset: generic_decl.get_type().map(SalsaDocTypeNodeKey::from),
+                type_offset: generic_decl
+                    .get_constraint_type()
+                    .map(SalsaDocTypeNodeKey::from),
             })
         })
         .collect()

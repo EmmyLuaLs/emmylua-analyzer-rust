@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use emmylua_parser::{
     BinaryOperator, LuaAstNode, LuaBlock, LuaCallExpr, LuaChunk, LuaExpr, LuaIfStat, LuaIndexExpr,
-    LuaIndexKey, LuaLiteralToken, LuaStat, LuaTableExpr, NumberResult, UnaryOperator,
+    LuaIndexKey, LuaLiteralToken, LuaStat, LuaTableExpr, LuaTableField, NumberResult,
+    UnaryOperator,
 };
 use rowan::TextSize;
 use smol_str::SmolStr;
@@ -1925,7 +1926,7 @@ fn collect_table_field_candidates_by_numeric_index(
         .collect()
 }
 
-fn table_field_to_candidate(field: emmylua_parser::LuaTableField) -> SalsaTypeCandidateSummary {
+fn table_field_to_candidate(field: LuaTableField) -> SalsaTypeCandidateSummary {
     let source_call_syntax_id = field
         .get_value_expr()
         .as_ref()
@@ -1934,7 +1935,7 @@ fn table_field_to_candidate(field: emmylua_parser::LuaTableField) -> SalsaTypeCa
 }
 
 fn table_field_to_candidate_with_slot(
-    field: emmylua_parser::LuaTableField,
+    field: LuaTableField,
     value_result_index: usize,
     source_call_syntax_id: Option<SalsaSyntaxIdSummary>,
 ) -> SalsaTypeCandidateSummary {
@@ -1959,18 +1960,16 @@ fn table_field_to_candidate_with_slot(
     }
 }
 
-fn call_expr_syntax_id_of_expr(expr: &emmylua_parser::LuaExpr) -> Option<SalsaSyntaxIdSummary> {
+fn call_expr_syntax_id_of_expr(expr: &LuaExpr) -> Option<SalsaSyntaxIdSummary> {
     match expr {
-        emmylua_parser::LuaExpr::CallExpr(call_expr) => Some(call_expr.get_syntax_id().into()),
+        LuaExpr::CallExpr(call_expr) => Some(call_expr.get_syntax_id().into()),
         _ => None,
     }
 }
 
-fn signature_initializer_offset_of_expr(expr: emmylua_parser::LuaExpr) -> Option<TextSize> {
+fn signature_initializer_offset_of_expr(expr: LuaExpr) -> Option<TextSize> {
     match expr {
-        emmylua_parser::LuaExpr::ClosureExpr(closure) => {
-            Some(TextSize::from(u32::from(closure.get_position())))
-        }
+        LuaExpr::ClosureExpr(closure) => Some(closure.get_position()),
         _ => None,
     }
 }
@@ -3060,8 +3059,8 @@ fn index_expr_prefix_targets_decl(
 
 fn simple_member_name(index_expr: &LuaIndexExpr) -> Option<SmolStr> {
     match index_expr.get_index_key()? {
-        emmylua_parser::LuaIndexKey::Name(name) => Some(name.get_name_text().into()),
-        emmylua_parser::LuaIndexKey::String(string) => Some(string.get_value().into()),
+        LuaIndexKey::Name(name) => Some(name.get_name_text().into()),
+        LuaIndexKey::String(string) => Some(string.get_value().into()),
         _ => None,
     }
 }

@@ -1,8 +1,8 @@
+use emmylua_parser::LuaAssignStat;
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaChunk, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaLiteralToken,
     LuaNameExpr, LuaVarExpr,
 };
-use emmylua_parser::LuaAssignStat;
 use smol_str::SmolStr;
 
 use super::super::{

@@ -1,6 +1,11 @@
 use rowan::TextSize;
 use smol_str::SmolStr;
 
+use crate::{
+    SalsaCallExplainSummary, SalsaDeclId, SalsaDocTypeNodeKey,
+    SalsaProgramPointMemberTypeInfoSummary, SalsaProgramPointTypeInfoSummary,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum SalsaFlowBlockOwnerKindSummary {
     Chunk,
@@ -321,17 +326,17 @@ pub enum SalsaForRangeIterSourceKindSummary {
 pub struct SalsaForRangeIterSourceSummary {
     pub expr_offset: TextSize,
     pub kind: SalsaForRangeIterSourceKindSummary,
-    pub name_type: Option<crate::SalsaProgramPointTypeInfoSummary>,
-    pub member_type: Option<crate::SalsaProgramPointMemberTypeInfoSummary>,
-    pub call: Option<crate::SalsaCallExplainSummary>,
+    pub name_type: Option<SalsaProgramPointTypeInfoSummary>,
+    pub member_type: Option<SalsaProgramPointMemberTypeInfoSummary>,
+    pub call: Option<SalsaCallExplainSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct SalsaForRangeIterVarSummary {
     pub name: SmolStr,
-    pub decl_id: crate::SalsaDeclId,
+    pub decl_id: SalsaDeclId,
     pub slot_index: usize,
-    pub type_offsets: Vec<crate::SalsaDocTypeNodeKey>,
+    pub type_offsets: Vec<SalsaDocTypeNodeKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

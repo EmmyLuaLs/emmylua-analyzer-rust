@@ -1,4 +1,5 @@
 use super::*;
+use crate::*;
 
 #[test]
 fn test_summary_builder_property_structure() {
@@ -17,62 +18,60 @@ GG = { value = 1 }
     let m_decl_id = decl_tree
         .decls
         .iter()
-        .find(|decl| {
-            decl.name == "M" && matches!(decl.kind, crate::SalsaDeclKindSummary::Local { .. })
-        })
+        .find(|decl| decl.name == "M" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. }))
         .map(|decl| decl.id)
         .expect("M decl id");
 
     assert!(properties.properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source, &property.kind),
         (
-            crate::SalsaPropertyOwnerSummary::Decl { name, is_global: false, .. },
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
-            crate::SalsaPropertyKindSummary::Value,
+            SalsaPropertyOwnerSummary::Decl { name, is_global: false, .. },
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
+            SalsaPropertyKindSummary::Value,
         ) if name == "M" && key == "name"
     )));
     assert!(properties.properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source, &property.kind),
         (
-            crate::SalsaPropertyOwnerSummary::Member(target),
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
-            crate::SalsaPropertyKindSummary::Value,
-        ) if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M")
+            SalsaPropertyOwnerSummary::Member(target),
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
+            SalsaPropertyKindSummary::Value,
+        ) if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M")
             && target.member_name == "nested" && key == "enabled"
     )));
     assert!(properties.properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source, &property.kind),
         (
-            crate::SalsaPropertyOwnerSummary::Decl { name, is_global: false, .. },
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
-            crate::SalsaPropertyKindSummary::Function,
+            SalsaPropertyOwnerSummary::Decl { name, is_global: false, .. },
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
+            SalsaPropertyKindSummary::Function,
         ) if name == "M" && key == "run"
     )));
     assert!(properties.properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source),
         (
-            crate::SalsaPropertyOwnerSummary::Decl { name, is_global: true, .. },
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
+            SalsaPropertyOwnerSummary::Decl { name, is_global: true, .. },
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
         ) if name == "GG" && key == "value"
     )));
     assert!(properties.properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source),
         (
-            crate::SalsaPropertyOwnerSummary::Type(name),
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::DocField,
+            SalsaPropertyOwnerSummary::Type(name),
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::DocField,
         ) if name == "User" && key == "id"
     )));
     assert!(properties.properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source),
         (
-            crate::SalsaPropertyOwnerSummary::Type(name),
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::DocField,
+            SalsaPropertyOwnerSummary::Type(name),
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::DocField,
         ) if name == "User" && key == "name"
     )));
 
@@ -83,16 +82,16 @@ GG = { value = 1 }
             matches!(
                 (&property.owner, &property.key),
                 (
-                    crate::SalsaPropertyOwnerSummary::Member(target),
-                    crate::SalsaPropertyKeySummary::Name(key),
-                ) if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M")
+                    SalsaPropertyOwnerSummary::Member(target),
+                    SalsaPropertyKeySummary::Name(key),
+                ) if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, .. } if name == "M")
                     && target.member_name == "nested" && key == "enabled"
             )
         })
         .cloned()
         .expect("M.nested.enabled property");
     let nested_enabled_owner = match &nested_enabled.owner {
-        crate::SalsaPropertyOwnerSummary::Member(target) => target.clone(),
+        SalsaPropertyOwnerSummary::Member(target) => target.clone(),
         _ => unreachable!("nested_enabled owner must be member"),
     };
 
@@ -108,7 +107,7 @@ GG = { value = 1 }
                 .iter()
                 .filter(|property| matches!(
                     property.owner,
-                    crate::SalsaPropertyOwnerSummary::Decl { decl_id, .. } if decl_id == m_decl_id
+                    SalsaPropertyOwnerSummary::Decl { decl_id, .. } if decl_id == m_decl_id
                 ))
                 .cloned()
                 .collect()
@@ -126,35 +125,30 @@ GG = { value = 1 }
                 .iter()
                 .filter(|property| matches!(
                     &property.owner,
-                    crate::SalsaPropertyOwnerSummary::Type(name) if name == "User"
+                    SalsaPropertyOwnerSummary::Type(name) if name == "User"
                 ))
                 .cloned()
                 .collect()
         )
     );
     assert_eq!(
-        file.properties_for_source(FileId::new(7), crate::SalsaPropertySourceSummary::DocField),
+        file.properties_for_source(FileId::new(7), SalsaPropertySourceSummary::DocField),
         Some(
             properties
                 .properties
                 .iter()
-                .filter(|property| property.source == crate::SalsaPropertySourceSummary::DocField)
+                .filter(|property| property.source == SalsaPropertySourceSummary::DocField)
                 .cloned()
                 .collect()
         )
     );
     assert_eq!(
-        file.properties_for_key(
-            FileId::new(7),
-            crate::SalsaPropertyKeySummary::Name("name".into())
-        ),
+        file.properties_for_key(FileId::new(7), SalsaPropertyKeySummary::Name("name".into())),
         Some(
             properties
                 .properties
                 .iter()
-                .filter(|property| {
-                    property.key == crate::SalsaPropertyKeySummary::Name("name".into())
-                })
+                .filter(|property| { property.key == SalsaPropertyKeySummary::Name("name".into()) })
                 .cloned()
                 .collect()
         )
@@ -163,7 +157,7 @@ GG = { value = 1 }
         file.properties_for_decl_and_key(
             FileId::new(7),
             m_decl_id,
-            crate::SalsaPropertyKeySummary::Name("name".into())
+            SalsaPropertyKeySummary::Name("name".into())
         ),
         Some(
             properties
@@ -172,8 +166,8 @@ GG = { value = 1 }
                 .filter(|property| {
                     matches!(
                         property.owner,
-                        crate::SalsaPropertyOwnerSummary::Decl { decl_id, .. } if decl_id == m_decl_id
-                    ) && property.key == crate::SalsaPropertyKeySummary::Name("name".into())
+                        SalsaPropertyOwnerSummary::Decl { decl_id, .. } if decl_id == m_decl_id
+                    ) && property.key == SalsaPropertyKeySummary::Name("name".into())
                 })
                 .cloned()
                 .collect()
@@ -183,7 +177,7 @@ GG = { value = 1 }
         file.properties_for_member_and_key(
             FileId::new(7),
             nested_enabled_owner,
-            crate::SalsaPropertyKeySummary::Name("enabled".into())
+            SalsaPropertyKeySummary::Name("enabled".into())
         ),
         Some(vec![nested_enabled.clone()])
     );
@@ -191,7 +185,7 @@ GG = { value = 1 }
         file.properties_for_type_and_key(
             FileId::new(7),
             "User".into(),
-            crate::SalsaPropertyKeySummary::Name("name".into())
+            SalsaPropertyKeySummary::Name("name".into())
         ),
         Some(
             properties
@@ -200,8 +194,8 @@ GG = { value = 1 }
                 .filter(|property| {
                     matches!(
                         &property.owner,
-                        crate::SalsaPropertyOwnerSummary::Type(name) if name == "User"
-                    ) && property.key == crate::SalsaPropertyKeySummary::Name("name".into())
+                        SalsaPropertyOwnerSummary::Type(name) if name == "User"
+                    ) && property.key == SalsaPropertyKeySummary::Name("name".into())
                 })
                 .cloned()
                 .collect()
@@ -232,11 +226,11 @@ local M = { [tag] = 1, [tag.id] = 2 }"#;
     let file = compilation.file();
     let tag_properties = file.properties_for_key(
         FileId::new(20),
-        crate::SalsaPropertyKeySummary::Expr(tag_key_syntax_id),
+        SalsaPropertyKeySummary::Expr(tag_key_syntax_id),
     );
     let tag_member_properties = file.properties_for_key(
         FileId::new(20),
-        crate::SalsaPropertyKeySummary::Expr(tag_member_key_syntax_id),
+        SalsaPropertyKeySummary::Expr(tag_member_key_syntax_id),
     );
 
     assert_eq!(
@@ -278,26 +272,26 @@ local Mode = { Fast = 1, Slow = 2 }"#;
     assert!(box_type_properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source),
         (
-            crate::SalsaPropertyOwnerSummary::Type(name),
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
+            SalsaPropertyOwnerSummary::Type(name),
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
         ) if name == "Box" && key == "value"
     )));
     assert!(box_type_properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source, &property.value_expr_offset),
         (
-            crate::SalsaPropertyOwnerSummary::Type(name),
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
+            SalsaPropertyOwnerSummary::Type(name),
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
             Some(_),
         ) if name == "Box" && key == "nested"
     )));
     assert!(mode_type_properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source),
         (
-            crate::SalsaPropertyOwnerSummary::Type(name),
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
+            SalsaPropertyOwnerSummary::Type(name),
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
         ) if name == "Mode" && key == "Fast"
     )));
 }
@@ -329,10 +323,10 @@ local a = {
     assert!(!properties.iter().any(|property| matches!(
         (&property.owner, &property.key, &property.source, &property.kind, &property.value_expr_offset),
         (
-            crate::SalsaPropertyOwnerSummary::Type(name),
-            crate::SalsaPropertyKeySummary::Name(key),
-            crate::SalsaPropertySourceSummary::TableField,
-            crate::SalsaPropertyKindSummary::Function,
+            SalsaPropertyOwnerSummary::Type(name),
+            SalsaPropertyKeySummary::Name(key),
+            SalsaPropertySourceSummary::TableField,
+            SalsaPropertyKindSummary::Function,
             Some(_),
         ) if name == "Completion2.A" && key == "event"
     )));
@@ -361,15 +355,12 @@ local Pair = { pair() }"#;
         .properties_for_type_and_key(
             FileId::new(22),
             "Pair".into(),
-            crate::SalsaPropertyKeySummary::Sequence(2),
+            SalsaPropertyKeySummary::Sequence(2),
         )
         .expect("Pair sequence slot properties");
 
     assert_eq!(properties.len(), 1);
-    assert_eq!(
-        properties[0].key,
-        crate::SalsaPropertyKeySummary::Sequence(2)
-    );
+    assert_eq!(properties[0].key, SalsaPropertyKeySummary::Sequence(2));
     assert_eq!(properties[0].value_result_index, 1);
     assert!(properties[0].source_call_syntax_id.is_some());
     assert!(properties[0].expands_multi_result_tail);
@@ -400,7 +391,7 @@ local holder = { pair() }"#;
         .clone()
         .into_iter()
         .find(|decl| {
-            decl.name == "holder" && matches!(decl.kind, crate::SalsaDeclKindSummary::Local { .. })
+            decl.name == "holder" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. })
         })
         .map(|decl| decl.id)
         .expect("holder decl id");
@@ -410,15 +401,12 @@ local holder = { pair() }"#;
         .properties_for_decl_and_key(
             FileId::new(24),
             holder_decl_id,
-            crate::SalsaPropertyKeySummary::Sequence(2),
+            SalsaPropertyKeySummary::Sequence(2),
         )
         .expect("holder sequence slot properties");
 
     assert_eq!(properties.len(), 1);
-    assert_eq!(
-        properties[0].key,
-        crate::SalsaPropertyKeySummary::Sequence(2)
-    );
+    assert_eq!(properties[0].key, SalsaPropertyKeySummary::Sequence(2));
     assert_eq!(properties[0].value_result_index, 1);
     assert!(properties[0].source_call_syntax_id.is_some());
     assert!(properties[0].expands_multi_result_tail);
@@ -452,9 +440,9 @@ local holder = {
         .into_iter()
         .find_map(|property| match (&property.owner, &property.key) {
             (
-                crate::SalsaPropertyOwnerSummary::Member(target),
-                crate::SalsaPropertyKeySummary::Sequence(1),
-            ) if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, .. } if name == "holder")
+                SalsaPropertyOwnerSummary::Member(target),
+                SalsaPropertyKeySummary::Sequence(1),
+            ) if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, .. } if name == "holder")
                 && target.member_name == "nested" =>
             {
                 Some(target.clone())
@@ -468,15 +456,12 @@ local holder = {
         .properties_for_member_and_key(
             FileId::new(25),
             nested_owner,
-            crate::SalsaPropertyKeySummary::Integer(2),
+            SalsaPropertyKeySummary::Integer(2),
         )
         .expect("nested integer slot properties");
 
     assert_eq!(properties.len(), 1);
-    assert_eq!(
-        properties[0].key,
-        crate::SalsaPropertyKeySummary::Integer(2)
-    );
+    assert_eq!(properties[0].key, SalsaPropertyKeySummary::Integer(2));
     assert_eq!(properties[0].value_result_index, 1);
     assert!(properties[0].source_call_syntax_id.is_some());
     assert!(properties[0].expands_multi_result_tail);

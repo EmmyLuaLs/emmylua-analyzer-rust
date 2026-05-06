@@ -1,4 +1,5 @@
 use super::*;
+use crate::*;
 
 #[test]
 fn test_summary_builder_semantic_graph_tracks_module_export_target() {
@@ -26,13 +27,13 @@ return factory
         graph
             .nodes
             .iter()
-            .any(|node| matches!(node, crate::SalsaSemanticGraphNodeSummary::ModuleExport))
+            .any(|node| matches!(node, SalsaSemanticGraphNodeSummary::ModuleExport))
     );
     assert!(graph.edges.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            from: crate::SalsaSemanticGraphNodeSummary::ModuleExport,
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::ExportTarget,
+        SalsaSemanticGraphEdgeSummary {
+            from: SalsaSemanticGraphNodeSummary::ModuleExport,
+            kind: SalsaSemanticGraphEdgeKindSummary::ExportTarget,
             ..
         }
     )));
@@ -74,16 +75,16 @@ local holder = {
             decl.name == "holder" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. })
         })
         .expect("holder decl");
-    let source_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let source_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "box".into(),
             decl_id: box_decl.id,
         },
         owner_segments: Vec::new().into(),
         member_name: "value".into(),
     });
-    let nested_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let nested_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
@@ -96,15 +97,15 @@ local holder = {
         .file()
         .graph_outgoing_edges(
             FileId::new(510),
-            crate::SalsaSemanticGraphNodeSummary::MemberValue(source_member.clone()),
+            SalsaSemanticGraphNodeSummary::MemberValue(source_member.clone()),
         )
         .expect("source member outgoing edges");
 
     assert!(outgoing.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            to: crate::SalsaSemanticGraphNodeSummary::MemberValue(member_target),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::InitializerMember,
+        SalsaSemanticGraphEdgeSummary {
+            to: SalsaSemanticGraphNodeSummary::MemberValue(member_target),
+            kind: SalsaSemanticGraphEdgeKindSummary::InitializerMember,
             ..
         } if *member_target == nested_member
     )));
@@ -160,25 +161,24 @@ local holder = {
             decl.name == "holder" && matches!(decl.kind, SalsaDeclKindSummary::Local { .. })
         })
         .expect("holder decl");
-    let multihop_source_member =
-        crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-            root: crate::SalsaMemberRootSummary::LocalDecl {
-                name: "outer".into(),
-                decl_id: outer_decl.id,
-            },
-            owner_segments: vec!["nested".into()].into(),
-            member_name: "value".into(),
-        });
-    let forwarded_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let multihop_source_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
+            name: "outer".into(),
+            decl_id: outer_decl.id,
+        },
+        owner_segments: vec!["nested".into()].into(),
+        member_name: "value".into(),
+    });
+    let forwarded_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
         owner_segments: vec!["nested".into()].into(),
         member_name: "forwarded".into(),
     });
-    let made_member = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let made_member = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
@@ -200,14 +200,14 @@ local holder = {
         .file()
         .graph_outgoing_edges(
             FileId::new(511),
-            crate::SalsaSemanticGraphNodeSummary::MemberValue(multihop_source_member.clone()),
+            SalsaSemanticGraphNodeSummary::MemberValue(multihop_source_member.clone()),
         )
         .expect("multihop source member outgoing edges");
     assert!(multihop_outgoing.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            to: crate::SalsaSemanticGraphNodeSummary::MemberValue(member_target),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::InitializerMember,
+        SalsaSemanticGraphEdgeSummary {
+            to: SalsaSemanticGraphNodeSummary::MemberValue(member_target),
+            kind: SalsaSemanticGraphEdgeKindSummary::InitializerMember,
             ..
         } if *member_target == forwarded_member
     )));
@@ -217,14 +217,14 @@ local holder = {
         .file()
         .graph_outgoing_edges(
             FileId::new(511),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(make_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(make_signature.syntax_offset),
         )
         .expect("make signature outgoing edges");
     assert!(signature_outgoing.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            to: crate::SalsaSemanticGraphNodeSummary::MemberValue(member_target),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::InitializerResolvedCallReturn,
+        SalsaSemanticGraphEdgeSummary {
+            to: SalsaSemanticGraphNodeSummary::MemberValue(member_target),
+            kind: SalsaSemanticGraphEdgeKindSummary::InitializerResolvedCallReturn,
             ..
         } if *member_target == made_member
     )));
@@ -256,10 +256,10 @@ end
 
     assert!(graph.edges.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            from: crate::SalsaSemanticGraphNodeSummary::SignatureReturn(_),
-            to: crate::SalsaSemanticGraphNodeSummary::SignatureReturn(_),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::ResolvedCallReturn,
+        SalsaSemanticGraphEdgeSummary {
+            from: SalsaSemanticGraphNodeSummary::SignatureReturn(_),
+            to: SalsaSemanticGraphNodeSummary::SignatureReturn(_),
+            kind: SalsaSemanticGraphEdgeKindSummary::ResolvedCallReturn,
         }
     )));
 }
@@ -327,18 +327,18 @@ end
 
     assert!(graph.edges.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            from: crate::SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset),
-            to: crate::SalsaSemanticGraphNodeSummary::DeclValue(decl_id),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::SignatureReturnDecl,
+        SalsaSemanticGraphEdgeSummary {
+            from: SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset),
+            to: SalsaSemanticGraphNodeSummary::DeclValue(decl_id),
+            kind: SalsaSemanticGraphEdgeKindSummary::SignatureReturnDecl,
         } if *signature_offset == from_name_signature.syntax_offset && *decl_id == value_decl.id
     )));
     assert!(graph.edges.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            from: crate::SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset),
-            to: crate::SalsaSemanticGraphNodeSummary::MemberValue(member_target),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::SignatureReturnMember,
+        SalsaSemanticGraphEdgeSummary {
+            from: SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset),
+            to: SalsaSemanticGraphNodeSummary::MemberValue(member_target),
+            kind: SalsaSemanticGraphEdgeKindSummary::SignatureReturnMember,
         } if *signature_offset == from_member_signature.syntax_offset && *member_target == alias_member.target
     )));
 }
@@ -372,8 +372,8 @@ end
         .into_iter()
         .find(|decl| decl.name.as_str() == "holder")
         .expect("holder decl");
-    let run_member_target = crate::SalsaMemberTargetId::from(&crate::SalsaMemberTargetSummary {
-        root: crate::SalsaMemberRootSummary::LocalDecl {
+    let run_member_target = SalsaMemberTargetId::from(&SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: "holder".into(),
             decl_id: holder_decl.id,
         },
@@ -398,15 +398,15 @@ end
 
     assert!(graph.nodes.iter().any(|node| matches!(
         node,
-        crate::SalsaSemanticGraphNodeSummary::MemberValue(member_target)
+        SalsaSemanticGraphNodeSummary::MemberValue(member_target)
             if *member_target == run_member_target
     )));
     assert!(graph.edges.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            from: crate::SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset),
-            to: crate::SalsaSemanticGraphNodeSummary::MemberValue(member_target),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::SignatureReturnMember,
+        SalsaSemanticGraphEdgeSummary {
+            from: SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset),
+            to: SalsaSemanticGraphNodeSummary::MemberValue(member_target),
+            kind: SalsaSemanticGraphEdgeKindSummary::SignatureReturnMember,
         } if *signature_offset == from_member_signature.syntax_offset && *member_target == run_member_target
     )));
 }
@@ -434,7 +434,7 @@ end
         .expect("flow summary")
         .loops
         .iter()
-        .find(|loop_summary| matches!(loop_summary.kind, crate::SalsaFlowLoopKindSummary::ForRange))
+        .find(|loop_summary| matches!(loop_summary.kind, SalsaFlowLoopKindSummary::ForRange))
         .map(|loop_summary| loop_summary.syntax_offset)
         .expect("for range loop");
     let iter_decl = compilation
@@ -454,7 +454,7 @@ end
         .expect("semantic graph");
     assert!(graph.nodes.iter().any(|node| matches!(
         node,
-        crate::SalsaSemanticGraphNodeSummary::ForRangeIter(offset) if *offset == loop_offset
+        SalsaSemanticGraphNodeSummary::ForRangeIter(offset) if *offset == loop_offset
     )));
 
     let loop_successors = compilation
@@ -462,12 +462,12 @@ end
         .file()
         .graph_predecessors(
             FileId::new(507),
-            crate::SalsaSemanticGraphNodeSummary::ForRangeIter(loop_offset),
+            SalsaSemanticGraphNodeSummary::ForRangeIter(loop_offset),
         )
         .expect("for range predecessors");
     assert!(loop_successors.iter().any(|node| matches!(
         node,
-        crate::SalsaSemanticGraphNodeSummary::DeclValue(decl_id) if *decl_id == iter_decl.id
+        SalsaSemanticGraphNodeSummary::DeclValue(decl_id) if *decl_id == iter_decl.id
     )));
 }
 
@@ -518,12 +518,12 @@ end
         .file()
         .graph_predecessors(
             FileId::new(503),
-            crate::SalsaSemanticGraphNodeSummary::DeclValue(alias_decl.id),
+            SalsaSemanticGraphNodeSummary::DeclValue(alias_decl.id),
         )
         .expect("alias predecessors");
     assert!(alias_predecessors.iter().any(|node| matches!(
         node,
-        crate::SalsaSemanticGraphNodeSummary::DeclValue(target_decl_id)
+        SalsaSemanticGraphNodeSummary::DeclValue(target_decl_id)
             if *target_decl_id != alias_decl.id
     )));
 
@@ -532,14 +532,14 @@ end
         .file()
         .graph_outgoing_edges(
             FileId::new(503),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(callee_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(callee_signature.syntax_offset),
         )
         .expect("callee outgoing edges");
     assert!(callee_outgoing.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            to: crate::SalsaSemanticGraphNodeSummary::DeclValue(decl_id),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::InitializerResolvedCallReturn,
+        SalsaSemanticGraphEdgeSummary {
+            to: SalsaSemanticGraphNodeSummary::DeclValue(decl_id),
+            kind: SalsaSemanticGraphEdgeKindSummary::InitializerResolvedCallReturn,
             ..
         } if *decl_id == caller_decl.id
     )));
@@ -549,12 +549,12 @@ end
         .file()
         .graph_predecessors(
             FileId::new(503),
-            crate::SalsaSemanticGraphNodeSummary::DeclValue(caller_decl.id),
+            SalsaSemanticGraphNodeSummary::DeclValue(caller_decl.id),
         )
         .expect("caller predecessors");
     assert!(caller_predecessors.iter().any(|node| matches!(
         node,
-        crate::SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset)
+        SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset)
             if *signature_offset == callee_signature.syntax_offset
     )));
 }
@@ -607,13 +607,13 @@ end
         .file()
         .graph_predecessors(
             FileId::new(504),
-            crate::SalsaSemanticGraphNodeSummary::MemberValue(alias_member.target.clone()),
+            SalsaSemanticGraphNodeSummary::MemberValue(alias_member.target.clone()),
         )
         .expect("alias member predecessors");
     assert!(
         alias_predecessors
             .iter()
-            .any(|node| matches!(node, crate::SalsaSemanticGraphNodeSummary::DeclValue(_)))
+            .any(|node| matches!(node, SalsaSemanticGraphNodeSummary::DeclValue(_)))
     );
 
     let callee_outgoing = compilation
@@ -621,14 +621,14 @@ end
         .file()
         .graph_outgoing_edges(
             FileId::new(504),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(callee_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(callee_signature.syntax_offset),
         )
         .expect("callee outgoing edges");
     assert!(callee_outgoing.iter().any(|edge| matches!(
         edge,
-        crate::SalsaSemanticGraphEdgeSummary {
-            to: crate::SalsaSemanticGraphNodeSummary::MemberValue(member_target),
-            kind: crate::SalsaSemanticGraphEdgeKindSummary::InitializerResolvedCallReturn,
+        SalsaSemanticGraphEdgeSummary {
+            to: SalsaSemanticGraphNodeSummary::MemberValue(member_target),
+            kind: SalsaSemanticGraphEdgeKindSummary::InitializerResolvedCallReturn,
             ..
         } if *member_target == forwarded_member.target
     )));
@@ -672,7 +672,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(505),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(a_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(a_signature.syntax_offset),
         )
         .expect("a scc component");
     let b_component = compilation
@@ -680,7 +680,7 @@ end
         .file()
         .graph_scc_component(
             FileId::new(505),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(b_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(b_signature.syntax_offset),
         )
         .expect("b scc component");
 
@@ -689,12 +689,12 @@ end
     assert_eq!(a_component.nodes.len(), 2);
     assert!(a_component.nodes.iter().any(|node| matches!(
         node,
-        crate::SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset)
+        SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset)
             if *signature_offset == a_signature.syntax_offset
     )));
     assert!(a_component.nodes.iter().any(|node| matches!(
         node,
-        crate::SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset)
+        SalsaSemanticGraphNodeSummary::SignatureReturn(signature_offset)
             if *signature_offset == b_signature.syntax_offset
     )));
 
@@ -764,7 +764,7 @@ local result = mid()
         .file()
         .graph_scc_component(
             FileId::new(506),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(leaf_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(leaf_signature.syntax_offset),
         )
         .expect("leaf component");
     let mid_component = compilation
@@ -772,7 +772,7 @@ local result = mid()
         .file()
         .graph_scc_component(
             FileId::new(506),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(mid_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(mid_signature.syntax_offset),
         )
         .expect("mid component");
     let cycle_component = compilation
@@ -780,7 +780,7 @@ local result = mid()
         .file()
         .graph_scc_component(
             FileId::new(506),
-            crate::SalsaSemanticGraphNodeSummary::SignatureReturn(a_signature.syntax_offset),
+            SalsaSemanticGraphNodeSummary::SignatureReturn(a_signature.syntax_offset),
         )
         .expect("cycle component");
 

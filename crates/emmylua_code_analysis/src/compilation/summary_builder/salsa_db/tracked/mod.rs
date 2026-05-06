@@ -1,6 +1,6 @@
 use crate::{
-    FileId, SalsaForRangeIterQueryIndex, SalsaForRangeIterQuerySummary,
-    build_module_summary_with_index,
+    FileId, SalsaForRangeIterQueryIndex, SalsaForRangeIterQuerySummary, SalsaSemanticTargetSummary,
+    build_module_summary_with_index, build_semantic_solver_component_result_summary,
 };
 use crate::{
     SalsaSemanticDeclSummary, SalsaSemanticForRangeIterComponentSummary,
@@ -104,7 +104,7 @@ use super::{
         file_input, parse_chunk, workspace_input,
     },
 };
-use crate::SalsaSemanticGraphSummary;
+use SalsaSemanticGraphSummary;
 
 mod doc;
 mod lexical;
@@ -486,7 +486,7 @@ fn tracked_file_semantic_solver_execution_task(
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
     component_id: usize,
-) -> Option<crate::SalsaSemanticSolverExecutionTaskSummary> {
+) -> Option<SalsaSemanticSolverExecutionTaskSummary> {
     let execution = tracked_file_semantic_solver_execution(db, file, config);
     find_semantic_solver_execution_task(execution.as_ref(), component_id)
 }
@@ -496,7 +496,7 @@ fn tracked_file_semantic_solver_next_ready_execution_task(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-) -> Option<crate::SalsaSemanticSolverExecutionTaskSummary> {
+) -> Option<SalsaSemanticSolverExecutionTaskSummary> {
     let execution = tracked_file_semantic_solver_execution(db, file, config);
     find_next_ready_semantic_solver_execution_task(execution.as_ref())
 }
@@ -516,7 +516,7 @@ fn tracked_file_semantic_solver_step(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-) -> Option<crate::SalsaSemanticSolverStepSummary> {
+) -> Option<SalsaSemanticSolverStepSummary> {
     let execution = tracked_file_semantic_solver_execution(db, file, config);
     let scc_index = tracked_file_semantic_graph_scc_index(db, file, config);
     let decl_types = tracked_file_decl_type_query_index(db, file, config);
@@ -545,7 +545,7 @@ fn tracked_file_semantic_solver_task(
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
     component_id: usize,
-) -> Option<crate::SalsaSemanticSolverComponentTaskSummary> {
+) -> Option<SalsaSemanticSolverComponentTaskSummary> {
     let worklist = tracked_file_semantic_solver_worklist(db, file, config);
     find_semantic_solver_task(worklist.as_ref(), component_id)
 }
@@ -555,7 +555,7 @@ fn tracked_file_semantic_solver_ready_tasks(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-) -> Vec<crate::SalsaSemanticSolverComponentTaskSummary> {
+) -> Vec<SalsaSemanticSolverComponentTaskSummary> {
     let worklist = tracked_file_semantic_solver_worklist(db, file, config);
     collect_semantic_solver_ready_tasks(worklist.as_ref())
 }
@@ -702,7 +702,7 @@ fn tracked_file_semantic_decl_value_shell(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-    decl_id: crate::SalsaDeclId,
+    decl_id: SalsaDeclId,
 ) -> SalsaSemanticValueShellSummary {
     if let Some(summary) = tracked_file_semantic_decl_summary(db, file, config, decl_id) {
         return summary.value_shell;
@@ -731,7 +731,7 @@ fn tracked_file_semantic_decl_component_result_summary(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-    decl_id: crate::SalsaDeclId,
+    decl_id: SalsaDeclId,
 ) -> Option<SalsaSemanticSolverComponentResultSummary> {
     let component = tracked_file_semantic_graph_scc_component(
         db,
@@ -747,7 +747,7 @@ fn tracked_file_semantic_decl_summary(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-    decl_id: crate::SalsaDeclId,
+    decl_id: SalsaDeclId,
 ) -> Option<SalsaSemanticDeclSummary> {
     let decl_type = tracked_file_decl_type_info(db, file, config, decl_id)?;
     let component = tracked_file_semantic_graph_scc_component(
@@ -774,7 +774,7 @@ fn tracked_file_semantic_member_value_shell(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-    member_target: crate::SalsaMemberTargetId,
+    member_target: SalsaMemberTargetId,
 ) -> SalsaSemanticValueShellSummary {
     if let Some(summary) =
         tracked_file_semantic_member_summary(db, file, config, member_target.clone())
@@ -805,7 +805,7 @@ fn tracked_file_semantic_member_component_result_summary(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-    member_target: crate::SalsaMemberTargetId,
+    member_target: SalsaMemberTargetId,
 ) -> Option<SalsaSemanticSolverComponentResultSummary> {
     let component = tracked_file_semantic_graph_scc_component(
         db,
@@ -821,7 +821,7 @@ fn tracked_file_semantic_member_summary(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-    member_target: crate::SalsaMemberTargetId,
+    member_target: SalsaMemberTargetId,
 ) -> Option<SalsaSemanticMemberSummary> {
     let member_type = tracked_file_member_type_info(db, file, config, member_target.clone())?;
     let component = tracked_file_semantic_graph_scc_component(
@@ -871,7 +871,7 @@ fn tracked_file_semantic_solver_component_result_summary(
             )
         })
         .collect::<Vec<_>>();
-    Some(crate::build_semantic_solver_component_result_summary(
+    Some(build_semantic_solver_component_result_summary(
         &component,
         decl_types.as_ref(),
         member_types.as_ref(),
@@ -1025,7 +1025,7 @@ fn build_module_export_query_summary_base(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-) -> Option<crate::SalsaModuleExportQuerySummary> {
+) -> Option<SalsaModuleExportQuerySummary> {
     let module = tracked_file_module_summary(db, file, config)?;
     let export_target = module.export_target.clone()?;
     let export = module.export.clone();
@@ -1044,13 +1044,13 @@ fn build_module_export_query_summary_base(
     let properties = if let Some(semantic_target) = &semantic_target {
         let index = tracked_file_semantic_target_query_index(db, file, config);
         match semantic_target {
-            crate::SalsaSemanticTargetSummary::Decl(decl_id) => {
+            SalsaSemanticTargetSummary::Decl(decl_id) => {
                 find_semantic_decl_in_index(index.as_ref(), *decl_id)
             }
-            crate::SalsaSemanticTargetSummary::Member(member_target) => {
+            SalsaSemanticTargetSummary::Member(member_target) => {
                 find_semantic_member_in_index(index.as_ref(), member_target)
             }
-            crate::SalsaSemanticTargetSummary::Signature(signature_offset) => {
+            SalsaSemanticTargetSummary::Signature(signature_offset) => {
                 find_semantic_signature_in_index(index.as_ref(), *signature_offset)
             }
         }
@@ -1060,7 +1060,7 @@ fn build_module_export_query_summary_base(
         Vec::new()
     };
 
-    Some(crate::SalsaModuleExportQuerySummary {
+    Some(SalsaModuleExportQuerySummary {
         export_target,
         export,
         semantic_target: semantic_target.clone(),
@@ -1068,31 +1068,31 @@ fn build_module_export_query_summary_base(
         tag_properties,
         properties,
         state: if semantic_target.is_some() {
-            crate::SalsaModuleExportResolveStateSummary::Resolved
+            SalsaModuleExportResolveStateSummary::Resolved
         } else {
-            crate::SalsaModuleExportResolveStateSummary::Partial
+            SalsaModuleExportResolveStateSummary::Partial
         },
     })
 }
 
 fn merge_module_export_resolve_state(
-    base_state: crate::SalsaModuleExportResolveStateSummary,
-    solver_state: Option<crate::SalsaModuleExportResolveStateSummary>,
-) -> crate::SalsaModuleExportResolveStateSummary {
+    base_state: SalsaModuleExportResolveStateSummary,
+    solver_state: Option<SalsaModuleExportResolveStateSummary>,
+) -> SalsaModuleExportResolveStateSummary {
     let Some(solver_state) = solver_state else {
         return base_state;
     };
 
     match (base_state, solver_state) {
-        (crate::SalsaModuleExportResolveStateSummary::RecursiveDependency, _)
-        | (_, crate::SalsaModuleExportResolveStateSummary::RecursiveDependency) => {
-            crate::SalsaModuleExportResolveStateSummary::RecursiveDependency
+        (SalsaModuleExportResolveStateSummary::RecursiveDependency, _)
+        | (_, SalsaModuleExportResolveStateSummary::RecursiveDependency) => {
+            SalsaModuleExportResolveStateSummary::RecursiveDependency
         }
-        (crate::SalsaModuleExportResolveStateSummary::Resolved, _)
-        | (_, crate::SalsaModuleExportResolveStateSummary::Resolved) => {
-            crate::SalsaModuleExportResolveStateSummary::Resolved
+        (SalsaModuleExportResolveStateSummary::Resolved, _)
+        | (_, SalsaModuleExportResolveStateSummary::Resolved) => {
+            SalsaModuleExportResolveStateSummary::Resolved
         }
-        _ => crate::SalsaModuleExportResolveStateSummary::Partial,
+        _ => SalsaModuleExportResolveStateSummary::Partial,
     }
 }
 
@@ -1125,7 +1125,7 @@ fn tracked_file_semantic_module_export_component_summary(
             module_export_resolve_state_from_semantic(local_value_shell.state),
         ),
         propagated_value_shell: SalsaSemanticValueShellSummary {
-            state: crate::SalsaSemanticResolveStateSummary::Unknown,
+            state: SalsaSemanticResolveStateSummary::Unknown,
             candidate_type_offsets: Vec::new(),
         },
         local_value_shell: local_value_shell.clone(),
@@ -1231,11 +1231,11 @@ fn tracked_file_semantic_module_export_query(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
-) -> Option<crate::SalsaModuleExportQuerySummary> {
+) -> Option<SalsaModuleExportQuerySummary> {
     if let Some(component_summary) =
         tracked_file_semantic_module_export_component_summary(db, file, config)
     {
-        return Some(crate::SalsaModuleExportQuerySummary {
+        return Some(SalsaModuleExportQuerySummary {
             export_target: component_summary.export_target,
             export: component_summary.export,
             semantic_target: component_summary.semantic_target,
@@ -1362,13 +1362,13 @@ fn tracked_file_decl_by_syntax_id(
     file: SummarySourceFileInput,
     config: SummaryConfigInput,
     syntax_id: SalsaSyntaxIdSummary,
-) -> Option<crate::SalsaDeclSummary> {
+) -> Option<SalsaDeclSummary> {
     let decl_tree = tracked_file_decl_tree_summary(db, file, config);
     decl_tree
         .decls
         .iter()
-    .find(|decl| decl.syntax_id == Some(syntax_id))
-    .cloned()
+        .find(|decl| decl.syntax_id == Some(syntax_id))
+        .cloned()
 }
 
 #[salsa::tracked]
@@ -1382,8 +1382,8 @@ fn tracked_file_member_by_syntax_id(
     members
         .members
         .iter()
-    .find(|member| member.syntax_id == syntax_id)
-    .cloned()
+        .find(|member| member.syntax_id == syntax_id)
+        .cloned()
 }
 
 #[salsa::tracked]
@@ -1591,7 +1591,7 @@ pub(crate) fn file_decl_by_syntax_id(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
     syntax_id: SalsaSyntaxIdSummary,
-) -> Option<crate::SalsaDeclSummary> {
+) -> Option<SalsaDeclSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_decl_by_syntax_id(db, file, config, syntax_id)
 }
@@ -2083,7 +2083,7 @@ pub(crate) fn file_semantic_solver_execution_task(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
     component_id: usize,
-) -> Option<crate::SalsaSemanticSolverExecutionTaskSummary> {
+) -> Option<SalsaSemanticSolverExecutionTaskSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_solver_execution_task(db, file, config, component_id)
 }
@@ -2091,7 +2091,7 @@ pub(crate) fn file_semantic_solver_execution_task(
 pub(crate) fn file_semantic_solver_next_ready_execution_task(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-) -> Option<crate::SalsaSemanticSolverExecutionTaskSummary> {
+) -> Option<SalsaSemanticSolverExecutionTaskSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_solver_next_ready_execution_task(db, file, config)
 }
@@ -2109,7 +2109,7 @@ pub(crate) fn file_semantic_solver_execution_is_complete(
 pub(crate) fn file_semantic_solver_step(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-) -> Option<crate::SalsaSemanticSolverStepSummary> {
+) -> Option<SalsaSemanticSolverStepSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_solver_step(db, file, config)
 }
@@ -2118,7 +2118,7 @@ pub(crate) fn file_semantic_solver_task(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
     component_id: usize,
-) -> Option<crate::SalsaSemanticSolverComponentTaskSummary> {
+) -> Option<SalsaSemanticSolverComponentTaskSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_solver_task(db, file, config, component_id)
 }
@@ -2126,7 +2126,7 @@ pub(crate) fn file_semantic_solver_task(
 pub(crate) fn file_semantic_solver_ready_tasks(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-) -> Option<Vec<crate::SalsaSemanticSolverComponentTaskSummary>> {
+) -> Option<Vec<SalsaSemanticSolverComponentTaskSummary>> {
     let (file, config) = file_and_config(db, file_id)?;
     Some(tracked_file_semantic_solver_ready_tasks(db, file, config))
 }
@@ -2175,7 +2175,7 @@ pub(crate) fn file_semantic_signature_return_component_result_summary(
 pub(crate) fn file_semantic_decl_value_shell(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-    decl_id: crate::SalsaDeclId,
+    decl_id: SalsaDeclId,
 ) -> Option<SalsaSemanticValueShellSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     Some(tracked_file_semantic_decl_value_shell(
@@ -2186,7 +2186,7 @@ pub(crate) fn file_semantic_decl_value_shell(
 pub(crate) fn file_semantic_decl_component_result_summary(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-    decl_id: crate::SalsaDeclId,
+    decl_id: SalsaDeclId,
 ) -> Option<SalsaSemanticSolverComponentResultSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_decl_component_result_summary(db, file, config, decl_id)
@@ -2195,7 +2195,7 @@ pub(crate) fn file_semantic_decl_component_result_summary(
 pub(crate) fn file_semantic_decl_summary(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-    decl_id: crate::SalsaDeclId,
+    decl_id: SalsaDeclId,
 ) -> Option<SalsaSemanticDeclSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_decl_summary(db, file, config, decl_id)
@@ -2214,7 +2214,7 @@ pub(crate) fn file_semantic_decl_summary_by_syntax_id(
 pub(crate) fn file_semantic_member_value_shell(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-    member_target: crate::SalsaMemberTargetId,
+    member_target: SalsaMemberTargetId,
 ) -> Option<SalsaSemanticValueShellSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     Some(tracked_file_semantic_member_value_shell(
@@ -2228,7 +2228,7 @@ pub(crate) fn file_semantic_member_value_shell(
 pub(crate) fn file_semantic_member_component_result_summary(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-    member_target: crate::SalsaMemberTargetId,
+    member_target: SalsaMemberTargetId,
 ) -> Option<SalsaSemanticSolverComponentResultSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_member_component_result_summary(db, file, config, member_target)
@@ -2237,7 +2237,7 @@ pub(crate) fn file_semantic_member_component_result_summary(
 pub(crate) fn file_semantic_member_summary(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-    member_target: crate::SalsaMemberTargetId,
+    member_target: SalsaMemberTargetId,
 ) -> Option<SalsaSemanticMemberSummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_member_summary(db, file, config, member_target)
@@ -2386,7 +2386,7 @@ pub(crate) fn file_semantic_module_export(
 pub(crate) fn file_semantic_module_export_query(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-) -> Option<crate::SalsaModuleExportQuerySummary> {
+) -> Option<SalsaModuleExportQuerySummary> {
     let (file, config) = file_and_config(db, file_id)?;
     tracked_file_semantic_module_export_query(db, file, config)
 }

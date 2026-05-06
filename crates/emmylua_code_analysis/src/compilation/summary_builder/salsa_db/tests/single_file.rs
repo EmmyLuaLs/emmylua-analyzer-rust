@@ -1,4 +1,5 @@
 use super::*;
+use crate::*;
 
 #[test]
 fn test_summary_builder_single_file_confidence_structures() {
@@ -69,36 +70,36 @@ return Box"#;
 
     assert!(properties.properties.iter().any(|property| matches!(
         property,
-        crate::SalsaPropertySummary {
-            owner: crate::SalsaPropertyOwnerSummary::Decl { name, decl_id, .. },
-            key: crate::SalsaPropertyKeySummary::Name(key),
-            source: crate::SalsaPropertySourceSummary::TableField,
+        SalsaPropertySummary {
+            owner: SalsaPropertyOwnerSummary::Decl { name, decl_id, .. },
+            key: SalsaPropertyKeySummary::Name(key),
+            source: SalsaPropertySourceSummary::TableField,
             ..
         } if name == "Box" && *decl_id == box_decl_id && key == "value"
     )));
     assert!(owner_bindings.bindings.iter().any(|binding| matches!(
         binding,
-        crate::SalsaDocOwnerBindingSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::FuncStat,
+        SalsaDocOwnerBindingSummary {
+            owner_kind: SalsaDocOwnerKindSummary::FuncStat,
             targets,
             ..
-        } if targets == &vec![crate::SalsaBindingTargetSummary::Signature(run_signature.syntax_offset)]
+        } if targets == &vec![SalsaBindingTargetSummary::Signature(run_signature.syntax_offset)]
     )));
     assert!(use_sites.calls.iter().any(|call| matches!(
         call,
-        crate::SalsaCallUseSummary {
-            kind: crate::SalsaCallKindSummary::Require,
+        SalsaCallUseSummary {
+            kind: SalsaCallKindSummary::Require,
             require_path: Some(path),
             ..
         } if path == "pkg.util"
     )));
     assert!(matches!(
         &module_summary.export_target,
-        Some(crate::SalsaExportTargetSummary::LocalName(name)) if name == "Box"
+        Some(SalsaExportTargetSummary::LocalName(name)) if name == "Box"
     ));
     assert!(matches!(
         &module_summary.export,
-        Some(crate::SalsaModuleExportSummary::LocalDecl { name, decl_id })
+        Some(SalsaModuleExportSummary::LocalDecl { name, decl_id })
             if name == "Box" && *decl_id == box_decl_id
     ));
     assert_eq!(semantic_summary.required_modules, vec!["pkg.util"]);
@@ -165,23 +166,26 @@ return require("live.box")"#,
 
     assert_eq!(&after_summary.properties, after_properties.as_ref());
     assert_eq!(&after_summary.use_sites, after_use_sites.as_ref());
-    assert_eq!(&after_summary.doc_owner_bindings, after_owner_bindings.as_ref());
+    assert_eq!(
+        &after_summary.doc_owner_bindings,
+        after_owner_bindings.as_ref()
+    );
     assert_eq!(after_summary.module.as_ref(), Some(after_module.as_ref()));
     assert!(after_properties.properties.iter().any(|property| matches!(
         property.key,
-        crate::SalsaPropertyKeySummary::Name(ref key) if key == "value"
+        SalsaPropertyKeySummary::Name(ref key) if key == "value"
     )));
     assert!(after_use_sites.calls.iter().any(|call| matches!(
         call,
-        crate::SalsaCallUseSummary {
-            kind: crate::SalsaCallKindSummary::Require,
+        SalsaCallUseSummary {
+            kind: SalsaCallKindSummary::Require,
             require_path: Some(path),
             ..
         } if path == "live.box"
     )));
     assert!(after_use_sites.members.iter().any(|member_use| matches!(
         &member_use.target,
-        target if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, .. } if name == "Box")
+        target if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, .. } if name == "Box")
             && target.member_name == "value"
     )));
     assert!(after_module.export_target.is_none());
@@ -245,10 +249,10 @@ return Box"#;
         .expect("owner bindings")
         .bindings
         .iter()
-        .find(|binding| binding.owner_kind == crate::SalsaDocOwnerKindSummary::TableField)
+        .find(|binding| binding.owner_kind == SalsaDocOwnerKindSummary::TableField)
         .and_then(|binding| {
             binding.targets.iter().find_map(|target| match target {
-                crate::SalsaBindingTargetSummary::Member(target) => Some(target.clone()),
+                SalsaBindingTargetSummary::Member(target) => Some(target.clone()),
                 _ => None,
             })
         })
@@ -259,11 +263,11 @@ return Box"#;
         .expect("decl semantic");
     assert!(decl_semantic.doc_owners.iter().any(|resolve| matches!(
         resolve.resolution,
-        crate::SalsaDocOwnerResolutionSummary::Decl(decl_id) if decl_id == box_decl_id
+        SalsaDocOwnerResolutionSummary::Decl(decl_id) if decl_id == box_decl_id
     )));
     assert!(decl_semantic.properties.iter().any(|property| matches!(
         property.key,
-        crate::SalsaPropertyKeySummary::Name(ref key) if key == "value"
+        SalsaPropertyKeySummary::Name(ref key) if key == "value"
     )));
 
     let member_semantic = semantic_target
@@ -271,7 +275,7 @@ return Box"#;
         .expect("member semantic");
     assert!(member_semantic.doc_owners.iter().any(|resolve| matches!(
         &resolve.resolution,
-        crate::SalsaDocOwnerResolutionSummary::Member(target) if target == &box_value_member
+        SalsaDocOwnerResolutionSummary::Member(target) if target == &box_value_member
     )));
 
     let signature_semantic = semantic_target
@@ -279,7 +283,7 @@ return Box"#;
         .expect("signature semantic");
     assert!(signature_semantic.doc_owners.iter().any(|resolve| matches!(
         resolve.resolution,
-        crate::SalsaDocOwnerResolutionSummary::Signature(offset) if offset == run_signature_offset
+        SalsaDocOwnerResolutionSummary::Signature(offset) if offset == run_signature_offset
     )));
     assert!(signature_semantic.tag_properties.is_empty());
 
@@ -292,7 +296,11 @@ return Box"#;
         .expect("module export query");
     assert_eq!(
         export_semantic.export_target,
-        module_summary.export_target.as_ref().expect("export target").clone()
+        module_summary
+            .export_target
+            .as_ref()
+            .expect("export target")
+            .clone()
     );
     assert_eq!(
         export_semantic.export,
@@ -300,7 +308,7 @@ return Box"#;
     );
     assert!(matches!(
         export_semantic.semantic_target,
-        Some(crate::compilation::SalsaSemanticTargetSummary::Decl(decl_id)) if decl_id == box_decl_id
+        Some(SalsaSemanticTargetSummary::Decl(decl_id)) if decl_id == box_decl_id
     ));
     assert_eq!(export_query.export_target, export_semantic.export_target);
     assert_eq!(export_query.export, Some(export_semantic.export.clone()));

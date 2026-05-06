@@ -1,4 +1,5 @@
 use super::*;
+use crate::*;
 
 #[test]
 fn test_summary_builder_owner_binding_and_use_site_structures() {
@@ -72,46 +73,46 @@ print(result)"#;
 
     assert!(owner_bindings.bindings.iter().any(|binding| matches!(
         binding,
-        crate::SalsaDocOwnerBindingSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::LocalStat,
+        SalsaDocOwnerBindingSummary {
+            owner_kind: SalsaDocOwnerKindSummary::LocalStat,
             targets,
             ..
-        } if targets == &vec![crate::SalsaBindingTargetSummary::Decl(box_decl_id)]
+        } if targets == &vec![SalsaBindingTargetSummary::Decl(box_decl_id)]
     )));
     assert!(owner_bindings.bindings.iter().any(|binding| matches!(
         binding,
-        crate::SalsaDocOwnerBindingSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::TableField,
+        SalsaDocOwnerBindingSummary {
+            owner_kind: SalsaDocOwnerKindSummary::TableField,
             targets,
             ..
         } if targets.iter().any(|target| matches!(
             target,
-            crate::SalsaBindingTargetSummary::Member(member_target)
-                if matches!(&member_target.root, crate::SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
+            SalsaBindingTargetSummary::Member(member_target)
+                if matches!(&member_target.root, SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
                     && member_target.member_name == "value"
         ))
     )));
     assert!(owner_bindings.bindings.iter().any(|binding| matches!(
         binding,
-        crate::SalsaDocOwnerBindingSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::FuncStat,
+        SalsaDocOwnerBindingSummary {
+            owner_kind: SalsaDocOwnerKindSummary::FuncStat,
             targets,
             ..
-        } if targets == &vec![crate::SalsaBindingTargetSummary::Signature(run_signature_offset)]
+        } if targets == &vec![SalsaBindingTargetSummary::Signature(run_signature_offset)]
     )));
     assert!(owner_resolve_index.bindings.iter().any(|binding| matches!(
         binding,
-        crate::SalsaDocOwnerResolveSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::LocalStat,
-            resolution: crate::SalsaDocOwnerResolutionSummary::Decl(decl_id),
+        SalsaDocOwnerResolveSummary {
+            owner_kind: SalsaDocOwnerKindSummary::LocalStat,
+            resolution: SalsaDocOwnerResolutionSummary::Decl(decl_id),
             ..
         } if *decl_id == box_decl_id
     )));
     assert!(owner_resolve_index.bindings.iter().any(|binding| matches!(
         binding,
-        crate::SalsaDocOwnerResolveSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::FuncStat,
-            resolution: crate::SalsaDocOwnerResolutionSummary::Signature(signature_offset),
+        SalsaDocOwnerResolveSummary {
+            owner_kind: SalsaDocOwnerKindSummary::FuncStat,
+            resolution: SalsaDocOwnerResolutionSummary::Signature(signature_offset),
             ..
         } if *signature_offset == run_signature_offset
     )));
@@ -119,12 +120,10 @@ print(result)"#;
     let box_value_member_target = owner_bindings
         .bindings
         .iter()
-        .find(|binding| binding.owner_kind == crate::SalsaDocOwnerKindSummary::TableField)
+        .find(|binding| binding.owner_kind == SalsaDocOwnerKindSummary::TableField)
         .and_then(|binding| {
             binding.targets.iter().find_map(|target| match target {
-                crate::SalsaBindingTargetSummary::Member(member_target) => {
-                    Some(member_target.clone())
-                }
+                SalsaBindingTargetSummary::Member(member_target) => Some(member_target.clone()),
                 _ => None,
             })
         })
@@ -132,108 +131,108 @@ print(result)"#;
 
     assert_eq!(
         doc.owner_resolves_for_decl(FileId::new(10), box_decl_id),
-        Some(vec![crate::SalsaDocOwnerResolveSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::LocalStat,
+        Some(vec![SalsaDocOwnerResolveSummary {
+            owner_kind: SalsaDocOwnerKindSummary::LocalStat,
             owner_offset: owner_bindings
                 .bindings
                 .iter()
-                .find(|binding| binding.owner_kind == crate::SalsaDocOwnerKindSummary::LocalStat)
+                .find(|binding| binding.owner_kind == SalsaDocOwnerKindSummary::LocalStat)
                 .map(|binding| binding.owner_offset)
                 .expect("Box local owner offset"),
-            resolution: crate::SalsaDocOwnerResolutionSummary::Decl(box_decl_id),
+            resolution: SalsaDocOwnerResolutionSummary::Decl(box_decl_id),
         }])
     );
     assert_eq!(
         doc.owner_resolves_for_member(FileId::new(10), box_value_member_target.clone()),
-        Some(vec![crate::SalsaDocOwnerResolveSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::TableField,
+        Some(vec![SalsaDocOwnerResolveSummary {
+            owner_kind: SalsaDocOwnerKindSummary::TableField,
             owner_offset: owner_bindings
                 .bindings
                 .iter()
-                .find(|binding| binding.owner_kind == crate::SalsaDocOwnerKindSummary::TableField)
+                .find(|binding| binding.owner_kind == SalsaDocOwnerKindSummary::TableField)
                 .map(|binding| binding.owner_offset)
                 .expect("Box.value owner offset"),
-            resolution: crate::SalsaDocOwnerResolutionSummary::Member(box_value_member_target),
+            resolution: SalsaDocOwnerResolutionSummary::Member(box_value_member_target),
         }])
     );
     assert_eq!(
         doc.owner_resolves_for_signature(FileId::new(10), run_signature_offset),
-        Some(vec![crate::SalsaDocOwnerResolveSummary {
-            owner_kind: crate::SalsaDocOwnerKindSummary::FuncStat,
+        Some(vec![SalsaDocOwnerResolveSummary {
+            owner_kind: SalsaDocOwnerKindSummary::FuncStat,
             owner_offset: owner_bindings
                 .bindings
                 .iter()
-                .find(|binding| binding.owner_kind == crate::SalsaDocOwnerKindSummary::FuncStat)
+                .find(|binding| binding.owner_kind == SalsaDocOwnerKindSummary::FuncStat)
                 .map(|binding| binding.owner_offset)
                 .expect("run owner offset"),
-            resolution: crate::SalsaDocOwnerResolutionSummary::Signature(run_signature_offset),
+            resolution: SalsaDocOwnerResolutionSummary::Signature(run_signature_offset),
         }])
     );
 
     let local_owner_offset = owner_bindings
         .bindings
         .iter()
-        .find(|binding| binding.owner_kind == crate::SalsaDocOwnerKindSummary::LocalStat)
+        .find(|binding| binding.owner_kind == SalsaDocOwnerKindSummary::LocalStat)
         .map(|binding| binding.owner_offset)
         .expect("local owner offset");
     assert!(matches!(
         doc.owner_resolve(FileId::new(10), local_owner_offset),
-        Some(crate::SalsaDocOwnerResolveSummary {
-            resolution: crate::SalsaDocOwnerResolutionSummary::Decl(decl_id),
+        Some(SalsaDocOwnerResolveSummary {
+            resolution: SalsaDocOwnerResolutionSummary::Decl(decl_id),
             ..
         }) if decl_id == box_decl_id
     ));
 
     assert!(use_sites.names.iter().any(|name_use| matches!(
         name_use,
-        crate::SalsaNameUseSummary {
+        SalsaNameUseSummary {
             name,
-            role: crate::SalsaUseSiteRoleSummary::CallCallee,
-            resolution: crate::SalsaNameUseResolutionSummary::LocalDecl(decl_id),
+            role: SalsaUseSiteRoleSummary::CallCallee,
+            resolution: SalsaNameUseResolutionSummary::LocalDecl(decl_id),
             ..
         } if name == "fn" && *decl_id == fn_decl_id
     )));
     assert!(use_sites.names.iter().any(|name_use| matches!(
         name_use,
-        crate::SalsaNameUseSummary {
+        SalsaNameUseSummary {
             name,
-            role: crate::SalsaUseSiteRoleSummary::CallCallee,
-            resolution: crate::SalsaNameUseResolutionSummary::Global,
+            role: SalsaUseSiteRoleSummary::CallCallee,
+            resolution: SalsaNameUseResolutionSummary::Global,
             ..
         } if name == "print"
     )));
     assert!(use_sites.names.iter().any(|name_use| matches!(
         name_use,
-        crate::SalsaNameUseSummary {
+        SalsaNameUseSummary {
             name,
-            role: crate::SalsaUseSiteRoleSummary::Read,
-            resolution: crate::SalsaNameUseResolutionSummary::LocalDecl(decl_id),
+            role: SalsaUseSiteRoleSummary::Read,
+            resolution: SalsaNameUseResolutionSummary::LocalDecl(decl_id),
             ..
         } if name == "result" && *decl_id == result_decl_id
     )));
 
     assert!(use_sites.members.iter().any(|member_use| matches!(
         member_use,
-        crate::SalsaMemberUseSummary {
-            role: crate::SalsaUseSiteRoleSummary::Write,
+        SalsaMemberUseSummary {
+            role: SalsaUseSiteRoleSummary::Write,
             target,
             ..
-        } if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
+        } if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
             && target.member_name == "value"
     )));
     assert!(use_sites.members.iter().any(|member_use| matches!(
         member_use,
-        crate::SalsaMemberUseSummary {
-            role: crate::SalsaUseSiteRoleSummary::CallCallee,
+        SalsaMemberUseSummary {
+            role: SalsaUseSiteRoleSummary::CallCallee,
             target,
             ..
-        } if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
+        } if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
             && target.member_name == "run"
     )));
 
     assert!(use_sites.calls.iter().any(|call| matches!(
         call,
-        crate::SalsaCallUseSummary {
+        SalsaCallUseSummary {
             callee_name: Some(name),
             arg_count,
             require_path: None,
@@ -242,19 +241,19 @@ print(result)"#;
     )));
     assert!(use_sites.calls.iter().any(|call| matches!(
         call,
-        crate::SalsaCallUseSummary {
+        SalsaCallUseSummary {
             is_colon_call: true,
             callee_member: Some(target),
             arg_count,
             ..
-        } if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
+        } if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
             && target.member_name == "run" && *arg_count == 1
     )));
 
     let fn_call = use_sites
         .calls
         .iter()
-        .find(|call| matches!(call, crate::SalsaCallUseSummary { callee_name: Some(name), arg_count, .. } if name == "fn" && *arg_count == 1))
+        .find(|call| matches!(call, SalsaCallUseSummary { callee_name: Some(name), arg_count, .. } if name == "fn" && *arg_count == 1))
         .cloned()
         .expect("fn call use");
     let box_run_call = use_sites
@@ -263,13 +262,13 @@ print(result)"#;
         .find(|call| {
             matches!(
                 call,
-                crate::SalsaCallUseSummary {
+                SalsaCallUseSummary {
                     is_colon_call: true,
                     callee_member: Some(target),
                     arg_count,
                     require_path: None,
                     ..
-                } if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
+                } if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
                     && target.member_name == "run" && *arg_count == 1
             )
         })
@@ -282,10 +281,10 @@ print(result)"#;
         .find(|name_use| {
             matches!(
                 name_use,
-                crate::SalsaNameUseSummary {
+                SalsaNameUseSummary {
                     name,
-                    role: crate::SalsaUseSiteRoleSummary::CallCallee,
-                    resolution: crate::SalsaNameUseResolutionSummary::LocalDecl(decl_id),
+                    role: SalsaUseSiteRoleSummary::CallCallee,
+                    resolution: SalsaNameUseResolutionSummary::LocalDecl(decl_id),
                     ..
                 } if name == "fn" && *decl_id == fn_decl_id
             )
@@ -299,10 +298,10 @@ print(result)"#;
     );
     assert!(matches!(
         lexical.use_at(FileId::new(10), fn_call_use_offset),
-        Some(crate::SalsaLexicalUseSummary::Name {
+        Some(SalsaLexicalUseSummary::Name {
             name,
-            role: crate::SalsaUseSiteRoleSummary::CallCallee,
-            resolution: crate::SalsaNameUseResolutionSummary::LocalDecl(decl_id),
+            role: SalsaUseSiteRoleSummary::CallCallee,
+            resolution: SalsaNameUseResolutionSummary::LocalDecl(decl_id),
             ..
         }) if name == "fn" && decl_id == fn_decl_id
     ));
@@ -313,11 +312,11 @@ print(result)"#;
         .find(|member_use| {
             matches!(
                 member_use,
-                crate::SalsaMemberUseSummary {
-                    role: crate::SalsaUseSiteRoleSummary::Write,
+                SalsaMemberUseSummary {
+                    role: SalsaUseSiteRoleSummary::Write,
                     target,
                     ..
-                } if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
+                } if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
                     && target.member_name == "value"
             )
         })
@@ -330,11 +329,11 @@ print(result)"#;
     );
     assert!(matches!(
         lexical.use_at(FileId::new(10), box_value_write_offset),
-        Some(crate::SalsaLexicalUseSummary::Member {
-            role: crate::SalsaUseSiteRoleSummary::Write,
+        Some(SalsaLexicalUseSummary::Member {
+            role: SalsaUseSiteRoleSummary::Write,
             target,
             ..
-        }) if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
+        }) if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, decl_id, .. } if name == "Box" && *decl_id == box_decl_id)
             && target.member_name == "value"
     ));
 
@@ -347,7 +346,7 @@ print(result)"#;
     );
     assert!(lexical_index.uses.iter().any(|use_summary| matches!(
         use_summary,
-        crate::SalsaLexicalUseSummary::Call {
+        SalsaLexicalUseSummary::Call {
             callee_name: Some(name),
             arg_count,
             require_path: None,
@@ -371,23 +370,19 @@ print(result)"#;
                 .iter()
                 .filter(|name_use| {
                     name_use.name == "print"
-                        && matches!(
-                            name_use.resolution,
-                            crate::SalsaNameUseResolutionSummary::Global
-                        )
+                        && matches!(name_use.resolution, SalsaNameUseResolutionSummary::Global)
                 })
                 .cloned()
                 .collect()
         )
     );
     assert_eq!(
-        lexical
-            .name_references_by_role(FileId::new(10), crate::SalsaUseSiteRoleSummary::CallCallee),
+        lexical.name_references_by_role(FileId::new(10), SalsaUseSiteRoleSummary::CallCallee),
         Some(
             use_sites
                 .names
                 .iter()
-                .filter(|name_use| name_use.role == crate::SalsaUseSiteRoleSummary::CallCallee)
+                .filter(|name_use| name_use.role == SalsaUseSiteRoleSummary::CallCallee)
                 .cloned()
                 .collect()
         )
@@ -411,12 +406,12 @@ print(result)"#;
         })
     );
     assert_eq!(
-        lexical.member_references_by_role(FileId::new(10), crate::SalsaUseSiteRoleSummary::Write),
+        lexical.member_references_by_role(FileId::new(10), SalsaUseSiteRoleSummary::Write),
         Some(
             use_sites
                 .members
                 .iter()
-                .filter(|member_use| member_use.role == crate::SalsaUseSiteRoleSummary::Write)
+                .filter(|member_use| member_use.role == SalsaUseSiteRoleSummary::Write)
                 .cloned()
                 .collect()
         )
@@ -438,10 +433,10 @@ print(result)"#;
     assert_eq!(result_refs.len(), 1);
     assert!(matches!(
         &result_refs[0],
-        crate::SalsaNameUseSummary {
+        SalsaNameUseSummary {
             name,
-            role: crate::SalsaUseSiteRoleSummary::Read,
-            resolution: crate::SalsaNameUseResolutionSummary::LocalDecl(decl_id),
+            role: SalsaUseSiteRoleSummary::Read,
+            resolution: SalsaNameUseResolutionSummary::LocalDecl(decl_id),
             ..
         } if name == "result" && *decl_id == result_decl_id
     ));
@@ -504,9 +499,9 @@ local out = Box:run(1)"#;
     );
     assert!(matches!(
         semantic_signature_summary.explain.generics[0].params[0].bound_type,
-        Some(crate::SalsaSignatureTypeExplainSummary {
-            lowered: Some(crate::SalsaDocTypeLoweredNode {
-                kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaSignatureTypeExplainSummary {
+            lowered: Some(SalsaDocTypeLoweredNode {
+                kind: SalsaDocTypeLoweredKind::Name { ref name },
                 ..
             }),
             ..
@@ -521,9 +516,9 @@ local out = Box:run(1)"#;
     assert!(semantic_signature_summary.explain.params[0].is_nullable);
     assert!(matches!(
         semantic_signature_summary.explain.params[0].doc_type,
-        Some(crate::SalsaSignatureTypeExplainSummary {
-            lowered: Some(crate::SalsaDocTypeLoweredNode {
-                kind: crate::SalsaDocTypeLoweredKind::Nullable { .. },
+        Some(SalsaSignatureTypeExplainSummary {
+            lowered: Some(SalsaDocTypeLoweredNode {
+                kind: SalsaDocTypeLoweredKind::Nullable { .. },
                 ..
             }),
             ..
@@ -533,18 +528,18 @@ local out = Box:run(1)"#;
     assert_eq!(semantic_signature_summary.explain.returns[0].items.len(), 1);
     assert!(matches!(
         semantic_signature_summary.explain.returns[0].items[0].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Name { ref name },
             ..
         }) if name == "T"
     ));
     assert_eq!(call_explain.call.syntax_offset, call_offset);
     assert!(matches!(
         call_explain.lexical_call,
-        Some(crate::SalsaCallUseSummary {
+        Some(SalsaCallUseSummary {
             callee_member: Some(ref target),
             ..
-        }) if matches!(&target.root, crate::SalsaMemberRootSummary::LocalDecl { name, .. } if name == "Box")
+        }) if matches!(&target.root, SalsaMemberRootSummary::LocalDecl { name, .. } if name == "Box")
             && target.member_name == "run"
     ));
     assert_eq!(
@@ -611,9 +606,9 @@ local out = Box:run(1)"#;
     assert_eq!(semantic_call_explain.args.len(), 1);
     assert!(matches!(
         semantic_call_explain.args[0].expected_doc_type,
-        Some(crate::SalsaSignatureTypeExplainSummary {
-            lowered: Some(crate::SalsaDocTypeLoweredNode {
-                kind: crate::SalsaDocTypeLoweredKind::Nullable { .. },
+        Some(SalsaSignatureTypeExplainSummary {
+            lowered: Some(SalsaDocTypeLoweredNode {
+                kind: SalsaDocTypeLoweredKind::Nullable { .. },
                 ..
             }),
             ..
@@ -621,7 +616,7 @@ local out = Box:run(1)"#;
     ));
     assert!(matches!(
         semantic_call_explain.args[0].expected_param,
-        Some(crate::SalsaSignatureParamExplainSummary { ref name, .. }) if name == "value"
+        Some(SalsaSignatureParamExplainSummary { ref name, .. }) if name == "value"
     ));
     assert_eq!(
         semantic_call_explain.returns,
@@ -672,8 +667,8 @@ local value = make(1)"#;
     assert_eq!(call_explain.returns[0].items.len(), 1);
     assert!(matches!(
         call_explain.returns[0].items[0].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Name { ref name },
             ..
         }) if name == "string"
     ));
@@ -723,8 +718,8 @@ local value = pick()"#;
     assert_eq!(call_explain.returns[0].items.len(), 1);
     assert!(matches!(
         call_explain.returns[0].items[0].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Name { ref name },
             ..
         }) if name == "string"
     ));
@@ -776,14 +771,14 @@ local value = Box:run(1)"#;
     assert_eq!(call_explain.args.len(), 1);
     assert!(matches!(
         call_explain.args[0].expected_param,
-        Some(crate::SalsaSignatureParamExplainSummary { ref name, .. }) if name == "value"
+        Some(SalsaSignatureParamExplainSummary { ref name, .. }) if name == "value"
     ));
     assert_eq!(call_explain.returns.len(), 1);
     assert_eq!(call_explain.returns[0].items.len(), 1);
     assert!(matches!(
         call_explain.returns[0].items[0].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Name { ref name },
             ..
         }) if name == "integer"
     ));
@@ -826,15 +821,15 @@ local ok, value = parse()"#;
     assert_eq!(call_explain.returns[1].items.len(), 2);
     assert!(matches!(
         call_explain.returns[0].items[0].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Literal { ref text },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Literal { ref text },
             ..
         }) if text == "true"
     ));
     assert!(matches!(
         call_explain.returns[1].items[1].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Name { ref name },
             ..
         }) if name == "string"
     ));
@@ -878,12 +873,12 @@ local out = choose(1)"#;
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);
     assert!(matches!(
         call_explain.args[0].expected_param,
-        Some(crate::SalsaSignatureParamExplainSummary { ref name, .. }) if name == "value"
+        Some(SalsaSignatureParamExplainSummary { ref name, .. }) if name == "value"
     ));
     assert!(matches!(
         call_explain.returns[0].items[0].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Name { ref name },
             ..
         }) if name == "string"
     ));
@@ -928,9 +923,9 @@ local out = pick("x")"#;
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);
     assert!(matches!(
         call_explain.args[0].expected_doc_type,
-        Some(crate::SalsaSignatureTypeExplainSummary {
-            lowered: Some(crate::SalsaDocTypeLoweredNode {
-                kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaSignatureTypeExplainSummary {
+            lowered: Some(SalsaDocTypeLoweredNode {
+                kind: SalsaDocTypeLoweredKind::Name { ref name },
                 ..
             }),
             ..
@@ -938,8 +933,8 @@ local out = pick("x")"#;
     ));
     assert!(matches!(
         call_explain.returns[0].items[0].doc_type.lowered,
-        Some(crate::SalsaDocTypeLoweredNode {
-            kind: crate::SalsaDocTypeLoweredKind::Name { ref name },
+        Some(SalsaDocTypeLoweredNode {
+            kind: SalsaDocTypeLoweredKind::Name { ref name },
             ..
         }) if name == "string"
     ));

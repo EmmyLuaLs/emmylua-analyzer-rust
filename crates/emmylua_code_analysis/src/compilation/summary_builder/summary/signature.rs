@@ -2,6 +2,11 @@ use emmylua_parser::{LuaSyntaxId, LuaSyntaxKind};
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
+use crate::{
+    SalsaCallExplainSummary, SalsaProgramPointMemberTypeInfoSummary,
+    SalsaProgramPointTypeInfoSummary, SalsaSignatureReturnExplainSummary,
+};
+
 use super::{SalsaDocOwnerKindSummary, SalsaDocTypeNodeKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, salsa::Update)]
@@ -120,17 +125,17 @@ pub enum SalsaSignatureReturnExprKindSummary {
 pub struct SalsaSignatureReturnValueSummary {
     pub expr_offset: TextSize,
     pub kind: SalsaSignatureReturnExprKindSummary,
-    pub doc_return_type_offsets: Vec<crate::SalsaDocTypeNodeKey>,
-    pub name_type: Option<crate::SalsaProgramPointTypeInfoSummary>,
-    pub member_type: Option<crate::SalsaProgramPointMemberTypeInfoSummary>,
-    pub call: Option<crate::SalsaCallExplainSummary>,
+    pub doc_return_type_offsets: Vec<SalsaDocTypeNodeKey>,
+    pub name_type: Option<SalsaProgramPointTypeInfoSummary>,
+    pub member_type: Option<SalsaProgramPointMemberTypeInfoSummary>,
+    pub call: Option<SalsaCallExplainSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct SalsaSignatureReturnQuerySummary {
     pub signature_offset: TextSize,
     pub state: SalsaSignatureReturnResolveStateSummary,
-    pub doc_returns: Vec<crate::SalsaSignatureReturnExplainSummary>,
+    pub doc_returns: Vec<SalsaSignatureReturnExplainSummary>,
     pub values: Vec<SalsaSignatureReturnValueSummary>,
 }
 
