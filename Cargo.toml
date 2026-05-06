@@ -16,9 +16,9 @@ schema_to_emmylua = { path = "crates/schema_to_emmylua", version = "0.1.0" }
 
 # external
 lsp-server = "0.7.9"
-tokio = { version = "1.48", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
+serde_json = "1.0.149"
 rowan = { version = "0.16.1" }
 notify = { version = "8.2.0", features = ["serde"] }
 lsp_types = { version = "0.1.0", package = "emmy_lsp_types" }
@@ -26,9 +26,9 @@ schemars = "1.0.4"
 regex = "1"
 internment = { version = "0.8.6", features = ["arc"] }
 rust-i18n = "3"
-log = "0.4.28"
+log = "0.4.29"
 fern = "0.7.1"
-chrono = "0.4.42"
+chrono = "0.4.44"
 tokio-util = "0.7.16"
 walkdir = "2.5.0"
 serde_yml = "0.0.12"
@@ -38,7 +38,7 @@ percent-encoding = "2.3"
 flagset = "0.4.7"
 encoding_rs = "0.8"
 url = "2.5.7"
-smol_str = "0.3.4"
+smol_str = "0.3.6"
 tera = "1.20.1"
 serde_with = "3.12.0"
 proc-macro2 = "1.0"
@@ -48,13 +48,13 @@ glob = "0.3"
 include_dir = "0.7.4"
 toml_edit = "0.22.23"
 itertools = "0.14.0"
-clap = { version = "4.5.51", features = ["derive", "wrap_help"] }
+clap = { version = "4.6.1", features = ["derive", "wrap_help"] }
 ansi_term = "0.12.1"
 num-traits = { version = "0.2", features = ["std"] }
-mimalloc = { version = "0.1.48", features = ["v3"] }
+mimalloc = { version = "0.1.50" }
 googletest = "0.14.2"
 unicode-general-category = "1.0.0"
-luars = { version = "0.18.1", features = ["serde", "sandbox"] }
+luars = { version = "0.18.2", features = ["serde", "sandbox"] }
 # request's default-tls feature pulls in a dependency on aws-lc-rs,
 # which causes a linking error on Windows
 reqwest = { version = "0.13.1", default-features = false, features = [
@@ -64,7 +64,7 @@ reqwest = { version = "0.13.1", default-features = false, features = [
   "native-tls-vendored",
 ]}
 similar = { version = "2.7.0", features = ["inline"] }
-hashbrown = "0.16.1"
+hashbrown = "0.17.0"
 
 # Lint configuration for the entire workspace
 [workspace.lints.rust]
