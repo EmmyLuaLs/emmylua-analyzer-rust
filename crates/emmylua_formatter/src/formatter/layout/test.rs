@@ -1,5 +1,6 @@
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaLanguageLevel, LuaParser, LuaSyntaxId, LuaSyntaxKind, LuaTokenKind, ParserConfig
+    LuaAst, LuaAstNode, LuaLanguageLevel, LuaParser, LuaSyntaxId, LuaSyntaxKind, LuaTokenKind,
+    ParserConfig,
 };
 
 use crate::config::LuaFormatConfig;

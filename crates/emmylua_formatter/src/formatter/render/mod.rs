@@ -1,4 +1,3 @@
-
 mod control;
 mod helpers;
 #[cfg(test)]
@@ -17,7 +16,6 @@ use crate::formatter::model::{
 };
 use crate::formatter::sequence::*;
 use crate::formatter::trivia::*;
-
 
 use self::control::{
     render_do_stat, render_for_range_stat, render_for_stat, render_func_stat, render_if_stat,

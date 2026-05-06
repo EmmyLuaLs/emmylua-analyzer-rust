@@ -1,6 +1,6 @@
-mod tree;
 #[cfg(test)]
 mod test;
+mod tree;
 
 use super::FormatContext;
 use super::model::{
