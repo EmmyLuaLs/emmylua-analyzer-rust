@@ -225,6 +225,9 @@ fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
             }
             false
         }
+        (LuaType::Generic(generic_left), LuaType::Generic(generic_right)) => {
+            generic_left == generic_right
+        }
         _ => false,
     }
 }

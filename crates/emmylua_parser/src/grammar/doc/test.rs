@@ -3466,4 +3466,108 @@ Syntax(Chunk)@0..98
         "#;
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_attribute_with_boolean() {
+        let code = r#"
+        ---@[warn(true, "str", 1, 1.4, nil)]
+        "#;
+        // print_ast(code);
+        let result = r#"
+Syntax(Chunk)@0..54
+  Syntax(Block)@0..54
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..45
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagAttributeUse)@13..45
+        Token(TkDocAttributeUse)@13..14 "["
+        Syntax(DocAttributeUse)@14..44
+          Syntax(TypeName)@14..18
+            Token(TkName)@14..18 "warn"
+          Syntax(DocAttributeCallArgList)@18..44
+            Token(TkLeftParen)@18..19 "("
+            Syntax(LiteralExpr)@19..23
+              Token(TkTrue)@19..23 "true"
+            Token(TkComma)@23..24 ","
+            Token(TkWhitespace)@24..25 " "
+            Syntax(LiteralExpr)@25..30
+              Token(TkString)@25..30 "\"str\""
+            Token(TkComma)@30..31 ","
+            Token(TkWhitespace)@31..32 " "
+            Syntax(LiteralExpr)@32..33
+              Token(TkInt)@32..33 "1"
+            Token(TkComma)@33..34 ","
+            Token(TkWhitespace)@34..35 " "
+            Syntax(LiteralExpr)@35..38
+              Token(TkFloat)@35..38 "1.4"
+            Token(TkComma)@38..39 ","
+            Token(TkWhitespace)@39..40 " "
+            Syntax(LiteralExpr)@40..43
+              Token(TkNil)@40..43 "nil"
+            Token(TkRightParen)@43..44 ")"
+        Token(TkRightBracket)@44..45 "]"
+    Token(TkEndOfLine)@45..46 "\n"
+    Token(TkWhitespace)@46..54 "        "
+        "#;
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_generic_default_type() {
+        let code = r#"
+        ---@class A<T = number>
+
+        ---@class B<T extends number = number>
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..89
+  Syntax(Block)@0..89
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..32
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagClass)@13..32
+        Token(TkTagClass)@13..18 "class"
+        Token(TkWhitespace)@18..19 " "
+        Token(TkName)@19..20 "A"
+        Syntax(DocGenericDeclareList)@20..32
+          Token(TkLt)@20..21 "<"
+          Syntax(DocGenericParameter)@21..31
+            Token(TkName)@21..22 "T"
+            Token(TkWhitespace)@22..23 " "
+            Token(TkDocMatch)@23..24 "="
+            Token(TkWhitespace)@24..25 " "
+            Syntax(TypeName)@25..31
+              Token(TkName)@25..31 "number"
+          Token(TkGt)@31..32 ">"
+    Token(TkEndOfLine)@32..33 "\n"
+    Token(TkEndOfLine)@33..34 "\n"
+    Token(TkWhitespace)@34..42 "        "
+    Syntax(Comment)@42..80
+      Token(TkDocStart)@42..46 "---@"
+      Syntax(DocTagClass)@46..80
+        Token(TkTagClass)@46..51 "class"
+        Token(TkWhitespace)@51..52 " "
+        Token(TkName)@52..53 "B"
+        Syntax(DocGenericDeclareList)@53..80
+          Token(TkLt)@53..54 "<"
+          Syntax(DocGenericParameter)@54..79
+            Token(TkName)@54..55 "T"
+            Token(TkWhitespace)@55..56 " "
+            Token(TkDocExtends)@56..63 "extends"
+            Token(TkWhitespace)@63..64 " "
+            Syntax(TypeName)@64..70
+              Token(TkName)@64..70 "number"
+            Token(TkWhitespace)@70..71 " "
+            Token(TkDocMatch)@71..72 "="
+            Token(TkWhitespace)@72..73 " "
+            Syntax(TypeName)@73..79
+              Token(TkName)@73..79 "number"
+          Token(TkGt)@79..80 ">"
+    Token(TkEndOfLine)@80..81 "\n"
+    Token(TkWhitespace)@81..89 "        "
+        "#;
+        assert_ast_eq!(code, result);
+    }
 }

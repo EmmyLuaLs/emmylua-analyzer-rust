@@ -1,4 +1,6 @@
-use crate::model::ExtractedFile;
+use crate::fs::dir_for_lua_path;
+use crate::model::AnalyzedStdFile;
+use crate::pipeline::StdI18nProject;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -15,15 +17,12 @@ use std::path::Path;
 /// - 若目标 YAML 已存在，则保留已有翻译；新增 key 的值为空串
 /// - 若目标 YAML 不存在，则生成仅含 key 的空值模板
 pub fn write_std_locales_yaml(
-    std_dir: &Path,
+    project: &StdI18nProject,
     locale: &str,
     out_root: &Path,
-    full_output: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // `full_output=false` 时，extractor 会过滤掉不包含原文（value 为空）的条目。
-    let files = crate::extractor::extract_std_dir(std_dir, full_output)?;
-    for file in files {
-        write_one_file(out_root, &file, locale)?;
+    for file in &project.files {
+        write_one_file(out_root, file, locale)?;
     }
 
     Ok(())
@@ -31,14 +30,11 @@ pub fn write_std_locales_yaml(
 
 fn write_one_file(
     out_root: &Path,
-    file: &ExtractedFile,
+    file: &AnalyzedStdFile,
     locale: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 输出目录：去掉 `.lua` 扩展名作为目录名（支持子目录）
-    let mut dir_rel = file.path.clone();
-    if dir_rel.extension().and_then(|e| e.to_str()) == Some("lua") {
-        dir_rel.set_extension("");
-    }
+    let dir_rel = dir_for_lua_path(&file.path);
     let out_dir = out_root.join(&dir_rel);
     fs::create_dir_all(&out_dir)?;
     let out_file = out_dir.join(format!("{locale}.yaml"));
@@ -108,8 +104,10 @@ fn write_yaml_string_map_in_order(path: &Path, entries: &[YamlOutEntry]) -> std:
         out.push_str(&format!("{key}: |\n"));
         let normalized = entry.translated.replace("\r\n", "\n");
         for line in normalized.lines() {
-            out.push_str("  ");
-            out.push_str(line);
+            if !line.is_empty() {
+                out.push_str("  ");
+                out.push_str(line);
+            }
             out.push('\n');
         }
         out.push('\n');

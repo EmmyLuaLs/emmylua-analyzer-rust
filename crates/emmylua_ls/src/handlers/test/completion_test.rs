@@ -2345,7 +2345,7 @@ mod tests {
             "#,
             vec![VirtualCompletionItem {
                 label: "\"age\"".to_string(),
-                kind: CompletionItemKind::VARIABLE,
+                kind: CompletionItemKind::ENUM_MEMBER,
                 ..Default::default()
             },],
             CompletionTriggerKind::TRIGGER_CHARACTER
@@ -2373,12 +2373,12 @@ mod tests {
             vec![
                 VirtualCompletionItem {
                     label: "\"bar\"".to_string(),
-                    kind: CompletionItemKind::CONSTANT,
+                    kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "\"foo\"".to_string(),
-                    kind: CompletionItemKind::CONSTANT,
+                    kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
             ],

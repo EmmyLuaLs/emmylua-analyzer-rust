@@ -23,6 +23,34 @@ impl LineInfo {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DocBlockView {
+    pub raw: String,
+    pub lines: Vec<LineInfo>,
+    pub indexes: TagLineIndexes,
+}
+
+impl DocBlockView {
+    pub fn new(raw: &str) -> Self {
+        let raw = raw.to_string();
+        let lines = split_lines_with_offsets(&raw);
+        let indexes = build_tag_line_indexes(&raw, &lines);
+        Self {
+            raw,
+            lines,
+            indexes,
+        }
+    }
+
+    pub fn first_guard_text(&self) -> Option<String> {
+        self.raw
+            .lines()
+            .filter_map(normalize_comment_guard_line)
+            .find(|line| !line.is_empty())
+            .map(str::to_string)
+    }
+}
+
 pub fn split_lines_with_offsets(s: &str) -> Vec<LineInfo> {
     let bytes = s.as_bytes();
     let mut out: Vec<LineInfo> = Vec::new();
@@ -87,23 +115,34 @@ pub fn parse_field_name_from_line(trimmed: &str) -> Option<String> {
     Some(normalize_optional_name(&normalize_field_key_token(token)))
 }
 
+pub fn is_doc_comment_line(line_trim_start: &str) -> bool {
+    comment_payload(line_trim_start).is_some()
+}
+
 pub fn is_doc_tag_line(line_trim_start: &str) -> bool {
-    let t = line_trim_start.trim_start();
-    let Some(after) = t.strip_prefix("---") else {
+    let Some(after) = comment_payload(line_trim_start) else {
         return false;
     };
-    let after = after.trim_start();
-    after.starts_with('@')
+    after.trim_start().starts_with('@')
+}
+
+pub fn doc_continue_or_payload(line_trim_start: &str) -> Option<&str> {
+    let after = comment_payload(line_trim_start)?.trim_start();
+    after.strip_prefix('|').map(str::trim_start)
+}
+
+pub fn is_doc_continue_or_line(line_trim_start: &str) -> bool {
+    doc_continue_or_payload(line_trim_start).is_some()
 }
 
 pub fn find_desc_block_line_range(raw: &str, lines: &[LineInfo]) -> Option<(usize, usize)> {
     let mut start_idx: Option<usize> = None;
     for (i, li) in lines.iter().enumerate() {
         let t = li.trim_start_text(raw);
-        if is_doc_tag_line(t) || t.starts_with("---|") {
+        if is_doc_tag_line(t) || is_doc_continue_or_line(t) {
             continue;
         }
-        if t.starts_with("---") {
+        if is_doc_comment_line(t) {
             start_idx = Some(i);
             break;
         }
@@ -113,10 +152,10 @@ pub fn find_desc_block_line_range(raw: &str, lines: &[LineInfo]) -> Option<(usiz
     let mut end = start;
     while end < lines.len() {
         let t = lines[end].trim_start_text(raw);
-        if is_doc_tag_line(t) || t.starts_with("---|") {
+        if is_doc_tag_line(t) || is_doc_continue_or_line(t) {
             break;
         }
-        if t.starts_with("---") {
+        if is_doc_comment_line(t) {
             end += 1;
             continue;
         }
@@ -129,11 +168,13 @@ pub fn find_desc_block_line_range(raw: &str, lines: &[LineInfo]) -> Option<(usiz
 ///
 /// 支持：
 /// - `---| "n"   # ...`
+/// - `--- | "n"   # ...`
+/// - `-- | "n"   # ...`
 /// - `---|>"collect" # ...`
 /// - `---|+"n" # ...`
 /// - `---|>+"n" # ...`
 pub fn parse_union_item_value_from_line_trim(line_trim_start: &str) -> Option<String> {
-    let after = line_trim_start.strip_prefix("---|")?.trim_start();
+    let after = doc_continue_or_payload(line_trim_start)?;
     let after = after.strip_prefix('>').unwrap_or(after).trim_start();
     let after = after.strip_prefix('+').unwrap_or(after).trim_start();
 
@@ -181,7 +222,7 @@ pub fn build_tag_line_indexes(raw: &str, lines: &[LineInfo]) -> TagLineIndexes {
             return_lines.push(i);
             continue;
         }
-        if t.starts_with("---|")
+        if is_doc_continue_or_line(t)
             && let Some(value) = parse_union_item_value_from_line_trim(t)
         {
             union_line.entry(value).or_insert(i);
@@ -198,6 +239,7 @@ pub fn build_tag_line_indexes(raw: &str, lines: &[LineInfo]) -> TagLineIndexes {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TagLineIndexes {
     pub default_indent: String,
     pub desc_block: Option<(usize, usize)>,
@@ -207,10 +249,27 @@ pub struct TagLineIndexes {
     pub union_line: HashMap<String, usize>,
 }
 
-fn doc_tag_payload<'a>(line_trim_start: &'a str, tag: &str) -> Option<&'a str> {
-    // 支持 `---@param ...` 以及 `--- @param ...`（中间允许空格）。
-    let t = line_trim_start.trim_start();
-    let after = t.strip_prefix("---")?.trim_start();
+pub fn doc_tag_payload<'a>(line_trim_start: &'a str, tag: &str) -> Option<&'a str> {
+    let after = comment_payload(line_trim_start)?.trim_start();
     let after = after.strip_prefix(tag)?;
+    if !after.is_empty() && !after.starts_with(char::is_whitespace) {
+        return None;
+    }
     Some(after.trim_start())
+}
+
+pub fn normalize_comment_guard_line(line: &str) -> Option<&str> {
+    comment_payload(line).map(|text| text.trim_start().trim_end())
+}
+
+pub fn comment_payload(line_trim_start: &str) -> Option<&str> {
+    let t = line_trim_start.trim_start();
+    if let Some(rest) = t.strip_prefix("---") {
+        return Some(rest);
+    }
+    let rest = t.strip_prefix("--")?;
+    if rest.is_empty() || rest.starts_with(char::is_whitespace) || rest.starts_with('|') {
+        return Some(rest);
+    }
+    None
 }

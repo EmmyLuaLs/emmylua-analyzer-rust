@@ -1,408 +1,94 @@
-version: 1
-line_base: 0
-col_base: 0
-file: os.lua
-entries:
-- key: oslib.clock
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 21
-      col: 0
-  hash: '9b2a917ccb76530b'
-  context_hash: de7cc417de1b3246
-- key: std.osdateparam.field.year
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 25
-      col: 30
-    end:
-      line: 25
-      col: 41
-  hash: '30212e7efed3b741'
-  context_hash: '0a791cb2212aaf50'
-- key: std.osdateparam.field.month
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 26
-      col: 31
-    end:
-      line: 26
-      col: 35
-  hash: '38cea8f11113c9ac'
-  context_hash: df63c840e75bc2b4
-- key: std.osdateparam.field.day
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 27
-      col: 29
-    end:
-      line: 27
-      col: 33
-  hash: '38c79ff1110d9bb3'
-  context_hash: c7ee7b25b9a1b737
-- key: std.osdateparam.field.hour
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 28
-      col: 33
-    end:
-      line: 28
-      col: 37
-  hash: c772bdf95d76417d
-  context_hash: '1e3e8ce1df18ca99'
-- key: std.osdateparam.field.min
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 29
-      col: 32
-    end:
-      line: 29
-      col: 36
-  hash: c76fabf95d73ed10
-  context_hash: a3b24a481fcf318e
-- key: std.osdateparam.field.sec
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 30
-      col: 32
-    end:
-      line: 30
-      col: 57
-  hash: '7de6ed0043babdcb'
-  context_hash: '20d6a60fad2254b4'
-- key: std.osdateparam.field.wday
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 31
-      col: 33
-    end:
-      line: 31
-      col: 49
-  hash: d3245cd249132d0f
-  context_hash: '6fffb0e100303b1e'
-- key: std.osdateparam.field.yday
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 32
-      col: 33
-    end:
-      line: 32
-      col: 38
-  hash: '88e1499ffa2db2cc'
-  context_hash: e6bdbe72de1add39
-- key: std.osdateparam.field.isdst
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 33
-      col: 25
-    end:
-      line: 33
-      col: 57
-  hash: '0dca085c7f2cce30'
-  context_hash: '6c5109bc12943f87'
-- key: std.osdate.field.year
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 36
-      col: 30
-    end:
-      line: 36
-      col: 41
-  hash: '30212e7efed3b741'
-  context_hash: '0a791cb2212aaf50'
-- key: std.osdate.field.month
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 37
-      col: 31
-    end:
-      line: 37
-      col: 35
-  hash: '38cea8f11113c9ac'
-  context_hash: df63c840e75bc2b4
-- key: std.osdate.field.day
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 38
-      col: 29
-    end:
-      line: 38
-      col: 33
-  hash: '38c79ff1110d9bb3'
-  context_hash: c7ee7b25b9a1b737
-- key: std.osdate.field.hour
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 39
-      col: 30
-    end:
-      line: 39
-      col: 34
-  hash: c772bdf95d76417d
-  context_hash: '7a266681ff6b0381'
-- key: std.osdate.field.min
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 40
-      col: 29
-    end:
-      line: 40
-      col: 33
-  hash: c76fabf95d73ed10
-  context_hash: '7e16ebb1362bff6e'
-- key: std.osdate.field.sec
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 41
-      col: 29
-    end:
-      line: 41
-      col: 54
-  hash: '7de6ed0043babdcb'
-  context_hash: '7086cca1b94085fe'
-- key: std.osdate.field.wday
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 42
-      col: 30
-    end:
-      line: 42
-      col: 46
-  hash: d3245cd249132d0f
-  context_hash: a5762a773c0510d8
-- key: std.osdate.field.yday
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 43
-      col: 30
-    end:
-      line: 43
-      col: 35
-  hash: '88e1499ffa2db2cc'
-  context_hash: '6f5f168e7a2ba7fb'
-- key: std.osdate.field.isdst
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 44
-      col: 24
-    end:
-      line: 44
-      col: 56
-  hash: '0dca085c7f2cce30'
-  context_hash: '7a31b4e4dcf538ee'
-- key: oslib.date
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 46
-      col: 0
-    end:
-      line: 78
-      col: 0
-  hash: '74c81b78019554e4'
-  context_hash: de7cc417de1b3246
-- key: oslib.difftime
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 85
-      col: 0
-    end:
-      line: 89
-      col: 0
-  hash: '6a0b703ea28839f7'
-  context_hash: de7cc417de1b3246
-- key: oslib.execute@>5.2
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 95
-      col: 0
-    end:
-      line: 108
-      col: 0
-  hash: '534ea24d2e6da6c0'
-  context_hash: de7cc417de1b3246
-- key: oslib.execute@5.1,JIT
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 116
-      col: 0
-    end:
-      line: 121
-      col: 0
-  hash: cfd1f1e32f605f58
-  context_hash: de7cc417de1b3246
-- key: oslib.exit@>5.2,JIT
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 126
-      col: 0
-    end:
-      line: 134
-      col: 0
-  hash: '4fda0e69acf947bb'
-  context_hash: de7cc417de1b3246
-- key: oslib.exit@5.1
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 140
-      col: 0
-    end:
-      line: 143
-      col: 0
-  hash: ef5d094abaa551fd
-  context_hash: de7cc417de1b3246
-- key: oslib.getenv
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 147
-      col: 0
-    end:
-      line: 150
-      col: 0
-  hash: '101bdb2422c380c0'
-  context_hash: de7cc417de1b3246
-- key: oslib.remove
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 154
-      col: 0
-    end:
-      line: 158
-      col: 0
-  hash: c3e36a31c22ce5ea
-  context_hash: de7cc417de1b3246
-- key: oslib.rename
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 163
-      col: 0
-    end:
-      line: 167
-      col: 0
-  hash: '400a03f66b702215'
-  context_hash: de7cc417de1b3246
-- key: oslib.setlocale
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 173
-      col: 0
-    end:
-      line: 190
-      col: 0
-  hash: d4332152c62608ba
-  context_hash: de7cc417de1b3246
-- key: oslib.time
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 195
-      col: 0
-    end:
-      line: 217
-      col: 0
-  hash: fcaa6c7521e56af4
-  context_hash: de7cc417de1b3246
-- key: oslib.tmpname
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 221
-      col: 0
-    end:
-      line: 234
-      col: 0
-  hash: '7d4f7ce2378cf7da'
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'os.lua'
+b:
+- a: 'function os.clock() end'
+  g: 'Returns an approximation of the amount in seconds of CPU time used by'
+  r: [18, 0, 21, 18]
+  e:
+  - ['oslib.clock', 'd', doc, [18, 0, 21, 0], '9b2a917ccb76530b']
+- a: '--- @class std.osdate: std.osdateparam'
+  g: '@class std.osdateparam'
+  r: [24, 0, 33, 67]
+  e:
+  - ['std.osdateparam.field.year', 'f:year', tail, [25, 35, 25, 46], '30212e7efed3b741']
+  - ['std.osdateparam.field.month', 'f:month', tail, [26, 35, 26, 39], '38cea8f11113c9ac']
+  - ['std.osdateparam.field.day', 'f:day', tail, [27, 35, 27, 39], '38c79ff1110d9bb3']
+  - ['std.osdateparam.field.hour', 'f:hour', tail, [28, 35, 28, 39], 'c772bdf95d76417d']
+  - ['std.osdateparam.field.min', 'f:min', tail, [29, 35, 29, 39], 'c76fabf95d73ed10']
+  - ['std.osdateparam.field.sec', 'f:sec', tail, [30, 35, 30, 60], '7de6ed0043babdcb']
+  - ['std.osdateparam.field.wday', 'f:wday', tail, [31, 35, 31, 51], 'd3245cd249132d0f']
+  - ['std.osdateparam.field.yday', 'f:yday', tail, [32, 35, 32, 40], '88e1499ffa2db2cc']
+  - ['std.osdateparam.field.isdst', 'f:isdst', tail, [33, 35, 33, 67], '0dca085c7f2cce30']
+- a: '---'
+  g: '@class std.osdate: std.osdateparam'
+  r: [35, 0, 44, 64]
+  e:
+  - ['std.osdate.field.year', 'f:year', tail, [36, 32, 36, 43], '30212e7efed3b741']
+  - ['std.osdate.field.month', 'f:month', tail, [37, 32, 37, 36], '38cea8f11113c9ac']
+  - ['std.osdate.field.day', 'f:day', tail, [38, 32, 38, 36], '38c79ff1110d9bb3']
+  - ['std.osdate.field.hour', 'f:hour', tail, [39, 32, 39, 36], 'c772bdf95d76417d']
+  - ['std.osdate.field.min', 'f:min', tail, [40, 32, 40, 36], 'c76fabf95d73ed10']
+  - ['std.osdate.field.sec', 'f:sec', tail, [41, 32, 41, 57], '7de6ed0043babdcb']
+  - ['std.osdate.field.wday', 'f:wday', tail, [42, 32, 42, 48], 'd3245cd249132d0f']
+  - ['std.osdate.field.yday', 'f:yday', tail, [43, 32, 43, 37], '88e1499ffa2db2cc']
+  - ['std.osdate.field.isdst', 'f:isdst', tail, [44, 32, 44, 64], '0dca085c7f2cce30']
+- a: 'function os.date(format, time) end'
+  g: 'Returns a string or a table containing date and time, formatted according'
+  r: [46, 0, 82, 18]
+  e:
+  - ['oslib.date', 'd', doc, [46, 0, 78, 0], '74c81b78019554e4']
+- a: 'function os.difftime(t2, t1) end'
+  g: 'Returns the difference, in seconds, from time `t1` to time `t2`. (where the'
+  r: [85, 0, 91, 18]
+  e:
+  - ['oslib.difftime', 'd', doc, [85, 0, 89, 0], '6a0b703ea28839f7']
+- a: 'function os.execute(command) end'
+  g: '@version > 5.2'
+  r: [94, 0, 112, 19]
+  e:
+  - ['oslib.execute@>5.2', 'd', doc, [95, 0, 108, 0], '534ea24d2e6da6c0']
+- a: 'function os.execute(command) end'
+  g: '@version 5.1, JIT'
+  r: [115, 0, 122, 19]
+  e:
+  - ['oslib.execute@5.1,JIT', 'd', doc, [116, 0, 121, 0], 'cfd1f1e32f605f58']
+- a: 'function os.exit(code, close) end'
+  g: '@version > 5.2, JIT'
+  r: [125, 0, 135, 25]
+  e:
+  - ['oslib.exit@>5.2,JIT', 'd', doc, [126, 0, 134, 0], '4fda0e69acf947bb']
+- a: 'function os.exit(code) end'
+  g: '@version 5.1'
+  r: [138, 0, 142, 24]
+  e:
+  - ['oslib.exit@5.1', 'd', doc, [139, 0, 142, 0], 'ef5d094abaa551fd']
+- a: 'function os.getenv(varname) end'
+  g: 'Returns the value of the process environment variable `varname`, or'
+  r: [145, 0, 149, 19]
+  e:
+  - ['oslib.getenv', 'd', doc, [145, 0, 148, 0], '101bdb2422c380c0']
+- a: 'function os.remove(filename) end'
+  g: 'Deletes the file (or empty directory, on POSIX systems) with the given name.'
+  r: [152, 0, 158, 22]
+  e:
+  - ['oslib.remove', 'd', doc, [152, 0, 156, 0], 'c3e36a31c22ce5ea']
+- a: 'function os.rename(oldname, newname) end'
+  g: 'Renames the file or directory named `oldname` to `newname`. If this function'
+  r: [161, 0, 168, 22]
+  e:
+  - ['oslib.rename', 'd', doc, [161, 0, 165, 0], '400a03f66b702215']
+- a: 'function os.setlocale(locale, category) end'
+  g: 'Sets the current locale of the program. `locale` is a system-dependent'
+  r: [171, 0, 190, 22]
+  e:
+  - ['oslib.setlocale', 'd', doc, [171, 0, 188, 0], 'd4332152c62608ba']
+- a: 'function os.time(date) end'
+  g: 'Returns the current time when called without arguments, or a time'
+  r: [193, 0, 216, 19]
+  e:
+  - ['oslib.time', 'd', doc, [193, 0, 215, 0], 'fcaa6c7521e56af4']
+- a: 'function os.tmpname() end'
+  g: 'Returns a string with a file name that can be used for a temporary'
+  r: [219, 0, 232, 18]
+  e:
+  - ['oslib.tmpname', 'd', doc, [219, 0, 232, 0], '7d4f7ce2378cf7da']

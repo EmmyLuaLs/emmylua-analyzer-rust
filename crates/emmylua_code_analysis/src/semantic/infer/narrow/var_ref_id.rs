@@ -6,8 +6,8 @@ use rowan::TextSize;
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, LuaAliasCallKind, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaMemberId, LuaType,
-    infer_expr,
+    DbIndex, LuaAliasCallKind, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaMemberId,
+    LuaMemberKey, LuaType, infer_expr,
     semantic::infer::{
         infer_index::get_index_expr_var_ref_id, infer_name::get_name_expr_var_ref_id,
     },
@@ -61,6 +61,59 @@ impl VarRefId {
                     && path.starts_with(prefix_path.deref().as_str())
             }
         }
+    }
+
+    // 计算从 prefix 到当前索引引用的相对字段路径。
+    // 例如 `target.handle.name` 相对 `target` 得到 `handle.name`，
+    // 后续可在已经被判别字段窄化过的 prefix 类型上逐级投影。
+    pub fn relative_index_path(&self, prefix: &VarRefId) -> Option<Vec<LuaMemberKey>> {
+        let (decl_or_member_id, path) = match self {
+            VarRefId::IndexRef(decl_or_member_id, path) => {
+                (decl_or_member_id.clone(), path.deref().as_str())
+            }
+            _ => return None,
+        };
+
+        let relative_path = match prefix {
+            VarRefId::VarRef(decl_id) if decl_or_member_id.as_decl_id() == Some(*decl_id) => {
+                path.split_once('.').map(|(_, rest)| rest).unwrap_or("")
+            }
+            VarRefId::SelfRef(ref_decl_or_member_id)
+                if *ref_decl_or_member_id == decl_or_member_id =>
+            {
+                path.split_once('.').map(|(_, rest)| rest).unwrap_or("")
+            }
+            VarRefId::IndexRef(ref_decl_or_member_id, prefix_path)
+                if *ref_decl_or_member_id == decl_or_member_id =>
+            {
+                let prefix_path = prefix_path.deref().as_str();
+                if prefix_path.is_empty() {
+                    path
+                } else {
+                    path.strip_prefix(prefix_path)?.strip_prefix('.')?
+                }
+            }
+            _ => return None,
+        };
+
+        if relative_path.is_empty() {
+            return Some(Vec::new());
+        }
+
+        relative_path
+            .split('.')
+            .map(|segment| {
+                if segment.is_empty() || segment.starts_with('[') {
+                    return None;
+                }
+
+                if let Ok(index) = segment.parse::<i64>() {
+                    return Some(LuaMemberKey::Integer(index));
+                }
+
+                Some(LuaMemberKey::Name(segment.into()))
+            })
+            .collect()
     }
 
     pub fn is_self_ref(&self) -> bool {

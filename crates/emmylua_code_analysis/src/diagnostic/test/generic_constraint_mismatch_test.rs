@@ -144,6 +144,139 @@ mod test {
     }
 
     #[test]
+    fn test_class_generic_default_constraint_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Base<T extends number = string>
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_bare_type_use_does_not_repeat_generic_default_constraint_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "base.lua",
+            r#"
+            ---@class Base<T extends number = string>
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@type Base
+            Base_A = {}
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_explicit_type_arg_still_reports_constraint_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def_file(
+            "base.lua",
+            r#"
+            ---@class Base<T extends number = number>
+            "#,
+        );
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@type Base<string>
+            Base_A = {}
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_class_generic_default_constraint_match() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Base<T extends number = number>
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_dependent_generic_default_must_satisfy_rigid_type_param_constraint() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Box<T extends string, U extends T = "x">
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_dependent_generic_default_can_reference_same_type_param() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Box<T extends string, U extends T = T>
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_dependent_generic_default_uses_type_param_constraint_as_upper_bound() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Box<T extends string, U extends string = T>
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_generic_default_constraint_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@alias Base<T extends number = string> T
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_function_generic_default_constraint_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@generic T extends number = string
+            local function f()
+            end
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_call_constraint_uses_uninferred_generic_default() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@generic T = number, U extends T
+            ---@param value U
+            local function f(value)
+            end
+
+            f("not a number")
+            "#
+        ));
+    }
+
+    #[test]
     fn test_extend_string() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(

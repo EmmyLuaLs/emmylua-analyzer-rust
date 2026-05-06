@@ -2,7 +2,7 @@ mod cache_options;
 
 pub use cache_options::{CacheOptions, LuaAnalysisPhase};
 use emmylua_parser::{LuaExpr, LuaSyntaxId, LuaVarExpr};
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
@@ -39,7 +39,7 @@ pub(in crate::semantic) enum FlowMode {
 
 impl FlowMode {
     pub fn uses_conditions(self) -> bool {
-        matches!(self, Self::WithConditions)
+        !matches!(self, Self::WithoutConditions)
     }
 }
 
@@ -64,7 +64,6 @@ pub struct LuaInferCache {
     pub(in crate::semantic) flow_assignment_info_cache: Vec<Option<Rc<FlowAssignmentInfo>>>,
     pub index_ref_origin_type_cache: HashMap<VarRefId, CacheEntry<LuaType>>,
     pub expr_var_ref_id_cache: HashMap<LuaSyntaxId, VarRefId>,
-    pub narrow_by_literal_stop_position_cache: HashSet<LuaSyntaxId>,
 }
 
 impl LuaInferCache {
@@ -82,7 +81,6 @@ impl LuaInferCache {
             flow_assignment_info_cache: Vec::new(),
             index_ref_origin_type_cache: HashMap::new(),
             expr_var_ref_id_cache: HashMap::new(),
-            narrow_by_literal_stop_position_cache: HashSet::new(),
         }
     }
 

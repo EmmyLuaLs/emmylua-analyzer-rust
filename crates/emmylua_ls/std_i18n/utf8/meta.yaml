@@ -1,83 +1,33 @@
-version: 1
-line_base: 0
-col_base: 0
-file: utf8.lua
-entries:
-- key: utf8lib.char
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 21
-      col: 0
-    end:
-      line: 25
-      col: 0
-  hash: c5a661c65ae1030a
-  context_hash: de7cc417de1b3246
-- key: utf8lib.charpattern
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 28
-      col: 0
-    end:
-      line: 32
-      col: 0
-  hash: a11c6144655d15b2
-  context_hash: de7cc417de1b3246
-- key: utf8lib.codes
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 35
-      col: 0
-    end:
-      line: 41
-      col: 0
-  hash: c57cefb975fbd3bb
-  context_hash: de7cc417de1b3246
-- key: utf8lib.codepoint
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 45
-      col: 0
-    end:
-      line: 50
-      col: 0
-  hash: eff46239f32f51bb
-  context_hash: de7cc417de1b3246
-- key: utf8lib.len
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 57
-      col: 0
-    end:
-      line: 62
-      col: 0
-  hash: '6f1924e1e29490a7'
-  context_hash: de7cc417de1b3246
-- key: utf8lib.offset
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 71
-      col: 0
-    end:
-      line: 83
-      col: 0
-  hash: '373cd5d885e68978'
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'utf8.lua'
+b:
+- a: 'function utf8.char(...) end'
+  g: 'Receives zero or more integers, converts each one to its corresponding'
+  r: [21, 0, 25, 18]
+  e:
+  - ['utf8lib.char', 'd', doc, [21, 0, 25, 0], 'c5a661c65ae1030a']
+- a: 'utf8.charpattern = ""'
+  g: 'The pattern (a string, not a function) "`[\0-\x7F\xC2-\xF4][\x80-\xBF]*`",'
+  r: [28, 0, 32, 16]
+  e:
+  - ['utf8lib.charpattern', 'd', doc, [28, 0, 32, 0], 'a11c6144655d15b2']
+- a: 'function utf8.codes(s) end'
+  g: 'Returns values so that the construction'
+  r: [35, 0, 42, 57]
+  e:
+  - ['utf8lib.codes@@1', 'd', doc, [35, 0, 41, 0], 'c57cefb975fbd3bb']
+- a: 'function utf8.codepoint(s, i, j) end'
+  g: 'Returns the codepoints (as integers) from all characters in `s` that start'
+  r: [51, 0, 60, 19]
+  e:
+  - ['utf8lib.codepoint@@1', 'd', doc, [51, 0, 56, 0], 'bf05fd39d49d4ac7']
+- a: 'function utf8.len(s, i, j) end'
+  g: 'Returns the number of UTF-8 characters in string `s` that start between'
+  r: [72, 0, 82, 14]
+  e:
+  - ['utf8lib.len@@1', 'd', doc, [72, 0, 77, 0], '6f1924e1e29490a7']
+- a: 'function utf8.offset(s, n, i) end'
+  g: 'Returns the position (in bytes) where the encoding of the `n`-th character'
+  r: [95, 0, 111, 19]
+  e:
+  - ['utf8lib.offset', 'd', doc, [95, 0, 107, 0], '373cd5d885e68978']

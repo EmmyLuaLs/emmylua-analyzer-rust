@@ -58,7 +58,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run Tests
-        run: cargo test
+        run: cargo test --workspace --features emmylua_ls/full-test
 
   check-schema:
     name: Check schema generation

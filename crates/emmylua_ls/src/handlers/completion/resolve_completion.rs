@@ -1,5 +1,7 @@
 use emmylua_code_analysis::{DbIndex, LuaCompilation, SemanticModel};
+use emmylua_parser::{LuaAstNode, LuaSyntaxToken};
 use lsp_types::{CompletionItem, Documentation, MarkedString, MarkupContent};
+use rowan::{TextSize, TokenAtOffset};
 
 use crate::{
     context::ClientId,
@@ -16,11 +18,19 @@ pub fn resolve_completion(
     completion_data: CompletionData,
     client_id: ClientId,
 ) -> Option<()> {
+    let trigger_token =
+        get_completion_trigger_token(semantic_model, completion_data.trigger_offset);
+
     // todo: resolve completion
     match completion_data.typ {
         CompletionDataType::PropertyOwnerId(property_id) => {
-            let hover_builder =
-                build_hover_content_for_completion(compilation, semantic_model, db, property_id);
+            let hover_builder = build_hover_content_for_completion(
+                compilation,
+                semantic_model,
+                db,
+                property_id,
+                trigger_token.clone(),
+            );
             if let Some(mut hover_builder) = hover_builder {
                 update_function_signature_info(&mut hover_builder, completion_data.overload_count);
                 if client_id.is_vscode() {
@@ -31,8 +41,13 @@ pub fn resolve_completion(
             }
         }
         CompletionDataType::Overload((property_id, index)) => {
-            let hover_builder =
-                build_hover_content_for_completion(compilation, semantic_model, db, property_id);
+            let hover_builder = build_hover_content_for_completion(
+                compilation,
+                semantic_model,
+                db,
+                property_id,
+                trigger_token.clone(),
+            );
             if let Some(mut hover_builder) = hover_builder {
                 update_function_signature_info(&mut hover_builder, completion_data.overload_count);
                 if client_id.is_vscode() {
@@ -45,6 +60,23 @@ pub fn resolve_completion(
         _ => {}
     }
     Some(())
+}
+
+fn get_completion_trigger_token(
+    semantic_model: &SemanticModel,
+    trigger_offset: Option<u32>,
+) -> Option<LuaSyntaxToken> {
+    let offset = TextSize::from(trigger_offset?);
+    let root = semantic_model.get_root();
+    if offset > root.syntax().text_range().end() {
+        return None;
+    }
+
+    match root.syntax().token_at_offset(offset) {
+        TokenAtOffset::Single(token) => Some(token),
+        TokenAtOffset::Between(left, _) => Some(left),
+        TokenAtOffset::None => None,
+    }
 }
 
 pub fn update_function_signature_info(

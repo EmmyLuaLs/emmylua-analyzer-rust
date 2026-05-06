@@ -1,5 +1,3 @@
-version: 1
-line_base: 0
-col_base: 0
-file: ffi.lua
-entries: []
+v: 2
+f: 'ffi.lua'
+b:

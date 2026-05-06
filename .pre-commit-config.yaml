@@ -9,6 +9,13 @@ repos:
         types: [rust]
         args: ["--all"]
         pass_filenames: false
+      - id: generate-schema-json
+        name: generate schema.json
+        description: regenerate schema.json from schema_json_gen
+        entry: cargo run --package schema_json_gen --bin schema_json_gen
+        language: system
+        files: ^tools/schema_json_gen/src/main\.rs$
+        pass_filenames: false
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

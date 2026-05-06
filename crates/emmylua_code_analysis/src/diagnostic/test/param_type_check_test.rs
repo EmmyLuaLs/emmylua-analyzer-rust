@@ -1555,4 +1555,36 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_generic_infer_function_2() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T: table
+            ---@param table T
+            ---@param metatable table|nil
+            ---@return T
+            function setmetatable(table, metatable) end
+
+            ---@alias PartialFunction<T> { [P in keyof T]: T[P] extends function and T[P]? or T[P]; }
+
+            ---@class MockContext<T>
+
+            ---@class Mock<T>
+            ---@field mock MockContext<T>
+            Mock = {}
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type PartialFunction<Mock>
+            local mock
+
+            setmetatable(mock, Mock)
+        "#,
+        ));
+    }
 }

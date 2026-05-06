@@ -1,5 +1,3 @@
-version: 1
-line_base: 0
-col_base: 0
-file: bit.lua
-entries: []
+v: 2
+f: 'bit.lua'
+b:

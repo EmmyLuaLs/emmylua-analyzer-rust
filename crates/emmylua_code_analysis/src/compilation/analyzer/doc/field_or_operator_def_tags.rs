@@ -18,11 +18,12 @@ use crate::{
 use super::{DocAnalyzer, infer_type::infer_type};
 
 pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<()> {
+    let file_id = analyzer.file_id;
     let current_type_id = match &analyzer.current_type_id {
         Some(id) => id.clone(),
         None => {
-            analyzer.db.get_diagnostic_index_mut().add_diagnostic(
-                analyzer.file_id,
+            analyzer.get_db().get_diagnostic_index_mut().add_diagnostic(
+                file_id,
                 AnalyzeError {
                     kind: DiagnosticCode::AnnotationUsageError,
                     message: t!("`@field` must be used under a `@class`").to_string(),
@@ -40,23 +41,23 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
         get_visibility_from_field_attrib(&tag)
     };
 
-    let member_id = LuaMemberId::new(tag.get_syntax_id(), analyzer.file_id);
+    let member_id = LuaMemberId::new(tag.get_syntax_id(), file_id);
 
     let nullable = tag.is_nullable();
     let type_node = tag.get_type()?;
     let (mut field_type, property_owner) = match &type_node {
         LuaDocType::Func(doc_func) => {
-            let typ = infer_type(analyzer, type_node.clone());
-            let signature_id = LuaSignatureId::from_doc_func(analyzer.file_id, doc_func);
+            let typ = infer_type(&mut analyzer.type_context, type_node.clone());
+            let signature_id = LuaSignatureId::from_doc_func(file_id, doc_func);
             (typ, LuaSemanticDeclId::Signature(signature_id))
         }
         _ => (
-            infer_type(analyzer, type_node),
+            infer_type(&mut analyzer.type_context, type_node),
             LuaSemanticDeclId::Member(member_id),
         ),
     };
     if nullable && !field_type.is_nullable() {
-        field_type = TypeOps::Union.apply(analyzer.db, &field_type, &LuaType::Nil);
+        field_type = TypeOps::Union.apply(analyzer.get_db(), &field_type, &LuaType::Nil);
     }
 
     let mut description = String::new();
@@ -88,7 +89,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
         }
         LuaDocFieldKey::Type(doc_type) => {
             let range = doc_type.get_range();
-            let key_type_ref = infer_type(analyzer, doc_type);
+            let key_type_ref = infer_type(&mut analyzer.type_context, doc_type);
             if key_type_ref.is_unknown() {
                 return None;
             }
@@ -96,7 +97,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
             let operator = LuaOperator::new(
                 current_type_id.clone().into(),
                 LuaOperatorMetaMethod::Index,
-                analyzer.file_id,
+                file_id,
                 range,
                 OperatorFunction::Func(Arc::new(LuaFunctionType::new(
                     AsyncState::None,
@@ -112,7 +113,10 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
                     field_type.clone(),
                 ))),
             );
-            analyzer.db.get_operator_index_mut().add_operator(operator);
+            analyzer
+                .get_db()
+                .get_operator_index_mut()
+                .add_operator(operator);
             LuaMemberKey::ExprType(key_type_ref)
         }
     };
@@ -124,25 +128,24 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
     };
 
     let member = LuaMember::new(member_id, key.clone(), decl_feature, None);
-    analyzer.db.get_reference_index_mut().add_index_reference(
-        key,
-        analyzer.file_id,
-        tag.get_syntax_id(),
-    );
+    analyzer
+        .get_db()
+        .get_reference_index_mut()
+        .add_index_reference(key, file_id, tag.get_syntax_id());
 
     analyzer
-        .db
+        .get_db()
         .get_member_index_mut()
         .add_member(owner_id, member);
 
     analyzer
-        .db
+        .get_db()
         .get_type_index_mut()
         .bind_type(member_id.into(), LuaTypeCache::DocType(field_type.clone()));
 
     if let Some(visibility_kind) = visibility_kind {
-        analyzer.db.get_property_index_mut().add_visibility(
-            analyzer.file_id,
+        analyzer.get_db().get_property_index_mut().add_visibility(
+            file_id,
             property_owner.clone(),
             visibility_kind,
         );
@@ -152,8 +155,8 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
         // 不需要传入`owner`, 当前`owner`的效果是判断是否为`signature`, 如果是则不移除`['#', '@']`首字符
         // 但以`field`定义的必须移除首字符
         let description = preprocess_description(&description, None);
-        analyzer.db.get_property_index_mut().add_description(
-            analyzer.file_id,
+        analyzer.get_db().get_property_index_mut().add_description(
+            file_id,
             property_owner.clone(),
             description,
         );
@@ -171,7 +174,12 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
         .map(|list| {
             list.get_types()
                 .enumerate()
-                .map(|(i, doc_type)| (format!("arg{}", i), Some(infer_type(analyzer, doc_type))))
+                .map(|(i, doc_type)| {
+                    (
+                        format!("arg{}", i),
+                        Some(infer_type(&mut analyzer.type_context, doc_type)),
+                    )
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -184,7 +192,7 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
     operands.insert(0, (self_name.to_string(), Some(LuaType::SelfInfer)));
 
     let return_type = if let Some(return_type) = tag.get_return_type() {
-        infer_type(analyzer, return_type)
+        infer_type(&mut analyzer.type_context, return_type)
     } else {
         LuaType::Unknown
     };
@@ -203,7 +211,10 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
         ))),
     );
 
-    analyzer.db.get_operator_index_mut().add_operator(operator);
+    analyzer
+        .get_db()
+        .get_operator_index_mut()
+        .add_operator(operator);
 
     Some(())
 }

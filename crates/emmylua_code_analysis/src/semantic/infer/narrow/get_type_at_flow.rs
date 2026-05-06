@@ -792,25 +792,36 @@ impl<'a> FlowTypeEngine<'a> {
                 Ok(SchedulerStep::ContinueWalk(walk))
             }
             ConditionFlowAction::NeedSubquery(subquery) => {
-                let (subquery_var_ref_id, subquery_antecedent_flow_id) = match &subquery {
-                    ConditionSubquery::ArrayLen {
-                        var_ref_id,
-                        antecedent_flow_id,
-                        ..
-                    }
-                    | ConditionSubquery::FieldLiteralEq {
-                        var_ref_id,
-                        antecedent_flow_id,
-                        ..
-                    }
-                    | ConditionSubquery::Correlated {
-                        var_ref_id,
-                        antecedent_flow_id,
-                        ..
-                    } => (var_ref_id, *antecedent_flow_id),
-                };
+                let (subquery_var_ref_id, subquery_antecedent_flow_id, subquery_mode) =
+                    match &subquery {
+                        ConditionSubquery::ArrayLen {
+                            var_ref_id,
+                            antecedent_flow_id,
+                            ..
+                        }
+                        | ConditionSubquery::FieldLiteralEq {
+                            var_ref_id,
+                            antecedent_flow_id,
+                            ..
+                        }
+                        | ConditionSubquery::Correlated {
+                            var_ref_id,
+                            antecedent_flow_id,
+                            ..
+                        } => (var_ref_id, *antecedent_flow_id, FlowMode::WithConditions),
+                        ConditionSubquery::FieldLiteralSibling {
+                            discriminant_prefix_var_ref_id,
+                            antecedent_flow_id,
+                            ..
+                        } => (
+                            discriminant_prefix_var_ref_id,
+                            *antecedent_flow_id,
+                            FlowMode::WithConditions,
+                        ),
+                    };
                 let subquery_query =
-                    FlowQuery::new(self.cache, subquery_var_ref_id, subquery_antecedent_flow_id);
+                    FlowQuery::new(self.cache, subquery_var_ref_id, subquery_antecedent_flow_id)
+                        .at_flow(subquery_antecedent_flow_id, subquery_mode);
                 Ok(SchedulerStep::StartQuery {
                     query: subquery_query,
                     continuation: Some(Continuation::ConditionDependency {

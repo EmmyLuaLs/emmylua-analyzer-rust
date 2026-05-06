@@ -480,7 +480,7 @@ fn build_node_semantic_token(
             let name = local_func_stat.get_local_name()?.get_name_token()?;
             builder.push_with_modifier(
                 name.syntax(),
-                SemanticTokenTypeKind::Variable,
+                SemanticTokenTypeKind::Function,
                 SemanticTokenModifierKind::DECLARATION,
             );
         }

@@ -6,6 +6,7 @@ mod infer_type;
 mod property_tags;
 mod tags;
 mod type_def_tags;
+mod type_generic_header;
 mod type_ref_tags;
 
 use super::AnalyzeContext;
@@ -17,12 +18,15 @@ use crate::{
 };
 use emmylua_parser::{LuaAstNode, LuaComment, LuaSyntaxNode};
 use file_generic_index::FileGenericIndex;
+use infer_type::DocTypeAnalyzeContext;
 use tags::get_owner_id;
+use type_generic_header::preprocess_type_generic_headers;
 pub struct DocAnalysisPipeline;
 
 impl AnalysisPipeline for DocAnalysisPipeline {
     fn analyze(db: &mut DbIndex, context: &mut AnalyzeContext) {
         let _p = Profile::cond_new("doc analyze", context.tree_list.len() > 1);
+        preprocess_type_generic_headers(db, context);
         let tree_list = context.tree_list.clone();
         let workspace_id = context.workspace_id.unwrap_or(WorkspaceId::MAIN);
         for in_filed_tree in tree_list.iter() {
@@ -54,25 +58,24 @@ fn analyze_comment(analyzer: &mut DocAnalyzer) -> Option<()> {
         &comment.get_description()?.get_description_text(),
         Some(&owenr),
     );
-    analyzer.db.get_property_index_mut().add_description(
-        analyzer.file_id,
-        owenr,
-        comment_description,
-    );
+    let file_id = analyzer.file_id;
+    analyzer
+        .get_db()
+        .get_property_index_mut()
+        .add_description(file_id, owenr, comment_description);
 
     Some(())
 }
 
 #[derive(Debug)]
 pub struct DocAnalyzer<'a> {
+    type_context: DocTypeAnalyzeContext<'a>,
     file_id: FileId,
-    db: &'a mut DbIndex,
-    generic_index: &'a mut FileGenericIndex,
+    workspace_id: WorkspaceId,
     current_type_id: Option<LuaTypeDeclId>,
     comment: LuaComment,
     root: LuaSyntaxNode,
     is_meta: bool,
-    workspace_id: WorkspaceId,
 }
 
 impl<'a> DocAnalyzer<'a> {
@@ -85,16 +88,21 @@ impl<'a> DocAnalyzer<'a> {
         workspace_id: WorkspaceId,
     ) -> DocAnalyzer<'a> {
         let is_meta = db.get_module_index().is_meta_file(&file_id);
+        let type_context = DocTypeAnalyzeContext::new(db, file_id, generic_index, workspace_id)
+            .with_comment(comment.clone());
         DocAnalyzer {
+            type_context,
             file_id,
-            db,
-            generic_index,
+            workspace_id,
             current_type_id: None,
             comment,
             root,
             is_meta,
-            workspace_id,
         }
+    }
+
+    pub(super) fn get_db(&mut self) -> &mut DbIndex {
+        &mut *self.type_context.db
     }
 }
 

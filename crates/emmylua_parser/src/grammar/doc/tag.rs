@@ -147,6 +147,8 @@ pub(super) fn parse_generic_decl_list(
 // A ...
 // A ... : type
 // A ... extends type
+// A extends type = type
+// A = type
 fn parse_generic_param(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocGenericParameter);
     expect_token(p, LuaTokenKind::TkName)?;
@@ -157,6 +159,10 @@ fn parse_generic_param(p: &mut LuaDocParser) -> DocParseResult {
         p.current_token(),
         LuaTokenKind::TkColon | LuaTokenKind::TkDocExtends
     ) {
+        p.bump();
+        parse_type(p)?;
+    }
+    if p.current_token() == LuaTokenKind::TkDocMatch {
         p.bump();
         parse_type(p)?;
     }

@@ -1,8 +1,8 @@
 use emmylua_parser::{LuaAst, LuaAstNode, LuaIndexExpr, LuaNameExpr};
 
 use crate::{
-    DiagnosticCode, LuaDeclId, LuaDeprecated, LuaMemberId, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, SemanticModel,
+    DiagnosticCode, LuaDeclId, LuaDeprecated, LuaMemberId, LuaSemanticDeclId, SemanticDeclLevel,
+    SemanticModel,
 };
 
 use super::{Checker, DiagnosticContext};
@@ -98,12 +98,8 @@ fn check_deprecated(
     // 检查特性
     if let Some(attribute_uses) = property.attribute_uses() {
         for attribute_use in attribute_uses.iter() {
-            if attribute_use.id.get_name() == "deprecated" {
-                let deprecated_message =
-                    match attribute_use.args.first().and_then(|(_, typ)| typ.as_ref()) {
-                        Some(LuaType::DocStringConst(message)) => message.as_ref().to_string(),
-                        _ => "deprecated".to_string(),
-                    };
+            if let Some(deprecated) = attribute_use.as_deprecated() {
+                let deprecated_message = deprecated.message.unwrap_or("deprecated").to_string();
                 context.add_diagnostic(DiagnosticCode::Deprecated, range, deprecated_message, None);
             }
         }

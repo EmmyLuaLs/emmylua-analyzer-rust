@@ -1,161 +1,63 @@
-version: 1
-line_base: 0
-col_base: 0
-file: table.lua
-entries:
-- key: tablelib.concat
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 23
-      col: 0
-  hash: '504e6d9e125a441e'
-  context_hash: de7cc417de1b3246
-- key: tablelib.insert
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 31
-      col: 0
-    end:
-      line: 36
-      col: 0
-  hash: '3f149377193529ce'
-  context_hash: de7cc417de1b3246
-- key: tablelib.move
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 44
-      col: 0
-    end:
-      line: 51
-      col: 0
-  hash: '4eaddc2518d941b3'
-  context_hash: de7cc417de1b3246
-- key: tablelib.maxn
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 61
-      col: 0
-    end:
-      line: 64
-      col: 0
-  hash: a28a3f83a36c528d
-  context_hash: de7cc417de1b3246
-- key: tablelib.remove
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 69
-      col: 0
-    end:
-      line: 79
-      col: 0
-  hash: a7e87624e3fd9616
-  context_hash: de7cc417de1b3246
-- key: tablelib.sort
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 85
-      col: 0
-    end:
-      line: 99
-      col: 0
-  hash: b11a809b5964de0f
-  context_hash: de7cc417de1b3246
-- key: tablelib.unpack
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 106
-      col: 0
-    end:
-      line: 110
-      col: 0
-  hash: ae6b75e5905939b2
-  context_hash: de7cc417de1b3246
-- key: tablelib.pack
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 118
-      col: 0
-    end:
-      line: 121
-      col: 0
-  hash: c6fe784fff53117d
-  context_hash: de7cc417de1b3246
-- key: tablelib.foreach
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 128
-      col: 0
-    end:
-      line: 132
-      col: 0
-  hash: '8a83776ff1bb2be4'
-  context_hash: de7cc417de1b3246
-- key: tablelib.foreachi
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 140
-      col: 0
-    end:
-      line: 143
-      col: 0
-  hash: ed156847af70b07b
-  context_hash: de7cc417de1b3246
-- key: tablelib.getn
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 151
-      col: 0
-    end:
-      line: 155
-      col: 0
-  hash: a33b9ea6feb84cdb
-  context_hash: de7cc417de1b3246
-- key: tablelib.create
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 162
-      col: 0
-    end:
-      line: 166
-      col: 0
-  hash: b4aa98c172166a6d
-  context_hash: '32106038437480b2'
+v: 2
+f: 'table.lua'
+b:
+- a: 'function table.concat(list, sep, i, j) end'
+  g: 'Given a list where all elements are strings or numbers, returns the string'
+  r: [18, 0, 28, 14]
+  e:
+  - ['tablelib.concat', 'd', doc, [18, 0, 23, 0], '504e6d9e125a441e']
+- a: 'function table.insert(list, pos, value) end'
+  g: 'Inserts element `value` at position `pos` in `list`, shifting up the'
+  r: [31, 0, 39, 20]
+  e:
+  - ['tablelib.insert', 'd', doc, [31, 0, 36, 0], '3f149377193529ce']
+- a: 'function table.move(a1, f, e, t, a2) end'
+  g: '@version > 5.3'
+  r: [42, 0, 56, 17]
+  e:
+  - ['tablelib.move', 'd', doc, [43, 0, 50, 0], '4eaddc2518d941b3']
+- a: 'function table.maxn(table) end'
+  g: '@version 5.1, JIT'
+  r: [59, 0, 65, 14]
+  e:
+  - ['tablelib.maxn', 'd', doc, [60, 0, 63, 0], '56dd7f690ca1d351']
+- a: 'function table.remove(list, pos) end'
+  g: 'Removes from `list` the element at position `pos`, returning the value of'
+  r: [68, 0, 81, 13]
+  e:
+  - ['tablelib.remove', 'd', doc, [68, 0, 78, 0], 'a7e87624e3fd9616']
+- a: 'function table.sort(list, comp) end'
+  g: 'Sorts list elements in a given order, *in-place*, from `list[1]` to'
+  r: [84, 0, 100, 41]
+  e:
+  - ['tablelib.sort', 'd', doc, [84, 0, 98, 0], 'b11a809b5964de0f']
+- a: 'function table.unpack(list, i, j) end'
+  g: '@version > 5.2, JIT'
+  r: [103, 0, 112, 37]
+  e:
+  - ['tablelib.unpack', 'd', doc, [104, 0, 108, 0], 'ae6b75e5905939b2']
+- a: 'function table.pack(...) end'
+  g: '@version > 5.2, JIT'
+  r: [115, 0, 122, 14]
+  e:
+  - ['tablelib.pack', 'd', doc, [116, 0, 119, 0], 'fb27f783adc7ab01']
+- a: 'function table.foreach(list, callback) end'
+  g: '@version 5.1, JIT'
+  r: [125, 0, 134, 15]
+  e:
+  - ['tablelib.foreach', 'd', doc, [126, 0, 130, 0], '7cb0489a9d2d6418']
+- a: 'function table.foreachi(list, callback) end'
+  g: '@version 5.1, JIT'
+  r: [137, 0, 145, 15]
+  e:
+  - ['tablelib.foreachi', 'd', doc, [138, 0, 141, 0], '50ff77645a519c37']
+- a: 'function table.getn(list) end'
+  g: '@version 5.1, JIT'
+  r: [148, 0, 157, 15]
+  e:
+  - ['tablelib.getn', 'd', doc, [149, 0, 153, 0], 'ae8d33ac285fb8e9']
+- a: 'function table.create(nseq, nrec) end'
+  g: 'Creates a new empty table, preallocating memory. This preallocation may help'
+  r: [160, 0, 168, 14]
+  e:
+  - ['tablelib.create', 'd', doc, [160, 0, 164, 0], '180869b1186e17af']

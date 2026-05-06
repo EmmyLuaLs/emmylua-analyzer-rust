@@ -121,6 +121,8 @@ pub enum DiagnosticCode {
     CallNonCallable,
     /// inconsistent-type-access-modifier
     InconsistentTypeAccessModifier,
+    /// missing-type-argument
+    MissingTypeArgument,
     #[serde(other)]
     None,
 }

@@ -1,12 +1,11 @@
 use emmylua_parser::{LuaAstNode, LuaDocTypeList};
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
-use internment::ArcIntern;
 use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{
-    DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
+    DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
     LuaTypeNode,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
@@ -22,14 +21,16 @@ use crate::{
         },
         infer::InferFailReason,
         infer_expr,
+        overload_resolve::{callable_accepts_args, resolve_signature_by_args},
     },
 };
 use crate::{
-    LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl,
-    tpl_pattern_match_args,
+    GenericTpl, LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
+    collect_callable_overload_groups, infer_node_semantic_decl,
+    tpl_pattern_match_args_skip_unknown,
 };
 
-use super::TypeSubstitutor;
+use super::{TypeSubstitutor, instantiate_type_generic};
 
 pub fn instantiate_func_generic(
     db: &DbIndex,
@@ -119,16 +120,80 @@ pub fn as_doc_function_type(
     })
 }
 
-fn infer_return_from_callable(
-    db: &DbIndex,
-    callable: &Arc<LuaFunctionType>,
-    substitutor: &TypeSubstitutor,
-) -> LuaType {
-    let instantiated = instantiate_doc_function(db, callable, substitutor);
-    match instantiated {
-        LuaType::DocFunction(func) => func.get_ret().clone(),
-        _ => callable.get_ret().clone(),
+fn infer_callable_return_from_arg_types(
+    context: &mut TplContext,
+    callable_type: &LuaType,
+    call_arg_types: &[LuaType],
+) -> Result<Option<LuaType>, InferFailReason> {
+    let mut overload_groups = Vec::new();
+    collect_callable_overload_groups(context.db, callable_type, &mut overload_groups)?;
+    if overload_groups.is_empty() {
+        return Ok(None);
     }
+
+    let mut member_returns = Vec::new();
+    for overloads in &overload_groups {
+        let instantiated_overloads = overloads
+            .iter()
+            .filter_map(|callable| {
+                instantiate_callable_from_arg_types(context, callable, call_arg_types)
+            })
+            .collect::<Vec<_>>();
+        if instantiated_overloads.is_empty() {
+            continue;
+        }
+
+        let structural_overloads = instantiated_overloads
+            .iter()
+            .filter(|callable| !uses_erased_function_param(callable, call_arg_types))
+            .cloned()
+            .collect::<Vec<_>>();
+        let overloads_to_resolve = if structural_overloads.is_empty() {
+            &instantiated_overloads
+        } else {
+            &structural_overloads
+        };
+
+        let unresolved_arg_match = overloads_to_resolve.len() > 1
+            && call_arg_types
+                .iter()
+                .any(|arg_type| arg_type.is_any() || arg_type.is_unknown());
+        if unresolved_arg_match {
+            member_returns.push(LuaType::from_vec(
+                overloads_to_resolve
+                    .iter()
+                    .map(|callable| callable.get_ret().clone())
+                    .collect(),
+            ));
+            continue;
+        }
+
+        let callable = resolve_signature_by_args(
+            context.db,
+            overloads_to_resolve,
+            call_arg_types,
+            false,
+            None,
+        );
+        member_returns.push(callable?.get_ret().clone());
+    }
+    if member_returns.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(LuaType::from_vec(member_returns)))
+}
+
+fn uses_erased_function_param(callable: &LuaFunctionType, call_arg_types: &[LuaType]) -> bool {
+    callable
+        .get_params()
+        .iter()
+        .zip(call_arg_types)
+        .any(|((_, param_type), arg_type)| {
+            matches!(param_type, Some(LuaType::Function))
+                && arg_type
+                    .any_type(|ty| matches!(ty, LuaType::DocFunction(_) | LuaType::Signature(_)))
+        })
 }
 
 pub fn infer_callable_return_from_remaining_args(
@@ -140,9 +205,35 @@ pub fn infer_callable_return_from_remaining_args(
         return Ok(None);
     }
 
-    let Some(callable) = as_doc_function_type(context.db, callable_type)? else {
+    let call_arg_types =
+        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
+            Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
+            Err(_) => arg_exprs
+                .iter()
+                .map(|arg_expr| {
+                    infer_expr(context.db, context.cache, arg_expr.clone())
+                        .unwrap_or(LuaType::Unknown)
+                })
+                .collect::<Vec<_>>(),
+        };
+    if call_arg_types.is_empty() {
         return Ok(None);
-    };
+    }
+
+    // Preserve any known remaining-arg shape, including arity, even when some later arguments
+    // collapse to `unknown`. This avoids unioning returns from overloads that are impossible
+    // for the current call.
+    infer_callable_return_from_arg_types(context, callable_type, &call_arg_types)
+}
+
+fn instantiate_callable_from_arg_types(
+    context: &mut TplContext,
+    callable: &Arc<LuaFunctionType>,
+    call_arg_types: &[LuaType],
+) -> Option<Arc<LuaFunctionType>> {
+    if !callable_accepts_args(context.db, callable, call_arg_types, false, None) {
+        return None;
+    }
 
     let mut callable_tpls = HashSet::new();
     callable.visit_nested_types(&mut |ty| {
@@ -151,20 +242,7 @@ pub fn infer_callable_return_from_remaining_args(
         }
     });
     if callable_tpls.is_empty() {
-        return Ok(Some(callable.get_ret().clone()));
-    }
-
-    let mut callable_substitutor = TypeSubstitutor::new();
-    callable_substitutor.add_need_infer_tpls(callable_tpls);
-    let fallback_return = infer_return_from_callable(context.db, &callable, &callable_substitutor);
-
-    let call_arg_types =
-        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
-            Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
-            Err(_) => return Ok(Some(fallback_return)),
-        };
-    if call_arg_types.is_empty() {
-        return Ok(None);
+        return Some(callable.clone());
     }
 
     let callable_param_types = callable
@@ -172,28 +250,112 @@ pub fn infer_callable_return_from_remaining_args(
         .iter()
         .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
         .collect::<Vec<_>>();
-
+    let mut callable_substitutor = TypeSubstitutor::new();
+    callable_substitutor.add_need_infer_tpls(callable_tpls.clone());
     let mut callable_context = TplContext {
         db: context.db,
         cache: context.cache,
         substitutor: &mut callable_substitutor,
         call_expr: context.call_expr.clone(),
     };
-    if tpl_pattern_match_args(
+    if tpl_pattern_match_args_skip_unknown(
         &mut callable_context,
         &callable_param_types,
-        &call_arg_types,
+        call_arg_types,
     )
     .is_err()
     {
-        return Ok(Some(fallback_return));
+        return None;
     }
 
-    Ok(Some(infer_return_from_callable(
+    let instantiated = match instantiate_doc_function(context.db, callable, &callable_substitutor) {
+        LuaType::DocFunction(func) => func,
+        _ => callable.clone(),
+    };
+    let unresolved_return_tpls = {
+        let mut tpl_ids = HashSet::new();
+        instantiated.get_ret().visit_type(&mut |ty| {
+            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty
+                && callable_tpls.contains(&generic_tpl.get_tpl_id())
+            {
+                tpl_ids.insert(generic_tpl.get_tpl_id());
+            }
+        });
+        if tpl_ids.is_empty() {
+            return Some(instantiated);
+        }
+        tpl_ids
+    };
+
+    let callback_return_tpls = collect_callback_return_tpls(
         context.db,
-        &callable,
-        &callable_substitutor,
-    )))
+        &callable_param_types,
+        call_arg_types,
+        &unresolved_return_tpls,
+    );
+    if callback_return_tpls != unresolved_return_tpls {
+        return None;
+    }
+
+    for tpl_id in callback_return_tpls {
+        callable_substitutor.insert_type(tpl_id, LuaType::Unknown, true);
+    }
+    match instantiate_doc_function(context.db, callable, &callable_substitutor) {
+        LuaType::DocFunction(func) => Some(func),
+        _ => None,
+    }
+}
+
+/// Finds callback return templates that are unresolved for this call.
+///
+/// ```lua
+/// ---@generic A, R
+/// ---@param f fun(x: A): R
+/// ---@param x A
+/// ---@return R
+/// local function apply(f, x) end
+///
+/// ---@type table
+/// local source
+/// apply(function(x) return source.missing end, 1)
+/// ```
+///
+/// In this call, the callback return is unresolved, so this returns `R` from
+/// the `f` parameter.
+fn collect_callback_return_tpls(
+    db: &DbIndex,
+    callable_param_types: &[LuaType],
+    call_arg_types: &[LuaType],
+    unresolved_return_tpls: &HashSet<GenericTplId>,
+) -> HashSet<GenericTplId> {
+    let mut callback_return_tpls = HashSet::new();
+    for (param_type, arg_type) in callable_param_types.iter().zip(call_arg_types) {
+        let arg_return_unresolved = arg_type.any_type(|ty| {
+            let LuaType::Signature(signature_id) = ty else {
+                return false;
+            };
+            db.get_signature_index()
+                .get(signature_id)
+                .is_some_and(|signature| !signature.is_resolve_return())
+        });
+        if !arg_return_unresolved {
+            continue;
+        }
+
+        let Ok(Some(param_func)) = as_doc_function_type(db, param_type) else {
+            continue;
+        };
+        param_func.get_ret().visit_type(&mut |ty| {
+            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
+                let tpl_id = generic_tpl.get_tpl_id();
+                if unresolved_return_tpls.contains(&tpl_id) {
+                    callback_return_tpls.insert(tpl_id);
+                }
+            }
+        });
+    }
+
+    callback_return_tpls
 }
 
 fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool) {
@@ -202,10 +364,7 @@ fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool)
 
     func.visit_nested_types(&mut |ty| match ty {
         LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            let tpl_id = generic_tpl.get_tpl_id();
-            if tpl_id.is_func() {
-                generic_tpls.insert(tpl_id);
-            }
+            collect_func_tpl_with_fallback_deps(generic_tpl, &mut generic_tpls);
         }
         LuaType::StrTplRef(str_tpl) => {
             generic_tpls.insert(str_tpl.get_tpl_id());
@@ -215,6 +374,89 @@ fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool)
     });
 
     (generic_tpls, contain_self)
+}
+
+fn collect_func_tpl_with_fallback_deps(
+    generic_tpl: &GenericTpl,
+    generic_tpls: &mut HashSet<GenericTplId>,
+) {
+    let tpl_id = generic_tpl.get_tpl_id();
+    if !tpl_id.is_func() {
+        return;
+    }
+
+    generic_tpls.insert(tpl_id);
+
+    let Some(fallback_type) = generic_tpl
+        .get_default_type()
+        .or(generic_tpl.get_constraint())
+    else {
+        return;
+    };
+
+    // 只有提前加入的泛型才有 None 占位, fallback 展开时才能继续使用它自己的 default/constraint.
+    // 例如 `U = T[]` 或 `U: T[]` 中, 即使函数返回值只直接引用了 `U`, 也需要把 `T` 一并加入.
+    let mut fallback_deps = HashSet::new();
+    let mut visiting_fallbacks = HashSet::new();
+    visiting_fallbacks.insert(tpl_id);
+    if collect_func_tpl_deps_from_fallback_type(
+        fallback_type,
+        &mut fallback_deps,
+        &mut visiting_fallbacks,
+    ) {
+        generic_tpls.extend(fallback_deps);
+    }
+}
+
+fn collect_func_tpl_deps_from_fallback_type(
+    ty: &LuaType,
+    generic_tpls: &mut HashSet<GenericTplId>,
+    visiting_fallbacks: &mut HashSet<GenericTplId>,
+) -> bool {
+    // 返回 false 表示 fallback 依赖链里发现循环.
+    // visit_nested_types 只访问子节点, 所以这里先处理类型自身, 再处理嵌套类型.
+    let mut no_fallback_cycle =
+        collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
+    ty.visit_nested_types(&mut |ty| {
+        no_fallback_cycle &=
+            collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
+    });
+    no_fallback_cycle
+}
+
+fn collect_func_tpl_dep_from_fallback_type(
+    ty: &LuaType,
+    generic_tpls: &mut HashSet<GenericTplId>,
+    visiting_fallbacks: &mut HashSet<GenericTplId>,
+) -> bool {
+    let (LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl)) = ty else {
+        return true;
+    };
+
+    if !generic_tpl.get_tpl_id().is_func() {
+        return true;
+    }
+
+    let tpl_id = generic_tpl.get_tpl_id();
+    if !visiting_fallbacks.insert(tpl_id) {
+        // 遇到 `T = U, U = T` 这类循环 fallback 时, 放弃合并本轮依赖避免递归展开.
+        return false;
+    }
+
+    generic_tpls.insert(tpl_id);
+    let no_fallback_cycle = match generic_tpl
+        .get_default_type()
+        .or(generic_tpl.get_constraint())
+    {
+        Some(fallback_type) => collect_func_tpl_deps_from_fallback_type(
+            fallback_type,
+            generic_tpls,
+            visiting_fallbacks,
+        ),
+        None => true,
+    };
+    visiting_fallbacks.remove(&tpl_id);
+    no_fallback_cycle
 }
 
 fn infer_generic_types_from_call(
@@ -325,17 +567,13 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
     match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
             if let Some(generic) = db.get_type_index().get_generic_params(id) {
-                let mut params = Vec::new();
+                let mut params = Vec::with_capacity(generic.len());
+                let mut substitutor = TypeSubstitutor::new();
                 for (i, generic_param) in generic.iter().enumerate() {
-                    if let Some(t) = &generic_param.type_constraint {
-                        params.push(t.clone());
-                    } else {
-                        params.push(LuaType::TplRef(Arc::new(GenericTpl::new(
-                            GenericTplId::Type(i as u32),
-                            ArcIntern::new(generic_param.name.clone()),
-                            None,
-                        ))));
-                    }
+                    let tpl_id = GenericTplId::Type(i as u32);
+                    let param = build_self_generic_arg(db, generic_param, &substitutor);
+                    substitutor.insert_type(tpl_id, param.clone(), true);
+                    params.push(param);
                 }
                 let generic = LuaGenericType::new(id.clone(), params);
                 return LuaType::Generic(Arc::new(generic));
@@ -344,6 +582,22 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
         _ => {}
     };
     self_type.clone()
+}
+
+fn build_self_generic_arg(
+    db: &DbIndex,
+    generic_param: &GenericParam,
+    substitutor: &TypeSubstitutor,
+) -> LuaType {
+    let Some(arg) = generic_param
+        .default_type
+        .as_ref()
+        .or(generic_param.type_constraint.as_ref())
+    else {
+        return LuaType::Unknown;
+    };
+
+    instantiate_type_generic(db, arg, substitutor)
 }
 
 pub fn infer_self_type(
@@ -366,14 +620,27 @@ pub fn infer_self_type(
                 name.syntax().clone(),
                 SemanticDeclLevel::default(),
             )?;
-            if let LuaSemanticDeclId::Member(member_id) = semantic_decl_id {
-                let owner = db.get_member_index().get_current_owner(&member_id)?;
-                if let LuaMemberOwner::Type(id) = owner {
-                    let typ = LuaType::Ref(id.clone());
+            match semantic_decl_id {
+                LuaSemanticDeclId::Member(member_id) => {
+                    let owner = db.get_member_index().get_current_owner(&member_id)?;
+                    if let LuaMemberOwner::Type(id) = owner {
+                        let typ = LuaType::Ref(id.clone());
+                        let self_type = build_self_type(db, &typ);
+                        return Some(self_type);
+                    }
+                    return None;
+                }
+                LuaSemanticDeclId::LuaDecl(decl_id) => {
+                    let typ = db
+                        .get_type_index()
+                        .get_type_cache(&LuaTypeOwner::Decl(decl_id))
+                        .map(|cache| cache.as_type())
+                        .unwrap_or(&LuaType::Unknown)
+                        .clone();
                     let self_type = build_self_type(db, &typ);
                     return Some(self_type);
                 }
-                return None;
+                _ => return None,
             }
         }
         _ => {}
