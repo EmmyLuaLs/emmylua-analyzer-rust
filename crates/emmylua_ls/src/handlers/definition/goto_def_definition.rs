@@ -99,8 +99,11 @@ fn handle_member_definition(
     trigger_token: &LuaSyntaxToken,
     member_id: &LuaMemberId,
 ) -> Option<GotoDefinitionResponse> {
-    let same_named_members =
+    let mut same_named_members =
         find_all_same_named_members(semantic_model, &Some(LuaSemanticDeclId::Member(*member_id)))?;
+    same_named_members.retain(|semantic_decl| {
+        semantic_model.is_semantic_visible(trigger_token.clone(), semantic_decl.clone())
+    });
 
     let mut locations: Vec<Location> = Vec::new();
 

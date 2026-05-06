@@ -103,7 +103,7 @@ pub fn add_completions_for_members(
 
 fn add_resolve_member_infos(
     builder: &mut CompletionBuilder,
-    member_infos: &Vec<LuaMemberInfo>,
+    member_infos: &[LuaMemberInfo],
     completion_status: CompletionTriggerStatus,
 ) -> Option<()> {
     if member_infos.len() == 1 {
@@ -186,7 +186,7 @@ fn add_resolve_member_infos(
 fn filter_member_infos<'a>(
     semantic_model: &SemanticModel,
     trigger_token: &LuaSyntaxToken,
-    member_infos: &'a Vec<LuaMemberInfo>,
+    member_infos: &'a [LuaMemberInfo],
 ) -> Option<(Vec<&'a LuaMemberInfo>, Option<usize>)> {
     if member_infos.is_empty() {
         return None;
