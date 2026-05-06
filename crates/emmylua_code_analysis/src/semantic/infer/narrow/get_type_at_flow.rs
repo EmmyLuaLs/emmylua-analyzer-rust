@@ -1,30 +1,34 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaChunk, LuaDocOpType, LuaExpr, LuaVarExpr, UnaryOperator,
+    LuaAssignStat, LuaAstNode, LuaChunk, LuaDocOpType, LuaExpr, LuaIndexKey, LuaIndexMemberExpr,
+    LuaSyntaxId, LuaTableExpr, LuaVarExpr,
 };
 use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
     CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
-    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact, infer_expr,
+    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
     semantic::{
-        cache::{FlowAssignmentInfo, FlowConditionInfo, FlowMode, FlowVarCache},
+        cache::{FlowAssignmentInfo, FlowMode, FlowVarCache},
         infer::{
-            InferResult, VarRefId, infer_expr_list_value_type_at,
+            InferResult, VarRefId,
             narrow::{
                 condition_flow::{
-                    ConditionFlowAction, ConditionSubquery, InferConditionFlow,
-                    PendingConditionNarrow,
+                    ConditionFlowAction, CorrelatedSubquery, ExprTypeContinuation,
+                    FieldConditionKind, FieldLiteralSiblingSubquery, InferConditionFlow,
+                    PendingConditionNarrow, always_literal_equal,
                     correlated_flow::{
                         PendingCorrelatedCondition, advance_pending_correlated_condition,
                     },
-                    get_type_at_condition_flow, resolve_condition_subquery,
+                    get_type_at_condition_flow, resolve_correlated_subquery,
+                    resolve_expr_type_continuation,
                 },
                 get_multi_antecedents, get_single_antecedent,
                 get_type_at_cast_flow::cast_type,
                 get_var_ref_type, narrow_down_type,
                 var_ref_id::get_var_expr_var_ref_id,
             },
+            try_infer_expr_no_flow,
         },
         member::find_members,
     },
@@ -87,13 +91,21 @@ enum Continuation {
         merged_type: LuaType,
     },
     // Resume an assignment once we know the pre-assignment type of the same ref.
-    // Example: for `x = rhs`, first query `x` just before the assignment, then
-    // combine that antecedent type with the RHS type here.
+    // Example: for `x = expr`, first query `x` just before the assignment,
+    // then combine that antecedent type with the expression type here.
     AssignmentAntecedent {
         walk: QueryWalk,
         antecedent_flow_id: FlowId,
         expr_type: LuaType,
-        reuse_source_narrowing: bool,
+        reuse_antecedent_narrowing: bool,
+    },
+    // Resume structural expression replay after resolving the flow-aware refs
+    // it depends on. The replay itself stays no-flow; only this continuation
+    // may schedule the dependency queries.
+    ExprReplay {
+        walk: QueryWalk,
+        replay: FlowExprReplay,
+        replay_query: FlowReplayQuery,
     },
     // Resume a tag cast after reading the antecedent value that the cast rewrites.
     // Example: `---@cast x Foo` first queries `x` before the cast node, then
@@ -109,7 +121,13 @@ enum Continuation {
         walk: QueryWalk,
         flow_id: FlowId,
         condition_flow: InferConditionFlow,
-        subquery: ConditionSubquery,
+        subquery: CorrelatedSubquery,
+    },
+    FieldLiteralSiblingDependency {
+        walk: QueryWalk,
+        flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        subquery: FieldLiteralSiblingSubquery,
     },
     // Resume correlated return-overload narrowing after querying one pending root.
     // Example: `local ok, value = f(); if ok then ... value ... end` may need to
@@ -120,6 +138,209 @@ enum Continuation {
         condition_flow: InferConditionFlow,
         pending_correlated_condition: PendingCorrelatedCondition,
     },
+}
+
+enum FlowExprReplay {
+    Assignment {
+        antecedent_flow_id: FlowId,
+        explicit_var_type: Option<LuaType>,
+        result_slot: usize,
+    },
+    DeclInitializer {
+        fail_reason: InferFailReason,
+    },
+    Condition {
+        condition_flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        resume: ExprTypeContinuation,
+    },
+    FieldConditionKey {
+        condition_flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        idx: LuaIndexMemberExpr,
+        field_condition_flow: InferConditionFlow,
+        kind: FieldConditionKind,
+    },
+}
+
+// Dependency queries are flow-aware, but the final expression replay is not.
+// This owns both phases so replay cannot accidentally re-enter flow.
+struct FlowReplayQuery {
+    flow_id: FlowId,
+    expr: LuaExpr,
+    allow_table_exprs: bool,
+    dependency_queries: Vec<FlowExprTypeQuery>,
+    next_dependency_idx: usize,
+    dependency_types: Vec<(LuaSyntaxId, LuaType)>,
+}
+
+impl FlowReplayQuery {
+    fn new(
+        db: &DbIndex,
+        tree: Option<&FlowTree>,
+        cache: &mut LuaInferCache,
+        flow_id: FlowId,
+        expr: LuaExpr,
+        allow_table_exprs: bool,
+    ) -> Self {
+        let mut dependency_queries = Vec::new();
+        collect_expr_dependency_queries(db, tree, cache, flow_id, &expr, &mut dependency_queries);
+        Self {
+            flow_id,
+            expr,
+            allow_table_exprs,
+            dependency_queries,
+            next_dependency_idx: 0,
+            dependency_types: Vec::new(),
+        }
+    }
+
+    fn next_query(&self) -> Option<&FlowExprTypeQuery> {
+        self.dependency_queries.get(self.next_dependency_idx)
+    }
+
+    fn accept_result(&mut self, dependency_result: InferResult) -> Result<(), InferFailReason> {
+        let dependency_query = self
+            .dependency_queries
+            .get(self.next_dependency_idx)
+            .ok_or(InferFailReason::None)?;
+
+        match dependency_result {
+            Ok(mut expr_type) => {
+                if let Some(literal_shape_type) = &dependency_query.literal_shape_type {
+                    expr_type = literal_equivalent_type(literal_shape_type, &expr_type)
+                        .unwrap_or(expr_type);
+                }
+
+                self.dependency_types
+                    .push((dependency_query.syntax_id, expr_type));
+            }
+            Err(
+                InferFailReason::None
+                | InferFailReason::RecursiveInfer
+                | InferFailReason::FieldNotFound,
+            ) => {}
+            Err(err) => return Err(err),
+        }
+
+        self.next_dependency_idx += 1;
+        Ok(())
+    }
+
+    fn replay_type(
+        self,
+        db: &DbIndex,
+        cache: &mut LuaInferCache,
+    ) -> Result<Option<LuaType>, InferFailReason> {
+        let Self {
+            expr,
+            allow_table_exprs,
+            dependency_types,
+            ..
+        } = self;
+        replay_expr_no_flow(db, cache, expr, &dependency_types, allow_table_exprs)
+    }
+}
+
+// The replay overlay should preserve declared doc literals when a flow query
+// proves the same runtime literal value for an index expression.
+fn literal_equivalent_type(source_type: &LuaType, target_type: &LuaType) -> Option<LuaType> {
+    match source_type {
+        LuaType::Union(union) => {
+            let matches = union
+                .into_vec()
+                .into_iter()
+                .filter(|candidate| always_literal_equal(candidate, target_type))
+                .collect::<Vec<_>>();
+            (!matches.is_empty()).then(|| LuaType::from_vec(matches))
+        }
+        _ if always_literal_equal(source_type, target_type) => Some(source_type.clone()),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FlowExprTypeQuery {
+    var_ref_id: VarRefId,
+    flow_id: FlowId,
+    syntax_id: LuaSyntaxId,
+    literal_shape_type: Option<LuaType>,
+}
+
+fn collect_expr_dependency_queries(
+    db: &DbIndex,
+    tree: Option<&FlowTree>,
+    cache: &mut LuaInferCache,
+    fallback_flow_id: FlowId,
+    expr: &LuaExpr,
+    dependency_queries: &mut Vec<FlowExprTypeQuery>,
+) {
+    if matches!(expr, LuaExpr::ClosureExpr(_)) {
+        return;
+    }
+
+    if matches!(expr, LuaExpr::NameExpr(_)) {
+        let flow_id = tree
+            .and_then(|tree| tree.get_flow_id(expr.get_syntax_id()))
+            .unwrap_or(fallback_flow_id);
+        if let Some(var_ref_id) = get_var_expr_var_ref_id(db, cache, expr.clone()) {
+            dependency_queries.push(FlowExprTypeQuery {
+                var_ref_id,
+                flow_id,
+                syntax_id: expr.get_syntax_id(),
+                literal_shape_type: None,
+            });
+        }
+        return;
+    }
+
+    if let LuaExpr::IndexExpr(index_expr) = expr {
+        if let Some(prefix_expr) = index_expr.get_prefix_expr() {
+            collect_expr_dependency_queries(
+                db,
+                tree,
+                cache,
+                fallback_flow_id,
+                &prefix_expr,
+                dependency_queries,
+            );
+        }
+        if let Some(LuaIndexKey::Expr(expr)) = index_expr.get_index_key() {
+            collect_expr_dependency_queries(
+                db,
+                tree,
+                cache,
+                fallback_flow_id,
+                &expr,
+                dependency_queries,
+            );
+        }
+        // Keep prefix/key deps first. The direct IndexRef repairs guards on
+        // the member itself, and should use the replay point's flow.
+        if let Some(var_ref_id) = get_var_expr_var_ref_id(db, cache, expr.clone()) {
+            let literal_shape_type = try_infer_expr_no_flow(db, cache, expr.clone())
+                .ok()
+                .flatten();
+            dependency_queries.push(FlowExprTypeQuery {
+                var_ref_id,
+                flow_id: fallback_flow_id,
+                syntax_id: expr.get_syntax_id(),
+                literal_shape_type,
+            });
+        }
+        return;
+    }
+
+    for child_expr in expr.children::<LuaExpr>() {
+        collect_expr_dependency_queries(
+            db,
+            tree,
+            cache,
+            fallback_flow_id,
+            &child_expr,
+            dependency_queries,
+        );
+    }
 }
 
 // The top-loop scheduler decision.
@@ -194,14 +415,19 @@ impl<'a> FlowTypeEngine<'a> {
                         walk,
                         antecedent_flow_id,
                         expr_type,
-                        reuse_source_narrowing,
+                        reuse_antecedent_narrowing,
                     }) => self.resume_assignment_antecedent(
                         walk,
                         antecedent_flow_id,
                         expr_type,
-                        reuse_source_narrowing,
+                        reuse_antecedent_narrowing,
                         query_result,
                     ),
+                    Some(Continuation::ExprReplay {
+                        walk,
+                        replay,
+                        replay_query,
+                    }) => self.resume_expr_replay(walk, replay, replay_query, query_result),
                     Some(Continuation::TagCastAntecedent {
                         walk,
                         cast_op_types,
@@ -212,6 +438,18 @@ impl<'a> FlowTypeEngine<'a> {
                         condition_flow,
                         subquery,
                     }) => self.resume_condition_subquery(
+                        walk,
+                        flow_id,
+                        condition_flow,
+                        subquery,
+                        query_result,
+                    ),
+                    Some(Continuation::FieldLiteralSiblingDependency {
+                        walk,
+                        flow_id,
+                        condition_flow,
+                        subquery,
+                    }) => self.resume_field_literal_sibling_subquery(
                         walk,
                         flow_id,
                         condition_flow,
@@ -308,23 +546,23 @@ impl<'a> FlowTypeEngine<'a> {
 
     // Finish one assignment dependency query by reading the pre-assignment type
     // of the same ref, optionally retrying without condition narrows, then
-    // combining that antecedent type with the RHS type to finish the suspended
+    // combining that antecedent type with the expression type to finish the suspended
     // query.
     fn resume_assignment_antecedent(
         &mut self,
         walk: QueryWalk,
         antecedent_flow_id: FlowId,
         expr_type: LuaType,
-        reuse_source_narrowing: bool,
-        source_result: InferResult,
+        reuse_antecedent_narrowing: bool,
+        antecedent_result: InferResult,
     ) -> Result<SchedulerStep, InferFailReason> {
-        let source_type = match source_result {
-            Ok(source_type) => source_type,
+        let antecedent_type = match antecedent_result {
+            Ok(antecedent_type) => antecedent_type,
             Err(err) => return self.fail_query(&walk.query, err),
         };
 
-        if reuse_source_narrowing
-            && !can_reuse_narrowed_assignment_source(self.db, &source_type, &expr_type)
+        if reuse_antecedent_narrowing
+            && !can_reuse_narrowed_assignment_source(self.db, &antecedent_type, &expr_type)
         {
             let next_query = walk
                 .query
@@ -335,7 +573,7 @@ impl<'a> FlowTypeEngine<'a> {
                     walk,
                     antecedent_flow_id,
                     expr_type,
-                    reuse_source_narrowing: false,
+                    reuse_antecedent_narrowing: false,
                 }),
             });
         }
@@ -343,13 +581,182 @@ impl<'a> FlowTypeEngine<'a> {
         let result_type = finish_assignment_result(
             self.db,
             self.cache,
-            &source_type,
+            &antecedent_type,
             &expr_type,
             &walk.query.var_ref_id,
-            reuse_source_narrowing,
+            reuse_antecedent_narrowing,
             None,
         );
         Ok(self.finish_walk(walk, result_type))
+    }
+
+    fn start_expr_replay(
+        &mut self,
+        walk: QueryWalk,
+        replay: FlowExprReplay,
+        replay_query: FlowReplayQuery,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        let next_query = replay_query
+            .next_query()
+            .map(|query| (query.var_ref_id.clone(), query.flow_id));
+        let Some((var_ref_id, flow_id)) = next_query else {
+            return self.finish_expr_replay(walk, replay, replay_query);
+        };
+
+        Ok(SchedulerStep::StartQuery {
+            query: FlowQuery::new(self.cache, &var_ref_id, flow_id),
+            continuation: Some(Continuation::ExprReplay {
+                walk,
+                replay,
+                replay_query,
+            }),
+        })
+    }
+
+    fn resume_expr_replay(
+        &mut self,
+        walk: QueryWalk,
+        replay: FlowExprReplay,
+        mut replay_query: FlowReplayQuery,
+        query_result: InferResult,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        match replay_query.accept_result(query_result) {
+            Ok(()) => {}
+            Err(err) => return self.finish_expr_replay_error(walk, replay, err),
+        }
+
+        self.start_expr_replay(walk, replay, replay_query)
+    }
+
+    fn finish_expr_replay(
+        &mut self,
+        walk: QueryWalk,
+        replay: FlowExprReplay,
+        replay_query: FlowReplayQuery,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        match replay {
+            FlowExprReplay::Assignment {
+                antecedent_flow_id,
+                explicit_var_type,
+                result_slot,
+            } => self.finish_assignment_expr(
+                walk,
+                antecedent_flow_id,
+                explicit_var_type,
+                result_slot,
+                replay_query,
+            ),
+            FlowExprReplay::DeclInitializer { fail_reason } => {
+                let query = walk.query.clone();
+                let expr_type = match replay_query.replay_type(self.db, self.cache) {
+                    Ok(Some(expr_type)) => expr_type,
+                    Ok(None) => return self.fail_query(&query, fail_reason),
+                    Err(err) => return self.fail_query(&query, err),
+                };
+
+                let Some(init_type) = expr_type.get_result_slot_type(0) else {
+                    return self.fail_query(&query, fail_reason);
+                };
+
+                Ok(self.finish_walk(walk, init_type))
+            }
+            FlowExprReplay::Condition {
+                condition_flow_id,
+                condition_flow,
+                resume,
+            } => {
+                let expr_flow_id = replay_query.flow_id;
+                let query = walk.query.clone();
+                let var_ref_id = query.var_ref_id.clone();
+                let action_result = match replay_query.replay_type(self.db, self.cache) {
+                    Ok(Some(expr_type)) => resolve_expr_type_continuation(
+                        self.db,
+                        self.cache,
+                        &var_ref_id,
+                        expr_flow_id,
+                        resume,
+                        expr_type,
+                    ),
+                    Ok(None) => Ok(ConditionFlowAction::Continue),
+                    Err(err) => Err(err),
+                };
+                let action = match action_result {
+                    Ok(action) => action,
+                    Err(err) => {
+                        return self.fail_condition_query(
+                            &query,
+                            condition_flow_id,
+                            condition_flow,
+                            err,
+                        );
+                    }
+                };
+                self.apply_condition_action(walk, condition_flow_id, condition_flow, action)
+                    .or_else(|err| {
+                        self.fail_condition_query(&query, condition_flow_id, condition_flow, err)
+                    })
+            }
+            FlowExprReplay::FieldConditionKey {
+                condition_flow_id,
+                condition_flow,
+                idx,
+                field_condition_flow,
+                kind,
+            } => {
+                let query = walk.query.clone();
+                let key_type = match replay_query.replay_type(self.db, self.cache) {
+                    Ok(key_type) => key_type,
+                    Err(err) => {
+                        return self.fail_condition_query(
+                            &query,
+                            condition_flow_id,
+                            condition_flow,
+                            err,
+                        );
+                    }
+                };
+
+                Ok(self.push_pending_condition(
+                    walk,
+                    condition_flow_id,
+                    condition_flow,
+                    PendingConditionNarrow::Field {
+                        idx,
+                        key_type,
+                        condition_flow: field_condition_flow,
+                        kind,
+                    },
+                ))
+            }
+        }
+    }
+
+    fn finish_expr_replay_error(
+        &mut self,
+        walk: QueryWalk,
+        replay: FlowExprReplay,
+        err: InferFailReason,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        match replay {
+            FlowExprReplay::Assignment {
+                antecedent_flow_id,
+                explicit_var_type,
+                ..
+            } => {
+                self.finish_assignment_expr_error(walk, antecedent_flow_id, explicit_var_type, err)
+            }
+            FlowExprReplay::DeclInitializer { .. } => self.fail_query(&walk.query, err),
+            FlowExprReplay::Condition {
+                condition_flow_id,
+                condition_flow,
+                ..
+            }
+            | FlowExprReplay::FieldConditionKey {
+                condition_flow_id,
+                condition_flow,
+                ..
+            } => self.fail_condition_query(&walk.query, condition_flow_id, condition_flow, err),
+        }
     }
 
     // Finish one tag-cast dependency query by reading the antecedent type and
@@ -392,17 +799,16 @@ impl<'a> FlowTypeEngine<'a> {
         walk: QueryWalk,
         flow_id: FlowId,
         condition_flow: InferConditionFlow,
-        subquery: ConditionSubquery,
+        subquery: CorrelatedSubquery,
         antecedent_result: InferResult,
     ) -> Result<SchedulerStep, InferFailReason> {
         let query = walk.query.clone();
         let result = (|| {
-            let antecedent_type = antecedent_result?;
             let flow_node = self
                 .tree
                 .get_flow_node(flow_id)
                 .ok_or(InferFailReason::None)?;
-            let action = resolve_condition_subquery(
+            let action = resolve_correlated_subquery(
                 self.db,
                 self.tree,
                 self.cache,
@@ -410,17 +816,143 @@ impl<'a> FlowTypeEngine<'a> {
                 &query.var_ref_id,
                 flow_node,
                 subquery,
-                antecedent_type,
+                antecedent_result,
             )?;
             self.apply_condition_action(walk, flow_id, condition_flow, action)
         })();
 
-        result.or_else(|err| {
-            get_flow_var_cache(self.cache, query.var_cache_idx)
-                .condition_cache
-                .remove(&(flow_id, condition_flow));
-            self.fail_query(&query, err)
-        })
+        result.or_else(|err| self.fail_condition_query(&query, flow_id, condition_flow, err))
+    }
+
+    fn start_condition_subquery(
+        &mut self,
+        walk: QueryWalk,
+        flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        subquery: CorrelatedSubquery,
+    ) -> SchedulerStep {
+        let (subquery_var_ref_id, subquery_flow_id) = subquery.next_flow_query();
+        let query = FlowQuery::new(self.cache, subquery_var_ref_id, subquery_flow_id);
+        SchedulerStep::StartQuery {
+            query,
+            continuation: Some(Continuation::ConditionDependency {
+                walk,
+                flow_id,
+                condition_flow,
+                subquery,
+            }),
+        }
+    }
+
+    fn resume_field_literal_sibling_subquery(
+        &mut self,
+        walk: QueryWalk,
+        flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        subquery: FieldLiteralSiblingSubquery,
+        antecedent_result: InferResult,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        let query = walk.query.clone();
+        let result = (|| {
+            let antecedent_type = antecedent_result?;
+            let action = subquery.resolve(self.db, self.cache, antecedent_type)?;
+            self.apply_condition_action(walk, flow_id, condition_flow, action)
+        })();
+
+        result.or_else(|err| self.fail_condition_query(&query, flow_id, condition_flow, err))
+    }
+
+    fn start_field_literal_sibling_subquery(
+        &mut self,
+        walk: QueryWalk,
+        flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        subquery: FieldLiteralSiblingSubquery,
+    ) -> SchedulerStep {
+        let (subquery_var_ref_id, subquery_flow_id) = subquery.next_flow_query();
+        let query = FlowQuery::new(self.cache, subquery_var_ref_id, subquery_flow_id);
+        SchedulerStep::StartQuery {
+            query,
+            continuation: Some(Continuation::FieldLiteralSiblingDependency {
+                walk,
+                flow_id,
+                condition_flow,
+                subquery,
+            }),
+        }
+    }
+
+    fn push_pending_condition(
+        &mut self,
+        mut walk: QueryWalk,
+        flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        pending_condition_narrow: PendingConditionNarrow,
+    ) -> SchedulerStep {
+        get_flow_var_cache(self.cache, walk.query.var_cache_idx)
+            .condition_cache
+            .insert(
+                (flow_id, condition_flow),
+                CacheEntry::Cache(ConditionFlowAction::Pending(
+                    pending_condition_narrow.clone(),
+                )),
+            );
+        walk.pending_condition_narrows
+            .push(pending_condition_narrow);
+        SchedulerStep::ContinueWalk(walk)
+    }
+
+    fn start_pending_condition(
+        &mut self,
+        walk: QueryWalk,
+        flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        pending_condition_narrow: PendingConditionNarrow,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        let (idx, field_condition_flow, kind) = match pending_condition_narrow {
+            PendingConditionNarrow::Field {
+                idx,
+                key_type: None,
+                condition_flow: field_condition_flow,
+                kind,
+            } => (idx, field_condition_flow, kind),
+            pending_condition_narrow => {
+                return Ok(self.push_pending_condition(
+                    walk,
+                    flow_id,
+                    condition_flow,
+                    pending_condition_narrow,
+                ));
+            }
+        };
+        let antecedent_flow_id = walk.antecedent_flow_id;
+        let Some(LuaIndexKey::Expr(expr)) = idx.get_index_key() else {
+            return Ok(self.push_pending_condition(
+                walk,
+                flow_id,
+                condition_flow,
+                PendingConditionNarrow::Field {
+                    idx,
+                    key_type: None,
+                    condition_flow: field_condition_flow,
+                    kind,
+                },
+            ));
+        };
+        let replay_query =
+            FlowReplayQuery::new(self.db, None, self.cache, antecedent_flow_id, expr, false);
+
+        self.start_expr_replay(
+            walk,
+            FlowExprReplay::FieldConditionKey {
+                condition_flow_id: flow_id,
+                condition_flow,
+                idx,
+                field_condition_flow,
+                kind,
+            },
+            replay_query,
+        )
     }
 
     fn step_assignment(
@@ -456,41 +988,66 @@ impl<'a> FlowTypeEngine<'a> {
             .filter(|tc| tc.is_doc())
             .map(|tc| tc.as_type().clone());
 
-        let expr_type =
-            match infer_expr_list_value_type_at(self.db, self.cache, &assignment_info.exprs, i) {
-                Ok(expr_type) => expr_type,
-                Err(err) => {
-                    if let Some(explicit_var_type) = explicit_var_type.as_ref() {
-                        return Ok(self.finish_walk(walk, explicit_var_type.clone()));
-                    }
+        if let Some(last_expr_idx) = assignment_info.exprs.len().checked_sub(1) {
+            let expr_idx = i.min(last_expr_idx);
+            let result_slot = i.saturating_sub(last_expr_idx);
+            let expr = assignment_info.exprs[expr_idx].clone();
+            let replay_query = FlowReplayQuery::new(
+                self.db,
+                Some(self.tree),
+                self.cache,
+                antecedent_flow_id,
+                expr,
+                true,
+            );
+            return self.start_expr_replay(
+                walk,
+                FlowExprReplay::Assignment {
+                    antecedent_flow_id,
+                    explicit_var_type,
+                    result_slot,
+                },
+                replay_query,
+            );
+        }
 
-                    if matches!(var_ref_id, VarRefId::IndexRef(_, _))
-                        && let Ok(origin_type) = get_var_ref_type(self.db, self.cache, &var_ref_id)
-                    {
-                        let non_nil_origin =
-                            TypeOps::Remove.apply(self.db, &origin_type, &LuaType::Nil);
-                        return Ok(self.finish_walk(
-                            walk,
-                            if non_nil_origin.is_never() {
-                                origin_type
-                            } else {
-                                non_nil_origin
-                            },
-                        ));
-                    }
+        self.finish_assignment_expr_type(walk, antecedent_flow_id, explicit_var_type, LuaType::Nil)
+    }
 
-                    if matches!(err, InferFailReason::FieldNotFound | InferFailReason::None) {
-                        return Ok(self.finish_walk(walk, LuaType::Nil));
-                    }
-
-                    walk.antecedent_flow_id = antecedent_flow_id;
-                    return Ok(SchedulerStep::ContinueWalk(walk));
-                }
-            };
-        let Some(expr_type) = expr_type else {
-            walk.antecedent_flow_id = antecedent_flow_id;
-            return Ok(SchedulerStep::ContinueWalk(walk));
+    fn finish_assignment_expr(
+        &mut self,
+        walk: QueryWalk,
+        antecedent_flow_id: FlowId,
+        explicit_var_type: Option<LuaType>,
+        result_slot: usize,
+        replay_query: FlowReplayQuery,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        let expr_type = match replay_query.replay_type(self.db, self.cache) {
+            Ok(Some(expr_type)) => expr_type
+                .get_result_slot_type(result_slot)
+                .unwrap_or(LuaType::Nil),
+            Ok(None) => LuaType::Unknown,
+            Err(err) => {
+                return self.finish_assignment_expr_error(
+                    walk,
+                    antecedent_flow_id,
+                    explicit_var_type,
+                    err,
+                );
+            }
         };
+
+        self.finish_assignment_expr_type(walk, antecedent_flow_id, explicit_var_type, expr_type)
+    }
+
+    fn finish_assignment_expr_type(
+        &mut self,
+        walk: QueryWalk,
+        antecedent_flow_id: FlowId,
+        explicit_var_type: Option<LuaType>,
+        expr_type: LuaType,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        let var_ref_id = walk.query.var_ref_id.clone();
 
         if let Some(explicit_var_type) = explicit_var_type {
             let result_type = finish_assignment_result(
@@ -505,8 +1062,8 @@ impl<'a> FlowTypeEngine<'a> {
             return Ok(self.finish_walk(walk, result_type));
         }
 
-        let reuse_source_narrowing = preserves_assignment_expr_type(&expr_type);
-        let mode = if reuse_source_narrowing {
+        let reuse_antecedent_narrowing = preserves_assignment_expr_type(&expr_type);
+        let mode = if reuse_antecedent_narrowing {
             FlowMode::WithConditions
         } else {
             FlowMode::WithoutConditions
@@ -518,9 +1075,43 @@ impl<'a> FlowTypeEngine<'a> {
                 walk,
                 antecedent_flow_id,
                 expr_type,
-                reuse_source_narrowing,
+                reuse_antecedent_narrowing,
             }),
         })
+    }
+
+    fn finish_assignment_expr_error(
+        &mut self,
+        mut walk: QueryWalk,
+        antecedent_flow_id: FlowId,
+        explicit_var_type: Option<LuaType>,
+        err: InferFailReason,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        if let Some(explicit_var_type) = explicit_var_type {
+            return Ok(self.finish_walk(walk, explicit_var_type));
+        }
+
+        let var_ref_id = walk.query.var_ref_id.clone();
+        if matches!(var_ref_id, VarRefId::IndexRef(_, _))
+            && let Ok(origin_type) = get_var_ref_type(self.db, self.cache, &var_ref_id)
+        {
+            let non_nil_origin = TypeOps::Remove.apply(self.db, &origin_type, &LuaType::Nil);
+            return Ok(self.finish_walk(
+                walk,
+                if non_nil_origin.is_never() {
+                    origin_type
+                } else {
+                    non_nil_origin
+                },
+            ));
+        }
+
+        if matches!(err, InferFailReason::FieldNotFound | InferFailReason::None) {
+            return Ok(self.finish_walk(walk, LuaType::Nil));
+        }
+
+        walk.antecedent_flow_id = antecedent_flow_id;
+        Ok(SchedulerStep::ContinueWalk(walk))
     }
 
     fn step_condition(
@@ -536,32 +1127,31 @@ impl<'a> FlowTypeEngine<'a> {
             return Ok(SchedulerStep::ContinueWalk(walk));
         }
 
-        let condition_info =
-            get_flow_condition_info(self.db, self.cache, self.root, flow_node.id, condition_ptr)?;
         walk.antecedent_flow_id = antecedent_flow_id;
         let q = &walk.query;
         let var_ref_id = &q.var_ref_id;
-        if condition_info.index_var_ref_id.is_some()
-            && condition_info.index_var_ref_id.as_ref() != Some(var_ref_id)
-            && condition_info.index_prefix_var_ref_id.as_ref() != Some(var_ref_id)
-        {
-            return Ok(SchedulerStep::ContinueWalk(walk));
-        }
 
         let cache_id = q.var_cache_idx;
         let flow_id = flow_node.id;
         let cache_key = (flow_id, condition_flow);
+        let mut cached_action = false;
         let action = match self
             .cache
             .flow_var_caches
             .get(cache_id as usize)
             .and_then(|var_cache| var_cache.condition_cache.get(&cache_key))
         {
-            Some(CacheEntry::Cache(action)) => action.clone(),
+            Some(CacheEntry::Cache(action)) => {
+                cached_action = true;
+                action.clone()
+            }
             Some(CacheEntry::Ready) => {
                 return self.fail_query(q, InferFailReason::RecursiveInfer);
             }
             None => {
+                let condition = condition_ptr
+                    .to_node(self.root)
+                    .ok_or(InferFailReason::None)?;
                 get_flow_var_cache(self.cache, cache_id)
                     .condition_cache
                     .insert(cache_key, CacheEntry::Ready);
@@ -572,19 +1162,30 @@ impl<'a> FlowTypeEngine<'a> {
                     self.root,
                     var_ref_id,
                     flow_node,
-                    condition_info.expr.clone(),
+                    condition,
                     condition_flow,
                 ) {
                     Ok(action) => action,
                     Err(err) => {
-                        get_flow_var_cache(self.cache, cache_id)
-                            .condition_cache
-                            .remove(&cache_key);
-                        return self.fail_query(q, err);
+                        return self.fail_condition_query(q, flow_id, condition_flow, err);
                     }
                 }
             }
         };
+
+        if cached_action {
+            return match action {
+                ConditionFlowAction::Continue => Ok(SchedulerStep::ContinueWalk(walk)),
+                ConditionFlowAction::Result(result_type) => Ok(self.finish_walk(walk, result_type)),
+                ConditionFlowAction::Pending(pending_condition_narrow) => {
+                    let mut walk = walk;
+                    walk.pending_condition_narrows
+                        .push(pending_condition_narrow);
+                    Ok(SchedulerStep::ContinueWalk(walk))
+                }
+                action => self.apply_condition_action(walk, flow_id, condition_flow, action),
+            };
+        }
 
         self.apply_condition_action(walk, flow_id, condition_flow, action)
     }
@@ -680,10 +1281,36 @@ impl<'a> FlowTypeEngine<'a> {
                                 return Ok(self.finish_walk(walk, var_type));
                             }
                             Err(err) => {
-                                if let Some(init_type) = try_infer_decl_initializer_type(
-                                    self.db, self.cache, self.root, var_ref_id,
-                                )? {
-                                    return Ok(self.finish_walk(walk, init_type));
+                                let Some(decl_id) = var_ref_id.get_decl_id_ref() else {
+                                    return self.fail_query(&walk.query, err);
+                                };
+                                let decl = self
+                                    .db
+                                    .get_decl_index()
+                                    .get_decl(&decl_id)
+                                    .ok_or(InferFailReason::None)?;
+                                if let Some(value_syntax_id) = decl.get_value_syntax_id()
+                                    && let Some(node) =
+                                        value_syntax_id.to_node_from_root(self.root.syntax())
+                                    && let Some(expr) = LuaExpr::cast(node)
+                                {
+                                    let expr_flow_id = self
+                                        .tree
+                                        .get_flow_id(expr.get_syntax_id())
+                                        .unwrap_or(walk.antecedent_flow_id);
+                                    let replay_query = FlowReplayQuery::new(
+                                        self.db,
+                                        Some(self.tree),
+                                        self.cache,
+                                        expr_flow_id,
+                                        expr,
+                                        false,
+                                    );
+                                    return self.start_expr_replay(
+                                        walk,
+                                        FlowExprReplay::DeclInitializer { fail_reason: err },
+                                        replay_query,
+                                    );
                                 }
 
                                 return self.fail_query(&walk.query, err);
@@ -754,7 +1381,7 @@ impl<'a> FlowTypeEngine<'a> {
 
     fn apply_condition_action(
         &mut self,
-        mut walk: QueryWalk,
+        walk: QueryWalk,
         flow_id: FlowId,
         condition_flow: InferConditionFlow,
         action: ConditionFlowAction,
@@ -778,60 +1405,41 @@ impl<'a> FlowTypeEngine<'a> {
                     );
                 Ok(self.finish_walk(walk, result_type))
             }
-            ConditionFlowAction::Pending(pending_condition_narrow) => {
-                get_flow_var_cache(self.cache, walk.query.var_cache_idx)
-                    .condition_cache
-                    .insert(
-                        (flow_id, condition_flow),
-                        CacheEntry::Cache(ConditionFlowAction::Pending(
-                            pending_condition_narrow.clone(),
-                        )),
-                    );
-                walk.pending_condition_narrows
-                    .push(pending_condition_narrow);
-                Ok(SchedulerStep::ContinueWalk(walk))
+            ConditionFlowAction::Pending(pending_condition_narrow) => self.start_pending_condition(
+                walk,
+                flow_id,
+                condition_flow,
+                pending_condition_narrow,
+            ),
+            ConditionFlowAction::NeedExprType {
+                flow_id: expr_flow_id,
+                expr,
+                resume,
+            } => {
+                let replay_query = FlowReplayQuery::new(
+                    self.db,
+                    Some(self.tree),
+                    self.cache,
+                    expr_flow_id,
+                    expr,
+                    false,
+                );
+                self.start_expr_replay(
+                    walk,
+                    FlowExprReplay::Condition {
+                        condition_flow_id: flow_id,
+                        condition_flow,
+                        resume,
+                    },
+                    replay_query,
+                )
             }
             ConditionFlowAction::NeedSubquery(subquery) => {
-                let (subquery_var_ref_id, subquery_antecedent_flow_id, subquery_mode) =
-                    match &subquery {
-                        ConditionSubquery::ArrayLen {
-                            var_ref_id,
-                            antecedent_flow_id,
-                            ..
-                        }
-                        | ConditionSubquery::FieldLiteralEq {
-                            var_ref_id,
-                            antecedent_flow_id,
-                            ..
-                        }
-                        | ConditionSubquery::Correlated {
-                            var_ref_id,
-                            antecedent_flow_id,
-                            ..
-                        } => (var_ref_id, *antecedent_flow_id, FlowMode::WithConditions),
-                        ConditionSubquery::FieldLiteralSibling {
-                            discriminant_prefix_var_ref_id,
-                            antecedent_flow_id,
-                            ..
-                        } => (
-                            discriminant_prefix_var_ref_id,
-                            *antecedent_flow_id,
-                            FlowMode::WithConditions,
-                        ),
-                    };
-                let subquery_query =
-                    FlowQuery::new(self.cache, subquery_var_ref_id, subquery_antecedent_flow_id)
-                        .at_flow(subquery_antecedent_flow_id, subquery_mode);
-                Ok(SchedulerStep::StartQuery {
-                    query: subquery_query,
-                    continuation: Some(Continuation::ConditionDependency {
-                        walk,
-                        flow_id,
-                        condition_flow,
-                        subquery,
-                    }),
-                })
+                Ok(self.start_condition_subquery(walk, flow_id, condition_flow, subquery))
             }
+            ConditionFlowAction::NeedFieldLiteralSibling(subquery) => Ok(
+                self.start_field_literal_sibling_subquery(walk, flow_id, condition_flow, subquery)
+            ),
             ConditionFlowAction::NeedCorrelated(pending_correlated_condition) => {
                 let subquery = walk.query.at_flow(
                     pending_correlated_condition.current_search_root_flow_id,
@@ -881,6 +1489,19 @@ impl<'a> FlowTypeEngine<'a> {
             .remove(&(query.flow_id, query.mode));
         Err(err)
     }
+
+    fn fail_condition_query<T>(
+        &mut self,
+        query: &FlowQuery,
+        flow_id: FlowId,
+        condition_flow: InferConditionFlow,
+        err: InferFailReason,
+    ) -> Result<T, InferFailReason> {
+        get_flow_var_cache(self.cache, query.var_cache_idx)
+            .condition_cache
+            .remove(&(flow_id, condition_flow));
+        self.fail_query(query, err)
+    }
 }
 
 pub(super) fn get_type_at_flow(
@@ -921,6 +1542,29 @@ fn get_flow_var_cache(cache: &mut LuaInferCache, var_ref_cache_id: u32) -> &mut 
             .resize_with(outer_index + 1, FlowVarCache::default);
     }
     &mut cache.flow_var_caches[outer_index]
+}
+
+fn replay_expr_no_flow(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+    dependency_types: &[(LuaSyntaxId, LuaType)],
+    allow_table_exprs: bool,
+) -> Result<Option<LuaType>, InferFailReason> {
+    let mut table_exprs = Vec::new();
+    if allow_table_exprs {
+        if let LuaExpr::TableExpr(table_expr) = &expr {
+            table_exprs.push(table_expr.get_syntax_id());
+        }
+        table_exprs.extend(
+            expr.descendants::<LuaTableExpr>()
+                .map(|table_expr| table_expr.get_syntax_id()),
+        );
+    }
+
+    cache.with_replay_overlay(dependency_types, &table_exprs, |cache| {
+        try_infer_expr_no_flow(db, cache, expr)
+    })
 }
 
 fn can_reuse_narrowed_assignment_source(
@@ -992,75 +1636,6 @@ fn is_exact_assignment_expr_type(typ: &LuaType) -> bool {
         }
         LuaType::TypeGuard(inner) => is_exact_assignment_expr_type(inner),
         _ => false,
-    }
-}
-
-fn get_flow_condition_info(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    flow_id: FlowId,
-    condition_ptr: &emmylua_parser::LuaAstPtr<LuaExpr>,
-) -> Result<Rc<FlowConditionInfo>, InferFailReason> {
-    let flow_index = flow_id.0 as usize;
-    if let Some(Some(info)) = cache.flow_condition_info_cache.get(flow_index) {
-        return Ok(info.clone());
-    }
-
-    let expr = condition_ptr.to_node(root).ok_or(InferFailReason::None)?;
-    let (index_var_ref_id, index_prefix_var_ref_id) =
-        get_condition_index_var_refs(db, cache, expr.clone());
-    let info = Rc::new(FlowConditionInfo {
-        expr,
-        index_var_ref_id,
-        index_prefix_var_ref_id,
-    });
-    if cache.flow_condition_info_cache.len() <= flow_index {
-        cache
-            .flow_condition_info_cache
-            .resize_with(flow_index + 1, || None);
-    }
-    cache.flow_condition_info_cache[flow_index] = Some(info.clone());
-    Ok(info)
-}
-
-fn get_condition_index_var_refs(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    condition: LuaExpr,
-) -> (Option<VarRefId>, Option<VarRefId>) {
-    match condition {
-        LuaExpr::IndexExpr(index_expr) => {
-            let index_var_ref_id =
-                get_var_expr_var_ref_id(db, cache, LuaExpr::IndexExpr(index_expr.clone()));
-            let index_prefix_var_ref_id = if index_var_ref_id.is_some() {
-                index_expr
-                    .get_prefix_expr()
-                    .and_then(|prefix_expr| get_var_expr_var_ref_id(db, cache, prefix_expr))
-            } else {
-                None
-            };
-            (index_var_ref_id, index_prefix_var_ref_id)
-        }
-        LuaExpr::ParenExpr(paren_expr) => paren_expr
-            .get_expr()
-            .map(|expr| get_condition_index_var_refs(db, cache, expr))
-            .unwrap_or((None, None)),
-        LuaExpr::UnaryExpr(unary_expr) => {
-            let Some(op_token) = unary_expr.get_op_token() else {
-                return (None, None);
-            };
-
-            if op_token.get_op() != UnaryOperator::OpNot {
-                return (None, None);
-            }
-
-            unary_expr
-                .get_expr()
-                .map(|expr| get_condition_index_var_refs(db, cache, expr))
-                .unwrap_or((None, None))
-        }
-        _ => (None, None),
     }
 }
 
@@ -1171,75 +1746,5 @@ fn finish_assignment_result(
         narrowed.unwrap_or_else(|| fallback_type.unwrap_or_else(|| expr_type.clone()))
     } else {
         expr_type.clone()
-    }
-}
-
-fn try_infer_decl_initializer_type(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    root: &LuaChunk,
-    var_ref_id: &VarRefId,
-) -> Result<Option<LuaType>, InferFailReason> {
-    let Some(decl_id) = var_ref_id.get_decl_id_ref() else {
-        return Ok(None);
-    };
-
-    let decl = db
-        .get_decl_index()
-        .get_decl(&decl_id)
-        .ok_or(InferFailReason::None)?;
-
-    let Some(value_syntax_id) = decl.get_value_syntax_id() else {
-        return Ok(None);
-    };
-
-    let Some(node) = value_syntax_id.to_node_from_root(root.syntax()) else {
-        return Ok(None);
-    };
-
-    let Some(expr) = LuaExpr::cast(node) else {
-        return Ok(None);
-    };
-
-    let expr_type = infer_expr(db, cache, expr.clone())?;
-    let init_type = expr_type.get_result_slot_type(0);
-
-    Ok(init_type)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{CacheOptions, FileId};
-
-    #[test]
-    fn test_flow_caches_stay_sparse_for_large_flow_ids() {
-        let mut cache = LuaInferCache::new(FileId::new(0), CacheOptions::default());
-        let var_ref_id = VarRefId::VarRef(LuaDeclId::new(FileId::new(0), 0.into()));
-        let query = FlowQuery::new(&mut cache, &var_ref_id, FlowId(10_000));
-
-        get_flow_var_cache(&mut cache, 0)
-            .type_cache
-            .insert((query.flow_id, query.mode), CacheEntry::Ready);
-        get_flow_var_cache(&mut cache, 0).condition_cache.insert(
-            (FlowId(20_000), InferConditionFlow::FalseCondition),
-            CacheEntry::Ready,
-        );
-
-        assert_eq!(cache.flow_var_caches.len(), 1);
-        assert_eq!(cache.flow_var_caches[0].type_cache.len(), 1);
-        assert_eq!(cache.flow_var_caches[0].condition_cache.len(), 1);
-        assert!(matches!(
-            cache.flow_var_caches[0]
-                .type_cache
-                .get(&(query.flow_id, query.mode)),
-            Some(CacheEntry::Ready)
-        ));
-        assert!(matches!(
-            cache.flow_var_caches[0]
-                .condition_cache
-                .get(&(FlowId(20_000), InferConditionFlow::FalseCondition)),
-            Some(CacheEntry::Ready)
-        ));
     }
 }

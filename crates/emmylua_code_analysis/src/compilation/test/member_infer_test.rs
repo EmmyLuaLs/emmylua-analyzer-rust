@@ -37,6 +37,24 @@ mod test {
     }
 
     #[test]
+    fn test_exact_missing_table_key_does_not_scan_broad_members() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        local t = {
+            a = 1,
+            b = "b",
+        }
+
+        value = t["missing"]
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("value"), LuaType::Nil);
+    }
+
+    #[test]
     fn test_issue_314_generic_inheritance() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
@@ -409,6 +427,28 @@ mod test {
         local utils = { get = rawget }
 
         if utils.get(t, "x") then
+            result = t.x
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), LuaType::Integer);
+    }
+
+    #[test]
+    fn test_rawget_alias_guard_narrows_matching_index_expr() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@class T
+        ---@field x? integer
+
+        ---@type T
+        local t = {}
+        local get = rawget
+
+        if get(t, "x") then
             result = t.x
         end
         "#,

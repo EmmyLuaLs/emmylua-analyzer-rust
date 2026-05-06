@@ -26,7 +26,7 @@ use crate::{
     compilation::analyzer::{AnalysisPipeline, lua::call::analyze_call},
     db_index::{DbIndex, LuaType},
     profile::Profile,
-    semantic::infer_expr,
+    semantic::{infer_expr, try_infer_expr_no_flow},
 };
 
 use super::AnalyzeContext;
@@ -120,5 +120,10 @@ impl LuaAnalyzer<'_> {
     pub fn infer_expr(&mut self, expr: &LuaExpr) -> Result<LuaType, InferFailReason> {
         let cache = self.context.infer_manager.get_infer_cache(self.file_id);
         infer_expr(self.db, cache, expr.clone())
+    }
+
+    fn infer_expr_no_flow(&mut self, expr: &LuaExpr) -> Result<Option<LuaType>, InferFailReason> {
+        let cache = self.context.infer_manager.get_infer_cache(self.file_id);
+        try_infer_expr_no_flow(self.db, cache, expr.clone())
     }
 }
