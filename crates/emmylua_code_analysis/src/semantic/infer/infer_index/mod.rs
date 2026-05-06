@@ -16,6 +16,7 @@ use crate::{
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
     enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type,
+    resolve_projected_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -194,26 +195,21 @@ pub fn infer_member_by_member_key(
         LuaType::Array(array_type) => infer_array_member(db, cache, array_type, index_expr),
         LuaType::TplRef(tpl) => infer_tpl_ref_member(db, cache, tpl, index_expr, infer_guard),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info {
-                if let Some(export_type) = &module_info.export_type {
-                    if export_type.is_module_ref() {
-                        return Err(InferFailReason::RecursiveInfer);
-                    }
-
-                    return infer_member_by_member_key(
-                        db,
-                        cache,
-                        export_type,
-                        index_expr,
-                        infer_guard,
-                    );
-                } else {
-                    return Err(InferFailReason::UnResolveModuleExport(*file_id));
+            if let Some(export_type) = resolve_projected_module_export_type(db, *file_id) {
+                if export_type.is_module_ref() {
+                    return Err(InferFailReason::RecursiveInfer);
                 }
+
+                return infer_member_by_member_key(
+                    db,
+                    cache,
+                    &export_type,
+                    index_expr,
+                    infer_guard,
+                );
             }
 
-            Err(InferFailReason::FieldNotFound)
+            Err(InferFailReason::UnResolveModuleExport(*file_id))
         }
         _ => Err(InferFailReason::FieldNotFound),
     }
@@ -763,22 +759,11 @@ pub fn infer_member_by_operator(
             infer_member_by_operator(db, cache, base, index_expr, infer_guard)
         }
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info {
-                if let Some(export_type) = &module_info.export_type {
-                    return infer_member_by_operator(
-                        db,
-                        cache,
-                        export_type,
-                        index_expr,
-                        infer_guard,
-                    );
-                } else {
-                    return Err(InferFailReason::UnResolveModuleExport(*file_id));
-                }
+            if let Some(export_type) = resolve_projected_module_export_type(db, *file_id) {
+                return infer_member_by_operator(db, cache, &export_type, index_expr, infer_guard);
             }
 
-            Err(InferFailReason::FieldNotFound)
+            Err(InferFailReason::UnResolveModuleExport(*file_id))
         }
         _ => Err(InferFailReason::FieldNotFound),
     }

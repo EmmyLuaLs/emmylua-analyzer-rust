@@ -419,6 +419,10 @@ impl LuaModuleIndex {
         self.add_workspace_root_with_import(root, WorkspaceImport::All, workspace_id);
     }
 
+    pub fn get_workspaces(&self) -> &[Workspace] {
+        &self.workspaces
+    }
+
     pub fn clear_non_std_workspaces(&mut self) {
         self.workspaces.retain(|workspace| workspace.id.is_std());
     }

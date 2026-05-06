@@ -28,6 +28,8 @@ use crate::LuaSemanticDeclId;
 use crate::LuaType;
 use crate::SemanticDeclLevel;
 use crate::TypeOps;
+use crate::find_compilation_decl_by_position;
+use crate::find_compilation_param_generic_params;
 use crate::infer_node_semantic_decl;
 use crate::semantic::semantic_info::infer_token_semantic_decl;
 pub use instantiate_type::get_keyof_members;
@@ -57,18 +59,15 @@ pub fn get_tpl_ref_extend_type(
             match tpl_ref.get_tpl_id() {
                 GenericTplId::Func(tpl_id) => {
                     if let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl {
-                        let decl = db.get_decl_index().get_decl(&decl_id)?;
-                        match decl.extra {
-                            LuaDeclExtra::Param { signature_id, .. } => {
-                                let signature = db.get_signature_index().get(&signature_id)?;
-                                if let Some(generic_param) =
-                                    signature.generic_params.get(tpl_id as usize)
-                                {
-                                    return generic_param.constraint.clone();
-                                }
-                            }
-                            _ => return None,
-                        }
+                        let decl = find_compilation_decl_by_position(
+                            db,
+                            decl_id.file_id,
+                            decl_id.position,
+                        )?;
+                        let generic_params = find_compilation_param_generic_params(db, &decl)?;
+                        return generic_params
+                            .get(tpl_id as usize)
+                            .and_then(|generic_param| generic_param.constraint.clone());
                     }
                     None
                 }

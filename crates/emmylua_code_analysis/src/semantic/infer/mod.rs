@@ -35,6 +35,7 @@ use smol_str::SmolStr;
 use crate::{
     InFiled, InferGuard, LuaMemberKey, VariadicType,
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
+    find_compilation_decl_by_position,
 };
 
 use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
@@ -133,11 +134,24 @@ fn infer_literal_expr(db: &DbIndex, config: &LuaInferCache, expr: LuaLiteralExpr
                 .get_local_reference(&file_id)
                 .and_then(|file_ref| file_ref.get_decl_id(&range));
 
-            let decl_type = match decl_id.and_then(|id| db.get_decl_index().get_decl(&id)) {
-                Some(decl) if decl.is_global() => LuaType::Any,
-                Some(decl) if decl.is_param() => {
-                    let base = infer_param(db, decl).unwrap_or(LuaType::Unknown);
-                    LuaType::Variadic(VariadicType::Base(base).into())
+            let decl_type = match decl_id.and_then(|id| {
+                find_compilation_decl_by_position(db, id.file_id, id.position)
+                    .map(|decl| (id, decl))
+            }) {
+                Some((_, decl))
+                    if matches!(decl.summary.kind, crate::SalsaDeclKindSummary::Global) =>
+                {
+                    LuaType::Any
+                }
+                Some((decl_id, decl))
+                    if matches!(decl.summary.kind, crate::SalsaDeclKindSummary::Param { .. }) =>
+                {
+                    if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
+                        let base = infer_param(db, decl).unwrap_or(LuaType::Unknown);
+                        LuaType::Variadic(VariadicType::Base(base).into())
+                    } else {
+                        LuaType::Variadic(VariadicType::Base(LuaType::Any).into())
+                    }
                 }
                 _ => LuaType::Variadic(VariadicType::Base(LuaType::Any).into()),
             };

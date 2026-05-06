@@ -10,10 +10,11 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
-    AsyncState, DbIndex, FileId, InFiled, LuaAliasCallKind, LuaAliasCallType, LuaArrayLen,
-    LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
-    LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus,
-    LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType, complete_type_generic_args,
+    AsyncState, DbIndex, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind,
+    LuaAliasCallType, LuaArrayLen, LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType,
+    LuaIndexAccessKey, LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType,
+    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, SalsaDocTypeRef, TypeOps, VariadicType,
+    complete_type_generic_args,
 };
 
 #[derive(Clone, Copy)]
@@ -127,7 +128,7 @@ fn infer_buildin_or_ref_type(
     ctx: DocTypeInferContext<'_>,
     name: &str,
     range: TextRange,
-    _node: &LuaDocType,
+    node: &LuaDocType,
 ) -> LuaType {
     let _position = range.start();
     match name {
@@ -145,12 +146,16 @@ fn infer_buildin_or_ref_type(
         "global" => LuaType::Global,
         "function" => LuaType::Function,
         "table" => {
-            if let Some(inst) = infer_special_table_type(ctx, _node) {
+            if let Some(inst) = infer_special_table_type(ctx, node) {
                 return inst;
             }
             LuaType::Table
         }
         _ => {
+            if let Some(tpl) = infer_signature_generic_tpl(ctx, node, name) {
+                return LuaType::TplRef(tpl);
+            }
+
             let file_id = ctx.file_id;
             let workspace_id = ctx.db.resolve_workspace_id(file_id);
             let type_id = if let Some(name_type_decl) =
@@ -180,6 +185,95 @@ fn infer_buildin_or_ref_type(
             }
         }
     }
+}
+
+fn infer_signature_generic_tpl(
+    ctx: DocTypeInferContext<'_>,
+    node: &LuaDocType,
+    name: &str,
+) -> Option<Arc<GenericTpl>> {
+    let owner_offset = find_signature_doc_owner_offset(node)?;
+    let signature_index = ctx
+        .db
+        .get_summary_db()
+        .semantic()
+        .file()
+        .signature_explain_index(ctx.file_id)?;
+    let signature = signature_index.signatures.iter().find(|signature| {
+        signature
+            .doc_owners
+            .iter()
+            .any(|owner| owner.owner_offset == owner_offset)
+    })?;
+
+    for (idx, param) in signature
+        .generics
+        .iter()
+        .flat_map(|generic| generic.params.iter())
+        .enumerate()
+    {
+        if param.name != name {
+            continue;
+        }
+
+        let constraint = param
+            .bound_type
+            .as_ref()
+            .and_then(|info| infer_signature_doc_type_ref(ctx, &info.type_ref));
+        let default_type = param
+            .default_type
+            .as_ref()
+            .and_then(|info| infer_signature_doc_type_ref(ctx, &info.type_ref));
+
+        return Some(Arc::new(GenericTpl::new(
+            GenericTplId::Func(idx as u32),
+            SmolStr::new(name).into(),
+            constraint,
+            default_type,
+        )));
+    }
+
+    None
+}
+
+fn find_signature_doc_owner_offset(node: &LuaDocType) -> Option<rowan::TextSize> {
+    node.syntax().ancestors().find_map(|ancestor| {
+        matches!(
+            ancestor.kind().into(),
+            LuaSyntaxKind::DocTagGeneric
+                | LuaSyntaxKind::DocTagParam
+                | LuaSyntaxKind::DocTagReturn
+                | LuaSyntaxKind::DocTagReturnOverload
+                | LuaSyntaxKind::DocTagOperator
+        )
+        .then(|| ancestor.text_range().start())
+    })
+}
+
+fn infer_signature_doc_type_ref(
+    ctx: DocTypeInferContext<'_>,
+    type_ref: &SalsaDocTypeRef,
+) -> Option<LuaType> {
+    let type_key = match type_ref {
+        SalsaDocTypeRef::Node(type_key) => *type_key,
+        SalsaDocTypeRef::Incomplete => return None,
+    };
+    let resolved = ctx
+        .db
+        .get_summary_db()
+        .doc()
+        .resolved_type_by_key(ctx.file_id, type_key)?;
+    let syntax_tree = ctx.db.get_vfs().get_syntax_tree(&ctx.file_id)?;
+    let root = syntax_tree.get_red_root();
+    let doc_type = LuaDocType::cast(
+        resolved
+            .doc_type
+            .syntax_id
+            .to_lua_syntax_id()
+            .to_node_from_root(&root)?,
+    )?;
+
+    Some(infer_doc_type(ctx, &doc_type))
 }
 
 fn infer_special_table_type(

@@ -7,7 +7,9 @@ use emmylua_parser::{
 use crate::{
     FileId, InFiled, InferFailReason, LuaDeclExtra, LuaDeclId, LuaMemberFeature, LuaMemberId,
     LuaSignatureId,
-    compilation::analyzer::unresolve::UnResolveTableField,
+    compilation::{
+        analyzer::unresolve::UnResolveTableField, find_compilation_module_by_require_path,
+    },
     db_index::{LuaDecl, LuaMember, LuaMemberKey, LuaMemberOwner},
 };
 
@@ -344,7 +346,7 @@ pub fn analyze_call_expr(analyzer: &mut DeclAnalyzer, expr: LuaCallExpr) -> Opti
         {
             let module_path = string_token.get_value();
             let file_id = analyzer.get_file_id();
-            let module_info = analyzer.db.get_module_index().find_module(&module_path)?;
+            let module_info = find_compilation_module_by_require_path(analyzer.db, &module_path)?;
             let module_file_id = module_info.file_id;
             analyzer
                 .db

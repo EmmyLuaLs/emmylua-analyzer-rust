@@ -5,7 +5,8 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaType, TypeOps,
-    infer_expr, semantic::infer::narrow::get_var_expr_var_ref_id,
+    find_compilation_decl_by_position, infer_expr,
+    semantic::infer::narrow::get_var_expr_var_ref_id,
 };
 
 pub fn infer_array_member(
@@ -116,8 +117,8 @@ fn check_index_var_in_range(
         .get_reference_index()
         .get_var_reference_decl(&cache.get_file_id(), iter_var.get_range())?;
 
-    let decl = db.get_decl_index().get_decl(&decl_id)?;
-    let decl_syntax_id = decl.get_syntax_id();
+    let decl = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)?;
+    let decl_syntax_id = decl.summary.syntax_id?.to_lua_syntax_id();
     if !decl_syntax_id.is_token() {
         return None;
     }

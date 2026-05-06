@@ -5,7 +5,8 @@ use smol_str::SmolStr;
 use crate::{
     DbIndex, FileId, InferGuardRef, LuaGenericType, LuaInstanceType, LuaIntersectionType,
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
-    LuaTypeDeclId, LuaUnionType,
+    LuaTypeDeclId, LuaUnionType, find_compilation_decl_by_position,
+    resolve_projected_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -171,11 +172,8 @@ fn find_members_guard(
         LuaType::Instance(inst) => find_instance_members(db, inst, ctx, filter),
         LuaType::Namespace(ns) => find_namespace_members(db, ctx, ns, filter),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info
-                && let Some(export_type) = &module_info.export_type
-            {
-                return find_members_guard(db, export_type, ctx, filter);
+            if let Some(export_type) = resolve_projected_module_export_type(db, *file_id) {
+                return find_members_guard(db, &export_type, ctx, filter);
             }
 
             None
@@ -518,8 +516,9 @@ fn find_global_members(
     let mut members = Vec::new();
     let global_decls = db.get_global_index().get_all_global_decl_ids();
     for decl_id in global_decls {
-        if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
-            let member_key = LuaMemberKey::Name(decl.get_name().to_string().into());
+        if let Some(decl) = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)
+        {
+            let member_key = LuaMemberKey::Name(decl.summary.name.to_string().into());
 
             if should_include_member(&member_key, filter) {
                 let raw_type = db

@@ -6,7 +6,8 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::{
     CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
-    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact, infer_expr,
+    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
+    find_compilation_decl_by_position, infer_expr,
     semantic::{
         cache::{FlowAssignmentInfo, FlowConditionInfo, FlowMode, FlowVarCache},
         infer::{
@@ -444,9 +445,15 @@ impl<'a> FlowTypeEngine<'a> {
         };
 
         let var_id = match &assignment_info.vars[i] {
-            LuaVarExpr::NameExpr(name_expr) => {
+            LuaVarExpr::NameExpr(name_expr) => find_compilation_decl_by_position(
+                self.db,
+                self.cache.get_file_id(),
+                name_expr.get_position(),
+            )
+            .map(|decl| decl.decl_id.into())
+            .or_else(|| {
                 Some(LuaDeclId::new(self.cache.get_file_id(), name_expr.get_position()).into())
-            }
+            }),
             LuaVarExpr::IndexExpr(index_expr) => {
                 Some(LuaMemberId::new(index_expr.get_syntax_id(), self.cache.get_file_id()).into())
             }
@@ -1184,16 +1191,17 @@ fn try_infer_decl_initializer_type(
         return Ok(None);
     };
 
-    let decl = db
-        .get_decl_index()
-        .get_decl(&decl_id)
+    let decl = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)
         .ok_or(InferFailReason::None)?;
 
-    let Some(value_syntax_id) = decl.get_value_syntax_id() else {
+    let Some(value_syntax_id) = decl.summary.value_expr_syntax_id else {
         return Ok(None);
     };
 
-    let Some(node) = value_syntax_id.to_node_from_root(root.syntax()) else {
+    let Some(node) = value_syntax_id
+        .to_lua_syntax_id()
+        .to_node_from_root(root.syntax())
+    else {
         return Ok(None);
     };
 

@@ -18,6 +18,7 @@ pub enum SalsaDocTypeRef {
 pub struct SalsaDocTypeLoweredGenericParam {
     pub name: SmolStr,
     pub bound: SalsaDocTypeRef,
+    pub default: SalsaDocTypeRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -516,6 +517,7 @@ fn lower_generic_param(param: &SalsaDocGenericParamSummary) -> SalsaDocTypeLower
     SalsaDocTypeLoweredGenericParam {
         name: param.name.clone(),
         bound: lower_type_ref(param.type_offset),
+        default: lower_type_ref(param.default_type_offset),
     }
 }
 

@@ -5,7 +5,7 @@ use crate::handlers::completion::providers::env_provider::add_global_env;
 use crate::handlers::completion::providers::member_provider::add_completions_for_members;
 use crate::handlers::completion::providers::module_path_provider::add_modules;
 use crate::util::{find_comment_scope, find_ref_at, resolve_ref};
-use emmylua_code_analysis::{LuaType, WorkspaceId};
+use emmylua_code_analysis::{LuaType, WorkspaceId, resolve_projected_module_export_type};
 use emmylua_parser::{LuaAstNode, LuaDocDescription, LuaTokenKind};
 use emmylua_parser_desc::{LuaDescRefPathItem, parse_ref_target};
 use rowan::TextRange;
@@ -119,9 +119,9 @@ fn add_global_completions(builder: &mut CompletionBuilder) -> Option<()> {
 
     // Types in current module.
     if let Some(module) = builder.semantic_model.get_module()
-        && let Some(member_info_map) = builder
-            .semantic_model
-            .get_member_info_map(module.export_type.as_ref().unwrap_or(&LuaType::Nil))
+        && let Some(export_type) =
+            resolve_projected_module_export_type(builder.semantic_model.get_db(), module.file_id)
+        && let Some(member_info_map) = builder.semantic_model.get_member_info_map(&export_type)
     {
         seen_types.extend(member_info_map.values().flat_map(|members| {
             members.iter().filter_map(|member| match &member.typ {

@@ -1,15 +1,15 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, Profile};
+use emmylua_code_analysis::{FileId, Profile};
 use log::{debug, info};
 use lsp_types::{Diagnostic, Uri};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use super::{ClientProxy, ProgressTask, StatusBar};
+use super::{AnalysisLock, ClientProxy, ProgressTask, StatusBar};
 
 pub struct FileDiagnostic {
-    analysis: Arc<RwLock<EmmyLuaAnalysis>>,
+    analysis: Arc<AnalysisLock>,
     client: Arc<ClientProxy>,
     status_bar: Arc<StatusBar>,
     diagnostic_tokens: Arc<Mutex<HashMap<FileId, CancellationToken>>>,
@@ -18,7 +18,7 @@ pub struct FileDiagnostic {
 
 impl FileDiagnostic {
     pub fn new(
-        analysis: Arc<RwLock<EmmyLuaAnalysis>>,
+        analysis: Arc<AnalysisLock>,
         status_bar: Arc<StatusBar>,
         client: Arc<ClientProxy>,
     ) -> Self {
@@ -277,7 +277,7 @@ impl FileDiagnostic {
 }
 
 async fn push_workspace_diagnostic(
-    analysis: Arc<RwLock<EmmyLuaAnalysis>>,
+    analysis: Arc<AnalysisLock>,
     client_proxy: Arc<ClientProxy>,
     status_bar: Arc<StatusBar>,
     silent: bool,

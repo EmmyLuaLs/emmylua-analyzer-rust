@@ -23,6 +23,7 @@ use type_check_guard::TypeCheckGuard;
 use crate::{
     LuaUnionType,
     db_index::{DbIndex, LuaType},
+    resolve_projected_module_export_type,
     semantic::type_check::type_check_context::TypeCheckContext,
 };
 pub use sub_type::is_sub_type_of;
@@ -253,9 +254,8 @@ fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
         }
         LuaType::TypeGuard(_) => return Some(LuaType::Boolean),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id)?;
-            if let Some(export_type) = &module_info.export_type {
-                return Some(export_type.clone());
+            if let Some(export_type) = resolve_projected_module_export_type(db, *file_id) {
+                return Some(export_type);
             }
         }
         _ => {}

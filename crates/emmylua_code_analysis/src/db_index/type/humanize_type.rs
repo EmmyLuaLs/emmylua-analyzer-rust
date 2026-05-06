@@ -863,12 +863,9 @@ impl<'a> TypeHumanizer<'a> {
         str_tpl: &LuaStringTplType,
         w: &mut W,
     ) -> fmt::Result {
-        let prefix = str_tpl.get_prefix();
-        if prefix.is_empty() {
-            w.write_str(str_tpl.get_name())
-        } else {
-            write!(w, "{}`{}`", prefix, str_tpl.get_name())
-        }
+        w.write_str(str_tpl.get_prefix())?;
+        w.write_str(str_tpl.get_name())?;
+        w.write_str(str_tpl.get_suffix())
     }
 
     // ─── Variadic ───────────────────────────────────────────────────
@@ -1010,16 +1007,12 @@ impl<'a> TypeHumanizer<'a> {
     // ─── ModuleRef ──────────────────────────────────────────────────
 
     fn write_module_ref<W: Write>(&mut self, file_id: crate::FileId, w: &mut W) -> fmt::Result {
-        if let Some(module_info) = self.db.get_module_index().get_module(file_id) {
-            if let Some(export_type) = &module_info.export_type {
-                if export_type.is_module_ref() {
-                    return w.write_str("module 'recursive'");
-                }
-                let export_type = export_type.clone();
-                self.write_type(&export_type, w)
-            } else {
-                w.write_str("module 'unknown'")
+        if let Some(export_type) = crate::resolve_projected_module_export_type(self.db, file_id) {
+            if export_type.is_module_ref() {
+                return w.write_str("module 'recursive'");
             }
+
+            self.write_type(&export_type, w)
         } else {
             w.write_str("module 'unknown'")
         }

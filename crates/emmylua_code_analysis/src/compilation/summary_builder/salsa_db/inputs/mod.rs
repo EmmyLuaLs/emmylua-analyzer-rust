@@ -7,7 +7,7 @@ use emmylua_parser::{
 use hashbrown::HashMap;
 use rowan::NodeCache;
 
-use crate::{Emmyrc, FileId, InFiled, Vfs, Workspace};
+use crate::{Emmyrc, FileId, InFiled, Vfs, db_index::Workspace};
 
 use super::SalsaSummaryDatabase;
 

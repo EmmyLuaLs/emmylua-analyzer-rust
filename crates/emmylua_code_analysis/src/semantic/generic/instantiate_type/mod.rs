@@ -9,7 +9,7 @@ use std::{ops::Deref, sync::Arc};
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
     LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
-    LuaTypeNode, TypeOps,
+    LuaTypeNode, TypeOps, build_compilation_signature_doc_function,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
         VariadicType,
@@ -91,11 +91,19 @@ fn collect_callable_overload_groups_inner(
         }
         LuaType::DocFunction(doc_func) => groups.push(vec![doc_func.clone()]),
         LuaType::Signature(sig_id) => {
+            let projected = build_compilation_signature_doc_function(
+                db,
+                sig_id.get_file_id(),
+                sig_id.get_position(),
+            );
             let Some(signature) = db.get_signature_index().get(sig_id) else {
+                if let Some(projected) = projected {
+                    groups.push(vec![projected]);
+                }
                 return Ok(());
             };
             let mut overloads = signature.overloads.to_vec();
-            overloads.push(signature.to_doc_func_type());
+            overloads.push(projected.unwrap_or_else(|| signature.to_doc_func_type()));
             groups.push(overloads);
         }
         _ => {}

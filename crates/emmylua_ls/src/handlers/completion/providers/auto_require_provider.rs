@@ -1,5 +1,7 @@
 use emmylua_code_analysis::{
-    EmmyrcFilenameConvention, LuaSemanticDeclId, LuaType, ModuleInfo, check_module_visibility,
+    CompilationModuleInfo, EmmyrcFilenameConvention, LuaSemanticDeclId, LuaType,
+    SalsaSemanticTargetSummary, check_module_visibility, find_compilation_module_by_file_id,
+    resolve_projected_module_export_type,
 };
 use emmylua_parser::{LuaAstNode, LuaNameExpr};
 use lsp_types::{CompletionItem, Position};
@@ -57,30 +59,39 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
     let prefix = name_expr.get_name_text()?.to_lowercase();
     let emmyrc = builder.semantic_model.get_emmyrc();
     let file_conversion = emmyrc.completion.auto_require_naming_convention;
-    let version_number = emmyrc.runtime.version.to_lua_version_number();
     let file_id = builder.semantic_model.get_file_id();
     let module_index = builder.semantic_model.get_db().get_module_index();
-    let module_infos = module_index.get_module_infos();
     let range = builder.trigger_token.text_range();
     let document = builder.semantic_model.get_document();
     let lsp_position = document.to_lsp_range(range)?.start;
 
     let mut completions = Vec::new();
-    for module_info in module_infos {
-        if module_info.is_visible(&version_number)
-            && module_info.file_id != file_id
-            && module_info.export_type.is_some()
-            && !module_index.is_std(&module_info.file_id)
+    for legacy_module in module_index.get_module_infos() {
+        if legacy_module.file_id == file_id
+            || !legacy_module.is_visible(&emmyrc.runtime.version.to_lua_version_number())
         {
-            add_module_completion_item(
-                builder,
-                &prefix,
-                module_info,
-                file_conversion,
-                lsp_position,
-                &mut completions,
-            );
+            continue;
         }
+
+        let Some(module_info) = find_compilation_module_by_file_id(
+            builder.semantic_model.get_db(),
+            legacy_module.file_id,
+        ) else {
+            continue;
+        };
+
+        if !module_info.has_export_type() || module_index.is_std(&module_info.file_id) {
+            continue;
+        }
+
+        add_module_completion_item(
+            builder,
+            &prefix,
+            &module_info,
+            file_conversion,
+            lsp_position,
+            &mut completions,
+        );
     }
 
     for completion in completions {
@@ -93,7 +104,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
 fn add_module_completion_item(
     builder: &CompletionBuilder,
     prefix: &str,
-    module_info: &ModuleInfo,
+    module_info: &CompilationModuleInfo,
     file_conversion: EmmyrcFilenameConvention,
     position: Position,
     completions: &mut Vec<CompletionItem>,
@@ -102,7 +113,9 @@ fn add_module_completion_item(
         return None;
     }
 
-    let completion_name = module_name_convert(module_info, file_conversion);
+    let export_type =
+        resolve_projected_module_export_type(builder.semantic_model.get_db(), module_info.file_id);
+    let completion_name = module_name_convert(module_info, export_type.as_ref(), file_conversion);
     if !completion_name.to_lowercase().starts_with(prefix) {
         // 如果模块名不匹配, 则根据导出类型添加完成项
         add_completion_item_by_type(
@@ -120,11 +133,17 @@ fn add_module_completion_item(
         return None;
     }
 
-    let data = if let Some(property_id) = &module_info.semantic_id {
-        CompletionData::from_property_owner_id(builder, property_id.clone(), None)
-    } else {
-        None
-    };
+    let data = module_info
+        .semantic_target
+        .as_ref()
+        .and_then(|target| match target {
+            SalsaSemanticTargetSummary::Decl(decl_id) => Some(LuaSemanticDeclId::LuaDecl(
+                emmylua_code_analysis::LuaDeclId::new(module_info.file_id, decl_id.as_position()),
+            )),
+            SalsaSemanticTargetSummary::Signature(_) => None,
+            SalsaSemanticTargetSummary::Member(_) => None,
+        })
+        .and_then(|property_id| CompletionData::from_property_owner_id(builder, property_id, None));
     let completion_item = CompletionItem {
         label: completion_name.clone(),
         kind: Some(lsp_types::CompletionItemKind::MODULE),
@@ -152,19 +171,17 @@ fn add_module_completion_item(
 fn add_completion_item_by_type(
     builder: &CompletionBuilder,
     prefix: &str,
-    module_info: &ModuleInfo,
+    module_info: &CompilationModuleInfo,
     file_conversion: EmmyrcFilenameConvention,
     position: Position,
     completions: &mut Vec<CompletionItem>,
 ) -> Option<()> {
-    if !module_info.has_export_type() {
-        return None;
-    }
-
-    if let Some(export_type) = &module_info.export_type {
+    if let Some(export_type) =
+        resolve_projected_module_export_type(builder.semantic_model.get_db(), module_info.file_id)
+    {
         match export_type {
             LuaType::TableConst(_) | LuaType::Def(_) => {
-                let member_infos = builder.semantic_model.get_member_infos(export_type)?;
+                let member_infos = builder.semantic_model.get_member_infos(&export_type)?;
                 for member_info in member_infos {
                     let key_name = file_name_convert(
                         &member_info.key.to_path(),
@@ -227,7 +244,15 @@ fn add_completion_item_by_type(
                 }
             }
             LuaType::Signature(_) => {
-                let semantic_id = module_info.semantic_id.as_ref()?;
+                let semantic_id = match module_info.semantic_target.as_ref()? {
+                    SalsaSemanticTargetSummary::Decl(decl_id) => {
+                        LuaSemanticDeclId::LuaDecl(emmylua_code_analysis::LuaDeclId::new(
+                            module_info.file_id,
+                            decl_id.as_position(),
+                        ))
+                    }
+                    _ => return None,
+                };
                 if let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_id {
                     let decl = builder
                         .semantic_model

@@ -1,7 +1,8 @@
-use emmylua_code_analysis::{EmmyrcFilenameConvention, LuaType, ModuleInfo};
+use emmylua_code_analysis::{CompilationModuleInfo, EmmyrcFilenameConvention, LuaType};
 
 pub fn module_name_convert(
-    module_info: &ModuleInfo,
+    module_info: &CompilationModuleInfo,
+    export_type: Option<&LuaType>,
     file_conversion: EmmyrcFilenameConvention,
 ) -> String {
     let mut module_name = module_info.name.to_string();
@@ -18,7 +19,7 @@ pub fn module_name_convert(
         }
         EmmyrcFilenameConvention::Keep => {}
         EmmyrcFilenameConvention::KeepClass => {
-            if let Some(export_type) = &module_info.export_type
+            if let Some(export_type) = export_type
                 && let LuaType::Def(id) = export_type
             {
                 module_name = id.get_simple_name().to_string();

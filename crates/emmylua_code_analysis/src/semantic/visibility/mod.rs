@@ -7,8 +7,8 @@ use emmylua_parser::{
 };
 
 use crate::{
-    DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    ModuleInfo, SemanticModel, try_extract_signature_id_from_field,
+    CompilationModuleInfo, DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner,
+    LuaSemanticDeclId, LuaType, SemanticModel, try_extract_signature_id_from_field,
 };
 
 use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
@@ -258,11 +258,19 @@ fn check_member_name(
 
 pub fn check_module_visibility(
     semantic_model: &SemanticModel,
-    module_info: &ModuleInfo,
+    module_info: &CompilationModuleInfo,
 ) -> Option<bool> {
     let current_workspace_id = semantic_model
         .get_db()
         .get_module_index()
         .get_workspace_id(semantic_model.get_file_id())?;
-    Some(module_info.is_requireable_from(current_workspace_id))
+
+    Some(match module_info.visible {
+        crate::ModuleVisibility::Public | crate::ModuleVisibility::Default => true,
+        crate::ModuleVisibility::Hide => false,
+        crate::ModuleVisibility::Internal => {
+            (!module_info.workspace_id.is_library() && !current_workspace_id.is_library())
+                || module_info.workspace_id == current_workspace_id
+        }
+    })
 }

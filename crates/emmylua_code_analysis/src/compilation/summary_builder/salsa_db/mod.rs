@@ -9,7 +9,7 @@ use std::{fmt, path::PathBuf, sync::Arc};
 use hashbrown::HashMap;
 use lsp_types::Uri;
 
-use crate::{Emmyrc, FileId, Vfs, Workspace};
+use crate::{Emmyrc, FileId, Vfs, db_index::Workspace};
 
 pub use facade::{
     SalsaSummaryDocQueries, SalsaSummaryFileQueries, SalsaSummaryFlowQueries,
@@ -98,6 +98,34 @@ impl SalsaSummaryDatabase {
     pub fn clear(&mut self) {
         self.files.clear();
         self.workspaces = None;
+    }
+
+    pub fn file(&self) -> SalsaSummaryFileQueries<'_> {
+        SalsaSummaryFileQueries::new(self)
+    }
+
+    pub fn doc(&self) -> SalsaSummaryDocQueries<'_> {
+        SalsaSummaryDocQueries::new(self)
+    }
+
+    pub fn lexical(&self) -> SalsaSummaryLexicalQueries<'_> {
+        SalsaSummaryLexicalQueries::new(self)
+    }
+
+    pub fn flow(&self) -> SalsaSummaryFlowQueries<'_> {
+        SalsaSummaryFlowQueries::new(self)
+    }
+
+    pub fn module(&self) -> SalsaSummaryModuleQueries<'_> {
+        SalsaSummaryModuleQueries::new(self)
+    }
+
+    pub fn semantic(&self) -> SalsaSummarySemanticQueries<'_> {
+        SalsaSummarySemanticQueries::new(self)
+    }
+
+    pub fn types(&self) -> SalsaSummaryTypeQueries<'_> {
+        SalsaSummaryTypeQueries::new(self)
     }
 }
 
@@ -207,9 +235,5 @@ impl SalsaSummaryHost {
 
     pub fn types(&self) -> SalsaSummaryTypeQueries<'_> {
         SalsaSummaryTypeQueries::new(&self.db)
-    }
-
-    pub(crate) fn vfs(&self) -> &Vfs {
-        &self.vfs
     }
 }

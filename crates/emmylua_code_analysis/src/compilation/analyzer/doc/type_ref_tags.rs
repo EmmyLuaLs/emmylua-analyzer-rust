@@ -14,7 +14,7 @@ use super::{
 use crate::{
     InFiled, JsonSchemaFile, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
     SignatureReturnStatus, TypeOps,
-    compilation::analyzer::common::bind_type,
+    compilation::{analyzer::common::bind_type, find_compilation_module_by_require_path},
     db_index::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaMemberId,
         LuaOperator, LuaSemanticDeclId, LuaSignatureId, LuaType,
@@ -383,10 +383,7 @@ pub fn analyze_overload(analyzer: &mut DocAnalyzer, tag: LuaDocTagOverload) -> O
 
 pub fn analyze_module(analyzer: &mut DocAnalyzer, tag: LuaDocTagModule) -> Option<()> {
     let module_path = tag.get_string_token()?.get_value();
-    let module_info = analyzer
-        .get_db()
-        .get_module_index()
-        .find_module(&module_path)?;
+    let module_info = find_compilation_module_by_require_path(analyzer.get_db(), &module_path)?;
     let module_file_id = module_info.file_id;
     let owner_id = get_owner_id_or_report(analyzer, &tag)?;
     let module_ref = LuaType::ModuleRef(module_file_id);

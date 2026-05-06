@@ -989,12 +989,12 @@ fn is_pairs_call(context: &mut TplContext) -> Option<bool> {
     let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl else {
         return None;
     };
-    let decl = context.db.get_decl_index().get_decl(&decl_id)?;
-    if !context.db.get_module_index().is_std(&decl.get_file_id()) {
+    let decl =
+        crate::find_compilation_decl_by_position(context.db, decl_id.file_id, decl_id.position)?;
+    if !context.db.get_module_index().is_std(&decl.file_id) {
         return None;
     }
-    let name = decl.get_name();
-    if name != "pairs" {
+    if decl.summary.name != "pairs" {
         return None;
     }
     Some(true)

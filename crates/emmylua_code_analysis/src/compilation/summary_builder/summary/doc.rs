@@ -27,6 +27,7 @@ pub struct SalsaDocOwnerSummary {
 pub struct SalsaDocGenericParamSummary {
     pub name: SmolStr,
     pub type_offset: Option<SalsaDocTypeNodeKey>,
+    pub default_type_offset: Option<SalsaDocTypeNodeKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]

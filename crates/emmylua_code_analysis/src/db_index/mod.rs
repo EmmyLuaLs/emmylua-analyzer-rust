@@ -15,9 +15,9 @@ mod signature;
 mod traits;
 mod r#type;
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::{Emmyrc, FileId, Vfs};
+use crate::{Emmyrc, FileId, SalsaSummaryDatabase, Vfs};
 pub use declaration::*;
 pub use dependency::LuaDependencyIndex;
 pub use diagnostic::{AnalyzeError, DiagnosticAction, DiagnosticActionKind, DiagnosticIndex};
@@ -52,6 +52,7 @@ pub struct DbIndex {
     metatable_index: LuaMetatableIndex,
     global_index: LuaGlobalIndex,
     json_schema_index: JsonSchemaIndex,
+    summary_db: RwLock<SalsaSummaryDatabase>,
     emmyrc: Arc<Emmyrc>,
 }
 
@@ -80,6 +81,7 @@ impl DbIndex {
             metatable_index: LuaMetatableIndex::new(),
             global_index: LuaGlobalIndex::new(),
             json_schema_index: JsonSchemaIndex::new(),
+            summary_db: RwLock::new(SalsaSummaryDatabase::default()),
             emmyrc: Arc::new(Emmyrc::default()),
         }
     }
@@ -210,9 +212,46 @@ impl DbIndex {
         &mut self.json_schema_index
     }
 
+    fn summary_db_read(&self) -> RwLockReadGuard<'_, SalsaSummaryDatabase> {
+        match self.summary_db.read() {
+            Ok(guard) => guard,
+            Err(err) => err.into_inner(),
+        }
+    }
+
+    fn summary_db_write(&self) -> RwLockWriteGuard<'_, SalsaSummaryDatabase> {
+        match self.summary_db.write() {
+            Ok(guard) => guard,
+            Err(err) => err.into_inner(),
+        }
+    }
+
+    pub fn get_summary_db(&self) -> RwLockReadGuard<'_, SalsaSummaryDatabase> {
+        self.summary_db_read()
+    }
+
+    pub fn sync_summary_workspaces(&mut self) {
+        let workspaces = self.modules_index.get_workspaces().to_vec();
+        self.summary_db_write().set_workspaces(workspaces);
+    }
+
+    pub fn sync_summary_file(&mut self, file_id: FileId) -> bool {
+        self.summary_db_write()
+            .set_file_from_vfs(&self.vfs, file_id)
+    }
+
+    pub fn sync_summary_files(&mut self, file_ids: &[FileId]) -> Vec<FileId> {
+        file_ids
+            .iter()
+            .copied()
+            .filter(|file_id| self.sync_summary_file(*file_id))
+            .collect()
+    }
+
     pub fn update_config(&mut self, config: Arc<Emmyrc>) {
         self.vfs.update_config(config.clone());
         self.modules_index.update_config(config.clone());
+        self.summary_db_write().update_config(config.clone());
         self.emmyrc = config;
     }
 
@@ -247,6 +286,7 @@ impl LuaIndex for DbIndex {
         self.metatable_index.remove(file_id);
         self.global_index.remove(file_id);
         self.json_schema_index.remove(file_id);
+        self.summary_db_write().remove_file(file_id);
     }
 
     fn clear(&mut self) {
@@ -264,5 +304,6 @@ impl LuaIndex for DbIndex {
         self.metatable_index.clear();
         self.global_index.clear();
         self.json_schema_index.clear();
+        self.summary_db_write().clear();
     }
 }

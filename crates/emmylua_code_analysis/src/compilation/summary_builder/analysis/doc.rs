@@ -515,6 +515,9 @@ fn collect_generic_params(
                 type_offset: generic_decl
                     .get_constraint_type()
                     .map(SalsaDocTypeNodeKey::from),
+                default_type_offset: generic_decl
+                    .get_default_type()
+                    .map(SalsaDocTypeNodeKey::from),
             })
         })
         .collect()

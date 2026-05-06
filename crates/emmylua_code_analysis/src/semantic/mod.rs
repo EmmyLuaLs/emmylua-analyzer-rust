@@ -45,7 +45,10 @@ use visibility::check_visibility;
 
 pub use crate::semantic::member::find_members_with_key;
 use crate::semantic::type_check::check_type_compact_detail;
-use crate::{Emmyrc, LuaDocument, LuaSemanticDeclId, ModuleInfo, db_index::LuaTypeDeclId};
+use crate::{
+    CompilationModuleInfo, Emmyrc, LuaDocument, LuaSemanticDeclId, db_index::LuaTypeDeclId,
+    find_compilation_module_by_file_id,
+};
 use crate::{
     FileId,
     db_index::{DbIndex, LuaType},
@@ -100,8 +103,8 @@ impl<'a> SemanticModel<'a> {
             .expect("always exists")
     }
 
-    pub fn get_module(&self) -> Option<&ModuleInfo> {
-        self.db.get_module_index().get_module(self.file_id)
+    pub fn get_module(&self) -> Option<CompilationModuleInfo> {
+        find_compilation_module_by_file_id(self.db, self.file_id)
     }
 
     pub fn get_document_by_file_id(&'_ self, file_id: FileId) -> Option<LuaDocument<'_>> {

@@ -6,7 +6,7 @@ use std::{ops::Deref, sync::Arc};
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{
     DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
-    LuaTypeNode,
+    LuaTypeNode, build_compilation_signature_doc_function,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
     semantic::{
@@ -111,10 +111,17 @@ pub fn as_doc_function_type(
     Ok(match callable_type {
         LuaType::DocFunction(doc_func) => Some(doc_func.clone()),
         LuaType::Signature(sig_id) => Some(
-            db.get_signature_index()
-                .get(sig_id)
-                .ok_or(InferFailReason::None)?
-                .to_doc_func_type(),
+            build_compilation_signature_doc_function(
+                db,
+                sig_id.get_file_id(),
+                sig_id.get_position(),
+            )
+            .or_else(|| {
+                db.get_signature_index()
+                    .get(sig_id)
+                    .map(|signature| signature.to_doc_func_type())
+            })
+            .ok_or(InferFailReason::None)?,
         ),
         _ => None,
     })

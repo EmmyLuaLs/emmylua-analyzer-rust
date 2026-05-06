@@ -56,6 +56,7 @@ pub struct SalsaSignatureTypeExplainSummary {
 pub struct SalsaSignatureGenericParamExplainSummary {
     pub name: SmolStr,
     pub bound_type: Option<SalsaSignatureTypeExplainSummary>,
+    pub default_type: Option<SalsaSignatureTypeExplainSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -626,6 +627,9 @@ fn build_signature_explain(
                 .map(|param| SalsaSignatureGenericParamExplainSummary {
                     name: param.name.clone(),
                     bound_type: param.type_offset.map(|type_offset| {
+                        build_type_explain(SalsaDocTypeRef::Node(type_offset), support_index)
+                    }),
+                    default_type: param.default_type_offset.map(|type_offset| {
                         build_type_explain(SalsaDocTypeRef::Node(type_offset), support_index)
                     }),
                 })

@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, ModuleVisibility, VirtualWorkspace};
+    use crate::{
+        DiagnosticCode, ModuleVisibility, SalsaModuleExportSummary, SalsaSemanticTargetSummary,
+        VirtualWorkspace,
+    };
 
     #[test]
     fn test_module_annotation() {
@@ -169,5 +172,61 @@ mod test {
                 export.hidden = 1
                 "#,
         ));
+    }
+
+    #[test]
+    fn test_compilation_module_projection_resolves_export_query() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def_file(
+            "a.lua",
+            r#"
+                local export = {}
+                return export
+                "#,
+        );
+
+        let module = ws
+            .analysis
+            .compilation
+            .find_module_by_file_id(file_id)
+            .unwrap();
+
+        assert_eq!(module.full_module_name, "a");
+        assert!(matches!(
+            module.export,
+            Some(SalsaModuleExportSummary::LocalDecl { .. })
+                | Some(SalsaModuleExportSummary::Table { .. })
+        ));
+        assert!(matches!(
+            module.semantic_target,
+            Some(SalsaSemanticTargetSummary::Decl(_))
+                | Some(SalsaSemanticTargetSummary::Member(_))
+                | Some(SalsaSemanticTargetSummary::Signature(_))
+        ));
+        assert!(module.has_export_type());
+    }
+
+    #[test]
+    fn test_compilation_module_projection_finds_require_path() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def_file(
+            "nested/mod.lua",
+            r#"
+                local export = {}
+                return export
+                "#,
+        );
+
+        let module = ws
+            .analysis
+            .compilation
+            .find_module_by_require_path("nested.mod")
+            .unwrap();
+
+        assert_eq!(module.file_id, file_id);
+        assert_eq!(module.name, "mod");
+        assert!(module.has_export_type());
     }
 }

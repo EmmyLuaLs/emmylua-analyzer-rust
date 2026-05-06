@@ -2,11 +2,14 @@ use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaLiteralToken,
     LuaNameExpr, LuaStat, LuaSyntaxKind,
 };
+use rowan::TextSize;
 
 use crate::{
-    DbIndex, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType, LuaIntersectionType,
-    LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType, LuaTypeCache,
-    LuaTypeDeclId, LuaUnionType, TypeOps,
+    DbIndex, FileId, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType,
+    LuaIntersectionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType,
+    LuaTypeCache, LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, TypeOps,
+    find_compilation_decl_by_position, find_compilation_module_by_require_path,
+    resolve_projected_module_export_type,
     semantic::{
         infer::find_self_decl_or_member_id, member::get_buildin_type_map_type_id,
         semantic_info::resolve_global_decl_id,
@@ -25,9 +28,8 @@ pub fn infer_expr_semantic_decl(
     level: SemanticDeclLevel,
 ) -> Option<LuaSemanticDeclId> {
     let file_id = cache.get_file_id();
-    let maybe_decl_id = LuaDeclId::new(file_id, expr.get_position());
-    if db.get_decl_index().get_decl(&maybe_decl_id).is_some() {
-        return Some(LuaSemanticDeclId::LuaDecl(maybe_decl_id));
+    if let Some(decl) = find_compilation_decl_by_position(db, file_id, expr.get_position()) {
+        return Some(LuaSemanticDeclId::LuaDecl(decl.decl_id));
     };
 
     match expr {
@@ -48,7 +50,7 @@ pub fn infer_expr_semantic_decl(
             let member_id = LuaMemberId::new(expr.get_syntax_id(), file_id);
             if db.get_member_index().get_member(&member_id).is_some() {
                 return Some(LuaSemanticDeclId::Member(member_id));
-            };
+            }
 
             None
         }
@@ -69,6 +71,7 @@ fn infer_name_expr_semantic_decl(
     }
 
     let decl_id = get_name_decl_id(db, cache, &name, name_expr.clone())?;
+    let decl_info = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position);
     let decl = db.get_decl_index().get_decl(&decl_id)?;
     if semantic_guard.reached_limit() {
         return Some(LuaSemanticDeclId::LuaDecl(decl_id));
@@ -88,10 +91,11 @@ fn infer_name_expr_semantic_decl(
         return Some(LuaSemanticDeclId::LuaDecl(decl_id));
     }
 
-    if let Some(value_expr_id) = decl.get_value_syntax_id() {
+    if let Some(value_expr_id) = decl_info.and_then(|decl| decl.summary.value_expr_syntax_id) {
+        let value_expr_id = value_expr_id.to_lua_syntax_id();
         match value_expr_id.get_kind() {
             LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr if remove_nil_type.is_function() => {
-                let file_id = decl.get_file_id();
+                let file_id = decl_id.file_id;
                 let tree = db.get_vfs().get_syntax_tree(&file_id)?;
                 // second infer
                 let value_expr = LuaExpr::cast(value_expr_id.to_node(tree)?)?;
@@ -106,7 +110,7 @@ fn infer_name_expr_semantic_decl(
                 }
             }
             LuaSyntaxKind::RequireCallExpr => {
-                let file_id = decl.get_file_id();
+                let file_id = decl_id.file_id;
                 let tree = db.get_vfs().get_syntax_tree(&file_id)?;
                 let call_expr = LuaCallExpr::cast(value_expr_id.to_node(tree)?)?;
                 if call_expr.is_require() {
@@ -141,8 +145,34 @@ fn infer_require_module_semantic_decl(
         _ => return None,
     };
 
-    let module_info = db.get_module_index().find_module(&module_path)?;
-    module_info.semantic_id.clone()
+    let module_info = find_compilation_module_by_require_path(db, &module_path)?;
+    match module_info.semantic_target? {
+        SalsaSemanticTargetSummary::Decl(decl_id) => Some(LuaSemanticDeclId::LuaDecl(
+            find_compilation_decl_by_position(db, module_info.file_id, decl_id.as_position())
+                .map(|decl| decl.decl_id)
+                .unwrap_or_else(|| LuaDeclId::new(module_info.file_id, decl_id.as_position())),
+        )),
+        SalsaSemanticTargetSummary::Signature(signature_offset) => {
+            infer_signature_semantic_decl(db, module_info.file_id, signature_offset)
+        }
+        SalsaSemanticTargetSummary::Member(_) => None,
+    }
+}
+
+fn infer_signature_semantic_decl(
+    db: &DbIndex,
+    file_id: FileId,
+    signature_offset: TextSize,
+) -> Option<LuaSemanticDeclId> {
+    let root = db.get_vfs().get_syntax_tree(&file_id)?.get_red_root();
+    let closure = root
+        .descendants()
+        .filter_map(LuaClosureExpr::cast)
+        .find(|closure| closure.get_position() == signature_offset)?;
+
+    Some(LuaSemanticDeclId::Signature(
+        crate::LuaSignatureId::from_closure(file_id, &closure),
+    ))
 }
 
 fn get_name_decl_id(
@@ -158,8 +188,8 @@ fn get_name_decl_id(
     let decl_id = local_ref.get_decl_id(&range);
 
     if let Some(decl_id) = decl_id {
-        let decl = db.get_decl_index().get_decl(&decl_id)?;
-        if decl.is_local() {
+        let decl = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)?;
+        if !matches!(decl.summary.kind, crate::SalsaDeclKindSummary::Global) {
             return Some(decl_id);
         }
     }
@@ -305,12 +335,12 @@ fn infer_member_semantic_decl_by_member_key(
         ),
         LuaType::Global => infer_global_member_semantic_decl_by_member_key(db, cache, member_key),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id)?;
-            if let Some(export_type) = &module_info.export_type {
+            let export_type = resolve_projected_module_export_type(db, *file_id)?;
+            if !matches!(export_type, LuaType::Signature(_)) {
                 infer_member_semantic_decl_by_member_key(
                     db,
                     cache,
-                    export_type,
+                    &export_type,
                     member_key,
                     semantic_guard.next_level()?,
                 )

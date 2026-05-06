@@ -1,14 +1,18 @@
 mod analyzer;
+mod decl;
+mod module;
 mod summary_builder;
 mod test;
 
 use std::sync::Arc;
 
 use crate::{
-    Emmyrc, FileId, InFiled, InferFailReason, LuaIndex, LuaInferCache, LuaType, db_index::DbIndex,
+    Emmyrc, FileId, InferFailReason, LuaIndex, LuaInferCache, LuaType, db_index::DbIndex,
     semantic::SemanticModel,
 };
+pub use decl::*;
 use emmylua_parser::{LuaBlock, LuaExpr};
+pub use module::*;
 pub use summary_builder::*;
 
 pub(crate) fn analyze_func_body_missing_return_flags_with<F>(
@@ -19,6 +23,20 @@ where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     analyzer::analyze_func_body_missing_return_flags_with(body, infer_expr_type)
+}
+
+pub fn find_compilation_module_by_require_path(
+    db: &DbIndex,
+    module_path: &str,
+) -> Option<CompilationModuleInfo> {
+    find_module_by_require_path(db, module_path)
+}
+
+pub fn find_compilation_module_by_file_id(
+    db: &DbIndex,
+    file_id: FileId,
+) -> Option<CompilationModuleInfo> {
+    project_module_info(db, file_id)
 }
 
 #[derive(Debug)]
@@ -50,23 +68,25 @@ impl LuaCompilation {
         ))
     }
 
-    pub fn update_index(&mut self, file_ids: Vec<FileId>) {
-        let mut need_analyzed_files = vec![];
-        for file_id in file_ids {
-            let tree = match self.db.get_vfs().get_syntax_tree(&file_id) {
-                Some(tree) => tree,
-                None => {
-                    log::warn!("file_id {:?} not found in vfs", file_id);
-                    continue;
-                }
-            };
-            need_analyzed_files.push(InFiled {
-                file_id,
-                value: tree.get_chunk_node(),
-            });
-        }
+    pub fn find_module_by_file_id(&self, file_id: FileId) -> Option<CompilationModuleInfo> {
+        project_module_info(&self.db, file_id)
+    }
 
-        analyzer::analyze(&mut self.db, need_analyzed_files, self.emmyrc.clone());
+    pub fn find_module_by_require_path(&self, module_path: &str) -> Option<CompilationModuleInfo> {
+        find_module_by_require_path(&self.db, module_path)
+    }
+
+    pub fn legacy_db(&self) -> &DbIndex {
+        &self.db
+    }
+
+    pub fn update_index(&mut self, file_ids: Vec<FileId>) {
+        self.db.sync_summary_workspaces();
+        for file_id in file_ids {
+            if !self.db.sync_summary_file(file_id) {
+                log::warn!("file_id {:?} not found in vfs for summary sync", file_id);
+            }
+        }
     }
 
     pub fn remove_index(&mut self, file_ids: Vec<FileId>) {
