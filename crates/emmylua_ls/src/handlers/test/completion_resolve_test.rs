@@ -123,4 +123,38 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_version_visibility() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@meta
+                CO = {}
+
+                --- @version 5.1, JIT
+                ---
+                --- 5.1/jit
+                --- @return thread?
+                --- @nodiscard
+                function CO.running() end
+
+                --- @version > 5.2
+                --- 5.2+
+                --- @return thread, boolean
+                --- @nodiscard
+                function CO.running() end
+                "#,
+        );
+        check!(ws.check_completion_resolve(
+            r#"
+            CO.running<??>
+            "#,
+            VirtualCompletionResolveItem {
+                detail: "function CO.running() -> thread, boolean".to_string(),
+                documentation: Some("\n5.2+".to_string()),
+            },
+        ));
+        Ok(())
+    }
 }
