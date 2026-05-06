@@ -27,7 +27,7 @@ use crate::{
         },
         member::get_buildin_type_map_type_id,
         member::intersect_member_types,
-        type_check::{self, check_type_compact},
+        type_check::check_type_compact,
     },
 };
 
@@ -957,7 +957,7 @@ fn infer_member_by_index_object(
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
         let expr_type = infer_expr(db, cache, expr.clone())?;
         for (key, field) in access_member_type {
-            if type_check::check_type_compact(db, key, &expr_type).is_ok() {
+            if check_type_compact(db, key, &expr_type).is_ok() {
                 return Ok(field.clone());
             }
         }

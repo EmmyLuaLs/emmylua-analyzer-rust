@@ -172,7 +172,7 @@ impl PendingConditionNarrow {
                         InferConditionFlow::TrueCondition => LuaType::from_vec(result),
                         InferConditionFlow::FalseCondition => {
                             let target = LuaType::from_vec(result);
-                            crate::TypeOps::Remove.apply(db, &antecedent_type, &target)
+                            TypeOps::Remove.apply(db, &antecedent_type, &target)
                         }
                     }
                 }
@@ -235,7 +235,7 @@ impl PendingConditionNarrow {
             } => match condition_flow.clone() {
                 InferConditionFlow::TrueCondition => {
                     let maybe_type =
-                        crate::TypeOps::Intersect.apply(db, &antecedent_type, right_expr_type);
+                        TypeOps::Intersect.apply(db, &antecedent_type, right_expr_type);
                     if maybe_type.is_never() {
                         antecedent_type
                     } else {
@@ -243,7 +243,7 @@ impl PendingConditionNarrow {
                     }
                 }
                 InferConditionFlow::FalseCondition => {
-                    crate::TypeOps::Remove.apply(db, &antecedent_type, right_expr_type)
+                    TypeOps::Remove.apply(db, &antecedent_type, right_expr_type)
                 }
             },
             PendingConditionNarrow::TypeGuard {
@@ -254,7 +254,7 @@ impl PendingConditionNarrow {
                     narrow_type_guard(db, antecedent_type, narrow.clone()).unwrap_or(narrow.clone())
                 }
                 InferConditionFlow::FalseCondition => {
-                    crate::TypeOps::Remove.apply(db, &antecedent_type, narrow)
+                    TypeOps::Remove.apply(db, &antecedent_type, narrow)
                 }
             },
             PendingConditionNarrow::NarrowTo(target_type) => {

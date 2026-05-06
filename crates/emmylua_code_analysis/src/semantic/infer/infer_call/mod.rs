@@ -1,21 +1,26 @@
 use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
+use hashbrown::HashSet;
 use rowan::TextRange;
 
 use super::{
     super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
     InferFailReason, InferResult,
 };
+use crate::semantic::overload_resolve::callable_accepts_args;
 use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait,
+    LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait, VariadicType,
 };
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::{TypeSubstitutor, get_tpl_ref_extend_type, instantiate_doc_function},
+        generic::{
+            TypeSubstitutor, collect_callable_overload_groups, get_tpl_ref_extend_type,
+            instantiate_doc_function,
+        },
         infer::narrow::get_type_at_call_expr_inline_cast,
     },
 };
@@ -89,6 +94,13 @@ pub fn infer_call_expr_func(
             infer_guard,
             args_count,
         ),
+        LuaType::Function => Ok(Arc::new(LuaFunctionType::new(
+            AsyncState::None,
+            false,
+            true,
+            vec![("...".to_string(), Some(LuaType::Unknown))],
+            LuaType::Variadic(VariadicType::Base(LuaType::Unknown).into()),
+        ))),
         LuaType::Intersection(intersection) => infer_intersection(
             db,
             cache,
@@ -104,18 +116,7 @@ pub fn infer_call_expr_func(
             vec![],
             LuaType::Any,
         ))),
-        LuaType::Union(union) => {
-            // 此时我们将其视为泛型实例化联合体
-            if union
-                .into_vec()
-                .iter()
-                .all(|t| matches!(t, LuaType::DocFunction(_)))
-            {
-                infer_generic_doc_function_union(db, cache, union, call_expr.clone(), args_count)
-            } else {
-                infer_union(db, cache, union, call_expr.clone(), args_count)
-            }
-        }
+        LuaType::Union(union) => infer_union(db, cache, union, call_expr.clone(), args_count),
         _ => Err(InferFailReason::None),
     };
 
@@ -198,23 +199,60 @@ fn infer_doc_function(
     Ok(func.clone().into())
 }
 
-fn infer_generic_doc_function_union(
+fn filter_callable_overloads_by_call_args(
     db: &DbIndex,
     cache: &mut LuaInferCache,
-    union: &LuaUnionType,
-    call_expr: LuaCallExpr,
+    overloads: Vec<Arc<LuaFunctionType>>,
+    call_expr: &LuaCallExpr,
     args_count: Option<usize>,
-) -> InferCallFuncResult {
-    let overloads = union
-        .into_vec()
-        .iter()
-        .filter_map(|typ| match typ {
-            LuaType::DocFunction(f) => Some(f.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    strict_arg_filter: bool,
+) -> Result<Vec<Arc<LuaFunctionType>>, InferFailReason> {
+    let args = call_expr.get_args_list().ok_or(InferFailReason::None)?;
+    let expr_types = super::infer_expr_list_types(
+        db,
+        cache,
+        &args.get_args().collect::<Vec<_>>(),
+        args_count,
+        |db, cache, expr| Ok(infer_expr(db, cache, expr).unwrap_or(LuaType::Unknown)),
+    )?
+    .into_iter()
+    .map(|(ty, _)| ty)
+    .collect::<Vec<_>>();
+    let is_colon_call = call_expr.is_colon_call();
 
-    resolve_signature(db, cache, overloads, call_expr.clone(), false, args_count)
+    Ok(overloads
+        .into_iter()
+        .filter(|func| {
+            let mut callable_tpls = HashSet::new();
+            func.visit_type(&mut |ty| match ty {
+                LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
+                    callable_tpls.insert(generic_tpl.get_tpl_id());
+                }
+                LuaType::StrTplRef(str_tpl) => {
+                    callable_tpls.insert(str_tpl.get_tpl_id());
+                }
+                _ => {}
+            });
+
+            if callable_tpls.is_empty() && !strict_arg_filter {
+                return true;
+            }
+
+            let has_tpls = !callable_tpls.is_empty();
+            let mut substitutor = TypeSubstitutor::new();
+            substitutor.add_need_infer_tpls(callable_tpls);
+            let match_func = if has_tpls {
+                match instantiate_doc_function(db, func, &substitutor) {
+                    LuaType::DocFunction(doc_func) => doc_func,
+                    _ => func.clone(),
+                }
+            } else {
+                func.clone()
+            };
+
+            callable_accepts_args(db, &match_func, &expr_types, is_colon_call, args_count)
+        })
+        .collect())
 }
 
 fn infer_signature_doc_function(
@@ -232,40 +270,11 @@ fn infer_signature_doc_function(
         return Err(InferFailReason::UnResolveSignatureReturn(signature_id));
     }
     let is_generic = signature_is_generic(db, cache, &signature, &call_expr).unwrap_or(false);
-    let overloads = &signature.overloads;
-    if overloads.is_empty() {
-        let mut fake_doc_function = LuaFunctionType::new(
-            signature.async_state,
-            signature.is_colon_define,
-            signature.is_vararg,
-            signature.get_type_params(),
-            signature.get_return_type(),
-        );
-        if is_generic {
-            fake_doc_function = instantiate_func_generic(db, cache, &fake_doc_function, call_expr)?;
-        }
+    let mut overload_groups = Vec::new();
+    collect_callable_overload_groups(db, &LuaType::Signature(signature_id), &mut overload_groups)?;
+    let overloads = overload_groups.into_iter().flatten().collect::<Vec<_>>();
 
-        Ok(fake_doc_function.into())
-    } else {
-        let mut new_overloads = signature.overloads.clone();
-        let fake_doc_function = Arc::new(LuaFunctionType::new(
-            signature.async_state,
-            signature.is_colon_define,
-            signature.is_vararg,
-            signature.get_type_params(),
-            signature.get_return_type(),
-        ));
-        new_overloads.push(fake_doc_function);
-
-        resolve_signature(
-            db,
-            cache,
-            new_overloads,
-            call_expr.clone(),
-            is_generic,
-            args_count,
-        )
-    }
+    resolve_signature(db, cache, overloads, call_expr, is_generic, args_count)
 }
 
 fn infer_type_doc_function(
@@ -492,74 +501,87 @@ fn infer_union(
     call_expr: LuaCallExpr,
     args_count: Option<usize>,
 ) -> InferCallFuncResult {
-    // 此时一般是 signature + doc_function 的联合体
-    let mut all_overloads = Vec::new();
-    let mut base_signatures = Vec::new();
+    let mut returns = Vec::new();
+    let mut first_func = None;
+    let mut fallback_overloads = Vec::new();
+    let mut need_resolve = None;
 
     for ty in union.into_vec() {
-        match ty {
-            LuaType::Signature(signature_id) => {
-                if let Some(signature) = db.get_signature_index().get(&signature_id) {
-                    // 处理 overloads
-                    let overloads = if signature.is_generic() {
-                        signature
-                            .overloads
-                            .iter()
-                            .map(|func| {
-                                Ok(Arc::new(instantiate_func_generic(
-                                    db,
-                                    cache,
-                                    func,
-                                    call_expr.clone(),
-                                )?))
-                            })
-                            .collect::<Result<Vec<_>, _>>()?
-                    } else {
-                        signature.overloads.clone()
-                    };
-                    all_overloads.extend(overloads);
+        let mut overload_groups = Vec::new();
+        collect_callable_overload_groups(db, &ty, &mut overload_groups)?;
+        for overloads in overload_groups {
+            let compatible_overloads = filter_callable_overloads_by_call_args(
+                db,
+                cache,
+                overloads.clone(),
+                &call_expr,
+                args_count,
+                true,
+            )?;
+            if compatible_overloads.is_empty() {
+                fallback_overloads.extend(overloads);
+                continue;
+            }
 
-                    // 处理 signature 本身的函数类型
-                    let mut fake_doc_function = LuaFunctionType::new(
-                        signature.async_state,
-                        signature.is_colon_define,
-                        signature.is_vararg,
-                        signature.get_type_params(),
-                        signature.get_return_type(),
-                    );
-                    if signature.is_generic() {
-                        fake_doc_function = instantiate_func_generic(
-                            db,
-                            cache,
-                            &fake_doc_function,
-                            call_expr.clone(),
-                        )?;
+            let contains_tpl = compatible_overloads.iter().any(|func| func.contain_tpl());
+            match resolve_signature(
+                db,
+                cache,
+                compatible_overloads,
+                call_expr.clone(),
+                contains_tpl,
+                args_count,
+            ) {
+                Ok(func) => {
+                    returns.push(func.get_ret().clone());
+                    if first_func.is_none() {
+                        first_func = Some(func);
                     }
-                    base_signatures.push(Arc::new(fake_doc_function));
                 }
+                Err(InferFailReason::RecursiveInfer) => {
+                    return Err(InferFailReason::RecursiveInfer);
+                }
+                Err(reason) if reason.is_need_resolve() => {
+                    if need_resolve.is_none() {
+                        need_resolve = Some(reason);
+                    }
+                }
+                Err(_) => {}
             }
-            LuaType::DocFunction(func) => {
-                let func_to_push = if func.contain_tpl() {
-                    Arc::new(instantiate_func_generic(
-                        db,
-                        cache,
-                        &func,
-                        call_expr.clone(),
-                    )?)
-                } else {
-                    func.clone()
-                };
-                base_signatures.push(func_to_push);
-            }
-            _ => {}
         }
     }
 
-    all_overloads.extend(base_signatures);
-    if all_overloads.is_empty() {
-        return Err(InferFailReason::None);
-    }
-    resolve_signature(db, cache, all_overloads, call_expr, false, args_count)
+    let Some(first_func) = first_func else {
+        if !fallback_overloads.is_empty() {
+            let contains_tpl = fallback_overloads.iter().any(|func| func.contain_tpl());
+            let fallback_overloads = filter_callable_overloads_by_call_args(
+                db,
+                cache,
+                fallback_overloads,
+                &call_expr,
+                args_count,
+                false,
+            )?;
+            return resolve_signature(
+                db,
+                cache,
+                fallback_overloads,
+                call_expr,
+                contains_tpl,
+                args_count,
+            );
+        }
+
+        return Err(need_resolve.unwrap_or(InferFailReason::None));
+    };
+
+    Ok(Arc::new(LuaFunctionType::new(
+        first_func.get_async_state(),
+        first_func.is_colon_define(),
+        first_func.is_variadic(),
+        first_func.get_params().to_vec(),
+        LuaType::from_vec(returns),
+    )))
 }
 
 fn infer_intersection(
@@ -847,5 +869,36 @@ mod tests {
 
         assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
         assert_eq!(ws.expr_ty("payload"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_union_call_ignores_unresolved_alias_member() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@type MissingAlias | fun(): integer
+            local run
+
+            result = run()
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("integer"));
+    }
+
+    #[test]
+    fn test_union_call_breaks_recursive_alias_cycle() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias A A | fun(): integer
+            ---@type A
+            local run
+
+            result = run()
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("integer"));
     }
 }

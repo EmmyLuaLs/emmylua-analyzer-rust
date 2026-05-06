@@ -1,6 +1,8 @@
 use crate::diagnostics::Diagnostics;
 use crate::doc_text::{DocBlockView, is_doc_continue_or_line, is_doc_tag_line};
-use crate::model::{EntrySelector, ExtractedEntry, ReplaceStrategy, ReplaceTarget};
+use crate::model::{
+    EntrySelector, ExtractedComment, ExtractedEntry, ReplaceStrategy, ReplaceTarget, SourceSpan,
+};
 use std::collections::{HashMap, HashSet};
 
 /// 基于分析结果为单文件计算“可替换的目标列表”。
@@ -9,14 +11,14 @@ use std::collections::{HashMap, HashSet};
 pub(crate) fn compute_replace_targets(
     file_label: &str,
     content: &str,
-    comments: &[crate::model::ExtractedComment],
+    comments: &[ExtractedComment],
     entries: &[ExtractedEntry],
     diagnostics: &mut Diagnostics,
 ) -> Vec<ReplaceTarget> {
     let mut targets: Vec<ReplaceTarget> = Vec::new();
     let mut used_spans: HashSet<(usize, usize)> = HashSet::new();
 
-    let mut comment_ctx: HashMap<crate::model::SourceSpan, CommentReplaceContext> = HashMap::new();
+    let mut comment_ctx: HashMap<SourceSpan, CommentReplaceContext> = HashMap::new();
     for c in comments {
         let ctx = CommentReplaceContext::new(&c.raw);
         comment_ctx.insert(c.span, ctx);
@@ -63,7 +65,7 @@ impl CommentReplaceContext {
 
 fn compute_replace_target(
     file_content: &str,
-    ctx_map: &HashMap<crate::model::SourceSpan, CommentReplaceContext>,
+    ctx_map: &HashMap<SourceSpan, CommentReplaceContext>,
     entry: &ExtractedEntry,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
     let ctx = ctx_map.get(&entry.comment_span)?;
@@ -99,7 +101,7 @@ fn compute_replace_target(
 
 fn desc_replace_target(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
     let (rel_start, rel_end) = if let Some((start, end)) = ctx.view.indexes.desc_block {
         let start_off = ctx.view.lines.get(start)?.start;
@@ -126,7 +128,7 @@ fn desc_replace_target(
 
 fn tag_attached_replace_target_for_param(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     name: &str,
     raw_desc: &str,
     file_content: &str,
@@ -139,7 +141,7 @@ fn tag_attached_replace_target_for_param(
 
 fn tag_attached_replace_target_for_field(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     name: &str,
     raw_desc: &str,
     file_content: &str,
@@ -151,7 +153,7 @@ fn tag_attached_replace_target_for_field(
 
 fn tag_attached_replace_target_for_return(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     index: usize,
     raw_desc: &str,
     file_content: &str,
@@ -167,7 +169,7 @@ fn tag_attached_replace_target_for_return(
 
 fn tag_attached_replace_target_after(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     tag_idx: usize,
     raw_desc: &str,
     file_content: &str,
@@ -189,7 +191,7 @@ fn tag_attached_replace_target_after(
 
 fn inline_tag_description_replace_target(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     tag_idx: usize,
     raw_desc: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
@@ -213,7 +215,7 @@ fn inline_tag_description_replace_target(
 
 fn inline_tag_description_insert_target(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     tag_idx: usize,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
     let li = *ctx.view.lines.get(tag_idx)?;
@@ -235,7 +237,7 @@ fn inline_tag_description_insert_target(
 
 fn attached_doc_block_target_after(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     tag_idx: usize,
     file_content: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
@@ -285,7 +287,7 @@ fn attached_doc_block_target_after(
 
 fn union_item_replace_target(
     ctx: &CommentReplaceContext,
-    comment_span: crate::model::SourceSpan,
+    comment_span: SourceSpan,
     value: &str,
 ) -> Option<(usize, usize, ReplaceStrategy)> {
     let line_idx = ctx.view.indexes.union_line.get(value).copied()?;

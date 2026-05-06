@@ -1128,7 +1128,7 @@ return t
 
     #[test]
     fn test_ref_index_key_match_tuple() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
 
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
@@ -1151,7 +1151,7 @@ return t
 
     #[test]
     fn test_ref_index_access_assign_class_to_object_mismatch() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
 
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
@@ -1169,7 +1169,7 @@ return t
 
     #[test]
     fn test_ref_index_access_assign_object_to_class_mismatch() {
-        let mut ws = crate::VirtualWorkspace::new();
+        let mut ws = VirtualWorkspace::new();
 
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,

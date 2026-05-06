@@ -67,6 +67,9 @@ similar = { version = "2.7.0", features = ["inline"] }
 hashbrown = "0.16.1"
 
 # Lint configuration for the entire workspace
+[workspace.lints.rust]
+unused_qualifications = "deny"
+
 [workspace.lints.clippy]
 # ==== Domain-Specific Allowances ====
 # These patterns are acceptable/necessary in parser/language-server projects

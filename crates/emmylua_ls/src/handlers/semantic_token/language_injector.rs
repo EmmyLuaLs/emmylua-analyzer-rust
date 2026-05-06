@@ -152,10 +152,10 @@ fn divide_into_quote_and_code_block(str_token: &LuaStringToken) -> Option<CodeBl
 
         let end_pattern = format!("]{}]", "=".repeat(equal_count));
         if let Some(end_pos) = text.rfind(&end_pattern) {
-            let end_quote_start = range_start + rowan::TextSize::from(end_pos as u32);
+            let end_quote_start = range_start + TextSize::from(end_pos as u32);
             let end_quote_range = TextRange::new(
                 end_quote_start,
-                range_start + rowan::TextSize::from(text.len() as u32),
+                range_start + TextSize::from(text.len() as u32),
             );
             quote_ranges.push(end_quote_range);
             code_block_end = end_quote_range.start();

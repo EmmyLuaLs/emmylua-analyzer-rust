@@ -40,13 +40,13 @@ impl From<u32> for FileId {
     }
 }
 
-impl cmp::PartialOrd for FileId {
+impl PartialOrd for FileId {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl cmp::Ord for FileId {
+impl Ord for FileId {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.id.cmp(&other.id)
     }
