@@ -76,6 +76,14 @@ pub fn get_type_at_call_expr(
                     f,
                     condition_flow,
                 ),
+                LuaType::Call(call) => get_type_at_call_expr_by_call(
+                    db,
+                    cache,
+                    var_ref_id,
+                    call_expr,
+                    call,
+                    condition_flow,
+                ),
                 _ => Ok(ConditionFlowAction::Continue),
             }
         }
