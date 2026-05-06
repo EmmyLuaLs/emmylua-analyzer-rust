@@ -12,7 +12,10 @@ use crate::{
     FileId,
     db_index::{LuaFunctionType, LuaType},
 };
-use crate::{LuaAttributeUse, SemanticModel, first_param_may_not_self};
+use crate::{
+    LuaAttributeCollectionExt, LuaAttributeUse, LuaBuiltinAttributeKind, SemanticModel,
+    first_param_may_not_self,
+};
 
 #[derive(Debug)]
 pub struct LuaSignature {
@@ -196,11 +199,8 @@ pub struct LuaDocParamInfo {
 }
 
 impl LuaDocParamInfo {
-    pub fn get_attribute_by_name(&self, name: &str) -> Option<&LuaAttributeUse> {
-        self.attributes
-            .iter()
-            .flatten()
-            .find(|attr| attr.id.get_name() == name)
+    pub fn get_builtin_attribute(&self, kind: LuaBuiltinAttributeKind) -> Option<&LuaAttributeUse> {
+        self.attributes.as_deref()?.find_builtin_attribute(kind)
     }
 }
 
@@ -311,6 +311,7 @@ pub enum SignatureReturnStatus {
 pub struct LuaGenericParamInfo {
     pub name: String,
     pub constraint: Option<LuaType>,
+    pub default_type: Option<LuaType>,
     pub attributes: Option<Vec<LuaAttributeUse>>,
 }
 
@@ -318,11 +319,13 @@ impl LuaGenericParamInfo {
     pub fn new(
         name: String,
         constraint: Option<LuaType>,
+        default_type: Option<LuaType>,
         attributes: Option<Vec<LuaAttributeUse>>,
     ) -> Self {
         Self {
             name,
             constraint,
+            default_type,
             attributes,
         }
     }

@@ -1,18 +1,8 @@
-version: 1
-line_base: 0
-col_base: 0
-file: table/new.lua
-entries:
-- key: new
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 5
-      col: 0
-    end:
-      line: 14
-      col: 0
-  hash: '9eab27b4cb7ecc47'
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'table/new.lua'
+b:
+- a: 'local function new(narray, nhash) end'
+  g: '@version JIT'
+  r: [4, 0, 16, 17]
+  e:
+  - ['new', 'd', doc, [5, 0, 14, 0], '4fe64d34b8e72138']

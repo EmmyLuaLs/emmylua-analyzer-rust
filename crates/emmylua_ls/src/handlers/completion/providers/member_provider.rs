@@ -2,7 +2,7 @@ use emmylua_code_analysis::{
     DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
     enum_variable_is_param, get_tpl_ref_extend_type,
 };
-use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken};
+use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken, LuaSyntaxToken};
 use std::collections::HashMap;
 
 use crate::handlers::completion::{
@@ -103,7 +103,7 @@ pub fn add_completions_for_members(
 
 fn add_resolve_member_infos(
     builder: &mut CompletionBuilder,
-    member_infos: &Vec<LuaMemberInfo>,
+    member_infos: &[LuaMemberInfo],
     completion_status: CompletionTriggerStatus,
 ) -> Option<()> {
     if member_infos.len() == 1 {
@@ -134,8 +134,11 @@ fn add_resolve_member_infos(
         return Some(());
     }
 
-    let (filtered_member_infos, overload_count) =
-        filter_member_infos(&builder.semantic_model, member_infos)?;
+    let (filtered_member_infos, overload_count) = filter_member_infos(
+        &builder.semantic_model,
+        &builder.trigger_token,
+        member_infos,
+    )?;
 
     let resolve_state = get_resolve_state(builder.semantic_model.get_db(), &filtered_member_infos);
 
@@ -182,20 +185,33 @@ fn add_resolve_member_infos(
 /// 过滤成员信息，返回需要的成员列表和重载数量
 fn filter_member_infos<'a>(
     semantic_model: &SemanticModel,
-    member_infos: &'a Vec<LuaMemberInfo>,
+    trigger_token: &LuaSyntaxToken,
+    member_infos: &'a [LuaMemberInfo],
 ) -> Option<(Vec<&'a LuaMemberInfo>, Option<usize>)> {
     if member_infos.is_empty() {
         return None;
     }
 
+    let visible_member_infos: Vec<&LuaMemberInfo> = member_infos
+        .iter()
+        .filter(|member_info| {
+            member_info.property_owner_id.as_ref().is_none_or(|id| {
+                semantic_model.is_semantic_visible(trigger_token.clone(), id.clone())
+            })
+        })
+        .collect();
+    if visible_member_infos.is_empty() {
+        return None;
+    }
+
     let mut file_decl_member: Option<&LuaMemberInfo> = None;
     let mut member_with_owners: Vec<(&LuaMemberInfo, Option<LuaTypeDeclId>)> =
-        Vec::with_capacity(member_infos.len());
+        Vec::with_capacity(visible_member_infos.len());
     let mut all_doc_function = true;
     let mut overload_count = 0;
 
     // 一次遍历收集所有信息
-    for member_info in member_infos {
+    for member_info in visible_member_infos {
         let owner_id = get_owner_type_id(semantic_model.get_db(), member_info);
         member_with_owners.push((member_info, owner_id.clone()));
 

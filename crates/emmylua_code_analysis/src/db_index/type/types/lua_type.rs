@@ -62,7 +62,6 @@ pub enum LuaType {
     ModuleRef(FileId),
     DocAttribute(Arc<LuaAttributeType>),
     Conditional(Arc<LuaConditionalType>),
-    ConditionalInfer(ArcIntern<SmolStr>),
     Mapped(Arc<LuaMappedType>),
 }
 
@@ -116,7 +115,6 @@ impl PartialEq for LuaType {
             (LuaType::ModuleRef(a), LuaType::ModuleRef(b)) => a == b,
             (LuaType::DocAttribute(a), LuaType::DocAttribute(b)) => a == b,
             (LuaType::Conditional(a), LuaType::Conditional(b)) => a == b,
-            (LuaType::ConditionalInfer(a), LuaType::ConditionalInfer(b)) => a == b,
             (LuaType::Mapped(a), LuaType::Mapped(b)) => a == b,
             _ => false,
         }
@@ -174,9 +172,8 @@ impl Hash for LuaType {
             LuaType::Language(a) => (47, a).hash(state),
             LuaType::ModuleRef(a) => (48, a).hash(state),
             LuaType::Conditional(a) => (49, Arc::as_ptr(a)).hash(state),
-            LuaType::ConditionalInfer(a) => (50, a).hash(state),
-            LuaType::Mapped(a) => (51, Arc::as_ptr(a)).hash(state),
-            LuaType::DocAttribute(a) => (52, a).hash(state),
+            LuaType::Mapped(a) => (50, Arc::as_ptr(a)).hash(state),
+            LuaType::DocAttribute(a) => (51, a).hash(state),
         }
     }
 }

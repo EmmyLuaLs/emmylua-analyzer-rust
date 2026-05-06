@@ -1,6 +1,7 @@
 use emmylua_code_analysis::{
-    DbIndex, LuaAliasCallKind, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType,
-    SemanticModel, get_keyof_members, try_extract_signature_id_from_field,
+    DbIndex, LuaAliasCallKind, LuaBuiltinAttributeKind, LuaMemberInfo, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, SemanticModel, get_keyof_members,
+    try_extract_signature_id_from_field,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaAstToken, LuaFuncStat, LuaGeneralToken, LuaIndexExpr,
@@ -394,14 +395,9 @@ pub fn get_index_alias_name(
     };
 
     let alias_label = common_property
-        .find_attribute_use("index_alias")?
-        .args
-        .first()
-        .and_then(|(_, typ)| typ.as_ref())
-        .and_then(|param| match param {
-            LuaType::DocStringConst(s) => Some(s.as_ref()),
-            _ => None,
-        })?
+        .find_builtin_attribute(LuaBuiltinAttributeKind::IndexAlias)?
+        .as_index_alias()?
+        .name
         .to_string();
     Some(alias_label)
 }

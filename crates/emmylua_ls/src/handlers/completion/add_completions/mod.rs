@@ -9,9 +9,9 @@ pub use check_match_word::check_match_word;
 use emmylua_code_analysis::{LuaSemanticDeclId, LuaType, RenderLevel};
 use lsp_types::CompletionItemKind;
 
-use emmylua_code_analysis::humanize_type;
-
 use super::completion_builder::CompletionBuilder;
+use emmylua_code_analysis::LuaCommonProperty;
+use emmylua_code_analysis::humanize_type;
 
 pub fn check_visibility(builder: &mut CompletionBuilder, id: LuaSemanticDeclId) -> Option<()> {
     match id {
@@ -51,13 +51,7 @@ pub fn is_deprecated(builder: &CompletionBuilder, id: LuaSemanticDeclId) -> bool
         .get_property_index()
         .get_property(&id);
 
-    if let Some(property) = property
-        && property.deprecated().is_some()
-    {
-        return true;
-    }
-
-    false
+    property.is_some_and(property_is_deprecated)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -252,4 +246,13 @@ fn get_description(builder: &CompletionBuilder, typ: &LuaType) -> Option<String>
             RenderLevel::Minimal,
         )),
     }
+}
+
+fn property_is_deprecated(property: &LuaCommonProperty) -> bool {
+    property.deprecated().is_some()
+        || property.attribute_uses().is_some_and(|attribute_uses| {
+            attribute_uses
+                .iter()
+                .any(|attribute_use| attribute_use.as_deprecated().is_some())
+        })
 }

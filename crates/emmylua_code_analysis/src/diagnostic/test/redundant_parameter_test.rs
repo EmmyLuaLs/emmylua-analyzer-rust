@@ -129,36 +129,35 @@ mod test {
     #[test]
     fn test_generic_infer_function() {
         // temp disable this test, future fix this
-        // let mut ws = VirtualWorkspace::new();
-        // ws.def(
-        //     r#"
-        //     ---@alias Parameters<T extends function> T extends (fun(...: infer P): any) and P or never
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Parameters<T extends function> T extends (fun(...: infer P): any) and P or never
 
-        //     ---@alias Procedure fun(...: any[]): any
+            ---@alias Procedure fun(...: any[]): any
 
-        //     ---@alias MockParameters<T> T extends Procedure and Parameters<T> or never
+            ---@alias MockParameters<T> T extends Procedure and Parameters<T> or never
 
-        //     ---@class Mock<T>
-        //     ---@field calls MockParameters<T>[]
-        //     ---@overload fun(...: MockParameters<T>...)
+            ---@class Mock<T>
+            ---@overload fun(...: MockParameters<T>...)
 
-        //     ---@generic T: Procedure
-        //     ---@param a T
-        //     ---@return Mock<T>
-        //     function fn(a)
-        //     end
+            ---@generic T: Procedure
+            ---@param a T
+            ---@return Mock<T>
+            function fn(a)
+            end
 
-        //     sum = fn(function(a, b)
-        //         return a + b
-        //     end)
-        //     "#,
-        // );
-        // assert!(!ws.has_no_diagnostic(
-        //     DiagnosticCode::RedundantParameter,
-        //     r#"
-        //     sum(1, 2, 3)
-        // "#
-        // ));
+            sum = fn(function(a, b)
+                return a + b
+            end)
+            "#,
+        );
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::RedundantParameter,
+            r#"
+            sum(1, 2, 3)
+        "#
+        ));
     }
 
     #[test]

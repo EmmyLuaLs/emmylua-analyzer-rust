@@ -341,7 +341,7 @@ fn infer_call_arg_list(
         }
     }
     let constraint_substitutor = build_call_constraint_context(&builder.semantic_model, &call_expr)
-        .map(|(ctx, _)| ctx.substitutor);
+        .map(|ctx| ctx.substitutor);
     let substitutor = constraint_substitutor.as_ref();
     let typ = call_expr_func
         .get_params()

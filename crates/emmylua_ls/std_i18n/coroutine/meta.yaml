@@ -1,161 +1,52 @@
-version: 1
-line_base: 0
-col_base: 0
-file: coroutine.lua
-entries:
-- key: coroutinelib.create
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 21
-      col: 0
-  hash: f783b853bcc6436b
-  context_hash: de7cc417de1b3246
-- key: coroutinelib.isyieldable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 26
-      col: 0
-    end:
-      line: 31
-      col: 0
-  hash: '20f67ae45ee960e5'
-  context_hash: de7cc417de1b3246
-- key: coroutinelib.close
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 37
-      col: 0
-    end:
-      line: 40
-      col: 0
-  hash: ed170c5fa338cd96
-  context_hash: de7cc417de1b3246
-- key: coroutinelib.resume
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 45
-      col: 0
-    end:
-      line: 56
-      col: 0
-  hash: c68b5b72b7f9a791
-  context_hash: de7cc417de1b3246
-- key: coroutinelib.running
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 63
-      col: 0
-    end:
-      line: 66
-      col: 0
-  hash: '3b9508453c78ef79'
-  context_hash: de7cc417de1b3246
-- key: coroutinelib.status
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 70
-      col: 0
-    end:
-      line: 77
-      col: 0
-  hash: '2c49c377233084fa'
-  context_hash: de7cc417de1b3246
-- key: coroutinelib.status.return.1.running
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 79
-      col: 18
-    end:
-      line: 79
-      col: 30
-  hash: c82a37900965429a
-  context_hash: '6e48d348e70f84c9'
-- key: coroutinelib.status.return.1.suspended
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 80
-      col: 18
-    end:
-      line: 80
-      col: 47
-  hash: fa936af8644ed8c3
-  context_hash: '71a22165c82844bc'
-- key: coroutinelib.status.return.1.normal
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 81
-      col: 18
-    end:
-      line: 81
-      col: 45
-  hash: a13ab0138fac6604
-  context_hash: e8d5ba7a0e9a3e13
-- key: coroutinelib.status.return.1.dead
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 82
-      col: 18
-    end:
-      line: 82
-      col: 57
-  hash: '72fe2d58f456cb94'
-  context_hash: '768b9a36fcce3a9c'
-- key: coroutinelib.wrap
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 86
-      col: 0
-    end:
-      line: 92
-      col: 0
-  hash: '980a35b924ee089e'
-  context_hash: de7cc417de1b3246
-- key: coroutinelib.yield
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 97
-      col: 0
-    end:
-      line: 100
-      col: 0
-  hash: '25ba6e8d8cf7cc0d'
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'coroutine.lua'
+b:
+- a: 'function coroutine.create(f) end'
+  g: 'Creates a new coroutine, with body `f`. `f` must be a Lua function. Returns'
+  r: [18, 0, 23, 14]
+  e:
+  - ['coroutinelib.create', 'd', doc, [18, 0, 21, 0], 'f783b853bcc6436b']
+- a: 'function coroutine.isyieldable(co) end'
+  g: 'Returns true when the running coroutine can yield.'
+  r: [26, 0, 33, 14]
+  e:
+  - ['coroutinelib.isyieldable', 'd', doc, [26, 0, 31, 0], '20f67ae45ee960e5']
+- a: 'function coroutine.close(co) end'
+  g: '@version > 5.4'
+  r: [36, 0, 42, 27]
+  e:
+  - ['coroutinelib.close', 'd', doc, [37, 0, 40, 0], '5764a16103c9f082']
+- a: 'function coroutine.resume(co, val1, ...) end'
+  g: 'Starts or continues the execution of coroutine `co`. The first time you'
+  r: [45, 0, 60, 19]
+  e:
+  - ['coroutinelib.resume', 'd', doc, [45, 0, 56, 0], 'c68b5b72b7f9a791']
+- a: 'function coroutine.running() end'
+  g: '@version 5.1, JIT'
+  r: [63, 0, 67, 14]
+  e:
+  - ['coroutinelib.running@5.1,JIT', 'd', doc, [64, 0, 66, 0], '7c8c404ec5933d56']
+- a: 'function coroutine.running() end'
+  g: '@version > 5.2'
+  r: [70, 0, 75, 14]
+  e:
+  - ['coroutinelib.running@>5.2', 'd', doc, [71, 0, 74, 0], '3b9508453c78ef79']
+- a: 'function coroutine.status(co) end'
+  g: 'Returns the status of coroutine `co`, as a string: "`running`", if the'
+  r: [78, 0, 91, 14]
+  e:
+  - ['coroutinelib.status', 'd', doc, [78, 0, 85, 0], '2c49c377233084fa']
+  - ['coroutinelib.status.return.1.running', 'ri:1:running', tail, [87, 17, 87, 29], 'c82a37900965429a', ' ']
+  - ['coroutinelib.status.return.1.suspended', 'ri:1:suspended', tail, [88, 19, 88, 48], 'fa936af8644ed8c3', ' ']
+  - ['coroutinelib.status.return.1.normal', 'ri:1:normal', tail, [89, 16, 89, 43], 'a13ab0138fac6604', ' ']
+  - ['coroutinelib.status.return.1.dead', 'ri:1:dead', tail, [90, 14, 90, 53], '72fe2d58f456cb94', ' ']
+- a: 'function coroutine.wrap(f) end'
+  g: 'Creates a new coroutine, with body `f`. `f` must be a Lua function. Returns'
+  r: [94, 0, 102, 14]
+  e:
+  - ['coroutinelib.wrap', 'd', doc, [94, 0, 100, 0], '980a35b924ee089e']
+- a: 'function coroutine.yield(...) end'
+  g: 'Suspends the execution of the calling coroutine. Any arguments to `yield`'
+  r: [105, 0, 110, 19]
+  e:
+  - ['coroutinelib.yield', 'd', doc, [105, 0, 108, 0], '25ba6e8d8cf7cc0d']

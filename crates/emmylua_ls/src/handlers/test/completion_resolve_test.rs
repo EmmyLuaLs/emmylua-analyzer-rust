@@ -100,8 +100,8 @@ mod tests {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
             r#"
-            ---@class Matchers
-            ---@field toBe fun(self: Assertion, expected: any) -- 测试
+            ---@class Matchers<T>
+            ---@field toBe fun(self: Assertion<T>, expected: any) -- 测试
 
             ---@class Inverse<T>
             ---@field not_ T
@@ -119,6 +119,40 @@ mod tests {
             VirtualCompletionResolveItem {
                 detail: "(method) Matchers:toBe(expected: any)".to_string(),
                 documentation: Some("\n测试".to_string()),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_version_visibility() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@meta
+                CO = {}
+
+                --- @version 5.1, JIT
+                ---
+                --- 5.1/jit
+                --- @return thread?
+                --- @nodiscard
+                function CO.running() end
+
+                --- @version > 5.2
+                --- 5.2+
+                --- @return thread, boolean
+                --- @nodiscard
+                function CO.running() end
+                "#,
+        );
+        check!(ws.check_completion_resolve(
+            r#"
+            CO.running<??>
+            "#,
+            VirtualCompletionResolveItem {
+                detail: "function CO.running() -> thread, boolean".to_string(),
+                documentation: Some("\n5.2+".to_string()),
             },
         ));
         Ok(())

@@ -236,7 +236,8 @@ impl LuaTypeNode for LuaConditionalType {
     fn push_direct_children<'a>(&'a self, stack: &mut Vec<&'a LuaType>) {
         stack.push(self.get_false_type());
         stack.push(self.get_true_type());
-        stack.push(self.get_condition());
+        stack.push(self.get_extends_type());
+        stack.push(self.get_checked_type());
     }
 }
 
@@ -245,6 +246,9 @@ impl LuaTypeNode for LuaMappedType {
         stack.push(&self.value);
         if let Some(constraint) = self.param.1.type_constraint.as_ref() {
             stack.push(constraint);
+        }
+        if let Some(default_type) = self.param.1.default_type.as_ref() {
+            stack.push(default_type);
         }
     }
 }

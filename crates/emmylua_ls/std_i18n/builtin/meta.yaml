@@ -1,174 +1,68 @@
-version: 1
-line_base: 0
-col_base: 0
-file: builtin.lua
-entries:
-- key: 'nil'
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 22
-      col: 0
-  hash: e0061e5c045df64a
-  context_hash: de7cc417de1b3246
-- key: boolean
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 24
-      col: 0
-    end:
-      line: 27
-      col: 0
-  hash: '31cc8159cccf97f7'
-  context_hash: de7cc417de1b3246
-- key: number
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 29
-      col: 0
-    end:
-      line: 41
-      col: 0
-  hash: fa4ea32a81d5aed9
-  context_hash: de7cc417de1b3246
-- key: userdata
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 45
-      col: 0
-    end:
-      line: 55
-      col: 0
-  hash: e3cc299bfe56ad03
-  context_hash: de7cc417de1b3246
-- key: thread
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 59
-      col: 0
-    end:
-      line: 64
-      col: 0
-  hash: a0216db4b0f8ba68
-  context_hash: de7cc417de1b3246
-- key: table
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 66
-      col: 0
-    end:
-      line: 96
-      col: 0
-  hash: '8c15b89f8cf799f8'
-  context_hash: de7cc417de1b3246
-- key: std.Select
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 118
-      col: 0
-    end:
-      line: 120
-      col: 0
-  hash: b508ab78f8d1bc46
-  context_hash: de7cc417de1b3246
-- key: std.Unpack
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 122
-      col: 0
-    end:
-      line: 124
-      col: 0
-  hash: c7ad7bb74235dc8c
-  context_hash: de7cc417de1b3246
-- key: std.RawGet
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 126
-      col: 0
-    end:
-      line: 128
-      col: 0
-  hash: '7327558f3445dea6'
-  context_hash: de7cc417de1b3246
-- key: std.ConstTpl
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 130
-      col: 0
-    end:
-      line: 132
-      col: 0
-  hash: '0e263d1e0caa6b3b'
-  context_hash: de7cc417de1b3246
-- key: Parameters
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 146
-      col: 0
-    end:
-      line: 148
-      col: 0
-  hash: '71b070c2fa27cbf9'
-  context_hash: de7cc417de1b3246
-- key: ConstructorParameters
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 150
-      col: 0
-    end:
-      line: 152
-      col: 0
-  hash: '2f4bebd14d7824cb'
-  context_hash: de7cc417de1b3246
-- key: Partial
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 157
-      col: 0
-    end:
-      line: 159
-      col: 0
-  hash: '5e4213a7c3937182'
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'builtin.lua'
+b:
+- a: '---'
+  g: 'The type *nil* has one single value, **nil**, whose main property is to be'
+  r: [18, 0, 22, 14]
+  e:
+  - ['nil', 'd', doc, [18, 0, 22, 0], 'e0061e5c045df64a']
+- a: '---'
+  g: 'The type *boolean* has two values, **false** and **true**. Both **nil** and'
+  r: [24, 0, 27, 18]
+  e:
+  - ['boolean', 'd', doc, [24, 0, 27, 0], '31cc8159cccf97f7']
+- a: '--- @class integer'
+  g: 'The type *number* uses two internal representations, or two subtypes, one'
+  r: [29, 0, 41, 17]
+  e:
+  - ['number', 'd', doc, [29, 0, 41, 0], 'fa4ea32a81d5aed9']
+- a: '--- @class lightuserdata'
+  g: 'The type *userdata* is provided to allow arbitrary C data to be stored in'
+  r: [45, 0, 55, 19]
+  e:
+  - ['userdata', 'd', doc, [45, 0, 55, 0], 'e3cc299bfe56ad03']
+- a: '---'
+  g: 'The type *thread* represents independent threads of execution and it is'
+  r: [59, 0, 64, 17]
+  e:
+  - ['thread', 'd', doc, [59, 0, 64, 0], 'a0216db4b0f8ba68']
+- a: '--- @class any'
+  g: 'The type *table* implements associative arrays, that is, arrays that can'
+  r: [66, 0, 96, 16]
+  e:
+  - ['table', 'd', doc, [66, 0, 96, 0], '8c15b89f8cf799f8']
+- a: '---'
+  g: 'built-in type for Select function'
+  r: [118, 0, 120, 44]
+  e:
+  - ['std.Select', 'd', doc, [118, 0, 120, 0], 'b508ab78f8d1bc46']
+- a: '---'
+  g: 'built-in type for Unpack function'
+  r: [122, 0, 124, 44]
+  e:
+  - ['std.Unpack', 'd', doc, [122, 0, 124, 0], 'c7ad7bb74235dc8c']
+- a: '---'
+  g: 'built-in type for Rawget'
+  r: [126, 0, 128, 35]
+  e:
+  - ['std.RawGet', 'd', doc, [126, 0, 128, 0], '7327558f3445dea6']
+- a: '--- compact luals'
+  g: 'built-in type for generic template, for match integer const and true/false'
+  r: [130, 0, 132, 34]
+  e:
+  - ['std.ConstTpl', 'd', doc, [130, 0, 132, 0], '0e263d1e0caa6b3b']
+- a: '---'
+  g: 'Get the parameters of a function as a tuple'
+  r: [146, 0, 148, 90]
+  e:
+  - ['Parameters', 'd', doc, [146, 0, 148, 0], '71b070c2fa27cbf9']
+- a: '---'
+  g: 'Get the parameters of a constructor as a tuple'
+  r: [150, 0, 152, 88]
+  e:
+  - ['ConstructorParameters', 'd', doc, [150, 0, 152, 0], '2f4bebd14d7824cb']
+- a: '--- attribute'
+  g: 'Make all properties in T optional'
+  r: [157, 0, 159, 47]
+  e:
+  - ['Partial', 'd', doc, [157, 0, 159, 0], '5e4213a7c3937182']

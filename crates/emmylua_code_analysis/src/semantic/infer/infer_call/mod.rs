@@ -10,7 +10,7 @@ use super::{
 };
 use crate::semantic::overload_resolve::callable_accepts_args;
 use crate::{
-    CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
+    AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
     LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait, VariadicType,
 };
@@ -95,7 +95,7 @@ pub fn infer_call_expr_func(
             args_count,
         ),
         LuaType::Function => Ok(Arc::new(LuaFunctionType::new(
-            crate::AsyncState::None,
+            AsyncState::None,
             false,
             true,
             vec![("...".to_string(), Some(LuaType::Unknown))],
@@ -109,6 +109,13 @@ pub fn infer_call_expr_func(
             infer_guard,
             args_count,
         ),
+        LuaType::Any => Ok(Arc::new(LuaFunctionType::new(
+            AsyncState::None,
+            false,
+            true,
+            vec![],
+            LuaType::Any,
+        ))),
         LuaType::Union(union) => infer_union(db, cache, union, call_expr.clone(), args_count),
         _ => Err(InferFailReason::None),
     };
@@ -846,7 +853,7 @@ mod tests {
             ---@return boolean, R...
             local function wrap(f, ...) end
 
-            ---@generic U: string
+            ---@generic U: string = string
             ---@param x U
             ---@return U
             local function id(x) end

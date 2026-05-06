@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod test {
     use crate::{
-        LuaAstNode, LuaComment, LuaCommentFormatDirective, LuaKind, LuaParser, LuaTokenKind,
-        ParserConfig,
+        LuaAstNode, LuaComment, LuaCommentFormatDirective, LuaDocTagClass, LuaKind, LuaParser,
+        LuaTokenKind, ParserConfig,
     };
 
     #[allow(unused)]
@@ -151,5 +151,59 @@ mod test {
         let comment = root.descendants::<LuaComment>().next().unwrap();
 
         assert_eq!(comment.get_format_directive(), None);
+    }
+
+    #[test]
+    fn test_doc_generic_default_type_accessor() {
+        let tree = LuaParser::parse(
+            "---@class A<T = number>\n---@class B<T extends number = string>\n",
+            ParserConfig::default(),
+        );
+        let root = tree.get_chunk_node();
+        let mut classes = root.descendants::<LuaDocTagClass>();
+
+        let class_a = classes.next().unwrap();
+        let param_a = class_a
+            .get_generic_decl()
+            .unwrap()
+            .get_generic_decl()
+            .next()
+            .unwrap();
+        assert!(param_a.get_constraint_type().is_none());
+        assert_eq!(
+            param_a
+                .get_default_type()
+                .unwrap()
+                .syntax()
+                .text()
+                .to_string(),
+            "number"
+        );
+
+        let class_b = classes.next().unwrap();
+        let param_b = class_b
+            .get_generic_decl()
+            .unwrap()
+            .get_generic_decl()
+            .next()
+            .unwrap();
+        assert_eq!(
+            param_b
+                .get_constraint_type()
+                .unwrap()
+                .syntax()
+                .text()
+                .to_string(),
+            "number"
+        );
+        assert_eq!(
+            param_b
+                .get_default_type()
+                .unwrap()
+                .syntax()
+                .text()
+                .to_string(),
+            "string"
+        );
     }
 }

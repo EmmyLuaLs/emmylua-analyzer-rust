@@ -1,16 +1,21 @@
+mod builtin_attribute;
 mod decl_feature;
 #[allow(clippy::module_inception)]
 mod property;
 
 use hashbrown::{HashMap, HashSet};
 
+use crate::{DbIndex, FileId, LuaMember, LuaSignatureId};
+pub use builtin_attribute::{
+    LuaAttributeCollectionExt, LuaAttributeUse, LuaBuiltinAttributeKind, LuaConstructorAttribute,
+    LuaConstructorReturnMode, LuaDeprecatedAttribute, LuaFieldAccessorAttribute,
+    LuaFieldAccessorConvention, LuaIndexAliasAttribute, LuaLspOptimizationAttribute,
+    LuaLspOptimizationCode,
+};
 pub use decl_feature::{DeclFeatureFlag, PropertyDeclFeature};
 use emmylua_parser::{LuaAstNode, LuaDocTagField, LuaDocType, LuaVersionCondition, VisibilityKind};
 pub use property::LuaCommonProperty;
 pub use property::{LuaDeprecated, LuaPropertyId};
-
-pub use crate::db_index::property::property::LuaAttributeUse;
-use crate::{DbIndex, FileId, LuaMember, LuaSignatureId};
 
 use super::{LuaSemanticDeclId, traits::LuaIndex};
 

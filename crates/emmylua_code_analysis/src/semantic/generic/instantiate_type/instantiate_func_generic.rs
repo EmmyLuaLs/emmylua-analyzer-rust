@@ -1,13 +1,12 @@
 use emmylua_parser::{LuaAstNode, LuaDocTypeList};
 use emmylua_parser::{LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
-use internment::ArcIntern;
 use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::infer_expr_list_types;
 use crate::{
-    DocTypeInferContext, FileId, GenericTpl, GenericTplId, LuaFunctionType, LuaGenericType,
-    LuaTypeNode, TypeVisitTrait,
+    DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
+    LuaTypeNode,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
     semantic::{
@@ -26,11 +25,12 @@ use crate::{
     },
 };
 use crate::{
-    LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, infer_node_semantic_decl,
+    GenericTpl, LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
+    collect_callable_overload_groups, infer_node_semantic_decl,
     tpl_pattern_match_args_skip_unknown,
 };
 
-use super::{TypeSubstitutor, collect_callable_overload_groups};
+use super::{TypeSubstitutor, instantiate_type_generic};
 
 pub fn instantiate_func_generic(
     db: &DbIndex,
@@ -364,10 +364,7 @@ fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool)
 
     func.visit_nested_types(&mut |ty| match ty {
         LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            let tpl_id = generic_tpl.get_tpl_id();
-            if tpl_id.is_func() {
-                generic_tpls.insert(tpl_id);
-            }
+            collect_func_tpl_with_fallback_deps(generic_tpl, &mut generic_tpls);
         }
         LuaType::StrTplRef(str_tpl) => {
             generic_tpls.insert(str_tpl.get_tpl_id());
@@ -377,6 +374,89 @@ fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool)
     });
 
     (generic_tpls, contain_self)
+}
+
+fn collect_func_tpl_with_fallback_deps(
+    generic_tpl: &GenericTpl,
+    generic_tpls: &mut HashSet<GenericTplId>,
+) {
+    let tpl_id = generic_tpl.get_tpl_id();
+    if !tpl_id.is_func() {
+        return;
+    }
+
+    generic_tpls.insert(tpl_id);
+
+    let Some(fallback_type) = generic_tpl
+        .get_default_type()
+        .or(generic_tpl.get_constraint())
+    else {
+        return;
+    };
+
+    // 只有提前加入的泛型才有 None 占位, fallback 展开时才能继续使用它自己的 default/constraint.
+    // 例如 `U = T[]` 或 `U: T[]` 中, 即使函数返回值只直接引用了 `U`, 也需要把 `T` 一并加入.
+    let mut fallback_deps = HashSet::new();
+    let mut visiting_fallbacks = HashSet::new();
+    visiting_fallbacks.insert(tpl_id);
+    if collect_func_tpl_deps_from_fallback_type(
+        fallback_type,
+        &mut fallback_deps,
+        &mut visiting_fallbacks,
+    ) {
+        generic_tpls.extend(fallback_deps);
+    }
+}
+
+fn collect_func_tpl_deps_from_fallback_type(
+    ty: &LuaType,
+    generic_tpls: &mut HashSet<GenericTplId>,
+    visiting_fallbacks: &mut HashSet<GenericTplId>,
+) -> bool {
+    // 返回 false 表示 fallback 依赖链里发现循环.
+    // visit_nested_types 只访问子节点, 所以这里先处理类型自身, 再处理嵌套类型.
+    let mut no_fallback_cycle =
+        collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
+    ty.visit_nested_types(&mut |ty| {
+        no_fallback_cycle &=
+            collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
+    });
+    no_fallback_cycle
+}
+
+fn collect_func_tpl_dep_from_fallback_type(
+    ty: &LuaType,
+    generic_tpls: &mut HashSet<GenericTplId>,
+    visiting_fallbacks: &mut HashSet<GenericTplId>,
+) -> bool {
+    let (LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl)) = ty else {
+        return true;
+    };
+
+    if !generic_tpl.get_tpl_id().is_func() {
+        return true;
+    }
+
+    let tpl_id = generic_tpl.get_tpl_id();
+    if !visiting_fallbacks.insert(tpl_id) {
+        // 遇到 `T = U, U = T` 这类循环 fallback 时, 放弃合并本轮依赖避免递归展开.
+        return false;
+    }
+
+    generic_tpls.insert(tpl_id);
+    let no_fallback_cycle = match generic_tpl
+        .get_default_type()
+        .or(generic_tpl.get_constraint())
+    {
+        Some(fallback_type) => collect_func_tpl_deps_from_fallback_type(
+            fallback_type,
+            generic_tpls,
+            visiting_fallbacks,
+        ),
+        None => true,
+    };
+    visiting_fallbacks.remove(&tpl_id);
+    no_fallback_cycle
 }
 
 fn infer_generic_types_from_call(
@@ -487,17 +567,13 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
     match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
             if let Some(generic) = db.get_type_index().get_generic_params(id) {
-                let mut params = Vec::new();
+                let mut params = Vec::with_capacity(generic.len());
+                let mut substitutor = TypeSubstitutor::new();
                 for (i, generic_param) in generic.iter().enumerate() {
-                    if let Some(t) = &generic_param.type_constraint {
-                        params.push(t.clone());
-                    } else {
-                        params.push(LuaType::TplRef(Arc::new(GenericTpl::new(
-                            GenericTplId::Type(i as u32),
-                            ArcIntern::new(generic_param.name.clone()),
-                            None,
-                        ))));
-                    }
+                    let tpl_id = GenericTplId::Type(i as u32);
+                    let param = build_self_generic_arg(db, generic_param, &substitutor);
+                    substitutor.insert_type(tpl_id, param.clone(), true);
+                    params.push(param);
                 }
                 let generic = LuaGenericType::new(id.clone(), params);
                 return LuaType::Generic(Arc::new(generic));
@@ -506,6 +582,22 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
         _ => {}
     };
     self_type.clone()
+}
+
+fn build_self_generic_arg(
+    db: &DbIndex,
+    generic_param: &GenericParam,
+    substitutor: &TypeSubstitutor,
+) -> LuaType {
+    let Some(arg) = generic_param
+        .default_type
+        .as_ref()
+        .or(generic_param.type_constraint.as_ref())
+    else {
+        return LuaType::Unknown;
+    };
+
+    instantiate_type_generic(db, arg, substitutor)
 }
 
 pub fn infer_self_type(
@@ -528,14 +620,27 @@ pub fn infer_self_type(
                 name.syntax().clone(),
                 SemanticDeclLevel::default(),
             )?;
-            if let LuaSemanticDeclId::Member(member_id) = semantic_decl_id {
-                let owner = db.get_member_index().get_current_owner(&member_id)?;
-                if let LuaMemberOwner::Type(id) = owner {
-                    let typ = LuaType::Ref(id.clone());
+            match semantic_decl_id {
+                LuaSemanticDeclId::Member(member_id) => {
+                    let owner = db.get_member_index().get_current_owner(&member_id)?;
+                    if let LuaMemberOwner::Type(id) = owner {
+                        let typ = LuaType::Ref(id.clone());
+                        let self_type = build_self_type(db, &typ);
+                        return Some(self_type);
+                    }
+                    return None;
+                }
+                LuaSemanticDeclId::LuaDecl(decl_id) => {
+                    let typ = db
+                        .get_type_index()
+                        .get_type_cache(&LuaTypeOwner::Decl(decl_id))
+                        .map(|cache| cache.as_type())
+                        .unwrap_or(&LuaType::Unknown)
+                        .clone();
                     let self_type = build_self_type(db, &typ);
                     return Some(self_type);
                 }
-                return None;
+                _ => return None,
             }
         }
         _ => {}

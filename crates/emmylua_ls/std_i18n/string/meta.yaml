@@ -1,239 +1,98 @@
-version: 1
-line_base: 0
-col_base: 0
-file: string.lua
-entries:
-- key: string
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 15
-      col: 0
-    end:
-      line: 20
-      col: 0
-  hash: a72ac7db3f7d4603
-  context_hash: de7cc417de1b3246
-- key: string.byte
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 23
-      col: 0
-    end:
-      line: 30
-      col: 0
-  hash: '5ca99caefe62dd0b'
-  context_hash: de7cc417de1b3246
-- key: string.char
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 36
-      col: 0
-    end:
-      line: 42
-      col: 0
-  hash: '39697fcb2bdf094f'
-  context_hash: de7cc417de1b3246
-- key: string.dump
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 46
-      col: 0
-    end:
-      line: 57
-      col: 0
-  hash: '7a9424d0441a129a'
-  context_hash: de7cc417de1b3246
-- key: string.find
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 62
-      col: 0
-    end:
-      line: 75
-      col: 0
-  hash: '7ab6f8359e5d19c2'
-  context_hash: de7cc417de1b3246
-- key: string.format
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 85
-      col: 0
-    end:
-      line: 114
-      col: 0
-  hash: '1b6b640f12c7c5ee'
-  context_hash: de7cc417de1b3246
-- key: string.gmatch
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 120
-      col: 0
-    end:
-      line: 144
-      col: 0
-  hash: '78ff847ad504f943'
-  context_hash: de7cc417de1b3246
-- key: string.gsub
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 149
-      col: 0
-    end:
-      line: 192
-      col: 0
-  hash: f241d32e2a8fb75f
-  context_hash: de7cc417de1b3246
-- key: string.len
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 200
-      col: 0
-    end:
-      line: 203
-      col: 0
-  hash: cddd67e2a2b28c2e
-  context_hash: de7cc417de1b3246
-- key: string.lower
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 207
-      col: 0
-    end:
-      line: 211
-      col: 0
-  hash: '4c234ee3d950bad4'
-  context_hash: de7cc417de1b3246
-- key: string.match
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 215
-      col: 0
-    end:
-      line: 221
-      col: 0
-  hash: '73a921b42b7c11d4'
-  context_hash: de7cc417de1b3246
-- key: string.pack
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 228
-      col: 0
-    end:
-      line: 231
-      col: 0
-  hash: '5da2ac260adbb234'
-  context_hash: de7cc417de1b3246
-- key: string.packsize
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 239
-      col: 0
-    end:
-      line: 243
-      col: 0
-  hash: f5740841b9e9c4b1
-  context_hash: de7cc417de1b3246
-- key: string.rep
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 247
-      col: 0
-    end:
-      line: 255
-      col: 0
-  hash: ee87e632f2e1a738
-  context_hash: de7cc417de1b3246
-- key: string.reverse
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 261
-      col: 0
-    end:
-      line: 263
-      col: 0
-  hash: c0411ed95baa29f4
-  context_hash: de7cc417de1b3246
-- key: string.sub
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 267
-      col: 0
-    end:
-      line: 279
-      col: 0
-  hash: a25451cdfc2b643e
-  context_hash: de7cc417de1b3246
-- key: string.unpack
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 287
-      col: 0
-    end:
-      line: 292
-      col: 0
-  hash: df66a1c8efef1986
-  context_hash: de7cc417de1b3246
-- key: string.upper
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 299
-      col: 0
-    end:
-      line: 303
-      col: 0
-  hash: '77d737c7349fb1f7'
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'string.lua'
+b:
+- a: 'string = {}'
+  g: 'The type *string* represents immutable sequences of bytes. Lua is 8-bit'
+  r: [15, 0, 20, 27]
+  e:
+  - ['string', 'd', doc, [15, 0, 20, 0], 'a72ac7db3f7d4603']
+- a: 'function string.byte(s, i, j) end'
+  g: 'Returns the internal numerical codes of the characters `s[i]`, `s[i+1]`,'
+  r: [23, 0, 33, 19]
+  e:
+  - ['string.byte', 'd', doc, [23, 0, 30, 0], '5ca99caefe62dd0b']
+- a: 'function string.char(...) end'
+  g: 'Receives zero or more integers. Returns a string with length equal to'
+  r: [36, 0, 43, 18]
+  e:
+  - ['string.char', 'd', doc, [36, 0, 42, 0], '39697fcb2bdf094f']
+- a: 'function string.dump(func, strip) end'
+  g: 'Returns a string containing a binary representation (*a binary chunk*) of'
+  r: [46, 0, 59, 18]
+  e:
+  - ['string.dump', 'd', doc, [46, 0, 57, 0], '7a9424d0441a129a']
+- a: 'function string.find(s, pattern, init, plain) end'
+  g: 'Looks for the first match of `pattern` in the string `s`. If it finds a'
+  r: [62, 0, 82, 14]
+  e:
+  - ['string.find', 'd', doc, [62, 0, 75, 0], '7ab6f8359e5d19c2']
+- a: 'function string.format(fmt, ...) end'
+  g: 'Returns a formatted version of its variable number of arguments following'
+  r: [85, 0, 117, 14]
+  e:
+  - ['string.format', 'd', doc, [85, 0, 114, 0], '1b6b640f12c7c5ee']
+- a: 'function string.gmatch(s, pattern) end'
+  g: 'Returns an iterator function that, each time it is called, returns the'
+  r: [120, 0, 146, 29]
+  e:
+  - ['string.gmatch@@1', 'd', doc, [120, 0, 144, 0], '78ff847ad504f943']
+- a: 'function string.gmatch(s, pattern, init) end'
+  g: 'Returns an iterator function that, each time it is called, returns the'
+  r: [149, 0, 179, 28]
+  e:
+  - ['string.gmatch@>5.4', 'd', doc, [149, 0, 175, 0], '6fb50ed5a9d7045c']
+- a: 'function string.gsub(s, pattern, repl, n) end'
+  g: 'Returns a copy of `s` in which all (or the first `n`, if given)'
+  r: [182, 0, 230, 25]
+  e:
+  - ['string.gsub', 'd', doc, [182, 0, 225, 0], 'f241d32e2a8fb75f']
+- a: 'function string.len(s) end'
+  g: 'Receives a string and returns its length. The empty string `""` has'
+  r: [233, 0, 237, 19]
+  e:
+  - ['string.len', 'd', doc, [233, 0, 236, 0], 'cddd67e2a2b28c2e']
+- a: 'function string.lower(s) end'
+  g: 'Receives a string and returns a copy of this string with all uppercase'
+  r: [240, 0, 245, 18]
+  e:
+  - ['string.lower', 'd', doc, [240, 0, 244, 0], '4c234ee3d950bad4']
+- a: 'function string.match(s, pattern, init) end'
+  g: 'Looks for the first *match* of `pattern` in the string `s`. If it'
+  r: [248, 0, 257, 22]
+  e:
+  - ['string.match', 'd', doc, [248, 0, 254, 0], '73a921b42b7c11d4']
+- a: 'function string.pack(fmt, v1, v2, ...) end'
+  g: '@version >5.3'
+  r: [260, 0, 268, 18]
+  e:
+  - ['string.pack', 'd', doc, [261, 0, 264, 0], '5da2ac260adbb234']
+- a: 'function string.packsize(fmt) end'
+  g: '@version >5.3'
+  r: [271, 0, 277, 19]
+  e:
+  - ['string.packsize', 'd', doc, [272, 0, 276, 0], 'f5740841b9e9c4b1']
+- a: 'function string.rep(s, n, sep) end'
+  g: 'Returns a string that is the concatenation of `n` copies of the string'
+  r: [280, 0, 291, 18]
+  e:
+  - ['string.rep', 'd', doc, [280, 0, 288, 0], 'ee87e632f2e1a738']
+- a: 'function string.reverse(s) end'
+  g: 'Returns a string that is the string `s` reversed.'
+  r: [294, 0, 297, 18]
+  e:
+  - ['string.reverse', 'd', doc, [294, 0, 296, 0], 'c0411ed95baa29f4']
+- a: 'function string.sub(s, i, j) end'
+  g: 'Returns the substring of `s` that starts at `i` and continues until'
+  r: [300, 0, 316, 14]
+  e:
+  - ['string.sub', 'd', doc, [300, 0, 312, 0], 'a25451cdfc2b643e']
+- a: 'function string.unpack(fmt, s, pos) end'
+  g: '@version >5.3'
+  r: [319, 0, 329, 26]
+  e:
+  - ['string.unpack', 'd', doc, [320, 0, 325, 0], 'df66a1c8efef1986']
+- a: 'function string.upper(s) end'
+  g: 'Receives a string and returns a copy of this string with all lowercase'
+  r: [332, 0, 337, 18]
+  e:
+  - ['string.upper', 'd', doc, [332, 0, 336, 0], '77d737c7349fb1f7']

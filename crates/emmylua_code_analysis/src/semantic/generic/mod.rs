@@ -6,7 +6,8 @@ mod tpl_pattern;
 mod type_substitutor;
 
 pub use call_constraint::{
-    CallConstraintContext, build_call_constraint_context, normalize_constraint_type,
+    CallConstraintArg, CallConstraintContext, build_call_constraint_context,
+    normalize_constraint_type,
 };
 use emmylua_parser::LuaAstNode;
 use emmylua_parser::LuaExpr;
@@ -98,6 +99,7 @@ pub fn get_tpl_ref_extend_type(
                     }
                     None
                 }
+                GenericTplId::ConditionalInfer(_) => None,
             }
         }
         LuaType::StrTplRef(str_tpl) => str_tpl.get_constraint().cloned(),

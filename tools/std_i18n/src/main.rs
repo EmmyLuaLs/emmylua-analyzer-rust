@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 
-mod comment_syntax;
-mod extractor;
+mod analysis;
+mod diagnostics;
+mod doc_text;
+mod fs;
 mod keys;
-mod merger;
-mod meta;
+mod locale_yaml;
+mod meta_format;
 mod model;
-mod translator;
+mod pipeline;
+mod target;
 
 fn main() {
     // 是否全量输出翻译条目：
@@ -23,10 +26,16 @@ fn main() {
     let std_dir = repo_root.join("crates/emmylua_code_analysis/resources/std");
     let out_root = repo_root.join("crates/emmylua_ls/std_i18n");
 
+    let mut diagnostics = diagnostics::Diagnostics::default();
+    let project = pipeline::analyze_std_i18n_project(&std_dir, full_output, &mut diagnostics)
+        .expect("analyze std i18n project should succeed");
+
     // zh_CN
-    merger::write_std_locales_yaml(&std_dir, "zh_CN", &out_root, full_output)
+    locale_yaml::write_std_locales_yaml(&project, "zh_CN", &out_root)
         .expect("write std zh_CN locales should succeed");
     // meta
-    meta::write_std_meta_yaml(&std_dir, &out_root, full_output)
+    meta_format::write_std_meta_yaml(&project, &out_root)
         .expect("write std meta.yaml should succeed");
+
+    diagnostics.emit();
 }

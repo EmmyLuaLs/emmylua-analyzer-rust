@@ -1,447 +1,127 @@
-version: 1
-line_base: 0
-col_base: 0
-file: debug.lua
-entries:
-- key: debuglib.debug
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 18
-      col: 0
-    end:
-      line: 26
-      col: 62
-  hash: '5728b52db9e5f2ff'
-  context_hash: de7cc417de1b3246
-- key: debuglib.getfenv
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 30
-      col: 0
-    end:
-      line: 33
-      col: 0
-  hash: '91e912d2bf6683e5'
-  context_hash: de7cc417de1b3246
-- key: debuglib.gethook
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 38
-      col: 0
-    end:
-      line: 42
-      col: 0
-  hash: df523859e51a83d8
-  context_hash: de7cc417de1b3246
-- key: debuglib.InfoWhat.item.n
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 66
-      col: 14
-    end:
-      line: 66
-      col: 33
-  hash: f607d8295ab10b09
-  context_hash: c7d6e0f1e9125070
-- key: debuglib.InfoWhat.item.S
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 67
-      col: 14
-    end:
-      line: 67
-      col: 76
-  hash: '4d8757c3d65e5316'
-  context_hash: '85c11923def6a850'
-- key: debuglib.InfoWhat.item.l
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 68
-      col: 14
-    end:
-      line: 68
-      col: 28
-  hash: '3b4abcf26c63da90'
-  context_hash: '15b102f5e1274acd'
-- key: debuglib.InfoWhat.item.t
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 69
-      col: 14
-    end:
-      line: 69
-      col: 27
-  hash: '0d74d35018965521'
-  context_hash: '105f4cd2d7e8614a'
-- key: debuglib.InfoWhat.item.u
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 70
-      col: 14
-    end:
-      line: 70
-      col: 44
-  hash: '234b4c0d79270024'
-  context_hash: ccbf703eca4a4f14
-- key: debuglib.InfoWhat.item.f
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 71
-      col: 14
-    end:
-      line: 71
-      col: 21
-  hash: '075b011e6d60a10d'
-  context_hash: '88bf6438b8c0adf8'
-- key: debuglib.InfoWhat.item.r
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 72
-      col: 14
-    end:
-      line: 72
-      col: 39
-  hash: '661489bb7eb64c19'
-  context_hash: '5a95e7316013239c'
-- key: debuglib.InfoWhat.item.L
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 73
-      col: 14
-    end:
-      line: 73
-      col: 28
-  hash: a1993e3f27753996
-  context_hash: '82805f0c17b3057b'
-- key: debuglib.getinfo
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 76
-      col: 0
-    end:
-      line: 96
-      col: 0
-  hash: a340fa432951e50a
-  context_hash: de7cc417de1b3246
-- key: debuglib.getlocal@>5.2,JIT
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 105
-      col: 0
-    end:
-      line: 125
-      col: 0
-  hash: defd75cacb5f645b
-  context_hash: de7cc417de1b3246
-- key: debuglib.getlocal@5.1
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 137
-      col: 0
-    end:
-      line: 147
-      col: 0
-  hash: '07f5462f1e8865d3'
-  context_hash: de7cc417de1b3246
-- key: debuglib.getmetatable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 156
-      col: 0
-    end:
-      line: 159
-      col: 0
-  hash: '410e3c69b1af1d28'
-  context_hash: de7cc417de1b3246
-- key: debuglib.getregistry
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 164
-      col: 0
-    end:
-      line: 166
-      col: 0
-  hash: '8976bf1110d1f1ea'
-  context_hash: de7cc417de1b3246
-- key: debuglib.getupvalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 170
-      col: 0
-    end:
-      line: 177
-      col: 0
-  hash: '982c779504f348a1'
-  context_hash: de7cc417de1b3246
-- key: debuglib.getuservalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 184
-      col: 0
-    end:
-      line: 187
-      col: 0
-  hash: '139b3595baa85765'
-  context_hash: de7cc417de1b3246
-- key: debuglib.setcstacklimit
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 193
-      col: 0
-    end:
-      line: 201
-      col: 0
-  hash: '026fa4d8ce9ac37a'
-  context_hash: de7cc417de1b3246
-- key: debuglib.setfenv
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 206
-      col: 0
-    end:
-      line: 209
-      col: 0
-  hash: '0cd7bfb647fe6ac9'
-  context_hash: de7cc417de1b3246
-- key: debuglib.Hookmask.item.c
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 217
-      col: 10
-    end:
-      line: 217
-      col: 48
-  hash: '2a465f3164fdfca7'
-  context_hash: '4f1a28807fd9c99d'
-- key: debuglib.Hookmask.item.r
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 218
-      col: 10
-    end:
-      line: 218
-      col: 55
-  hash: d2998a5af84ab995
-  context_hash: '8f1344163909f994'
-- key: debuglib.Hookmask.item.l
-  kind:
-    type: line_tail
-    prefix: ' '
-  range:
-    start:
-      line: 219
-      col: 10
-    end:
-      line: 219
-      col: 57
-  hash: cc3f0aa2749ba739
-  context_hash: '4a1e231682598e4a'
-- key: debuglib.sethook
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 221
-      col: 0
-    end:
-      line: 242
-      col: 0
-  hash: baa9120640597b69
-  context_hash: de7cc417de1b3246
-- key: debuglib.setlocal
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 249
-      col: 0
-    end:
-      line: 256
-      col: 0
-  hash: '6b7612b243606250'
-  context_hash: de7cc417de1b3246
-- key: debuglib.setmetatable
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 264
-      col: 0
-    end:
-      line: 267
-      col: 0
-  hash: '441c3f569ab9675b'
-  context_hash: de7cc417de1b3246
-- key: debuglib.setupvalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 274
-      col: 0
-    end:
-      line: 278
-      col: 0
-  hash: ad4178b7dc4b78b6
-  context_hash: de7cc417de1b3246
-- key: debuglib.setuservalue
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 284
-      col: 0
-    end:
-      line: 288
-      col: 0
-  hash: '23156e0556f56b1a'
-  context_hash: db5e2c86b41bac5c
-- key: debuglib.traceback
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 294
-      col: 0
-    end:
-      line: 302
-      col: 0
-  hash: '7295f50d331bbd1f'
-  context_hash: '75684757332beac5'
-- key: debuglib.traceback.param.thread
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 304
-      col: 34
-    end:
-      line: 304
-      col: 108
-  hash: d8583bff49e75935
-  context_hash: b4d473f240caabc8
-- key: debuglib.traceback.param.message
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 305
-      col: 26
-    end:
-      line: 305
-      col: 119
-  hash: e64a956566b2b220
-  context_hash: a234ab6651e02e11
-- key: debuglib.traceback.param.level
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 306
-      col: 26
-    end:
-      line: 306
-      col: 90
-  hash: '533f667ee00e6b33'
-  context_hash: '76d3857147ea882a'
-- key: debuglib.upvalueid
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 310
-      col: 0
-    end:
-      line: 317
-      col: 0
-  hash: b28a436780522b2e
-  context_hash: a9890306a2dd729d
-- key: debuglib.upvaluejoin
-  kind:
-    type: doc_block
-    indent: ''
-  range:
-    start:
-      line: 324
-      col: 0
-    end:
-      line: 327
-      col: 0
-  hash: '8bcd6fd7914cb62e'
-  context_hash: de7cc417de1b3246
+v: 2
+f: 'debug.lua'
+b:
+- a: 'function debug.debug() end'
+  g: 'Enters an interactive mode with the user, running each string that the user'
+  r: [18, 0, 26, 62]
+  e:
+  - ['debuglib.debug', 'd', doc, [18, 0, 26, 62], '5728b52db9e5f2ff']
+- a: 'function debug.getfenv(o) end'
+  g: '@version 5.1'
+  r: [29, 0, 35, 14]
+  e:
+  - ['debuglib.getfenv', 'd', doc, [30, 0, 33, 0], 'c130f8670d13d521']
+- a: 'function debug.gethook(thread) end'
+  g: 'Returns the current hook settings of the thread, as three values: the'
+  r: [38, 0, 45, 25]
+  e:
+  - ['debuglib.gethook', 'd', doc, [38, 0, 42, 0], 'df523859e51a83d8']
+- a: '---'
+  g: '@alias debuglib.InfoWhat'
+  r: [66, 0, 75, 12]
+  e:
+  - ['debuglib.InfoWhat.item.n', 'i:n', tail, [67, 12, 67, 31], 'f607d8295ab10b09', ' ']
+  - ['debuglib.InfoWhat.item.S', 'i:S', tail, [68, 12, 68, 76], 'df0b50761a048c35', ' ']
+  - ['debuglib.InfoWhat.item.l', 'i:l', tail, [69, 12, 69, 26], '3b4abcf26c63da90', ' ']
+  - ['debuglib.InfoWhat.item.t', 'i:t', tail, [70, 12, 70, 25], '0d74d35018965521', ' ']
+  - ['debuglib.InfoWhat.item.u', 'i:u', tail, [71, 12, 71, 42], '234b4c0d79270024', ' ']
+  - ['debuglib.InfoWhat.item.f', 'i:f', tail, [72, 12, 72, 19], '075b011e6d60a10d', ' ']
+  - ['debuglib.InfoWhat.item.r', 'i:r', tail, [73, 12, 73, 37], '661489bb7eb64c19', ' ']
+  - ['debuglib.InfoWhat.item.L', 'i:L', tail, [74, 12, 74, 26], 'a1993e3f27753996', ' ']
+- a: 'function debug.getinfo(thread, f, what) end'
+  g: 'Returns a table with information about a function. You can give the'
+  r: [77, 0, 102, 14]
+  e:
+  - ['debuglib.getinfo', 'd', doc, [77, 0, 97, 0], 'a340fa432951e50a']
+- a: 'function debug.getlocal(thread, f, index) end'
+  g: '@version >5.2, JIT'
+  r: [105, 0, 134, 14]
+  e:
+  - ['debuglib.getlocal@>5.2,JIT', 'd', doc, [106, 0, 126, 0], 'defd75cacb5f645b']
+- a: 'function debug.getlocal(thread, lvl, index) end'
+  g: '@version 5.1'
+  r: [137, 0, 154, 14]
+  e:
+  - ['debuglib.getlocal@5.1', 'd', doc, [138, 0, 148, 0], '07f5462f1e8865d3']
+- a: 'function debug.getmetatable(object) end'
+  g: 'Returns the metatable of the given `value` or **nil** if it does not have'
+  r: [157, 0, 162, 14]
+  e:
+  - ['debuglib.getmetatable', 'd', doc, [157, 0, 160, 0], '410e3c69b1af1d28']
+- a: 'function debug.getregistry() end'
+  g: 'Returns the registry table.'
+  r: [165, 0, 168, 14]
+  e:
+  - ['debuglib.getregistry', 'd', doc, [165, 0, 167, 0], '8976bf1110d1f1ea']
+- a: 'function debug.getupvalue(f, up) end'
+  g: 'This function returns the name and the value of the upvalue with index'
+  r: [171, 0, 182, 14]
+  e:
+  - ['debuglib.getupvalue', 'd', doc, [171, 0, 178, 0], '982c779504f348a1']
+- a: 'function debug.getuservalue(u, n) end'
+  g: 'Returns the `n`-th user value associated to the userdata `u` plus a boolean,'
+  r: [185, 0, 191, 19]
+  e:
+  - ['debuglib.getuservalue', 'd', doc, [185, 0, 188, 0], '139b3595baa85765']
+- a: 'function debug.setcstacklimit(limit) end'
+  g: '### **Deprecated in `Lua 5.4.2`**'
+  r: [194, 0, 204, 27]
+  e:
+  - ['debuglib.setcstacklimit', 'd', doc, [194, 0, 202, 0], '73f82d7a5007fec0']
+- a: 'function debug.setfenv(object, env) end'
+  g: 'Sets the environment of the given `object` to the given `table` .'
+  r: [207, 0, 214, 20]
+  e:
+  - ['debuglib.setfenv', 'd', doc, [207, 0, 210, 0], 'b5851ca0da8a8465']
+- a: '---'
+  g: '@alias debuglib.Hookmask'
+  r: [217, 0, 220, 59]
+  e:
+  - ['debuglib.Hookmask.item.c', 'i:c', tail, [218, 12, 218, 50], '2a465f3164fdfca7', ' ']
+  - ['debuglib.Hookmask.item.r', 'i:r', tail, [219, 12, 219, 57], 'd2998a5af84ab995', ' ']
+  - ['debuglib.Hookmask.item.l', 'i:l', tail, [220, 12, 220, 59], 'cc3f0aa2749ba739', ' ']
+- a: 'function debug.sethook(thread, hook, mask, count) end'
+  g: 'Sets the given function as a hook. The string `mask` and the number `count`'
+  r: [222, 0, 247, 25]
+  e:
+  - ['debuglib.sethook', 'd', doc, [222, 0, 243, 0], 'baa9120640597b69']
+- a: 'function debug.setlocal(thread, level, index, value) end'
+  g: 'This function assigns the value `value` to the local variable with'
+  r: [250, 0, 262, 19]
+  e:
+  - ['debuglib.setlocal', 'd', doc, [250, 0, 257, 0], '6b7612b243606250']
+- a: 'function debug.setmetatable(value, meta) end'
+  g: 'Sets the metatable for the given `object` to the given `table` (which'
+  r: [265, 0, 272, 43]
+  e:
+  - ['debuglib.setmetatable', 'd', doc, [265, 0, 268, 0], '441c3f569ab9675b']
+- a: 'function debug.setupvalue(f, up, value) end'
+  g: 'This function assigns the value `value` to the upvalue with index `up`'
+  r: [275, 0, 282, 19]
+  e:
+  - ['debuglib.setupvalue', 'd', doc, [275, 0, 279, 0], 'ad4178b7dc4b78b6']
+- a: 'function debug.setuservalue(udata, value, n) end'
+  g: 'Sets the given `value` as the `n`-th associated to the given `udata`.'
+  r: [285, 0, 292, 21]
+  e:
+  - ['debuglib.setuservalue', 'd', doc, [285, 0, 289, 0], '23156e0556f56b1a']
+- a: 'function debug.traceback(thread, message, level) end'
+  g: '@version 5.1, JIT'
+  r: [295, 0, 306, 18]
+  e:
+  - ['debuglib.traceback@5.1,JIT', 'd', doc, [296, 0, 301, 0], 'bfd72b049bd1e282']
+- a: 'function debug.traceback(thread, message, level) end'
+  g: '@version > 5.2'
+  r: [309, 0, 326, 18]
+  e:
+  - ['debuglib.traceback@>5.2', 'd', doc, [310, 0, 316, 0], 'cc591105784e41dd']
+- a: 'function debug.upvalueid(f, n) end'
+  g: 'Returns a unique identifier (as a light userdata) for the upvalue numbered'
+  r: [329, 0, 340, 14]
+  e:
+  - ['debuglib.upvalueid', 'd', doc, [329, 0, 336, 0], 'b28a436780522b2e']
+- a: 'function debug.upvaluejoin(f1, n1, f2, n2) end'
+  g: 'Make the `n1`-th upvalue of the Lua closure f1 refer to the `n2`-th upvalue'
+  r: [343, 0, 350, 21]
+  e:
+  - ['debuglib.upvaluejoin', 'd', doc, [343, 0, 346, 0], '8bcd6fd7914cb62e']

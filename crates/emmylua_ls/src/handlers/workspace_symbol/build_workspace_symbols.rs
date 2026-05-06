@@ -1,4 +1,6 @@
-use emmylua_code_analysis::{DbIndex, LuaCompilation, LuaSemanticDeclId, LuaType};
+use emmylua_code_analysis::{
+    DbIndex, LuaCommonProperty, LuaCompilation, LuaSemanticDeclId, LuaType,
+};
 use lsp_types::{OneOf, SymbolKind, SymbolTag, WorkspaceSymbol, WorkspaceSymbolResponse};
 use tokio_util::sync::CancellationToken;
 
@@ -125,5 +127,14 @@ fn get_symbol_kind(typ: &LuaType) -> SymbolKind {
 
 fn is_deprecated(db: &DbIndex, id: LuaSemanticDeclId) -> bool {
     let property = db.get_property_index().get_property(&id);
-    property.is_some_and(|prop| prop.deprecated().is_some())
+    property.is_some_and(property_is_deprecated)
+}
+
+fn property_is_deprecated(property: &LuaCommonProperty) -> bool {
+    property.deprecated().is_some()
+        || property.attribute_uses().is_some_and(|attribute_uses| {
+            attribute_uses
+                .iter()
+                .any(|attribute_use| attribute_use.as_deprecated().is_some())
+        })
 }

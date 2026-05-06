@@ -1,18 +1,8 @@
-version: 1
-line_base: 0
-col_base: 0
-file: jit/util.lua
-entries:
-- key: util.traceir.return.2
-  kind:
-    type: line_tail
-    prefix: ''
-  range:
-    start:
-      line: 78
-      col: 25
-    end:
-      line: 78
-      col: 50
-  hash: '0fccc55e3f2e66e3'
-  context_hash: '1fc12a68a2da7f94'
+v: 2
+f: 'jit/util.lua'
+b:
+- a: 'function util.traceir(tr, ref) end'
+  g: '@param tr  Trace'
+  r: [69, 0, 75, 25]
+  e:
+  - ['util.traceir.return.2', 'r:2', tail, [72, 27, 72, 52], '0fccc55e3f2e66e3']

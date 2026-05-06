@@ -1,5 +1,3 @@
-version: 1
-line_base: 0
-col_base: 0
-file: jit/profile.lua
-entries: []
+v: 2
+f: 'jit/profile.lua'
+b:

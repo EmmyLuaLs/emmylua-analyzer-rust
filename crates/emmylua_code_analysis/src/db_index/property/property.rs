@@ -2,10 +2,9 @@ use std::sync::Arc;
 
 use emmylua_parser::{LuaVersionCondition, VisibilityKind};
 
-use crate::{
-    LuaType, LuaTypeDeclId,
-    db_index::property::decl_feature::{DeclFeatureFlag, PropertyDeclFeature},
-};
+use crate::db_index::property::decl_feature::{DeclFeatureFlag, PropertyDeclFeature};
+
+use super::{LuaAttributeCollectionExt, LuaAttributeUse, LuaBuiltinAttributeKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LuaCommonProperty {
@@ -101,11 +100,18 @@ impl LuaCommonProperty {
     }
 
     pub fn find_attribute_use(&self, id: &str) -> Option<&LuaAttributeUse> {
-        self.attribute_uses.as_ref().and_then(|attribute_uses| {
-            attribute_uses
-                .iter()
-                .find(|attribute_use| attribute_use.id.get_name() == id)
-        })
+        self.attribute_uses
+            .as_ref()
+            .and_then(|attribute_uses| attribute_uses.as_slice().find_attribute_use(id))
+    }
+
+    pub fn find_builtin_attribute(
+        &self,
+        kind: LuaBuiltinAttributeKind,
+    ) -> Option<&LuaAttributeUse> {
+        self.attribute_uses
+            .as_ref()
+            .and_then(|attribute_uses| attribute_uses.as_slice().find_builtin_attribute(kind))
     }
 }
 
@@ -148,24 +154,5 @@ pub struct LuaPropertyId {
 impl LuaPropertyId {
     pub fn new(id: u32) -> Self {
         Self { id }
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct LuaAttributeUse {
-    pub id: LuaTypeDeclId,
-    pub args: Vec<(String, Option<LuaType>)>,
-}
-
-impl LuaAttributeUse {
-    pub fn new(id: LuaTypeDeclId, args: Vec<(String, Option<LuaType>)>) -> Self {
-        Self { id, args }
-    }
-
-    pub fn get_param_by_name(&self, name: &str) -> Option<&LuaType> {
-        self.args
-            .iter()
-            .find(|(n, _)| n == name)
-            .and_then(|(_, typ)| typ.as_ref())
     }
 }

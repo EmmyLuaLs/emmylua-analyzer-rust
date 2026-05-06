@@ -5,15 +5,16 @@ use emmylua_parser::{
 };
 
 use crate::{
-    InFiled, InferFailReason, LuaDeclId, LuaMember, LuaMemberId, LuaMemberInfo, LuaMemberKey,
-    LuaOperator, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaTypeCache,
-    LuaTypeDeclId, OperatorFunction, SignatureReturnStatus, TypeOps,
+    InFiled, InferFailReason, LuaBuiltinAttributeKind, LuaConstructorReturnMode, LuaDeclId,
+    LuaMember, LuaMemberId, LuaMemberInfo, LuaMemberKey, LuaOperator, LuaOperatorMetaMethod,
+    LuaOperatorOwner, LuaSemanticDeclId, LuaTypeCache, LuaTypeDeclId, OperatorFunction,
+    SignatureReturnStatus, TypeOps,
     compilation::analyzer::{
         common::{add_member, bind_type},
         lua::{
             analyze_func_body_returns_with, analyze_return_point, infer_for_range_iter_expr_func,
         },
-        unresolve::UnResolveConstructor,
+        unresolve::{UnResolveCall, UnResolveConstructor},
     },
     db_index::{DbIndex, LuaMemberOwner, LuaType},
     find_members_with_key,
@@ -246,12 +247,12 @@ pub fn try_resolve_module_ref(
     Ok(())
 }
 
-pub fn try_resolve_constructor(
+pub fn try_resolve_class_constructor(
     db: &mut DbIndex,
     cache: &mut LuaInferCache,
     unresolve_constructor: &mut UnResolveConstructor,
 ) -> ResolveResult {
-    let (param_type, target_signature_name, root_class, strip_self, return_self) = {
+    let (param_type, target_signature_name, root_class, strip_self, return_mode) = {
         let signature = db
             .get_signature_index()
             .get(&unresolve_constructor.signature_id)
@@ -259,49 +260,26 @@ pub fn try_resolve_constructor(
         let param_info = signature
             .get_param_info_by_id(unresolve_constructor.param_idx)
             .ok_or(InferFailReason::None)?;
-        let constructor_use = param_info
-            .get_attribute_by_name("constructor")
+        let constructor_attribute = param_info
+            .get_builtin_attribute(LuaBuiltinAttributeKind::Constructor)
+            .and_then(|attribute_use| attribute_use.as_constructor())
             .ok_or(InferFailReason::None)?;
 
         // 作为构造函数的方法名
-        let target_signature_name = constructor_use
-            .get_param_by_name("name")
-            .and_then(|typ| match typ {
-                LuaType::DocStringConst(value) => Some(value.deref().clone()),
-                _ => None,
-            })
-            .ok_or(InferFailReason::None)?;
+        let target_signature_name = constructor_attribute.name.to_string();
         // 作为构造函数的根类
-        let root_class =
-            constructor_use
-                .get_param_by_name("root_class")
-                .and_then(|typ| match typ {
-                    LuaType::DocStringConst(value) => Some(value.deref().clone()),
-                    _ => None,
-                });
+        let root_class = constructor_attribute.root_class.map(str::to_string);
         // 是否可以省略self参数
-        let strip_self = constructor_use
-            .get_param_by_name("strip_self")
-            .and_then(|typ| match typ {
-                LuaType::DocBooleanConst(value) => Some(*value),
-                _ => None,
-            })
-            .unwrap_or(true);
+        let strip_self = constructor_attribute.strip_self;
         // 是否返回self
-        let return_self = constructor_use
-            .get_param_by_name("return_self")
-            .and_then(|typ| match typ {
-                LuaType::DocBooleanConst(value) => Some(*value),
-                _ => None,
-            })
-            .unwrap_or(true);
+        let return_mode = constructor_attribute.return_mode;
 
         Ok::<_, InferFailReason>((
             param_info.type_ref.clone(),
             target_signature_name,
             root_class,
             strip_self,
-            return_self,
+            return_mode,
         ))
     }?;
 
@@ -332,12 +310,12 @@ pub fn try_resolve_constructor(
 
     // 添加构造函数
     let target_type = LuaType::Ref(target_id);
-    let member_key = LuaMemberKey::Name(target_signature_name);
+    let member_key = LuaMemberKey::Name(target_signature_name.into());
     let members =
         find_members_with_key(db, &target_type, member_key, false).ok_or(InferFailReason::None)?;
     let ctor_signature_member = members.first().ok_or(InferFailReason::None)?;
 
-    set_signature_to_default_call(db, cache, ctor_signature_member, strip_self, return_self)
+    set_signature_to_default_call(db, cache, ctor_signature_member, strip_self, return_mode)
         .ok_or(InferFailReason::None)?;
 
     Ok(())
@@ -348,7 +326,7 @@ fn set_signature_to_default_call(
     cache: &mut LuaInferCache,
     member_info: &LuaMemberInfo,
     strip_self: bool,
-    return_self: bool,
+    return_mode: LuaConstructorReturnMode,
 ) -> Option<()> {
     let LuaType::Signature(signature_id) = member_info.typ else {
         return None;
@@ -385,7 +363,7 @@ fn set_signature_to_default_call(
         OperatorFunction::DefaultClassCtor {
             id: signature_id,
             strip_self,
-            return_self,
+            return_mode,
         },
     );
     db.get_operator_index_mut().add_operator(operator);
@@ -424,4 +402,38 @@ fn get_constructor_target_type(
     }
 
     None
+}
+
+pub fn try_resolve_call(
+    db: &mut DbIndex,
+    cache: &mut LuaInferCache,
+    unresolve_call: &mut UnResolveCall,
+) -> ResolveResult {
+    let prefix_expr = unresolve_call
+        .call_expr
+        .clone()
+        .get_prefix_expr()
+        .ok_or(InferFailReason::None)?;
+    let expr_type = infer_expr(db, cache, prefix_expr)?;
+    let LuaType::Signature(signature_id) = expr_type else {
+        return Ok(());
+    };
+    let Some(signature) = db.get_signature_index().get(&signature_id) else {
+        return Ok(());
+    };
+    let Some((param_idx, _)) = signature.param_docs.iter().find(|(_, param_info)| {
+        param_info
+            .get_builtin_attribute(LuaBuiltinAttributeKind::Constructor)
+            .is_some()
+    }) else {
+        return Ok(());
+    };
+
+    let mut unresolve_constructor = UnResolveConstructor {
+        file_id: unresolve_call.file_id,
+        call_expr: unresolve_call.call_expr.clone(),
+        signature_id,
+        param_idx: *param_idx,
+    };
+    try_resolve_class_constructor(db, cache, &mut unresolve_constructor)
 }

@@ -249,8 +249,20 @@ impl LuaModuleIndex {
         }
 
         let node = self.module_nodes.get(&parent_node_id)?;
-        let file_id = node.file_ids.first()?;
-        self.file_module_map.get(file_id)
+        let prefer_non_hidden = node.file_ids.len() > 1;
+        let mut first_module = None;
+        for file_id in &node.file_ids {
+            let module_info = self.file_module_map.get(file_id)?;
+            if first_module.is_none() {
+                first_module = Some(module_info);
+            }
+
+            if !prefer_non_hidden || !module_info.visible.is_hidden() {
+                return Some(module_info);
+            }
+        }
+
+        first_module
     }
 
     /// Find a module by suffix when exact lookup fails.

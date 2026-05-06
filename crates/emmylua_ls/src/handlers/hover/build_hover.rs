@@ -80,6 +80,7 @@ pub fn build_hover_content_for_completion<'a>(
     semantic_model: &'a SemanticModel,
     db: &DbIndex,
     property_id: LuaSemanticDeclId,
+    token: Option<LuaSyntaxToken>,
 ) -> Option<HoverBuilder<'a>> {
     let typ = match property_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
@@ -97,7 +98,7 @@ pub fn build_hover_content_for_completion<'a>(
         typ,
         property_id,
         true,
-        None,
+        token,
     )
 }
 
@@ -230,6 +231,13 @@ fn build_member_hover(
     let mut semantic_decls =
         find_member_origin_owners(builder.compilation, builder.semantic_model, member_id, true)
             .get_types(builder.semantic_model);
+    if let Some(token) = builder.get_trigger_token() {
+        semantic_decls.retain(|(semantic_decl, _)| {
+            builder
+                .semantic_model
+                .is_semantic_visible(token.clone(), semantic_decl.clone())
+        });
+    }
 
     let member_name = match member.get_key() {
         LuaMemberKey::Name(name) => name.to_string(),

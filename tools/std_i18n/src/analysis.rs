@@ -1,20 +1,19 @@
-use crate::comment_syntax::{is_doc_tag_line, parse_union_item_value_from_line_trim};
+use crate::diagnostics::Diagnostics;
+use crate::doc_text::{
+    comment_payload, doc_tag_payload, is_doc_continue_or_line, is_doc_tag_line,
+    parse_union_item_value_from_line_trim,
+};
 use crate::keys::{
-    build_module_table_to_class_map, locale_key_desc, locale_key_field, locale_key_item,
-    locale_key_param, locale_key_return, locale_key_return_item, map_symbol_for_locale_key,
+    locale_key_desc, locale_key_field, locale_key_item, locale_key_param, locale_key_return,
+    locale_key_return_item, map_symbol_for_locale_key,
 };
-use crate::model::{
-    AnalyzedLuaDocFile, ExtractedComment, ExtractedEntry, ExtractedFile, ExtractedKind, SourceSpan,
-};
+use crate::model::{AnalyzedDocFile, EntrySelector, ExtractedComment, ExtractedEntry, SourceSpan};
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaComment, LuaDocDescriptionOwner, LuaDocMultiLineUnionType,
-    LuaDocTag, LuaDocType, LuaExpr, LuaIndexExpr, LuaLiteralToken, LuaParser, LuaVarExpr,
-    ParserConfig,
+    LuaAst, LuaAstNode, LuaAstToken, LuaChunk, LuaComment, LuaDocDescriptionOwner,
+    LuaDocMultiLineUnionType, LuaDocTag, LuaDocType, LuaExpr, LuaIndexExpr, LuaLiteralToken,
+    LuaParser, LuaVarExpr, ParserConfig,
 };
 use std::collections::{HashMap, HashSet};
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 struct RootContext {
@@ -26,58 +25,16 @@ struct RootContext {
 
 type LocaleBaseMap = HashMap<(SourceSpan, String), String>;
 
-/// 从 `std_dir/*.lua` 提取 i18n 条目，并尽量保持“分析顺序”：
-/// - 文件顺序：按相对路径排序（稳定、可复现）
-/// - 文件内：按注释在源码中的位置（text_range.start）排序
-/// - 注释内：按 tag/item 在源码中的出现顺序输出
-pub fn extract_std_dir(
-    std_dir: &Path,
-    include_empty: bool,
-) -> Result<Vec<ExtractedFile>, Box<dyn std::error::Error>> {
-    let mut files: Vec<(PathBuf, PathBuf)> = WalkDir::new(std_dir)
-        .min_depth(1)
-        .max_depth(2)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("lua"))
-        .filter_map(|full| {
-            let rel = full.strip_prefix(std_dir).ok()?.to_path_buf();
-            Some((rel, full))
-        })
-        .collect();
-
-    files.sort_by(|(a, _), (b, _)| a.cmp(b));
-
-    let mut out: Vec<ExtractedFile> = Vec::new();
-    for (rel_path, full_path) in files {
-        let file_name = rel_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default()
-            .to_string();
-        let content = std::fs::read_to_string(&full_path)?;
-        let analyzed = analyze_lua_doc_file(&file_name, &content, include_empty);
-        out.push(ExtractedFile {
-            path: rel_path,
-            comments: analyzed.comments,
-            entries: analyzed.entries,
-        });
-    }
-
-    Ok(out)
-}
-
 pub fn analyze_lua_doc_file(
-    file_name: &str,
+    file_label: &str,
     content: &str,
     include_empty: bool,
-) -> AnalyzedLuaDocFile {
-    let module_map = build_module_table_to_class_map(content);
-
+    diagnostics: &mut Diagnostics,
+) -> AnalyzedDocFile {
     let tree = LuaParser::parse(content, ParserConfig::default());
     let chunk = tree.get_chunk_node();
+    let module_map = build_module_table_to_class_map(&chunk);
+
     let mut comments: Vec<LuaComment> = chunk.descendants::<LuaComment>().collect();
     comments.sort_by_key(|c| c.syntax().text_range().start());
 
@@ -86,7 +43,6 @@ pub fn analyze_lua_doc_file(
         comment: LuaComment,
         span: SourceSpan,
         raw: String,
-        effective_version: Option<String>,
     }
 
     // 有些 std 文档会把 `@version` 单独放在上一条注释里（紧挨着真正的 doc block）。
@@ -132,7 +88,6 @@ pub fn analyze_lua_doc_file(
             comment,
             span,
             raw: raw_comment,
-            effective_version,
         });
 
         if has_owner {
@@ -151,16 +106,16 @@ pub fn analyze_lua_doc_file(
     for r in records {
         let mut comment_entries: Vec<ExtractedEntry> = Vec::new();
         extract_from_comment(
-            file_name,
+            file_label,
             &r.comment,
             &r.raw,
             include_empty,
-            r.effective_version.as_deref(),
             r.span,
             &module_map,
             &locale_base_map,
             &mut comment_entries,
             &mut seen,
+            diagnostics,
         );
 
         if !comment_entries.is_empty() {
@@ -173,8 +128,7 @@ pub fn analyze_lua_doc_file(
         }
     }
 
-    AnalyzedLuaDocFile {
-        module_map,
+    AnalyzedDocFile {
         comments: out_comments,
         entries: out_entries,
     }
@@ -220,17 +174,18 @@ fn build_locale_base_map(roots: &[RootContext]) -> LocaleBaseMap {
     map
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extract_from_comment(
-    file_name: &str,
+    file_label: &str,
     comment: &LuaComment,
     raw_comment: &str,
     include_empty: bool,
-    version_suffix: Option<&str>,
     comment_span: SourceSpan,
     module_map: &HashMap<String, String>,
     locale_base_map: &LocaleBaseMap,
     out: &mut Vec<ExtractedEntry>,
     seen: &mut HashSet<String>,
+    diagnostics: &mut Diagnostics,
 ) {
     let owner_symbol = comment.get_owner().and_then(owner_symbol_from_ast);
     let tags: Vec<LuaDocTag> = comment.get_doc_tags().collect();
@@ -269,22 +224,28 @@ fn extract_from_comment(
             .unwrap_or_default();
         let desc_text = preprocess_description(&desc_raw);
         push_entry(
+            file_label,
             out,
             seen,
             ExtractedEntry {
-                key: make_key(file_name, symbol, version_suffix, "desc", None),
                 locale_key: locale_key_desc(&locale_base),
-                kind: ExtractedKind::Desc,
-                symbol: symbol.to_string(),
-                base: base.clone(),
-                version_suffix: version_suffix.map(|s| s.to_string()),
+                selector: EntrySelector::Desc,
                 comment_span,
                 raw: desc_raw,
                 value: desc_text,
             },
             include_empty,
+            diagnostics,
         );
 
+        let raw_returns = return_sections_from_raw(raw_comment);
+        let mut raw_returns_by_line: HashMap<usize, ReturnSection> = raw_returns
+            .iter()
+            .cloned()
+            .map(|section| (section.line_start, section))
+            .collect();
+        let ast_return_descriptions =
+            return_descriptions_by_raw_line(&tags, comment_span, &raw_returns);
         let mut return_index: usize = 0;
         for tag in &tags {
             match tag {
@@ -299,89 +260,64 @@ fn extract_from_comment(
                         .unwrap_or_default();
                     let text = preprocess_description(&raw_desc);
                     push_entry(
+                        file_label,
                         out,
                         seen,
                         ExtractedEntry {
-                            key: make_key(file_name, symbol, version_suffix, "param", Some(&name)),
                             locale_key: locale_key_param(&locale_base, &name),
-                            kind: ExtractedKind::Param { name: name.clone() },
-                            symbol: symbol.to_string(),
-                            base: base.clone(),
-                            version_suffix: version_suffix.map(|s| s.to_string()),
+                            selector: EntrySelector::Param { name: name.clone() },
                             comment_span,
                             raw: raw_desc,
                             value: text,
                         },
                         include_empty,
+                        diagnostics,
                     );
                 }
                 LuaDocTag::Return(ret) => {
-                    return_index += 1;
-                    let ident = return_index.to_string();
-                    let raw_desc = ret
-                        .get_description()
-                        .map(|d| d.get_description_text())
+                    let line_start = return_tag_line_start(ret, comment_span, &raw_returns);
+                    let section = line_start.and_then(|line| raw_returns_by_line.remove(&line));
+                    let raw_desc = line_start
+                        .and_then(|line| ast_return_descriptions.get(&line).cloned())
+                        .or_else(|| ret.get_description().map(|d| d.get_description_text()))
                         .unwrap_or_default();
-                    let text = preprocess_description(&raw_desc);
-                    push_entry(
+                    return_index += 1;
+                    push_return_entries(
+                        file_label,
+                        &locale_base,
+                        return_index,
+                        raw_desc,
+                        section.map(|section| section.items).unwrap_or_default(),
+                        comment_span,
+                        include_empty,
                         out,
                         seen,
-                        ExtractedEntry {
-                            key: make_key(
-                                file_name,
-                                symbol,
-                                version_suffix,
-                                "return",
-                                Some(&ident),
-                            ),
-                            locale_key: locale_key_return(&locale_base, &ident),
-                            kind: ExtractedKind::Return {
-                                index: return_index,
-                            },
-                            symbol: symbol.to_string(),
-                            base: base.clone(),
-                            version_suffix: version_suffix.map(|s| s.to_string()),
-                            comment_span,
-                            raw: raw_desc,
-                            value: text,
-                        },
-                        include_empty,
+                        diagnostics,
                     );
-
-                    for (value, raw_item_desc) in
-                        return_union_items_for_index(raw_comment, return_index)
-                    {
-                        let item_key = format!("{ident}.{value}");
-                        let text = preprocess_description(&raw_item_desc);
-                        push_entry(
-                            out,
-                            seen,
-                            ExtractedEntry {
-                                key: make_key(
-                                    file_name,
-                                    symbol,
-                                    version_suffix,
-                                    "return_item",
-                                    Some(&item_key),
-                                ),
-                                locale_key: locale_key_return_item(&locale_base, &ident, &value),
-                                kind: ExtractedKind::ReturnItem {
-                                    index: return_index,
-                                    value: value.clone(),
-                                },
-                                symbol: symbol.to_string(),
-                                base: base.clone(),
-                                version_suffix: version_suffix.map(|s| s.to_string()),
-                                comment_span,
-                                raw: raw_item_desc,
-                                value: text,
-                            },
-                            include_empty,
-                        );
-                    }
                 }
                 _ => {}
             }
+        }
+
+        let mut remaining_returns: Vec<ReturnSection> = raw_returns_by_line.into_values().collect();
+        remaining_returns.sort_by_key(|section| section.line_start);
+        for section in remaining_returns {
+            return_index += 1;
+            push_return_entries(
+                file_label,
+                &locale_base,
+                return_index,
+                ast_return_descriptions
+                    .get(&section.line_start)
+                    .cloned()
+                    .unwrap_or_default(),
+                section.items,
+                comment_span,
+                include_empty,
+                out,
+                seen,
+                diagnostics,
+            );
         }
 
         return;
@@ -401,20 +337,18 @@ fn extract_from_comment(
             .unwrap_or_default();
         let text = preprocess_description(&desc_raw);
         push_entry(
+            file_label,
             out,
             seen,
             ExtractedEntry {
-                key: make_key(file_name, class_symbol, version_suffix, "desc", None),
                 locale_key: locale_key_desc(&locale_base),
-                kind: ExtractedKind::Desc,
-                symbol: class_symbol.to_string(),
-                base: base.clone(),
-                version_suffix: version_suffix.map(|s| s.to_string()),
+                selector: EntrySelector::Desc,
                 comment_span,
                 raw: desc_raw,
                 value: text,
             },
             include_empty,
+            diagnostics,
         );
 
         for tag in &tags {
@@ -429,28 +363,20 @@ fn extract_from_comment(
                     .unwrap_or_default();
                 let text = preprocess_description(&raw_desc);
                 push_entry(
+                    file_label,
                     out,
                     seen,
                     ExtractedEntry {
-                        key: make_key(
-                            file_name,
-                            class_symbol,
-                            version_suffix,
-                            "field",
-                            Some(&field_name),
-                        ),
                         locale_key: locale_key_field(&locale_base, &field_name),
-                        kind: ExtractedKind::Field {
+                        selector: EntrySelector::Field {
                             name: field_name.clone(),
                         },
-                        symbol: class_symbol.to_string(),
-                        base: base.clone(),
-                        version_suffix: version_suffix.map(|s| s.to_string()),
                         comment_span,
                         raw: raw_desc,
                         value: text,
                     },
                     include_empty,
+                    diagnostics,
                 );
             }
         }
@@ -470,20 +396,18 @@ fn extract_from_comment(
             .unwrap_or_default();
         let text = preprocess_description(&desc_raw);
         push_entry(
+            file_label,
             out,
             seen,
             ExtractedEntry {
-                key: make_key(file_name, alias_symbol, version_suffix, "desc", None),
                 locale_key: locale_key_desc(&locale_base),
-                kind: ExtractedKind::Desc,
-                symbol: alias_symbol.to_string(),
-                base: base.clone(),
-                version_suffix: version_suffix.map(|s| s.to_string()),
+                selector: EntrySelector::Desc,
                 comment_span,
                 raw: desc_raw,
                 value: text,
             },
             include_empty,
+            diagnostics,
         );
 
         if let Some(union) = comment.descendants::<LuaDocMultiLineUnionType>().next() {
@@ -500,28 +424,20 @@ fn extract_from_comment(
                     .unwrap_or_default();
                 let text = preprocess_description(&raw_desc);
                 push_entry(
+                    file_label,
                     out,
                     seen,
                     ExtractedEntry {
-                        key: make_key(
-                            file_name,
-                            alias_symbol,
-                            version_suffix,
-                            "item",
-                            Some(&value),
-                        ),
                         locale_key: locale_key_item(&locale_base, &value),
-                        kind: ExtractedKind::Item {
+                        selector: EntrySelector::Item {
                             value: value.clone(),
                         },
-                        symbol: alias_symbol.to_string(),
-                        base: base.clone(),
-                        version_suffix: version_suffix.map(|s| s.to_string()),
                         comment_span,
                         raw: raw_desc,
                         value: text,
                     },
                     include_empty,
+                    diagnostics,
                 );
             }
         }
@@ -529,23 +445,158 @@ fn extract_from_comment(
 }
 
 fn push_entry(
+    file_label: &str,
     out: &mut Vec<ExtractedEntry>,
     seen: &mut HashSet<String>,
     entry: ExtractedEntry,
     include_empty: bool,
+    diagnostics: &mut Diagnostics,
 ) {
     if entry.value.trim().is_empty() && !include_empty {
         return;
     }
     if !seen.insert(entry.locale_key.clone()) {
-        let _ = writeln!(
-            io::stderr(),
-            "warning: duplicate locale_key {} (kept first, ignored new value)",
-            entry.locale_key
-        );
+        diagnostics.duplicate_locale_key(file_label, &entry.locale_key);
         return;
     }
     out.push(entry);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_return_entries(
+    file_label: &str,
+    locale_base: &str,
+    return_index: usize,
+    raw_desc: String,
+    items: Vec<(String, String)>,
+    comment_span: SourceSpan,
+    include_empty: bool,
+    out: &mut Vec<ExtractedEntry>,
+    seen: &mut HashSet<String>,
+    diagnostics: &mut Diagnostics,
+) {
+    let ident = return_index.to_string();
+    let text = preprocess_description(&raw_desc);
+    push_entry(
+        file_label,
+        out,
+        seen,
+        ExtractedEntry {
+            locale_key: locale_key_return(locale_base, &ident),
+            selector: EntrySelector::Return {
+                index: return_index,
+            },
+            comment_span,
+            raw: raw_desc,
+            value: text,
+        },
+        include_empty,
+        diagnostics,
+    );
+
+    for (value, raw_item_desc) in items {
+        let text = preprocess_description(&raw_item_desc);
+        push_entry(
+            file_label,
+            out,
+            seen,
+            ExtractedEntry {
+                locale_key: locale_key_return_item(locale_base, &ident, &value),
+                selector: EntrySelector::ReturnItem {
+                    index: return_index,
+                    value: value.clone(),
+                },
+                comment_span,
+                raw: raw_item_desc,
+                value: text,
+            },
+            include_empty,
+            diagnostics,
+        );
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ReturnSection {
+    line_start: usize,
+    line_end: usize,
+    items: Vec<(String, String)>,
+}
+
+fn return_descriptions_by_raw_line(
+    tags: &[LuaDocTag],
+    comment_span: SourceSpan,
+    sections: &[ReturnSection],
+) -> HashMap<usize, String> {
+    let mut out = HashMap::new();
+    for tag in tags {
+        let LuaDocTag::Return(ret) = tag else {
+            continue;
+        };
+        let range = ret.syntax().text_range();
+        let abs_start: usize = range.start().into();
+        let rel_start = abs_start.saturating_sub(comment_span.start);
+        let Some(section) = sections
+            .iter()
+            .find(|section| rel_start >= section.line_start && rel_start <= section.line_end)
+        else {
+            continue;
+        };
+        let raw_desc = ret
+            .get_description()
+            .map(|d| d.get_description_text())
+            .unwrap_or_default();
+        out.insert(section.line_start, raw_desc);
+    }
+    out
+}
+
+fn return_tag_line_start(
+    ret: &emmylua_parser::LuaDocTagReturn,
+    comment_span: SourceSpan,
+    sections: &[ReturnSection],
+) -> Option<usize> {
+    let range = ret.syntax().text_range();
+    let abs_start: usize = range.start().into();
+    let rel_start = abs_start.saturating_sub(comment_span.start);
+    sections
+        .iter()
+        .find(|section| rel_start >= section.line_start && rel_start <= section.line_end)
+        .map(|section| section.line_start)
+}
+
+fn build_module_table_to_class_map(chunk: &LuaChunk) -> HashMap<String, String> {
+    let mut map: HashMap<String, String> = HashMap::new();
+    for comment in chunk.descendants::<LuaComment>() {
+        let Some(owner_ast) = comment.get_owner() else {
+            continue;
+        };
+
+        // 仅对“模块表/全局对象”做映射（例如 `io = {}` -> `io -> iolib`）。
+        // 对 `local x` 这类局部变量的 `---@class ...` 不做映射。
+        if matches!(
+            owner_ast,
+            LuaAst::LuaLocalStat(_) | LuaAst::LuaLocalFuncStat(_)
+        ) {
+            continue;
+        }
+
+        let Some(owner) = owner_symbol_from_ast(owner_ast) else {
+            continue;
+        };
+        for tag in comment.get_doc_tags() {
+            if let LuaDocTag::Class(class_tag) = tag {
+                let Some(class_name) = class_tag
+                    .get_name_token()
+                    .map(|t| t.get_name_text().to_string())
+                else {
+                    continue;
+                };
+                map.insert(owner.clone(), class_name);
+            }
+        }
+    }
+    map
 }
 
 fn root_symbols_for_comment(comment: &LuaComment, raw_comment: &str) -> Vec<String> {
@@ -585,83 +636,55 @@ fn root_symbols_for_comment(comment: &LuaComment, raw_comment: &str) -> Vec<Stri
     out
 }
 
-fn return_union_items_for_index(raw_comment: &str, index: usize) -> Vec<(String, String)> {
-    let mut return_idx = 0usize;
-    let mut lines: Vec<&str> = raw_comment.lines().collect();
-    if raw_comment.contains("\r\n") {
-        lines = raw_comment.split("\r\n").collect();
-    }
+fn return_sections_from_raw(raw_comment: &str) -> Vec<ReturnSection> {
+    let lines = crate::doc_text::split_lines_with_offsets(raw_comment);
+    let mut sections = Vec::new();
 
-    for i in 0..lines.len() {
-        let t = lines[i].trim_start();
-        let Some(after_triple) = t.strip_prefix("---") else {
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_start_text(raw_comment);
+        let Some(after_return) = doc_tag_payload(t, "@return") else {
             continue;
         };
-        let after_triple = after_triple.trim_start();
-        let Some(after_return) = after_triple.strip_prefix("@return") else {
-            continue;
-        };
-        return_idx += 1;
-        if return_idx != index {
-            continue;
-        }
 
-        let after = after_return.trim();
+        let mut items: Vec<(String, String)> = Vec::new();
         // 仅处理 `@return`（无类型列表）+ 后续 `---| ... # ...` 的写法。
-        if !after.is_empty() {
-            return Vec::new();
-        }
-
-        let mut out: Vec<(String, String)> = Vec::new();
-        let mut j = i + 1;
-        while j < lines.len() && lines[j].trim().is_empty() {
-            j += 1;
-        }
-        while j < lines.len() {
-            let lt = lines[j].trim_start();
-            if is_doc_tag_line(lt) {
+        if after_return.trim().is_empty() {
+            let mut j = i + 1;
+            while j < lines.len() && lines[j].text(raw_comment).trim().is_empty() {
+                j += 1;
+            }
+            while j < lines.len() {
+                let lt = lines[j].trim_start_text(raw_comment);
+                if is_doc_tag_line(lt) {
+                    break;
+                }
+                if is_doc_continue_or_line(lt) {
+                    if let Some(value) = parse_union_item_value_from_line_trim(lt) {
+                        let desc = lt
+                            .split_once('#')
+                            .map(|(_, after)| after.trim().to_string())
+                            .unwrap_or_default();
+                        items.push((value, desc));
+                    }
+                    j += 1;
+                    continue;
+                }
+                if lt.trim().is_empty() {
+                    j += 1;
+                    continue;
+                }
                 break;
             }
-            if lt.starts_with("---|") {
-                if let Some(value) = parse_union_item_value_from_line_trim(lt) {
-                    let desc = lt
-                        .split_once('#')
-                        .map(|(_, after)| after.trim().to_string())
-                        .unwrap_or_default();
-                    out.push((value, desc));
-                }
-                j += 1;
-                continue;
-            }
-            break;
         }
-        return out;
+
+        sections.push(ReturnSection {
+            line_start: line.start,
+            line_end: line.end,
+            items,
+        });
     }
 
-    Vec::new()
-}
-
-fn make_key(
-    file_name: &str,
-    symbol: &str,
-    version_suffix: Option<&str>,
-    section: &str,
-    ident: Option<&str>,
-) -> String {
-    let mut key = String::new();
-    key.push_str(file_name);
-    key.push_str("::");
-    key.push_str(symbol);
-    if let Some(v) = version_suffix {
-        key.push_str(v);
-    }
-    key.push_str("::");
-    key.push_str(section);
-    if let Some(ident) = ident {
-        key.push('.');
-        key.push_str(ident);
-    }
-    key
+    sections
 }
 
 fn preprocess_description(description: &str) -> String {
@@ -715,25 +738,10 @@ fn extract_version_suffix(comment: &LuaComment, raw_comment: &str) -> Option<Str
         }
     }
 
-    // 兜底：逐行解析 `---@version ...` / `--- @version ...`（避免把整段 comment 都当成版本后缀）。
+    // 兜底：逐行解析 `---@version ...` / `--- @version ...` / `-- @version ...`。
     for line in raw_comment.lines() {
-        let t = line.trim_start();
-        let remainder = if let Some(rest) = t.strip_prefix("@version") {
-            rest
-        } else if let Some(rest) = t.strip_prefix("---@version") {
-            rest
-        } else if let Some(rest) = t.strip_prefix("--- @version") {
-            rest
-        } else {
-            // 通用形式：`---` 后允许若干空格，再跟 `@version`
-            let Some(after) = t.strip_prefix("---") else {
-                continue;
-            };
-            let after = after.trim_start();
-            let Some(after) = after.strip_prefix("@version") else {
-                continue;
-            };
-            after
+        let Some(remainder) = doc_tag_payload(line.trim_start(), "@version") else {
+            continue;
         };
         let remainder = remainder.trim();
         if remainder.is_empty() {
@@ -780,10 +788,10 @@ fn parse_tag_primary_name(tag_text: &str) -> Option<String> {
 fn extract_tag_name_from_raw(raw_comment: &str, tag: &str) -> Option<String> {
     let needle = format!("@{tag}");
     for line in raw_comment.lines() {
-        let Some(at) = line.find(&needle) else {
+        let t = line.trim_start();
+        let Some(after) = doc_tag_payload(t, &needle) else {
             continue;
         };
-        let after = &line[(at + needle.len())..];
         let after = after.trim();
         if after.is_empty() {
             continue;
@@ -831,7 +839,7 @@ fn literal_value_from_doc_type(typ: &LuaDocType) -> Option<String> {
 fn extract_owner_description_fallback(raw_comment: &str) -> Option<String> {
     // 从源码行做一次兜底提取（尽力而为）：
     // - 跳过开头的 `---@...` tag 行
-    // - 收集连续的 `--- ...` 描述行（但不包含 `---@`、也不包含 `---|` union 行）
+    // - 收集连续的 doc 描述行（但不包含 tag、也不包含 union 行）
     // - 遇到 tag/union/非 doc 行则停止
     let mut lines = raw_comment.lines().peekable();
     while let Some(line) = lines.peek() {
@@ -846,11 +854,11 @@ fn extract_owner_description_fallback(raw_comment: &str) -> Option<String> {
     let mut buf: Vec<String> = Vec::new();
     while let Some(line) = lines.peek() {
         let t = line.trim_start();
-        if is_doc_tag_line(t) || t.starts_with("---|") {
+        if is_doc_tag_line(t) || is_doc_continue_or_line(t) {
             break;
         }
-        if t.starts_with("---") {
-            let mut s = t.trim_start_matches("---");
+        if let Some(payload) = comment_payload(t) {
+            let mut s = payload;
             if let Some(rest) = s.strip_prefix(' ') {
                 s = rest;
             }
