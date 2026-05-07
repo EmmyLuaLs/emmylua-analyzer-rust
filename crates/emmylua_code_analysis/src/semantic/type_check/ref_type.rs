@@ -43,7 +43,7 @@ pub fn check_ref_type_compact(
                 compact_type,
                 check_guard.next_level()?,
             );
-            if result.is_err() && origin_type.is_function() {
+            if result.is_err() && should_retry_alias_nominal_check(compact_type) {
                 return check_ref_class(context, source_id, compact_type, check_guard);
             }
             return result;
@@ -56,6 +56,16 @@ pub fn check_ref_type_compact(
         check_ref_enum(context, source_id, compact_type, check_guard, type_decl)
     } else {
         check_ref_class(context, source_id, compact_type, check_guard)
+    }
+}
+
+fn should_retry_alias_nominal_check(compact_type: &LuaType) -> bool {
+    match compact_type {
+        LuaType::Ref(_) | LuaType::Def(_) => true,
+        LuaType::Generic(generic) => {
+            matches!(generic.get_base_type(), LuaType::Ref(_) | LuaType::Def(_))
+        }
+        _ => false,
     }
 }
 

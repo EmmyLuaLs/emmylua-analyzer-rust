@@ -383,7 +383,9 @@ fn check_assign_type_mismatch(
         (LuaType::Def(_), LuaType::Def(_) | LuaType::Ref(_)) => {}
         (LuaType::Def(_), _) => return Some(false),
         // 此时检查交给 table_field
-        (LuaType::Ref(_) | LuaType::Tuple(_), LuaType::TableConst(_)) => return Some(false),
+        (LuaType::Ref(_) | LuaType::Tuple(_) | LuaType::Generic(_), LuaType::TableConst(_)) => {
+            return Some(false);
+        }
         (LuaType::Nil, _) => return Some(false),
         (LuaType::Ref(_), LuaType::Instance(instance)) => {
             if instance.get_base().is_table() {

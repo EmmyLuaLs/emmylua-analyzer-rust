@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     LuaGenericType, LuaMemberOwner, LuaType, LuaTypeCache, LuaTypeDeclId, RenderLevel,
-    TypeSubstitutor, humanize_type, instantiate_type_generic,
+    TypeSubstitutor, complete_type_generic_args_in_type, humanize_type, instantiate_type_generic,
     semantic::{member::find_members, type_check::type_check_context::TypeCheckContext},
 };
 
@@ -94,6 +94,7 @@ pub fn check_generic_type_compact(
             check_generic_type_compact_ref_type(
                 context,
                 source_generic,
+                compact_type,
                 ref_id,
                 check_guard.next_level()?,
             )
@@ -226,6 +227,7 @@ fn check_generic_type_compact_table(
 fn check_generic_type_compact_ref_type(
     context: &mut TypeCheckContext,
     source_generic: &LuaGenericType,
+    compact_type: &LuaType,
     ref_id: &LuaTypeDeclId,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
@@ -244,6 +246,18 @@ fn check_generic_type_compact_ref_type(
                 check_guard.next_level()?,
             );
         }
+    }
+
+    // TODO: 这是对于 self 转换为 def/ref 后的处理, 转换后得到的类型并不包含泛型参数, 因此我们需要在这里再推导一次
+    // 然而, 在 infer 阶段将 self 推断为包含默认值的泛型类型是否更合适呢? 值得商榷
+    let completed_compact_type = complete_type_generic_args_in_type(context.db, compact_type);
+    if matches!(completed_compact_type, LuaType::Generic(_)) {
+        return check_generic_type_compact(
+            context,
+            source_generic,
+            &completed_compact_type,
+            check_guard.next_level()?,
+        );
     }
 
     for super_type in context
