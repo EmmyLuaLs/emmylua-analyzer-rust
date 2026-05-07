@@ -1,5 +1,9 @@
 use regex::Regex;
-use std::{collections::HashSet, path::PathBuf, process::Command};
+use std::{
+    collections::HashSet,
+    path::{Component, PathBuf},
+    process::Command,
+};
 
 use crate::config::configs::{EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem};
 
@@ -95,7 +99,9 @@ impl PreProcessContext {
             path = self.workspace.join(&path).to_string_lossy().to_string();
         }
 
-        path
+        normalize_path(PathBuf::from(path))
+            .to_string_lossy()
+            .to_string()
     }
 
     fn pre_process_workspace_path_item(
@@ -165,6 +171,31 @@ impl PreProcessContext {
     }
 }
 
+fn normalize_path(path: PathBuf) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let can_pop = matches!(
+                    normalized.components().next_back(),
+                    Some(Component::Normal(_))
+                );
+                if can_pop {
+                    normalized.pop();
+                } else if !normalized.has_root() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Normal(_) | Component::RootDir | Component::Prefix(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+
+    normalized
+}
+
 fn get_luarocks_deploy_dir() -> String {
     Command::new("luarocks")
         .args(["config", "deploy_lua_dir"])
@@ -178,4 +209,51 @@ fn get_luarocks_deploy_dir() -> String {
             }
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{EmmyLibraryConfig, EmmyLibraryItem, Emmyrc, EmmyrcWorkspacePathItem};
+
+    #[test]
+    fn pre_process_emmyrc_normalizes_parent_package_paths() {
+        let workspace = std::env::temp_dir()
+            .join("emmylua-pre-process")
+            .join("packages");
+        let expected = workspace.parent().unwrap().to_string_lossy().to_string();
+        let mut emmyrc = Emmyrc::default();
+        emmyrc.workspace.packages = vec![EmmyrcWorkspacePathItem::Path("..".to_string())];
+
+        emmyrc.pre_process_emmyrc(&workspace);
+
+        assert_eq!(
+            emmyrc.workspace.packages,
+            vec![EmmyrcWorkspacePathItem::Path(expected)]
+        );
+    }
+
+    #[test]
+    fn pre_process_workspace_path_config_resolves_ignore_dirs_from_entry_root() {
+        let workspace = std::env::temp_dir()
+            .join("emmylua-pre-process")
+            .join("workspace");
+        let entry_root = workspace.join("vendor").join("socket");
+        let expected_root = entry_root.to_string_lossy().to_string();
+        let expected_ignore_dir = entry_root.join("tests").to_string_lossy().to_string();
+        let mut emmyrc = Emmyrc::default();
+        emmyrc.workspace.library = vec![EmmyLibraryItem::Config(EmmyLibraryConfig {
+            path: "vendor/socket".to_string(),
+            ignore_dir: vec!["tests".to_string()],
+            ignore_globs: vec!["**/*.spec.lua".to_string()],
+        })];
+
+        emmyrc.pre_process_emmyrc(&workspace);
+
+        let EmmyLibraryItem::Config(config) = &emmyrc.workspace.library[0] else {
+            panic!("expected configured workspace path item");
+        };
+        assert_eq!(config.path, expected_root);
+        assert_eq!(config.ignore_dir, vec![expected_ignore_dir]);
+        assert_eq!(config.ignore_globs, vec!["**/*.spec.lua".to_string()]);
+    }
 }
