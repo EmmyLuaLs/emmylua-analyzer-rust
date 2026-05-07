@@ -88,6 +88,24 @@ mod test {
     }
 
     #[test]
+    fn test_variadic_call_operator() {
+        let mut ws = VirtualWorkspace::new();
+        let source = r#"
+            ---@class Callable
+            ---@operator call(string...): string
+
+            ---@type Callable
+            local callable
+
+            callable("a", "b")
+            callable("a", 1)
+        "#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::RedundantParameter, source));
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, source));
+    }
+
+    #[test]
     fn test_issue_360() {
         let mut ws = VirtualWorkspace::new();
 

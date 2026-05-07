@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocDescriptionOwner, LuaDocFieldKey, LuaDocTagField,
     LuaDocTagOperator, LuaDocType, NumberResult, VisibilityKind,
 };
 
 use crate::{
-    AnalyzeError, AsyncState, DiagnosticCode, LuaFunctionType, LuaMemberFeature, LuaMemberId,
-    LuaSignatureId, LuaTypeCache, OperatorFunction, TypeOps,
+    AnalyzeError, DiagnosticCode, LuaMemberFeature, LuaMemberId, LuaSignatureId, LuaTypeCache,
+    OperatorFunction, TypeOps,
     compilation::analyzer::doc::preprocess_description,
     db_index::{
         LuaMember, LuaMemberKey, LuaMemberOwner, LuaOperator, LuaOperatorMetaMethod,
@@ -99,19 +97,10 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
                 LuaOperatorMetaMethod::Index,
                 file_id,
                 range,
-                OperatorFunction::Func(Arc::new(LuaFunctionType::new(
-                    AsyncState::None,
-                    false,
-                    false,
-                    vec![
-                        (
-                            "self".to_string(),
-                            Some(LuaType::Ref(current_type_id.clone())),
-                        ),
-                        ("key".to_string(), Some(key_type_ref.clone())),
-                    ],
-                    field_type.clone(),
-                ))),
+                OperatorFunction::BinOp {
+                    param: key_type_ref.clone(),
+                    ret: field_type.clone(),
+                },
             );
             analyzer
                 .get_db()
@@ -169,27 +158,14 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
     let current_type_id = analyzer.current_type_id.clone()?;
     let name_token = tag.get_name_token()?;
     let op_kind = LuaOperatorMetaMethod::from_operator_name(name_token.get_name_text())?;
-    let mut operands: Vec<(String, Option<LuaType>)> = tag
+    let params: Vec<LuaType> = tag
         .get_param_list()
         .map(|list| {
             list.get_types()
-                .enumerate()
-                .map(|(i, doc_type)| {
-                    (
-                        format!("arg{}", i),
-                        Some(infer_type(&mut analyzer.type_context, doc_type)),
-                    )
-                })
+                .map(|doc_type| infer_type(&mut analyzer.type_context, doc_type))
                 .collect()
         })
         .unwrap_or_default();
-
-    let self_name = if op_kind == LuaOperatorMetaMethod::Call {
-        "@call_self"
-    } else {
-        "self"
-    };
-    operands.insert(0, (self_name.to_string(), Some(LuaType::SelfInfer)));
 
     let return_type = if let Some(return_type) = tag.get_return_type() {
         infer_type(&mut analyzer.type_context, return_type)
@@ -197,18 +173,43 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
         LuaType::Unknown
     };
 
+    let func = match op_kind {
+        LuaOperatorMetaMethod::Unm
+        | LuaOperatorMetaMethod::BNot
+        | LuaOperatorMetaMethod::Len
+        | LuaOperatorMetaMethod::Pairs => OperatorFunction::UnOp { ret: return_type },
+        LuaOperatorMetaMethod::Add
+        | LuaOperatorMetaMethod::Sub
+        | LuaOperatorMetaMethod::Mul
+        | LuaOperatorMetaMethod::Div
+        | LuaOperatorMetaMethod::Mod
+        | LuaOperatorMetaMethod::Pow
+        | LuaOperatorMetaMethod::IDiv
+        | LuaOperatorMetaMethod::BAnd
+        | LuaOperatorMetaMethod::BOr
+        | LuaOperatorMetaMethod::BXor
+        | LuaOperatorMetaMethod::Shl
+        | LuaOperatorMetaMethod::Shr
+        | LuaOperatorMetaMethod::Concat
+        | LuaOperatorMetaMethod::Eq
+        | LuaOperatorMetaMethod::Lt
+        | LuaOperatorMetaMethod::Le
+        | LuaOperatorMetaMethod::Index => OperatorFunction::BinOp {
+            param: params.into_iter().next().unwrap_or(LuaType::Any),
+            ret: return_type,
+        },
+        LuaOperatorMetaMethod::Call => OperatorFunction::Call {
+            params,
+            ret: return_type,
+        },
+    };
+
     let operator = LuaOperator::new(
         current_type_id.into(),
         op_kind,
         analyzer.file_id,
         name_token.get_range(),
-        OperatorFunction::Func(Arc::new(LuaFunctionType::new(
-            AsyncState::None,
-            false,
-            false,
-            operands,
-            return_type,
-        ))),
+        func,
     );
 
     analyzer
