@@ -359,7 +359,7 @@ pub fn analyze_overload(analyzer: &mut DocAnalyzer, tag: LuaDocTagOverload) -> O
                 LuaOperatorMetaMethod::Call,
                 analyzer.file_id,
                 tag.get_range(),
-                OperatorFunction::Func(func.clone()),
+                OperatorFunction::Overload(func),
             );
             analyzer
                 .get_db()
