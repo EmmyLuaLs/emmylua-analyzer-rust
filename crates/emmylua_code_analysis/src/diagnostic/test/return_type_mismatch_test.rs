@@ -672,4 +672,21 @@ mod tests {
             "#
         ));
     }
+
+    #[test]
+    fn test_generic_return_self() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+                --- @class MockContext<T = string>
+                local M
+
+                --- @return MockContext
+                function M:get()
+                    return self
+                end
+            "#
+        ));
+    }
 }
