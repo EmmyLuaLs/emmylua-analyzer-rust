@@ -7,8 +7,8 @@ use crate::{
     config::LuaFormatConfig,
     formatter::{
         FormatContext,
-        model::{RootFormatPlan, TokenSpacingExpected},
-        spacing::analyze_root_spacing,
+        model::{FormatPlan, TokenSpacingExpected},
+        spacing::analyze_spacing,
     },
 };
 
@@ -29,8 +29,8 @@ fn test_spacing_assign_defaults_to_single_spaces() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let mut plan = RootFormatPlan::from_config(&config);
-    analyze_root_spacing(&FormatContext::new(&config), &chunk, &mut plan);
+    let mut plan = FormatPlan::from_config(&config);
+    analyze_spacing(&FormatContext::new(&config), &chunk, &mut plan);
     let spacing = &plan.spacing;
     let assign = find_token(&chunk, LuaTokenKind::TkAssign);
     let assign_id = LuaSyntaxId::from_token(&assign);
@@ -59,8 +59,8 @@ fn test_spacing_uses_call_paren_config() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let mut plan = RootFormatPlan::from_config(&config);
-    analyze_root_spacing(&FormatContext::new(&config), &chunk, &mut plan);
+    let mut plan = FormatPlan::from_config(&config);
+    analyze_spacing(&FormatContext::new(&config), &chunk, &mut plan);
     let spacing = &plan.spacing;
     let left_paren = find_token(&chunk, LuaTokenKind::TkLeftParen);
     let paren_id = LuaSyntaxId::from_token(&left_paren);
@@ -89,8 +89,8 @@ fn test_spacing_respects_paren_expr_inner_space() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let mut plan = RootFormatPlan::from_config(&config);
-    analyze_root_spacing(&FormatContext::new(&config), &chunk, &mut plan);
+    let mut plan = FormatPlan::from_config(&config);
+    analyze_spacing(&FormatContext::new(&config), &chunk, &mut plan);
     let spacing = &plan.spacing;
     let left_paren = find_token(&chunk, LuaTokenKind::TkLeftParen);
     let right_paren = find_token(&chunk, LuaTokenKind::TkRightParen);
@@ -119,8 +119,8 @@ fn test_spacing_respects_math_operator_config() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let mut plan = RootFormatPlan::from_config(&config);
-    analyze_root_spacing(&FormatContext::new(&config), &chunk, &mut plan);
+    let mut plan = FormatPlan::from_config(&config);
+    analyze_spacing(&FormatContext::new(&config), &chunk, &mut plan);
     let spacing = &plan.spacing;
     let plus = find_token(&chunk, LuaTokenKind::TkPlus);
     let plus_id = LuaSyntaxId::from_token(&plus);
@@ -143,8 +143,8 @@ fn test_spacing_collects_comment_prefix_replacement() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let mut plan = RootFormatPlan::from_config(&config);
-    analyze_root_spacing(&FormatContext::new(&config), &chunk, &mut plan);
+    let mut plan = FormatPlan::from_config(&config);
+    analyze_spacing(&FormatContext::new(&config), &chunk, &mut plan);
     let spacing = &plan.spacing;
     let start = find_token(&chunk, LuaTokenKind::TkNormalStart);
     let start_id = LuaSyntaxId::from_token(&start);
@@ -164,8 +164,8 @@ fn test_spacing_does_not_normalize_spaced_long_comment_prefix() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let mut plan = RootFormatPlan::from_config(&config);
-    analyze_root_spacing(&FormatContext::new(&config), &chunk, &mut plan);
+    let mut plan = FormatPlan::from_config(&config);
+    analyze_spacing(&FormatContext::new(&config), &chunk, &mut plan);
     let spacing = &plan.spacing;
     let start = find_token(&chunk, LuaTokenKind::TkNormalStart);
     let start_id = LuaSyntaxId::from_token(&start);
@@ -182,8 +182,8 @@ fn test_spacing_collects_doc_prefix_replacement() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let mut plan = RootFormatPlan::from_config(&config);
-    analyze_root_spacing(&FormatContext::new(&config), &chunk, &mut plan);
+    let mut plan = FormatPlan::from_config(&config);
+    analyze_spacing(&FormatContext::new(&config), &chunk, &mut plan);
     let spacing = &plan.spacing;
     let start = find_token(&chunk, LuaTokenKind::TkDocStart);
 

@@ -6,7 +6,7 @@ use emmylua_parser::{
 };
 
 use super::FormatContext;
-use super::model::{RootFormatPlan, RootSpacingModel, TokenSpacingExpected};
+use super::model::{FormatPlan, SpacingModel, TokenSpacingExpected};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpaceRule {
@@ -70,7 +70,7 @@ pub(crate) fn space_around_assign(config: &LuaFormatConfig) -> SpaceRule {
     }
 }
 
-pub fn analyze_root_spacing(ctx: &FormatContext, chunk: &LuaChunk, plan: &mut RootFormatPlan) {
+pub fn analyze_spacing(ctx: &FormatContext, chunk: &LuaChunk, plan: &mut FormatPlan) {
     plan.spacing.has_shebang = chunk
         .syntax()
         .first_token()
@@ -82,7 +82,7 @@ pub fn analyze_root_spacing(ctx: &FormatContext, chunk: &LuaChunk, plan: &mut Ro
 fn analyze_chunk_token_spacing(
     ctx: &FormatContext,
     chunk: &LuaChunk,
-    spacing: &mut RootSpacingModel,
+    spacing: &mut SpacingModel,
 ) {
     for element in chunk.syntax().descendants_with_tokens() {
         let Some(token) = element.into_token() else {
@@ -106,7 +106,7 @@ fn should_skip_spacing_token(token: &LuaSyntaxToken) -> bool {
 
 fn analyze_token_spacing(
     ctx: &FormatContext,
-    spacing: &mut RootSpacingModel,
+    spacing: &mut SpacingModel,
     token: &LuaSyntaxToken,
 ) {
     let syntax_id = LuaSyntaxId::from_token(token);
@@ -235,7 +235,7 @@ fn analyze_token_spacing(
 
 fn apply_left_paren_spacing(
     ctx: &FormatContext,
-    spacing: &mut RootSpacingModel,
+    spacing: &mut SpacingModel,
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
@@ -265,7 +265,7 @@ fn apply_left_paren_spacing(
 
 fn apply_right_paren_spacing(
     ctx: &FormatContext,
-    spacing: &mut RootSpacingModel,
+    spacing: &mut SpacingModel,
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
@@ -277,7 +277,7 @@ fn apply_right_paren_spacing(
 
 fn apply_left_bracket_spacing(
     ctx: &FormatContext,
-    spacing: &mut RootSpacingModel,
+    spacing: &mut SpacingModel,
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
@@ -305,7 +305,7 @@ fn apply_left_bracket_spacing(
 
 fn apply_operator_spacing(
     ctx: &FormatContext,
-    spacing: &mut RootSpacingModel,
+    spacing: &mut SpacingModel,
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
@@ -357,7 +357,7 @@ fn is_generic_angle_bracket(token: &LuaSyntaxToken) -> bool {
 
 fn apply_comment_start_spacing(
     ctx: &FormatContext,
-    spacing: &mut RootSpacingModel,
+    spacing: &mut SpacingModel,
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
@@ -408,7 +408,7 @@ fn binary_op_for_plus_minus(token: &LuaSyntaxToken) -> BinaryOperator {
     }
 }
 
-fn apply_space_rule(spacing: &mut RootSpacingModel, syntax_id: LuaSyntaxId, rule: SpaceRule) {
+fn apply_space_rule(spacing: &mut SpacingModel, syntax_id: LuaSyntaxId, rule: SpaceRule) {
     match rule {
         SpaceRule::Space => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(1));

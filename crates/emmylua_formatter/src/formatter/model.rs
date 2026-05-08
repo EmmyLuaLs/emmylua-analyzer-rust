@@ -12,14 +12,14 @@ pub enum TokenSpacingExpected {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct RootSpacingModel {
+pub struct SpacingModel {
     pub has_shebang: bool,
     left_expected: HashMap<LuaSyntaxId, TokenSpacingExpected>,
     right_expected: HashMap<LuaSyntaxId, TokenSpacingExpected>,
     replace_tokens: HashMap<LuaSyntaxId, String>,
 }
 
-impl RootSpacingModel {
+impl SpacingModel {
     pub fn add_token_left_expected(
         &mut self,
         syntax_id: LuaSyntaxId,
@@ -110,7 +110,7 @@ pub struct ExprSequenceLayoutPlan {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct RootLayoutModel {
+pub struct LayoutModel {
     pub format_block_with_legacy: bool,
     pub root_nodes: Vec<LayoutNodePlan>,
     pub format_disabled: HashSet<LuaSyntaxId>,
@@ -124,22 +124,22 @@ pub struct RootLayoutModel {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct RootLineBreakModel {
+pub struct LineBreakModel {
     pub insert_final_newline: bool,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct RootFormatPlan {
-    pub spacing: RootSpacingModel,
-    pub layout: RootLayoutModel,
-    pub line_breaks: RootLineBreakModel,
+pub struct FormatPlan {
+    pub spacing: SpacingModel,
+    pub layout: LayoutModel,
+    pub line_breaks: LineBreakModel,
 }
 
-impl RootFormatPlan {
+impl FormatPlan {
     pub fn from_config(config: &LuaFormatConfig) -> Self {
         Self {
-            spacing: RootSpacingModel::default(),
-            layout: RootLayoutModel {
+            spacing: SpacingModel::default(),
+            layout: LayoutModel {
                 format_block_with_legacy: true,
                 root_nodes: Vec::new(),
                 format_disabled: HashSet::new(),
@@ -151,7 +151,7 @@ impl RootFormatPlan {
                 boundary_comments: HashMap::new(),
                 block_excluded_comments: HashMap::new(),
             },
-            line_breaks: RootLineBreakModel {
+            line_breaks: LineBreakModel {
                 insert_final_newline: config.output.insert_final_newline,
             },
         }

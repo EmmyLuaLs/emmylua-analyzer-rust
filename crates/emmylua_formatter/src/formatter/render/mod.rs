@@ -12,7 +12,7 @@ use rowan::{TextRange, TextSize};
 
 use super::FormatContext;
 use crate::formatter::model::{
-    LayoutNodePlan, RootFormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
+    LayoutNodePlan, FormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
 };
 use crate::formatter::sequence::*;
 use crate::formatter::trivia::*;
@@ -23,7 +23,7 @@ use self::control::{
 };
 use self::helpers::*;
 
-pub fn render_root(ctx: &FormatContext, chunk: &LuaChunk, plan: &RootFormatPlan) -> Vec<DocIR> {
+pub fn render(ctx: &FormatContext, chunk: &LuaChunk, plan: &FormatPlan) -> Vec<DocIR> {
     let mut docs = Vec::new();
     if let Some(token) = chunk.syntax().first_token()
         && token.kind() == LuaKind::Token(LuaTokenKind::TkShebang)
@@ -49,7 +49,7 @@ pub fn render_root(ctx: &FormatContext, chunk: &LuaChunk, plan: &RootFormatPlan)
 pub fn render_closure_block_body(
     ctx: &FormatContext,
     expr: &emmylua_parser::LuaClosureExpr,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let root = expr
         .syntax()
@@ -72,7 +72,7 @@ fn render_layout_node(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     node: &LayoutNodePlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     if let Some(disabled) = render_format_disabled_layout_node(root, node, plan) {
         return disabled;
@@ -114,7 +114,7 @@ fn render_layout_node(
 fn render_format_disabled_layout_node(
     root: &LuaSyntaxNode,
     node: &LayoutNodePlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Option<Vec<DocIR>> {
     let syntax_id = match node {
         LayoutNodePlan::Comment(comment) => comment.syntax_id,
@@ -142,7 +142,7 @@ fn render_local_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_id: LuaSyntaxId,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_id) else {
         return Vec::new();
@@ -221,7 +221,7 @@ fn render_assign_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_id: LuaSyntaxId,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_id) else {
         return Vec::new();
@@ -293,7 +293,7 @@ fn render_return_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_id: LuaSyntaxId,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_id) else {
         return Vec::new();
@@ -357,7 +357,7 @@ fn render_call_expr_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_id: LuaSyntaxId,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_id) else {
         return Vec::new();
@@ -376,7 +376,7 @@ fn render_call_expr_stat(
 
 fn format_local_stat_trivia_aware(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaLocalStat,
 ) -> Vec<DocIR> {
     let StatementAssignSplit {
@@ -434,7 +434,7 @@ fn format_local_stat_trivia_aware(
 
 fn format_assign_stat_trivia_aware(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaAssignStat,
 ) -> Vec<DocIR> {
     let StatementAssignSplit {
@@ -490,7 +490,7 @@ fn format_assign_stat_trivia_aware(
 
 fn format_return_stat_trivia_aware(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaReturnStat,
 ) -> Vec<DocIR> {
     let entries = collect_return_stat_entries(ctx, plan, stat);
@@ -533,7 +533,7 @@ fn format_return_stat_trivia_aware(
 
 fn collect_local_stat_entries(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaLocalStat,
 ) -> StatementAssignSplit {
     let mut lhs_entries = Vec::new();
@@ -613,7 +613,7 @@ fn collect_local_stat_entries(
 
 fn collect_assign_stat_entries(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaAssignStat,
 ) -> StatementAssignSplit {
     let mut lhs_entries = Vec::new();
@@ -684,7 +684,7 @@ fn collect_assign_stat_entries(
 
 fn collect_return_stat_entries(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaReturnStat,
 ) -> Vec<SequenceEntry> {
     let mut entries = Vec::new();
@@ -736,7 +736,7 @@ fn has_direct_comment_before_token(syntax: &LuaSyntaxNode, token: Option<&LuaSyn
 
 fn render_header_exprs_with_leading_docs(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr_list_plan: StatementExprListLayoutPlan,
     leading_docs: Vec<DocIR>,
     comma_token: Option<&LuaSyntaxToken>,
@@ -785,7 +785,7 @@ fn format_local_name_ir(local_name: &LuaLocalName) -> Vec<DocIR> {
 
 fn format_statement_expr_list(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr_list_plan: super::model::StatementExprListLayoutPlan,
     comma_token: Option<&LuaSyntaxToken>,
     leading_docs: Vec<DocIR>,
@@ -862,7 +862,7 @@ fn format_statement_expr_list_with_attached_first_multiline(
 
 fn render_statement_exprs(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr_list_plan: super::model::StatementExprListLayoutPlan,
     leading_token: Option<&LuaSyntaxToken>,
     comma_token: Option<&LuaSyntaxToken>,
@@ -936,7 +936,7 @@ fn build_statement_expr_one_per_line(
 }
 
 fn build_statement_expr_packed(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     comma_token: Option<&LuaSyntaxToken>,
     leading_docs: Vec<DocIR>,
     expr_docs: &[Vec<DocIR>],
@@ -974,7 +974,7 @@ fn build_statement_expr_packed(
 
 fn format_statement_value_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaExpr,
     preserve_first_multiline: bool,
 ) -> Vec<DocIR> {
@@ -1006,7 +1006,7 @@ fn render_block_plan_without_excluded_comments(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     block_plan: Option<&SyntaxNodeLayoutPlan>,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     excluded_comment_ids: &[LuaSyntaxId],
 ) -> Vec<DocIR> {
     let Some(block_plan) = block_plan else {
@@ -1051,7 +1051,7 @@ fn render_block_plan_without_excluded_comments(
 fn render_direct_body_comment(
     comment: LuaComment,
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     vec![
         ir::indent({
@@ -1086,7 +1086,7 @@ fn render_block_children(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     block_children: Option<&[LayoutNodePlan]>,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
 
@@ -1140,7 +1140,7 @@ fn render_aligned_block_layout_nodes(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     nodes: &[LayoutNodePlan],
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
     let mut index = 0usize;
@@ -1180,7 +1180,7 @@ fn try_render_aligned_statement_group(
     root: &LuaSyntaxNode,
     nodes: &[LayoutNodePlan],
     start: usize,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Option<(Vec<DocIR>, usize)> {
     if layout_node_is_format_disabled(&nodes[start], plan) {
         return None;
@@ -1261,7 +1261,7 @@ fn try_render_aligned_statement_group(
     Some((vec![ir::align_group(entries)], end))
 }
 
-fn layout_node_is_format_disabled(node: &LayoutNodePlan, plan: &RootFormatPlan) -> bool {
+fn layout_node_is_format_disabled(node: &LayoutNodePlan, plan: &FormatPlan) -> bool {
     let syntax_id = match node {
         LayoutNodePlan::Comment(comment) => comment.syntax_id,
         LayoutNodePlan::Syntax(syntax) => syntax.syntax_id,
@@ -1296,7 +1296,7 @@ fn can_join_statement_alignment_group(
     root: &LuaSyntaxNode,
     anchor_kind: LuaSyntaxKind,
     node: &LayoutNodePlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> bool {
     match node {
         LayoutNodePlan::Comment(_) => ctx.config.comments.align_across_standalone_comments,
@@ -1339,7 +1339,7 @@ fn render_statement_align_split(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Option<DocPair> {
     match syntax_plan.kind {
         LuaSyntaxKind::LocalStat => {
@@ -1360,7 +1360,7 @@ fn render_statement_line_content(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Option<Vec<DocIR>> {
     let (before, after) = render_statement_align_split(ctx, root, syntax_plan, plan)?;
     let mut docs = before;
@@ -1371,7 +1371,7 @@ fn render_statement_line_content(
 
 fn render_local_stat_align_split(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     syntax_id: LuaSyntaxId,
     stat: &LuaLocalStat,
 ) -> Option<DocPair> {
@@ -1433,7 +1433,7 @@ fn render_local_stat_align_split(
 
 fn render_assign_stat_align_split(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     syntax_id: LuaSyntaxId,
     stat: &LuaAssignStat,
 ) -> Option<DocPair> {
@@ -1491,7 +1491,7 @@ fn extract_trailing_comment_rendered(
     ctx: &FormatContext,
     syntax_plan: &SyntaxNodeLayoutPlan,
     node: &LuaSyntaxNode,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Option<RenderedTrailingComment> {
     let comment = find_inline_trailing_comment_node(node)?;
     if comment.text().contains_char('\n') {
@@ -1512,7 +1512,7 @@ fn extract_trailing_comment_rendered(
 
 pub(super) fn append_trailing_comment_suffix(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     docs: &mut Vec<DocIR>,
     node: &LuaSyntaxNode,
 ) {
@@ -1618,7 +1618,7 @@ fn has_inline_non_trivia_after(node: &LuaSyntaxNode) -> bool {
 fn render_comment_with_spacing(
     ctx: &FormatContext,
     comment: &LuaComment,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     if should_preserve_comment_raw(comment) || should_preserve_doc_comment_block_raw(comment) {
         return vec![ir::source_node_trimmed(comment.syntax().clone())];
@@ -1669,7 +1669,7 @@ fn is_pure_doc_comment_block(raw: &str) -> bool {
 
 fn collect_comment_line_prefix_replacements(
     comment: &LuaComment,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<Option<String>> {
     let mut line_prefixes = Vec::new();
     let mut current_prefix = None;
@@ -1703,7 +1703,7 @@ fn collect_comment_line_prefix_replacements(
 }
 
 fn comment_prefix_replacement_for_token(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     token: &LuaSyntaxToken,
 ) -> Option<String> {
     match token.kind().to_token() {
@@ -2898,7 +2898,7 @@ fn slice_node_text(node: &LuaSyntaxNode, start: TextSize, end: TextSize) -> Stri
 
 fn collect_comment_line_spacing_normalized_texts(
     comment: &LuaComment,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<Option<String>> {
     let mut lines = Vec::new();
     let mut current_line = Vec::new();
@@ -2926,7 +2926,7 @@ fn collect_comment_line_spacing_normalized_texts(
 
 fn normalize_comment_line_with_spacing(
     tokens: &[LuaSyntaxToken],
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Option<String> {
     let mut out = String::new();
     let mut previous_token: Option<&LuaSyntaxToken> = None;
@@ -2953,7 +2953,7 @@ fn normalize_comment_line_with_spacing(
 }
 
 fn comment_spacing_between_tokens(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     previous_token: Option<&LuaSyntaxToken>,
     current_token: &LuaSyntaxToken,
     had_source_whitespace: bool,
@@ -3005,7 +3005,7 @@ fn resolve_comment_spacing_expected(
     }
 }
 
-fn comment_token_text<'a>(plan: &'a RootFormatPlan, token: &'a LuaSyntaxToken) -> &'a str {
+fn comment_token_text<'a>(plan: &'a FormatPlan, token: &'a LuaSyntaxToken) -> &'a str {
     plan.spacing
         .token_replace(LuaSyntaxId::from_token(token))
         .unwrap_or(token.text())

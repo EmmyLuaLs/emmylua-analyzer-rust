@@ -5,14 +5,14 @@ use emmylua_parser::{
 
 use crate::config::LuaFormatConfig;
 use crate::formatter::FormatContext;
-use crate::formatter::layout::analyze_root_layout;
-use crate::formatter::model::{LayoutNodePlan, RootFormatPlan, StatementExprListLayoutKind};
-use crate::formatter::spacing::analyze_root_spacing;
+use crate::formatter::layout::analyze_layout;
+use crate::formatter::model::{LayoutNodePlan, FormatPlan, StatementExprListLayoutKind};
+use crate::formatter::spacing::analyze_spacing;
 
-fn setup_plan(chunk: &LuaChunk, config: &LuaFormatConfig) -> RootFormatPlan {
-    let mut plan = RootFormatPlan::from_config(config);
-    analyze_root_spacing(&FormatContext::new(config), chunk, &mut plan);
-    analyze_root_layout(&FormatContext::new(config), chunk, &mut plan);
+fn setup_plan(chunk: &LuaChunk, config: &LuaFormatConfig) -> FormatPlan {
+    let mut plan = FormatPlan::from_config(config);
+    analyze_spacing(&FormatContext::new(config), chunk, &mut plan);
+    analyze_layout(&FormatContext::new(config), chunk, &mut plan);
     plan
 }
 

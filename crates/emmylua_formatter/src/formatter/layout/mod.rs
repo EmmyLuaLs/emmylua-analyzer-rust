@@ -4,7 +4,7 @@ mod tree;
 
 use super::FormatContext;
 use super::model::{
-    ControlHeaderLayoutPlan, ExprSequenceLayoutPlan, RootFormatPlan, StatementExprListLayoutKind,
+    ControlHeaderLayoutPlan, ExprSequenceLayoutPlan, FormatPlan, StatementExprListLayoutKind,
     StatementExprListLayoutPlan, StatementTriviaLayoutPlan,
 };
 use super::trivia::{
@@ -18,14 +18,14 @@ use emmylua_parser::{
     LuaTableExpr, LuaTokenKind, LuaWhileStat,
 };
 
-pub fn analyze_root_layout(_ctx: &FormatContext, chunk: &LuaChunk, plan: &mut RootFormatPlan) {
+pub fn analyze_layout(_ctx: &FormatContext, chunk: &LuaChunk, plan: &mut FormatPlan) {
     plan.layout.format_block_with_legacy = true;
     plan.layout.root_nodes =
         tree::collect_root_layout_nodes(chunk, &mut plan.layout.format_disabled);
     analyze_node_layouts(chunk, plan);
 }
 
-fn analyze_node_layouts(chunk: &LuaChunk, plan: &mut RootFormatPlan) {
+fn analyze_node_layouts(chunk: &LuaChunk, plan: &mut FormatPlan) {
     for node in chunk.descendants::<LuaAst>() {
         match node {
             LuaAst::LuaLocalStat(stat) => {
@@ -75,28 +75,28 @@ fn analyze_node_layouts(chunk: &LuaChunk, plan: &mut RootFormatPlan) {
     }
 }
 
-fn analyze_local_stat_layout(stat: &LuaLocalStat, plan: &mut RootFormatPlan) {
+fn analyze_local_stat_layout(stat: &LuaLocalStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_statement_trivia_layout(stat.syntax(), syntax_id, plan);
     let exprs: Vec<_> = stat.get_value_exprs().collect();
     analyze_statement_expr_list_layout(syntax_id, &exprs, plan);
 }
 
-fn analyze_assign_stat_layout(stat: &LuaAssignStat, plan: &mut RootFormatPlan) {
+fn analyze_assign_stat_layout(stat: &LuaAssignStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_statement_trivia_layout(stat.syntax(), syntax_id, plan);
     let (_, exprs) = stat.get_var_and_expr_list();
     analyze_statement_expr_list_layout(syntax_id, &exprs, plan);
 }
 
-fn analyze_return_stat_layout(stat: &LuaReturnStat, plan: &mut RootFormatPlan) {
+fn analyze_return_stat_layout(stat: &LuaReturnStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_statement_trivia_layout(stat.syntax(), syntax_id, plan);
     let exprs: Vec<_> = stat.get_expr_list().collect();
     analyze_statement_expr_list_layout(syntax_id, &exprs, plan);
 }
 
-fn analyze_while_stat_layout(stat: &LuaWhileStat, plan: &mut RootFormatPlan) {
+fn analyze_while_stat_layout(stat: &LuaWhileStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
     analyze_boundary_comments_after_token(
@@ -111,7 +111,7 @@ fn analyze_while_stat_layout(stat: &LuaWhileStat, plan: &mut RootFormatPlan) {
     }
 }
 
-fn analyze_for_stat_layout(stat: &LuaForStat, plan: &mut RootFormatPlan) {
+fn analyze_for_stat_layout(stat: &LuaForStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
     let exprs: Vec<_> = stat.get_iter_expr().collect();
@@ -128,7 +128,7 @@ fn analyze_for_stat_layout(stat: &LuaForStat, plan: &mut RootFormatPlan) {
     }
 }
 
-fn analyze_for_range_stat_layout(stat: &LuaForRangeStat, plan: &mut RootFormatPlan) {
+fn analyze_for_range_stat_layout(stat: &LuaForRangeStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
     let exprs: Vec<_> = stat.get_expr_list().collect();
@@ -152,12 +152,12 @@ fn analyze_for_range_stat_layout(stat: &LuaForRangeStat, plan: &mut RootFormatPl
     }
 }
 
-fn analyze_repeat_stat_layout(stat: &LuaRepeatStat, plan: &mut RootFormatPlan) {
+fn analyze_repeat_stat_layout(stat: &LuaRepeatStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
 }
 
-fn analyze_if_stat_layout(stat: &LuaIfStat, plan: &mut RootFormatPlan) {
+fn analyze_if_stat_layout(stat: &LuaIfStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_control_header_layout(stat.syntax(), syntax_id, plan);
     analyze_boundary_comments_after_token(
@@ -212,7 +212,7 @@ fn analyze_if_stat_layout(stat: &LuaIfStat, plan: &mut RootFormatPlan) {
     }
 }
 
-fn analyze_func_stat_layout(stat: &LuaFuncStat, plan: &mut RootFormatPlan) {
+fn analyze_func_stat_layout(stat: &LuaFuncStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     if let Some(closure) = stat.get_closure()
         && let Some(params) = closure.get_params_list()
@@ -244,7 +244,7 @@ fn analyze_func_stat_layout(stat: &LuaFuncStat, plan: &mut RootFormatPlan) {
     }
 }
 
-fn analyze_local_func_stat_layout(stat: &LuaLocalFuncStat, plan: &mut RootFormatPlan) {
+fn analyze_local_func_stat_layout(stat: &LuaLocalFuncStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     if let Some(closure) = stat.get_closure()
         && let Some(params) = closure.get_params_list()
@@ -276,7 +276,7 @@ fn analyze_local_func_stat_layout(stat: &LuaLocalFuncStat, plan: &mut RootFormat
     }
 }
 
-fn analyze_do_stat_layout(stat: &LuaDoStat, plan: &mut RootFormatPlan) {
+fn analyze_do_stat_layout(stat: &LuaDoStat, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(stat.syntax());
     analyze_boundary_comments_after_token(
         stat.syntax(),
@@ -290,7 +290,7 @@ fn analyze_do_stat_layout(stat: &LuaDoStat, plan: &mut RootFormatPlan) {
     }
 }
 
-fn analyze_param_list_layout(params: &LuaParamList, plan: &mut RootFormatPlan) {
+fn analyze_param_list_layout(params: &LuaParamList, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(params.syntax());
     let first_line_prefix_width = params
         .get_params()
@@ -307,7 +307,7 @@ fn analyze_param_list_layout(params: &LuaParamList, plan: &mut RootFormatPlan) {
     );
 }
 
-fn analyze_call_arg_list_layout(args: &LuaCallArgList, plan: &mut RootFormatPlan) {
+fn analyze_call_arg_list_layout(args: &LuaCallArgList, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(args.syntax());
     let first_line_prefix_width = args
         .get_args()
@@ -324,7 +324,7 @@ fn analyze_call_arg_list_layout(args: &LuaCallArgList, plan: &mut RootFormatPlan
     );
 }
 
-fn analyze_table_expr_layout(table: &LuaTableExpr, plan: &mut RootFormatPlan) {
+fn analyze_table_expr_layout(table: &LuaTableExpr, plan: &mut FormatPlan) {
     if table.is_empty() {
         return;
     }
@@ -348,7 +348,7 @@ fn analyze_table_expr_layout(table: &LuaTableExpr, plan: &mut RootFormatPlan) {
 fn analyze_statement_trivia_layout(
     node: &emmylua_parser::LuaSyntaxNode,
     syntax_id: LuaSyntaxId,
-    plan: &mut RootFormatPlan,
+    plan: &mut FormatPlan,
 ) {
     if !node_has_direct_comment_child(node) {
         return;
@@ -367,7 +367,7 @@ fn analyze_statement_trivia_layout(
 fn analyze_control_header_layout(
     node: &emmylua_parser::LuaSyntaxNode,
     syntax_id: LuaSyntaxId,
-    plan: &mut RootFormatPlan,
+    plan: &mut FormatPlan,
 ) {
     if !node_has_direct_comment_child(node) {
         return;
@@ -388,7 +388,7 @@ fn analyze_boundary_comments_after_token(
     owner_syntax_id: LuaSyntaxId,
     anchor_kind: LuaTokenKind,
     anchor_token: Option<&LuaSyntaxToken>,
-    plan: &mut RootFormatPlan,
+    plan: &mut FormatPlan,
 ) {
     let Some(anchor_token) = anchor_token else {
         return;
@@ -411,7 +411,7 @@ fn analyze_boundary_comments_in_block(
     block: &LuaSyntaxNode,
     owner_syntax_id: LuaSyntaxId,
     anchor_kind: LuaTokenKind,
-    plan: &mut RootFormatPlan,
+    plan: &mut FormatPlan,
 ) {
     let mut comment_ids = Vec::new();
     for child in block.children() {
@@ -437,7 +437,7 @@ fn record_boundary_comment_ids(
     anchor_kind: LuaTokenKind,
     block_syntax_id: Option<LuaSyntaxId>,
     comment_ids: Vec<LuaSyntaxId>,
-    plan: &mut RootFormatPlan,
+    plan: &mut FormatPlan,
 ) {
     if comment_ids.is_empty() {
         return;
@@ -480,7 +480,7 @@ fn first_direct_token(node: &LuaSyntaxNode, kind: LuaTokenKind) -> Option<LuaSyn
 fn analyze_statement_expr_list_layout(
     syntax_id: LuaSyntaxId,
     exprs: &[LuaExpr],
-    plan: &mut RootFormatPlan,
+    plan: &mut FormatPlan,
 ) {
     if exprs.is_empty() {
         return;
@@ -510,7 +510,7 @@ fn analyze_statement_expr_list_layout(
 fn analyze_control_header_expr_list_layout(
     syntax_id: LuaSyntaxId,
     exprs: &[LuaExpr],
-    plan: &mut RootFormatPlan,
+    plan: &mut FormatPlan,
 ) {
     if exprs.is_empty() {
         return;

@@ -14,7 +14,7 @@ use crate::ir;
 use ir::{AlignEntry, DocIR};
 
 use super::FormatContext;
-use super::model::{ExprSequenceLayoutPlan, RootFormatPlan, TokenSpacingExpected};
+use super::model::{ExprSequenceLayoutPlan, FormatPlan, TokenSpacingExpected};
 use super::render;
 use super::sequence::{
     DelimitedSequenceLayout, SequenceLayoutCandidates, SequenceLayoutPolicy,
@@ -26,7 +26,7 @@ use super::trivia::{
     source_line_prefix_width, trailing_gap_requests_alignment,
 };
 
-pub fn format_expr(ctx: &FormatContext, plan: &RootFormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
+pub fn format_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
     if expr_is_chain_root(expr)
         && !chain_has_direct_comments(expr)
         && let Some(chain_docs) = try_format_chain_expr(ctx, plan, expr)
@@ -94,7 +94,7 @@ fn format_literal_expr(ctx: &FormatContext, expr: &LuaLiteralExpr) -> Vec<DocIR>
 
 fn format_binary_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaBinaryExpr,
 ) -> Vec<DocIR> {
     if node_has_direct_comment_child(expr.syntax()) {
@@ -267,7 +267,7 @@ fn should_attach_after_multiline_left_expr(left: &LuaExpr) -> bool {
 
 fn format_unary_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaUnaryExpr,
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
@@ -285,7 +285,7 @@ fn format_unary_expr(
 
 fn format_paren_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaParenExpr,
 ) -> Vec<DocIR> {
     if node_has_direct_comment_child(expr.syntax()) {
@@ -308,7 +308,7 @@ fn format_paren_expr(
 
 fn format_index_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaIndexExpr,
 ) -> Vec<DocIR> {
     if expr
@@ -343,7 +343,7 @@ fn format_index_expr(
 
 pub fn format_param_list_ir(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     params: &LuaParamList,
 ) -> Vec<DocIR> {
     let collected = collect_param_entries(ctx, params);
@@ -476,7 +476,7 @@ fn collect_param_entries(ctx: &FormatContext, params: &LuaParamList) -> Collecte
 
 fn format_param_list_with_comments(
     ctx: &FormatContext,
-    _plan: &RootFormatPlan,
+    _plan: &FormatPlan,
     params: &LuaParamList,
     collected: CollectedParamEntries,
 ) -> Vec<DocIR> {
@@ -559,7 +559,7 @@ fn format_param_list_with_comments(
     docs
 }
 
-fn format_call_expr(ctx: &FormatContext, plan: &RootFormatPlan, expr: &LuaCallExpr) -> Vec<DocIR> {
+fn format_call_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaCallExpr) -> Vec<DocIR> {
     let prefix_expr = expr.get_prefix_expr();
     let prefix_is_multiline = prefix_expr
         .as_ref()
@@ -690,7 +690,7 @@ fn analyze_expr_bridge(syntax: &LuaSyntaxNode) -> ExprBridgePlan {
 
 fn format_call_arg_list(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     args_list: &LuaCallArgList,
 ) -> Vec<DocIR> {
     let args: Vec<_> = args_list.get_args().collect();
@@ -722,7 +722,7 @@ fn format_call_arg_list(
 
 fn format_call_arg_list_from_docs(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     args_list: &LuaCallArgList,
     args: &[LuaExpr],
     attach_first_arg: bool,
@@ -810,7 +810,7 @@ fn format_call_arg_list_from_docs(
 
 fn format_call_args_with_inline_block_item(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     layout_plan: ExprSequenceLayoutPlan,
     arg_docs: Vec<Vec<DocIR>>,
     block_index: usize,
@@ -979,7 +979,7 @@ fn should_attach_first_call_arg(args: &[LuaExpr]) -> bool {
 
 fn format_call_arg_value_ir(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     arg: &LuaExpr,
     attach_first_arg: bool,
     preserve_multiline_args: bool,
@@ -1000,7 +1000,7 @@ fn format_call_arg_value_ir(
 
 fn format_call_args_with_attached_first_arg(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     allow_inline_tail_after_first_arg: bool,
     layout_plan: ExprSequenceLayoutPlan,
     arg_docs: Vec<Vec<DocIR>>,
@@ -1121,7 +1121,7 @@ struct CallArgEntry {
 
 fn collect_call_arg_entries(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     args_list: &LuaCallArgList,
 ) -> CollectedCallArgEntries {
     let mut collected = CollectedCallArgEntries::default();
@@ -1186,7 +1186,7 @@ fn collect_call_arg_entries(
 
 fn format_call_arg_list_with_comments(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     args_list: &LuaCallArgList,
     collected: CollectedCallArgEntries,
 ) -> Vec<DocIR> {
@@ -1273,7 +1273,7 @@ fn format_call_arg_list_with_comments(
 
 fn format_single_arg_call_without_parens(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     args_list: &LuaCallArgList,
 ) -> Option<Vec<DocIR>> {
     let single_arg = match ctx.config.output.single_arg_call_parens {
@@ -1298,7 +1298,7 @@ fn format_single_arg_call_without_parens(
 
 fn format_table_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaTableExpr,
 ) -> Vec<DocIR> {
     let has_direct_comments = expr
@@ -1547,7 +1547,7 @@ fn comment_contains_enum_or_class_tag(comment: &LuaSyntaxNode) -> bool {
 
 fn format_multiline_table_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaTableExpr,
 ) -> Vec<DocIR> {
     let collected = collect_table_entries(ctx, plan, expr);
@@ -1606,7 +1606,7 @@ struct TableEntry {
 
 fn collect_table_entries(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaTableExpr,
 ) -> CollectedTableEntries {
     let mut collected = CollectedTableEntries::default();
@@ -1732,7 +1732,7 @@ fn format_table_with_comments(
 
 fn format_table_field_ir(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     field: &LuaTableField,
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
@@ -1758,7 +1758,7 @@ fn format_table_field_ir(
 
 fn format_table_field_key_ir(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     field: &LuaTableField,
 ) -> Vec<DocIR> {
     let Some(key) = field.get_field_key() else {
@@ -1788,7 +1788,7 @@ fn format_table_field_key_ir(
 
 fn format_table_field_value_ir(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     value: &LuaExpr,
 ) -> Vec<DocIR> {
     if let LuaExpr::TableExpr(table) = value
@@ -1802,7 +1802,7 @@ fn format_table_field_value_ir(
 
 fn format_table_field_eq_split(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     field: &LuaTableField,
 ) -> Option<EqSplitDocs> {
     if !field.is_assign_field() {
@@ -2154,7 +2154,7 @@ fn trailing_comment_padding_for_config(
 
 fn format_closure_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaClosureExpr,
 ) -> Vec<DocIR> {
     if let Some(inline_docs) = try_format_simple_inline_closure_expr(ctx, plan, expr) {
@@ -2167,7 +2167,7 @@ fn format_closure_expr(
 
 fn try_format_simple_inline_closure_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaClosureExpr,
 ) -> Option<Vec<DocIR>> {
     let source_is_single_line = !expr.syntax().text().contains_char('\n');
@@ -2245,7 +2245,7 @@ struct ClosureShellPlan {
 
 fn collect_closure_shell_plan(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaClosureExpr,
 ) -> ClosureShellPlan {
     let mut params = vec![
@@ -2282,7 +2282,7 @@ fn collect_closure_shell_plan(
 
 fn render_closure_shell(
     ctx: &FormatContext,
-    root_plan: &RootFormatPlan,
+    root_plan: &FormatPlan,
     expr: &LuaClosureExpr,
     plan: ClosureShellPlan,
 ) -> Vec<DocIR> {
@@ -2394,7 +2394,7 @@ fn chain_has_direct_comments(expr: &LuaExpr) -> bool {
 
 fn try_format_chain_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaExpr,
 ) -> Option<Vec<DocIR>> {
     let (root, segments) = collect_chain_segments(ctx, plan, expr)?;
@@ -2448,7 +2448,7 @@ fn try_format_chain_expr(
 
 fn collect_chain_segments(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaExpr,
 ) -> Option<ChainSegments> {
     match expr {
@@ -2466,7 +2466,7 @@ fn collect_chain_segments(
 
 fn collect_call_chain_segments(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     call: &LuaCallExpr,
 ) -> Option<ChainSegments> {
     let prefix = call.get_prefix_expr()?;
@@ -2490,7 +2490,7 @@ fn collect_call_chain_segments(
 
 fn format_call_suffix_ir(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaCallExpr,
 ) -> Vec<DocIR> {
     let Some(args_list) = expr.get_args_list() else {
@@ -2529,7 +2529,7 @@ fn format_call_suffix_ir(
 
 fn format_compact_call_arg_list(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     args_list: &LuaCallArgList,
     args: &[LuaExpr],
 ) -> CompactCallArgListAttempt {
@@ -2598,7 +2598,7 @@ fn build_fill_parts_with_leading_separator(
 
 fn try_format_flat_binary_chain(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaBinaryExpr,
 ) -> Option<Vec<DocIR>> {
     let op_token = expr.get_op_token()?;
@@ -2652,7 +2652,7 @@ fn collect_binary_chain_operands(expr: &LuaExpr, op: BinaryOperator, out: &mut V
 
 fn build_binary_chain_fill_parts(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     operands: &[LuaExpr],
     op_token: &LuaSyntaxToken,
     op: BinaryOperator,
@@ -2688,7 +2688,7 @@ fn build_binary_chain_fill_parts(
 
 fn build_binary_chain_packed(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     operands: &[LuaExpr],
     op_token: &LuaSyntaxToken,
     op: BinaryOperator,
@@ -2731,7 +2731,7 @@ fn build_binary_chain_packed(
 
 fn build_binary_chain_segment(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     _previous: &LuaExpr,
     operand: &LuaExpr,
     op_token: &LuaSyntaxToken,
@@ -2755,7 +2755,7 @@ fn continuation_break_ir(flat_space: bool) -> DocIR {
 
 fn format_index_access_ir(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaIndexExpr,
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
@@ -2821,7 +2821,7 @@ fn trailing_comma_ir(policy: TrailingComma) -> DocIR {
 }
 
 fn expr_sequence_layout_plan(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     syntax: &LuaSyntaxNode,
 ) -> ExprSequenceLayoutPlan {
     plan.layout
@@ -2871,14 +2871,14 @@ fn last_direct_token(node: &LuaSyntaxNode, kind: LuaTokenKind) -> Option<LuaSynt
     result
 }
 
-fn token_left_spacing_docs(plan: &RootFormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
+fn token_left_spacing_docs(plan: &FormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
     let Some(token) = token else {
         return Vec::new();
     };
     spacing_docs_from_expected(plan.spacing.left_expected(LuaSyntaxId::from_token(token)))
 }
 
-fn token_right_spacing_docs(plan: &RootFormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
+fn token_right_spacing_docs(plan: &FormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
     let Some(token) = token else {
         return Vec::new();
     };
@@ -2895,7 +2895,7 @@ fn spacing_docs_from_expected(expected: Option<&TokenSpacingExpected>) -> Vec<Do
 }
 
 fn grouped_padding_from_pair(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     open: Option<&LuaSyntaxToken>,
     close: Option<&LuaSyntaxToken>,
 ) -> DocIR {
@@ -2912,7 +2912,7 @@ fn comma_token_docs(token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
     vec![token_or_kind_doc(token, LuaTokenKind::TkComma)]
 }
 
-fn comma_flat_separator(plan: &RootFormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
+fn comma_flat_separator(plan: &FormatPlan, token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
     let mut docs = comma_token_docs(token);
     docs.extend(token_right_spacing_docs(plan, token));
     docs

@@ -9,7 +9,7 @@ use crate::ir::{self, DocIR};
 
 use super::super::expr;
 use super::super::model::{
-    LayoutNodePlan, RootFormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
+    LayoutNodePlan, FormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
 };
 use super::super::sequence::{
     SequenceEntry, render_sequence, sequence_ends_with_comment, sequence_has_comment,
@@ -22,7 +22,7 @@ use super::FormatContext;
 
 pub(super) fn render_expr(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr: &LuaExpr,
 ) -> Vec<DocIR> {
     expr::format_expr(ctx, plan, expr)
@@ -188,7 +188,7 @@ pub(super) fn first_direct_token(
 }
 
 pub(super) fn token_left_spacing_docs(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     token: Option<&LuaSyntaxToken>,
 ) -> Vec<DocIR> {
     let Some(token) = token else {
@@ -198,7 +198,7 @@ pub(super) fn token_left_spacing_docs(
 }
 
 pub(super) fn token_right_spacing_docs(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     token: Option<&LuaSyntaxToken>,
 ) -> Vec<DocIR> {
     let Some(token) = token else {
@@ -221,7 +221,7 @@ pub(super) fn comma_token_docs(token: Option<&LuaSyntaxToken>) -> Vec<DocIR> {
 }
 
 pub(super) fn comma_flat_separator(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     token: Option<&LuaSyntaxToken>,
 ) -> Vec<DocIR> {
     let mut docs = comma_token_docs(token);
@@ -236,7 +236,7 @@ pub(super) fn comma_fill_separator(token: Option<&LuaSyntaxToken>) -> Vec<DocIR>
 }
 
 pub(super) fn separator_entry_from_token(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     token: Option<&LuaSyntaxToken>,
 ) -> SequenceEntry {
     SequenceEntry::Separator {
@@ -248,7 +248,7 @@ pub(super) fn separator_entry_from_token(
 }
 
 pub(super) fn render_trivia_aware_sequence_tail(
-    _plan: &RootFormatPlan,
+    _plan: &FormatPlan,
     leading_docs: Vec<DocIR>,
     entries: &[SequenceEntry],
 ) -> Vec<DocIR> {
@@ -271,7 +271,7 @@ pub(super) fn render_trivia_aware_sequence_tail(
 }
 
 pub(super) fn render_trivia_aware_split_sequence_tail(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     leading_docs: Vec<DocIR>,
     lhs_entries: &[SequenceEntry],
     split_token: Option<&LuaSyntaxToken>,

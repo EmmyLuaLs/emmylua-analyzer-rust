@@ -10,7 +10,7 @@ use crate::formatter::model::StatementExprListLayoutPlan;
 use crate::ir::{self, DocIR};
 
 use super::super::expr;
-use super::super::model::{RootFormatPlan, StatementExprListLayoutKind, SyntaxNodeLayoutPlan};
+use super::super::model::{FormatPlan, StatementExprListLayoutKind, SyntaxNodeLayoutPlan};
 use super::FormatContext;
 use super::helpers::{
     find_direct_child_plan_by_id, find_node_by_id, leading_inline_block_comment,
@@ -28,7 +28,7 @@ pub(super) fn render_while_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -47,7 +47,7 @@ fn render_while_source_order(
     root: &LuaSyntaxNode,
     syntax: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let children = syntax.children_with_tokens().collect::<Vec<_>>();
     let mut docs = Vec::new();
@@ -152,7 +152,7 @@ pub(super) fn render_for_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -188,7 +188,7 @@ fn render_for_source_order(
     root: &LuaSyntaxNode,
     syntax: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaForStat,
     expr_list_plan: StatementExprListLayoutPlan,
 ) -> Vec<DocIR> {
@@ -312,7 +312,7 @@ pub(super) fn render_for_range_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -348,7 +348,7 @@ fn render_for_range_source_order(
     root: &LuaSyntaxNode,
     syntax: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     stat: &LuaForRangeStat,
     expr_list_plan: StatementExprListLayoutPlan,
 ) -> Vec<DocIR> {
@@ -473,7 +473,7 @@ pub(super) fn render_repeat_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -492,7 +492,7 @@ fn render_repeat_source_order(
     root: &LuaSyntaxNode,
     syntax: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let children = syntax.children_with_tokens().collect::<Vec<_>>();
     let mut docs = Vec::new();
@@ -594,7 +594,7 @@ pub(super) fn render_func_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -623,7 +623,7 @@ pub(super) fn render_local_func_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -653,7 +653,7 @@ fn render_named_function_stat_source_order(
     root: &LuaSyntaxNode,
     syntax: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let children = syntax.children_with_tokens().collect::<Vec<_>>();
     let mut docs = Vec::new();
@@ -725,7 +725,7 @@ pub(super) fn render_do_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -744,7 +744,7 @@ fn render_do_source_order(
     root: &LuaSyntaxNode,
     syntax: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let children = syntax.children_with_tokens().collect::<Vec<_>>();
     let mut docs = Vec::new();
@@ -845,7 +845,7 @@ pub(super) fn render_if_stat(
     ctx: &FormatContext,
     root: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let Some(node) = find_node_by_id(root, syntax_plan.syntax_id) else {
         return Vec::new();
@@ -869,7 +869,7 @@ fn render_if_clause_source_order(
     root: &LuaSyntaxNode,
     syntax: &LuaSyntaxNode,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let children = syntax.children_with_tokens().collect::<Vec<_>>();
     let mut docs = Vec::new();
@@ -1006,7 +1006,7 @@ fn render_named_function_closure_tail_source_order(
     root: &LuaSyntaxNode,
     closure: &emmylua_parser::LuaClosureExpr,
     syntax_plan: &SyntaxNodeLayoutPlan,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
 ) -> Vec<DocIR> {
     let children = closure.syntax().children_with_tokens().collect::<Vec<_>>();
     let mut docs = Vec::new();
@@ -1135,7 +1135,7 @@ fn format_local_name_ir(local_name: &LuaLocalName) -> Vec<DocIR> {
 
 fn render_source_order_header_expr_list(
     ctx: &FormatContext,
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     expr_list_plan: StatementExprListLayoutPlan,
     comma_token: Option<&LuaSyntaxToken>,
     exprs: &[LuaExpr],
@@ -1168,7 +1168,7 @@ fn render_source_order_header_expr_list(
 }
 
 fn inline_anchor_comment_separator_docs(
-    plan: &RootFormatPlan,
+    plan: &FormatPlan,
     anchor_token: Option<&LuaSyntaxToken>,
 ) -> Vec<DocIR> {
     if matches!(
