@@ -113,7 +113,6 @@ Behavior notes:
 - `space_before_call_paren`
 - `space_before_func_paren`
 - `space_before_lambda_func_paren`
-- `space_before_lambda_func_paren`
 - `space_inside_braces`
 - `space_inside_parens`
 - `space_inside_brackets`

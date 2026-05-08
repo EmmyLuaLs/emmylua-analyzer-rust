@@ -34,15 +34,9 @@ function compatibleFeature()
 end
 
 -- 版本范围
----@version >=5.2,<5.5
+---@version >5.2,<5.5
 function rangeCompatible()
     -- 5.2到5.4兼容
-end
-
--- 排除特定版本
----@version !5.1
-function notLua51()
-    -- 除了5.1之外的版本
 end
 
 -- JIT版本

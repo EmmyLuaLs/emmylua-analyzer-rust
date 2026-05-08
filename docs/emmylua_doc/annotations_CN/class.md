@@ -13,6 +13,8 @@
 
 -- 部分类定义（允许扩展现有类）
 ---@class (partial) <类名>
+
+---@class <generic_class_name><T1, T2, ...>[: <parent_class>...]
 ```
 
 ## 示例

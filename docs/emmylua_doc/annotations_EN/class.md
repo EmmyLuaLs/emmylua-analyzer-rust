@@ -13,6 +13,8 @@ Define classes or interfaces, supporting inheritance, field definitions, and acc
 
 -- Partial class definition (allows extending existing classes)
 ---@class (partial) <class_name>
+
+---@class <generic_class_name><T1, T2, ...>[: <parent_class>...]
 ```
 
 ## Examples
