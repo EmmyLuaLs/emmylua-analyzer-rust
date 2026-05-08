@@ -443,7 +443,7 @@ local t = {
     return x + 1
 end
 "#,
-            r#"local f = function(x) return x + 1 end
+            r#"local f = function (x) return x + 1 end
 "#,
             config
         );
@@ -462,7 +462,7 @@ end
         assert_format_with_config!(
             r#"local f = function() return x + 1 end
 "#,
-            r#"local f = function()
+            r#"local f = function ()
     return x + 1
 end
 "#,

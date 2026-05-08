@@ -92,11 +92,7 @@ fn format_literal_expr(ctx: &FormatContext, expr: &LuaLiteralExpr) -> Vec<DocIR>
     ))]
 }
 
-fn format_binary_expr(
-    ctx: &FormatContext,
-    plan: &FormatPlan,
-    expr: &LuaBinaryExpr,
-) -> Vec<DocIR> {
+fn format_binary_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaBinaryExpr) -> Vec<DocIR> {
     if node_has_direct_comment_child(expr.syntax()) {
         return vec![ir::source_node_trimmed(expr.syntax().clone())];
     }
@@ -265,11 +261,7 @@ fn should_attach_after_multiline_left_expr(left: &LuaExpr) -> bool {
         )
 }
 
-fn format_unary_expr(
-    ctx: &FormatContext,
-    plan: &FormatPlan,
-    expr: &LuaUnaryExpr,
-) -> Vec<DocIR> {
+fn format_unary_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaUnaryExpr) -> Vec<DocIR> {
     let mut docs = Vec::new();
     if let Some(op_token) = expr.get_op_token() {
         docs.push(ir::source_token(op_token.syntax().clone()));
@@ -283,11 +275,7 @@ fn format_unary_expr(
     docs
 }
 
-fn format_paren_expr(
-    ctx: &FormatContext,
-    plan: &FormatPlan,
-    expr: &LuaParenExpr,
-) -> Vec<DocIR> {
+fn format_paren_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaParenExpr) -> Vec<DocIR> {
     if node_has_direct_comment_child(expr.syntax()) {
         return vec![ir::source_node_trimmed(expr.syntax().clone())];
     }
@@ -306,11 +294,7 @@ fn format_paren_expr(
     docs
 }
 
-fn format_index_expr(
-    ctx: &FormatContext,
-    plan: &FormatPlan,
-    expr: &LuaIndexExpr,
-) -> Vec<DocIR> {
+fn format_index_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaIndexExpr) -> Vec<DocIR> {
     if expr
         .get_index_token()
         .is_some_and(|token| token.is_left_bracket())
@@ -1296,11 +1280,7 @@ fn format_single_arg_call_without_parens(
     })
 }
 
-fn format_table_expr(
-    ctx: &FormatContext,
-    plan: &FormatPlan,
-    expr: &LuaTableExpr,
-) -> Vec<DocIR> {
+fn format_table_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaTableExpr) -> Vec<DocIR> {
     let has_direct_comments = expr
         .syntax()
         .children()
@@ -2488,11 +2468,7 @@ fn collect_call_chain_segments(
     Some((root, segments))
 }
 
-fn format_call_suffix_ir(
-    ctx: &FormatContext,
-    plan: &FormatPlan,
-    expr: &LuaCallExpr,
-) -> Vec<DocIR> {
+fn format_call_suffix_ir(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaCallExpr) -> Vec<DocIR> {
     let Some(args_list) = expr.get_args_list() else {
         return Vec::new();
     };
@@ -2820,10 +2796,7 @@ fn trailing_comma_ir(policy: TrailingComma) -> DocIR {
     }
 }
 
-fn expr_sequence_layout_plan(
-    plan: &FormatPlan,
-    syntax: &LuaSyntaxNode,
-) -> ExprSequenceLayoutPlan {
+fn expr_sequence_layout_plan(plan: &FormatPlan, syntax: &LuaSyntaxNode) -> ExprSequenceLayoutPlan {
     plan.layout
         .expr_sequences
         .get(&LuaSyntaxId::from_node(syntax))

@@ -8,9 +8,7 @@ use crate::formatter::render::comment_is_inline_after_anchor;
 use crate::ir::{self, DocIR};
 
 use super::super::expr;
-use super::super::model::{
-    LayoutNodePlan, FormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
-};
+use super::super::model::{FormatPlan, LayoutNodePlan, SyntaxNodeLayoutPlan, TokenSpacingExpected};
 use super::super::sequence::{
     SequenceEntry, render_sequence, sequence_ends_with_comment, sequence_has_comment,
     sequence_starts_with_inline_comment,
@@ -20,11 +18,7 @@ use super::super::trivia::{
 };
 use super::FormatContext;
 
-pub(super) fn render_expr(
-    ctx: &FormatContext,
-    plan: &FormatPlan,
-    expr: &LuaExpr,
-) -> Vec<DocIR> {
+pub(super) fn render_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
     expr::format_expr(ctx, plan, expr)
 }
 

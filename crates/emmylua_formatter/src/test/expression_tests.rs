@@ -28,9 +28,11 @@ local e = #t
     #[test]
     fn test_binary_expr() {
         assert_format!(
-            r#"local a = 1 + 2 * 3
+            r#"
+local a = 1 + 2 * 3
 "#,
-            r#"local a = 1 + 2 * 3
+            r#"
+local a = 1 + 2 * 3
 "#
         );
     }
@@ -48,11 +50,13 @@ local e = #t
     #[test]
     fn test_multiline_binary_layout_reflows_when_width_allows() {
         assert_format!(
-            r#"local result = first
+            r#"
+local result = first
     + second
     + third
 "#,
-            r#"local result = first + second + third
+            r#"
+local result = first + second + third
 "#
         );
     }
@@ -461,7 +465,7 @@ a,
     return a + b
 end
 "#,
-            r#"local f = function(
+            r#"local f = function (
     a, -- first
     b
 )
@@ -481,7 +485,7 @@ b
     return a + b
 end
 "#,
-            r#"local f = function( -- first
+            r#"local f = function ( -- first
     a, -- second
     b
 )
@@ -517,7 +521,7 @@ end
             r#"local f = function() -- note
 end
 "#,
-            r#"local f = function() -- note
+            r#"local f = function () -- note
 end
 "#
         );
@@ -531,7 +535,7 @@ end
 
  end)
 "#,
-            r#"Execute(function(data)
+            r#"Execute(function (data)
     -- comment
 
 end)
@@ -544,7 +548,7 @@ end)
         assert_format!(
             r#"local f = function() return  true end
 "#,
-            r#"local f = function() return true end
+            r#"local f = function () return true end
 "#
         );
     }
@@ -554,7 +558,7 @@ end)
         assert_format!(
             r#"map(items, function(x) return  x + 1 end)
 "#,
-            r#"map(items, function(x) return x + 1 end)
+            r#"map(items, function (x) return x + 1 end)
 "#
         );
     }
@@ -654,7 +658,7 @@ end)
     return not not k3
 end, 'LOADTRUE', 'RETURN1')
 "#,
-            r#"check(function()
+            r#"check(function ()
     return not not k3
 end,
     'LOADTRUE', 'RETURN1')
@@ -693,7 +697,7 @@ end,
     return not not k3
 end, 'LOADTRUE', 'RETURN1', 'EXTRA')
 "#,
-            r#"check(function()
+            r#"check(function ()
     return not not k3
 end,
     'LOADTRUE', 'RETURN1',
@@ -718,7 +722,7 @@ end,
         return 1, 2, 34
     end, 4, 5, 6, 7, 8, 9, 10)
 "#,
-            r#"test(1, "hello", function()
+            r#"test(1, "hello", function ()
     return 1, 2, 34
 end, 4, 5, 6, 7, 8, 9, 10
 )
@@ -742,9 +746,19 @@ end, 4, 5, 6, 7, 8, 9, 10
         return 1, 2, 34
     end, 4, 5, 6, 7, 8, 9, 10)
 "#,
-            r#"test(1, "hello", function()
-    return 1, 2, 34
-end, 4, 5, 6, 7, 8, 9, 10
+            r#"test(
+    1,
+    "hello",
+    function ()
+        return 1, 2, 34
+    end,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
 )
 "#,
             config
@@ -758,7 +772,7 @@ end, 4, 5, 6, 7, 8, 9, 10
         return a < b
     end)
 "#,
-            r#"table.sort({ 3, 1, 2 }, function(a, b)
+            r#"table.sort({ 3, 1, 2 }, function (a, b)
     return a < b
 end)
 "#
@@ -784,8 +798,8 @@ end)
     end
 end
 "#,
-            r#"a.a = function()
-    return function(l)
+            r#"a.a = function ()
+    return function (l)
         a.Add(
             aaaa,
             bbbb,
@@ -822,8 +836,8 @@ end
     end
 end
 "#,
-            r#"a.a = function()
-    return function(l)
+            r#"a.a = function ()
+    return function (l)
         return a.Add(
             aaaa,
             bbbb,
@@ -860,8 +874,8 @@ end
     end
 end
 "#,
-            r#"a.a = function()
-    return function(l)
+            r#"a.a = function ()
+    return function (l)
         return a.Add(
             aaaa,
             bbbb,
@@ -894,7 +908,7 @@ end
     return true
 end, 'LOADTRUE', 'RETURN1') == "hiho")
 "#,
-            r#"assert(check(function()
+            r#"assert(check(function ()
         return true
     end,
         'LOADTRUE', 'RETURN1') == "hiho")
@@ -955,7 +969,8 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
         assert_format_with_config!(
             r#"local t = { alpha, beta, gamma, delta }
 "#,
-            r#"local t = {
+            r#"
+local t = {
     alpha, beta, gamma,
     delta
 }
@@ -967,15 +982,17 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_table_field_preserves_multiline_closure_value_shape() {
         assert_format!(
-            r#"local spec = {
+            r#"
+local spec = {
     callback = function()
         return true
     end,
     fallback = another_value,
 }
 "#,
-            r#"local spec = {
-    callback = function()
+            r#"
+local spec = {
+    callback = function ()
         return true
     end,
     fallback = another_value
@@ -987,15 +1004,17 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_table_field_multiline_closure_value_still_formats_interior() {
         assert_format!(
-            r#"local mt = {
+            r#"
+local mt = {
     __eq = function (a, b)
         coroutine.yield(nil, "eq")
         return  val(a) ==       val(b)
     end
 }
 "#,
-            r#"local mt = {
-    __eq = function(a, b)
+            r#"
+local mt = {
+    __eq = function (a, b)
         coroutine.yield(nil, "eq")
         return val(a) == val(b)
     end
@@ -1007,7 +1026,8 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_table_field_preserves_multiline_nested_table_value_shape() {
         assert_format!(
-            r#"local spec = {
+            r#"
+local spec = {
     nested = {
         foo=1,
         bar =    2,
@@ -1015,7 +1035,8 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     fallback = another_value,
 }
 "#,
-            r#"local spec = {
+            r#"
+local spec = {
     nested = {
         foo = 1,
         bar = 2
@@ -1029,7 +1050,8 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_deep_nested_table_field_keeps_expanded_shape_and_formats_interior() {
         assert_format!(
-            r#"local spec = {
+            r#"
+local spec = {
     outer = {
         callback = function (a, b)
             return  val(a) ==       val(b)
@@ -1041,9 +1063,10 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     },
 }
 "#,
-            r#"local spec = {
+            r#"
+local spec = {
     outer = {
-        callback = function(a, b)
+        callback = function (a, b)
             return val(a) == val(b)
         end,
         nested = {
@@ -1059,7 +1082,8 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_multiline_call_arg_nested_table_keeps_expanded_shape_and_formats_interior() {
         assert_format!(
-            r#"local spec = {
+            r#"
+local spec = {
     outer = {
         callback = wrap(function (a, b)
             return  val(a) ==       val(b)
@@ -1071,9 +1095,10 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     },
 }
 "#,
-            r#"local spec = {
+            r#"
+local spec = {
     outer = {
-        callback = wrap(function(a, b)
+        callback = wrap(function (a, b)
             return val(a) == val(b)
         end,
             {
@@ -1132,7 +1157,8 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_multiline_chain_layout_reflows_when_width_allows() {
         assert_format!(
-            r#"builder
+            r#"
+builder
     :set_name(name)
     :set_age(age)
     :build()
@@ -1153,9 +1179,11 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
         };
 
         assert_format_with_config!(
-            r#"builder:set_name(name):set_age(age):build()
+            r#"
+builder:set_name(name):set_age(age):build()
 "#,
-            r#"builder
+            r#"
+builder
     :set_name(name):set_age(age)
     :build()
 "#,
@@ -1174,9 +1202,11 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
         };
 
         assert_format_with_config!(
-            r#"builder:set_name(name):set_age(age):build()
+            r#"
+builder:set_name(name):set_age(age):build()
 "#,
-            r#"builder
+            r#"
+builder
     :set_name(name)
     :set_age(age)
     :build()
@@ -1188,12 +1218,14 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_chain_keeps_single_multiline_table_payload_attached() {
         assert_format!(
-            r#"builder:with_config({
+            r#"
+builder:with_config({
     key = value,
     another = other,
 }):set_name(name):build()
 "#,
-            r#"builder:with_config({
+            r#"
+builder:with_config({
     key = value,
     another = other
 }):set_name(name):build()
@@ -1204,14 +1236,15 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     #[test]
     fn test_chain_keeps_mixed_closure_and_multiline_table_payloads_expanded() {
         assert_format!(
-            r#"builder:with_config(function (a, b)
+            r#"
+builder:with_config(function (a, b)
     return  val(a) ==       val(b)
 end, {
     foo=1,
     bar =    2,
 }):set_name(name):build()
 "#,
-            r#"builder:with_config(function(a, b)
+            r#"builder:with_config(function (a, b)
     return val(a) == val(b)
 end,
     {
@@ -1225,14 +1258,16 @@ end,
     #[test]
     fn test_chain_keeps_mixed_closure_table_and_fallback_payloads_expanded() {
         assert_format!(
-            r#"builder:with_config(function (a, b)
+            r#"
+builder:with_config(function (a, b)
     return  val(a) ==       val(b)
 end, {
     foo=1,
     bar =    2,
 }, fallback):set_name(name):build()
 "#,
-            r#"builder:with_config(function(a, b)
+            r#"
+builder:with_config(function (a, b)
     return val(a) == val(b)
 end,
     {
@@ -1246,13 +1281,15 @@ end,
     #[test]
     fn test_if_header_keeps_short_comparison_tail_with_multiline_callback_call() {
         assert_format!(
-            r#"if check(function()
+            r#"
+if check(function()
     return true
 end, 'LOADTRUE', 'RETURN1') == "hiho" then
     print('ok')
 end
 "#,
-            r#"if check(function()
+            r#"
+if check(function ()
     return true
 end,
     'LOADTRUE', 'RETURN1') == "hiho" then
@@ -1270,6 +1307,16 @@ end
             r#"local x = condition_one and value_one or condition_two and value_two or default_value
 "#,
             r#"local x = condition_one and value_one or condition_two and value_two or default_value
+"#
+        );
+    }
+
+    #[test]
+    fn test_lambda() {
+        assert_format!(
+            r#"local f = function(x) return x * 2 end
+"#,
+            r#"local f = function (x) return x * 2 end
 "#
         );
     }

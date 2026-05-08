@@ -12,7 +12,7 @@ use rowan::{TextRange, TextSize};
 
 use super::FormatContext;
 use crate::formatter::model::{
-    LayoutNodePlan, FormatPlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
+    FormatPlan, LayoutNodePlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
 };
 use crate::formatter::sequence::*;
 use crate::formatter::trivia::*;
@@ -23,7 +23,7 @@ use self::control::{
 };
 use self::helpers::*;
 
-pub fn render(ctx: &FormatContext, chunk: &LuaChunk, plan: &FormatPlan) -> Vec<DocIR> {
+pub fn render_ir(ctx: &FormatContext, chunk: &LuaChunk, plan: &FormatPlan) -> Vec<DocIR> {
     let mut docs = Vec::new();
     if let Some(token) = chunk.syntax().first_token()
         && token.kind() == LuaKind::Token(LuaTokenKind::TkShebang)

@@ -6,7 +6,7 @@ use emmylua_parser::{
 use crate::config::LuaFormatConfig;
 use crate::formatter::FormatContext;
 use crate::formatter::layout::analyze_layout;
-use crate::formatter::model::{LayoutNodePlan, FormatPlan, StatementExprListLayoutKind};
+use crate::formatter::model::{FormatPlan, LayoutNodePlan, StatementExprListLayoutKind};
 use crate::formatter::spacing::analyze_spacing;
 
 fn setup_plan(chunk: &LuaChunk, config: &LuaFormatConfig) -> FormatPlan {

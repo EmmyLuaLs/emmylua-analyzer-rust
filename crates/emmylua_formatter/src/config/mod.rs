@@ -205,6 +205,8 @@ pub struct SpacingConfig {
     ///
     /// Example: `function foo ()` instead of `function foo()`.
     pub space_before_func_paren: bool,
+    /// Insert a space before a lambda function's `(` when `space_before_func_paren` is enabled.
+    pub space_before_lambda_func_paren: bool,
     /// Insert spaces just inside `{` and `}` for inline tables.
     ///
     /// Example: `{ a = 1 }` instead of `{a = 1}`.
@@ -226,6 +228,7 @@ impl Default for SpacingConfig {
         Self {
             space_before_call_paren: false,
             space_before_func_paren: false,
+            space_before_lambda_func_paren: true,
             space_inside_braces: true,
             space_inside_parens: false,
             space_inside_brackets: false,

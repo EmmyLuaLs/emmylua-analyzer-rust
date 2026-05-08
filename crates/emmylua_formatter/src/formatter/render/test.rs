@@ -25,7 +25,7 @@ fn test_render_comment_with_spacing_uses_normal_prefix_replacement() {
     let mut plan = FormatPlan::from_config(&config);
     let start = comment.syntax().first_token().unwrap();
     plan.spacing
-        .add_token_replace(LuaSyntaxId::from_token(&start), "--  ".to_string());
+        .add_token_replace(LuaSyntaxId::from_token(&start), "--  ".into());
 
     let docs = render_comment_with_spacing(&ctx, &comment, &plan);
     let rendered = Printer::new(&config).print(&docs);
@@ -41,7 +41,7 @@ fn test_render_comment_with_spacing_uses_doc_prefix_replacement() {
     let mut plan = FormatPlan::from_config(&config);
     let start = comment.syntax().first_token().unwrap();
     plan.spacing
-        .add_token_replace(LuaSyntaxId::from_token(&start), "---  @".to_string());
+        .add_token_replace(LuaSyntaxId::from_token(&start), "---  @".into());
 
     let docs = render_comment_with_spacing(&ctx, &comment, &plan);
     let rendered = Printer::new(&config).print(&docs);

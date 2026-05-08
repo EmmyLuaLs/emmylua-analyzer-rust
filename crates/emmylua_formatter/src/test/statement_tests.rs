@@ -332,7 +332,7 @@ end, 'LOADTRUE', 'RETURN1') and another_predicate then
     print('ok')
 end
 "#,
-            r#"if check(function()
+            r#"if check(function ()
     return true
 end,
     'LOADTRUE', 'RETURN1') and another_predicate then
@@ -393,7 +393,7 @@ end, 'LOADTRUE', 'RETURN1') and another_predicate do
     print('ok')
 end
 "#,
-            r#"while check(function()
+            r#"while check(function ()
     return true
 end,
     'LOADTRUE', 'RETURN1') and another_predicate do
@@ -628,7 +628,7 @@ end, 'LOADTRUE', 'RETURN1'), fallback_iterator do
     print(key, value)
 end
 "#,
-            r#"for key, value in iterate(function()
+            r#"for key, value in iterate(function ()
     return true
 end,
     'LOADTRUE', 'RETURN1'),
@@ -986,7 +986,7 @@ return ...
 end
 "#,
             r#"
-local f = function(...)
+local f = function (...)
     return ...
 end
 "#
@@ -1003,7 +1003,7 @@ end
     return first + second
 end
 "#,
-            r#"local f = function(first, second)
+            r#"local f = function (first, second)
     return first + second
 end
 "#
@@ -1477,9 +1477,9 @@ end) -- 333
             r#"-- hihi
 builder.new()
     -- hihi
-    .setName("test", function()
+    .setName("test", function ()
         return "1.0.0" + 1
-    end).setVersion("1.0.0", function()
+    end).setVersion("1.0.0", function ()
         return "1.0.0" + 1
     end) -- 333
 "#
@@ -1499,9 +1499,9 @@ builder.new()
 "#,
             r#"builder.new()
     -- nofowo
-    .setName("test", function()
+    .setName("test", function ()
         return "1.0.0" + 1
-    end).setVersion("1.0.0", function()
+    end).setVersion("1.0.0", function ()
         return "1.0.0" + 1
     end) -- 333
 "#

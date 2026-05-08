@@ -4,6 +4,7 @@ use emmylua_parser::{
     BinaryOperator, LuaAstNode, LuaChunk, LuaKind, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxToken,
     LuaTokenKind,
 };
+use smol_str::SmolStr;
 
 use super::FormatContext;
 use super::model::{FormatPlan, SpacingModel, TokenSpacingExpected};
@@ -79,11 +80,7 @@ pub fn analyze_spacing(ctx: &FormatContext, chunk: &LuaChunk, plan: &mut FormatP
     analyze_chunk_token_spacing(ctx, chunk, &mut plan.spacing)
 }
 
-fn analyze_chunk_token_spacing(
-    ctx: &FormatContext,
-    chunk: &LuaChunk,
-    spacing: &mut SpacingModel,
-) {
+fn analyze_chunk_token_spacing(ctx: &FormatContext, chunk: &LuaChunk, spacing: &mut SpacingModel) {
     for element in chunk.syntax().descendants_with_tokens() {
         let Some(token) = element.into_token() else {
             continue;
@@ -104,11 +101,7 @@ fn should_skip_spacing_token(token: &LuaSyntaxToken) -> bool {
     )
 }
 
-fn analyze_token_spacing(
-    ctx: &FormatContext,
-    spacing: &mut SpacingModel,
-    token: &LuaSyntaxToken,
-) {
+fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token: &LuaSyntaxToken) {
     let syntax_id = LuaSyntaxId::from_token(token);
     match token.kind().to_token() {
         LuaTokenKind::TkNormalStart => apply_comment_start_spacing(ctx, spacing, token, syntax_id),
@@ -202,7 +195,10 @@ fn analyze_token_spacing(
         LuaTokenKind::TkDocOr => {
             apply_space_rule(spacing, syntax_id, SpaceRule::NoSpace);
         }
-        LuaTokenKind::TkDocAnd | LuaTokenKind::TkDocExtends | LuaTokenKind::TkDocIn => {
+        LuaTokenKind::TkDocAnd
+        | LuaTokenKind::TkDocExtends
+        | LuaTokenKind::TkDocIn
+        | LuaTokenKind::TkDocNew => {
             apply_space_rule(spacing, syntax_id, SpaceRule::Space);
         }
         LuaTokenKind::TkAssign => {
@@ -222,8 +218,7 @@ fn analyze_token_spacing(
         | LuaTokenKind::TkUntil
         | LuaTokenKind::TkIn
         | LuaTokenKind::TkNot => {
-            spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(1));
-            spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
+            apply_space_rule(spacing, syntax_id, SpaceRule::Space);
         }
         LuaTokenKind::TkDocQuestion => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
@@ -239,24 +234,45 @@ fn apply_left_paren_spacing(
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
-    let left_space = if is_parent_syntax(token, LuaSyntaxKind::ParamList) {
-        usize::from(ctx.config.spacing.space_before_func_paren)
+    let Some(prev_token) = get_prev_sibling_token_without_space(token) else {
+        return;
+    };
+    let left_space = if is_parent_syntax(token, LuaSyntaxKind::ParamList)
+        && prev_token.kind().to_token() != LuaTokenKind::TkFunction
+    {
+        Some(if ctx.config.spacing.space_before_func_paren {
+            1
+        } else {
+            0
+        })
     } else if is_parent_syntax(token, LuaSyntaxKind::CallArgList) {
-        usize::from(ctx.config.spacing.space_before_call_paren)
-    } else if let Some(prev_token) = get_prev_sibling_token_without_space(token) {
-        match prev_token.kind().to_token() {
-            LuaTokenKind::TkName
-            | LuaTokenKind::TkRightParen
-            | LuaTokenKind::TkRightBracket
-            | LuaTokenKind::TkFunction => 0,
-            LuaTokenKind::TkString | LuaTokenKind::TkRightBrace | LuaTokenKind::TkLongString => 1,
-            _ => 0,
-        }
+        Some(if ctx.config.spacing.space_before_call_paren {
+            1
+        } else {
+            0
+        })
     } else {
-        0
+        match prev_token.kind().to_token() {
+            LuaTokenKind::TkName | LuaTokenKind::TkRightParen | LuaTokenKind::TkRightBracket => {
+                Some(0)
+            }
+            LuaTokenKind::TkString | LuaTokenKind::TkRightBrace | LuaTokenKind::TkLongString => {
+                Some(1)
+            }
+            LuaTokenKind::TkFunction => {
+                if ctx.config.spacing.space_before_lambda_func_paren {
+                    Some(1)
+                } else {
+                    Some(0)
+                }
+            }
+            _ => None,
+        }
     };
 
-    spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(left_space));
+    if let Some(left_space) = left_space {
+        spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(left_space));
+    }
     spacing.add_token_right_expected(
         syntax_id,
         TokenSpacingExpected::Space(space_inside_parens(token, ctx)),
@@ -361,6 +377,7 @@ fn apply_comment_start_spacing(
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
+    // bug fix: -- [[
     if comment_start_looks_like_spaced_long_comment(token) {
         return;
     }
@@ -369,6 +386,27 @@ fn apply_comment_start_spacing(
         spacing.add_token_replace(syntax_id, replacement);
         spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
     }
+}
+
+fn comment_start_looks_like_spaced_long_comment(token: &LuaSyntaxToken) -> bool {
+    if token.kind().to_token() != LuaTokenKind::TkNormalStart || token.text() != "--" {
+        return false;
+    }
+
+    let mut current = token.next_token();
+    let mut saw_whitespace = false;
+    while let Some(next) = current {
+        match next.kind().to_token() {
+            LuaTokenKind::TkWhitespace => {
+                saw_whitespace = true;
+                current = next.next_token();
+            }
+            LuaTokenKind::TkEndOfLine => return false,
+            _ => return saw_whitespace && next.text().starts_with('['),
+        }
+    }
+
+    false
 }
 
 fn binary_space_rule_for_token(ctx: &FormatContext, token: &LuaSyntaxToken) -> Option<SpaceRule> {
@@ -430,11 +468,19 @@ fn space_inside_parens(token: &LuaSyntaxToken, ctx: &FormatContext) -> usize {
 }
 
 fn space_inside_brackets(_token: &LuaSyntaxToken, ctx: &FormatContext) -> usize {
-    usize::from(ctx.config.spacing.space_inside_brackets)
+    if ctx.config.spacing.space_inside_brackets {
+        1
+    } else {
+        0
+    }
 }
 
 fn space_inside_braces(_token: &LuaSyntaxToken, ctx: &FormatContext) -> usize {
-    usize::from(ctx.config.spacing.space_inside_braces)
+    if ctx.config.spacing.space_inside_braces {
+        1
+    } else {
+        0
+    }
 }
 
 fn is_parent_syntax(token: &LuaSyntaxToken, kind: LuaSyntaxKind) -> bool {
@@ -458,73 +504,52 @@ fn get_prev_sibling_token_without_space(token: &LuaSyntaxToken) -> Option<LuaSyn
     None
 }
 
-fn comment_start_looks_like_spaced_long_comment(token: &LuaSyntaxToken) -> bool {
-    if token.kind().to_token() != LuaTokenKind::TkNormalStart || token.text() != "--" {
-        return false;
-    }
-
-    let mut current = token.next_token();
-    let mut saw_whitespace = false;
-    while let Some(next) = current {
-        match next.kind().to_token() {
-            LuaTokenKind::TkWhitespace => {
-                saw_whitespace = true;
-                current = next.next_token();
-            }
-            LuaTokenKind::TkEndOfLine => return false,
-            _ => return saw_whitespace && next.text().starts_with('['),
-        }
-    }
-
-    false
-}
-
-fn normalized_comment_prefix(ctx: &FormatContext, prefix_text: &str) -> Option<String> {
+fn normalized_comment_prefix(ctx: &FormatContext, prefix_text: &str) -> Option<SmolStr> {
     match dash_prefix_len(prefix_text) {
         2 => Some(if ctx.config.comments.space_after_comment_dash {
-            "-- ".to_string()
+            "-- ".into()
         } else {
-            "--".to_string()
+            "--".into()
         }),
         3 => Some(if ctx.config.emmy_doc.space_after_description_dash {
-            "--- ".to_string()
+            "--- ".into()
         } else {
-            "---".to_string()
+            "---".into()
         }),
         _ => None,
     }
 }
 
-fn normalized_doc_tag_prefix(ctx: &FormatContext) -> String {
+fn normalized_doc_tag_prefix(ctx: &FormatContext) -> SmolStr {
     if ctx.config.emmy_doc.space_between_tag_columns {
-        "--- @".to_string()
+        "--- @".into()
     } else {
-        "---@".to_string()
+        "---@".into()
     }
 }
 
-fn normalized_doc_continue_prefix(ctx: &FormatContext, prefix_text: &str) -> String {
+fn normalized_doc_continue_prefix(ctx: &FormatContext, prefix_text: &str) -> SmolStr {
     if prefix_text == "---" || prefix_text == "--- " {
         if ctx.config.emmy_doc.space_after_description_dash {
-            "--- ".to_string()
+            "--- ".into()
         } else {
-            "---".to_string()
+            "---".into()
         }
     } else {
-        prefix_text.to_string()
+        prefix_text.into()
     }
 }
 
-fn normalized_doc_continue_or_prefix(ctx: &FormatContext, prefix_text: &str) -> String {
+fn normalized_doc_continue_or_prefix(ctx: &FormatContext, prefix_text: &str) -> SmolStr {
     if !prefix_text.starts_with("---") {
-        return prefix_text.to_string();
+        return prefix_text.into();
     }
 
     let suffix = prefix_text[3..].trim_start();
     if ctx.config.emmy_doc.space_after_description_dash {
-        format!("--- {suffix}")
+        format!("--- {suffix}").into()
     } else {
-        format!("---{suffix}")
+        format!("---{suffix}").into()
     }
 }
 

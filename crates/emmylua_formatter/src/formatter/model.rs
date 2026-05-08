@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use emmylua_parser::{LuaSyntaxId, LuaSyntaxKind, LuaTokenKind};
+use smol_str::SmolStr;
 
 use crate::config::LuaFormatConfig;
 
@@ -16,7 +17,7 @@ pub struct SpacingModel {
     pub has_shebang: bool,
     left_expected: HashMap<LuaSyntaxId, TokenSpacingExpected>,
     right_expected: HashMap<LuaSyntaxId, TokenSpacingExpected>,
-    replace_tokens: HashMap<LuaSyntaxId, String>,
+    replace_tokens: HashMap<LuaSyntaxId, SmolStr>,
 }
 
 impl SpacingModel {
@@ -44,12 +45,12 @@ impl SpacingModel {
         self.right_expected.get(&syntax_id)
     }
 
-    pub fn add_token_replace(&mut self, syntax_id: LuaSyntaxId, replacement: String) {
+    pub fn add_token_replace(&mut self, syntax_id: LuaSyntaxId, replacement: SmolStr) {
         self.replace_tokens.insert(syntax_id, replacement);
     }
 
     pub fn token_replace(&self, syntax_id: LuaSyntaxId) -> Option<&str> {
-        self.replace_tokens.get(&syntax_id).map(String::as_str)
+        self.replace_tokens.get(&syntax_id).map(SmolStr::as_str)
     }
 }
 

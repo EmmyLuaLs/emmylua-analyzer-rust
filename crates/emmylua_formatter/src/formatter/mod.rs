@@ -28,5 +28,5 @@ pub fn format_chunk(ctx: &FormatContext, chunk: &LuaChunk) -> Vec<DocIR> {
     spacing::analyze_spacing(ctx, chunk, &mut plan);
     layout::analyze_layout(ctx, chunk, &mut plan);
 
-    render::render(ctx, chunk, &plan)
+    render::render_ir(ctx, chunk, &plan)
 }

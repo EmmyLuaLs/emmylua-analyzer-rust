@@ -494,7 +494,7 @@ local f = function(
 end
 "#,
             r#"
-local f = function(
+local f = function (
     a, -- first
     b  -- second
 )
@@ -727,7 +727,7 @@ local f = function(
 end
 "#,
             r#"
-local f = function(
+local f = function (
     a, -- first
     long_name -- second
 )

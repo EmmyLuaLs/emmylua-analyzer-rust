@@ -112,6 +112,8 @@ Behavior notes:
 
 - `space_before_call_paren`
 - `space_before_func_paren`
+- `space_before_lambda_func_paren`
+- `space_before_lambda_func_paren`
 - `space_inside_braces`
 - `space_inside_parens`
 - `space_inside_brackets`
@@ -249,6 +251,7 @@ end_of_line = "LF"
 [spacing]
 space_before_call_paren = false
 space_before_func_paren = false
+space_before_lambda_func_paren = true
 space_inside_braces = true
 space_inside_parens = false
 space_inside_brackets = false
