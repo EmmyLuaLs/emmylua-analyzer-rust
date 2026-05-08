@@ -3051,18 +3051,14 @@ fn extract_trailing_comment_text(node: &LuaSyntaxNode) -> Option<(Vec<DocIR>, Te
 
 fn normalize_single_line_comment_text(ctx: &FormatContext, text: &str) -> Vec<DocIR> {
     if text.starts_with("---") || !text.starts_with("--") {
-        return vec![ir::text(text.to_string())];
+        return vec![ir::text(text)];
     }
 
     let body = text[2..].trim_start();
     let prefix = if ctx.config.comments.space_after_comment_dash {
-        if body.is_empty() {
-            "--".to_string()
-        } else {
-            "-- ".to_string()
-        }
+        if body.is_empty() { "--" } else { "-- " }
     } else {
-        "--".to_string()
+        "--"
     };
 
     vec![ir::text(format!("{prefix}{body}"))]

@@ -48,15 +48,11 @@ pub fn render_ir(ctx: &FormatContext, chunk: &LuaChunk, plan: &FormatPlan) -> Ve
 
 pub fn render_closure_block_body(
     ctx: &FormatContext,
-    expr: &emmylua_parser::LuaClosureExpr,
+    expr: &LuaClosureExpr,
     plan: &FormatPlan,
 ) -> Vec<DocIR> {
-    let root = expr
-        .syntax()
-        .ancestors()
-        .last()
-        .unwrap_or_else(|| expr.syntax().clone());
-    let closure_id = LuaSyntaxId::from_node(expr.syntax());
+    let root = expr.get_root();
+    let closure_id = expr.get_syntax_id();
     let Some(closure_plan) = find_syntax_plan_by_id(&plan.layout.root_nodes, closure_id) else {
         return Vec::new();
     };
@@ -384,7 +380,7 @@ fn format_local_stat_trivia_aware(
         assign_op,
         rhs_entries,
     } = collect_local_stat_entries(ctx, plan, stat);
-    let syntax_id = LuaSyntaxId::from_node(stat.syntax());
+    let syntax_id = stat.get_syntax_id();
     let local_token = first_direct_token(stat.syntax(), LuaTokenKind::TkLocal);
     let mut docs = vec![token_or_kind_doc(
         local_token.as_ref(),
@@ -442,7 +438,7 @@ fn format_assign_stat_trivia_aware(
         assign_op,
         rhs_entries,
     } = collect_assign_stat_entries(ctx, plan, stat);
-    let syntax_id = LuaSyntaxId::from_node(stat.syntax());
+    let syntax_id = stat.get_syntax_id();
     let has_inline_comment = plan
         .layout
         .statement_trivia
@@ -494,7 +490,7 @@ fn format_return_stat_trivia_aware(
     stat: &LuaReturnStat,
 ) -> Vec<DocIR> {
     let entries = collect_return_stat_entries(ctx, plan, stat);
-    let syntax_id = LuaSyntaxId::from_node(stat.syntax());
+    let syntax_id = stat.get_syntax_id();
     let return_token = first_direct_token(stat.syntax(), LuaTokenKind::TkReturn);
     let mut docs = vec![token_or_kind_doc(
         return_token.as_ref(),
@@ -786,7 +782,7 @@ fn format_local_name_ir(local_name: &LuaLocalName) -> Vec<DocIR> {
 fn format_statement_expr_list(
     ctx: &FormatContext,
     plan: &FormatPlan,
-    expr_list_plan: super::model::StatementExprListLayoutPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
     comma_token: Option<&LuaSyntaxToken>,
     leading_docs: Vec<DocIR>,
     expr_docs: Vec<Vec<DocIR>>,
@@ -863,7 +859,7 @@ fn format_statement_expr_list_with_attached_first_multiline(
 fn render_statement_exprs(
     ctx: &FormatContext,
     plan: &FormatPlan,
-    expr_list_plan: super::model::StatementExprListLayoutPlan,
+    expr_list_plan: StatementExprListLayoutPlan,
     leading_token: Option<&LuaSyntaxToken>,
     comma_token: Option<&LuaSyntaxToken>,
     expr_docs: Vec<Vec<DocIR>>,
