@@ -4,8 +4,11 @@ use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaChunk};
 
 use crate::{
     DbIndex, FlowId, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType, LuaInferCache,
-    LuaSignature, LuaType, TypeOps, infer_expr, instantiate_func_generic,
-    semantic::infer::{InferResult, VarRefId, narrow::narrow_down_type},
+    LuaSignature, LuaType, TypeOps,
+    semantic::{
+        infer::{InferResult, VarRefId, narrow::narrow_down_type, try_infer_expr_no_flow},
+        instantiate_func_generic,
+    },
 };
 
 use super::{ConditionFlowAction, PendingConditionNarrow};
@@ -448,7 +451,6 @@ fn correlated_type_contains(db: &DbIndex, container: &LuaType, target: &LuaType)
     TypeOps::Union.apply(db, container, target) == *container
 }
 
-#[allow(clippy::too_many_arguments)]
 fn collect_matching_correlated_types(
     db: &DbIndex,
     cache: &mut LuaInferCache,
@@ -547,8 +549,8 @@ fn infer_signature_for_call_ptr<'a>(
     let Some(prefix_expr) = call_expr.get_prefix_expr() else {
         return Ok(None);
     };
-    let signature_id = match infer_expr(db, cache, prefix_expr)? {
-        LuaType::Signature(signature_id) => signature_id,
+    let signature_id = match try_infer_expr_no_flow(db, cache, prefix_expr)? {
+        Some(LuaType::Signature(signature_id)) => signature_id,
         _ => return Ok(None),
     };
     let Some(signature) = db.get_signature_index().get(&signature_id) else {
@@ -564,23 +566,28 @@ fn instantiate_return_rows(
     call_expr: LuaCallExpr,
     signature: &LuaSignature,
 ) -> Vec<Vec<LuaType>> {
+    let mut instantiate_return_type = |return_type: LuaType| {
+        if !return_type.contain_tpl() {
+            return return_type;
+        }
+
+        let func = LuaFunctionType::new(
+            signature.async_state,
+            signature.is_colon_define,
+            signature.is_vararg,
+            signature.get_type_params(),
+            return_type.clone(),
+        );
+        match cache
+            .with_no_flow(|cache| instantiate_func_generic(db, cache, &func, call_expr.clone()))
+        {
+            Ok(instantiated) => instantiated.get_ret().clone(),
+            Err(_) => return_type,
+        }
+    };
+
     if signature.return_overloads.is_empty() {
-        let return_type = signature.get_return_type();
-        let instantiated_return_type = if return_type.contain_tpl() {
-            let func = LuaFunctionType::new(
-                signature.async_state,
-                signature.is_colon_define,
-                signature.is_vararg,
-                signature.get_type_params(),
-                return_type.clone(),
-            );
-            match instantiate_func_generic(db, cache, &func, call_expr) {
-                Ok(instantiated) => instantiated.get_ret().clone(),
-                Err(_) => return_type,
-            }
-        } else {
-            return_type
-        };
+        let instantiated_return_type = instantiate_return_type(signature.get_return_type());
         return vec![LuaSignature::return_type_to_row(instantiated_return_type)];
     }
 
@@ -588,22 +595,7 @@ fn instantiate_return_rows(
     for overload in &signature.return_overloads {
         let type_refs = &overload.type_refs;
         let overload_return_type = LuaSignature::row_to_return_type(type_refs.to_vec());
-        let instantiated_return_type = if overload_return_type.contain_tpl() {
-            let overload_func = LuaFunctionType::new(
-                signature.async_state,
-                signature.is_colon_define,
-                signature.is_vararg,
-                signature.get_type_params(),
-                overload_return_type.clone(),
-            );
-            match instantiate_func_generic(db, cache, &overload_func, call_expr.clone()) {
-                Ok(instantiated) => instantiated.get_ret().clone(),
-                Err(_) => overload_return_type,
-            }
-        } else {
-            overload_return_type
-        };
-
+        let instantiated_return_type = instantiate_return_type(overload_return_type);
         rows.push(LuaSignature::return_type_to_row(instantiated_return_type));
     }
 

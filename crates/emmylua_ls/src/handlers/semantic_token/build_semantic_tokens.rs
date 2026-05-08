@@ -511,11 +511,13 @@ fn build_node_semantic_token(
         }
         LuaAst::LuaCallExpr(call_expr) => {
             let prefix = call_expr.get_prefix_expr()?;
-            let prefix_type = semantic_model.infer_expr(prefix.clone()).ok();
 
             match prefix {
                 LuaExpr::NameExpr(name_expr) => {
                     let name = name_expr.get_name_token()?;
+                    let prefix_type = semantic_model
+                        .infer_expr(LuaExpr::NameExpr(name_expr.clone()))
+                        .ok();
                     if let Some(prefix_type) = prefix_type {
                         match prefix_type {
                             LuaType::Signature(signature) => {

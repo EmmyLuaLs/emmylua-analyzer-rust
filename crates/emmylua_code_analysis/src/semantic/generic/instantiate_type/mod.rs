@@ -267,16 +267,24 @@ fn instantiate_doc_function_with_context(
                                 }
                                 SubstitutorValue::Type(ty) => {
                                     let resolved_type = ty.default();
-                                    // 如果参数是 `...: T...` 且类型是 tuple, 那么我们将展开 tuple
-                                    if origin_param.0 == "..."
-                                        && let LuaType::Tuple(tuple) = resolved_type
-                                    {
-                                        for (i, typ) in tuple.get_types().iter().enumerate() {
-                                            let param_name = format!("var{}", i);
-                                            new_params.push((param_name, Some(typ.clone())));
+                                    // 如果参数是 `...: T...`
+                                    if origin_param.0 == "..." {
+                                        // 类型是 tuple, 那么我们将展开 tuple
+                                        if let LuaType::Tuple(tuple) = resolved_type {
+                                            let base_index = new_params.len();
+                                            for (i, typ) in tuple.get_types().iter().enumerate() {
+                                                let param_name = format!("var{}", base_index + i);
+                                                new_params.push((param_name, Some(typ.clone())));
+                                            }
+                                        } else {
+                                            new_params.push((
+                                                origin_param.0.clone(),
+                                                Some(resolved_type.clone()),
+                                            ));
                                         }
                                         continue;
                                     }
+                                    // 一个错误的情况, 我们不应该允许 `非...参数名: T...`, 因此构造的 Variadic 是一个错误的结果, 应在更上层报错
                                     new_params.push((
                                         origin_param.0.clone(),
                                         Some(LuaType::Variadic(

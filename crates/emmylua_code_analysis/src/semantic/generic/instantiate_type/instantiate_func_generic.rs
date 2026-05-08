@@ -174,6 +174,7 @@ fn infer_callable_return_from_arg_types(
             call_arg_types,
             false,
             None,
+            &[],
         );
         member_returns.push(callable?.get_ret().clone());
     }

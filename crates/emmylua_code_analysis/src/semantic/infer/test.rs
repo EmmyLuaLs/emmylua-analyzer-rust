@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod test {
     use crate::{DiagnosticCode, VirtualWorkspace};
+    use emmylua_parser::{LuaCallExpr, LuaExpr};
 
     #[test]
     fn test_custom_binary() {
@@ -80,6 +81,71 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("F()"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_no_flow_overload_call_keeps_shared_return_when_arg_declines() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@overload fun(value: string): boolean
+            ---@overload fun(value: integer): boolean
+            ---@param value string|integer
+            ---@return boolean
+            local function classify(value)
+            end
+
+            local result = classify({})
+        "#,
+        );
+
+        let call_expr = ws.get_node::<LuaCallExpr>(file_id);
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("Semantic model must exist");
+        let ty = crate::semantic::infer::try_infer_expr_no_flow(
+            semantic_model.get_db(),
+            &mut semantic_model.get_cache().borrow_mut(),
+            LuaExpr::CallExpr(call_expr),
+        )
+        .expect("no-flow call replay should not error")
+        .expect("no-flow call replay should keep shared overload return");
+
+        assert_eq!(ty, ws.ty("boolean"));
+    }
+
+    #[test]
+    fn test_no_flow_overload_call_declines_when_declined_arg_returns_differ() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@overload fun(value: string): string
+            ---@overload fun(value: integer): integer
+            ---@param value string|integer
+            ---@return string|integer
+            local function classify(value)
+            end
+
+            local result = classify({})
+        "#,
+        );
+
+        let call_expr = ws.get_node::<LuaCallExpr>(file_id);
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("Semantic model must exist");
+        let ty = crate::semantic::infer::try_infer_expr_no_flow(
+            semantic_model.get_db(),
+            &mut semantic_model.get_cache().borrow_mut(),
+            LuaExpr::CallExpr(call_expr),
+        )
+        .expect("no-flow call replay should not error");
+
+        assert!(ty.is_none());
     }
 
     #[test]

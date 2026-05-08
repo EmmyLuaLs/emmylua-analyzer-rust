@@ -12,10 +12,7 @@ use crate::{
     infer_call_expr_func, infer_expr,
 };
 
-use super::{
-    InferFailReason, InferResult,
-    infer_index::{infer_member_by_member_key, infer_member_by_operator},
-};
+use super::{InferFailReason, InferResult, infer_index::infer_member};
 
 pub fn infer_table_expr(
     db: &DbIndex,
@@ -186,19 +183,7 @@ pub fn infer_table_field_value_should_be(
         .ok_or(InferFailReason::None)?;
     let parent_table_expr_type = infer_table_should_be(db, cache, parnet_table_expr)?;
     let index = LuaIndexMemberExpr::TableField(table_field.clone());
-    let reason = match infer_member_by_member_key(
-        db,
-        cache,
-        &parent_table_expr_type,
-        index.clone(),
-        &InferGuard::new(),
-    ) {
-        Ok(member_type) => return Ok(member_type),
-        Err(InferFailReason::FieldNotFound) => InferFailReason::FieldNotFound,
-        Err(err) => return Err(err),
-    };
-
-    match infer_member_by_operator(
+    match infer_member(
         db,
         cache,
         &parent_table_expr_type,
@@ -215,7 +200,7 @@ pub fn infer_table_field_value_should_be(
         return Ok(type_cache.as_type().clone());
     };
 
-    Err(reason)
+    Err(InferFailReason::FieldNotFound)
 }
 
 fn infer_table_type_by_callee(
@@ -323,31 +308,13 @@ fn infer_table_field_type_by_parent(
     let parent_table_expr_type = infer_table_should_be(db, cache, parnet_table_expr)?;
 
     let index = LuaIndexMemberExpr::TableField(field);
-    let reason = match infer_member_by_member_key(
-        db,
-        cache,
-        &parent_table_expr_type,
-        index.clone(),
-        &InferGuard::new(),
-    ) {
-        Ok(member_type) => return Ok(member_type),
-        Err(InferFailReason::FieldNotFound) => InferFailReason::FieldNotFound,
-        Err(err) => return Err(err),
-    };
-
-    match infer_member_by_operator(
+    infer_member(
         db,
         cache,
         &parent_table_expr_type,
         index,
         &InferGuard::new(),
-    ) {
-        Ok(member_type) => return Ok(member_type),
-        Err(InferFailReason::FieldNotFound) => {}
-        Err(err) => return Err(err),
-    }
-
-    Err(reason)
+    )
 }
 
 fn infer_table_type_by_local(

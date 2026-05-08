@@ -7,7 +7,7 @@ use crate::{
     db_index::{DbIndex, LuaDeclOrMemberId},
     infer_node_semantic_decl,
     semantic::{
-        infer::narrow::{VarRefId, infer_expr_narrow_type},
+        infer::narrow::{VarRefId, get_var_ref_type, infer_expr_narrow_type},
         semantic_info::resolve_global_decl_id,
     },
 };
@@ -33,7 +33,7 @@ pub fn infer_name_expr(
         .ok_or(InferFailReason::None)?;
     let decl_id = file_ref.get_decl_id(&range);
     if let Some(decl_id) = decl_id {
-        infer_expr_narrow_type(
+        infer_var_ref_type(
             db,
             cache,
             LuaExpr::NameExpr(name_expr),
@@ -47,13 +47,25 @@ pub fn infer_name_expr(
 fn infer_self(db: &DbIndex, cache: &mut LuaInferCache, name_expr: LuaNameExpr) -> InferResult {
     let decl_or_member_id =
         find_self_decl_or_member_id(db, cache, &name_expr).ok_or(InferFailReason::None)?;
-    // LuaDeclOrMemberId::Member(member_id) => find_decl_member_type(db, member_id),
-    infer_expr_narrow_type(
+    infer_var_ref_type(
         db,
         cache,
         LuaExpr::NameExpr(name_expr),
         VarRefId::SelfRef(decl_or_member_id),
     )
+}
+
+fn infer_var_ref_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+    var_ref_id: VarRefId,
+) -> InferResult {
+    if cache.is_no_flow() {
+        get_var_ref_type(db, cache, &var_ref_id)
+    } else {
+        infer_expr_narrow_type(db, cache, expr, var_ref_id)
+    }
 }
 
 pub fn get_name_expr_var_ref_id(

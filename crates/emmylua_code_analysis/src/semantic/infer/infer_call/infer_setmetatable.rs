@@ -6,7 +6,7 @@ use crate::{
     semantic::{infer::InferResult, member::find_members_with_key},
 };
 
-pub fn infer_setmetatable_call(
+pub(super) fn infer_setmetatable_call(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,
@@ -22,6 +22,12 @@ pub fn infer_setmetatable_call(
     let metatable = args[1].clone();
 
     let (meta_type, is_index) = infer_metatable_index_type(db, cache, metatable)?;
+    if cache.is_no_flow() && !is_index && !meta_type.is_custom_type() {
+        // No-flow setmetatable inference is only used as a conservative fallback.
+        // If the metatable does not resolve to an actual metatable shape, decline
+        // instead of treating arbitrary static expressions as the result type.
+        return Err(InferFailReason::None);
+    }
     match &basic_table {
         LuaExpr::TableExpr(table_expr) => {
             if table_expr.is_empty() && is_index {

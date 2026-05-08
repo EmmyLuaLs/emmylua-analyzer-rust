@@ -1,99 +1,78 @@
 use emmylua_parser::{
     LuaAstNode, LuaExpr, LuaForStat, LuaIndexKey, LuaIndexMemberExpr, LuaNameExpr, LuaUnaryExpr,
-    NumberResult, UnaryOperator,
+    UnaryOperator,
 };
 
 use crate::{
-    DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaType, TypeOps,
-    infer_expr, semantic::infer::narrow::get_var_expr_var_ref_id,
+    DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaMemberKey, LuaType,
+    TypeOps,
+    semantic::infer::{infer_index::infer_expr_for_index, narrow::get_var_expr_var_ref_id},
 };
 
-pub fn infer_array_member(
+pub(super) fn infer_array_member_by_key(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     array_type: &LuaArrayType,
-    index_member_expr: LuaIndexMemberExpr,
+    index_expr: LuaIndexMemberExpr,
+    key_type: &LuaType,
+    key: &LuaMemberKey,
 ) -> Result<LuaType, InferFailReason> {
-    let key = index_member_expr
-        .get_index_key()
-        .ok_or(InferFailReason::None)?;
-    let index_prefix_expr = match index_member_expr {
-        LuaIndexMemberExpr::TableField(_) => {
-            return Ok(array_type.get_base().clone());
-        }
-        _ => index_member_expr
-            .get_prefix_expr()
-            .ok_or(InferFailReason::None)?,
+    let base = array_type.get_base();
+
+    let index_prefix_expr = match index_expr {
+        LuaIndexMemberExpr::TableField(_) => return Ok(base.clone()),
+        _ => index_expr.get_prefix_expr().ok_or(InferFailReason::None)?,
     };
 
-    match key {
-        LuaIndexKey::Integer(i) => {
-            if !db.get_emmyrc().strict.array_index {
-                return Ok(array_type.get_base().clone());
-            }
-
-            let base_type = array_type.get_base();
-            match array_type.get_len() {
-                LuaArrayLen::None => {}
-                LuaArrayLen::Max(max_len) => {
-                    if let NumberResult::Int(index_value) = i.get_number_value() {
-                        if index_value > 0 && index_value <= *max_len {
-                            return Ok(base_type.clone());
-                        }
-                    }
-                }
-            }
-
-            let result_type = match &base_type {
-                LuaType::Any | LuaType::Unknown => base_type.clone(),
-                _ => TypeOps::Union.apply(db, base_type, &LuaType::Nil),
-            };
-
-            Ok(result_type)
+    if let LuaMemberKey::Integer(index_value) = key {
+        if !db.get_emmyrc().strict.array_index {
+            return Ok(base.clone());
         }
-        LuaIndexKey::Expr(expr) => {
-            let expr_type = infer_expr(db, cache, expr.clone())?;
-            if expr_type.is_integer() {
-                let base_type = array_type.get_base();
-                match (array_type.get_len(), expr_type) {
-                    (
-                        LuaArrayLen::Max(max_len),
-                        LuaType::IntegerConst(index_value) | LuaType::DocIntegerConst(index_value),
-                    ) => {
-                        if index_value > 0 && index_value <= *max_len {
-                            return Ok(base_type.clone());
-                        }
-                    }
-                    _ => {
-                        if check_iter_var_range(db, cache, &expr, index_prefix_expr)
-                            .unwrap_or(false)
-                        {
-                            return Ok(base_type.clone());
-                        }
-                    }
-                }
 
-                let result_type = match &base_type {
-                    LuaType::Any | LuaType::Unknown => base_type.clone(),
-                    _ => {
-                        if db.get_emmyrc().strict.array_index {
-                            TypeOps::Union.apply(db, base_type, &LuaType::Nil)
-                        } else {
-                            base_type.clone()
-                        }
-                    }
-                };
-
-                Ok(result_type)
-            } else {
-                Err(InferFailReason::FieldNotFound)
-            }
+        if let LuaArrayLen::Max(max_len) = array_type.get_len()
+            && *index_value > 0
+            && *index_value <= *max_len
+        {
+            return Ok(base.clone());
         }
-        _ => Err(InferFailReason::FieldNotFound),
+
+        return Ok(array_member_fallback(db, base));
+    }
+
+    if !key_type.is_integer() {
+        if key_type.is_number() {
+            return Ok(array_member_fallback(db, base));
+        }
+
+        return Err(InferFailReason::FieldNotFound);
+    }
+
+    if let LuaArrayLen::Max(max_len) = array_type.get_len()
+        && let LuaType::IntegerConst(index_value) | LuaType::DocIntegerConst(index_value) = key_type
+        && *index_value > 0
+        && *index_value <= *max_len
+    {
+        return Ok(base.clone());
+    }
+
+    if let Some(LuaIndexKey::Expr(expr)) = index_expr.get_index_key()
+        && check_iter_var_range(db, cache, &expr, index_prefix_expr).unwrap_or(false)
+    {
+        return Ok(base.clone());
+    }
+
+    Ok(array_member_fallback(db, base))
+}
+
+pub(super) fn array_member_fallback(db: &DbIndex, base: &LuaType) -> LuaType {
+    match base {
+        LuaType::Any | LuaType::Unknown => base.clone(),
+        _ if db.get_emmyrc().strict.array_index => TypeOps::Union.apply(db, base, &LuaType::Nil),
+        _ => base.clone(),
     }
 }
 
-pub fn check_iter_var_range(
+pub(super) fn check_iter_var_range(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     may_iter_var: &LuaExpr,
@@ -135,7 +114,7 @@ fn check_index_var_in_range(
             unary_expr
         }
         3 => {
-            let step_type = infer_expr(db, cache, iter_exprs[2].clone()).ok()?;
+            let step_type = infer_expr_for_index(db, cache, iter_exprs[2].clone()).ok()?;
             let LuaType::IntegerConst(step_value) = step_type else {
                 return None;
             };

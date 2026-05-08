@@ -43,18 +43,31 @@ pub fn infer_call_expr_func(
 ) -> InferCallFuncResult {
     let syntax_id = call_expr.get_syntax_id();
     let key = (syntax_id, args_count, call_expr_type.clone());
-    if let Some(cache) = cache.call_cache.get(&key) {
-        match cache {
+    let is_no_flow = cache.is_no_flow();
+    if is_no_flow {
+        if let Some(cache_entry) = cache.call_no_flow_cache.get(&key) {
+            match cache_entry {
+                CacheEntry::Cache(Some(ty)) => return Ok(ty.clone()),
+                CacheEntry::Cache(None) => return Err(InferFailReason::None),
+                CacheEntry::Ready => return Err(InferFailReason::RecursiveInfer),
+            }
+        }
+    } else if let Some(cache_entry) = cache.call_cache.get(&key) {
+        match cache_entry {
             CacheEntry::Cache(ty) => return Ok(ty.clone()),
-            _ => return Err(InferFailReason::RecursiveInfer),
+            CacheEntry::Ready => return Err(InferFailReason::RecursiveInfer),
         }
     }
 
-    cache.call_cache.insert(key.clone(), CacheEntry::Ready);
+    if is_no_flow {
+        cache
+            .call_no_flow_cache
+            .insert(key.clone(), CacheEntry::Ready);
+    } else {
+        cache.call_cache.insert(key.clone(), CacheEntry::Ready);
+    }
     let result = match &call_expr_type {
-        LuaType::DocFunction(func) => {
-            infer_doc_function(db, cache, func, call_expr.clone(), args_count)
-        }
+        LuaType::DocFunction(func) => infer_doc_function(db, cache, func, call_expr.clone()),
         LuaType::Signature(signature_id) => {
             infer_signature_doc_function(db, cache, *signature_id, call_expr.clone(), args_count)
         }
@@ -151,15 +164,34 @@ pub fn infer_call_expr_func(
 
     match &result {
         Ok(func_ty) => {
+            if is_no_flow {
+                cache
+                    .call_no_flow_cache
+                    .insert(key, CacheEntry::Cache(Some(func_ty.clone())));
+            } else {
+                cache
+                    .call_cache
+                    .insert(key, CacheEntry::Cache(func_ty.clone()));
+            }
+        }
+        Err(InferFailReason::None) | Err(InferFailReason::RecursiveInfer) if is_no_flow => {
             cache
-                .call_cache
-                .insert(key, CacheEntry::Cache(func_ty.clone()));
+                .call_no_flow_cache
+                .insert(key, CacheEntry::Cache(None));
         }
         Err(r) if r.is_need_resolve() => {
-            cache.call_cache.remove(&key);
+            if is_no_flow {
+                cache.call_no_flow_cache.remove(&key);
+            } else {
+                cache.call_cache.remove(&key);
+            }
         }
         Err(InferFailReason::None) => {
-            cache.call_cache.remove(&key);
+            if is_no_flow {
+                cache.call_no_flow_cache.remove(&key);
+            } else {
+                cache.call_cache.remove(&key);
+            }
         }
         _ => {}
     }
@@ -189,7 +221,6 @@ fn infer_doc_function(
     cache: &mut LuaInferCache,
     func: &LuaFunctionType,
     call_expr: LuaCallExpr,
-    _: Option<usize>,
 ) -> InferCallFuncResult {
     if func.contain_tpl() {
         let result = instantiate_func_generic(db, cache, func, call_expr)?;
@@ -626,7 +657,7 @@ fn infer_intersection(
     resolve_signature(db, cache, overloads, call_expr, false, args_count)
 }
 
-pub(crate) fn unwrapp_return_type(
+fn unwrapp_return_type(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     return_type: LuaType,
@@ -750,7 +781,8 @@ pub fn infer_call_expr(
     .get_ret()
     .clone();
 
-    if let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
+    if !cache.is_no_flow()
+        && let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
         && let Some(flow_id) = tree.get_flow_id(call_expr.get_syntax_id())
         && let Some(flow_ret_type) =
             get_type_at_call_expr_inline_cast(db, cache, tree, call_expr, flow_id, ret_type.clone())

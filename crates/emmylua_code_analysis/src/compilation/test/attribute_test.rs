@@ -27,6 +27,9 @@ mod test {
                 "#,
             ),
         ]);
+
+        let ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(ty), "A");
     }
 
     #[test]

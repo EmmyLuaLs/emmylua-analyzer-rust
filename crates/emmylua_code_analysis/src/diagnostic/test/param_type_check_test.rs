@@ -1587,4 +1587,43 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_generic_variability() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+                ---@generic T
+                ---@param ... T...
+                function test(...) end
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@type string?
+                local message
+                test(message)
+                test(message, message)
+        "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            local filename = 'flag.text'
+            local d = io.open(filename, 'r')
+            assert(d)
+        "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            local filename = 'flag.text'
+            assert(io.open(filename, 'r'))
+        "#,
+        ));
+    }
 }
