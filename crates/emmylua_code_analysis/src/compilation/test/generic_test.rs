@@ -1474,4 +1474,211 @@ mod test {
         let result_ty = ws.expr_ty("Result");
         assert_eq!(ws.humanize_type(result_ty), "number");
     }
+
+    #[test]
+    fn test_union_never() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Exclude<T, U> T extends U and never or T
+
+                ---@param value string
+                function test_union_never(value) end
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+
+            ---@type Exclude<string|nil, nil>
+            local a
+
+            test_union_never(a)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_distributed_extract_keeps_matching_union_members() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Extract<T, U> T extends U and T or never
+
+                ---@generic T
+                ---@param value T
+                ---@return Extract<T, string|nil>
+                function extract(value) end
+
+                ---@type string|integer|nil
+                local value
+
+                A = extract(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+    }
+
+    #[test]
+    fn test_distributed_extract_rejects_removed_union_member() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Extract<T, U> T extends U and T or never
+
+                ---@generic T
+                ---@param value T
+                ---@return Extract<T, string|nil>
+                function extract(value) end
+
+                ---@param value string|nil
+                function accept(value) end
+            "#,
+        );
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@type integer
+                local value
+
+                accept(extract(value))
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_distributed_literal_union_keeps_literal_member() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Extract<T, U> T extends U and T or never
+
+                ---@generic T
+                ---@param value T
+                ---@return Extract<T, "a">
+                function extract(value) end
+
+                ---@type "a"|"b"
+                local value
+
+                A = extract(value)
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "\"a\"");
+    }
+
+    #[test]
+    fn test_distributed_non_nullable_removes_nil() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Exclude<T, U> T extends U and never or T
+
+                ---@generic T
+                ---@param value T
+                ---@return Exclude<T, nil>
+                function excludeNil(value) end
+
+                ---@type string|nil
+                local value
+
+                A = excludeNil(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_distributed_never_remains_never() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias ToArray<T> T extends any and T[] or never
+
+                ---@generic T
+                ---@param value T
+                ---@return ToArray<T>
+                function toArray(value) end
+
+                ---@type never
+                local value
+
+                A = toArray(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("never"));
+    }
+
+    #[test]
+    fn test_wrapped_checked_type_does_not_distribute() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias Wrapped<T, U> { value: T } extends { value: U } and T or never
+
+                ---@generic T
+                ---@param value T
+                ---@return Wrapped<T, nil>
+                function wrapped(value) end
+
+                ---@type string|nil
+                local value
+
+                A = wrapped(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+    }
+
+    #[test]
+    fn test_tuple_wrapped_checked_type_does_not_distribute() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias WrappedTuple<T, U> [T] extends [U] and T or never
+
+                ---@generic T
+                ---@param value T
+                ---@return WrappedTuple<T, nil>
+                function wrappedTuple(value) end
+
+                ---@type string|nil
+                local value
+
+                A = wrappedTuple(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string|nil"));
+    }
+
+    #[test]
+    fn test_distributed_conditional_infer_object_union() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias ValueOf<T> T extends { value: infer P } and P or never
+
+                ---@generic T
+                ---@param value T
+                ---@return ValueOf<T>
+                function valueOf(value) end
+
+                ---@type { value: string } | { value: integer }
+                local value
+
+                A = valueOf(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string|integer"));
+    }
 }
