@@ -4,9 +4,12 @@ mod model;
 mod render;
 mod sequence;
 mod spacing;
+#[cfg(test)]
+mod test;
 mod trivia;
 
 use crate::config::LuaFormatConfig;
+use crate::formatter::model::RootFormatPlan;
 use crate::ir::DocIR;
 use emmylua_parser::LuaChunk;
 
@@ -21,8 +24,9 @@ impl<'a> FormatContext<'a> {
 }
 
 pub fn format_chunk(ctx: &FormatContext, chunk: &LuaChunk) -> Vec<DocIR> {
-    let spacing_plan = spacing::analyze_root_spacing(ctx, chunk);
-    let layout_plan = layout::analyze_root_layout(ctx, chunk, spacing_plan);
+    let mut plan = RootFormatPlan::from_config(ctx.config);
+    spacing::analyze_root_spacing(ctx, chunk, &mut plan);
+    layout::analyze_root_layout(ctx, chunk, &mut plan);
 
-    render::render_root(ctx, chunk, &layout_plan)
+    render::render_root(ctx, chunk, &plan)
 }

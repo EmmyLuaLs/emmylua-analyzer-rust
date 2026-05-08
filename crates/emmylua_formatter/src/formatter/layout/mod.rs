@@ -18,16 +18,11 @@ use emmylua_parser::{
     LuaTableExpr, LuaTokenKind, LuaWhileStat,
 };
 
-pub fn analyze_root_layout(
-    _ctx: &FormatContext,
-    chunk: &LuaChunk,
-    mut plan: RootFormatPlan,
-) -> RootFormatPlan {
+pub fn analyze_root_layout(_ctx: &FormatContext, chunk: &LuaChunk, plan: &mut RootFormatPlan) {
     plan.layout.format_block_with_legacy = true;
     plan.layout.root_nodes =
         tree::collect_root_layout_nodes(chunk, &mut plan.layout.format_disabled);
-    analyze_node_layouts(chunk, &mut plan);
-    plan
+    analyze_node_layouts(chunk, plan);
 }
 
 fn analyze_node_layouts(chunk: &LuaChunk, plan: &mut RootFormatPlan) {

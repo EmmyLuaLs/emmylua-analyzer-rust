@@ -1,12 +1,20 @@
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaLanguageLevel, LuaParser, LuaSyntaxId, LuaSyntaxKind, LuaTokenKind,
-    ParserConfig,
+    LuaAst, LuaAstNode, LuaChunk, LuaLanguageLevel, LuaParser, LuaSyntaxId, LuaSyntaxKind,
+    LuaTokenKind, ParserConfig,
 };
 
 use crate::config::LuaFormatConfig;
+use crate::formatter::FormatContext;
 use crate::formatter::layout::analyze_root_layout;
-use crate::formatter::model::{LayoutNodePlan, StatementExprListLayoutKind};
-use crate::formatter::{FormatContext, spacing};
+use crate::formatter::model::{LayoutNodePlan, RootFormatPlan, StatementExprListLayoutKind};
+use crate::formatter::spacing::analyze_root_spacing;
+
+fn setup_plan(chunk: &LuaChunk, config: &LuaFormatConfig) -> RootFormatPlan {
+    let mut plan = RootFormatPlan::from_config(config);
+    analyze_root_spacing(&FormatContext::new(config), chunk, &mut plan);
+    analyze_root_layout(&FormatContext::new(config), chunk, &mut plan);
+    plan
+}
 
 #[test]
 fn test_layout_collects_recursive_node_tree_with_comment_exception() {
@@ -16,8 +24,7 @@ fn test_layout_collects_recursive_node_tree_with_comment_exception() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let spacing_plan = spacing::analyze_root_spacing(&FormatContext::new(&config), &chunk);
-    let plan = analyze_root_layout(&FormatContext::new(&config), &chunk, spacing_plan);
+    let plan = setup_plan(&chunk, &config);
 
     assert_eq!(plan.layout.root_nodes.len(), 1);
     let LayoutNodePlan::Syntax(block) = &plan.layout.root_nodes[0] else {
@@ -42,9 +49,7 @@ fn test_layout_collects_statement_trivia_and_expr_list_metadata() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let ctx = FormatContext::new(&config);
-    let spacing_plan = spacing::analyze_root_spacing(&ctx, &chunk);
-    let plan = analyze_root_layout(&ctx, &chunk, spacing_plan);
+    let plan = setup_plan(&chunk, &config);
 
     let local_stat = chunk
         .syntax()
@@ -104,9 +109,7 @@ fn test_layout_collects_statement_trivia_and_expr_list_metadata() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let inline_if_chunk = inline_if_tree.get_chunk_node();
-    let inline_ctx = FormatContext::new(&config);
-    let inline_spacing = spacing::analyze_root_spacing(&inline_ctx, &inline_if_chunk);
-    let inline_plan = analyze_root_layout(&inline_ctx, &inline_if_chunk, inline_spacing);
+    let inline_plan = setup_plan(&inline_if_chunk, &config);
     let if_stat = inline_if_chunk
         .syntax()
         .descendants()
@@ -168,9 +171,7 @@ fn test_layout_collects_expr_sequence_metadata() {
         ParserConfig::with_level(LuaLanguageLevel::Lua54),
     );
     let chunk = tree.get_chunk_node();
-    let ctx = FormatContext::new(&config);
-    let spacing_plan = spacing::analyze_root_spacing(&ctx, &chunk);
-    let plan = analyze_root_layout(&ctx, &chunk, spacing_plan);
+    let plan = setup_plan(&chunk, &config);
 
     let param_list = chunk
         .descendants::<LuaAst>()
