@@ -1,6 +1,8 @@
 use emmylua_parser::{LuaKind, LuaSyntaxKind, LuaSyntaxNode, LuaTokenKind};
 use rowan::TextRange;
 
+use super::{RenderHotspotKind, profile_render_hotspot};
+
 /// Count how many blank lines appear before a node.
 pub fn count_blank_lines_before(node: &LuaSyntaxNode) -> usize {
     let mut blank_lines = 0;
@@ -55,27 +57,29 @@ pub fn has_non_trivia_before_on_same_line_tokenwise(node: &LuaSyntaxNode) -> boo
 }
 
 pub fn source_line_prefix_width(node: &LuaSyntaxNode) -> usize {
-    let mut width = 0usize;
-    let Some(mut token) = node.first_token() else {
-        return 0;
-    };
+    profile_render_hotspot(RenderHotspotKind::SourceLinePrefixWidth, || {
+        let mut width = 0usize;
+        let Some(mut token) = node.first_token() else {
+            return 0;
+        };
 
-    while let Some(prev) = token.prev_token() {
-        let text = prev.text();
-        let mut chars_since_break = 0usize;
+        while let Some(prev) = token.prev_token() {
+            let text = prev.text();
+            let mut chars_since_break = 0usize;
 
-        for ch in text.chars().rev() {
-            if matches!(ch, '\n' | '\r') {
-                return width;
+            for ch in text.chars().rev() {
+                if matches!(ch, '\n' | '\r') {
+                    return width;
+                }
+                chars_since_break += 1;
             }
-            chars_since_break += 1;
+
+            width += chars_since_break;
+            token = prev;
         }
 
-        width += chars_since_break;
-        token = prev;
-    }
-
-    width
+        width
+    })
 }
 
 pub fn trailing_gap_requests_alignment(

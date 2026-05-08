@@ -108,6 +108,9 @@ pub struct StatementExprListLayoutPlan {
 pub struct ExprSequenceLayoutPlan {
     pub first_line_prefix_width: usize,
     pub preserve_multiline: bool,
+    pub first_arg_multiline_block: bool,
+    pub first_arg_multiline_table: bool,
+    pub single_inline_block_arg_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default)]

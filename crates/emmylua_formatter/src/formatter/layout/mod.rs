@@ -303,23 +303,44 @@ fn analyze_param_list_layout(params: &LuaParamList, plan: &mut FormatPlan) {
         ExprSequenceLayoutPlan {
             first_line_prefix_width,
             preserve_multiline: false,
+            first_arg_multiline_block: false,
+            first_arg_multiline_table: false,
+            single_inline_block_arg_index: None,
         },
     );
 }
 
 fn analyze_call_arg_list_layout(args: &LuaCallArgList, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(args.syntax());
-    let first_line_prefix_width = args
-        .get_args()
-        .next()
+    let arg_exprs: Vec<_> = args.get_args().collect();
+    let first_line_prefix_width = arg_exprs
+        .first()
         .map(|arg| source_line_prefix_width(arg.syntax()))
         .unwrap_or(0);
+    let first_arg_multiline_block = arg_exprs.first().is_some_and(is_multiline_block_like_expr);
+    let first_arg_multiline_table = matches!(arg_exprs.first(), Some(LuaExpr::TableExpr(table)) if table.syntax().text().contains_char('\n'));
+    let mut single_inline_block_arg_index = None;
+    let mut inline_block_count = 0usize;
+    for (index, arg) in arg_exprs.iter().enumerate().skip(1) {
+        if is_multiline_block_like_expr(arg) {
+            inline_block_count += 1;
+            if inline_block_count == 1 {
+                single_inline_block_arg_index = Some(index);
+            } else {
+                single_inline_block_arg_index = None;
+                break;
+            }
+        }
+    }
 
     plan.layout.expr_sequences.insert(
         syntax_id,
         ExprSequenceLayoutPlan {
             first_line_prefix_width,
             preserve_multiline: args.syntax().text().contains_char('\n'),
+            first_arg_multiline_block,
+            first_arg_multiline_table,
+            single_inline_block_arg_index,
         },
     );
 }
@@ -341,6 +362,9 @@ fn analyze_table_expr_layout(table: &LuaTableExpr, plan: &mut FormatPlan) {
         ExprSequenceLayoutPlan {
             first_line_prefix_width,
             preserve_multiline: false,
+            first_arg_multiline_block: false,
+            first_arg_multiline_table: false,
+            single_inline_block_arg_index: None,
         },
     );
 }
@@ -556,6 +580,10 @@ fn should_preserve_first_multiline_statement_value(exprs: &[LuaExpr]) -> bool {
 
 fn is_block_like_expr(expr: &LuaExpr) -> bool {
     matches!(expr, LuaExpr::ClosureExpr(_) | LuaExpr::TableExpr(_))
+}
+
+fn is_multiline_block_like_expr(expr: &LuaExpr) -> bool {
+    is_block_like_expr(expr) && expr.syntax().text().contains_char('\n')
 }
 
 fn should_attach_single_value_head(exprs: &[LuaExpr]) -> bool {
