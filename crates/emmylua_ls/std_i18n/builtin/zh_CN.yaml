@@ -66,6 +66,15 @@ Parameters: |
 ConstructorParameters: |
   以元组形式获取构造函数的参数
 
+ReturnType: |
+  获取函数类型的返回类型
+
 Partial: |
   使 T 中的所有属性变为可选
+
+Exclude: |
+  排除 T 中可以赋值给 U 的类型
+
+Extract: |
+  提取 T 中可以赋值给 U 的类型
 

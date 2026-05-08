@@ -53,16 +53,31 @@ b:
   - ['std.ConstTpl', 'd', doc, [130, 0, 132, 0], '0e263d1e0caa6b3b']
 - a: '---'
   g: 'Get the parameters of a function as a tuple'
-  r: [146, 0, 148, 90]
+  r: [146, 0, 148, 91]
   e:
   - ['Parameters', 'd', doc, [146, 0, 148, 0], '71b070c2fa27cbf9']
-- a: '---'
+- a: '--- Get the return type of a function type'
   g: 'Get the parameters of a constructor as a tuple'
-  r: [150, 0, 152, 88]
+  r: [150, 0, 152, 89]
   e:
   - ['ConstructorParameters', 'd', doc, [150, 0, 152, 0], '2f4bebd14d7824cb']
-- a: '--- attribute'
+- a: '---'
+  g: 'Get the return type of a function type'
+  r: [154, 0, 155, 89]
+  e:
+  - ['ReturnType', 'd', doc, [154, 0, 155, 0], '41b603e3e6dc5ac8']
+- a: '---'
   g: 'Make all properties in T optional'
   r: [157, 0, 159, 47]
   e:
   - ['Partial', 'd', doc, [157, 0, 159, 0], '5e4213a7c3937182']
+- a: '---'
+  g: 'Exclude from T those types that are assignable to U'
+  r: [161, 0, 163, 51]
+  e:
+  - ['Exclude', 'd', doc, [161, 0, 163, 0], 'ace067261f694c21']
+- a: '--- attribute'
+  g: 'Extract from T those types that are assignable to U'
+  r: [165, 0, 167, 51]
+  e:
+  - ['Extract', 'd', doc, [165, 0, 167, 0], 'a615fc46f215439e']
