@@ -3,6 +3,7 @@ use emmylua_parser::{LuaAstNode, LuaChunk, LuaExpr};
 use crate::{
     InferFailReason, LuaDeclId, LuaSemanticDeclId, LuaSignatureId,
     compilation::analyzer::unresolve::UnResolveModule, db_index::LuaType, infer_expr,
+    semantic::adjusted_result_slot_type,
 };
 
 use super::{LuaAnalyzer, LuaReturnPoint, analyze_func_body_returns_with};
@@ -46,7 +47,7 @@ pub fn analyze_chunk_return(analyzer: &mut LuaAnalyzer, chunk: LuaChunk) -> Opti
                 .db
                 .get_module_index_mut()
                 .get_module_mut(analyzer.file_id)?;
-            module_info.export_type = Some(expr_type.get_result_slot_type(0).unwrap_or(expr_type));
+            module_info.export_type = Some(adjusted_result_slot_type(&expr_type, 0));
             module_info.semantic_id = semantic_id;
             if let Some(visibility) = visibility {
                 module_info.merge_visibility(visibility);

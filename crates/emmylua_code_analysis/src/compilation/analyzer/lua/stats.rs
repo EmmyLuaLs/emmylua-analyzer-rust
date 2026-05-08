@@ -12,6 +12,7 @@ use crate::{
         unresolve::{UnResolveDecl, UnResolveMember},
     },
     db_index::{LuaDeclId, LuaMember, LuaMemberFeature, LuaMemberId, LuaMemberOwner, LuaType},
+    semantic::{adjusted_result_slot_type, assignment_rhs_source},
 };
 
 use super::LuaAnalyzer;
@@ -49,7 +50,7 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
 
         match analyzer.infer_expr(&expr) {
             Ok(expr_type) => {
-                let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
+                let expr_type = adjusted_result_slot_type(&expr_type, 0);
                 let decl_id = LuaDeclId::new(analyzer.file_id, position);
                 // 当`call`参数包含表时, 表可能未被分析, 需要延迟
                 if let LuaType::Instance(instance) = &expr_type
@@ -105,26 +106,17 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
         if let Some(last_expr) = last_expr {
             match analyzer.infer_expr(last_expr) {
                 Ok(last_expr_type) => {
-                    if last_expr_type.contain_multi_return() {
-                        for i in expr_count..name_count {
-                            let name = name_list.get(i)?;
-                            let position = name.get_position();
-                            let decl_id = LuaDeclId::new(analyzer.file_id, position);
-                            let ret_type = last_expr_type.get_result_slot_type(i - expr_count + 1);
-                            if let Some(ret_type) = ret_type {
-                                bind_type(
-                                    analyzer.db,
-                                    decl_id.into(),
-                                    LuaTypeCache::InferType(ret_type.clone()),
-                                );
-                            } else {
-                                analyzer.db.get_type_index_mut().bind_type(
-                                    decl_id.into(),
-                                    LuaTypeCache::InferType(LuaType::Unknown),
-                                );
-                            }
-                        }
-                        return Some(());
+                    for i in expr_count..name_count {
+                        let name = name_list.get(i)?;
+                        let position = name.get_position();
+                        let decl_id = LuaDeclId::new(analyzer.file_id, position);
+                        let (_, slot) = assignment_rhs_source(expr_count, i)?;
+                        let ret_type = adjusted_result_slot_type(&last_expr_type, slot);
+                        bind_type(
+                            analyzer.db,
+                            decl_id.into(),
+                            LuaTypeCache::InferType(ret_type),
+                        );
                     }
                 }
                 Err(reason) => {
@@ -132,11 +124,12 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
                         let name = name_list.get(i)?;
                         let position = name.get_position();
                         let decl_id = LuaDeclId::new(analyzer.file_id, position);
+                        let (_, slot) = assignment_rhs_source(expr_count, i)?;
                         let unresolve = UnResolveDecl {
                             file_id: analyzer.file_id,
                             decl_id,
                             expr: last_expr.clone(),
-                            ret_idx: i - expr_count + 1,
+                            ret_idx: slot,
                         };
 
                         analyzer
@@ -310,7 +303,7 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
         }
 
         let expr_type = match analyzer.infer_expr(expr) {
-            Ok(expr_type) => expr_type.get_result_slot_type(0).unwrap_or(expr_type),
+            Ok(expr_type) => adjusted_result_slot_type(&expr_type, 0),
             Err(InferFailReason::None) => LuaType::Unknown,
             Err(reason) => {
                 match type_owner {
@@ -363,18 +356,17 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
     {
         match analyzer.infer_expr(last_expr) {
             Ok(last_expr_type) => {
-                if last_expr_type.contain_multi_return() {
-                    for i in expr_count..var_count {
-                        let var = var_list.get(i)?;
-                        let type_owner = get_var_owner(analyzer, var.clone());
-                        set_index_expr_owner(analyzer, var.clone());
-                        assign_merge_type_owner_and_expr_type(
-                            analyzer,
-                            type_owner,
-                            &last_expr_type,
-                            i - expr_count + 1,
-                        );
-                    }
+                for i in expr_count..var_count {
+                    let var = var_list.get(i)?;
+                    let type_owner = get_var_owner(analyzer, var.clone());
+                    set_index_expr_owner(analyzer, var.clone());
+                    let (_, slot) = assignment_rhs_source(expr_count, i)?;
+                    assign_merge_type_owner_and_expr_type(
+                        analyzer,
+                        type_owner,
+                        &last_expr_type,
+                        slot,
+                    );
                 }
             }
             Err(_) => {
@@ -382,11 +374,12 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
                     let var = var_list.get(i)?;
                     let type_owner = get_var_owner(analyzer, var.clone());
                     set_index_expr_owner(analyzer, var.clone());
+                    let (_, slot) = assignment_rhs_source(expr_count, i)?;
                     merge_type_owner_and_unresolve_expr(
                         analyzer,
                         type_owner,
                         last_expr.clone(),
-                        i - expr_count + 1,
+                        slot,
                     );
                 }
             }
@@ -404,7 +397,7 @@ fn assign_merge_type_owner_and_expr_type(
     expr_type: &LuaType,
     idx: usize,
 ) -> Option<()> {
-    let expr_type = expr_type.get_result_slot_type(idx).unwrap_or(LuaType::Nil);
+    let expr_type = adjusted_result_slot_type(expr_type, idx);
 
     bind_type(analyzer.db, type_owner, LuaTypeCache::InferType(expr_type));
 

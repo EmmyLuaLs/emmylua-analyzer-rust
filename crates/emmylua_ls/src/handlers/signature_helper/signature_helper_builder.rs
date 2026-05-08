@@ -162,11 +162,12 @@ impl<'a> SignatureHelperBuilder<'a> {
             }
             _ => {}
         }
+        let return_type = func.get_return_type();
         self.best_call_function_label = build_function_label(
             self,
             &self.params_info,
             func.is_method(self.semantic_model, None),
-            func.get_ret(),
+            &return_type,
         );
 
         Some(())

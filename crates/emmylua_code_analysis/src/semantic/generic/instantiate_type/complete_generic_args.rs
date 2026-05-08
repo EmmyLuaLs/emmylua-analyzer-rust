@@ -306,7 +306,15 @@ fn complete_doc_function(
             (name.clone(), completed.map(|completed| completed.ty))
         })
         .collect();
-    let ret = complete_type_generic_args_in_type_inner(db, func.get_ret(), visiting);
+    let returns = func
+        .get_return_row()
+        .iter()
+        .map(|ty| {
+            let completed = complete_type_generic_args_in_type_inner(db, ty, visiting);
+            cycled |= completed.cycled;
+            completed.ty
+        })
+        .collect();
     CompletedType::new(
         LuaType::DocFunction(
             LuaFunctionType::new(
@@ -314,11 +322,11 @@ fn complete_doc_function(
                 func.is_colon_define(),
                 func.is_variadic(),
                 params,
-                ret.ty,
+                returns,
             )
             .into(),
         ),
-        cycled || ret.cycled,
+        cycled,
     )
 }
 

@@ -5,7 +5,7 @@ use rowan::{TextRange, TextSize};
 use crate::{
     DbIndex, FileId, InFiled, InferFailReason, LuaConstructorReturnMode, LuaFunctionType,
     LuaSignature, LuaSignatureId, SignatureReturnStatus,
-    db_index::{LuaType, LuaTypeDeclId},
+    db_index::{LuaType, LuaTypeDeclId, return_row::return_type_to_row},
 };
 
 use super::lua_operator_meta_method::LuaOperatorMetaMethod;
@@ -83,7 +83,7 @@ impl LuaOperator {
 
     pub fn get_result(&self, db: &DbIndex) -> Result<LuaType, InferFailReason> {
         match &self.func {
-            OperatorFunction::Func(func) => Ok(func.get_ret().clone()),
+            OperatorFunction::Func(func) => Ok(func.get_return_type()),
             OperatorFunction::Signature(signature_id) => {
                 let signature = db.get_signature_index().get(signature_id);
                 if let Some(signature) = signature {
@@ -104,8 +104,7 @@ impl LuaOperator {
             } => {
                 let signature = db.get_signature_index().get(id);
                 if let Some(signature) = signature {
-                    let return_type = get_constructor_return_type(signature, return_mode);
-                    return Ok(return_type);
+                    return Ok(get_constructor_return_type(signature, return_mode));
                 }
 
                 Ok(LuaType::Any)
@@ -142,7 +141,7 @@ impl LuaOperator {
                         is_colon_define,
                         signature.is_vararg,
                         params,
-                        return_type,
+                        return_type_to_row(return_type),
                     );
                     return LuaType::DocFunction(Arc::new(func_type));
                 }

@@ -5,7 +5,8 @@ use emmylua_parser::{LuaAstNode, LuaIndexMemberExpr, LuaTableExpr, LuaVarExpr};
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaDocParamInfo, LuaDocReturnInfo,
     LuaFunctionType, LuaInferCache, LuaSignature, LuaType, SignatureReturnStatus, TypeOps,
-    get_real_type, infer_call_expr_func, infer_expr, infer_table_should_be,
+    db_index::return_row::merge_return_rows, get_real_type, infer_call_expr_func, infer_expr,
+    infer_table_should_be,
 };
 
 use super::{
@@ -137,13 +138,13 @@ pub fn try_resolve_closure_return(
         _ => {}
     }
 
-    let ret_type = if let Some(param_type) = call_doc_func.get_params().get(param_idx) {
+    let ret_types = if let Some(param_type) = call_doc_func.get_params().get(param_idx) {
         let Some(param_type) = get_real_type(db, param_type.1.as_ref().unwrap_or(&LuaType::Any))
         else {
             return Ok(());
         };
         if let LuaType::DocFunction(func) = param_type {
-            func.get_ret().clone()
+            func.get_return_row().to_vec()
         } else {
             return Ok(());
         }
@@ -156,7 +157,7 @@ pub fn try_resolve_closure_return(
         .get_mut(&closure_return.signature_id)
         .ok_or(InferFailReason::None)?;
 
-    if ret_type.contain_tpl() {
+    if ret_types.iter().any(|ty| ty.contain_tpl()) {
         return try_convert_to_func_body_infer(db, cache, closure_return);
     }
 
@@ -168,12 +169,19 @@ pub fn try_resolve_closure_return(
         _ => return Ok(()),
     }
 
-    signature.return_docs.push(LuaDocReturnInfo {
-        name: None,
-        type_ref: ret_type.clone(),
-        description: None,
-        attributes: None,
-    });
+    if ret_types.is_empty() {
+        signature.resolve_return = SignatureReturnStatus::DocResolve;
+        return Ok(());
+    }
+
+    signature
+        .return_docs
+        .extend(ret_types.into_iter().map(|type_ref| LuaDocReturnInfo {
+            name: None,
+            type_ref,
+            description: None,
+            attributes: None,
+        }));
 
     signature.resolve_return = SignatureReturnStatus::DocResolve;
     Ok(())
@@ -307,8 +315,6 @@ fn resolve_closure_member_type(
                 .get(&closure_params.signature_id)
                 .ok_or(InferFailReason::None)?;
             let mut final_params = signature.get_type_params().to_vec();
-            let mut final_ret = LuaType::Never;
-            let mut has_final_ret = false;
 
             let mut multi_function_type = Vec::new();
             for typ in union_types.into_vec() {
@@ -336,7 +342,7 @@ fn resolve_closure_member_type(
             }
 
             let mut variadic_type = LuaType::Unknown;
-            for doc_func in multi_function_type {
+            for doc_func in &multi_function_type {
                 let mut doc_params = doc_func.get_params().to_vec();
                 match (doc_func.is_colon_define(), signature.is_colon_define) {
                     (true, false) => {
@@ -383,9 +389,6 @@ fn resolve_closure_member_type(
                         final_params.push((param.0.clone(), param.1.clone()));
                     }
                 }
-
-                has_final_ret = true;
-                final_ret = TypeOps::Union.apply(db, &final_ret, doc_func.get_ret());
             }
 
             if !variadic_type.is_unknown()
@@ -394,11 +397,15 @@ fn resolve_closure_member_type(
                 param.1 = Some(variadic_type);
             }
 
-            let final_ret = if !has_final_ret {
-                LuaType::Unknown
-            } else {
-                final_ret
-            };
+            if multi_function_type.is_empty() {
+                return Ok(());
+            }
+
+            let return_rows = multi_function_type
+                .iter()
+                .map(|doc_func| doc_func.get_return_row())
+                .collect::<Vec<_>>();
+            let final_ret = merge_return_rows(&return_rows);
 
             resolve_doc_function(
                 db,
@@ -491,12 +498,24 @@ fn resolve_doc_function(
     {
         signature.resolve_return = SignatureReturnStatus::DocResolve;
         signature.return_docs.clear();
-        signature.return_docs.push(LuaDocReturnInfo {
-            name: None,
-            type_ref: doc_func.get_ret().clone(),
-            description: None,
-            attributes: None,
-        });
+        if doc_func.get_return_row().is_empty() {
+            return Ok(());
+        }
+
+        signature
+            .return_docs
+            .extend(
+                doc_func
+                    .get_return_row()
+                    .iter()
+                    .cloned()
+                    .map(|type_ref| LuaDocReturnInfo {
+                        name: None,
+                        type_ref,
+                        description: None,
+                        attributes: None,
+                    }),
+            );
     }
 
     Ok(())

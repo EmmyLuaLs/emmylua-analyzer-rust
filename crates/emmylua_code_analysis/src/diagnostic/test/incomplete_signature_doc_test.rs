@@ -123,6 +123,42 @@ mod tests {
     }
 
     #[test]
+    fn test_nil_return_annotation_counts_as_documented_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_full_diagnostic();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+            ---@return nil
+            local function f()
+                return nil
+            end
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_empty_tail_call_return_counts_as_documented_zero_returns() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_full_diagnostic();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::IncompleteSignatureDoc,
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@return
+            local function f()
+                return none()
+            end
+            "#
+        ));
+    }
+
+    #[test]
     fn test_variadic_return_overload_does_not_trigger_incomplete_signature_doc() {
         let mut ws = VirtualWorkspace::new();
         ws.enable_full_diagnostic();

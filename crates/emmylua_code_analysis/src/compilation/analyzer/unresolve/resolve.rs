@@ -18,7 +18,7 @@ use crate::{
     },
     db_index::{DbIndex, LuaMemberOwner, LuaType},
     find_members_with_key,
-    semantic::{LuaInferCache, infer_expr},
+    semantic::{LuaInferCache, adjusted_result_slot_type, infer_expr},
 };
 
 use super::{
@@ -34,9 +34,7 @@ pub fn try_resolve_decl(
     let expr = decl.expr.clone();
     let expr_type = infer_expr(db, cache, expr)?;
     let decl_id = decl.decl_id;
-    let expr_type = expr_type
-        .get_result_slot_type(decl.ret_idx)
-        .unwrap_or(LuaType::Unknown);
+    let expr_type = adjusted_result_slot_type(&expr_type, decl.ret_idx);
 
     bind_type(db, decl_id.into(), LuaTypeCache::InferType(expr_type));
     Ok(())
@@ -75,9 +73,7 @@ pub fn try_resolve_member(
 
     if let Some(expr) = unresolve_member.expr.clone() {
         let expr_type = infer_expr(db, cache, expr)?;
-        let expr_type = expr_type
-            .get_result_slot_type(unresolve_member.ret_idx)
-            .unwrap_or(LuaType::Unknown);
+        let expr_type = adjusted_result_slot_type(&expr_type, unresolve_member.ret_idx);
 
         let member_id = unresolve_member.member_id;
         bind_type(db, member_id.into(), LuaTypeCache::InferType(expr_type));
@@ -169,7 +165,7 @@ pub fn try_resolve_module(
 ) -> ResolveResult {
     let expr = module.expr.clone();
     let expr_type = infer_expr(db, cache, expr)?;
-    let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
+    let expr_type = adjusted_result_slot_type(&expr_type, 0);
     let module_info = db
         .get_module_index_mut()
         .get_module_mut(module.file_id)

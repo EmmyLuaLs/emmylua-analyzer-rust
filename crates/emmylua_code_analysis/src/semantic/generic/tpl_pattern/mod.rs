@@ -620,9 +620,17 @@ fn func_tpl_pattern_match_doc_func(
 
     param_type_list_pattern_match_type_list(context, &tpl_func_params, &target_func_params)?;
 
-    let tpl_return = tpl_func.get_ret();
-    let target_return = target_func.get_ret();
-    return_type_pattern_match_target_type(context, tpl_return, target_return)?;
+    let target_returns = target_func.get_return_row();
+    for (i, tpl_return) in tpl_func.get_return_row().iter().enumerate() {
+        if let LuaType::Variadic(variadic) = tpl_return {
+            let target_rest = target_returns.get(i..).unwrap_or(&[]);
+            variadic_tpl_pattern_match(context, variadic, target_rest)?;
+            break;
+        }
+
+        let target_return = target_returns.get(i).unwrap_or(&LuaType::Nil);
+        return_type_pattern_match_target_type(context, tpl_return, target_return)?;
+    }
 
     Ok(())
 }
@@ -804,13 +812,15 @@ pub fn variadic_tpl_pattern_match(
     tpl: &VariadicType,
     target_rest_types: &[LuaType],
 ) -> TplPatternMatchResult {
+    // Return rows preserve arity: `R...` matched against no values binds an
+    // empty row, not `nil`.
     match tpl {
         VariadicType::Base(base) => match base {
             LuaType::TplRef(tpl_ref) => {
                 let tpl_id = tpl_ref.get_tpl_id();
                 match target_rest_types.len() {
                     0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
+                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
                     }
                     1 => {
                         // If the single argument is itself a multi-return (e.g. a function call
@@ -820,7 +830,7 @@ pub fn variadic_tpl_pattern_match(
                             LuaType::Variadic(variadic) => match variadic.deref() {
                                 VariadicType::Multi(types) => match types.len() {
                                     0 => {
-                                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
+                                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
                                     }
                                     1 => {
                                         context.substitutor.insert_type(
@@ -863,7 +873,7 @@ pub fn variadic_tpl_pattern_match(
                 let tpl_id = tpl_ref.get_tpl_id();
                 match target_rest_types.len() {
                     0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, false);
+                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
                     }
                     1 => {
                         context.substitutor.insert_type(
@@ -1017,14 +1027,14 @@ fn try_handle_pairs_metamethod(
             .get_signature_index()
             .get(signature_id)
             .map(|s| s.get_return_type()),
-        LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
+        LuaType::DocFunction(doc_func) => Some(doc_func.get_return_type()),
         _ => None,
     }
     .ok_or(InferFailReason::None)?;
 
     // 解析出迭代函数返回类型
     let final_return_type = match meta_return {
-        LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
+        LuaType::DocFunction(doc_func) => Some(doc_func.get_return_type()),
         LuaType::Signature(signature_id) => context
             .db
             .get_signature_index()

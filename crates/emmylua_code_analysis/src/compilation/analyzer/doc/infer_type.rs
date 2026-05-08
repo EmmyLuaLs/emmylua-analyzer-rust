@@ -696,21 +696,13 @@ fn infer_func_type(analyzer: &mut DocTypeAnalyzeContext<'_>, func: &LuaDocFuncTy
         is_colon = false
     }
 
-    let return_type = if return_types.len() == 1 {
-        return_types[0].clone()
-    } else if return_types.len() > 1 {
-        LuaType::Variadic(VariadicType::Multi(return_types).into())
-    } else {
-        LuaType::Nil
-    };
-
     LuaType::DocFunction(
         LuaFunctionType::new(
             async_state,
             is_colon,
             is_variadic,
             params_result,
-            return_type,
+            return_types,
         )
         .into(),
     )

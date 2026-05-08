@@ -7,7 +7,10 @@ use crate::semantic::infer::infer_expr_list_types;
 use crate::{
     DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
     LuaTypeNode,
-    db_index::{DbIndex, LuaType},
+    db_index::{
+        DbIndex, LuaType,
+        return_row::{merge_return_rows, row_to_multi_return_type},
+    },
     infer_doc_type,
     semantic::{
         LuaInferCache,
@@ -124,14 +127,14 @@ fn infer_callable_return_from_arg_types(
     context: &mut TplContext,
     callable_type: &LuaType,
     call_arg_types: &[LuaType],
-) -> Result<Option<LuaType>, InferFailReason> {
+) -> Result<Option<Vec<LuaType>>, InferFailReason> {
     let mut overload_groups = Vec::new();
     collect_callable_overload_groups(context.db, callable_type, &mut overload_groups)?;
     if overload_groups.is_empty() {
         return Ok(None);
     }
 
-    let mut member_returns = Vec::new();
+    let mut member_return_rows = Vec::new();
     for overloads in &overload_groups {
         let instantiated_overloads = overloads
             .iter()
@@ -159,12 +162,11 @@ fn infer_callable_return_from_arg_types(
                 .iter()
                 .any(|arg_type| arg_type.is_any() || arg_type.is_unknown());
         if unresolved_arg_match {
-            member_returns.push(LuaType::from_vec(
-                overloads_to_resolve
-                    .iter()
-                    .map(|callable| callable.get_ret().clone())
-                    .collect(),
-            ));
+            let rows = overloads_to_resolve
+                .iter()
+                .map(|callable| callable.get_return_row())
+                .collect::<Vec<_>>();
+            member_return_rows.push(merge_return_rows(&rows));
             continue;
         }
 
@@ -176,13 +178,18 @@ fn infer_callable_return_from_arg_types(
             None,
             &[],
         );
-        member_returns.push(callable?.get_ret().clone());
+        member_return_rows.push(callable?.get_return_row().to_vec());
     }
-    if member_returns.is_empty() {
+    if member_return_rows.is_empty() {
         return Ok(None);
     }
 
-    Ok(Some(LuaType::from_vec(member_returns)))
+    Ok(Some(merge_return_rows(
+        &member_return_rows
+            .iter()
+            .map(|row| row.as_slice())
+            .collect::<Vec<_>>(),
+    )))
 }
 
 fn uses_erased_function_param(callable: &LuaFunctionType, call_arg_types: &[LuaType]) -> bool {
@@ -201,7 +208,7 @@ pub fn infer_callable_return_from_remaining_args(
     context: &mut TplContext,
     callable_type: &LuaType,
     arg_exprs: &[LuaExpr],
-) -> Result<Option<LuaType>, InferFailReason> {
+) -> Result<Option<Vec<LuaType>>, InferFailReason> {
     if arg_exprs.is_empty() {
         return Ok(None);
     }
@@ -275,13 +282,15 @@ fn instantiate_callable_from_arg_types(
     };
     let unresolved_return_tpls = {
         let mut tpl_ids = HashSet::new();
-        instantiated.get_ret().visit_type(&mut |ty| {
-            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty
-                && callable_tpls.contains(&generic_tpl.get_tpl_id())
-            {
-                tpl_ids.insert(generic_tpl.get_tpl_id());
-            }
-        });
+        for ret in instantiated.get_return_row() {
+            ret.visit_type(&mut |ty| {
+                if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty
+                    && callable_tpls.contains(&generic_tpl.get_tpl_id())
+                {
+                    tpl_ids.insert(generic_tpl.get_tpl_id());
+                }
+            });
+        }
         if tpl_ids.is_empty() {
             return Some(instantiated);
         }
@@ -346,14 +355,16 @@ fn collect_callback_return_tpls(
         let Ok(Some(param_func)) = as_doc_function_type(db, param_type) else {
             continue;
         };
-        param_func.get_ret().visit_type(&mut |ty| {
-            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
-                let tpl_id = generic_tpl.get_tpl_id();
-                if unresolved_return_tpls.contains(&tpl_id) {
-                    callback_return_tpls.insert(tpl_id);
+        for ret in param_func.get_return_row() {
+            ret.visit_type(&mut |ty| {
+                if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
+                    let tpl_id = generic_tpl.get_tpl_id();
+                    if unresolved_return_tpls.contains(&tpl_id) {
+                        callback_return_tpls.insert(tpl_id);
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     callback_return_tpls
@@ -513,11 +524,12 @@ fn infer_generic_types_from_call(
         };
 
         if let Some(return_pattern) =
-            as_doc_function_type(context.db, func_param_type)?.map(|func| func.get_ret().clone())
+            as_doc_function_type(context.db, func_param_type)?.map(|func| func.get_return_type())
         {
-            if let Some(inferred_return_type) =
+            if let Some(inferred_return_row) =
                 infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
             {
+                let inferred_return_type = row_to_multi_return_type(inferred_return_row);
                 return_type_pattern_match_target_type(
                     context,
                     &return_pattern,
@@ -530,11 +542,19 @@ fn infer_generic_types_from_call(
 
         match (func_param_type, &arg_type) {
             (LuaType::Variadic(variadic), _) => {
-                let mut arg_types = vec![];
-                for arg_expr in &arg_exprs[i..] {
-                    let arg_type = infer_expr(db, context.cache, arg_expr.clone())?;
-                    arg_types.push(arg_type);
-                }
+                let arg_types = infer_expr_list_types(
+                    context.db,
+                    context.cache,
+                    &arg_exprs[i..],
+                    None,
+                    |db, cache, expr| match infer_expr(db, cache, expr) {
+                        Err(InferFailReason::FieldNotFound) => Ok(LuaType::Nil),
+                        result => result,
+                    },
+                )?
+                .into_iter()
+                .map(|(ty, _)| ty)
+                .collect::<Vec<_>>();
                 variadic_tpl_pattern_match(context, variadic, &arg_types)?;
                 break;
             }

@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr};
 use hashbrown::HashSet;
@@ -6,7 +6,7 @@ use rowan::TextRange;
 
 use crate::{
     DbIndex, DocTypeInferContext, GenericTpl, GenericTplId, LuaFunctionType, LuaSemanticDeclId,
-    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor, VariadicType,
+    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor,
     infer_doc_type,
 };
 
@@ -356,15 +356,16 @@ fn get_arg_infos(
     call_expr: &LuaCallExpr,
 ) -> Option<Vec<CallConstraintArg>> {
     let arg_exprs = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
-    let arg_infos = infer_expr_list_types(semantic_model, &arg_exprs)
+    let arg_infos = semantic_model
+        .infer_expr_list_types(&arg_exprs, None)
         .into_iter()
-        .map(|(raw_type, expr)| {
+        .map(|(raw_type, range)| {
             let check_type = get_constraint_type(semantic_model, &raw_type, 0)
                 .unwrap_or_else(|| raw_type.clone());
             CallConstraintArg {
                 raw_type,
                 check_type,
-                range: expr.get_range(),
+                range,
             }
         })
         .collect();
@@ -425,33 +426,6 @@ fn get_constraint_type(
         }
         _ => None,
     }
-}
-
-// 将多个表达式推导为具体类型列表
-fn infer_expr_list_types(
-    semantic_model: &SemanticModel,
-    exprs: &[LuaExpr],
-) -> Vec<(LuaType, LuaExpr)> {
-    let mut value_types = Vec::new();
-    for expr in exprs.iter() {
-        let expr_type = semantic_model
-            .infer_expr(expr.clone())
-            .unwrap_or(LuaType::Unknown);
-        match expr_type {
-            LuaType::Variadic(variadic) => match variadic.deref() {
-                VariadicType::Base(base) => {
-                    value_types.push((base.clone(), expr.clone()));
-                }
-                VariadicType::Multi(vecs) => {
-                    for typ in vecs {
-                        value_types.push((typ.clone(), expr.clone()));
-                    }
-                }
-            },
-            _ => value_types.push((expr_type.clone(), expr.clone())),
-        }
-    }
-    value_types
 }
 
 #[cfg(test)]

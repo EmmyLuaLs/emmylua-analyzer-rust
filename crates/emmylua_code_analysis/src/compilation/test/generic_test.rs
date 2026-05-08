@@ -534,7 +534,7 @@ mod test {
             "#,
             ));
             assert_eq!(ws.expr_ty("G"), ws.ty("integer"));
-            assert_eq!(ws.expr_ty("H"), ws.ty("any"));
+            assert_eq!(ws.expr_ty("H"), ws.ty("nil"));
         }
 
         {

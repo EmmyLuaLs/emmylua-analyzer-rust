@@ -10,6 +10,7 @@ use crate::{
     DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaLspOptimizationCode,
     LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
     TypeCheckFailReason, TypeCheckResult, VariadicType, infer_index_expr,
+    semantic::{adjusted_result_slot_type, assignment_rhs_source},
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -50,7 +51,7 @@ fn check_assign_stat(
                     semantic_model,
                     index_expr,
                     exprs.get(idx).cloned(),
-                    value_types.get(idx)?.0.clone(),
+                    value_type_to_check(semantic_model, &value_types, &exprs, idx)?,
                 );
             }
             LuaVarExpr::NameExpr(name_expr) => {
@@ -59,12 +60,39 @@ fn check_assign_stat(
                     semantic_model,
                     name_expr,
                     exprs.get(idx).cloned(),
-                    value_types.get(idx)?.0.clone(),
+                    value_type_to_check(semantic_model, &value_types, &exprs, idx)?,
                 );
             }
         }
     }
     Some(())
+}
+
+/// Returns the RHS type this diagnostic should compare with target `idx`.
+///
+/// ```lua
+/// ---@return
+/// local function none() end
+///
+/// local a, b = none()
+/// ```
+///
+/// A call in tail-list position can contribute no values to `value_types`, but
+/// Lua assignment still initializes unmatched targets to `nil`.
+fn value_type_to_check(
+    semantic_model: &SemanticModel,
+    value_types: &[(LuaType, TextRange)],
+    value_exprs: &[LuaExpr],
+    idx: usize,
+) -> Option<LuaType> {
+    if let Some((ty, _)) = value_types.get(idx) {
+        return Some(ty.clone());
+    }
+
+    let (expr_idx, slot) = assignment_rhs_source(value_exprs.len(), idx)?;
+    let expr = value_exprs.get(expr_idx)?;
+    let ty = semantic_model.infer_expr(expr.clone()).ok()?;
+    Some(adjusted_result_slot_type(&ty, slot))
 }
 
 fn check_name_expr(
@@ -182,7 +210,7 @@ fn check_local_stat(
             .get_type_index()
             .get_type_cache(&decl_id.into())
             .map(|cache| cache.as_type().clone())?;
-        let value_type = value_types.get(idx)?.0.clone();
+        let value_type = value_type_to_check(semantic_model, &value_types, &value_exprs, idx)?;
         check_assign_type_mismatch(
             context,
             semantic_model,

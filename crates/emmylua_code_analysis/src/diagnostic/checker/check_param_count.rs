@@ -95,7 +95,18 @@ fn check_call_expr(
     let func = semantic_model.infer_call_expr_func(call_expr.clone(), None)?;
     let mut fake_params = func.get_params().to_vec();
     let call_args = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
-    let mut call_args_count = call_args.len();
+    // List inference preserves empty tail-call rows; the direct tail check keeps
+    // unbounded variadic calls from looking like a single known argument.
+    let inferred_call_args = semantic_model.infer_expr_list_types(&call_args, None);
+    let mut min_call_args_count = inferred_call_args.len();
+    let mut max_call_args_count = Some(inferred_call_args.len());
+    if let Some((tail_arg, fixed_args)) = call_args.split_last()
+        && let Ok(LuaType::Variadic(variadic)) = semantic_model.infer_expr(tail_arg.clone())
+    {
+        min_call_args_count = fixed_args.len() + variadic.get_min_len().unwrap_or(0);
+        max_call_args_count = variadic.get_max_len().map(|max| fixed_args.len() + max);
+    }
+    let tail_min_count = min_call_args_count.saturating_sub(call_args.len().saturating_sub(1));
     let last_arg_is_dots = call_args.last().is_some_and(is_dots_expr);
     // 根据冒号定义与冒号调用的情况来调整调用参数的数量
     let colon_call = call_expr.is_colon_call();
@@ -106,36 +117,17 @@ fn check_call_expr(
             fake_params.insert(0, ("self".to_string(), Some(LuaType::SelfInfer)));
         }
         (true, false) => {
-            call_args_count += 1;
+            min_call_args_count += 1;
+            if let Some(max_call_args_count) = &mut max_call_args_count {
+                *max_call_args_count += 1;
+            }
         }
     }
 
     // Check for missing parameters
-    if call_args_count < fake_params.len() {
-        // 调用参数包含 `...`
-        for arg in call_args.iter() {
-            if let LuaExpr::LiteralExpr(literal_expr) = arg
-                && let Some(LuaLiteralToken::Dots(_)) = literal_expr.get_literal()
-            {
-                return Some(());
-            }
-        }
-        // 对调用参数的最后一个参数进行特殊处理
-        if let Some(last_arg) = call_args.last()
-            && let Ok(LuaType::Variadic(variadic)) = semantic_model.infer_expr(last_arg.clone())
-        {
-            let len = match variadic.get_max_len() {
-                Some(len) => len,
-                None => {
-                    return Some(());
-                }
-            };
-            call_args_count = call_args_count + len - 1;
-            if call_args_count >= fake_params.len() {
-                return Some(());
-            }
-        }
-
+    if let Some(call_args_count) = max_call_args_count
+        && call_args_count < fake_params.len()
+    {
         let mut miss_parameter_info = Vec::new();
 
         for i in call_args_count..fake_params.len() {
@@ -177,11 +169,6 @@ fn check_call_expr(
             return Some(());
         }
 
-        let mut min_call_args_count = call_args_count;
-        if last_arg_is_dots {
-            min_call_args_count = min_call_args_count.saturating_sub(1);
-        }
-
         if min_call_args_count <= fake_params.len() {
             return Some(());
         }
@@ -200,6 +187,10 @@ fn check_call_expr(
 
         for (i, arg) in call_args.iter().enumerate() {
             if last_arg_is_dots && i + 1 == call_args.len() {
+                continue;
+            }
+
+            if i + 1 == call_args.len() && tail_min_count == 0 {
                 continue;
             }
 
