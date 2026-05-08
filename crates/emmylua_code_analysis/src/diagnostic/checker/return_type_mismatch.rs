@@ -60,6 +60,9 @@ fn check_return_stat(
 ) -> Option<()> {
     let return_exprs = return_stat.get_expr_list().collect::<Vec<_>>();
     let (return_expr_types, return_expr_ranges) = {
+        // This checker compares slot types, not row shape. A `string...` tail
+        // call is not the same row as `string, string`, but each proven slot is
+        // still `string`; any uncertain count belongs to return-count checks.
         let infos = semantic_model.infer_expr_list_types(&return_exprs, None);
         let mut return_expr_types = infos.iter().map(|(typ, _)| typ.clone()).collect::<Vec<_>>();
         // 解决 setmetatable 的返回值类型问题

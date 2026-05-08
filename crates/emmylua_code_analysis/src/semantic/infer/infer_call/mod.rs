@@ -12,6 +12,7 @@ use crate::{
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaSignature,
     LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDeclLevel, TypeOps,
     TypeVisitTrait, VariadicType,
+    db_index::return_row::{merge_return_rows, return_type_to_row, row_to_multi_return_type},
 };
 use crate::{
     InferGuardRef,
@@ -31,6 +32,79 @@ mod infer_require;
 mod infer_setmetatable;
 
 pub type InferCallFuncResult = Result<Arc<LuaFunctionType>, InferFailReason>;
+
+pub(crate) fn infer_call_expr_list_tail(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: LuaCallExpr,
+    scalar_type: LuaType,
+) -> InferResult {
+    // Keep the normal scalar path first so inline `---@as` bindings and casts
+    // still win. Only a scalar nil can be the placeholder for an empty row.
+    if !matches!(scalar_type, LuaType::Nil) {
+        return Ok(scalar_type);
+    }
+
+    let tail_type = infer_call_expr_inner(db, cache, call_expr, true)?;
+    if let LuaType::Variadic(variadic) = &tail_type
+        && let VariadicType::Multi(types) = variadic.as_ref()
+        && types.is_empty()
+    {
+        Ok(tail_type)
+    } else {
+        Ok(scalar_type)
+    }
+}
+
+fn infer_call_expr_inner(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: LuaCallExpr,
+    preserve_empty_row: bool,
+) -> InferResult {
+    if call_expr.is_require() {
+        return infer_require_call(db, cache, call_expr);
+    } else if call_expr.is_setmetatable() {
+        return infer_setmetatable_call(db, cache, call_expr);
+    }
+
+    check_can_infer(db, cache, &call_expr)?;
+
+    let is_safe_call = call_expr.has_safe_navigation();
+
+    let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
+    let prefix_type = infer_expr(db, cache, prefix_expr)?;
+    let func_ty = infer_call_expr_func(
+        db,
+        cache,
+        call_expr.clone(),
+        prefix_type.clone(),
+        &InferGuard::new(),
+        None,
+    )?;
+    let ret_type = if preserve_empty_row {
+        row_to_multi_return_type(func_ty.get_return_row().to_vec())
+    } else {
+        func_ty.get_return_type()
+    };
+
+    let ret_type = if is_safe_call && prefix_type.is_nullable() {
+        TypeOps::Union.apply(db, &ret_type, &LuaType::Nil)
+    } else {
+        ret_type
+    };
+
+    if !cache.is_no_flow()
+        && let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
+        && let Some(flow_id) = tree.get_flow_id(call_expr.get_syntax_id())
+        && let Some(flow_ret_type) =
+            get_type_at_call_expr_inline_cast(db, cache, tree, call_expr, flow_id, ret_type.clone())
+    {
+        return Ok(flow_ret_type);
+    }
+
+    Ok(ret_type)
+}
 
 // TODO: 如果没有完全匹配的签名也会返回一个不精确的类型, 考虑返回`None`
 pub fn infer_call_expr_func(
@@ -110,7 +184,9 @@ pub fn infer_call_expr_func(
             false,
             true,
             vec![("...".to_string(), Some(LuaType::Unknown))],
-            LuaType::Variadic(VariadicType::Base(LuaType::Unknown).into()),
+            vec![LuaType::Variadic(
+                VariadicType::Base(LuaType::Unknown).into(),
+            )],
             None,
         ))),
         LuaType::Intersection(intersection) => infer_intersection(
@@ -126,41 +202,46 @@ pub fn infer_call_expr_func(
             false,
             true,
             vec![],
-            LuaType::Any,
+            vec![LuaType::Any],
             None,
         ))),
         LuaType::Union(union) => infer_union(db, cache, union, call_expr.clone(), args_count),
         _ => Err(InferFailReason::None),
     };
 
-    let result = if let Ok(func_ty) = result {
-        let func_ty = match func_ty.get_ret() {
-            LuaType::Call(_) => {
-                match infer_call_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
-                    Ok(func_ty) => Arc::new(func_ty),
-                    Err(_) => func_ty,
+    let result = match result {
+        Ok(func_ty) if func_ty.get_return_row().is_empty() => Ok(func_ty),
+        Ok(func_ty) => {
+            let func_ty = match func_ty.get_return_type() {
+                LuaType::Call(_) => {
+                    infer_call_generic(db, cache, func_ty.as_ref(), call_expr.clone())
+                        .map(Arc::new)
+                        .unwrap_or(func_ty)
+                }
+                _ => func_ty,
+            };
+
+            if func_ty.get_return_row().is_empty() {
+                Ok(func_ty)
+            } else {
+                let func_ret = func_ty.get_return_type();
+                match func_ret {
+                    LuaType::TypeGuard(_) => Ok(func_ty),
+                    _ => unwrapp_return_type(db, cache, func_ret, call_expr).map(|new_ret| {
+                        LuaFunctionType::new(
+                            func_ty.get_async_state(),
+                            func_ty.is_colon_define(),
+                            func_ty.is_variadic(),
+                            func_ty.get_params().to_vec(),
+                            return_type_to_row(new_ret),
+                            Some(func_ty.get_generic_params().to_vec()),
+                        )
+                        .into()
+                    }),
                 }
             }
-            _ => func_ty,
-        };
-
-        let func_ret = func_ty.get_ret();
-        match func_ret {
-            LuaType::TypeGuard(_) => Ok(func_ty),
-            _ => unwrapp_return_type(db, cache, func_ret.clone(), call_expr).map(|new_ret| {
-                LuaFunctionType::new(
-                    func_ty.get_async_state(),
-                    func_ty.is_colon_define(),
-                    func_ty.is_variadic(),
-                    func_ty.get_params().to_vec(),
-                    new_ret,
-                    Some(func_ty.get_generic_params().to_vec()),
-                )
-                .into()
-            }),
         }
-    } else {
-        result
+        Err(err) => Err(err),
     };
 
     match &result {
@@ -508,8 +589,7 @@ fn infer_union(
     call_expr: LuaCallExpr,
     args_count: Option<usize>,
 ) -> InferCallFuncResult {
-    let mut returns = Vec::new();
-    let mut first_func = None;
+    let mut matching_funcs = Vec::new();
     let mut fallback_overloads = Vec::new();
     let mut need_resolve = None;
 
@@ -539,10 +619,7 @@ fn infer_union(
                 args_count,
             ) {
                 Ok(func) => {
-                    returns.push(func.get_ret().clone());
-                    if first_func.is_none() {
-                        first_func = Some(func);
-                    }
+                    matching_funcs.push(func);
                 }
                 Err(InferFailReason::RecursiveInfer) => {
                     return Err(InferFailReason::RecursiveInfer);
@@ -557,7 +634,7 @@ fn infer_union(
         }
     }
 
-    let Some(first_func) = first_func else {
+    if matching_funcs.is_empty() {
         if !fallback_overloads.is_empty() {
             let contains_tpl = fallback_overloads.iter().any(|func| func.contain_tpl());
             return resolve_signature(
@@ -573,12 +650,18 @@ fn infer_union(
         return Err(need_resolve.unwrap_or(InferFailReason::None));
     };
 
+    let first_func = &matching_funcs[0];
+    let return_rows = matching_funcs
+        .iter()
+        .map(|func| func.get_return_row())
+        .collect::<Vec<_>>();
+
     Ok(Arc::new(LuaFunctionType::new(
         first_func.get_async_state(),
         first_func.is_colon_define(),
         first_func.is_variadic(),
         first_func.get_params().to_vec(),
-        LuaType::from_vec(returns),
+        merge_return_rows(&return_rows),
         Some(first_func.get_generic_params().to_vec()),
     )))
 }
@@ -674,7 +757,8 @@ fn unwrapp_return_type(
                 return Ok(ty.clone());
             }
 
-            return Ok(ty.get_result_slot_type(0).unwrap_or(LuaType::Nil));
+            let return_type = super::adjusted_result_slot_type(ty, 0);
+            return unwrapp_return_type(db, cache, return_type, call_expr);
         }
         LuaType::SelfInfer => {
             let substitutor = TypeSubstitutor::new();
@@ -729,45 +813,7 @@ pub fn infer_call_expr(
     cache: &mut LuaInferCache,
     call_expr: LuaCallExpr,
 ) -> InferResult {
-    if call_expr.is_require() {
-        return infer_require_call(db, cache, call_expr);
-    } else if call_expr.is_setmetatable() {
-        return infer_setmetatable_call(db, cache, call_expr);
-    }
-
-    check_can_infer(db, cache, &call_expr)?;
-
-    let is_safe_call = call_expr.has_safe_navigation();
-
-    let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let prefix_type = infer_expr(db, cache, prefix_expr)?;
-    let ret_type = infer_call_expr_func(
-        db,
-        cache,
-        call_expr.clone(),
-        prefix_type.clone(),
-        &InferGuard::new(),
-        None,
-    )?
-    .get_ret()
-    .clone();
-
-    let ret_type = if is_safe_call && prefix_type.is_nullable() {
-        TypeOps::Union.apply(db, &ret_type, &LuaType::Nil)
-    } else {
-        ret_type
-    };
-
-    if !cache.is_no_flow()
-        && let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())
-        && let Some(flow_id) = tree.get_flow_id(call_expr.get_syntax_id())
-        && let Some(flow_ret_type) =
-            get_type_at_call_expr_inline_cast(db, cache, tree, call_expr, flow_id, ret_type.clone())
-    {
-        return Ok(flow_ret_type);
-    }
-
-    Ok(ret_type)
+    infer_call_expr_inner(db, cache, call_expr, false)
 }
 
 fn check_can_infer(

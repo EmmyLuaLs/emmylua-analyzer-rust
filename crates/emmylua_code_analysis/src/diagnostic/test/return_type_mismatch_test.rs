@@ -381,6 +381,25 @@ mod tests {
     }
 
     #[test]
+    fn test_variadic_tail_call_return_slots_do_not_type_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@return string...
+            local function many()
+            end
+
+            ---@return string, string
+            local function test()
+                return many()
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_issue_146() {
         let mut ws = VirtualWorkspace::new();
 

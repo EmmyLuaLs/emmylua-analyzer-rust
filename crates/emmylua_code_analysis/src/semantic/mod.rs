@@ -60,7 +60,8 @@ pub use infer::InferFailReason;
 pub use infer::infer_call_expr_func;
 pub use infer::infer_param;
 pub(crate) use infer::try_infer_expr_for_index;
-pub(crate) use infer::{infer_expr, try_infer_expr_no_flow};
+pub(crate) use infer::{adjusted_result_slot_type, assignment_rhs_source};
+pub(crate) use infer::{infer_expr, infer_return_expr_list_types, try_infer_expr_no_flow};
 use overload_resolve::resolve_signature;
 pub(crate) use overload_resolve::{
     callable_accepts_args, get_func_param_type, is_func_last_param_variadic,

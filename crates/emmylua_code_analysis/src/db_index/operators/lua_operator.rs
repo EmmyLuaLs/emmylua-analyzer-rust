@@ -5,7 +5,7 @@ use rowan::{TextRange, TextSize};
 use crate::{
     AsyncState, DbIndex, FileId, InFiled, InferFailReason, LuaConstructorReturnMode,
     LuaFunctionType, LuaSignature, LuaSignatureId, SignatureReturnStatus,
-    db_index::{LuaType, LuaTypeDeclId},
+    db_index::{LuaType, LuaTypeDeclId, return_row::return_type_to_row},
 };
 
 use super::lua_operator_meta_method::LuaOperatorMetaMethod;
@@ -98,7 +98,7 @@ impl LuaOperator {
             OperatorFunction::BinOp { ret, .. }
             | OperatorFunction::UnOp { ret }
             | OperatorFunction::Call { ret, .. } => Ok(ret.clone()),
-            OperatorFunction::Overload(func) => Ok(func.get_ret().clone()),
+            OperatorFunction::Overload(func) => Ok(func.get_return_type()),
             OperatorFunction::Signature(signature_id) => {
                 let signature = db.get_signature_index().get(signature_id);
                 if let Some(signature) = signature {
@@ -119,8 +119,7 @@ impl LuaOperator {
             } => {
                 let signature = db.get_signature_index().get(id);
                 if let Some(signature) = signature {
-                    let return_type = get_constructor_return_type(signature, return_mode);
-                    return Ok(return_type);
+                    return Ok(get_constructor_return_type(signature, return_mode));
                 }
 
                 Ok(LuaType::Any)
@@ -138,7 +137,7 @@ impl LuaOperator {
                     ("self".to_string(), Some(LuaType::SelfInfer)),
                     ("arg0".to_string(), Some(param.clone())),
                 ],
-                ret.clone(),
+                return_type_to_row(ret.clone()),
                 None,
             )
             .into(),
@@ -147,7 +146,7 @@ impl LuaOperator {
                 false,
                 false,
                 vec![("self".to_string(), Some(LuaType::SelfInfer))],
-                ret.clone(),
+                return_type_to_row(ret.clone()),
                 None,
             )
             .into(),
@@ -172,7 +171,7 @@ impl LuaOperator {
                     false,
                     is_variadic,
                     params,
-                    ret.clone(),
+                    return_type_to_row(ret.clone()),
                     None,
                 )
                 .into()
@@ -191,7 +190,7 @@ impl LuaOperator {
                     !*strip_self && signature.is_colon_define,
                     signature.is_vararg,
                     signature.get_type_params(),
-                    get_constructor_return_type(signature, return_mode),
+                    return_type_to_row(get_constructor_return_type(signature, return_mode)),
                     Some(signature.get_function_generic_params()),
                 )
                 .into(),

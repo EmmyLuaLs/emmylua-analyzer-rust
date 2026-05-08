@@ -542,7 +542,7 @@ fn set_meta_call_part(
         LuaStat::can_cast(parent.kind().into())
             && !matches!(call_expr.get_prefix_expr()?, LuaExpr::CallExpr(_))
             && semantic_model
-                .type_check(call_func.get_ret(), &target_type)
+                .type_check(&call_func.get_return_type(), &target_type)
                 .is_ok()
     };
 

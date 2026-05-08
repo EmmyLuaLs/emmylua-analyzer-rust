@@ -387,15 +387,10 @@ fn collect_infer_assignments(
                     }
                 }
 
-                let pattern_ret = pattern_func.get_ret();
-                if contains_conditional_infer(pattern_ret) {
-                    collect_infer_assignments(
-                        db,
-                        source_func.get_ret(),
-                        pattern_ret,
-                        assignments,
-                        variance,
-                    )
+                let pattern_ret = pattern_func.get_return_type();
+                if contains_conditional_infer(&pattern_ret) {
+                    let source_ret = source_func.get_return_type();
+                    collect_infer_assignments(db, &source_ret, &pattern_ret, assignments, variance)
                 } else {
                     true
                 }
@@ -729,7 +724,11 @@ fn actualize_unresolved_templates(ty: LuaType) -> LuaType {
                         (name.clone(), ty.clone().map(actualize_unresolved_templates))
                     })
                     .collect(),
-                actualize_unresolved_templates(func.get_ret().clone()),
+                func.get_return_row()
+                    .iter()
+                    .cloned()
+                    .map(actualize_unresolved_templates)
+                    .collect(),
                 Some(actualize_function_generic_params(&func)),
             )
             .into(),

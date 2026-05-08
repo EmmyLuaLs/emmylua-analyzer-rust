@@ -77,9 +77,9 @@ fn render_doc_function_type(
         })
         .collect::<Vec<_>>();
 
-    let ret_type = lua_func.get_ret();
+    let ret_type = lua_func.get_return_type();
 
-    let ret_strs = render_typ(db, ret_type, RenderLevel::Documentation);
+    let ret_strs = render_typ(db, &ret_type, RenderLevel::Documentation);
 
     let mut result = String::new();
     result.push_str("```lua\n");

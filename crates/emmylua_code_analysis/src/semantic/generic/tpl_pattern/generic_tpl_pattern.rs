@@ -1,6 +1,8 @@
 use crate::{
     InferFailReason, InferGuard, InferGuardRef, LuaFunctionType, LuaGenericType, LuaType,
-    LuaTypeNode, SignatureReturnStatus, TplContext, TypeSubstitutor, instantiate_type_generic,
+    LuaTypeNode, SignatureReturnStatus, TplContext, TypeSubstitutor,
+    db_index::return_row::row_to_multi_return_type,
+    instantiate_type_generic,
     semantic::{
         generic::tpl_pattern::{
             TplPatternMatchResult, tpl_pattern_match, variadic_tpl_pattern_match,
@@ -218,10 +220,10 @@ fn erase_implicit_signature_types(context: &TplContext, target: &LuaType) -> Lua
             )
         })
         .collect();
-    let ret = if signature.resolve_return == SignatureReturnStatus::DocResolve {
-        signature.get_return_type()
+    let returns = if signature.resolve_return == SignatureReturnStatus::DocResolve {
+        signature.get_return_row()
     } else {
-        LuaType::Unknown
+        vec![LuaType::Unknown]
     };
 
     LuaType::DocFunction(
@@ -230,7 +232,7 @@ fn erase_implicit_signature_types(context: &TplContext, target: &LuaType) -> Lua
             signature.is_colon_define,
             signature.is_vararg,
             params,
-            ret,
+            returns,
             Some(signature.get_function_generic_params()),
         )
         .into(),
@@ -258,11 +260,9 @@ fn tpl_pattern_match_ignoring_unknown_target(
                 tpl_pattern_match_ignoring_unknown_target(context, &pattern_param, &target_param)?;
             }
 
-            tpl_pattern_match_ignoring_unknown_target(
-                context,
-                pattern_func.get_ret(),
-                target_func.get_ret(),
-            )
+            let pattern_ret = row_to_multi_return_type(pattern_func.get_return_row().to_vec());
+            let target_ret = row_to_multi_return_type(target_func.get_return_row().to_vec());
+            tpl_pattern_match_ignoring_unknown_target(context, &pattern_ret, &target_ret)
         }
         _ => tpl_pattern_match(context, pattern, target),
     }

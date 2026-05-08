@@ -365,6 +365,10 @@ fn get_base_call_arg_count_range(
         let base = arg_exprs.len().saturating_sub(1);
         count.min = base + variadic.get_min_len().unwrap_or(0);
         count.max = variadic.get_max_len().map(|len| base + len);
+    } else if matches!(arg_exprs.last(), Some(LuaExpr::CallExpr(_))) {
+        let call_arg_count = semantic_model.infer_expr_list_types(arg_exprs, None).len();
+        count.min = call_arg_count;
+        count.max = Some(call_arg_count);
     }
     Some(count)
 }

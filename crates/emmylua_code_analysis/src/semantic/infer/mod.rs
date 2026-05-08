@@ -16,7 +16,7 @@ use emmylua_parser::{
     LuaSyntaxId, LuaTableExpr, LuaVarExpr, NumberResult,
 };
 use infer_binary::infer_binary_expr;
-use infer_call::infer_call_expr;
+use infer_call::{infer_call_expr, infer_call_expr_list_tail};
 pub use infer_call::{infer_call_expr_func, infer_call_self_type};
 pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
 pub use infer_fail_reason::InferFailReason;
@@ -262,11 +262,47 @@ fn get_custom_type_operator(
     }
 }
 
-pub fn infer_expr_list_types<F>(
+/// Infers a Lua expression list using assignment/call result adjustment.
+///
+/// Only the final expression may contribute multiple values. Earlier values
+/// are adjusted to one slot, and `var_count` caps how many final-expression
+/// slots are pulled.
+pub(crate) fn infer_expr_list_types<F>(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     exprs: &[LuaExpr],
     var_count: Option<usize>,
+    infer: F,
+) -> Result<Vec<(LuaType, TextRange)>, InferFailReason>
+where
+    F: FnMut(&DbIndex, &mut LuaInferCache, LuaExpr) -> InferResult,
+{
+    infer_expr_list_types_with(db, cache, exprs, var_count, false, infer)
+}
+
+/// Infers a Lua return expression list.
+///
+/// Return rows use normal expression-list adjustment, but a final unbounded
+/// variadic expression remains a variadic tail instead of being collapsed to
+/// one scalar slot.
+pub(crate) fn infer_return_expr_list_types<F>(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    exprs: &[LuaExpr],
+    infer: F,
+) -> Result<Vec<(LuaType, TextRange)>, InferFailReason>
+where
+    F: FnMut(&DbIndex, &mut LuaInferCache, LuaExpr) -> InferResult,
+{
+    infer_expr_list_types_with(db, cache, exprs, None, true, infer)
+}
+
+fn infer_expr_list_types_with<F>(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    exprs: &[LuaExpr],
+    var_count: Option<usize>,
+    preserve_variadic_tail: bool,
     mut infer: F,
 ) -> Result<Vec<(LuaType, TextRange)>, InferFailReason>
 where
@@ -280,43 +316,81 @@ where
             break;
         }
 
+        let expr_range = expr.get_range();
         let expr_type = infer(db, cache, expr.clone())?;
-        if let Some(var_count) = var_count
-            && expr_type.contain_multi_return()
+        let expr_type = if idx + 1 == exprs.len()
+            && let LuaExpr::CallExpr(call_expr) = expr
         {
-            if idx < var_count {
-                for i in idx..var_count {
-                    if let Some(typ) = expr_type.get_result_slot_type(i - idx) {
-                        value_types.push((typ, expr.get_range()));
-                    } else {
-                        break;
+            infer_call_expr_list_tail(db, cache, call_expr.clone(), expr_type)?
+        } else {
+            expr_type
+        };
+        if idx + 1 == exprs.len() && expr_type.contain_multi_return() {
+            if let Some(var_count) = var_count {
+                let value_count = value_types.len();
+                if value_count < var_count {
+                    for i in value_count..var_count {
+                        if let Some(typ) = expr_type.get_result_slot_type(i - value_count) {
+                            value_types.push((typ, expr_range));
+                        } else {
+                            break;
+                        }
                     }
+                }
+            } else {
+                match expr_type {
+                    LuaType::Variadic(variadic)
+                        if preserve_variadic_tail
+                            && matches!(variadic.as_ref(), VariadicType::Base(_)) =>
+                    {
+                        value_types.push((LuaType::Variadic(variadic), expr_range));
+                    }
+                    LuaType::Variadic(variadic) => match variadic.deref() {
+                        VariadicType::Base(base) => {
+                            value_types.push((base.clone(), expr_range));
+                        }
+                        VariadicType::Multi(vecs) => {
+                            for typ in vecs {
+                                value_types.push((typ.clone(), expr_range));
+                            }
+                        }
+                    },
+                    _ => value_types.push((expr_type, expr_range)),
                 }
             }
 
             break;
         }
 
-        match expr_type {
-            LuaType::Variadic(variadic) => {
-                match variadic.deref() {
-                    VariadicType::Base(base) => {
-                        value_types.push((base.clone(), expr.get_range()));
-                    }
-                    VariadicType::Multi(vecs) => {
-                        for typ in vecs {
-                            value_types.push((typ.clone(), expr.get_range()));
-                        }
-                    }
-                }
-
-                break;
-            }
-            _ => value_types.push((expr_type, expr.get_range())),
-        }
+        let expr_type = adjusted_result_slot_type(&expr_type, 0);
+        value_types.push((expr_type, expr_range));
     }
 
     Ok(value_types)
+}
+
+/// Returns the RHS expression index and result slot for assignment target
+/// `target_idx`.
+///
+/// In `a, b, c = x, y()`, target `c` is supplied by RHS expression `y()` at
+/// result slot `1`.
+pub(crate) fn assignment_rhs_source(
+    expr_count: usize,
+    target_idx: usize,
+) -> Option<(usize, usize)> {
+    let last_expr_idx = expr_count.checked_sub(1)?;
+    Some((
+        target_idx.min(last_expr_idx),
+        target_idx.saturating_sub(last_expr_idx),
+    ))
+}
+
+/// Returns a concrete type for `slot` after Lua value adjustment.
+///
+/// Multi-return values may have fewer slots than a caller asks for. In fixed
+/// result positions, those exhausted slots are adjusted to `nil`.
+pub(crate) fn adjusted_result_slot_type(expr_type: &LuaType, slot: usize) -> LuaType {
+    expr_type.get_result_slot_type(slot).unwrap_or(LuaType::Nil)
 }
 
 /// 推断值已经绑定的类型(不是推断值的类型). 例如从右值推断左值类型, 从调用参数推断函数参数类型参数类型

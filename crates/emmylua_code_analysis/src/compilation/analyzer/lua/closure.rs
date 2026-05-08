@@ -1,17 +1,17 @@
-use std::ops::Deref;
-
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaFuncStat, LuaVarExpr,
+    LuaAst, LuaAstNode, LuaCallArgList, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaFuncStat,
+    LuaVarExpr,
 };
 
 use crate::{
-    DbIndex, InferFailReason, LuaInferCache, LuaType, SignatureReturnStatus, TypeOps, VariadicType,
+    DbIndex, InferFailReason, LuaInferCache, LuaType, SignatureReturnStatus, TypeOps,
     compilation::analyzer::unresolve::{
         UnResolveCallClosureParams, UnResolveClosureReturn, UnResolveParentAst,
         UnResolveParentClosureParams, UnResolveReturn,
     },
-    db_index::{LuaDocReturnInfo, LuaSignatureId},
+    db_index::{LuaDocReturnInfo, LuaSignatureId, return_row::merge_return_rows_with},
     infer_expr,
+    semantic::infer_return_expr_list_types,
 };
 
 use super::{LuaAnalyzer, LuaReturnPoint, analyze_func_body_returns_with};
@@ -220,120 +220,53 @@ pub fn analyze_return_point(
     cache: &mut LuaInferCache,
     return_points: &[LuaReturnPoint],
 ) -> Result<Vec<LuaDocReturnInfo>, InferFailReason> {
-    let mut return_type = None;
+    let mut return_row: Option<Vec<LuaType>> = None;
     for point in return_points {
-        let point_type = match point {
-            LuaReturnPoint::Expr(expr) => Some(infer_expr(db, cache, expr.clone())?),
-            LuaReturnPoint::MuliExpr(exprs) => {
-                let mut multi_return = Vec::with_capacity(exprs.len());
-                for expr in exprs {
-                    multi_return.push(infer_expr(db, cache, expr.clone())?);
-                }
-                Some(LuaType::Variadic(VariadicType::Multi(multi_return).into()))
+        let point_row = match point {
+            LuaReturnPoint::Expr(expr) => {
+                Some(infer_return_row(db, cache, std::slice::from_ref(expr))?)
             }
-            LuaReturnPoint::Nil => Some(LuaType::Nil),
+            LuaReturnPoint::MuliExpr(exprs) => Some(infer_return_row(db, cache, exprs)?),
+            LuaReturnPoint::Empty => Some(Vec::new()),
             _ => None,
         };
 
-        if let Some(point_type) = point_type {
-            return_type = Some(match return_type {
-                Some(return_type) => union_return_expr(db, return_type, point_type),
-                None => point_type,
+        if let Some(point_row) = point_row {
+            return_row = Some(match return_row {
+                Some(return_row) => {
+                    let rows = [return_row.as_slice(), point_row.as_slice()];
+                    merge_return_rows_with(&rows, |types| {
+                        types
+                            .into_iter()
+                            .reduce(|left, right| TypeOps::Union.apply(db, &left, &right))
+                            .unwrap_or(LuaType::Never)
+                    })
+                }
+                None => point_row,
             });
         }
     }
 
-    let return_type = return_type.unwrap_or(LuaType::Unknown);
+    let return_row = return_row.unwrap_or_else(|| vec![LuaType::Unknown]);
 
-    Ok(vec![LuaDocReturnInfo {
-        type_ref: return_type,
-        description: None,
-        name: None,
-        attributes: None,
-    }])
+    Ok(return_row
+        .into_iter()
+        .map(|type_ref| LuaDocReturnInfo {
+            type_ref,
+            description: None,
+            name: None,
+            attributes: None,
+        })
+        .collect())
 }
 
-fn union_return_expr(db: &DbIndex, left: LuaType, right: LuaType) -> LuaType {
-    match (&left, &right) {
-        (LuaType::Variadic(left_variadic), LuaType::Variadic(right_variadic)) => {
-            match (&left_variadic.deref(), &right_variadic.deref()) {
-                (VariadicType::Base(left_base), VariadicType::Base(right_base)) => {
-                    let union_base = TypeOps::Union.apply(db, left_base, right_base);
-                    LuaType::Variadic(VariadicType::Base(union_base).into())
-                }
-                (VariadicType::Multi(left_multi), VariadicType::Multi(right_multi)) => {
-                    let mut new_multi = vec![];
-                    let max_len = left_multi.len().max(right_multi.len());
-                    for i in 0..max_len {
-                        let left_type = left_multi.get(i).cloned().unwrap_or(LuaType::Nil);
-                        let right_type = right_multi.get(i).cloned().unwrap_or(LuaType::Nil);
-                        new_multi.push(TypeOps::Union.apply(db, &left_type, &right_type));
-                    }
-                    LuaType::Variadic(VariadicType::Multi(new_multi).into())
-                }
-                // difficult to merge the type, use let
-                _ => left.clone(),
-            }
-        }
-        (LuaType::Variadic(variadic), _) => {
-            let first_type = variadic.get_type(0).cloned().unwrap_or(LuaType::Unknown);
-            let first_union_type = TypeOps::Union.apply(db, &first_type, &right);
-
-            match variadic.deref() {
-                VariadicType::Base(base) => {
-                    let union_base = TypeOps::Union.apply(db, base, &LuaType::Nil);
-                    LuaType::Variadic(
-                        VariadicType::Multi(vec![
-                            first_union_type,
-                            LuaType::Variadic(VariadicType::Base(union_base).into()),
-                        ])
-                        .into(),
-                    )
-                }
-                VariadicType::Multi(multi) => {
-                    let mut new_multi = multi.clone();
-                    if !new_multi.is_empty() {
-                        new_multi[0] = first_union_type;
-                        for mult in new_multi.iter_mut().skip(1) {
-                            *mult = TypeOps::Union.apply(db, mult, &LuaType::Nil);
-                        }
-                    } else {
-                        new_multi.push(first_union_type);
-                    }
-
-                    LuaType::Variadic(VariadicType::Multi(new_multi).into())
-                }
-            }
-        }
-        (_, LuaType::Variadic(variadic)) => {
-            let first_type = variadic.get_type(0).cloned().unwrap_or(LuaType::Unknown);
-            let first_union_type = TypeOps::Union.apply(db, &left, &first_type);
-            match variadic.deref() {
-                VariadicType::Base(base) => {
-                    let union_base = TypeOps::Union.apply(db, base, &LuaType::Nil);
-                    LuaType::Variadic(
-                        VariadicType::Multi(vec![
-                            first_union_type,
-                            LuaType::Variadic(VariadicType::Base(union_base).into()),
-                        ])
-                        .into(),
-                    )
-                }
-                VariadicType::Multi(multi) => {
-                    let mut new_multi = multi.clone();
-                    if !new_multi.is_empty() {
-                        new_multi[0] = first_union_type;
-                        for mult in new_multi.iter_mut().skip(1) {
-                            *mult = TypeOps::Union.apply(db, mult, &LuaType::Nil);
-                        }
-                    } else {
-                        new_multi.push(first_union_type);
-                    }
-
-                    LuaType::Variadic(VariadicType::Multi(new_multi).into())
-                }
-            }
-        }
-        _ => TypeOps::Union.apply(db, &left, &right),
-    }
+fn infer_return_row(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    exprs: &[LuaExpr],
+) -> Result<Vec<LuaType>, InferFailReason> {
+    Ok(infer_return_expr_list_types(db, cache, exprs, infer_expr)?
+        .into_iter()
+        .map(|(ty, _)| ty)
+        .collect())
 }

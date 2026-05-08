@@ -132,6 +132,43 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_empty_return_call_local_decl_checks_nil_assignment() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@type string
+            local value = none()
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_empty_return_call_assignment_checks_nil_assignment() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@type nil
+            local first
+
+            ---@type string
+            local second
+
+            first, second = none()
+            "#
+        ));
+    }
+
     // #[test]
     // fn test_3() {
     //     let mut ws = VirtualWorkspace::new();

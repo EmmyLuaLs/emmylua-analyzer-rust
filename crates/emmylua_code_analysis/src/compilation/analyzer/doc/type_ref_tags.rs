@@ -390,7 +390,7 @@ pub fn analyze_overload(analyzer: &mut DocAnalyzer, tag: LuaDocTagOverload) -> O
                 func.is_colon_define(),
                 func.is_variadic(),
                 func.get_params().to_vec(),
-                func.get_ret().clone(),
+                func.get_return_row().to_vec(),
                 Some(generic_params),
             ));
             signature.overloads.push(func);
