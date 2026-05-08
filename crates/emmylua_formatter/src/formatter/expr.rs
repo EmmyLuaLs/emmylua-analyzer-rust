@@ -678,10 +678,11 @@ fn format_call_arg_list(
     args_list: &LuaCallArgList,
 ) -> Vec<DocIR> {
     let args: Vec<_> = args_list.get_args().collect();
-    let collected = collect_call_arg_entries(ctx, plan, args_list);
-
-    if collected.has_comments {
-        return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
+    if call_arg_list_has_direct_comments(args_list) {
+        let collected = collect_call_arg_entries(ctx, plan, args_list);
+        if collected.has_comments {
+            return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
+        }
     }
 
     let preserve_multiline_args = args_list.syntax().text().contains_char('\n');
@@ -1085,6 +1086,13 @@ fn append_docs_with_separator(docs: &mut Vec<DocIR>, items: &[Vec<DocIR>], separ
         }
         docs.extend(item_docs.clone());
     }
+}
+
+fn call_arg_list_has_direct_comments(args_list: &LuaCallArgList) -> bool {
+    args_list
+        .syntax()
+        .children()
+        .any(|child| LuaComment::cast(child).is_some())
 }
 
 #[derive(Default)]
@@ -2509,9 +2517,11 @@ fn format_compact_call_arg_list(
     args_list: &LuaCallArgList,
     args: &[LuaExpr],
 ) -> CompactCallArgListAttempt {
-    let collected = collect_call_arg_entries(ctx, plan, args_list);
-    if collected.has_comments {
-        return CompactCallArgListAttempt::CommentsPresent;
+    if call_arg_list_has_direct_comments(args_list) {
+        let collected = collect_call_arg_entries(ctx, plan, args_list);
+        if collected.has_comments {
+            return CompactCallArgListAttempt::CommentsPresent;
+        }
     }
 
     let arg_docs: Vec<Vec<DocIR>> = args.iter().map(|arg| format_expr(ctx, plan, arg)).collect();

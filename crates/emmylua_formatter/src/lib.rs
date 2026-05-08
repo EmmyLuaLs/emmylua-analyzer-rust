@@ -36,7 +36,10 @@ pub fn reformat_lua_code(source: &SourceText, config: &LuaFormatConfig) -> Strin
     let ctx = FormatContext::new(config);
     let chunk = tree.get_chunk_node();
     let ir = formatter::format_chunk(&ctx, &chunk);
-    Printer::new(config).print(&ir)
+    let mut p = Printer::new(config);
+    let capacity = (source.text.len() as f64 * 1.2).ceil() as usize;
+    p = p.with_capacity(capacity);
+    p.print(&ir)
 }
 
 pub fn reformat_chunk(chunk: &LuaChunk, config: &LuaFormatConfig) -> String {

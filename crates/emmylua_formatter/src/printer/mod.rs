@@ -78,6 +78,11 @@ impl Printer {
         }
     }
 
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.output = String::with_capacity(capacity);
+        self
+    }
+
     pub fn print(mut self, docs: &[DocIR]) -> String {
         self.print_docs(docs, PrintMode::Break);
 
