@@ -70,7 +70,7 @@ function util.traceinfo(tr) end
 --- @param tr  Trace
 --- @param ref integer
 --- @return integer? m
---- @return integer? ot spellchecker:disable-line
+--- @return integer? ot
 --- @return integer? op1
 --- @return integer? op2
 --- @return integer? prev
