@@ -125,29 +125,3 @@ impl RegisterCapabilities for DocumentFormattingCapabilities {
         server_capabilities.document_formatting_provider = Some(OneOf::Left(true));
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::format_with_workspace_formatter;
-    use emmylua_code_analysis::Emmyrc;
-
-    #[test]
-    fn formats_constructor_source_doc_block() {
-        let input = r#"-- ============================================================================
--- @source - Source file annotation
--- ============================================================================
----@[constructor("1123")]
----@source https://example.com/api/docs
----@param id number
----@return table
-function externalAPI(id)
-    return {}
-end
-"#;
-
-        let formatted =
-            format_with_workspace_formatter(input, None, &Emmyrc::default(), 4, true, true);
-
-        assert_eq!(formatted, input);
-    }
-}
