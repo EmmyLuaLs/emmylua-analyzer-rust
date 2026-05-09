@@ -1223,7 +1223,7 @@ local function f(chunk) end
             r#"--- @param value table<K, V>  |V[]|{[K]: V }
 local function f(value) end
 "#,
-            r#"---@param value table<K, V> | V[] | {[K]: V }
+            r#"---@param value table<K, V> | V[] | { [K]: V }
 local function f(value) end
 "#
         );

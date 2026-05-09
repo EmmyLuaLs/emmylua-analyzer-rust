@@ -299,20 +299,25 @@ fn apply_left_bracket_spacing(
 ) {
     let left_space = if let Some(prev_token) = get_prev_sibling_token_without_space(token) {
         match prev_token.kind().to_token() {
-            LuaTokenKind::TkComma | LuaTokenKind::TkSemicolon => 1,
+            LuaTokenKind::TkComma | LuaTokenKind::TkSemicolon => Some(1),
             LuaTokenKind::TkName
             | LuaTokenKind::TkRightParen
             | LuaTokenKind::TkRightBracket
             | LuaTokenKind::TkDot
-            | LuaTokenKind::TkColon => 0,
-            LuaTokenKind::TkString | LuaTokenKind::TkRightBrace | LuaTokenKind::TkLongString => 1,
-            _ => 0,
+            | LuaTokenKind::TkColon => Some(0),
+            LuaTokenKind::TkString
+            | LuaTokenKind::TkRightBrace
+            | LuaTokenKind::TkLongString
+            | LuaTokenKind::TkLeftBrace => Some(1),
+            _ => None,
         }
     } else {
-        0
+        None
     };
 
-    spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(left_space));
+    if let Some(left_space) = left_space {
+        spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(left_space));
+    }
     spacing.add_token_right_expected(
         syntax_id,
         TokenSpacingExpected::Space(space_inside_brackets(token, ctx)),

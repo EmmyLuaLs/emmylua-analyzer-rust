@@ -122,7 +122,7 @@ function getmetatable(object) end
 --- will iterate over the key–value pairs (1,`t[1]`), (2,`t[2]`), ..., up to
 --- the first absent index.
 --- @generic V
---- @param t V[] | table<int, V> | {[int]: V }
+--- @param t V[] | table<int, V> | { [int]: V }
 --- @return fun(tbl: any): int, V
 function ipairs(t) end
 
@@ -223,7 +223,7 @@ function module(name, ...) end
 --- existing fields. In particular, you may set existing fields to nil.
 --- @generic K, V
 --- @overload fun(table: table<K, V>): K?, V?
---- @param table  table<K, V> | V[] | {[K]: V }
+--- @param table  table<K, V> | V[] | { [K]: V }
 --- @param index? K
 --- @return K?, V?
 function next(table, index) end
@@ -240,7 +240,7 @@ function next(table, index) end
 --- See function `next` for the caveats of modifying the table during its
 --- traversal.
 --- @generic K, V, I
---- @param t table<K, V> | V[] | {[K]: V }
+--- @param t table<K, V> | V[] | { [K]: V }
 --- @return (fun(tbl: table<I, V>, index: I?): K, V), table<I, V>, I?
 function pairs(t) end
 
