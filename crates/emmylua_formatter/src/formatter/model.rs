@@ -117,6 +117,7 @@ pub struct ExprSequenceLayoutPlan {
 pub struct LayoutModel {
     pub format_block_with_legacy: bool,
     pub root_nodes: Vec<LayoutNodePlan>,
+    pub closure_body_children: HashMap<LuaSyntaxId, Vec<LayoutNodePlan>>,
     pub format_disabled: HashSet<LuaSyntaxId>,
     pub statement_trivia: HashMap<LuaSyntaxId, StatementTriviaLayoutPlan>,
     pub statement_expr_lists: HashMap<LuaSyntaxId, StatementExprListLayoutPlan>,
@@ -146,6 +147,7 @@ impl FormatPlan {
             layout: LayoutModel {
                 format_block_with_legacy: true,
                 root_nodes: Vec::new(),
+                closure_body_children: HashMap::new(),
                 format_disabled: HashSet::new(),
                 statement_trivia: HashMap::new(),
                 statement_expr_lists: HashMap::new(),

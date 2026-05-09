@@ -53,6 +53,10 @@ pub fn render_closure_block_body(
 ) -> Vec<DocIR> {
     let root = expr.get_root();
     let closure_id = expr.get_syntax_id();
+    if let Some(block_children) = plan.layout.closure_body_children.get(&closure_id) {
+        return render_aligned_block_layout_nodes(ctx, &root, block_children.as_slice(), plan);
+    }
+
     let Some(closure_plan) = find_syntax_plan_by_id(&plan.layout.root_nodes, closure_id) else {
         return Vec::new();
     };

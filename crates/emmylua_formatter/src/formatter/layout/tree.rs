@@ -1,4 +1,4 @@
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 
 use emmylua_parser::{
     LuaAstNode, LuaChunk, LuaComment, LuaCommentFormatDirective, LuaSyntaxId, LuaSyntaxKind,
@@ -10,13 +10,15 @@ use crate::formatter::model::{CommentLayoutPlan, LayoutNodePlan, SyntaxNodeLayou
 pub fn collect_root_layout_nodes(
     chunk: &LuaChunk,
     format_disabled: &mut HashSet<LuaSyntaxId>,
+    closure_body_children: &mut HashMap<LuaSyntaxId, Vec<LayoutNodePlan>>,
 ) -> Vec<LayoutNodePlan> {
-    collect_child_layout_nodes(chunk.syntax(), format_disabled)
+    collect_child_layout_nodes(chunk.syntax(), format_disabled, closure_body_children)
 }
 
 fn collect_child_layout_nodes(
     node: &LuaSyntaxNode,
     format_disabled: &mut HashSet<LuaSyntaxId>,
+    closure_body_children: &mut HashMap<LuaSyntaxId, Vec<LayoutNodePlan>>,
 ) -> Vec<LayoutNodePlan> {
     let mut nodes = Vec::new();
     let mut format_off = false;
@@ -30,7 +32,9 @@ fn collect_child_layout_nodes(
                 format_disabled.insert(syntax_id);
             }
 
-            if let Some(layout_node) = collect_layout_node(child, format_disabled) {
+            if let Some(layout_node) =
+                collect_layout_node(child, format_disabled, closure_body_children)
+            {
                 nodes.push(layout_node);
             }
 
@@ -46,7 +50,9 @@ fn collect_child_layout_nodes(
             format_disabled.insert(syntax_id);
         }
 
-        if let Some(layout_node) = collect_layout_node(child, format_disabled) {
+        if let Some(layout_node) =
+            collect_layout_node(child, format_disabled, closure_body_children)
+        {
             nodes.push(layout_node);
         }
     }
@@ -57,14 +63,32 @@ fn collect_child_layout_nodes(
 fn collect_layout_node(
     node: LuaSyntaxNode,
     format_disabled: &mut HashSet<LuaSyntaxId>,
+    closure_body_children: &mut HashMap<LuaSyntaxId, Vec<LayoutNodePlan>>,
 ) -> Option<LayoutNodePlan> {
     match node.kind().into() {
         LuaSyntaxKind::Comment => Some(LayoutNodePlan::Comment(collect_comment_layout(node))),
-        kind => Some(LayoutNodePlan::Syntax(SyntaxNodeLayoutPlan {
-            syntax_id: LuaSyntaxId::from_node(&node),
-            kind,
-            children: collect_child_layout_nodes(&node, format_disabled),
-        })),
+        kind => {
+            let syntax_id = LuaSyntaxId::from_node(&node);
+            let children =
+                collect_child_layout_nodes(&node, format_disabled, closure_body_children);
+
+            if kind == LuaSyntaxKind::ClosureExpr
+                && let Some(block_children) = children.iter().find_map(|child| match child {
+                    LayoutNodePlan::Syntax(plan) if plan.kind == LuaSyntaxKind::Block => {
+                        Some(plan.children.clone())
+                    }
+                    _ => None,
+                })
+            {
+                closure_body_children.insert(syntax_id, block_children);
+            }
+
+            Some(LayoutNodePlan::Syntax(SyntaxNodeLayoutPlan {
+                syntax_id,
+                kind,
+                children,
+            }))
+        }
     }
 }
 

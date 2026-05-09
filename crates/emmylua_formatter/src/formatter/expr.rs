@@ -25,7 +25,6 @@ use super::trivia::{
     has_non_trivia_before_on_same_line_tokenwise, node_has_direct_comment_child,
     source_line_prefix_width, trailing_gap_requests_alignment,
 };
-use super::{RenderHotspotKind, profile_render_hotspot};
 
 pub fn format_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
     if expr_is_chain_root(expr)
@@ -679,44 +678,40 @@ fn format_call_arg_list(
     plan: &FormatPlan,
     args_list: &LuaCallArgList,
 ) -> Vec<DocIR> {
-    profile_render_hotspot(RenderHotspotKind::CallArgs, || {
-        let args: Vec<_> = args_list.get_args().collect();
-        let layout_plan = expr_sequence_layout_plan(plan, args_list.syntax());
-        if call_arg_list_has_direct_comments(args_list) {
-            let collected = collect_call_arg_entries(ctx, plan, args_list);
-            if collected.has_comments {
-                return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
-            }
+    let args: Vec<_> = args_list.get_args().collect();
+    let layout_plan = expr_sequence_layout_plan(plan, args_list.syntax());
+    if call_arg_list_has_direct_comments(args_list) {
+        let collected = collect_call_arg_entries(ctx, plan, args_list);
+        if collected.has_comments {
+            return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
         }
+    }
 
-        let preserve_multiline_args = layout_plan.preserve_multiline;
-        let attach_first_arg = preserve_multiline_args && layout_plan.first_arg_multiline_block;
-        let arg_docs: Vec<Vec<DocIR>> = args
-            .iter()
-            .enumerate()
-            .map(|(index, arg)| {
-                profile_render_hotspot(RenderHotspotKind::CallArgValues, || {
-                    format_call_arg_value_ir(
-                        ctx,
-                        plan,
-                        arg,
-                        attach_first_arg,
-                        preserve_multiline_args,
-                        index,
-                    )
-                })
-            })
-            .collect();
+    let preserve_multiline_args = layout_plan.preserve_multiline;
+    let attach_first_arg = preserve_multiline_args && layout_plan.first_arg_multiline_block;
+    let arg_docs: Vec<Vec<DocIR>> = args
+        .iter()
+        .enumerate()
+        .map(|(index, arg)| {
+            format_call_arg_value_ir(
+                ctx,
+                plan,
+                arg,
+                attach_first_arg,
+                preserve_multiline_args,
+                index,
+            )
+        })
+        .collect();
 
-        format_call_arg_list_from_docs(
-            ctx,
-            plan,
-            args_list,
-            attach_first_arg,
-            layout_plan,
-            arg_docs,
-        )
-    })
+    format_call_arg_list_from_docs(
+        ctx,
+        plan,
+        args_list,
+        attach_first_arg,
+        layout_plan,
+        arg_docs,
+    )
 }
 
 fn format_call_arg_list_from_docs(
@@ -727,71 +722,69 @@ fn format_call_arg_list_from_docs(
     layout_plan: ExprSequenceLayoutPlan,
     arg_docs: Vec<Vec<DocIR>>,
 ) -> Vec<DocIR> {
-    profile_render_hotspot(RenderHotspotKind::CallArgsFromDocs, || {
-        let first_arg_is_multiline_table = layout_plan.first_arg_multiline_table;
-        let (open, close) = paren_tokens(args_list.syntax());
-        let comma = first_direct_token(args_list.syntax(), LuaTokenKind::TkComma);
+    let first_arg_is_multiline_table = layout_plan.first_arg_multiline_table;
+    let (open, close) = paren_tokens(args_list.syntax());
+    let comma = first_direct_token(args_list.syntax(), LuaTokenKind::TkComma);
 
-        if attach_first_arg {
-            return format_call_args_with_attached_first_arg(
-                ctx,
-                plan,
-                first_arg_is_multiline_table,
-                layout_plan,
-                arg_docs,
-                token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
-                token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
-                comma.as_ref(),
-            );
-        }
-
-        if let Some(block_index) = layout_plan.single_inline_block_arg_index {
-            return format_call_args_with_inline_block_item(
-                ctx,
-                plan,
-                layout_plan,
-                arg_docs,
-                block_index,
-                token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
-                token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
-                comma.as_ref(),
-            );
-        }
-
-        if arg_docs
-            .iter()
-            .skip(1)
-            .any(|docs| ir::ir_has_forced_line_break(docs))
-        {
-            return format_call_args_with_block_items(
-                ctx,
-                layout_plan,
-                arg_docs,
-                token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
-                token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
-                comma.as_ref(),
-            );
-        }
-
-        format_delimited_sequence(
+    if attach_first_arg {
+        return format_call_args_with_attached_first_arg(
             ctx,
-            DelimitedSequenceLayout {
-                open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
-                close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
-                items: arg_docs,
-                strategy: ctx.config.layout.call_args_expand.clone(),
-                preserve_multiline: false,
-                flat_separator: comma_flat_separator(plan, comma.as_ref()),
-                fill_separator: comma_fill_separator(comma.as_ref()),
-                break_separator: comma_break_separator(comma.as_ref()),
-                flat_open_padding: token_right_spacing_docs(plan, open.as_ref()),
-                flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
-                grouped_padding: grouped_padding_from_pair(plan, open.as_ref(), close.as_ref()),
-                flat_trailing: vec![],
-                grouped_trailing: trailing_comma_ir(ctx.config.output.trailing_comma.clone()),
-            },
-        )
-    })
+            plan,
+            first_arg_is_multiline_table,
+            layout_plan,
+            arg_docs,
+            token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
+            token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
+            comma.as_ref(),
+        );
+    }
+
+    if let Some(block_index) = layout_plan.single_inline_block_arg_index {
+        return format_call_args_with_inline_block_item(
+            ctx,
+            plan,
+            layout_plan,
+            arg_docs,
+            block_index,
+            token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
+            token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
+            comma.as_ref(),
+        );
+    }
+
+    if arg_docs
+        .iter()
+        .skip(1)
+        .any(|docs| ir::ir_has_forced_line_break(docs))
+    {
+        return format_call_args_with_block_items(
+            ctx,
+            layout_plan,
+            arg_docs,
+            token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
+            token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
+            comma.as_ref(),
+        );
+    }
+
+    format_delimited_sequence(
+        ctx,
+        DelimitedSequenceLayout {
+            open: token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
+            close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
+            items: arg_docs,
+            strategy: ctx.config.layout.call_args_expand.clone(),
+            preserve_multiline: false,
+            flat_separator: comma_flat_separator(plan, comma.as_ref()),
+            fill_separator: comma_fill_separator(comma.as_ref()),
+            break_separator: comma_break_separator(comma.as_ref()),
+            flat_open_padding: token_right_spacing_docs(plan, open.as_ref()),
+            flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
+            grouped_padding: grouped_padding_from_pair(plan, open.as_ref(), close.as_ref()),
+            flat_trailing: vec![],
+            grouped_trailing: trailing_comma_ir(ctx.config.output.trailing_comma.clone()),
+        },
+    )
 }
 
 fn format_call_args_with_inline_block_item(
@@ -1046,17 +1039,21 @@ fn build_attached_first_arg_one_per_line(
     close: DocIR,
     comma: Option<&LuaSyntaxToken>,
 ) -> Vec<DocIR> {
+    let Some((first_arg, tail_items)) = arg_docs.split_first() else {
+        return vec![ir::group_break(vec![open, close])];
+    };
+
     let mut one_per_line_docs = vec![open];
-    let Some((first_arg, rest_args)) = arg_docs.split_first() else {
+    one_per_line_docs.extend(first_arg.clone());
+    if tail_items.is_empty() {
         one_per_line_docs.push(close);
         return vec![ir::group_break(one_per_line_docs)];
-    };
-    one_per_line_docs.extend(first_arg.clone());
-    one_per_line_docs.extend(comma_token_docs(comma));
+    }
 
-    let rest_count = rest_args.len();
+    one_per_line_docs.extend(comma_token_docs(comma));
     let mut rest = Vec::new();
-    for (index, item_docs) in rest_args.iter().enumerate() {
+    let rest_count = tail_items.len();
+    for (index, item_docs) in tail_items.iter().enumerate() {
         rest.push(ir::hard_line());
         rest.extend(item_docs.clone());
         if index + 1 < rest_count {
@@ -1293,17 +1290,21 @@ fn format_table_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaTableExpr
         ];
     }
 
-    let collected = collect_table_entries(ctx, plan, expr);
+    let mut collected = collect_table_entries(ctx, plan, expr);
     let has_assign_fields = collected
         .entries
         .iter()
-        .any(|entry| entry.eq_split.is_some());
+        .any(|entry| entry.field.is_assign_field());
     let has_assign_alignment = ctx.config.align.table_field
         && has_assign_fields
         && table_group_requests_alignment(&collected.entries);
 
+    if has_assign_alignment {
+        populate_table_eq_splits(ctx, plan, &mut collected.entries);
+    }
+
     if collected.has_comments {
-        return format_table_with_comments(ctx, expr, collected);
+        return format_table_with_comments(ctx, plan, expr, collected);
     }
 
     let field_docs: Vec<Vec<DocIR>> = collected
@@ -1534,7 +1535,7 @@ fn format_multiline_table_expr(
     if collected.has_comments
         || (ctx.config.align.table_field && table_group_requests_alignment(&collected.entries))
     {
-        return format_table_with_comments(ctx, expr, collected);
+        return format_table_with_comments(ctx, plan, expr, collected);
     }
 
     let field_docs: Vec<Vec<DocIR>> = collected
@@ -1575,6 +1576,7 @@ struct CollectedTableEntries {
 }
 
 struct TableEntry {
+    field: LuaTableField,
     leading_comments: Vec<Vec<DocIR>>,
     doc: Vec<DocIR>,
     eq_split: Option<EqSplitDocs>,
@@ -1632,13 +1634,10 @@ fn collect_table_entries(
                 )
             });
             collected.entries.push(TableEntry {
+                field: field.clone(),
                 leading_comments: std::mem::take(&mut pending_comments),
                 doc: format_table_field_ir(ctx, plan, &field),
-                eq_split: if ctx.config.align.table_field {
-                    format_table_field_eq_split(ctx, plan, &field)
-                } else {
-                    None
-                },
+                eq_split: None,
                 align_hint: field_requests_alignment(&field),
                 comment_align_hint,
                 trailing_comment: trailing_comment.map(|(docs, _)| docs),
@@ -1656,8 +1655,9 @@ fn collect_table_entries(
 
 fn format_table_with_comments(
     ctx: &FormatContext,
+    plan: &FormatPlan,
     expr: &LuaTableExpr,
-    collected: CollectedTableEntries,
+    mut collected: CollectedTableEntries,
 ) -> Vec<DocIR> {
     let (open, close) = brace_tokens(expr.syntax());
     let mut docs = vec![token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace)];
@@ -1666,8 +1666,12 @@ fn format_table_with_comments(
         && collected
             .entries
             .iter()
-            .any(|entry| entry.eq_split.is_some())
+            .any(|entry| entry.field.is_assign_field())
         && table_group_requests_alignment(&collected.entries);
+
+    if should_align_eq {
+        populate_table_eq_splits(ctx, plan, &mut collected.entries);
+    }
 
     if !collected.comments_after_open.is_empty() || !collected.entries.is_empty() {
         let mut inner = Vec::new();
@@ -1806,6 +1810,14 @@ fn format_table_field_eq_split(
         after.extend(format_table_field_value_ir(ctx, plan, &value));
     }
     Some((before, after))
+}
+
+fn populate_table_eq_splits(ctx: &FormatContext, plan: &FormatPlan, entries: &mut [TableEntry]) {
+    for entry in entries {
+        if entry.eq_split.is_none() && entry.field.is_assign_field() {
+            entry.eq_split = format_table_field_eq_split(ctx, plan, &entry.field);
+        }
+    }
 }
 
 fn field_requests_alignment(field: &LuaTableField) -> bool {
@@ -2398,60 +2410,53 @@ fn try_format_chain_expr(
     plan: &FormatPlan,
     expr: &LuaExpr,
 ) -> Option<Vec<DocIR>> {
-    profile_render_hotspot(RenderHotspotKind::ChainExpr, || {
-        let (root, segments) =
-            profile_render_hotspot(RenderHotspotKind::ChainCollectSegments, || {
-                collect_chain_segments(ctx, plan, expr)
-            })?;
-        if segments.len() <= 1 {
-            return None;
-        }
+    let (root, segments) = collect_chain_segments(ctx, plan, expr)?;
+    if segments.len() <= 1 {
+        return None;
+    }
 
-        profile_render_hotspot(RenderHotspotKind::ChainFromSegments, || {
-            let root_docs = format_expr(ctx, plan, &root);
-            let flat_tail = segments.concat();
-            let flat = {
-                let mut docs = root_docs.clone();
-                docs.extend(flat_tail);
-                docs
-            };
+    let root_docs = format_expr(ctx, plan, &root);
+    let flat_tail = segments.concat();
+    let flat = {
+        let mut docs = root_docs.clone();
+        docs.extend(flat_tail);
+        docs
+    };
 
-            if segments
-                .iter()
-                .any(|docs| ir::ir_has_forced_line_break(docs))
-            {
-                return Some(flat);
-            }
+    if segments
+        .iter()
+        .any(|docs| ir::ir_has_forced_line_break(docs))
+    {
+        return Some(flat);
+    }
 
-            let fill_tail = ir::fill(build_fill_parts(&segments, &[ir::soft_line_or_empty()]));
-            let one_per_line_tail = ir::intersperse(segments.clone(), vec![ir::hard_line()]);
+    let fill_tail = ir::fill(build_fill_parts(&segments, &[ir::soft_line_or_empty()]));
+    let one_per_line_tail = ir::intersperse(segments.clone(), vec![ir::hard_line()]);
 
-            let fill = vec![ir::group(vec![
-                ir::list(root_docs.clone()),
-                ir::indent(vec![ir::soft_line(), fill_tail]),
-            ])];
-            let one_per_line = vec![ir::group_break(vec![
-                ir::list(root_docs),
-                ir::indent(vec![ir::hard_line(), ir::list(one_per_line_tail)]),
-            ])];
+    let fill = vec![ir::group(vec![
+        ir::list(root_docs.clone()),
+        ir::indent(vec![ir::soft_line(), fill_tail]),
+    ])];
+    let one_per_line = vec![ir::group_break(vec![
+        ir::list(root_docs),
+        ir::indent(vec![ir::hard_line(), ir::list(one_per_line_tail)]),
+    ])];
 
-            Some(choose_sequence_layout(
-                ctx,
-                SequenceLayoutCandidates {
-                    flat: Some(flat),
-                    fill: Some(fill),
-                    one_per_line: Some(one_per_line),
-                    ..Default::default()
-                },
-                SequenceLayoutPolicy {
-                    allow_fill: true,
-                    prefer_balanced_break_lines: true,
-                    first_line_prefix_width: source_line_prefix_width(expr.syntax()),
-                    ..Default::default()
-                },
-            ))
-        })
-    })
+    Some(choose_sequence_layout(
+        ctx,
+        SequenceLayoutCandidates {
+            flat: Some(flat),
+            fill: Some(fill),
+            one_per_line: Some(one_per_line),
+            ..Default::default()
+        },
+        SequenceLayoutPolicy {
+            allow_fill: true,
+            prefer_balanced_break_lines: true,
+            first_line_prefix_width: source_line_prefix_width(expr.syntax()),
+            ..Default::default()
+        },
+    ))
 }
 
 fn collect_chain_segments(

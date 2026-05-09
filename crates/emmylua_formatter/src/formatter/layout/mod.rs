@@ -20,8 +20,11 @@ use emmylua_parser::{
 
 pub fn analyze_layout(_ctx: &FormatContext, chunk: &LuaChunk, plan: &mut FormatPlan) {
     plan.layout.format_block_with_legacy = true;
-    plan.layout.root_nodes =
-        tree::collect_root_layout_nodes(chunk, &mut plan.layout.format_disabled);
+    plan.layout.root_nodes = tree::collect_root_layout_nodes(
+        chunk,
+        &mut plan.layout.format_disabled,
+        &mut plan.layout.closure_body_children,
+    );
     analyze_node_layouts(chunk, plan);
 }
 
