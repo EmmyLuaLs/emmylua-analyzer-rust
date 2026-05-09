@@ -11,6 +11,7 @@ use crate::config::{
     ExpandStrategy, QuoteStyle, SimpleLambdaSingleLine, SingleArgCallParens, TrailingComma,
 };
 use crate::ir;
+use crate::printer::measure_docs;
 use ir::{AlignEntry, DocIR};
 
 use super::FormatContext;
@@ -725,6 +726,8 @@ fn format_call_arg_list_from_docs(
     arg_docs: Vec<Vec<DocIR>>,
 ) -> Vec<DocIR> {
     let first_arg_is_multiline_table = layout_plan.first_arg_multiline_table;
+    let allow_inline_tail_after_first_arg =
+        layout_plan.first_arg_multiline_block || first_arg_is_multiline_table;
     let (open, close) = paren_tokens(args_list.syntax());
     let comma = first_direct_token(args_list.syntax(), LuaTokenKind::TkComma);
 
@@ -732,7 +735,7 @@ fn format_call_arg_list_from_docs(
         return format_call_args_with_attached_first_arg(
             ctx,
             plan,
-            first_arg_is_multiline_table,
+            allow_inline_tail_after_first_arg,
             layout_plan,
             arg_docs,
             token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen),
@@ -998,6 +1001,14 @@ fn format_call_args_with_attached_first_arg(
             .iter()
             .all(|item_docs| !ir::ir_has_forced_line_break(item_docs));
 
+    if tail_is_single_line
+        && let Some(attached_inline_tail) = try_format_attached_inline_tail(
+            ctx, plan, first_arg, tail_items, &open, &close, comma,
+        )
+    {
+        return attached_inline_tail;
+    }
+
     let flat = tail_is_single_line.then(|| {
         let mut docs = vec![open.clone()];
         docs.extend(first_arg.clone());
@@ -1033,6 +1044,39 @@ fn format_call_args_with_attached_first_arg(
             ..Default::default()
         },
     )
+}
+
+fn try_format_attached_inline_tail(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    first_arg: &[DocIR],
+    tail_items: &[Vec<DocIR>],
+    open: &DocIR,
+    close: &DocIR,
+    comma: Option<&LuaSyntaxToken>,
+) -> Option<Vec<DocIR>> {
+    if !ir::ir_has_forced_line_break(first_arg) {
+        return None;
+    }
+
+    let mut trailing_docs = comma_flat_separator(plan, comma);
+    append_docs_with_separator(&mut trailing_docs, tail_items, &comma_flat_separator(plan, comma));
+    trailing_docs.push(close.clone());
+
+    let last_line_width = measure_docs(ctx.config, first_arg)
+        .line_widths
+        .last()
+        .copied()
+        .unwrap_or_else(|| ir::ir_flat_width(first_arg));
+    let trailing_width = ir::ir_flat_width(&trailing_docs);
+    if last_line_width + trailing_width > ctx.config.layout.max_line_width {
+        return None;
+    }
+
+    let mut docs = vec![open.clone()];
+    docs.extend(first_arg.to_vec());
+    docs.extend(trailing_docs);
+    Some(docs)
 }
 
 fn build_attached_first_arg_one_per_line(

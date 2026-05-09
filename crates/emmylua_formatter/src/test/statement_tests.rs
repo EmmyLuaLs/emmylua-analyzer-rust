@@ -334,8 +334,7 @@ end
 "#,
             r#"if check(function ()
     return true
-end,
-    'LOADTRUE', 'RETURN1') and another_predicate then
+end, 'LOADTRUE', 'RETURN1') and another_predicate then
     print('ok')
 end
 "#
@@ -395,8 +394,7 @@ end
 "#,
             r#"while check(function ()
     return true
-end,
-    'LOADTRUE', 'RETURN1') and another_predicate do
+end, 'LOADTRUE', 'RETURN1') and another_predicate do
     print('ok')
 end
 "#
@@ -630,8 +628,7 @@ end
 "#,
             r#"for key, value in iterate(function ()
     return true
-end,
-    'LOADTRUE', 'RETURN1'),
+end, 'LOADTRUE', 'RETURN1'),
     fallback_iterator do
     print(key, value)
 end

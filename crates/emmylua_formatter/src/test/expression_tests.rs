@@ -670,8 +670,45 @@ end, 'LOADTRUE', 'RETURN1')
 "#,
             r#"check(function ()
     return not not k3
-end,
-    'LOADTRUE', 'RETURN1')
+end, 'LOADTRUE', 'RETURN1')
+"#
+        );
+    }
+
+    #[test]
+    fn test_multiline_hook_callback_prefers_packed_tail_modes() {
+        assert_format!(
+            r#"debug.sethook(function (e)
+    assert(e == \"call\")
+    dostring(\"XX = 12\") -- test dostring inside hooks
+    -- testing errors inside hooks
+    assert(not pcall(load(\"a='joao'+1\")))
+    debug.sethook(function (e, l)
+        assert(debug.getinfo(2, \"l\").currentline == l)
+        local f, m, c = debug.gethook()
+        assert(e == \"line\")
+        assert(m == 'l' and c == 0)
+        debug.sethook(nil) -- hook is called only once
+        assert(not X) -- check that
+        X = collectlocals(2)
+    end, \"l\")
+end, \"c\")
+"#,
+            r#"debug.sethook(function (e)
+    assert(e == \"call\")
+    dostring(\"XX = 12\") -- test dostring inside hooks
+    -- testing errors inside hooks
+    assert(not pcall(load(\"a='joao'+1\")))
+    debug.sethook(function (e, l)
+        assert(debug.getinfo(2, \"l\").currentline == l)
+        local f, m, c = debug.gethook()
+        assert(e == \"line\")
+        assert(m == 'l' and c == 0)
+        debug.sethook(nil) -- hook is called only once
+        assert(not X) -- check that
+        X = collectlocals(2)
+    end, \"l\")
+end, \"c\")
 "#
         );
     }
@@ -920,8 +957,7 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
 "#,
             r#"assert(check(function ()
         return true
-    end,
-        'LOADTRUE', 'RETURN1') == "hiho")
+    end, 'LOADTRUE', 'RETURN1') == "hiho")
 "#,
             config
         );
@@ -1301,8 +1337,7 @@ end
             r#"
 if check(function ()
     return true
-end,
-    'LOADTRUE', 'RETURN1') == "hiho" then
+end, 'LOADTRUE', 'RETURN1') == "hiho" then
     print('ok')
 end
 "#
