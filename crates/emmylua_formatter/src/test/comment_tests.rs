@@ -1211,7 +1211,7 @@ function f(a, bbbbb, c) end
             r#"--- @param chunk      (fun(...: any): string)|Language<"Lua">
 local function f(chunk) end
 "#,
-            r#"---@param chunk (fun(...: any): string)|Language<"Lua">
+            r#"---@param chunk (fun(...: any): string) | Language<"Lua">
 local function f(chunk) end
 "#
         );
@@ -1223,7 +1223,7 @@ local function f(chunk) end
             r#"--- @param value table<K, V>  |V[]|{[K]: V }
 local function f(value) end
 "#,
-            r#"---@param value table<K, V>|V[]|{[K]: V }
+            r#"---@param value table<K, V> | V[] | {[K]: V }
 local function f(value) end
 "#
         );
@@ -1446,7 +1446,7 @@ local t = {}
 --- @field __sub?       fun(t1,         t2): any
 "#,
             r#"---@class std.metatable
----@field __mode?      'v'|'k'|'kv'
+---@field __mode?      'v' | 'k' | 'kv'
 ---@field __metatable? any
 ---@field __tostring?  (fun(t): string)
 ---@field __gc?        fun(t)
@@ -1876,15 +1876,15 @@ local value = nil
 local t = {}
 "#,
             r#"---@class std.osdateparam
----@field year  integer|string    four digits
----@field month integer|string    1-12
----@field day   integer|string    1-31
----@field hour  (integer|string)? 0-23
----@field min   (integer|string)? 0-59
----@field sec   (integer|string)? 0-61,due to leap seconds
----@field wday  (integer|string)? 1-7,Sunday is 1
----@field yday  (integer|string)? 1-366
----@field isdst boolean?          daylight saving flag, a boolean.
+---@field year  integer | string    four digits
+---@field month integer | string    1-12
+---@field day   integer | string    1-31
+---@field hour  (integer | string)? 0-23
+---@field min   (integer | string)? 0-59
+---@field sec   (integer | string)? 0-61,due to leap seconds
+---@field wday  (integer | string)? 1-7,Sunday is 1
+---@field yday  (integer | string)? 1-366
+---@field isdst boolean?            daylight saving flag, a boolean.
 local t = {}
 "#
         );
@@ -1911,7 +1911,7 @@ local function f() end
 ---@overload   fun(x: string): integer callable
 local fn = nil
 "#,
-            r#"---@type string|integer value
+            r#"---@type string | integer value
 ---@overload fun(x: string): integer callable
 local fn = nil
 "#
@@ -1936,7 +1936,7 @@ local d = {}
             r#"--- @type ( string|number)[]
 local c
 "#,
-            r#"---@type (string|number)[]
+            r#"---@type (string | number)[]
 local c
 "#
         );
@@ -1972,7 +1972,7 @@ local function f() end
             r#"--- @generic T, Num: integer|'#'
 local function f() end
 "#,
-            r#"---@generic T, Num: integer|'#'
+            r#"---@generic T, Num: integer | '#'
 local function f() end
 "#
         );
