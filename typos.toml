@@ -18,6 +18,6 @@ extend-exclude = [
   "*.yaml",
   "vim_lexer.rs",
   "shell_lexer.rs",
-  "sql_lexer.rs"
+  "sql_lexer.rs",
   "util.lua"
 ]
