@@ -106,6 +106,7 @@ fn render_layout_node(
             LuaSyntaxKind::CallExprStat => {
                 render_call_expr_stat(ctx, root, syntax_plan.syntax_id, plan)
             }
+            LuaSyntaxKind::EmptyStat => render_empty_stat(root, syntax_plan.syntax_id),
             _ => render_unmigrated_syntax_leaf(root, syntax_plan.syntax_id),
         },
     }
@@ -212,7 +213,7 @@ fn render_local_stat(
         ));
     }
 
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -284,7 +285,7 @@ fn render_assign_stat(
         expr_docs,
     ));
 
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -348,7 +349,7 @@ fn render_return_stat(
         ));
     }
 
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -370,8 +371,16 @@ fn render_call_expr_stat(
         .get_call_expr()
         .map(|expr| render_expr(ctx, plan, &expr.into()))
         .unwrap_or_default();
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
+}
+
+fn render_empty_stat(root: &LuaSyntaxNode, syntax_id: LuaSyntaxId) -> Vec<DocIR> {
+    let Some(node) = find_node_by_id(root, syntax_id) else {
+        return Vec::new();
+    };
+
+    vec![ir::source_node_trimmed(node)]
 }
 
 fn format_local_stat_trivia_aware(
@@ -427,7 +436,7 @@ fn format_local_stat_trivia_aware(
         }
     }
 
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -483,7 +492,7 @@ fn format_assign_stat_trivia_aware(
         }
     }
 
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -526,7 +535,7 @@ fn format_return_stat_trivia_aware(
         render_sequence(&mut docs, &entries, false);
     }
 
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
 
     docs
 }
@@ -1146,6 +1155,11 @@ fn render_aligned_block_layout_nodes(
     let mut index = 0usize;
 
     while index < nodes.len() {
+        if layout_node_should_be_skipped_in_block(nodes, index) {
+            index += 1;
+            continue;
+        }
+
         if layout_comment_is_inline_trailing(root, nodes, index) {
             index += 1;
             continue;
@@ -1173,6 +1187,14 @@ fn render_aligned_block_layout_nodes(
     }
 
     docs
+}
+
+fn layout_node_should_be_skipped_in_block(nodes: &[LayoutNodePlan], index: usize) -> bool {
+    matches!(nodes.get(index), Some(LayoutNodePlan::Syntax(syntax_plan)) if syntax_plan.kind == LuaSyntaxKind::EmptyStat)
+        && nodes.iter().enumerate().any(|(other_index, node)| {
+            other_index != index
+                && matches!(node, LayoutNodePlan::Syntax(other_plan) if other_plan.kind != LuaSyntaxKind::EmptyStat)
+        })
 }
 
 fn try_render_aligned_statement_group(
@@ -1541,6 +1563,56 @@ pub(super) fn append_trailing_comment_suffix(
     let mut suffix = (0..padding).map(|_| ir::space()).collect::<Vec<_>>();
     suffix.extend(render_comment_with_spacing(ctx, &comment, plan));
     docs.push(ir::line_suffix(suffix));
+}
+
+pub(super) fn append_trailing_statement_suffix(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    docs: &mut Vec<DocIR>,
+    node: &LuaSyntaxNode,
+) {
+    append_trailing_statement_semicolon(ctx, plan, docs, node);
+    append_trailing_comment_suffix(ctx, plan, docs, node);
+}
+
+fn append_trailing_statement_semicolon(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    docs: &mut Vec<DocIR>,
+    node: &LuaSyntaxNode,
+) {
+    if !ctx.config.output.preserve_statement_semicolon {
+        return;
+    }
+
+    let Some(semicolon) = trailing_statement_semicolon_token(node) else {
+        return;
+    };
+
+    docs.extend(token_left_spacing_docs(plan, Some(&semicolon)));
+    docs.push(ir::source_token(semicolon));
+}
+
+pub(super) fn source_order_token_is_trailing_statement_semicolon(
+    node: &LuaSyntaxNode,
+    token: &LuaSyntaxToken,
+) -> bool {
+    trailing_statement_semicolon_token(node)
+        .is_some_and(|semicolon| semicolon.text_range() == token.text_range())
+}
+
+fn trailing_statement_semicolon_token(node: &LuaSyntaxNode) -> Option<LuaSyntaxToken> {
+    let children = node.children_with_tokens().collect::<Vec<_>>();
+    for child in children.into_iter().rev() {
+        match child.kind() {
+            LuaKind::Token(LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine) => continue,
+            LuaKind::Syntax(LuaSyntaxKind::Comment) => continue,
+            LuaKind::Token(LuaTokenKind::TkSemicolon) => return child.into_token(),
+            _ => return None,
+        }
+    }
+
+    None
 }
 
 fn find_inline_trailing_comment_node(node: &LuaSyntaxNode) -> Option<LuaSyntaxNode> {

@@ -163,6 +163,8 @@ impl Default for LayoutConfig {
 pub struct OutputConfig {
     /// Whether to ensure the formatted file ends with a newline.
     pub insert_final_newline: bool,
+    /// Whether to preserve optional trailing semicolons on statements.
+    pub preserve_statement_semicolon: bool,
     /// General trailing comma strategy used by supported multiline constructs.
     pub trailing_comma: TrailingComma,
     /// Trailing separator strategy specifically for table constructors.
@@ -183,6 +185,7 @@ impl Default for OutputConfig {
     fn default() -> Self {
         Self {
             insert_final_newline: true,
+            preserve_statement_semicolon: false,
             trailing_comma: TrailingComma::Never,
             trailing_table_separator: TrailingTableSeparator::Inherit,
             quote_style: QuoteStyle::Preserve,

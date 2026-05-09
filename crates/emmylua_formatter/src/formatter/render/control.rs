@@ -18,10 +18,11 @@ use super::helpers::{
     render_expr, token_left_spacing_docs, token_right_spacing_docs,
 };
 use super::{
-    append_trailing_comment_suffix, comment_is_inline_after_anchor, first_direct_token,
+    append_trailing_statement_suffix, comment_is_inline_after_anchor, first_direct_token,
     format_statement_value_expr, has_direct_comment_before_token,
     render_block_plan_without_excluded_comments, render_comment_with_spacing,
     render_direct_body_comment, render_header_exprs_with_leading_docs,
+    source_order_token_is_trailing_statement_semicolon,
 };
 
 pub(super) fn render_while_stat(
@@ -38,7 +39,7 @@ pub(super) fn render_while_stat(
     };
 
     let mut docs = render_while_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -179,7 +180,7 @@ pub(super) fn render_for_stat(
         &stat,
         expr_list_plan,
     );
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -339,7 +340,7 @@ pub(super) fn render_for_range_stat(
         &stat,
         expr_list_plan,
     );
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -483,7 +484,7 @@ pub(super) fn render_repeat_stat(
     };
 
     let mut docs = render_repeat_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -502,6 +503,10 @@ fn render_repeat_source_order(
             NodeOrToken::Token(token) => {
                 let kind = token.kind().to_token();
                 if matches!(kind, LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine) {
+                    continue;
+                }
+
+                if source_order_token_is_trailing_statement_semicolon(syntax, token) {
                     continue;
                 }
 
@@ -615,7 +620,7 @@ pub(super) fn render_func_stat(
 
     let mut docs =
         render_named_function_stat_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -644,7 +649,7 @@ pub(super) fn render_local_func_stat(
 
     let mut docs =
         render_named_function_stat_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -663,6 +668,10 @@ fn render_named_function_stat_source_order(
             NodeOrToken::Token(token) => {
                 let kind = token.kind().to_token();
                 if matches!(kind, LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine) {
+                    continue;
+                }
+
+                if source_order_token_is_trailing_statement_semicolon(syntax, token) {
                     continue;
                 }
 
@@ -735,7 +744,7 @@ pub(super) fn render_do_stat(
     };
 
     let mut docs = render_do_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -856,11 +865,11 @@ pub(super) fn render_if_stat(
 
     if let Some(preserved) = try_preserve_single_line_if_body(ctx, &stat) {
         let mut docs = preserved;
-        append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+        append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
         return docs;
     }
     let mut docs = render_if_clause_source_order(ctx, root, stat.syntax(), syntax_plan, plan);
-    append_trailing_comment_suffix(ctx, plan, &mut docs, stat.syntax());
+    append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
 }
 
@@ -879,6 +888,10 @@ fn render_if_clause_source_order(
             NodeOrToken::Token(token) => {
                 let kind = token.kind().to_token();
                 if matches!(kind, LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine) {
+                    continue;
+                }
+
+                if source_order_token_is_trailing_statement_semicolon(syntax, token) {
                     continue;
                 }
 

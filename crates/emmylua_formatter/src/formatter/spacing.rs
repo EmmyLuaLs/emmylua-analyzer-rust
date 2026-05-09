@@ -165,6 +165,11 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         LuaTokenKind::TkPlus | LuaTokenKind::TkMinus => {
             if is_parent_syntax(token, LuaSyntaxKind::UnaryExpr) {
                 spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
+                if let Some(prev_token) = get_prev_sibling_token_without_space(token)
+                    && prev_token.kind().to_token() == LuaTokenKind::TkMinus
+                {
+                    spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(1));
+                }
             } else {
                 apply_space_rule(
                     spacing,

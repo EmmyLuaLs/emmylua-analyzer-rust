@@ -4,7 +4,7 @@ mod tests {
 
     use crate::{
         assert_format, assert_format_with_config,
-        config::{LayoutConfig, LuaFormatConfig},
+        config::{LayoutConfig, LuaFormatConfig, OutputConfig},
     };
 
     #[test]
@@ -1325,6 +1325,71 @@ end
 "#
         );
     }
+
+        #[test]
+        fn test_control_statement_semicolons_removed_by_default() {
+                assert_format!(
+                        r#"
+function f(i)
+    while 1 do
+        if i > 0 then
+            i = i - 1
+        else
+            return
+        end;
+    ; end
+end;
+"#,
+                        r#"
+function f(i)
+    while 1 do
+        if i > 0 then
+            i = i - 1
+        else
+            return
+        end
+    end
+end
+"#
+                );
+        }
+
+        #[test]
+        fn test_statement_semicolons_can_be_preserved_via_config() {
+                let config = LuaFormatConfig {
+                        output: OutputConfig {
+                                preserve_statement_semicolon: true,
+                                ..Default::default()
+                        },
+                        ..Default::default()
+                };
+
+                assert_format_with_config!(
+                        r#"
+function f(i)
+    while 1 do
+        if i > 0 then
+            i = i - 1;
+        else
+            return;
+        end;
+    ; end
+end;
+"#,
+                        r#"
+function f(i)
+    while 1 do
+        if i > 0 then
+            i = i - 1;
+        else
+            return;
+        end;
+    end
+end;
+"#,
+                        config
+                );
+        }
 
     // ========== local attributes ==========
 
