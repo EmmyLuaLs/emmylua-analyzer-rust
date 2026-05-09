@@ -1201,7 +1201,7 @@ local spec = {
     }
 
     #[test]
-    fn test_multiline_chain_layout_reflows_when_width_allows() {
+    fn test_multiline_chain_layout_preserves_explicit_segment_breaks() {
         assert_format!(
             r#"
 builder
@@ -1209,7 +1209,29 @@ builder
     :set_age(age)
     :build()
 "#,
-            r#"builder:set_name(name):set_age(age):build()
+            r#"builder
+    :set_name(name)
+    :set_age(age)
+    :build()
+"#
+        );
+    }
+
+    #[test]
+    fn test_multiline_builder_chain_with_short_add_calls_stays_multiline() {
+        assert_format!(
+            r#"
+Builder:new()
+    :add("OKoko.lua")
+    :add("ngx.lua")
+    :add("MyClass.lua")
+    :add("wezterm.lua")
+"#,
+            r#"Builder:new()
+    :add("OKoko.lua")
+    :add("ngx.lua")
+    :add("MyClass.lua")
+    :add("wezterm.lua")
 "#
         );
     }

@@ -2460,6 +2460,7 @@ fn try_format_chain_expr(
     if segments.len() <= 1 {
         return None;
     }
+    let preserve_multiline_chain = chain_has_explicit_segment_break(expr);
 
     let root_docs = format_expr(ctx, plan, &root);
     let flat_tail = segments.concat();
@@ -2468,6 +2469,15 @@ fn try_format_chain_expr(
         docs.extend(flat_tail);
         docs
     };
+
+    if preserve_multiline_chain {
+        return Some(format_preserved_multiline_chain(
+            ctx,
+            expr,
+            root_docs,
+            segments,
+        ));
+    }
 
     if segments
         .iter()
@@ -2503,6 +2513,104 @@ fn try_format_chain_expr(
             ..Default::default()
         },
     ))
+}
+
+fn format_preserved_multiline_chain(
+    ctx: &FormatContext,
+    expr: &LuaExpr,
+    root_docs: Vec<DocIR>,
+    segments: Vec<Vec<DocIR>>,
+) -> Vec<DocIR> {
+    let mut docs = root_docs.clone();
+    let mut start_index = 0usize;
+    let first_line_prefix_width = source_line_prefix_width(expr.syntax());
+
+    if let Some(first_segment) = segments.first()
+        && source_keeps_first_chain_segment_attached(expr)
+        && !ir::ir_has_forced_line_break(first_segment)
+        && first_line_prefix_width + ir::ir_flat_width(&root_docs) + ir::ir_flat_width(first_segment)
+            <= ctx.config.layout.max_line_width
+    {
+        docs.extend(first_segment.clone());
+        start_index = 1;
+    }
+
+    if start_index >= segments.len() {
+        return docs;
+    }
+
+    let remaining_tail = ir::intersperse(segments[start_index..].to_vec(), vec![ir::hard_line()]);
+    docs.push(ir::indent(vec![
+        ir::hard_line(),
+        ir::list(remaining_tail),
+    ]));
+    docs
+}
+
+fn chain_has_explicit_segment_break(expr: &LuaExpr) -> bool {
+    match expr {
+        LuaExpr::CallExpr(call) => {
+            let Some(prefix) = call.get_prefix_expr() else {
+                return false;
+            };
+
+            if let LuaExpr::IndexExpr(index) = &prefix
+                && let Some(base) = index.get_prefix_expr()
+            {
+                return token_starts_on_new_line(chain_index_boundary_token(index).as_ref())
+                    || chain_has_explicit_segment_break(&base);
+            }
+
+            token_starts_on_new_line(chain_call_boundary_token(call).as_ref())
+                || chain_has_explicit_segment_break(&prefix)
+        }
+        LuaExpr::IndexExpr(index) => {
+            let Some(prefix) = index.get_prefix_expr() else {
+                return false;
+            };
+
+            token_starts_on_new_line(chain_index_boundary_token(index).as_ref())
+                || chain_has_explicit_segment_break(&prefix)
+        }
+        _ => false,
+    }
+}
+
+fn source_keeps_first_chain_segment_attached(expr: &LuaExpr) -> bool {
+    let source_text = expr.syntax().text().to_string();
+    let Some(first_line) = source_text.lines().next() else {
+        return false;
+    };
+
+    first_line.contains(':') || first_line.contains('.') || first_line.contains('[')
+}
+
+fn chain_index_boundary_token(index: &LuaIndexExpr) -> Option<LuaSyntaxToken> {
+    first_direct_token(index.syntax(), LuaTokenKind::TkColon)
+        .or_else(|| first_direct_token(index.syntax(), LuaTokenKind::TkDot))
+        .or_else(|| first_direct_token(index.syntax(), LuaTokenKind::TkLeftBracket))
+}
+
+fn chain_call_boundary_token(call: &LuaCallExpr) -> Option<LuaSyntaxToken> {
+    let args_list = call.get_args_list()?;
+    first_direct_token(args_list.syntax(), LuaTokenKind::TkLeftParen)
+}
+
+fn token_starts_on_new_line(token: Option<&LuaSyntaxToken>) -> bool {
+    let Some(token) = token else {
+        return false;
+    };
+    let mut previous = token.prev_token();
+
+    while let Some(prev) = previous {
+        match prev.kind().to_token() {
+            LuaTokenKind::TkWhitespace => previous = prev.prev_token(),
+            LuaTokenKind::TkEndOfLine => return true,
+            _ => return false,
+        }
+    }
+
+    false
 }
 
 fn collect_chain_segments(
