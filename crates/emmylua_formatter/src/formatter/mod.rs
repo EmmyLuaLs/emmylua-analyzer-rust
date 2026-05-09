@@ -63,7 +63,11 @@ impl RenderHotspotProfile {
         append_hotspot_summary(&mut text, "call_arg_values", self.call_arg_values);
         append_hotspot_summary(&mut text, "call_args_from_docs", self.call_args_from_docs);
         append_hotspot_summary(&mut text, "chain_expr", self.chain_expr);
-        append_hotspot_summary(&mut text, "chain_collect_segments", self.chain_collect_segments);
+        append_hotspot_summary(
+            &mut text,
+            "chain_collect_segments",
+            self.chain_collect_segments,
+        );
         append_hotspot_summary(&mut text, "chain_from_segments", self.chain_from_segments);
         append_hotspot_summary(
             &mut text,

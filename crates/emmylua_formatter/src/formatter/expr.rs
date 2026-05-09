@@ -15,7 +15,6 @@ use ir::{AlignEntry, DocIR};
 
 use super::FormatContext;
 use super::model::{ExprSequenceLayoutPlan, FormatPlan, TokenSpacingExpected};
-use super::{RenderHotspotKind, profile_render_hotspot};
 use super::render;
 use super::sequence::{
     DelimitedSequenceLayout, SequenceLayoutCandidates, SequenceLayoutPolicy,
@@ -26,6 +25,7 @@ use super::trivia::{
     has_non_trivia_before_on_same_line_tokenwise, node_has_direct_comment_child,
     source_line_prefix_width, trailing_gap_requests_alignment,
 };
+use super::{RenderHotspotKind, profile_render_hotspot};
 
 pub fn format_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
     if expr_is_chain_root(expr)
@@ -680,33 +680,33 @@ fn format_call_arg_list(
     args_list: &LuaCallArgList,
 ) -> Vec<DocIR> {
     profile_render_hotspot(RenderHotspotKind::CallArgs, || {
-    let args: Vec<_> = args_list.get_args().collect();
-    let layout_plan = expr_sequence_layout_plan(plan, args_list.syntax());
-    if call_arg_list_has_direct_comments(args_list) {
-        let collected = collect_call_arg_entries(ctx, plan, args_list);
-        if collected.has_comments {
-            return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
+        let args: Vec<_> = args_list.get_args().collect();
+        let layout_plan = expr_sequence_layout_plan(plan, args_list.syntax());
+        if call_arg_list_has_direct_comments(args_list) {
+            let collected = collect_call_arg_entries(ctx, plan, args_list);
+            if collected.has_comments {
+                return format_call_arg_list_with_comments(ctx, plan, args_list, collected);
+            }
         }
-    }
 
-    let preserve_multiline_args = layout_plan.preserve_multiline;
-    let attach_first_arg = preserve_multiline_args && layout_plan.first_arg_multiline_block;
-    let arg_docs: Vec<Vec<DocIR>> = args
-        .iter()
-        .enumerate()
-        .map(|(index, arg)| {
-            profile_render_hotspot(RenderHotspotKind::CallArgValues, || {
-                format_call_arg_value_ir(
-                    ctx,
-                    plan,
-                    arg,
-                    attach_first_arg,
-                    preserve_multiline_args,
-                    index,
-                )
+        let preserve_multiline_args = layout_plan.preserve_multiline;
+        let attach_first_arg = preserve_multiline_args && layout_plan.first_arg_multiline_block;
+        let arg_docs: Vec<Vec<DocIR>> = args
+            .iter()
+            .enumerate()
+            .map(|(index, arg)| {
+                profile_render_hotspot(RenderHotspotKind::CallArgValues, || {
+                    format_call_arg_value_ir(
+                        ctx,
+                        plan,
+                        arg,
+                        attach_first_arg,
+                        preserve_multiline_args,
+                        index,
+                    )
+                })
             })
-        })
-        .collect();
+            .collect();
 
         format_call_arg_list_from_docs(
             ctx,
@@ -2399,9 +2399,10 @@ fn try_format_chain_expr(
     expr: &LuaExpr,
 ) -> Option<Vec<DocIR>> {
     profile_render_hotspot(RenderHotspotKind::ChainExpr, || {
-        let (root, segments) = profile_render_hotspot(RenderHotspotKind::ChainCollectSegments, || {
-            collect_chain_segments(ctx, plan, expr)
-        })?;
+        let (root, segments) =
+            profile_render_hotspot(RenderHotspotKind::ChainCollectSegments, || {
+                collect_chain_segments(ctx, plan, expr)
+            })?;
         if segments.len() <= 1 {
             return None;
         }
