@@ -134,7 +134,7 @@ local buf = {}
 
 --- A string, number, or any object obj with a __tostring metamethod to the buffer.
 ---
---- @alias string.buffer.data string|number|table
+--- @alias string.buffer.data string | number | table
 
 --- Appends a string str, a number num or any object obj with a `__tostring` metamethod to the buffer. Multiple arguments are appended in the given order.
 ---
@@ -219,7 +219,7 @@ function buf:skip(len) end
 --- Note: a zero length or no remaining buffer data returns an empty string and not `nil`.
 ---
 --- @param len? integer
---- @param ...  integer|nil
+--- @param ...  integer | nil
 --- @return string ...
 function buf:get(len, ...) end
 

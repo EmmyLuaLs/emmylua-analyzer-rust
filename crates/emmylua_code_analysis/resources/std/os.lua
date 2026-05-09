@@ -23,26 +23,26 @@ os = {}
 function os.clock() end
 
 --- @class std.osdateparam
---- @field year  integer|string    four digits
---- @field month integer|string    1-12
---- @field day   integer|string    1-31
---- @field hour  (integer|string)? 0-23
---- @field min   (integer|string)? 0-59
---- @field sec   (integer|string)? 0-61, due to leap seconds
---- @field wday  (integer|string)? 1-7, Sunday is 1
---- @field yday  (integer|string)? 1-366
---- @field isdst boolean?          daylight saving flag, a boolean.
+--- @field year  integer | string    four digits
+--- @field month integer | string    1-12
+--- @field day   integer | string    1-31
+--- @field hour  (integer | string)? 0-23
+--- @field min   (integer | string)? 0-59
+--- @field sec   (integer | string)? 0-61, due to leap seconds
+--- @field wday  (integer | string)? 1-7, Sunday is 1
+--- @field yday  (integer | string)? 1-366
+--- @field isdst boolean?            daylight saving flag, a boolean.
 
 --- @class std.osdate: std.osdateparam
---- @field year  integer|string four digits
---- @field month integer|string 1-12
---- @field day   integer|string 1-31
---- @field hour  integer|string 0-23
---- @field min   integer|string 0-59
---- @field sec   integer|string 0-61, due to leap seconds
---- @field wday  integer|string 1-7, Sunday is 1
---- @field yday  integer|string 1-366
---- @field isdst boolean        daylight saving flag, a boolean.
+--- @field year  integer | string four digits
+--- @field month integer | string 1-12
+--- @field day   integer | string 1-31
+--- @field hour  integer | string 0-23
+--- @field min   integer | string 0-59
+--- @field sec   integer | string 0-61, due to leap seconds
+--- @field wday  integer | string 1-7, Sunday is 1
+--- @field yday  integer | string 1-366
+--- @field isdst boolean          daylight saving flag, a boolean.
 
 ---
 --- Returns a string or a table containing date and time, formatted according
@@ -92,7 +92,7 @@ function os.date(format, time) end
 --- @return number
 function os.difftime(t2, t1) end
 
---- @version > 5.2
+--- @version >5.2
 ---
 --- This function is equivalent to the C function `system`. It passes `command`
 --- to be executed by an operating system shell. Its first result is **true** if
@@ -123,7 +123,7 @@ function os.execute(command) end
 --- @return integer
 function os.execute(command) end
 
---- @version > 5.2, JIT
+--- @version >5.2, JIT
 ---
 --- Calls the ISO C function `exit` to terminate the host program. If `code` is
 --- **true**, the returned status is `EXIT_SUCCESS`; if `code` is **false**, the
@@ -132,7 +132,7 @@ function os.execute(command) end
 ---
 --- If the optional second argument `close` is true, closes the Lua state before
 --- exiting.
---- @param code?  boolean|integer
+--- @param code?  boolean | integer
 --- @param close? boolean
 function os.exit(code, close) end
 

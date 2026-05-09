@@ -1,5 +1,5 @@
 --- @meta
---- @version > 5.3
+--- @version >5.3
 
 -- Copyright (c) 2018. tangzx(love.tangzx@qq.com)
 --
@@ -15,7 +15,7 @@
 -- License for the specific language governing permissions and limitations under
 -- the License.
 
---- @version > 5.3
+--- @version >5.3
 --- @class utf8lib
 utf8 = {}
 
@@ -43,7 +43,7 @@ utf8.charpattern = ""
 --- @return fun(s: string, i?: integer): integer, integer
 function utf8.codes(s) end
 
---- @version > 5.4
+--- @version >5.4
 --- @param s    string
 --- @param lax? boolean
 --- @return fun(s: string, i?: integer): integer, integer
@@ -61,7 +61,7 @@ function utf8.codes(s, lax) end
 --- @return integer
 function utf8.codepoint(s, i, j) end
 
---- @version > 5.4
+--- @version >5.4
 --- @overload fun(s: string): integer
 --- @param s    string
 --- @param i?   integer
@@ -83,7 +83,7 @@ function utf8.codepoint(s, i, j, lax) end
 --- @nodiscard
 function utf8.len(s, i, j) end
 
---- @version > 5.4
+--- @version >5.4
 --- @param s    string
 --- @param i?   integer
 --- @param j?   integer

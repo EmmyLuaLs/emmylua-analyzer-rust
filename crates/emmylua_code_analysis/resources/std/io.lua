@@ -34,7 +34,7 @@ function io.flush() end
 ---
 --- In case of errors this function raises the error, instead of returning an
 --- error code.
---- @param file? file|string
+--- @param file? file | string
 --- @return file
 function io.input(file) end
 
@@ -55,7 +55,7 @@ function io.input(file) end
 --- @return fun(): any
 function io.lines(filename, ...) end
 
---- @alias iolib.OpenMode "r"|"w"|"a"|"r+"|"w+"|"a+"|"rb"|"wb"|"ab"|"rb+"|"wb+"|"ab+"|"r+b"|"w+b"|"a+b"
+--- @alias iolib.OpenMode "r" | "w" | "a" | "r+" | "w+" | "a+" | "rb" | "wb" | "ab" | "rb+" | "wb+" | "ab+" | "r+b" | "w+b" | "a+b"
 
 ---
 --- This function opens a file, in the mode specified in the string `mode`. In
@@ -80,7 +80,7 @@ function io.open(filename, mode) end
 
 ---
 --- Similar to `io.input`, but operates over the default output file.
---- @param file? file|string
+--- @param file? file | string
 --- @return file
 function io.output(file) end
 
@@ -91,7 +91,7 @@ function io.output(file) end
 --- you can use to read data from this program (if `mode` is "`r`", the default)
 --- or to write data to this program (if `mode` is "`w`").
 --- @param prog  string
---- @param mode? string|'r'|'w'
+--- @param mode? string | 'r' | 'w'
 --- @return file
 function io.popen(prog, mode) end
 
@@ -131,7 +131,7 @@ function io.type(obj) end
 
 ---
 --- Equivalent to `io.output():write(···)`.
---- @param ... string|number
+--- @param ... string | number
 --- @return_overload file
 --- @return_overload nil, string err
 function io.write(...) end
@@ -140,7 +140,7 @@ function io.write(...) end
 --- @class file
 local file = {}
 
---- @version > 5.2
+--- @version >5.2
 ---
 --- Closes `file`. Note that files are automatically closed when their
 --- handles are garbage collected, but that takes an unpredictable amount of
@@ -148,8 +148,8 @@ local file = {}
 ---
 --- When closing a file handle created with `io.popen`, `file:close` returns the
 --- same values returned by `os.execute`.
---- @return_overload true, 'exit'|'signal', integer
---- @return_overload nil, 'exit'|'signal', integer
+--- @return_overload true, 'exit' | 'signal', integer
+--- @return_overload nil, 'exit' | 'signal', integer
 function file:close() end
 
 --- @version 5.1, JIT
@@ -231,7 +231,7 @@ function file:read(...) end
 --- file (and returns 0); and the call `file:seek("end")` sets the position
 --- to the end of the file, and returns its size.
 --- @overload fun()
---- @param whence string|'set'|'cur'|'end'
+--- @param whence string | 'set' | 'cur' | 'end'
 --- @param offset integer
 --- @return_overload integer pos
 --- @return_overload nil, string err
@@ -249,7 +249,7 @@ function file:seek(whence, offset) end
 ---
 --- For the last two cases, `size` specifies the size of the buffer, in
 --- bytes. The default is an appropriate size.
---- @param mode  string|'no'|'full'|'line'
+--- @param mode  string | 'no' | 'full' | 'line'
 --- @param size? integer
 function file:setvbuf(mode, size) end
 
@@ -259,7 +259,7 @@ function file:setvbuf(mode, size) end
 ---
 --- In case of success, this function returns `file`. Otherwise it returns
 --- **nil** plus a string describing the error.
---- @param ... string|number
+--- @param ... string | number
 --- @return_overload file
 --- @return_overload nil, string err
 function file:write(...) end

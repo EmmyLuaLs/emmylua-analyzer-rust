@@ -122,7 +122,7 @@ function getmetatable(object) end
 --- will iterate over the key–value pairs (1,`t[1]`), (2,`t[2]`), ..., up to
 --- the first absent index.
 --- @generic V
---- @param t V[]|table<int, V>|{[int]: V }
+--- @param t V[] | table<int, V> | {[int]: V }
 --- @return fun(tbl: any): int, V
 function ipairs(t) end
 
@@ -160,7 +160,7 @@ function ipairs(t) end
 ---
 --- Lua does not check the consistency of binary chunks. Maliciously crafted
 --- binary chunks can crash the interpreter.
---- @param chunk      (fun(...: any): string)|Language<"Lua">
+--- @param chunk      (fun(...: any): string) | Language<"Lua">
 --- @param chunkname? string
 --- @param mode?      std.loadmode
 --- @param env?       table
@@ -191,7 +191,7 @@ function loadstring(text, chunkname) end
 function loadfile(filename, mode, env) end
 
 --- @version 5.1, JIT
---- @param proxy boolean|table|userdata
+--- @param proxy boolean | table | userdata
 --- @return userdata
 function newproxy(proxy) end
 
@@ -223,7 +223,7 @@ function module(name, ...) end
 --- existing fields. In particular, you may set existing fields to nil.
 --- @generic K, V
 --- @overload fun(table: table<K, V>): K?, V?
---- @param table  table<K, V>|V[]|{[K]: V }
+--- @param table  table<K, V> | V[] | {[K]: V }
 --- @param index? K
 --- @return K?, V?
 function next(table, index) end
@@ -240,7 +240,7 @@ function next(table, index) end
 --- See function `next` for the caveats of modifying the table during its
 --- traversal.
 --- @generic K, V, I
---- @param t table<K, V>|V[]|{[K]: V }
+--- @param t table<K, V> | V[] | {[K]: V }
 --- @return (fun(tbl: table<I, V>, index: I?): K, V), table<I, V>, I?
 function pairs(t) end
 
@@ -287,7 +287,7 @@ function rawget(table, index) end
 ---
 --- Returns the length of the object `v`, which must be a table or a string, without
 --- invoking any metamethod. Returns an integer number.
---- @param v string|table
+--- @param v string | table
 --- @return integer
 function rawlen(v) end
 
@@ -340,14 +340,14 @@ function require(modname) end
 --- `index`. a negative number indexes from the end (-1 is the last argument).
 --- Otherwise, `index` must be the string "#", and `select` returns
 --- the total number of extra arguments it received.
---- @generic T, Num: integer|'#'
+--- @generic T, Num: integer | '#'
 --- @param index std.ConstTpl<Num>
 --- @param ...   T...
 --- @return std.Select<T..., Num>
 function select(index, ...) end
 
 --- @class std.metatable
---- @field __mode?      'v'|'k'|'kv'
+--- @field __mode?      'v' | 'k' | 'kv'
 --- @field __metatable? any
 --- @field __tostring?  (fun(t): string)
 --- @field __gc?        fun(t)
@@ -370,10 +370,10 @@ function select(index, ...) end
 --- @field __eq?        fun(t1, t2): boolean
 --- @field __lt?        fun(t1, t2): boolean
 --- @field __le?        fun(t1, t2): boolean
---- @field __index?     table|fun(t, k): any
---- @field __newindex?  table|fun(t, k, v)
+--- @field __index?     table | fun(t, k): any
+--- @field __newindex?  table | fun(t, k, v)
 --- @field __call?      fun(t, ...): any...
---- @field __pairs?     fun(t):((fun(t, k, v): any, any), any, any)
+--- @field __pairs?     fun(t): ((fun(t, k, v): any, any), any, any)
 --- @field __close?     fun(t, errobj): any
 
 -- NOTE: The actual implementation of setmetatable is provided by the language server
@@ -387,7 +387,7 @@ function select(index, ...) end
 --- This function returns `table`.
 --- @generic T: table
 --- @param table     T
---- @param metatable std.metatable|table|nil
+--- @param metatable std.metatable | table | nil
 --- @return T
 function setmetatable(table, metatable) end
 
@@ -467,7 +467,7 @@ function xpcall(f, msgh, ...) end
 --- @return std.Unpack<T, Start, End>
 function unpack(list, i, j) end
 
---- @version > 5.4
+--- @version >5.4
 ---
 --- Emits a warning with a message composed by the concatenation of all its arguments (which should be strings).
 ---
@@ -475,8 +475,8 @@ function unpack(list, i, j) end
 --- which is a message to the warning system itself. In particular,
 --- the standard warning function in Lua recognizes the control messages "@off", to stop the emission of warnings,
 --- and "@on", to (re)start the emission; it ignores unknown control messages.
---- @param msg1 string|number
---- @param ...  string|number
+--- @param msg1 string | number
+--- @param ...  string | number
 function warn(msg1, ...) end
 
 --- @type string[]
@@ -484,20 +484,20 @@ arg = {}
 
 --- This is an incorrect annotation, but truly supporting _ENV would completely break the variable analysis path.
 --- For now, let's treat it as a global variable.
---- @version > 5.3
+--- @version >5.3
 --- @type global
 _ENV = {}
 
 --- @version 5.1, JIT
 ---
 --- Sets the environment for the specified function.
---- @param f   function|integer The function for which the environment is to be set.
---- @param env table            The environment table to assign to the function.
+--- @param f   function | integer The function for which the environment is to be set.
+--- @param env table              The environment table to assign to the function.
 function setfenv(f, env) end
 
 --- @version 5.1, JIT
 ---
 --- Retrieves the environment table of the specified function.
---- @param f function|integer The function whose environment is to be retrieved.
+--- @param f function | integer The function whose environment is to be retrieved.
 --- @return table The environment table associated with the given function.
 function getfenv(f) end

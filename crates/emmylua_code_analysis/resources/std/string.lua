@@ -73,8 +73,8 @@ function string.dump(func, strip) end
 ---
 --- If the pattern has captures, then in a successful match the captured values
 --- are also returned, after the two indices.
---- @param s       string|number
---- @param pattern string|number
+--- @param s       string | number
+--- @param pattern string | number
 --- @param init?   integer
 --- @param plain?  boolean
 --- @return integer? start
@@ -173,10 +173,10 @@ function string.gmatch(s, pattern) end
 ---
 --- For this function, a caret '`^`' at the start of a pattern does not work as
 --- an anchor, as this would prevent the iteration.
---- @version > 5.4
---- @param s string
+--- @version >5.4
+--- @param s       string
 --- @param pattern string
---- @param init? integer
+--- @param init?   integer
 --- @return fun():string?...
 function string.gmatch(s, pattern, init) end
 
@@ -223,9 +223,9 @@ function string.gmatch(s, pattern, init) end
 --- `local t = {name="lua", version="5.3"}`
 --- `x = string.gsub("$name-$version.tar.gz", "%$(%w+)", t)`
 --- > x="lua-5.3.tar.gz"
---- @param s       string|number
---- @param pattern string|number
---- @param repl    string|number|table|fun(param: string)
+--- @param s       string | number
+--- @param pattern string | number
+--- @param repl    string | number | table | fun(param: string)
 --- @param n?      integer
 --- @return string
 --- @return integer count
@@ -263,9 +263,9 @@ function string.match(s, pattern, init) end
 --- Returns a binary string containing the values `v1`, `v2`, etc. packed (that
 --- is, serialized in binary form) according to the format string `fmt`.
 --- @param fmt string
---- @param v1  string|number|integer
---- @param v2? string|number|integer
---- @param ... string|number|integer
+--- @param v1  string | number | integer
+--- @param v2? string | number | integer
+--- @param ... string | number | integer
 --- @return string
 function string.pack(fmt, v1, v2, ...) end
 
@@ -310,7 +310,7 @@ function string.reverse(s) end
 --- corrected to 1. If `j` is greater than the string length, it is corrected to
 --- that length. If, after these corrections, `i` is greater than `j`, the
 --- function returns the empty string.
---- @param s  string|number
+--- @param s  string | number
 --- @param i  integer
 --- @param j? integer
 --- @return string

@@ -193,7 +193,7 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         | LuaTokenKind::TkAnd
         | LuaTokenKind::TkOr => apply_operator_spacing(ctx, spacing, token, syntax_id),
         LuaTokenKind::TkDocOr => {
-            apply_space_rule(spacing, syntax_id, SpaceRule::NoSpace);
+            apply_space_rule(spacing, syntax_id, SpaceRule::Space);
         }
         LuaTokenKind::TkDocAnd
         | LuaTokenKind::TkDocExtends

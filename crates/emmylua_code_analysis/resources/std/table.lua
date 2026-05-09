@@ -40,7 +40,7 @@ function table.concat(list, sep, i, j) end
 --- @param value any
 function table.insert(list, pos, value) end
 
---- @version > 5.3
+--- @version >5.3
 ---
 --- Moves elements from table a1 to table `a2`, performing the equivalent to
 --- the following multiple assignment: `a2[t]`,`··· = a1[f]`,`···,a1[e]`. The
@@ -77,7 +77,7 @@ function table.maxn(table) end
 --- The default value for `pos` is `#list`, so that a call `table.remove(l)`
 --- removes the last element of list `l`.
 --- @generic V
---- @param list table<integer, V>|V[]
+--- @param list table<integer, V> | V[]
 --- @param pos? integer
 --- @return V
 function table.remove(list, pos) end
@@ -101,7 +101,7 @@ function table.remove(list, pos) end
 --- @param comp? fun(a: V, b: V): boolean
 function table.sort(list, comp) end
 
---- @version > 5.2, JIT
+--- @version >5.2, JIT
 ---
 --- Returns the elements from the given list. This function is equivalent to
 --- return `list[i]`, `list[i+1]`, `···`, `list[j]`
@@ -113,7 +113,7 @@ function table.sort(list, comp) end
 --- @return std.Unpack<T, Start, End>
 function table.unpack(list, i, j) end
 
---- @version > 5.2, JIT
+--- @version >5.2, JIT
 ---
 --- Returns a new table with all arguments stored into keys `1`, `2`, etc. and with a field `"n"` with the total number of arguments.
 ---
@@ -130,7 +130,7 @@ function table.pack(...) end
 ---
 --- @generic T
 --- @param list     any
---- @param callback fun(key: string, value: any): T|nil
+--- @param callback fun(key: string, value: any): T | nil
 --- @return T?
 --- @deprecated
 function table.foreach(list, callback) end
@@ -141,7 +141,7 @@ function table.foreach(list, callback) end
 ---
 --- @generic T
 --- @param list     any
---- @param callback fun(key: string, value: any): T|nil
+--- @param callback fun(key: string, value: any): T | nil
 --- @return T?
 --- @deprecated
 function table.foreachi(list, callback) end
@@ -162,7 +162,7 @@ function table.getn(list) end
 --- performance and save memory when you know in advance how many elements the table will have.
 --- Parameter `nseq` is a hint for how many elements the table will have as a sequence. Optional parameter `nrec`
 --- is a hint for how many other elements the table will have; its default is zero.
---- @version > 5.5
+--- @version >5.5
 --- @param nseq  integer
 --- @param nrec? integer
 --- @return table

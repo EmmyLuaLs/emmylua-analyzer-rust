@@ -34,7 +34,7 @@ function coroutine.create(f) end
 --- @nodiscard
 function coroutine.isyieldable(co) end
 
---- @version > 5.4
+--- @version >5.4
 ---
 --- Closes coroutine `co` , closing all its pending to-be-closed variables and putting the coroutine in a dead state.
 ---
@@ -68,7 +68,7 @@ function coroutine.resume(co, val1, ...) end
 --- @nodiscard
 function coroutine.running() end
 
---- @version > 5.2
+--- @version >5.2
 ---
 --- Returns the running coroutine plus a boolean, true when the running
 --- coroutine is the main one.

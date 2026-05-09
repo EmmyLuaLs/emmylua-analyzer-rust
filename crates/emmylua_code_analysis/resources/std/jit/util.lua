@@ -27,7 +27,7 @@ local funcinfo = {
 }
 
 --- @class jit.funcinfo.c
---- @field ffid integer|nil
+--- @field ffid integer | nil
 local funcinfo2 = {
     addr = 0,
     upvalues = 0,
@@ -70,7 +70,7 @@ function util.traceinfo(tr) end
 --- @param tr  Trace
 --- @param ref integer
 --- @return integer? m
---- @return integer? ot -- spellchecker:disable-line
+--- @return integer? ot spellchecker:disable-line
 --- @return integer? op1
 --- @return integer? op2
 --- @return integer? prev
