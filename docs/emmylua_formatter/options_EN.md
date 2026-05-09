@@ -56,6 +56,9 @@ width = 4
 - `table_expand`: `Never`, `Always`, or `Auto`
 - `call_args_expand`: `Never`, `Always`, or `Auto`
 - `func_params_expand`: `Never`, `Always`, or `Auto`
+- `prefer_call_args_layout_from_source`: prefer keeping the source layout goal for explicit multiline call argument lists
+- `prefer_table_layout_from_source`: prefer keeping the source layout goal for explicit multiline pure-array tables
+- `prefer_chain_break_on_statement_tail`: prefer multiline breaking for fluent chains in statement-tail position
 
 Default:
 
@@ -66,13 +69,24 @@ max_blank_lines = 1
 table_expand = "Auto"
 call_args_expand = "Auto"
 func_params_expand = "Auto"
+prefer_call_args_layout_from_source = false
+prefer_table_layout_from_source = false
+prefer_chain_break_on_statement_tail = false
 ```
 
 Behavior notes:
 
 - `Auto` lets the formatter compare flat and broken candidates.
+- `prefer_call_args_layout_from_source = true` only affects call argument lists under `call_args_expand = "Auto"`.
+- When a call argument list is already multiline in the source, the formatter keeps it expanded instead of reflowing it back into a compact layout.
+- `prefer_table_layout_from_source = true` only affects table constructors under `table_expand = "Auto"`.
+- It applies only to pure-array tables, meaning tables whose fields are all positional values without keys.
+- When such a table is already multiline in the source, the formatter keeps it expanded instead of reflowing it back into a compact layout.
 - Sequence-like structures can now choose between fill, packed, aligned, and one-per-line layouts when applicable.
 - Binary-expression chains and statement expression lists may prefer a balanced packed layout when it keeps the same line count but avoids ragged trailing lines.
+- `prefer_chain_break_on_statement_tail = true` only applies to the last direct expression in a statement, including standalone call statements; when that expression is a long enough fluent chain, the formatter prefers chain-style breaking.
+- The chain head is defined as the `root`, plus any leading namespace or field accesses, plus the first call segment. For example, the head of `Builder:new():add():add()` is `Builder:new()`, while the head of `vim.api.nvim_set_keymap(...)` is the whole `vim.api.nvim_set_keymap(...)` call.
+- The break start is defined as the first continuation segment after that head. In other words, only segments that continue after the first call are eligible for chain-style line breaking; a namespace-qualified terminal call is not treated as a fluent chain by this option.
 
 ## output
 
@@ -167,6 +181,7 @@ Behavior notes:
 - `align_multiline_alias_descriptions`
 - `space_between_tag_columns`
 - `space_after_description_dash`
+- `compact_type_or`
 
 Default:
 
@@ -178,6 +193,7 @@ align_reference_tags = true
 align_multiline_alias_descriptions = true
 space_between_tag_columns = false
 space_after_description_dash = true
+compact_type_or = false
 ```
 
 Structured handling currently covers `@param`, `@field`, `@return`, `@class`, `@alias`, `@type`, `@generic`, and `@overload`.
@@ -185,6 +201,7 @@ Structured handling currently covers `@param`, `@field`, `@return`, `@class`, `@
 - `align_multiline_alias_descriptions` is enabled by default and aligns the `# description` column in multiline `@alias` blocks such as `--- | value # description`.
 - `space_between_tag_columns` controls whether EmmyLua tag lines keep a space between `---` and `@`, for example `--- @enum MyEnum` versus `---@enum MyEnum`. The current default is `false`, so tag lines format as `---@tag` unless configured otherwise.
 - `space_after_description_dash` only affects plain doc description lines such as `--- text` versus `---text`, not tag-line prefixes.
+- `compact_type_or` controls whether EmmyLua union types keep spaces around `|`, for example `string | integer` versus `string|integer`. The default is `false`.
 
 ## align
 

@@ -330,6 +330,107 @@ a=1,
     }
 
     #[test]
+    fn test_multiline_array_table_can_prefer_source_layout_goal() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_table_layout_from_source: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"local python_candidates = {
+  'python3',
+  'python3.14',
+  'python3.13',
+  'python3.12',
+  'python3.11',
+  'python3.10',
+  'python3.9',
+  'python',
+}
+"#,
+            r#"local python_candidates = {
+    'python3',
+    'python3.14',
+    'python3.13',
+    'python3.12',
+    'python3.11',
+    'python3.10',
+    'python3.9',
+    'python'
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_multiline_keyed_table_does_not_preserve_source_layout_goal() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_table_layout_from_source: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"local t = {
+    a = 1,
+    b = 2,
+}
+"#,
+            r#"local t = { a = 1, b = 2 }
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_multiline_call_args_can_prefer_source_layout_goal() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_call_args_layout_from_source: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"local x = call(
+  foo,
+  bar,
+  baz
+)
+"#,
+            r#"local x = call(
+    foo,
+    bar,
+    baz
+)
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_table_with_nested_table_expands_by_shape() {
         assert_format!(
             r#"local t = { user = { name = "a", age = 1 }, enabled = true }

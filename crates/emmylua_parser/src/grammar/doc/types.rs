@@ -443,6 +443,11 @@ fn parse_fun_return_list(p: &mut LuaDocParser) -> DocParseResult {
 
 fn parse_fun_return_type(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocNamedReturnType);
+    if p.current_token() == LuaTokenKind::TkDots {
+        p.bump();
+        return Ok(m.complete(p));
+    }
+
     let cm = parse_type(p)?;
     if cm.kind == LuaSyntaxKind::TypeName && p.current_token() == LuaTokenKind::TkColon {
         p.bump();

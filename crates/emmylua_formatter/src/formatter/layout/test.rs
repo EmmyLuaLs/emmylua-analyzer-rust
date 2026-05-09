@@ -200,7 +200,7 @@ fn test_layout_collects_expr_sequence_metadata() {
         .expr_sequences
         .get(&LuaSyntaxId::from_node(call_args.syntax()))
         .expect("expected call arg layout");
-    assert!(call_layout.preserve_multiline);
+    assert!(!call_layout.preserve_multiline);
     assert!(call_layout.first_line_prefix_width > 0);
 
     let table_expr = chunk
@@ -217,4 +217,35 @@ fn test_layout_collects_expr_sequence_metadata() {
         .expect("expected table layout");
     assert!(!table_layout.preserve_multiline);
     assert!(table_layout.first_line_prefix_width > 0);
+}
+
+#[test]
+fn test_layout_prefers_multiline_call_args_from_source_when_enabled() {
+    let config = LuaFormatConfig {
+        layout: crate::config::LayoutConfig {
+            prefer_call_args_layout_from_source: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let tree = LuaParser::parse(
+        "local x = call(\n    foo,\n    bar\n)\n",
+        ParserConfig::with_level(LuaLanguageLevel::Lua54),
+    );
+    let chunk = tree.get_chunk_node();
+    let plan = setup_plan(&chunk, &config);
+
+    let call_args = chunk
+        .descendants::<LuaAst>()
+        .find_map(|node| match node {
+            LuaAst::LuaCallArgList(node) => Some(node),
+            _ => None,
+        })
+        .expect("expected call arg list");
+    let call_layout = plan
+        .layout
+        .expr_sequences
+        .get(&LuaSyntaxId::from_node(call_args.syntax()))
+        .expect("expected call arg layout");
+    assert!(call_layout.preserve_multiline);
 }

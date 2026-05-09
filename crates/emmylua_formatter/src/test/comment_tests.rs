@@ -82,6 +82,28 @@ local a = 1
     }
 
     #[test]
+    fn test_multiline_normal_comment_preserves_explicit_dash_indentation() {
+        assert_format!(
+            r#"-- - There are other places in the codebase that could benefit from this
+--   (e.g. LSP), but might require other changes to accommodate.
+-- - I don't think the story around `hash` is completely thought out. We
+--   may be able to have a good default hash by hashing each argument,
+--   so basically a better 'concat'.
+-- - Need to support multi level caches. Can be done by allow `hash` to
+--   return multiple values.
+"#,
+            r#"-- - There are other places in the codebase that could benefit from this
+--   (e.g. LSP), but might require other changes to accommodate.
+-- - I don't think the story around `hash` is completely thought out. We
+--   may be able to have a good default hash by hashing each argument,
+--   so basically a better 'concat'.
+-- - Need to support multi level caches. Can be done by allow `hash` to
+--   return multiple values.
+"#
+        );
+    }
+
+    #[test]
     fn test_multiple_comments() {
         assert_format!(
             r#"
@@ -1230,6 +1252,32 @@ local function f(value) end
     }
 
     #[test]
+    fn test_doc_comment_param_type_can_use_compact_or_spacing() {
+        use crate::{
+            assert_format_with_config,
+            config::{EmmyDocConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            emmy_doc: EmmyDocConfig {
+                compact_type_or: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"---@param cmd string | string[]
+local function f(cmd) end
+"#,
+            r#"---@param cmd string|string[]
+local function f(cmd) end
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_doc_comment_version_keeps_space_before_comparison() {
         assert_format!(
             r#"---@version >5.3
@@ -1369,6 +1417,22 @@ function f() end
 --- second return docs
 ---@return string, integer err failure
 function f() end
+"#
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_single_return_union_type_uses_spacing_normalization() {
+        assert_format!(
+            r#"--- @param filetype string Filetype
+--- @param option   string Option name
+--- @return string  |   boolean |integer
+function f(filetype, option) end
+"#,
+            r#"---@param filetype string Filetype
+---@param option   string Option name
+---@return string | boolean | integer
+function f(filetype, option) end
 "#
         );
     }
@@ -1585,6 +1649,38 @@ local cc = {
     }
 
     #[test]
+    fn test_doc_comment_param_attached_table_field_formats_object_type() {
+        assert_format!(
+            r#"local t = {
+    --- @param ev {data: vim.event.progress.data}
+    callback = function (ev) end,
+}
+"#,
+            r#"local t = {
+    ---@param ev { data: vim.event.progress.data }
+    callback = function (ev) end
+}
+"#
+        );
+    }
+
+    #[test]
+    fn test_doc_comment_param_above_local_function_uses_type_spacing_normalization() {
+        assert_format!(
+            r#"-- Attempts to construct a shell command from an args list.
+-- Only for display, to help users debug a failed command.
+---@param cmd string|string[]
+local function shellify(cmd) end
+"#,
+            r#"-- Attempts to construct a shell command from an args list.
+-- Only for display, to help users debug a failed command.
+---@param cmd string | string[]
+local function shellify(cmd) end
+"#
+        );
+    }
+
+    #[test]
     fn test_doc_comment_align_alias_columns() {
         assert_format!(
             r#"---@alias Id integer identifier
@@ -1761,6 +1857,24 @@ local value = nil
 local value = nil
 "#,
             config
+        );
+    }
+
+    #[test]
+    fn test_doc_param_multiline_union_preserves_continue_or_marker() {
+        assert_format!(
+            r#"---@param mode string?
+---|"'line'"
+---|"'char'"
+---|"'block'"
+local mode = nil
+"#,
+            r#"---@param mode string?
+--- | "'line'"
+--- | "'char'"
+--- | "'block'"
+local mode = nil
+"#
         );
     }
 

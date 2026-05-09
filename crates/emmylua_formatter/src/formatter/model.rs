@@ -58,8 +58,10 @@ impl SpacingModel {
         previous: Option<&LuaSyntaxToken>,
         current: Option<&LuaSyntaxToken>,
     ) -> Option<&TokenSpacingExpected> {
-        let current_expected = current.and_then(|token| self.left_expected(LuaSyntaxId::from_token(token)));
-        let previous_expected = previous.and_then(|token| self.right_expected(LuaSyntaxId::from_token(token)));
+        let current_expected =
+            current.and_then(|token| self.left_expected(LuaSyntaxId::from_token(token)));
+        let previous_expected =
+            previous.and_then(|token| self.right_expected(LuaSyntaxId::from_token(token)));
 
         if current_expected.is_some() {
             return current_expected;
@@ -79,10 +81,16 @@ impl SpacingModel {
     ) -> Option<&TokenSpacingExpected> {
         let previous = previous?;
         let current = current?;
-        if !matches!(previous.kind().to_token(), LuaTokenKind::TkPlus | LuaTokenKind::TkMinus) {
+        if !matches!(
+            previous.kind().to_token(),
+            LuaTokenKind::TkPlus | LuaTokenKind::TkMinus
+        ) {
             return None;
         }
-        if !matches!(current.kind().to_token(), LuaTokenKind::TkName | LuaTokenKind::TkInt | LuaTokenKind::TkFloat) {
+        if !matches!(
+            current.kind().to_token(),
+            LuaTokenKind::TkName | LuaTokenKind::TkInt | LuaTokenKind::TkFloat
+        ) {
             return None;
         }
 

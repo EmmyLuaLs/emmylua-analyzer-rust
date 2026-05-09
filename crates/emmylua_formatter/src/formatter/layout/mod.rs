@@ -18,17 +18,17 @@ use emmylua_parser::{
     LuaSyntaxToken, LuaTableExpr, LuaTokenKind, LuaWhileStat,
 };
 
-pub fn analyze_layout(_ctx: &FormatContext, chunk: &LuaChunk, plan: &mut FormatPlan) {
+pub fn analyze_layout(ctx: &FormatContext, chunk: &LuaChunk, plan: &mut FormatPlan) {
     plan.layout.format_block_with_legacy = true;
     plan.layout.root_nodes = tree::collect_root_layout_nodes(
         chunk,
         &mut plan.layout.format_disabled,
         &mut plan.layout.closure_body_children,
     );
-    analyze_node_layouts(chunk, plan);
+    analyze_node_layouts(ctx, chunk, plan);
 }
 
-fn analyze_node_layouts(chunk: &LuaChunk, plan: &mut FormatPlan) {
+fn analyze_node_layouts(ctx: &FormatContext, chunk: &LuaChunk, plan: &mut FormatPlan) {
     for node in chunk.descendants::<LuaAst>() {
         match node {
             LuaAst::LuaLocalStat(stat) => {
@@ -68,10 +68,10 @@ fn analyze_node_layouts(chunk: &LuaChunk, plan: &mut FormatPlan) {
                 analyze_param_list_layout(&param, plan);
             }
             LuaAst::LuaCallArgList(args) => {
-                analyze_call_arg_list_layout(&args, plan);
+                analyze_call_arg_list_layout(ctx, &args, plan);
             }
             LuaAst::LuaTableExpr(table) => {
-                analyze_table_expr_layout(&table, plan);
+                analyze_table_expr_layout(ctx, &table, plan);
             }
             _ => {}
         }
@@ -313,9 +313,13 @@ fn analyze_param_list_layout(params: &LuaParamList, plan: &mut FormatPlan) {
     );
 }
 
-fn analyze_call_arg_list_layout(args: &LuaCallArgList, plan: &mut FormatPlan) {
+fn analyze_call_arg_list_layout(ctx: &FormatContext, args: &LuaCallArgList, plan: &mut FormatPlan) {
     let syntax_id = LuaSyntaxId::from_node(args.syntax());
     let arg_exprs: Vec<_> = args.get_args().collect();
+    let has_explicit_multiline_arg = arg_exprs.iter().any(|arg| {
+        is_multiline_block_like_expr(arg)
+            || matches!(arg, LuaExpr::TableExpr(table) if table.syntax().text().contains_char('\n'))
+    });
     let first_line_prefix_width = arg_exprs
         .first()
         .map(|arg| source_line_prefix_width(arg.syntax()))
@@ -340,7 +344,9 @@ fn analyze_call_arg_list_layout(args: &LuaCallArgList, plan: &mut FormatPlan) {
         syntax_id,
         ExprSequenceLayoutPlan {
             first_line_prefix_width,
-            preserve_multiline: args.syntax().text().contains_char('\n'),
+            preserve_multiline: has_explicit_multiline_arg
+                || (ctx.config.layout.prefer_call_args_layout_from_source
+                    && args.syntax().text().contains_char('\n')),
             first_arg_multiline_block,
             first_arg_multiline_table,
             single_inline_block_arg_index,
@@ -348,7 +354,7 @@ fn analyze_call_arg_list_layout(args: &LuaCallArgList, plan: &mut FormatPlan) {
     );
 }
 
-fn analyze_table_expr_layout(table: &LuaTableExpr, plan: &mut FormatPlan) {
+fn analyze_table_expr_layout(ctx: &FormatContext, table: &LuaTableExpr, plan: &mut FormatPlan) {
     if table.is_empty() {
         return;
     }
@@ -359,12 +365,15 @@ fn analyze_table_expr_layout(table: &LuaTableExpr, plan: &mut FormatPlan) {
         .next()
         .map(|field| source_line_prefix_width(field.syntax()))
         .unwrap_or(0);
+    let is_pure_array_table = table.get_fields().all(|field| !field.is_assign_field());
 
     plan.layout.expr_sequences.insert(
         syntax_id,
         ExprSequenceLayoutPlan {
             first_line_prefix_width,
-            preserve_multiline: false,
+            preserve_multiline: ctx.config.layout.prefer_table_layout_from_source
+                && is_pure_array_table
+                && table.syntax().text().contains_char('\n'),
             first_arg_multiline_block: false,
             first_arg_multiline_table: false,
             single_inline_block_arg_index: None,

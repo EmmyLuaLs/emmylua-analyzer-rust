@@ -143,6 +143,15 @@ pub struct LayoutConfig {
     pub call_args_expand: ExpandStrategy,
     /// Expansion strategy for function parameter lists.
     pub func_params_expand: ExpandStrategy,
+    /// Prefer using the source layout goal for explicit multiline call argument lists.
+    pub prefer_call_args_layout_from_source: bool,
+    /// Prefer using the source layout goal for explicit multiline pure-array tables.
+    pub prefer_table_layout_from_source: bool,
+    /// Prefer breaking statement-tail chains onto multiple lines when the chain has at least 3 segments.
+    ///
+    /// This applies only to the last direct expression in a statement,
+    /// including standalone call statements.
+    pub prefer_chain_break_on_statement_tail: bool,
 }
 
 impl Default for LayoutConfig {
@@ -153,6 +162,9 @@ impl Default for LayoutConfig {
             table_expand: ExpandStrategy::Auto,
             call_args_expand: ExpandStrategy::Auto,
             func_params_expand: ExpandStrategy::Auto,
+            prefer_call_args_layout_from_source: false,
+            prefer_table_layout_from_source: false,
+            prefer_chain_break_on_statement_tail: false,
         }
     }
 }
@@ -321,6 +333,11 @@ pub struct EmmyDocConfig {
     /// It does not affect tag lines such as `---@class` / `--- @class`; those
     /// are controlled by `space_between_tag_columns`.
     pub space_after_description_dash: bool,
+    /// Whether EmmyLua union types omit spaces around `|`.
+    ///
+    /// Example: `string|string[]` when enabled, `string | string[]` when
+    /// disabled.
+    pub compact_type_or: bool,
 }
 
 impl Default for EmmyDocConfig {
@@ -332,6 +349,7 @@ impl Default for EmmyDocConfig {
             align_multiline_alias_descriptions: true,
             space_between_tag_columns: false,
             space_after_description_dash: true,
+            compact_type_or: false,
         }
     }
 }

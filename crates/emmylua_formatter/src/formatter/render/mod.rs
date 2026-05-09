@@ -22,6 +22,7 @@ use self::control::{
     render_local_func_stat, render_repeat_stat, render_while_stat,
 };
 use self::helpers::*;
+use crate::formatter::expr::ExprFormatOptions;
 
 pub fn render_ir(ctx: &FormatContext, chunk: &LuaChunk, plan: &FormatPlan) -> Vec<DocIR> {
     let mut docs = Vec::new();
@@ -199,6 +200,7 @@ fn render_local_stat(
                             expr_list_plan.kind,
                             StatementExprListLayoutKind::PreserveFirstMultiline
                         ),
+                    index + 1 == exprs.len(),
                 )
             })
             .collect();
@@ -272,6 +274,7 @@ fn render_assign_stat(
                         expr_list_plan.kind,
                         StatementExprListLayoutKind::PreserveFirstMultiline
                     ),
+                index + 1 == exprs.len(),
             )
         })
         .collect();
@@ -335,6 +338,7 @@ fn render_return_stat(
                             expr_list_plan.kind,
                             StatementExprListLayoutKind::PreserveFirstMultiline
                         ),
+                    index + 1 == exprs.len(),
                 )
             })
             .collect();
@@ -369,7 +373,16 @@ fn render_call_expr_stat(
 
     let mut docs = stat
         .get_call_expr()
-        .map(|expr| render_expr(ctx, plan, &expr.into()))
+        .map(|expr| {
+            render_expr_with_options(
+                ctx,
+                plan,
+                &expr.into(),
+                ExprFormatOptions {
+                    prefer_chain_break: ctx.config.layout.prefer_chain_break_on_statement_tail,
+                },
+            )
+        })
         .unwrap_or_default();
     append_trailing_statement_suffix(ctx, plan, &mut docs, stat.syntax());
     docs
@@ -986,11 +999,20 @@ fn format_statement_value_expr(
     plan: &FormatPlan,
     expr: &LuaExpr,
     preserve_first_multiline: bool,
+    is_statement_tail: bool,
 ) -> Vec<DocIR> {
     if preserve_first_multiline {
         vec![ir::source_node_trimmed(expr.syntax().clone())]
     } else {
-        render_expr(ctx, plan, expr)
+        render_expr_with_options(
+            ctx,
+            plan,
+            expr,
+            ExprFormatOptions {
+                prefer_chain_break: is_statement_tail
+                    && ctx.config.layout.prefer_chain_break_on_statement_tail,
+            },
+        )
     }
 }
 
@@ -1433,6 +1455,7 @@ fn render_local_stat_align_split(
                         expr_list_plan.kind,
                         StatementExprListLayoutKind::PreserveFirstMultiline
                     ),
+                index + 1 == exprs.len(),
             )
         })
         .collect();
@@ -1489,6 +1512,7 @@ fn render_assign_stat_align_split(
                         expr_list_plan.kind,
                         StatementExprListLayoutKind::PreserveFirstMultiline
                     ),
+                index + 1 == exprs.len(),
             )
         })
         .collect();
@@ -1687,7 +1711,7 @@ fn has_inline_non_trivia_after(node: &LuaSyntaxNode) -> bool {
     false
 }
 
-fn render_comment_with_spacing(
+pub(super) fn render_comment_with_spacing(
     ctx: &FormatContext,
     comment: &LuaComment,
     plan: &FormatPlan,
@@ -1701,6 +1725,14 @@ fn render_comment_with_spacing(
     let normalized_lines = collect_comment_line_spacing_normalized_texts(comment, plan);
     let lines = if is_pure_doc_comment_block(&raw) {
         normalize_doc_comment_block(
+            ctx,
+            comment,
+            &raw,
+            &prefix_replacements,
+            normalized_lines.as_slice(),
+        )
+    } else if contains_doc_comment_line(&raw) {
+        normalize_mixed_comment_block(
             ctx,
             comment,
             &raw,
@@ -1737,6 +1769,12 @@ fn is_pure_doc_comment_block(raw: &str) -> bool {
     raw.lines()
         .filter(|line| !line.trim().is_empty())
         .all(|line| line.trim_start().starts_with("---"))
+}
+
+fn contains_doc_comment_line(raw: &str) -> bool {
+    raw.lines()
+        .filter(|line| !line.trim().is_empty())
+        .any(|line| line.trim_start().starts_with("---"))
 }
 
 fn collect_comment_line_prefix_replacements(
@@ -1807,25 +1845,122 @@ fn normalize_normal_comment_block(
                 .first()
                 .and_then(|prefix| prefix.as_deref()),
             normalized_lines.first().and_then(|line| line.as_deref()),
+            false,
         )];
     }
+    let mut preserve_extra_gap_context = false;
     lines
         .into_iter()
         .enumerate()
         .map(|(index, line)| {
             let trimmed = line.trim_start();
             if trimmed.is_empty() {
+                preserve_extra_gap_context = false;
                 String::new()
             } else {
-                normalize_single_normal_comment_line(
+                let preserve_extra_gap = preserve_extra_gap_context;
+                let rendered = normalize_single_normal_comment_line(
                     ctx,
                     trimmed,
                     prefix_replacements
                         .get(index)
                         .and_then(|prefix| prefix.as_deref()),
                     normalized_lines.get(index).and_then(|line| line.as_deref()),
-                )
+                    preserve_extra_gap,
+                );
+                let current_starts_list_item = normal_comment_body_starts_list_item(trimmed);
+                let current_has_explicit_gap = normal_comment_has_explicit_gap(trimmed);
+                preserve_extra_gap_context =
+                    current_starts_list_item || (preserve_extra_gap && current_has_explicit_gap);
+                rendered
             }
+        })
+        .collect()
+}
+
+fn normalize_mixed_comment_block(
+    ctx: &FormatContext,
+    comment: &LuaComment,
+    raw: &str,
+    prefix_replacements: &[Option<String>],
+    normalized_lines: &[Option<String>],
+) -> Vec<String> {
+    let line_inputs = collect_doc_block_line_inputs(ctx, comment, raw, normalized_lines);
+    let parsed = annotate_multiline_alias_continue_lines(
+        ctx,
+        line_inputs
+            .iter()
+            .map(|line_input| parse_doc_block_line(ctx, line_input))
+            .collect(),
+    );
+
+    let mut widths: HashMap<String, Vec<usize>> = HashMap::new();
+    for line in &parsed {
+        let (align_key, columns) = match line {
+            DocBlockLine::Tag(tag) => (tag.align_key.as_ref(), &tag.columns),
+            DocBlockLine::Description(line)
+                if matches!(line.kind, DocDescriptionKind::ContinueOr(_)) =>
+            {
+                (line.align_key.as_ref(), &line.columns)
+            }
+            DocBlockLine::Description(_) => (None, &Vec::new()),
+        };
+        let Some(key) = align_key else {
+            continue;
+        };
+        let entry = widths
+            .entry(key.clone())
+            .or_insert_with(|| vec![0; columns.len().saturating_sub(1)]);
+        if entry.len() < columns.len().saturating_sub(1) {
+            entry.resize(columns.len().saturating_sub(1), 0);
+        }
+        for (index, column) in columns
+            .iter()
+            .take(columns.len().saturating_sub(1))
+            .enumerate()
+        {
+            entry[index] = entry[index].max(column.len());
+        }
+    }
+
+    let mut preserve_extra_gap_context = false;
+    line_inputs
+        .iter()
+        .enumerate()
+        .map(|(index, line_input)| {
+            let trimmed = line_input.raw_line.trim_start();
+            if trimmed.is_empty() {
+                preserve_extra_gap_context = false;
+                return String::new();
+            }
+
+            if trimmed.starts_with("---") {
+                preserve_extra_gap_context = false;
+                return format_doc_block_line(
+                    ctx,
+                    parsed[index].clone(),
+                    &widths,
+                    prefix_replacements
+                        .get(index)
+                        .and_then(|prefix| prefix.as_deref()),
+                );
+            }
+
+            let preserve_extra_gap = preserve_extra_gap_context;
+            let rendered = normalize_single_normal_comment_line(
+                ctx,
+                trimmed,
+                prefix_replacements
+                    .get(index)
+                    .and_then(|prefix| prefix.as_deref()),
+                normalized_lines.get(index).and_then(|line| line.as_deref()),
+                preserve_extra_gap,
+            );
+            let current_starts_list_item = normal_comment_body_starts_list_item(trimmed);
+            let current_has_explicit_gap = normal_comment_has_explicit_gap(trimmed);
+            preserve_extra_gap_context =
+                current_starts_list_item || (preserve_extra_gap && current_has_explicit_gap);
+            rendered
         })
         .collect()
 }
@@ -1835,12 +1970,14 @@ fn normalize_single_normal_comment_line(
     line: &str,
     prefix_override: Option<&str>,
     _normalized_line: Option<&str>,
+    preserve_extra_gap: bool,
 ) -> String {
     let trimmed = line.trim_start();
     if !trimmed.starts_with("--") || trimmed.starts_with("---") {
         return trimmed.to_string();
     }
     let body_with_gap = &trimmed[2..];
+    let preserved_gap = preserved_dash_gap(body_with_gap);
     let prefix = prefix_override.map(str::to_string).unwrap_or_else(|| {
         if ctx.config.comments.space_after_comment_dash {
             "-- ".to_string()
@@ -1848,7 +1985,24 @@ fn normalize_single_normal_comment_line(
             "--".to_string()
         }
     });
-    let body = body_with_gap.trim_start();
+    let body = preserved_gap
+        .as_ref()
+        .map(|gap| &body_with_gap[gap.len()..])
+        .unwrap_or_else(|| body_with_gap.trim_start());
+    if preserve_extra_gap && let Some(gap) = preserved_gap {
+        return if body.is_empty() {
+            "--".to_string()
+        } else {
+            format!("--{gap}{body}")
+        };
+    }
+    if let Some(_gap) = preserved_gap {
+        return if body.is_empty() {
+            "--".to_string()
+        } else {
+            format!("{prefix}{body}")
+        };
+    }
     if prefix.trim_end() == "--"
         && body_with_gap
             .chars()
@@ -1863,6 +2017,23 @@ fn normalize_single_normal_comment_line(
     } else {
         format!("{prefix}{body}")
     }
+}
+
+fn normal_comment_body_starts_list_item(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(body) = trimmed.strip_prefix("--") else {
+        return false;
+    };
+    let body = body.trim_start();
+    body.starts_with("- ") || body.starts_with("* ") || body.starts_with("+ ")
+}
+
+fn normal_comment_has_explicit_gap(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(body) = trimmed.strip_prefix("--") else {
+        return false;
+    };
+    preserved_dash_gap(body).is_some()
 }
 
 #[derive(Clone)]
@@ -2189,7 +2360,13 @@ fn format_doc_block_line(
                     format!("---{gap_after_dash}{marker}")
                 } else {
                     prefix_override
-                        .map(str::to_string)
+                        .map(|prefix| {
+                            if prefix.contains('|') {
+                                prefix.to_string()
+                            } else {
+                                normalized_doc_continue_marker_prefix(ctx, &marker)
+                            }
+                        })
                         .unwrap_or_else(|| normalized_doc_continue_marker_prefix(ctx, &marker))
                 };
                 if let Some(key) = &line.align_key {
@@ -2714,10 +2891,15 @@ fn structured_doc_tag_columns_from_ast(
             tag: "return".to_string(),
             head_columns: structured_return_columns(tag),
             description: tag.get_description().map(|it| it.get_description_text()),
-            use_normalized_head_as_single_column: false,
+            use_normalized_head_as_single_column: should_use_normalized_single_return_head(tag),
         }),
         _ => None,
     }
+}
+
+fn should_use_normalized_single_return_head(tag: &LuaDocTagReturn) -> bool {
+    let info_list = tag.get_info_list();
+    info_list.len() == 1 && info_list[0].1.is_none()
 }
 
 fn structured_type_columns(ctx: &FormatContext, tag: &LuaDocTagType) -> Vec<String> {

@@ -120,6 +120,17 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
             );
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
         }
+        LuaTokenKind::TkDocOr => {
+            apply_space_rule(
+                spacing,
+                syntax_id,
+                if ctx.config.emmy_doc.compact_type_or {
+                    SpaceRule::NoSpace
+                } else {
+                    SpaceRule::Space
+                },
+            );
+        }
         LuaTokenKind::TkLeftParen => apply_left_paren_spacing(ctx, spacing, token, syntax_id),
         LuaTokenKind::TkRightParen => apply_right_paren_spacing(ctx, spacing, token, syntax_id),
         LuaTokenKind::TkLeftBracket => apply_left_bracket_spacing(ctx, spacing, token, syntax_id),
@@ -197,9 +208,6 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         | LuaTokenKind::TkNe
         | LuaTokenKind::TkAnd
         | LuaTokenKind::TkOr => apply_operator_spacing(ctx, spacing, token, syntax_id),
-        LuaTokenKind::TkDocOr => {
-            apply_space_rule(spacing, syntax_id, SpaceRule::Space);
-        }
         LuaTokenKind::TkDocAnd
         | LuaTokenKind::TkDocExtends
         | LuaTokenKind::TkDocIn

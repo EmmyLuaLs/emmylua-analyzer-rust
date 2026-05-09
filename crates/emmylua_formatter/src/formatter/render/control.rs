@@ -698,6 +698,28 @@ fn render_named_function_stat_source_order(
                 }
             }
             NodeOrToken::Node(node) => match node.kind().into() {
+                LuaSyntaxKind::Comment => {
+                    if let Some(comment) = LuaComment::cast(node.clone()) {
+                        let anchor = previous_significant_token(&children, index);
+                        if comment_is_inline_after_anchor(root, anchor.as_ref(), comment.syntax()) {
+                            docs.extend(inline_anchor_comment_separator_docs(
+                                plan,
+                                anchor.as_ref(),
+                            ));
+                            docs.push(ir::line_suffix(render_comment_with_spacing(
+                                ctx, &comment, plan,
+                            )));
+                            if !next_significant_is_block(&children, index) {
+                                docs.push(ir::hard_line());
+                            }
+                        } else {
+                            if !docs.is_empty() {
+                                docs.push(ir::hard_line());
+                            }
+                            docs.extend(render_comment_with_spacing(ctx, &comment, plan));
+                        }
+                    }
+                }
                 LuaSyntaxKind::ClosureExpr => {
                     let closure_plan =
                         find_direct_child_plan_by_id(syntax_plan, LuaSyntaxId::from_node(node));
@@ -1166,6 +1188,7 @@ fn render_source_order_header_expr_list(
                         expr_list_plan.kind,
                         StatementExprListLayoutKind::PreserveFirstMultiline
                     ),
+                false,
             )
         })
         .collect();

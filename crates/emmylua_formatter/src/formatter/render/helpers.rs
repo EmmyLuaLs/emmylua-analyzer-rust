@@ -22,6 +22,15 @@ pub(super) fn render_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaExpr
     expr::format_expr(ctx, plan, expr)
 }
 
+pub(super) fn render_expr_with_options(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    expr: &LuaExpr,
+    options: expr::ExprFormatOptions,
+) -> Vec<DocIR> {
+    expr::format_expr_with_options(ctx, plan, expr, options)
+}
+
 pub(super) fn find_direct_child_plan_by_id(
     syntax_plan: &SyntaxNodeLayoutPlan,
     syntax_id: LuaSyntaxId,

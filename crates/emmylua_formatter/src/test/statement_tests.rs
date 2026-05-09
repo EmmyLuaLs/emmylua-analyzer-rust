@@ -1323,10 +1323,10 @@ end
         );
     }
 
-        #[test]
-        fn test_control_statement_semicolons_removed_by_default() {
-                assert_format!(
-                        r#"
+    #[test]
+    fn test_control_statement_semicolons_removed_by_default() {
+        assert_format!(
+            r#"
 function f(i)
     while 1 do
         if i > 0 then
@@ -1337,7 +1337,7 @@ function f(i)
     ; end
 end;
 "#,
-                        r#"
+            r#"
 function f(i)
     while 1 do
         if i > 0 then
@@ -1348,21 +1348,21 @@ function f(i)
     end
 end
 "#
-                );
-        }
+        );
+    }
 
-        #[test]
-        fn test_statement_semicolons_can_be_preserved_via_config() {
-                let config = LuaFormatConfig {
-                        output: OutputConfig {
-                                preserve_statement_semicolon: true,
-                                ..Default::default()
-                        },
-                        ..Default::default()
-                };
+    #[test]
+    fn test_statement_semicolons_can_be_preserved_via_config() {
+        let config = LuaFormatConfig {
+            output: OutputConfig {
+                preserve_statement_semicolon: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
-                assert_format_with_config!(
-                        r#"
+        assert_format_with_config!(
+            r#"
 function f(i)
     while 1 do
         if i > 0 then
@@ -1373,7 +1373,7 @@ function f(i)
     ; end
 end;
 "#,
-                        r#"
+            r#"
 function f(i)
     while 1 do
         if i > 0 then
@@ -1384,9 +1384,9 @@ function f(i)
     end
 end;
 "#,
-                        config
-                );
-        }
+            config
+        );
+    }
 
     // ========== local attributes ==========
 
@@ -1689,6 +1689,94 @@ end
             r#"if alpha_beta_gamma then
     return delta_theta
 end
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_statement_tail_chain_break_preference_breaks_last_expr_chain() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_chain_break_on_statement_tail: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"return prefix, Builder:new():add("OKoko.lua"):add("ngx.lua"):add("MyClass.lua")
+"#,
+            r#"return prefix, Builder:new()
+        :add("OKoko.lua")
+        :add("ngx.lua")
+        :add("MyClass.lua")
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_statement_tail_chain_break_preference_does_not_force_when_disabled() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_chain_break_on_statement_tail: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"return prefix, Builder:new():add("OKoko.lua"):add("ngx.lua"):add("MyClass.lua")
+"#,
+            r#"return prefix, Builder:new():add("OKoko.lua"):add("ngx.lua"):add("MyClass.lua")
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_call_statement_chain_break_preference_breaks_standalone_chain() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_chain_break_on_statement_tail: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"Builder:new():add("OKoko.lua"):add("ngx.lua"):add("MyClass.lua")
+"#,
+            r#"Builder:new()
+    :add("OKoko.lua")
+    :add("ngx.lua")
+    :add("MyClass.lua")
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_statement_tail_chain_break_preference_does_not_break_namespace_terminal_call() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_chain_break_on_statement_tail: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"vim.api.nvim_set_keymap("n", "<leader>t", ":lua require('mytest').run()<CR>", {
+    noremap = true,
+    silent = true,
+})
+"#,
+            r#"vim.api.nvim_set_keymap("n", "<leader>t", ":lua require('mytest').run()<CR>", {
+    noremap = true,
+    silent = true
+})
 "#,
             config
         );

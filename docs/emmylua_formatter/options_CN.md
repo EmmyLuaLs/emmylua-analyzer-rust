@@ -56,6 +56,9 @@ width = 4
 - `table_expand`：`Never`、`Always`、`Auto`
 - `call_args_expand`：`Never`、`Always`、`Auto`
 - `func_params_expand`：`Never`、`Always`、`Auto`
+- `prefer_call_args_layout_from_source`：是否优先保留显式多行调用参数列表的源码排版目标
+- `prefer_table_layout_from_source`：是否优先保留显式多行纯数组 table 的源码排版目标
+- `prefer_chain_break_on_statement_tail`：是否优先把语句尾部的 fluent chain 断成多行
 
 默认值：
 
@@ -66,13 +69,24 @@ max_blank_lines = 1
 table_expand = "Auto"
 call_args_expand = "Auto"
 func_params_expand = "Auto"
+prefer_call_args_layout_from_source = false
+prefer_table_layout_from_source = false
+prefer_chain_break_on_statement_tail = false
 ```
 
 行为说明：
 
 - `Auto` 表示允许格式化器在单行和多行候选之间进行比较。
+- `prefer_call_args_layout_from_source = true` 只影响 `call_args_expand = "Auto"` 的调用参数列表。
+- 如果调用参数列表在源码中本来就是多行，格式化器会优先保持展开，而不是再回流成更紧凑的布局。
+- `prefer_table_layout_from_source = true` 只影响 `table_expand = "Auto"` 的 table constructor。
+- 它只对纯数组 table 生效，也就是所有 field 都是不带 key 的位置值。
+- 如果这样的 table 在源码中本来就是多行，格式化器会优先保持展开，而不是再回流成更紧凑的布局。
 - 对于序列结构，格式化器在适用场景下会比较 fill、packed、aligned 和 one-per-line 等候选布局。
 - 二元表达式链和语句表达式列表在总行数不变时，会优先选择更均衡的 packed 布局，以避免最后一行过短。
+- `prefer_chain_break_on_statement_tail = true` 只影响语句中的最后一个直接表达式，包括独立调用语句；当它是一个足够长的 fluent chain 时，会优先改成链式断行。
+- 这里的 chain head 定义为：`root` 加上前导命名空间/字段访问，再加上第一个调用段。例如 `Builder:new():add():add()` 的 head 是 `Builder:new()`，`vim.api.nvim_set_keymap(...)` 的 head 是整个 `vim.api.nvim_set_keymap(...)`。
+- 这里的换行起点定义为：head 之后的第一个 continuation 段。也就是说，只有第一个调用之后仍然继续链下去的部分才会成为链式换行候选；纯命名空间限定调用不会因为这个选项被误判成 chain。
 
 ## output
 
@@ -167,6 +181,7 @@ line_comment_min_column = 0
 - `align_multiline_alias_descriptions`
 - `space_between_tag_columns`
 - `space_after_description_dash`
+- `compact_type_or`
 
 默认值：
 
@@ -178,6 +193,7 @@ align_reference_tags = true
 align_multiline_alias_descriptions = true
 space_between_tag_columns = false
 space_after_description_dash = true
+compact_type_or = false
 ```
 
 当前已结构化处理的标签包括 `@param`、`@field`、`@return`、`@class`、`@alias`、`@type`、`@generic`、`@overload`。
@@ -185,6 +201,7 @@ space_after_description_dash = true
 - `align_multiline_alias_descriptions` 默认开启，用于把多行 `@alias` 块里 `--- | value # description` 的 `# description` 列对齐。
 - `space_between_tag_columns` 控制 EmmyLua tag 行里 `---` 和 `@` 之间是否保留空格，例如 `--- @enum MyEnum` 和 `---@enum MyEnum` 的区别。当前默认值是 `false`，所以不额外配置时会输出 `---@tag`。
 - `space_after_description_dash` 只影响普通 doc 描述行 `--- text` / `---text`，不影响 tag 行前缀。
+- `compact_type_or` 控制 EmmyLua 联合类型里的 `|` 两侧是否保留空格，例如 `string | integer` 和 `string|integer`。默认值是 `false`。
 
 ## align
 

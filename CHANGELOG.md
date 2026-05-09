@@ -2,6 +2,24 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+## [0.23.0] - 2026-5-9
+
+### 🔧 Changed
+
+- **New Formatter**: The new formatter(emmylua_formatter) is now the default formatter for the language server. For more information, please refer to [EmmyLua Formatter Documentation Index](docs/emmylua_formatter/README_EN.md).
+
+- **Enhance generic type inference**: Improved the generic type inference algorithm to better handle complex scenarios, such as nested generics and recursive types.
+
+- **Update dependencies**: Updated various dependencies to their latest versions, update luars to 0.19.0.
+
+- **Optimize performance**: Made several optimizations to improve the overall performance of the language server, including flow analyzis
+
+### 🐛 Fixed
+
+- Fix luajit complex number parsing issue
+- Fix local function semantic token
+- Fix compact luals type grammar fun(...):...
+
 ## [0.22.0] - 2026-4-1
 
 ### ✨ Added

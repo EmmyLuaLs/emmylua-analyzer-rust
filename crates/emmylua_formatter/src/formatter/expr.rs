@@ -27,11 +27,25 @@ use super::trivia::{
     source_line_prefix_width, trailing_gap_requests_alignment,
 };
 
+#[derive(Clone, Copy, Default)]
+pub struct ExprFormatOptions {
+    pub prefer_chain_break: bool,
+}
+
 pub fn format_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaExpr) -> Vec<DocIR> {
+    format_expr_with_options(ctx, plan, expr, ExprFormatOptions::default())
+}
+
+pub fn format_expr_with_options(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    expr: &LuaExpr,
+    options: ExprFormatOptions,
+) -> Vec<DocIR> {
     if expr_is_chain_root(expr)
         && expr_may_need_chain_format(expr)
         && !chain_has_direct_comments(expr)
-        && let Some(chain_docs) = try_format_chain_expr(ctx, plan, expr)
+        && let Some(chain_docs) = try_format_chain_expr(ctx, plan, expr, options)
     {
         return chain_docs;
     }
@@ -56,7 +70,19 @@ fn format_name_expr(expr: &LuaNameExpr) -> Vec<DocIR> {
 }
 
 type EqSplitDocs = (Vec<DocIR>, Vec<DocIR>);
-type ChainSegments = (LuaExpr, Vec<Vec<DocIR>>);
+type ChainSegments = (LuaExpr, Vec<ChainSegment>);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChainSegmentKind {
+    Access,
+    Call,
+}
+
+#[derive(Clone)]
+struct ChainSegment {
+    docs: Vec<DocIR>,
+    kind: ChainSegmentKind,
+}
 
 fn format_literal_expr(ctx: &FormatContext, expr: &LuaLiteralExpr) -> Vec<DocIR> {
     let Some(LuaLiteralToken::String(token)) = expr.get_literal() else {
@@ -779,7 +805,7 @@ fn format_call_arg_list_from_docs(
             close: token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightParen),
             items: arg_docs,
             strategy: ctx.config.layout.call_args_expand.clone(),
-            preserve_multiline: false,
+            preserve_multiline: layout_plan.preserve_multiline,
             flat_separator: comma_flat_separator(plan, comma.as_ref()),
             fill_separator: comma_fill_separator(comma.as_ref()),
             break_separator: comma_break_separator(comma.as_ref()),
@@ -1002,9 +1028,8 @@ fn format_call_args_with_attached_first_arg(
             .all(|item_docs| !ir::ir_has_forced_line_break(item_docs));
 
     if tail_is_single_line
-        && let Some(attached_inline_tail) = try_format_attached_inline_tail(
-            ctx, plan, first_arg, tail_items, &open, &close, comma,
-        )
+        && let Some(attached_inline_tail) =
+            try_format_attached_inline_tail(ctx, plan, first_arg, tail_items, &open, &close, comma)
     {
         return attached_inline_tail;
     }
@@ -1060,7 +1085,11 @@ fn try_format_attached_inline_tail(
     }
 
     let mut trailing_docs = comma_flat_separator(plan, comma);
-    append_docs_with_separator(&mut trailing_docs, tail_items, &comma_flat_separator(plan, comma));
+    append_docs_with_separator(
+        &mut trailing_docs,
+        tail_items,
+        &comma_flat_separator(plan, comma),
+    );
     trailing_docs.push(close.clone());
 
     let last_line_width = measure_docs(ctx.config, first_arg)
@@ -1649,7 +1678,11 @@ fn collect_table_entries(
             {
                 continue;
             }
-            let docs = vec![ir::source_node_trimmed(comment.syntax().clone())];
+            let docs = if table_leading_comment_should_be_formatted(&comment) {
+                render::render_comment_with_spacing(ctx, &comment, plan)
+            } else {
+                vec![ir::source_node_trimmed(comment.syntax().clone())]
+            };
             collected.has_comments = true;
             if !seen_field {
                 collected.comments_after_open.push(DelimitedComment {
@@ -1697,6 +1730,13 @@ fn collect_table_entries(
     }
 
     collected
+}
+
+fn table_leading_comment_should_be_formatted(comment: &LuaComment) -> bool {
+    comment
+        .syntax()
+        .first_token()
+        .is_some_and(|token| matches!(token.kind().to_token(), LuaTokenKind::TkDocStart))
 }
 
 fn format_table_with_comments(
@@ -2455,39 +2495,58 @@ fn try_format_chain_expr(
     ctx: &FormatContext,
     plan: &FormatPlan,
     expr: &LuaExpr,
+    options: ExprFormatOptions,
 ) -> Option<Vec<DocIR>> {
     let (root, segments) = collect_chain_segments(ctx, plan, expr)?;
     if segments.len() <= 1 {
         return None;
     }
+    let segment_docs: Vec<Vec<DocIR>> = segments
+        .iter()
+        .map(|segment| segment.docs.clone())
+        .collect();
     let preserve_multiline_chain = chain_has_explicit_segment_break(expr);
 
     let root_docs = format_expr(ctx, plan, &root);
-    let flat_tail = segments.concat();
+    let flat_tail = segment_docs.concat();
     let flat = {
         let mut docs = root_docs.clone();
         docs.extend(flat_tail);
         docs
     };
 
+    if options.prefer_chain_break
+        && let Some((head_docs, tail_segments)) = preferred_chain_break_parts(&root_docs, &segments)
+        && tail_segments
+            .iter()
+            .all(|docs| !ir::ir_has_forced_line_break(docs))
+    {
+        return Some(format_preferred_broken_chain(
+            ctx,
+            expr,
+            head_docs,
+            tail_segments,
+        ));
+    }
+
     if preserve_multiline_chain {
         return Some(format_preserved_multiline_chain(
             ctx,
             expr,
             root_docs,
-            segments,
+            segment_docs,
         ));
     }
 
-    if segments
+    if segment_docs
         .iter()
         .any(|docs| ir::ir_has_forced_line_break(docs))
     {
         return Some(flat);
     }
 
-    let fill_tail = ir::fill(build_fill_parts(&segments, &[ir::soft_line_or_empty()]));
-    let one_per_line_tail = ir::intersperse(segments.clone(), vec![ir::hard_line()]);
+    let fill_tail = ir::fill(build_fill_parts(&segment_docs, &[ir::soft_line_or_empty()]));
+    let one_per_line_tail = ir::intersperse(segment_docs.clone(), vec![ir::hard_line()]);
 
     let fill = vec![ir::group(vec![
         ir::list(root_docs.clone()),
@@ -2528,7 +2587,9 @@ fn format_preserved_multiline_chain(
     if let Some(first_segment) = segments.first()
         && source_keeps_first_chain_segment_attached(expr)
         && !ir::ir_has_forced_line_break(first_segment)
-        && first_line_prefix_width + ir::ir_flat_width(&root_docs) + ir::ir_flat_width(first_segment)
+        && first_line_prefix_width
+            + ir::ir_flat_width(&root_docs)
+            + ir::ir_flat_width(first_segment)
             <= ctx.config.layout.max_line_width
     {
         docs.extend(first_segment.clone());
@@ -2540,11 +2601,54 @@ fn format_preserved_multiline_chain(
     }
 
     let remaining_tail = ir::intersperse(segments[start_index..].to_vec(), vec![ir::hard_line()]);
-    docs.push(ir::indent(vec![
-        ir::hard_line(),
-        ir::list(remaining_tail),
-    ]));
+    docs.push(ir::indent(vec![ir::hard_line(), ir::list(remaining_tail)]));
     docs
+}
+
+fn format_preferred_broken_chain(
+    ctx: &FormatContext,
+    expr: &LuaExpr,
+    mut head_docs: Vec<DocIR>,
+    tail_segments: Vec<Vec<DocIR>>,
+) -> Vec<DocIR> {
+    if tail_segments.is_empty() {
+        return head_docs;
+    }
+
+    let remaining_tail = ir::intersperse(tail_segments, vec![ir::hard_line()]);
+    head_docs.push(ir::indent(vec![ir::hard_line(), ir::list(remaining_tail)]));
+    let _ = ctx;
+    let _ = expr;
+    head_docs
+}
+
+type PreferredChainBreakParts = (Vec<DocIR>, Vec<Vec<DocIR>>);
+
+fn preferred_chain_break_parts(
+    root_docs: &[DocIR],
+    segments: &[ChainSegment],
+) -> Option<PreferredChainBreakParts> {
+    if segments.len() < 3 {
+        return None;
+    }
+
+    let first_call_index = segments
+        .iter()
+        .position(|segment| segment.kind == ChainSegmentKind::Call)?;
+    if first_call_index + 1 >= segments.len() {
+        return None;
+    }
+
+    let mut head_docs = root_docs.to_vec();
+    for segment in &segments[..=first_call_index] {
+        head_docs.extend(segment.docs.clone());
+    }
+
+    let tail_segments = segments[first_call_index + 1..]
+        .iter()
+        .map(|segment| segment.docs.clone())
+        .collect();
+    Some((head_docs, tail_segments))
 }
 
 fn chain_has_explicit_segment_break(expr: &LuaExpr) -> bool {
@@ -2624,7 +2728,10 @@ fn collect_chain_segments(
             let prefix = index.get_prefix_expr()?;
             let (root, mut segments) = collect_chain_segments(ctx, plan, &prefix)
                 .unwrap_or_else(|| (prefix.clone(), Vec::new()));
-            segments.push(format_index_access_ir(ctx, plan, index));
+            segments.push(ChainSegment {
+                docs: format_index_access_ir(ctx, plan, index),
+                kind: ChainSegmentKind::Access,
+            });
             Some((root, segments))
         }
         _ => None,
@@ -2645,13 +2752,19 @@ fn collect_call_chain_segments(
             collect_chain_segments(ctx, plan, &base).unwrap_or_else(|| (base.clone(), Vec::new()));
         let mut segment = format_index_access_ir(ctx, plan, index);
         segment.extend(format_call_suffix_ir(ctx, plan, call));
-        segments.push(segment);
+        segments.push(ChainSegment {
+            docs: segment,
+            kind: ChainSegmentKind::Call,
+        });
         return Some((root, segments));
     }
 
     let (root, mut segments) =
         collect_chain_segments(ctx, plan, &prefix).unwrap_or_else(|| (prefix.clone(), Vec::new()));
-    segments.push(format_call_suffix_ir(ctx, plan, call));
+    segments.push(ChainSegment {
+        docs: format_call_suffix_ir(ctx, plan, call),
+        kind: ChainSegmentKind::Call,
+    });
     Some((root, segments))
 }
 

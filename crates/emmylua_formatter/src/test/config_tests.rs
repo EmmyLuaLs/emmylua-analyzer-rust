@@ -153,6 +153,64 @@ b = 2
         );
     }
 
+    #[test]
+    fn test_prefer_table_layout_from_source_option() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_table_layout_from_source: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local t = {
+    1,
+    2,
+    3,
+}
+"#,
+            r#"
+local t = {
+    1,
+    2,
+    3
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_prefer_call_args_layout_from_source_option() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_call_args_layout_from_source: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local value = call(
+    a,
+    b,
+    c
+)
+"#,
+            r#"
+local value = call(
+    a,
+    b,
+    c
+)
+"#,
+            config
+        );
+    }
+
     // ========== trailing comma ==========
 
     #[test]
@@ -725,6 +783,7 @@ width = 2
 [layout]
 max_line_width = 88
 table_expand = "Always"
+prefer_call_args_layout_from_source = true
 
 [output]
 quote_style = "Single"
@@ -743,6 +802,7 @@ space_after_comment_dash = false
 align_multiline_alias_descriptions = false
 space_between_tag_columns = false
 space_after_description_dash = false
+compact_type_or = true
 
 [align]
 table_field = false
@@ -755,6 +815,7 @@ table_field = false
         assert_eq!(config.indent.width, 2);
         assert_eq!(config.layout.max_line_width, 88);
         assert_eq!(config.layout.table_expand, ExpandStrategy::Always);
+        assert!(config.layout.prefer_call_args_layout_from_source);
         assert_eq!(config.output.quote_style, QuoteStyle::Single);
         assert_eq!(
             config.output.trailing_table_separator,
@@ -774,6 +835,7 @@ table_field = false
         assert!(!config.emmy_doc.align_multiline_alias_descriptions);
         assert!(!config.emmy_doc.space_between_tag_columns);
         assert!(!config.emmy_doc.space_after_description_dash);
+        assert!(config.emmy_doc.compact_type_or);
         assert!(!config.align.table_field);
     }
 }

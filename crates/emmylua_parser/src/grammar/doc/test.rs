@@ -3570,4 +3570,39 @@ Syntax(Chunk)@0..89
         "#;
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_fun_dots() {
+        let code = r#"
+        ---@type fun(...: number):...
+        "#;
+        let result = r#"
+Syntax(Chunk)@0..47
+  Syntax(Block)@0..47
+    Token(TkEndOfLine)@0..1 "\n"
+    Token(TkWhitespace)@1..9 "        "
+    Syntax(Comment)@9..38
+      Token(TkDocStart)@9..13 "---@"
+      Syntax(DocTagType)@13..38
+        Token(TkTagType)@13..17 "type"
+        Token(TkWhitespace)@17..18 " "
+        Syntax(TypeFun)@18..38
+          Token(TkName)@18..21 "fun"
+          Token(TkLeftParen)@21..22 "("
+          Syntax(DocTypedParameter)@22..33
+            Token(TkDots)@22..25 "..."
+            Token(TkColon)@25..26 ":"
+            Token(TkWhitespace)@26..27 " "
+            Syntax(TypeName)@27..33
+              Token(TkName)@27..33 "number"
+          Token(TkRightParen)@33..34 ")"
+          Token(TkColon)@34..35 ":"
+          Syntax(DocTypeList)@35..38
+            Syntax(DocNamedReturnType)@35..38
+              Token(TkDots)@35..38 "..."
+    Token(TkEndOfLine)@38..39 "\n"
+    Token(TkWhitespace)@39..47 "        "
+          "#;
+        assert_ast_eq!(code, result);
+    }
 }
