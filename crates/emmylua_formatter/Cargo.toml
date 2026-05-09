@@ -2,6 +2,17 @@
 name = "emmylua_formatter"
 version = "0.23.0"
 edition = "2024"
+authors = ["CppCXY"]
+description = "A command-line tool for formatting Lua code"
+license = "MIT"
+repository = "https://github.com/CppCXY/emmylua-analyzer-rust"
+readme = "README.md"
+keywords = ["emmylua", "format", "lua", "cli"]
+categories = ["development-tools"]
+include = [
+    "Cargo.toml",
+    "src/**"
+]
 
 [dependencies]
 serde.workspace = true
