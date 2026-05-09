@@ -3,7 +3,7 @@ use emmylua_parser::{
     LuaCallExpr, LuaClosureExpr, LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind,
     LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaParamList, LuaParenExpr,
     LuaSingleArgExpr, LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken,
-    LuaTableExpr, LuaTableField, LuaTokenKind, LuaUnaryExpr, UnaryOperator,
+    LuaTableExpr, LuaTableField, LuaTokenKind, LuaUnaryExpr,
 };
 use rowan::TextRange;
 
@@ -266,11 +266,13 @@ fn format_unary_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaUnaryExpr
     let mut docs = Vec::new();
     if let Some(op_token) = expr.get_op_token() {
         docs.push(ir::source_token(op_token.syntax().clone()));
-        if matches!(op_token.get_op(), UnaryOperator::OpNot) {
-            docs.push(ir::space());
-        }
     }
     if let Some(inner) = expr.get_expr() {
+        docs.extend(token_gap_spacing_docs(
+            plan,
+            expr.get_op_token().as_ref().map(|token| token.syntax()),
+            inner.syntax().first_token().as_ref(),
+        ));
         docs.extend(format_expr(ctx, plan, &inner));
     }
     docs
@@ -2892,6 +2894,14 @@ fn token_right_spacing_docs(plan: &FormatPlan, token: Option<&LuaSyntaxToken>) -
         return Vec::new();
     };
     spacing_docs_from_expected(plan.spacing.right_expected(LuaSyntaxId::from_token(token)))
+}
+
+fn token_gap_spacing_docs(
+    plan: &FormatPlan,
+    previous: Option<&LuaSyntaxToken>,
+    current: Option<&LuaSyntaxToken>,
+) -> Vec<DocIR> {
+    spacing_docs_from_expected(plan.spacing.gap_expected(previous, current))
 }
 
 fn spacing_docs_from_expected(expected: Option<&TokenSpacingExpected>) -> Vec<DocIR> {

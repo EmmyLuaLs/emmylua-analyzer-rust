@@ -26,6 +26,16 @@ local e = #t
     }
 
     #[test]
+    fn test_unary_minus_spacing_regression() {
+        assert_format!(
+            r#"assert(2.0 ^ -2 == 1 / 4 and -2 ^ - - 2 == - - -4)
+"#,
+            r#"assert(2.0 ^ -2 == 1 / 4 and -2 ^ - - 2 == - - -4)
+"#
+        );
+    }
+
+    #[test]
     fn test_binary_expr() {
         assert_format!(
             r#"

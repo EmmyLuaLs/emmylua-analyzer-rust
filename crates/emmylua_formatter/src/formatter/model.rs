@@ -1,6 +1,6 @@
 use hashbrown::{HashMap, HashSet};
 
-use emmylua_parser::{LuaSyntaxId, LuaSyntaxKind, LuaTokenKind};
+use emmylua_parser::{LuaSyntaxId, LuaSyntaxKind, LuaSyntaxToken, LuaTokenKind};
 use smol_str::SmolStr;
 
 use crate::config::LuaFormatConfig;
@@ -51,6 +51,66 @@ impl SpacingModel {
 
     pub fn token_replace(&self, syntax_id: LuaSyntaxId) -> Option<&str> {
         self.replace_tokens.get(&syntax_id).map(SmolStr::as_str)
+    }
+
+    pub fn gap_expected(
+        &self,
+        previous: Option<&LuaSyntaxToken>,
+        current: Option<&LuaSyntaxToken>,
+    ) -> Option<&TokenSpacingExpected> {
+        let current_expected = current.and_then(|token| self.left_expected(LuaSyntaxId::from_token(token)));
+        let previous_expected = previous.and_then(|token| self.right_expected(LuaSyntaxId::from_token(token)));
+
+        if current_expected.is_some() {
+            return current_expected;
+        }
+
+        if let Some(promoted) = self.promote_previous_left_expected(previous, current) {
+            return Some(promoted);
+        }
+
+        previous_expected
+    }
+
+    fn promote_previous_left_expected(
+        &self,
+        previous: Option<&LuaSyntaxToken>,
+        current: Option<&LuaSyntaxToken>,
+    ) -> Option<&TokenSpacingExpected> {
+        let previous = previous?;
+        let current = current?;
+        if !matches!(previous.kind().to_token(), LuaTokenKind::TkPlus | LuaTokenKind::TkMinus) {
+            return None;
+        }
+        if !matches!(current.kind().to_token(), LuaTokenKind::TkName | LuaTokenKind::TkInt | LuaTokenKind::TkFloat) {
+            return None;
+        }
+
+        let previous_id = LuaSyntaxId::from_token(previous);
+        let left = self.left_expected(previous_id)?;
+        let right = self.right_expected(previous_id)?;
+        if !matches!(left, TokenSpacingExpected::Space(1))
+            || !matches!(right, TokenSpacingExpected::Space(0))
+        {
+            return None;
+        }
+
+        let mut probe = previous.clone();
+        while let Some(candidate) = probe.prev_token() {
+            match candidate.kind().to_token() {
+                LuaTokenKind::TkWhitespace | LuaTokenKind::TkEndOfLine => probe = candidate,
+                _ => {
+                    let candidate_id = LuaSyntaxId::from_token(&candidate);
+                    let candidate_left = self.left_expected(candidate_id);
+                    if matches!(candidate_left, Some(TokenSpacingExpected::Space(1))) {
+                        return None;
+                    }
+                    return Some(left);
+                }
+            }
+        }
+
+        Some(left)
     }
 }
 
