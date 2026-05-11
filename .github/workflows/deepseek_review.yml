@@ -46,8 +46,4 @@ jobs:
           const NU_LIB_DIRS = [ '${{ github.workspace }}/.tmp/deepseek-review/nu' ]
           use review.nu *
 
-          deepseek-review $env.REVIEW_TOKEN \
-            --model $env.REVIEW_MODEL \
-            --repo $env.REVIEW_REPO \
-            --pr-number $env.REVIEW_PR_NUMBER \
-            --gh-token $env.REVIEW_GITHUB_TOKEN
+          deepseek-review $env.REVIEW_TOKEN --model $env.REVIEW_MODEL --repo $env.REVIEW_REPO --pr-number $env.REVIEW_PR_NUMBER --gh-token $env.REVIEW_GITHUB_TOKEN
