@@ -1,6 +1,6 @@
 mod external_range_format;
 
-use emmylua_code_analysis::LuaDocument;
+use emmylua_formatter::reformat_range_in_chunk;
 use lsp_types::{
     ClientCapabilities, DocumentRangeFormattingParams, OneOf, Position, Range, ServerCapabilities,
     TextEdit,
@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     context::ServerContextSnapshot,
     handlers::{
-        document_formatting::{FormattingOptions, format_diff, format_with_workspace_formatter},
+        document_formatting::{FormattingOptions, build_workspace_formatter_config},
         document_range_formatting::external_range_format::external_tool_range_format,
     },
 };
@@ -60,22 +60,35 @@ pub async fn on_range_formatting_handler(
         )
         .await?
     } else {
-        let formatted_text = format_with_workspace_formatter(
-            document.get_text(),
+        let syntax_tree = analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_syntax_tree(&file_id)?;
+        let chunk = syntax_tree.get_chunk_node();
+        let config = build_workspace_formatter_config(
             Some(file_path.as_path()),
-            &emmyrc,
             params.options.tab_size as usize,
             params.options.insert_spaces,
             params.options.insert_final_newline.unwrap_or(true),
         );
-
-        return Some(build_range_edits(
-            &document,
-            &request_range,
+        let selection = document.to_rowan_range(request_range)?;
+        let output = reformat_range_in_chunk(
             document.get_text(),
-            &formatted_text,
-            client_id.is_intellij() || client_id.is_other(),
-        ));
+            &chunk,
+            selection,
+            &config,
+            emmyrc.get_language_level(),
+        )?;
+        let mut new_text = output.text;
+        if client_id.is_intellij() || client_id.is_other() {
+            new_text = new_text.replace("\r\n", "\n");
+        }
+
+        return Some(vec![TextEdit {
+            range: document.to_lsp_range(output.replace_range)?,
+            new_text,
+        }]);
     };
 
     let mut formatted_text = formatted_result.text;
@@ -100,83 +113,6 @@ pub async fn on_range_formatting_handler(
     Some(vec![text_edit])
 }
 
-fn build_range_edits(
-    document: &LuaDocument<'_>,
-    request_range: &Range,
-    source_text: &str,
-    formatted_text: &str,
-    normalize_newlines: bool,
-) -> Vec<TextEdit> {
-    let full_edits = format_diff(source_text, formatted_text, document, usize::MAX / 2);
-
-    let filtered = full_edits
-        .into_iter()
-        .filter(|edit| edit_intersects_requested_lines(&edit.range, request_range))
-        .map(|mut edit| {
-            if normalize_newlines {
-                edit.new_text = edit.new_text.replace("\r\n", "\n");
-            }
-            edit
-        })
-        .collect();
-
-    merge_replace_edits(filtered)
-}
-
-fn edit_intersects_requested_lines(edit_range: &Range, request_range: &Range) -> bool {
-    let request_start = request_range.start.line;
-    let request_end = request_range.end.line;
-
-    if edit_range.start == edit_range.end {
-        let line = edit_range.start.line;
-        return line >= request_start && line <= request_end;
-    }
-
-    let edit_start = edit_range.start.line;
-    let edit_end_exclusive = if edit_range.end.character == 0 {
-        edit_range.end.line
-    } else {
-        edit_range.end.line.saturating_add(1)
-    };
-
-    let request_end_exclusive = if request_range.end.character == 0 {
-        request_end
-    } else {
-        request_end.saturating_add(1)
-    };
-
-    edit_start < request_end_exclusive && request_start < edit_end_exclusive
-}
-
-fn merge_replace_edits(edits: Vec<TextEdit>) -> Vec<TextEdit> {
-    let mut merged = Vec::with_capacity(edits.len());
-    let mut index = 0;
-
-    while index < edits.len() {
-        if index + 1 < edits.len() {
-            let current = &edits[index];
-            let next = &edits[index + 1];
-
-            if current.new_text.is_empty()
-                && next.range.start == next.range.end
-                && current.range.start == next.range.start
-            {
-                merged.push(TextEdit {
-                    range: current.range,
-                    new_text: next.new_text.clone(),
-                });
-                index += 2;
-                continue;
-            }
-        }
-
-        merged.push(edits[index].clone());
-        index += 1;
-    }
-
-    merged
-}
-
 pub struct DocumentRangeFormattingCapabilities;
 
 impl RegisterCapabilities for DocumentRangeFormattingCapabilities {
@@ -187,9 +123,14 @@ impl RegisterCapabilities for DocumentRangeFormattingCapabilities {
 
 #[cfg(test)]
 mod tests {
-    use super::build_range_edits;
+    use std::cmp::Reverse;
+
     use emmylua_code_analysis::{Emmyrc, Vfs, VirtualUrlGenerator};
-    use lsp_types::{Position, Range};
+    use emmylua_formatter::reformat_range_in_chunk;
+    use emmylua_parser::{LuaLanguageLevel, LuaParser, ParserConfig};
+    use lsp_types::{Position, Range, TextEdit};
+
+    use crate::handlers::document_formatting::build_workspace_formatter_config;
 
     fn create_document<'a>(vfs: &'a mut Vfs, text: &str) -> emmylua_code_analysis::LuaDocument<'a> {
         vfs.update_config(Emmyrc::default().into());
@@ -199,32 +140,138 @@ mod tests {
         vfs.get_document(&id).unwrap()
     }
 
+    fn build_range_edit(
+        document: &emmylua_code_analysis::LuaDocument<'_>,
+        request_range: Range,
+    ) -> Option<TextEdit> {
+        let config = build_workspace_formatter_config(
+            Some(document.get_file_path().as_path()),
+            4,
+            true,
+            true,
+        );
+        let tree = LuaParser::parse(
+            document.get_text(),
+            ParserConfig::with_level(LuaLanguageLevel::Lua55),
+        );
+        let output = reformat_range_in_chunk(
+            document.get_text(),
+            &tree.get_chunk_node(),
+            document.to_rowan_range(request_range)?,
+            &config,
+            LuaLanguageLevel::Lua55,
+        )?;
+
+        Some(TextEdit {
+            range: document.to_lsp_range(output.replace_range)?,
+            new_text: output.text,
+        })
+    }
+
     #[test]
-    fn range_edits_only_keep_overlapping_lines() {
+    fn range_edit_expands_only_to_selected_statement_lines() {
         let source = "local a=1\nlocal b=2\n";
-        let formatted = "local a = 1\nlocal b = 2\n";
         let mut vfs = Vfs::new();
         let document = create_document(&mut vfs, source);
+        let first_line_len = source
+            .lines()
+            .next()
+            .expect("first line should exist")
+            .len() as u32;
 
-        let edits = build_range_edits(
+        let edit = build_range_edit(
             &document,
-            &Range {
+            Range {
                 start: Position {
                     line: 0,
                     character: 0,
                 },
                 end: Position {
                     line: 0,
-                    character: 999,
+                    character: first_line_len,
                 },
             },
-            source,
-            formatted,
-            false,
-        );
+        )
+        .expect("range format should succeed");
 
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].range.start.line, 0);
-        assert_eq!(edits[0].new_text, "local a = 1\n");
+        assert_eq!(edit.range.start.line, 0);
+        assert_eq!(edit.range.end.line, 1);
+        assert_eq!(edit.new_text, "local a = 1\n");
+    }
+
+    fn apply_text_edits(
+        document: &emmylua_code_analysis::LuaDocument<'_>,
+        source: &str,
+        edits: &[TextEdit],
+    ) -> String {
+        let mut applied = source.to_string();
+        let mut ranges: Vec<_> = edits
+            .iter()
+            .map(|edit| {
+                let start = document
+                    .get_offset(
+                        edit.range.start.line as usize,
+                        edit.range.start.character as usize,
+                    )
+                    .expect("edit start offset should exist");
+                let end = document
+                    .get_offset(
+                        edit.range.end.line as usize,
+                        edit.range.end.character as usize,
+                    )
+                    .expect("edit end offset should exist");
+                (start, end, edit.new_text.as_str())
+            })
+            .collect();
+        ranges.sort_by_key(|right| Reverse(right.0));
+
+        for (start, end, new_text) in ranges {
+            applied.replace_range(usize::from(start)..usize::from(end), new_text);
+        }
+
+        applied
+    }
+
+    #[test]
+    fn range_edit_keeps_full_multiline_expansion_when_selecting_block() {
+        let source = "local function func1()\n    local a = { { a = 1, aa = 2, aaa = 3, aaaa = 4, aaaaa = 5, aaaaaa = 6, aaaaaaa = 7, aaaaaaaaa = 8, aaaaaaaaaa = 9, aaaaaaaaaaa = 10 } }\n    local b\nend\n";
+        let mut vfs = Vfs::new();
+        let document = create_document(&mut vfs, source);
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 3,
+                character: 3,
+            },
+        };
+
+        let edit = build_range_edit(&document, range).expect("range format should succeed");
+        let config = build_workspace_formatter_config(
+            Some(document.get_file_path().as_path()),
+            4,
+            true,
+            true,
+        );
+        let tree = LuaParser::parse(source, ParserConfig::with_level(LuaLanguageLevel::Lua55));
+        let formatted = reformat_range_in_chunk(
+            source,
+            &tree.get_chunk_node(),
+            document
+                .to_rowan_range(range)
+                .expect("full document range should convert"),
+            &config,
+            LuaLanguageLevel::Lua55,
+        )
+        .expect("formatter range output should exist")
+        .text;
+        let edits = vec![edit];
+        let applied = apply_text_edits(&document, source, &edits);
+
+        assert_eq!(applied, formatted);
+        assert!(applied.contains("            aaaaaaaaaaa = 10"));
+        assert!(applied.contains("    local b"));
     }
 }
