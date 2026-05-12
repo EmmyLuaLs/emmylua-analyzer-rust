@@ -1,6 +1,7 @@
 mod expr;
 mod layout;
 mod model;
+pub(crate) mod range_format;
 mod render;
 mod sequence;
 mod spacing;

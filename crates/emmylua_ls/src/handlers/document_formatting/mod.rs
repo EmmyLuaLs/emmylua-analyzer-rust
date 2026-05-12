@@ -98,6 +98,28 @@ pub(crate) fn format_with_workspace_formatter(
     insert_spaces: bool,
     insert_final_newline: bool,
 ) -> String {
+    let config = build_workspace_formatter_config(
+        source_path,
+        tab_size,
+        insert_spaces,
+        insert_final_newline,
+    );
+
+    let mut node_cache = NodeCache::default();
+    let tree = LuaParser::parse(text, emmyrc.get_parse_config(&mut node_cache));
+    if tree.has_syntax_errors() {
+        return text.to_string();
+    }
+
+    reformat_chunk(&tree.get_chunk_node(), &config)
+}
+
+pub(crate) fn build_workspace_formatter_config(
+    source_path: Option<&Path>,
+    tab_size: usize,
+    insert_spaces: bool,
+    insert_final_newline: bool,
+) -> LuaFormatConfig {
     let mut config = resolve_config_for_path(source_path, None)
         .map(|resolved| resolved.config)
         .unwrap_or_else(|_| LuaFormatConfig::default());
@@ -108,14 +130,7 @@ pub(crate) fn format_with_workspace_formatter(
     };
     config.indent.width = tab_size.max(1);
     config.output.insert_final_newline = insert_final_newline;
-
-    let mut node_cache = NodeCache::default();
-    let tree = LuaParser::parse(text, emmyrc.get_parse_config(&mut node_cache));
-    if tree.has_syntax_errors() {
-        return text.to_string();
-    }
-
-    reformat_chunk(&tree.get_chunk_node(), &config)
+    config
 }
 
 pub struct DocumentFormattingCapabilities;

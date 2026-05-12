@@ -15,12 +15,15 @@ pub use config::{
 use emmylua_parser::{LuaChunk, LuaLanguageLevel, LuaParser, ParserConfig};
 use formatter::FormatContext;
 use printer::Printer;
+pub use rowan::TextRange;
 pub use workspace::{
     ChangedLineRange, FileCollectorOptions, FormatCheckPathResult, FormatCheckResult, FormatOutput,
     FormatPathResult, FormatterError, ResolvedConfig, check_file, check_text, check_text_for_path,
     collect_lua_files, default_config_toml, discover_config_path, format_file, format_text,
     format_text_for_path, load_format_config, parse_format_config, resolve_config_for_path,
 };
+
+pub use formatter::range_format::RangeFormatOutput;
 
 pub struct SourceText<'a> {
     pub text: &'a str,
@@ -47,4 +50,22 @@ pub fn reformat_chunk(chunk: &LuaChunk, config: &LuaFormatConfig) -> String {
     let ir = formatter::format_chunk(&ctx, chunk);
 
     Printer::new(config).print(&ir)
+}
+
+pub fn reformat_range(
+    source: &SourceText,
+    selection: TextRange,
+    config: &LuaFormatConfig,
+) -> Option<RangeFormatOutput> {
+    formatter::range_format::reformat_range(source, selection, config)
+}
+
+pub fn reformat_range_in_chunk(
+    source_text: &str,
+    chunk: &LuaChunk,
+    selection: TextRange,
+    config: &LuaFormatConfig,
+    level: LuaLanguageLevel,
+) -> Option<RangeFormatOutput> {
+    formatter::range_format::reformat_range_in_chunk(source_text, chunk, selection, config, level)
 }
