@@ -1244,4 +1244,36 @@ return t
             "#,
         ));
     }
+
+    #[test]
+    fn test_generic_extends_table() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            --- @alias Procedure fun(...: any...): any
+
+            --- @alias MockReturnType<T> T extends table and nil or any
+
+            --- @class MockContext<T = Procedure>
+            --- @field results MockResult<MockReturnType<T>>
+
+            --- @class MockResult<T>
+            --- @field value T
+
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+
+            --- @type MockContext
+            local state
+
+            --- @type MockResult<Procedure>
+            local result
+
+            state.results = result
+            "#,
+        ));
+    }
 }

@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
     EmmyLuaAnalysis, WorkspaceFolder, build_workspace_folders, collect_workspace_files,
-    load_configs,
+    file_path_to_uri, load_configs, uri_to_file_path,
 };
 use fern::Dispatch;
 use log::LevelFilter;
@@ -14,7 +14,7 @@ fn root_from_configs(config_paths: &[PathBuf], fallback: &Path) -> PathBuf {
         // Need to convert to canonical path to ensure parent() is not an empty
         // string in the case the path is a relative basename.
         match config_path.canonicalize() {
-            Ok(path) => path.parent().unwrap().to_path_buf(),
+            Ok(path) => normalize_local_path(path.parent().unwrap().to_path_buf()),
             Err(err) => {
                 log::error!(
                     "Failed to canonicalize config path: \"{:?}\": {}",
@@ -65,6 +65,12 @@ pub async fn load_workspace(
     config_paths: Option<Vec<PathBuf>>,
     ignore: Option<Vec<String>>,
 ) -> Option<EmmyLuaAnalysis> {
+    let main_path = normalize_local_path(main_path);
+    let cmd_workspace_folders = cmd_workspace_folders
+        .into_iter()
+        .map(normalize_local_path)
+        .collect::<Vec<_>>();
+
     let (config_files, config_root): (Vec<PathBuf>, PathBuf) =
         if let Some(config_paths) = config_paths {
             (
@@ -120,4 +126,11 @@ pub async fn load_workspace(
     }
 
     Some(analysis)
+}
+
+pub(crate) fn normalize_local_path(path: PathBuf) -> PathBuf {
+    let path = path.canonicalize().unwrap_or(path);
+    file_path_to_uri(&path)
+        .and_then(|uri| uri_to_file_path(&uri))
+        .unwrap_or(path)
 }

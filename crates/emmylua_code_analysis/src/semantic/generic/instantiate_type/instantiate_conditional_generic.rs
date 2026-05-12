@@ -40,6 +40,17 @@ pub(super) fn instantiate_conditional(
     context: &GenericInstantiateContext,
     conditional: &LuaConditionalType,
 ) -> LuaType {
+    if let Some(distributed) = instantiate_distributed_conditional(context, conditional) {
+        return distributed;
+    }
+
+    instantiate_conditional_once(context, conditional)
+}
+
+fn instantiate_conditional_once(
+    context: &GenericInstantiateContext,
+    conditional: &LuaConditionalType,
+) -> LuaType {
     let left_type = instantiate_conditional_operand(
         context,
         conditional.get_checked_type(),
@@ -95,6 +106,54 @@ pub(super) fn instantiate_conditional(
             );
             TypeOps::Union.apply(context.db, &true_type, &false_type)
         }
+    }
+}
+
+/// 处理分布式条件类型, 与`TS`中的分布式条件类型处理方式相同, 只有裸模版参数才会被分布式.
+fn instantiate_distributed_conditional(
+    context: &GenericInstantiateContext,
+    conditional: &LuaConditionalType,
+) -> Option<LuaType> {
+    let tpl_id = naked_checked_type_tpl_id(conditional.get_checked_type())?;
+    let raw_checked_type = context.substitutor.get_raw_type(tpl_id)?;
+
+    if raw_checked_type.is_never() {
+        return Some(LuaType::Never);
+    }
+
+    let members = union_members(raw_checked_type)?;
+    let mut result = LuaType::Never;
+    for member in members {
+        let mut member_substitutor = context.substitutor.clone();
+        member_substitutor.replace_type(tpl_id, member, false);
+        let member_context = context.with_substitutor(&member_substitutor);
+        let member_result = instantiate_conditional_once(&member_context, conditional);
+        result = TypeOps::Union.apply(context.db, &result, &member_result);
+    }
+
+    Some(result)
+}
+
+fn naked_checked_type_tpl_id(checked_type: &LuaType) -> Option<GenericTplId> {
+    match checked_type {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) if tpl.get_tpl_id().is_type() => {
+            Some(tpl.get_tpl_id())
+        }
+        _ => None,
+    }
+}
+
+fn union_members(ty: &LuaType) -> Option<Vec<LuaType>> {
+    match ty {
+        LuaType::Union(union) => Some(union.into_vec()),
+        LuaType::MultiLineUnion(multi) => Some(
+            multi
+                .get_unions()
+                .iter()
+                .map(|(member, _)| member.clone())
+                .collect(),
+        ),
+        _ => None,
     }
 }
 
@@ -606,11 +665,11 @@ fn instantiate_conditional_operand(
     has_new: bool,
 ) -> LuaType {
     let mut result = instantiate_type_generic_with_context(context, operand);
-    if checked && let LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) = operand {
+    if let LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) = operand {
         let tpl_id = tpl_ref.get_tpl_id();
         if let Some(raw) = context.substitutor.get_raw_type(tpl_id) {
             result = raw.clone();
-        } else if result.contains_tpl_node() {
+        } else if checked && result.contains_tpl_node() {
             result = LuaType::Unknown;
         }
     }
@@ -629,13 +688,13 @@ fn instantiate_conditional_operand(
     result
 }
 
-// 条件类型判定只消费已经实例化后的实际类型；残留的普通模板引用在这里递归收敛为 `unknown`。
-// `infer` pattern 也以模板引用表示，必须保留下来供后续结构匹配绑定。
+// 条件类型判定只消费已经实例化后的实际类型, 残留的普通模板引用在这里递归收敛为 `unknown`.
+// `infer` pattern 也以模板引用表示, 必须保留下来供后续结构匹配绑定.
 fn actualize_unresolved_templates(ty: LuaType) -> LuaType {
     match ty {
         LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
             if tpl.get_tpl_id().is_conditional_infer() {
-                // Conditional infer 是右侧 pattern 的占位孔，不能像普通未解模板一样抹成 unknown。
+                // Conditional infer 是右侧 pattern 的占位孔, 不能像普通未解模板一样抹成 unknown.
                 LuaType::TplRef(tpl)
             } else {
                 LuaType::Unknown

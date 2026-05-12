@@ -134,6 +134,22 @@ impl TypeSubstitutor {
         self.insert_type_value(tpl_id, SubstitutorTypeValue::new(replace_type, decay));
     }
 
+    pub(super) fn replace_type(
+        &mut self,
+        tpl_id: GenericTplId,
+        replace_type: LuaType,
+        decay: bool,
+    ) {
+        if tpl_id.is_conditional_infer() {
+            return;
+        }
+
+        self.tpl_replace_map.insert(
+            tpl_id,
+            SubstitutorValue::Type(SubstitutorTypeValue::new(replace_type, decay)),
+        );
+    }
+
     pub fn insert_conditional_infer_type(&mut self, tpl_id: GenericTplId, replace_type: LuaType) {
         // 只有 conditional true 分支提交 infer 结果时允许写入 scoped conditional infer id.
         if !tpl_id.is_conditional_infer() {
