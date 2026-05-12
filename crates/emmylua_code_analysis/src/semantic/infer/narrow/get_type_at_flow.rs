@@ -12,6 +12,7 @@ use crate::{
         cache::{FlowAssignmentInfo, FlowMode, FlowVarCache},
         infer::{
             InferResult, VarRefId,
+            infer_name::infer_global_type,
             narrow::{
                 condition_flow::{
                     ConditionFlowAction, CorrelatedSubquery, ExprTypeContinuation,
@@ -496,6 +497,16 @@ impl<'a> FlowTypeEngine<'a> {
                 CacheEntry::Ready => Err(InferFailReason::RecursiveInfer),
             }))
         } else {
+            // Probe the global cache only. Resolved globals still need the
+            // normal flow walk below; unresolved globals exit to the unresolve
+            // pass before self-assignments scan the whole assignment chain.
+            if let Some(decl_id) = query.var_ref_id.get_decl_id_ref()
+                && let Some(decl) = self.db.get_decl_index().get_decl(&decl_id)
+                && decl.is_global()
+            {
+                infer_global_type(self.db, decl.get_name())?;
+            }
+
             get_flow_var_cache(self.cache, query.var_cache_idx)
                 .type_cache
                 .insert(type_cache_key, CacheEntry::Ready);
