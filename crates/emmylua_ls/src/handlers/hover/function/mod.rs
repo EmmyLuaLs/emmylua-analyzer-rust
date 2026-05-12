@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc, vec};
 use emmylua_code_analysis::{
     AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType,
     LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel,
-    TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, instantiate_doc_function,
+    TypeSubstitutor, humanize_type, infer_call_expr_func, instantiate_doc_function,
     instantiate_func_generic, try_extract_signature_id_from_field,
 };
 
@@ -102,7 +102,7 @@ fn build_function_call_hover(
             signature.is_colon_define,
             signature.is_vararg,
             signature.get_type_params(),
-            signature.get_return_type(),
+            signature.get_return_row(),
         );
         let instantiated_signature = instantiate_func_generic(
             db,
@@ -283,7 +283,7 @@ fn process_function_type(
                 signature.is_colon_define,
                 signature.is_vararg,
                 signature.get_type_params(),
-                signature.get_return_type(),
+                signature.get_return_row(),
             ));
             new_overloads.insert(0, fake_doc_function.clone());
             let mut contents = Vec::with_capacity(new_overloads.len());
@@ -473,28 +473,17 @@ fn instantiate_call_return_overloads(
         .return_overloads
         .iter()
         .map(|row| {
-            let row_return_type = match row.type_refs.len() {
-                0 => LuaType::Nil,
-                1 => row.type_refs[0].clone(),
-                _ => LuaType::Variadic(VariadicType::Multi(row.type_refs.clone()).into()),
-            };
             let row_function = LuaFunctionType::new(
                 signature.async_state,
                 signature.is_colon_define,
                 signature.is_vararg,
                 signature.get_type_params(),
-                row_return_type,
+                row.type_refs.clone(),
             );
             let instantiated_row =
                 instantiate_func_generic(db, &mut cache, &row_function, call_expr.clone())
                     .ok()
-                    .map(|func| match func.get_ret() {
-                        LuaType::Variadic(variadic) => match variadic.as_ref() {
-                            VariadicType::Multi(types) => types.clone(),
-                            VariadicType::Base(_) => vec![LuaType::Variadic(variadic.clone())],
-                        },
-                        typ => vec![typ.clone()],
-                    })
+                    .map(|func| func.get_return_row().to_vec())
                     .unwrap_or_else(|| row.type_refs.clone());
 
             LuaDocReturnOverloadInfo {
@@ -506,31 +495,15 @@ fn instantiate_call_return_overloads(
 }
 
 fn convert_function_return_to_docs(func: &LuaFunctionType) -> Vec<LuaDocReturnInfo> {
-    match func.get_ret() {
-        LuaType::Variadic(variadic) => match variadic.as_ref() {
-            VariadicType::Base(base) => vec![LuaDocReturnInfo {
-                name: None,
-                type_ref: base.clone(),
-                description: None,
-                attributes: None,
-            }],
-            VariadicType::Multi(types) => types
-                .iter()
-                .map(|ty| LuaDocReturnInfo {
-                    name: None,
-                    type_ref: ty.clone(),
-                    description: None,
-                    attributes: None,
-                })
-                .collect(),
-        },
-        _ => vec![LuaDocReturnInfo {
+    func.get_return_row()
+        .iter()
+        .map(|ty| LuaDocReturnInfo {
             name: None,
-            type_ref: func.get_ret().clone(),
+            type_ref: ty.clone(),
             description: None,
             attributes: None,
-        }],
-    }
+        })
+        .collect()
 }
 
 fn format_function_type(

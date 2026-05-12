@@ -59,6 +59,39 @@ mod test {
     }
 
     #[test]
+    fn test_empty_return_tail_call_does_not_check_missing_generic_arg() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@generic T: string
+            ---@param value T
+            local function takes(value)
+            end
+
+            takes(none())
+        "#
+        ));
+
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@generic T: string
+            ---@param value T
+            local function takes(value)
+            end
+
+            takes(nil)
+        "#
+        ));
+    }
+
+    #[test]
     fn test_4() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(

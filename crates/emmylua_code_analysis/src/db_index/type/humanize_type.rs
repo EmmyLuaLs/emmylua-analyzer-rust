@@ -571,8 +571,8 @@ impl<'a> TypeHumanizer<'a> {
         self.level = saved;
         w.write_char(')')?;
 
-        let ret_type = lua_func.get_ret();
-        let return_nil = match ret_type {
+        let ret_type = lua_func.get_return_type();
+        let return_nil = match &ret_type {
             LuaType::Variadic(variadic) => matches!(variadic.get_type(0), Some(LuaType::Nil)),
             _ => ret_type.is_nil(),
         };
@@ -584,7 +584,7 @@ impl<'a> TypeHumanizer<'a> {
         w.write_str(" -> ")?;
         let saved = self.level;
         self.level = self.child_level();
-        self.write_type(ret_type, w)?;
+        self.write_type(&ret_type, w)?;
         self.level = saved;
         Ok(())
     }

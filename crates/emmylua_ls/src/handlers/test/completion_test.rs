@@ -1241,7 +1241,7 @@ mod tests {
                 VirtualCompletionItem {
                     label: "set".to_string(),
                     kind: CompletionItemKind::FUNCTION,
-                    label_detail: Some("(self) -> nil".to_string()),
+                    label_detail: Some("(self)".to_string()),
                 },
             ],
         ));
@@ -1843,7 +1843,7 @@ mod tests {
                 VirtualCompletionItem {
                     label: "init".to_string(),
                     kind: CompletionItemKind::FUNCTION,
-                    label_detail: Some("(self) -> nil".to_string()),
+                    label_detail: Some("(self)".to_string()),
                 },
             ],
         ));

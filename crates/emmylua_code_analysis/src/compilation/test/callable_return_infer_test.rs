@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::VirtualWorkspace;
+    use crate::{LuaType, VirtualWorkspace};
 
     #[test]
     fn test_higher_order_generic_return_infer() {
@@ -27,6 +27,310 @@ mod test {
         assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
         assert_eq!(ws.expr_ty("status"), ws.ty("boolean"));
         assert_eq!(ws.expr_ty("payload"), ws.ty("integer"));
+    }
+
+    #[test]
+    fn test_higher_order_empty_variadic_return_tail_assignment_pads_nil() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T, R
+            ---@param f fun(...: T...): R...
+            ---@param ... T...
+            ---@return boolean, R...
+            local function wrap(f, ...)
+            end
+
+            ---@type fun()
+            local none
+
+            ok, payload = wrap(none)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
+        assert_eq!(ws.expr_ty("payload"), ws.ty("nil"));
+    }
+
+    #[test]
+    fn test_higher_order_fixed_missing_return_slot_infers_nil() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic A, B
+            ---@param f fun(): A, B
+            ---@return A, B
+            local function call(f)
+            end
+
+            ---@return string
+            local function one()
+            end
+
+            first, second = call(one)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("first"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("second"), ws.ty("nil"));
+    }
+
+    #[test]
+    fn test_higher_order_empty_variadic_return_tail_keeps_call_arity() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T, R
+            ---@param f fun(...: T...): R...
+            ---@param ... T...
+            ---@return boolean, R...
+            local function wrap(f, ...)
+            end
+
+            ---@type fun()
+            local none
+
+            ---@overload fun(x: boolean): "one"
+            ---@overload fun(x: boolean, y: nil): "two"
+            ---@param ... unknown
+            ---@return "fallback"
+            local function arity(...)
+            end
+
+            which = arity(wrap(none))
+            "#,
+        );
+
+        let which = ws.expr_ty("which");
+        assert_eq!(ws.humanize_type(which), "\"one\"");
+    }
+
+    #[test]
+    fn test_higher_order_empty_callback_return_with_remaining_args_keeps_zero_arity() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic A, R
+            ---@param f fun(x: A): R...
+            ---@param x A
+            ---@return R...
+            local function apply(f, x)
+            end
+
+            ---@return
+            local function none(x)
+            end
+
+            ---@overload fun(): "zero"
+            ---@overload fun(x: nil): "one"
+            ---@param ... unknown
+            ---@return "fallback"
+            local function arity(...)
+            end
+
+            which = arity(apply(none, "x"))
+            "#,
+        );
+
+        let which = ws.expr_ty("which");
+        assert_eq!(ws.humanize_type(which), "\"zero\"");
+    }
+
+    #[test]
+    fn test_empty_return_call_keeps_argument_arity() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@overload fun(): "zero"
+            ---@overload fun(x: nil): "one"
+            ---@param ... unknown
+            ---@return "fallback"
+            local function arity(...)
+            end
+
+            which = arity(none())
+            "#,
+        );
+
+        let which = ws.expr_ty("which");
+        assert_eq!(ws.humanize_type(which), "\"zero\"");
+    }
+
+    #[test]
+    fn test_inferred_empty_return_call_keeps_argument_arity() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            local function none()
+                return
+            end
+
+            ---@overload fun(): "zero"
+            ---@overload fun(x: nil): "one"
+            ---@param ... unknown
+            ---@return "fallback"
+            local function arity(...)
+            end
+
+            which = arity(none())
+            "#,
+        );
+
+        let which = ws.expr_ty("which");
+        assert_eq!(ws.humanize_type(which), "\"zero\"");
+    }
+
+    #[test]
+    fn test_empty_return_call_is_nil_in_scalar_context() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@return
+            local function none()
+            end
+
+            value = none() or 1
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("value"), LuaType::IntegerConst(1));
+    }
+
+    #[test]
+    fn test_non_tail_empty_return_call_pads_nil_argument() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@overload fun(x: nil, y: integer): "two"
+            ---@overload fun(x: integer): "one"
+            ---@param ... unknown
+            ---@return "fallback"
+            local function arity(...)
+            end
+
+            which = arity(none(), 1)
+            "#,
+        );
+
+        let which = ws.expr_ty("which");
+        assert_eq!(ws.humanize_type(which), "\"two\"");
+    }
+
+    #[test]
+    fn test_variadic_generic_empty_tail_arg_keeps_zero_arity() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param ... T...
+            ---@return T...
+            local function pass(...)
+            end
+
+            ---@return
+            local function none()
+            end
+
+            ---@overload fun(): "zero"
+            ---@overload fun(x: nil): "one"
+            ---@param ... unknown
+            ---@return "fallback"
+            local function arity(...)
+            end
+
+            which = arity(pass(none()))
+            "#,
+        );
+
+        let which = ws.expr_ty("which");
+        assert_eq!(ws.humanize_type(which), "\"zero\"");
+    }
+
+    #[test]
+    fn test_union_generic_pack_return_keeps_deep_slots() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@type (fun<T>(...: T...): T...) | nil
+            local run
+
+            first, second, third = run(1, "x", true)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("first"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("second"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("third"), ws.ty("boolean"));
+    }
+
+    #[test]
+    fn test_inferred_callback_return_keeps_multiple_slots() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic A, B
+            ---@param f fun(): A, B
+            ---@return A, B
+            local function call(f)
+            end
+
+            local function two()
+                return 1, "x"
+            end
+
+            first, second = call(two)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("first"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("second"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_inferred_return_preserves_unbounded_vararg_tail() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@param ... string
+            local function pass(...)
+                return ...
+            end
+
+            first, second = pass("x", "y")
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("first"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("second"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_inferred_return_preserves_unbounded_tail_call() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@return string...
+            local function many()
+            end
+
+            local function pass()
+                return many()
+            end
+
+            first, second = pass()
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("first"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("second"), ws.ty("string"));
     }
 
     #[test]

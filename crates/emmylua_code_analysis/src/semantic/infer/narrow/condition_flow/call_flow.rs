@@ -104,7 +104,7 @@ pub(super) fn get_type_at_call_expr_by_func(
 ) -> Result<ConditionFlowAction, InferFailReason> {
     match maybe_func {
         LuaType::DocFunction(f) => {
-            let return_type = f.get_ret();
+            let return_type = f.get_return_type();
             match return_type {
                 LuaType::TypeGuard(_) => get_type_at_call_expr_by_type_guard(
                     db,
@@ -119,7 +119,7 @@ pub(super) fn get_type_at_call_expr_by_func(
                     cache,
                     var_ref_id,
                     call_expr,
-                    call,
+                    &call,
                     condition_flow,
                 ),
                 _ => Ok(ConditionFlowAction::Continue),
@@ -223,14 +223,14 @@ fn get_type_guard_call_info(
         return Ok(None);
     };
 
-    let mut return_type = func_type.get_ret().clone();
+    let mut return_type = func_type.get_return_type();
     if return_type.contain_tpl() {
         let Ok(inst_func) = cache.with_no_flow(|cache| {
             instantiate_func_generic(db, cache, func_type.as_ref(), call_expr)
         }) else {
             return Ok(None);
         };
-        return_type = inst_func.get_ret().clone();
+        return_type = inst_func.get_return_type();
     }
 
     let LuaType::TypeGuard(guard) = return_type else {

@@ -110,7 +110,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
                         ),
                         ("key".to_string(), Some(key_type_ref.clone())),
                     ],
-                    field_type.clone(),
+                    vec![field_type.clone()],
                 ))),
             );
             analyzer
@@ -207,7 +207,7 @@ pub fn analyze_operator(analyzer: &mut DocAnalyzer, tag: LuaDocTagOperator) -> O
             false,
             false,
             operands,
-            return_type,
+            vec![return_type],
         ))),
     );
 

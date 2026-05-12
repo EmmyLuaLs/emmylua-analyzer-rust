@@ -482,21 +482,13 @@ fn infer_func_type(ctx: DocTypeInferContext<'_>, func: &LuaDocFuncType) -> LuaTy
     // since we don't have the same context as the analyzer. This is a simplification.
     let is_colon = false;
 
-    let return_type = if return_types.len() == 1 {
-        return_types[0].clone()
-    } else if return_types.len() > 1 {
-        LuaType::Variadic(VariadicType::Multi(return_types).into())
-    } else {
-        LuaType::Nil
-    };
-
     LuaType::DocFunction(
         LuaFunctionType::new(
             async_state,
             is_colon,
             is_variadic,
             params_result,
-            return_type,
+            return_types,
         )
         .into(),
     )

@@ -6,7 +6,7 @@ use emmylua_parser::{
 
 use crate::{
     DiagnosticCode, LuaSemanticDeclId, LuaSignature, LuaSignatureId, LuaType, SemanticDeclLevel,
-    SemanticModel, SignatureReturnStatus,
+    SemanticModel, SignatureReturnStatus, db_index::return_row::return_row_max_len,
 };
 
 use super::{Checker, DiagnosticContext, get_closure_expr_comment, get_return_stats};
@@ -199,37 +199,43 @@ fn check_returns(
     function_name: &str,
 ) -> Option<()> {
     for return_stat in get_return_stats(closure_expr) {
-        let mut return_stat_len: usize = 0;
+        let expr_list = return_stat.get_expr_list().collect::<Vec<_>>();
+        let tail_expr_type = expr_list
+            .last()
+            .and_then(|expr| semantic_model.infer_expr(expr.clone()).ok());
+        if let Some(LuaType::Variadic(variadic)) = &tail_expr_type
+            && variadic.get_max_len().is_none()
+        {
+            continue;
+        }
 
-        for (i, expr) in return_stat.get_expr_list().enumerate() {
-            let Some(infer_type) = semantic_model.infer_expr(expr.clone()).ok() else {
-                continue;
-            };
-
-            let expr_return_count = match infer_type {
-                LuaType::Variadic(variadic) => variadic.get_min_len()?,
-                _ => 1,
-            };
-
-            return_stat_len += expr_return_count;
+        let return_infos = semantic_model.infer_expr_list_types(&expr_list, None);
+        let mut last_missing_range = None;
+        for (i, (_, range)) in return_infos.iter().enumerate() {
+            let return_stat_len = i + 1;
 
             if let Some(doc_return_len) = doc_return_len
                 && return_stat_len > doc_return_len
             {
+                if last_missing_range == Some(*range) {
+                    continue;
+                }
+
                 let message = if is_global {
                     t!(
                         "Missing @return annotation at index `%{index}` in global function `%{function_name}`.",
-                        index = i + 1,
+                        index = return_stat_len,
                         function_name = function_name
                     )
                 } else {
                     t!(
                         "Incomplete signature. Missing @return annotation at index `%{index}`.",
-                        index = i + 1
+                        index = return_stat_len
                     )
                 };
 
-                context.add_diagnostic(code, expr.get_range(), message.to_string(), None);
+                context.add_diagnostic(code, *range, message.to_string(), None);
+                last_missing_range = Some(*range);
             }
         }
     }
@@ -241,12 +247,6 @@ fn get_doc_return_max_len(signature: &LuaSignature) -> Option<Option<usize>> {
     if signature.resolve_return != SignatureReturnStatus::DocResolve {
         return None;
     }
-    let return_type = signature.get_return_type();
 
-    Some(match return_type {
-        LuaType::Variadic(variadic) => variadic.get_max_len(),
-        LuaType::Any | LuaType::Unknown => Some(1),
-        LuaType::Nil => Some(0),
-        _ => Some(1),
-    })
+    Some(return_row_max_len(&signature.get_return_row()))
 }

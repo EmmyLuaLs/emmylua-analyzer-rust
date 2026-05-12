@@ -33,6 +33,26 @@ mod tests {
     }
 
     #[test]
+    fn test_callback_function_type_without_return_list_rejects_return_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::RedundantReturnValue,
+            r#"
+            ---@param cb fun()
+            local function call(cb)
+            end
+
+            call(function()
+                while true do
+                    return 1
+                end
+            end)
+        "#
+        ));
+    }
+
+    #[test]
     fn test_2() {
         let mut ws = VirtualWorkspace::new();
 
@@ -70,6 +90,25 @@ mod tests {
             ---@return string
             local function test()
                 return 1, "2"
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_tail_empty_return_call_counts_as_missing_return_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingReturnValue,
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@return string
+            local function value()
+                return none()
             end
         "#
         ));
@@ -149,6 +188,82 @@ mod tests {
             local function test()
                 return 1, 2
             end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_tail_call_trailing_nil_counts_as_redundant_return_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::RedundantReturnValue,
+            r#"
+            ---@return number, nil
+            local function source()
+                return 1, nil
+            end
+
+            ---@return number
+            local function target()
+                return source()
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_tail_call_nil_return_counts_as_redundant_return_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::RedundantReturnValue,
+            r#"
+            ---@return nil
+            local function source()
+                return nil
+            end
+
+            ---@param cb fun()
+            local function call(cb)
+            end
+
+            call(function()
+                return source()
+            end)
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_nil_return_annotation_requires_nil_return_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingReturnValue,
+            r#"
+            ---@return nil
+            local function target()
+                return
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_zero_return_callback_rejects_nil_return_value() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::RedundantReturnValue,
+            r#"
+            ---@param cb fun()
+            local function call(cb)
+            end
+
+            call(function()
+                return nil
+            end)
         "#
         ));
     }

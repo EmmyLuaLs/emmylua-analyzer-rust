@@ -107,6 +107,44 @@ mod test {
     }
 
     #[test]
+    fn test_empty_return_tail_call_does_not_count_as_redundant_parameter() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::RedundantParameter,
+            r#"
+            ---@return
+            local function none()
+            end
+
+            local function takes_none()
+            end
+
+            takes_none(none())
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_unbounded_tail_call_does_not_count_as_redundant_parameter() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::RedundantParameter,
+            r#"
+            ---@return string...
+            local function many()
+            end
+
+            local function takes_none()
+            end
+
+            takes_none(many())
+        "#
+        ));
+    }
+
+    #[test]
     fn test_function_param() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
