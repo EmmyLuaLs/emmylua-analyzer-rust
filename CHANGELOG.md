@@ -2,6 +2,12 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+## [0.24.0] - 2026-5-12
+
+- **Fix range format issue**: Built-in formatter now supports range format
+- **Fix some formatting edge cases**: Fixed some formatting edge cases, which are still being continuously improved
+
+
 ## [0.23.0] - 2026-5-9
 
 ### 🔧 Changed
