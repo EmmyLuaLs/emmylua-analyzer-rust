@@ -757,6 +757,19 @@ fn format_call_arg_list_from_docs(
     let (open, close) = paren_tokens(args_list.syntax());
     let comma = first_direct_token(args_list.syntax(), LuaTokenKind::TkComma);
 
+    if arg_docs.len() == 1
+        && matches!(args_list.get_args().next(), Some(LuaExpr::TableExpr(_)))
+        && ir::ir_has_forced_line_break(&arg_docs[0])
+    {
+        let mut docs = vec![token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen)];
+        docs.extend(arg_docs[0].clone());
+        docs.push(token_or_kind_doc(
+            close.as_ref(),
+            LuaTokenKind::TkRightParen,
+        ));
+        return docs;
+    }
+
     if attach_first_arg {
         return format_call_args_with_attached_first_arg(
             ctx,
@@ -995,7 +1008,14 @@ fn format_call_arg_value_ir(
         }
     }
 
-    format_expr(ctx, plan, arg)
+    let docs = format_expr(ctx, plan, arg);
+    if let LuaExpr::TableExpr(table) = arg
+        && ir::ir_has_forced_line_break(&docs)
+    {
+        return format_multiline_table_expr(ctx, plan, table);
+    }
+
+    docs
 }
 
 fn format_call_args_with_attached_first_arg(
@@ -2457,10 +2477,20 @@ fn expr_may_need_chain_format(expr: &LuaExpr) -> bool {
     match expr {
         LuaExpr::CallExpr(call) => call
             .get_prefix_expr()
-            .is_some_and(|prefix| prefix_can_extend_chain(&prefix)),
+            .is_some_and(|prefix| prefix_contains_call_chain(&prefix)),
         LuaExpr::IndexExpr(index) => index
             .get_prefix_expr()
             .is_some_and(|prefix| prefix_can_extend_chain(&prefix)),
+        _ => false,
+    }
+}
+
+fn prefix_contains_call_chain(prefix: &LuaExpr) -> bool {
+    match prefix {
+        LuaExpr::CallExpr(_) => true,
+        LuaExpr::IndexExpr(index) => index
+            .get_prefix_expr()
+            .is_some_and(|base| prefix_contains_call_chain(&base)),
         _ => false,
     }
 }
@@ -2568,10 +2598,18 @@ fn try_format_chain_expr(
         SequenceLayoutPolicy {
             allow_fill: true,
             prefer_balanced_break_lines: true,
-            first_line_prefix_width: source_line_prefix_width(expr.syntax()),
+            first_line_prefix_width: chain_expr_first_line_prefix_width(expr),
             ..Default::default()
         },
     ))
+}
+
+fn chain_expr_first_line_prefix_width(expr: &LuaExpr) -> usize {
+    if expr.get_parent::<LuaCallArgList>().is_some() {
+        0
+    } else {
+        source_line_prefix_width(expr.syntax())
+    }
 }
 
 fn format_preserved_multiline_chain(

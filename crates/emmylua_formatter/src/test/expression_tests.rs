@@ -1065,6 +1065,27 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
     }
 
     #[test]
+    fn test_call_args_do_not_split_short_inner_chain() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 80,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"Preview.TaskItem:SetHeadTask(LM.UIXKM.UI.RoleId, LM.UIXKM.UI:GetFactionId(), LM.UIXKM.UI:GetSex(), 0)
+"#,
+            r#"Preview.TaskItem:SetHeadTask(
+    LM.UIXKM.UI.RoleId, LM.UIXKM.UI:GetFactionId(), LM.UIXKM.UI:GetSex(), 0
+)
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_user_multiline_assert_comparison_keeps_eq_on_call_closing_line() {
         let input = r#"assert(
         T.checkpanic(

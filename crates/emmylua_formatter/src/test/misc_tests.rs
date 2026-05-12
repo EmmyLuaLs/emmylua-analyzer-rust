@@ -265,6 +265,45 @@ Second pass:
     }
 
     #[test]
+    fn test_idempotency_nested_call_with_multiline_table_arg() {
+        let config = LuaFormatConfig {
+            layout: crate::config::LayoutConfig {
+                max_line_width: 80,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let input = r#"function xxxxxxxxxx:yyyyyyyyyyy()
+    iiiiiiiiii:OOOOOO("UIWardrobeUpStar", LM.UUUUUUUUU({ NUWIXK = NUWIXK, JFCWXU = JFCWXU, JIWOFIWJOIFJW = JIWOFIWJOIFJW }))
+end
+"#;
+
+        let first = crate::reformat_lua_code(
+            &SourceText {
+                text: input,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+        let second = crate::reformat_lua_code(
+            &SourceText {
+                text: &first,
+                level: LuaLanguageLevel::default(),
+            },
+            &config,
+        );
+
+        assert_eq!(
+            first, second,
+            r#"Formatter is not idempotent for nested call with multiline table arg!
+First pass:
+{first}
+Second pass:
+{second}"#
+        );
+    }
+
+    #[test]
     fn test_format_disable_range_preserves_block_contents() {
         assert_format!(
             r#"local a=1
