@@ -98,6 +98,54 @@ end
     }
 
     #[test]
+    fn test_empty_if_block_keeps_end_on_own_line() {
+        assert_format!(
+            r#"if ok then
+end
+"#,
+            r#"if ok then
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_empty_do_block_keeps_end_on_own_line() {
+        assert_format!(
+            r#"do
+end
+"#,
+            r#"do
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_empty_for_block_keeps_end_on_own_line() {
+        assert_format!(
+            r#"for i = 1, 3 do
+end
+"#,
+            r#"for i = 1, 3 do
+end
+"#
+        );
+    }
+
+    #[test]
+    fn test_empty_named_function_body_keeps_end_on_own_line() {
+        assert_format!(
+            r#"function alpha.beta:gamma()
+end
+"#,
+            r#"function alpha.beta:gamma()
+end
+"#
+        );
+    }
+
+    #[test]
     fn test_elseif_stat_preserves_inline_comment_after_then() {
         assert_format!(
             r#"if a then
@@ -1259,7 +1307,8 @@ print(c)
 function foo()
 end
 "#,
-            r#"function foo() end
+            r#"function foo()
+end
 "#
         );
     }
@@ -1271,7 +1320,8 @@ end
 function foo(a, b)
 end
 "#,
-            r#"function foo(a, b) end
+            r#"function foo(a, b)
+end
 "#
         );
     }
@@ -1283,7 +1333,8 @@ end
 do
 end
 "#,
-            r#"do end
+            r#"do
+end
 "#
         );
     }
@@ -1295,7 +1346,8 @@ end
 while true do
 end
 "#,
-            r#"while true do end
+            r#"while true do
+end
 "#
         );
     }
@@ -1307,7 +1359,8 @@ end
 for i = 1, 10 do
 end
 "#,
-            r#"for i = 1, 10 do end
+            r#"for i = 1, 10 do
+end
 "#
         );
     }
@@ -1833,7 +1886,8 @@ value
 local function foo()
 end
 "#,
-            r#"local function foo() end
+            r#"local function foo()
+end
 "#
         );
     }
@@ -1845,7 +1899,8 @@ end
 local function foo(a, b)
 end
 "#,
-            r#"local function foo(a, b) end
+            r#"local function foo(a, b)
+end
 "#
         );
     }

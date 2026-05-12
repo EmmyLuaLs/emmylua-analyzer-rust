@@ -36,6 +36,28 @@ local e = #t
     }
 
     #[test]
+    fn test_empty_closure_can_stay_inline() {
+        assert_format!(
+            r#"local fn = function() end
+"#,
+            r#"local fn = function () end
+"#
+        );
+    }
+
+    #[test]
+    fn test_empty_closure_preserves_standalone_end_layout() {
+        assert_format!(
+            r#"local fn = function()
+end
+"#,
+            r#"local fn = function ()
+end
+"#
+        );
+    }
+
+    #[test]
     fn test_binary_expr() {
         assert_format!(
             r#"
@@ -1080,6 +1102,38 @@ end, 'LOADTRUE', 'RETURN1') == "hiho")
             r#"Preview.TaskItem:SetHeadTask(
     LM.UIXKM.UI.RoleId, LM.UIXKM.UI:GetFactionId(), LM.UIXKM.UI:GetSex(), 0
 )
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_binary_comparison_rhs_chain_stays_flat_under_or_break() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 80,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"if self.aaaaabbbbb == nil or self.aaaaabbbbb.cccc.dddd.eeee == sub.ffff.gggg.hhhh then
+    if item.iiii.jjjj.kkkk == 0 then
+        item.LLLL:MMMM()
+    end
+    self:NNNN(sub)
+else
+end
+"#,
+            r#"if self.aaaaabbbbb == nil
+    or self.aaaaabbbbb.cccc.dddd.eeee == sub.ffff.gggg.hhhh then
+    if item.iiii.jjjj.kkkk == 0 then
+        item.LLLL:MMMM()
+    end
+    self:NNNN(sub)
+else
+end
 "#,
             config
         );

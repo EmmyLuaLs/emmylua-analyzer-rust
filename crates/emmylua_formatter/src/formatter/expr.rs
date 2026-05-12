@@ -2436,7 +2436,11 @@ fn render_closure_shell(
     }
 
     if !saw_same_line_body_comment && expr.get_block().is_none() && !has_body_content {
-        docs.push(ir::space());
+        if closure_end_starts_on_new_line(expr.syntax()) {
+            docs.push(ir::hard_line());
+        } else {
+            docs.push(ir::space());
+        }
     }
 
     docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
@@ -2451,6 +2455,23 @@ fn block_docs_from_rendered_body(mut body_docs: Vec<DocIR>) -> Vec<DocIR> {
         body_docs.pop();
     }
     body_docs
+}
+
+fn closure_end_starts_on_new_line(syntax: &LuaSyntaxNode) -> bool {
+    let Some(end_token) = first_direct_token(syntax, LuaTokenKind::TkEnd) else {
+        return false;
+    };
+    let mut previous = end_token.prev_token();
+
+    while let Some(token) = previous {
+        match token.kind().to_token() {
+            LuaTokenKind::TkWhitespace => previous = token.prev_token(),
+            LuaTokenKind::TkEndOfLine => return true,
+            _ => return false,
+        }
+    }
+
+    false
 }
 
 fn expr_is_chain_root(expr: &LuaExpr) -> bool {
@@ -2605,7 +2626,8 @@ fn try_format_chain_expr(
 }
 
 fn chain_expr_first_line_prefix_width(expr: &LuaExpr) -> usize {
-    if expr.get_parent::<LuaCallArgList>().is_some() {
+    if expr.get_parent::<LuaCallArgList>().is_some() || expr.get_parent::<LuaBinaryExpr>().is_some()
+    {
         0
     } else {
         source_line_prefix_width(expr.syntax())

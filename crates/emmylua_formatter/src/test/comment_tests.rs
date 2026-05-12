@@ -1208,7 +1208,8 @@ end
             r#"---@param a     any
 ---@param bbbbb string
 ---@param c     any
-function f(a, bbbbb, c) end
+function f(a, bbbbb, c)
+end
 "#
         );
     }
@@ -1465,7 +1466,8 @@ end
 "#,
             r#"---@return ffi.cdata* ptr # an uint8_t * FFI cdata pointer that points to the buffer data.
 ---@return integer len    # length of the buffer data in bytes
-local function f() end
+local function f()
+end
 "#
         );
     }

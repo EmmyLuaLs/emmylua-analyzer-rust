@@ -145,6 +145,9 @@ fn render_while_source_order(
         }
     }
 
+    if end_token_starts_on_new_line(syntax) {
+        ensure_end_starts_on_new_line(&mut docs);
+    }
     docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
     docs
 }
@@ -305,6 +308,9 @@ fn render_for_source_order(
         }
     }
 
+    if end_token_starts_on_new_line(syntax) {
+        ensure_end_starts_on_new_line(&mut docs);
+    }
     docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
     docs
 }
@@ -466,6 +472,9 @@ fn render_for_range_source_order(
         }
     }
 
+    if end_token_starts_on_new_line(syntax) {
+        ensure_end_starts_on_new_line(&mut docs);
+    }
     docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
     docs
 }
@@ -868,6 +877,9 @@ fn render_do_source_order(
         }
     }
 
+    if end_token_starts_on_new_line(syntax) {
+        ensure_end_starts_on_new_line(&mut docs);
+    }
     docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
     docs
 }
@@ -915,6 +927,10 @@ fn render_if_clause_source_order(
 
                 if source_order_token_is_trailing_statement_semicolon(syntax, token) {
                     continue;
+                }
+
+                if kind == LuaTokenKind::TkEnd && end_token_starts_on_new_line(syntax) {
+                    ensure_end_starts_on_new_line(&mut docs);
                 }
 
                 if previous_significant_token(&children, index).is_some()
@@ -1146,10 +1162,40 @@ fn render_named_function_closure_tail_source_order(
     }
 
     if !saw_block && !saw_tail_comment {
-        docs.push(ir::space());
+        if end_token_starts_on_new_line(closure.syntax()) {
+            docs.push(ir::hard_line());
+        } else {
+            docs.push(ir::space());
+        }
     }
     docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
     docs
+}
+
+fn ensure_end_starts_on_new_line(docs: &mut Vec<DocIR>) {
+    while matches!(docs.last(), Some(DocIR::Space)) {
+        docs.pop();
+    }
+    if !matches!(docs.last(), Some(DocIR::HardLine)) {
+        docs.push(ir::hard_line());
+    }
+}
+
+fn end_token_starts_on_new_line(syntax: &LuaSyntaxNode) -> bool {
+    let Some(end_token) = first_direct_token(syntax, LuaTokenKind::TkEnd) else {
+        return false;
+    };
+    let mut previous = end_token.prev_token();
+
+    while let Some(token) = previous {
+        match token.kind().to_token() {
+            LuaTokenKind::TkWhitespace => previous = token.prev_token(),
+            LuaTokenKind::TkEndOfLine => return true,
+            _ => return false,
+        }
+    }
+
+    false
 }
 
 fn format_local_name_ir(local_name: &LuaLocalName) -> Vec<DocIR> {
