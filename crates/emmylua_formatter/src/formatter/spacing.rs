@@ -313,8 +313,14 @@ fn apply_left_bracket_spacing(
     let left_space = if let Some(prev_token) = get_prev_sibling_token_without_space(token) {
         match prev_token.kind().to_token() {
             LuaTokenKind::TkComma | LuaTokenKind::TkSemicolon => Some(1),
-            LuaTokenKind::TkName
-            | LuaTokenKind::TkRightParen
+            LuaTokenKind::TkName => {
+                if is_parent_syntax(token, LuaSyntaxKind::TypeTuple) {
+                    None
+                } else {
+                    Some(0)
+                }
+            }
+            LuaTokenKind::TkRightParen
             | LuaTokenKind::TkRightBracket
             | LuaTokenKind::TkDot
             | LuaTokenKind::TkColon => Some(0),

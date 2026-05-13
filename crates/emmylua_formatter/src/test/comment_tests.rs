@@ -2229,4 +2229,14 @@ local a = 1
 "#
         );
     }
+
+    #[test]
+    fn test_tuple_type() {
+        assert_format!(
+            r#"---@cast assert [function]
+"#,
+            r#"---@cast assert [function]
+"#
+        );
+    }
 }
