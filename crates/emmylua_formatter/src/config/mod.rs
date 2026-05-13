@@ -147,10 +147,11 @@ pub struct LayoutConfig {
     pub prefer_call_args_layout_from_source: bool,
     /// Prefer using the source layout goal for explicit multiline pure-array tables.
     pub prefer_table_layout_from_source: bool,
-    /// Prefer breaking statement-tail chains onto multiple lines when the chain has at least 3 segments.
+    /// Prefer breaking statement-tail chains and keyed table-field value chains onto multiple lines
+    /// when the chain has at least 3 segments.
     ///
     /// This applies only to the last direct expression in a statement,
-    /// including standalone call statements.
+    /// including standalone call statements, plus keyed table-field values.
     pub prefer_chain_break_on_statement_tail: bool,
 }
 

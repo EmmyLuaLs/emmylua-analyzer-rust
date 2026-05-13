@@ -82,6 +82,7 @@ enum ChainSegmentKind {
 struct ChainSegment {
     docs: Vec<DocIR>,
     kind: ChainSegmentKind,
+    attach_to_root: bool,
 }
 
 fn format_literal_expr(ctx: &FormatContext, expr: &LuaLiteralExpr) -> Vec<DocIR> {
@@ -1839,7 +1840,12 @@ fn format_table_field_ir(
     }
 
     if let Some(value) = field.get_value_expr() {
-        docs.extend(format_table_field_value_ir(ctx, plan, &value));
+        docs.extend(format_table_field_value_ir(
+            ctx,
+            plan,
+            &value,
+            field.is_assign_field() && ctx.config.layout.prefer_chain_break_on_statement_tail,
+        ));
     }
 
     docs
@@ -1879,6 +1885,7 @@ fn format_table_field_value_ir(
     ctx: &FormatContext,
     plan: &FormatPlan,
     value: &LuaExpr,
+    prefer_chain_break: bool,
 ) -> Vec<DocIR> {
     if let LuaExpr::TableExpr(table) = value
         && value.syntax().text().contains_char('\n')
@@ -1886,7 +1893,7 @@ fn format_table_field_value_ir(
         return format_multiline_table_expr(ctx, plan, table);
     }
 
-    format_expr(ctx, plan, value)
+    format_expr_with_options(ctx, plan, value, ExprFormatOptions { prefer_chain_break })
 }
 
 fn format_table_field_eq_split(
@@ -1913,7 +1920,12 @@ fn format_table_field_eq_split(
         assign_space.clone(),
     ];
     if let Some(value) = field.get_value_expr() {
-        after.extend(format_table_field_value_ir(ctx, plan, &value));
+        after.extend(format_table_field_value_ir(
+            ctx,
+            plan,
+            &value,
+            ctx.config.layout.prefer_chain_break_on_statement_tail,
+        ));
     }
     Some((before, after))
 }
@@ -2548,17 +2560,31 @@ fn try_format_chain_expr(
     expr: &LuaExpr,
     options: ExprFormatOptions,
 ) -> Option<Vec<DocIR>> {
-    let (root, segments) = collect_chain_segments(ctx, plan, expr)?;
+    let (root, mut segments) = collect_chain_segments(ctx, plan, expr)?;
     if segments.len() <= 1 {
         return None;
     }
+    let preserve_multiline_chain = chain_has_explicit_segment_break(expr);
+
+    let mut root_docs = format_expr(ctx, plan, &root);
+    let mut head_ends_with_call = matches!(root, LuaExpr::CallExpr(_));
+    if segments
+        .first()
+        .is_some_and(|segment| segment.attach_to_root)
+    {
+        let first_segment = segments.remove(0);
+        root_docs.extend(first_segment.docs);
+        head_ends_with_call = true;
+    }
+
+    if segments.is_empty() {
+        return Some(root_docs);
+    }
+
     let segment_docs: Vec<Vec<DocIR>> = segments
         .iter()
         .map(|segment| segment.docs.clone())
         .collect();
-    let preserve_multiline_chain = chain_has_explicit_segment_break(expr);
-
-    let root_docs = format_expr(ctx, plan, &root);
     let flat_tail = segment_docs.concat();
     let flat = {
         let mut docs = root_docs.clone();
@@ -2567,7 +2593,8 @@ fn try_format_chain_expr(
     };
 
     if options.prefer_chain_break
-        && let Some((head_docs, tail_segments)) = preferred_chain_break_parts(&root_docs, &segments)
+        && let Some((head_docs, tail_segments)) =
+            preferred_chain_break_parts(&root_docs, &segments, head_ends_with_call)
         && tail_segments
             .iter()
             .all(|docs| !ir::ir_has_forced_line_break(docs))
@@ -2687,7 +2714,21 @@ type PreferredChainBreakParts = (Vec<DocIR>, Vec<Vec<DocIR>>);
 fn preferred_chain_break_parts(
     root_docs: &[DocIR],
     segments: &[ChainSegment],
+    head_ends_with_call: bool,
 ) -> Option<PreferredChainBreakParts> {
+    if head_ends_with_call {
+        if segments.len() < 2 {
+            return None;
+        }
+
+        let head_docs = root_docs.to_vec();
+        let tail_segments = segments
+            .iter()
+            .map(|segment| segment.docs.clone())
+            .collect();
+        return Some((head_docs, tail_segments));
+    }
+
     if segments.len() < 3 {
         return None;
     }
@@ -2791,6 +2832,7 @@ fn collect_chain_segments(
             segments.push(ChainSegment {
                 docs: format_index_access_ir(ctx, plan, index),
                 kind: ChainSegmentKind::Access,
+                attach_to_root: false,
             });
             Some((root, segments))
         }
@@ -2815,17 +2857,28 @@ fn collect_call_chain_segments(
         segments.push(ChainSegment {
             docs: segment,
             kind: ChainSegmentKind::Call,
+            attach_to_root: false,
         });
         return Some((root, segments));
     }
 
     let (root, mut segments) =
         collect_chain_segments(ctx, plan, &prefix).unwrap_or_else(|| (prefix.clone(), Vec::new()));
+    let attach_to_root = segments.is_empty() && call_has_empty_paren_args(call);
     segments.push(ChainSegment {
         docs: format_call_suffix_ir(ctx, plan, call),
         kind: ChainSegmentKind::Call,
+        attach_to_root,
     });
     Some((root, segments))
+}
+
+fn call_has_empty_paren_args(call: &LuaCallExpr) -> bool {
+    let Some(args_list) = call.get_args_list() else {
+        return false;
+    };
+
+    args_list.get_args().next().is_none() && !call_arg_list_has_direct_comments(&args_list)
 }
 
 fn format_call_suffix_ir(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaCallExpr) -> Vec<DocIR> {

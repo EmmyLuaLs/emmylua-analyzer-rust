@@ -1413,6 +1413,86 @@ Builder:new()
     }
 
     #[test]
+    fn test_builder_chain_root_empty_call_stays_attached() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_line_width: 80,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"local console_format_list = {
+    GRAY = ConsoleFormattingBuilder()
+        :setColor(Color(0.5, 0.5, 0.5))
+        :addSeq(EscapeSequences.BRIGHT_FOREGROUND_BLACK)
+        :build()
+}
+"#,
+            r#"local console_format_list = {
+    GRAY = ConsoleFormattingBuilder()
+        :setColor(Color(0.5, 0.5, 0.5))
+        :addSeq(EscapeSequences.BRIGHT_FOREGROUND_BLACK)
+        :build()
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_field_chain_break_preference_breaks_after_constructor_call() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_chain_break_on_statement_tail: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"local console_format_list = {
+    DEFAULT = ConsoleFormattingBuilder():setColor(Color(1, 1, 1)):addSeq(EscapeSequences.FOREGROUND_DEFAULT):build()
+}
+"#,
+            r#"local console_format_list = {
+    DEFAULT = ConsoleFormattingBuilder()
+        :setColor(Color(1, 1, 1))
+        :addSeq(EscapeSequences.FOREGROUND_DEFAULT)
+        :build()
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_field_chain_break_preference_keeps_namespace_call_head_attached() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_chain_break_on_statement_tail: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"local spec = {
+    DEFAULT = vim.api.nvim_get_runtime_file("lua", true):filter(match.lua):head()
+}
+"#,
+            r#"local spec = {
+    DEFAULT = vim.api.nvim_get_runtime_file("lua", true)
+        :filter(match.lua)
+        :head()
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_method_chain_uses_progressive_fill_when_width_exceeded() {
         let config = LuaFormatConfig {
             layout: LayoutConfig {

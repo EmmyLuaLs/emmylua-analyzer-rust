@@ -84,8 +84,8 @@ Behavior notes:
 - When such a table is already multiline in the source, the formatter keeps it expanded instead of reflowing it back into a compact layout.
 - Sequence-like structures can now choose between fill, packed, aligned, and one-per-line layouts when applicable.
 - Binary-expression chains and statement expression lists may prefer a balanced packed layout when it keeps the same line count but avoids ragged trailing lines.
-- `prefer_chain_break_on_statement_tail = true` only applies to the last direct expression in a statement, including standalone call statements; when that expression is a long enough fluent chain, the formatter prefers chain-style breaking.
-- The chain head is defined as the `root`, plus any leading namespace or field accesses, plus the first call segment. For example, the head of `Builder:new():add():add()` is `Builder:new()`, while the head of `vim.api.nvim_set_keymap(...)` is the whole `vim.api.nvim_set_keymap(...)` call.
+- `prefer_chain_break_on_statement_tail = true` applies to the last direct expression in a statement, including standalone call statements, and also to keyed table-field values; when that expression is a long enough fluent chain, the formatter prefers chain-style breaking.
+- The chain head is defined as the `root`, plus any leading namespace or field accesses, plus the first call segment; however, if the `root` itself already ends in a call, the head stops at that call. For example, the head of `Builder:new():add():add()` is `Builder:new()`, the head of `ConsoleFormattingBuilder():setColor():build()` is `ConsoleFormattingBuilder()`, and the head of `vim.api.nvim_set_keymap(...)` is the whole `vim.api.nvim_set_keymap(...)` call.
 - The break start is defined as the first continuation segment after that head. In other words, only segments that continue after the first call are eligible for chain-style line breaking; a namespace-qualified terminal call is not treated as a fluent chain by this option.
 
 ## output

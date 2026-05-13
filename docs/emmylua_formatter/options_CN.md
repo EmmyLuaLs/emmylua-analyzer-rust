@@ -84,8 +84,8 @@ prefer_chain_break_on_statement_tail = false
 - 如果这样的 table 在源码中本来就是多行，格式化器会优先保持展开，而不是再回流成更紧凑的布局。
 - 对于序列结构，格式化器在适用场景下会比较 fill、packed、aligned 和 one-per-line 等候选布局。
 - 二元表达式链和语句表达式列表在总行数不变时，会优先选择更均衡的 packed 布局，以避免最后一行过短。
-- `prefer_chain_break_on_statement_tail = true` 只影响语句中的最后一个直接表达式，包括独立调用语句；当它是一个足够长的 fluent chain 时，会优先改成链式断行。
-- 这里的 chain head 定义为：`root` 加上前导命名空间/字段访问，再加上第一个调用段。例如 `Builder:new():add():add()` 的 head 是 `Builder:new()`，`vim.api.nvim_set_keymap(...)` 的 head 是整个 `vim.api.nvim_set_keymap(...)`。
+- `prefer_chain_break_on_statement_tail = true` 会影响语句中的最后一个直接表达式，包括独立调用语句，以及带 key 的 table field value；当它是一个足够长的 fluent chain 时，会优先改成链式断行。
+- 这里的 chain head 定义为：`root` 加上前导命名空间/字段访问，再加上第一个调用段；但如果 `root` 本身已经是一个调用，则 head 就停在这个调用本身。例如 `Builder:new():add():add()` 的 head 是 `Builder:new()`，`ConsoleFormattingBuilder():setColor():build()` 的 head 是 `ConsoleFormattingBuilder()`，`vim.api.nvim_set_keymap(...)` 的 head 是整个 `vim.api.nvim_set_keymap(...)`。
 - 这里的换行起点定义为：head 之后的第一个 continuation 段。也就是说，只有第一个调用之后仍然继续链下去的部分才会成为链式换行候选；纯命名空间限定调用不会因为这个选项被误判成 chain。
 
 ## output
