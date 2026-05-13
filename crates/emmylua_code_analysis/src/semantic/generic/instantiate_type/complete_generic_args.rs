@@ -96,7 +96,7 @@ fn complete_type_generic_args_inner(
     for (idx, generic_param) in generic_params.iter().enumerate() {
         if let Some(provided_arg) = provided_args.get(idx) {
             let provided_arg = provided_arg.clone();
-            substitutor.insert_type(GenericTplId::Type(idx as u32), provided_arg.clone(), true);
+            substitutor.bind_type(GenericTplId::Type(idx as u32), provided_arg.clone());
             params.push(provided_arg);
             continue;
         }
@@ -115,7 +115,7 @@ fn complete_type_generic_args_inner(
                 completed_type.ty
             };
             let instantiated = instantiate_type_generic(db, &default_type, &substitutor);
-            substitutor.insert_type(GenericTplId::Type(idx as u32), instantiated.clone(), true);
+            substitutor.bind_type(GenericTplId::Type(idx as u32), instantiated.clone());
             params.push(instantiated);
         } else {
             missing_required_count += 1;

@@ -298,4 +298,37 @@ result = {
             "#
         ));
     }
+
+    #[test]
+    fn test_123() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param x T
+            ---@return T
+            function f(x)
+                return x
+            end
+
+            A = f("hello")
+            B = f({value = "hello"})
+            C = B.value
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "\"hello\"");
+
+        let b_ty = ws.expr_ty("B");
+        let b_desc = ws.humanize_type_detailed(b_ty);
+        assert!(
+            b_desc.contains("value: string"),
+            "unexpected type: {}",
+            b_desc
+        );
+
+        let c_ty = ws.expr_ty("C");
+        assert_eq!(ws.humanize_type(c_ty), "string");
+    }
 }

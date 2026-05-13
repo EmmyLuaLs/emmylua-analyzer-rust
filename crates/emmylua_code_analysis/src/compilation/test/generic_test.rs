@@ -494,9 +494,12 @@ mod test {
               A, B, C =  f1(1, "2", true)
             "#,
             ));
-            assert_eq!(ws.expr_ty("A"), ws.ty("integer"));
-            assert_eq!(ws.expr_ty("B"), ws.ty("string"));
-            assert_eq!(ws.expr_ty("C"), ws.ty("boolean"));
+            let a_ty = ws.expr_ty("A");
+            let b_ty = ws.expr_ty("B");
+            let c_ty = ws.expr_ty("C");
+            assert_eq!(ws.humanize_type(a_ty), "1");
+            assert_eq!(ws.humanize_type(b_ty), "\"2\"");
+            assert_eq!(ws.humanize_type(c_ty), "true");
         }
         {
             ws.def(
@@ -533,7 +536,8 @@ mod test {
               G, H =  f3(1, "2")
             "#,
             ));
-            assert_eq!(ws.expr_ty("G"), ws.ty("integer"));
+            let g_ty = ws.expr_ty("G");
+            assert_eq!(ws.humanize_type(g_ty), "1");
             assert_eq!(ws.expr_ty("H"), ws.ty("any"));
         }
 
@@ -681,7 +685,7 @@ mod test {
             "#,
         ));
         let result_ty = ws.expr_ty("result");
-        assert_eq!(ws.humanize_type(result_ty), "string");
+        assert_eq!(ws.humanize_type(result_ty), "\"\"");
     }
 
     #[test]
@@ -699,7 +703,7 @@ mod test {
         );
 
         let result_ty = ws.expr_ty("result");
-        assert_eq!(ws.humanize_type(result_ty), "integer");
+        assert_eq!(ws.humanize_type(result_ty), "1");
     }
 
     #[test]
@@ -1075,7 +1079,7 @@ mod test {
         let explicit_result = ws.expr_ty("ExplicitResult");
         assert_eq!(ws.humanize_type(explicit_result), "number");
         let inferred_result = ws.expr_ty("InferredResult");
-        assert_eq!(ws.humanize_type(inferred_result), "integer");
+        assert_eq!(ws.humanize_type(inferred_result), "1");
     }
 
     #[test]
@@ -1217,7 +1221,7 @@ mod test {
     }
 
     #[test]
-    fn test_constant_decay() {
+    fn test_plain_tpl_literal_key_inference_widens_through_finalize() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
             r#"
@@ -1248,6 +1252,138 @@ mod test {
 
         let result_ty = ws.expr_ty("result");
         assert_eq!(ws.humanize_type(result_ty), "integer");
+    }
+
+    #[test]
+    fn test_const_tpl_candidate_preserves_literal_through_plain_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias std.ConstTpl<T> unknown
+
+            ---@generic T
+            ---@param value std.ConstTpl<T>
+            ---@return T
+            function keep_const(value)
+            end
+
+            result = keep_const("mode")
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "\"mode\"");
+    }
+
+    #[test]
+    fn test_plain_tpl_top_level_return_preserves_primitive_literal() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return T
+            function id(value)
+            end
+
+            result = id("mode")
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "\"mode\"");
+    }
+
+    #[test]
+    fn test_transparent_alias_top_level_return_preserves_primitive_literal() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Id<T> T
+
+            ---@generic T
+            ---@param value T
+            ---@return Id<T>
+            function id(value)
+            end
+
+            result = id("mode")
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "\"mode\"");
+    }
+
+    #[test]
+    fn test_plain_tpl_top_level_return_preserves_primitive_literal_union() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return T
+            function id(value)
+            end
+
+            ---@alias Choice "left" | "right"
+
+            ---@type Choice
+            local choice
+
+            result = id(choice)
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(result_ty, ws.ty("\"left\" | \"right\""));
+    }
+
+    #[test]
+    fn test_primitive_constraint_preserves_literal_candidate() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T: string
+            ---@param value T
+            ---@return T
+            function constrained(value)
+            end
+
+            result = constrained("mode")
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "\"mode\"");
+    }
+
+    #[test]
+    fn test_contextual_widening_keeps_bare_literal_but_widens_nested_literals() {
+        use crate::{LuaMemberKey, LuaObjectType, WideningContext, widen_type_with_context};
+        use smol_str::SmolStr;
+
+        let mut ws = VirtualWorkspace::new();
+        let bare = LuaType::StringConst(SmolStr::new("mode").into());
+        assert_eq!(
+            widen_type_with_context(bare.clone(), WideningContext::Root),
+            bare
+        );
+
+        let object = LuaType::Object(
+            LuaObjectType::new_with_fields(
+                [(
+                    LuaMemberKey::Name("kind".into()),
+                    LuaType::StringConst(SmolStr::new("mode").into()),
+                )]
+                .into_iter()
+                .collect(),
+                Vec::new(),
+            )
+            .into(),
+        );
+        let widened = widen_type_with_context(object, WideningContext::Root);
+        assert_eq!(widened, ws.ty("{ kind: string }"));
     }
 
     #[test]

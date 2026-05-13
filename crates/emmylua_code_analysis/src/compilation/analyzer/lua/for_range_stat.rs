@@ -3,7 +3,7 @@ use emmylua_parser::{LuaAstToken, LuaExpr, LuaForRangeStat};
 use crate::{
     DbIndex, InferFailReason, LuaDeclId, LuaInferCache, LuaOperatorMetaMethod, LuaType,
     LuaTypeCache, TplContext, TypeOps, TypeSubstitutor, VariadicType,
-    compilation::analyzer::unresolve::UnResolveIterVar, infer_expr, instantiate_doc_function,
+    compilation::analyzer::unresolve::UnResolveIterVar, infer_expr, instantiate_type_generic,
     tpl_pattern_match_args,
 };
 
@@ -145,22 +145,18 @@ pub fn infer_for_range_iter_expr_func(
         return Ok(doc_function.get_variadic_ret());
     };
     let mut substitutor = TypeSubstitutor::new();
-    let mut context = TplContext {
-        db,
-        cache,
-        substitutor: &mut substitutor,
-        call_expr: None,
-    };
     let params = doc_function
         .get_params()
         .iter()
         .map(|(_, opt_ty)| opt_ty.clone().unwrap_or(LuaType::Any))
         .collect::<Vec<_>>();
 
+    let mut context = TplContext::new(db, cache, &mut substitutor, None);
     tpl_pattern_match_args(&mut context, &params, &[status_param])?;
 
+    let doc_function_ty = LuaType::DocFunction(doc_function.clone());
     let instantiate_func = if let LuaType::DocFunction(f) =
-        instantiate_doc_function(db, &doc_function, &substitutor)
+        instantiate_type_generic(db, &doc_function_ty, &substitutor)
     {
         f
     } else {

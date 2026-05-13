@@ -47,6 +47,8 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
             break;
         };
 
+        pre_analyze_call_arg_table_fields(analyzer, &expr);
+
         match analyzer.infer_expr(&expr) {
             Ok(expr_type) => {
                 let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
@@ -316,6 +318,8 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
             continue;
         }
 
+        pre_analyze_call_arg_table_fields(analyzer, expr);
+
         let expr_type = match analyzer.infer_expr(expr) {
             Ok(expr_type) => expr_type.get_result_slot_type(0).unwrap_or(expr_type),
             Err(InferFailReason::None) => LuaType::Unknown,
@@ -536,8 +540,17 @@ pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> 
         }
     }
 
-    let value_expr = field.get_value_expr()?;
     let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
+    if analyzer
+        .db
+        .get_type_index()
+        .get_type_cache(&member_id.into())
+        .is_some()
+    {
+        return Some(());
+    }
+    let value_expr = field.get_value_expr()?;
+
     let value_type = match analyzer.infer_expr(&value_expr.clone()) {
         Ok(value_type) => match value_type {
             LuaType::Def(ref_id) => LuaType::Ref(ref_id),
@@ -626,4 +639,30 @@ fn get_delayed_definition_decl_id(
         return None;
     }
     Some(decl_id)
+}
+
+fn pre_analyze_call_arg_table_fields(analyzer: &mut LuaAnalyzer, expr: &LuaExpr) {
+    let LuaExpr::CallExpr(call_expr) = expr else {
+        return;
+    };
+    let Some(args_list) = call_expr.get_args_list() else {
+        return;
+    };
+
+    for arg in args_list.get_args() {
+        pre_analyze_table_expr_fields(analyzer, arg);
+    }
+}
+
+fn pre_analyze_table_expr_fields(analyzer: &mut LuaAnalyzer, expr: LuaExpr) {
+    let LuaExpr::TableExpr(table_expr) = expr else {
+        return;
+    };
+
+    for field in table_expr.get_fields() {
+        analyze_table_field(analyzer, field.clone());
+        if let Some(value_expr) = field.get_value_expr() {
+            pre_analyze_table_expr_fields(analyzer, value_expr);
+        }
+    }
 }

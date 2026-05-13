@@ -3,8 +3,8 @@ use std::{collections::HashSet, sync::Arc, vec};
 use emmylua_code_analysis::{
     AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType,
     LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel,
-    TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, instantiate_doc_function,
-    instantiate_func_generic, try_extract_signature_id_from_field,
+    TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, infer_call_func_generic,
+    instantiate_type_generic, try_extract_signature_id_from_field,
 };
 
 use crate::handlers::hover::{
@@ -104,7 +104,7 @@ fn build_function_call_hover(
             signature.get_type_params(),
             signature.get_return_type(),
         );
-        let instantiated_signature = instantiate_func_generic(
+        let instantiated_signature = infer_call_func_generic(
             db,
             &mut builder.semantic_model.get_cache().borrow_mut(),
             &base_function,
@@ -486,7 +486,7 @@ fn instantiate_call_return_overloads(
                 row_return_type,
             );
             let instantiated_row =
-                instantiate_func_generic(db, &mut cache, &row_function, call_expr.clone())
+                infer_call_func_generic(db, &mut cache, &row_function, call_expr.clone())
                     .ok()
                     .map(|func| match func.get_ret() {
                         LuaType::Variadic(variadic) => match variadic.as_ref() {
@@ -702,8 +702,8 @@ fn hover_instantiate_function_type(
         return None;
     }
     match typ {
-        LuaType::DocFunction(f) => {
-            if let LuaType::DocFunction(f) = instantiate_doc_function(db, f, substitutor) {
+        LuaType::DocFunction(_) => {
+            if let LuaType::DocFunction(f) = instantiate_type_generic(db, typ, substitutor) {
                 Some(f)
             } else {
                 None

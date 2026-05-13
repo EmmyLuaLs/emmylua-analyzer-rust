@@ -11,7 +11,6 @@ pub use call_constraint::{
 };
 use emmylua_parser::LuaAstNode;
 use emmylua_parser::LuaExpr;
-pub(crate) use instantiate_type::collect_callable_overload_groups;
 pub use instantiate_type::*;
 use rowan::NodeOrToken;
 pub use tpl_context::TplContext;

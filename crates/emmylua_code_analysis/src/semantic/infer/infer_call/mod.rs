@@ -8,7 +8,7 @@ use super::{
     super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
     InferFailReason, InferResult,
 };
-use crate::semantic::overload_resolve::callable_accepts_args;
+use crate::semantic::overload_resolve::{callable_accepts_args, collect_callable_overload_groups};
 use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
@@ -17,14 +17,11 @@ use crate::{
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::{
-            TypeSubstitutor, collect_callable_overload_groups, get_tpl_ref_extend_type,
-            instantiate_doc_function,
-        },
+        generic::{TypeSubstitutor, get_tpl_ref_extend_type},
         infer::narrow::get_type_at_call_expr_inline_cast,
     },
 };
-use crate::{build_self_type, infer_self_type, instantiate_func_generic, semantic::infer_expr};
+use crate::{build_self_type, infer_call_func_generic, infer_self_type, semantic::infer_expr};
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
 
@@ -136,7 +133,7 @@ pub fn infer_call_expr_func(
     let result = if let Ok(func_ty) = result {
         let func_ty = match func_ty.get_ret() {
             LuaType::Call(_) => {
-                match instantiate_func_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
+                match infer_call_func_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
                     Ok(func_ty) => Arc::new(func_ty),
                     Err(_) => func_ty,
                 }
@@ -223,7 +220,7 @@ fn infer_doc_function(
     call_expr: LuaCallExpr,
 ) -> InferCallFuncResult {
     if func.contain_tpl() {
-        let result = instantiate_func_generic(db, cache, func, call_expr)?;
+        let result = infer_call_func_generic(db, cache, func, call_expr)?;
         return Ok(Arc::new(result));
     }
 
@@ -271,9 +268,10 @@ fn filter_callable_overloads_by_call_args(
 
             let has_tpls = !callable_tpls.is_empty();
             let mut substitutor = TypeSubstitutor::new();
-            substitutor.add_need_infer_tpls(callable_tpls);
+            substitutor.prepare_inference_slots(callable_tpls);
             let match_func = if has_tpls {
-                match instantiate_doc_function(db, func, &substitutor) {
+                let func_ty = LuaType::DocFunction(func.clone());
+                match instantiate_type_generic(db, &func_ty, &substitutor) {
                     LuaType::DocFunction(doc_func) => doc_func,
                     _ => func.clone(),
                 }
@@ -362,13 +360,15 @@ fn infer_type_doc_function(
                 };
 
                 if has_generic_tpl {
-                    let result = instantiate_func_generic(db, cache, &f, call_expr.clone())?;
+                    let result = infer_call_func_generic(db, cache, &f, call_expr.clone())?;
                     overloads.push(Arc::new(result));
                 } else if f.contain_self() {
                     let mut substitutor = TypeSubstitutor::new();
                     let self_type = build_self_type(db, call_expr_type);
                     substitutor.add_self_type(self_type);
-                    if let LuaType::DocFunction(f) = instantiate_doc_function(db, &f, &substitutor)
+                    let func_ty = LuaType::DocFunction(f.clone());
+                    if let LuaType::DocFunction(f) =
+                        instantiate_type_generic(db, &func_ty, &substitutor)
                     {
                         overloads.push(f);
                     }
@@ -901,6 +901,30 @@ mod tests {
 
         assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
         assert_eq!(ws.expr_ty("payload"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_top_level_generic_literal_keeps_function_param_and_return_consistent() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return T
+            local function id(value) end
+
+            id("hello")
+            "#,
+        );
+        let call_expr = ws.get_node::<emmylua_parser::LuaCallExpr>(file_id);
+        let semantic_model = ws.analysis.compilation.get_semantic_model(file_id).unwrap();
+        let func = semantic_model
+            .infer_call_expr_func(call_expr, None)
+            .unwrap();
+
+        let param_ty = func.get_params()[0].1.clone().unwrap();
+        assert_eq!(ws.humanize_type(param_ty), "\"hello\"");
+        assert_eq!(ws.humanize_type(func.get_ret().clone()), "\"hello\"");
     }
 
     #[test]

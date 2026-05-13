@@ -16,7 +16,7 @@ use crate::{
             var_ref_id::get_var_expr_var_ref_id,
         },
     },
-    semantic::instantiate_func_generic,
+    semantic::infer_call_func_generic,
 };
 
 pub fn get_type_at_call_expr(
@@ -226,7 +226,7 @@ fn get_type_guard_call_info(
     let mut return_type = func_type.get_ret().clone();
     if return_type.contain_tpl() {
         let Ok(inst_func) = cache.with_no_flow(|cache| {
-            instantiate_func_generic(db, cache, func_type.as_ref(), call_expr)
+            infer_call_func_generic(db, cache, func_type.as_ref(), call_expr)
         }) else {
             return Ok(None);
         };

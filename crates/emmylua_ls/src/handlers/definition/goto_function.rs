@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
     LuaCompilation, LuaDeclId, LuaFunctionType, LuaSemanticDeclId, LuaSignature, LuaSignatureId,
-    LuaType, SemanticDeclLevel, SemanticModel, instantiate_func_generic,
+    LuaType, SemanticDeclLevel, SemanticModel, infer_call_func_generic,
 };
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaExpr, LuaLiteralToken, LuaSyntaxToken, LuaTokenKind,
@@ -291,7 +291,7 @@ pub fn compare_function_types(
     call_expr: &LuaCallExpr,
 ) -> Option<bool> {
     if func.contain_tpl() {
-        let instantiated_func = instantiate_func_generic(
+        let instantiated_func = infer_call_func_generic(
             semantic_model.get_db(),
             &mut semantic_model.get_cache().borrow_mut(),
             func,

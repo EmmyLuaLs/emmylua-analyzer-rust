@@ -131,6 +131,44 @@ mod test {
     }
 
     #[test]
+    fn test_unpack_alias_call_uses_uninferred_generic_default() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            ---@generic T = [string, number]
+            ---@return std.Unpack<T>
+            function f()
+            end
+
+            a, b = f()
+        "#,
+        );
+
+        let a_ty = ws.expr_ty("a");
+        let b_ty = ws.expr_ty("b");
+        assert_eq!(ws.humanize_type(a_ty), "string");
+        assert_eq!(ws.humanize_type(b_ty), "number");
+    }
+
+    #[test]
+    fn test_unpack_alias_call_uses_uninferred_generic_constraint() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            ---@generic T: string[]
+            ---@return std.Unpack<T>
+            function f()
+            end
+
+            a = f()
+        "#,
+        );
+
+        let a_ty = ws.expr_ty("a");
+        assert_eq!(ws.humanize_type(a_ty), "string?");
+    }
+
+    #[test]
     fn test_issue_484() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

@@ -23,7 +23,10 @@ use crate::{
     },
 };
 
-use super::type_substitutor::TypeSubstitutor;
+use super::{
+    instantiate_type::TplCandidateSource::{ConstPreserving, Plain},
+    type_substitutor::{TplBinding, TypeSubstitutor},
+};
 use std::collections::HashMap;
 
 type TplPatternMatchResult = Result<(), InferFailReason>;
@@ -159,16 +162,12 @@ pub fn tpl_pattern_match(
     match pattern {
         LuaType::TplRef(tpl) => {
             if tpl.get_tpl_id().is_func() {
-                context
-                    .substitutor
-                    .insert_type(tpl.get_tpl_id(), target.clone(), true);
+                context.insert_type(tpl.get_tpl_id(), target.clone(), Plain);
             }
         }
         LuaType::ConstTplRef(tpl) => {
             if tpl.get_tpl_id().is_func() {
-                context
-                    .substitutor
-                    .insert_type(tpl.get_tpl_id(), target, false);
+                context.insert_type(tpl.get_tpl_id(), target, ConstPreserving);
             }
         }
         LuaType::StrTplRef(str_tpl) => {
@@ -176,48 +175,50 @@ pub fn tpl_pattern_match(
                 let prefix = str_tpl.get_prefix();
                 let suffix = str_tpl.get_suffix();
                 let type_name = SmolStr::new(format!("{}{}{}", prefix, s, suffix));
-                context.substitutor.insert_type(
+                context.insert_type(
                     str_tpl.get_tpl_id(),
                     get_str_tpl_infer_type(&type_name),
-                    true,
+                    Plain,
                 );
             }
         }
         LuaType::Array(array_type) => {
-            array_tpl_pattern_match(context, array_type.get_base(), &target)?;
+            context.with_inference_top_level(false, |context| {
+                array_tpl_pattern_match(context, array_type.get_base(), &target)
+            })?;
         }
         LuaType::TableGeneric(table_generic_params) => {
-            table_generic_tpl_pattern_match(context, table_generic_params, &target)?;
+            context.with_inference_top_level(false, |context| {
+                table_generic_tpl_pattern_match(context, table_generic_params, &target)
+            })?;
         }
         LuaType::Generic(generic) => {
-            generic_tpl_pattern_match(context, generic, &target)?;
+            context.with_inference_top_level(false, |context| {
+                generic_tpl_pattern_match(context, generic, &target)
+            })?;
         }
         LuaType::Union(union) => {
             union_tpl_pattern_match(context, union, &target)?;
         }
         LuaType::DocFunction(doc_func) => {
-            func_tpl_pattern_match(context, doc_func, &target)?;
+            context.with_inference_top_level(false, |context| {
+                func_tpl_pattern_match(context, doc_func, &target)
+            })?;
         }
         LuaType::Tuple(tuple) => {
-            tuple_tpl_pattern_match(context, tuple, &target)?;
+            context.with_inference_top_level(false, |context| {
+                tuple_tpl_pattern_match(context, tuple, &target)
+            })?;
         }
         LuaType::Object(obj) => {
-            object_tpl_pattern_match(context, obj, &target)?;
+            context.with_inference_top_level(false, |context| {
+                object_tpl_pattern_match(context, obj, &target)
+            })?;
         }
         _ => {}
     }
 
     Ok(())
-}
-
-pub fn constant_decay(typ: LuaType) -> LuaType {
-    match &typ {
-        LuaType::FloatConst(_) => LuaType::Number,
-        LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_) => LuaType::Integer,
-        LuaType::DocStringConst(_) | LuaType::StringConst(_) => LuaType::String,
-        LuaType::DocBooleanConst(_) | LuaType::BooleanConst(_) => LuaType::Boolean,
-        _ => typ,
-    }
 }
 
 fn object_tpl_pattern_match(
@@ -646,7 +647,7 @@ fn param_type_list_pattern_match_type_list(
                 if i >= targets.len() {
                     if let VariadicType::Base(LuaType::TplRef(tpl_ref)) = inner.deref() {
                         let tpl_id = tpl_ref.get_tpl_id();
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
+                        context.insert_type(tpl_id, LuaType::Nil, Plain);
                     }
                     break;
                 }
@@ -658,7 +659,7 @@ fn param_type_list_pattern_match_type_list(
                             SubstitutorValue::Type(_) => {
                                 continue;
                             }
-                            SubstitutorValue::MultiTypes(types) => {
+                            SubstitutorValue::MultiTypes { types, .. } => {
                                 if types.len() > 1 {
                                     target_offset += types.len() - 1;
                                 }
@@ -717,9 +718,7 @@ pub(crate) fn return_type_pattern_match_target_type(
                     VariadicType::Base(source_base) => {
                         if let LuaType::TplRef(type_ref) = source_base {
                             let tpl_id = type_ref.get_tpl_id();
-                            context
-                                .substitutor
-                                .insert_type(tpl_id, target_base.clone(), true);
+                            context.insert_type(tpl_id, target_base.clone(), Plain);
                         }
                     }
                     VariadicType::Multi(source_multi) => {
@@ -730,22 +729,14 @@ pub(crate) fn return_type_pattern_match_target_type(
                                         && let LuaType::TplRef(type_ref) = base
                                     {
                                         let tpl_id = type_ref.get_tpl_id();
-                                        context.substitutor.insert_type(
-                                            tpl_id,
-                                            target_base.clone(),
-                                            true,
-                                        );
+                                        context.insert_type(tpl_id, target_base.clone(), Plain);
                                     }
 
                                     break;
                                 }
                                 LuaType::TplRef(tpl_ref) => {
                                     let tpl_id = tpl_ref.get_tpl_id();
-                                    context.substitutor.insert_type(
-                                        tpl_id,
-                                        target_base.clone(),
-                                        true,
-                                    );
+                                    context.insert_type(tpl_id, target_base.clone(), Plain);
                                 }
                                 _ => {}
                             }
@@ -784,12 +775,14 @@ fn func_varargs_tpl_pattern_match(
         VariadicType::Base(base) => {
             if let LuaType::TplRef(tpl_ref) = base {
                 let tpl_id = tpl_ref.get_tpl_id();
-                substitutor.insert_params(
+                substitutor.bind(
                     tpl_id,
-                    target_rest_params
-                        .iter()
-                        .map(|(n, t)| (n.clone(), t.clone()))
-                        .collect(),
+                    TplBinding::VariadicParams(
+                        target_rest_params
+                            .iter()
+                            .map(|(n, t)| (n.clone(), t.clone()))
+                            .collect(),
+                    ),
                 );
             }
         }
@@ -810,7 +803,7 @@ pub fn variadic_tpl_pattern_match(
                 let tpl_id = tpl_ref.get_tpl_id();
                 match target_rest_types.len() {
                     0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
+                        context.insert_type(tpl_id, LuaType::Nil, Plain);
                     }
                     1 => {
                         // If the single argument is itself a multi-return (e.g. a function call
@@ -820,42 +813,28 @@ pub fn variadic_tpl_pattern_match(
                             LuaType::Variadic(variadic) => match variadic.deref() {
                                 VariadicType::Multi(types) => match types.len() {
                                     0 => {
-                                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
+                                        context.insert_type(tpl_id, LuaType::Nil, Plain);
                                     }
                                     1 => {
-                                        context.substitutor.insert_type(
-                                            tpl_id,
-                                            types[0].clone(),
-                                            true,
-                                        );
+                                        context.insert_type(tpl_id, types[0].clone(), Plain);
                                     }
                                     _ => {
-                                        context.substitutor.insert_multi_types(
-                                            tpl_id,
-                                            types
-                                                .iter()
-                                                .map(|t| constant_decay(t.clone()))
-                                                .collect(),
-                                        );
+                                        context.insert_multi_types(tpl_id, types.to_vec(), Plain);
                                     }
                                 },
                                 VariadicType::Base(base) => {
-                                    context.substitutor.insert_multi_base(tpl_id, base.clone());
+                                    context
+                                        .substitutor
+                                        .bind(tpl_id, TplBinding::VariadicBase(base.clone()));
                                 }
                             },
                             arg => {
-                                context.substitutor.insert_type(tpl_id, arg.clone(), true);
+                                context.insert_type(tpl_id, arg.clone(), Plain);
                             }
                         }
                     }
                     _ => {
-                        context.substitutor.insert_multi_types(
-                            tpl_id,
-                            target_rest_types
-                                .iter()
-                                .map(|t| constant_decay(t.clone()))
-                                .collect(),
-                        );
+                        context.insert_multi_types(tpl_id, target_rest_types.to_vec(), Plain);
                     }
                 }
             }
@@ -863,19 +842,17 @@ pub fn variadic_tpl_pattern_match(
                 let tpl_id = tpl_ref.get_tpl_id();
                 match target_rest_types.len() {
                     0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, false);
+                        context.insert_type(tpl_id, LuaType::Nil, ConstPreserving);
                     }
                     1 => {
-                        context.substitutor.insert_type(
-                            tpl_id,
-                            target_rest_types[0].clone(),
-                            false,
-                        );
+                        context.insert_type(tpl_id, target_rest_types[0].clone(), ConstPreserving);
                     }
                     _ => {
-                        context
-                            .substitutor
-                            .insert_multi_types(tpl_id, target_rest_types.to_vec());
+                        context.insert_multi_types(
+                            tpl_id,
+                            target_rest_types.to_vec(),
+                            ConstPreserving,
+                        );
                     }
                 }
             }
@@ -895,7 +872,7 @@ pub fn variadic_tpl_pattern_match(
                         let tpl_id = tpl_ref.get_tpl_id();
                         match target_rest_types.get(i) {
                             Some(t) => {
-                                context.substitutor.insert_type(tpl_id, t.clone(), true);
+                                context.insert_type(tpl_id, t.clone(), Plain);
                             }
                             None => {
                                 break;
@@ -946,9 +923,10 @@ fn tuple_tpl_pattern_match(
                     VariadicType::Base(base) => {
                         if let LuaType::TplRef(tpl_ref) = base {
                             let tpl_id = tpl_ref.get_tpl_id();
-                            context
-                                .substitutor
-                                .insert_multi_base(tpl_id, target_array_base.get_base().clone());
+                            context.substitutor.bind(
+                                tpl_id,
+                                TplBinding::VariadicBase(target_array_base.get_base().clone()),
+                            );
                         }
                     }
                     VariadicType::Multi(_) => {}

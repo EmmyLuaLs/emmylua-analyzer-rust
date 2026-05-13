@@ -10,7 +10,10 @@ use crate::{
 use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
-use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_with_context};
+use super::{
+    GenericInstantiateContext, SubstitutorValue, TypeSubstitutor,
+    instantiate_type_generic_with_context,
+};
 
 pub(super) fn instantiate_alias_call(
     context: &GenericInstantiateContext,
@@ -76,7 +79,10 @@ pub(super) fn instantiate_alias_call(
 
             instantiate_select_call(&operands[0], &operands[1])
         }
-        LuaAliasCallKind::Unpack => instantiate_unpack_call(context.db, &operands),
+        LuaAliasCallKind::Unpack => {
+            let operands = resolve_unpack_operands(context, operand_exprs);
+            instantiate_unpack_call(context.db, &operands)
+        }
         LuaAliasCallKind::RawGet => {
             if operands.len() != 2 {
                 return LuaType::Unknown;
@@ -213,6 +219,44 @@ fn instantiate_select_call(source: &LuaType, index: &LuaType) -> LuaType {
         }
         NumOrLen::LenUnknown => LuaType::Integer,
     }
+}
+
+fn resolve_unpack_operands(
+    context: &GenericInstantiateContext,
+    operand_exprs: &[LuaType],
+) -> Vec<LuaType> {
+    operand_exprs
+        .iter()
+        .enumerate()
+        .map(|(index, operand)| {
+            if index != 0 {
+                return instantiate_type_generic_with_context(context, operand);
+            }
+            let raw = match operand {
+                LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => context
+                    .substitutor
+                    .get(tpl_ref.get_tpl_id())
+                    .and_then(|value| match value {
+                        SubstitutorValue::None => None,
+                        SubstitutorValue::Type(ty) => Some(ty.raw().clone()),
+                        SubstitutorValue::MultiTypes { raw_types, .. } => Some(LuaType::Variadic(
+                            VariadicType::Multi(raw_types.clone()).into(),
+                        )),
+                        SubstitutorValue::Params(params) => Some(
+                            params
+                                .first()
+                                .unwrap_or(&(String::new(), None))
+                                .1
+                                .clone()
+                                .unwrap_or(LuaType::Unknown),
+                        ),
+                        SubstitutorValue::MultiBase(base) => Some(base.clone()),
+                    }),
+                _ => None,
+            };
+            raw.unwrap_or_else(|| instantiate_type_generic_with_context(context, operand))
+        })
+        .collect()
 }
 
 fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {

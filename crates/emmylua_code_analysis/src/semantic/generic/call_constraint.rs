@@ -33,7 +33,7 @@ pub fn build_call_constraint_context(
     let mut substitutor = TypeSubstitutor::new();
     let generic_tpls = collect_func_tpl_ids(&params);
     if !generic_tpls.is_empty() {
-        substitutor.add_need_infer_tpls(generic_tpls);
+        substitutor.prepare_inference_slots(generic_tpls);
     }
 
     // 读取显式传入的泛型实参
@@ -42,7 +42,7 @@ pub fn build_call_constraint_context(
             DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
         for (idx, doc_type) in type_list.get_types().enumerate() {
             let ty = infer_doc_type(doc_ctx, &doc_type);
-            substitutor.insert_type(GenericTplId::Func(idx as u32), ty, true);
+            substitutor.bind_type(GenericTplId::Func(idx as u32), ty);
         }
     }
 
@@ -261,16 +261,16 @@ fn record_generic_assignment(
     match param_type {
         LuaType::TplRef(tpl_ref) => {
             if !tpl_ref.get_tpl_id().is_conditional_infer() {
-                substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), true);
+                substitutor.bind_type(tpl_ref.get_tpl_id(), arg_type.clone());
             }
         }
         LuaType::ConstTplRef(tpl_ref) => {
             if !tpl_ref.get_tpl_id().is_conditional_infer() {
-                substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), false);
+                substitutor.bind_type(tpl_ref.get_tpl_id(), arg_type.clone());
             }
         }
         LuaType::StrTplRef(str_tpl_ref) => {
-            substitutor.insert_type(str_tpl_ref.get_tpl_id(), arg_type.clone(), true);
+            substitutor.bind_type(str_tpl_ref.get_tpl_id(), arg_type.clone());
         }
         LuaType::Variadic(variadic) => {
             if let Some(inner) = variadic.get_type(0) {

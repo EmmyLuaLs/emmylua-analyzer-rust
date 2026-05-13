@@ -11,7 +11,7 @@ use crate::{
 use super::{
     get_default_constructor, instantiate_type_generic, instantiate_type_generic_with_context,
 };
-use crate::semantic::generic::type_substitutor::GenericInstantiateContext;
+use crate::semantic::generic::type_substitutor::{GenericInstantiateContext, TplBinding};
 
 #[derive(Debug, Clone, Copy)]
 enum InferVariance {
@@ -125,7 +125,7 @@ fn instantiate_distributed_conditional(
     let mut result = LuaType::Never;
     for member in members {
         let mut member_substitutor = context.substitutor.clone();
-        member_substitutor.replace_type(tpl_id, member, false);
+        member_substitutor.bind(tpl_id, TplBinding::ReplaceConstType(member));
         let member_context = context.with_substitutor(&member_substitutor);
         let member_result = instantiate_conditional_once(&member_context, conditional);
         result = TypeOps::Union.apply(context.db, &result, &member_result);
@@ -172,7 +172,7 @@ fn instantiate_true_branch(
 
     let mut true_substitutor = context.substitutor.clone();
     for (tpl_id, ty) in infer_assignments {
-        true_substitutor.insert_conditional_infer_type(tpl_id, ty);
+        true_substitutor.bind(tpl_id, TplBinding::ConditionalInferType(ty));
     }
     instantiate_type_generic(context.db, conditional.get_true_type(), &true_substitutor)
 }
