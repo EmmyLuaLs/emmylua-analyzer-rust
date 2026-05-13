@@ -206,7 +206,7 @@ impl LuaType {
     pub fn contain_multi_return(&self) -> bool {
         match self {
             LuaType::Variadic(_) => true,
-            LuaType::Union(union) => union.into_vec().iter().any(LuaType::contain_multi_return),
+            LuaType::Union(union) => union_contains_multi_return(union),
             _ => false,
         }
     }
@@ -226,6 +226,9 @@ impl LuaType {
                     last_type.get_result_slot_type(offset)
                 }
             },
+            LuaType::Union(union) if idx == 0 && !union_contains_multi_return(union) => {
+                Some(self.clone())
+            }
             LuaType::Union(union) => {
                 let slot_types = union
                     .into_vec()
@@ -323,5 +326,13 @@ impl LuaType {
 
     pub fn is_module_ref(&self) -> bool {
         matches!(self, LuaType::ModuleRef(_))
+    }
+}
+
+fn union_contains_multi_return(union: &LuaUnionType) -> bool {
+    match union {
+        LuaUnionType::Basic(_) => false,
+        LuaUnionType::Nullable(ty) => ty.contain_multi_return(),
+        LuaUnionType::Multi(types) => types.iter().any(LuaType::contain_multi_return),
     }
 }

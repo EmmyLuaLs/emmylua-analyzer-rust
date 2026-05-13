@@ -18,7 +18,7 @@ use crate::{
     },
     db_index::{DbIndex, LuaMemberOwner, LuaType},
     find_members_with_key,
-    semantic::{LuaInferCache, infer_expr},
+    semantic::{LuaInferCache, infer_expr, try_infer_expr_no_flow},
 };
 
 use super::{
@@ -48,7 +48,11 @@ pub fn try_resolve_member(
     unresolve_member: &mut UnResolveMember,
 ) -> ResolveResult {
     if let Some(prefix_expr) = &unresolve_member.prefix {
-        let prefix_type = infer_expr(db, cache, prefix_expr.clone())?;
+        let prefix_type = match try_infer_expr_no_flow(db, cache, prefix_expr.clone())? {
+            Some(prefix_type) => prefix_type,
+            // `None` can hide nested unresolved prefixes; fall back so we keep the retry.
+            None => infer_expr(db, cache, prefix_expr.clone())?,
+        };
         let member_owner = match prefix_type {
             LuaType::TableConst(in_file_range) => LuaMemberOwner::Element(in_file_range),
             LuaType::Def(def_id) => {
@@ -65,7 +69,7 @@ pub fn try_resolve_member(
             LuaType::Instance(instance) => LuaMemberOwner::Element(instance.get_range().clone()),
             // is ref need extend field?
             _ => {
-                return Ok(()); // Changed from return None to return Ok(())
+                return Ok(());
             }
         };
         let member_id = unresolve_member.member_id;
