@@ -448,8 +448,8 @@ fn infer_matching_member_key_type(
     let mut members = db.get_member_index().get_members(owner)?;
     members.sort_by(|a, b| a.get_key().cmp(b.get_key()));
 
-    let mut result_type = LuaType::Never;
-    let mut has_match = false;
+    // Build the union once; broad dynamic keys can match thousands of table members.
+    let mut result_types = Vec::new();
     for member in members {
         let member_key_type = match member.get_key() {
             LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
@@ -463,12 +463,11 @@ fn infer_matching_member_key_type(
                 .map(|it| it.as_type())
                 .unwrap_or(&LuaType::Unknown);
 
-            has_match = true;
-            result_type = TypeOps::Union.apply(db, &result_type, member_type);
+            result_types.push(member_type.clone());
         }
     }
 
-    if !has_match {
+    if result_types.is_empty() {
         return None;
     }
 
@@ -476,10 +475,10 @@ fn infer_matching_member_key_type(
         key_type,
         LuaType::String | LuaType::Number | LuaType::Integer
     ) {
-        result_type = TypeOps::Union.apply(db, &result_type, &LuaType::Nil);
+        result_types.push(LuaType::Nil);
     }
 
-    Some(result_type)
+    Some(LuaType::from_vec(result_types))
 }
 
 fn get_type_member_key(db: &DbIndex, key_type: &LuaType) -> Option<Vec<LuaMemberKey>> {
@@ -521,32 +520,28 @@ fn infer_tuple_member(
                 };
             }
             LuaType::Integer => {
-                let mut result = LuaType::Never;
-                for typ in tuple_type.get_types() {
-                    result = TypeOps::Union.apply(db, &result, typ);
-                }
-
-                let index_prefix_expr = match &lookup.index_expr {
-                    LuaIndexMemberExpr::TableField(_) => {
-                        return Ok(result);
+                let mut result_types = tuple_type.get_types().to_vec();
+                let include_nil = match &lookup.index_expr {
+                    LuaIndexMemberExpr::TableField(_) => false,
+                    _ => {
+                        let index_prefix_expr = lookup
+                            .index_expr
+                            .get_prefix_expr()
+                            .ok_or(InferFailReason::None)?;
+                        match &index_key {
+                            LuaIndexKey::Expr(expr) => {
+                                !check_iter_var_range(db, cache, expr, index_prefix_expr)
+                                    .unwrap_or(false)
+                            }
+                            _ => false,
+                        }
                     }
-                    _ => lookup
-                        .index_expr
-                        .get_prefix_expr()
-                        .ok_or(InferFailReason::None)?,
                 };
-                let maybe_iter_var = match &index_key {
-                    LuaIndexKey::Expr(expr) => expr,
-                    _ => return Ok(result),
-                };
-                if check_iter_var_range(db, cache, maybe_iter_var, index_prefix_expr)
-                    .unwrap_or(false)
-                {
-                    return Ok(result);
+                if include_nil {
+                    result_types.push(LuaType::Nil);
                 }
 
-                result = TypeOps::Union.apply(db, &result, &LuaType::Nil);
-                return Ok(result);
+                return Ok(TypeOps::union_all(db, result_types));
             }
             _ => {}
         },
@@ -604,8 +599,7 @@ fn infer_union_member(
     lookup: &MemberLookupQuery,
     infer_guard: &InferGuardRef,
 ) -> InferResult {
-    let mut member_type = LuaType::Never;
-    let mut has_member = false;
+    let mut member_types = Vec::new();
     let mut has_missing_member = false;
     let mut meet_string = false;
     for sub_type in union_type.into_vec() {
@@ -618,8 +612,7 @@ fn infer_union_member(
         let result = infer_member_by_lookup(db, cache, &sub_type, lookup, &infer_guard.fork());
         match result {
             Ok(typ) => {
-                has_member = true;
-                member_type = TypeOps::Union.apply(db, &member_type, &typ);
+                member_types.push(typ);
             }
             Err(_) => {
                 has_missing_member = true;
@@ -627,15 +620,15 @@ fn infer_union_member(
         }
     }
 
-    if !has_member {
+    if member_types.is_empty() {
         return Err(InferFailReason::FieldNotFound);
     }
 
     if has_missing_member {
-        member_type = TypeOps::Union.apply(db, &member_type, &LuaType::Nil);
+        member_types.push(LuaType::Nil);
     }
 
-    Ok(member_type)
+    Ok(TypeOps::union_all(db, member_types))
 }
 
 fn infer_intersection_member(
@@ -929,15 +922,13 @@ fn infer_member_by_index_union(
     key_type: &LuaType,
     infer_guard: &InferGuardRef,
 ) -> InferResult {
-    let mut member_type = LuaType::Never;
-    let mut has_member = false;
+    let mut member_types = Vec::new();
     for member in union.into_vec() {
         let result =
             infer_member_by_operator_key_type(db, cache, &member, key_type, &infer_guard.fork());
         match result {
             Ok(typ) => {
-                has_member = true;
-                member_type = TypeOps::Union.apply(db, &member_type, &typ);
+                member_types.push(typ);
             }
             Err(InferFailReason::FieldNotFound) => {}
             Err(err) => {
@@ -946,11 +937,11 @@ fn infer_member_by_index_union(
         }
     }
 
-    if !has_member {
+    if member_types.is_empty() {
         return Err(InferFailReason::FieldNotFound);
     }
 
-    Ok(member_type)
+    Ok(TypeOps::union_all(db, member_types))
 }
 
 fn infer_member_by_index_intersection(

@@ -63,7 +63,11 @@ impl LuaType {
     pub fn is_number(&self) -> bool {
         matches!(
             self,
-            LuaType::Number | LuaType::Integer | LuaType::IntegerConst(_) | LuaType::FloatConst(_)
+            LuaType::Number
+                | LuaType::Integer
+                | LuaType::IntegerConst(_)
+                | LuaType::DocIntegerConst(_)
+                | LuaType::FloatConst(_)
         )
     }
 

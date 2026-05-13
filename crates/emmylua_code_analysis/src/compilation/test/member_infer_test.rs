@@ -37,6 +37,42 @@ mod test {
     }
 
     #[test]
+    fn test_issue_1075_large_table_dynamic_string_key() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let names = (0..256)
+            .map(|i| format!("            ITEM_{i} = \"Item {i}\","))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let strings = format!(
+            r#"
+        STRINGS = {{
+            NAMES = {{
+{names}
+            }}
+        }}
+        "#
+        );
+
+        ws.def_files(vec![
+            ("strings.lua", &strings),
+            (
+                "skinsutils.lua",
+                r#"
+        function get_skin_name(name)
+            return STRINGS.NAMES[string.upper(name)]
+        end
+
+        Result = get_skin_name("item_1")
+        "#,
+            ),
+        ]);
+
+        let result_ty = ws.expr_ty("Result");
+        let expected_ty = ws.ty("string?");
+        assert!(ws.check_type(&result_ty, &expected_ty));
+    }
+
+    #[test]
     fn test_exact_missing_table_key_does_not_scan_broad_members() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

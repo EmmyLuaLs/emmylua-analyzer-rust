@@ -927,15 +927,13 @@ fn project_union_member_type(
     union_types: Vec<LuaType>,
     member_key: crate::LuaMemberKey,
 ) -> Result<Option<LuaType>, InferFailReason> {
-    let mut result_type = LuaType::Never;
-    let mut has_member = false;
+    let mut result_types = Vec::new();
     let mut has_missing_member = false;
 
     for sub_type in union_types {
         match project_member_type(db, &sub_type, member_key.clone())? {
             Some(member_type) => {
-                has_member = true;
-                result_type = TypeOps::Union.apply(db, &result_type, &member_type);
+                result_types.push(member_type);
             }
             None => {
                 has_missing_member = true;
@@ -943,13 +941,13 @@ fn project_union_member_type(
         }
     }
 
-    if !has_member {
+    if result_types.is_empty() {
         return Ok(None);
     }
     if has_missing_member {
-        result_type = TypeOps::Union.apply(db, &result_type, &LuaType::Nil);
+        result_types.push(LuaType::Nil);
     }
-    Ok(Some(result_type))
+    Ok(Some(TypeOps::union_all(db, result_types)))
 }
 
 impl CorrelatedSubquery {

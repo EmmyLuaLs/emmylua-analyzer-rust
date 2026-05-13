@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{DiagnosticCode, TypeOps, VirtualWorkspace};
+    use crate::{DiagnosticCode, LuaType, TypeOps, VirtualWorkspace};
 
     #[test]
     fn test_custom_ops() {
@@ -202,6 +202,61 @@ mod tests {
         let sig_first = TypeOps::Union.apply(ws.get_db_mut(), &sig, &doc);
         assert!(!sig_first.is_union());
         assert_eq!(ws.humanize_type(sig_first), "fun() -> boolean");
+    }
+
+    #[test]
+    fn test_union_all_keeps_union_semantics() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return boolean
+        function foo()
+            return true
+        end
+        "#,
+        );
+
+        assert_eq!(
+            TypeOps::union_all(ws.get_db_mut(), Vec::new()),
+            LuaType::Never
+        );
+
+        let number = ws.ty("number");
+        let integer = ws.ty("integer");
+        assert_eq!(
+            TypeOps::union_all(ws.get_db_mut(), vec![number, integer]),
+            ws.ty("number")
+        );
+        let number = ws.ty("number");
+        assert_eq!(
+            TypeOps::union_all(ws.get_db_mut(), vec![number, LuaType::DocIntegerConst(1)]),
+            ws.ty("number")
+        );
+
+        let integer = ws.ty("integer");
+        let one = ws.ty("1");
+        assert_eq!(
+            TypeOps::union_all(ws.get_db_mut(), vec![integer, one]),
+            ws.ty("integer")
+        );
+
+        let a = ws.ty("'a'");
+        let b = ws.ty("'b'");
+        assert_eq!(
+            TypeOps::union_all(ws.get_db_mut(), vec![a.clone(), b, a]),
+            ws.ty("'a'|'b'")
+        );
+
+        let doc = ws.ty("fun(): boolean");
+        let sig = ws.expr_ty("foo");
+        let callable = TypeOps::union_all(ws.get_db_mut(), vec![doc.clone(), sig.clone()]);
+        assert!(!callable.is_union());
+        assert_eq!(ws.humanize_type(callable), "fun() -> boolean");
+
+        let single_union = LuaType::from_vec(vec![doc, sig]);
+        let callable = TypeOps::union_all(ws.get_db_mut(), vec![single_union]);
+        assert!(!callable.is_union());
+        assert_eq!(ws.humanize_type(callable), "fun() -> boolean");
     }
 
     #[test]

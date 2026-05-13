@@ -37,4 +37,11 @@ impl TypeOps {
             }
         }
     }
+
+    pub fn union_all<I>(db: &DbIndex, types: I) -> LuaType
+    where
+        I: IntoIterator<Item = LuaType>,
+    {
+        union_type::union_type_all(db, types)
+    }
 }
