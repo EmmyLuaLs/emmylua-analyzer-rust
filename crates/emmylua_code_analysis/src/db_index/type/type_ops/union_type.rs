@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use crate::{DbIndex, LuaFunctionType, LuaType, LuaUnionType, get_real_type};
 
@@ -9,9 +9,104 @@ pub fn union_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType {
     canonicalize_callable_union(db, union_type_impl(&match_source, source, target))
 }
 
+/// Union a batch of types with the same semantics as repeated `union_type`.
+///
+/// Empty batches return `Never`.
+pub fn union_type_all<I>(db: &DbIndex, types: I) -> LuaType
+where
+    I: IntoIterator<Item = LuaType>,
+{
+    let mut result_types = Vec::new();
+    for typ in types {
+        match typ {
+            LuaType::Never => {}
+            LuaType::Any => return LuaType::Any,
+            _ => result_types.push(typ),
+        }
+    }
+    if result_types.is_empty() {
+        return LuaType::Never;
+    }
+    // `LuaType::from_vec` only does structural normalization. Use it only when
+    // no pairwise union rule, alias lookup, or callable canonicalization can matter.
+    if can_use_structural_union(&result_types) {
+        return LuaType::from_vec(result_types);
+    }
+
+    let mut result = LuaType::Never;
+    for typ in result_types {
+        result = union_type(db, result, typ);
+    }
+    result
+}
+
 pub(crate) fn union_type_shallow(source: LuaType, target: LuaType) -> LuaType {
     let match_source = source.clone();
     union_type_impl(&match_source, source, target)
+}
+
+/// Return true when `LuaType::from_vec` is enough to match `Union.apply` folding.
+///
+/// This is a conservative whole-batch check. We can reject early when a member
+/// needs semantic handling (`Ref`, nested union, callable variants), but we cannot
+/// accept early because most union rules depend on pairs that may appear later:
+/// `number | integer`, `string | "x"`, `true | false`, and `table | table const`.
+fn can_use_structural_union(types: &[LuaType]) -> bool {
+    let mut has_number = false;
+    let mut has_number_variant = false;
+    let mut has_integer = false;
+    let mut has_integer_const = false;
+    let mut has_string = false;
+    let mut has_string_const = false;
+    let mut has_boolean = false;
+    let mut boolean_const_count = 0;
+    let mut has_table = false;
+    let mut has_table_const = false;
+
+    for typ in types {
+        match typ {
+            LuaType::Union(_)
+            | LuaType::Ref(_)
+            | LuaType::MultiLineUnion(_)
+            | LuaType::DocFunction(_)
+            | LuaType::Signature(_) => return false,
+            LuaType::Number => has_number = true,
+            LuaType::Integer => {
+                has_number_variant = true;
+                has_integer = true;
+            }
+            LuaType::IntegerConst(_) => {
+                has_number_variant = true;
+                has_integer_const = true;
+            }
+            LuaType::FloatConst(_) => {
+                has_number_variant = true;
+            }
+            LuaType::DocIntegerConst(_) => {
+                has_number_variant = true;
+                has_integer_const = true;
+            }
+            LuaType::String => has_string = true,
+            LuaType::StringConst(_) | LuaType::DocStringConst(_) => has_string_const = true,
+            LuaType::Boolean => has_boolean = true,
+            LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_) => boolean_const_count += 1,
+            LuaType::Table => has_table = true,
+            LuaType::TableConst(_) => has_table_const = true,
+            _ => {}
+        }
+
+        if has_number && has_number_variant
+            || has_integer && has_integer_const
+            || has_string && has_string_const
+            || has_boolean && boolean_const_count > 0
+            || boolean_const_count > 1
+            || has_table && has_table_const
+        {
+            return false;
+        }
+    }
+
+    true
 }
 
 fn union_type_impl(match_source: &LuaType, source: LuaType, target: LuaType) -> LuaType {
@@ -85,7 +180,6 @@ fn union_type_impl(match_source: &LuaType, source: LuaType, target: LuaType) -> 
         }
         // union
         (LuaType::Union(left), right) if !right.is_union() => {
-            let left = left.deref().clone();
             let mut types = left.into_vec();
             if types.contains(right) {
                 return source.clone();
@@ -95,7 +189,6 @@ fn union_type_impl(match_source: &LuaType, source: LuaType, target: LuaType) -> 
             LuaType::Union(LuaUnionType::from_vec(types).into())
         }
         (left, LuaType::Union(right)) if !left.is_union() => {
-            let right = right.deref().clone();
             let mut types = right.into_vec();
             if types.contains(left) {
                 return target.clone();
@@ -129,8 +222,16 @@ fn canonicalize_callable_union(db: &DbIndex, ty: LuaType) -> LuaType {
         return ty;
     };
 
+    let members = union.into_vec();
+    if !members
+        .iter()
+        .any(|ty| matches!(ty, LuaType::DocFunction(_) | LuaType::Signature(_)))
+    {
+        return LuaType::from_vec(members);
+    }
+
     let mut types = Vec::new();
-    for member in union.into_vec() {
+    for member in members {
         let member_callable = as_callable_type(db, &member);
         if types.iter().any(|existing| {
             existing == &member

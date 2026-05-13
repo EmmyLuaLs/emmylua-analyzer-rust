@@ -210,11 +210,7 @@ pub fn narrow_down_type(
             if source_types.is_empty() {
                 return None;
             }
-            let mut result_type = LuaType::Never;
-            for source_type in source_types {
-                result_type = TypeOps::Union.apply(db, &result_type, &source_type);
-            }
-            return Some(result_type);
+            return Some(TypeOps::union_all(db, source_types));
         }
         LuaType::Variadic(_) => return Some(source),
         LuaType::Def(type_id) | LuaType::Ref(type_id) => match real_source_ref {
