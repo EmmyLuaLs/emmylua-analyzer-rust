@@ -1058,9 +1058,8 @@ impl<'a> FlowTypeEngine<'a> {
         explicit_var_type: Option<LuaType>,
         expr_type: LuaType,
     ) -> Result<SchedulerStep, InferFailReason> {
-        let var_ref_id = walk.query.var_ref_id.clone();
-
         if let Some(explicit_var_type) = explicit_var_type {
+            let var_ref_id = walk.query.var_ref_id.clone();
             let result_type = finish_assignment_result(
                 self.db,
                 self.cache,
@@ -1073,7 +1072,13 @@ impl<'a> FlowTypeEngine<'a> {
             return Ok(self.finish_walk(walk, result_type));
         }
 
+        // Broad RHS types replace the previous runtime type. The old path still
+        // queried the antecedent and then discarded it in finish_assignment_result.
         let reuse_antecedent_narrowing = preserves_assignment_expr_type(&expr_type);
+        if !expr_type.is_unknown() && !reuse_antecedent_narrowing {
+            return Ok(self.finish_walk(walk, expr_type));
+        }
+
         let mode = if reuse_antecedent_narrowing {
             FlowMode::WithConditions
         } else {
