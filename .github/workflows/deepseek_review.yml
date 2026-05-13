@@ -3,9 +3,6 @@ on:
   pull_request_target:
     types:
       - opened      # Triggers when a PR is opened
-  issue_comment:
-    types:
-      - created
 
 permissions:
   contents: read
@@ -13,13 +10,7 @@ permissions:
 
 jobs:
   setup-deepseek-review:
-    if: |
-      github.event_name == 'pull_request_target' ||
-      (
-        github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request &&
-        startsWith(github.event.comment.body, '/review')
-      )
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     name: Code Review
     steps:
@@ -37,7 +28,7 @@ jobs:
       - name: DeepSeek Code Review
         shell: nu {0}
         env:
-          REVIEW_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          REVIEW_PR_NUMBER: ${{ github.event.pull_request.number }}
           REVIEW_REPO: ${{ github.repository }}
           REVIEW_TOKEN: ${{ secrets.DEEPSEEK_CHAT_TOKEN }}
           REVIEW_GITHUB_TOKEN: ${{ github.token }}
