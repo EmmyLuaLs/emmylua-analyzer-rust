@@ -69,7 +69,7 @@ fn read_yaml_string_map(
         return Ok(HashMap::new());
     }
     let raw = fs::read_to_string(path)?;
-    let map: HashMap<String, String> = serde_yml::from_str(&raw)?;
+    let map: HashMap<String, String> = serde_yaml_ng::from_str(&raw)?;
     Ok(map)
 }
 

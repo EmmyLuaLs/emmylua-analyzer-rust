@@ -256,7 +256,7 @@ pub fn parse_format_config(
                 message: err.to_string(),
             }
         }),
-        "yml" | "yaml" => serde_yml::from_str::<LuaFormatConfig>(content).map_err(|err| {
+        "yml" | "yaml" => serde_yaml_ng::from_str::<LuaFormatConfig>(content).map_err(|err| {
             FormatterError::ConfigParse {
                 path: path.map(Path::to_path_buf),
                 message: err.to_string(),
@@ -388,7 +388,7 @@ fn try_parse_unknown_config_format(
 ) -> Result<LuaFormatConfig, FormatterError> {
     from_toml_str::<LuaFormatConfig>(content)
         .or_else(|_| serde_json::from_str::<LuaFormatConfig>(content))
-        .or_else(|_| serde_yml::from_str::<LuaFormatConfig>(content))
+        .or_else(|_| serde_yaml_ng::from_str::<LuaFormatConfig>(content))
         .map_err(|err| FormatterError::ConfigParse {
             path: path.map(Path::to_path_buf),
             message: format!("unknown extension, failed to parse as TOML/JSON/YAML: {err}"),
