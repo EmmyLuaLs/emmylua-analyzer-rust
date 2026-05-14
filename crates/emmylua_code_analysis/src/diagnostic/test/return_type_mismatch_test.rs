@@ -739,4 +739,22 @@ mod tests {
             "#
         ));
     }
+
+    #[test]
+    fn test_asserted_array_member_return_field() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let code = r#"
+            --- @return { a: integer }
+            function foo()
+                local arr --- @type integer[]
+                local i --- @type integer?
+                local a --- @type integer?
+                i = _ --[[@as integer]]
+                a = assert(arr[i])
+                return { a = a }
+            end
+        "#;
+        assert!(ws.has_no_diagnostic(DiagnosticCode::ReturnTypeMismatch, code));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, code));
+    }
 }
