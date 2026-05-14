@@ -212,6 +212,40 @@ mod test {
     }
 
     #[test]
+    fn test_pairs_self_iterator_method_does_not_recurse() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@class Base
+            local base = {}
+            function base:iter()
+                return pairs(self)
+            end
+
+            ---@generic T
+            ---@param e T
+            ---@return T | Base
+            function Enum(e)
+            end
+
+            local Event = Enum {
+                A = 1,
+                B = 2,
+            }
+
+            for k, v in Event:iter() do
+                key_out = k
+                value_out = v
+            end
+        "#,
+        );
+
+        let _ = ws.expr_ty("key_out");
+        let _ = ws.expr_ty("value_out");
+    }
+
+    #[test]
     fn test_issue_291() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

@@ -529,6 +529,13 @@ fn instantiate_signature(
     context: &GenericInstantiateContext,
     signature_id: &LuaSignatureId,
 ) -> LuaType {
+    // Substitution can make a signature mention itself again through its return
+    // type, e.g. `pairs(self)` on a table that also contains the method.
+    // Leave the nested occurrence opaque instead of expanding forever.
+    let Some(_signature_guard) = context.enter_signature(*signature_id) else {
+        return LuaType::Signature(*signature_id);
+    };
+
     if let Some(signature) = context.db.get_signature_index().get(signature_id) {
         let origin_type = {
             let fake_doc_function = signature.to_doc_func_type();
