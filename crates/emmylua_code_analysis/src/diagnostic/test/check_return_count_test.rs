@@ -154,6 +154,22 @@ mod tests {
     }
 
     #[test]
+    fn test_assert_optional_return_is_not_redundant() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::RedundantReturnValue,
+            r#"
+            --- @return string
+            function foo()
+                local res --- @type string?
+                return assert(res)
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_not_return_anno() {
         let mut ws = VirtualWorkspace::new();
 

@@ -644,10 +644,7 @@ fn param_type_list_pattern_match_type_list(
             LuaType::Variadic(inner) => {
                 let i = i + target_offset;
                 if i >= targets.len() {
-                    if let VariadicType::Base(LuaType::TplRef(tpl_ref)) = inner.deref() {
-                        let tpl_id = tpl_ref.get_tpl_id();
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
-                    }
+                    variadic_tpl_pattern_match(context, inner, &[])?;
                     break;
                 }
 
@@ -810,7 +807,8 @@ pub fn variadic_tpl_pattern_match(
                 let tpl_id = tpl_ref.get_tpl_id();
                 match target_rest_types.len() {
                     0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
+                        // Zero varargs are an empty sequence, not one nil return slot.
+                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
                     }
                     1 => {
                         // If the single argument is itself a multi-return (e.g. a function call
@@ -820,7 +818,7 @@ pub fn variadic_tpl_pattern_match(
                             LuaType::Variadic(variadic) => match variadic.deref() {
                                 VariadicType::Multi(types) => match types.len() {
                                     0 => {
-                                        context.substitutor.insert_type(tpl_id, LuaType::Nil, true);
+                                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
                                     }
                                     1 => {
                                         context.substitutor.insert_type(
@@ -863,7 +861,7 @@ pub fn variadic_tpl_pattern_match(
                 let tpl_id = tpl_ref.get_tpl_id();
                 match target_rest_types.len() {
                     0 => {
-                        context.substitutor.insert_type(tpl_id, LuaType::Nil, false);
+                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
                     }
                     1 => {
                         context.substitutor.insert_type(

@@ -485,6 +485,9 @@ fn infer_generic_types_from_call(
     let mut unresolve_tpls = vec![];
     for i in 0..func_params.len() {
         if i >= arg_exprs.len() {
+            if let LuaType::Variadic(variadic) = &func_params[i].1 {
+                variadic_tpl_pattern_match(context, variadic, &[])?;
+            }
             break;
         }
 
