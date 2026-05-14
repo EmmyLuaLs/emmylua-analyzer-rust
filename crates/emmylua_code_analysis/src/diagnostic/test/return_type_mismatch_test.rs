@@ -757,4 +757,19 @@ mod tests {
         assert!(ws.has_no_diagnostic(DiagnosticCode::ReturnTypeMismatch, code));
         assert!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, code));
     }
+
+    #[test]
+    fn test_and_or_function_guard_return() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+                --- @param f string|(fun():string)
+                --- @return string
+                function foo(f)
+                    return type(f) == 'function' and f() or f
+                end
+            "#
+        ));
+    }
 }
