@@ -873,4 +873,31 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_array_index_with_integer_literal_union() {
+        let mut ws = VirtualWorkspace::new();
+        let code = r#"
+            ---@alias IntegerPartIndex
+            ---| 1
+            ---| 2
+
+            ---@alias NumericPartIndex
+            ---| 1
+            ---| number
+
+            local parts --- @type string[]
+            local id --- @type 1|2
+            local alias_id --- @type IntegerPartIndex
+            local numeric_id --- @type NumericPartIndex
+            result = parts[id]
+            alias_result = parts[alias_id]
+            numeric_result = parts[numeric_id]
+            "#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::UndefinedField, code));
+        assert_eq!(ws.expr_ty("result"), ws.ty("string?"));
+        assert_eq!(ws.expr_ty("alias_result"), ws.ty("string?"));
+        assert_eq!(ws.expr_ty("numeric_result"), ws.ty("string?"));
+    }
 }
