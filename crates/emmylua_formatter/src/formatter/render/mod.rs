@@ -3297,9 +3297,15 @@ fn preserved_dash_gap(text_after_dash: &str) -> Option<String> {
 }
 
 fn should_preserve_comment_raw(comment: &LuaComment) -> bool {
-    if comment.syntax().text().to_string().starts_with("----") {
+    let raw = comment.syntax().text().to_string();
+    if raw.starts_with("----") {
         return true;
     }
+
+    if raw_comment_starts_like_long_comment(raw.as_str()) {
+        return true;
+    }
+
     let Some(first_token) = comment.syntax().first_token() else {
         return false;
     };
@@ -3308,6 +3314,17 @@ fn should_preserve_comment_raw(comment: &LuaComment) -> bool {
         first_token.kind().to_token(),
         LuaTokenKind::TkLongCommentStart | LuaTokenKind::TkDocLongStart
     ) || dash_prefix_len(first_token.text()) > 3
+}
+
+fn raw_comment_starts_like_long_comment(raw: &str) -> bool {
+    let Some(after_dash) = raw.strip_prefix("--") else {
+        return false;
+    };
+    let Some(after_open) = after_dash.strip_prefix('[') else {
+        return false;
+    };
+    let equals_count = after_open.bytes().take_while(|byte| *byte == b'=').count();
+    after_open[equals_count..].starts_with('[')
 }
 
 fn dash_prefix_len(prefix_text: &str) -> usize {

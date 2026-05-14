@@ -2219,6 +2219,18 @@ local a = 1
     }
 
     #[test]
+    fn test_empty_long_comment_preserved() {
+        assert_format!(
+            r#"--[[]]
+local a = 1
+"#,
+            r#"--[[]]
+local a = 1
+"#
+        );
+    }
+
+    #[test]
     fn test_spaced_long_comment_prefix_preserved_as_normal_comment() {
         assert_format!(
             r#"-- [[ some content ]]

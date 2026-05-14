@@ -1229,7 +1229,7 @@ fn collect_call_arg_entries(
         }
 
         if let Some(arg) = LuaExpr::cast(child) {
-            let trailing_comment = extract_trailing_comment(ctx, arg.syntax());
+            let trailing_comment = extract_trailing_comment(ctx, plan, arg.syntax());
             if trailing_comment.is_some() {
                 collected.has_comments = true;
             }
@@ -1719,7 +1719,7 @@ fn collect_table_entries(
         }
 
         if let Some(field) = LuaTableField::cast(child) {
-            let trailing_comment = extract_trailing_comment(ctx, field.syntax());
+            let trailing_comment = extract_trailing_comment(ctx, plan, field.syntax());
             if trailing_comment.is_some() {
                 collected.has_comments = true;
             }
@@ -3399,6 +3399,7 @@ where
 
 fn extract_trailing_comment(
     ctx: &FormatContext,
+    plan: &FormatPlan,
     node: &LuaSyntaxNode,
 ) -> Option<(Vec<DocIR>, TextRange)> {
     for child in node.children() {
@@ -3416,9 +3417,8 @@ fn extract_trailing_comment(
             return None;
         }
 
-        let text = trim_end_owned(child.text().to_string());
         return Some((
-            normalize_single_line_comment_text(ctx, &text),
+            render::render_comment_with_spacing(ctx, &comment, plan),
             child.text_range(),
         ));
     }
@@ -3435,9 +3435,9 @@ fn extract_trailing_comment(
                 if comment_node.text().contains_char('\n') {
                     return None;
                 }
-                let text = trim_end_owned(comment_node.text().to_string());
+                let comment = LuaComment::cast(comment_node.clone())?;
                 return Some((
-                    normalize_single_line_comment_text(ctx, &text),
+                    render::render_comment_with_spacing(ctx, &comment, plan),
                     comment_node.text_range(),
                 ));
             }
@@ -3471,21 +3471,6 @@ fn extract_trailing_comment_text(node: &LuaSyntaxNode) -> Option<(Vec<DocIR>, Te
     }
 
     None
-}
-
-fn normalize_single_line_comment_text(ctx: &FormatContext, text: &str) -> Vec<DocIR> {
-    if text.starts_with("---") || !text.starts_with("--") {
-        return vec![ir::text(text)];
-    }
-
-    let body = text[2..].trim_start();
-    let prefix = if ctx.config.comments.space_after_comment_dash {
-        if body.is_empty() { "--" } else { "-- " }
-    } else {
-        "--"
-    };
-
-    vec![ir::text(format!("{prefix}{body}"))]
 }
 
 fn trim_end_owned(mut text: String) -> String {

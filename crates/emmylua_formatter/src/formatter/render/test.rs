@@ -48,3 +48,16 @@ fn test_render_comment_with_spacing_uses_doc_prefix_replacement() {
 
     assert_eq!(rendered, "---  @param x string");
 }
+
+#[test]
+fn test_render_comment_with_spacing_preserves_inline_doc_long_comment_cast() {
+    let config = LuaFormatConfig::default();
+    let ctx = FormatContext::new(&config);
+    let comment = parse_comment("somethingTakesInteger(\n    someNumber --[[@as integer]]\n)\n");
+    let plan = FormatPlan::from_config(&config);
+
+    let docs = render_comment_with_spacing(&ctx, &comment, &plan);
+    let rendered = Printer::new(&config).print(&docs);
+
+    assert_eq!(rendered, "--[[@as integer]]");
+}

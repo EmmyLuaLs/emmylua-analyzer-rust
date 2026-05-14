@@ -118,11 +118,35 @@ local result = first + second + third
     }
 
     #[test]
+    fn test_call_arg_keeps_inline_doc_long_comment_cast() {
+        assert_format!(
+            r#"somethingTakesInteger(
+    someNumber --[[@as integer]]
+)
+"#,
+            r#"somethingTakesInteger(
+    someNumber --[[@as integer]]
+)
+"#
+        );
+    }
+
+    #[test]
     fn test_binary_expr_keeps_inline_long_comment_before_operator() {
         assert_format!(
             r#"local x = x--[[cast]] * 60
 "#,
             r#"local x = x--[[cast]] * 60
+"#
+        );
+    }
+
+    #[test]
+    fn test_binary_expr_keeps_inline_empty_long_comment_before_operator() {
+        assert_format!(
+            r#"local x = x--[[]] * 60
+"#,
+            r#"local x = x--[[]] * 60
 "#
         );
     }

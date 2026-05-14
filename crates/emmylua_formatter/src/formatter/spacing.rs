@@ -401,8 +401,7 @@ fn apply_comment_start_spacing(
     token: &LuaSyntaxToken,
     syntax_id: LuaSyntaxId,
 ) {
-    // bug fix: -- [[
-    if comment_start_looks_like_spaced_long_comment(token) {
+    if comment_start_looks_like_long_comment_prefix(token) {
         return;
     }
 
@@ -412,21 +411,17 @@ fn apply_comment_start_spacing(
     }
 }
 
-fn comment_start_looks_like_spaced_long_comment(token: &LuaSyntaxToken) -> bool {
+fn comment_start_looks_like_long_comment_prefix(token: &LuaSyntaxToken) -> bool {
     if token.kind().to_token() != LuaTokenKind::TkNormalStart || token.text() != "--" {
         return false;
     }
 
     let mut current = token.next_token();
-    let mut saw_whitespace = false;
     while let Some(next) = current {
         match next.kind().to_token() {
-            LuaTokenKind::TkWhitespace => {
-                saw_whitespace = true;
-                current = next.next_token();
-            }
+            LuaTokenKind::TkWhitespace => current = next.next_token(),
             LuaTokenKind::TkEndOfLine => return false,
-            _ => return saw_whitespace && next.text().starts_with('['),
+            _ => return next.text().starts_with('['),
         }
     }
 
