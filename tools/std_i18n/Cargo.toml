@@ -9,5 +9,5 @@ emmylua_parser.workspace = true
 
 # external
 serde.workspace = true
-serde_yml.workspace = true
+serde_yaml_ng.workspace = true
 walkdir.workspace = true

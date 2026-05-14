@@ -99,12 +99,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.98"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
-
-[[package]]
 name = "arc-swap"
 version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -633,7 +627,7 @@ dependencies = [
  "rowan",
  "serde",
  "serde_json",
- "serde_yml",
+ "serde_yaml_ng",
  "similar",
  "smol_str",
  "toml_edit",
@@ -666,7 +660,7 @@ dependencies = [
  "rust-i18n",
  "serde",
  "serde_json",
- "serde_yml",
+ "serde_yaml_ng",
  "tokio",
  "tokio-util",
  "walkdir",
@@ -1460,16 +1454,6 @@ checksum = "4488594b9328dee448adb906d8b126d9b7deb7cf5c22161ee591610bb1be83c0"
 dependencies = [
  "bitflags 2.9.4",
  "libc",
-]
-
-[[package]]
-name = "libyml"
-version = "0.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3302702afa434ffa30847a83305f0a69d6abd74293b6554c18ec85c7ef30c980"
-dependencies = [
- "anyhow",
- "version_check",
 ]
 
 [[package]]
@@ -2425,18 +2409,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_yml"
-version = "0.0.12"
+name = "serde_yaml_ng"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59e2dd588bf1597a252c3b920e0143eb99b0f76e4e082f4c92ce34fbc9e71ddd"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap 2.10.0",
  "itoa",
- "libyml",
- "memchr",
  "ryu",
  "serde",
- "version_check",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -2531,7 +2513,7 @@ version = "0.1.0"
 dependencies = [
  "emmylua_parser",
  "serde",
- "serde_yml",
+ "serde_yaml_ng",
  "walkdir",
 ]
 

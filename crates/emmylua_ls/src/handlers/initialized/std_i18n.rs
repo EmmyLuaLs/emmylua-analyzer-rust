@@ -215,13 +215,13 @@ fn translate_one_std_file(locale: &str, rel_lua_path: &Path, content: &str) -> O
 fn read_meta(path_in_dir: &str) -> Option<MetaFile> {
     let file = STD_I18N_DIR.get_file(path_in_dir)?;
     let raw = file.contents_utf8()?;
-    serde_yml::from_str(raw).ok()
+    serde_yaml_ng::from_str(raw).ok()
 }
 
 fn read_translations(path_in_dir: &str) -> Option<HashMap<String, String>> {
     let file = STD_I18N_DIR.get_file(path_in_dir)?;
     let raw = file.contents_utf8()?;
-    serde_yml::from_str(raw).ok()
+    serde_yaml_ng::from_str(raw).ok()
 }
 
 fn apply_meta_translations(
@@ -1214,7 +1214,7 @@ function coroutine.status(co) end
             .get_file("coroutine/meta.yaml")
             .expect("generated coroutine meta exists");
         let meta: MetaFile =
-            serde_yml::from_str(file.contents_utf8().expect("meta is utf8")).unwrap();
+            serde_yaml_ng::from_str(file.contents_utf8().expect("meta is utf8")).unwrap();
 
         assert_eq!(meta.v, 2);
         assert!(meta.b.iter().flat_map(|block| &block.e).any(|entry| {
@@ -1230,7 +1230,7 @@ function coroutine.status(co) end
             .get_file("coroutine/meta.yaml")
             .expect("generated coroutine meta exists");
         let meta: MetaFile =
-            serde_yml::from_str(file.contents_utf8().expect("meta is utf8")).unwrap();
+            serde_yaml_ng::from_str(file.contents_utf8().expect("meta is utf8")).unwrap();
         let source = emmylua_code_analysis::load_resource_from_include_dir()
             .into_iter()
             .find(|file| file.path == "std/coroutine.lua")
