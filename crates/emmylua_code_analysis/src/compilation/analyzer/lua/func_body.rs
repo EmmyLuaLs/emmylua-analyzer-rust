@@ -71,12 +71,12 @@ where
 pub(in crate::compilation::analyzer) fn analyze_func_body_missing_return_flags_with<F>(
     body: LuaBlock,
     infer_expr_type: &mut F,
-) -> Result<(bool, bool, bool), InferFailReason>
+) -> Result<(bool, bool), InferFailReason>
 where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     let flow = analyze_block_returns(body, infer_expr_type)?;
-    Ok((flow.can_fall_through, flow.can_break, flow.is_infinite))
+    Ok((flow.can_fall_through, flow.can_break))
 }
 
 fn analyze_block_returns<F>(
