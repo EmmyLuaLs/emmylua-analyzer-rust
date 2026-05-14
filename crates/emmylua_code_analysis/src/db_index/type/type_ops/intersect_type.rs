@@ -47,6 +47,8 @@ pub fn intersect_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType
         // TODO: Intersecting two non-identical function types currently falls back to `never`.
         // Consider implementing a proper intersection (or overload-set semantics) for function
         // signatures instead of treating it as incompatible.
+        // same type
+        (left, right) if *left == right => source.clone(),
         // class references
         (LuaType::Ref(id1), LuaType::Ref(id2)) => {
             if id1 == id2 {
@@ -135,8 +137,6 @@ pub fn intersect_type(db: &DbIndex, source: LuaType, target: LuaType) -> LuaType
             }
         }
 
-        // same type
-        (left, right) if *left == right => source.clone(),
         _ => LuaType::Never,
     }
 }

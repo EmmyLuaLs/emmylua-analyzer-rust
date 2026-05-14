@@ -206,7 +206,7 @@ impl FlowReplayQuery {
             .get(self.next_dependency_idx)
             .ok_or(InferFailReason::None)?;
 
-        match dependency_result {
+        let next_dependency_idx_on_success = match dependency_result {
             Ok(mut expr_type) => {
                 if let Some(literal_shape_type) = &dependency_query.literal_shape_type {
                     expr_type = literal_equivalent_type(literal_shape_type, &expr_type)
@@ -215,16 +215,18 @@ impl FlowReplayQuery {
 
                 self.dependency_types
                     .push((dependency_query.syntax_id, expr_type));
+                dependency_query.next_dependency_idx_on_success
             }
             Err(
                 InferFailReason::None
                 | InferFailReason::RecursiveInfer
                 | InferFailReason::FieldNotFound,
-            ) => {}
+            ) => None,
             Err(err) => return Err(err),
-        }
+        };
 
-        self.next_dependency_idx += 1;
+        self.next_dependency_idx =
+            next_dependency_idx_on_success.unwrap_or(self.next_dependency_idx + 1);
         Ok(())
     }
 
@@ -266,6 +268,7 @@ struct FlowExprTypeQuery {
     flow_id: FlowId,
     syntax_id: LuaSyntaxId,
     literal_shape_type: Option<LuaType>,
+    next_dependency_idx_on_success: Option<usize>,
 }
 
 fn collect_expr_dependency_queries(
@@ -290,12 +293,32 @@ fn collect_expr_dependency_queries(
                 flow_id,
                 syntax_id: expr.get_syntax_id(),
                 literal_shape_type: None,
+                next_dependency_idx_on_success: None,
             });
         }
         return;
     }
 
     if let LuaExpr::IndexExpr(index_expr) = expr {
+        // A resolved IndexRef overlay lets replay short-circuit the whole
+        // expression; if it fails, prefix/key overlays are still available.
+        let direct_query_idx =
+            if let Some(var_ref_id) = get_var_expr_var_ref_id(db, cache, expr.clone()) {
+                let literal_shape_type = try_infer_expr_no_flow(db, cache, expr.clone())
+                    .ok()
+                    .flatten();
+                let query_idx = dependency_queries.len();
+                dependency_queries.push(FlowExprTypeQuery {
+                    var_ref_id,
+                    flow_id: fallback_flow_id,
+                    syntax_id: expr.get_syntax_id(),
+                    literal_shape_type,
+                    next_dependency_idx_on_success: None,
+                });
+                Some(query_idx)
+            } else {
+                None
+            };
         if let Some(prefix_expr) = index_expr.get_prefix_expr() {
             collect_expr_dependency_queries(
                 db,
@@ -316,18 +339,9 @@ fn collect_expr_dependency_queries(
                 dependency_queries,
             );
         }
-        // Keep prefix/key deps first. The direct IndexRef repairs guards on
-        // the member itself, and should use the replay point's flow.
-        if let Some(var_ref_id) = get_var_expr_var_ref_id(db, cache, expr.clone()) {
-            let literal_shape_type = try_infer_expr_no_flow(db, cache, expr.clone())
-                .ok()
-                .flatten();
-            dependency_queries.push(FlowExprTypeQuery {
-                var_ref_id,
-                flow_id: fallback_flow_id,
-                syntax_id: expr.get_syntax_id(),
-                literal_shape_type,
-            });
+        if let Some(query_idx) = direct_query_idx {
+            dependency_queries[query_idx].next_dependency_idx_on_success =
+                Some(dependency_queries.len());
         }
         return;
     }
@@ -1058,9 +1072,8 @@ impl<'a> FlowTypeEngine<'a> {
         explicit_var_type: Option<LuaType>,
         expr_type: LuaType,
     ) -> Result<SchedulerStep, InferFailReason> {
-        let var_ref_id = walk.query.var_ref_id.clone();
-
         if let Some(explicit_var_type) = explicit_var_type {
+            let var_ref_id = walk.query.var_ref_id.clone();
             let result_type = finish_assignment_result(
                 self.db,
                 self.cache,
@@ -1073,7 +1086,13 @@ impl<'a> FlowTypeEngine<'a> {
             return Ok(self.finish_walk(walk, result_type));
         }
 
+        // Broad RHS types replace the previous runtime type. The old path still
+        // queried the antecedent and then discarded it in finish_assignment_result.
         let reuse_antecedent_narrowing = preserves_assignment_expr_type(&expr_type);
+        if !expr_type.is_unknown() && !reuse_antecedent_narrowing {
+            return Ok(self.finish_walk(walk, expr_type));
+        }
+
         let mode = if reuse_antecedent_narrowing {
             FlowMode::WithConditions
         } else {

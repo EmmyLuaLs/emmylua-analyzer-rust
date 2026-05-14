@@ -339,6 +339,22 @@ mod test {
     }
 
     #[test]
+    fn test_nested_unresolved_prefix_keeps_member_owner_retry() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        M.child.leaf = 1
+        M = {
+            child = {},
+        }
+        A = M.child.leaf
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), LuaType::IntegerConst(1));
+    }
+
+    #[test]
     fn test_table_expr_key_string() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

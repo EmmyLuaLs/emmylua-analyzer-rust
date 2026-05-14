@@ -205,7 +205,14 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
     let index_expr = LuaIndexExpr::cast(var_expr.syntax().clone())?;
     let prefix_expr = index_expr.get_prefix_expr()?;
 
-    match analyzer.infer_expr(&prefix_expr.clone()) {
+    let prefix_type = match analyzer.infer_expr_no_flow(&prefix_expr) {
+        Ok(Some(prefix_type)) => Ok(prefix_type),
+        // `None` can hide nested unresolved prefixes; fall back so we keep the retry.
+        Ok(None) => analyzer.infer_expr(&prefix_expr),
+        Err(reason) => Err(reason),
+    };
+
+    match prefix_type {
         Ok(prefix_type) => {
             // Prefer declared global types for name prefixes when choosing a member owner.
             // This keeps stdlib members (like table.unpack) attached to their type defs.
