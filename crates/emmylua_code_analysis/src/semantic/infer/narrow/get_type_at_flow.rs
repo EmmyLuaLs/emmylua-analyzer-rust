@@ -8,6 +8,7 @@ use std::{rc::Rc, sync::Arc};
 use crate::{
     CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
     LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
+    find_compilation_decl_by_position,
     semantic::{
         cache::{FlowAssignmentInfo, FlowMode, FlowVarCache},
         infer::{
@@ -1028,9 +1029,15 @@ impl<'a> FlowTypeEngine<'a> {
         };
 
         let var_id = match &assignment_info.vars[i] {
-            LuaVarExpr::NameExpr(name_expr) => {
+            LuaVarExpr::NameExpr(name_expr) => find_compilation_decl_by_position(
+                self.db,
+                self.cache.get_file_id(),
+                name_expr.get_position(),
+            )
+            .map(|decl| decl.decl_id.into())
+            .or_else(|| {
                 Some(LuaDeclId::new(self.cache.get_file_id(), name_expr.get_position()).into())
-            }
+            }),
             LuaVarExpr::IndexExpr(index_expr) => {
                 Some(LuaMemberId::new(index_expr.get_syntax_id(), self.cache.get_file_id()).into())
             }

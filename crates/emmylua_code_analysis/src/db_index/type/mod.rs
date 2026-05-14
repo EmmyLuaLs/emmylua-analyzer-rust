@@ -511,7 +511,10 @@ impl LuaTypeIndex {
     }
 
     pub fn bind_type(&mut self, owner: LuaTypeOwner, cache: LuaTypeCache) {
-        if self.types.contains_key(&owner) {
+        if let Some(existing) = self.types.get_mut(&owner) {
+            if existing.is_infer() && cache.is_doc() {
+                *existing = cache;
+            }
             return;
         }
         self.types.insert(owner.clone(), cache);

@@ -685,12 +685,11 @@ impl<'a> TypeHumanizer<'a> {
 
     fn write_generic_type<W: Write>(&mut self, generic: &LuaGenericType, w: &mut W) -> fmt::Result {
         let base_id = generic.get_base_type_id();
-        let type_decl = match self.db.get_type_index().get_type_decl(&base_id) {
-            Some(type_decl) => type_decl,
-            None => return w.write_str(base_id.get_name()),
-        };
-
-        let full_name = type_decl.get_full_name().to_string();
+        let type_decl = self.db.get_type_index().get_type_decl(&base_id);
+        let full_name = type_decl
+            .as_ref()
+            .map(|type_decl| type_decl.get_full_name().to_string())
+            .unwrap_or_else(|| base_id.get_name().to_string());
 
         // Write base<params>
         w.write_str(&full_name)?;
@@ -710,7 +709,7 @@ impl<'a> TypeHumanizer<'a> {
         if matches!(
             self.level,
             RenderLevel::Documentation | RenderLevel::CustomDetailed(_) | RenderLevel::Detailed
-        ) && type_decl.is_alias()
+        ) && type_decl.as_ref().is_some_and(|type_decl| type_decl.is_alias())
         {
             // cycle detection for alias expansion
             if !self.visited.insert(base_id.clone()) {
@@ -718,7 +717,7 @@ impl<'a> TypeHumanizer<'a> {
             }
 
             let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
-            if let Some(origin_type) = type_decl.get_alias_origin(self.db, Some(&substitutor)) {
+            if let Some(origin_type) = type_decl.and_then(|type_decl| type_decl.get_alias_origin(self.db, Some(&substitutor))) {
                 w.write_str(" = ")?;
                 let saved = self.level;
                 self.level = self.child_level();
@@ -863,12 +862,9 @@ impl<'a> TypeHumanizer<'a> {
         str_tpl: &LuaStringTplType,
         w: &mut W,
     ) -> fmt::Result {
-        let prefix = str_tpl.get_prefix();
-        if prefix.is_empty() {
-            w.write_str(str_tpl.get_name())
-        } else {
-            write!(w, "{}`{}`", prefix, str_tpl.get_name())
-        }
+        w.write_str(str_tpl.get_prefix())?;
+        w.write_str(str_tpl.get_name())?;
+        w.write_str(str_tpl.get_suffix())
     }
 
     // ─── Variadic ───────────────────────────────────────────────────
@@ -1010,16 +1006,12 @@ impl<'a> TypeHumanizer<'a> {
     // ─── ModuleRef ──────────────────────────────────────────────────
 
     fn write_module_ref<W: Write>(&mut self, file_id: crate::FileId, w: &mut W) -> fmt::Result {
-        if let Some(module_info) = self.db.get_module_index().get_module(file_id) {
-            if let Some(export_type) = &module_info.export_type {
-                if export_type.is_module_ref() {
-                    return w.write_str("module 'recursive'");
-                }
-                let export_type = export_type.clone();
-                self.write_type(&export_type, w)
-            } else {
-                w.write_str("module 'unknown'")
+        if let Some(export_type) = crate::resolve_projected_module_export_type(self.db, file_id) {
+            if export_type.is_module_ref() {
+                return w.write_str("module 'recursive'");
             }
+
+            self.write_type(&export_type, w)
         } else {
             w.write_str("module 'unknown'")
         }

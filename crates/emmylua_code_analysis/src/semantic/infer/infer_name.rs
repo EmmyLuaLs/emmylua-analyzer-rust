@@ -3,7 +3,11 @@ use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaNameExpr};
 use super::{InferFailReason, InferResult};
 use crate::{
     LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, TypeOps,
+    LuaTypeNode, SemanticDeclLevel, TypeOps,
+    compilation::{
+        CompilationDeclTree, find_compilation_decl_by_position, global_type,
+        infer_compilation_decl_type,
+    },
     db_index::{DbIndex, LuaDeclOrMemberId},
     infer_node_semantic_decl,
     semantic::{
@@ -26,22 +30,53 @@ pub fn infer_name_expr(
     }
 
     let file_id = cache.get_file_id();
-    let references_index = db.get_reference_index();
-    let range = name_expr.get_range();
-    let file_ref = references_index
+    let decl_id = db
+        .get_reference_index()
         .get_local_reference(&file_id)
-        .ok_or(InferFailReason::None)?;
-    let decl_id = file_ref.get_decl_id(&range);
+        .and_then(|file_ref| file_ref.get_decl_id(&name_expr.get_range()))
+        .or_else(|| find_summary_local_decl_id(db, file_id, name, name_expr.get_position()));
     if let Some(decl_id) = decl_id {
-        infer_var_ref_type(
+        let result = infer_var_ref_type(
             db,
             cache,
             LuaExpr::NameExpr(name_expr),
             VarRefId::VarRef(decl_id),
-        )
+        );
+        match result {
+            Ok(typ) if !typ.is_unknown() => Ok(typ),
+            Ok(_) | Err(InferFailReason::UnResolveDeclType(_) | InferFailReason::None) => {
+                if let Some(summary_decl) =
+                    find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)
+                    && let Some(summary_type) = infer_compilation_decl_type(db, &summary_decl)
+                {
+                    return Ok(summary_type);
+                }
+
+                result
+            }
+            Err(_) => result,
+        }
     } else {
+        if let Some(summary_type) =
+            infer_summary_local_decl_type(db, file_id, name, name_expr.get_position())
+        {
+            return Ok(summary_type);
+        }
+
         infer_global_type(db, name)
     }
+}
+
+fn infer_summary_local_decl_type(
+    db: &DbIndex,
+    file_id: crate::FileId,
+    name: &str,
+    position: rowan::TextSize,
+) -> Option<LuaType> {
+    let decl_tree = CompilationDeclTree::new(db.get_summary_db().file().decl_tree(file_id)?);
+    let decl = decl_tree.find_local_decl(name, position)?;
+    find_compilation_decl_by_position(db, file_id, decl.id.as_position())
+        .and_then(|summary_decl| infer_compilation_decl_type(db, &summary_decl))
 }
 
 fn infer_self(db: &DbIndex, cache: &mut LuaInferCache, name_expr: LuaNameExpr) -> InferResult {
@@ -82,10 +117,12 @@ pub fn get_name_expr_var_ref_id(
         }
         _ => {
             let file_id = cache.get_file_id();
-            let references_index = db.get_reference_index();
-            let range = name_expr.get_range();
-            let file_ref = references_index.get_local_reference(&file_id)?;
-            if let Some(decl_id) = file_ref.get_decl_id(&range) {
+            if let Some(decl_id) = db
+                .get_reference_index()
+                .get_local_reference(&file_id)
+                .and_then(|file_ref| file_ref.get_decl_id(&name_expr.get_range()))
+                .or_else(|| find_summary_local_decl_id(db, file_id, name, name_expr.get_position()))
+            {
                 return Some(VarRefId::VarRef(decl_id));
             }
 
@@ -345,73 +382,33 @@ fn find_param_type_from_union(
 }
 
 pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
-    let decl_ids = db
-        .get_global_index()
-        .get_global_decl_ids(name)
-        .ok_or(InferFailReason::None)?;
-    if decl_ids.len() == 1 {
-        let id = decl_ids[0];
-        let typ = match db.get_type_index().get_type_cache(&id.into()) {
-            Some(type_cache) => type_cache.as_type().clone(),
-            None => return Err(InferFailReason::UnResolveDeclType(id)),
-        };
-        // todo: 不置为 Unknown 有可能引用泛型函数中的泛型参数导致泄露, 但这样会导致丢失类型, 我们可能需要更好的办法去处理
-        return if !typ.is_generic() && typ.contain_tpl() {
-            // This decl is located in a generic function,
-            // and is type contains references to generic variables
-            // of this function.
-            Ok(LuaType::Unknown)
-        } else {
-            Ok(typ)
-        };
+    let typ = global_type(db, name).ok_or(InferFailReason::None)?;
+    if matches!(typ, LuaType::DocFunction(_) | LuaType::Signature(_))
+        || typ.any_type(LuaType::is_function)
+    {
+        Ok(typ)
+    } else if !typ.is_generic() && typ.contain_tpl() {
+        Ok(LuaType::Unknown)
+    } else {
+        Ok(typ)
+    }
+}
+
+fn find_summary_local_decl_id(
+    db: &DbIndex,
+    file_id: crate::FileId,
+    name: &str,
+    position: rowan::TextSize,
+) -> Option<crate::LuaDeclId> {
+    let decl_tree = CompilationDeclTree::new(db.get_summary_db().file().decl_tree(file_id)?);
+    let decl = decl_tree.find_local_decl(name, position)?;
+    let decl_id = crate::LuaDeclId::new(file_id, decl.id.as_position());
+    let decl = db.get_decl_index().get_decl(&decl_id)?;
+    if decl.is_global() {
+        return None;
     }
 
-    let mut sorted_decl_ids = decl_ids.to_vec();
-    sorted_decl_ids.sort_by(|a, b| {
-        let a_is_std = db.get_module_index().is_std(&a.file_id);
-        let b_is_std = db.get_module_index().is_std(&b.file_id);
-        b_is_std.cmp(&a_is_std)
-    });
-
-    // TODO: 或许应该联合所有定义的类型?
-    let mut valid_type = LuaType::Never;
-    let mut last_resolve_reason = InferFailReason::None;
-    for decl_id in sorted_decl_ids {
-        let decl_type_cache = db.get_type_index().get_type_cache(&decl_id.into());
-        match decl_type_cache {
-            Some(type_cache) => {
-                let typ = type_cache.as_type();
-
-                if typ.contain_tpl() {
-                    // This decl is located in a generic function,
-                    // and is type contains references to generic variables
-                    // of this function.
-                    continue;
-                }
-
-                if typ.is_def() || typ.is_ref() {
-                    return Ok(typ.clone());
-                }
-
-                if typ.is_function() {
-                    valid_type = TypeOps::Union.apply(db, &valid_type, typ);
-                }
-
-                if type_cache.is_table() {
-                    valid_type = typ.clone();
-                }
-            }
-            None => {
-                last_resolve_reason = InferFailReason::UnResolveDeclType(decl_id);
-            }
-        }
-    }
-
-    if !valid_type.is_never() {
-        return Ok(valid_type);
-    }
-
-    Err(last_resolve_reason)
+    Some(decl_id)
 }
 
 pub fn find_self_decl_or_member_id(

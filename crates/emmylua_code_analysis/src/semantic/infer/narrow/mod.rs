@@ -6,7 +6,8 @@ mod var_ref_id;
 
 use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowTree, InferFailReason,
-    LuaInferCache, infer_param,
+    LuaInferCache, compilation::{find_compilation_decl_by_position, infer_compilation_decl_type},
+    infer_param,
     semantic::infer::{
         InferResult,
         infer_name::{find_decl_member_type, infer_global_type},
@@ -53,9 +54,18 @@ pub(in crate::semantic) fn get_var_ref_type(
             return infer_global_type(db, name);
         }
 
-        if let Some(type_cache) = db.get_type_index().get_type_cache(&decl.get_id().into()) {
+        if let Some(type_cache) = db.get_type_index().get_type_cache(&decl.get_id().into())
+            && !type_cache.as_type().is_unknown()
+        {
             // 不要在此阶段展开泛型别名, 必须让后续的泛型匹配阶段基于声明形态完成推断
             return Ok(type_cache.as_type().clone());
+        }
+
+        if let Some(summary_decl) =
+            find_compilation_decl_by_position(db, decl.get_file_id(), decl.get_position())
+            && let Some(summary_type) = infer_compilation_decl_type(db, &summary_decl)
+        {
+            return Ok(summary_type);
         }
 
         if decl.is_param() {

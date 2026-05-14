@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod test {
-    use emmylua_parser::LuaClosureExpr;
+    use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaClosureExpr};
 
     use crate::{
         DiagnosticCode, LuaSignatureId, LuaType, LuaTypeDeclId, VirtualWorkspace,
-        complete_type_generic_args,
+        compilation::global_type, complete_type_generic_args,
     };
 
     #[test]
@@ -1079,6 +1079,37 @@ mod test {
     }
 
     #[test]
+    fn test_function_generic_default_call_expr_semantic_type() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@generic T = string
+            ---@return T
+            function use_default()
+            end
+
+            DefaultResult = use_default()
+            "#,
+        );
+
+        let call_expr = ws.get_node::<LuaCallExpr>(file_id);
+        let semantic_model = ws.analysis.compilation.get_semantic_model(file_id).unwrap();
+        let direct_global_type = global_type(ws.analysis.compilation.get_db(), "use_default")
+            .expect("global function type");
+        let prefix_expr = call_expr.get_prefix_expr().expect("call prefix expr");
+        let prefix_info = semantic_model
+            .get_semantic_info(prefix_expr.syntax().clone().into())
+            .expect("call prefix semantic info");
+        let info = semantic_model
+            .get_semantic_info(call_expr.syntax().clone().into())
+            .expect("call expr semantic info");
+
+        assert_eq!(ws.humanize_type(direct_global_type), "fun() -> T");
+        assert_eq!(ws.humanize_type(prefix_info.typ), "fun() -> T");
+        assert_eq!(ws.humanize_type(info.typ), "string");
+    }
+
+    #[test]
     fn test_function_generic_default_can_reference_earlier_param_at_call_sites() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1446,6 +1477,7 @@ mod test {
         );
 
         let result_ty = ws.expr_ty("Result");
+
         assert_eq!(ws.humanize_type(result_ty), "boolean");
 
         let extends_unknown_ty = ws.expr_ty("ExtendsUnknownResult");

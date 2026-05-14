@@ -300,10 +300,12 @@ fn infer_signature_doc_function(
     if !signature.is_resolve_return() {
         return Err(InferFailReason::UnResolveSignatureReturn(signature_id));
     }
-    let is_generic = signature_is_generic(db, cache, &signature, &call_expr).unwrap_or(false);
     let mut overload_groups = Vec::new();
     collect_callable_overload_groups(db, &LuaType::Signature(signature_id), &mut overload_groups)?;
     let overloads = overload_groups.into_iter().flatten().collect::<Vec<_>>();
+    let contains_tpl = overloads.iter().any(|func| func.contain_tpl());
+    let is_generic = contains_tpl
+        || signature_is_generic(db, cache, &signature, &call_expr).unwrap_or(false);
 
     resolve_signature(db, cache, overloads, call_expr, is_generic, args_count)
 }

@@ -1,30 +1,48 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAstNode, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
+    LuaAstNode, LuaComment, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
     LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
     LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken,
     LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, NumberResult,
 };
-use rowan::TextRange;
+use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
 use crate::{
-    AsyncState, DbIndex, FileId, InFiled, LuaAliasCallKind, LuaAliasCallType, LuaArrayLen,
-    LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
-    LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus,
-    LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType, complete_type_generic_args,
+    AsyncState, DbIndex, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind,
+    LuaAliasCallType, LuaArrayLen, LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType,
+    LuaIndexAccessKey, LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType,
+    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, SalsaDocTypeRef, TypeOps, VariadicType,
+    WorkspaceId, complete_type_generic_args,
 };
 
 #[derive(Clone, Copy)]
 pub struct DocTypeInferContext<'a> {
     pub db: &'a DbIndex,
     pub file_id: FileId,
+    pub signature_owner_offset: Option<TextSize>,
+    pub type_owner_offset: Option<TextSize>,
 }
 
 impl<'a> DocTypeInferContext<'a> {
     pub fn new(db: &'a DbIndex, file_id: FileId) -> Self {
-        Self { db, file_id }
+        Self {
+            db,
+            file_id,
+            signature_owner_offset: None,
+            type_owner_offset: None,
+        }
+    }
+
+    pub fn with_signature_owner_offset(mut self, owner_offset: TextSize) -> Self {
+        self.signature_owner_offset = Some(owner_offset);
+        self
+    }
+
+    pub fn with_type_owner_offset(mut self, owner_offset: TextSize) -> Self {
+        self.type_owner_offset = Some(owner_offset);
+        self
     }
 }
 
@@ -127,7 +145,7 @@ fn infer_buildin_or_ref_type(
     ctx: DocTypeInferContext<'_>,
     name: &str,
     range: TextRange,
-    _node: &LuaDocType,
+    node: &LuaDocType,
 ) -> LuaType {
     let _position = range.start();
     match name {
@@ -145,12 +163,24 @@ fn infer_buildin_or_ref_type(
         "global" => LuaType::Global,
         "function" => LuaType::Function,
         "table" => {
-            if let Some(inst) = infer_special_table_type(ctx, _node) {
+            if let Some(inst) = infer_special_table_type(ctx, node) {
                 return inst;
             }
             LuaType::Table
         }
         _ => {
+            if let Some(tpl) = infer_signature_generic_tpl(ctx, node, name) {
+                return LuaType::TplRef(tpl);
+            }
+
+            if let Some(tpl) = infer_type_generic_tpl(ctx, node, name) {
+                return LuaType::TplRef(tpl);
+            }
+
+            if let Some(summary_type) = infer_same_file_named_type(ctx, name, Vec::new()) {
+                return summary_type;
+            }
+
             let file_id = ctx.file_id;
             let workspace_id = ctx.db.resolve_workspace_id(file_id);
             let type_id = if let Some(name_type_decl) =
@@ -182,6 +212,135 @@ fn infer_buildin_or_ref_type(
     }
 }
 
+fn infer_signature_generic_tpl(
+    ctx: DocTypeInferContext<'_>,
+    node: &LuaDocType,
+    name: &str,
+) -> Option<Arc<GenericTpl>> {
+    let owner_offset = ctx
+        .signature_owner_offset
+        .or_else(|| find_signature_doc_owner_offset(node))?;
+    let generic_param = ctx
+        .db
+        .get_summary_db()
+        .doc()
+        .signature()
+        .generic_param(ctx.file_id, owner_offset, name)?;
+
+    let constraint = generic_param
+        .param
+        .bound_type
+        .as_ref()
+        .and_then(|info| infer_signature_doc_type_ref(ctx, &info.type_ref));
+    let default_type = generic_param
+        .param
+        .default_type
+        .as_ref()
+        .and_then(|info| infer_signature_doc_type_ref(ctx, &info.type_ref));
+
+    Some(Arc::new(GenericTpl::new(
+        GenericTplId::Func(generic_param.tpl_id),
+        SmolStr::new(name).into(),
+        constraint,
+        default_type,
+    )))
+}
+
+fn infer_type_generic_tpl(
+    ctx: DocTypeInferContext<'_>,
+    node: &LuaDocType,
+    name: &str,
+) -> Option<Arc<GenericTpl>> {
+    let owner_offset = ctx
+        .type_owner_offset
+        .or_else(|| find_type_doc_owner_offset(node))?;
+    let doc = ctx.db.get_summary_db().doc().summary(ctx.file_id)?;
+    let type_def = doc.type_defs.iter().find(|type_def| {
+        type_def.syntax_offset == owner_offset
+            && type_def.generic_params.iter().any(|param| param.name == name)
+    })?;
+    let (tpl_idx, generic_param) = type_def
+        .generic_params
+        .iter()
+        .enumerate()
+        .find(|(_, param)| param.name == name)?;
+    let constraint = generic_param
+        .type_offset
+        .and_then(|type_key| infer_summary_doc_type_key(ctx, type_key));
+    let default_type = generic_param
+        .default_type_offset
+        .and_then(|type_key| infer_summary_doc_type_key(ctx, type_key));
+
+    Some(Arc::new(GenericTpl::new(
+        GenericTplId::Type(tpl_idx as u32),
+        SmolStr::new(name).into(),
+        constraint,
+        default_type,
+    )))
+}
+
+fn find_signature_doc_owner_offset(node: &LuaDocType) -> Option<TextSize> {
+    node.syntax().ancestors().find_map(|ancestor| {
+        matches!(
+            ancestor.kind().into(),
+            LuaSyntaxKind::DocTagGeneric
+                | LuaSyntaxKind::DocTagParam
+                | LuaSyntaxKind::DocTagReturn
+                | LuaSyntaxKind::DocTagReturnOverload
+                | LuaSyntaxKind::DocTagOperator
+        )
+        .then(|| ancestor.text_range().start())
+    })
+}
+
+fn find_type_doc_owner_offset(node: &LuaDocType) -> Option<TextSize> {
+    let position = node.get_position();
+
+    if let Some(comment) = node.ancestors::<LuaComment>().next() {
+        let owner_offset = comment
+            .syntax()
+            .descendants()
+            .filter_map(|descendant| {
+                matches!(
+                    descendant.kind().into(),
+                    LuaSyntaxKind::DocTagClass
+                        | LuaSyntaxKind::DocTagAlias
+                        | LuaSyntaxKind::DocTagEnum
+                        | LuaSyntaxKind::DocTagAttribute
+                )
+                .then(|| descendant.text_range().start())
+            })
+            .take_while(|offset| *offset <= position)
+            .last();
+        if owner_offset.is_some() {
+            return owner_offset;
+        }
+    }
+
+    node.syntax().ancestors().find_map(|ancestor| {
+        matches!(
+            ancestor.kind().into(),
+            LuaSyntaxKind::DocTagClass
+                | LuaSyntaxKind::DocTagAlias
+                | LuaSyntaxKind::DocTagEnum
+                | LuaSyntaxKind::DocTagAttribute
+        )
+        .then(|| ancestor.text_range().start())
+    })
+}
+
+fn infer_signature_doc_type_ref(
+    ctx: DocTypeInferContext<'_>,
+    type_ref: &SalsaDocTypeRef,
+) -> Option<LuaType> {
+    let type_key = match type_ref {
+        SalsaDocTypeRef::Node(type_key) => *type_key,
+        SalsaDocTypeRef::Incomplete => return None,
+    };
+
+    infer_summary_doc_type_key(ctx, type_key)
+}
+
 fn infer_special_table_type(
     ctx: DocTypeInferContext<'_>,
     table_type: &LuaDocType,
@@ -209,6 +368,21 @@ fn infer_generic_type(ctx: DocTypeInferContext<'_>, generic_type: &LuaDocGeneric
             return typ;
         }
 
+        let mut generic_params = Vec::new();
+        if let Some(generic_decl_list) = generic_type.get_generic_types() {
+            for param in generic_decl_list.get_types() {
+                let param_type = infer_doc_type(ctx, &param);
+                if param_type.is_unknown() {
+                    return LuaType::Unknown;
+                }
+                generic_params.push(param_type);
+            }
+        }
+
+        if let Some(summary_type) = infer_same_file_named_type(ctx, &name, generic_params.clone()) {
+            return summary_type;
+        }
+
         let file_id = ctx.file_id;
         let workspace_id = ctx.db.resolve_workspace_id(file_id);
         let id = if let Some(name_type_decl) =
@@ -221,17 +395,6 @@ fn infer_generic_type(ctx: DocTypeInferContext<'_>, generic_type: &LuaDocGeneric
             return LuaType::Unknown;
         };
 
-        let mut generic_params = Vec::new();
-        if let Some(generic_decl_list) = generic_type.get_generic_types() {
-            for param in generic_decl_list.get_types() {
-                let param_type = infer_doc_type(ctx, &param);
-                if param_type.is_unknown() {
-                    return LuaType::Unknown;
-                }
-                generic_params.push(param_type);
-            }
-        }
-
         let completion = complete_type_generic_args(ctx.db, &id, generic_params);
         if let Some(completed_args) = completion.completed_args {
             return LuaType::Generic(LuaGenericType::new(id, completed_args).into());
@@ -241,6 +404,67 @@ fn infer_generic_type(ctx: DocTypeInferContext<'_>, generic_type: &LuaDocGeneric
     }
 
     LuaType::Unknown
+}
+
+fn infer_same_file_named_type(
+    ctx: DocTypeInferContext<'_>,
+    name: &str,
+    mut generic_args: Vec<LuaType>,
+) -> Option<LuaType> {
+    let type_def = ctx
+        .db
+        .get_summary_db()
+        .doc()
+        .type_def_by_name(ctx.file_id, SmolStr::new(name))?;
+    let workspace_id = ctx.db.resolve_workspace_id(ctx.file_id).unwrap_or(WorkspaceId::MAIN);
+    let type_id = match type_def.visibility {
+        crate::SalsaDocVisibilityKindSummary::Private => LuaTypeDeclId::local(ctx.file_id, name),
+        crate::SalsaDocVisibilityKindSummary::Internal
+        | crate::SalsaDocVisibilityKindSummary::Package => {
+            LuaTypeDeclId::internal(workspace_id, name)
+        }
+        crate::SalsaDocVisibilityKindSummary::Public
+        | crate::SalsaDocVisibilityKindSummary::Protected => LuaTypeDeclId::global(name),
+    };
+
+    if type_def.generic_params.is_empty() {
+        return Some(LuaType::Ref(type_id));
+    }
+
+    for param in type_def.generic_params.iter().skip(generic_args.len()) {
+        let default_type = infer_summary_doc_type_key(ctx, param.default_type_offset?)?;
+        generic_args.push(default_type);
+    }
+
+    if generic_args.len() < type_def.generic_params.len() {
+        return Some(LuaType::Any);
+    }
+
+    Some(LuaType::Generic(
+        LuaGenericType::new(type_id, generic_args).into(),
+    ))
+}
+
+fn infer_summary_doc_type_key(
+    ctx: DocTypeInferContext<'_>,
+    type_key: crate::SalsaDocTypeNodeKey,
+) -> Option<LuaType> {
+    let resolved = ctx
+        .db
+        .get_summary_db()
+        .doc()
+        .resolved_type_by_key(ctx.file_id, type_key)?;
+    let syntax_tree = ctx.db.get_vfs().get_syntax_tree(&ctx.file_id)?;
+    let root = syntax_tree.get_red_root();
+    let doc_type = LuaDocType::cast(
+        resolved
+            .doc_type
+            .syntax_id
+            .to_lua_syntax_id()
+            .to_node_from_root(&root)?,
+    )?;
+
+    Some(infer_doc_type(ctx, &doc_type))
 }
 
 fn infer_special_generic_type(

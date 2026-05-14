@@ -17,7 +17,7 @@ pub use snapshot::ServerContextSnapshot;
 pub use status_bar::ProgressTask;
 pub use status_bar::StatusBar;
 use std::{collections::HashMap, future::Future, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, MutexGuard, RwLock};
 use tokio_util::sync::CancellationToken;
 pub use workspace_manager::*;
 
@@ -35,10 +35,9 @@ use crate::context::snapshot::ServerContextInner;
 // 2. **workspace_diagnostic_token** (Mutex) - Workspace diagnostic task token
 // 3. **config_reload_token / reindex_token** (Mutex) - Debounced workspace tasks
 // 4. **reload_lock** (tokio::Mutex) - Serializes full workspace reloads
-// 5. **analysis** (RwLock - READ) - Read-only access to EmmyLuaAnalysis
+// 5. **analysis** (AnalysisLock) - Exclusive access to EmmyLuaAnalysis
 // 6. **workspace_manager** (RwLock - READ) - Read-only access to WorkspaceManager
 // 7. **workspace_manager** (RwLock - WRITE) - Exclusive access to WorkspaceManager
-// 8. **analysis** (RwLock - WRITE) - Exclusive access to EmmyLuaAnalysis
 //
 // ## Lock Ordering Rules:
 // - **NEVER acquire a lower-priority lock while holding a higher-priority lock**
@@ -106,6 +105,26 @@ pub struct ServerContext {
     inner: Arc<ServerContextInner>,
 }
 
+pub struct AnalysisLock {
+    inner: Mutex<EmmyLuaAnalysis>,
+}
+
+impl AnalysisLock {
+    pub fn new(analysis: EmmyLuaAnalysis) -> Self {
+        Self {
+            inner: Mutex::new(analysis),
+        }
+    }
+
+    pub async fn read(&self) -> MutexGuard<'_, EmmyLuaAnalysis> {
+        self.inner.lock().await
+    }
+
+    pub async fn write(&self) -> MutexGuard<'_, EmmyLuaAnalysis> {
+        self.inner.lock().await
+    }
+}
+
 impl ServerContext {
     pub fn new(conn: Connection, client_capabilities: ClientCapabilities) -> Self {
         let client = Arc::new(ClientProxy::new(Connection {
@@ -113,7 +132,7 @@ impl ServerContext {
             receiver: conn.receiver.clone(),
         }));
 
-        let analysis = Arc::new(RwLock::new(EmmyLuaAnalysis::new()));
+        let analysis = Arc::new(AnalysisLock::new(EmmyLuaAnalysis::new()));
         let lsp_features = Arc::new(LspFeatures::new(client_capabilities));
         let status_bar = Arc::new(StatusBar::new(
             client.clone(),

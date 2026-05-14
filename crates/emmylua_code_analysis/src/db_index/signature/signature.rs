@@ -291,6 +291,10 @@ impl LuaSignatureId {
         }
     }
 
+    pub fn from_position(file_id: FileId, position: TextSize) -> Self {
+        Self { file_id, position }
+    }
+
     pub fn get_file_id(&self) -> FileId {
         self.file_id
     }

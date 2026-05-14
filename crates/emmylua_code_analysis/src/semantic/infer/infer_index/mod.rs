@@ -11,6 +11,7 @@ use smol_str::SmolStr;
 use crate::{
     CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
     LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
+    compilation::infer_compilation_type_property_type,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
@@ -62,7 +63,11 @@ pub(crate) fn try_infer_expr_for_index(
     Ok(Some(infer_expr(db, cache, expr)?))
 }
 
-fn infer_expr_for_index(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> InferResult {
+pub(super) fn infer_expr_for_index(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    expr: LuaExpr,
+) -> InferResult {
     let Some(expr_type) = try_infer_expr_for_index(db, cache, expr)? else {
         return Err(InferFailReason::None);
     };
@@ -318,20 +323,15 @@ fn infer_member_by_lookup(
         }
         LuaType::TplRef(tpl) => infer_tpl_ref_member(db, cache, tpl, lookup, infer_guard),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info {
-                if let Some(export_type) = &module_info.export_type {
-                    if export_type.is_module_ref() {
-                        return Err(InferFailReason::RecursiveInfer);
-                    }
-
-                    return infer_member_by_lookup(db, cache, export_type, lookup, infer_guard);
-                } else {
-                    return Err(InferFailReason::UnResolveModuleExport(*file_id));
+            if let Some(export_type) = crate::resolve_projected_module_export_type(db, *file_id) {
+                if export_type.is_module_ref() {
+                    return Err(InferFailReason::RecursiveInfer);
                 }
+
+                return infer_member_by_lookup(db, cache, &export_type, lookup, infer_guard);
             }
 
-            Err(InferFailReason::FieldNotFound)
+            Err(InferFailReason::UnResolveModuleExport(*file_id))
         }
         _ => Err(InferFailReason::FieldNotFound),
     }
@@ -389,6 +389,11 @@ fn infer_custom_type_member(
     let owner = LuaMemberOwner::Type(prefix_type_id.clone());
     if let Some(member_item) = db.get_member_index().get_member_item(&owner, &lookup.key) {
         return member_item.resolve_type(db);
+    }
+
+    if let Some(summary_type) = infer_compilation_type_property_type(db, &prefix_type_id, &lookup.key)
+    {
+        return Ok(summary_type);
     }
 
     // Exact keys may still resolve through super types below; only broad keys need key-type matching here.
@@ -809,7 +814,7 @@ fn infer_member_by_operator_key_type(
                 }
             }
 
-            Err(InferFailReason::FieldNotFound)
+            Err(InferFailReason::UnResolveModuleExport(*file_id))
         }
         _ => Err(InferFailReason::FieldNotFound),
     }

@@ -36,14 +36,14 @@ pub async fn on_resolve_code_lens_handler(
     code_lens: CodeLens,
     _: CancellationToken,
 ) -> CodeLens {
-    let analysis = context.analysis().read().await;
-    let compilation = &analysis.compilation;
     let client_id = context
         .workspace_manager()
         .read()
         .await
         .client_config
         .client_id;
+    let analysis = context.analysis().read().await;
+    let compilation = &analysis.compilation;
 
     resolve_code_lens(compilation, code_lens.clone(), client_id).unwrap_or(code_lens)
 }

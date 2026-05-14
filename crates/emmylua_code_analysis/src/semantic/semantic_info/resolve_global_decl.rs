@@ -3,7 +3,9 @@ use std::sync::Arc;
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaNameExpr};
 
 use crate::{
-    DbIndex, LuaDeclId, LuaInferCache, LuaType, semantic::overload_resolve::resolve_signature,
+    DbIndex, LuaDeclId, LuaInferCache, LuaType,
+    compilation::globals,
+    semantic::overload_resolve::resolve_signature,
 };
 
 pub fn resolve_global_decl_id(
@@ -12,80 +14,76 @@ pub fn resolve_global_decl_id(
     name: &str,
     name_expr: Option<&LuaNameExpr>,
 ) -> Option<LuaDeclId> {
-    let decl_ids = db.get_global_index().get_global_decl_ids(name)?;
-    if decl_ids.len() == 1 {
-        return Some(decl_ids[0]);
+    let call_expr = name_expr.and_then(|name_expr| name_expr.get_parent::<LuaCallExpr>());
+    let globals = globals(db, name);
+    let first_decl = globals.decls.first().map(|candidate| candidate.decl.decl_id);
+    if globals.decls.len() == 1 {
+        return Some(globals.decls[0].decl.decl_id);
     }
 
-    if let Some(name_expr) = name_expr
-        && let Some(call_expr) = name_expr.get_parent::<LuaCallExpr>()
+    if let Some(call_expr) = call_expr
+        && let Some(decl_id) = resolve_global_call(db, cache, &globals, call_expr)
     {
-        return resolve_global_func_decl_id(db, cache, name, call_expr);
+        return Some(decl_id);
     }
 
-    let mut last_valid_decl_id = None;
-    for decl_id in decl_ids {
-        let decl_type_cache = db.get_type_index().get_type_cache(&(*decl_id).into());
-        if let Some(type_cache) = decl_type_cache {
-            let typ = type_cache.as_type();
-            if typ.is_def() || typ.is_ref() || typ.is_function() {
-                return Some(*decl_id);
-            }
+    let mut last_table = None;
+    for candidate in globals.decls {
+        let Some(typ) = candidate.typ else {
+            continue;
+        };
 
-            if type_cache.is_table() {
-                last_valid_decl_id = Some(decl_id)
-            }
+        if typ.is_def() || typ.is_ref() || typ.is_function() {
+            return Some(candidate.decl.decl_id);
+        }
+
+        if matches!(typ, LuaType::Table | LuaType::Object(_) | LuaType::TableConst(_)) {
+            last_table = Some(candidate.decl.decl_id);
         }
     }
-    if last_valid_decl_id.is_none() && !decl_ids.is_empty() {
-        return Some(decl_ids[0]);
-    }
 
-    last_valid_decl_id.cloned()
+    last_table.or(first_decl)
 }
 
-fn resolve_global_func_decl_id(
+fn resolve_global_call(
     db: &DbIndex,
     cache: &mut LuaInferCache,
-    name: &str,
+    globals: &crate::compilation::CompilationGlobals,
     call_expr: LuaCallExpr,
 ) -> Option<LuaDeclId> {
-    let decl_ids = db.get_global_index().get_global_decl_ids(name)?;
-    let mut overload_signature = vec![];
-    for decl_id in decl_ids {
-        let decl_type_cache = db.get_type_index().get_type_cache(&(*decl_id).into());
-        if let Some(type_cache) = decl_type_cache {
-            let typ = type_cache.as_type();
-            if typ.is_def() || typ.is_ref() || typ.is_table() {
-                return Some(*decl_id);
-            }
+    let mut overloads = Vec::new();
 
-            if let LuaType::Signature(signature) = typ {
-                let signature = db.get_signature_index().get(signature)?;
-                overload_signature.push((decl_id.clone(), signature.to_doc_func_type()));
-            }
+    for candidate in &globals.decls {
+        let Some(typ) = &candidate.typ else {
+            continue;
+        };
+
+        if typ.is_def() || typ.is_ref() || matches!(typ, LuaType::Table | LuaType::Object(_) | LuaType::TableConst(_)) {
+            return Some(candidate.decl.decl_id);
+        }
+
+        if let LuaType::DocFunction(doc_func) = typ {
+            overloads.push((candidate.decl.decl_id, doc_func.clone()));
+        }
+    }
+
+    for function in &globals.functions {
+        if let (Some(decl_id), Some(doc_func)) = (function.decl_id, function.typ.clone()) {
+            overloads.push((decl_id, doc_func));
         }
     }
 
     let signature = resolve_signature(
         db,
         cache,
-        overload_signature
-            .iter()
-            .map(|(_, doc_func)| doc_func.clone())
-            .collect(),
+        overloads.iter().map(|(_, doc_func)| doc_func.clone()).collect(),
         call_expr,
         false,
         None,
-    );
+    )
+    .ok()?;
 
-    if let Ok(signature) = signature {
-        for (decl_id, doc_func) in &overload_signature {
-            if Arc::ptr_eq(&signature, doc_func) {
-                return Some(decl_id.clone());
-            }
-        }
-    }
-
-    overload_signature.first().map(|(id, _)| id.clone())
+    overloads
+        .into_iter()
+        .find_map(|(decl_id, doc_func)| Arc::ptr_eq(&signature, &doc_func).then_some(decl_id))
 }
