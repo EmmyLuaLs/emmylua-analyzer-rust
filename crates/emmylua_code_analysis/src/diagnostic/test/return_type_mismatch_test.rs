@@ -284,6 +284,56 @@ mod tests {
     }
 
     #[test]
+    fn test_pcall_return_after_type_guard() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            --- @param a string|fun(): integer
+            --- @return integer?
+            function foo(a)
+                if type(a) == 'string' then
+                    return
+                end
+
+                local ok, result = pcall(a)
+                if not ok then
+                    return
+                end
+
+                return result
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_pcall_return_after_type_guard_with_table_arg() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            --- @param cb string|fun(a: {}): integer
+            --- @return integer?
+            function foo(cb)
+                if type(cb) == 'string' then
+                    return
+                end
+
+                local ok, result = pcall(cb, {})
+                if not ok then
+                    return
+                end
+
+                return result
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_variadic_return_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
 
