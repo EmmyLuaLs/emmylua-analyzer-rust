@@ -6,6 +6,7 @@ const CARGOS: &[&str] = &[
     "crates/emmylua_doc_cli/Cargo.toml",
     "crates/emmylua_ls/Cargo.toml",
     "crates/emmylua_check/Cargo.toml",
+    "crates/emmylua_formatter/Cargo.toml",
 ];
 
 fn main() {
