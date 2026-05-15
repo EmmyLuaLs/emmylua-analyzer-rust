@@ -351,7 +351,7 @@ end
             r#"
 if ok then
     -- hihihi
-    -- hello
+    --     hello
     -- yyyy
 end
 "#
@@ -369,9 +369,31 @@ local value = 1
 "#,
             r#"
 -- alpha
--- beta gamma
+--   beta gamma
 -- delta
 local value = 1
+"#
+        );
+    }
+
+    #[test]
+    fn test_multiline_normal_comment_preserves_code_block_like_indentation() {
+        assert_format!(
+            r#"-- a
+-- 	b
+--     c
+
+-- function test()
+--     print("Hello world")
+-- end
+"#,
+            r#"-- a
+-- 	b
+--     c
+
+-- function test()
+--     print("Hello world")
+-- end
 "#
         );
     }

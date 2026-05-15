@@ -1848,31 +1848,23 @@ fn normalize_normal_comment_block(
             false,
         )];
     }
-    let mut preserve_extra_gap_context = false;
     lines
         .into_iter()
         .enumerate()
         .map(|(index, line)| {
             let trimmed = line.trim_start();
             if trimmed.is_empty() {
-                preserve_extra_gap_context = false;
                 String::new()
             } else {
-                let preserve_extra_gap = preserve_extra_gap_context;
-                let rendered = normalize_single_normal_comment_line(
+                normalize_single_normal_comment_line(
                     ctx,
                     trimmed,
                     prefix_replacements
                         .get(index)
                         .and_then(|prefix| prefix.as_deref()),
                     normalized_lines.get(index).and_then(|line| line.as_deref()),
-                    preserve_extra_gap,
-                );
-                let current_starts_list_item = normal_comment_body_starts_list_item(trimmed);
-                let current_has_explicit_gap = normal_comment_has_explicit_gap(trimmed);
-                preserve_extra_gap_context =
-                    current_starts_list_item || (preserve_extra_gap && current_has_explicit_gap);
-                rendered
+                    true,
+                )
             }
         })
         .collect()
@@ -1923,19 +1915,16 @@ fn normalize_mixed_comment_block(
         }
     }
 
-    let mut preserve_extra_gap_context = false;
     line_inputs
         .iter()
         .enumerate()
         .map(|(index, line_input)| {
             let trimmed = line_input.raw_line.trim_start();
             if trimmed.is_empty() {
-                preserve_extra_gap_context = false;
                 return String::new();
             }
 
             if trimmed.starts_with("---") {
-                preserve_extra_gap_context = false;
                 return format_doc_block_line(
                     ctx,
                     parsed[index].clone(),
@@ -1946,21 +1935,15 @@ fn normalize_mixed_comment_block(
                 );
             }
 
-            let preserve_extra_gap = preserve_extra_gap_context;
-            let rendered = normalize_single_normal_comment_line(
+            normalize_single_normal_comment_line(
                 ctx,
                 trimmed,
                 prefix_replacements
                     .get(index)
                     .and_then(|prefix| prefix.as_deref()),
                 normalized_lines.get(index).and_then(|line| line.as_deref()),
-                preserve_extra_gap,
-            );
-            let current_starts_list_item = normal_comment_body_starts_list_item(trimmed);
-            let current_has_explicit_gap = normal_comment_has_explicit_gap(trimmed);
-            preserve_extra_gap_context =
-                current_starts_list_item || (preserve_extra_gap && current_has_explicit_gap);
-            rendered
+                true,
+            )
         })
         .collect()
 }
@@ -2017,23 +2000,6 @@ fn normalize_single_normal_comment_line(
     } else {
         format!("{prefix}{body}")
     }
-}
-
-fn normal_comment_body_starts_list_item(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    let Some(body) = trimmed.strip_prefix("--") else {
-        return false;
-    };
-    let body = body.trim_start();
-    body.starts_with("- ") || body.starts_with("* ") || body.starts_with("+ ")
-}
-
-fn normal_comment_has_explicit_gap(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    let Some(body) = trimmed.strip_prefix("--") else {
-        return false;
-    };
-    preserved_dash_gap(body).is_some()
 }
 
 #[derive(Clone)]
