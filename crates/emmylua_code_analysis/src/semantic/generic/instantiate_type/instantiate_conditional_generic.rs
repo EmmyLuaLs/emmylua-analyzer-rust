@@ -1,23 +1,24 @@
 use hashbrown::{HashMap, HashSet};
-use std::ops::Deref;
+use internment::ArcIntern;
 
 use crate::{
-    DbIndex, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
+    DbIndex, GenericTpl, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
     check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
 };
 
 use super::{
-    get_default_constructor, instantiate_type_generic, instantiate_type_generic_with_context,
+    TplCandidateSource, finalize_inferred_tpl_candidate, get_default_constructor,
+    instantiate_type_generic_inner,
 };
-use crate::semantic::generic::type_substitutor::{GenericInstantiateContext, TplBinding};
+use crate::semantic::generic::type_substitutor::{
+    GenericInstantiateContext, GenericInstantiateFrame, TplBinding,
+};
 
 #[derive(Debug, Clone, Copy)]
 enum InferVariance {
-    // 协变
     Covariant,
-    // 逆变
     Contravariant,
 }
 
@@ -38,27 +39,35 @@ struct InferCandidateSet {
 
 pub(super) fn instantiate_conditional(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     conditional: &LuaConditionalType,
 ) -> LuaType {
-    if let Some(distributed) = instantiate_distributed_conditional(context, conditional) {
+    let Some(frame) = frame.enter() else {
+        return instantiate_conditional_residual(context, frame, conditional, None, None);
+    };
+
+    if let Some(distributed) = instantiate_distributed_conditional(context, frame, conditional) {
         return distributed;
     }
 
-    instantiate_conditional_once(context, conditional)
+    instantiate_conditional_once(context, frame, conditional)
 }
 
 fn instantiate_conditional_once(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     conditional: &LuaConditionalType,
 ) -> LuaType {
     let left_type = instantiate_conditional_operand(
         context,
+        frame,
         conditional.get_checked_type(),
         true,
         conditional.has_new,
     );
     let right_type = instantiate_conditional_operand(
         context,
+        frame,
         conditional.get_extends_type(),
         false,
         conditional.has_new,
@@ -78,115 +87,165 @@ fn instantiate_conditional_once(
         ) {
             instantiate_true_branch(
                 context,
+                frame,
                 conditional,
-                finalize_infer_assignments(infer_assignments),
+                finalize_infer_assignments(context, conditional, infer_assignments),
+            )
+        } else if is_deferred_conditional_operand(&left_type)
+            || right_type.any_type(|inner| match inner {
+                LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
+                    !tpl.get_tpl_id().is_conditional_infer()
+                }
+                LuaType::StrTplRef(_)
+                | LuaType::SelfInfer
+                | LuaType::Conditional(_)
+                | LuaType::Mapped(_)
+                | LuaType::Call(_) => true,
+                _ => false,
+            })
+        {
+            instantiate_conditional_residual(
+                context,
+                frame,
+                conditional,
+                Some(left_type),
+                Some(right_type),
             )
         } else {
-            instantiate_type_generic(
-                context.db,
-                conditional.get_false_type(),
-                context.substitutor,
-            )
+            instantiate_type_generic_inner(context, frame, conditional.get_false_type())
         };
     }
 
     match check_conditional_extends(context.db, &left_type, &right_type) {
-        ConditionalCheck::True => instantiate_true_branch(context, conditional, HashMap::new()),
-        ConditionalCheck::False => instantiate_type_generic(
-            context.db,
-            conditional.get_false_type(),
-            context.substitutor,
-        ),
+        ConditionalCheck::True => {
+            instantiate_true_branch(context, frame, conditional, HashMap::new())
+        }
+        ConditionalCheck::False => {
+            instantiate_type_generic_inner(context, frame, conditional.get_false_type())
+        }
         ConditionalCheck::Both => {
-            let true_type = instantiate_true_branch(context, conditional, HashMap::new());
-            let false_type = instantiate_type_generic(
-                context.db,
-                conditional.get_false_type(),
-                context.substitutor,
-            );
+            if is_deferred_conditional_operand(&left_type)
+                || is_deferred_conditional_operand(&right_type)
+            {
+                return instantiate_conditional_residual(
+                    context,
+                    frame,
+                    conditional,
+                    Some(left_type),
+                    Some(right_type),
+                );
+            }
+            let true_type = instantiate_true_branch(context, frame, conditional, HashMap::new());
+            let false_type =
+                instantiate_type_generic_inner(context, frame, conditional.get_false_type());
             TypeOps::Union.apply(context.db, &true_type, &false_type)
         }
     }
 }
 
+fn instantiate_conditional_residual(
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+    conditional: &LuaConditionalType,
+    checked_type: Option<LuaType>,
+    extends_type: Option<LuaType>,
+) -> LuaType {
+    let instantiate_branch = |branch: &LuaType| {
+        if branch.any_type(|ty| match ty {
+            LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
+                context.substitutor.get(tpl.get_tpl_id()).is_some()
+            }
+            LuaType::SelfInfer => context.substitutor.get_self_type().is_some(),
+            _ => false,
+        }) {
+            instantiate_type_generic_inner(context, frame, branch)
+        } else {
+            branch.clone()
+        }
+    };
+
+    LuaType::Conditional(
+        LuaConditionalType::new(
+            checked_type.unwrap_or_else(|| {
+                instantiate_type_generic_inner(context, frame, conditional.get_checked_type())
+            }),
+            extends_type.unwrap_or_else(|| {
+                instantiate_type_generic_inner(context, frame, conditional.get_extends_type())
+            }),
+            instantiate_branch(conditional.get_true_type()),
+            instantiate_branch(conditional.get_false_type()),
+            conditional.get_infer_params().to_vec(),
+            conditional.has_new,
+        )
+        .into(),
+    )
+}
+
 /// 处理分布式条件类型, 与`TS`中的分布式条件类型处理方式相同, 只有裸模版参数才会被分布式.
 fn instantiate_distributed_conditional(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     conditional: &LuaConditionalType,
 ) -> Option<LuaType> {
-    let tpl_id = naked_checked_type_tpl_id(conditional.get_checked_type())?;
+    let tpl_id = match conditional.get_checked_type() {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) if tpl.get_tpl_id().is_type() => {
+            tpl.get_tpl_id()
+        }
+        _ => return None,
+    };
     let raw_checked_type = context.substitutor.get_raw_type(tpl_id)?;
 
     if raw_checked_type.is_never() {
         return Some(LuaType::Never);
     }
 
-    let members = union_members(raw_checked_type)?;
+    let members = match &raw_checked_type {
+        LuaType::Union(union) => union.into_vec(),
+        LuaType::MultiLineUnion(multi) => multi
+            .get_unions()
+            .iter()
+            .map(|(member, _)| member.clone())
+            .collect(),
+        _ => return None,
+    };
     let mut result = LuaType::Never;
     for member in members {
         let mut member_substitutor = context.substitutor.clone();
         member_substitutor.bind(tpl_id, TplBinding::ReplaceConstType(member));
         let member_context = context.with_substitutor(&member_substitutor);
-        let member_result = instantiate_conditional_once(&member_context, conditional);
+        let member_result = instantiate_conditional_once(&member_context, frame, conditional);
         result = TypeOps::Union.apply(context.db, &result, &member_result);
     }
 
     Some(result)
 }
 
-fn naked_checked_type_tpl_id(checked_type: &LuaType) -> Option<GenericTplId> {
-    match checked_type {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) if tpl.get_tpl_id().is_type() => {
-            Some(tpl.get_tpl_id())
-        }
-        _ => None,
-    }
-}
-
-fn union_members(ty: &LuaType) -> Option<Vec<LuaType>> {
-    match ty {
-        LuaType::Union(union) => Some(union.into_vec()),
-        LuaType::MultiLineUnion(multi) => Some(
-            multi
-                .get_unions()
-                .iter()
-                .map(|(member, _)| member.clone())
-                .collect(),
-        ),
-        _ => None,
-    }
-}
-
 fn instantiate_true_branch(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     conditional: &LuaConditionalType,
     infer_assignments: HashMap<GenericTplId, LuaType>,
 ) -> LuaType {
     if infer_assignments.is_empty() {
-        return instantiate_type_generic(
-            context.db,
-            conditional.get_true_type(),
-            context.substitutor,
-        );
+        return instantiate_type_generic_inner(context, frame, conditional.get_true_type());
     }
 
     let mut true_substitutor = context.substitutor.clone();
     for (tpl_id, ty) in infer_assignments {
         true_substitutor.bind(tpl_id, TplBinding::ConditionalInferType(ty));
     }
-    instantiate_type_generic(context.db, conditional.get_true_type(), &true_substitutor)
+    let true_context = context.with_substitutor(&true_substitutor);
+    instantiate_type_generic_inner(&true_context, frame, conditional.get_true_type())
 }
 
 fn contains_conditional_infer(ty: &LuaType) -> bool {
-    ty.any_type(conditional_infer_tpl_id)
-}
-
-fn conditional_infer_tpl_id(ty: &LuaType) -> bool {
-    matches!(
-        ty,
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl)
-            if tpl.get_tpl_id().is_conditional_infer()
-    )
+    ty.any_type(|inner| {
+        matches!(
+            inner,
+            LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl)
+                if tpl.get_tpl_id().is_conditional_infer()
+        )
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +276,10 @@ fn check_conditional_extends(db: &DbIndex, source: &LuaType, target: &LuaType) -
         return ConditionalCheck::True;
     }
 
+    if literal_extends_base_type(source, target) {
+        return ConditionalCheck::True;
+    }
+
     if let LuaType::Union(union) = source {
         let mut result = ConditionalCheck::False;
         for member in union.into_vec() {
@@ -241,6 +304,10 @@ fn check_conditional_extends(db: &DbIndex, source: &LuaType, target: &LuaType) -
         return ConditionalCheck::False;
     }
 
+    if is_deferred_conditional_operand(source) || is_deferred_conditional_operand(target) {
+        return ConditionalCheck::Both;
+    }
+
     if check_type_compact_with_level(
         db,
         source,
@@ -261,6 +328,25 @@ fn merge_conditional_check(left: ConditionalCheck, right: ConditionalCheck) -> C
         (ConditionalCheck::False, ConditionalCheck::False) => ConditionalCheck::False,
         _ => ConditionalCheck::Both,
     }
+}
+
+fn literal_extends_base_type(source: &LuaType, target: &LuaType) -> bool {
+    matches!(
+        (source, target),
+        (
+            LuaType::StringConst(_) | LuaType::DocStringConst(_),
+            LuaType::String
+        ) | (
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_),
+            LuaType::Integer
+        ) | (
+            LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) | LuaType::FloatConst(_),
+            LuaType::Number,
+        ) | (
+            LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_),
+            LuaType::Boolean
+        )
+    )
 }
 
 fn collect_infer_assignments(
@@ -645,6 +731,8 @@ fn insert_infer_assignment(
 }
 
 fn finalize_infer_assignments(
+    context: &GenericInstantiateContext,
+    conditional: &LuaConditionalType,
     assignments: HashMap<GenericTplId, InferCandidateSet>,
 ) -> HashMap<GenericTplId, LuaType> {
     assignments
@@ -653,28 +741,50 @@ fn finalize_infer_assignments(
             candidates
                 .covariant
                 .or(candidates.contravariant)
-                .map(|ty| (tpl_id, ty))
+                .map(|raw_candidate| {
+                    let Some(param) = conditional.get_infer_params().get(tpl_id.get_idx()) else {
+                        return (tpl_id, raw_candidate);
+                    };
+
+                    let tpl = GenericTpl::new(
+                        tpl_id,
+                        ArcIntern::new(param.name.clone()),
+                        param.type_constraint.clone(),
+                        param.default_type.clone(),
+                    );
+                    (
+                        tpl_id,
+                        finalize_inferred_tpl_candidate(
+                            context.db,
+                            &tpl,
+                            &raw_candidate,
+                            TplCandidateSource::ConstPreserving,
+                            true,
+                            true,
+                            context.substitutor,
+                        ),
+                    )
+                })
         })
         .collect()
 }
 
 fn instantiate_conditional_operand(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     operand: &LuaType,
     checked: bool,
     has_new: bool,
 ) -> LuaType {
-    let mut result = instantiate_type_generic_with_context(context, operand);
+    let mut result = instantiate_type_generic_inner(context, frame, operand);
     if let LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) = operand {
         let tpl_id = tpl_ref.get_tpl_id();
         if let Some(raw) = context.substitutor.get_raw_type(tpl_id) {
             result = raw.clone();
-        } else if checked && result.contains_tpl_node() {
-            result = LuaType::Unknown;
+        } else if checked && result.is_never() {
+            result = LuaType::Never;
         }
     }
-
-    result = actualize_unresolved_templates(result);
 
     if has_new
         && let LuaType::Ref(id) | LuaType::Def(id) = &result
@@ -688,147 +798,17 @@ fn instantiate_conditional_operand(
     result
 }
 
-// 条件类型判定只消费已经实例化后的实际类型, 残留的普通模板引用在这里递归收敛为 `unknown`.
-// `infer` pattern 也以模板引用表示, 必须保留下来供后续结构匹配绑定.
-fn actualize_unresolved_templates(ty: LuaType) -> LuaType {
-    match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
-            if tpl.get_tpl_id().is_conditional_infer() {
-                // Conditional infer 是右侧 pattern 的占位孔, 不能像普通未解模板一样抹成 unknown.
-                LuaType::TplRef(tpl)
-            } else {
-                LuaType::Unknown
-            }
-        }
-        LuaType::StrTplRef(_) => LuaType::Unknown,
-        LuaType::Array(array) => LuaType::Array(
-            crate::LuaArrayType::new(
-                actualize_unresolved_templates(array.get_base().clone()),
-                array.get_len().clone(),
-            )
-            .into(),
-        ),
-        LuaType::Tuple(tuple) => LuaType::Tuple(
-            LuaTupleType::new(
-                tuple
-                    .get_types()
-                    .iter()
-                    .cloned()
-                    .map(actualize_unresolved_templates)
-                    .collect(),
-                tuple.status,
-            )
-            .into(),
-        ),
-        LuaType::DocFunction(func) => LuaType::DocFunction(
-            crate::LuaFunctionType::new(
-                func.get_async_state(),
-                func.is_colon_define(),
-                func.is_variadic(),
-                func.get_params()
-                    .iter()
-                    .map(|(name, ty)| {
-                        (name.clone(), ty.clone().map(actualize_unresolved_templates))
-                    })
-                    .collect(),
-                actualize_unresolved_templates(func.get_ret().clone()),
-            )
-            .into(),
-        ),
-        LuaType::Object(object) => LuaType::Object(
-            LuaObjectType::new_with_fields(
-                object
-                    .get_fields()
-                    .iter()
-                    .map(|(key, ty)| (key.clone(), actualize_unresolved_templates(ty.clone())))
-                    .collect(),
-                object
-                    .get_index_access()
-                    .iter()
-                    .map(|(key, value)| {
-                        (
-                            actualize_unresolved_templates(key.clone()),
-                            actualize_unresolved_templates(value.clone()),
-                        )
-                    })
-                    .collect(),
-            )
-            .into(),
-        ),
-        LuaType::Union(union) => LuaType::from_vec(
-            union
-                .into_vec()
-                .into_iter()
-                .map(actualize_unresolved_templates)
-                .collect(),
-        ),
-        LuaType::MultiLineUnion(multi) => LuaType::from_vec(
-            multi
-                .get_unions()
-                .iter()
-                .map(|(ty, _)| actualize_unresolved_templates(ty.clone()))
-                .collect(),
-        ),
-        LuaType::Intersection(intersection) => LuaType::Intersection(
-            crate::LuaIntersectionType::new(
-                intersection
-                    .get_types()
-                    .iter()
-                    .cloned()
-                    .map(actualize_unresolved_templates)
-                    .collect(),
-            )
-            .into(),
-        ),
-        LuaType::Generic(generic) => LuaType::Generic(
-            crate::LuaGenericType::new(
-                generic.get_base_type_id(),
-                generic
-                    .get_params()
-                    .iter()
-                    .cloned()
-                    .map(actualize_unresolved_templates)
-                    .collect(),
-            )
-            .into(),
-        ),
-        LuaType::TableGeneric(params) => LuaType::TableGeneric(
-            params
-                .iter()
-                .cloned()
-                .map(actualize_unresolved_templates)
-                .collect::<Vec<_>>()
-                .into(),
-        ),
-        LuaType::Variadic(variadic) => LuaType::Variadic(
-            match variadic.deref() {
-                crate::VariadicType::Base(base) => {
-                    crate::VariadicType::Base(actualize_unresolved_templates(base.clone()))
-                }
-                crate::VariadicType::Multi(types) => crate::VariadicType::Multi(
-                    types
-                        .iter()
-                        .cloned()
-                        .map(actualize_unresolved_templates)
-                        .collect(),
-                ),
-            }
-            .into(),
-        ),
-        LuaType::TypeGuard(guard) => {
-            LuaType::TypeGuard(actualize_unresolved_templates(guard.deref().clone()).into())
-        }
-        LuaType::Conditional(conditional) => LuaType::Conditional(
-            LuaConditionalType::new(
-                actualize_unresolved_templates(conditional.get_checked_type().clone()),
-                actualize_unresolved_templates(conditional.get_extends_type().clone()),
-                actualize_unresolved_templates(conditional.get_true_type().clone()),
-                actualize_unresolved_templates(conditional.get_false_type().clone()),
-                conditional.get_infer_params().to_vec(),
-                conditional.has_new,
-            )
-            .into(),
-        ),
-        ty => ty,
-    }
+fn is_deferred_conditional_operand(ty: &LuaType) -> bool {
+    ty.any_type(|inner| {
+        matches!(
+            inner,
+            LuaType::TplRef(_)
+                | LuaType::ConstTplRef(_)
+                | LuaType::StrTplRef(_)
+                | LuaType::SelfInfer
+                | LuaType::Conditional(_)
+                | LuaType::Mapped(_)
+                | LuaType::Call(_)
+        )
+    })
 }

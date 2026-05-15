@@ -1,6 +1,6 @@
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaComment, LuaDocGenericDeclList,
-    LuaDocTagAlias, LuaDocTagClass, LuaDocTagGeneric, LuaDocTagType, LuaDocType,
+    LuaDocGenericType, LuaDocTagAlias, LuaDocTagClass, LuaDocTagGeneric, LuaDocTagType, LuaDocType,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -13,7 +13,7 @@ use crate::semantic::{
 use crate::{
     DiagnosticCode, DocTypeInferContext, GenericTplId, LuaArrayType, LuaGenericType,
     LuaIntersectionType, LuaObjectType, LuaSignatureId, LuaStringTplType, LuaTupleType, LuaType,
-    LuaUnionType, RenderLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult,
+    LuaTypeNode, LuaUnionType, RenderLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult,
     TypeSubstitutor, VariadicType, humanize_type, infer_doc_type, instantiate_type_generic,
 };
 
@@ -617,53 +617,140 @@ fn check_doc_tag_type(
     let type_list = doc_tag_type.get_type_list();
     let doc_ctx = DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
     for doc_type in type_list {
-        let explicit_args = explicit_generic_args(&doc_type);
-        if explicit_args.is_empty() {
-            continue;
-        }
-
-        let type_ref = infer_doc_type(doc_ctx, &doc_type);
-        let generic_type = match type_ref {
-            LuaType::Generic(generic_type) => generic_type,
-            _ => continue,
-        };
-
-        let generic_params = semantic_model
-            .get_db()
-            .get_type_index()
-            .get_generic_params(&generic_type.get_base_type_id())?;
-        for (i, param_type) in generic_type
-            .get_params()
-            .iter()
-            .take(explicit_args.len())
-            .enumerate()
-        {
-            let extend_type = generic_params.get(i)?.type_constraint.clone()?;
-            let result = semantic_model.type_check_detail(&extend_type, param_type);
-            if result.is_err() {
-                add_type_check_diagnostic(
-                    context,
-                    semantic_model,
-                    explicit_args.get(i)?.get_range(),
-                    &extend_type,
-                    param_type,
-                    result,
-                );
-            }
-        }
+        check_doc_type_generic_constraints(context, semantic_model, doc_ctx, &doc_type);
     }
     Some(())
 }
 
-fn explicit_generic_args(doc_type: &LuaDocType) -> Vec<LuaDocType> {
+fn check_doc_type_generic_constraints(
+    context: &mut DiagnosticContext,
+    semantic_model: &SemanticModel,
+    doc_ctx: DocTypeInferContext<'_>,
+    doc_type: &LuaDocType,
+) -> Option<()> {
     let LuaDocType::Generic(generic_doc_type) = doc_type else {
-        return Vec::new();
+        return Some(());
     };
 
+    let explicit_args = explicit_generic_args(generic_doc_type);
+    if explicit_args.is_empty() {
+        return Some(());
+    }
+
+    let name = generic_doc_type.get_name_type()?.get_name_text()?;
+    let type_decl = semantic_model.get_db().get_type_index().find_type_decl(
+        semantic_model.get_file_id(),
+        &name,
+        semantic_model
+            .get_db()
+            .resolve_workspace_id(semantic_model.get_file_id()),
+    )?;
+    let type_id = type_decl.get_id();
+    let generic_params = semantic_model
+        .get_db()
+        .get_type_index()
+        .get_generic_params(&type_id)?;
+
+    let instantiate_arg = explicit_arg_instantiation_flags(&generic_params, explicit_args.len());
+    let empty_substitutor = TypeSubstitutor::new();
+    let param_types = explicit_args
+        .iter()
+        .enumerate()
+        .map(|(idx, doc_type)| {
+            let ty = infer_doc_type(doc_ctx, doc_type);
+            if instantiate_arg.get(idx).copied().unwrap_or(false) {
+                instantiate_type_generic(semantic_model.get_db(), &ty, &empty_substitutor)
+            } else {
+                ty
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let substitutor =
+        TypeSubstitutor::from_alias(semantic_model.get_db(), param_types.clone(), type_id);
+
+    for (i, param_type) in param_types.iter().enumerate() {
+        let Some(explicit_arg) = explicit_args.get(i) else {
+            continue;
+        };
+        let Some(extend_type) = generic_params
+            .get(i)
+            .and_then(|param| param.type_constraint.clone())
+        else {
+            continue;
+        };
+
+        let mut extend_type =
+            instantiate_type_generic(semantic_model.get_db(), &extend_type, &substitutor);
+        extend_type = normalize_keyof_any_constraint(extend_type);
+        let result = semantic_model.type_check_detail(&extend_type, param_type);
+        if result.is_err() {
+            add_type_check_diagnostic(
+                context,
+                semantic_model,
+                explicit_arg.get_range(),
+                &extend_type,
+                param_type,
+                result,
+            );
+        }
+    }
+
+    Some(())
+}
+
+fn explicit_generic_args(generic_doc_type: &LuaDocGenericType) -> Vec<LuaDocType> {
     generic_doc_type
         .get_generic_types()
         .map(|type_list| type_list.get_types().collect())
         .unwrap_or_default()
+}
+
+fn explicit_arg_instantiation_flags(
+    generic_params: &[crate::GenericParam],
+    explicit_arg_count: usize,
+) -> Vec<bool> {
+    let mut flags = vec![false; explicit_arg_count];
+    for (constraint_index, param) in generic_params.iter().enumerate().take(explicit_arg_count) {
+        let Some(constraint) = param.type_constraint.as_ref() else {
+            continue;
+        };
+
+        flags[constraint_index] = true;
+        for (arg_index, referenced_param) in
+            generic_params.iter().enumerate().take(explicit_arg_count)
+        {
+            let tpl_id = referenced_param
+                .tpl_id
+                .unwrap_or(GenericTplId::Type(arg_index as u32));
+            if type_contains_tpl_ref(constraint, tpl_id) {
+                flags[arg_index] = true;
+            }
+        }
+    }
+
+    flags
+}
+
+fn type_contains_tpl_ref(ty: &LuaType, tpl_id: GenericTplId) -> bool {
+    ty.any_type(|ty| match ty {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl.get_tpl_id() == tpl_id,
+        LuaType::StrTplRef(tpl) => tpl.get_tpl_id() == tpl_id,
+        _ => false,
+    })
+}
+
+fn normalize_keyof_any_constraint(ty: LuaType) -> LuaType {
+    match ty {
+        LuaType::Call(alias_call)
+            if alias_call.get_call_kind() == crate::LuaAliasCallKind::KeyOf
+                && alias_call.get_operands().len() == 1
+                && alias_call.get_operands()[0].is_any() =>
+        {
+            LuaType::from_vec(vec![LuaType::String, LuaType::Integer, LuaType::Number])
+        }
+        _ => ty,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

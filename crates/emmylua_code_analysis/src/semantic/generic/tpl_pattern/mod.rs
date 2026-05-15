@@ -656,12 +656,12 @@ fn param_type_list_pattern_match_type_list(
                     let tpl_id = generic_tpl.get_tpl_id();
                     if let Some(inferred_type_value) = context.substitutor.get(tpl_id) {
                         match inferred_type_value {
-                            SubstitutorValue::Type(_) => {
+                            SubstitutorValue::Type { .. } => {
                                 continue;
                             }
-                            SubstitutorValue::MultiTypes { types, .. } => {
-                                if types.len() > 1 {
-                                    target_offset += types.len() - 1;
+                            SubstitutorValue::MultiTypes { values, .. } => {
+                                if values.len() > 1 {
+                                    target_offset += values.len() - 1;
                                 }
                                 continue;
                             }

@@ -1,6 +1,6 @@
 use crate::{
     DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
-    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
+    LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
     semantic::{
         generic::key_type_to_member_key,
         member::{find_members, infer_raw_member_type},
@@ -11,18 +11,19 @@ use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
 use super::{
-    GenericInstantiateContext, SubstitutorValue, TypeSubstitutor,
-    instantiate_type_generic_with_context,
+    GenericInstantiateContext, GenericInstantiateFrame, SubstitutorValue, TypeSubstitutor,
+    instantiate_type_generic_inner,
 };
 
 pub(super) fn instantiate_alias_call(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     alias_call: &LuaAliasCallType,
 ) -> LuaType {
     let operand_exprs = alias_call.get_operands();
     let operands = operand_exprs
         .iter()
-        .map(|it| instantiate_type_generic_with_context(context, it))
+        .map(|it| instantiate_type_generic_inner(context, frame, it))
         .collect::<Vec<_>>();
 
     match alias_call.get_call_kind() {
@@ -45,16 +46,12 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
-            let members = get_keyof_members(context.db, &operands[0]).unwrap_or_default();
-            let member_key_types = members
-                .iter()
-                .filter_map(|m| match &m.key {
-                    LuaMemberKey::Integer(i) => Some(LuaType::DocIntegerConst(*i)),
-                    LuaMemberKey::Name(s) => Some(LuaType::DocStringConst(s.clone().into())),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            LuaType::Tuple(LuaTupleType::new(member_key_types, LuaTupleStatus::InferResolve).into())
+            match get_keyof_type(context.db, &operands[0]) {
+                Some(key_type) => key_type,
+                None => {
+                    LuaType::Call(LuaAliasCallType::new(LuaAliasCallKind::KeyOf, operands).into())
+                }
+            }
         }
         // 条件类型不在此处理
         LuaAliasCallKind::Extends => {
@@ -80,7 +77,7 @@ pub(super) fn instantiate_alias_call(
             instantiate_select_call(&operands[0], &operands[1])
         }
         LuaAliasCallKind::Unpack => {
-            let operands = resolve_unpack_operands(context, operand_exprs);
+            let operands = resolve_unpack_operands(context, frame, operand_exprs);
             instantiate_unpack_call(context.db, &operands)
         }
         LuaAliasCallKind::RawGet => {
@@ -105,6 +102,29 @@ pub(super) fn instantiate_alias_call(
         }
         LuaAliasCallKind::Merge => instantiate_merge_call(context.db, &operands),
     }
+}
+
+pub(super) fn get_keyof_type(db: &DbIndex, ty: &LuaType) -> Option<LuaType> {
+    let members = get_keyof_members(db, ty)?;
+    let member_key_types = members
+        .iter()
+        .filter_map(|m| match &m.key {
+            LuaMemberKey::Integer(i) => Some(LuaType::DocIntegerConst(*i)),
+            LuaMemberKey::Name(s) => Some(LuaType::DocStringConst(s.clone().into())),
+            LuaMemberKey::ExprType(typ) => Some(typ.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    if member_key_types.is_empty() {
+        if members.is_empty() {
+            return Some(LuaType::Never);
+        }
+
+        return None;
+    }
+
+    Some(LuaType::from_vec(member_key_types))
 }
 
 fn instantiate_merge_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
@@ -223,6 +243,7 @@ fn instantiate_select_call(source: &LuaType, index: &LuaType) -> LuaType {
 
 fn resolve_unpack_operands(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     operand_exprs: &[LuaType],
 ) -> Vec<LuaType> {
     operand_exprs
@@ -230,7 +251,7 @@ fn resolve_unpack_operands(
         .enumerate()
         .map(|(index, operand)| {
             if index != 0 {
-                return instantiate_type_generic_with_context(context, operand);
+                return instantiate_type_generic_inner(context, frame, operand);
             }
             let raw = match operand {
                 LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => context
@@ -238,9 +259,12 @@ fn resolve_unpack_operands(
                     .get(tpl_ref.get_tpl_id())
                     .and_then(|value| match value {
                         SubstitutorValue::None => None,
-                        SubstitutorValue::Type(ty) => Some(ty.raw().clone()),
-                        SubstitutorValue::MultiTypes { raw_types, .. } => Some(LuaType::Variadic(
-                            VariadicType::Multi(raw_types.clone()).into(),
+                        SubstitutorValue::Type { value, .. } => Some(value.raw().clone()),
+                        SubstitutorValue::MultiTypes { values, .. } => Some(LuaType::Variadic(
+                            VariadicType::Multi(
+                                values.iter().map(|value| value.raw().clone()).collect(),
+                            )
+                            .into(),
                         )),
                         SubstitutorValue::Params(params) => Some(
                             params
@@ -254,7 +278,7 @@ fn resolve_unpack_operands(
                     }),
                 _ => None,
             };
-            raw.unwrap_or_else(|| instantiate_type_generic_with_context(context, operand))
+            raw.unwrap_or_else(|| instantiate_type_generic_inner(context, frame, operand))
         })
         .collect()
 }

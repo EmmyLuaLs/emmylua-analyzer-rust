@@ -142,9 +142,10 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
         alias_decl.get_id()
     };
 
+    let type_node = tag.get_type()?;
     if tag.get_generic_decl_list().is_some() {
         let generic_params = get_type_generic_params(analyzer, &alias_decl_id);
-        let range = analyzer.comment.get_range();
+        let range = type_node.get_range();
         let scope_id = analyzer
             .type_context
             .generic_index
@@ -155,7 +156,7 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
             .append_generic_params(scope_id, generic_params);
     }
 
-    let mut origin_type = infer_type(&mut analyzer.type_context, tag.get_type()?);
+    let mut origin_type = infer_type(&mut analyzer.type_context, type_node);
     if alias_origin_reaches(analyzer.get_db(), &origin_type, &alias_decl_id) {
         origin_type = LuaType::Any;
     }

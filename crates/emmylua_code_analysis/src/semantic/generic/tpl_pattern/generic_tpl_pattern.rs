@@ -49,6 +49,7 @@ fn generic_tpl_pattern_match_inner(
                 .ok_or(InferFailReason::None)?;
             if target_decl.is_alias() {
                 let substitutor = TypeSubstitutor::from_alias(
+                    context.db,
                     target_generic.get_params().clone(),
                     target_base.clone(),
                 );

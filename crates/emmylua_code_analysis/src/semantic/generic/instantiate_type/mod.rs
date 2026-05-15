@@ -2,15 +2,15 @@ mod complete_generic_args;
 mod infer_call_func_generic;
 mod inference_widening;
 mod instantiate_conditional_generic;
+mod instantiate_mapped_type;
 mod instantiate_special_generic;
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use std::ops::Deref;
 
 use crate::{
-    DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
-    LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
-    LuaTypeNode, TypeOps,
+    DbIndex, GenericTpl, LuaArrayType, LuaMemberKey, LuaOperatorMetaMethod, LuaSignatureId,
+    LuaTupleType, LuaTypeDeclId, LuaTypeNode,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
         VariadicType,
@@ -18,7 +18,8 @@ use crate::{
 };
 
 use super::type_substitutor::{
-    GenericInstantiateContext, SubstitutorValue, TypeSubstitutor, UninferredTplPolicy,
+    GenericInstantiateContext, GenericInstantiateFrame, SubstitutorValue, TypeSubstitutor,
+    UninferredTplPolicy,
 };
 pub use complete_generic_args::{
     GenericArgumentCompletion, complete_type_generic_args, complete_type_generic_args_in_type,
@@ -28,6 +29,7 @@ pub(in crate::semantic::generic) use inference_widening::{
     TplCandidateSource, finalize_inferred_tpl_candidate,
 };
 pub use inference_widening::{WideningContext, widen_type_with_context};
+use instantiate_mapped_type::instantiate_mapped_type as instantiate_mapped_type_inner;
 pub use instantiate_special_generic::get_keyof_members;
 
 pub fn instantiate_type_generic(
@@ -36,35 +38,46 @@ pub fn instantiate_type_generic(
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
     let context = GenericInstantiateContext::new(db, substitutor);
+    let frame = context.root_frame();
     match ty {
-        LuaType::DocFunction(doc_func) => instantiate_doc_function_with_context(&context, doc_func),
-        _ => instantiate_type_generic_with_context(&context, ty),
+        LuaType::DocFunction(doc_func) => instantiate_doc_function(&context, frame, doc_func),
+        _ => instantiate_type_generic_inner(&context, frame, ty),
     }
 }
 
-pub(super) fn instantiate_type_generic_with_context(
+pub(super) fn instantiate_type_generic_inner(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     ty: &LuaType,
 ) -> LuaType {
+    let Some(frame) = frame.enter() else {
+        return ty.clone();
+    };
+
     match ty {
-        LuaType::Array(array_type) => instantiate_array(context, array_type.get_base()),
-        LuaType::Tuple(tuple) => instantiate_tuple(context, tuple),
-        LuaType::DocFunction(doc_func) => instantiate_doc_function_with_context(
-            &context.with_policy(UninferredTplPolicy::PreserveTplRef),
+        LuaType::Array(array_type) => instantiate_array(context, frame, array_type.get_base()),
+        LuaType::Tuple(tuple) => instantiate_tuple(context, frame, tuple),
+        LuaType::DocFunction(doc_func) => instantiate_doc_function(
+            context,
+            frame.with_policy(UninferredTplPolicy::PreserveTplRef),
             doc_func,
         ),
-        LuaType::Object(object) => instantiate_object(context, object),
-        LuaType::Union(union) => instantiate_union(context, union),
-        LuaType::Intersection(intersection) => instantiate_intersection(context, intersection),
-        LuaType::Generic(generic) => instantiate_generic_with_context(context, generic),
-        LuaType::TableGeneric(table_params) => instantiate_table_generic(context, table_params),
-        LuaType::TplRef(tpl) => instantiate_tpl_ref(tpl, context),
-        LuaType::ConstTplRef(tpl) => instantiate_const_tpl_ref(tpl, context),
-        LuaType::Signature(sig_id) => instantiate_signature(context, sig_id),
-        LuaType::Call(alias_call) => {
-            instantiate_special_generic::instantiate_alias_call(context, alias_call)
+        LuaType::Object(object) => instantiate_object(context, frame, object),
+        LuaType::Union(union) => instantiate_union(context, frame, union),
+        LuaType::Intersection(intersection) => {
+            instantiate_intersection(context, frame, intersection)
         }
-        LuaType::Variadic(variadic) => instantiate_variadic_type(context, variadic),
+        LuaType::Generic(generic) => instantiate_generic(context, frame, generic),
+        LuaType::TableGeneric(table_params) => {
+            instantiate_table_generic(context, frame, table_params)
+        }
+        LuaType::TplRef(tpl) => instantiate_tpl_ref(tpl, context, frame),
+        LuaType::ConstTplRef(tpl) => instantiate_const_tpl_ref(tpl, context, frame),
+        LuaType::Signature(sig_id) => instantiate_signature(context, frame, sig_id),
+        LuaType::Call(alias_call) => {
+            instantiate_special_generic::instantiate_alias_call(context, frame, alias_call)
+        }
+        LuaType::Variadic(variadic) => instantiate_variadic_type(context, frame, variadic),
         LuaType::SelfInfer => {
             if let Some(typ) = context.substitutor.get_self_type() {
                 typ.clone()
@@ -73,29 +86,34 @@ pub(super) fn instantiate_type_generic_with_context(
             }
         }
         LuaType::TypeGuard(guard) => {
-            let inner = instantiate_type_generic_with_context(context, guard.deref());
+            let inner = instantiate_type_generic_inner(context, frame, guard.deref());
             LuaType::TypeGuard(inner.into())
         }
         LuaType::Conditional(conditional) => {
-            instantiate_conditional_generic::instantiate_conditional(context, conditional)
+            instantiate_conditional_generic::instantiate_conditional(context, frame, conditional)
         }
-        LuaType::Mapped(mapped) => instantiate_mapped_type(context, mapped.deref()),
+        LuaType::Mapped(mapped) => instantiate_mapped_type_inner(context, frame, mapped.deref()),
         _ => ty.clone(),
     }
 }
 
-fn instantiate_types<'a, I>(context: &GenericInstantiateContext, types: I) -> Vec<LuaType>
+fn instantiate_types<'a, I>(
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+    types: I,
+) -> Vec<LuaType>
 where
     I: IntoIterator<Item = &'a LuaType>,
 {
     types
         .into_iter()
-        .map(|ty| instantiate_type_generic_with_context(context, ty))
+        .map(|ty| instantiate_type_generic_inner(context, frame, ty))
         .collect()
 }
 
 fn instantiate_type_pairs<'a, I>(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     pairs: I,
 ) -> Vec<(LuaType, LuaType)>
 where
@@ -105,19 +123,27 @@ where
         .into_iter()
         .map(|(key, value)| {
             (
-                instantiate_type_generic_with_context(context, key),
-                instantiate_type_generic_with_context(context, value),
+                instantiate_type_generic_inner(context, frame, key),
+                instantiate_type_generic_inner(context, frame, value),
             )
         })
         .collect()
 }
 
-fn instantiate_array(context: &GenericInstantiateContext, base: &LuaType) -> LuaType {
-    let base = instantiate_type_generic_with_context(context, base);
+fn instantiate_array(
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+    base: &LuaType,
+) -> LuaType {
+    let base = instantiate_type_generic_inner(context, frame, base);
     LuaType::Array(LuaArrayType::from_base_type(base).into())
 }
 
-fn instantiate_tuple(context: &GenericInstantiateContext, tuple: &LuaTupleType) -> LuaType {
+fn instantiate_tuple(
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+    tuple: &LuaTupleType,
+) -> LuaType {
     let mut new_types = Vec::new();
     for t in tuple.get_types() {
         if let LuaType::Variadic(inner) = t {
@@ -127,18 +153,20 @@ fn instantiate_tuple(context: &GenericInstantiateContext, tuple: &LuaTupleType) 
                         if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
                             match value {
                                 SubstitutorValue::None => new_types
-                                    .push(instantiate_uninferred_tpl_fallback(tpl, context)),
-                                SubstitutorValue::MultiTypes { types, .. } => {
-                                    for typ in types {
-                                        new_types.push(typ.clone());
-                                    }
-                                }
+                                    .push(instantiate_uninferred_tpl_fallback(tpl, context, frame)),
                                 SubstitutorValue::Params(params) => {
                                     for (_, ty) in params {
                                         new_types.push(ty.clone().unwrap_or(LuaType::Unknown));
                                     }
                                 }
-                                SubstitutorValue::Type(ty) => new_types.push(ty.resolved().clone()),
+                                SubstitutorValue::MultiTypes { values, .. } => {
+                                    new_types.extend(
+                                        values.iter().map(|value| value.resolved().clone()),
+                                    );
+                                }
+                                SubstitutorValue::Type { value, .. } => {
+                                    new_types.push(value.resolved().clone())
+                                }
                                 SubstitutorValue::MultiBase(base) => new_types.push(base.clone()),
                             }
                         } else {
@@ -152,14 +180,15 @@ fn instantiate_tuple(context: &GenericInstantiateContext, tuple: &LuaTupleType) 
             break;
         }
 
-        let t = instantiate_type_generic_with_context(context, t);
+        let t = instantiate_type_generic_inner(context, frame, t);
         new_types.push(t);
     }
     LuaType::Tuple(LuaTupleType::new(new_types, tuple.status).into())
 }
 
-fn instantiate_doc_function_with_context(
+fn instantiate_doc_function(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     doc_func: &LuaFunctionType,
 ) -> LuaType {
     let tpl_func_params = doc_func.get_params();
@@ -178,15 +207,16 @@ fn instantiate_doc_function_with_context(
         match origin_param_type {
             LuaType::Variadic(variadic) => match variadic.deref() {
                 VariadicType::Base(base) => match base {
-                    LuaType::TplRef(tpl) => {
+                    LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
                         if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
                             match value {
                                 SubstitutorValue::None => {
-                                    let ty = instantiate_uninferred_tpl_fallback(tpl, context);
+                                    let ty =
+                                        instantiate_uninferred_tpl_fallback(tpl, context, frame);
                                     new_params.push((origin_param.0.clone(), Some(ty)));
                                 }
-                                SubstitutorValue::Type(ty) => {
-                                    let resolved_type = ty.resolved().clone();
+                                SubstitutorValue::Type { value, .. } => {
+                                    let resolved_type = value.resolved().clone();
                                     // 如果参数是 `...: T...`
                                     if origin_param.0 == "..." {
                                         // 类型是 tuple, 那么我们将展开 tuple
@@ -217,10 +247,11 @@ fn instantiate_doc_function_with_context(
                                         new_params.push(param.clone());
                                     }
                                 }
-                                SubstitutorValue::MultiTypes { types, .. } => {
-                                    for (i, typ) in types.iter().enumerate() {
+                                SubstitutorValue::MultiTypes { values, .. } => {
+                                    for (i, value) in values.iter().enumerate() {
                                         let param_name = format!("var{}", i);
-                                        new_params.push((param_name, Some(typ.clone())));
+                                        new_params
+                                            .push((param_name, Some(value.resolved().clone())));
                                     }
                                 }
                                 _ => {
@@ -238,7 +269,7 @@ fn instantiate_doc_function_with_context(
                         }
                     }
                     LuaType::Generic(generic) => {
-                        let new_type = instantiate_generic_with_context(context, generic);
+                        let new_type = instantiate_generic(context, frame, generic);
                         // 如果是 rest 参数且实例化后的类型是 tuple, 那么我们将展开 tuple
                         if let LuaType::Tuple(tuple_type) = &new_type {
                             let base_index = new_params.len();
@@ -256,13 +287,13 @@ fn instantiate_doc_function_with_context(
                 VariadicType::Multi(_) => (),
             },
             _ => {
-                let new_type = instantiate_type_generic_with_context(context, origin_param_type);
+                let new_type = instantiate_type_generic_inner(context, frame, origin_param_type);
                 new_params.push((origin_param.0.clone(), Some(new_type)));
             }
         }
     }
 
-    let mut inst_ret_type = instantiate_type_generic_with_context(context, tpl_ret);
+    let mut inst_ret_type = instantiate_type_generic_inner(context, frame, tpl_ret);
     // 对于可变返回值, 如果实例化是 tuple, 那么我们将展开 tuple
     if let LuaType::Variadic(_) = &&tpl_ret
         && let LuaType::Tuple(tuple) = &inst_ret_type
@@ -300,43 +331,57 @@ fn instantiate_doc_function_with_context(
     )
 }
 
-fn instantiate_object(context: &GenericInstantiateContext, object: &LuaObjectType) -> LuaType {
+fn instantiate_object(
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+    object: &LuaObjectType,
+) -> LuaType {
     let new_fields = object
         .get_fields()
         .iter()
         .map(|(key, field)| {
             (
                 key.clone(),
-                instantiate_type_generic_with_context(context, field),
+                instantiate_type_generic_inner(context, frame, field),
             )
         })
         .collect::<HashMap<_, _>>();
 
-    let new_index_access = instantiate_type_pairs(context, object.get_index_access().iter());
+    let new_index_access = instantiate_type_pairs(context, frame, object.get_index_access().iter());
 
     LuaType::Object(LuaObjectType::new_with_fields(new_fields, new_index_access).into())
 }
 
-fn instantiate_union(context: &GenericInstantiateContext, union: &LuaUnionType) -> LuaType {
-    LuaType::from_vec(instantiate_types(context, union.into_vec().iter()))
+fn instantiate_union(
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+    union: &LuaUnionType,
+) -> LuaType {
+    LuaType::from_vec(instantiate_types(context, frame, union.into_vec().iter()))
 }
 
 fn instantiate_intersection(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     intersection: &LuaIntersectionType,
 ) -> LuaType {
     LuaType::Intersection(
-        LuaIntersectionType::new(instantiate_types(context, intersection.get_types().iter()))
-            .into(),
+        LuaIntersectionType::new(instantiate_types(
+            context,
+            frame,
+            intersection.get_types().iter(),
+        ))
+        .into(),
     )
 }
 
-fn instantiate_generic_with_context(
+fn instantiate_generic(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     generic: &LuaGenericType,
 ) -> LuaType {
     let generic_params = generic.get_params();
-    let new_params = instantiate_types(context, generic_params.iter());
+    let new_params = instantiate_types(context, frame, generic_params.iter());
 
     let base = generic.get_base_type();
     let type_decl_id = if let LuaType::Ref(id) = base {
@@ -349,9 +394,14 @@ fn instantiate_generic_with_context(
         && let Some(type_decl) = context.db.get_type_index().get_type_decl(&type_decl_id)
         && type_decl.is_alias()
     {
-        let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
-        if let Some(origin) = type_decl.get_alias_origin(context.db, Some(&new_substitutor)) {
-            return origin;
+        let Some(alias_context) = context.enter_alias(&type_decl_id) else {
+            return LuaType::Generic(LuaGenericType::new(type_decl_id, new_params).into());
+        };
+        let new_substitutor =
+            TypeSubstitutor::from_alias(context.db, new_params.clone(), type_decl_id.clone());
+        let alias_context = alias_context.with_substitutor(&new_substitutor);
+        if let Some(origin) = type_decl.get_alias_ref() {
+            return instantiate_type_generic_inner(&alias_context, frame, origin);
         }
     }
 
@@ -360,43 +410,57 @@ fn instantiate_generic_with_context(
 
 fn instantiate_table_generic(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     table_params: &[LuaType],
 ) -> LuaType {
-    LuaType::TableGeneric(instantiate_types(context, table_params.iter()).into())
+    LuaType::TableGeneric(instantiate_types(context, frame, table_params.iter()).into())
 }
 
 fn instantiate_uninferred_tpl_fallback(
     tpl: &GenericTpl,
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
 ) -> LuaType {
     // 一些情况下需要保留 TplRef, 例如高阶函数调用
-    if context.should_preserve_tpl_ref() && tpl.get_default_type().is_none() {
+    if frame.should_preserve_tpl_ref() && tpl.get_default_type().is_none() {
         return LuaType::TplRef(tpl.clone().into());
     }
 
     // 显式默认值优先, 然后是 extends 约束, 最后才是 unknown.
     if let Some(default_type) = tpl.get_default_type() {
-        return instantiate_type_generic_with_context(context, default_type);
+        return instantiate_type_generic_inner(context, frame, default_type);
     }
 
     if let Some(constraint) = tpl.get_constraint() {
-        return instantiate_type_generic_with_context(context, constraint);
+        return instantiate_type_generic_inner(context, frame, constraint);
     }
 
     LuaType::Unknown
 }
 
-fn instantiate_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) -> LuaType {
+fn instantiate_tpl_ref(
+    tpl: &GenericTpl,
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+) -> LuaType {
     if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
         match value {
             SubstitutorValue::None => {
-                return instantiate_uninferred_tpl_fallback(tpl, context);
+                return instantiate_uninferred_tpl_fallback(tpl, context, frame);
             }
-            SubstitutorValue::Type(ty) => {
-                return ty.resolved().clone();
+            SubstitutorValue::Type { value, .. } => {
+                return value.resolved().clone();
             }
-            SubstitutorValue::MultiTypes { types, .. } => {
-                return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
+            SubstitutorValue::MultiTypes { values, .. } => {
+                return LuaType::Variadic(
+                    VariadicType::Multi(
+                        values
+                            .iter()
+                            .map(|value| value.resolved().clone())
+                            .collect(),
+                    )
+                    .into(),
+                );
             }
             SubstitutorValue::Params(params) => {
                 return params
@@ -413,17 +477,29 @@ fn instantiate_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) ->
     LuaType::TplRef(tpl.clone().into())
 }
 
-fn instantiate_const_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) -> LuaType {
+fn instantiate_const_tpl_ref(
+    tpl: &GenericTpl,
+    context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
+) -> LuaType {
     if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
         match value {
             SubstitutorValue::None => {
-                return instantiate_uninferred_tpl_fallback(tpl, context);
+                return instantiate_uninferred_tpl_fallback(tpl, context, frame);
             }
-            SubstitutorValue::Type(ty) => {
-                return ty.resolved().clone();
+            SubstitutorValue::Type { value, .. } => {
+                return value.resolved().clone();
             }
-            SubstitutorValue::MultiTypes { types, .. } => {
-                return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
+            SubstitutorValue::MultiTypes { values, .. } => {
+                return LuaType::Variadic(
+                    VariadicType::Multi(
+                        values
+                            .iter()
+                            .map(|value| value.resolved().clone())
+                            .collect(),
+                    )
+                    .into(),
+                );
             }
             SubstitutorValue::Params(params) => {
                 return params
@@ -442,20 +518,22 @@ fn instantiate_const_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateConte
 
 fn instantiate_signature(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     signature_id: &LuaSignatureId,
 ) -> LuaType {
     if let Some(signature) = context.db.get_signature_index().get(signature_id) {
         let origin_type = {
             let fake_doc_function = signature.to_doc_func_type();
-            instantiate_doc_function_with_context(context, &fake_doc_function)
+            instantiate_doc_function(context, frame, &fake_doc_function)
         };
         if signature.overloads.is_empty() {
             return origin_type;
         } else {
             let mut result = Vec::new();
             for overload in signature.overloads.iter() {
-                result.push(instantiate_doc_function_with_context(
+                result.push(instantiate_doc_function(
                     context,
+                    frame,
                     &(*overload).clone(),
                 ));
             }
@@ -469,6 +547,7 @@ fn instantiate_signature(
 
 fn instantiate_variadic_type(
     context: &GenericInstantiateContext,
+    frame: GenericInstantiateFrame,
     variadic: &VariadicType,
 ) -> LuaType {
     match variadic {
@@ -477,15 +556,15 @@ fn instantiate_variadic_type(
                 if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
                     match value {
                         SubstitutorValue::None => {
-                            let fallback = instantiate_uninferred_tpl_fallback(tpl, context);
+                            let fallback = instantiate_uninferred_tpl_fallback(tpl, context, frame);
                             return match fallback {
                                 LuaType::Variadic(_) | LuaType::Never => fallback,
                                 LuaType::Nil | LuaType::Any | LuaType::Unknown => fallback,
                                 _ => LuaType::Variadic(VariadicType::Base(fallback).into()),
                             };
                         }
-                        SubstitutorValue::Type(ty) => {
-                            let resolved_type = ty.resolved().clone();
+                        SubstitutorValue::Type { value, .. } => {
+                            let resolved_type = value.resolved().clone();
                             if matches!(
                                 resolved_type,
                                 LuaType::Nil | LuaType::Any | LuaType::Unknown | LuaType::Never
@@ -494,8 +573,16 @@ fn instantiate_variadic_type(
                             }
                             return LuaType::Variadic(VariadicType::Base(resolved_type).into());
                         }
-                        SubstitutorValue::MultiTypes { types, .. } => {
-                            return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
+                        SubstitutorValue::MultiTypes { values, .. } => {
+                            return LuaType::Variadic(
+                                VariadicType::Multi(
+                                    values
+                                        .iter()
+                                        .map(|value| value.resolved().clone())
+                                        .collect(),
+                                )
+                                .into(),
+                            );
                         }
                         SubstitutorValue::Params(params) => {
                             let types = params
@@ -513,7 +600,7 @@ fn instantiate_variadic_type(
                 }
             }
             LuaType::Generic(generic) => {
-                return instantiate_generic_with_context(context, generic);
+                return instantiate_generic(context, frame, generic);
             }
             _ => {}
         },
@@ -521,7 +608,7 @@ fn instantiate_variadic_type(
             if types.iter().any(LuaTypeNode::contains_tpl_node) {
                 let mut new_types = Vec::new();
                 for t in types {
-                    let t = instantiate_type_generic_with_context(context, t);
+                    let t = instantiate_type_generic_inner(context, frame, t);
                     match t {
                         LuaType::Never => {}
                         LuaType::Variadic(variadic) => match variadic.deref() {
@@ -543,92 +630,6 @@ fn instantiate_variadic_type(
     LuaType::Variadic(variadic.clone().into())
 }
 
-fn instantiate_mapped_type(context: &GenericInstantiateContext, mapped: &LuaMappedType) -> LuaType {
-    let constraint = mapped
-        .param
-        .1
-        .type_constraint
-        .as_ref()
-        .map(|ty| instantiate_type_generic_with_context(context, ty));
-
-    if let Some(constraint) = constraint {
-        let mut key_types = Vec::new();
-        collect_mapped_key_atoms(&constraint, &mut key_types);
-
-        let mut visited = HashSet::new();
-        let mut fields: Vec<(LuaMemberKey, LuaType)> = Vec::new();
-        let mut index_access: Vec<(LuaType, LuaType)> = Vec::new();
-
-        for key_ty in key_types {
-            if !visited.insert(key_ty.clone()) {
-                continue;
-            }
-
-            let value_ty = instantiate_mapped_value(context, mapped, mapped.param.0, &key_ty);
-
-            if let Some(member_key) = key_type_to_member_key(&key_ty) {
-                if let Some((_, existing)) = fields.iter_mut().find(|(key, _)| key == &member_key) {
-                    let merged = LuaType::from_vec(vec![existing.clone(), value_ty]);
-                    *existing = merged;
-                } else {
-                    fields.push((member_key, value_ty));
-                }
-            } else {
-                index_access.push((key_ty, value_ty));
-            }
-        }
-
-        if !fields.is_empty() || !index_access.is_empty() {
-            // key 从 0 开始递增才被视为元组
-            if constraint.is_tuple() {
-                let mut index = 0;
-                let mut is_tuple = true;
-                for (key, _) in &fields {
-                    if let LuaMemberKey::Integer(i) = key {
-                        if *i != index {
-                            is_tuple = false;
-                            break;
-                        }
-                        index += 1;
-                    } else {
-                        is_tuple = false;
-                        break;
-                    }
-                }
-                if is_tuple {
-                    let types = fields.into_iter().map(|(_, ty)| ty).collect();
-                    return LuaType::Tuple(
-                        LuaTupleType::new(types, LuaTupleStatus::InferResolve).into(),
-                    );
-                }
-            }
-            let field_map: HashMap<LuaMemberKey, LuaType> = fields.into_iter().collect();
-            return LuaType::Object(LuaObjectType::new_with_fields(field_map, index_access).into());
-        }
-    }
-
-    instantiate_type_generic_with_context(context, &mapped.value)
-}
-
-fn instantiate_mapped_value(
-    context: &GenericInstantiateContext,
-    mapped: &LuaMappedType,
-    tpl_id: GenericTplId,
-    replacement: &LuaType,
-) -> LuaType {
-    let mut local_substitutor = context.substitutor.clone();
-    local_substitutor.bind_type(tpl_id, replacement.clone());
-    let local_context = context.with_substitutor(&local_substitutor);
-    let mut result = instantiate_type_generic_with_context(&local_context, &mapped.value);
-    // 根据 readonly 和 optional 属性进行处理
-    if mapped.is_optional {
-        result = TypeOps::Union.apply(context.db, &result, &LuaType::Nil);
-    }
-    // TODO: 处理 readonly, 但目前 readonly 的实现存在问题, 这里我们先跳过
-
-    result
-}
-
 pub(super) fn key_type_to_member_key(key_ty: &LuaType) -> Option<LuaMemberKey> {
     match key_ty {
         LuaType::DocStringConst(s) => Some(LuaMemberKey::Name(s.deref().clone())),
@@ -636,36 +637,6 @@ pub(super) fn key_type_to_member_key(key_ty: &LuaType) -> Option<LuaMemberKey> {
         LuaType::DocIntegerConst(i) => Some(LuaMemberKey::Integer(*i)),
         LuaType::IntegerConst(i) => Some(LuaMemberKey::Integer(*i)),
         _ => None,
-    }
-}
-
-fn collect_mapped_key_atoms(key_ty: &LuaType, acc: &mut Vec<LuaType>) {
-    match key_ty {
-        LuaType::Union(union) => {
-            for member in union.into_vec() {
-                collect_mapped_key_atoms(&member, acc);
-            }
-        }
-        LuaType::MultiLineUnion(multi) => {
-            for (member, _) in multi.get_unions() {
-                collect_mapped_key_atoms(member, acc);
-            }
-        }
-        LuaType::Variadic(variadic) => match variadic.deref() {
-            VariadicType::Base(base) => collect_mapped_key_atoms(base, acc),
-            VariadicType::Multi(types) => {
-                for member in types {
-                    collect_mapped_key_atoms(member, acc);
-                }
-            }
-        },
-        LuaType::Tuple(tuple) => {
-            for member in tuple.get_types() {
-                collect_mapped_key_atoms(member, acc);
-            }
-        }
-        LuaType::Unknown | LuaType::Never => {}
-        _ => acc.push(key_ty.clone()),
     }
 }
 

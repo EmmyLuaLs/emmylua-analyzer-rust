@@ -131,14 +131,13 @@ pub fn infer_call_expr_func(
     };
 
     let result = if let Ok(func_ty) = result {
-        let func_ty = match func_ty.get_ret() {
-            LuaType::Call(_) => {
-                match infer_call_func_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
-                    Ok(func_ty) => Arc::new(func_ty),
-                    Err(_) => func_ty,
-                }
+        let func_ty = if func_ty.get_ret().contain_tpl() || func_ty.get_ret().is_call() {
+            match infer_call_func_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
+                Ok(func_ty) => Arc::new(func_ty),
+                Err(_) => func_ty,
             }
-            _ => func_ty,
+        } else {
+            func_ty
         };
 
         let func_ret = func_ty.get_ret();

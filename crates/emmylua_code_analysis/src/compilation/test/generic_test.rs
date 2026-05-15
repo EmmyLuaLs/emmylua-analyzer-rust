@@ -3,8 +3,8 @@ mod test {
     use emmylua_parser::LuaClosureExpr;
 
     use crate::{
-        DiagnosticCode, LuaSignatureId, LuaType, LuaTypeDeclId, VirtualWorkspace,
-        complete_type_generic_args,
+        DiagnosticCode, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId, TypeSubstitutor,
+        VirtualWorkspace, complete_type_generic_args, instantiate_type_generic,
     };
 
     #[test]
@@ -413,6 +413,172 @@ mod test {
     }
 
     #[test]
+    fn test_keyof_alias_residual_resolves_after_forwarding() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Keys<T> keyof T
+            ---@alias ForwardKeys<T> Keys<T>
+
+            ---@param key "a" | "b"
+            function accept(key) end
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type ForwardKeys<{ a: string, b: number }>
+            local key
+            accept(key)
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_mapped_alias_residual_resolves_after_forwarding() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Copy<T> { [K in keyof T]: T[K]; }
+            ---@alias ForwardCopy<T> Copy<T>
+
+            ---@type ForwardCopy<{ a: string, b: number }>
+            local copy
+
+            A = copy.a
+            B = copy.b
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("B"), ws.ty("number"));
+    }
+
+    #[test]
+    fn test_mapped_unresolved_key_domain_preserves_residual() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Copy<T> { [K in keyof T]: T[K]; }
+
+            ---@generic T
+            ---@param value Copy<T>
+            ---@return Copy<T>
+            function keep(value) end
+
+            ---@type Copy<{ a: string }>
+            local concrete
+
+            A = keep(concrete).a
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_alias_argument_binding_ignores_shadowing_function_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Box<T> fun<T>(x: T): T
+
+            ---@type Box<string>
+            local f
+
+            Result = f(1)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "1");
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Box<string>
+            local f
+
+            f(1)
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_argument_binding_ignores_shadowing_mapped_key() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Shadow<T> { [T in keyof { a: string }]: T; }
+
+            ---@type Shadow<number>
+            local value
+
+            A = value.a
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty(r#""a""#));
+    }
+
+    #[test]
+    fn test_conditional_alias_residual_resolves_after_forwarding() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Extract<T, U> T extends U and T or never
+            ---@alias KeepA<T> Extract<T, "a">
+            ---@alias Forward<T> KeepA<T>
+            "#,
+        );
+
+        let generic_ty = ws.ty(r#"Forward<"a" | "b">"#);
+        let instantiated =
+            instantiate_type_generic(ws.get_db_mut(), &generic_ty, &TypeSubstitutor::new());
+        assert_eq!(instantiated, ws.ty(r#""a""#));
+    }
+
+    #[test]
+    fn test_nested_mapped_conditional_alias_residual_resolves() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Wrapper<T>
+            ---@alias UnwrapFields<T> { [K in keyof T]: T[K] extends Wrapper<infer U> and U or T[K]; }
+            ---@alias Forward<T> UnwrapFields<T>
+
+            ---@type Forward<{ a: Wrapper<string>, b: number }>
+            local value
+
+            A = value.a
+            B = value.b
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("B"), ws.ty("number"));
+    }
+
+    #[test]
+    fn test_recursive_alias_instantiation_budget_falls_back_safely() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Loop<T> Loop<T>
+            ---@alias Forward<T> Loop<T>
+
+            ---@type Forward<string>
+            local value
+
+            Value = value
+            "#,
+        );
+
+        let value_ty = ws.expr_ty("Value");
+        assert_eq!(ws.humanize_type(value_ty), "Forward<string>");
+    }
+
+    #[test]
     fn test_issue_787() {
         let mut ws = VirtualWorkspace::new();
 
@@ -768,6 +934,7 @@ mod test {
             .expect("Box generic params");
         assert_eq!(box_params.len(), 1);
         assert_eq!(box_params[0].name.as_str(), "T");
+        assert_eq!(box_params[0].tpl_id, Some(GenericTplId::Type(0)));
         let box_default = box_params[0]
             .default_type
             .clone()
@@ -783,6 +950,7 @@ mod test {
             .expect("Optional generic params");
         assert_eq!(optional_params.len(), 1);
         assert_eq!(optional_params[0].name.as_str(), "T");
+        assert_eq!(optional_params[0].tpl_id, Some(GenericTplId::Type(0)));
         let optional_default = optional_params[0]
             .default_type
             .clone()

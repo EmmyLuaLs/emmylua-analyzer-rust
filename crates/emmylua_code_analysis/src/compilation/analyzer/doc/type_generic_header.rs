@@ -68,6 +68,7 @@ fn normalize_generic_params(db: &DbIndex, params: &[GenericParam]) -> Vec<Generi
                     .map(|ty| complete_type_generic_args_in_type(db, ty)),
                 param.attributes.clone(),
             )
+            .with_tpl_id(param.tpl_id)
         })
         .collect()
 }
@@ -97,8 +98,9 @@ fn resolve_generic_params(
         });
 
         let param = GenericParam::new(name, constraint, default_type, None);
-        generic_index.append_generic_param(scope_id, param.clone());
-        params.push(param);
+        if let Some(tpl_id) = generic_index.append_generic_param(scope_id, param.clone()) {
+            params.push(param.with_tpl_id(Some(tpl_id)));
+        }
     }
 
     params
@@ -156,13 +158,16 @@ impl GenericIndex for HeaderGenericIndex {
         id
     }
 
-    fn append_generic_param(&mut self, scope_id: GenericScopeId, param: GenericParam) {
-        let Some(scope) = self.scopes.get_mut(scope_id.id) else {
-            return;
-        };
+    fn append_generic_param(
+        &mut self,
+        scope_id: GenericScopeId,
+        param: GenericParam,
+    ) -> Option<GenericTplId> {
+        let scope = self.scopes.get_mut(scope_id.id)?;
         let tpl_id = scope.next_tpl_id;
         scope.next_tpl_id = scope.next_tpl_id.with_idx((tpl_id.get_idx() + 1) as u32);
         scope.params.push((tpl_id, param));
+        Some(tpl_id)
     }
 
     fn find_generic(
