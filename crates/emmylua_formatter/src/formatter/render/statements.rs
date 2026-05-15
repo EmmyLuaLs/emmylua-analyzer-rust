@@ -1,6 +1,5 @@
 use super::comments::{
-    append_trailing_statement_suffix, has_inline_non_trivia_after,
-    has_inline_non_trivia_before,
+    append_trailing_statement_suffix, has_inline_non_trivia_after, has_inline_non_trivia_before,
 };
 use super::*;
 

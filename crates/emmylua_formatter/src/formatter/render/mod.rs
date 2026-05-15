@@ -20,21 +20,20 @@ use crate::formatter::trivia::*;
 
 pub(super) use self::comments::{
     append_trailing_statement_suffix, comment_is_inline_after_anchor,
-    extract_trailing_comment_rendered, has_inline_non_trivia_after,
-    render_comment_with_spacing, render_direct_body_comment,
-    source_order_token_is_trailing_statement_semicolon,
+    extract_trailing_comment_rendered, has_inline_non_trivia_after, render_comment_with_spacing,
+    render_direct_body_comment, source_order_token_is_trailing_statement_semicolon,
 };
 use self::control::{
     render_do_stat, render_for_range_stat, render_for_stat, render_func_stat, render_if_stat,
     render_local_func_stat, render_repeat_stat, render_while_stat,
 };
 use self::helpers::*;
-use self::statements::{render_statement_align_split, render_statement_line_content};
 pub(super) use self::statements::{
     format_statement_value_expr, has_direct_comment_before_token, render_assign_stat,
     render_call_expr_stat, render_empty_stat, render_header_exprs_with_leading_docs,
     render_local_stat, render_return_stat,
 };
+use self::statements::{render_statement_align_split, render_statement_line_content};
 
 pub fn render_ir(ctx: &FormatContext, chunk: &LuaChunk, plan: &FormatPlan) -> Vec<DocIR> {
     let mut docs = Vec::new();

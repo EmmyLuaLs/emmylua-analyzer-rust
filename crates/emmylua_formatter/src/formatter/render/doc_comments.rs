@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use rowan::TextSize;
-
 use super::comments::{normalize_single_normal_comment_line, preserved_dash_gap};
 use super::*;
 
@@ -24,6 +22,12 @@ struct DocBlockLineInput<'a> {
     normalized_line: Option<&'a str>,
     structured_tag: Option<StructuredDocTagColumns>,
     prefix_kind: DocLinePrefixKind,
+}
+
+struct DocCommentLineMap<'a> {
+    raw_lines: Vec<&'a str>,
+    line_start_offsets: Vec<usize>,
+    prefix_kinds: Vec<DocLinePrefixKind>,
 }
 
 #[derive(Clone)]
@@ -214,18 +218,20 @@ fn collect_doc_block_line_inputs<'a>(
     raw: &'a str,
     normalized_lines: &'a [Option<String>],
 ) -> Vec<DocBlockLineInput<'a>> {
-    let raw_lines: Vec<&str> = raw.lines().collect();
-    let structured_tags_by_line = collect_structured_doc_tag_columns_by_line(ctx, comment, raw);
-    let prefix_kinds = collect_doc_line_prefix_kinds(comment, raw_lines.len());
+    let line_map = collect_doc_comment_line_map(comment, raw);
+    let structured_tags_by_line =
+        collect_structured_doc_tag_columns_by_line(ctx, comment, &line_map);
 
-    raw_lines
+    line_map
+        .raw_lines
         .into_iter()
         .enumerate()
         .map(|(index, raw_line)| DocBlockLineInput {
             raw_line,
             normalized_line: normalized_lines.get(index).and_then(|line| line.as_deref()),
             structured_tag: structured_tags_by_line.get(index).cloned().flatten(),
-            prefix_kind: prefix_kinds
+            prefix_kind: line_map
+                .prefix_kinds
                 .get(index)
                 .copied()
                 .unwrap_or(DocLinePrefixKind::Unknown),
@@ -428,9 +434,7 @@ fn format_doc_block_line(
                         let padding = widths
                             .get(key)
                             .and_then(|widths| widths.get(source_index))
-                            .map(|width| {
-                                width.saturating_sub(line.columns[source_index].len()) + 1
-                            })
+                            .map(|width| width.saturating_sub(line.columns[source_index].len()) + 1)
                             .unwrap_or(1);
                         rendered.extend(std::iter::repeat_n(' ', padding));
                         rendered.push_str(column);
@@ -528,12 +532,13 @@ fn annotate_multiline_alias_continue_lines(
         .collect()
 }
 
-fn collect_doc_line_prefix_kinds(
-    comment: &LuaComment,
-    raw_line_count: usize,
-) -> Vec<DocLinePrefixKind> {
-    let mut prefix_kinds = vec![DocLinePrefixKind::Unknown; raw_line_count];
-    let mut current_line = 0usize;
+fn collect_doc_comment_line_map<'a>(comment: &LuaComment, raw: &'a str) -> DocCommentLineMap<'a> {
+    let comment_start = comment.syntax().text_range().start();
+    let mut raw_lines = Vec::new();
+    let mut line_start_offsets = vec![0usize];
+    let mut prefix_kinds = vec![DocLinePrefixKind::Unknown];
+    let mut current_line_start = 0usize;
+    let mut current_line_index = 0usize;
     let mut saw_non_whitespace = false;
 
     for element in comment.syntax().descendants_with_tokens() {
@@ -541,15 +546,24 @@ fn collect_doc_line_prefix_kinds(
             continue;
         };
 
+        let relative_start =
+            u32::from(token.text_range().start()).saturating_sub(u32::from(comment_start)) as usize;
+        let relative_end =
+            u32::from(token.text_range().end()).saturating_sub(u32::from(comment_start)) as usize;
+
         match token.kind().to_token() {
             LuaTokenKind::TkEndOfLine => {
-                current_line = current_line.saturating_add(1);
+                raw_lines.push(raw.get(current_line_start..relative_start).unwrap_or(""));
+                current_line_start = relative_end.min(raw.len());
+                current_line_index += 1;
+                line_start_offsets.push(current_line_start);
+                prefix_kinds.push(DocLinePrefixKind::Unknown);
                 saw_non_whitespace = false;
             }
             LuaTokenKind::TkWhitespace => {}
             kind if !saw_non_whitespace => {
                 if let Some(prefix_kind) = doc_line_prefix_kind_from_token(kind)
-                    && let Some(slot) = prefix_kinds.get_mut(current_line)
+                    && let Some(slot) = prefix_kinds.get_mut(current_line_index)
                 {
                     *slot = prefix_kind;
                 }
@@ -561,7 +575,15 @@ fn collect_doc_line_prefix_kinds(
         }
     }
 
-    prefix_kinds
+    if raw_lines.len() < prefix_kinds.len() {
+        raw_lines.push(raw.get(current_line_start..raw.len()).unwrap_or(""));
+    }
+
+    DocCommentLineMap {
+        raw_lines,
+        line_start_offsets,
+        prefix_kinds,
+    }
 }
 
 fn strip_doc_line_prefix(line: &str, prefix_kind: DocLinePrefixKind) -> &str {
@@ -844,11 +866,9 @@ fn parse_generic_columns(input: &str) -> Vec<String> {
 fn collect_structured_doc_tag_columns_by_line(
     ctx: &FormatContext,
     comment: &LuaComment,
-    raw: &str,
+    line_map: &DocCommentLineMap,
 ) -> Vec<Option<StructuredDocTagColumns>> {
-    let raw_line_count = raw.lines().count();
-    let mut structured_tags = vec![None; raw_line_count];
-    let line_start_offsets = collect_line_start_offsets(raw);
+    let mut structured_tags = vec![None; line_map.raw_lines.len()];
     let comment_start = comment.syntax().text_range().start();
 
     for child in comment.syntax().children() {
@@ -857,7 +877,7 @@ fn collect_structured_doc_tag_columns_by_line(
         };
         let relative_start =
             u32::from(child.text_range().start()).saturating_sub(u32::from(comment_start)) as usize;
-        let line_index = line_index_for_offset(&line_start_offsets, relative_start);
+        let line_index = line_index_for_offset(&line_map.line_start_offsets, relative_start);
         let Some(columns) = structured_doc_tag_columns_from_ast(ctx, &tag) else {
             continue;
         };
@@ -867,16 +887,6 @@ fn collect_structured_doc_tag_columns_by_line(
     }
 
     structured_tags
-}
-
-fn collect_line_start_offsets(raw: &str) -> Vec<usize> {
-    let mut starts = vec![0];
-    for (index, byte) in raw.bytes().enumerate() {
-        if byte == b'\n' {
-            starts.push(index + 1);
-        }
-    }
-    starts
 }
 
 fn line_index_for_offset(line_start_offsets: &[usize], offset: usize) -> usize {
@@ -893,9 +903,9 @@ fn structured_doc_tag_columns_from_ast(
     match tag {
         LuaDocTag::Class(tag) => Some(StructuredDocTagColumns {
             tag: "class".to_string(),
-            head_columns: Vec::new(),
+            head_columns: structured_class_columns(tag),
             description: tag.get_description().map(|it| it.get_description_text()),
-            use_normalized_head_as_single_column: true,
+            use_normalized_head_as_single_column: false,
         }),
         LuaDocTag::Alias(tag) => Some(StructuredDocTagColumns {
             tag: "alias".to_string(),
@@ -949,6 +959,33 @@ fn structured_doc_tag_columns_from_ast(
 fn should_use_normalized_single_return_head(tag: &LuaDocTagReturn) -> bool {
     let info_list = tag.get_info_list();
     info_list.len() == 1 && info_list[0].1.is_none()
+}
+
+fn structured_class_columns(tag: &LuaDocTagClass) -> Vec<String> {
+    let mut head = String::new();
+    if let Some(type_flag) = tag.get_type_flag() {
+        head.push_str(type_flag.syntax().text().to_string().trim());
+        head.push(' ');
+    }
+    if let Some(name) = tag.get_name_token() {
+        head.push_str(name.get_name_text());
+    }
+    if let Some(generic_decl) = tag.get_generic_decl() {
+        head.push_str(generic_decl.syntax().text().to_string().trim());
+    }
+    if let Some(supers) = tag.get_supers() {
+        let supers_text = supers
+            .get_types()
+            .map(|ty| ty.syntax().text().to_string().trim().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        if !supers_text.is_empty() {
+            head.push_str(": ");
+            head.push_str(&supers_text);
+        }
+    }
+
+    (!head.is_empty()).then_some(head).into_iter().collect()
 }
 
 fn structured_type_columns(ctx: &FormatContext, tag: &LuaDocTagType) -> Vec<String> {
@@ -1060,94 +1097,77 @@ fn structured_first_column_variants(raw_first: &str, normalized_first: &str) -> 
 }
 
 fn structured_param_columns(tag: &LuaDocTagParam) -> Vec<String> {
-    let node = tag.syntax();
-    let Some(content_start) = structured_tag_content_start(node) else {
-        return Vec::new();
-    };
-
-    let head_token = tag
+    let mut name = tag
         .get_name_token()
-        .map(|token| token.syntax().clone())
-        .or_else(|| {
-            node.children_with_tokens()
-                .filter_map(|element| element.into_token())
-                .find(|token| token.kind() == LuaTokenKind::TkDots.into())
-        });
-
-    let Some(head_token) = head_token else {
-        return vec![
-            slice_node_text(node, content_start, node.text_range().end())
-                .trim()
-                .to_string(),
-        ];
-    };
-
-    let mut name = head_token.text().to_string();
+        .map(|token| token.get_name_text().to_string())
+        .or_else(|| tag.is_vararg().then(|| "...".to_string()))
+        .unwrap_or_default();
     if tag.is_nullable() {
         name.push('?');
     }
 
-    let type_text = if let Some(type_node) = tag.get_type() {
-        let type_start = adjust_attached_type_start(node, type_node.syntax().text_range().start());
-        slice_same_line_node_text(node, type_start, node.text_range().end())
-            .trim()
-            .to_string()
-    } else {
-        slice_node_text(node, head_token.text_range().end(), node.text_range().end())
-            .trim()
-            .trim_start_matches('?')
-            .trim()
-            .to_string()
-    };
+    let type_text = tag
+        .get_type()
+        .map(|type_node| type_node.syntax().text().to_string().trim().to_string())
+        .unwrap_or_default();
 
     if type_text.is_empty() {
-        vec![name]
+        (!name.is_empty()).then_some(name).into_iter().collect()
     } else {
         vec![name, type_text]
     }
 }
 
 fn structured_field_columns(tag: &LuaDocTagField) -> Vec<String> {
-    let node = tag.syntax();
-    let Some(content_start) = structured_tag_content_start(node) else {
-        return Vec::new();
-    };
-    let Some(type_node) = tag.get_type() else {
-        return vec![
-            slice_node_text(node, content_start, node.text_range().end())
-                .trim()
-                .to_string(),
-        ];
-    };
+    let mut key = String::new();
+    if let Some(visibility) = tag.get_visibility_token() {
+        key.push_str(visibility.get_text());
+        key.push(' ');
+    }
+    if let Some(field_key) = tag.get_field_key() {
+        key.push_str(field_key_text(&field_key).trim());
+    }
+    if tag.is_nullable() {
+        key.push('?');
+    }
 
-    let type_start = adjust_attached_type_start(node, type_node.syntax().text_range().start());
-
-    let key = slice_node_text(node, content_start, type_start)
-        .trim()
-        .to_string();
-    let type_text = slice_same_line_node_text(node, type_start, node.text_range().end())
-        .trim()
-        .to_string();
+    let type_text = tag
+        .get_type()
+        .map(|type_node| type_node.syntax().text().to_string().trim().to_string())
+        .unwrap_or_default();
 
     if type_text.is_empty() {
-        vec![key]
+        (!key.is_empty()).then_some(key).into_iter().collect()
     } else {
         vec![key, type_text]
     }
 }
 
-fn structured_return_columns(tag: &LuaDocTagReturn) -> Vec<String> {
-    let node = tag.syntax();
-    let Some(content_start) = structured_tag_content_start(node) else {
-        return Vec::new();
-    };
+fn field_key_text(field_key: &LuaDocFieldKey) -> String {
+    match field_key {
+        LuaDocFieldKey::Name(name) => name.get_name_text().to_string(),
+        LuaDocFieldKey::String(string) => format!("[{}]", string.get_text()),
+        LuaDocFieldKey::Integer(integer) => format!("[{}]", integer.get_text()),
+        LuaDocFieldKey::Type(typ) => {
+            format!("[{}]", typ.syntax().text().to_string().trim())
+        }
+    }
+}
 
-    let head = slice_node_text(node, content_start, node.text_range().end())
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+fn structured_return_columns(tag: &LuaDocTagReturn) -> Vec<String> {
+    let head = tag
+        .get_info_list()
+        .into_iter()
+        .map(|(type_node, name_token)| match name_token {
+            Some(name_token) => format!(
+                "{} {}",
+                type_node.syntax().text().to_string().trim(),
+                name_token.get_name_text()
+            ),
+            None => type_node.syntax().text().to_string().trim().to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
 
     if head.is_empty() {
         Vec::new()
@@ -1156,47 +1176,12 @@ fn structured_return_columns(tag: &LuaDocTagReturn) -> Vec<String> {
     }
 }
 
-fn structured_tag_content_start(node: &LuaSyntaxNode) -> Option<TextSize> {
-    node.first_token().map(|token| token.text_range().end())
-}
-
-fn slice_same_line_node_text(node: &LuaSyntaxNode, start: TextSize, end: TextSize) -> String {
-    slice_node_text(node, start, end)
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .to_string()
-}
-
 fn first_structured_description_line(text: String) -> Option<String> {
     text.lines()
         .next()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(str::to_string)
-}
-
-fn adjust_attached_type_start(node: &LuaSyntaxNode, type_start: TextSize) -> TextSize {
-    let base = u32::from(node.text_range().start());
-    let relative = u32::from(type_start).saturating_sub(base) as usize;
-    if relative == 0 {
-        return type_start;
-    }
-
-    let text = node.text().to_string();
-    if text.as_bytes().get(relative.saturating_sub(1)) == Some(&b'(') {
-        TextSize::from((u32::from(type_start)).saturating_sub(1))
-    } else {
-        type_start
-    }
-}
-
-fn slice_node_text(node: &LuaSyntaxNode, start: TextSize, end: TextSize) -> String {
-    let base = u32::from(node.text_range().start());
-    let start = u32::from(start).saturating_sub(base) as usize;
-    let end = u32::from(end).saturating_sub(base) as usize;
-    let text = node.text().to_string();
-    text.get(start..end).unwrap_or("").to_string()
 }
 
 fn collapse_spaces(text: &str) -> String {
