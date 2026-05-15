@@ -1499,9 +1499,9 @@ dependencies = [
 
 [[package]]
 name = "luars"
-version = "0.19.0"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c683445fe41a97d41580a0994d82446d4dcf014283a693bb4f242cdc9dc53a7c"
+checksum = "0cd21f47663905893436ea9f51fc4f67f917cd13ec75a81979239ce651548d61"
 dependencies = [
  "ahash",
  "chrono",
