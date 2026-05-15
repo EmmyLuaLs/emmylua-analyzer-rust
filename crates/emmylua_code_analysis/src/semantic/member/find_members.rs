@@ -6,7 +6,7 @@ use crate::{
     DbIndex, FileId, InferGuardRef, LuaGenericType, LuaInstanceType, LuaIntersectionType,
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
     LuaTypeDeclId, LuaUnionType, find_compilation_decl_by_position,
-    infer_compilation_type_property_type,
+    infer_compilation_type_property_type, infer_compilation_type_super_types,
     resolve_projected_module_export_type,
     semantic::{
         InferGuard,
@@ -270,13 +270,58 @@ fn find_custom_type_members(
 ) -> FindMembersResult {
     ctx.infer_guard().check(type_decl_id).ok()?;
     let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(type_decl_id)?;
-    if type_decl.is_alias() {
+    let type_decl = type_index.get_type_decl(type_decl_id);
+    if let Some(type_decl) = type_decl
+        && type_decl.is_alias()
+    {
         if let Some(origin) = type_decl.get_alias_origin(db, None) {
             return find_members_guard(db, &origin, ctx, filter);
         } else {
             return find_members_guard(db, &LuaType::String, ctx, filter);
         }
+    }
+
+    if let FindMemberFilter::ByKey {
+        member_key,
+        find_all: _,
+    } = filter
+        && let Some(summary_type) = infer_compilation_type_property_type(db, type_decl_id, member_key)
+    {
+        let mut members = vec![LuaMemberInfo {
+            property_owner_id: Some(LuaSemanticDeclId::TypeDecl(type_decl_id.clone())),
+            key: member_key.clone(),
+            typ: ctx.instantiate_type(db, &summary_type),
+            feature: None,
+            overload_index: None,
+        }];
+
+        if should_stop_collecting(members.len(), filter) {
+            return Some(members);
+        }
+
+        let member_index = db.get_member_index();
+        if let Some(type_members) = member_index.get_members(&LuaMemberOwner::Type(type_decl_id.clone())) {
+            for member in type_members {
+                let member_key = member.get_key().clone();
+
+                if should_include_member(&member_key, filter) {
+                    let raw_type = db
+                        .get_type_index()
+                        .get_type_cache(&member.get_id().into())
+                        .map(|t| t.as_type().clone())
+                        .unwrap_or(LuaType::Unknown);
+                    members.push(LuaMemberInfo {
+                        property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
+                        key: member_key,
+                        typ: ctx.instantiate_type(db, &raw_type),
+                        feature: Some(member.get_feature()),
+                        overload_index: None,
+                    });
+                }
+            }
+        }
+
+        return Some(members);
     }
 
     let mut members = Vec::new();
@@ -308,27 +353,9 @@ fn find_custom_type_members(
         }
     }
 
-    if let FindMemberFilter::ByKey {
-        member_key,
-        find_all: _,
-    } = filter
-        && let Some(summary_type) = infer_compilation_type_property_type(db, type_decl_id, member_key)
-    {
-        members.push(LuaMemberInfo {
-            property_owner_id: Some(LuaSemanticDeclId::TypeDecl(type_decl_id.clone())),
-            key: member_key.clone(),
-            typ: ctx.instantiate_type(db, &summary_type),
-            feature: None,
-            overload_index: None,
-        });
-
-        if should_stop_collecting(members.len(), filter) {
-            return Some(members);
-        }
-    }
-
-    if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(type_decl_id)
+    if let Some(super_types) = type_index
+        .get_super_types(type_decl_id)
+        .or_else(|| infer_compilation_type_super_types(db, type_decl_id))
     {
         for super_type in super_types {
             let instantiated_super = ctx.instantiate_type(db, &super_type);
@@ -514,9 +541,10 @@ fn find_generic_members(
         .map(|param| ctx.instantiate_type(db, param))
         .collect();
     let substitutor = TypeSubstitutor::from_type_array(instantiated_params);
-    let type_decl = db.get_type_index().get_type_decl(&base_ref_id)?;
     let ctx_with_substitutor = ctx.with_substitutor(substitutor.clone());
-    if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+    if let Some(type_decl) = db.get_type_index().get_type_decl(&base_ref_id)
+        && let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor))
+    {
         return find_members_guard(db, &origin, &ctx_with_substitutor, filter);
     }
 

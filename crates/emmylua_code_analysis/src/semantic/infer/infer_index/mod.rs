@@ -11,7 +11,7 @@ use smol_str::SmolStr;
 use crate::{
     CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
     LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
-    compilation::infer_compilation_type_property_type,
+    compilation::{infer_compilation_type_property_type, infer_compilation_type_super_types},
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
@@ -369,10 +369,10 @@ fn infer_custom_type_member(
 ) -> InferResult {
     infer_guard.check(&prefix_type_id)?;
     let type_index = db.get_type_index();
-    let type_decl = type_index
-        .get_type_decl(&prefix_type_id)
-        .ok_or(InferFailReason::None)?;
-    if type_decl.is_alias() {
+    let type_decl = type_index.get_type_decl(&prefix_type_id);
+    if let Some(type_decl) = type_decl
+        && type_decl.is_alias()
+    {
         if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
             return infer_member_by_lookup(db, cache, &origin_type, lookup, infer_guard);
         } else {
@@ -387,13 +387,13 @@ fn infer_custom_type_member(
     }
 
     let owner = LuaMemberOwner::Type(prefix_type_id.clone());
-    if let Some(member_item) = db.get_member_index().get_member_item(&owner, &lookup.key) {
-        return member_item.resolve_type(db);
-    }
-
     if let Some(summary_type) = infer_compilation_type_property_type(db, &prefix_type_id, &lookup.key)
     {
         return Ok(summary_type);
+    }
+
+    if let Some(member_item) = db.get_member_index().get_member_item(&owner, &lookup.key) {
+        return member_item.resolve_type(db);
     }
 
     // Exact keys may still resolve through super types below; only broad keys need key-type matching here.
@@ -403,8 +403,9 @@ fn infer_custom_type_member(
         return Ok(result_type);
     }
 
-    if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(&prefix_type_id)
+    if let Some(super_types) = type_index
+        .get_super_types(&prefix_type_id)
+        .or_else(|| infer_compilation_type_super_types(db, &prefix_type_id))
     {
         for super_type in super_types {
             let result = infer_member_by_lookup(db, cache, &super_type, lookup, infer_guard);

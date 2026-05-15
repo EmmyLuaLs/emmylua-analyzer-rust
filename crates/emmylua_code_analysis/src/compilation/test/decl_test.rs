@@ -309,7 +309,7 @@ mod test {
         let generic_refs = tree
             .get_chunk_node()
             .descendants::<LuaDocType>()
-            .filter(|doc_type| doc_type.syntax().text().to_string() == "T")
+            .filter(|doc_type| doc_type.syntax().text() == "T")
             .map(|doc_type| infer_doc_type(
                 DocTypeInferContext::new(ws.analysis.compilation.get_db(), file_id),
                 &doc_type,

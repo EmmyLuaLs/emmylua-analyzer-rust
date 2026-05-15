@@ -226,13 +226,18 @@ pub fn infer_compilation_type_property_type(
     type_decl_id: &crate::LuaTypeDeclId,
     key: &LuaMemberKey,
 ) -> Option<LuaType> {
-    let type_decl = db.get_type_index().get_type_decl(type_decl_id)?;
+    let type_name = type_decl_id.get_name();
     let mut resolved = Vec::new();
     for file_id in db.get_vfs().get_all_file_ids() {
+        let type_def = db
+            .get_summary_db()
+            .doc()
+            .type_def_by_name(file_id, type_name.into());
+        let owner_offset = type_def.as_ref().map(|type_def| type_def.syntax_offset);
         let properties = db
             .get_summary_db()
             .file()
-            .properties_for_type(file_id, type_decl.get_name().into())
+            .properties_for_type(file_id, type_name.into())
             .unwrap_or_default();
 
         for property in properties {
@@ -253,7 +258,14 @@ pub fn infer_compilation_type_property_type(
                 continue;
             };
 
-            let mut typ = infer_compilation_doc_type_keys(db, file_id, &[doc_type_offset])?;
+            let Some(mut typ) = infer_compilation_doc_type_key_with_owner(
+                db,
+                file_id,
+                owner_offset,
+                doc_type_offset,
+            ) else {
+                continue;
+            };
             if property.is_nullable && !typ.is_nullable() {
                 typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
             }
@@ -261,10 +273,7 @@ pub fn infer_compilation_type_property_type(
         }
 
         if resolved.is_empty()
-            && let Some(type_def) = db
-                .get_summary_db()
-                .doc()
-                .type_def_by_name(file_id, type_decl.get_name().into())
+            && let Some(type_def) = type_def
             && let Some(doc_summary) = db.get_summary_db().doc().summary(file_id)
         {
             for field in &doc_summary.fields {
@@ -289,7 +298,14 @@ pub fn infer_compilation_type_property_type(
                 let Some(type_offset) = field.type_offset else {
                     continue;
                 };
-                let mut typ = infer_compilation_doc_type_keys(db, file_id, &[type_offset])?;
+                let Some(mut typ) = infer_compilation_doc_type_key_with_owner(
+                    db,
+                    file_id,
+                    Some(type_def.syntax_offset),
+                    type_offset,
+                ) else {
+                    continue;
+                };
                 if field.is_nullable && !typ.is_nullable() {
                     typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
                 }
@@ -301,6 +317,41 @@ pub fn infer_compilation_type_property_type(
     let mut types = resolved.into_iter();
     let first = types.next()?;
     Some(types.fold(first, |acc, ty| TypeOps::Union.apply(db, &acc, &ty)))
+}
+
+pub fn infer_compilation_type_super_types(
+    db: &DbIndex,
+    type_decl_id: &crate::LuaTypeDeclId,
+) -> Option<Vec<LuaType>> {
+    let type_name = type_decl_id.get_name();
+    let mut resolved = Vec::new();
+    for file_id in db.get_vfs().get_all_file_ids() {
+        let Some(type_def) = db
+            .get_summary_db()
+            .doc()
+            .type_def_by_name(file_id, type_name.into())
+        else {
+            continue;
+        };
+
+        for super_type_offset in &type_def.super_type_offsets {
+            let Some(typ) = infer_compilation_doc_type_key_with_owner(
+                db,
+                file_id,
+                Some(type_def.syntax_offset),
+                *super_type_offset,
+            ) else {
+                continue;
+            };
+            resolved.push(typ);
+        }
+    }
+
+    if resolved.is_empty() {
+        None
+    } else {
+        Some(resolved)
+    }
 }
 
 fn compilation_return_type(mut row: Vec<LuaType>) -> LuaType {
