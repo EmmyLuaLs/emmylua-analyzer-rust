@@ -188,7 +188,9 @@ fn instantiate_distributed_conditional(
     conditional: &LuaConditionalType,
 ) -> Option<LuaType> {
     let tpl_id = match conditional.get_checked_type() {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) if tpl.get_tpl_id().is_type() => {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl)
+            if tpl.get_tpl_id().is_type() || tpl.get_tpl_id().is_func() =>
+        {
             tpl.get_tpl_id()
         }
         _ => return None,

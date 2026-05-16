@@ -1780,6 +1780,26 @@ mod test {
     }
 
     #[test]
+    fn test_distributed_function_generic_conditional_return_filters_union_members() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@generic T
+                ---@param value T
+                ---@return T extends string and T or never
+                function extractString(value) end
+
+                ---@type string|integer
+                local value
+
+                A = extractString(value)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("A"), ws.ty("string"));
+    }
+
+    #[test]
     fn test_union_never() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
