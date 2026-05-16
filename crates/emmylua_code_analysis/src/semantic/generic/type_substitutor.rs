@@ -492,6 +492,14 @@ fn is_tpl_at_top_level_with_guard(
 ) -> bool {
     match ty {
         LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl.get_tpl_id() == tpl_id,
+        LuaType::Union(union) => union.into_vec().iter().any(|member| {
+            let mut branch_aliases = visited_aliases.clone();
+            is_tpl_at_top_level_with_guard(db, member, tpl_id, &mut branch_aliases)
+        }),
+        LuaType::MultiLineUnion(multi) => multi.get_unions().iter().any(|(member, _)| {
+            let mut branch_aliases = visited_aliases.clone();
+            is_tpl_at_top_level_with_guard(db, member, tpl_id, &mut branch_aliases)
+        }),
         LuaType::Generic(generic) => {
             let type_decl_id = generic.get_base_type_id_ref();
             let Some(alias_param) =

@@ -53,7 +53,7 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
             Ok(expr_type) => {
                 let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
                 let decl_id = LuaDeclId::new(analyzer.file_id, position);
-                // 当`call`参数包含表时, 表可能未被分析, 需要延迟
+                // 当表达式中存在带表参数的调用时, 表可能尚未完成预分析, 需要延迟
                 if let LuaType::Instance(instance) = &expr_type
                     && instance.get_base().is_unknown()
                     && call_expr_has_effect_table_arg(&expr).is_some()
@@ -164,17 +164,7 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
 }
 
 fn call_expr_has_effect_table_arg(expr: &LuaExpr) -> Option<()> {
-    if let LuaExpr::CallExpr(call_expr) = expr {
-        let args_list = call_expr.get_args_list()?;
-        for arg in args_list.get_args() {
-            if let LuaExpr::TableExpr(table_expr) = arg
-                && !table_expr.is_empty()
-            {
-                return Some(());
-            }
-        }
-    }
-    None
+    expr_has_effect_table_call_arg(expr.clone())
 }
 
 fn get_var_owner(analyzer: &mut LuaAnalyzer, var: LuaVarExpr) -> LuaTypeOwner {
@@ -642,27 +632,122 @@ fn get_delayed_definition_decl_id(
 }
 
 fn pre_analyze_call_arg_table_fields(analyzer: &mut LuaAnalyzer, expr: &LuaExpr) {
-    let LuaExpr::CallExpr(call_expr) = expr else {
-        return;
-    };
-    let Some(args_list) = call_expr.get_args_list() else {
-        return;
-    };
+    pre_analyze_nested_table_fields(analyzer, expr.clone());
+}
 
-    for arg in args_list.get_args() {
-        pre_analyze_table_expr_fields(analyzer, arg);
+fn pre_analyze_nested_table_fields(analyzer: &mut LuaAnalyzer, expr: LuaExpr) {
+    match expr {
+        LuaExpr::CallExpr(call_expr) => {
+            if let Some(prefix_expr) = call_expr.get_prefix_expr() {
+                pre_analyze_nested_table_fields(analyzer, prefix_expr);
+            }
+
+            if let Some(args_list) = call_expr.get_args_list() {
+                for arg in args_list.get_args() {
+                    pre_analyze_nested_table_fields(analyzer, arg);
+                }
+            }
+        }
+        LuaExpr::TableExpr(table_expr) => {
+            for field in table_expr.get_fields() {
+                if let Some(LuaIndexKey::Expr(key_expr)) = field.get_field_key() {
+                    pre_analyze_nested_table_fields(analyzer, key_expr);
+                }
+
+                if let Some(value_expr) = field.get_value_expr() {
+                    pre_analyze_nested_table_fields(analyzer, value_expr);
+                }
+
+                analyze_table_field(analyzer, field.clone());
+            }
+        }
+        LuaExpr::BinaryExpr(binary_expr) => {
+            if let Some((left, right)) = binary_expr.get_exprs() {
+                pre_analyze_nested_table_fields(analyzer, left);
+                pre_analyze_nested_table_fields(analyzer, right);
+            }
+        }
+        LuaExpr::UnaryExpr(unary_expr) => {
+            if let Some(inner_expr) = unary_expr.get_expr() {
+                pre_analyze_nested_table_fields(analyzer, inner_expr);
+            }
+        }
+        LuaExpr::ParenExpr(paren_expr) => {
+            if let Some(inner_expr) = paren_expr.get_expr() {
+                pre_analyze_nested_table_fields(analyzer, inner_expr);
+            }
+        }
+        LuaExpr::IndexExpr(index_expr) => {
+            if let Some(prefix_expr) = index_expr.get_prefix_expr() {
+                pre_analyze_nested_table_fields(analyzer, prefix_expr);
+            }
+
+            if let Some(LuaIndexKey::Expr(key_expr)) = index_expr.get_index_key() {
+                pre_analyze_nested_table_fields(analyzer, key_expr);
+            }
+        }
+        LuaExpr::LiteralExpr(_) | LuaExpr::ClosureExpr(_) | LuaExpr::NameExpr(_) => {}
     }
 }
 
-fn pre_analyze_table_expr_fields(analyzer: &mut LuaAnalyzer, expr: LuaExpr) {
-    let LuaExpr::TableExpr(table_expr) = expr else {
-        return;
-    };
+fn expr_has_effect_table_call_arg(expr: LuaExpr) -> Option<()> {
+    match expr {
+        LuaExpr::CallExpr(call_expr) => {
+            if let Some(prefix_expr) = call_expr.get_prefix_expr()
+                && expr_has_effect_table_call_arg(prefix_expr).is_some()
+            {
+                return Some(());
+            }
 
-    for field in table_expr.get_fields() {
-        analyze_table_field(analyzer, field.clone());
-        if let Some(value_expr) = field.get_value_expr() {
-            pre_analyze_table_expr_fields(analyzer, value_expr);
+            let args_list = call_expr.get_args_list()?;
+            for arg in args_list.get_args() {
+                if let LuaExpr::TableExpr(table_expr) = &arg
+                    && !table_expr.is_empty()
+                {
+                    return Some(());
+                }
+
+                if expr_has_effect_table_call_arg(arg).is_some() {
+                    return Some(());
+                }
+            }
+            None
         }
+        LuaExpr::TableExpr(table_expr) => {
+            for field in table_expr.get_fields() {
+                if let Some(LuaIndexKey::Expr(key_expr)) = field.get_field_key()
+                    && expr_has_effect_table_call_arg(key_expr).is_some()
+                {
+                    return Some(());
+                }
+
+                if let Some(value_expr) = field.get_value_expr()
+                    && expr_has_effect_table_call_arg(value_expr).is_some()
+                {
+                    return Some(());
+                }
+            }
+            None
+        }
+        LuaExpr::BinaryExpr(binary_expr) => {
+            let (left, right) = binary_expr.get_exprs()?;
+            expr_has_effect_table_call_arg(left).or_else(|| expr_has_effect_table_call_arg(right))
+        }
+        LuaExpr::UnaryExpr(unary_expr) => expr_has_effect_table_call_arg(unary_expr.get_expr()?),
+        LuaExpr::ParenExpr(paren_expr) => expr_has_effect_table_call_arg(paren_expr.get_expr()?),
+        LuaExpr::IndexExpr(index_expr) => {
+            if let Some(prefix_expr) = index_expr.get_prefix_expr()
+                && expr_has_effect_table_call_arg(prefix_expr).is_some()
+            {
+                return Some(());
+            }
+
+            if let Some(LuaIndexKey::Expr(key_expr)) = index_expr.get_index_key() {
+                return expr_has_effect_table_call_arg(key_expr);
+            }
+
+            None
+        }
+        LuaExpr::LiteralExpr(_) | LuaExpr::ClosureExpr(_) | LuaExpr::NameExpr(_) => None,
     }
 }

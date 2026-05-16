@@ -48,6 +48,57 @@ mod test {
     }
 
     #[test]
+    fn test_object_literal_infer_nested_call_argument() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias ExtractX<T> T extends { x: infer X } and X or never
+
+            ---@generic T
+            ---@param value T
+            ---@return ExtractX<T>
+            function extractX(value) end
+
+            ---@generic T
+            ---@param value T
+            ---@return T
+            function identity(value) end
+
+            A = identity(extractX({ x = 1 }))
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(a_ty), "integer");
+    }
+
+    #[test]
+    fn test_object_literal_infer_nested_call_inside_table_field() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias ExtractX<T> T extends { x: infer X } and X or never
+            ---@alias ExtractInner<T> T extends { inner: infer I } and I or never
+
+            ---@generic T
+            ---@param value T
+            ---@return ExtractX<T>
+            function extractX(value) end
+
+            ---@generic T
+            ---@param value T
+            ---@return ExtractInner<T>
+            function extractInner(value) end
+
+            B = extractInner({ inner = extractX({ x = 1 }) })
+            "#,
+        );
+
+        let b_ty = ws.expr_ty("B");
+        assert_eq!(ws.humanize_type(b_ty), "integer");
+    }
+
+    #[test]
     fn test_object_literal_infer_from_class() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

@@ -1484,6 +1484,46 @@ mod test {
     }
 
     #[test]
+    fn test_transparent_alias_root_union_return_preserves_primitive_literal() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Id<T> T
+
+            ---@generic T
+            ---@param value T
+            ---@return Id<T>|nil
+            function maybe(value)
+            end
+
+            result = maybe("mode")
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), r#""mode"?"#);
+    }
+
+    #[test]
+    fn test_plain_tpl_root_union_return_preserves_primitive_literal() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return T|nil
+            function maybe(value)
+            end
+
+            result = maybe("mode")
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), r#""mode"?"#);
+    }
+
+    #[test]
     fn test_plain_tpl_top_level_return_preserves_primitive_literal_union() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1527,14 +1567,42 @@ mod test {
     }
 
     #[test]
+    fn test_finalized_table_const_self_reference_widens_without_recursing() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return T
+            function id(value)
+            end
+
+            local t = { kind = "mode" }
+            t.self = t
+
+            result = id(t)
+        "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(result_ty, ws.ty("{ kind: string, self: table }"));
+    }
+
+    #[test]
     fn test_contextual_widening_keeps_bare_literal_but_widens_nested_literals() {
-        use crate::{LuaMemberKey, LuaObjectType, WideningContext, widen_type_with_context};
+        use crate::{
+            LuaMemberKey, LuaObjectType, WideningContext, WideningGuard, widen_type_with_context,
+        };
         use smol_str::SmolStr;
 
         let mut ws = VirtualWorkspace::new();
         let bare = LuaType::StringConst(SmolStr::new("mode").into());
         assert_eq!(
-            widen_type_with_context(bare.clone(), WideningContext::Root),
+            widen_type_with_context(
+                bare.clone(),
+                WideningContext::Root,
+                &mut WideningGuard::default()
+            ),
             bare
         );
 
@@ -1550,7 +1618,8 @@ mod test {
             )
             .into(),
         );
-        let widened = widen_type_with_context(object, WideningContext::Root);
+        let widened =
+            widen_type_with_context(object, WideningContext::Root, &mut WideningGuard::default());
         assert_eq!(widened, ws.ty("{ kind: string }"));
     }
 

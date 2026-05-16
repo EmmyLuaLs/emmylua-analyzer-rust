@@ -86,20 +86,6 @@ impl GenericIndex for FileGenericIndex {
         None
     }
 
-    fn append_generic_params(
-        &mut self,
-        scope_id: GenericScopeId,
-        params: Vec<GenericParam>,
-    ) -> Vec<GenericParam> {
-        let mut appended = Vec::new();
-        for param in params {
-            if let Some(tpl_id) = self.append_generic_param(scope_id, param.clone()) {
-                appended.push(param.with_tpl_id(Some(tpl_id)));
-            }
-        }
-        appended
-    }
-
     /// Find generic parameter by position and name.
     /// return (GenericTplId, constraint, default)
     fn find_generic(
