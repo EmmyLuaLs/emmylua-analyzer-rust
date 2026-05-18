@@ -110,7 +110,7 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
 {
   "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
   "codeAction": {
-    "insertSpace": false
+    "insertSpace": null
   },
   "codeLens": {
     "enable": true
@@ -469,7 +469,7 @@ EmmyLua Analyzer Rust 推荐把配置写在项目根目录的 `.emmyrc.json` 中
 
 | 分组 | 字段 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `codeAction` | `insertSpace` | `false` | 插入 `@diagnostic disable-next-line` 时在 `---` 后补空格 |
+| `codeAction` | `insertSpace` | `null` | 插入 `@diagnostic disable-next-line` 时覆盖格式化器的 `emmy_doc.space_between_tag_columns` 设置 |
 | `codeLens` | `enable` | `true` | 启用 CodeLens |
 | `documentColor` | `enable` | `true` | 识别颜色字符串并显示颜色预览 |
 | `hint` | `enable` | `true` | 总开关 |

@@ -110,7 +110,7 @@ This template is a good starting point for most Lua projects:
 {
   "$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
   "codeAction": {
-    "insertSpace": false
+    "insertSpace": null
   },
   "codeLens": {
     "enable": true
@@ -469,7 +469,7 @@ External tool object:
 
 | Section | Field | Default | Description |
 | --- | --- | --- | --- |
-| `codeAction` | `insertSpace` | `false` | Add a space after `---` when inserting `@diagnostic disable-next-line` |
+| `codeAction` | `insertSpace` | `null` | Override formatter `emmy_doc.space_between_tag_columns` when inserting `@diagnostic disable-next-line` |
 | `codeLens` | `enable` | `true` | Enable CodeLens |
 | `documentColor` | `enable` | `true` | Detect color-like strings and show color previews |
 | `hint` | `enable` | `true` | Master switch |
