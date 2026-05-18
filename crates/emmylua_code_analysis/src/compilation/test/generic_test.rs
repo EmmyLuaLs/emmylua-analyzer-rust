@@ -1444,6 +1444,54 @@ mod test {
     }
 
     #[test]
+    fn test_const_tpl_candidate_preserves_structural_literals() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias std.ConstTpl<T> unknown
+
+            ---@generic T
+            ---@param value std.ConstTpl<T>
+            ---@return T
+            function keep_const(value)
+            end
+
+            table_result = keep_const({ kind = "mode", count = 1 })
+            table_kind = table_result.kind
+            table_count = table_result.count
+
+            ---@type { kind: "mode", count: 1 }
+            local object
+
+            object_result = keep_const(object)
+            object_kind = object_result.kind
+            object_count = object_result.count
+
+            ---@type ["mode", 1]
+            local tuple
+
+            tuple_result = keep_const(tuple)
+            tuple_first = tuple_result[1]
+            tuple_second = tuple_result[2]
+        "#,
+        );
+
+        let table_kind = ws.expr_ty("table_kind");
+        let table_count = ws.expr_ty("table_count");
+        let object_kind = ws.expr_ty("object_kind");
+        let object_count = ws.expr_ty("object_count");
+        let tuple_first = ws.expr_ty("tuple_first");
+        let tuple_second = ws.expr_ty("tuple_second");
+
+        assert_eq!(ws.humanize_type(table_kind), "\"mode\"");
+        assert_eq!(ws.humanize_type(table_count), "1");
+        assert_eq!(ws.humanize_type(object_kind), "\"mode\"");
+        assert_eq!(ws.humanize_type(object_count), "1");
+        assert_eq!(ws.humanize_type(tuple_first), "\"mode\"");
+        assert_eq!(ws.humanize_type(tuple_second), "1");
+    }
+
+    #[test]
     fn test_plain_tpl_top_level_return_preserves_primitive_literal() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1586,41 +1634,6 @@ mod test {
 
         let result_ty = ws.expr_ty("result");
         assert_eq!(result_ty, ws.ty("{ kind: string, self: table }"));
-    }
-
-    #[test]
-    fn test_contextual_widening_keeps_bare_literal_but_widens_nested_literals() {
-        use crate::{
-            LuaMemberKey, LuaObjectType, WideningContext, WideningGuard, widen_type_with_context,
-        };
-        use smol_str::SmolStr;
-
-        let mut ws = VirtualWorkspace::new();
-        let bare = LuaType::StringConst(SmolStr::new("mode").into());
-        assert_eq!(
-            widen_type_with_context(
-                bare.clone(),
-                WideningContext::Root,
-                &mut WideningGuard::default()
-            ),
-            bare
-        );
-
-        let object = LuaType::Object(
-            LuaObjectType::new_with_fields(
-                [(
-                    LuaMemberKey::Name("kind".into()),
-                    LuaType::StringConst(SmolStr::new("mode").into()),
-                )]
-                .into_iter()
-                .collect(),
-                Vec::new(),
-            )
-            .into(),
-        );
-        let widened =
-            widen_type_with_context(object, WideningContext::Root, &mut WideningGuard::default());
-        assert_eq!(widened, ws.ty("{ kind: string }"));
     }
 
     #[test]

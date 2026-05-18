@@ -106,6 +106,38 @@ mod test {
     }
 
     #[test]
+    fn test_issue_490_split_iterator_state() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@generic T: table, K, V
+        ---@param t T
+        ---@return fun(table: table<K, V>, index?: K):K, V
+        ---@return T
+        local function spairs(t)
+            return next, t
+        end
+
+        --- @type table<string, integer>
+        local t = { a = 1, b = 2, c = 3 }
+
+        local iter, state = spairs(t)
+
+        for name, value in iter, state do
+            a = name
+            b = value
+        end
+        "#,
+        );
+
+        let a = ws.expr_ty("a");
+        let b = ws.expr_ty("b");
+        assert_eq!(a, LuaType::String);
+        assert_eq!(b, LuaType::Integer);
+    }
+
+    #[test]
     fn test_enum_key_pairs() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

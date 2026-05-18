@@ -1,17 +1,13 @@
 use hashbrown::{HashMap, HashSet};
-use internment::ArcIntern;
 
 use crate::{
-    DbIndex, GenericTpl, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
+    DbIndex, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
     check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
 };
 
-use super::{
-    TplCandidateSource, finalize_inferred_tpl_candidate, get_default_constructor,
-    instantiate_type_generic_inner,
-};
+use super::{get_default_constructor, instantiate_type_generic_inner};
 use crate::semantic::generic::type_substitutor::{
     GenericInstantiateContext, GenericInstantiateFrame, TplBinding,
 };
@@ -89,7 +85,7 @@ fn instantiate_conditional_once(
                 context,
                 frame,
                 conditional,
-                finalize_infer_assignments(context, conditional, infer_assignments),
+                finalize_infer_assignments(infer_assignments),
             )
         } else if is_deferred_conditional_operand(&left_type)
             || right_type.any_type(|inner| match inner {
@@ -733,8 +729,6 @@ fn insert_infer_assignment(
 }
 
 fn finalize_infer_assignments(
-    context: &GenericInstantiateContext,
-    conditional: &LuaConditionalType,
     assignments: HashMap<GenericTplId, InferCandidateSet>,
 ) -> HashMap<GenericTplId, LuaType> {
     assignments
@@ -743,30 +737,7 @@ fn finalize_infer_assignments(
             candidates
                 .covariant
                 .or(candidates.contravariant)
-                .map(|raw_candidate| {
-                    let Some(param) = conditional.get_infer_params().get(tpl_id.get_idx()) else {
-                        return (tpl_id, raw_candidate);
-                    };
-
-                    let tpl = GenericTpl::new(
-                        tpl_id,
-                        ArcIntern::new(param.name.clone()),
-                        param.type_constraint.clone(),
-                        param.default_type.clone(),
-                    );
-                    (
-                        tpl_id,
-                        finalize_inferred_tpl_candidate(
-                            context.db,
-                            &tpl,
-                            &raw_candidate,
-                            TplCandidateSource::ConstPreserving,
-                            true,
-                            true,
-                            context.substitutor,
-                        ),
-                    )
-                })
+                .map(|raw_candidate| (tpl_id, raw_candidate))
         })
         .collect()
 }

@@ -2,9 +2,8 @@ use emmylua_parser::{LuaAstToken, LuaExpr, LuaForRangeStat};
 
 use crate::{
     DbIndex, InferFailReason, LuaDeclId, LuaInferCache, LuaOperatorMetaMethod, LuaType,
-    LuaTypeCache, TplContext, TypeOps, TypeSubstitutor, VariadicType,
-    compilation::analyzer::unresolve::UnResolveIterVar, infer_expr, instantiate_type_generic,
-    tpl_pattern_match_args,
+    LuaTypeCache, TypeOps, VariadicType, compilation::analyzer::unresolve::UnResolveIterVar,
+    infer_expr, instantiate_doc_function_by_arg_types,
 };
 
 use super::LuaAnalyzer;
@@ -144,24 +143,8 @@ pub fn infer_for_range_iter_expr_func(
     let Some(status_param) = status_param else {
         return Ok(doc_function.get_variadic_ret());
     };
-    let mut substitutor = TypeSubstitutor::new();
-    let params = doc_function
-        .get_params()
-        .iter()
-        .map(|(_, opt_ty)| opt_ty.clone().unwrap_or(LuaType::Any))
-        .collect::<Vec<_>>();
-
-    let mut context = TplContext::new(db, cache, &mut substitutor, None);
-    tpl_pattern_match_args(&mut context, &params, &[status_param])?;
-
-    let doc_function_ty = LuaType::DocFunction(doc_function.clone());
-    let instantiate_func = if let LuaType::DocFunction(f) =
-        instantiate_type_generic(db, &doc_function_ty, &substitutor)
-    {
-        f
-    } else {
-        doc_function
-    };
+    let instantiate_func =
+        instantiate_doc_function_by_arg_types(db, cache, &doc_function, &[status_param])?;
 
     Ok(instantiate_func.get_variadic_ret())
 }

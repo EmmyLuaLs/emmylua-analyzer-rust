@@ -26,9 +26,8 @@ pub use complete_generic_args::{
 };
 pub use infer_call_func_generic::{build_self_type, infer_call_func_generic, infer_self_type};
 pub(in crate::semantic::generic) use inference_widening::{
-    TplCandidateSource, finalize_inferred_tpl_candidate,
+    is_primitive_or_literal_type, regularize_tpl_candidate_type, widen_tpl_candidate_type,
 };
-pub use inference_widening::{WideningContext, WideningGuard, widen_type_with_context};
 use instantiate_mapped_type::instantiate_mapped_type as instantiate_mapped_type_inner;
 pub use instantiate_special_generic::get_keyof_members;
 

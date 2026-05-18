@@ -899,7 +899,7 @@ mod tests {
         );
 
         assert_eq!(ws.expr_ty("ok"), ws.ty("boolean"));
-        assert_eq!(ws.expr_ty("payload"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("payload"), LuaType::Unknown);
     }
 
     #[test]

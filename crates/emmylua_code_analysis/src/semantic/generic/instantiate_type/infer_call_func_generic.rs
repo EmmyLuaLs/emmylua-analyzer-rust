@@ -12,11 +12,9 @@ use crate::{
     semantic::{
         LuaInferCache,
         generic::{
-            tpl_context::TplContext,
-            tpl_pattern::{
-                multi_param_tpl_pattern_match_multi_return, return_type_pattern_match_target_type,
-                tpl_pattern_match, variadic_tpl_pattern_match,
-            },
+            InferenceContext, InferencePriority, InferenceVariance, infer_type_list,
+            infer_types_from_expr, multi_param_infer_multi_return, return_type_infer_types,
+            variadic_infer_types,
         },
         infer::InferFailReason,
         infer_expr,
@@ -27,7 +25,7 @@ use crate::{
 };
 use crate::{
     GenericTpl, LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
-    infer_node_semantic_decl, tpl_pattern_match_args_skip_unknown,
+    infer_node_semantic_decl,
 };
 
 use super::{TypeSubstitutor, instantiate_type_generic};
@@ -54,9 +52,9 @@ pub fn infer_call_func_generic(
         .collect::<Vec<_>>();
     let mut substitutor = TypeSubstitutor::new();
     {
-        let mut context = TplContext::new(db, cache, &mut substitutor, Some(call_expr.clone()));
+        let mut context = InferenceContext::new(db, cache, Some(call_expr.clone()));
         if !generic_tpls.is_empty() {
-            context.substitutor.prepare_inference_slots(generic_tpls);
+            context.prepare_inference_slots(generic_tpls);
 
             if let Some(type_list) = call_expr.get_call_generic_type_list() {
                 // 如果使用了`obj:abc--[[@<string>]]("abc")`强制指定了泛型, 那么我们只需要直接应用
@@ -73,13 +71,14 @@ pub fn infer_call_func_generic(
                 )?;
             }
         }
+
+        let func_generic_tpls = func_generic_tpls(func);
+        context.bridge_to_substitutor(&mut substitutor, func_generic_tpls.iter(), func.get_ret());
     }
 
     if contain_self && let Some(self_type) = infer_self_type(db, cache, &call_expr) {
         substitutor.add_self_type(self_type);
     }
-    substitutor.finalize_inferred_types(db, func_generic_tpls(func).iter(), func.get_ret());
-
     let func_ty = LuaType::DocFunction(func.clone().into());
     if let LuaType::DocFunction(f) = instantiate_type_generic(db, &func_ty, &substitutor) {
         Ok(f.deref().clone())
@@ -91,15 +90,13 @@ pub fn infer_call_func_generic(
 fn apply_call_generic_type_list(
     db: &DbIndex,
     file_id: FileId,
-    context: &mut TplContext,
+    context: &mut InferenceContext,
     type_list: &LuaDocTypeList,
 ) {
     let doc_ctx = DocTypeInferContext::new(db, file_id);
     for (i, doc_type) in type_list.get_types().enumerate() {
         let typ = infer_doc_type(doc_ctx, &doc_type);
-        context
-            .substitutor
-            .bind_type(GenericTplId::Func(i as u32), typ);
+        context.fix_type(GenericTplId::Func(i as u32), typ);
     }
 }
 
@@ -120,7 +117,7 @@ fn as_doc_function_type(
 }
 
 fn infer_callable_return_from_arg_types(
-    context: &mut TplContext,
+    context: &mut InferenceContext,
     callable_type: &LuaType,
     call_arg_types: &[LuaType],
 ) -> Result<Option<LuaType>, InferFailReason> {
@@ -197,7 +194,7 @@ fn uses_erased_function_param(callable: &LuaFunctionType, call_arg_types: &[LuaT
 }
 
 fn infer_callable_return_from_remaining_args(
-    context: &mut TplContext,
+    context: &mut InferenceContext,
     callable_type: &LuaType,
     arg_exprs: &[LuaExpr],
 ) -> Result<Option<LuaType>, InferFailReason> {
@@ -227,7 +224,7 @@ fn infer_callable_return_from_remaining_args(
 }
 
 fn instantiate_callable_from_arg_types(
-    context: &mut TplContext,
+    context: &mut InferenceContext,
     callable: &Arc<LuaFunctionType>,
     call_arg_types: &[LuaType],
 ) -> Option<Arc<LuaFunctionType>> {
@@ -250,31 +247,32 @@ fn instantiate_callable_from_arg_types(
         .iter()
         .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
         .collect::<Vec<_>>();
+    let callable_generic_tpls = callable_generic_tpls(callable);
     let mut callable_substitutor = TypeSubstitutor::new();
     callable_substitutor.prepare_inference_slots(callable_tpls.clone());
     {
-        let mut callable_context = TplContext::new(
-            context.db,
-            context.cache,
-            &mut callable_substitutor,
-            context.call_expr.clone(),
-        );
-        if tpl_pattern_match_args_skip_unknown(
+        let mut callable_context =
+            InferenceContext::new(context.db, context.cache, context.call_expr.clone());
+        callable_context.prepare_inference_slots(callable_tpls.clone());
+        if infer_type_list(
             &mut callable_context,
             &callable_param_types,
             call_arg_types,
+            &LuaType::Unknown,
+            InferenceVariance::Covariant,
+            InferencePriority::Normal,
         )
         .is_err()
         {
             return None;
         }
+        callable_context.bridge_resolved_to_substitutor(
+            &mut callable_substitutor,
+            callable_generic_tpls.iter(),
+            callable.get_ret(),
+        );
     }
 
-    callable_substitutor.finalize_inferred_types(
-        context.db,
-        callable_generic_tpls(callable).iter(),
-        callable.get_ret(),
-    );
     let callable_ty = LuaType::DocFunction(callable.clone());
     let instantiated =
         match instantiate_type_generic(context.db, &callable_ty, &callable_substitutor) {
@@ -492,7 +490,7 @@ fn collect_func_tpl_dep_from_fallback_type(
 
 fn infer_generic_types_from_call(
     db: &DbIndex,
-    context: &mut TplContext,
+    context: &mut InferenceContext,
     func: &LuaFunctionType,
     call_expr: &LuaCallExpr,
     func_params: &mut Vec<(String, LuaType)>,
@@ -518,7 +516,7 @@ fn infer_generic_types_from_call(
             break;
         }
 
-        if !context.substitutor.has_unresolved_inference_slots() {
+        if !context.has_unresolved_inference_slots() {
             break;
         }
 
@@ -547,13 +545,27 @@ fn infer_generic_types_from_call(
             if let Some(inferred_return_type) =
                 infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
             {
-                return_type_pattern_match_target_type(
+                return_type_infer_types(
                     context,
                     &return_pattern,
                     &inferred_return_type,
+                    &inferred_return_type,
+                    InferenceVariance::Covariant,
+                    InferencePriority::Return,
+                    None,
+                    &crate::InferGuard::new(),
                 )?;
             } else if arg_type.is_any() || arg_type.is_unknown() {
-                return_type_pattern_match_target_type(context, &return_pattern, &LuaType::Unknown)?;
+                return_type_infer_types(
+                    context,
+                    &return_pattern,
+                    &LuaType::Unknown,
+                    &LuaType::Unknown,
+                    InferenceVariance::Covariant,
+                    InferencePriority::Normal,
+                    None,
+                    &crate::InferGuard::new(),
+                )?;
             }
         }
 
@@ -564,7 +576,14 @@ fn infer_generic_types_from_call(
                     let arg_type = infer_expr(db, context.cache, arg_expr.clone())?;
                     arg_types.push(arg_type);
                 }
-                variadic_tpl_pattern_match(context, variadic, &arg_types)?;
+                variadic_infer_types(
+                    context,
+                    variadic,
+                    &arg_types,
+                    &LuaType::Unknown,
+                    InferenceVariance::Covariant,
+                    InferencePriority::Normal,
+                )?;
                 break;
             }
             (_, LuaType::Variadic(variadic)) => {
@@ -573,20 +592,39 @@ fn infer_generic_types_from_call(
                     .map(|(_, t)| t)
                     .cloned()
                     .collect::<Vec<_>>();
-                multi_param_tpl_pattern_match_multi_return(context, &func_param_types, variadic)?;
+                multi_param_infer_multi_return(
+                    context,
+                    &func_param_types,
+                    variadic,
+                    &LuaType::Unknown,
+                    InferenceVariance::Covariant,
+                    InferencePriority::Normal,
+                )?;
                 break;
             }
             _ => {
-                tpl_pattern_match(context, func_param_type, &arg_type)?;
+                infer_types_from_expr(
+                    context,
+                    func_param_type,
+                    &arg_type,
+                    &arg_type,
+                    call_arg_expr,
+                )?;
             }
         }
     }
 
-    if context.substitutor.has_unresolved_inference_slots() {
+    if context.has_unresolved_inference_slots() {
         for (func_param_type, call_arg_expr) in unresolve_tpls {
-            let closure_type = infer_expr(db, context.cache, call_arg_expr)?;
+            let closure_type = infer_expr(db, context.cache, call_arg_expr.clone())?;
 
-            tpl_pattern_match(context, &func_param_type, &closure_type)?;
+            infer_types_from_expr(
+                context,
+                &func_param_type,
+                &closure_type,
+                &closure_type,
+                &call_arg_expr,
+            )?;
         }
     }
 
@@ -680,7 +718,7 @@ pub fn infer_self_type(
 }
 
 fn check_expr_can_later_infer(
-    context: &mut TplContext,
+    context: &mut InferenceContext,
     func_param_type: &LuaType,
     call_arg_expr: &LuaExpr,
 ) -> Result<bool, InferFailReason> {

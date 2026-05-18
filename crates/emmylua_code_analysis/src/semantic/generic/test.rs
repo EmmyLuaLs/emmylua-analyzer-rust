@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod test {
+    use super::super::instantiate_type::{regularize_tpl_candidate_type, widen_tpl_candidate_type};
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
 
     #[test]
@@ -330,5 +331,57 @@ result = {
 
         let c_ty = ws.expr_ty("C");
         assert_eq!(ws.humanize_type(c_ty), "string");
+    }
+
+    #[test]
+    fn test_regularize_tpl_candidate_type_preserves_root_primitive_and_widens_nested_literals() {
+        let mut ws = VirtualWorkspace::new();
+
+        let root_literal = ws.ty(r#""mode""#);
+        let regularized_root = {
+            let db = ws.analysis.compilation.get_db();
+            regularize_tpl_candidate_type(db, root_literal.clone())
+        };
+        assert_eq!(regularized_root, root_literal);
+
+        let table = ws.expr_ty(r#"{ kind = "mode", count = 1 }"#);
+        let regularized_table = {
+            let db = ws.analysis.compilation.get_db();
+            regularize_tpl_candidate_type(db, table)
+        };
+        assert_eq!(regularized_table, ws.ty("{ kind: string, count: integer }"));
+    }
+
+    #[test]
+    fn test_widen_tpl_candidate_type_widens_root_primitive_and_structural_literals() {
+        let mut ws = VirtualWorkspace::new();
+
+        let root_literal = ws.ty(r#""mode""#);
+        let widened_root = {
+            let db = ws.analysis.compilation.get_db();
+            widen_tpl_candidate_type(db, root_literal)
+        };
+        assert_eq!(widened_root, LuaType::String);
+
+        let root_union = ws.ty(r#""left" | "right""#);
+        let widened_root_union = {
+            let db = ws.analysis.compilation.get_db();
+            widen_tpl_candidate_type(db, root_union.clone())
+        };
+        assert_eq!(widened_root_union, root_union);
+
+        let tuple = ws.expr_ty(r#"{ "mode", 1 }"#);
+        let widened_tuple = {
+            let db = ws.analysis.compilation.get_db();
+            widen_tpl_candidate_type(db, tuple)
+        };
+        assert_eq!(ws.humanize_type(widened_tuple), "(string,integer)");
+
+        let table = ws.expr_ty(r#"{ kind = "mode", count = 1 }"#);
+        let widened_table = {
+            let db = ws.analysis.compilation.get_db();
+            widen_tpl_candidate_type(db, table)
+        };
+        assert_eq!(widened_table, ws.ty("{ kind: string, count: integer }"));
     }
 }

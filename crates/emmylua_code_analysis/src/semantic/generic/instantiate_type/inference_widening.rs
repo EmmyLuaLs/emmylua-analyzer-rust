@@ -4,52 +4,12 @@ use hashbrown::{HashMap, HashSet};
 use rowan::TextRange;
 
 use crate::{
-    DbIndex, GenericParam, GenericTpl, InFiled, LuaArrayType, LuaConditionalType, LuaFunctionType,
+    DbIndex, GenericParam, InFiled, LuaArrayType, LuaConditionalType, LuaFunctionType,
     LuaGenericType, LuaMappedType, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType,
-    LuaType, LuaUnionType, TypeOps, TypeSubstitutor, VariadicType, instantiate_type_generic,
+    LuaType, LuaUnionType, TypeOps, VariadicType,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::semantic::generic) enum TplCandidateSource {
-    Plain,
-    ConstPreserving,
-    Finalized,
-}
-
-pub(in crate::semantic::generic) fn finalize_inferred_tpl_candidate(
-    db: &DbIndex,
-    tpl: &GenericTpl,
-    raw_candidate: &LuaType,
-    candidate_source: TplCandidateSource,
-    top_level: bool,
-    return_top_level: bool,
-    substitutor: &TypeSubstitutor,
-) -> LuaType {
-    if candidate_source == TplCandidateSource::ConstPreserving {
-        return raw_candidate.clone();
-    }
-
-    let primitive_constraint = tpl
-        .get_constraint()
-        .map(|constraint| {
-            let constraint = instantiate_type_generic(db, constraint, substitutor);
-            is_primitive_or_literal_type(&constraint)
-        })
-        .unwrap_or(false);
-    let candidate = if primitive_constraint || !top_level || return_top_level {
-        raw_candidate.clone()
-    } else {
-        widen_literal_type(raw_candidate.clone())
-    };
-    finalize_tpl_candidate_type(
-        db,
-        candidate,
-        WideningContext::Root,
-        &mut WideningGuard::default(),
-    )
-}
-
-fn is_primitive_or_literal_type(ty: &LuaType) -> bool {
+pub(in crate::semantic::generic) fn is_primitive_or_literal_type(ty: &LuaType) -> bool {
     match ty {
         LuaType::String
         | LuaType::Number
@@ -78,8 +38,9 @@ fn is_primitive_or_literal_type(ty: &LuaType) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WideningContext {
+enum WideningContext {
     Root,
+    RootUnionMember,
     UnionMember,
     ObjectProperty,
     ArrayElement,
@@ -90,7 +51,7 @@ pub enum WideningContext {
 const MAX_WIDENING_DEPTH: u16 = 100;
 
 #[derive(Default)]
-pub struct WideningGuard {
+struct WideningGuard {
     depth: u16,
     active_table_ids: HashSet<InFiled<TextRange>>,
 }
@@ -117,249 +78,225 @@ impl WideningGuard {
     }
 }
 
-fn finalize_tpl_candidate_type(
-    db: &DbIndex,
-    ty: LuaType,
-    context: WideningContext,
-    guard: &mut WideningGuard,
-) -> LuaType {
-    if !guard.enter_level() {
-        return match ty {
-            LuaType::TableConst(_) => LuaType::Table,
-            ty => widen_literals_with_context(ty, context),
-        };
-    }
-
-    let widened = match ty {
-        LuaType::TableConst(table_id) => {
-            table_const_to_object(db, table_id, guard).unwrap_or(LuaType::Table)
-        }
-        LuaType::Object(object) => {
-            let fields = object
-                .get_fields()
-                .iter()
-                .map(|(key, ty)| {
-                    (
-                        key.clone(),
-                        finalize_tpl_candidate_type(
-                            db,
-                            ty.clone(),
-                            WideningContext::ObjectProperty,
-                            guard,
-                        ),
-                    )
-                })
-                .collect();
-            let index_access = object
-                .get_index_access()
-                .iter()
-                .map(|(key, value)| {
-                    (
-                        widen_type_with_context(
-                            key.clone(),
-                            WideningContext::ObjectProperty,
-                            guard,
-                        ),
-                        finalize_tpl_candidate_type(
-                            db,
-                            value.clone(),
-                            WideningContext::ObjectProperty,
-                            guard,
-                        ),
-                    )
-                })
-                .collect();
-            LuaType::Object(LuaObjectType::new_with_fields(fields, index_access).into())
-        }
-        LuaType::Array(array) => {
-            let element_context = match context {
-                WideningContext::TupleElement => WideningContext::TupleElement,
-                _ => WideningContext::ArrayElement,
-            };
-            let base =
-                finalize_tpl_candidate_type(db, array.get_base().clone(), element_context, guard);
-            LuaType::Array(LuaArrayType::new(base, array.get_len().clone()).into())
-        }
-        LuaType::Tuple(tuple) => {
-            let types = tuple
-                .get_types()
-                .iter()
-                .cloned()
-                .map(|ty| finalize_tpl_candidate_type(db, ty, WideningContext::TupleElement, guard))
-                .collect();
-            LuaType::Tuple(LuaTupleType::new(types, tuple.status).into())
-        }
-        LuaType::Union(union) => {
-            let member_context = if matches!(context, WideningContext::Root) {
-                WideningContext::Root
-            } else {
-                WideningContext::UnionMember
-            };
-            LuaType::Union(
-                LuaUnionType::from_vec(
-                    union
-                        .into_vec()
-                        .into_iter()
-                        .map(|ty| finalize_tpl_candidate_type(db, ty, member_context, guard))
-                        .collect(),
-                )
-                .into(),
-            )
-        }
-        ty => widen_type_with_context(ty, context, guard),
-    };
-
-    guard.leave_level();
-    widened
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RootPrimitiveBehavior {
+    PreserveLiteral,
+    WidenLiteral,
 }
 
-pub fn widen_type_with_context(
-    ty: LuaType,
-    context: WideningContext,
-    guard: &mut WideningGuard,
-) -> LuaType {
-    if !guard.enter_level() {
-        return widen_literals_with_context(ty, context);
+struct WideningTransformer<'db> {
+    db: Option<&'db DbIndex>,
+    root_primitive_behavior: RootPrimitiveBehavior,
+    guard: WideningGuard,
+}
+
+impl<'db> WideningTransformer<'db> {
+    fn new(db: Option<&'db DbIndex>, root_primitive_behavior: RootPrimitiveBehavior) -> Self {
+        Self {
+            db,
+            root_primitive_behavior,
+            guard: WideningGuard::default(),
+        }
     }
 
-    let ty = widen_literals_with_context(ty, context);
+    fn for_candidate_regularization(db: &'db DbIndex) -> Self {
+        Self::new(Some(db), RootPrimitiveBehavior::PreserveLiteral)
+    }
 
-    let widened = match ty {
-        LuaType::Array(array) => {
-            let element_context = match context {
-                WideningContext::TupleElement => WideningContext::TupleElement,
-                _ => WideningContext::ArrayElement,
-            };
-            let base = widen_type_with_context(array.get_base().clone(), element_context, guard);
-            LuaType::Array(LuaArrayType::new(base, array.get_len().clone()).into())
+    fn for_candidate_widening(db: &'db DbIndex) -> Self {
+        Self::new(Some(db), RootPrimitiveBehavior::WidenLiteral)
+    }
+
+    fn transform(&mut self, ty: LuaType, context: WideningContext) -> LuaType {
+        if !self.guard.enter_level() {
+            return self.fallback(ty, context);
         }
-        LuaType::Tuple(tuple) => {
-            let types = tuple
-                .get_types()
-                .iter()
-                .cloned()
-                .map(|ty| widen_type_with_context(ty, WideningContext::TupleElement, guard))
-                .collect();
-            LuaType::Tuple(LuaTupleType::new(types, tuple.status).into())
+
+        let widened = match ty {
+            LuaType::TableConst(table_id) => self.transform_table_const(table_id),
+            LuaType::Array(array) => self.transform_array(array, context),
+            LuaType::Tuple(tuple) => self.transform_tuple(tuple),
+            LuaType::Object(object) => self.transform_object(object),
+            LuaType::Union(union) => self.transform_union(union, context),
+            LuaType::MultiLineUnion(multi) => self.transform_multi_line_union(multi, context),
+            LuaType::Intersection(intersection) => {
+                self.transform_intersection(intersection, context)
+            }
+            LuaType::Variadic(variadic) => self.transform_variadic(variadic),
+            LuaType::Generic(generic) => self.transform_generic(generic),
+            LuaType::TableGeneric(params) => self.transform_table_generic(params),
+            LuaType::DocFunction(func) => self.transform_doc_function(func),
+            LuaType::TypeGuard(type_guard) => self.transform_type_guard(type_guard),
+            LuaType::Conditional(conditional) => self.transform_conditional(conditional),
+            LuaType::Mapped(mapped) => self.transform_mapped(mapped),
+            ty => self.transform_terminal(ty, context),
+        };
+
+        self.guard.leave_level();
+        widened
+    }
+
+    fn fallback(&self, ty: LuaType, context: WideningContext) -> LuaType {
+        match (self.db, ty) {
+            (Some(_), LuaType::TableConst(_)) => LuaType::Table,
+            (_, ty) => self.transform_terminal(ty, context),
         }
-        LuaType::Object(object) => {
-            let fields = object
-                .get_fields()
-                .iter()
-                .map(|(key, ty)| {
-                    (
-                        key.clone(),
-                        widen_type_with_context(ty.clone(), WideningContext::ObjectProperty, guard),
-                    )
-                })
-                .collect();
-            let index_access = object
-                .get_index_access()
-                .iter()
-                .map(|(key, value)| {
-                    (
-                        widen_type_with_context(
-                            key.clone(),
-                            WideningContext::ObjectProperty,
-                            guard,
-                        ),
-                        widen_type_with_context(
-                            value.clone(),
-                            WideningContext::ObjectProperty,
-                            guard,
-                        ),
-                    )
-                })
-                .collect();
-            LuaType::Object(LuaObjectType::new_with_fields(fields, index_access).into())
-        }
-        LuaType::Union(union) => {
-            let member_context = if matches!(context, WideningContext::Root) {
-                WideningContext::Root
-            } else {
-                WideningContext::UnionMember
-            };
-            LuaType::Union(
-                LuaUnionType::from_vec(
-                    union
-                        .into_vec()
-                        .into_iter()
-                        .map(|ty| widen_type_with_context(ty, member_context, guard))
-                        .collect(),
+    }
+
+    fn transform_table_const(&mut self, table_id: InFiled<TextRange>) -> LuaType {
+        let Some(db) = self.db else {
+            return LuaType::TableConst(table_id);
+        };
+
+        self.table_const_to_object(db, table_id)
+            .unwrap_or(LuaType::Table)
+    }
+
+    fn transform_array(&mut self, array: Arc<LuaArrayType>, context: WideningContext) -> LuaType {
+        let element_context = match context {
+            WideningContext::TupleElement => WideningContext::TupleElement,
+            _ => WideningContext::ArrayElement,
+        };
+        let base = self.transform(array.get_base().clone(), element_context);
+        LuaType::Array(LuaArrayType::new(base, array.get_len().clone()).into())
+    }
+
+    fn transform_tuple(&mut self, tuple: Arc<LuaTupleType>) -> LuaType {
+        let types = tuple
+            .get_types()
+            .iter()
+            .cloned()
+            .map(|ty| self.transform(ty, WideningContext::TupleElement))
+            .collect();
+        LuaType::Tuple(LuaTupleType::new(types, tuple.status).into())
+    }
+
+    fn transform_object(&mut self, object: Arc<LuaObjectType>) -> LuaType {
+        let fields = object
+            .get_fields()
+            .iter()
+            .map(|(key, ty)| {
+                (
+                    key.clone(),
+                    self.transform(ty.clone(), WideningContext::ObjectProperty),
                 )
-                .into(),
+            })
+            .collect();
+        let index_access = object
+            .get_index_access()
+            .iter()
+            .map(|(key, value)| {
+                (
+                    self.transform(key.clone(), WideningContext::ObjectProperty),
+                    self.transform(value.clone(), WideningContext::ObjectProperty),
+                )
+            })
+            .collect();
+        LuaType::Object(LuaObjectType::new_with_fields(fields, index_access).into())
+    }
+
+    fn transform_union(&mut self, union: Arc<LuaUnionType>, context: WideningContext) -> LuaType {
+        let member_context = self.union_member_context(context);
+        LuaType::Union(
+            LuaUnionType::from_vec(
+                union
+                    .into_vec()
+                    .into_iter()
+                    .map(|ty| self.transform(ty, member_context))
+                    .collect(),
             )
-        }
-        LuaType::MultiLineUnion(multi) => LuaType::MultiLineUnion(
+            .into(),
+        )
+    }
+
+    fn transform_multi_line_union(
+        &mut self,
+        multi: Arc<crate::LuaMultiLineUnion>,
+        context: WideningContext,
+    ) -> LuaType {
+        let member_context = self.union_member_context(context);
+        LuaType::MultiLineUnion(
             crate::LuaMultiLineUnion::new(
                 multi
                     .get_unions()
                     .iter()
                     .map(|(ty, description)| {
                         (
-                            widen_type_with_context(
-                                ty.clone(),
-                                WideningContext::UnionMember,
-                                guard,
-                            ),
+                            self.transform(ty.clone(), member_context),
                             description.clone(),
                         )
                     })
                     .collect(),
             )
             .into(),
-        ),
-        LuaType::Intersection(intersection) => LuaType::Intersection(
+        )
+    }
+
+    fn transform_intersection(
+        &mut self,
+        intersection: Arc<crate::LuaIntersectionType>,
+        context: WideningContext,
+    ) -> LuaType {
+        let member_context = self.union_member_context(context);
+        LuaType::Intersection(
             crate::LuaIntersectionType::new(
                 intersection
                     .get_types()
                     .iter()
                     .cloned()
-                    .map(|ty| widen_type_with_context(ty, WideningContext::UnionMember, guard))
+                    .map(|ty| self.transform(ty, member_context))
                     .collect(),
             )
             .into(),
-        ),
-        LuaType::Variadic(variadic) => LuaType::Variadic(
+        )
+    }
+
+    fn transform_variadic(&mut self, variadic: Arc<VariadicType>) -> LuaType {
+        LuaType::Variadic(
             match variadic.deref() {
-                VariadicType::Base(base) => VariadicType::Base(widen_type_with_context(
-                    base.clone(),
-                    WideningContext::VariadicElement,
-                    guard,
-                )),
+                VariadicType::Base(base) => VariadicType::Base(
+                    self.transform(base.clone(), WideningContext::VariadicElement),
+                ),
                 VariadicType::Multi(types) => VariadicType::Multi(
                     types
                         .iter()
                         .cloned()
-                        .map(|ty| {
-                            widen_type_with_context(ty, WideningContext::VariadicElement, guard)
-                        })
+                        .map(|ty| self.transform(ty, WideningContext::VariadicElement))
                         .collect(),
                 ),
             }
             .into(),
-        ),
-        LuaType::Generic(generic) => LuaType::Generic(
+        )
+    }
+
+    fn transform_generic(&mut self, generic: Arc<LuaGenericType>) -> LuaType {
+        LuaType::Generic(
             LuaGenericType::new(
                 generic.get_base_type_id(),
                 generic
                     .get_params()
                     .iter()
                     .cloned()
-                    .map(|ty| widen_type_with_context(ty, WideningContext::Root, guard))
+                    .map(|ty| self.transform(ty, WideningContext::Root))
                     .collect(),
             )
             .into(),
-        ),
-        LuaType::TableGeneric(params) => LuaType::TableGeneric(
+        )
+    }
+
+    fn transform_table_generic(&mut self, params: Arc<Vec<LuaType>>) -> LuaType {
+        LuaType::TableGeneric(
             params
                 .iter()
                 .cloned()
-                .map(|ty| widen_type_with_context(ty, WideningContext::Root, guard))
+                .map(|ty| self.transform(ty, WideningContext::Root))
                 .collect::<Vec<_>>()
                 .into(),
-        ),
-        LuaType::DocFunction(func) => LuaType::DocFunction(
+        )
+    }
+
+    fn transform_doc_function(&mut self, func: Arc<LuaFunctionType>) -> LuaType {
+        LuaType::DocFunction(
             LuaFunctionType::new(
                 func.get_async_state(),
                 func.is_colon_define(),
@@ -369,48 +306,46 @@ pub fn widen_type_with_context(
                     .map(|(name, ty)| {
                         (
                             name.clone(),
-                            ty.clone().map(|ty| {
-                                widen_type_with_context(ty, WideningContext::Root, guard)
-                            }),
+                            ty.clone()
+                                .map(|ty| self.transform(ty, WideningContext::Root)),
                         )
                     })
                     .collect(),
-                widen_type_with_context(func.get_ret().clone(), WideningContext::Root, guard),
+                self.transform(func.get_ret().clone(), WideningContext::Root),
             )
             .into(),
-        ),
-        LuaType::TypeGuard(type_guard) => LuaType::TypeGuard(
-            widen_type_with_context(type_guard.deref().clone(), WideningContext::Root, guard)
+        )
+    }
+
+    fn transform_type_guard(&mut self, type_guard: Arc<LuaType>) -> LuaType {
+        LuaType::TypeGuard(
+            self.transform(type_guard.deref().clone(), WideningContext::Root)
                 .into(),
-        ),
-        LuaType::Conditional(conditional) => LuaType::Conditional(
+        )
+    }
+
+    fn transform_conditional(&mut self, conditional: Arc<LuaConditionalType>) -> LuaType {
+        LuaType::Conditional(
             LuaConditionalType::new(
-                widen_type_with_context(
+                self.transform(
                     conditional.get_checked_type().clone(),
                     WideningContext::Root,
-                    guard,
                 ),
-                widen_type_with_context(
+                self.transform(
                     conditional.get_extends_type().clone(),
                     WideningContext::Root,
-                    guard,
                 ),
-                widen_type_with_context(
-                    conditional.get_true_type().clone(),
-                    WideningContext::Root,
-                    guard,
-                ),
-                widen_type_with_context(
-                    conditional.get_false_type().clone(),
-                    WideningContext::Root,
-                    guard,
-                ),
+                self.transform(conditional.get_true_type().clone(), WideningContext::Root),
+                self.transform(conditional.get_false_type().clone(), WideningContext::Root),
                 conditional.get_infer_params().to_vec(),
                 conditional.has_new,
             )
             .into(),
-        ),
-        LuaType::Mapped(mapped) => LuaType::Mapped(Arc::new(LuaMappedType::new(
+        )
+    }
+
+    fn transform_mapped(&mut self, mapped: Arc<LuaMappedType>) -> LuaType {
+        LuaType::Mapped(Arc::new(LuaMappedType::new(
             (
                 mapped.param.0,
                 GenericParam::new(
@@ -420,35 +355,117 @@ pub fn widen_type_with_context(
                         .1
                         .type_constraint
                         .clone()
-                        .map(|ty| widen_type_with_context(ty, WideningContext::Root, guard)),
+                        .map(|ty| self.transform(ty, WideningContext::Root)),
                     mapped
                         .param
                         .1
                         .default_type
                         .clone()
-                        .map(|ty| widen_type_with_context(ty, WideningContext::Root, guard)),
+                        .map(|ty| self.transform(ty, WideningContext::Root)),
                     mapped.param.1.attributes.clone(),
                 ),
             ),
-            widen_type_with_context(mapped.value.clone(), WideningContext::Root, guard),
+            self.transform(mapped.value.clone(), WideningContext::Root),
             mapped.is_readonly,
             mapped.is_optional,
-        ))),
-        ty => ty,
-    };
+        )))
+    }
 
-    guard.leave_level();
-    widened
-}
+    fn transform_terminal(&self, ty: LuaType, context: WideningContext) -> LuaType {
+        // Keep a top-level literal union intact. Widening `"a" | "b"` to `string`
+        // would throw away a deliberate literal candidate during inference.
+        if matches!(context, WideningContext::RootUnionMember) {
+            return ty;
+        }
 
-fn widen_literals_with_context(ty: LuaType, context: WideningContext) -> LuaType {
-    match context {
-        WideningContext::Root => ty,
-        _ => widen_literal_type(ty),
+        if matches!(context, WideningContext::Root)
+            && matches!(
+                self.root_primitive_behavior,
+                RootPrimitiveBehavior::PreserveLiteral
+            )
+        {
+            return ty;
+        }
+
+        widen_primitive_literal(ty)
+    }
+
+    fn union_member_context(&self, context: WideningContext) -> WideningContext {
+        if matches!(context, WideningContext::Root) {
+            WideningContext::RootUnionMember
+        } else {
+            WideningContext::UnionMember
+        }
+    }
+
+    fn table_const_to_object(
+        &mut self,
+        db: &DbIndex,
+        table_id: InFiled<TextRange>,
+    ) -> Option<LuaType> {
+        if !self.guard.enter_table(&table_id) {
+            return Some(LuaType::Table);
+        }
+
+        let owner = LuaMemberOwner::Element(table_id.clone());
+        let members = match db.get_member_index().get_members(&owner) {
+            Some(members) => members,
+            None => {
+                self.guard.leave_table(&table_id);
+                return None;
+            }
+        };
+        let mut fields = HashMap::with_capacity(members.len());
+        let mut index_access = Vec::with_capacity(members.len());
+
+        for member in members {
+            let value = db
+                .get_type_index()
+                .get_type_cache(&member.get_id().into())
+                .map(|cache| cache.as_type().clone())
+                .unwrap_or(LuaType::Unknown);
+            let value = self.transform(value, WideningContext::ObjectProperty);
+
+            match member.get_key() {
+                LuaMemberKey::Name(_) | LuaMemberKey::Integer(_) => {
+                    let member_key = member.get_key().clone();
+                    fields
+                        .entry(member_key)
+                        .and_modify(|prev| {
+                            *prev = TypeOps::Union.apply(db, prev, &value);
+                        })
+                        .or_insert(value);
+                }
+                LuaMemberKey::ExprType(key) => {
+                    index_access.push((
+                        self.transform(key.clone(), WideningContext::ObjectProperty),
+                        value,
+                    ));
+                }
+                LuaMemberKey::None => {}
+            }
+        }
+
+        self.guard.leave_table(&table_id);
+
+        Some(LuaType::Object(
+            LuaObjectType::new_with_fields(fields, index_access).into(),
+        ))
     }
 }
 
-fn widen_literal_type(ty: LuaType) -> LuaType {
+pub(in crate::semantic::generic) fn regularize_tpl_candidate_type(
+    db: &DbIndex,
+    ty: LuaType,
+) -> LuaType {
+    WideningTransformer::for_candidate_regularization(db).transform(ty, WideningContext::Root)
+}
+
+pub(in crate::semantic::generic) fn widen_tpl_candidate_type(db: &DbIndex, ty: LuaType) -> LuaType {
+    WideningTransformer::for_candidate_widening(db).transform(ty, WideningContext::Root)
+}
+
+fn widen_primitive_literal(ty: LuaType) -> LuaType {
     match ty {
         LuaType::FloatConst(_) => LuaType::Number,
         LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_) => LuaType::Integer,
@@ -456,51 +473,4 @@ fn widen_literal_type(ty: LuaType) -> LuaType {
         LuaType::DocBooleanConst(_) | LuaType::BooleanConst(_) => LuaType::Boolean,
         ty => ty,
     }
-}
-
-fn table_const_to_object(
-    db: &DbIndex,
-    table_id: InFiled<TextRange>,
-    guard: &mut WideningGuard,
-) -> Option<LuaType> {
-    let owner = LuaMemberOwner::Element(table_id.clone());
-    let members = db.get_member_index().get_members(&owner)?;
-    if !guard.enter_table(&table_id) {
-        return Some(LuaType::Table);
-    }
-    let mut fields = HashMap::new();
-    let mut index_access = Vec::new();
-
-    for member in members {
-        let value = db
-            .get_type_index()
-            .get_type_cache(&member.get_id().into())
-            .map(|cache| cache.as_type().clone())
-            .unwrap_or(LuaType::Unknown);
-        let value = finalize_tpl_candidate_type(db, value, WideningContext::ObjectProperty, guard);
-
-        match member.get_key() {
-            LuaMemberKey::Name(_) | LuaMemberKey::Integer(_) => {
-                fields
-                    .entry(member.get_key().clone())
-                    .and_modify(|prev| {
-                        *prev = TypeOps::Union.apply(db, prev, &value);
-                    })
-                    .or_insert(value);
-            }
-            LuaMemberKey::ExprType(key) => {
-                index_access.push((
-                    widen_type_with_context(key.clone(), WideningContext::ObjectProperty, guard),
-                    value,
-                ));
-            }
-            LuaMemberKey::None => {}
-        }
-    }
-
-    guard.leave_table(&table_id);
-
-    Some(LuaType::Object(
-        LuaObjectType::new_with_fields(fields, index_access).into(),
-    ))
 }

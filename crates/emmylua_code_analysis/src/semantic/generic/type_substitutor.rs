@@ -1,7 +1,6 @@
 use hashbrown::{HashMap, HashSet};
 
-use super::instantiate_type::{TplCandidateSource, finalize_inferred_tpl_candidate};
-use crate::{DbIndex, GenericTpl, GenericTplId, LuaType, LuaTypeDeclId};
+use crate::{DbIndex, GenericTplId, LuaType, LuaTypeDeclId};
 use std::sync::Arc;
 
 const MAX_INSTANTIATION_DEPTH: usize = 128;
@@ -17,19 +16,10 @@ pub(super) enum UninferredTplPolicy {
 
 pub(in crate::semantic::generic) enum TplBinding {
     FinalizedType(LuaType),
-    InferredType {
-        ty: LuaType,
-        source: TplCandidateSource,
-        top_level: bool,
-    },
     ReplaceConstType(LuaType),
     ConditionalInferType(LuaType),
     VariadicParams(Vec<(String, Option<LuaType>)>),
-    InferredMultiTypes {
-        types: Vec<LuaType>,
-        source: TplCandidateSource,
-        top_level: bool,
-    },
+    InferredMultiTypes(Vec<LuaType>),
     VariadicBase(LuaType),
 }
 
@@ -143,9 +133,7 @@ impl TypeSubstitutor {
             tpl_replace_map.insert(
                 GenericTplId::Type(i as u32),
                 SubstitutorValue::Type {
-                    value: SubstitutorTypeValue::new(ty, true),
-                    source: TplCandidateSource::Finalized,
-                    top_level: true,
+                    value: SubstitutorTypeValue::new(ty),
                 },
             );
         }
@@ -172,9 +160,7 @@ impl TypeSubstitutor {
             tpl_replace_map.insert(
                 tpl_id,
                 SubstitutorValue::Type {
-                    value: SubstitutorTypeValue::new(ty, true),
-                    source: TplCandidateSource::Finalized,
-                    top_level: true,
+                    value: SubstitutorTypeValue::new(ty),
                 },
             );
         }
@@ -220,9 +206,7 @@ impl TypeSubstitutor {
                 self.tpl_replace_map.insert(
                     tpl_id,
                     SubstitutorValue::Type {
-                        value: SubstitutorTypeValue::new(replace_type, false),
-                        source: TplCandidateSource::ConstPreserving,
-                        top_level: true,
+                        value: SubstitutorTypeValue::new(replace_type),
                     },
                 );
             }
@@ -234,9 +218,7 @@ impl TypeSubstitutor {
                 self.tpl_replace_map.insert(
                     tpl_id,
                     SubstitutorValue::Type {
-                        value: SubstitutorTypeValue::new(replace_type, false),
-                        source: TplCandidateSource::ConstPreserving,
-                        top_level: true,
+                        value: SubstitutorTypeValue::new(replace_type),
                     },
                 );
             }
@@ -248,18 +230,7 @@ impl TypeSubstitutor {
 
                 let value = match binding {
                     TplBinding::FinalizedType(replace_type) => SubstitutorValue::Type {
-                        value: SubstitutorTypeValue::new(replace_type, true),
-                        source: TplCandidateSource::Finalized,
-                        top_level: true,
-                    },
-                    TplBinding::InferredType {
-                        ty,
-                        source,
-                        top_level,
-                    } => SubstitutorValue::Type {
-                        value: SubstitutorTypeValue::new(ty, false),
-                        source,
-                        top_level,
+                        value: SubstitutorTypeValue::new(replace_type),
                     },
                     TplBinding::VariadicParams(params) => {
                         let params = params
@@ -268,22 +239,8 @@ impl TypeSubstitutor {
                             .collect();
                         SubstitutorValue::Params(params)
                     }
-                    TplBinding::InferredMultiTypes {
-                        types,
-                        source,
-                        top_level,
-                    } => SubstitutorValue::MultiTypes {
-                        values: types
-                            .into_iter()
-                            .map(|ty| {
-                                SubstitutorTypeValue::new(
-                                    ty,
-                                    source == TplCandidateSource::Finalized,
-                                )
-                            })
-                            .collect(),
-                        source,
-                        top_level,
+                    TplBinding::InferredMultiTypes(types) => SubstitutorValue::MultiTypes {
+                        values: types.into_iter().map(SubstitutorTypeValue::new).collect(),
                     },
                     TplBinding::VariadicBase(type_base) => SubstitutorValue::MultiBase(type_base),
                     TplBinding::ReplaceConstType(_) | TplBinding::ConditionalInferType(_) => {
@@ -315,79 +272,6 @@ impl TypeSubstitutor {
         }
     }
 
-    pub(super) fn finalize_inferred_types<'a>(
-        &mut self,
-        db: &DbIndex,
-        generic_tpls: impl IntoIterator<Item = &'a Arc<GenericTpl>>,
-        return_type: &LuaType,
-    ) {
-        for tpl in generic_tpls {
-            let tpl_id = tpl.get_tpl_id();
-            let return_top_level = is_tpl_at_top_level(db, return_type, tpl_id);
-            let Some(value) = self.tpl_replace_map.get(&tpl_id) else {
-                continue;
-            };
-
-            let finalized_value = match value {
-                SubstitutorValue::Type {
-                    value,
-                    source,
-                    top_level,
-                } => {
-                    if value.is_finalized() {
-                        None
-                    } else {
-                        Some(SubstitutorValue::Type {
-                            value: value.finalized(
-                                db,
-                                tpl.as_ref(),
-                                *source,
-                                *top_level,
-                                return_top_level,
-                                self,
-                            ),
-                            source: TplCandidateSource::Finalized,
-                            top_level: true,
-                        })
-                    }
-                }
-                SubstitutorValue::MultiTypes {
-                    values,
-                    source,
-                    top_level,
-                } => {
-                    if *source == TplCandidateSource::Finalized {
-                        None
-                    } else {
-                        let values = values
-                            .iter()
-                            .map(|value| {
-                                value.finalized(
-                                    db,
-                                    tpl.as_ref(),
-                                    *source,
-                                    *top_level,
-                                    return_top_level,
-                                    self,
-                                )
-                            })
-                            .collect();
-                        Some(SubstitutorValue::MultiTypes {
-                            values,
-                            source: TplCandidateSource::Finalized,
-                            top_level: true,
-                        })
-                    }
-                }
-                _ => None,
-            };
-
-            if let Some(finalized_value) = finalized_value {
-                self.tpl_replace_map.insert(tpl_id, finalized_value);
-            }
-        }
-    }
-
     pub fn check_recursion(&self, type_id: &LuaTypeDeclId) -> bool {
         if let Some(alias_type_id) = &self.alias_type_id
             && alias_type_id == type_id
@@ -410,14 +294,13 @@ impl TypeSubstitutor {
 #[derive(Debug, Clone)]
 pub struct SubstitutorTypeValue {
     raw: LuaType,
-    finalized: Option<LuaType>,
 }
 
 impl SubstitutorTypeValue {
-    fn new(raw: LuaType, already_finalized: bool) -> Self {
-        let raw = into_ref_type(raw);
-        let finalized = already_finalized.then(|| raw.clone());
-        Self { raw, finalized }
+    fn new(raw: LuaType) -> Self {
+        Self {
+            raw: into_ref_type(raw),
+        }
     }
 
     pub fn raw(&self) -> &LuaType {
@@ -425,131 +308,22 @@ impl SubstitutorTypeValue {
     }
 
     pub(super) fn resolved(&self) -> &LuaType {
-        self.finalized.as_ref().unwrap_or(&self.raw)
-    }
-
-    fn is_finalized(&self) -> bool {
-        self.finalized.is_some()
-    }
-
-    fn finalized(
-        &self,
-        db: &DbIndex,
-        tpl: &GenericTpl,
-        source: TplCandidateSource,
-        top_level: bool,
-        return_top_level: bool,
-        substitutor: &TypeSubstitutor,
-    ) -> Self {
-        let finalized = finalize_inferred_tpl_candidate(
-            db,
-            tpl,
-            &self.raw,
-            source,
-            top_level,
-            return_top_level,
-            substitutor,
-        );
-        Self {
-            raw: self.raw.clone(),
-            finalized: Some(finalized),
-        }
+        &self.raw
     }
 }
 
 #[derive(Debug, Clone)]
 pub(super) enum SubstitutorValue {
     None,
-    Type {
-        value: SubstitutorTypeValue,
-        source: TplCandidateSource,
-        top_level: bool,
-    },
+    Type { value: SubstitutorTypeValue },
     Params(Vec<(String, Option<LuaType>)>),
-    MultiTypes {
-        values: Vec<SubstitutorTypeValue>,
-        source: TplCandidateSource,
-        top_level: bool,
-    },
+    MultiTypes { values: Vec<SubstitutorTypeValue> },
     MultiBase(LuaType),
 }
 
 impl SubstitutorValue {
     pub fn is_none(&self) -> bool {
         matches!(self, SubstitutorValue::None)
-    }
-}
-
-fn is_tpl_at_top_level(db: &DbIndex, ty: &LuaType, tpl_id: GenericTplId) -> bool {
-    is_tpl_at_top_level_with_guard(db, ty, tpl_id, &mut HashSet::new())
-}
-
-fn is_tpl_at_top_level_with_guard(
-    db: &DbIndex,
-    ty: &LuaType,
-    tpl_id: GenericTplId,
-    visited_aliases: &mut HashSet<LuaTypeDeclId>,
-) -> bool {
-    match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl.get_tpl_id() == tpl_id,
-        LuaType::Union(union) => union.into_vec().iter().any(|member| {
-            let mut branch_aliases = visited_aliases.clone();
-            is_tpl_at_top_level_with_guard(db, member, tpl_id, &mut branch_aliases)
-        }),
-        LuaType::MultiLineUnion(multi) => multi.get_unions().iter().any(|(member, _)| {
-            let mut branch_aliases = visited_aliases.clone();
-            is_tpl_at_top_level_with_guard(db, member, tpl_id, &mut branch_aliases)
-        }),
-        LuaType::Generic(generic) => {
-            let type_decl_id = generic.get_base_type_id_ref();
-            let Some(alias_param) =
-                get_transparent_alias_param_index(db, type_decl_id, visited_aliases)
-            else {
-                return false;
-            };
-
-            generic.get_params().get(alias_param).is_some_and(|param| {
-                is_tpl_at_top_level_with_guard(db, param, tpl_id, visited_aliases)
-            })
-        }
-        _ => false,
-    }
-}
-
-fn get_transparent_alias_param_index(
-    db: &DbIndex,
-    type_decl_id: &LuaTypeDeclId,
-    visited_aliases: &mut HashSet<LuaTypeDeclId>,
-) -> Option<usize> {
-    if !visited_aliases.insert(type_decl_id.clone()) {
-        return None;
-    }
-
-    let type_decl = db.get_type_index().get_type_decl(type_decl_id)?;
-    if !type_decl.is_alias() {
-        return None;
-    };
-    let origin = type_decl.get_alias_ref()?;
-
-    match origin {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl)
-            if matches!(tpl.get_tpl_id(), GenericTplId::Type(_)) =>
-        {
-            Some(tpl.get_tpl_id().get_idx())
-        }
-        LuaType::Generic(generic) => {
-            get_transparent_alias_param_index(db, generic.get_base_type_id_ref(), visited_aliases)
-                .and_then(|alias_param| generic.get_params().get(alias_param))
-                .and_then(|param| match param {
-                    LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl)
-                        if matches!(tpl.get_tpl_id(), GenericTplId::Type(_)) =>
-                    {
-                        Some(tpl.get_tpl_id().get_idx())
-                    }
-                    _ => None,
-                })
-        }
-        _ => None,
     }
 }
 
