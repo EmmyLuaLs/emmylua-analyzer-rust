@@ -109,7 +109,7 @@ function table.sort(list, comp) end
 --- @generic T, Start: integer, End: integer
 --- @param i?   std.ConstTpl<Start>
 --- @param j?   std.ConstTpl<End>
---- @param list T
+--- @param list std.ConstTpl<T>
 --- @return std.Unpack<T, Start, End>
 function table.unpack(list, i, j) end
 

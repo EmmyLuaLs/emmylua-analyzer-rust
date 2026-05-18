@@ -129,7 +129,7 @@
 --- @alias std.RawGet<T, K> unknown
 
 ---
---- built-in type for generic template, for match integer const and true/false
+--- built-in type for generic template, used for const generic
 --- @alias std.ConstTpl<T> unknown
 
 --- compact luals

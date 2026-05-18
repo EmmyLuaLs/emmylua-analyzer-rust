@@ -35,7 +35,7 @@ mod test {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         ws.def(
             r#"
-            ---@overload fun<T>(t: T): std.Unpack<T>
+            ---@overload fun<T>(t: std.ConstTpl<T>): std.Unpack<T>
             ---@overload fun(t: number): number
             local function f(t)
             end
@@ -55,7 +55,7 @@ mod test {
         ws.def(
             r#"
             ---@class Obj
-            ---@field unpack (fun<T>(self: Obj, t: T): std.Unpack<T>) | (fun(self: Obj, t: number): number)
+            ---@field unpack (fun<T>(self: Obj, t: std.ConstTpl<T>): std.Unpack<T>) | (fun(self: Obj, t: number): number)
             local Obj = {}
 
             a, b = Obj:unpack({ 1, 2 })
@@ -75,7 +75,7 @@ mod test {
             local Obj = {}
 
             ---@generic T
-            ---@param t T
+            ---@param t std.ConstTpl<T>
             ---@return std.Unpack<T>
             function Obj:unpack(t)
             end
