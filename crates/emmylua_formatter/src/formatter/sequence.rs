@@ -345,7 +345,7 @@ fn sequence_layout_kind_penalty(kind: SequenceLayoutKind) -> usize {
 }
 
 pub fn format_delimited_sequence(
-    _ctx: &FormatContext,
+    ctx: &FormatContext,
     layout: DelimitedSequenceLayout,
 ) -> Vec<DocIR> {
     if layout.items.is_empty() {
@@ -378,6 +378,7 @@ pub fn format_delimited_sequence(
             &flat_close_padding,
         ),
         ExpandStrategy::Always => format_expanded_delimited_sequence(
+            ctx,
             open,
             close,
             default_break_contents(
@@ -386,6 +387,7 @@ pub fn format_delimited_sequence(
             ),
         ),
         ExpandStrategy::Auto if preserve_multiline => format_expanded_delimited_sequence(
+            ctx,
             open,
             close,
             default_break_contents(
@@ -406,13 +408,76 @@ pub fn format_delimited_sequence(
     }
 }
 
-fn format_expanded_delimited_sequence(open: DocIR, close: DocIR, inner: Vec<DocIR>) -> Vec<DocIR> {
+fn format_expanded_delimited_sequence(
+    ctx: &FormatContext,
+    open: DocIR,
+    close: DocIR,
+    inner: Vec<DocIR>,
+) -> Vec<DocIR> {
     vec![ir::group_break(vec![
         open,
-        ir::indent(inner),
+        ir::indent(collapse_consecutive_hard_lines(
+            inner,
+            ctx.config.layout.max_blank_lines,
+        )),
         ir::hard_line(),
         close,
     ])]
+}
+
+fn collapse_consecutive_hard_lines(docs: Vec<DocIR>, max_blank_lines: usize) -> Vec<DocIR> {
+    let mut collapsed = Vec::with_capacity(docs.len());
+    let mut consecutive_hard_lines = 0usize;
+    let max_hard_lines = max_blank_lines + 1;
+
+    for doc in docs {
+        match doc {
+            DocIR::HardLine => {
+                if consecutive_hard_lines < max_hard_lines {
+                    collapsed.push(DocIR::HardLine);
+                }
+                consecutive_hard_lines += 1;
+            }
+            DocIR::Indent(contents) => {
+                consecutive_hard_lines = 0;
+                collapsed.push(DocIR::Indent(collapse_consecutive_hard_lines(
+                    contents,
+                    max_blank_lines,
+                )));
+            }
+            DocIR::List(contents) => {
+                consecutive_hard_lines = 0;
+                collapsed.push(DocIR::List(collapse_consecutive_hard_lines(
+                    contents,
+                    max_blank_lines,
+                )));
+            }
+            DocIR::Group {
+                contents,
+                should_break,
+                id,
+            } => {
+                consecutive_hard_lines = 0;
+                collapsed.push(DocIR::Group {
+                    contents: collapse_consecutive_hard_lines(contents, max_blank_lines),
+                    should_break,
+                    id,
+                });
+            }
+            DocIR::Fill { parts } => {
+                consecutive_hard_lines = 0;
+                collapsed.push(DocIR::Fill {
+                    parts: collapse_consecutive_hard_lines(parts, max_blank_lines),
+                });
+            }
+            other => {
+                consecutive_hard_lines = 0;
+                collapsed.push(other);
+            }
+        }
+    }
+
+    collapsed
 }
 
 fn default_break_contents(inner: Vec<DocIR>, trailing: DocIR) -> Vec<DocIR> {
@@ -460,4 +525,57 @@ fn build_interspersed_docs(items: &[Vec<DocIR>], separator: &[DocIR]) -> Vec<Doc
     }
 
     docs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::{ExpandStrategy, LayoutConfig, LuaFormatConfig},
+        formatter::FormatContext,
+        ir,
+        printer::Printer,
+    };
+
+    #[test]
+    fn test_expanded_sequence_caps_blank_lines() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_blank_lines: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ctx = FormatContext::new(&config);
+
+        let docs = format_delimited_sequence(
+            &ctx,
+            DelimitedSequenceLayout {
+                open: ir::text("{"),
+                close: ir::text("}"),
+                items: vec![
+                    vec![ir::text("1")],
+                    vec![
+                        ir::hard_line(),
+                        ir::hard_line(),
+                        ir::hard_line(),
+                        ir::text("2"),
+                    ],
+                ],
+                strategy: ExpandStrategy::Always,
+                preserve_multiline: false,
+                flat_separator: vec![ir::text(", ")],
+                fill_separator: vec![ir::text(", ")],
+                break_separator: vec![ir::text(","), ir::hard_line()],
+                flat_open_padding: vec![],
+                flat_close_padding: vec![],
+                grouped_padding: ir::hard_line(),
+                flat_trailing: vec![],
+                grouped_trailing: ir::text(""),
+            },
+        );
+
+        let rendered = Printer::new(&config).print(&docs);
+        assert_eq!(rendered, "{\n    1,\n\n    2\n}");
+    }
 }

@@ -365,14 +365,12 @@ fn analyze_table_expr_layout(ctx: &FormatContext, table: &LuaTableExpr, plan: &m
         .next()
         .map(|field| source_line_prefix_width(field.syntax()))
         .unwrap_or(0);
-    let is_pure_array_table = table.get_fields().all(|field| !field.is_assign_field());
 
     plan.layout.expr_sequences.insert(
         syntax_id,
         ExprSequenceLayoutPlan {
             first_line_prefix_width,
             preserve_multiline: ctx.config.layout.prefer_table_layout_from_source
-                && is_pure_array_table
                 && table.syntax().text().contains_char('\n'),
             first_arg_multiline_block: false,
             first_arg_multiline_table: false,

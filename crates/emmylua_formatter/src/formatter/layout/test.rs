@@ -249,3 +249,36 @@ fn test_layout_prefers_multiline_call_args_from_source_when_enabled() {
         .expect("expected call arg layout");
     assert!(call_layout.preserve_multiline);
 }
+
+#[test]
+fn test_layout_prefers_multiline_keyed_table_from_source_when_enabled() {
+    let config = LuaFormatConfig {
+        layout: crate::config::LayoutConfig {
+            prefer_table_layout_from_source: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let tree = LuaParser::parse(
+        "local t = {\n    a = 1,\n    b = 2\n}\n",
+        ParserConfig::with_level(LuaLanguageLevel::Lua54),
+    );
+    let chunk = tree.get_chunk_node();
+    let ctx = FormatContext::new(&config);
+    let mut plan = FormatPlan::default();
+    analyze_layout(&ctx, &chunk, &mut plan);
+
+    let table_expr = chunk
+        .descendants::<LuaAst>()
+        .find_map(|node| match node {
+            LuaAst::LuaTableExpr(node) => Some(node),
+            _ => None,
+        })
+        .expect("expected table expr");
+    let table_layout = plan
+        .layout
+        .expr_sequences
+        .get(&LuaSyntaxId::from_node(table_expr.syntax()))
+        .expect("expected table layout");
+    assert!(table_layout.preserve_multiline);
+}

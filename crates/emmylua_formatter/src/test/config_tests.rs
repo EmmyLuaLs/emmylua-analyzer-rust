@@ -579,6 +579,40 @@ local b = 2
         );
     }
 
+    #[test]
+    fn test_tab_indent_blank_line_has_no_tab() {
+        let config = LuaFormatConfig {
+            indent: IndentConfig {
+                kind: IndentKind::Tab,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local function foo()\n\tlocal a = 1\n\t\n\tlocal b = 2\nend\n",
+            "local function foo()\n\tlocal a = 1\n\n\tlocal b = 2\nend\n",
+            config
+        );
+    }
+
+    #[test]
+    fn test_max_blank_lines_applies_in_multiline_table_comments() {
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                max_blank_lines: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            "local d = {\n\taa = 1,\n\tbb = 2,\n\n\n\n\t--wjgfiwjgw\n\tgwgwgw = 13,\n}\n",
+            "local d = {\n    aa = 1,\n    bb = 2,\n\n    --wjgfiwjgw\n    gwgwgw = 13\n}\n",
+            config
+        );
+    }
+
     // ========== end of line ==========
 
     #[test]

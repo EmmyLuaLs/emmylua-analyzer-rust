@@ -23,8 +23,8 @@ use super::sequence::{
 };
 use super::spacing::{SpaceRule, space_around_binary_op};
 use super::trivia::{
-    has_non_trivia_before_on_same_line_tokenwise, node_has_direct_comment_child,
-    source_line_prefix_width, trailing_gap_requests_alignment,
+    count_blank_lines_before, has_non_trivia_before_on_same_line_tokenwise,
+    node_has_direct_comment_child, source_line_prefix_width, trailing_gap_requests_alignment,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -412,6 +412,7 @@ struct CollectedParamEntries {
 struct DelimitedComment {
     docs: Vec<DocIR>,
     same_line_after_open: bool,
+    blank_lines_before: usize,
 }
 
 struct ParamEntry {
@@ -443,6 +444,7 @@ fn collect_param_entries(ctx: &FormatContext, params: &LuaParamList) -> Collecte
                     same_line_after_open: has_non_trivia_before_on_same_line_tokenwise(
                         comment.syntax(),
                     ),
+                    blank_lines_before: 0,
                 });
             } else {
                 pending_comments.push(docs);
@@ -1221,6 +1223,7 @@ fn collect_call_arg_entries(
                     same_line_after_open: has_non_trivia_before_on_same_line_tokenwise(
                         comment.syntax(),
                     ),
+                    blank_lines_before: 0,
                 });
             } else {
                 pending_comments.push(docs);
@@ -1468,6 +1471,20 @@ fn format_table_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaTableExpr
                     );
                 }
 
+                if layout_plan.preserve_multiline {
+                    return wrap_table_multiline_docs(
+                        token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
+                        token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
+                        build_table_expanded_inner(
+                            ctx,
+                            &collected.entries,
+                            &trailing_comma_ir(ctx.config.trailing_table_comma()),
+                            true,
+                            ctx.config.should_align_table_line_comments(),
+                        ),
+                    );
+                }
+
                 let mut flat_layout = layout;
                 flat_layout.strategy = ExpandStrategy::Never;
                 let flat_docs = format_delimited_sequence(ctx, flat_layout);
@@ -1513,6 +1530,20 @@ fn format_table_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaTableExpr
         && !prefer_declaration_expand
         && matches!(ctx.config.layout.table_expand, ExpandStrategy::Auto)
     {
+        if layout_plan.preserve_multiline {
+            return wrap_table_multiline_docs(
+                token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftBrace),
+                token_or_kind_doc(close.as_ref(), LuaTokenKind::TkRightBrace),
+                build_table_expanded_inner(
+                    ctx,
+                    &collected.entries,
+                    &trailing_comma_ir(ctx.config.trailing_table_comma()),
+                    false,
+                    false,
+                ),
+            );
+        }
+
         let mut flat_layout = layout.clone();
         flat_layout.strategy = ExpandStrategy::Never;
         let flat_docs = format_delimited_sequence(ctx, flat_layout);
@@ -1666,14 +1697,20 @@ fn format_multiline_table_expr(
 struct CollectedTableEntries {
     entries: Vec<TableEntry>,
     comments_after_open: Vec<DelimitedComment>,
-    comments_before_close: Vec<Vec<DocIR>>,
+    comments_before_close: Vec<TableSeparatedComment>,
     has_comments: bool,
     consumed_comment_ranges: Vec<TextRange>,
 }
 
+struct TableSeparatedComment {
+    docs: Vec<DocIR>,
+    blank_lines_before: usize,
+}
+
 struct TableEntry {
     field: LuaTableField,
-    leading_comments: Vec<Vec<DocIR>>,
+    leading_comments: Vec<TableSeparatedComment>,
+    blank_lines_before: usize,
     doc: Vec<DocIR>,
     eq_split: Option<EqSplitDocs>,
     align_hint: bool,
@@ -1687,7 +1724,7 @@ fn collect_table_entries(
     expr: &LuaTableExpr,
 ) -> CollectedTableEntries {
     let mut collected = CollectedTableEntries::default();
-    let mut pending_comments: Vec<Vec<DocIR>> = Vec::new();
+    let mut pending_comments: Vec<TableSeparatedComment> = Vec::new();
     let mut seen_field = false;
 
     for child in expr.syntax().children() {
@@ -1704,6 +1741,7 @@ fn collect_table_entries(
             } else {
                 vec![ir::source_node_trimmed(comment.syntax().clone())]
             };
+            let blank_lines_before = count_blank_lines_before(comment.syntax());
             collected.has_comments = true;
             if !seen_field {
                 collected.comments_after_open.push(DelimitedComment {
@@ -1711,16 +1749,24 @@ fn collect_table_entries(
                     same_line_after_open: has_non_trivia_before_on_same_line_tokenwise(
                         comment.syntax(),
                     ),
+                    blank_lines_before,
                 });
             } else {
-                pending_comments.push(docs);
+                pending_comments.push(TableSeparatedComment {
+                    docs,
+                    blank_lines_before,
+                });
             }
             continue;
         }
 
         if let Some(field) = LuaTableField::cast(child) {
+            let blank_lines_before = count_blank_lines_before(field.syntax());
             let trailing_comment = extract_trailing_comment(ctx, plan, field.syntax());
             if trailing_comment.is_some() {
+                collected.has_comments = true;
+            }
+            if blank_lines_before > 0 {
                 collected.has_comments = true;
             }
             if let Some((_, range)) = &trailing_comment {
@@ -1736,6 +1782,7 @@ fn collect_table_entries(
             collected.entries.push(TableEntry {
                 field: field.clone(),
                 leading_comments: std::mem::take(&mut pending_comments),
+                blank_lines_before,
                 doc: format_table_field_ir(ctx, plan, &field),
                 eq_split: None,
                 align_hint: field_requests_alignment(&field),
@@ -1790,7 +1837,7 @@ fn format_table_with_comments(
                 suffix.extend(comment.docs);
                 docs.push(ir::line_suffix(suffix));
             } else {
-                inner.push(ir::hard_line());
+                push_table_blank_lines(ctx, &mut inner, comment.blank_lines_before);
                 inner.extend(comment.docs);
                 first_inner_line_started = true;
             }
@@ -1804,9 +1851,9 @@ fn format_table_with_comments(
             ctx.config.should_align_table_line_comments(),
         ));
 
-        for comment_docs in collected.comments_before_close {
-            inner.push(ir::hard_line());
-            inner.extend(comment_docs);
+        for comment in collected.comments_before_close {
+            push_table_blank_lines(ctx, &mut inner, comment.blank_lines_before);
+            inner.extend(comment.docs);
         }
 
         docs.push(ir::indent(inner));
@@ -2016,6 +2063,7 @@ fn build_table_expanded_inner(
                 while group_end < entries.len()
                     && entries[group_end].eq_split.is_some()
                     && entries[group_end].leading_comments.is_empty()
+                    && entries[group_end].blank_lines_before == 0
                 {
                     group_end += 1;
                 }
@@ -2023,11 +2071,7 @@ fn build_table_expanded_inner(
                 if group_end - group_start >= 2
                     && table_group_requests_alignment(&entries[group_start..group_end])
                 {
-                    for comment_docs in &entries[group_start].leading_comments {
-                        inner.push(ir::hard_line());
-                        inner.extend(comment_docs.clone());
-                    }
-                    inner.push(ir::hard_line());
+                    push_table_entry_prefix(ctx, &mut inner, &entries[group_start]);
 
                     let comment_widths = if align_comments {
                         aligned_table_comment_widths(
@@ -2127,11 +2171,7 @@ fn push_table_entry_line(
     trailing: &DocIR,
     aligned_content_width: Option<usize>,
 ) {
-    inner.push(ir::hard_line());
-    for comment_docs in &entry.leading_comments {
-        inner.extend(comment_docs.clone());
-        inner.push(ir::hard_line());
-    }
+    push_table_entry_prefix(ctx, inner, entry);
     inner.extend(entry.doc.clone());
     if last_field_idx == Some(index) {
         inner.push(trailing.clone());
@@ -2146,6 +2186,27 @@ fn push_table_entry_line(
         );
         suffix.extend(comment_docs.clone());
         inner.push(ir::line_suffix(suffix));
+    }
+}
+
+fn push_table_entry_prefix(ctx: &FormatContext, inner: &mut Vec<DocIR>, entry: &TableEntry) {
+    if let Some((first_comment, rest)) = entry.leading_comments.split_first() {
+        push_table_blank_lines(ctx, inner, first_comment.blank_lines_before);
+        inner.extend(first_comment.docs.clone());
+        for comment in rest {
+            push_table_blank_lines(ctx, inner, comment.blank_lines_before);
+            inner.extend(comment.docs.clone());
+        }
+        push_table_blank_lines(ctx, inner, entry.blank_lines_before);
+    } else {
+        push_table_blank_lines(ctx, inner, entry.blank_lines_before);
+    }
+}
+
+fn push_table_blank_lines(ctx: &FormatContext, inner: &mut Vec<DocIR>, blank_lines_before: usize) {
+    inner.push(ir::hard_line());
+    for _ in 0..blank_lines_before.min(ctx.config.layout.max_blank_lines) {
+        inner.push(ir::hard_line());
     }
 }
 

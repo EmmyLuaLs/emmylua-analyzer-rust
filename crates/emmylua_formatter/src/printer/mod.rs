@@ -42,6 +42,7 @@ pub struct Printer {
     output: String,
     current_column: usize,
     indent_level: usize,
+    pending_indent_width: Option<usize>,
     group_break_map: HashMap<GroupId, bool>,
     line_suffixes: Vec<Vec<DocIR>>,
     profile: PrinterProfile,
@@ -54,6 +55,7 @@ struct MeasuringPrinter {
     line_comment_min_column: usize,
     current_column: usize,
     indent_level: usize,
+    pending_indent_width: usize,
     trailing_spaces: usize,
     group_break_map: HashMap<GroupId, bool>,
     line_suffixes: Vec<Vec<DocIR>>,
@@ -72,6 +74,7 @@ impl Printer {
             output: String::new(),
             current_column: 0,
             indent_level: 0,
+            pending_indent_width: None,
             group_break_map: HashMap::new(),
             line_suffixes: Vec::new(),
             profile: PrinterProfile::default(),
@@ -207,6 +210,7 @@ impl Printer {
     }
 
     fn push_text(&mut self, s: &str) {
+        self.flush_pending_indent_for_text(s);
         self.output.push_str(s);
         if let Some(last_newline) = s.rfind('\n') {
             self.current_column = s.len() - last_newline - 1;
@@ -228,9 +232,23 @@ impl Printer {
         }
 
         self.output.push_str(self.newline_str);
-        let indent = self.indent_str.repeat(self.indent_level);
+        self.current_column = 0;
+        self.pending_indent_width = Some(self.indent_level * self.indent_width);
+    }
+
+    fn flush_pending_indent_for_text(&mut self, s: &str) {
+        let Some(indent_width) = self.pending_indent_width else {
+            return;
+        };
+        if s.is_empty() {
+            return;
+        }
+
+        let indent_level = indent_width.checked_div(self.indent_width).unwrap_or(0);
+        let indent = self.indent_str.repeat(indent_level);
         self.output.push_str(&indent);
-        self.current_column = self.indent_level * self.indent_width;
+        self.current_column = indent_width;
+        self.pending_indent_width = None;
     }
 
     fn flush_line_suffixes(&mut self) {
@@ -575,6 +593,7 @@ impl MeasuringPrinter {
             line_comment_min_column: config.comments.line_comment_min_column,
             current_column: 0,
             indent_level: 0,
+            pending_indent_width: 0,
             trailing_spaces: 0,
             group_break_map: HashMap::new(),
             line_suffixes: Vec::new(),
@@ -712,6 +731,10 @@ impl MeasuringPrinter {
     }
 
     fn measure_line_fragment(&mut self, fragment: &str) {
+        if !fragment.is_empty() && self.pending_indent_width > 0 {
+            self.current_column += self.pending_indent_width;
+            self.pending_indent_width = 0;
+        }
         self.current_column += fragment.len();
         self.trailing_spaces = fragment
             .bytes()
@@ -722,8 +745,9 @@ impl MeasuringPrinter {
 
     fn push_newline(&mut self) {
         self.record_line();
-        self.current_column = self.indent_level * self.indent_width;
-        self.trailing_spaces = self.current_column;
+        self.current_column = 0;
+        self.pending_indent_width = self.indent_level * self.indent_width;
+        self.trailing_spaces = 0;
     }
 
     fn record_line(&mut self) {

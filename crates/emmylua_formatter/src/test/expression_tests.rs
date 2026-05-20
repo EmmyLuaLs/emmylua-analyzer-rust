@@ -337,6 +337,28 @@ b=2
     }
 
     #[test]
+    fn test_table_expr_preserves_single_blank_line_before_separator_comment() {
+        assert_format!(
+            r#"local d = {
+	aa = 1,
+	bb = 2,
+
+	--wjgfiwjgw
+	gwgwgw = 13,
+}
+"#,
+            r#"local d = {
+    aa = 1,
+    bb = 2,
+
+    --wjgfiwjgw
+    gwgwgw = 13
+}
+"#
+        );
+    }
+
+    #[test]
     fn test_table_expr_formats_before_close_comment_attachment() {
         assert_format!(
             r#"local t = {
@@ -418,7 +440,7 @@ a=1,
     }
 
     #[test]
-    fn test_multiline_keyed_table_does_not_preserve_source_layout_goal() {
+    fn test_multiline_keyed_table_can_prefer_source_layout_goal() {
         use crate::{
             assert_format_with_config,
             config::{LayoutConfig, LuaFormatConfig},
@@ -438,7 +460,42 @@ a=1,
     b = 2,
 }
 "#,
-            r#"local t = { a = 1, b = 2 }
+            r#"local t = {
+    a = 1,
+    b = 2
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_multiline_mixed_table_can_prefer_source_layout_goal() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                prefer_table_layout_from_source: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"local t = {
+    1,
+    name = 2,
+    3,
+}
+"#,
+            r#"local t = {
+    1,
+    name = 2,
+    3
+}
 "#,
             config
         );

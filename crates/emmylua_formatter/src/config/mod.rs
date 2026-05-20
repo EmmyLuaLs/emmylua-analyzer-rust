@@ -145,7 +145,8 @@ pub struct LayoutConfig {
     pub func_params_expand: ExpandStrategy,
     /// Prefer using the source layout goal for explicit multiline call argument lists.
     pub prefer_call_args_layout_from_source: bool,
-    /// Prefer using the source layout goal for explicit multiline pure-array tables.
+    /// Prefer using the source layout goal for explicit multiline tables,
+    /// including array, keyed, and mixed forms.
     pub prefer_table_layout_from_source: bool,
     /// Prefer breaking statement-tail chains and keyed table-field value chains onto multiple lines
     /// when the chain has at least 3 segments.
