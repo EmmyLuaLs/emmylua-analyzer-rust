@@ -1,5 +1,5 @@
 use crate::{
-    TypeSubstitutor,
+    TypeMapper,
     db_index::{LuaFunctionType, LuaOperatorMetaMethod, LuaSignatureId, LuaType, LuaTypeDeclId},
     semantic::type_check::type_check_context::TypeCheckContext,
 };
@@ -23,12 +23,9 @@ pub fn check_doc_func_type_compact(
             if let Some(decl) = context.db.get_type_index().get_type_decl(&base_id)
                 && decl.is_alias()
             {
-                let substitutor = TypeSubstitutor::from_alias(
-                    context.db,
-                    generic.get_params().clone(),
-                    base_id.clone(),
-                );
-                if let Some(alias_origin) = decl.get_alias_origin(context.db, Some(&substitutor)) {
+                let mapper =
+                    TypeMapper::from_alias(context.db, generic.get_params().clone(), &base_id);
+                if let Some(alias_origin) = decl.get_alias_origin(context.db, Some(&mapper)) {
                     return check_general_type_compact(
                         context,
                         &LuaType::DocFunction(source_func.clone().into()),

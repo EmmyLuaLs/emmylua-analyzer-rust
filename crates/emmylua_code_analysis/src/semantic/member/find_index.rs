@@ -3,11 +3,8 @@ use hashbrown::{HashMap, HashSet};
 use crate::{
     DbIndex, InFiled, InferGuardRef, LuaGenericType, LuaIntersectionType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps,
-    semantic::{
-        InferGuard,
-        generic::{TypeSubstitutor, instantiate_type_generic},
-    },
+    LuaType, LuaTypeDeclId, LuaUnionType, TypeMapper, TypeOps,
+    semantic::{InferGuard, generic::instantiate_type_generic},
 };
 
 use super::{FindMembersResult, LuaMemberInfo, intersect_member_types};
@@ -310,13 +307,13 @@ fn find_index_generic(
     };
 
     let generic_params = generic.get_params();
-    let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
+    let mapper = TypeMapper::from_type_array(generic_params.clone());
     let type_index = db.get_type_index();
     let type_decl = type_index.get_type_decl(&type_decl_id)?;
 
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
-            let instantiated_type = instantiate_type_generic(db, &origin_type, &substitutor);
+        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&mapper)) {
+            let instantiated_type = instantiate_type_generic(db, &origin_type, &mapper);
             return find_index_operations_guard(db, &instantiated_type, infer_guard);
         }
         return None;
@@ -332,11 +329,11 @@ fn find_index_generic(
         for index_operator_id in index_operator_ids {
             if let Some(index_operator) = operator_index.get_operator(index_operator_id) {
                 let operand = index_operator.get_operand(db);
-                let instantiated_operand = instantiate_type_generic(db, &operand, &substitutor);
+                let instantiated_operand = instantiate_type_generic(db, &operand, &mapper);
 
                 if let Ok(return_type) = index_operator.get_result(db) {
                     let instantiated_return_type =
-                        instantiate_type_generic(db, &return_type, &substitutor);
+                        instantiate_type_generic(db, &return_type, &mapper);
 
                     members.push(LuaMemberInfo {
                         property_owner_id: None,
@@ -353,7 +350,7 @@ fn find_index_generic(
     // Find index operations in super types
     if let Some(supers) = type_index.get_super_types(&type_decl_id) {
         for super_type in supers {
-            let instantiated_super = instantiate_type_generic(db, &super_type, &substitutor);
+            let instantiated_super = instantiate_type_generic(db, &super_type, &mapper);
             if let Some(super_members) =
                 find_index_operations_guard(db, &instantiated_super, infer_guard)
             {

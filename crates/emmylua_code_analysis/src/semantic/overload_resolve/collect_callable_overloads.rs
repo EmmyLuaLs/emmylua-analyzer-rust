@@ -4,7 +4,7 @@ use hashbrown::HashSet;
 
 use crate::db_index::{DbIndex, LuaFunctionType, LuaType, LuaTypeDeclId};
 
-use super::super::{generic::TypeSubstitutor, infer::InferFailReason};
+use super::super::{generic::TypeMapper, infer::InferFailReason};
 
 pub(crate) fn collect_callable_overload_groups(
     db: &DbIndex,
@@ -43,15 +43,13 @@ fn collect_callable_overload_groups_inner(
             if !visiting_aliases.insert(type_id.clone()) {
                 return Ok(());
             }
-            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().to_vec());
+            let mapper = TypeMapper::from_type_array(generic.get_params().to_vec());
             let Some(type_decl) = db.get_type_index().get_type_decl(&type_id) else {
                 visiting_aliases.remove(&type_id);
                 return Ok(());
             };
 
-            let result = if let Some(origin_type) =
-                type_decl.get_alias_origin(db, Some(&substitutor))
-            {
+            let result = if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&mapper)) {
                 collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_aliases)
             } else {
                 Ok(())

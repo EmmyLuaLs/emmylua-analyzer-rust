@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, FileId, LuaMemberKey, LuaMemberOwner, TypeSubstitutor, db_index::WorkspaceId,
+    DbIndex, FileId, LuaMemberKey, LuaMemberOwner, TypeMapper, db_index::WorkspaceId,
     instantiate_type_generic,
 };
 
@@ -130,17 +130,13 @@ impl LuaTypeDecl {
             .map(|idx| &self.id.get_name()[..idx])
     }
 
-    pub fn get_alias_origin(
-        &self,
-        db: &DbIndex,
-        substitutor: Option<&TypeSubstitutor>,
-    ) -> Option<LuaType> {
+    pub fn get_alias_origin(&self, db: &DbIndex, mapper: Option<&TypeMapper>) -> Option<LuaType> {
         match &self.extra {
             LuaTypeExtra::Alias {
                 origin: Some(origin),
             } => {
-                let substitutor = match substitutor {
-                    Some(substitutor) => substitutor,
+                let mapper = match mapper {
+                    Some(mapper) => mapper,
                     None => return Some(origin.clone()),
                 };
 
@@ -153,7 +149,7 @@ impl LuaTypeDecl {
                     return Some(origin.clone());
                 }
 
-                Some(instantiate_type_generic(db, origin, substitutor))
+                Some(instantiate_type_generic(db, origin, mapper))
             }
             _ => None,
         }

@@ -8,7 +8,7 @@ use crate::{
     LuaTypeDeclId, LuaUnionType,
     semantic::{
         InferGuard,
-        generic::{TypeSubstitutor, instantiate_type_generic},
+        generic::{TypeMapper, instantiate_type_generic},
     },
 };
 
@@ -84,7 +84,7 @@ pub fn find_members_with_key_in_scope(
 struct FindMembersContext {
     file_id: FileId,
     infer_guard: InferGuardRef,
-    substitutor: Option<TypeSubstitutor>,
+    mapper: Option<TypeMapper>,
 }
 
 impl FindMembersContext {
@@ -92,14 +92,14 @@ impl FindMembersContext {
         Self {
             file_id,
             infer_guard,
-            substitutor: None,
+            mapper: None,
         }
     }
-    fn with_substitutor(&self, substitutor: TypeSubstitutor) -> Self {
+    fn with_mapper(&self, mapper: TypeMapper) -> Self {
         Self {
             file_id: self.file_id,
             infer_guard: self.infer_guard.clone(),
-            substitutor: Some(substitutor),
+            mapper: Some(mapper),
         }
     }
 
@@ -107,13 +107,13 @@ impl FindMembersContext {
         Self {
             file_id: self.file_id,
             infer_guard: self.infer_guard.fork(),
-            substitutor: self.substitutor.clone(),
+            mapper: self.mapper.clone(),
         }
     }
 
     fn instantiate_type(&self, db: &DbIndex, ty: &LuaType) -> LuaType {
-        if let Some(substitutor) = &self.substitutor {
-            instantiate_type_generic(db, ty, substitutor)
+        if let Some(mapper) = &self.mapper {
+            instantiate_type_generic(db, ty, mapper)
         } else {
             ty.clone()
         }
@@ -496,23 +496,23 @@ fn find_generic_members(
         .map(|param| ctx.instantiate_type(db, param))
         .collect();
     let type_decl = db.get_type_index().get_type_decl(&base_ref_id)?;
-    let substitutor = if type_decl.is_alias() {
-        TypeSubstitutor::from_alias(db, instantiated_params, base_ref_id.clone())
+    let mapper = if type_decl.is_alias() {
+        TypeMapper::from_alias(db, instantiated_params, &base_ref_id)
     } else {
-        TypeSubstitutor::from_type_array(instantiated_params)
+        TypeMapper::from_type_array(instantiated_params)
     };
-    let ctx_with_substitutor = ctx.with_substitutor(substitutor.clone());
+    let ctx_with_mapper = ctx.with_mapper(mapper.clone());
     if let Some(origin) = type_decl
         .get_alias_ref()
-        .map(|origin| instantiate_type_generic(db, origin, &substitutor))
+        .map(|origin| instantiate_type_generic(db, origin, &mapper))
     {
-        return find_members_guard(db, &origin, &ctx_with_substitutor, filter);
+        return find_members_guard(db, &origin, &ctx_with_mapper, filter);
     }
 
     find_members_guard(
         db,
         &LuaType::Ref(base_ref_id.clone()),
-        &ctx_with_substitutor,
+        &ctx_with_mapper,
         filter,
     )
 }

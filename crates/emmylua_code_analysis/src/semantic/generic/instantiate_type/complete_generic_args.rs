@@ -7,7 +7,7 @@ use crate::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
         LuaUnionType, VariadicType,
     },
-    semantic::generic::type_substitutor::TypeSubstitutor,
+    semantic::generic::{TypeMapper, TypeMapperValue},
 };
 
 use super::instantiate_type_generic;
@@ -90,13 +90,15 @@ fn complete_type_generic_args_inner(
     }
 
     let mut params = Vec::with_capacity(generic_params.len().max(provided_args.len()));
-    let mut substitutor = TypeSubstitutor::new();
+    let mut prefix_sources = Vec::with_capacity(generic_params.len());
+    let mut prefix_targets = Vec::with_capacity(generic_params.len());
     let mut missing_required_count = 0;
     let mut cycled = false;
     for (idx, generic_param) in generic_params.iter().enumerate() {
         if let Some(provided_arg) = provided_args.get(idx) {
             let provided_arg = provided_arg.clone();
-            substitutor.bind_type(GenericTplId::Type(idx as u32), provided_arg.clone());
+            prefix_sources.push(GenericTplId::Type(idx as u32));
+            prefix_targets.push(provided_arg.clone());
             params.push(provided_arg);
             continue;
         }
@@ -114,8 +116,17 @@ fn complete_type_generic_args_inner(
             } else {
                 completed_type.ty
             };
-            let instantiated = instantiate_type_generic(db, &default_type, &substitutor);
-            substitutor.bind_type(GenericTplId::Type(idx as u32), instantiated.clone());
+            let mapper = TypeMapper::from_values(
+                prefix_sources.clone(),
+                prefix_targets
+                    .iter()
+                    .cloned()
+                    .map(TypeMapperValue::type_value)
+                    .collect(),
+            );
+            let instantiated = instantiate_type_generic(db, &default_type, &mapper);
+            prefix_sources.push(GenericTplId::Type(idx as u32));
+            prefix_targets.push(instantiated.clone());
             params.push(instantiated);
         } else {
             missing_required_count += 1;

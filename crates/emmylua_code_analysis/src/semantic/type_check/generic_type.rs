@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeCache, LuaTypeDeclId, RenderLevel,
-    TypeSubstitutor, complete_type_generic_args_in_type, humanize_type, instantiate_type_generic,
+    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeCache, LuaTypeDeclId, RenderLevel, TypeMapper,
+    complete_type_generic_args_in_type, humanize_type, instantiate_type_generic,
     semantic::{member::find_members, type_check::type_check_context::TypeCheckContext},
 };
 
@@ -24,13 +24,10 @@ pub fn check_generic_type_compact(
         .get_type_decl(&source_generic.get_base_type_id())
         && decl.is_alias()
     {
-        let substitutor = TypeSubstitutor::from_alias(
-            context.db,
-            source_generic.get_params().clone(),
-            base_id.clone(),
-        );
+        let mapper =
+            TypeMapper::from_alias(context.db, source_generic.get_params().clone(), &base_id);
         if let Some(alias_ref) = decl.get_alias_ref() {
-            let alias_origin = instantiate_type_generic(context.db, alias_ref, &substitutor);
+            let alias_origin = instantiate_type_generic(context.db, alias_ref, &mapper);
             return check_general_type_compact(
                 context,
                 &alias_origin,
@@ -65,10 +62,9 @@ pub fn check_generic_type_compact(
             {
                 for mut super_type in supers {
                     if super_type.contain_tpl() {
-                        let substitutor =
-                            TypeSubstitutor::from_type_array(compact_generic.get_params().clone());
-                        super_type =
-                            instantiate_type_generic(context.db, &super_type, &substitutor);
+                        let mapper =
+                            TypeMapper::from_type_array(compact_generic.get_params().clone());
+                        super_type = instantiate_type_generic(context.db, &super_type, &mapper);
                     }
 
                     let result = check_generic_type_compact(

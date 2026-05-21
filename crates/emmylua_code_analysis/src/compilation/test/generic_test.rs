@@ -3,8 +3,8 @@ mod test {
     use emmylua_parser::LuaClosureExpr;
 
     use crate::{
-        DiagnosticCode, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId, TypeSubstitutor,
-        VirtualWorkspace, complete_type_generic_args, instantiate_type_generic,
+        DiagnosticCode, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId, TypeMapper,
+        TypeMapperValue, VirtualWorkspace, complete_type_generic_args, instantiate_type_generic,
     };
 
     #[test]
@@ -533,8 +533,8 @@ mod test {
         );
 
         let generic_ty = ws.ty(r#"Forward<"a" | "b">"#);
-        let instantiated =
-            instantiate_type_generic(ws.get_db_mut(), &generic_ty, &TypeSubstitutor::new());
+        let mapper = TypeMapper::empty();
+        let instantiated = instantiate_type_generic(ws.get_db_mut(), &generic_ty, &mapper);
         assert_eq!(instantiated, ws.ty(r#""a""#));
     }
 
@@ -986,6 +986,35 @@ mod test {
             .clone()
             .expect("signature default type");
         assert_eq!(ws.humanize_type(default_type), "string");
+    }
+
+    #[test]
+    fn test_signature_instantiation_keeps_template_shapes() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@generic T
+            ---@param x T
+            ---@return T
+            local function id(x)
+                return x
+            end
+            "#,
+        );
+
+        let closure = ws.get_node::<LuaClosureExpr>(file_id);
+        let signature_id = LuaSignatureId::from_closure(file_id, &closure);
+        let mapper = TypeMapper::from_values(
+            vec![GenericTplId::Func(0)],
+            vec![TypeMapperValue::type_value(LuaType::String)],
+        );
+        let instantiated = instantiate_type_generic(
+            ws.analysis.compilation.get_db(),
+            &LuaType::Signature(signature_id),
+            &mapper,
+        );
+
+        assert_eq!(ws.humanize_type(instantiated), "fun(x: string) -> string");
     }
 
     #[test]

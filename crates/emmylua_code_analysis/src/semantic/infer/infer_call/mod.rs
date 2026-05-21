@@ -17,11 +17,14 @@ use crate::{
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::{TypeSubstitutor, get_tpl_ref_extend_type},
+        generic::{TypeMapper, get_tpl_ref_extend_type},
         infer::narrow::get_type_at_call_expr_inline_cast,
     },
 };
-use crate::{build_self_type, infer_call_func_generic, infer_self_type, semantic::infer_expr};
+use crate::{
+    build_self_type, infer_call_func_generic, infer_self_type, instantiate_type_generic_with_self,
+    semantic::infer_expr,
+};
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
 
@@ -266,11 +269,10 @@ fn filter_callable_overloads_by_call_args(
             }
 
             let has_tpls = !callable_tpls.is_empty();
-            let mut substitutor = TypeSubstitutor::new();
-            substitutor.prepare_inference_slots(callable_tpls);
+            let mapper = TypeMapper::from_uninferred(callable_tpls.into_iter().collect());
             let match_func = if has_tpls {
                 let func_ty = LuaType::DocFunction(func.clone());
-                match instantiate_type_generic(db, &func_ty, &substitutor) {
+                match instantiate_type_generic(db, &func_ty, &mapper) {
                     LuaType::DocFunction(doc_func) => doc_func,
                     _ => func.clone(),
                 }
@@ -362,12 +364,11 @@ fn infer_type_doc_function(
                     let result = infer_call_func_generic(db, cache, &f, call_expr.clone())?;
                     overloads.push(Arc::new(result));
                 } else if f.contain_self() {
-                    let mut substitutor = TypeSubstitutor::new();
+                    let mapper = TypeMapper::empty();
                     let self_type = build_self_type(db, call_expr_type);
-                    substitutor.add_self_type(self_type);
                     let func_ty = LuaType::DocFunction(f.clone());
                     if let LuaType::DocFunction(f) =
-                        instantiate_type_generic(db, &func_ty, &substitutor)
+                        instantiate_type_generic_with_self(db, &func_ty, &mapper, Some(&self_type))
                     {
                         overloads.push(f);
                     }
@@ -404,7 +405,7 @@ fn infer_generic_type_doc_function(
     let type_id = generic.get_base_type_id();
     infer_guard.check(&type_id)?;
     let generic_params = generic.get_params();
-    let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
+    let mapper = TypeMapper::from_type_array(generic_params.clone());
 
     let type_decl = db
         .get_type_index()
@@ -412,7 +413,7 @@ fn infer_generic_type_doc_function(
         .ok_or_else(|| InferFailReason::UnResolveTypeDecl(type_id.clone()))?;
     if type_decl.is_alias() {
         let origin_type = type_decl
-            .get_alias_origin(db, Some(&substitutor))
+            .get_alias_origin(db, Some(&mapper))
             .ok_or(InferFailReason::None)?;
         return infer_call_expr_func(
             db,
@@ -438,7 +439,7 @@ fn infer_generic_type_doc_function(
         let func = operator.get_operator_func(db);
         match func {
             LuaType::DocFunction(_) => {
-                let new_f = instantiate_type_generic(db, &func, &substitutor);
+                let new_f = instantiate_type_generic(db, &func, &mapper);
                 if let LuaType::DocFunction(f) = new_f {
                     overloads.push(f.clone());
                 }
@@ -453,7 +454,7 @@ fn infer_generic_type_doc_function(
                 }
 
                 let typ = LuaType::DocFunction(signature.to_call_operator_func_type());
-                let new_f = instantiate_type_generic(db, &typ, &substitutor);
+                let new_f = instantiate_type_generic(db, &typ, &mapper);
                 if let LuaType::DocFunction(f) = new_f {
                     overloads.push(f.clone());
                 }

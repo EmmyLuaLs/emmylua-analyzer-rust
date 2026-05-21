@@ -28,7 +28,9 @@ use crate::{
     infer_node_semantic_decl,
 };
 
-use super::{TypeSubstitutor, instantiate_type_generic};
+use super::{
+    TypeMapper, TypeMapperValue, instantiate_type_generic, instantiate_type_generic_with_self,
+};
 
 pub fn infer_call_func_generic(
     db: &DbIndex,
@@ -37,7 +39,7 @@ pub fn infer_call_func_generic(
     call_expr: LuaCallExpr,
 ) -> Result<LuaFunctionType, InferFailReason> {
     let file_id = cache.get_file_id().clone();
-    let (generic_tpls, contain_self) = collect_func_tpl_ids(func);
+    let (inference_slots, mapper_tpls, contain_self) = collect_func_generic_info(func);
 
     let origin_params = func.get_params();
     let mut func_params: Vec<_> = origin_params
@@ -50,11 +52,11 @@ pub fn infer_call_func_generic(
         .ok_or(InferFailReason::None)?
         .get_args()
         .collect::<Vec<_>>();
-    let mut substitutor = TypeSubstitutor::new();
+    let mapper;
     {
         let mut context = InferenceContext::new(db, cache, Some(call_expr.clone()));
-        if !generic_tpls.is_empty() {
-            context.prepare_inference_slots(generic_tpls);
+        if !inference_slots.is_empty() {
+            context.prepare_inference_slots(inference_slots);
 
             if let Some(type_list) = call_expr.get_call_generic_type_list() {
                 // 如果使用了`obj:abc--[[@<string>]]("abc")`强制指定了泛型, 那么我们只需要直接应用
@@ -72,15 +74,16 @@ pub fn infer_call_func_generic(
             }
         }
 
-        let func_generic_tpls = func_generic_tpls(func);
-        context.bridge_to_substitutor(&mut substitutor, func_generic_tpls.iter(), func.get_ret());
+        mapper = context.fixing_mapper(mapper_tpls.iter(), func.get_ret());
     }
 
-    if contain_self && let Some(self_type) = infer_self_type(db, cache, &call_expr) {
-        substitutor.add_self_type(self_type);
-    }
+    let self_type = contain_self
+        .then(|| infer_self_type(db, cache, &call_expr))
+        .flatten();
     let func_ty = LuaType::DocFunction(func.clone().into());
-    if let LuaType::DocFunction(f) = instantiate_type_generic(db, &func_ty, &substitutor) {
+    if let LuaType::DocFunction(f) =
+        instantiate_type_generic_with_self(db, &func_ty, &mapper, self_type.as_ref())
+    {
         Ok(f.deref().clone())
     } else {
         Ok(func.clone())
@@ -232,12 +235,11 @@ fn instantiate_callable_from_arg_types(
         return None;
     }
 
-    let mut callable_tpls = HashSet::new();
-    callable.visit_nested_types(&mut |ty| {
-        if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
-            callable_tpls.insert(generic_tpl.get_tpl_id());
-        }
-    });
+    let (_, callable_mapper_tpls, _) = collect_func_generic_info(callable);
+    let callable_tpls = callable_mapper_tpls
+        .iter()
+        .map(|tpl| tpl.get_tpl_id())
+        .collect::<HashSet<_>>();
     if callable_tpls.is_empty() {
         return Some(callable.clone());
     }
@@ -247,10 +249,7 @@ fn instantiate_callable_from_arg_types(
         .iter()
         .map(|(_, ty)| ty.clone().unwrap_or(LuaType::Unknown))
         .collect::<Vec<_>>();
-    let callable_generic_tpls = callable_generic_tpls(callable);
-    let mut callable_substitutor = TypeSubstitutor::new();
-    callable_substitutor.prepare_inference_slots(callable_tpls.clone());
-    {
+    let (non_fixing_mapper, mapper) = {
         let mut callable_context =
             InferenceContext::new(context.db, context.cache, context.call_expr.clone());
         callable_context.prepare_inference_slots(callable_tpls.clone());
@@ -266,16 +265,25 @@ fn instantiate_callable_from_arg_types(
         {
             return None;
         }
-        callable_context.bridge_resolved_to_substitutor(
-            &mut callable_substitutor,
-            callable_generic_tpls.iter(),
-            callable.get_ret(),
-        );
-    }
+        let non_fixing_mapper =
+            callable_context.non_fixing_mapper(callable_mapper_tpls.iter(), callable.get_ret());
+        let mapper =
+            callable_context.fixing_mapper(callable_mapper_tpls.iter(), callable.get_ret());
+        (non_fixing_mapper, mapper)
+    };
 
-    let callable_ty = LuaType::DocFunction(callable.clone());
+    let return_only_callable = LuaType::DocFunction(
+        LuaFunctionType::new(
+            callable.get_async_state(),
+            callable.is_colon_define(),
+            false,
+            Vec::new(),
+            callable.get_ret().clone(),
+        )
+        .into(),
+    );
     let instantiated =
-        match instantiate_type_generic(context.db, &callable_ty, &callable_substitutor) {
+        match instantiate_type_generic(context.db, &return_only_callable, &non_fixing_mapper) {
             LuaType::DocFunction(func) => func,
             _ => callable.clone(),
         };
@@ -289,7 +297,11 @@ fn instantiate_callable_from_arg_types(
             }
         });
         if tpl_ids.is_empty() {
-            return Some(instantiated);
+            let callable_ty = LuaType::DocFunction(callable.clone());
+            return match instantiate_type_generic(context.db, &callable_ty, &mapper) {
+                LuaType::DocFunction(func) => Some(func),
+                _ => Some(instantiated),
+            };
         }
         tpl_ids
     };
@@ -304,11 +316,12 @@ fn instantiate_callable_from_arg_types(
         return None;
     }
 
+    let mut mapper = mapper;
     for tpl_id in callback_return_tpls {
-        callable_substitutor.bind_type(tpl_id, LuaType::Unknown);
+        mapper = TypeMapper::prepend(tpl_id, LuaType::Unknown, Some(mapper));
     }
     let callable_ty = LuaType::DocFunction(callable.clone());
-    match instantiate_type_generic(context.db, &callable_ty, &callable_substitutor) {
+    match instantiate_type_generic(context.db, &callable_ty, &mapper) {
         LuaType::DocFunction(func) => Some(func),
         _ => None,
     }
@@ -366,43 +379,31 @@ fn collect_callback_return_tpls(
     callback_return_tpls
 }
 
-fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool) {
-    let mut generic_tpls = HashSet::new();
+fn collect_func_generic_info(
+    func: &LuaFunctionType,
+) -> (HashSet<GenericTplId>, Vec<Arc<GenericTpl>>, bool) {
+    let mut inference_slots = HashSet::new();
+    let mut mapper_tpls = Vec::new();
     let mut contain_self = false;
-
     func.visit_nested_types(&mut |ty| match ty {
         LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            collect_func_tpl_with_fallback_deps(generic_tpl, &mut generic_tpls);
+            collect_func_tpl_with_fallback_deps(generic_tpl, &mut inference_slots);
+            if generic_tpl.get_tpl_id().is_func()
+                && !mapper_tpls
+                    .iter()
+                    .any(|it: &Arc<GenericTpl>| it.get_tpl_id() == generic_tpl.get_tpl_id())
+            {
+                mapper_tpls.push(generic_tpl.clone());
+            }
         }
         LuaType::StrTplRef(str_tpl) => {
-            generic_tpls.insert(str_tpl.get_tpl_id());
+            inference_slots.insert(str_tpl.get_tpl_id());
         }
         LuaType::SelfInfer => contain_self = true,
         _ => {}
     });
 
-    (generic_tpls, contain_self)
-}
-
-fn func_generic_tpls(func: &LuaFunctionType) -> Vec<Arc<GenericTpl>> {
-    let mut generic_tpls = Vec::new();
-    func.visit_nested_types(&mut |ty| match ty {
-        LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            if generic_tpl.get_tpl_id().is_func()
-                && !generic_tpls
-                    .iter()
-                    .any(|it: &Arc<GenericTpl>| it.get_tpl_id() == generic_tpl.get_tpl_id())
-            {
-                generic_tpls.push(generic_tpl.clone());
-            }
-        }
-        _ => {}
-    });
-    generic_tpls
-}
-
-fn callable_generic_tpls(callable: &LuaFunctionType) -> Vec<Arc<GenericTpl>> {
-    func_generic_tpls(callable)
+    (inference_slots, mapper_tpls, contain_self)
 }
 
 fn collect_func_tpl_with_fallback_deps(
@@ -636,11 +637,21 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
         LuaType::Def(id) | LuaType::Ref(id) => {
             if let Some(generic) = db.get_type_index().get_generic_params(id) {
                 let mut params = Vec::with_capacity(generic.len());
-                let mut substitutor = TypeSubstitutor::new();
+                let mut prefix_sources = Vec::with_capacity(generic.len());
+                let mut prefix_targets = Vec::with_capacity(generic.len());
                 for (i, generic_param) in generic.iter().enumerate() {
                     let tpl_id = GenericTplId::Type(i as u32);
-                    let param = build_self_generic_arg(db, generic_param, &substitutor);
-                    substitutor.bind_type(tpl_id, param.clone());
+                    let mapper = TypeMapper::from_values(
+                        prefix_sources.clone(),
+                        prefix_targets
+                            .iter()
+                            .cloned()
+                            .map(TypeMapperValue::type_value)
+                            .collect(),
+                    );
+                    let param = build_self_generic_arg(db, generic_param, &mapper);
+                    prefix_sources.push(tpl_id);
+                    prefix_targets.push(param.clone());
                     params.push(param);
                 }
                 let generic = LuaGenericType::new(id.clone(), params);
@@ -655,7 +666,7 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
 fn build_self_generic_arg(
     db: &DbIndex,
     generic_param: &GenericParam,
-    substitutor: &TypeSubstitutor,
+    mapper: &TypeMapper,
 ) -> LuaType {
     let Some(arg) = generic_param
         .default_type
@@ -665,7 +676,7 @@ fn build_self_generic_arg(
         return LuaType::Unknown;
     };
 
-    instantiate_type_generic(db, arg, substitutor)
+    instantiate_type_generic(db, arg, mapper)
 }
 
 pub fn infer_self_type(

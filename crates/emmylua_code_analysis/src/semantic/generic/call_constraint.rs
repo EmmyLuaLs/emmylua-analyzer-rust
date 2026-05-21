@@ -1,20 +1,22 @@
 use std::{ops::Deref, sync::Arc};
 
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr};
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use rowan::TextRange;
 
 use crate::{
     DbIndex, DocTypeInferContext, GenericTpl, GenericTplId, LuaFunctionType, LuaSemanticDeclId,
-    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor, VariadicType,
+    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeMapper, TypeOps, VariadicType,
     infer_doc_type,
 };
+
+use super::TypeMapperValue;
 
 // 泛型约束上下文
 pub struct CallConstraintContext {
     pub params: Vec<(String, Option<LuaType>)>,
     pub args: Vec<CallConstraintArg>,
-    pub substitutor: TypeSubstitutor,
+    pub mapper: TypeMapper,
 }
 
 pub struct CallConstraintArg {
@@ -30,11 +32,8 @@ pub fn build_call_constraint_context(
     let doc_func = infer_call_doc_function(semantic_model, call_expr)?;
     let mut params = doc_func.get_params().to_vec();
     let mut args = get_arg_infos(semantic_model, call_expr)?;
-    let mut substitutor = TypeSubstitutor::new();
     let generic_tpls = collect_func_tpl_ids(&params);
-    if !generic_tpls.is_empty() {
-        substitutor.prepare_inference_slots(generic_tpls);
-    }
+    let mut mapper_builder = CallConstraintMapperBuilder::new(generic_tpls);
 
     // 读取显式传入的泛型实参
     if let Some(type_list) = call_expr.get_call_generic_type_list() {
@@ -42,7 +41,7 @@ pub fn build_call_constraint_context(
             DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
         for (idx, doc_type) in type_list.get_types().enumerate() {
             let ty = infer_doc_type(doc_ctx, &doc_type);
-            substitutor.bind_type(GenericTplId::Func(idx as u32), ty);
+            mapper_builder.bind_type(GenericTplId::Func(idx as u32), ty);
         }
     }
 
@@ -65,12 +64,12 @@ pub fn build_call_constraint_context(
         }
     }
 
-    collect_generic_assignments(&mut substitutor, &params, &args);
+    collect_generic_assignments(&mut mapper_builder, &params, &args);
 
     Some(CallConstraintContext {
         params,
         args,
-        substitutor,
+        mapper: mapper_builder.into_mapper(),
     })
 }
 
@@ -84,7 +83,7 @@ pub fn normalize_constraint_type(db: &DbIndex, ty: LuaType) -> LuaType {
 
 // 收集各个参数对应的泛型推导
 fn collect_generic_assignments(
-    substitutor: &mut TypeSubstitutor,
+    mapper_builder: &mut CallConstraintMapperBuilder,
     params: &[(String, Option<LuaType>)],
     args: &[CallConstraintArg],
 ) {
@@ -95,7 +94,7 @@ fn collect_generic_assignments(
         let Some(arg) = args.get(idx) else {
             continue;
         };
-        record_generic_assignment(param_type, &arg.check_type, substitutor);
+        record_generic_assignment(param_type, &arg.check_type, mapper_builder);
     }
 }
 
@@ -256,28 +255,82 @@ fn collect_generic_tpl_from_fallback(
 fn record_generic_assignment(
     param_type: &LuaType,
     arg_type: &LuaType,
-    substitutor: &mut TypeSubstitutor,
+    mapper_builder: &mut CallConstraintMapperBuilder,
 ) {
     match param_type {
         LuaType::TplRef(tpl_ref) => {
             if !tpl_ref.get_tpl_id().is_conditional_infer() {
-                substitutor.bind_type(tpl_ref.get_tpl_id(), arg_type.clone());
+                mapper_builder.bind_type(tpl_ref.get_tpl_id(), arg_type.clone());
             }
         }
         LuaType::ConstTplRef(tpl_ref) => {
             if !tpl_ref.get_tpl_id().is_conditional_infer() {
-                substitutor.bind_type(tpl_ref.get_tpl_id(), arg_type.clone());
+                mapper_builder.bind_type(tpl_ref.get_tpl_id(), arg_type.clone());
             }
         }
         LuaType::StrTplRef(str_tpl_ref) => {
-            substitutor.bind_type(str_tpl_ref.get_tpl_id(), arg_type.clone());
+            mapper_builder.bind_type(str_tpl_ref.get_tpl_id(), arg_type.clone());
         }
         LuaType::Variadic(variadic) => {
             if let Some(inner) = variadic.get_type(0) {
-                record_generic_assignment(inner, arg_type, substitutor);
+                record_generic_assignment(inner, arg_type, mapper_builder);
             }
         }
         _ => {}
+    }
+}
+
+struct CallConstraintMapperBuilder {
+    bindings: Vec<(GenericTplId, Option<LuaType>)>,
+    binding_indices: HashMap<GenericTplId, usize>,
+}
+
+impl CallConstraintMapperBuilder {
+    fn new(generic_tpls: HashSet<GenericTplId>) -> Self {
+        let mut bindings = Vec::with_capacity(generic_tpls.len());
+        let mut binding_indices = HashMap::with_capacity(generic_tpls.len());
+        for tpl_id in generic_tpls {
+            binding_indices.insert(tpl_id, bindings.len());
+            bindings.push((tpl_id, None));
+        }
+
+        Self {
+            bindings,
+            binding_indices,
+        }
+    }
+
+    fn bind_type(&mut self, tpl_id: GenericTplId, replace_type: LuaType) {
+        if tpl_id.is_conditional_infer() {
+            return;
+        }
+
+        if let Some(index) = self.binding_indices.get(&tpl_id).copied() {
+            if let Some((_, existing_type)) = self.bindings.get_mut(index)
+                && existing_type.is_none()
+            {
+                *existing_type = Some(replace_type);
+            }
+            return;
+        }
+
+        self.binding_indices.insert(tpl_id, self.bindings.len());
+        self.bindings.push((tpl_id, Some(replace_type)));
+    }
+
+    fn into_mapper(self) -> TypeMapper {
+        let (sources, targets): (Vec<_>, Vec<_>) = self
+            .bindings
+            .into_iter()
+            .map(|(tpl_id, ty)| {
+                (
+                    tpl_id,
+                    ty.map(TypeMapperValue::type_value)
+                        .unwrap_or(TypeMapperValue::None),
+                )
+            })
+            .unzip();
+        TypeMapper::from_values(sources, targets)
     }
 }
 

@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
-    GenericTplId, LuaCompilation, LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    RenderLevel, SemanticModel, TypeSubstitutor,
+    LuaCompilation, LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType, RenderLevel,
+    SemanticModel, TypeMapper,
 };
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaExpr, LuaLocalName, LuaLocalStat, LuaSyntaxKind, LuaSyntaxToken,
@@ -34,8 +34,8 @@ pub struct HoverBuilder<'a> {
     pub detail_render_level: RenderLevel,
 
     pub is_completion: bool,
-    // 默认的泛型替换器
-    pub substitutor: Option<TypeSubstitutor>,
+    // 默认的泛型 mapper
+    pub mapper: Option<TypeMapper>,
 }
 
 impl<'a> HoverBuilder<'a> {
@@ -52,8 +52,8 @@ impl<'a> HoverBuilder<'a> {
                 RenderLevel::Detailed
             };
 
-        let substitutor = if let Some(token) = token.clone() {
-            infer_substitutor_base_type(semantic_model, token)
+        let mapper = if let Some(token) = token.clone() {
+            infer_mapper_base_type(semantic_model, token)
         } else {
             None
         };
@@ -70,7 +70,7 @@ impl<'a> HoverBuilder<'a> {
             type_expansion: None,
             tag_content: None,
             detail_render_level,
-            substitutor,
+            mapper,
         }
     }
 
@@ -293,11 +293,11 @@ impl<'a> HoverBuilder<'a> {
     }
 }
 
-// 推断基础泛型替换器
-fn infer_substitutor_base_type(
+// 推断基础泛型 mapper
+fn infer_mapper_base_type(
     semantic_model: &SemanticModel,
     trigger_token: LuaSyntaxToken,
-) -> Option<TypeSubstitutor> {
+) -> Option<TypeMapper> {
     let parent = trigger_token.parent()?;
     match parent.kind().into() {
         LuaSyntaxKind::LocalName => {
@@ -312,7 +312,7 @@ fn infer_substitutor_base_type(
                     for (index, name) in local_name_list.iter().enumerate() {
                         if target_local_name == *name {
                             let value_expr = value_expr_list.get(index)?;
-                            return substitutor_form_expr(semantic_model, value_expr);
+                            return mapper_from_expr(semantic_model, value_expr);
                         }
                     }
                 }
@@ -325,20 +325,13 @@ fn infer_substitutor_base_type(
     None
 }
 
-pub fn substitutor_form_expr(
-    semantic_model: &SemanticModel,
-    expr: &LuaExpr,
-) -> Option<TypeSubstitutor> {
+pub fn mapper_from_expr(semantic_model: &SemanticModel, expr: &LuaExpr) -> Option<TypeMapper> {
     if let LuaExpr::IndexExpr(index_expr) = expr {
         let prefix_type = semantic_model
             .infer_expr(index_expr.get_prefix_expr()?)
             .ok()?;
-        let mut substitutor = TypeSubstitutor::new();
         if let LuaType::Generic(generic) = prefix_type {
-            for (i, param) in generic.get_params().iter().enumerate() {
-                substitutor.bind_type(GenericTplId::Type(i as u32), param.clone());
-            }
-            return Some(substitutor);
+            return Some(TypeMapper::from_type_array(generic.get_params().clone()));
         } else {
             return None;
         }

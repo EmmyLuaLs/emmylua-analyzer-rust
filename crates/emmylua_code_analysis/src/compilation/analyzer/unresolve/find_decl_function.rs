@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 
 use crate::{
     InFiled, InferFailReason, InferGuardRef, LuaInferCache, LuaInstanceType, LuaMemberId,
-    LuaMemberOwner, LuaOperatorOwner, TypeOps, TypeSubstitutor, check_type_compact,
+    LuaMemberOwner, LuaOperatorOwner, TypeMapper, TypeOps, check_type_compact,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
@@ -355,7 +355,7 @@ fn index_generic_members_from_super_generics(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     type_decl_id: &LuaTypeDeclId,
-    substitutor: &TypeSubstitutor,
+    mapper: &TypeMapper,
     index_expr: LuaIndexMemberExpr,
     infer_guard: &InferGuardRef,
     deep_guard: &mut DeepLevel,
@@ -370,7 +370,7 @@ fn index_generic_members_from_super_generics(
     let type_decl_id = type_decl.get_id();
     if let Some(super_types) = type_index.get_super_types(&type_decl_id) {
         super_types.iter().find_map(|super_type| {
-            let super_type = instantiate_type_generic(db, super_type, substitutor);
+            let super_type = instantiate_type_generic(db, super_type, mapper);
             find_function_type_by_member_key(
                 db,
                 cache,
@@ -397,13 +397,13 @@ fn find_generic_member(
     let base_type = generic_type.get_base_type();
 
     let generic_params = generic_type.get_params();
-    let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
+    let mapper = TypeMapper::from_type_array(generic_params.clone());
     if let LuaType::Ref(base_type_decl_id) = &base_type {
         let result = index_generic_members_from_super_generics(
             db,
             cache,
             base_type_decl_id,
-            &substitutor,
+            &mapper,
             index_expr.clone(),
             infer_guard,
             deep_guard,
@@ -422,7 +422,7 @@ fn find_generic_member(
         deep_guard,
     )?;
 
-    Ok(instantiate_type_generic(db, &member_type, &substitutor))
+    Ok(instantiate_type_generic(db, &member_type, &mapper))
 }
 
 fn find_instance_member_decl_type(
@@ -772,17 +772,17 @@ fn find_member_by_index_generic(
         return Err(InferFailReason::None);
     };
     let generic_params = generic.get_params();
-    let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
+    let mapper = TypeMapper::from_type_array(generic_params.clone());
     let type_index = db.get_type_index();
     let type_decl = type_index
         .get_type_decl(&type_decl_id)
         .ok_or(InferFailReason::None)?;
     if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&mapper)) {
             return find_function_type_by_operator(
                 db,
                 cache,
-                &instantiate_type_generic(db, &origin_type, &substitutor),
+                &instantiate_type_generic(db, &origin_type, &mapper),
                 index_expr.clone(),
                 &infer_guard.fork(),
                 deep_guard,
@@ -801,9 +801,9 @@ fn find_member_by_index_generic(
                 .get_operator(index_operator_id)
                 .ok_or(InferFailReason::None)?;
             let operand = index_operator.get_operand(db);
-            let instianted_operand = instantiate_type_generic(db, &operand, &substitutor);
+            let instianted_operand = instantiate_type_generic(db, &operand, &mapper);
             let return_type =
-                instantiate_type_generic(db, &index_operator.get_result(db)?, &substitutor);
+                instantiate_type_generic(db, &index_operator.get_result(db)?, &mapper);
 
             let result =
                 find_index_metamethod(db, cache, &member_key, &instianted_operand, &return_type);
@@ -826,7 +826,7 @@ fn find_member_by_index_generic(
             let result = find_function_type_by_operator(
                 db,
                 cache,
-                &instantiate_type_generic(db, &super_type, &substitutor),
+                &instantiate_type_generic(db, &super_type, &mapper),
                 index_expr.clone(),
                 &infer_guard.fork(),
                 deep_guard,

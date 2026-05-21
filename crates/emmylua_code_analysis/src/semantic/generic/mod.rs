@@ -2,7 +2,7 @@ mod call_constraint;
 mod inference;
 mod instantiate_type;
 mod test;
-mod type_substitutor;
+mod type_mapper;
 
 use std::sync::Arc;
 
@@ -19,7 +19,8 @@ pub(in crate::semantic::generic) use inference::{
 };
 pub use instantiate_type::*;
 use rowan::NodeOrToken;
-pub use type_substitutor::TypeSubstitutor;
+pub(in crate::semantic::generic) use type_mapper::get_mapped_value;
+pub use type_mapper::{TypeMapper, TypeMapperValue};
 
 use crate::DbIndex;
 use crate::GenericTpl;
@@ -65,17 +66,12 @@ pub fn instantiate_doc_function_by_arg_types(
         InferencePriority::Normal,
     )?;
 
-    let mut substitutor = TypeSubstitutor::new();
     let generic_tpls = collect_doc_function_generic_tpls(doc_function);
-    context.bridge_to_substitutor(
-        &mut substitutor,
-        generic_tpls.iter(),
-        doc_function.get_ret(),
-    );
+    let mapper = context.fixing_mapper(generic_tpls.iter(), doc_function.get_ret());
 
     let doc_function_ty = LuaType::DocFunction(doc_function.clone());
     Ok(
-        match instantiate_type_generic(db, &doc_function_ty, &substitutor) {
+        match instantiate_type_generic(db, &doc_function_ty, &mapper) {
             LuaType::DocFunction(func) => func,
             _ => doc_function.clone(),
         },

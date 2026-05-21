@@ -1,7 +1,16 @@
 #[cfg(test)]
 mod test {
+    use hashbrown::HashMap;
+    use std::sync::Arc;
+
     use super::super::instantiate_type::{regularize_tpl_candidate_type, widen_tpl_candidate_type};
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use crate::{
+        AsyncState, DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayType,
+        LuaFunctionType, LuaIntersectionType, LuaMemberKey, LuaObjectType, LuaTupleStatus,
+        LuaTupleType, LuaType, LuaUnionType, TypeMapper, TypeMapperValue, VariadicType,
+        VirtualWorkspace,
+    };
+    use smol_str::SmolStr;
 
     #[test]
     fn test_variadic_func() {
@@ -298,6 +307,372 @@ result = {
             local arraySuites = toArray(suite)
             "#
         ));
+    }
+
+    #[test]
+    fn test_inference_mapper_fallback_and_explicit_precedence() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T = string
+            ---@return T
+            local function defaulted()
+            end
+
+            ---@generic T: integer
+            ---@return T
+            local function constrained()
+            end
+
+            ---@generic T
+            ---@param value T
+            ---@return T
+            local function explicit(value)
+            end
+
+            default_result = defaulted()
+            constraint_result = constrained()
+            explicit_result = explicit--[[@<string>]](1)
+
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("default_result"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("constraint_result"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("explicit_result"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_mapper_reducer_reuses_alias_mapped_and_function_shapes() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias MapperBox<T> { value: T, list: T[] }
+            ---@alias Copy<T> { [K in keyof T]: T[K]; }
+
+            ---@generic T
+            ---@param value T
+            ---@return MapperBox<T>
+            local function box(value)
+            end
+
+            ---@generic T
+            ---@param value T
+            ---@return Copy<T>
+            local function copy(value)
+            end
+
+            ---@generic T
+            ---@param value T
+            ---@return fun(next: T): T
+            local function make_id(value)
+            end
+
+            box_result = box("name")
+            box_value = box_result.value
+            box_list_item = box_result.list[1]
+
+            copied = copy({ name = "a", count = 1 })
+            copied_name = copied.name
+            copied_count = copied.count
+
+            made = make_id(1)
+            made_ret = made(2)
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("box_value"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("box_list_item"), ws.ty("string?"));
+        assert_eq!(ws.expr_ty("copied_name"), ws.ty("string"));
+        assert_eq!(ws.expr_ty("copied_count"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("made_ret"), ws.ty("integer"));
+    }
+
+    #[test]
+    fn test_structural_instantiate_fast_path_preserves_plain_shapes() {
+        let db = DbIndex::new();
+        let empty_mapper = TypeMapper::empty();
+
+        let plain_array = LuaType::Array(LuaArrayType::from_base_type(LuaType::Number).into());
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_array,
+                &empty_mapper
+            ),
+            plain_array
+        );
+
+        let plain_tuple = LuaType::Tuple(
+            LuaTupleType::new(
+                vec![LuaType::Number, LuaType::String],
+                LuaTupleStatus::DocResolve,
+            )
+            .into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_tuple,
+                &empty_mapper
+            ),
+            plain_tuple
+        );
+
+        let plain_object = LuaType::Object(
+            LuaObjectType::new_with_fields(
+                HashMap::from([
+                    (LuaMemberKey::Name(SmolStr::new("name")), LuaType::String),
+                    (LuaMemberKey::Name(SmolStr::new("count")), LuaType::Number),
+                ]),
+                Vec::new(),
+            )
+            .into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_object,
+                &empty_mapper
+            ),
+            plain_object
+        );
+
+        let plain_union =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::Number, LuaType::String]).into());
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_union,
+                &empty_mapper
+            ),
+            plain_union
+        );
+
+        let plain_intersection = LuaType::Intersection(
+            LuaIntersectionType::new(vec![LuaType::Number, LuaType::String]).into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_intersection,
+                &empty_mapper
+            ),
+            plain_intersection
+        );
+
+        let plain_table_generic =
+            LuaType::TableGeneric(Arc::new(vec![LuaType::Number, LuaType::String]));
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_table_generic,
+                &empty_mapper
+            ),
+            plain_table_generic
+        );
+
+        let plain_variadic = LuaType::Variadic(VariadicType::Base(LuaType::Number).into());
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_variadic,
+                &empty_mapper
+            ),
+            plain_variadic
+        );
+
+        let plain_doc_function = LuaType::DocFunction(
+            LuaFunctionType::new(
+                AsyncState::None,
+                false,
+                false,
+                vec![("value".to_string(), Some(LuaType::Number))],
+                LuaType::String,
+            )
+            .into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_doc_function,
+                &empty_mapper
+            ),
+            plain_doc_function
+        );
+
+        let plain_type_guard = LuaType::TypeGuard(Arc::new(LuaType::Number));
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &plain_type_guard,
+                &empty_mapper
+            ),
+            plain_type_guard
+        );
+    }
+
+    #[test]
+    fn test_structural_instantiate_fast_path_instantiates_template_children() {
+        let db = DbIndex::new();
+        let mapper = TypeMapper::from_values(
+            vec![GenericTplId::Func(0)],
+            vec![TypeMapperValue::type_value(LuaType::String)],
+        );
+        let tpl = LuaType::TplRef(Arc::new(GenericTpl::new(
+            GenericTplId::Func(0),
+            SmolStr::new("T0").into(),
+            None,
+            None,
+        )));
+
+        let templated_array = LuaType::Array(LuaArrayType::from_base_type(tpl.clone()).into());
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_array,
+                &mapper
+            ),
+            LuaType::Array(LuaArrayType::from_base_type(LuaType::String).into())
+        );
+
+        let templated_tuple = LuaType::Tuple(
+            LuaTupleType::new(
+                vec![LuaType::Number, tpl.clone()],
+                LuaTupleStatus::DocResolve,
+            )
+            .into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_tuple,
+                &mapper
+            ),
+            LuaType::Tuple(
+                LuaTupleType::new(
+                    vec![LuaType::Number, LuaType::String],
+                    LuaTupleStatus::DocResolve,
+                )
+                .into()
+            )
+        );
+
+        let templated_object = LuaType::Object(
+            LuaObjectType::new_with_fields(
+                HashMap::from([
+                    (LuaMemberKey::Name(SmolStr::new("name")), tpl.clone()),
+                    (LuaMemberKey::Name(SmolStr::new("count")), LuaType::Number),
+                ]),
+                Vec::new(),
+            )
+            .into(),
+        );
+        let expected_object = LuaType::Object(
+            LuaObjectType::new_with_fields(
+                HashMap::from([
+                    (LuaMemberKey::Name(SmolStr::new("name")), LuaType::String),
+                    (LuaMemberKey::Name(SmolStr::new("count")), LuaType::Number),
+                ]),
+                Vec::new(),
+            )
+            .into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_object,
+                &mapper
+            ),
+            expected_object
+        );
+
+        let templated_union =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::Number, tpl.clone()]).into());
+        let expected_union =
+            LuaType::Union(LuaUnionType::from_vec(vec![LuaType::Number, LuaType::String]).into());
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_union,
+                &mapper
+            ),
+            expected_union
+        );
+
+        let templated_intersection = LuaType::Intersection(
+            LuaIntersectionType::new(vec![LuaType::Number, tpl.clone()]).into(),
+        );
+        let expected_intersection = LuaType::Intersection(
+            LuaIntersectionType::new(vec![LuaType::Number, LuaType::String]).into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_intersection,
+                &mapper
+            ),
+            expected_intersection
+        );
+
+        let templated_table_generic = LuaType::TableGeneric(Arc::new(vec![tpl.clone()]));
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_table_generic,
+                &mapper
+            ),
+            LuaType::TableGeneric(Arc::new(vec![LuaType::String]))
+        );
+
+        let templated_variadic = LuaType::Variadic(VariadicType::Base(tpl.clone()).into());
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_variadic,
+                &mapper
+            ),
+            LuaType::Variadic(VariadicType::Base(LuaType::String).into())
+        );
+
+        let templated_doc_function = LuaType::DocFunction(
+            LuaFunctionType::new(
+                AsyncState::None,
+                false,
+                false,
+                vec![("value".to_string(), Some(tpl.clone()))],
+                tpl.clone(),
+            )
+            .into(),
+        );
+        let expected_doc_function = LuaType::DocFunction(
+            LuaFunctionType::new(
+                AsyncState::None,
+                false,
+                false,
+                vec![("value".to_string(), Some(LuaType::String))],
+                LuaType::String,
+            )
+            .into(),
+        );
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_doc_function,
+                &mapper
+            ),
+            expected_doc_function
+        );
+
+        let templated_type_guard = LuaType::TypeGuard(Arc::new(tpl.clone()));
+        assert_eq!(
+            super::super::instantiate_type::instantiate_type_generic(
+                &db,
+                &templated_type_guard,
+                &mapper
+            ),
+            LuaType::TypeGuard(Arc::new(LuaType::String))
+        );
     }
 
     #[test]

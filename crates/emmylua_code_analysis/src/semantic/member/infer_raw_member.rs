@@ -4,9 +4,8 @@ use smol_str::SmolStr;
 
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
-    LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
-    check_type_compact,
-    semantic::generic::{TypeSubstitutor, instantiate_type_generic},
+    LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeMapper, TypeOps,
+    check_type_compact, semantic::generic::instantiate_type_generic,
 };
 
 use super::{RawGetMemberTypeResult, get_buildin_type_map_type_id};
@@ -218,17 +217,17 @@ fn infer_generic_raw_member_type(
         .get_type_index()
         .get_type_decl(&base_ref_id)
         .ok_or(InferFailReason::None)?;
-    let substitutor = if type_decl.is_alias() {
-        TypeSubstitutor::from_alias(db, generic_params.clone(), base_ref_id.clone())
+    let mapper = if type_decl.is_alias() {
+        TypeMapper::from_alias(db, generic_params.clone(), &base_ref_id)
     } else {
-        TypeSubstitutor::from_type_array(generic_params.clone())
+        TypeMapper::from_type_array(generic_params.clone())
     };
 
-    if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+    if let Some(origin) = type_decl.get_alias_origin(db, Some(&mapper)) {
         return infer_raw_member_type_guard(db, &origin, member_key, infer_guard);
     }
 
     let base_ref_type = LuaType::Ref(base_ref_id.clone());
     let result = infer_raw_member_type_guard(db, &base_ref_type, member_key, infer_guard)?;
-    Ok(instantiate_type_generic(db, &result, &substitutor))
+    Ok(instantiate_type_generic(db, &result, &mapper))
 }

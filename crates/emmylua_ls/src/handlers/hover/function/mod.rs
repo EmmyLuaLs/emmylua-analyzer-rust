@@ -2,8 +2,8 @@ use std::{collections::HashSet, sync::Arc, vec};
 
 use emmylua_code_analysis::{
     AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType,
-    LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel,
-    TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, infer_call_func_generic,
+    LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel, TypeMapper,
+    VariadicType, humanize_type, infer_call_expr_func, infer_call_func_generic,
     instantiate_type_generic, try_extract_signature_id_from_field,
 };
 
@@ -188,8 +188,8 @@ fn build_function_define_hover(
             _ => None,
         };
 
-        if let Some(substitutor) = &builder.substitutor {
-            if let Some(lua_func) = hover_instantiate_function_type(db, &typ, substitutor) {
+        if let Some(mapper) = &builder.mapper {
+            if let Some(lua_func) = hover_instantiate_function_type(db, &typ, mapper) {
                 typ = LuaType::DocFunction(lua_func);
             }
         }
@@ -696,14 +696,14 @@ fn function_member_is_field(db: &DbIndex, semantic_decls: &[(LuaSemanticDeclId, 
 fn hover_instantiate_function_type(
     db: &DbIndex,
     typ: &LuaType,
-    substitutor: &TypeSubstitutor,
+    mapper: &TypeMapper,
 ) -> Option<Arc<LuaFunctionType>> {
     if !typ.contain_tpl() {
         return None;
     }
     match typ {
         LuaType::DocFunction(_) => {
-            if let LuaType::DocFunction(f) = instantiate_type_generic(db, typ, substitutor) {
+            if let LuaType::DocFunction(f) = instantiate_type_generic(db, typ, mapper) {
                 Some(f)
             } else {
                 None

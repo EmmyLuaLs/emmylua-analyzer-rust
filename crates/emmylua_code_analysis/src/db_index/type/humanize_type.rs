@@ -6,8 +6,7 @@ use itertools::Itertools;
 use crate::{
     AsyncState, DbIndex, LuaAliasCallType, LuaConditionalType, LuaFunctionType, LuaGenericType,
     LuaIntersectionType, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSignatureId,
-    LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, TypeSubstitutor,
-    VariadicType,
+    LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, TypeMapper, VariadicType,
 };
 
 use super::{LuaAliasCallKind, LuaMultiLineUnion};
@@ -717,8 +716,8 @@ impl<'a> TypeHumanizer<'a> {
                 return Ok(());
             }
 
-            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
-            if let Some(origin_type) = type_decl.get_alias_origin(self.db, Some(&substitutor)) {
+            let mapper = TypeMapper::from_type_array(generic.get_params().clone());
+            if let Some(origin_type) = type_decl.get_alias_origin(self.db, Some(&mapper)) {
                 w.write_str(" = ")?;
                 let saved = self.level;
                 self.level = self.child_level();

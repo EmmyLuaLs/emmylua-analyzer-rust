@@ -2,7 +2,7 @@ use emmylua_code_analysis::{
     DbIndex, GenericTplId, InferGuard, InferGuardRef, LuaAliasCallKind, LuaAliasCallType,
     LuaDeclLocation, LuaFunctionType, LuaMember, LuaMemberKey, LuaMemberOwner, LuaMultiLineUnion,
     LuaSemanticDeclId, LuaStringTplType, LuaType, LuaTypeCache, LuaTypeDeclId, LuaUnionType,
-    RenderLevel, SemanticDeclLevel, TypeSubstitutor, build_call_constraint_context, get_real_type,
+    RenderLevel, SemanticDeclLevel, TypeMapper, build_call_constraint_context, get_real_type,
     instantiate_type_generic, normalize_constraint_type,
 };
 use emmylua_parser::{
@@ -340,16 +340,16 @@ fn infer_call_arg_list(
             param_idx += 1;
         }
     }
-    let constraint_substitutor = build_call_constraint_context(&builder.semantic_model, &call_expr)
-        .map(|ctx| ctx.substitutor);
-    let substitutor = constraint_substitutor.as_ref();
+    let constraint_mapper =
+        build_call_constraint_context(&builder.semantic_model, &call_expr).map(|ctx| ctx.mapper);
+    let mapper = constraint_mapper.as_ref();
     let typ = call_expr_func
         .get_params()
         .get(param_idx)?
         .1
         .clone()
         .unwrap_or(LuaType::Unknown);
-    let typ = resolve_param_type(builder, typ, substitutor);
+    let typ = resolve_param_type(builder, typ, mapper);
     let mut types = Vec::new();
     types.push(typ);
     push_function_overloads_param(
@@ -357,7 +357,7 @@ fn infer_call_arg_list(
         &call_expr,
         call_expr_func.get_params(),
         param_idx,
-        substitutor,
+        mapper,
         &mut types,
     );
     Some(types.into_iter().unique().collect()) // 需要去重
@@ -366,22 +366,22 @@ fn infer_call_arg_list(
 fn resolve_param_type(
     builder: &CompletionBuilder,
     mut typ: LuaType,
-    substitutor: Option<&TypeSubstitutor>,
+    mapper: Option<&TypeMapper>,
 ) -> LuaType {
     let db = builder.semantic_model.get_db();
-    if let Some(substitutor) = substitutor {
-        typ = apply_substitutor_to_type(db, typ, substitutor);
+    if let Some(mapper) = mapper {
+        typ = apply_mapper_to_type(db, typ, mapper);
     }
     normalize_constraint_type(db, typ)
 }
 
-fn apply_substitutor_to_type(db: &DbIndex, typ: LuaType, substitutor: &TypeSubstitutor) -> LuaType {
+fn apply_mapper_to_type(db: &DbIndex, typ: LuaType, mapper: &TypeMapper) -> LuaType {
     if let LuaType::Call(alias_call) = &typ {
         if alias_call.get_call_kind() == LuaAliasCallKind::KeyOf {
             let operands = alias_call
                 .get_operands()
                 .iter()
-                .map(|operand| instantiate_type_generic(db, operand, substitutor))
+                .map(|operand| instantiate_type_generic(db, operand, mapper))
                 .collect::<Vec<_>>();
             return LuaType::Call(Arc::new(LuaAliasCallType::new(
                 alias_call.get_call_kind(),
@@ -389,16 +389,16 @@ fn apply_substitutor_to_type(db: &DbIndex, typ: LuaType, substitutor: &TypeSubst
             )));
         }
     }
-    if let Some(alias_call) = rebuild_keyof_alias_call(db, &typ, substitutor) {
+    if let Some(alias_call) = rebuild_keyof_alias_call(db, &typ, mapper) {
         return alias_call;
     }
-    instantiate_type_generic(db, &typ, substitutor)
+    instantiate_type_generic(db, &typ, mapper)
 }
 
 fn rebuild_keyof_alias_call(
     db: &DbIndex,
     original_type: &LuaType,
-    substitutor: &TypeSubstitutor,
+    mapper: &TypeMapper,
 ) -> Option<LuaType> {
     let tpl = match original_type {
         LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl,
@@ -415,7 +415,7 @@ fn rebuild_keyof_alias_call(
     let operands = alias_call
         .get_operands()
         .iter()
-        .map(|operand| instantiate_type_generic(db, operand, substitutor))
+        .map(|operand| instantiate_type_generic(db, operand, mapper))
         .collect::<Vec<_>>();
     Some(LuaType::Call(Arc::new(LuaAliasCallType::new(
         alias_call.get_call_kind(),
@@ -428,7 +428,7 @@ fn push_function_overloads_param(
     call_expr: &LuaCallExpr,
     call_params: &[(String, Option<LuaType>)],
     param_idx: usize,
-    substitutor: Option<&TypeSubstitutor>,
+    mapper: Option<&TypeMapper>,
     types: &mut Vec<LuaType>,
 ) -> Option<()> {
     let member_index = builder.semantic_model.get_db().get_member_index();
@@ -508,7 +508,7 @@ fn push_function_overloads_param(
 
         // 添加匹配的参数类型
         if let Some(param_type) = overload_params.get(param_idx).and_then(|p| p.1.clone()) {
-            let param_type = resolve_param_type(builder, param_type, substitutor);
+            let param_type = resolve_param_type(builder, param_type, mapper);
             types.push(param_type);
         }
     }

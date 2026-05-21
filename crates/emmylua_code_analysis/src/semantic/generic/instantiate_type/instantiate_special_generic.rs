@@ -10,10 +10,8 @@ use crate::{
 use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
-use super::{
-    GenericInstantiateContext, GenericInstantiateFrame, SubstitutorValue, TypeSubstitutor,
-    instantiate_type_generic_inner,
-};
+use super::{GenericInstantiateContext, GenericInstantiateFrame, instantiate_type_generic_inner};
+use crate::semantic::generic::get_mapped_value;
 
 pub(super) fn instantiate_alias_call(
     context: &GenericInstantiateContext,
@@ -85,7 +83,7 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
-            let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
+            let key = resolve_literal_operand(operand_exprs.get(1), context)
                 .unwrap_or_else(|| operands[1].clone());
 
             instantiate_rawget_call(context.db, &operands[0], &key)
@@ -95,7 +93,7 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
-            let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
+            let key = resolve_literal_operand(operand_exprs.get(1), context)
                 .unwrap_or_else(|| operands[1].clone());
 
             instantiate_index_call(context.db, &operands[0], &key)
@@ -158,11 +156,12 @@ fn instantiate_merge_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
 
 fn resolve_literal_operand(
     operand: Option<&LuaType>,
-    substitutor: &TypeSubstitutor,
+    context: &GenericInstantiateContext,
 ) -> Option<LuaType> {
     match operand {
         Some(LuaType::TplRef(tpl_ref)) | Some(LuaType::ConstTplRef(tpl_ref)) => {
-            substitutor.get_raw_type(tpl_ref.get_tpl_id()).cloned()
+            get_mapped_value(tpl_ref.get_tpl_id(), &context.mapper)
+                .and_then(|value| value.raw_type())
         }
         _ => None,
     }
@@ -254,28 +253,10 @@ fn resolve_unpack_operands(
                 return instantiate_type_generic_inner(context, frame, operand);
             }
             let raw = match operand {
-                LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => context
-                    .substitutor
-                    .get(tpl_ref.get_tpl_id())
-                    .and_then(|value| match value {
-                        SubstitutorValue::None => None,
-                        SubstitutorValue::Type { value, .. } => Some(value.raw().clone()),
-                        SubstitutorValue::MultiTypes { values, .. } => Some(LuaType::Variadic(
-                            VariadicType::Multi(
-                                values.iter().map(|value| value.raw().clone()).collect(),
-                            )
-                            .into(),
-                        )),
-                        SubstitutorValue::Params(params) => Some(
-                            params
-                                .first()
-                                .unwrap_or(&(String::new(), None))
-                                .1
-                                .clone()
-                                .unwrap_or(LuaType::Unknown),
-                        ),
-                        SubstitutorValue::MultiBase(base) => Some(base.clone()),
-                    }),
+                LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => {
+                    get_mapped_value(tpl_ref.get_tpl_id(), &context.mapper)
+                        .and_then(|value| value.raw_type())
+                }
                 _ => None,
             };
             raw.unwrap_or_else(|| instantiate_type_generic_inner(context, frame, operand))

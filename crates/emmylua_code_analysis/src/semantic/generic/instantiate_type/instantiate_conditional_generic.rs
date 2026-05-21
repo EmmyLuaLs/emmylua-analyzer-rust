@@ -7,10 +7,9 @@ use crate::{
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
 };
 
+use super::{GenericInstantiateContext, GenericInstantiateFrame};
 use super::{get_default_constructor, instantiate_type_generic_inner};
-use crate::semantic::generic::type_substitutor::{
-    GenericInstantiateContext, GenericInstantiateFrame, TplBinding,
-};
+use crate::semantic::generic::{TypeMapper, get_mapped_value};
 
 #[derive(Debug, Clone, Copy)]
 enum InferVariance {
@@ -149,9 +148,9 @@ fn instantiate_conditional_residual(
     let instantiate_branch = |branch: &LuaType| {
         if branch.any_type(|ty| match ty {
             LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
-                context.substitutor.get(tpl.get_tpl_id()).is_some()
+                get_mapped_value(tpl.get_tpl_id(), &context.mapper).is_some()
             }
-            LuaType::SelfInfer => context.substitutor.get_self_type().is_some(),
+            LuaType::SelfInfer => context.self_type().is_some(),
             _ => false,
         }) {
             instantiate_type_generic_inner(context, frame, branch)
@@ -191,7 +190,7 @@ fn instantiate_distributed_conditional(
         }
         _ => return None,
     };
-    let raw_checked_type = context.substitutor.get_raw_type(tpl_id)?;
+    let raw_checked_type = get_mapped_value(tpl_id, &context.mapper)?.raw_type()?;
 
     if raw_checked_type.is_never() {
         return Some(LuaType::Never);
@@ -208,9 +207,8 @@ fn instantiate_distributed_conditional(
     };
     let mut result = LuaType::Never;
     for member in members {
-        let mut member_substitutor = context.substitutor.clone();
-        member_substitutor.bind(tpl_id, TplBinding::ReplaceConstType(member));
-        let member_context = context.with_substitutor(&member_substitutor);
+        let member_mapper = TypeMapper::prepend(tpl_id, member, Some(context.mapper.clone()));
+        let member_context = context.with_mapper(member_mapper);
         let member_result = instantiate_conditional_once(&member_context, frame, conditional);
         result = TypeOps::Union.apply(context.db, &result, &member_result);
     }
@@ -228,11 +226,11 @@ fn instantiate_true_branch(
         return instantiate_type_generic_inner(context, frame, conditional.get_true_type());
     }
 
-    let mut true_substitutor = context.substitutor.clone();
+    let mut true_mapper = context.mapper.clone();
     for (tpl_id, ty) in infer_assignments {
-        true_substitutor.bind(tpl_id, TplBinding::ConditionalInferType(ty));
+        true_mapper = TypeMapper::prepend(tpl_id, ty, Some(true_mapper));
     }
-    let true_context = context.with_substitutor(&true_substitutor);
+    let true_context = context.with_mapper(true_mapper);
     instantiate_type_generic_inner(&true_context, frame, conditional.get_true_type())
 }
 
@@ -752,8 +750,10 @@ fn instantiate_conditional_operand(
     let mut result = instantiate_type_generic_inner(context, frame, operand);
     if let LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) = operand {
         let tpl_id = tpl_ref.get_tpl_id();
-        if let Some(raw) = context.substitutor.get_raw_type(tpl_id) {
-            result = raw.clone();
+        if let Some(raw) =
+            get_mapped_value(tpl_id, &context.mapper).and_then(|value| value.raw_type())
+        {
+            result = raw;
         } else if checked && result.is_never() {
             result = LuaType::Never;
         }

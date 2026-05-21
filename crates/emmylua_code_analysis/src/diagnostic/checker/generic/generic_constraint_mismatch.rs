@@ -14,7 +14,7 @@ use crate::{
     DiagnosticCode, DocTypeInferContext, GenericTplId, LuaArrayType, LuaGenericType,
     LuaIntersectionType, LuaObjectType, LuaSignatureId, LuaStringTplType, LuaTupleType, LuaType,
     LuaTypeNode, LuaUnionType, RenderLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult,
-    TypeSubstitutor, VariadicType, humanize_type, infer_doc_type, instantiate_type_generic,
+    TypeMapper, VariadicType, humanize_type, infer_doc_type, instantiate_type_generic,
 };
 
 pub struct GenericConstraintMismatchChecker;
@@ -55,7 +55,7 @@ fn check_call_expr(
     let Some(CallConstraintContext {
         params,
         args,
-        substitutor,
+        mapper,
     }) = build_call_constraint_context(semantic_model, &call_expr)
     else {
         return Some(());
@@ -76,7 +76,7 @@ fn check_call_expr(
             param_type,
             &args,
             false,
-            &substitutor,
+            &mapper,
         );
     }
 
@@ -652,22 +652,21 @@ fn check_doc_type_generic_constraints(
         .get_generic_params(&type_id)?;
 
     let instantiate_arg = explicit_arg_instantiation_flags(&generic_params, explicit_args.len());
-    let empty_substitutor = TypeSubstitutor::new();
+    let empty_mapper = TypeMapper::empty();
     let param_types = explicit_args
         .iter()
         .enumerate()
         .map(|(idx, doc_type)| {
             let ty = infer_doc_type(doc_ctx, doc_type);
             if instantiate_arg.get(idx).copied().unwrap_or(false) {
-                instantiate_type_generic(semantic_model.get_db(), &ty, &empty_substitutor)
+                instantiate_type_generic(semantic_model.get_db(), &ty, &empty_mapper)
             } else {
                 ty
             }
         })
         .collect::<Vec<_>>();
 
-    let substitutor =
-        TypeSubstitutor::from_alias(semantic_model.get_db(), param_types.clone(), type_id);
+    let mapper = TypeMapper::from_alias(semantic_model.get_db(), param_types.clone(), &type_id);
 
     for (i, param_type) in param_types.iter().enumerate() {
         let Some(explicit_arg) = explicit_args.get(i) else {
@@ -681,7 +680,7 @@ fn check_doc_type_generic_constraints(
         };
 
         let mut extend_type =
-            instantiate_type_generic(semantic_model.get_db(), &extend_type, &substitutor);
+            instantiate_type_generic(semantic_model.get_db(), &extend_type, &mapper);
         extend_type = normalize_keyof_any_constraint(extend_type);
         let result = semantic_model.type_check_detail(&extend_type, param_type);
         if result.is_err() {
@@ -762,7 +761,7 @@ fn check_param(
     param_type: &LuaType,
     args: &[CallConstraintArg],
     from_union: bool,
-    substitutor: &TypeSubstitutor,
+    mapper: &TypeMapper,
 ) -> Option<()> {
     // 应该先通过泛型体操约束到唯一类型再进行检查
     match param_type {
@@ -770,7 +769,7 @@ fn check_param(
             let extend_type = str_tpl_ref.get_constraint().cloned().map(|ty| {
                 normalize_constraint_type(
                     semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), &ty, substitutor),
+                    instantiate_type_generic(semantic_model.get_db(), &ty, mapper),
                 )
             });
             let arg = args.get(param_index)?;
@@ -793,7 +792,7 @@ fn check_param(
             let extend_type = tpl_ref.get_constraint().cloned().map(|ty| {
                 normalize_constraint_type(
                     semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), &ty, substitutor),
+                    instantiate_type_generic(semantic_model.get_db(), &ty, mapper),
                 )
             });
             let arg_type = args.get(param_index).map(|arg| &arg.check_type);
@@ -812,7 +811,7 @@ fn check_param(
                         union_member_type,
                         args,
                         true,
-                        substitutor,
+                        mapper,
                     );
                 }
             }

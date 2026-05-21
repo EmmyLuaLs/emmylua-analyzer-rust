@@ -10,7 +10,7 @@ use super::{
     GenericInstantiateContext, GenericInstantiateFrame, instantiate_special_generic,
     instantiate_type_generic_inner, key_type_to_member_key,
 };
-use crate::semantic::generic::type_substitutor::TplBinding;
+use crate::semantic::generic::TypeMapper;
 
 pub(super) fn instantiate_mapped_type(
     context: &GenericInstantiateContext,
@@ -41,15 +41,14 @@ pub(super) fn instantiate_mapped_type(
     let mut field_indices: HashMap<LuaMemberKey, usize> = HashMap::with_capacity(key_count);
     let mut fields: Vec<(LuaMemberKey, LuaType)> = Vec::with_capacity(key_count);
     let mut index_access: Vec<(LuaType, LuaType)> = Vec::with_capacity(key_count);
-    let mut local_substitutor = context.substitutor.clone();
-
     for key_ty in key_domain.keys {
         if !visited.insert(key_ty.clone()) {
             continue;
         }
 
-        local_substitutor.bind(mapped.param.0, TplBinding::ReplaceConstType(key_ty.clone()));
-        let local_context = context.with_substitutor(&local_substitutor);
+        let local_mapper =
+            TypeMapper::prepend(mapped.param.0, key_ty.clone(), Some(context.mapper.clone()));
+        let local_context = context.with_mapper(local_mapper);
         let mut value_ty = instantiate_type_generic_inner(&local_context, frame, &mapped.value);
         if mapped.is_optional {
             value_ty = TypeOps::Union.apply(context.db, &value_ty, &LuaType::Nil);

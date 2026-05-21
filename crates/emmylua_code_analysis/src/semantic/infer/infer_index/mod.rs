@@ -18,7 +18,7 @@ use crate::{
     enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type,
     semantic::{
         InferGuard,
-        generic::{TypeSubstitutor, instantiate_type_generic},
+        generic::{TypeMapper, instantiate_type_generic},
         infer::{
             VarRefId,
             infer_index::infer_array::{
@@ -663,7 +663,7 @@ fn infer_generic_members_from_super_generics(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     type_decl_id: &LuaTypeDeclId,
-    substitutor: &TypeSubstitutor,
+    mapper: &TypeMapper,
     lookup: &MemberLookupQuery,
     infer_guard: &InferGuardRef,
 ) -> Option<LuaType> {
@@ -677,7 +677,7 @@ fn infer_generic_members_from_super_generics(
     let type_decl_id = type_decl.get_id();
     if let Some(super_types) = type_index.get_super_types(&type_decl_id) {
         super_types.iter().find_map(|super_type| {
-            let super_type = instantiate_type_generic(db, super_type, substitutor);
+            let super_type = instantiate_type_generic(db, super_type, mapper);
             infer_member_by_lookup(db, cache, &super_type, lookup, &infer_guard.fork()).ok()
         })
     } else {
@@ -700,16 +700,16 @@ fn infer_generic_member(
             return Err(InferFailReason::None);
         };
         let generic_params = generic_type.get_params();
-        let substitutor = if type_decl.is_alias() {
-            TypeSubstitutor::from_alias(db, generic_params.clone(), base_type_decl_id.clone())
+        let mapper = if type_decl.is_alias() {
+            TypeMapper::from_alias(db, generic_params.clone(), base_type_decl_id)
         } else {
-            TypeSubstitutor::from_type_array(generic_params.clone())
+            TypeMapper::from_type_array(generic_params.clone())
         };
 
         if type_decl.is_alias()
             && let Some(origin_type) = type_decl
                 .get_alias_ref()
-                .map(|origin| instantiate_type_generic(db, origin, &substitutor))
+                .map(|origin| instantiate_type_generic(db, origin, &mapper))
         {
             return infer_member_by_lookup(db, cache, &origin_type, lookup, &infer_guard.fork());
         }
@@ -718,7 +718,7 @@ fn infer_generic_member(
             db,
             cache,
             base_type_decl_id,
-            &substitutor,
+            &mapper,
             lookup,
             infer_guard,
         );
@@ -727,7 +727,7 @@ fn infer_generic_member(
         }
 
         let member_type = infer_member_by_lookup(db, cache, &base_type, lookup, infer_guard)?;
-        return Ok(instantiate_type_generic(db, &member_type, &substitutor));
+        return Ok(instantiate_type_generic(db, &member_type, &mapper));
     }
 
     infer_member_by_lookup(db, cache, &base_type, lookup, infer_guard)
@@ -999,15 +999,15 @@ fn infer_member_by_index_generic(
     let type_decl = type_index
         .get_type_decl(&type_decl_id)
         .ok_or(InferFailReason::None)?;
-    let substitutor = if type_decl.is_alias() {
-        TypeSubstitutor::from_alias(db, generic_params.clone(), type_decl_id.clone())
+    let mapper = if type_decl.is_alias() {
+        TypeMapper::from_alias(db, generic_params.clone(), &type_decl_id)
     } else {
-        TypeSubstitutor::from_type_array(generic_params.clone())
+        TypeMapper::from_type_array(generic_params.clone())
     };
     if type_decl.is_alias() {
         if let Some(origin_type) = type_decl
             .get_alias_ref()
-            .map(|origin| instantiate_type_generic(db, origin, &substitutor))
+            .map(|origin| instantiate_type_generic(db, origin, &mapper))
         {
             return infer_member_by_operator_key_type(
                 db,
@@ -1029,9 +1029,9 @@ fn infer_member_by_index_generic(
                 .get_operator(index_operator_id)
                 .ok_or(InferFailReason::None)?;
             let operand = index_operator.get_operand(db);
-            let instianted_operand = instantiate_type_generic(db, &operand, &substitutor);
+            let instianted_operand = instantiate_type_generic(db, &operand, &mapper);
             let return_type =
-                instantiate_type_generic(db, &index_operator.get_result(db)?, &substitutor);
+                instantiate_type_generic(db, &index_operator.get_result(db)?, &mapper);
 
             let result =
                 infer_index_metamethod_by_key_type(db, key_type, &instianted_operand, &return_type);
@@ -1054,7 +1054,7 @@ fn infer_member_by_index_generic(
             let result = infer_member_by_operator_key_type(
                 db,
                 cache,
-                &instantiate_type_generic(db, &super_type, &substitutor),
+                &instantiate_type_generic(db, &super_type, &mapper),
                 key_type,
                 &infer_guard.fork(),
             );
