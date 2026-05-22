@@ -1,8 +1,9 @@
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAstNode, LuaExpr, LuaFuncStat, LuaIndexExpr, LuaIndexKey,
-    LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaTableExpr, LuaTableField, LuaVarExpr,
-    PathTrait,
+    LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaSyntaxId, LuaTableExpr, LuaTableField,
+    LuaVarExpr, PathTrait,
 };
+use hashbrown::HashSet;
 
 use crate::{
     InFiled, InferFailReason, LuaBuiltinAttributeKind, LuaLspOptimizationCode, LuaMemberKey,
@@ -497,12 +498,16 @@ pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> 
         return Some(());
     }
 
+    let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
+    if is_table_field_already_analyzed(analyzer, &field, &member_id) {
+        return Some(());
+    }
+
     if let Some(field_key) = field.get_field_key() {
         if let LuaIndexKey::Expr(_) = &field_key {
             // Decl analysis leaves `[expr] = value` fields unresolved. If the key
             // already resolves here, materialize the member now.
             let db = &mut *analyzer.db;
-            let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
             if db.get_member_index().get_member(&member_id).is_none() {
                 let cache = analyzer
                     .context
@@ -530,7 +535,6 @@ pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> 
         }
     }
 
-    let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
     if analyzer
         .db
         .get_type_index()
@@ -565,6 +569,30 @@ pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> 
     bind_type(analyzer.db, member_id.into(), cache);
 
     Some(())
+}
+
+fn is_table_field_already_analyzed(
+    analyzer: &LuaAnalyzer,
+    field: &LuaTableField,
+    member_id: &LuaMemberId,
+) -> bool {
+    if analyzer
+        .db
+        .get_type_index()
+        .get_type_cache(&(*member_id).into())
+        .is_none()
+    {
+        return false;
+    }
+
+    match field.get_field_key() {
+        Some(LuaIndexKey::Expr(_)) => analyzer
+            .db
+            .get_member_index()
+            .get_member(member_id)
+            .is_some(),
+        _ => true,
+    }
 }
 
 fn special_assign_pattern(
@@ -632,58 +660,81 @@ fn get_delayed_definition_decl_id(
 }
 
 fn pre_analyze_call_arg_table_fields(analyzer: &mut LuaAnalyzer, expr: &LuaExpr) {
-    pre_analyze_nested_table_fields(analyzer, expr.clone());
+    let mut analyzed_fields = HashSet::new();
+    pre_analyze_nested_table_fields(analyzer, expr.clone(), 0, &mut analyzed_fields);
 }
 
-fn pre_analyze_nested_table_fields(analyzer: &mut LuaAnalyzer, expr: LuaExpr) {
+fn pre_analyze_nested_table_fields(
+    analyzer: &mut LuaAnalyzer,
+    expr: LuaExpr,
+    depth: usize,
+    analyzed_fields: &mut HashSet<LuaSyntaxId>,
+) {
+    if depth >= 250 {
+        return;
+    }
+
+    let next_depth = depth + 1;
     match expr {
         LuaExpr::CallExpr(call_expr) => {
             if let Some(prefix_expr) = call_expr.get_prefix_expr() {
-                pre_analyze_nested_table_fields(analyzer, prefix_expr);
+                pre_analyze_nested_table_fields(analyzer, prefix_expr, next_depth, analyzed_fields);
             }
 
             if let Some(args_list) = call_expr.get_args_list() {
                 for arg in args_list.get_args() {
-                    pre_analyze_nested_table_fields(analyzer, arg);
+                    pre_analyze_nested_table_fields(analyzer, arg, next_depth, analyzed_fields);
                 }
             }
         }
         LuaExpr::TableExpr(table_expr) => {
             for field in table_expr.get_fields() {
                 if let Some(LuaIndexKey::Expr(key_expr)) = field.get_field_key() {
-                    pre_analyze_nested_table_fields(analyzer, key_expr);
+                    pre_analyze_nested_table_fields(
+                        analyzer,
+                        key_expr,
+                        next_depth,
+                        analyzed_fields,
+                    );
                 }
 
                 if let Some(value_expr) = field.get_value_expr() {
-                    pre_analyze_nested_table_fields(analyzer, value_expr);
+                    pre_analyze_nested_table_fields(
+                        analyzer,
+                        value_expr,
+                        next_depth,
+                        analyzed_fields,
+                    );
                 }
 
-                analyze_table_field(analyzer, field.clone());
+                if analyzed_fields.insert(field.get_syntax_id()) {
+                    analyze_table_field(analyzer, field.clone());
+                }
             }
         }
         LuaExpr::BinaryExpr(binary_expr) => {
             if let Some((left, right)) = binary_expr.get_exprs() {
-                pre_analyze_nested_table_fields(analyzer, left);
-                pre_analyze_nested_table_fields(analyzer, right);
+                pre_analyze_nested_table_fields(analyzer, left, next_depth, analyzed_fields);
+                pre_analyze_nested_table_fields(analyzer, right, next_depth, analyzed_fields);
             }
         }
         LuaExpr::UnaryExpr(unary_expr) => {
             if let Some(inner_expr) = unary_expr.get_expr() {
-                pre_analyze_nested_table_fields(analyzer, inner_expr);
+                pre_analyze_nested_table_fields(analyzer, inner_expr, next_depth, analyzed_fields);
             }
         }
         LuaExpr::ParenExpr(paren_expr) => {
             if let Some(inner_expr) = paren_expr.get_expr() {
-                pre_analyze_nested_table_fields(analyzer, inner_expr);
+                pre_analyze_nested_table_fields(analyzer, inner_expr, next_depth, analyzed_fields);
             }
         }
         LuaExpr::IndexExpr(index_expr) => {
             if let Some(prefix_expr) = index_expr.get_prefix_expr() {
-                pre_analyze_nested_table_fields(analyzer, prefix_expr);
+                pre_analyze_nested_table_fields(analyzer, prefix_expr, next_depth, analyzed_fields);
             }
 
             if let Some(LuaIndexKey::Expr(key_expr)) = index_expr.get_index_key() {
-                pre_analyze_nested_table_fields(analyzer, key_expr);
+                pre_analyze_nested_table_fields(analyzer, key_expr, next_depth, analyzed_fields);
             }
         }
         LuaExpr::LiteralExpr(_) | LuaExpr::ClosureExpr(_) | LuaExpr::NameExpr(_) => {}

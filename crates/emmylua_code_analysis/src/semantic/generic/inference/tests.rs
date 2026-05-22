@@ -5,11 +5,11 @@ use smol_str::SmolStr;
 
 use super::{
     InferenceCandidate, InferenceContext, InferencePriority, InferenceResult, InferenceVariance,
-    context::inference_result_to_mapper_value,
+    context::inference_result_to_mapper_value, is_literal_candidate, return_type_infer_types,
 };
 use crate::{
-    CacheOptions, DbIndex, FileId, GenericTpl, GenericTplId, LuaInferCache, LuaType, LuaTypeDeclId,
-    TypeOps,
+    CacheOptions, DbIndex, FileId, GenericTpl, GenericTplId, InferGuard, LuaInferCache,
+    LuaMultiLineUnion, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType,
     semantic::generic::{TypeMapperValue, get_mapped_value},
 };
 
@@ -86,5 +86,73 @@ fn variadic_params_mapper_normalizes_def_types() {
     assert_eq!(
         value,
         TypeMapperValue::Params(vec![("value".to_string(), Some(LuaType::Ref(type_id)))])
+    );
+}
+
+#[test]
+fn literal_candidate_detects_multi_line_union_members() {
+    let literal_union = LuaType::MultiLineUnion(
+        LuaMultiLineUnion::new(vec![
+            (LuaType::DocStringConst(SmolStr::new("left").into()), None),
+            (LuaType::Integer, Some("fallback".to_string())),
+        ])
+        .into(),
+    );
+    assert!(is_literal_candidate(&literal_union));
+
+    let non_literal_union = LuaType::MultiLineUnion(
+        LuaMultiLineUnion::new(vec![
+            (LuaType::String, None),
+            (LuaType::Integer, Some("fallback".to_string())),
+        ])
+        .into(),
+    );
+    assert!(!is_literal_candidate(&non_literal_union));
+}
+
+#[test]
+fn return_variadic_const_tpl_ref_preserves_structural_base() {
+    let db = DbIndex::new();
+    let mut cache = LuaInferCache::new(FileId::VIRTUAL, CacheOptions::default());
+    let mut context = InferenceContext::new(&db, &mut cache, None);
+    let tpl_id = GenericTplId::Func(0);
+    let tpl = Arc::new(GenericTpl::new(
+        tpl_id,
+        SmolStr::new("T").into(),
+        None,
+        None,
+    ));
+    context.prepare_inference_slots(HashSet::from([tpl_id]));
+
+    let literal_tuple = LuaType::Tuple(
+        LuaTupleType::new(
+            vec![
+                LuaType::StringConst(SmolStr::new("mode").into()),
+                LuaType::IntegerConst(1),
+            ],
+            LuaTupleStatus::InferResolve,
+        )
+        .into(),
+    );
+    let source = LuaType::Variadic(VariadicType::Base(LuaType::ConstTplRef(tpl.clone())).into());
+    let target = LuaType::Variadic(VariadicType::Base(literal_tuple.clone()).into());
+
+    return_type_infer_types(
+        &mut context,
+        &source,
+        &target,
+        &LuaType::Unknown,
+        InferenceVariance::Covariant,
+        InferencePriority::Normal,
+        None,
+        &InferGuard::new(),
+    )
+    .expect("return variadic inference");
+
+    let return_type = LuaType::ConstTplRef(tpl.clone());
+    let mapper = context.fixing_mapper(std::iter::once(&tpl), &return_type);
+    assert_eq!(
+        get_mapped_value(tpl_id, &mapper).and_then(|value| value.raw_type()),
+        Some(literal_tuple)
     );
 }

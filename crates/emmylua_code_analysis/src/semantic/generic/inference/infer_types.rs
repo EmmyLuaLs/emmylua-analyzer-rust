@@ -6,10 +6,10 @@ use rowan::NodeOrToken;
 use smol_str::SmolStr;
 
 use crate::{
-    InferFailReason, InferGuard, InferGuardRef, LuaFunctionType, LuaGenericType, LuaMemberInfo,
-    LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaTupleType, LuaType, LuaTypeNode,
-    LuaUnionType, SemanticDeclLevel, VariadicType, check_type_compact, infer_node_semantic_decl,
-    instantiate_type_generic,
+    GenericTplId, InferFailReason, InferGuard, InferGuardRef, LuaFunctionType, LuaGenericType,
+    LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaTupleType, LuaType,
+    LuaTypeNode, LuaUnionType, SemanticDeclLevel, VariadicType, check_type_compact,
+    infer_node_semantic_decl, instantiate_type_generic,
     semantic::{
         generic::TypeMapper,
         member::{find_index_operations, get_member_map},
@@ -861,10 +861,11 @@ fn param_list_infer_types(
             LuaType::Variadic(inner) => {
                 let i = i + target_offset;
                 if i >= targets.len() {
-                    if let VariadicType::Base(LuaType::TplRef(tpl_ref)) = inner.deref() {
-                        context.insert_type(
-                            tpl_ref.get_tpl_id(),
-                            InferenceCandidate::ordinary(LuaType::Nil),
+                    if let VariadicType::Base(base) = inner.deref() {
+                        insert_tpl_ref_candidate(
+                            context,
+                            base,
+                            LuaType::Nil,
                             variance,
                             false,
                             priority,
@@ -873,8 +874,8 @@ fn param_list_infer_types(
                     break;
                 }
 
-                if let VariadicType::Base(LuaType::TplRef(tpl_ref)) = inner.deref()
-                    && let Some(len) = context.inferred_variadic_len(tpl_ref.get_tpl_id())
+                if let Some((tpl_id, _)) = variadic_base_tpl_ref(inner.deref())
+                    && let Some(len) = context.inferred_variadic_len(tpl_id)
                 {
                     target_offset += len - 1;
                     continue;
@@ -933,26 +934,24 @@ pub(in crate::semantic::generic) fn return_type_infer_types(
             match target_variadic.deref() {
                 VariadicType::Base(target_base) => match source_variadic.deref() {
                     VariadicType::Base(source_base) => {
-                        if let LuaType::TplRef(tpl_ref) = source_base {
-                            context.insert_type(
-                                tpl_ref.get_tpl_id(),
-                                InferenceCandidate::ordinary(target_base.clone()),
-                                variance,
-                                false,
-                                priority,
-                            );
-                        }
+                        insert_tpl_ref_candidate(
+                            context,
+                            source_base,
+                            target_base.clone(),
+                            variance,
+                            false,
+                            priority,
+                        );
                     }
                     VariadicType::Multi(source_multi) => {
                         for ret_type in source_multi {
                             match ret_type {
                                 LuaType::Variadic(inner) => {
-                                    if let VariadicType::Base(base) = inner.deref()
-                                        && let LuaType::TplRef(tpl_ref) = base
-                                    {
-                                        context.insert_type(
-                                            tpl_ref.get_tpl_id(),
-                                            InferenceCandidate::ordinary(target_base.clone()),
+                                    if let VariadicType::Base(base) = inner.deref() {
+                                        insert_tpl_ref_candidate(
+                                            context,
+                                            base,
+                                            target_base.clone(),
                                             variance,
                                             false,
                                             priority,
@@ -960,16 +959,16 @@ pub(in crate::semantic::generic) fn return_type_infer_types(
                                     }
                                     break;
                                 }
-                                LuaType::TplRef(tpl_ref) => {
-                                    context.insert_type(
-                                        tpl_ref.get_tpl_id(),
-                                        InferenceCandidate::ordinary(target_base.clone()),
+                                _ => {
+                                    insert_tpl_ref_candidate(
+                                        context,
+                                        ret_type,
+                                        target_base.clone(),
                                         variance,
                                         false,
                                         priority,
                                     );
                                 }
-                                _ => {}
                             }
                         }
                     }
@@ -1021,14 +1020,56 @@ pub(in crate::semantic::generic) fn return_type_infer_types(
     Ok(())
 }
 
+fn tpl_ref_info(ty: &LuaType) -> Option<(GenericTplId, bool)> {
+    match ty {
+        LuaType::TplRef(tpl_ref) => Some((tpl_ref.get_tpl_id(), false)),
+        LuaType::ConstTplRef(tpl_ref) => Some((tpl_ref.get_tpl_id(), true)),
+        _ => None,
+    }
+}
+
+fn variadic_base_tpl_ref(variadic: &VariadicType) -> Option<(GenericTplId, bool)> {
+    let VariadicType::Base(base) = variadic else {
+        return None;
+    };
+    tpl_ref_info(base)
+}
+
+fn tpl_ref_candidate(is_const_tpl: bool, ty: LuaType) -> InferenceCandidate {
+    if is_const_tpl {
+        InferenceCandidate::const_preserving(ty)
+    } else {
+        InferenceCandidate::ordinary(ty)
+    }
+}
+
+fn insert_tpl_ref_candidate(
+    context: &mut InferenceContext,
+    source: &LuaType,
+    target: LuaType,
+    variance: InferenceVariance,
+    top_level: bool,
+    priority: InferencePriority,
+) {
+    if let Some((tpl_id, is_const_tpl)) = tpl_ref_info(source) {
+        context.insert_type(
+            tpl_id,
+            tpl_ref_candidate(is_const_tpl, target),
+            variance,
+            top_level,
+            priority,
+        );
+    }
+}
+
 fn function_varargs_infer_types(
     context: &mut InferenceContext,
     variadic: &VariadicType,
     target_rest_params: &[(String, Option<LuaType>)],
 ) -> Result<(), InferFailReason> {
-    if let VariadicType::Base(LuaType::TplRef(tpl_ref)) = variadic {
+    if let Some((tpl_id, _)) = variadic_base_tpl_ref(variadic) {
         context.add_variadic_params(
-            tpl_ref.get_tpl_id(),
+            tpl_id,
             target_rest_params
                 .iter()
                 .map(|(name, ty)| (name.clone(), ty.clone()))
@@ -1149,19 +1190,19 @@ pub(in crate::semantic::generic) fn variadic_infer_types(
                         }
                         break;
                     }
-                    LuaType::TplRef(tpl_ref) => {
+                    _ => {
                         let Some(target) = target_rest_types.get(i) else {
                             break;
                         };
-                        context.insert_type(
-                            tpl_ref.get_tpl_id(),
-                            InferenceCandidate::ordinary(target.clone()),
+                        insert_tpl_ref_candidate(
+                            context,
+                            ret_type,
+                            target.clone(),
                             variance,
                             target == original_target,
                             priority,
                         );
                     }
-                    _ => {}
                 }
             }
         }
@@ -1311,9 +1352,9 @@ fn tuple_infer_types(
                 return Err(InferFailReason::None);
             };
             if let LuaType::Variadic(inner) = last_type
-                && let VariadicType::Base(LuaType::TplRef(tpl_ref)) = inner.deref()
+                && let Some((tpl_id, _)) = variadic_base_tpl_ref(inner.deref())
             {
-                context.add_variadic_base(tpl_ref.get_tpl_id(), target_array.get_base().clone());
+                context.add_variadic_base(tpl_id, target_array.get_base().clone());
             }
         }
         _ => {}
@@ -1502,7 +1543,8 @@ fn try_handle_pairs_metamethod(
     }
     .ok_or(InferFailReason::None)?;
 
-    let final_return_type = match meta_return {
+    let iterator_func = meta_return.get_result_slot_type(0).unwrap_or(meta_return);
+    let final_return_type = match iterator_func {
         LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
         LuaType::Signature(signature_id) => context
             .db

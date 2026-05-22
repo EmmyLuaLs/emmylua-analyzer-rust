@@ -396,6 +396,34 @@ mod test {
     }
 
     #[test]
+    fn test_call_arg_nested_table_expr_key_doc_const() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@generic T
+        ---@param value T
+        ---@return T
+        local function id(value)
+            return value
+        end
+
+        ---@type 'field'
+        local key = "field"
+        local t = id({ nested = { [key] = 1 } }).nested
+        value = t[key]
+        "#,
+        );
+
+        let value_ty = ws.expr_ty("value");
+        assert!(
+            matches!(value_ty, LuaType::Integer | LuaType::IntegerConst(_)),
+            "expected integer type, got {:?}",
+            value_ty
+        );
+    }
+
+    #[test]
     fn test_union_member_access_preserves_never() {
         let mut ws = VirtualWorkspace::new();
 

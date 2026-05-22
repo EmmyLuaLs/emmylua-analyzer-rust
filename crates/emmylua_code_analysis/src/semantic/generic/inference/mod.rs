@@ -122,6 +122,10 @@ pub(in crate::semantic::generic) fn is_literal_candidate(ty: &LuaType) -> bool {
         | LuaType::DocBooleanConst(_)
         | LuaType::TableConst(_) => true,
         LuaType::Union(union) => union.into_vec().iter().any(is_literal_candidate),
+        LuaType::MultiLineUnion(union) => union
+            .get_unions()
+            .iter()
+            .any(|(ty, _)| is_literal_candidate(ty)),
         LuaType::Tuple(tuple) => tuple.get_types().iter().any(is_literal_candidate),
         LuaType::Variadic(variadic) => match variadic.deref() {
             VariadicType::Base(base) => is_literal_candidate(base),

@@ -74,10 +74,7 @@ pub(super) fn instantiate_alias_call(
 
             instantiate_select_call(&operands[0], &operands[1])
         }
-        LuaAliasCallKind::Unpack => {
-            let operands = resolve_unpack_operands(context, frame, operand_exprs);
-            instantiate_unpack_call(context.db, &operands)
-        }
+        LuaAliasCallKind::Unpack => instantiate_unpack_call(context.db, &operands),
         LuaAliasCallKind::RawGet => {
             if operands.len() != 2 {
                 return LuaType::Unknown;
@@ -238,30 +235,6 @@ fn instantiate_select_call(source: &LuaType, index: &LuaType) -> LuaType {
         }
         NumOrLen::LenUnknown => LuaType::Integer,
     }
-}
-
-fn resolve_unpack_operands(
-    context: &GenericInstantiateContext,
-    frame: GenericInstantiateFrame,
-    operand_exprs: &[LuaType],
-) -> Vec<LuaType> {
-    operand_exprs
-        .iter()
-        .enumerate()
-        .map(|(index, operand)| {
-            if index != 0 {
-                return instantiate_type_generic_inner(context, frame, operand);
-            }
-            let raw = match operand {
-                LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => {
-                    get_mapped_value(tpl_ref.get_tpl_id(), &context.mapper)
-                        .and_then(|value| value.raw_type())
-                }
-                _ => None,
-            };
-            raw.unwrap_or_else(|| instantiate_type_generic_inner(context, frame, operand))
-        })
-        .collect()
 }
 
 fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
