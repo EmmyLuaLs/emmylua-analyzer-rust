@@ -12,7 +12,7 @@
     "codeAction": {
       "$ref": "#/$defs/EmmyrcCodeAction",
       "default": {
-        "insertSpace": false
+        "insertSpace": null
       }
     },
     "codeLens": {
@@ -491,9 +491,12 @@
       "type": "object",
       "properties": {
         "insertSpace": {
-          "description": "Add space after `---` comments when inserting `@diagnostic disable-next-line`.",
-          "type": "boolean",
-          "default": false,
+          "description": "Add space after `---` comments when inserting `@diagnostic disable-next-line`.\n\nWhen omitted, this follows the formatter's resolved\n`emmy_doc.space_between_tag_columns` setting.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null,
           "x-vscode-setting": true
         }
       }

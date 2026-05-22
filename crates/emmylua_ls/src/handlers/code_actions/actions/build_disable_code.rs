@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use emmylua_code_analysis::{DiagnosticCode, Emmyrc, LuaDocument, SemanticModel};
+use emmylua_formatter::resolve_config_for_path;
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaComment, LuaCommentOwner, LuaDocTag, LuaDocTagDiagnostic, LuaExpr,
     LuaKind, LuaStat, LuaSyntaxNode, LuaTokenKind,
@@ -176,7 +177,7 @@ fn get_disable_next_line_text_edit(
     };
 
     let line = document.get_line(offset)?;
-    let space = if emmyrc.code_action.insert_space {
+    let space = if code_action_insert_space(emmyrc, document) {
         " "
     } else {
         ""
@@ -210,7 +211,7 @@ pub fn build_disable_file_changes(
     let first_child = first_block.children::<LuaAst>().next()?;
     let document = semantic_model.get_document();
     let emmyrc = semantic_model.get_emmyrc();
-    let space = if emmyrc.code_action.insert_space {
+    let space = if code_action_insert_space(emmyrc, &document) {
         " "
     } else {
         ""
@@ -276,6 +277,14 @@ pub fn build_disable_file_changes(
     changes.insert(uri, vec![text_edit]);
 
     Some(changes)
+}
+
+fn code_action_insert_space(emmyrc: &Emmyrc, document: &LuaDocument) -> bool {
+    emmyrc.code_action.insert_space.unwrap_or_else(|| {
+        resolve_config_for_path(Some(document.get_file_path().as_path()), None)
+            .map(|resolved| resolved.config.emmy_doc.space_between_tag_columns)
+            .unwrap_or(false)
+    })
 }
 
 fn find_diagnostic_disable_tag(
