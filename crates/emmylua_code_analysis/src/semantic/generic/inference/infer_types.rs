@@ -100,7 +100,7 @@ fn infer_types_inner(
             }
         }
         LuaType::StrTplRef(str_tpl) => {
-            if let LuaType::StringConst(s) = target {
+            if let LuaType::StringConst(s) | LuaType::DocStringConst(s) = target {
                 let type_name = SmolStr::new(format!(
                     "{}{}{}",
                     str_tpl.get_prefix(),
@@ -1554,13 +1554,17 @@ fn try_handle_pairs_metamethod(
         _ => None,
     };
 
-    if let Some(LuaType::Variadic(variadic)) = &final_return_type {
-        let key_type = variadic.get_type(0).ok_or(InferFailReason::None)?;
-        let value_type = variadic.get_type(1).ok_or(InferFailReason::None)?;
+    if let Some(final_return_type) = &final_return_type {
+        let key_type = final_return_type
+            .get_result_slot_type(0)
+            .ok_or(InferFailReason::None)?;
+        let value_type = final_return_type
+            .get_result_slot_type(1)
+            .unwrap_or(LuaType::Nil);
         infer_types_inner(
             context,
             &table_params[0],
-            key_type,
+            &key_type,
             original_target,
             variance,
             priority,
@@ -1570,7 +1574,7 @@ fn try_handle_pairs_metamethod(
         infer_types_inner(
             context,
             &table_params[1],
-            value_type,
+            &value_type,
             original_target,
             variance,
             priority,

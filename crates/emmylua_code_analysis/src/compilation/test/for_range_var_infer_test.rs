@@ -273,6 +273,33 @@ mod test {
     }
 
     #[test]
+    fn test_pairs_metamethod_extracts_iterator_from_single_return() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+            ---@class PairSource
+            local PairSource
+
+            ---@return fun(): string
+            ---@return table
+            ---@return nil
+            function PairSource:__pairs()
+            end
+
+            ---@type PairSource
+            local source
+
+            for k, v in pairs(source) do
+                key_out = k
+            end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("key_out"), LuaType::String);
+    }
+
+    #[test]
     fn test_issue_291() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

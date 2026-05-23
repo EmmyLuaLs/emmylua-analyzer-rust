@@ -21,6 +21,15 @@ mod tests {
     }
 
     #[test]
+    fn test_single_return_uses_result_slot_extraction() {
+        assert_eq!(
+            LuaType::String.get_result_slot_type(0),
+            Some(LuaType::String)
+        );
+        assert_eq!(LuaType::String.get_result_slot_type(1), None);
+    }
+
+    #[test]
     fn test_deep_contain_tpl_uses_iterative_walk() {
         let mut ty = LuaType::TplRef(
             GenericTpl::new(

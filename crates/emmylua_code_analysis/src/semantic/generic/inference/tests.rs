@@ -3,13 +3,15 @@ use std::sync::Arc;
 use hashbrown::HashSet;
 use smol_str::SmolStr;
 
+use super::infer_types::infer_types;
 use super::{
     InferenceCandidate, InferenceContext, InferencePriority, InferenceResult, InferenceVariance,
     context::inference_result_to_mapper_value, is_literal_candidate, return_type_infer_types,
 };
 use crate::{
     CacheOptions, DbIndex, FileId, GenericTpl, GenericTplId, InferGuard, LuaInferCache,
-    LuaMultiLineUnion, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType,
+    LuaMultiLineUnion, LuaStringTplType, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId,
+    TypeOps, VariadicType,
     semantic::generic::{TypeMapperValue, get_mapped_value},
 };
 
@@ -108,6 +110,42 @@ fn literal_candidate_detects_multi_line_union_members() {
         .into(),
     );
     assert!(!is_literal_candidate(&non_literal_union));
+}
+
+#[test]
+fn str_tpl_inference_accepts_doc_string_const() {
+    let db = DbIndex::new();
+    let mut cache = LuaInferCache::new(FileId::VIRTUAL, CacheOptions::default());
+    let mut context = InferenceContext::new(&db, &mut cache, None);
+    let tpl_id = GenericTplId::Func(0);
+    let tpl = Arc::new(GenericTpl::new(
+        tpl_id,
+        SmolStr::new("T").into(),
+        None,
+        None,
+    ));
+    context.prepare_inference_slots(HashSet::from([tpl_id]));
+
+    let source =
+        LuaType::StrTplRef(LuaStringTplType::new("aaa.", "T", tpl_id, ".bbb", None).into());
+    let target = LuaType::DocStringConst(SmolStr::new("xxx").into());
+
+    infer_types(
+        &mut context,
+        &source,
+        &target,
+        &target,
+        InferenceVariance::Covariant,
+        InferencePriority::Normal,
+    )
+    .expect("string template inference");
+
+    let return_type = LuaType::TplRef(tpl.clone());
+    let mapper = context.fixing_mapper(std::iter::once(&tpl), &return_type);
+    assert_eq!(
+        get_mapped_value(tpl_id, &mapper).and_then(|value| value.raw_type()),
+        Some(LuaType::Ref(LuaTypeDeclId::global("aaa.xxx.bbb")))
+    );
 }
 
 #[test]
