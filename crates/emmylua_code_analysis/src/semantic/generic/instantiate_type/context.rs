@@ -8,7 +8,7 @@ const MAX_INSTANTIATION_DEPTH: usize = 128;
 const MAX_ALIAS_STACK: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::semantic::generic) enum UninferredTplPolicy {
+pub enum TplResolvePolicy {
     /// 未推断模板按 `default -> constraint -> unknown` 推断成实际类型.
     Fallback,
     /// 没有默认值的未推断模板仍保留为 `TplRef`, 让后续调用点继续参与参数推导.
@@ -25,7 +25,7 @@ pub(in crate::semantic::generic) struct GenericInstantiateContext<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(in crate::semantic::generic) struct GenericInstantiateFrame {
-    policy: UninferredTplPolicy,
+    policy: TplResolvePolicy,
     depth: usize,
 }
 
@@ -45,7 +45,7 @@ impl<'a> GenericInstantiateContext<'a> {
 
     pub(super) fn root_frame(&self) -> GenericInstantiateFrame {
         GenericInstantiateFrame {
-            policy: UninferredTplPolicy::Fallback,
+            policy: TplResolvePolicy::Fallback,
             depth: 0,
         }
     }
@@ -94,12 +94,12 @@ impl<'a> GenericInstantiateContext<'a> {
 }
 
 impl GenericInstantiateFrame {
-    pub(super) fn with_policy(self, policy: UninferredTplPolicy) -> Self {
+    pub(super) fn with_policy(self, policy: TplResolvePolicy) -> Self {
         Self { policy, ..self }
     }
 
     pub(super) fn should_preserve_tpl_ref(&self) -> bool {
-        self.policy == UninferredTplPolicy::PreserveTplRef
+        self.policy == TplResolvePolicy::PreserveTplRef
     }
 
     pub(super) fn enter(self) -> Option<Self> {

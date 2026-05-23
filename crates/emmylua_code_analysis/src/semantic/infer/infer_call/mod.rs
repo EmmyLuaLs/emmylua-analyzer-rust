@@ -22,8 +22,8 @@ use crate::{
     },
 };
 use crate::{
-    build_self_type, infer_call_func_generic, infer_self_type, instantiate_type_generic_with_self,
-    semantic::infer_expr,
+    TplResolvePolicy, build_self_type, infer_call_func_generic, infer_self_type,
+    instantiate_type_generic_full, semantic::infer_expr,
 };
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
@@ -367,9 +367,13 @@ fn infer_type_doc_function(
                     let mapper = TypeMapper::empty();
                     let self_type = build_self_type(db, call_expr_type);
                     let func_ty = LuaType::DocFunction(f.clone());
-                    if let LuaType::DocFunction(f) =
-                        instantiate_type_generic_with_self(db, &func_ty, &mapper, Some(&self_type))
-                    {
+                    if let LuaType::DocFunction(f) = instantiate_type_generic_full(
+                        db,
+                        &func_ty,
+                        &mapper,
+                        Some(&self_type),
+                        TplResolvePolicy::Fallback,
+                    ) {
                         overloads.push(f);
                     }
                 } else {

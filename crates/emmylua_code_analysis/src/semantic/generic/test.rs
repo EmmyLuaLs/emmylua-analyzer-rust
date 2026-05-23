@@ -3,7 +3,10 @@ mod test {
     use hashbrown::HashMap;
     use std::sync::Arc;
 
-    use super::super::instantiate_type::{regularize_tpl_candidate_type, widen_tpl_candidate_type};
+    use super::super::instantiate_type::{
+        TplResolvePolicy, instantiate_type_generic_full, regularize_tpl_candidate_type,
+        widen_tpl_candidate_type,
+    };
     use crate::{
         AsyncState, DbIndex, DiagnosticCode, GenericTpl, GenericTplId, LuaArrayType,
         LuaFunctionType, LuaIntersectionType, LuaMemberKey, LuaObjectType, LuaTupleStatus,
@@ -11,6 +14,15 @@ mod test {
         VirtualWorkspace,
     };
     use smol_str::SmolStr;
+
+    fn func_tpl(idx: u32, name: &str) -> Arc<GenericTpl> {
+        Arc::new(GenericTpl::new(
+            GenericTplId::Func(idx),
+            SmolStr::new(name).into(),
+            None,
+            None,
+        ))
+    }
 
     #[test]
     fn test_variadic_func() {
@@ -673,6 +685,89 @@ result = {
             ),
             LuaType::TypeGuard(Arc::new(LuaType::String))
         );
+    }
+
+    #[test]
+    fn test_preserve_uninferred_keeps_unmapped_tpl_ref_and_const_tpl_ref() {
+        let db = DbIndex::new();
+        let mapper = TypeMapper::from_uninferred(vec![GenericTplId::Func(0)]);
+        let tpl = func_tpl(0, "T0");
+
+        let tpl_ref = LuaType::TplRef(tpl.clone());
+        assert_eq!(
+            instantiate_type_generic_full(
+                &db,
+                &tpl_ref,
+                &mapper,
+                None,
+                TplResolvePolicy::PreserveTplRef,
+            ),
+            tpl_ref
+        );
+
+        let const_tpl_ref = LuaType::ConstTplRef(tpl.clone());
+        assert_eq!(
+            instantiate_type_generic_full(
+                &db,
+                &const_tpl_ref,
+                &mapper,
+                None,
+                TplResolvePolicy::PreserveTplRef,
+            ),
+            const_tpl_ref
+        );
+    }
+
+    #[test]
+    fn test_preserve_uninferred_applies_concrete_values_while_retaining_residual_templates() {
+        let db = DbIndex::new();
+        let concrete = TypeMapper::from_values(
+            vec![GenericTplId::Func(0)],
+            vec![TypeMapperValue::type_value(LuaType::String)],
+        );
+        let unresolved =
+            TypeMapper::from_uninferred(vec![GenericTplId::Func(1), GenericTplId::Func(2)]);
+        let mapper = TypeMapper::merge(Some(concrete), unresolved);
+        let t0 = func_tpl(0, "T0");
+        let t1 = func_tpl(1, "T1");
+        let t2 = func_tpl(2, "T2");
+
+        // 这段输入可以理解成 Lua 伪代码：
+        //   ---@type [T0, T1, const T2]
+        //   local value
+        // 套用 mapper 后，T0 会被具体化为 string，
+        // 但 T1 / T2 仍然要保留为残余模板，不能被过早折叠掉。
+        let ty = LuaType::Tuple(
+            LuaTupleType::new(
+                vec![
+                    LuaType::TplRef(t0),
+                    LuaType::TplRef(t1.clone()),
+                    LuaType::ConstTplRef(t2.clone()),
+                ],
+                LuaTupleStatus::DocResolve,
+            )
+            .into(),
+        );
+        let preserved = instantiate_type_generic_full(
+            &db,
+            &ty,
+            &mapper,
+            None,
+            TplResolvePolicy::PreserveTplRef,
+        );
+        let expected = LuaType::Tuple(
+            LuaTupleType::new(
+                vec![
+                    LuaType::String,
+                    LuaType::TplRef(t1),
+                    LuaType::ConstTplRef(t2),
+                ],
+                LuaTupleStatus::DocResolve,
+            )
+            .into(),
+        );
+
+        assert_eq!(preserved, expected);
     }
 
     #[test]

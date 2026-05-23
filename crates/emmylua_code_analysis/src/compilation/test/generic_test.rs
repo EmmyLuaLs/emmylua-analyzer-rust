@@ -139,7 +139,7 @@ mod test {
             "#,
         );
         let a_ty = ws.expr_ty("a");
-        assert_eq!(a_ty, ws.ty("unknown"));
+        assert_eq!(a_ty, LuaType::Unknown);
     }
 
     // Currently fails:
@@ -1053,6 +1053,83 @@ mod test {
 
         let value_ty = ws.expr_ty("Base_A");
         assert_eq!(ws.humanize_type(value_ty), "Base<string>");
+    }
+
+    #[test]
+    fn test_doc_type_binding_instantiates_alias_origin() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Box<T> { value: T }
+            ---@alias Forward<T> Box<T>
+
+            ---@type Forward<string>
+            local value
+
+            result = value
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(result_ty, ws.ty("{ value: string }"));
+    }
+
+    #[test]
+    fn test_doc_type_binding_preserves_residual_aliases() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Extract<T, U> T extends U and T or never
+            ---@alias KeepA<T> Extract<T, "a">
+            ---@alias ForwardConditional<T> KeepA<T>
+
+            ---@alias Copy<T> { [K in keyof T]: T[K] }
+            ---@alias ForwardMapped<T> Copy<T>
+
+            ---@generic T
+            local function f()
+                ---@type ForwardConditional<T>
+                local cond
+
+                ---@type ForwardMapped<T>
+                local mapped
+
+                cond_result = cond
+                mapped_result = mapped
+            end
+            "#,
+        );
+
+        let cond_ty = ws.expr_ty("cond_result");
+        let cond_desc = ws.humanize_type(cond_ty);
+        assert_eq!(cond_desc, r#"Extract<T,"a">"#);
+
+        let mapped_ty = ws.expr_ty("mapped_result");
+        assert_eq!(ws.humanize_type(mapped_ty), "Copy<T>");
+    }
+
+    #[test]
+    fn test_detailed_humanize_shows_mapped_alias_body() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Copy<T> { [K in keyof T]: T[K] }
+            ---@alias ForwardMapped<T> Copy<T>
+
+            ---@generic T
+            local function f()
+                ---@type ForwardMapped<T>
+                local mapped
+
+                mapped_result = mapped
+            end
+            "#,
+        );
+
+        let mapped_ty = ws.expr_ty("mapped_result");
+        assert_eq!(ws.humanize_type(mapped_ty.clone()), "Copy<T>");
+        let mapped_desc = ws.humanize_type_detailed(mapped_ty);
+        assert!(mapped_desc.starts_with("Copy<T> = { [K in keyof T]: "));
     }
 
     #[test]

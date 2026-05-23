@@ -7,8 +7,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, FileId, LuaMemberKey, LuaMemberOwner, TypeMapper, db_index::WorkspaceId,
-    instantiate_type_generic,
+    DbIndex, FileId, LuaMemberKey, LuaMemberOwner, TplResolvePolicy, TypeMapper,
+    db_index::WorkspaceId, instantiate_type_generic, instantiate_type_generic_full,
 };
 
 use super::{LuaType, LuaUnionType};
@@ -150,6 +150,41 @@ impl LuaTypeDecl {
                 }
 
                 Some(instantiate_type_generic(db, origin, mapper))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn get_alias_origin_preserve_tpl(
+        &self,
+        db: &DbIndex,
+        mapper: Option<&TypeMapper>,
+    ) -> Option<LuaType> {
+        match &self.extra {
+            LuaTypeExtra::Alias {
+                origin: Some(origin),
+            } => {
+                let mapper = match mapper {
+                    Some(mapper) => mapper,
+                    None => return Some(origin.clone()),
+                };
+
+                let type_decl_id = self.get_id();
+                if db
+                    .get_type_index()
+                    .get_generic_params(&type_decl_id)
+                    .is_none()
+                {
+                    return Some(origin.clone());
+                }
+
+                Some(instantiate_type_generic_full(
+                    db,
+                    origin,
+                    mapper,
+                    None,
+                    TplResolvePolicy::PreserveTplRef,
+                ))
             }
             _ => None,
         }

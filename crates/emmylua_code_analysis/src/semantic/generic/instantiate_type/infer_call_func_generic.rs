@@ -29,7 +29,8 @@ use crate::{
 };
 
 use super::{
-    TypeMapper, TypeMapperValue, instantiate_type_generic, instantiate_type_generic_with_self,
+    TplResolvePolicy, TypeMapper, TypeMapperValue, instantiate_type_generic,
+    instantiate_type_generic_full,
 };
 
 pub fn infer_call_func_generic(
@@ -81,9 +82,13 @@ pub fn infer_call_func_generic(
         .then(|| infer_self_type(db, cache, &call_expr))
         .flatten();
     let func_ty = LuaType::DocFunction(func.clone().into());
-    if let LuaType::DocFunction(f) =
-        instantiate_type_generic_with_self(db, &func_ty, &mapper, self_type.as_ref())
-    {
+    if let LuaType::DocFunction(f) = instantiate_type_generic_full(
+        db,
+        &func_ty,
+        &mapper,
+        self_type.as_ref(),
+        TplResolvePolicy::Fallback,
+    ) {
         Ok(f.deref().clone())
     } else {
         Ok(func.clone())

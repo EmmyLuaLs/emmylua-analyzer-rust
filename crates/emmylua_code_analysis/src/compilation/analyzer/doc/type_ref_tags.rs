@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaDocDescriptionOwner, LuaDocTagAs, LuaDocTagCast,
     LuaDocTagModule, LuaDocTagOther, LuaDocTagOverload, LuaDocTagParam, LuaDocTagReturn,
@@ -12,13 +14,14 @@ use super::{
     tags::{find_owner_closure, get_owner_id_or_report},
 };
 use crate::{
-    InFiled, JsonSchemaFile, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
-    SignatureReturnStatus, TypeOps,
+    DbIndex, InFiled, JsonSchemaFile, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeDeclId,
+    LuaTypeOwner, OperatorFunction, SignatureReturnStatus, TplResolvePolicy, TypeMapper, TypeOps,
     compilation::analyzer::common::bind_type,
     db_index::{
-        LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaMemberId,
-        LuaOperator, LuaSemanticDeclId, LuaSignatureId, LuaType,
+        LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaGenericType,
+        LuaMemberId, LuaOperator, LuaSemanticDeclId, LuaSignatureId, LuaType,
     },
+    instantiate_type_generic, instantiate_type_generic_full,
 };
 use crate::{
     LuaAttributeUse,
@@ -36,12 +39,154 @@ pub fn analyze_type(analyzer: &mut DocAnalyzer, tag: LuaDocTagType) -> Option<()
     let mut type_list = Vec::new();
     for lua_doc_type in tag.get_type_list() {
         let type_ref = infer_type(&mut analyzer.type_context, lua_doc_type);
+        let type_ref = maybe_instantiate_doc_type(analyzer.get_db(), type_ref);
         type_list.push(type_ref);
     }
 
     // bind ref type
     bind_type_to_owner(analyzer, &tag, &type_list, description);
     Some(())
+}
+
+fn maybe_instantiate_doc_type(db: &DbIndex, type_ref: LuaType) -> LuaType {
+    let type_decl_id = match &type_ref {
+        LuaType::Ref(type_id) => Some(type_id.clone()),
+        LuaType::Generic(generic) => Some(generic.get_base_type_id()),
+        _ => None,
+    };
+    let has_alias_chain = type_decl_id
+        .as_ref()
+        .and_then(|type_decl_id| db.get_type_index().get_type_decl(type_decl_id))
+        .is_some_and(|type_decl| {
+            type_decl.is_alias()
+                && matches!(
+                    type_decl.get_alias_ref(),
+                    Some(LuaType::Ref(_) | LuaType::Generic(_))
+                )
+        });
+    let contain_tpl = type_ref.contain_tpl();
+
+    if !contain_tpl && !has_alias_chain {
+        return type_ref;
+    }
+
+    let mapper = TypeMapper::empty();
+
+    if contain_tpl {
+        if has_alias_chain {
+            let (current_type, current_id) = match &type_ref {
+                LuaType::Generic(generic) => {
+                    let params = generic
+                        .get_params()
+                        .iter()
+                        .map(|param| {
+                            instantiate_type_generic_full(
+                                db,
+                                param,
+                                &mapper,
+                                None,
+                                TplResolvePolicy::PreserveTplRef,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    (
+                        LuaType::Generic(
+                            LuaGenericType::new(generic.get_base_type_id(), params).into(),
+                        ),
+                        generic.get_base_type_id(),
+                    )
+                }
+                LuaType::Ref(type_id) => (LuaType::Ref(type_id.clone()), type_id.clone()),
+                _ => {
+                    return instantiate_type_generic_full(
+                        db,
+                        &type_ref,
+                        &mapper,
+                        None,
+                        TplResolvePolicy::PreserveTplRef,
+                    );
+                }
+            };
+
+            return instantiate_doc_alias_chain(db, current_type, current_id, &mapper);
+        }
+        return instantiate_type_generic_full(
+            db,
+            &type_ref,
+            &mapper,
+            None,
+            TplResolvePolicy::PreserveTplRef,
+        );
+    }
+
+    if has_alias_chain {
+        let instantiated = instantiate_type_generic(db, &type_ref, &mapper);
+        if !matches!(instantiated, LuaType::Any | LuaType::Unknown) {
+            return instantiated;
+        }
+    }
+
+    type_ref
+}
+
+fn instantiate_doc_alias_chain(
+    db: &DbIndex,
+    mut current_type: LuaType,
+    mut current_id: LuaTypeDeclId,
+    mapper: &TypeMapper,
+) -> LuaType {
+    let mut visited = HashSet::new();
+    loop {
+        if !visited.insert(current_id.clone()) {
+            return current_type;
+        }
+
+        let Some(type_decl) = db.get_type_index().get_type_decl(&current_id) else {
+            return current_type;
+        };
+        if !type_decl.is_alias() {
+            return current_type;
+        }
+
+        let Some(origin) = type_decl.get_alias_ref() else {
+            return current_type;
+        };
+        let next_id = match origin {
+            LuaType::Ref(type_id) => type_id.clone(),
+            LuaType::Generic(generic) => generic.get_base_type_id(),
+            _ => return current_type,
+        };
+
+        let params = match &current_type {
+            LuaType::Generic(generic) => generic.get_params().clone(),
+            LuaType::Ref(_) => Vec::new(),
+            _ => return current_type,
+        };
+        let alias_mapper = TypeMapper::from_alias(db, params, &current_id);
+        let alias_mapper = TypeMapper::merge(Some(alias_mapper), mapper.clone());
+
+        current_type = match origin {
+            LuaType::Generic(generic) => {
+                let params = generic
+                    .get_params()
+                    .iter()
+                    .map(|param| {
+                        instantiate_type_generic_full(
+                            db,
+                            param,
+                            &alias_mapper,
+                            None,
+                            TplResolvePolicy::PreserveTplRef,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                LuaType::Generic(LuaGenericType::new(next_id.clone(), params).into())
+            }
+            LuaType::Ref(type_id) => LuaType::Ref(type_id.clone()),
+            _ => return current_type,
+        };
+        current_id = next_id;
+    }
 }
 
 fn bind_type_to_owner(

@@ -22,7 +22,8 @@ use super::{TypeMapper, TypeMapperValue, get_mapped_value};
 pub use complete_generic_args::{
     GenericArgumentCompletion, complete_type_generic_args, complete_type_generic_args_in_type,
 };
-use context::{GenericInstantiateContext, GenericInstantiateFrame, UninferredTplPolicy};
+pub use context::TplResolvePolicy;
+use context::{GenericInstantiateContext, GenericInstantiateFrame};
 pub use infer_call_func_generic::{build_self_type, infer_call_func_generic, infer_self_type};
 pub(in crate::semantic::generic) use inference_widening::{
     is_primitive_or_literal_type, regularize_tpl_candidate_type, widen_tpl_candidate_type,
@@ -31,17 +32,18 @@ use instantiate_mapped_type::instantiate_mapped_type as instantiate_mapped_type_
 pub use instantiate_special_generic::get_keyof_members;
 
 pub fn instantiate_type_generic(db: &DbIndex, ty: &LuaType, mapper: &TypeMapper) -> LuaType {
-    instantiate_type_generic_with_self(db, ty, mapper, None)
+    instantiate_type_generic_full(db, ty, mapper, None, TplResolvePolicy::Fallback)
 }
 
-pub fn instantiate_type_generic_with_self(
+pub fn instantiate_type_generic_full(
     db: &DbIndex,
     ty: &LuaType,
     mapper: &TypeMapper,
     self_type: Option<&LuaType>,
+    root_policy: TplResolvePolicy,
 ) -> LuaType {
     let context = GenericInstantiateContext::new(db, mapper, self_type);
-    let frame = context.root_frame();
+    let frame = context.root_frame().with_policy(root_policy);
     match ty {
         LuaType::DocFunction(doc_func) => instantiate_doc_function(&context, frame, doc_func),
         _ => instantiate_type_generic_inner(&context, frame, ty),
@@ -80,7 +82,7 @@ pub(super) fn instantiate_type_generic_inner(
             }
             instantiate_doc_function(
                 context,
-                frame.with_policy(UninferredTplPolicy::PreserveTplRef),
+                frame.with_policy(TplResolvePolicy::PreserveTplRef),
                 doc_func,
             )
         }
@@ -555,6 +557,9 @@ fn instantiate_const_tpl_ref(
     if let Some(value) = get_mapped_value(tpl.get_tpl_id(), &context.mapper) {
         match value {
             TypeMapperValue::None => {
+                if frame.should_preserve_tpl_ref() && tpl.get_default_type().is_none() {
+                    return LuaType::ConstTplRef(tpl.clone().into());
+                }
                 return instantiate_uninferred_tpl_fallback(tpl, context, frame);
             }
             TypeMapperValue::Type(value) => {

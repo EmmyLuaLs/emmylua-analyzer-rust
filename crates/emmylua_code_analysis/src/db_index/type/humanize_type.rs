@@ -5,8 +5,9 @@ use itertools::Itertools;
 
 use crate::{
     AsyncState, DbIndex, LuaAliasCallType, LuaConditionalType, LuaFunctionType, LuaGenericType,
-    LuaIntersectionType, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSignatureId,
-    LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, TypeMapper, VariadicType,
+    LuaIntersectionType, LuaMappedType, LuaMemberKey, LuaMemberOwner, LuaObjectType,
+    LuaSignatureId, LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
+    TypeMapper, VariadicType,
 };
 
 use super::{LuaAliasCallKind, LuaMultiLineUnion};
@@ -206,6 +207,7 @@ impl<'a> TypeHumanizer<'a> {
             LuaType::MultiLineUnion(multi_union) => {
                 self.write_multi_line_union_type(multi_union, w)
             }
+            LuaType::Mapped(mapped) => self.write_mapped_type(mapped, w),
             LuaType::TypeGuard(inner) => {
                 w.write_str("TypeGuard<")?;
                 let saved = self.level;
@@ -717,7 +719,9 @@ impl<'a> TypeHumanizer<'a> {
             }
 
             let mapper = TypeMapper::from_type_array(generic.get_params().clone());
-            if let Some(origin_type) = type_decl.get_alias_origin(self.db, Some(&mapper)) {
+            if let Some(origin_type) =
+                type_decl.get_alias_origin_preserve_tpl(self.db, Some(&mapper))
+            {
                 w.write_str(" = ")?;
                 let saved = self.level;
                 self.level = self.child_level();
@@ -1022,6 +1026,68 @@ impl<'a> TypeHumanizer<'a> {
         } else {
             w.write_str("module 'unknown'")
         }
+    }
+
+    // ─── Mapped ─────────────────────────────────────────────────────
+
+    fn write_mapped_type<W: Write>(&mut self, mapped: &LuaMappedType, w: &mut W) -> fmt::Result {
+        if self.level == RenderLevel::Minimal {
+            return w.write_str("{...}");
+        }
+
+        w.write_str("{ ")?;
+        if mapped.is_readonly {
+            w.write_str("readonly ")?;
+        }
+
+        let saved = self.level;
+        self.level = self.child_level();
+
+        w.write_char('[')?;
+        w.write_str(mapped.param.1.name.as_str())?;
+        w.write_str(" in ")?;
+        self.write_mapped_constraint(mapped.param.1.type_constraint.as_ref(), w)?;
+        w.write_char(']')?;
+        if mapped.is_optional {
+            w.write_char('?')?;
+        }
+        w.write_str(": ")?;
+        self.write_mapped_value(&mapped.value, w)?;
+
+        self.level = saved;
+        w.write_str(" }")
+    }
+
+    fn write_mapped_constraint<W: Write>(
+        &mut self,
+        constraint: Option<&LuaType>,
+        w: &mut W,
+    ) -> fmt::Result {
+        match constraint {
+            Some(LuaType::Call(alias_call))
+                if alias_call.get_call_kind() == LuaAliasCallKind::KeyOf
+                    && alias_call.get_operands().len() == 1 =>
+            {
+                w.write_str("keyof ")?;
+                self.write_type(&alias_call.get_operands()[0], w)
+            }
+            Some(ty) => self.write_type(ty, w),
+            None => w.write_str("unknown"),
+        }
+    }
+
+    fn write_mapped_value<W: Write>(&mut self, value: &LuaType, w: &mut W) -> fmt::Result {
+        if let LuaType::Call(alias_call) = value
+            && alias_call.get_call_kind() == LuaAliasCallKind::Index
+            && alias_call.get_operands().len() == 2
+        {
+            self.write_type(&alias_call.get_operands()[0], w)?;
+            w.write_char('[')?;
+            self.write_type(&alias_call.get_operands()[1], w)?;
+            return w.write_char(']');
+        }
+
+        self.write_type(value, w)
     }
 
     // ─── helper: write a table member (key: type) ───────────────────

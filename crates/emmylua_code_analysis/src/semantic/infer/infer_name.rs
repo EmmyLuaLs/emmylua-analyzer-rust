@@ -351,18 +351,16 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
         .ok_or(InferFailReason::None)?;
     if decl_ids.len() == 1 {
         let id = decl_ids[0];
-        let typ = match db.get_type_index().get_type_cache(&id.into()) {
-            Some(type_cache) => type_cache.as_type().clone(),
-            None => return Err(InferFailReason::UnResolveDeclType(id)),
-        };
-        // todo: 不置为 Unknown 有可能引用泛型函数中的泛型参数导致泄露, 但这样会导致丢失类型, 我们可能需要更好的办法去处理
-        return if !typ.is_generic() && typ.contain_tpl() {
-            // This decl is located in a generic function,
-            // and is type contains references to generic variables
-            // of this function.
-            Ok(LuaType::Unknown)
-        } else {
-            Ok(typ)
+        return match db.get_type_index().get_type_cache(&id.into()) {
+            Some(type_cache) => {
+                let typ = type_cache.as_type();
+                if is_bare_leaked_tpl(typ) {
+                    Ok(LuaType::Unknown)
+                } else {
+                    Ok(typ.clone())
+                }
+            }
+            None => Err(InferFailReason::UnResolveDeclType(id)),
         };
     }
 
@@ -382,10 +380,7 @@ pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
             Some(type_cache) => {
                 let typ = type_cache.as_type();
 
-                if typ.contain_tpl() {
-                    // This decl is located in a generic function,
-                    // and is type contains references to generic variables
-                    // of this function.
+                if is_bare_leaked_tpl(typ) {
                     continue;
                 }
 
@@ -460,4 +455,11 @@ pub fn find_self_decl_or_member_id(
         }
         _ => None,
     }
+}
+
+fn is_bare_leaked_tpl(typ: &LuaType) -> bool {
+    matches!(
+        typ,
+        LuaType::TplRef(_) | LuaType::ConstTplRef(_) | LuaType::StrTplRef(_) | LuaType::SelfInfer
+    )
 }
