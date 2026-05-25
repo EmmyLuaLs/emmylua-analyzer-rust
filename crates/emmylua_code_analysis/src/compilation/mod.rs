@@ -9,7 +9,8 @@ mod test;
 use std::sync::Arc;
 
 use crate::{
-    Emmyrc, FileId, InferFailReason, LuaIndex, LuaInferCache, LuaType, db_index::DbIndex,
+    Emmyrc, FileId, InferFailReason, LuaIndex, LuaInferCache, LuaType, LuaTypeDeclId,
+    db_index::DbIndex,
     semantic::SemanticModel,
 };
 pub use decl::*;
@@ -26,20 +27,6 @@ where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {
     analyzer::analyze_func_body_missing_return_flags_with(body, infer_expr_type)
-}
-
-pub fn find_compilation_module_by_require_path(
-    db: &DbIndex,
-    module_path: &str,
-) -> Option<CompilationModuleInfo> {
-    find_module_by_require_path(db, module_path)
-}
-
-pub fn find_compilation_module_by_file_id(
-    db: &DbIndex,
-    file_id: FileId,
-) -> Option<CompilationModuleInfo> {
-    project_module_info(db, file_id)
 }
 
 #[derive(Debug)]
@@ -77,6 +64,17 @@ impl LuaCompilation {
 
     pub fn find_module_by_require_path(&self, module_path: &str) -> Option<CompilationModuleInfo> {
         find_module_by_require_path(&self.db, module_path)
+    }
+
+    pub fn resolve_module_export_type(&self, file_id: FileId) -> Option<LuaType> {
+        resolve_projected_module_export_type(&self.db, file_id)
+    }
+
+    pub fn find_type_generic_params(
+        &self,
+        type_decl_id: &LuaTypeDeclId,
+    ) -> Option<Vec<CompilationGenericParamInfo>> {
+        find_compilation_type_generic_params(&self.db, type_decl_id)
     }
 
     pub fn update_index(&mut self, file_ids: Vec<FileId>) {

@@ -8,7 +8,6 @@ use crate::{context::ClientId, handlers::semantic_token::language_injector::inje
 use emmylua_code_analysis::{
     Emmyrc, LuaDecl, LuaDeclExtra, LuaMemberId, LuaMemberOwner, LuaSemanticDeclId, LuaType,
     LuaTypeDeclId, SemanticDeclLevel, SemanticModel, WorkspaceId, parse_require_module_info,
-    resolve_projected_module_export_type,
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaDocFieldKey,
@@ -1159,7 +1158,7 @@ fn check_ref_is_require_def(
     ref_id: &LuaTypeDeclId,
 ) -> Option<bool> {
     let module_info = parse_require_module_info(semantic_model, decl)?;
-    match resolve_projected_module_export_type(semantic_model.get_db(), module_info.file_id) {
+    match semantic_model.resolve_module_export_type(module_info.file_id) {
         Some(LuaType::Def(id)) => Some(&id == ref_id),
         Some(_) => Some(false),
         None => None,

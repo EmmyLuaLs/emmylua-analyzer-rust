@@ -248,7 +248,7 @@ impl<'a> TypeHumanizer<'a> {
         };
 
         let full_name = type_decl.get_full_name().to_string();
-        let generic = match self.db.get_type_index().get_generic_params(id) {
+        let generic = match crate::find_compilation_type_generic_params(self.db, id) {
             Some(generic) => generic,
             None => {
                 return match self.write_simple_type(id, &full_name, w) {
@@ -709,15 +709,22 @@ impl<'a> TypeHumanizer<'a> {
         if matches!(
             self.level,
             RenderLevel::Documentation | RenderLevel::CustomDetailed(_) | RenderLevel::Detailed
-        ) && type_decl.as_ref().is_some_and(|type_decl| type_decl.is_alias())
-        {
+        ) {
             // cycle detection for alias expansion
             if !self.visited.insert(base_id.clone()) {
                 return Ok(());
             }
 
             let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
-            if let Some(origin_type) = type_decl.and_then(|type_decl| type_decl.get_alias_origin(self.db, Some(&substitutor))) {
+            let origin_type = crate::infer_compilation_type_alias_origin(
+                self.db,
+                &base_id,
+                Some(&substitutor),
+            )
+            .or_else(|| {
+                type_decl.and_then(|type_decl| type_decl.get_alias_origin(self.db, Some(&substitutor)))
+            });
+            if let Some(origin_type) = origin_type {
                 w.write_str(" = ")?;
                 let saved = self.level;
                 self.level = self.child_level();

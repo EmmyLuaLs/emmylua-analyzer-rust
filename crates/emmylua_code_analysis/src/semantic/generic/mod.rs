@@ -30,6 +30,7 @@ use crate::SemanticDeclLevel;
 use crate::TypeOps;
 use crate::find_compilation_decl_by_position;
 use crate::find_compilation_param_generic_params;
+use crate::find_compilation_type_generic_params;
 use crate::infer_node_semantic_decl;
 use crate::semantic::semantic_info::infer_token_semantic_decl;
 pub use instantiate_type::get_keyof_members;
@@ -84,10 +85,10 @@ pub fn get_tpl_ref_extend_type(
                                 match parent_owner {
                                     LuaMemberOwner::Type(type_id) => {
                                         let generic_params =
-                                            db.get_type_index().get_generic_params(type_id)?;
+                                            find_compilation_type_generic_params(db, type_id)?;
                                         return generic_params
                                             .get(tpl_id as usize)?
-                                            .type_constraint
+                                            .constraint
                                             .clone();
                                     }
                                     _ => return None,

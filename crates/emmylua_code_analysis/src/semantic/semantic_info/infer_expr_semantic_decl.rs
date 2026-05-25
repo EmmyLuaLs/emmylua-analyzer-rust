@@ -8,7 +8,7 @@ use crate::{
     DbIndex, FileId, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType,
     LuaIntersectionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType,
     LuaTypeCache, LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, TypeOps,
-    find_compilation_decl_by_position, find_compilation_module_by_require_path,
+    find_compilation_decl_by_position, find_module_by_require_path,
     resolve_projected_module_export_type,
     semantic::{
         infer::find_self_decl_or_member_id, member::get_buildin_type_map_type_id,
@@ -145,7 +145,7 @@ fn infer_require_module_semantic_decl(
         _ => return None,
     };
 
-    let module_info = find_compilation_module_by_require_path(db, &module_path)?;
+    let module_info = find_module_by_require_path(db, &module_path)?;
     match module_info.semantic_target? {
         SalsaSemanticTargetSummary::Decl(decl_id) => Some(LuaSemanticDeclId::LuaDecl(
             find_compilation_decl_by_position(db, module_info.file_id, decl_id.as_position())

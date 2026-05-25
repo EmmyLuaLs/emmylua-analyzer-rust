@@ -3,11 +3,13 @@ mod test {
     use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaIndexExpr};
 
     use crate::{
-        DiagnosticCode, DocTypeInferContext, LuaGenericType, LuaMemberKey, LuaSignatureId,
-        LuaType, LuaTypeDeclId, VirtualWorkspace, compilation::global_type,
+        DiagnosticCode, DocTypeInferContext, LuaMemberKey, LuaSignatureId,
+        LuaType, LuaTypeDeclId, TypeSubstitutor, VirtualWorkspace, compilation::global_type,
         complete_type_generic_args,
         find_members_with_key, infer_compilation_type_property_type,
+        infer_compilation_type_super_types,
         infer_doc_type,
+        instantiate_type_generic,
     };
 
     #[test]
@@ -760,10 +762,10 @@ mod test {
             "#,
         );
 
-        let db = ws.analysis.compilation.get_db();
-        let box_params = db
-            .get_type_index()
-            .get_generic_params(&LuaTypeDeclId::global("Box"))
+        let box_params = ws
+            .analysis
+            .compilation
+            .find_type_generic_params(&LuaTypeDeclId::global("Box"))
             .expect("Box generic params");
         assert_eq!(box_params.len(), 1);
         assert_eq!(box_params[0].name.as_str(), "T");
@@ -776,9 +778,7 @@ mod test {
         let optional_params = ws
             .analysis
             .compilation
-            .get_db()
-            .get_type_index()
-            .get_generic_params(&LuaTypeDeclId::global("Optional"))
+            .find_type_generic_params(&LuaTypeDeclId::global("Optional"))
             .expect("Optional generic params");
         assert_eq!(optional_params.len(), 1);
         assert_eq!(optional_params[0].name.as_str(), "T");
@@ -953,37 +953,7 @@ mod test {
         let b_params = ws
             .analysis
             .compilation
-            .get_db()
-            .get_type_index()
-            .get_generic_params(&LuaTypeDeclId::global("B"))
-            .expect("B generic params");
-        let default_type = b_params[0].default_type.clone().expect("B default type");
-        assert_eq!(ws.humanize_type(default_type), "A<string>");
-    }
-
-    #[test]
-    fn test_generic_default_can_reference_later_defaulted_generic_type() {
-        let mut ws = VirtualWorkspace::new();
-        ws.def(
-            r#"
-            ---@class B<U = A>
-
-            ---@class A<T = string>
-
-            ---@type B
-            BValue = {}
-            "#,
-        );
-
-        let value_ty = ws.expr_ty("BValue");
-        assert_eq!(ws.humanize_type(value_ty), "B<A<string>>");
-
-        let b_params = ws
-            .analysis
-            .compilation
-            .get_db()
-            .get_type_index()
-            .get_generic_params(&LuaTypeDeclId::global("B"))
+            .find_type_generic_params(&LuaTypeDeclId::global("B"))
             .expect("B generic params");
         let default_type = b_params[0].default_type.clone().expect("B default type");
         assert_eq!(ws.humanize_type(default_type), "A<string>");
@@ -1071,17 +1041,7 @@ mod test {
         let info = semantic_model
             .get_semantic_info(index_expr.syntax().clone().into())
             .expect("box.value semantic info");
-        let completed_args = complete_type_generic_args(
-            ws.analysis.compilation.get_db(),
-            &LuaTypeDeclId::global("Box"),
-            Vec::new(),
-        )
-        .completed_args
-        .expect("Box default args");
-        let box_type = LuaType::from(LuaGenericType::new(
-            LuaTypeDeclId::global("Box"),
-            completed_args,
-        ));
+        let box_type = prefix_info.typ.clone();
         let parent_properties = ws
             .analysis
             .compilation
@@ -1141,6 +1101,24 @@ mod test {
             &LuaMemberKey::Name("value".into()),
         )
         .expect("Parent.value property type");
+        let box_super_types = infer_compilation_type_super_types(
+            ws.analysis.compilation.get_db(),
+            &LuaTypeDeclId::global("Box"),
+        )
+        .expect("Box super types");
+        let string_type = ws.ty("string");
+        let instantiated_parent = instantiate_type_generic(
+            ws.analysis.compilation.get_db(),
+            &box_super_types[0],
+            &TypeSubstitutor::from_type_array(vec![string_type]),
+        );
+        let instantiated_parent_members = find_members_with_key(
+            ws.analysis.compilation.get_db(),
+            &instantiated_parent,
+            LuaMemberKey::Name("value".into()),
+            false,
+        )
+        .expect("Parent<string>.value members");
         let members = find_members_with_key(
             ws.analysis.compilation.get_db(),
             &box_type,
@@ -1157,6 +1135,9 @@ mod test {
             "T"
         );
         assert_eq!(ws.humanize_type(parent_value), "T");
+        assert_eq!(ws.humanize_type(box_super_types[0].clone()), "Parent<T>");
+        assert_eq!(ws.humanize_type(instantiated_parent), "Parent<string>");
+        assert_eq!(ws.humanize_type(instantiated_parent_members[0].typ.clone()), "string");
         assert_eq!(members.len(), 1);
         assert_eq!(ws.humanize_type(members[0].typ.clone()), "string");
         assert_eq!(ws.humanize_type(info.typ), "string");

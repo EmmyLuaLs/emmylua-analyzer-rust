@@ -5,9 +5,10 @@ use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::{InferResult, infer_expr_list_types};
 use crate::{
-    DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
-    LuaTypeNode, build_compilation_signature_doc_function,
+    DocTypeInferContext, FileId, GenericTplId, LuaFunctionType, LuaGenericType, LuaTypeNode,
+    build_compilation_signature_doc_function,
     db_index::{DbIndex, LuaType},
+    find_compilation_type_generic_params,
     infer_doc_type,
     semantic::{
         LuaInferCache,
@@ -590,7 +591,7 @@ fn infer_generic_types_from_call(
 pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
     match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
-            if let Some(generic) = db.get_type_index().get_generic_params(id) {
+            if let Some(generic) = find_compilation_type_generic_params(db, id) {
                 let mut params = Vec::with_capacity(generic.len());
                 let mut substitutor = TypeSubstitutor::new();
                 for (i, generic_param) in generic.iter().enumerate() {
@@ -610,13 +611,13 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
 
 fn build_self_generic_arg(
     db: &DbIndex,
-    generic_param: &GenericParam,
+    generic_param: &crate::CompilationGenericParamInfo,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
     let Some(arg) = generic_param
         .default_type
         .as_ref()
-        .or(generic_param.type_constraint.as_ref())
+        .or(generic_param.constraint.as_ref())
     else {
         return LuaType::Unknown;
     };

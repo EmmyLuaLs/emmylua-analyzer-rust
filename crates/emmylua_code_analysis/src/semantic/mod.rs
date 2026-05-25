@@ -46,8 +46,9 @@ use visibility::check_visibility;
 pub use crate::semantic::member::find_members_with_key;
 use crate::semantic::type_check::check_type_compact_detail;
 use crate::{
-    CompilationModuleInfo, Emmyrc, LuaDocument, LuaSemanticDeclId, db_index::LuaTypeDeclId,
-    find_compilation_module_by_file_id,
+    CompilationGenericParamInfo, CompilationModuleInfo, Emmyrc, LuaDocument, LuaSemanticDeclId,
+    db_index::LuaTypeDeclId,
+    project_module_info,
 };
 use crate::{
     FileId,
@@ -105,7 +106,26 @@ impl<'a> SemanticModel<'a> {
     }
 
     pub fn get_module(&self) -> Option<CompilationModuleInfo> {
-        find_compilation_module_by_file_id(self.db, self.file_id)
+        project_module_info(self.db, self.file_id)
+    }
+
+    pub fn get_module_by_file_id(&self, file_id: FileId) -> Option<CompilationModuleInfo> {
+        project_module_info(self.db, file_id)
+    }
+
+    pub fn find_module_by_require_path(&self, module_path: &str) -> Option<CompilationModuleInfo> {
+        crate::find_module_by_require_path(self.db, module_path)
+    }
+
+    pub fn resolve_module_export_type(&self, file_id: FileId) -> Option<LuaType> {
+        crate::resolve_projected_module_export_type(self.db, file_id)
+    }
+
+    pub fn get_type_generic_params(
+        &self,
+        type_decl_id: &LuaTypeDeclId,
+    ) -> Option<Vec<CompilationGenericParamInfo>> {
+        crate::find_compilation_type_generic_params(self.db, type_decl_id)
     }
 
     pub fn get_document_by_file_id(&'_ self, file_id: FileId) -> Option<LuaDocument<'_>> {

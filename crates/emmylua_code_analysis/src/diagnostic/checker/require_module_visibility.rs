@@ -2,7 +2,6 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr};
 
 use crate::{
     DiagnosticCode, LuaType, SemanticModel, check_module_visibility,
-    compilation::find_compilation_module_by_require_path,
 };
 
 use super::{Checker, DiagnosticContext};
@@ -43,9 +42,7 @@ fn check_require_call_expr(
     };
 
     // 查找模块信息
-    let Some(module_info) =
-        find_compilation_module_by_require_path(semantic_model.get_db(), &module_path)
-    else {
+    let Some(module_info) = semantic_model.find_module_by_require_path(&module_path) else {
         context.add_diagnostic(
             DiagnosticCode::UnresolvedRequire,
             arg_expr.get_range(),

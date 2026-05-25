@@ -7,10 +7,11 @@ use crate::{
     AsyncState, DbIndex, DocTypeInferContext, FileId, LuaDeclId, LuaFunctionType, LuaInferCache,
     LuaGenericType, LuaMemberKey, LuaType, SalsaDeclId, SalsaDeclKindSummary, SalsaDeclSummary,
     SalsaDeclTreeSummary, SalsaDeclTypeInfoSummary, SalsaDocTagFieldKeySummary,
+    SalsaDocTypeDefKindSummary,
     SalsaDocTypeNodeKey, SalsaDocTypeRef, SalsaDocVisibilityKindSummary,
     SalsaPropertyKeySummary, SalsaScopeChildSummary, SalsaScopeKindSummary, SalsaScopeSummary,
-    SalsaSummaryHost, SalsaSyntaxIdSummary, TypeOps, VariadicType, WorkspaceId, infer_doc_type,
-    infer_expr,
+    SalsaSummaryHost, SalsaSyntaxIdSummary, TypeOps, TypeSubstitutor, VariadicType,
+    WorkspaceId, infer_doc_type, infer_expr, instantiate_type_generic,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +111,116 @@ pub fn find_compilation_param_generic_params(
             })
             .collect(),
     )
+}
+
+pub fn find_compilation_type_generic_params(
+    db: &DbIndex,
+    type_decl_id: &crate::LuaTypeDeclId,
+) -> Option<Vec<CompilationGenericParamInfo>> {
+    let type_name = type_decl_id.get_name();
+    let mut result = None;
+
+    for file_id in db.get_vfs().get_all_file_ids() {
+        let Some(type_def) = db
+            .get_summary_db()
+            .doc()
+            .type_def_by_name(file_id, type_name.into())
+        else {
+            continue;
+        };
+
+        let workspace_id = db.resolve_workspace_id(file_id).unwrap_or(WorkspaceId::MAIN);
+        let projected_type_id = match type_def.visibility {
+            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(file_id, type_name),
+            SalsaDocVisibilityKindSummary::Internal | SalsaDocVisibilityKindSummary::Package => {
+                crate::LuaTypeDeclId::internal(workspace_id, type_name)
+            }
+            SalsaDocVisibilityKindSummary::Public | SalsaDocVisibilityKindSummary::Protected => {
+                crate::LuaTypeDeclId::global(type_name)
+            }
+        };
+        if projected_type_id != *type_decl_id {
+            continue;
+        }
+
+        result = Some(
+            type_def
+                .generic_params
+                .iter()
+                .map(|param| CompilationGenericParamInfo {
+                    name: param.name.to_string(),
+                    constraint: param.type_offset.and_then(|type_offset| infer_compilation_doc_type_key_with_owner(
+                        db,
+                        file_id,
+                        Some(type_def.syntax_offset),
+                        type_offset,
+                    )),
+                    default_type: param.default_type_offset.and_then(|type_offset| infer_compilation_doc_type_key_with_owner(
+                        db,
+                        file_id,
+                        Some(type_def.syntax_offset),
+                        type_offset,
+                    )),
+                })
+                .collect(),
+        );
+        break;
+    }
+
+    result
+}
+
+pub fn infer_compilation_type_alias_origin(
+    db: &DbIndex,
+    type_decl_id: &crate::LuaTypeDeclId,
+    substitutor: Option<&TypeSubstitutor>,
+) -> Option<LuaType> {
+    let type_name = type_decl_id.get_name();
+
+    for file_id in db.get_vfs().get_all_file_ids() {
+        let Some(type_def) = db
+            .get_summary_db()
+            .doc()
+            .type_def_by_name(file_id, type_name.into())
+        else {
+            continue;
+        };
+        if type_def.kind != SalsaDocTypeDefKindSummary::Alias {
+            continue;
+        }
+
+        let workspace_id = db.resolve_workspace_id(file_id).unwrap_or(WorkspaceId::MAIN);
+        let projected_type_id = match type_def.visibility {
+            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(file_id, type_name),
+            SalsaDocVisibilityKindSummary::Internal | SalsaDocVisibilityKindSummary::Package => {
+                crate::LuaTypeDeclId::internal(workspace_id, type_name)
+            }
+            SalsaDocVisibilityKindSummary::Public | SalsaDocVisibilityKindSummary::Protected => {
+                crate::LuaTypeDeclId::global(type_name)
+            }
+        };
+        if projected_type_id != *type_decl_id {
+            continue;
+        }
+
+        let value_type_offset = type_def.value_type_offset?;
+        let mut origin = infer_compilation_doc_type_key_with_owner(
+            db,
+            file_id,
+            Some(type_def.syntax_offset),
+            value_type_offset,
+        )?;
+
+        if let Some(substitutor) = substitutor
+            && !type_def.generic_params.is_empty()
+        {
+            origin = instantiate_type_generic(db, &origin, substitutor);
+        }
+
+        return Some(origin);
+    }
+
+    None
 }
 
 pub fn build_compilation_signature_doc_function(

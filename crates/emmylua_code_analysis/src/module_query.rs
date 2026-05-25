@@ -15,40 +15,12 @@ pub(crate) mod identity {
         modules.find_module(module_path)
     }
 
-    pub(crate) fn find_compilation_module_by_file_id(
-        compilation: &LuaCompilation,
-        file_id: FileId,
-    ) -> Option<&CompilationModuleInfo> {
-        compilation.find_module_by_file_id(file_id)
-    }
-
-    pub(crate) fn find_compilation_module_by_path<'a>(
-        compilation: &'a LuaCompilation,
-        module_path: &str,
-    ) -> Option<&'a CompilationModuleInfo> {
-        compilation.find_module_by_require_path(module_path)
-    }
-
-    pub(crate) fn find_db_module_by_file_id(
-        db: &DbIndex,
-        file_id: FileId,
-    ) -> Option<CompilationModuleInfo> {
-        crate::compilation::find_compilation_module_by_file_id(db, file_id)
-    }
-
-    pub(crate) fn find_db_module_by_path(
-        db: &DbIndex,
-        module_path: &str,
-    ) -> Option<CompilationModuleInfo> {
-        crate::compilation::find_compilation_module_by_require_path(db, module_path)
-    }
-
     pub(crate) fn find_db_module_file_id(db: &DbIndex, module_path: &str) -> Option<FileId> {
-        find_db_module_by_path(db, module_path).map(|module| module.file_id)
+        crate::compilation::find_module_by_require_path(db, module_path).map(|module| module.file_id)
     }
 
     pub(crate) fn db_module_is_meta_file(db: &DbIndex, file_id: FileId) -> bool {
-        find_db_module_by_file_id(db, file_id)
+        crate::compilation::project_module_info(db, file_id)
             .map(|module| module.is_meta)
             .unwrap_or(false)
     }
@@ -136,7 +108,8 @@ pub(crate) mod export {
         compilation: &LuaCompilation,
         file_id: FileId,
     ) -> bool {
-        super::identity::find_compilation_module_by_file_id(compilation, file_id)
+        compilation
+            .find_module_by_file_id(file_id)
             .is_some_and(CompilationModuleInfo::has_export_type)
     }
 
@@ -144,9 +117,9 @@ pub(crate) mod export {
         compilation: &LuaCompilation,
         file_id: FileId,
     ) -> Option<LuaSemanticDeclId> {
-        let module = super::identity::find_compilation_module_by_file_id(compilation, file_id)?;
+        let module = compilation.find_module_by_file_id(file_id)?;
         semantic_id_from_compilation_module(module).or_else(|| {
-            match module_export_expr(compilation.legacy_db(), file_id)? {
+            match module_export_expr(compilation.get_db(), file_id)? {
                 LuaExpr::IndexExpr(index_expr) => Some(LuaSemanticDeclId::Member(
                     crate::LuaMemberId::new(index_expr.get_syntax_id(), file_id),
                 )),

@@ -1,7 +1,6 @@
 use emmylua_code_analysis::{
     CompilationModuleInfo, EmmyrcFilenameConvention, LuaSemanticDeclId, LuaType,
-    SalsaSemanticTargetSummary, check_module_visibility, find_compilation_module_by_file_id,
-    resolve_projected_module_export_type,
+    SalsaSemanticTargetSummary, check_module_visibility,
 };
 use emmylua_parser::{LuaAstNode, LuaNameExpr};
 use lsp_types::{CompletionItem, Position};
@@ -73,10 +72,8 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
             continue;
         }
 
-        let Some(module_info) = find_compilation_module_by_file_id(
-            builder.semantic_model.get_db(),
-            legacy_module.file_id,
-        ) else {
+        let Some(module_info) = builder.semantic_model.get_module_by_file_id(legacy_module.file_id)
+        else {
             continue;
         };
 
@@ -113,8 +110,9 @@ fn add_module_completion_item(
         return None;
     }
 
-    let export_type =
-        resolve_projected_module_export_type(builder.semantic_model.get_db(), module_info.file_id);
+    let export_type = builder
+        .semantic_model
+        .resolve_module_export_type(module_info.file_id);
     let completion_name = module_name_convert(module_info, export_type.as_ref(), file_conversion);
     if !completion_name.to_lowercase().starts_with(prefix) {
         // 如果模块名不匹配, 则根据导出类型添加完成项
@@ -176,8 +174,9 @@ fn add_completion_item_by_type(
     position: Position,
     completions: &mut Vec<CompletionItem>,
 ) -> Option<()> {
-    if let Some(export_type) =
-        resolve_projected_module_export_type(builder.semantic_model.get_db(), module_info.file_id)
+    if let Some(export_type) = builder
+        .semantic_model
+        .resolve_module_export_type(module_info.file_id)
     {
         match export_type {
             LuaType::TableConst(_) | LuaType::Def(_) => {

@@ -4,7 +4,7 @@ use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaVarExpr};
 
 use crate::{
     CompilationModuleInfo, DiagnosticCode, LuaSemanticDeclId, LuaType, SalsaSemanticTargetSummary,
-    SemanticDeclLevel, SemanticModel, find_compilation_module_by_require_path,
+    SemanticDeclLevel, SemanticModel,
     parse_require_module_info,
 };
 
@@ -225,7 +225,7 @@ fn parse_require_expr_module_info(
         _ => return None,
     };
 
-    find_compilation_module_by_require_path(semantic_model.get_db(), &module_path)
+    semantic_model.find_module_by_require_path(&module_path)
 }
 
 fn is_cross_file_member_from_imported_export_table_const(

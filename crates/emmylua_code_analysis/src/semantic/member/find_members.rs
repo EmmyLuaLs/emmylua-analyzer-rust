@@ -130,6 +130,16 @@ impl FindMembersContext {
     }
 }
 
+fn normalize_generic_member_param(db: &DbIndex, ty: LuaType) -> LuaType {
+    match ty {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl
+            .get_default_type()
+            .map(|default_type| crate::complete_type_generic_args_in_type(db, default_type))
+            .unwrap_or(LuaType::TplRef(tpl)),
+        other => crate::complete_type_generic_args_in_type(db, &other),
+    }
+}
+
 fn find_members_guard(
     db: &DbIndex,
     prefix_type: &LuaType,
@@ -353,9 +363,8 @@ fn find_custom_type_members(
         }
     }
 
-    if let Some(super_types) = type_index
-        .get_super_types(type_decl_id)
-        .or_else(|| infer_compilation_type_super_types(db, type_decl_id))
+    if let Some(super_types) = infer_compilation_type_super_types(db, type_decl_id)
+        .or_else(|| type_index.get_super_types(type_decl_id))
     {
         for super_type in super_types {
             let instantiated_super = ctx.instantiate_type(db, &super_type);
@@ -535,11 +544,21 @@ fn find_generic_members(
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
     let base_ref_id = generic_type.get_base_type_id_ref();
-    let instantiated_params: Vec<LuaType> = generic_type
+    let provided_params: Vec<LuaType> = generic_type
         .get_params()
         .iter()
         .map(|param| ctx.instantiate_type(db, param))
         .collect();
+    let instantiated_params: Vec<LuaType> = crate::complete_type_generic_args(
+        db,
+        base_ref_id,
+        provided_params,
+    )
+    .completed_args
+    .unwrap_or_default()
+    .into_iter()
+    .map(|param| normalize_generic_member_param(db, param))
+    .collect();
     let substitutor = TypeSubstitutor::from_type_array(instantiated_params);
     let ctx_with_substitutor = ctx.with_substitutor(substitutor.clone());
     if let Some(type_decl) = db.get_type_index().get_type_decl(&base_ref_id)

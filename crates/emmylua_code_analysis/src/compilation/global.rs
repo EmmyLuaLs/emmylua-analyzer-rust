@@ -103,7 +103,11 @@ pub fn global_type(db: &DbIndex, name: &str) -> Option<LuaType> {
 }
 
 fn global_decl_type(db: &DbIndex, decl: &CompilationDeclInfo) -> Option<LuaType> {
-    let typ = infer_compilation_decl_type(db, decl).or_else(|| decl_initializer_type(db, decl))?;
+    let initializer_type = decl_initializer_type(db, decl).filter(|ty| !ty.is_unknown());
+    let typ = infer_compilation_decl_type(db, decl).or_else(|| initializer_type.clone())?;
+    let has_declared_type = decl.decl_type.as_ref().is_some_and(|decl_type| {
+        !decl_type.explicit_type_offsets.is_empty() || !decl_type.named_type_names.is_empty()
+    });
 
     if decl
         .decl_type
@@ -116,13 +120,31 @@ fn global_decl_type(db: &DbIndex, decl: &CompilationDeclInfo) -> Option<LuaType>
             .or(Some(typ));
     }
 
-    if typ.is_unknown() || typ.contain_tpl() {
-        return decl_initializer_type(db, decl)
+    if !has_declared_type && (typ.is_unknown() || typ.contain_tpl()) {
+        return initializer_type
             .filter(|initializer_ty| {
                 !initializer_ty.is_unknown()
                     && (!initializer_ty.is_generic() || !initializer_ty.contain_tpl())
             })
             .or(Some(typ));
+    }
+
+    if !has_declared_type
+        && let Some(initializer_ty) = initializer_type.as_ref()
+        && !initializer_ty.contain_tpl()
+        && (!initializer_ty.is_generic()
+            || matches!(initializer_ty, LuaType::Generic(generic) if !generic.get_params().is_empty()))
+    {
+        if typ.is_generic() {
+            return Some(initializer_ty.clone());
+        }
+
+        if let Some(value_shell_type) = decl_value_shell_type(db, decl)
+            && !value_shell_type.is_unknown()
+            && (value_shell_type.is_generic() || value_shell_type.contain_tpl())
+        {
+            return Some(initializer_ty.clone());
+        }
     }
 
     if let Some(value_shell_type) = decl_value_shell_type(db, decl)

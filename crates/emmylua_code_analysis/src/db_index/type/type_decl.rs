@@ -136,20 +136,27 @@ impl LuaTypeDecl {
         substitutor: Option<&TypeSubstitutor>,
     ) -> Option<LuaType> {
         match &self.extra {
-            LuaTypeExtra::Alias {
-                origin: Some(origin),
-            } => {
-                let substitutor = match substitutor {
-                    Some(substitutor) => substitutor,
-                    None => return Some(origin.clone()),
+            LuaTypeExtra::Alias { origin } => {
+                let type_decl_id = self.get_id();
+                if let Some(origin) = crate::infer_compilation_type_alias_origin(
+                    db,
+                    &type_decl_id,
+                    substitutor,
+                ) {
+                    return Some(origin);
+                }
+
+                let origin = origin.as_ref()?;
+                let Some(substitutor) = substitutor else {
+                    return Some(origin.clone());
                 };
 
-                let type_decl_id = self.get_id();
-                if db
-                    .get_type_index()
-                    .get_generic_params(&type_decl_id)
-                    .is_none()
-                {
+                let has_generic_params = crate::find_compilation_type_generic_params(
+                    db,
+                    &type_decl_id,
+                )
+                .is_some_and(|generic_params| !generic_params.is_empty());
+                if !has_generic_params {
                     return Some(origin.clone());
                 }
 

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cell::RefCell, sync::Arc};
 
 use emmylua_parser::{
     LuaAstNode, LuaComment, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
@@ -16,6 +16,11 @@ use crate::{
     LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, SalsaDocTypeRef, TypeOps, VariadicType,
     WorkspaceId, complete_type_generic_args,
 };
+use crate::LuaTypeNode;
+
+thread_local! {
+    static SAME_FILE_NAMED_TYPE_STACK: RefCell<Vec<(FileId, LuaTypeDeclId)>> = const { RefCell::new(Vec::new()) };
+}
 
 #[derive(Clone, Copy)]
 pub struct DocTypeInferContext<'a> {
@@ -431,18 +436,56 @@ fn infer_same_file_named_type(
         return Some(LuaType::Ref(type_id));
     }
 
-    for param in type_def.generic_params.iter().skip(generic_args.len()) {
-        let default_type = infer_summary_doc_type_key(ctx, param.default_type_offset?)?;
-        generic_args.push(default_type);
+    let already_visiting = SAME_FILE_NAMED_TYPE_STACK.with(|stack| {
+        stack
+            .borrow()
+            .iter()
+            .any(|(file_id, active_type_id)| *file_id == ctx.file_id && active_type_id == &type_id)
+    });
+    if already_visiting {
+        return Some(LuaType::Ref(type_id));
     }
 
-    if generic_args.len() < type_def.generic_params.len() {
-        return Some(LuaType::Any);
-    }
+    SAME_FILE_NAMED_TYPE_STACK.with(|stack| {
+        stack.borrow_mut().push((ctx.file_id, type_id.clone()));
+    });
 
-    Some(LuaType::Generic(
-        LuaGenericType::new(type_id, generic_args).into(),
-    ))
+    let result = (|| {
+        for param in type_def.generic_params.iter().skip(generic_args.len()) {
+            let default_type = infer_summary_doc_type_key(ctx, param.default_type_offset?)?;
+            let touches_active_cycle = SAME_FILE_NAMED_TYPE_STACK.with(|stack| {
+                let active = stack.borrow();
+                default_type.any_type(|ty| match ty {
+                    LuaType::Ref(active_id) | LuaType::Def(active_id) => active.iter().any(
+                        |(file_id, type_id)| *file_id == ctx.file_id && type_id == active_id,
+                    ),
+                    LuaType::Generic(generic) => active.iter().any(|(file_id, type_id)| {
+                        *file_id == ctx.file_id && type_id == generic.get_base_type_id_ref()
+                    }),
+                    _ => false,
+                })
+            });
+            if touches_active_cycle {
+                return Some(LuaType::Ref(type_id.clone()));
+            }
+
+            generic_args.push(default_type);
+        }
+
+        if generic_args.len() < type_def.generic_params.len() {
+            return Some(LuaType::Any);
+        }
+
+        Some(LuaType::Generic(
+            LuaGenericType::new(type_id.clone(), generic_args).into(),
+        ))
+    })();
+
+    SAME_FILE_NAMED_TYPE_STACK.with(|stack| {
+        stack.borrow_mut().pop();
+    });
+
+    result
 }
 
 fn infer_summary_doc_type_key(
