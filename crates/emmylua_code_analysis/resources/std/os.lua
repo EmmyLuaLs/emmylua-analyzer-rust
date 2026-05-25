@@ -78,7 +78,7 @@ function os.clock() end
 --- reliance on C function `gmtime` and C function `localtime`.
 --- @overload fun(fmt: "*t", time?: number): std.osdate
 --- @overload fun(fmt: "!*t", time?: number): std.osdate
---- @param format string
+--- @param format? string
 --- @param time?  number
 --- @return string
 function os.date(format, time) end
