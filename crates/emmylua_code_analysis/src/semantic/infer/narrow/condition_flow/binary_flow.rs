@@ -274,9 +274,7 @@ fn maybe_type_guard_binary_action(
     let Some(target_decl_id) = var_ref_id.get_decl_id_ref() else {
         return Ok(None);
     };
-    if !tree.has_decl_multi_return_refs(&discriminant_decl_id)
-        || !tree.has_decl_multi_return_refs(&target_decl_id)
-    {
+    if !tree.has_shared_multi_return_refs(&discriminant_decl_id, &target_decl_id) {
         return Ok(None);
     }
 
@@ -377,9 +375,7 @@ fn get_var_eq_condition_action(
                 let Some(target_decl_id) = var_ref_id.get_decl_id_ref() else {
                     return Ok(ConditionFlowAction::Continue);
                 };
-                if !tree.has_decl_multi_return_refs(&discriminant_decl_id)
-                    || !tree.has_decl_multi_return_refs(&target_decl_id)
-                {
+                if !tree.has_shared_multi_return_refs(&discriminant_decl_id, &target_decl_id) {
                     return Ok(ConditionFlowAction::Continue);
                 }
                 let antecedent_flow_id = get_single_antecedent(flow_node)?;

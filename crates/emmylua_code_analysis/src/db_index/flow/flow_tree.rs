@@ -51,8 +51,28 @@ impl FlowTree {
         self.decl_bind_expr_ref.get(decl_id).cloned()
     }
 
-    pub fn has_decl_multi_return_refs(&self, decl_id: &LuaDeclId) -> bool {
-        self.decl_multi_return_ref.contains_key(decl_id)
+    pub fn has_shared_multi_return_refs(
+        &self,
+        left_decl_id: &LuaDeclId,
+        right_decl_id: &LuaDeclId,
+    ) -> bool {
+        let Some(left_refs) = self.decl_multi_return_ref.get(left_decl_id) else {
+            return false;
+        };
+        let Some(right_refs) = self.decl_multi_return_ref.get(right_decl_id) else {
+            return false;
+        };
+
+        left_refs
+            .iter()
+            .filter_map(|entry| entry.reference.as_ref())
+            .any(|left_ref| {
+                let left_call_id = left_ref.call_expr.get_syntax_id();
+                right_refs
+                    .iter()
+                    .filter_map(|entry| entry.reference.as_ref())
+                    .any(|right_ref| right_ref.call_expr.get_syntax_id() == left_call_id)
+            })
     }
 
     /// Chooses the search roots used to resolve correlated multi-return refs.
