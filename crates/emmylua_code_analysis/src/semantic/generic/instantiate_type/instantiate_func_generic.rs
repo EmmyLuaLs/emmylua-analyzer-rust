@@ -3,7 +3,7 @@ use emmylua_parser::{LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
 use std::{ops::Deref, sync::Arc};
 
-use crate::semantic::infer::infer_expr_list_types;
+use crate::semantic::infer::{InferResult, infer_expr_list_types};
 use crate::{
     DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
     LuaTypeNode,
@@ -202,29 +202,42 @@ pub fn infer_callable_return_from_remaining_args(
     callable_type: &LuaType,
     arg_exprs: &[LuaExpr],
 ) -> Result<Option<LuaType>, InferFailReason> {
-    if arg_exprs.is_empty() {
-        return Ok(None);
-    }
-
-    let call_arg_types =
-        match infer_expr_list_types(context.db, context.cache, arg_exprs, None, infer_expr) {
+    let call_arg_types = if arg_exprs.is_empty() {
+        Vec::new()
+    } else {
+        match infer_expr_list_types(
+            context.db,
+            context.cache,
+            arg_exprs,
+            None,
+            infer_call_arg_type,
+        ) {
             Ok(types) => types.into_iter().map(|(ty, _)| ty).collect::<Vec<_>>(),
             Err(_) => arg_exprs
                 .iter()
                 .map(|arg_expr| {
-                    infer_expr(context.db, context.cache, arg_expr.clone())
+                    infer_call_arg_type(context.db, context.cache, arg_expr.clone())
                         .unwrap_or(LuaType::Unknown)
                 })
                 .collect::<Vec<_>>(),
-        };
-    if call_arg_types.is_empty() {
-        return Ok(None);
-    }
+        }
+    };
 
     // Preserve any known remaining-arg shape, including arity, even when some later arguments
     // collapse to `unknown`. This avoids unioning returns from overloads that are impossible
     // for the current call.
     infer_callable_return_from_arg_types(context, callable_type, &call_arg_types)
+}
+
+fn infer_call_arg_type(db: &DbIndex, cache: &mut LuaInferCache, arg_expr: LuaExpr) -> InferResult {
+    if !cache.is_no_flow() || !matches!(&arg_expr, LuaExpr::TableExpr(_)) {
+        return infer_expr(db, cache, arg_expr);
+    }
+
+    // Generic call matching stays no-flow, but direct table literal arguments
+    // are local shapes and do not need flow replay.
+    let table_exprs = [arg_expr.get_syntax_id()];
+    cache.with_replay_overlay(&[], &table_exprs, |cache| infer_expr(db, cache, arg_expr))
 }
 
 fn instantiate_callable_from_arg_types(
@@ -485,6 +498,9 @@ fn infer_generic_types_from_call(
     let mut unresolve_tpls = vec![];
     for i in 0..func_params.len() {
         if i >= arg_exprs.len() {
+            if let LuaType::Variadic(variadic) = &func_params[i].1 {
+                variadic_tpl_pattern_match(context, variadic, &[])?;
+            }
             break;
         }
 
@@ -506,7 +522,7 @@ fn infer_generic_types_from_call(
             continue;
         }
 
-        let arg_type = match infer_expr(db, context.cache, call_arg_expr.clone()) {
+        let arg_type = match infer_call_arg_type(db, context.cache, call_arg_expr.clone()) {
             Ok(t) => t,
             Err(InferFailReason::FieldNotFound) => LuaType::Nil, // 对于未找到的字段, 我们认为是 nil 以执行后续推断
             Err(e) => return Err(e),
@@ -532,7 +548,7 @@ fn infer_generic_types_from_call(
             (LuaType::Variadic(variadic), _) => {
                 let mut arg_types = vec![];
                 for arg_expr in &arg_exprs[i..] {
-                    let arg_type = infer_expr(db, context.cache, arg_expr.clone())?;
+                    let arg_type = infer_call_arg_type(db, context.cache, arg_expr.clone())?;
                     arg_types.push(arg_type);
                 }
                 variadic_tpl_pattern_match(context, variadic, &arg_types)?;

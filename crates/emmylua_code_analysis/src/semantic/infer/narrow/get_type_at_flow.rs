@@ -299,6 +299,33 @@ fn collect_expr_dependency_queries(
         return;
     }
 
+    if let LuaExpr::CallExpr(call_expr) = expr {
+        // Call arguments live under LuaCallArgList, not as direct LuaExpr children.
+        if let Some(prefix_expr) = call_expr.get_prefix_expr() {
+            collect_expr_dependency_queries(
+                db,
+                tree,
+                cache,
+                fallback_flow_id,
+                &prefix_expr,
+                dependency_queries,
+            );
+        }
+        if let Some(arg_list) = call_expr.get_args_list() {
+            for arg in arg_list.get_args() {
+                collect_expr_dependency_queries(
+                    db,
+                    tree,
+                    cache,
+                    fallback_flow_id,
+                    &arg,
+                    dependency_queries,
+                );
+            }
+        }
+        return;
+    }
+
     if let LuaExpr::IndexExpr(index_expr) = expr {
         // A resolved IndexRef overlay lets replay short-circuit the whole
         // expression; if it fails, prefix/key overlays are still available.

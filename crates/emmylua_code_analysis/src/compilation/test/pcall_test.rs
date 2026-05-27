@@ -202,6 +202,84 @@ mod test {
     }
 
     #[test]
+    fn test_pcall_narrows_type_guarded_callable_return_after_error_guard() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@param a string|fun(): integer
+        local function foo(a)
+            if type(a) == "string" then
+                return
+            end
+
+            local ok, result = pcall(a)
+            if not ok then
+                return
+            end
+
+            narrowed = result
+        end
+        "#,
+        );
+
+        let narrowed = ws.expr_ty("narrowed");
+        assert_eq!(ws.humanize_type(narrowed), "integer");
+    }
+
+    #[test]
+    fn test_pcall_narrows_type_guarded_callable_return_with_forwarded_arg() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@param a string|fun(value: integer): string
+        local function foo(a)
+            if type(a) == "string" then
+                return
+            end
+
+            local ok, result = pcall(a, 1)
+            if not ok then
+                return
+            end
+
+            narrowed = result
+        end
+        "#,
+        );
+
+        let narrowed = ws.expr_ty("narrowed");
+        assert_eq!(ws.humanize_type(narrowed), "string");
+    }
+
+    #[test]
+    fn test_pcall_narrows_type_guarded_callable_return_with_table_arg() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@param cb string|fun(a: {}): integer
+        local function foo(cb)
+            if type(cb) == "string" then
+                return
+            end
+
+            local ok, result = pcall(cb, {})
+            if not ok then
+                return
+            end
+
+            narrowed = result
+        end
+        "#,
+        );
+
+        let narrowed = ws.expr_ty("narrowed");
+        assert_eq!(ws.humanize_type(narrowed), "integer");
+    }
+
+    #[test]
     fn test_pcall_any_callable_splits_success_unknown_and_failure_string() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 

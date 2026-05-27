@@ -65,6 +65,9 @@ pub(in crate::semantic) enum ExprTypeContinuation {
         call_expr: LuaCallExpr,
         condition_flow: InferConditionFlow,
     },
+    Truthiness {
+        condition_flow: InferConditionFlow,
+    },
     ArrayLen {
         subquery_condition_flow: InferConditionFlow,
         max_adjustment: i64,
@@ -581,14 +584,24 @@ pub(super) fn get_type_at_condition_flow(
                 continue;
             }
             LuaExpr::CallExpr(call_expr) => {
-                return get_type_at_call_expr(
+                let action = get_type_at_call_expr(
                     db,
                     cache,
                     var_ref_id,
                     flow_node,
-                    call_expr,
+                    call_expr.clone(),
                     condition_flow,
-                );
+                )?;
+                if !matches!(action, ConditionFlowAction::Continue) {
+                    return Ok(action);
+                }
+
+                let antecedent_flow_id = get_single_antecedent(flow_node)?;
+                return Ok(ConditionFlowAction::NeedExprType {
+                    flow_id: antecedent_flow_id,
+                    expr: LuaExpr::CallExpr(call_expr),
+                    resume: ExprTypeContinuation::Truthiness { condition_flow },
+                });
             }
             LuaExpr::IndexExpr(index_expr) => {
                 return get_type_at_index_expr(db, cache, var_ref_id, index_expr, condition_flow);
@@ -698,6 +711,16 @@ pub(in crate::semantic::infer::narrow) fn resolve_expr_type_continuation(
             call_expr,
             condition_flow,
         ),
+        ExprTypeContinuation::Truthiness { condition_flow } => Ok(match condition_flow {
+            _ if expr_type.is_never() => ConditionFlowAction::Result(LuaType::Never),
+            InferConditionFlow::TrueCondition if expr_type.is_always_falsy() => {
+                ConditionFlowAction::Result(LuaType::Never)
+            }
+            InferConditionFlow::FalseCondition if expr_type.is_always_truthy() => {
+                ConditionFlowAction::Result(LuaType::Never)
+            }
+            _ => ConditionFlowAction::Continue,
+        }),
         ExprTypeContinuation::ArrayLen {
             subquery_condition_flow,
             max_adjustment,

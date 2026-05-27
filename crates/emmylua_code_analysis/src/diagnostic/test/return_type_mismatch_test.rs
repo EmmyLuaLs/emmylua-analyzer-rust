@@ -284,6 +284,56 @@ mod tests {
     }
 
     #[test]
+    fn test_pcall_return_after_type_guard() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            --- @param a string|fun(): integer
+            --- @return integer?
+            function foo(a)
+                if type(a) == 'string' then
+                    return
+                end
+
+                local ok, result = pcall(a)
+                if not ok then
+                    return
+                end
+
+                return result
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_pcall_return_after_type_guard_with_table_arg() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            --- @param cb string|fun(a: {}): integer
+            --- @return integer?
+            function foo(cb)
+                if type(cb) == 'string' then
+                    return
+                end
+
+                local ok, result = pcall(cb, {})
+                if not ok then
+                    return
+                end
+
+                return result
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_variadic_return_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
 
@@ -685,6 +735,39 @@ mod tests {
                 --- @return MockContext
                 function M:get()
                     return self
+                end
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_asserted_array_member_return_field() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let code = r#"
+            --- @return { a: integer }
+            function foo()
+                local arr --- @type integer[]
+                local i --- @type integer?
+                local a --- @type integer?
+                i = _ --[[@as integer]]
+                a = assert(arr[i])
+                return { a = a }
+            end
+        "#;
+        assert!(ws.has_no_diagnostic(DiagnosticCode::ReturnTypeMismatch, code));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::AssignTypeMismatch, code));
+    }
+
+    #[test]
+    fn test_and_or_function_guard_return() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+                --- @param f string|(fun():string)
+                --- @return string
+                function foo(f)
+                    return type(f) == 'function' and f() or f
                 end
             "#
         ));

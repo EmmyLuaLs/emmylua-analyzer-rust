@@ -5,7 +5,7 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaMemberKey, LuaType,
-    TypeOps,
+    TypeOps, check_type_compact,
     semantic::infer::{infer_index::infer_expr_for_index, narrow::get_var_expr_var_ref_id},
 };
 
@@ -39,8 +39,9 @@ pub(super) fn infer_array_member_by_key(
         return Ok(array_member_fallback(db, base));
     }
 
-    if !key_type.is_integer() {
-        if key_type.is_number() {
+    let is_integer_key = key_type.is_integer() || key_type_matches(db, &LuaType::Integer, key_type);
+    if !is_integer_key {
+        if key_type.is_number() || key_type_matches(db, &LuaType::Number, key_type) {
             return Ok(array_member_fallback(db, base));
         }
 
@@ -62,6 +63,17 @@ pub(super) fn infer_array_member_by_key(
     }
 
     Ok(array_member_fallback(db, base))
+}
+
+fn key_type_matches(db: &DbIndex, expected: &LuaType, actual: &LuaType) -> bool {
+    !matches!(
+        actual,
+        LuaType::Any
+            | LuaType::Unknown
+            | LuaType::TplRef(_)
+            | LuaType::StrTplRef(_)
+            | LuaType::ConstTplRef(_)
+    ) && check_type_compact(db, expected, actual).is_ok()
 }
 
 pub(super) fn array_member_fallback(db: &DbIndex, base: &LuaType) -> LuaType {

@@ -12,7 +12,7 @@ use emmylua_parser::{LuaBlock, LuaExpr};
 pub(crate) fn analyze_func_body_missing_return_flags_with<F>(
     body: LuaBlock,
     infer_expr_type: &mut F,
-) -> Result<(bool, bool, bool), InferFailReason>
+) -> Result<(bool, bool), InferFailReason>
 where
     F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
 {

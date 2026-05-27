@@ -154,6 +154,22 @@ mod tests {
     }
 
     #[test]
+    fn test_assert_optional_return_is_not_redundant() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::RedundantReturnValue,
+            r#"
+            --- @return string
+            function foo()
+                local res --- @type string?
+                return assert(res)
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_not_return_anno() {
         let mut ws = VirtualWorkspace::new();
 
@@ -290,7 +306,7 @@ mod tests {
             "#
         ));
 
-        assert!(!ws.has_no_diagnostic(
+        assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingReturn,
             r#"
             local A
@@ -725,6 +741,25 @@ mod tests {
     }
 
     #[test]
+    fn test_missing_return_accepts_non_terminating_truthy_while() {
+        assert_missing_return_ok(
+            r#"
+            --- @param ready boolean
+            --- @return string
+            function foo(ready)
+                while true do
+                    if ready then
+                        return 'ready'
+                    end
+                end
+
+                error('unreachable')
+            end
+            "#,
+        );
+    }
+
+    #[test]
     fn test_missing_return_accepts_infinite_repeat_with_break_before_return() {
         assert_missing_return_ok(
             r#"
@@ -743,8 +778,8 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_return_rejects_dynamic_while_with_infinite_body_before_return() {
-        assert_missing_return_error(
+    fn test_missing_return_accepts_dynamic_while_with_infinite_body_before_return() {
+        assert_missing_return_ok(
             r#"
             ---@return number
             local function foo(a)
@@ -760,8 +795,8 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_return_rejects_dynamic_while_with_break_or_infinite_body_before_return() {
-        assert_missing_return_error(
+    fn test_missing_return_accepts_dynamic_while_with_break_or_infinite_body_before_return() {
+        assert_missing_return_ok(
             r#"
             ---@return number
             local function foo(a, b)
@@ -781,8 +816,8 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_return_rejects_stalling_numeric_for_before_return() {
-        assert_missing_return_error(
+    fn test_missing_return_accepts_non_terminating_numeric_for_before_return() {
+        assert_missing_return_ok(
             r#"
             ---@return number
             local function foo()
@@ -798,8 +833,8 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_return_rejects_stalling_generic_for_before_return() {
-        assert_missing_return_error(
+    fn test_missing_return_accepts_non_terminating_generic_for_before_return() {
+        assert_missing_return_ok(
             r#"
             local function iter(_, done)
                 if done then
