@@ -554,8 +554,7 @@ pub(super) fn get_type_at_condition_flow(
                 };
 
                 if let Some(target_decl_id) = var_ref_id.get_decl_id_ref()
-                    && tree.has_decl_multi_return_refs(&decl_id)
-                    && tree.has_decl_multi_return_refs(&target_decl_id)
+                    && tree.has_shared_multi_return_refs(&decl_id, &target_decl_id)
                 {
                     let antecedent_flow_id = get_single_antecedent(flow_node)?;
                     let fallback_expr = tree

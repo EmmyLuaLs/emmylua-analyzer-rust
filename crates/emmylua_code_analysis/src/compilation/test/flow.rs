@@ -2,6 +2,7 @@
 mod test {
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
     use emmylua_parser::{LuaAstToken, LuaLocalName};
+    use ntest::timeout;
 
     const STACKED_TYPE_GUARDS: usize = 180;
     const LARGE_LINEAR_ASSIGNMENT_STEPS: usize = 2048;
@@ -465,6 +466,38 @@ mod test {
         );
         let after_assign = ws.expr_ty("after_assign");
         assert_eq!(ws.humanize_type(after_assign), "integer");
+    }
+
+    #[test]
+    #[timeout(5000)]
+    fn test_issue_1094_self_call_fallback_stress() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_calls = (2..=30)
+            .map(|i| format!("if count == 0 then count = self:api{i}():api(code) end\n"))
+            .collect::<String>();
+        let block = format!(
+            r#"
+        function class(className, super)
+        end
+
+        local Test = class("Test")
+
+        function Test:api1(code, isBind)
+            local count = self:api():api(code)
+            {repeated_calls}
+            return count
+        end
+        "#
+        );
+
+        let file_id = ws.def(&block);
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for repeated self-call fallback stress repro"
+        );
     }
 
     #[test]

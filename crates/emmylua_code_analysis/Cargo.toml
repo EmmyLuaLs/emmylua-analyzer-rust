@@ -16,6 +16,7 @@ include = [
 ]
 [dev-dependencies]
 googletest.workspace = true
+ntest.workspace = true
 
 # Inherit workspace lints configuration
 [lints]
