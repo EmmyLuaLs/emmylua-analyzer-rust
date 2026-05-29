@@ -1,7 +1,8 @@
 use hashbrown::{HashMap, HashSet};
+use std::{cell::RefCell, rc::Rc};
 
 use super::tpl_pattern::constant_decay;
-use crate::{DbIndex, GenericTplId, LuaType, LuaTypeDeclId};
+use crate::{DbIndex, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UninferredTplPolicy {
@@ -16,6 +17,7 @@ pub struct GenericInstantiateContext<'a> {
     pub db: &'a DbIndex,
     pub substitutor: &'a TypeSubstitutor,
     policy: UninferredTplPolicy,
+    instantiating_signatures: Rc<RefCell<HashSet<LuaSignatureId>>>,
 }
 
 impl<'a> GenericInstantiateContext<'a> {
@@ -24,6 +26,7 @@ impl<'a> GenericInstantiateContext<'a> {
             db,
             substitutor,
             policy: UninferredTplPolicy::Fallback,
+            instantiating_signatures: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -32,6 +35,7 @@ impl<'a> GenericInstantiateContext<'a> {
             db: self.db,
             substitutor: self.substitutor,
             policy,
+            instantiating_signatures: self.instantiating_signatures.clone(),
         }
     }
 
@@ -43,11 +47,42 @@ impl<'a> GenericInstantiateContext<'a> {
             db: self.db,
             substitutor,
             policy: self.policy,
+            instantiating_signatures: self.instantiating_signatures.clone(),
         }
     }
 
     pub fn should_preserve_tpl_ref(&self) -> bool {
         self.policy == UninferredTplPolicy::PreserveTplRef
+    }
+
+    pub(super) fn enter_signature(
+        &self,
+        signature_id: LuaSignatureId,
+    ) -> Option<InstantiatingSignatureGuard> {
+        if !self
+            .instantiating_signatures
+            .borrow_mut()
+            .insert(signature_id)
+        {
+            return None;
+        }
+
+        Some(InstantiatingSignatureGuard {
+            signatures: self.instantiating_signatures.clone(),
+            signature_id,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct InstantiatingSignatureGuard {
+    signatures: Rc<RefCell<HashSet<LuaSignatureId>>>,
+    signature_id: LuaSignatureId,
+}
+
+impl Drop for InstantiatingSignatureGuard {
+    fn drop(&mut self) {
+        self.signatures.borrow_mut().remove(&self.signature_id);
     }
 }
 
