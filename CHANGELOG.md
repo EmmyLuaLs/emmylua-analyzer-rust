@@ -2,6 +2,12 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+## [0.23.2] - 2026-5-29
+
+- **Fix some stuck loading issue**: Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace
+- **Optimize formatter style**: Optimize some formatter style
+
+
 ## [0.23.1] - 2026-5-14
 
 - **Fix range format issue**: Built-in formatter now supports range format
