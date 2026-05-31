@@ -161,14 +161,14 @@ pub fn tpl_pattern_match(
             if tpl.get_tpl_id().is_func() {
                 context
                     .substitutor
-                    .insert_type(tpl.get_tpl_id(), target.clone(), true);
+                    .infer_type(tpl.get_tpl_id(), target.clone(), true);
             }
         }
         LuaType::ConstTplRef(tpl) => {
             if tpl.get_tpl_id().is_func() {
                 context
                     .substitutor
-                    .insert_type(tpl.get_tpl_id(), target, false);
+                    .infer_type(tpl.get_tpl_id(), target, false);
             }
         }
         LuaType::StrTplRef(str_tpl) => {
@@ -176,7 +176,7 @@ pub fn tpl_pattern_match(
                 let prefix = str_tpl.get_prefix();
                 let suffix = str_tpl.get_suffix();
                 let type_name = SmolStr::new(format!("{}{}{}", prefix, s, suffix));
-                context.substitutor.insert_type(
+                context.substitutor.infer_type(
                     str_tpl.get_tpl_id(),
                     get_str_tpl_infer_type(&type_name),
                     true,
@@ -716,7 +716,7 @@ pub(crate) fn return_type_pattern_match_target_type(
                             let tpl_id = type_ref.get_tpl_id();
                             context
                                 .substitutor
-                                .insert_type(tpl_id, target_base.clone(), true);
+                                .infer_type(tpl_id, target_base.clone(), true);
                         }
                     }
                     VariadicType::Multi(source_multi) => {
@@ -727,7 +727,7 @@ pub(crate) fn return_type_pattern_match_target_type(
                                         && let LuaType::TplRef(type_ref) = base
                                     {
                                         let tpl_id = type_ref.get_tpl_id();
-                                        context.substitutor.insert_type(
+                                        context.substitutor.infer_type(
                                             tpl_id,
                                             target_base.clone(),
                                             true,
@@ -738,7 +738,7 @@ pub(crate) fn return_type_pattern_match_target_type(
                                 }
                                 LuaType::TplRef(tpl_ref) => {
                                     let tpl_id = tpl_ref.get_tpl_id();
-                                    context.substitutor.insert_type(
+                                    context.substitutor.infer_type(
                                         tpl_id,
                                         target_base.clone(),
                                         true,
@@ -781,7 +781,7 @@ fn func_varargs_tpl_pattern_match(
         VariadicType::Base(base) => {
             if let LuaType::TplRef(tpl_ref) = base {
                 let tpl_id = tpl_ref.get_tpl_id();
-                substitutor.insert_params(
+                substitutor.infer_params(
                     tpl_id,
                     target_rest_params
                         .iter()
@@ -808,7 +808,7 @@ pub fn variadic_tpl_pattern_match(
                 match target_rest_types.len() {
                     0 => {
                         // Zero varargs are an empty sequence, not one nil return slot.
-                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
+                        context.substitutor.infer_multi_types(tpl_id, Vec::new());
                     }
                     1 => {
                         // If the single argument is itself a multi-return (e.g. a function call
@@ -818,17 +818,17 @@ pub fn variadic_tpl_pattern_match(
                             LuaType::Variadic(variadic) => match variadic.deref() {
                                 VariadicType::Multi(types) => match types.len() {
                                     0 => {
-                                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
+                                        context.substitutor.infer_multi_types(tpl_id, Vec::new());
                                     }
                                     1 => {
-                                        context.substitutor.insert_type(
+                                        context.substitutor.infer_type(
                                             tpl_id,
                                             types[0].clone(),
                                             true,
                                         );
                                     }
                                     _ => {
-                                        context.substitutor.insert_multi_types(
+                                        context.substitutor.infer_multi_types(
                                             tpl_id,
                                             types
                                                 .iter()
@@ -838,16 +838,16 @@ pub fn variadic_tpl_pattern_match(
                                     }
                                 },
                                 VariadicType::Base(base) => {
-                                    context.substitutor.insert_multi_base(tpl_id, base.clone());
+                                    context.substitutor.infer_multi_base(tpl_id, base.clone());
                                 }
                             },
                             arg => {
-                                context.substitutor.insert_type(tpl_id, arg.clone(), true);
+                                context.substitutor.infer_type(tpl_id, arg.clone(), true);
                             }
                         }
                     }
                     _ => {
-                        context.substitutor.insert_multi_types(
+                        context.substitutor.infer_multi_types(
                             tpl_id,
                             target_rest_types
                                 .iter()
@@ -861,19 +861,17 @@ pub fn variadic_tpl_pattern_match(
                 let tpl_id = tpl_ref.get_tpl_id();
                 match target_rest_types.len() {
                     0 => {
-                        context.substitutor.insert_multi_types(tpl_id, Vec::new());
+                        context.substitutor.infer_multi_types(tpl_id, Vec::new());
                     }
                     1 => {
-                        context.substitutor.insert_type(
-                            tpl_id,
-                            target_rest_types[0].clone(),
-                            false,
-                        );
+                        context
+                            .substitutor
+                            .infer_type(tpl_id, target_rest_types[0].clone(), false);
                     }
                     _ => {
                         context
                             .substitutor
-                            .insert_multi_types(tpl_id, target_rest_types.to_vec());
+                            .infer_multi_types(tpl_id, target_rest_types.to_vec());
                     }
                 }
             }
@@ -893,7 +891,7 @@ pub fn variadic_tpl_pattern_match(
                         let tpl_id = tpl_ref.get_tpl_id();
                         match target_rest_types.get(i) {
                             Some(t) => {
-                                context.substitutor.insert_type(tpl_id, t.clone(), true);
+                                context.substitutor.infer_type(tpl_id, t.clone(), true);
                             }
                             None => {
                                 break;
@@ -946,7 +944,7 @@ fn tuple_tpl_pattern_match(
                             let tpl_id = tpl_ref.get_tpl_id();
                             context
                                 .substitutor
-                                .insert_multi_base(tpl_id, target_array_base.get_base().clone());
+                                .infer_multi_base(tpl_id, target_array_base.get_base().clone());
                         }
                     }
                     VariadicType::Multi(_) => {}

@@ -59,11 +59,11 @@ fn normalize_generic_params(db: &DbIndex, params: &[GenericParam]) -> Vec<Generi
             GenericParam::new(
                 param.name.clone(),
                 param
-                    .type_constraint
+                    .constraint
                     .as_ref()
                     .map(|ty| complete_type_generic_args_in_type(db, ty)),
                 param
-                    .default_type
+                    .default
                     .as_ref()
                     .map(|ty| complete_type_generic_args_in_type(db, ty)),
                 param.attributes.clone(),
@@ -156,20 +156,19 @@ impl GenericIndex for HeaderGenericIndex {
         id
     }
 
-    fn append_generic_param(&mut self, scope_id: GenericScopeId, param: GenericParam) {
-        let Some(scope) = self.scopes.get_mut(scope_id.id) else {
-            return;
-        };
+    fn append_generic_param(
+        &mut self,
+        scope_id: GenericScopeId,
+        param: GenericParam,
+    ) -> Option<GenericTplId> {
+        let scope = self.scopes.get_mut(scope_id.id)?;
         let tpl_id = scope.next_tpl_id;
         scope.next_tpl_id = scope.next_tpl_id.with_idx((tpl_id.get_idx() + 1) as u32);
         scope.params.push((tpl_id, param));
+        Some(tpl_id)
     }
 
-    fn find_generic(
-        &self,
-        position: TextSize,
-        name: &str,
-    ) -> Option<(GenericTplId, Option<LuaType>, Option<LuaType>)> {
+    fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)> {
         for scope in self.scopes.iter().rev() {
             if !scope.contains(position) {
                 continue;
@@ -181,11 +180,7 @@ impl GenericIndex for HeaderGenericIndex {
                 .rev()
                 .find(|(_, param)| param.name == name)
             {
-                return Some((
-                    *tpl_id,
-                    param.type_constraint.clone(),
-                    param.default_type.clone(),
-                ));
+                return Some((*tpl_id, param.clone()));
             }
         }
 

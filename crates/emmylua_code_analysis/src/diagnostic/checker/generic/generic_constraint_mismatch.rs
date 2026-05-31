@@ -103,7 +103,7 @@ fn check_doc_tag_class(
         .get_generic_params(&type_decl.get_id())?;
     let generic_param_types = generic_params
         .iter()
-        .map(|param| (param.type_constraint.clone(), param.default_type.clone()))
+        .map(|param| (param.constraint.clone(), param.default.clone()))
         .collect::<Vec<_>>();
     check_generic_decl_defaults(
         context,
@@ -133,7 +133,7 @@ fn check_doc_tag_alias(
         .get_generic_params(&type_decl.get_id())?;
     let generic_param_types = generic_params
         .iter()
-        .map(|param| (param.type_constraint.clone(), param.default_type.clone()))
+        .map(|param| (param.constraint.clone(), param.default.clone()))
         .collect::<Vec<_>>();
     check_generic_decl_defaults(
         context,
@@ -158,7 +158,7 @@ fn check_doc_tag_generic(
     let generic_param_types = signature
         .generic_params
         .iter()
-        .map(|param| (param.constraint.clone(), param.default_type.clone()))
+        .map(|param| (param.constraint.clone(), param.default.clone()))
         .collect::<Vec<_>>();
     check_generic_decl_defaults(
         context,
@@ -638,7 +638,7 @@ fn check_doc_tag_type(
             .take(explicit_args.len())
             .enumerate()
         {
-            let extend_type = generic_params.get(i)?.type_constraint.clone()?;
+            let extend_type = generic_params.get(i)?.constraint.clone()?;
             let result = semantic_model.type_check_detail(&extend_type, param_type);
             if result.is_err() {
                 add_type_check_diagnostic(

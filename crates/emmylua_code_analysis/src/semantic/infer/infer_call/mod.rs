@@ -113,6 +113,7 @@ pub fn infer_call_expr_func(
             true,
             vec![("...".to_string(), Some(LuaType::Unknown))],
             LuaType::Variadic(VariadicType::Base(LuaType::Unknown).into()),
+            None,
         ))),
         LuaType::Intersection(intersection) => infer_intersection(
             db,
@@ -128,6 +129,7 @@ pub fn infer_call_expr_func(
             true,
             vec![],
             LuaType::Any,
+            None,
         ))),
         LuaType::Union(union) => infer_union(db, cache, union, call_expr.clone(), args_count),
         _ => Err(InferFailReason::None),
@@ -154,6 +156,7 @@ pub fn infer_call_expr_func(
                     func_ty.is_variadic(),
                     func_ty.get_params().to_vec(),
                     new_ret,
+                    Some(func_ty.get_generic_params().to_vec()),
                 )
                 .into()
             }),
@@ -254,16 +257,11 @@ fn filter_callable_overloads_by_call_args(
     Ok(overloads
         .into_iter()
         .filter(|func| {
-            let mut callable_tpls = HashSet::new();
-            func.visit_type(&mut |ty| match ty {
-                LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-                    callable_tpls.insert(generic_tpl.get_tpl_id());
-                }
-                LuaType::StrTplRef(str_tpl) => {
-                    callable_tpls.insert(str_tpl.get_tpl_id());
-                }
-                _ => {}
-            });
+            let callable_tpls = func
+                .get_generic_params()
+                .iter()
+                .map(|generic_tpl| generic_tpl.get_tpl_id())
+                .collect::<HashSet<_>>();
 
             if callable_tpls.is_empty() && !strict_arg_filter {
                 return true;
@@ -612,6 +610,7 @@ fn infer_union(
         first_func.is_variadic(),
         first_func.get_params().to_vec(),
         LuaType::from_vec(returns),
+        Some(first_func.get_generic_params().to_vec()),
     )))
 }
 

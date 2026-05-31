@@ -2,7 +2,7 @@ use hashbrown::{HashMap, HashSet};
 use std::ops::Deref;
 
 use crate::{
-    DbIndex, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
+    DbIndex, GenericTpl, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
     check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
@@ -718,6 +718,7 @@ fn actualize_unresolved_templates(ty: LuaType) -> LuaType {
                     })
                     .collect(),
                 actualize_unresolved_templates(func.get_ret().clone()),
+                Some(actualize_function_generic_params(&func)),
             )
             .into(),
         ),
@@ -817,4 +818,21 @@ fn actualize_unresolved_templates(ty: LuaType) -> LuaType {
         ),
         ty => ty,
     }
+}
+
+fn actualize_function_generic_params(func: &crate::LuaFunctionType) -> Vec<GenericTpl> {
+    func.get_generic_params()
+        .iter()
+        .map(|generic_tpl| {
+            let tpl_id = generic_tpl.get_tpl_id();
+            let param = generic_tpl.get_param();
+            GenericTpl::new(
+                tpl_id,
+                param.name.clone(),
+                param.constraint.clone().map(actualize_unresolved_templates),
+                param.default.clone().map(actualize_unresolved_templates),
+                param.attributes.clone(),
+            )
+        })
+        .collect()
 }

@@ -103,6 +103,7 @@ fn build_function_call_hover(
             signature.is_vararg,
             signature.get_type_params(),
             signature.get_return_type(),
+            Some(signature.get_function_generic_params()),
         );
         let instantiated_signature = instantiate_func_generic(
             db,
@@ -284,6 +285,7 @@ fn process_function_type(
                 signature.is_vararg,
                 signature.get_type_params(),
                 signature.get_return_type(),
+                Some(signature.get_function_generic_params()),
             ));
             new_overloads.insert(0, fake_doc_function.clone());
             let mut contents = Vec::with_capacity(new_overloads.len());
@@ -484,6 +486,7 @@ fn instantiate_call_return_overloads(
                 signature.is_vararg,
                 signature.get_type_params(),
                 row_return_type,
+                Some(signature.get_function_generic_params()),
             );
             let instantiated_row =
                 instantiate_func_generic(db, &mut cache, &row_function, call_expr.clone())

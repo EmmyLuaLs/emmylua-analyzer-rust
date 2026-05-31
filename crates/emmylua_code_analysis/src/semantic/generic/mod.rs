@@ -88,7 +88,7 @@ pub fn get_tpl_ref_extend_type(
                                             db.get_type_index().get_generic_params(type_id)?;
                                         return generic_params
                                             .get(tpl_id as usize)?
-                                            .type_constraint
+                                            .constraint
                                             .clone();
                                     }
                                     _ => return None,

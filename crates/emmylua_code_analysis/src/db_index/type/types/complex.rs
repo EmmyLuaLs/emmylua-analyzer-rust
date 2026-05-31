@@ -5,7 +5,9 @@ use smol_str::SmolStr;
 use std::{ops::Deref, sync::Arc};
 
 use crate::db_index::LuaMemberKey;
-use crate::{AsyncState, DbIndex, InFiled, SemanticModel, first_param_may_not_self};
+use crate::{
+    AsyncState, DbIndex, InFiled, LuaAttributeUse, SemanticModel, first_param_may_not_self,
+};
 
 use super::super::basic_union::{BasicTypeKind, BasicTypeUnion};
 use super::super::generic_param::GenericParam;
@@ -107,6 +109,7 @@ pub struct LuaFunctionType {
     async_state: AsyncState,
     is_colon_define: bool,
     is_variadic: bool,
+    generic_params: Option<Vec<GenericTpl>>,
     params: Vec<(String, Option<LuaType>)>,
     ret: LuaType,
 }
@@ -118,11 +121,14 @@ impl LuaFunctionType {
         is_variadic: bool,
         params: Vec<(String, Option<LuaType>)>,
         ret: LuaType,
+        generic_params: Option<Vec<GenericTpl>>,
     ) -> Self {
+        let generic_params = generic_params.filter(|params| !params.is_empty());
         Self {
             async_state,
             is_colon_define,
             is_variadic,
+            generic_params,
             params,
             ret,
         }
@@ -138,6 +144,10 @@ impl LuaFunctionType {
 
     pub fn get_params(&self) -> &[(String, Option<LuaType>)] {
         &self.params
+    }
+
+    pub fn get_generic_params(&self) -> &[GenericTpl] {
+        self.generic_params.as_deref().unwrap_or(&[])
     }
 
     pub fn get_ret(&self) -> &LuaType {
@@ -213,6 +223,7 @@ impl LuaFunctionType {
             self.is_variadic,
             params,
             self.ret.clone(),
+            self.generic_params.clone(),
         ))
     }
 }
@@ -745,26 +756,23 @@ impl GenericTplId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct GenericTpl {
     tpl_id: GenericTplId,
-    name: ArcIntern<SmolStr>,
-    constraint: Option<LuaType>,
-    default_type: Option<LuaType>,
+    param: GenericParam,
 }
 
 impl GenericTpl {
     pub fn new(
         tpl_id: GenericTplId,
-        name: ArcIntern<SmolStr>,
+        name: SmolStr,
         constraint: Option<LuaType>,
         default_type: Option<LuaType>,
+        attributes: Option<Vec<LuaAttributeUse>>,
     ) -> Self {
         Self {
             tpl_id,
-            name,
-            constraint,
-            default_type,
+            param: GenericParam::new(name, constraint, default_type, attributes),
         }
     }
 
@@ -772,16 +780,20 @@ impl GenericTpl {
         self.tpl_id
     }
 
+    pub fn get_param(&self) -> &GenericParam {
+        &self.param
+    }
+
     pub fn get_name(&self) -> &str {
-        &self.name
+        self.param.name.as_str()
     }
 
     pub fn get_constraint(&self) -> Option<&LuaType> {
-        self.constraint.as_ref()
+        self.param.constraint.as_ref()
     }
 
     pub fn get_default_type(&self) -> Option<&LuaType> {
-        self.default_type.as_ref()
+        self.param.default.as_ref()
     }
 }
 

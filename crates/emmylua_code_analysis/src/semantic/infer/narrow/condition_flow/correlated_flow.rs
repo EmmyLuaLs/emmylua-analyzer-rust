@@ -575,6 +575,7 @@ fn instantiate_return_rows(
             signature.is_vararg,
             signature.get_type_params(),
             return_type.clone(),
+            Some(signature.get_function_generic_params()),
         );
         match cache
             .with_no_flow(|cache| instantiate_func_generic(db, cache, &func, call_expr.clone()))

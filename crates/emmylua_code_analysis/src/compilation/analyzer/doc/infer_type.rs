@@ -256,14 +256,13 @@ fn infer_buildin_or_ref_type(
                 return LuaType::TplRef(tpl);
             }
 
-            if let Some((tpl_id, constraint, default_type)) =
-                analyzer.generic_index.find_generic(position, name)
-            {
+            if let Some((tpl_id, param)) = analyzer.generic_index.find_generic(position, name) {
                 return LuaType::TplRef(Arc::new(GenericTpl::new(
                     tpl_id,
-                    SmolStr::new(name).into(),
-                    constraint,
-                    default_type,
+                    param.name,
+                    param.constraint,
+                    param.default,
+                    param.attributes,
                 )));
             }
 
@@ -628,9 +627,11 @@ fn infer_unary_type(
 }
 
 fn infer_func_type(analyzer: &mut DocTypeAnalyzeContext<'_>, func: &LuaDocFuncType) -> LuaType {
-    if let Some(generic_list) = func.get_generic_decl_list() {
-        register_inline_func_generics(analyzer, func, generic_list);
-    }
+    let generic_params = if let Some(generic_list) = func.get_generic_decl_list() {
+        register_inline_func_generics(analyzer, func, generic_list)
+    } else {
+        Vec::new()
+    };
 
     let mut params_result = Vec::new();
     let mut is_variadic = false;
@@ -711,6 +712,7 @@ fn infer_func_type(analyzer: &mut DocTypeAnalyzeContext<'_>, func: &LuaDocFuncTy
             is_variadic,
             params_result,
             return_type,
+            Some(generic_params),
         )
         .into(),
     )
@@ -720,10 +722,11 @@ fn register_inline_func_generics(
     analyzer: &mut DocTypeAnalyzeContext<'_>,
     func: &LuaDocFuncType,
     generic_list: LuaDocGenericDeclList,
-) {
+) -> Vec<GenericTpl> {
     let scope_id = analyzer
         .generic_index
         .add_generic_scope(vec![func.get_range()], true);
+    let mut generic_params = Vec::new();
     for param in generic_list.get_generic_decl() {
         let Some(name_token) = param.get_name_token() else {
             continue;
@@ -733,16 +736,26 @@ fn register_inline_func_generics(
             .get_constraint_type()
             .map(|ty| infer_type(analyzer, ty));
         let default_type = param.get_default_type().map(|ty| infer_type(analyzer, ty));
-        analyzer.generic_index.append_generic_param(
-            scope_id,
-            GenericParam::new(
-                SmolStr::new(name_token.get_name_text()),
-                constraint,
-                default_type,
-                None,
-            ),
+        let generic_param = GenericParam::new(
+            SmolStr::new(name_token.get_name_text()),
+            constraint,
+            default_type,
+            None,
         );
+        if let Some(tpl_id) = analyzer
+            .generic_index
+            .append_generic_param(scope_id, generic_param.clone())
+        {
+            generic_params.push(GenericTpl::new(
+                tpl_id,
+                generic_param.name,
+                generic_param.constraint,
+                generic_param.default,
+                generic_param.attributes,
+            ));
+        }
     }
+    generic_params
 }
 
 fn get_colon_define(analyzer: &mut DocTypeAnalyzeContext<'_>) -> Option<bool> {
@@ -972,7 +985,7 @@ fn infer_mapped_type(
         .generic_index
         .append_generic_param(scope_id, param.clone());
     let position = mapped_type.get_range().start();
-    let (id, _, _) = analyzer.generic_index.find_generic(position, name)?;
+    let (id, _) = analyzer.generic_index.find_generic(position, name)?;
 
     let doc_type = mapped_type.get_value_type()?;
     let value_type = infer_type(analyzer, doc_type);

@@ -764,10 +764,7 @@ mod test {
             .expect("Box generic params");
         assert_eq!(box_params.len(), 1);
         assert_eq!(box_params[0].name.as_str(), "T");
-        let box_default = box_params[0]
-            .default_type
-            .clone()
-            .expect("Box default type");
+        let box_default = box_params[0].default.clone().expect("Box default type");
         assert_eq!(ws.humanize_type(box_default), "string");
 
         let optional_params = ws
@@ -780,7 +777,7 @@ mod test {
         assert_eq!(optional_params.len(), 1);
         assert_eq!(optional_params[0].name.as_str(), "T");
         let optional_default = optional_params[0]
-            .default_type
+            .default
             .clone()
             .expect("Optional default type");
         assert_eq!(ws.humanize_type(optional_default), "number");
@@ -810,7 +807,7 @@ mod test {
         assert_eq!(signature.generic_params.len(), 1);
         assert_eq!(signature.generic_params[0].name, "T");
         let default_type = signature.generic_params[0]
-            .default_type
+            .default
             .clone()
             .expect("signature default type");
         assert_eq!(ws.humanize_type(default_type), "string");
@@ -954,7 +951,7 @@ mod test {
             .get_type_index()
             .get_generic_params(&LuaTypeDeclId::global("B"))
             .expect("B generic params");
-        let default_type = b_params[0].default_type.clone().expect("B default type");
+        let default_type = b_params[0].default.clone().expect("B default type");
         assert_eq!(ws.humanize_type(default_type), "A<string>");
     }
 
@@ -982,7 +979,7 @@ mod test {
             .get_type_index()
             .get_generic_params(&LuaTypeDeclId::global("B"))
             .expect("B generic params");
-        let default_type = b_params[0].default_type.clone().expect("B default type");
+        let default_type = b_params[0].default.clone().expect("B default type");
         assert_eq!(ws.humanize_type(default_type), "A<string>");
     }
 

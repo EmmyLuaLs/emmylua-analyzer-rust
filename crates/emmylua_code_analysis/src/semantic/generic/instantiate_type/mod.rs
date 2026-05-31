@@ -6,6 +6,8 @@ mod instantiate_special_generic;
 use hashbrown::{HashMap, HashSet};
 use std::{ops::Deref, sync::Arc};
 
+use smol_str::SmolStr;
+
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
     LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
@@ -17,9 +19,7 @@ use crate::{
     semantic::infer::InferFailReason,
 };
 
-use super::type_substitutor::{
-    GenericInstantiateContext, SubstitutorValue, TypeSubstitutor, UninferredTplPolicy,
-};
+use super::type_substitutor::{GenericInstantiateContext, SubstitutorValue, TypeSubstitutor};
 pub use complete_generic_args::{
     GenericArgumentCompletion, complete_type_generic_args, complete_type_generic_args_in_type,
 };
@@ -120,10 +120,9 @@ pub(super) fn instantiate_type_generic_with_context(
     match ty {
         LuaType::Array(array_type) => instantiate_array(context, array_type.get_base()),
         LuaType::Tuple(tuple) => instantiate_tuple(context, tuple),
-        LuaType::DocFunction(doc_func) => instantiate_doc_function_with_context(
-            &context.with_policy(UninferredTplPolicy::PreserveTplRef),
-            doc_func,
-        ),
+        LuaType::DocFunction(doc_func) => {
+            instantiate_nested_doc_function_with_context(context, doc_func)
+        }
         LuaType::Object(object) => instantiate_object(context, object),
         LuaType::Union(union) => instantiate_union(context, union),
         LuaType::Intersection(intersection) => instantiate_intersection(context, intersection),
@@ -246,6 +245,7 @@ fn instantiate_doc_function_with_context(
     let tpl_ret = doc_func.get_ret();
     let async_state = doc_func.get_async_state();
     let colon_define = doc_func.is_colon_define();
+    let generic_params = instantiate_function_generic_params(context, doc_func);
 
     let mut new_params = Vec::new();
     for origin_param in tpl_func_params.iter() {
@@ -375,9 +375,131 @@ fn instantiate_doc_function_with_context(
             is_variadic,
             new_params,
             inst_ret_type,
+            Some(generic_params),
         )
         .into(),
     )
+}
+
+fn instantiate_nested_doc_function_with_context(
+    context: &GenericInstantiateContext,
+    doc_func: &LuaFunctionType,
+) -> LuaType {
+    let mut transferred_params = Vec::new();
+    let mut transferred_tpls = HashSet::new();
+    collect_pending_function_generic_params(
+        context,
+        doc_func,
+        &mut transferred_params,
+        &mut transferred_tpls,
+    );
+
+    if transferred_tpls.is_empty() {
+        return instantiate_doc_function_with_context(context, doc_func);
+    }
+
+    let mut generic_params = doc_func.get_generic_params().to_vec();
+    for generic_param in transferred_params {
+        if generic_params
+            .iter()
+            .any(|tpl| tpl.get_tpl_id() == generic_param.get_tpl_id())
+        {
+            continue;
+        }
+
+        generic_params.push(generic_param);
+    }
+
+    let nested_substitutor = context.substitutor.without_pending_tpls(&transferred_tpls);
+    let nested_context = context.with_substitutor(&nested_substitutor);
+    let doc_func = LuaFunctionType::new(
+        doc_func.get_async_state(),
+        doc_func.is_colon_define(),
+        doc_func.is_variadic(),
+        doc_func.get_params().to_vec(),
+        doc_func.get_ret().clone(),
+        Some(generic_params),
+    );
+    instantiate_doc_function_with_context(&nested_context, &doc_func)
+}
+
+fn collect_pending_function_generic_params(
+    context: &GenericInstantiateContext,
+    doc_func: &LuaFunctionType,
+    generic_params: &mut Vec<GenericTpl>,
+    generic_tpls: &mut HashSet<GenericTplId>,
+) {
+    for generic_tpl in doc_func.get_generic_params() {
+        let tpl_id = generic_tpl.get_tpl_id();
+        if is_pending_tpl(context, tpl_id) && generic_tpls.insert(tpl_id) {
+            generic_params.push(generic_tpl.clone());
+        }
+    }
+
+    doc_func.visit_nested_types(&mut |ty| match ty {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
+            let tpl_id = tpl.get_tpl_id();
+            if is_pending_tpl(context, tpl_id) && generic_tpls.insert(tpl_id) {
+                generic_params.push(tpl.as_ref().clone());
+            }
+        }
+        LuaType::StrTplRef(str_tpl) => {
+            let tpl_id = str_tpl.get_tpl_id();
+            if is_pending_tpl(context, tpl_id) && generic_tpls.insert(tpl_id) {
+                generic_params.push(GenericTpl::new(
+                    tpl_id,
+                    SmolStr::new(str_tpl.get_name()),
+                    str_tpl.get_constraint().cloned(),
+                    None,
+                    None,
+                ));
+            }
+        }
+        _ => {}
+    });
+}
+
+fn is_pending_tpl(context: &GenericInstantiateContext, tpl_id: GenericTplId) -> bool {
+    matches!(
+        context.substitutor.get(tpl_id),
+        Some(SubstitutorValue::None)
+    )
+}
+
+fn instantiate_function_generic_params(
+    context: &GenericInstantiateContext,
+    doc_func: &LuaFunctionType,
+) -> Vec<GenericTpl> {
+    doc_func
+        .get_generic_params()
+        .iter()
+        .filter_map(|generic_tpl| {
+            let tpl_id = generic_tpl.get_tpl_id();
+            let param = generic_tpl.get_param();
+            // A pending entry means this generic belongs to the current instantiation boundary
+            // and has been finalized into the function params/return. Foreign nested generics
+            // are absent from the substitutor and remain owned by the nested function.
+            if context.substitutor.get(tpl_id).is_some() {
+                return None;
+            }
+
+            let constraint = param
+                .constraint
+                .as_ref()
+                .map(|ty| instantiate_type_generic_with_context(context, ty));
+            let default_type = param
+                .default
+                .as_ref()
+                .map(|ty| instantiate_type_generic_with_context(context, ty));
+            Some(GenericTpl::new(
+                tpl_id,
+                param.name.clone(),
+                constraint,
+                default_type,
+                param.attributes.clone(),
+            ))
+        })
+        .collect()
 }
 
 fn instantiate_object(context: &GenericInstantiateContext, object: &LuaObjectType) -> LuaType {
@@ -458,11 +580,6 @@ fn instantiate_uninferred_tpl_fallback(
     tpl: &GenericTpl,
     context: &GenericInstantiateContext,
 ) -> LuaType {
-    // 一些情况下需要保留 TplRef, 例如高阶函数调用
-    if context.should_preserve_tpl_ref() && tpl.get_default_type().is_none() {
-        return LuaType::TplRef(tpl.clone().into());
-    }
-
     // 显式默认值优先, 然后是 extends 约束, 最后才是 unknown.
     if let Some(default_type) = tpl.get_default_type() {
         return instantiate_type_generic_with_context(context, default_type);
@@ -641,7 +758,7 @@ fn instantiate_mapped_type(context: &GenericInstantiateContext, mapped: &LuaMapp
     let constraint = mapped
         .param
         .1
-        .type_constraint
+        .constraint
         .as_ref()
         .map(|ty| instantiate_type_generic_with_context(context, ty));
 

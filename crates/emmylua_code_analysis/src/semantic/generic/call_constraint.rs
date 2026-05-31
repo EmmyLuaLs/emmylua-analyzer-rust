@@ -5,9 +5,9 @@ use hashbrown::HashSet;
 use rowan::TextRange;
 
 use crate::{
-    DbIndex, DocTypeInferContext, GenericTpl, GenericTplId, LuaFunctionType, LuaSemanticDeclId,
-    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor, VariadicType,
-    infer_doc_type,
+    DbIndex, DocTypeInferContext, GenericParam, GenericTpl, GenericTplId, LuaFunctionType,
+    LuaSemanticDeclId, LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps,
+    TypeSubstitutor, VariadicType, infer_doc_type,
 };
 
 // 泛型约束上下文
@@ -31,7 +31,7 @@ pub fn build_call_constraint_context(
     let mut params = doc_func.get_params().to_vec();
     let mut args = get_arg_infos(semantic_model, call_expr)?;
     let mut substitutor = TypeSubstitutor::new();
-    let generic_tpls = collect_func_tpl_ids(&params);
+    let generic_tpls = collect_func_tpl_ids(&doc_func);
     if !generic_tpls.is_empty() {
         substitutor.add_need_infer_tpls(generic_tpls);
     }
@@ -99,64 +99,34 @@ fn collect_generic_assignments(
     }
 }
 
-fn collect_func_tpl_ids(params: &[(String, Option<LuaType>)]) -> HashSet<GenericTplId> {
+fn collect_func_tpl_ids(func: &LuaFunctionType) -> HashSet<GenericTplId> {
     let mut generic_tpls = HashSet::new();
-    for (_, param_type) in params {
-        let Some(param_type) = param_type else {
-            continue;
-        };
-        collect_func_tpls_from_param_type(param_type, &mut generic_tpls);
+    for generic_tpl in func.get_generic_params() {
+        collect_func_param_tpl_with_fallback_deps(
+            generic_tpl.get_tpl_id(),
+            generic_tpl.get_param(),
+            &mut generic_tpls,
+        );
     }
 
     generic_tpls
 }
 
-fn collect_func_tpls_from_param_type(ty: &LuaType, generic_tpls: &mut HashSet<GenericTplId>) {
-    collect_func_tpl_from_param_node(ty, generic_tpls);
-    ty.visit_nested_types(&mut |ty| {
-        collect_func_tpl_from_param_node(ty, generic_tpls);
-    });
-}
-
-fn collect_func_tpl_from_param_node(ty: &LuaType, generic_tpls: &mut HashSet<GenericTplId>) {
-    match ty {
-        LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            collect_func_tpl_with_fallback_deps(generic_tpl, generic_tpls);
-        }
-        LuaType::StrTplRef(str_tpl) => {
-            let tpl_id = str_tpl.get_tpl_id();
-            if tpl_id.is_func() {
-                generic_tpls.insert(tpl_id);
-                if let Some(constraint) = str_tpl.get_constraint() {
-                    let mut constraint_deps = HashSet::new();
-                    if collect_func_tpl_deps_from_fallback_type(
-                        constraint,
-                        &mut constraint_deps,
-                        &mut HashSet::new(),
-                    ) {
-                        generic_tpls.extend(constraint_deps);
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn collect_func_tpl_with_fallback_deps(
-    generic_tpl: &GenericTpl,
+fn collect_func_param_tpl_with_fallback_deps(
+    tpl_id: GenericTplId,
+    generic_param: &GenericParam,
     generic_tpls: &mut HashSet<GenericTplId>,
 ) {
-    let tpl_id = generic_tpl.get_tpl_id();
     if !tpl_id.is_func() {
         return;
     }
 
     generic_tpls.insert(tpl_id);
 
-    let Some(fallback_type) = generic_tpl
-        .get_default_type()
-        .or(generic_tpl.get_constraint())
+    let Some(fallback_type) = generic_param
+        .default
+        .as_ref()
+        .or(generic_param.constraint.as_ref())
     else {
         return;
     };
@@ -261,16 +231,16 @@ fn record_generic_assignment(
     match param_type {
         LuaType::TplRef(tpl_ref) => {
             if !tpl_ref.get_tpl_id().is_conditional_infer() {
-                substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), true);
+                substitutor.infer_type(tpl_ref.get_tpl_id(), arg_type.clone(), true);
             }
         }
         LuaType::ConstTplRef(tpl_ref) => {
             if !tpl_ref.get_tpl_id().is_conditional_infer() {
-                substitutor.insert_type(tpl_ref.get_tpl_id(), arg_type.clone(), false);
+                substitutor.infer_type(tpl_ref.get_tpl_id(), arg_type.clone(), false);
             }
         }
         LuaType::StrTplRef(str_tpl_ref) => {
-            substitutor.insert_type(str_tpl_ref.get_tpl_id(), arg_type.clone(), true);
+            substitutor.infer_type(str_tpl_ref.get_tpl_id(), arg_type.clone(), true);
         }
         LuaType::Variadic(variadic) => {
             if let Some(inner) = variadic.get_type(0) {
@@ -466,9 +436,10 @@ mod tests {
     fn func_tpl(idx: u32, default_type: Option<LuaType>) -> Arc<GenericTpl> {
         Arc::new(GenericTpl::new(
             GenericTplId::Func(idx),
-            SmolStr::new(format!("T{}", idx)).into(),
+            SmolStr::new(format!("T{}", idx)),
             None,
             default_type,
+            None,
         ))
     }
 
@@ -476,15 +447,10 @@ mod tests {
     fn test_collect_func_tpl_with_fallback_deps_skips_cyclic_fallback_deps() {
         let t0 = func_tpl(0, None);
         let t1 = func_tpl(1, Some(LuaType::TplRef(t0.clone())));
-        let t0 = GenericTpl::new(
-            GenericTplId::Func(0),
-            SmolStr::new("T0").into(),
-            None,
-            Some(LuaType::TplRef(t1)),
-        );
+        let t0 = GenericParam::new(SmolStr::new("T0"), None, Some(LuaType::TplRef(t1)), None);
 
         let mut generic_tpls = HashSet::new();
-        collect_func_tpl_with_fallback_deps(&t0, &mut generic_tpls);
+        collect_func_param_tpl_with_fallback_deps(GenericTplId::Func(0), &t0, &mut generic_tpls);
 
         assert!(generic_tpls.contains(&GenericTplId::Func(0)));
         assert!(!generic_tpls.contains(&GenericTplId::Func(1)));

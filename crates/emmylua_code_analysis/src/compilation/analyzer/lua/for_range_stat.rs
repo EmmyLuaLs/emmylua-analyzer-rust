@@ -145,6 +145,12 @@ pub fn infer_for_range_iter_expr_func(
         return Ok(doc_function.get_variadic_ret());
     };
     let mut substitutor = TypeSubstitutor::new();
+    let generic_tpls = doc_function
+        .get_generic_params()
+        .iter()
+        .map(|generic_tpl| generic_tpl.get_tpl_id())
+        .collect();
+    substitutor.add_need_infer_tpls(generic_tpls);
     let mut context = TplContext {
         db,
         cache,

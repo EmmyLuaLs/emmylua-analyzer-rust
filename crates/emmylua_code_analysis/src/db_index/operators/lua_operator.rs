@@ -139,6 +139,7 @@ impl LuaOperator {
                     ("arg0".to_string(), Some(param.clone())),
                 ],
                 ret.clone(),
+                None,
             )
             .into(),
             OperatorFunction::UnOp { ret } => LuaFunctionType::new(
@@ -147,6 +148,7 @@ impl LuaOperator {
                 false,
                 vec![("self".to_string(), Some(LuaType::SelfInfer))],
                 ret.clone(),
+                None,
             )
             .into(),
             OperatorFunction::Call { params, ret } => {
@@ -165,8 +167,15 @@ impl LuaOperator {
                     })
                     .collect();
 
-                LuaFunctionType::new(AsyncState::None, false, is_variadic, params, ret.clone())
-                    .into()
+                LuaFunctionType::new(
+                    AsyncState::None,
+                    false,
+                    is_variadic,
+                    params,
+                    ret.clone(),
+                    None,
+                )
+                .into()
             }
             OperatorFunction::Overload(func) => {
                 LuaType::DocFunction(func.to_call_operator_func_type())
@@ -183,6 +192,7 @@ impl LuaOperator {
                     signature.is_vararg,
                     signature.get_type_params(),
                     get_constructor_return_type(signature, return_mode),
+                    Some(signature.get_function_generic_params()),
                 )
                 .into(),
                 None => LuaType::Signature(*id),
