@@ -3,8 +3,8 @@ use std::{collections::HashSet, sync::Arc, vec};
 use emmylua_code_analysis::{
     AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType,
     LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel,
-    TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, instantiate_doc_function,
-    infer_call_generic, try_extract_signature_id_from_field,
+    TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, infer_call_generic,
+    instantiate_doc_function, try_extract_signature_id_from_field,
 };
 
 use crate::handlers::hover::{

@@ -17,14 +17,11 @@ use crate::{
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::{
-            TypeSubstitutor, collect_callable_overload_groups, get_tpl_ref_extend_type,
-            instantiate_doc_function,
-        },
+        generic::{TypeSubstitutor, collect_callable_overload_groups, instantiate_doc_function},
         infer::narrow::get_type_at_call_expr_inline_cast,
     },
 };
-use crate::{build_self_type, infer_self_type, infer_call_generic, semantic::infer_expr};
+use crate::{build_self_type, infer_call_generic, infer_self_type, semantic::infer_expr};
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
 
@@ -210,9 +207,12 @@ fn infer_tpl_ref_call(
     infer_guard: &InferGuardRef,
     args_count: Option<usize>,
 ) -> InferCallFuncResult {
-    let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let extend_type = get_tpl_ref_extend_type(db, cache, call_expr_type, prefix_expr, 0)
-        .ok_or(InferFailReason::None)?;
+    let extend_type = match call_expr_type {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl.get_constraint().cloned(),
+        LuaType::StrTplRef(str_tpl) => str_tpl.get_constraint().cloned(),
+        _ => None,
+    }
+    .ok_or(InferFailReason::None)?;
     if &extend_type == call_expr_type {
         return Err(InferFailReason::None);
     }

@@ -15,7 +15,7 @@ use crate::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type,
+    enum_variable_is_param, get_keyof_members,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -1183,18 +1183,9 @@ fn infer_tpl_ref_member(
     lookup: &MemberLookupQuery,
     infer_guard: &InferGuardRef,
 ) -> InferResult {
-    let extend_type = get_tpl_ref_extend_type(
-        db,
-        cache,
-        &LuaType::TplRef(generic.clone().into()),
-        lookup
-            .index_expr
-            .get_index_expr()
-            .ok_or(InferFailReason::None)?
-            .get_prefix_expr()
-            .ok_or(InferFailReason::None)?,
-        0,
-    )
-    .ok_or(InferFailReason::None)?;
+    let extend_type = generic
+        .get_constraint()
+        .cloned()
+        .ok_or(InferFailReason::None)?;
     infer_member_by_lookup(db, cache, &extend_type, lookup, infer_guard)
 }

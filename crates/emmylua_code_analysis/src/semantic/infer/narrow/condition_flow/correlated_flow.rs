@@ -577,9 +577,7 @@ fn instantiate_return_rows(
             return_type.clone(),
             Some(signature.get_function_generic_params()),
         );
-        match cache
-            .with_no_flow(|cache| infer_call_generic(db, cache, &func, call_expr.clone()))
-        {
+        match cache.with_no_flow(|cache| infer_call_generic(db, cache, &func, call_expr.clone())) {
             Ok(instantiated) => instantiated.get_ret().clone(),
             Err(_) => return_type,
         }

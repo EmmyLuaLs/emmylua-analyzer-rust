@@ -225,9 +225,9 @@ fn get_type_guard_call_info(
 
     let mut return_type = func_type.get_ret().clone();
     if return_type.contain_tpl() {
-        let Ok(inst_func) = cache.with_no_flow(|cache| {
-            infer_call_generic(db, cache, func_type.as_ref(), call_expr)
-        }) else {
+        let Ok(inst_func) = cache
+            .with_no_flow(|cache| infer_call_generic(db, cache, func_type.as_ref(), call_expr))
+        else {
             return Ok(None);
         };
         return_type = inst_func.get_ret().clone();

@@ -41,9 +41,9 @@ pub fn infer_call_generic(
     let file_id = cache.get_file_id().clone();
 
     let origin_params = func.get_params();
-    let mut func_params: Vec<_> = origin_params
+    let mut func_params: Vec<LuaType> = origin_params
         .iter()
-        .map(|(name, t)| (name.clone(), t.clone().unwrap_or(LuaType::Unknown)))
+        .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
         .collect();
 
     let arg_exprs = call_expr
@@ -59,13 +59,17 @@ pub fn infer_call_generic(
         call_expr: Some(call_expr.clone()),
     };
 
-    let generic_tpls = func
+    let has_func_generic = func
         .get_generic_params()
         .iter()
-        .map(|generic_tpl| generic_tpl.get_tpl_id())
-        .filter(GenericTplId::is_func)
-        .collect::<HashSet<_>>();
-    if !generic_tpls.is_empty() {
+        .any(|generic_tpl| generic_tpl.get_tpl_id().is_func());
+    if has_func_generic {
+        let generic_tpls = func
+            .get_generic_params()
+            .iter()
+            .map(|generic_tpl| generic_tpl.get_tpl_id())
+            .filter(GenericTplId::is_func)
+            .collect::<HashSet<_>>();
         context.substitutor.add_need_infer_tpls(generic_tpls);
 
         if let Some(type_list) = call_expr.get_call_generic_type_list() {
@@ -84,12 +88,7 @@ pub fn infer_call_generic(
         }
     }
 
-    let mut contain_self = false;
-    func.visit_nested_types(&mut |ty| {
-        if let LuaType::SelfInfer = ty {
-            contain_self = true
-        }
-    });
+    let contain_self = func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer));
     if contain_self && let Some(self_type) = infer_self_type(db, cache, &call_expr) {
         substitutor.add_self_type(self_type);
     }
@@ -261,15 +260,20 @@ fn instantiate_callable_from_arg_types(
         return None;
     }
 
+    let has_callable_tpls = callable
+        .get_generic_params()
+        .iter()
+        .any(|generic_tpl| generic_tpl.get_tpl_id().is_func());
+    if !has_callable_tpls {
+        return Some(callable.clone());
+    }
+
     let callable_tpls = callable
         .get_generic_params()
         .iter()
         .map(|generic_tpl| generic_tpl.get_tpl_id())
         .filter(GenericTplId::is_func)
         .collect::<HashSet<_>>();
-    if callable_tpls.is_empty() {
-        return Some(callable.clone());
-    }
 
     let callable_param_types = callable
         .get_params()
@@ -389,14 +393,14 @@ fn infer_generic_types_from_call(
     context: &mut TplContext,
     func: &LuaFunctionType,
     call_expr: &LuaCallExpr,
-    func_params: &mut Vec<(String, LuaType)>,
+    func_params: &mut Vec<LuaType>,
     arg_exprs: &[LuaExpr],
 ) -> Result<(), InferFailReason> {
     let colon_call = call_expr.is_colon_call();
     let colon_define = func.is_colon_define();
     match (colon_define, colon_call) {
         (true, false) => {
-            func_params.insert(0, ("self".to_string(), LuaType::Any));
+            func_params.insert(0, LuaType::Any);
         }
         (false, true) => {
             if !func_params.is_empty() {
@@ -409,7 +413,7 @@ fn infer_generic_types_from_call(
     let mut unresolve_tpls = vec![];
     for i in 0..func_params.len() {
         if i >= arg_exprs.len() {
-            if let LuaType::Variadic(variadic) = &func_params[i].1 {
+            if let LuaType::Variadic(variadic) = &func_params[i] {
                 variadic_tpl_pattern_match(context, variadic, &[])?;
             }
             break;
@@ -419,14 +423,16 @@ fn infer_generic_types_from_call(
             break;
         }
 
-        let (_, func_param_type) = &func_params[i];
+        let func_param_type = &func_params[i];
         let call_arg_expr = &arg_exprs[i];
         if !func_param_type.contains_tpl_node() {
             continue;
         }
 
+        let doc_param_func = as_doc_function_type(db, func_param_type)?;
+
         if !func_param_type.is_variadic()
-            && check_expr_can_later_infer(context, func_param_type, call_arg_expr)?
+            && check_expr_can_later_infer_with_doc_func(doc_param_func.as_deref(), call_arg_expr)
         {
             // 如果参数不能被后续推断, 那么我们先不处理
             unresolve_tpls.push((func_param_type.clone(), call_arg_expr.clone()));
@@ -439,19 +445,18 @@ fn infer_generic_types_from_call(
             Err(e) => return Err(e),
         };
 
-        if let Some(return_pattern) =
-            as_doc_function_type(context.db, func_param_type)?.map(|func| func.get_ret().clone())
-        {
+        if let Some(doc_func) = &doc_param_func {
+            let return_pattern = doc_func.get_ret();
             if let Some(inferred_return_type) =
                 infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
             {
                 return_type_pattern_match_target_type(
                     context,
-                    &return_pattern,
+                    return_pattern,
                     &inferred_return_type,
                 )?;
             } else if arg_type.is_any() || arg_type.is_unknown() {
-                return_type_pattern_match_target_type(context, &return_pattern, &LuaType::Unknown)?;
+                return_type_pattern_match_target_type(context, return_pattern, &LuaType::Unknown)?;
             }
         }
 
@@ -466,11 +471,7 @@ fn infer_generic_types_from_call(
                 break;
             }
             (_, LuaType::Variadic(variadic)) => {
-                let func_param_types = func_params[i..]
-                    .iter()
-                    .map(|(_, t)| t)
-                    .cloned()
-                    .collect::<Vec<_>>();
+                let func_param_types = func_params[i..].to_vec();
                 multi_param_tpl_pattern_match_multi_return(context, &func_param_types, variadic)?;
                 break;
             }
@@ -577,30 +578,23 @@ pub fn infer_self_type(
     None
 }
 
-fn check_expr_can_later_infer(
-    context: &mut TplContext,
-    func_param_type: &LuaType,
+fn check_expr_can_later_infer_with_doc_func(
+    doc_function: Option<&LuaFunctionType>,
     call_arg_expr: &LuaExpr,
-) -> Result<bool, InferFailReason> {
-    let Some(doc_function) = as_doc_function_type(context.db, func_param_type)? else {
-        return Ok(false);
+) -> bool {
+    let Some(doc_function) = doc_function else {
+        return false;
     };
 
     if let LuaExpr::ClosureExpr(_) = call_arg_expr {
-        return Ok(true);
+        return true;
     }
 
     let doc_params = doc_function.get_params();
     let variadic_count = doc_params
         .iter()
-        .filter_map(|(_, t)| {
-            if let Some(LuaType::Variadic(_)) = t {
-                Some(())
-            } else {
-                None
-            }
-        })
+        .filter(|(_, t)| matches!(t, Some(LuaType::Variadic(_))))
         .count();
 
-    Ok(variadic_count > 1)
+    variadic_count > 1
 }
