@@ -1,6 +1,5 @@
 mod complete_generic_args;
 mod instantiate_conditional_generic;
-mod instantiate_func_generic;
 mod instantiate_special_generic;
 
 use hashbrown::{HashMap, HashSet};
@@ -23,7 +22,6 @@ use super::type_substitutor::{GenericInstantiateContext, SubstitutorValue, TypeS
 pub use complete_generic_args::{
     GenericArgumentCompletion, complete_type_generic_args, complete_type_generic_args_in_type,
 };
-pub use instantiate_func_generic::{build_self_type, infer_self_type, instantiate_func_generic};
 pub use instantiate_special_generic::get_keyof_members;
 
 pub(crate) fn collect_callable_overload_groups(

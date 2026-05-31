@@ -4,7 +4,7 @@ use emmylua_code_analysis::{
     AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType,
     LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel,
     TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, instantiate_doc_function,
-    instantiate_func_generic, try_extract_signature_id_from_field,
+    infer_call_generic, try_extract_signature_id_from_field,
 };
 
 use crate::handlers::hover::{
@@ -88,7 +88,7 @@ fn build_function_call_hover(
 
     let function_member = match match_semantic_decl {
         LuaSemanticDeclId::Member(id) => {
-            let member = db.get_member_index().get_member(&id)?;
+            let member = db.get_member_index().get_member(id)?;
             Some(member)
         }
         _ => None,
@@ -105,7 +105,7 @@ fn build_function_call_hover(
             signature.get_return_type(),
             Some(signature.get_function_generic_params()),
         );
-        let instantiated_signature = instantiate_func_generic(
+        let instantiated_signature = infer_call_generic(
             db,
             &mut builder.semantic_model.get_cache().borrow_mut(),
             &base_function,
@@ -183,7 +183,7 @@ fn build_function_define_hover(
         let mut typ = typ.clone();
         let function_member = match semantic_decl_id {
             LuaSemanticDeclId::Member(id) => {
-                let member = db.get_member_index().get_member(&id)?;
+                let member = db.get_member_index().get_member(id)?;
                 Some(member)
             }
             _ => None,
@@ -489,7 +489,7 @@ fn instantiate_call_return_overloads(
                 Some(signature.get_function_generic_params()),
             );
             let instantiated_row =
-                instantiate_func_generic(db, &mut cache, &row_function, call_expr.clone())
+                infer_call_generic(db, &mut cache, &row_function, call_expr.clone())
                     .ok()
                     .map(|func| match func.get_ret() {
                         LuaType::Variadic(variadic) => match variadic.as_ref() {
@@ -507,7 +507,6 @@ fn instantiate_call_return_overloads(
         })
         .collect()
 }
-
 fn convert_function_return_to_docs(func: &LuaFunctionType) -> Vec<LuaDocReturnInfo> {
     match func.get_ret() {
         LuaType::Variadic(variadic) => match variadic.as_ref() {

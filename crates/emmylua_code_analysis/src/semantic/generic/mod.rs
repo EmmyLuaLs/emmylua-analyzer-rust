@@ -1,5 +1,6 @@
 mod call_constraint;
 mod instantiate_type;
+mod infer_call_generic;
 mod test;
 mod tpl_context;
 mod tpl_pattern;
@@ -9,6 +10,7 @@ pub use call_constraint::{
     CallConstraintArg, CallConstraintContext, build_call_constraint_context,
     normalize_constraint_type,
 };
+pub use infer_call_generic::{build_self_type, infer_self_type, infer_call_generic};
 use emmylua_parser::LuaAstNode;
 use emmylua_parser::LuaExpr;
 pub(crate) use instantiate_type::collect_callable_overload_groups;

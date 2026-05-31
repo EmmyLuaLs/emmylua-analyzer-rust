@@ -24,7 +24,7 @@ use crate::{
         infer::narrow::get_type_at_call_expr_inline_cast,
     },
 };
-use crate::{build_self_type, infer_self_type, instantiate_func_generic, semantic::infer_expr};
+use crate::{build_self_type, infer_self_type, infer_call_generic, semantic::infer_expr};
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
 
@@ -138,7 +138,7 @@ pub fn infer_call_expr_func(
     let result = if let Ok(func_ty) = result {
         let func_ty = match func_ty.get_ret() {
             LuaType::Call(_) => {
-                match instantiate_func_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
+                match infer_call_generic(db, cache, func_ty.as_ref(), call_expr.clone()) {
                     Ok(func_ty) => Arc::new(func_ty),
                     Err(_) => func_ty,
                 }
@@ -226,7 +226,7 @@ fn infer_doc_function(
     call_expr: LuaCallExpr,
 ) -> InferCallFuncResult {
     if func.contain_tpl() {
-        let result = instantiate_func_generic(db, cache, func, call_expr)?;
+        let result = infer_call_generic(db, cache, func, call_expr)?;
         return Ok(Arc::new(result));
     }
 
@@ -360,7 +360,7 @@ fn infer_type_doc_function(
                 };
 
                 if has_generic_tpl {
-                    let result = instantiate_func_generic(db, cache, &f, call_expr.clone())?;
+                    let result = infer_call_generic(db, cache, &f, call_expr.clone())?;
                     overloads.push(Arc::new(result));
                 } else if f.contain_self() {
                     let mut substitutor = TypeSubstitutor::new();

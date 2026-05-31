@@ -30,9 +30,9 @@ use crate::{
     tpl_pattern_match_args_skip_unknown,
 };
 
-use super::{TypeSubstitutor, instantiate_type_generic};
+use crate::semantic::generic::{TypeSubstitutor, instantiate_type::instantiate_type_generic};
 
-pub fn instantiate_func_generic(
+pub fn infer_call_generic(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     func: &LuaFunctionType,
