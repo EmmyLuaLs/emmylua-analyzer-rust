@@ -831,6 +831,7 @@ fn actualize_function_generic_params(func: &crate::LuaFunctionType) -> Vec<Gener
                 param.name.clone(),
                 param.constraint.clone().map(actualize_unresolved_templates),
                 param.default.clone().map(actualize_unresolved_templates),
+                param.is_const,
                 param.attributes.clone(),
             )
         })

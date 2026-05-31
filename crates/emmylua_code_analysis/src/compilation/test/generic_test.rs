@@ -814,6 +814,65 @@ mod test {
     }
 
     #[test]
+    fn test_generic_const_metadata_storage() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@class Box<const T, U>
+
+            ---@generic const R, S
+            ---@return R
+            local function id()
+            end
+
+            ---@alias Mapper fun<const A, B>(value: A): B
+            "#,
+        );
+
+        let db = ws.analysis.compilation.get_db();
+        let box_params = db
+            .get_type_index()
+            .get_generic_params(&LuaTypeDeclId::global("Box"))
+            .expect("Box generic params");
+        assert_eq!(box_params.len(), 2);
+        assert_eq!(box_params[0].name.as_str(), "T");
+        assert!(box_params[0].is_const);
+        assert_eq!(box_params[1].name.as_str(), "U");
+        assert!(!box_params[1].is_const);
+
+        let closure = ws.get_node::<LuaClosureExpr>(file_id);
+        let signature_id = LuaSignatureId::from_closure(file_id, &closure);
+        let signature = db
+            .get_signature_index()
+            .get(&signature_id)
+            .expect("signature");
+        assert_eq!(signature.generic_params.len(), 2);
+        assert_eq!(signature.generic_params[0].name.as_str(), "R");
+        assert!(signature.generic_params[0].is_const);
+        assert_eq!(signature.generic_params[1].name.as_str(), "S");
+        assert!(!signature.generic_params[1].is_const);
+
+        let function_generic_params = signature.get_function_generic_params();
+        assert!(function_generic_params[0].is_const());
+        assert!(!function_generic_params[1].is_const());
+
+        let mapper_decl = db
+            .get_type_index()
+            .get_type_decl(&LuaTypeDeclId::global("Mapper"))
+            .expect("Mapper alias");
+        let mapper_origin = mapper_decl.get_alias_ref().expect("Mapper alias origin");
+        let LuaType::DocFunction(mapper_func) = mapper_origin else {
+            panic!("expected Mapper alias to be a function type");
+        };
+        let mapper_generic_params = mapper_func.get_generic_params();
+        assert_eq!(mapper_generic_params.len(), 2);
+        assert_eq!(mapper_generic_params[0].get_name(), "A");
+        assert!(mapper_generic_params[0].is_const());
+        assert_eq!(mapper_generic_params[1].get_name(), "B");
+        assert!(!mapper_generic_params[1].is_const());
+    }
+
+    #[test]
     fn test_bare_generic_type_uses_default() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

@@ -262,6 +262,7 @@ fn infer_buildin_or_ref_type(
                     param.name,
                     param.constraint,
                     param.default,
+                    param.is_const,
                     param.attributes,
                 )));
             }
@@ -740,6 +741,7 @@ fn register_inline_func_generics(
             SmolStr::new(name_token.get_name_text()),
             constraint,
             default_type,
+            param.has_const_modifier(),
             None,
         );
         if let Some(tpl_id) = analyzer
@@ -751,6 +753,7 @@ fn register_inline_func_generics(
                 generic_param.name,
                 generic_param.constraint,
                 generic_param.default,
+                generic_param.is_const,
                 generic_param.attributes,
             ));
         }
@@ -976,7 +979,13 @@ fn infer_mapped_type(
     let constraint = generic_decl
         .get_constraint_type()
         .map(|constraint| infer_type(analyzer, constraint));
-    let param = GenericParam::new(SmolStr::new(name), constraint, None, None);
+    let param = GenericParam::new(
+        SmolStr::new(name),
+        constraint,
+        None,
+        generic_decl.has_const_modifier(),
+        None,
+    );
 
     let scope_id = analyzer
         .generic_index

@@ -66,6 +66,7 @@ fn normalize_generic_params(db: &DbIndex, params: &[GenericParam]) -> Vec<Generi
                     .default
                     .as_ref()
                     .map(|ty| complete_type_generic_args_in_type(db, ty)),
+                param.is_const,
                 param.attributes.clone(),
             )
         })
@@ -96,7 +97,13 @@ fn resolve_generic_params(
             infer_header_type(db, file_id, workspace_id, &mut generic_index, type_ref)
         });
 
-        let param = GenericParam::new(name, constraint, default_type, None);
+        let param = GenericParam::new(
+            name,
+            constraint,
+            default_type,
+            generic_decl.has_const_modifier(),
+            None,
+        );
         generic_index.append_generic_param(scope_id, param.clone());
         params.push(param);
     }

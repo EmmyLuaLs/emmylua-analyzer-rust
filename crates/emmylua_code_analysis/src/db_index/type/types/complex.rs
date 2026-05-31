@@ -768,11 +768,12 @@ impl GenericTpl {
         name: SmolStr,
         constraint: Option<LuaType>,
         default_type: Option<LuaType>,
+        is_const: bool,
         attributes: Option<Vec<LuaAttributeUse>>,
     ) -> Self {
         Self {
             tpl_id,
-            param: GenericParam::new(name, constraint, default_type, attributes),
+            param: GenericParam::new(name, constraint, default_type, is_const, attributes),
         }
     }
 
@@ -786,6 +787,10 @@ impl GenericTpl {
 
     pub fn get_name(&self) -> &str {
         self.param.name.as_str()
+    }
+
+    pub fn is_const(&self) -> bool {
+        self.param.is_const
     }
 
     pub fn get_constraint(&self) -> Option<&LuaType> {

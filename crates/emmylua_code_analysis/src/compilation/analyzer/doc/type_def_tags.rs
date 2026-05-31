@@ -391,7 +391,13 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
                 .get_default_type()
                 .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
 
-            let generic_param = GenericParam::new(smol_name, type_ref, default_type, None);
+            let generic_param = GenericParam::new(
+                smol_name,
+                type_ref,
+                default_type,
+                param.has_const_modifier(),
+                None,
+            );
             analyzer
                 .type_context
                 .generic_index

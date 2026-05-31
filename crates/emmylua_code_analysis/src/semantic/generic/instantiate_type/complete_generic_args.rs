@@ -342,6 +342,7 @@ fn complete_function_generic_params(
                 completed.param.name,
                 completed.param.constraint,
                 completed.param.default,
+                completed.param.is_const,
                 completed.param.attributes,
             )
         })
@@ -569,6 +570,7 @@ fn complete_generic_param(
             param.name.clone(),
             constraint.map(|ty| ty.ty),
             default_type.map(|ty| ty.ty),
+            param.is_const,
             param.attributes.clone(),
         ),
         cycled,

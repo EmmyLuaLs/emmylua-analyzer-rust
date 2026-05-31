@@ -7,6 +7,7 @@ pub struct GenericParam {
     pub name: SmolStr,
     pub constraint: Option<LuaType>,
     pub default: Option<LuaType>,
+    pub is_const: bool,
     pub attributes: Option<Vec<LuaAttributeUse>>,
 }
 
@@ -15,12 +16,14 @@ impl GenericParam {
         name: SmolStr,
         constraint: Option<LuaType>,
         default: Option<LuaType>,
+        is_const: bool,
         attributes: Option<Vec<LuaAttributeUse>>,
     ) -> Self {
         Self {
             name,
             constraint,
             default,
+            is_const,
             attributes,
         }
     }

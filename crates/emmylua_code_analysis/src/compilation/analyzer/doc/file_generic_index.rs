@@ -172,12 +172,13 @@ impl ConditionalInferIndex {
 
         let tpl_id = GenericTplId::ConditionalInfer(self.next_infer_id);
         self.next_infer_id += 1;
-        let param = GenericParam::new(SmolStr::new(name), None, None, None);
+        let param = GenericParam::new(SmolStr::new(name), None, None, false, None);
         let tpl = Arc::new(GenericTpl::new(
             tpl_id,
             param.name.clone(),
             param.constraint.clone(),
             param.default.clone(),
+            param.is_const,
             param.attributes.clone(),
         ));
 

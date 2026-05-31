@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{LuaParser, parser::ParserConfig};
+    use crate::{LuaParseErrorKind, LuaParser, parser::ParserConfig};
 
     macro_rules! assert_ast_eq {
         ($lua_code:expr, $expected:expr) => {
@@ -1053,6 +1053,68 @@ Syntax(Chunk)@0..92
     Token(TkWhitespace)@84..92 "        "
         "#;
         assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_generic_const_modifier_doc() {
+        let code = "---@class A<const T>\n---@generic const R\n---@alias B<T> const\n";
+
+        let result = r#"
+Syntax(Chunk)@0..62
+  Syntax(Block)@0..62
+    Syntax(Comment)@0..61
+      Token(TkDocStart)@0..4 "---@"
+      Syntax(DocTagClass)@4..20
+        Token(TkTagClass)@4..9 "class"
+        Token(TkWhitespace)@9..10 " "
+        Token(TkName)@10..11 "A"
+        Syntax(DocGenericDeclareList)@11..20
+          Token(TkLt)@11..12 "<"
+          Syntax(DocGenericParameter)@12..19
+            Token(TkDocConst)@12..17 "const"
+            Token(TkWhitespace)@17..18 " "
+            Token(TkName)@18..19 "T"
+          Token(TkGt)@19..20 ">"
+      Token(TkEndOfLine)@20..21 "\n"
+      Token(TkDocStart)@21..25 "---@"
+      Syntax(DocTagGeneric)@25..40
+        Token(TkTagGeneric)@25..32 "generic"
+        Token(TkWhitespace)@32..33 " "
+        Syntax(DocGenericDeclareList)@33..40
+          Syntax(DocGenericParameter)@33..40
+            Token(TkDocConst)@33..38 "const"
+            Token(TkWhitespace)@38..39 " "
+            Token(TkName)@39..40 "R"
+      Token(TkEndOfLine)@40..41 "\n"
+      Token(TkDocStart)@41..45 "---@"
+      Syntax(DocTagAlias)@45..61
+        Token(TkTagAlias)@45..50 "alias"
+        Token(TkWhitespace)@50..51 " "
+        Token(TkName)@51..52 "B"
+        Syntax(DocGenericDeclareList)@52..55
+          Token(TkLt)@52..53 "<"
+          Syntax(DocGenericParameter)@53..54
+            Token(TkName)@53..54 "T"
+          Token(TkGt)@54..55 ">"
+        Token(TkWhitespace)@55..56 " "
+        Syntax(TypeName)@56..61
+          Token(TkName)@56..61 "const"
+    Token(TkEndOfLine)@61..62 "\n"
+        "#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_generic_const_modifier_requires_identifier() {
+        let tree = LuaParser::parse("---@class A<const>\n", ParserConfig::default());
+        let errors = tree.get_errors();
+
+        assert!(errors.iter().any(|error| {
+            error.kind == LuaParseErrorKind::DocError
+                && error.message
+                    == "Identifier expected. 'const' is a reserved word that cannot be used here."
+        }));
     }
 
     #[test]

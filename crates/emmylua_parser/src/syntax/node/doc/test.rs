@@ -206,4 +206,21 @@ mod test {
             "string"
         );
     }
+
+    #[test]
+    fn test_doc_generic_const_modifier_accessor() {
+        let tree = LuaParser::parse("---@class A<const T, U>\n", ParserConfig::default());
+        let root = tree.get_chunk_node();
+        let class = root.descendants::<LuaDocTagClass>().next().unwrap();
+        let generic_decl = class.get_generic_decl().unwrap();
+        let mut params = generic_decl.get_generic_decl();
+
+        let const_param = params.next().unwrap();
+        assert!(const_param.has_const_modifier());
+        assert_eq!(const_param.get_name_token().unwrap().get_name_text(), "T");
+
+        let regular_param = params.next().unwrap();
+        assert!(!regular_param.has_const_modifier());
+        assert_eq!(regular_param.get_name_token().unwrap().get_name_text(), "U");
+    }
 }

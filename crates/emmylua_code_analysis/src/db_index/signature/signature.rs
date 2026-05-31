@@ -205,6 +205,7 @@ impl LuaSignature {
                     param.name.clone(),
                     param.constraint.clone(),
                     param.default.clone(),
+                    param.is_const,
                     param.attributes.clone(),
                 )
             })

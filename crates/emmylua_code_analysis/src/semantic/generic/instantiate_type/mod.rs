@@ -449,6 +449,7 @@ fn collect_pending_function_generic_params(
                     SmolStr::new(str_tpl.get_name()),
                     str_tpl.get_constraint().cloned(),
                     None,
+                    false,
                     None,
                 ));
             }
@@ -494,6 +495,7 @@ fn instantiate_function_generic_params(
                 param.name.clone(),
                 constraint,
                 default_type,
+                param.is_const,
                 param.attributes.clone(),
             ))
         })

@@ -23,7 +23,15 @@ mod tests {
     #[test]
     fn test_deep_contain_tpl_uses_iterative_walk() {
         let mut ty = LuaType::TplRef(
-            GenericTpl::new(GenericTplId::Type(0), SmolStr::new("T"), None, None, None).into(),
+            GenericTpl::new(
+                GenericTplId::Type(0),
+                SmolStr::new("T"),
+                None,
+                None,
+                false,
+                None,
+            )
+            .into(),
         );
 
         for _ in 0..20_000 {
