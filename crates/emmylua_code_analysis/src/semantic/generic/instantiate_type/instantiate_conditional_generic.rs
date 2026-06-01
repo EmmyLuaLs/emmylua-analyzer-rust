@@ -8,7 +8,7 @@ use crate::{
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
 };
 
-use super::{get_default_constructor, instantiate_type_generic_with_context};
+use super::{get_default_constructor, instantiate_type_generic_inner};
 use crate::semantic::generic::type_substitutor::GenericInstantiateContext;
 
 #[derive(Debug, Clone, Copy)]
@@ -80,19 +80,18 @@ fn instantiate_conditional_once(
                 finalize_infer_assignments(infer_assignments),
             )
         } else {
-            instantiate_type_generic_with_context(context, conditional.get_false_type())
+            instantiate_type_generic_inner(context, conditional.get_false_type())
         };
     }
 
     match check_conditional_extends(context.db, &left_type, &right_type) {
         ConditionalCheck::True => instantiate_true_branch(context, conditional, HashMap::new()),
         ConditionalCheck::False => {
-            instantiate_type_generic_with_context(context, conditional.get_false_type())
+            instantiate_type_generic_inner(context, conditional.get_false_type())
         }
         ConditionalCheck::Both => {
             let true_type = instantiate_true_branch(context, conditional, HashMap::new());
-            let false_type =
-                instantiate_type_generic_with_context(context, conditional.get_false_type());
+            let false_type = instantiate_type_generic_inner(context, conditional.get_false_type());
             TypeOps::Union.apply(context.db, &true_type, &false_type)
         }
     }
@@ -150,7 +149,7 @@ fn instantiate_true_branch(
     infer_assignments: HashMap<GenericTplId, LuaType>,
 ) -> LuaType {
     if infer_assignments.is_empty() {
-        return instantiate_type_generic_with_context(context, conditional.get_true_type());
+        return instantiate_type_generic_inner(context, conditional.get_true_type());
     }
 
     let mut true_substitutor = context.substitutor.clone();
@@ -158,7 +157,7 @@ fn instantiate_true_branch(
         true_substitutor.insert_conditional_infer_type(tpl_id, ty);
     }
     let true_context = context.with_substitutor(&true_substitutor);
-    instantiate_type_generic_with_context(&true_context, conditional.get_true_type())
+    instantiate_type_generic_inner(&true_context, conditional.get_true_type())
 }
 
 fn contains_conditional_infer(ty: &LuaType) -> bool {
@@ -646,7 +645,7 @@ fn instantiate_conditional_operand(
     checked: bool,
     has_new: bool,
 ) -> LuaType {
-    let mut result = instantiate_type_generic_with_context(context, operand);
+    let mut result = instantiate_type_generic_inner(context, operand);
     if let LuaType::TplRef(tpl_ref) = operand {
         let tpl_id = tpl_ref.get_tpl_id();
         if let Some(raw) = context.substitutor.get_raw_type(tpl_id) {

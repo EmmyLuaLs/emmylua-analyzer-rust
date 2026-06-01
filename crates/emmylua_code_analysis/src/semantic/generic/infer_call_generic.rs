@@ -12,7 +12,6 @@ use crate::{
     semantic::{
         LuaInferCache,
         generic::{
-            instantiate_type::instantiate_doc_function,
             tpl_context::TplContext,
             tpl_pattern::{
                 multi_param_tpl_pattern_match_multi_return, return_type_pattern_match_target_type,
@@ -93,7 +92,8 @@ pub fn infer_call_generic(
         substitutor.add_self_type(self_type);
     }
 
-    if let LuaType::DocFunction(f) = instantiate_doc_function(db, func, &substitutor) {
+    let func_type = LuaType::DocFunction(func.clone().into());
+    if let LuaType::DocFunction(f) = instantiate_type_generic(db, &func_type, &substitutor) {
         Ok(f.deref().clone())
     } else {
         Ok(func.clone())
@@ -298,10 +298,12 @@ fn instantiate_callable_from_arg_types(
         return None;
     }
 
-    let instantiated = match instantiate_doc_function(context.db, callable, &callable_substitutor) {
-        LuaType::DocFunction(func) => func,
-        _ => callable.clone(),
-    };
+    let callable_type = LuaType::DocFunction(callable.clone());
+    let instantiated =
+        match instantiate_type_generic(context.db, &callable_type, &callable_substitutor) {
+            LuaType::DocFunction(func) => func,
+            _ => callable.clone(),
+        };
     let unresolved_return_tpls = {
         let mut tpl_ids = HashSet::new();
         instantiated.get_ret().visit_type(&mut |ty| {
@@ -330,7 +332,7 @@ fn instantiate_callable_from_arg_types(
     for tpl_id in callback_return_tpls {
         callable_substitutor.insert_type(tpl_id, LuaType::Unknown, true);
     }
-    match instantiate_doc_function(context.db, callable, &callable_substitutor) {
+    match instantiate_type_generic(context.db, &callable_type, &callable_substitutor) {
         LuaType::DocFunction(func) => Some(func),
         _ => None,
     }

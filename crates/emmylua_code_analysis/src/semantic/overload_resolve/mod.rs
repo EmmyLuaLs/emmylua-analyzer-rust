@@ -1,3 +1,4 @@
+mod collect_overloads;
 mod resolve_signature_by_args;
 
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use super::{
     infer::{InferCallFuncResult, InferFailReason, infer_expr_list_types, try_infer_expr_no_flow},
 };
 
+pub(crate) use collect_overloads::collect_callable_overload_groups;
 pub(crate) use resolve_signature_by_args::{callable_accepts_args, resolve_signature_by_args};
 
 pub fn resolve_signature(

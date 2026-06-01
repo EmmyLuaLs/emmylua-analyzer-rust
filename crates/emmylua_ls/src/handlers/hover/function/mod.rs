@@ -4,7 +4,7 @@ use emmylua_code_analysis::{
     AsyncState, DbIndex, InferGuard, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType,
     LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel,
     TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, infer_call_generic,
-    instantiate_doc_function, try_extract_signature_id_from_field,
+    instantiate_type_generic, try_extract_signature_id_from_field,
 };
 
 use crate::handlers::hover::{
@@ -704,8 +704,8 @@ fn hover_instantiate_function_type(
         return None;
     }
     match typ {
-        LuaType::DocFunction(f) => {
-            if let LuaType::DocFunction(f) = instantiate_doc_function(db, f, substitutor) {
+        LuaType::DocFunction(_) => {
+            if let LuaType::DocFunction(f) = instantiate_type_generic(db, typ, substitutor) {
                 Some(f)
             } else {
                 None

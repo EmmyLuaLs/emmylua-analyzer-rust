@@ -10,7 +10,7 @@ use crate::{
 use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
-use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_with_context};
+use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_inner};
 
 pub(super) fn instantiate_alias_call(
     context: &GenericInstantiateContext,
@@ -19,7 +19,7 @@ pub(super) fn instantiate_alias_call(
     let operand_exprs = alias_call.get_operands();
     let operands = operand_exprs
         .iter()
-        .map(|it| instantiate_type_generic_with_context(context, it))
+        .map(|it| instantiate_type_generic_inner(context, it))
         .collect::<Vec<_>>();
 
     match alias_call.get_call_kind() {

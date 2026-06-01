@@ -140,9 +140,7 @@ fn get_deprecated_message(
         .get_db()
         .get_property_index()
         .get_property(semantic_decl);
-    let Some(property) = property else {
-        return None;
-    };
+    let property = property?;
     if let Some(deprecated) = property.deprecated() {
         let deprecated_message = match deprecated {
             LuaDeprecated::Deprecated => "deprecated".to_string(),

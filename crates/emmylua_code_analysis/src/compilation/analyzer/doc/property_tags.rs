@@ -154,11 +154,8 @@ pub fn analyze_deprecated(analyzer: &mut DocAnalyzer, tag: LuaDocTagDeprecated) 
         add_deprecated(analyzer, type_owner_id, message.clone())?;
         let mut compat_owner_id = None;
         if let Some(owner) = get_owner_id(analyzer, None, true) {
-            match owner {
-                owner @ (LuaSemanticDeclId::LuaDecl(_) | LuaSemanticDeclId::Member(_)) => {
-                    compat_owner_id = Some(owner);
-                }
-                _ => {}
+            if let owner @ (LuaSemanticDeclId::LuaDecl(_) | LuaSemanticDeclId::Member(_)) = owner {
+                compat_owner_id = Some(owner);
             }
         }
         if let Some(compat_owner_id) = compat_owner_id {

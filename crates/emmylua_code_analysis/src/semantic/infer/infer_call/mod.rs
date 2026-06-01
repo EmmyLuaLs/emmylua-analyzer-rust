@@ -17,8 +17,8 @@ use crate::{
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::{TypeSubstitutor, collect_callable_overload_groups, instantiate_doc_function},
-        infer::narrow::get_type_at_call_expr_inline_cast,
+        generic::TypeSubstitutor, infer::narrow::get_type_at_call_expr_inline_cast,
+        overload_resolve::collect_callable_overload_groups,
     },
 };
 use crate::{build_self_type, infer_call_generic, infer_self_type, semantic::infer_expr};
@@ -271,7 +271,8 @@ fn filter_callable_overloads_by_call_args(
             let mut substitutor = TypeSubstitutor::new();
             substitutor.add_need_infer_tpls(callable_tpls);
             let match_func = if has_tpls {
-                match instantiate_doc_function(db, func, &substitutor) {
+                let func_type = LuaType::DocFunction(func.clone());
+                match instantiate_type_generic(db, &func_type, &substitutor) {
                     LuaType::DocFunction(doc_func) => doc_func,
                     _ => func.clone(),
                 }
@@ -363,7 +364,9 @@ fn infer_type_doc_function(
                     let mut substitutor = TypeSubstitutor::new();
                     let self_type = build_self_type(db, call_expr_type);
                     substitutor.add_self_type(self_type);
-                    if let LuaType::DocFunction(f) = instantiate_doc_function(db, &f, &substitutor)
+                    let func_type = LuaType::DocFunction(f.clone());
+                    if let LuaType::DocFunction(f) =
+                        instantiate_type_generic(db, &func_type, &substitutor)
                     {
                         overloads.push(f);
                     }

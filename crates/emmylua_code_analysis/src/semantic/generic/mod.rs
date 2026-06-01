@@ -11,7 +11,6 @@ pub use call_constraint::{
     normalize_constraint_type,
 };
 pub use infer_call_generic::{build_self_type, infer_call_generic, infer_self_type};
-pub(crate) use instantiate_type::collect_callable_overload_groups;
 pub use instantiate_type::get_keyof_members;
 pub use instantiate_type::*;
 pub use tpl_context::TplContext;
