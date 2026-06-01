@@ -16,7 +16,7 @@ use super::{
     collect_active_type_narrows, find_member_type_at_program_point,
     find_name_type_at_program_point,
 };
-pub use super::super::{SalsaSignatureReturnQueryIndex, SalsaSignatureReturnQuerySummary};
+pub(crate) use super::super::{SalsaSignatureReturnQueryIndex, SalsaSignatureReturnQuerySummary};
 
 use crate::{
     SalsaCallSummary, SalsaCallUseSummary, SalsaDeclTreeSummary, SalsaDocGenericSummary,

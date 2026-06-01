@@ -34,10 +34,9 @@ pub use query::{
 	SalsaSignatureGenericParamLookupKey, SalsaSignatureGenericParamLookupSummary,
 	SalsaSignatureOperatorExplainSummary, SalsaSignatureParamExplainSummary,
 	SalsaSignatureReturnExplainSummary, SalsaSignatureReturnItemExplainSummary,
-	SalsaSignatureReturnQueryIndex, SalsaSignatureReturnQuerySummary,
 	SalsaSignatureTypeExplainSummary, SalsaSingleFileSemanticSummary,
 	SalsaTableShapeQueryIndex, SalsaTypeCandidateOriginSummary, SalsaTypeCandidateSummary,
 	SalsaTypeNarrowSummary,
 };
-pub use salsa_db::*;
-pub use summary::*;
+pub(crate) use salsa_db::*;
+pub(crate) use summary::*;

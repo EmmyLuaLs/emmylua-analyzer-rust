@@ -146,13 +146,13 @@ pub use signature::{
     SalsaSignatureGenericParamExplainSummary, SalsaSignatureGenericParamLookupKey,
     SalsaSignatureGenericParamLookupSummary, SalsaSignatureOperatorExplainSummary,
     SalsaSignatureParamExplainSummary, SalsaSignatureReturnExplainSummary,
-    SalsaSignatureReturnItemExplainSummary, SalsaSignatureReturnQueryIndex,
-    SalsaSignatureReturnQuerySummary, SalsaSignatureTypeExplainSummary,
+    SalsaSignatureReturnItemExplainSummary,
+    SalsaSignatureTypeExplainSummary,
 };
 pub(crate) use signature::{
     build_signature_explain_index, build_signature_return_query_index, call_explain_is_resolved,
     find_call_explain_at, find_call_explain_by_syntax_id, find_signature_explain_at,
-    find_signature_generic_param_by_owner_in_index, find_signature_return_query_at,
+    find_signature_generic_param_by_owner_in_index, find_signature_return_query_at, SalsaSignatureReturnQueryIndex, SalsaSignatureReturnQuerySummary,
 };
 pub use table_shape::SalsaTableShapeQueryIndex;
 pub(crate) use table_shape::{

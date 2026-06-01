@@ -12,7 +12,7 @@ use lsp_types::Uri;
 use crate::{Emmyrc, FileId, Vfs, db_index::Workspace};
 
 pub use facade::{
-    SalsaSummaryDocQueries, SalsaSummaryDocSignatureQueries, SalsaSummaryFileQueries,
+    SalsaSummaryDocQueries, SalsaSummaryFileQueries,
     SalsaSummaryFlowQueries, SalsaSummaryLexicalQueries, SalsaSummaryModuleQueries,
     SalsaSummarySemanticQueries, SalsaSummaryTypeQueries,
 };
