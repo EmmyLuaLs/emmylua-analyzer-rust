@@ -8,8 +8,8 @@ use crate::{
     DbIndex, FileId, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType,
     LuaIntersectionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType,
     LuaTypeCache, LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, TypeOps,
-    find_compilation_decl_by_position, find_module_by_require_path,
-    resolve_projected_module_export_type,
+    find_compilation_decl_by_position,
+    module_query::{export::infer_module_export_type, identity::find_db_module_info},
     semantic::{
         infer::find_self_decl_or_member_id, member::get_buildin_type_map_type_id,
         semantic_info::resolve_global_decl_id,
@@ -145,7 +145,7 @@ fn infer_require_module_semantic_decl(
         _ => return None,
     };
 
-    let module_info = find_module_by_require_path(db, &module_path)?;
+    let module_info = find_db_module_info(db, &module_path)?;
     match module_info.semantic_target? {
         SalsaSemanticTargetSummary::Decl(decl_id) => Some(LuaSemanticDeclId::LuaDecl(
             find_compilation_decl_by_position(db, module_info.file_id, decl_id.as_position())
@@ -335,7 +335,7 @@ fn infer_member_semantic_decl_by_member_key(
         ),
         LuaType::Global => infer_global_member_semantic_decl_by_member_key(db, cache, member_key),
         LuaType::ModuleRef(file_id) => {
-            let export_type = resolve_projected_module_export_type(db, *file_id)?;
+            let export_type = infer_module_export_type(db, *file_id)?;
             if !matches!(export_type, LuaType::Signature(_)) {
                 infer_member_semantic_decl_by_member_key(
                     db,

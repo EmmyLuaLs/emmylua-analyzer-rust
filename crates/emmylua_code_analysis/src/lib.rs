@@ -13,6 +13,7 @@ mod config;
 mod db_index;
 mod diagnostic;
 mod locale;
+mod module_query;
 mod profile;
 mod resources;
 mod semantic;

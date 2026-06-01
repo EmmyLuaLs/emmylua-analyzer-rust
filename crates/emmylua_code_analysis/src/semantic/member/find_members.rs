@@ -7,7 +7,7 @@ use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
     LuaTypeDeclId, LuaUnionType, find_compilation_decl_by_position,
     infer_compilation_type_property_type, infer_compilation_type_super_types,
-    resolve_projected_module_export_type,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -183,7 +183,7 @@ fn find_members_guard(
         LuaType::Instance(inst) => find_instance_members(db, inst, ctx, filter),
         LuaType::Namespace(ns) => find_namespace_members(db, ctx, ns, filter),
         LuaType::ModuleRef(file_id) => {
-            if let Some(export_type) = resolve_projected_module_export_type(db, *file_id) {
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
                 return find_members_guard(db, &export_type, ctx, filter);
             }
 

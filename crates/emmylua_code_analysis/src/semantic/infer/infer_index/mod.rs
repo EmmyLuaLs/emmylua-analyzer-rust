@@ -18,6 +18,7 @@ use crate::{
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
     enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -324,7 +325,7 @@ fn infer_member_by_lookup(
         }
         LuaType::TplRef(tpl) => infer_tpl_ref_member(db, cache, tpl, lookup, infer_guard),
         LuaType::ModuleRef(file_id) => {
-            if let Some(export_type) = crate::resolve_projected_module_export_type(db, *file_id) {
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
                 if export_type.is_module_ref() {
                     return Err(InferFailReason::RecursiveInfer);
                 }
