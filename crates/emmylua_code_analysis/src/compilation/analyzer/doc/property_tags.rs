@@ -5,10 +5,10 @@ use crate::{
 
 use super::{
     DocAnalyzer,
-    tags::{find_owner_closure_or_report, get_owner_id_or_report},
+    tags::{find_owner_closure_or_report, get_owner_id, get_owner_id_or_report},
 };
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaDocDescriptionOwner, LuaDocTagAsync, LuaDocTagDeprecated,
+    LuaAst, LuaAstNode, LuaDocDescriptionOwner, LuaDocTag, LuaDocTagAsync, LuaDocTagDeprecated,
     LuaDocTagNodiscard, LuaDocTagReadonly, LuaDocTagSource, LuaDocTagVersion, LuaDocTagVisibility,
     LuaExpr,
 };
@@ -105,15 +105,84 @@ pub fn analyze_deprecated(analyzer: &mut DocAnalyzer, tag: LuaDocTagDeprecated) 
     let message = tag
         .get_description()
         .map(|desc| desc.get_description_text().to_string());
-    let owner_id = get_owner_id_or_report(analyzer, &tag)?;
 
+    let mut type_owner_id = None;
+    if let Some(current_type_id) = &analyzer.current_type_id {
+        type_owner_id = Some(LuaSemanticDeclId::TypeDecl(current_type_id.clone()));
+    } else {
+        let file_id = analyzer.file_id;
+        let workspace_id = analyzer.workspace_id;
+        let tags = analyzer.comment.get_doc_tags();
+        for tag in tags {
+            match tag {
+                LuaDocTag::Class(class) => {
+                    if let Some(name_token) = class.get_name_token() {
+                        let name = name_token.get_name_text().to_string();
+                        if let Some(decl) = analyzer.get_db().get_type_index().find_type_decl(
+                            file_id,
+                            &name,
+                            Some(workspace_id),
+                        ) {
+                            if decl.is_class() {
+                                type_owner_id = Some(LuaSemanticDeclId::TypeDecl(decl.get_id()));
+                                break;
+                            }
+                        }
+                    }
+                }
+                LuaDocTag::Alias(alias) => {
+                    if let Some(name_token) = alias.get_name_token() {
+                        let name = name_token.get_name_text().to_string();
+                        if let Some(decl) = analyzer.get_db().get_type_index().find_type_decl(
+                            file_id,
+                            &name,
+                            Some(workspace_id),
+                        ) {
+                            if decl.is_alias() {
+                                type_owner_id = Some(LuaSemanticDeclId::TypeDecl(decl.get_id()));
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(type_owner_id) = type_owner_id {
+        add_deprecated(analyzer, type_owner_id, message.clone())?;
+        let mut compat_owner_id = None;
+        if let Some(owner) = get_owner_id(analyzer, None, true) {
+            match owner {
+                owner @ (LuaSemanticDeclId::LuaDecl(_) | LuaSemanticDeclId::Member(_)) => {
+                    compat_owner_id = Some(owner);
+                }
+                _ => {}
+            }
+        }
+        if let Some(compat_owner_id) = compat_owner_id {
+            add_deprecated(analyzer, compat_owner_id, message)?;
+        }
+        return Some(());
+    }
+
+    let owner_id = get_owner_id_or_report(analyzer, &tag)?;
+    add_deprecated(analyzer, owner_id, message)?;
+
+    Some(())
+}
+
+fn add_deprecated(
+    analyzer: &mut DocAnalyzer,
+    owner_id: LuaSemanticDeclId,
+    message: Option<String>,
+) -> Option<()> {
     analyzer
         .type_context
         .db
         .get_property_index_mut()
-        .add_deprecated(analyzer.file_id, owner_id, message);
-
-    Some(())
+        .add_deprecated(analyzer.file_id, owner_id, message)
 }
 
 pub fn analyze_version(analyzer: &mut DocAnalyzer, version: LuaDocTagVersion) -> Option<()> {
