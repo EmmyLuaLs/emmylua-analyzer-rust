@@ -96,7 +96,7 @@ pub fn infer_call_expr_func(
         ),
         LuaType::Instance(inst) => infer_instance_type_doc_function(db, inst),
         LuaType::TableConst(meta_table) => infer_table_type_doc_function(db, meta_table.clone()),
-        LuaType::TplRef(_) | LuaType::ConstTplRef(_) | LuaType::StrTplRef(_) => infer_tpl_ref_call(
+        LuaType::TplRef(_) | LuaType::StrTplRef(_) => infer_tpl_ref_call(
             db,
             cache,
             call_expr.clone(),
@@ -208,7 +208,7 @@ fn infer_tpl_ref_call(
     args_count: Option<usize>,
 ) -> InferCallFuncResult {
     let extend_type = match call_expr_type {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl.get_constraint().cloned(),
+        LuaType::TplRef(tpl) => tpl.get_constraint().cloned(),
         LuaType::StrTplRef(str_tpl) => str_tpl.get_constraint().cloned(),
         _ => None,
     }
@@ -351,10 +351,7 @@ fn infer_type_doc_function(
                 let has_generic_tpl = {
                     let mut has_generic_tpl = false;
                     f.visit_type(&mut |t| {
-                        has_generic_tpl |= matches!(
-                            t,
-                            LuaType::TplRef(_) | LuaType::ConstTplRef(_) | LuaType::StrTplRef(_)
-                        );
+                        has_generic_tpl |= matches!(t, LuaType::TplRef(_) | LuaType::StrTplRef(_));
                     });
                     has_generic_tpl
                 };

@@ -793,6 +793,15 @@ impl GenericTpl {
         self.param.is_const
     }
 
+    pub fn with_const(&self, is_const: bool) -> Self {
+        let mut param = self.param.clone();
+        param.is_const = is_const;
+        Self {
+            tpl_id: self.tpl_id,
+            param,
+        }
+    }
+
     pub fn get_constraint(&self) -> Option<&LuaType> {
         self.param.constraint.as_ref()
     }

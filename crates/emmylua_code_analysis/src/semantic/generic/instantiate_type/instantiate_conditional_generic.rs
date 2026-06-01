@@ -125,9 +125,7 @@ fn instantiate_distributed_conditional(
 
 fn naked_checked_type_tpl_id(checked_type: &LuaType) -> Option<GenericTplId> {
     match checked_type {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) if tpl.get_tpl_id().is_type() => {
-            Some(tpl.get_tpl_id())
-        }
+        LuaType::TplRef(tpl) if tpl.get_tpl_id().is_type() => Some(tpl.get_tpl_id()),
         _ => None,
     }
 }
@@ -170,7 +168,7 @@ fn contains_conditional_infer(ty: &LuaType) -> bool {
 fn conditional_infer_tpl_id(ty: &LuaType) -> bool {
     matches!(
         ty,
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl)
+        LuaType::TplRef(tpl)
             if tpl.get_tpl_id().is_conditional_infer()
     )
 }
@@ -257,9 +255,7 @@ fn collect_infer_assignments(
     variance: InferVariance,
 ) -> bool {
     match pattern {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl)
-            if tpl.get_tpl_id().is_conditional_infer() =>
-        {
+        LuaType::TplRef(tpl) if tpl.get_tpl_id().is_conditional_infer() => {
             insert_infer_assignment(db, assignments, tpl.get_tpl_id(), source, variance)
         }
         LuaType::Generic(pattern_generic) => {
@@ -651,7 +647,7 @@ fn instantiate_conditional_operand(
     has_new: bool,
 ) -> LuaType {
     let mut result = instantiate_type_generic_with_context(context, operand);
-    if let LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) = operand {
+    if let LuaType::TplRef(tpl_ref) = operand {
         let tpl_id = tpl_ref.get_tpl_id();
         if let Some(raw) = context.substitutor.get_raw_type(tpl_id) {
             result = raw.clone();
@@ -678,7 +674,7 @@ fn instantiate_conditional_operand(
 // `infer` pattern 也以模板引用表示, 必须保留下来供后续结构匹配绑定.
 fn actualize_unresolved_templates(ty: LuaType) -> LuaType {
     match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
+        LuaType::TplRef(tpl) => {
             if tpl.get_tpl_id().is_conditional_infer() {
                 // Conditional infer 是右侧 pattern 的占位孔, 不能像普通未解模板一样抹成 unknown.
                 LuaType::TplRef(tpl)

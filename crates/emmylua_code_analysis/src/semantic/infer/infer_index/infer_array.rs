@@ -68,11 +68,7 @@ pub(super) fn infer_array_member_by_key(
 fn key_type_matches(db: &DbIndex, expected: &LuaType, actual: &LuaType) -> bool {
     !matches!(
         actual,
-        LuaType::Any
-            | LuaType::Unknown
-            | LuaType::TplRef(_)
-            | LuaType::StrTplRef(_)
-            | LuaType::ConstTplRef(_)
+        LuaType::Any | LuaType::Unknown | LuaType::TplRef(_) | LuaType::StrTplRef(_)
     ) && check_type_compact(db, expected, actual).is_ok()
 }
 

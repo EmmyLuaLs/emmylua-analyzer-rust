@@ -305,7 +305,7 @@ fn instantiate_callable_from_arg_types(
     let unresolved_return_tpls = {
         let mut tpl_ids = HashSet::new();
         instantiated.get_ret().visit_type(&mut |ty| {
-            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty
+            if let LuaType::TplRef(generic_tpl) = ty
                 && callable_tpls.contains(&generic_tpl.get_tpl_id())
             {
                 tpl_ids.insert(generic_tpl.get_tpl_id());
@@ -376,7 +376,7 @@ fn collect_callback_return_tpls(
             continue;
         };
         param_func.get_ret().visit_type(&mut |ty| {
-            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
+            if let LuaType::TplRef(generic_tpl) = ty {
                 let tpl_id = generic_tpl.get_tpl_id();
                 if unresolved_return_tpls.contains(&tpl_id) {
                     callback_return_tpls.insert(tpl_id);

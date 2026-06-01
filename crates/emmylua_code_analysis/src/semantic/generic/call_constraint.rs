@@ -229,9 +229,7 @@ fn get_constraint_type(
     depth: usize,
 ) -> Option<LuaType> {
     match arg_type {
-        LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => {
-            tpl_ref.get_constraint().cloned()
-        }
+        LuaType::TplRef(tpl_ref) => tpl_ref.get_constraint().cloned(),
         LuaType::StrTplRef(str_tpl_ref) => str_tpl_ref.get_constraint().cloned(),
         LuaType::Union(union_type) => {
             if depth > 1 {

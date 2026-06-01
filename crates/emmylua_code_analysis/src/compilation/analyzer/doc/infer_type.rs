@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaComment, LuaDocAttributeType, LuaDocBinaryType, LuaDocConditionalType,
-    LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericDecl, LuaDocGenericDeclList,
-    LuaDocGenericType, LuaDocIndexAccessType, LuaDocMappedType, LuaDocMultiLineUnionType,
-    LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType,
-    LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocAttributeType, LuaDocBinaryType,
+    LuaDocConditionalType, LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericDecl,
+    LuaDocGenericDeclList, LuaDocGenericType, LuaDocIndexAccessType, LuaDocMappedType,
+    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
+    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
     LuaTypeUnaryOperator, LuaVarExpr, NumberResult,
 };
 use rowan::TextRange;
@@ -13,8 +13,8 @@ use smol_str::SmolStr;
 
 use crate::{
     AsyncState, DiagnosticCode, FileId, GenericParam, GenericTpl, InFiled, LuaAliasCallKind,
-    LuaArrayLen, LuaArrayType, LuaAttributeType, LuaMultiLineUnion, LuaTupleStatus, LuaTypeDeclId,
-    TypeOps, VariadicType, complete_type_generic_args,
+    LuaArrayLen, LuaArrayType, LuaAttributeType, LuaMultiLineUnion, LuaSignatureId, LuaTupleStatus,
+    LuaTypeDeclId, TypeOps, VariadicType, complete_type_generic_args,
     db_index::{
         AnalyzeError, DbIndex, LuaAliasCallType, LuaConditionalType, LuaFunctionType,
         LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaMappedType, LuaObjectType,
@@ -108,6 +108,70 @@ impl<'a> DocTypeAnalyzeContext<'a> {
                 .get_reference_index_mut()
                 .add_type_reference(self.file_id, type_id, range);
         }
+    }
+
+    // TODO: 为`std.ConstTpl`实现的兼容性代码, 应在下一版本中移除
+    fn mark_generic_const(&mut self, tpl: &GenericTpl) -> GenericTpl {
+        let tpl_id = tpl.get_tpl_id();
+        let param = self
+            .generic_index
+            .mark_generic_const(tpl_id)
+            .unwrap_or_else(|| {
+                let mut param = tpl.get_param().clone();
+                param.is_const = true;
+                param
+            });
+
+        if tpl_id.is_func()
+            && let Some(signature_id) = self.current_signature_id()
+            && let Some(signature) = self.db.get_signature_index_mut().get_mut(&signature_id)
+        {
+            if let Some(signature_param) = signature.generic_params.get_mut(tpl_id.get_idx()) {
+                signature_param.is_const = true;
+            }
+
+            for overload in &mut signature.overloads {
+                let mut generic_params = overload.get_generic_params().to_vec();
+                let mut changed = false;
+                for generic_param in &mut generic_params {
+                    if generic_param.get_tpl_id() == tpl_id && !generic_param.is_const() {
+                        *generic_param = generic_param.with_const(true);
+                        changed = true;
+                    }
+                }
+
+                if changed {
+                    *overload = Arc::new(LuaFunctionType::new(
+                        overload.get_async_state(),
+                        overload.is_colon_define(),
+                        overload.is_variadic(),
+                        overload.get_params().to_vec(),
+                        overload.get_ret().clone(),
+                        Some(generic_params),
+                    ));
+                }
+            }
+        }
+
+        GenericTpl::new(
+            tpl_id,
+            param.name,
+            param.constraint,
+            param.default,
+            true,
+            param.attributes,
+        )
+    }
+
+    fn current_signature_id(&self) -> Option<LuaSignatureId> {
+        let owner = self.comment.as_ref()?.get_owner()?;
+        let closure = match owner {
+            LuaAst::LuaFuncStat(func) => func.get_closure(),
+            LuaAst::LuaLocalFuncStat(local_func) => local_func.get_closure(),
+            owner => owner.descendants::<LuaClosureExpr>().next(),
+        }?;
+
+        Some(LuaSignatureId::from_closure(self.file_id, &closure))
     }
 }
 
@@ -484,7 +548,8 @@ fn infer_special_generic_type(
             let first_doc_param_type = generic_type.get_generic_types()?.get_types().next()?;
             let first_param = infer_type(analyzer, first_doc_param_type);
             if let LuaType::TplRef(tpl) = first_param {
-                return Some(LuaType::ConstTplRef(tpl));
+                let const_tpl = analyzer.mark_generic_const(&tpl);
+                return Some(LuaType::TplRef(Arc::new(const_tpl)));
             }
         }
         "Language" => {

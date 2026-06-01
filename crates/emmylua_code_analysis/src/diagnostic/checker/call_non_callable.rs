@@ -150,7 +150,7 @@ fn has_non_callable_member(db: &DbIndex, typ: &LuaType) -> bool {
         LuaType::Any | LuaType::Unknown | LuaType::SelfInfer | LuaType::Global | LuaType::Nil => {
             false
         }
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl
+        LuaType::TplRef(tpl) => tpl
             .get_constraint()
             .is_some_and(|constraint| has_non_callable_member(db, constraint)),
         LuaType::StrTplRef(str_tpl) => str_tpl

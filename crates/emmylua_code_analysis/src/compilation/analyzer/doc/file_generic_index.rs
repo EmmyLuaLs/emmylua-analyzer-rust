@@ -22,6 +22,14 @@ pub trait GenericIndex: std::fmt::Debug {
     }
 
     fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)>;
+
+    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam>;
+
+    fn mark_generic_const(&mut self, tpl_id: GenericTplId) -> Option<GenericParam> {
+        let param = self.generic_param_mut(tpl_id)?;
+        param.is_const = true;
+        Some(param.clone())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -74,12 +82,6 @@ impl GenericIndex for FileGenericIndex {
         None
     }
 
-    fn append_generic_params(&mut self, scope_id: GenericScopeId, params: Vec<GenericParam>) {
-        for param in params {
-            let _ = self.append_generic_param(scope_id, param);
-        }
-    }
-
     /// Find generic parameter by position and name.
     fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)> {
         for scope in self.scopes.iter().rev() {
@@ -89,6 +91,18 @@ impl GenericIndex for FileGenericIndex {
 
             if let Some((id, param)) = scope.params.get(name) {
                 return Some((*id, param.clone()));
+            }
+        }
+
+        None
+    }
+
+    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam> {
+        for scope in self.scopes.iter_mut().rev() {
+            for (id, param) in scope.params.values_mut() {
+                if *id == tpl_id {
+                    return Some(param);
+                }
             }
         }
 

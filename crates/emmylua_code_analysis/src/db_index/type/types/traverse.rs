@@ -49,7 +49,6 @@ pub trait LuaTypeNode {
                 ty,
                 LuaType::TplRef(_)
                     | LuaType::StrTplRef(_)
-                    | LuaType::ConstTplRef(_)
                     | LuaType::SelfInfer
                     | LuaType::Mapped(_)
             )
@@ -62,7 +61,6 @@ pub trait LuaTypeNode {
                 ty,
                 LuaType::TplRef(_)
                     | LuaType::StrTplRef(_)
-                    | LuaType::ConstTplRef(_)
                     | LuaType::SelfInfer
                     | LuaType::Mapped(_)
             )

@@ -18,7 +18,9 @@ use crate::{
     semantic::infer::InferFailReason,
 };
 
-use super::type_substitutor::{GenericInstantiateContext, SubstitutorValue, TypeSubstitutor};
+use super::type_substitutor::{
+    GenericInstantiateContext, SubstitutorTypeValue, SubstitutorValue, TypeSubstitutor,
+};
 pub use complete_generic_args::{
     GenericArgumentCompletion, complete_type_generic_args, complete_type_generic_args_in_type,
 };
@@ -127,7 +129,6 @@ pub(super) fn instantiate_type_generic_with_context(
         LuaType::Generic(generic) => instantiate_generic_with_context(context, generic),
         LuaType::TableGeneric(table_params) => instantiate_table_generic(context, table_params),
         LuaType::TplRef(tpl) => instantiate_tpl_ref(tpl, context),
-        LuaType::ConstTplRef(tpl) => instantiate_const_tpl_ref(tpl, context),
         LuaType::Signature(sig_id) => instantiate_signature(context, sig_id),
         LuaType::Call(alias_call) => {
             instantiate_special_generic::instantiate_alias_call(context, alias_call)
@@ -206,7 +207,9 @@ fn instantiate_tuple(context: &GenericInstantiateContext, tuple: &LuaTupleType) 
                                         new_types.push(ty.clone().unwrap_or(LuaType::Unknown));
                                     }
                                 }
-                                SubstitutorValue::Type(ty) => new_types.push(ty.default().clone()),
+                                SubstitutorValue::Type(ty) => {
+                                    new_types.push(substitutor_type_for_tpl(tpl, ty).clone())
+                                }
                                 SubstitutorValue::MultiBase(base) => new_types.push(base.clone()),
                             }
                         } else {
@@ -264,7 +267,7 @@ fn instantiate_doc_function_with_context(
                                     new_params.push((origin_param.0.clone(), Some(ty)));
                                 }
                                 SubstitutorValue::Type(ty) => {
-                                    let resolved_type = ty.default();
+                                    let resolved_type = substitutor_type_for_tpl(tpl, ty);
                                     // 如果参数是 `...: T...`
                                     if origin_param.0 == "..." {
                                         // 类型是 tuple, 那么我们将展开 tuple
@@ -435,7 +438,7 @@ fn collect_pending_function_generic_params(
     }
 
     doc_func.visit_nested_types(&mut |ty| match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
+        LuaType::TplRef(tpl) => {
             let tpl_id = tpl.get_tpl_id();
             if is_pending_tpl(context, tpl_id) && generic_tpls.insert(tpl_id) {
                 generic_params.push(tpl.as_ref().clone());
@@ -598,7 +601,7 @@ fn instantiate_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) ->
             SubstitutorValue::None => {
                 return instantiate_uninferred_tpl_fallback(tpl, context);
             }
-            SubstitutorValue::Type(ty) => return ty.default().clone(),
+            SubstitutorValue::Type(ty) => return substitutor_type_for_tpl(tpl, ty).clone(),
             SubstitutorValue::MultiTypes(types) => {
                 return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
             }
@@ -617,29 +620,12 @@ fn instantiate_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) ->
     LuaType::TplRef(tpl.clone().into())
 }
 
-fn instantiate_const_tpl_ref(tpl: &GenericTpl, context: &GenericInstantiateContext) -> LuaType {
-    if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
-        match value {
-            SubstitutorValue::None => {
-                return instantiate_uninferred_tpl_fallback(tpl, context);
-            }
-            SubstitutorValue::Type(ty) => return ty.raw().clone(),
-            SubstitutorValue::MultiTypes(types) => {
-                return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
-            }
-            SubstitutorValue::Params(params) => {
-                return params
-                    .first()
-                    .unwrap_or(&(String::new(), None))
-                    .1
-                    .clone()
-                    .unwrap_or(LuaType::Unknown);
-            }
-            SubstitutorValue::MultiBase(base) => return base.clone(),
-        }
+fn substitutor_type_for_tpl<'a>(tpl: &GenericTpl, value: &'a SubstitutorTypeValue) -> &'a LuaType {
+    if tpl.is_const() {
+        value.raw()
+    } else {
+        value.default()
     }
-
-    LuaType::ConstTplRef(tpl.clone().into())
 }
 
 fn instantiate_signature(
@@ -694,7 +680,7 @@ fn instantiate_variadic_type(
                             };
                         }
                         SubstitutorValue::Type(ty) => {
-                            let resolved_type = ty.default();
+                            let resolved_type = substitutor_type_for_tpl(tpl, ty);
                             if matches!(
                                 resolved_type,
                                 LuaType::Nil | LuaType::Any | LuaType::Unknown | LuaType::Never

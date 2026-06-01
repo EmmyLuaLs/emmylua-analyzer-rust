@@ -467,7 +467,7 @@ fn check_variadic_default_satisfies_constraint(
 
 fn generic_tpl_id(ty: &LuaType) -> Option<GenericTplId> {
     match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => Some(tpl.get_tpl_id()),
+        LuaType::TplRef(tpl) => Some(tpl.get_tpl_id()),
         LuaType::StrTplRef(str_tpl) => Some(str_tpl.get_tpl_id()),
         _ => None,
     }
@@ -475,7 +475,7 @@ fn generic_tpl_id(ty: &LuaType) -> Option<GenericTplId> {
 
 fn generic_upper_bound(ty: &LuaType) -> Option<&LuaType> {
     match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl.get_constraint(),
+        LuaType::TplRef(tpl) => tpl.get_constraint(),
         LuaType::StrTplRef(str_tpl) => str_tpl.get_constraint(),
         _ => None,
     }
@@ -491,7 +491,7 @@ fn instantiate_decl_default_for_check(ty: &LuaType) -> LuaType {
 
 fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) -> LuaType {
     match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
+        LuaType::TplRef(tpl) => {
             if use_generic_upper_bound && let Some(constraint) = tpl.get_constraint() {
                 return instantiate_decl_default_for_check(constraint);
             }
@@ -702,7 +702,7 @@ fn check_param(
                 extend_type,
             );
         }
-        LuaType::TplRef(tpl_ref) | LuaType::ConstTplRef(tpl_ref) => {
+        LuaType::TplRef(tpl_ref) => {
             let extend_type = tpl_ref.get_constraint().cloned().map(|ty| {
                 normalize_constraint_type(
                     semantic_model.get_db(),

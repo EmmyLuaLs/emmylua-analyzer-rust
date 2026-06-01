@@ -193,6 +193,16 @@ impl GenericIndex for HeaderGenericIndex {
 
         None
     }
+
+    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some((_, param)) = scope.params.iter_mut().find(|(id, _)| *id == tpl_id) {
+                return Some(param);
+            }
+        }
+
+        None
+    }
 }
 
 fn generic_tpl_id(is_func: bool, idx: u32) -> GenericTplId {

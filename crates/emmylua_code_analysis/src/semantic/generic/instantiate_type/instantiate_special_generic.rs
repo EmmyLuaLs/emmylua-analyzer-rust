@@ -135,9 +135,7 @@ fn resolve_literal_operand(
     substitutor: &TypeSubstitutor,
 ) -> Option<LuaType> {
     match operand {
-        Some(LuaType::TplRef(tpl_ref)) | Some(LuaType::ConstTplRef(tpl_ref)) => {
-            substitutor.get_raw_type(tpl_ref.get_tpl_id()).cloned()
-        }
+        Some(LuaType::TplRef(tpl_ref)) => substitutor.get_raw_type(tpl_ref.get_tpl_id()).cloned(),
         _ => None,
     }
 }

@@ -128,6 +128,7 @@
 --- built-in type for Rawget
 --- @alias std.RawGet<T, K> unknown
 
+--- @deprecated use `const T` as a replacement, for example `---@generic const T`.
 ---
 --- built-in type for generic template, for match integer const and true/false
 --- @alias std.ConstTpl<T> unknown

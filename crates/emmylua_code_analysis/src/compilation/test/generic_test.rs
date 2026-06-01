@@ -873,6 +873,40 @@ mod test {
     }
 
     #[test]
+    fn test_legacy_const_tpl_marks_generic_param_metadata() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@alias std.ConstTpl<T> unknown
+
+            ---@generic T
+            ---@param value std.ConstTpl<T>
+            ---@return T
+            function id(value)
+            end
+
+            result = id(1)
+            "#,
+        );
+
+        let closure = ws.get_node::<LuaClosureExpr>(file_id);
+        let signature_id = LuaSignatureId::from_closure(file_id, &closure);
+        {
+            let signature = ws
+                .analysis
+                .compilation
+                .get_db()
+                .get_signature_index()
+                .get(&signature_id)
+                .expect("signature");
+            assert_eq!(signature.generic_params.len(), 1);
+            assert!(signature.generic_params[0].is_const);
+        }
+
+        assert_eq!(ws.expr_ty("result"), LuaType::IntegerConst(1));
+    }
+
+    #[test]
     fn test_bare_generic_type_uses_default() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1278,8 +1312,6 @@ mod test {
         ws.def(
             r#"
             ---@alias std.RawGet<T, K> unknown
-
-            ---@alias std.ConstTpl<T> unknown
 
             ---@generic T, K extends keyof T
             ---@param object T

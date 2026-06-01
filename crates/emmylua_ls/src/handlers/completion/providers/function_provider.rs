@@ -151,9 +151,6 @@ pub fn dispatch_type(
         LuaType::StrTplRef(key) => {
             add_str_tpl_ref_completion(builder, &key);
         }
-        LuaType::ConstTplRef(tpl) => {
-            return add_const_tpl_ref_completion(builder, &tpl, infer_guard);
-        }
         LuaType::TplRef(tpl) => {
             return add_tpl_ref_completion(builder, &tpl, infer_guard);
         }
@@ -401,7 +398,7 @@ fn rebuild_keyof_alias_call(
     substitutor: &TypeSubstitutor,
 ) -> Option<LuaType> {
     let tpl = match original_type {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl,
+        LuaType::TplRef(tpl) => tpl,
         _ => return None,
     };
     let constraint = tpl.get_constraint()?;
@@ -860,16 +857,6 @@ fn add_str_tpl_ref_completion(
     }
 
     Some(())
-}
-
-fn add_const_tpl_ref_completion(
-    builder: &mut CompletionBuilder,
-    tpl: &GenericTpl,
-    infer_guard: &InferGuardRef,
-) -> Option<ProviderDecision> {
-    // 泛型约束
-    let extend_type = tpl.get_constraint().cloned()?;
-    dispatch_type(builder, extend_type, infer_guard)
 }
 
 fn add_special_call_completion(
