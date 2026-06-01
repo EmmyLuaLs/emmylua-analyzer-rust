@@ -291,7 +291,7 @@ impl DbIndex {
     pub(crate) fn get_type_def_reverse_index(&self) -> Arc<TypeDefReverseIndex> {
         let current_gen = self.type_def_rev_gen.load(Ordering::Acquire);
         {
-            let cache = self.type_def_cache.read().unwrap();
+            let cache = self.type_def_cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = cache.as_ref() {
                 if cached.generation == current_gen {
                     return cached.clone();
@@ -300,7 +300,7 @@ impl DbIndex {
         }
         let index = self.build_type_def_reverse_index();
         let index = Arc::new(index);
-        *self.type_def_cache.write().unwrap() = Some(index.clone());
+        *self.type_def_cache.write().unwrap_or_else(|e| e.into_inner()) = Some(index.clone());
         index
     }
 

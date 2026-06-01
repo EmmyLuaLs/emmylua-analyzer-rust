@@ -783,7 +783,7 @@ impl CompilationDeclTree {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CompilationDeclIndex<'a> {
+pub(crate) struct CompilationDeclIndex<'a> {
     summary: &'a SalsaSummaryHost,
 }
 

@@ -68,7 +68,7 @@ where
     Ok(flow.return_points)
 }
 
-pub(in crate::compilation::analyzer) fn analyze_func_body_missing_return_flags_with<F>(
+pub(crate) fn analyze_func_body_missing_return_flags_with<F>(
     body: LuaBlock,
     infer_expr_type: &mut F,
 ) -> Result<(bool, bool), InferFailReason>

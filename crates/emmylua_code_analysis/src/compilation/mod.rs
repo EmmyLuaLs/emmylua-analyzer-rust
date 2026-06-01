@@ -4,6 +4,7 @@ mod decl;
 mod global;
 mod member;
 mod module;
+mod resolve;
 mod summary_builder;
 mod test;
 
@@ -14,10 +15,10 @@ use crate::{
     db_index::DbIndex,
     semantic::SemanticModel,
 };
-pub use decl::*;
-pub use global::*;
-pub(crate) use member::*;
 use emmylua_parser::{LuaBlock, LuaExpr};
+pub use decl::*;
+pub(crate) use global::*;
+pub(crate) use member::*;
 pub use module::*;
 pub use summary_builder::*;
 
@@ -81,8 +82,25 @@ impl LuaCompilation {
 
     pub fn update_index(&mut self, file_ids: Vec<FileId>) {
         self.db.sync_summary_workspaces();
+        // Sync files in cross-file dependency order so that when the projection
+        // layer later resolves cross-file type references, target files are
+        // already available. Files not in the order (e.g. new files without
+        // existing cross-file deps) are appended at the end.
+        let ordered = resolve::get_cross_file_resolve_order(&self.db);
+        let file_set: std::collections::HashSet<FileId> = file_ids.iter().copied().collect();
+        let mut synced: std::collections::HashSet<FileId> = std::collections::HashSet::new();
+        for file_id in ordered {
+            if file_set.contains(&file_id) {
+                if !self.db.sync_summary_file(file_id) {
+                    log::warn!("file_id {:?} not found in vfs for summary sync", file_id);
+                }
+                synced.insert(file_id);
+            }
+        }
         for file_id in file_ids {
-            if !self.db.sync_summary_file(file_id) {
+            if !synced.contains(&file_id)
+                && !self.db.sync_summary_file(file_id)
+            {
                 log::warn!("file_id {:?} not found in vfs for summary sync", file_id);
             }
         }

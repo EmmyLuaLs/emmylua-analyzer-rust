@@ -379,6 +379,13 @@ flowchart TD
 
 **结论**：`unresolve/` 是 runtime 查询逻辑（"这个调用消解到哪个函数"），应迁到 `compilation` 作为 projection，或迁到 `SemanticModel` 作为单文件查询入口。
 
+**2026-06-01 迁移进展**：`compilation::resolve` 模块已建立，提供跨文件类型解析的基础设施：
+- `resolve_named_type` — 跨文件命名类型解析（使用 TypeDefReverseIndex O(1) 查找）
+- `resolve_alias_chain` — 跨文件 alias 链追踪（逐文件 Salsa 查询）
+- `resolve_type_decl` — 类型声明 → 有效类型
+- `infer_compilation_named_type` 已迁移到 `resolve_named_type`
+- Salsa per-file solver 处理文件内 SCC + fixedpoint，resolve 模块处理跨文件边界
+
 #### 3. `analyzer/lua/` — Lua AST 语义写入（~1,780 行）
 
 | 文件 | 行 | 责任 | 迁移目标 | 说明 |
@@ -428,40 +435,33 @@ flowchart TD
 
 基于责任清单，推荐按以下顺序执行：
 
-1. **标记 `doc/` + `decl/` + `flow/` 为兼容保留**（不删代码，但不再作为写入主路径——更新路径已切到 summary sync）
-2. **将 `unresolve/` 迁入 `compilation`**（最大的可迁移块，~1,760 行，runtime 查询逻辑）
+1. ✅ **标记 `doc/` + `decl/` + `flow/` 为兼容保留**（Phase 2 完成）
+2. 🔄 **将 `unresolve/` 迁入 `compilation`** — `compilation::resolve` 模块已建立（2026-06-01），提供跨文件类型解析。未修改 analyzer 代码。
 3. **逐步将 `lua/` 的写入目标从 legacy index 切换到 summary fact**（最复杂的迁移，需要在所有读路径迁移完成后进行）
 4. **删除已确认无用的兼容代码**（`common/migrate_global_member.rs` 等）
 
-## 第三阶段：压缩 public API surface
+## 第三阶段：压缩 public API surface（完成）
 
-目标：
+### 3.1 稳定 facade 显式化 ✅
 
-- 逐步减少 `lib.rs` 的宽泛 root re-export。
+- `pub use global::*` → `pub(crate) use global::*`（无外部使用）
+- `CompilationDeclIndex` → `pub(crate)`（依赖内部 `SalsaSummaryHost`）
+- `summary_builder::salsa_db::*` 和 `summary_builder::summary::*` 已在 Phase 2 改为 `pub(crate)`
+- `SalsaSemanticTargetSummary` 保留为 `pub`（`emmylua_ls` 唯一使用的外部 Salsa 类型）
 
-但要分层做：
+### 3.2 散装函数组织结构化 ✅
 
-### 3.1 先定义稳定 facade
+`lib.rs` 按三层可见性重新组织：
 
-优先稳定这些入口：
+```
+=== Tier 1–2: Core API ===     compilation, config, diagnostic, vfs
+=== Tier 1: Free functions ===  get_locale_code, Profile, get_best_resources_dir
+=== Tier 3: Legacy ===           db_index, semantic, VirtualWorkspace
+```
 
-- `EmmyLuaAnalysis`
-- `LuaCompilation`
-- `SemanticModel`
-- 少量明确的 projection data type
-- VFS / config / diagnostic 的必要公共类型
+### 3.3 `db_index::*` 收口
 
-### 3.2 再收散装函数和内部实现类型
-
-把下面这些东西优先从“默认公共”变成“按需公开”：
-
-- scattered helper free functions
-- 仅内部迁移使用的兼容 projection helper
-- legacy index 细节类型
-
-### 3.3 最后才收 `db_index::*`
-
-`db_index::*` 是最危险的一层，因为外部依赖很多。它适合放在最后处理。
+用户决定跳过 — 外部 crate 有 100+ 处依赖，需独立 session 分阶段迁移。
 
 ## 第四阶段：删除 analyzer 语义
 

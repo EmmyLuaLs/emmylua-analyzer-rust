@@ -10,24 +10,26 @@
 
 //! # Visibility Tiers
 //!
-//! This crate exposes types at three levels:
+//! ## Tier 1 — Stable Facade
+//! Use these directly as the primary API:
+//! - [`EmmyLuaAnalysis`] — top-level entry: file management, diagnostics, reindex
+//! - [`LuaCompilation`] — compilation/index lifecycle
+//! - [`SemanticModel`] — single-file semantic queries (infer, member lookup, etc.)
+//! - Key types: [`FileId`], [`LuaType`], [`Emmyrc`], [`DiagnosticCode`], [`WorkspaceId`]
 //!
-//! **Tier 1 — Stable Facade** (use these directly):
-//! - [`EmmyLuaAnalysis`] — top-level analysis entry point
-//! - [`LuaCompilation`] — compilation/index management
-//! - [`SemanticModel`] — single-file semantic queries
-//! - Key types: [`FileId`], [`LuaType`], [`Emmyrc`], [`DiagnosticCode`]
+//! ## Tier 2 — Public Projection Types
+//! Stable but may gain methods/fields:
+//! - [`CompilationModuleInfo`], [`CompilationGenericParamInfo`], [`CompilationDeclInfo`]
+//! - [`LuaDeclId`], [`LuaTypeDeclId`], [`LuaMemberId`], [`LuaSemanticDeclId`]
+//! - Free functions: [`humanize_type`], [`file_path_to_uri`], [`uri_to_file_path`]
 //!
-//! **Tier 2 — Projection Types** (public but may evolve):
-//! - [`CompilationModuleInfo`], [`CompilationGenericParamInfo`]
-//! - [`LuaDeclId`], [`LuaTypeDeclId`], [`LuaSemanticDeclId`]
-//! - Free functions: [`humanize_type`], [`file_path_to_uri`]
-//!
-//! **Tier 3 — Internal** (avoid; use facade methods instead):
-//! - [`DbIndex`] — legacy container, prefer [`LuaCompilation`] / [`SemanticModel`]
-//! - Legacy index types (`LuaDeclIndex`, `LuaMemberIndex`, etc.)
-//! - Salsa types (`SalsaDeclSummary`, `SalsaSummaryDatabase`, etc.) — `pub(crate)` restricted
+//! ## Tier 3 — Internal / Legacy
+//! Prefer Tier 1/2 alternatives when available:
+//! - [`DbIndex`] — legacy container; use [`LuaCompilation`] / [`SemanticModel`] instead
+//! - `LuaDeclIndex`, `LuaMemberIndex`, `LuaOperatorIndex` — internal indexes
+//! - `Salsa*` types — restricted to `pub(crate)` where possible
 
+// === Modules ===
 mod compilation;
 mod config;
 mod db_index;
@@ -40,24 +42,31 @@ mod semantic;
 mod test_lib;
 mod vfs;
 
+// === Tier 1–2: Core API ===
 pub use compilation::*;
 pub use config::*;
-pub use db_index::*;
 pub use diagnostic::*;
-use hashbrown::HashMap;
+pub use vfs::*;
+
+// === Tier 1: Free functions ===
 pub use locale::get_locale_code;
-use lsp_types::Uri;
 pub use profile::Profile;
 pub use resources::get_best_resources_dir;
 pub use resources::load_resource_from_include_dir;
+
+// === Tier 3: Legacy (prefer facade methods) ===
+pub use db_index::*;
+pub use semantic::*;
+pub use test_lib::VirtualWorkspace;
+
+// === Private ===
+use hashbrown::HashMap;
+use lsp_types::Uri;
 use resources::load_resource_std;
 use schema_to_emmylua::SchemaConverter;
-pub use semantic::*;
 use std::str::FromStr;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
-pub use test_lib::VirtualWorkspace;
 use tokio_util::sync::CancellationToken;
-pub use vfs::*;
 
 #[macro_use]
 extern crate rust_i18n;
