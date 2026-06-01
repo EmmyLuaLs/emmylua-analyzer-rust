@@ -495,7 +495,7 @@ fn infer_compilation_doc_type_ref_with_owner(
     infer_compilation_doc_type_key_with_owner(db, file_id, owner_offset, type_key)
 }
 
-fn infer_compilation_doc_type_key_with_owner(
+pub(crate) fn infer_compilation_doc_type_key_with_owner(
     db: &DbIndex,
     file_id: FileId,
     owner_offset: impl Into<Option<TextSize>>,

@@ -180,6 +180,68 @@ flowchart TD
 
 这意味着架构方向已经对了，但 public surface 还没有真正收住。
 
+### 5. member / decl alias/origin 投影层已建立，读路径开始迁移
+
+本轮迁移 (2026-06-01) 完成了 member 领域的 alias/origin 投影和 consumer 迁移：
+
+**新增 `compilation::member` 投影模块：**
+
+- `get_type_def_kind` — 从 summary DB 查询类型定义的 kind (class/alias/enum/attribute)。
+- `type_def_is_class` / `type_def_is_alias` — 对 kind 的便捷 boolean 查询。
+- `type_def_alias_origin` — 从 summary DB 解析 alias 的原始类型，不需要 legacy `type_index`。
+
+**consumer 迁移：**
+
+- `semantic/member/find_index.rs` — `find_index_custom_type` / `find_index_generic` 的 alias 检查和 origin 解析迁移到 summary-backed 投影。
+- `semantic/member/find_members.rs` — `find_custom_type_members` / `find_generic_members` 的 alias 检查和 origin 解析迁移到 summary-backed 投影。
+- `find_generic_members` 删除了对 `type_index.get_type_decl().get_alias_origin()` 的依赖。
+
+**已暴露的 projection API（供后续迁移复用）：**
+
+- `pub(crate) infer_compilation_doc_type_key_with_owner` — 将 doc type key 转换为 `LuaType`，是其他投影的基础构建块。
+
+**当前状态：**
+
+- member 领域 alias/origin 路径已完全脱离 `type_index` 读。
+- member/operator dispatch 和 member index 直接读取仍未迁移。
+- 38 个 semantic 文件仍保留部分 legacy index 直读，见下一轮迁移计划。
+
+这证明了“先建 projection，再迁 consumer，保留 legacy fallback”的模式可以逐领域推进。
+
+### 6. 本轮迁移记录 (2026-06-01)
+
+**已完成迁移：**
+
+| # | 文件 | 迁移项 |
+|---|---|---|
+| 1 | `compilation/member.rs` (新增) | `get_type_def_kind`, `type_def_is_class`, `type_def_is_alias`, `type_def_alias_origin`, `type_def_is_enum` — summary-backed 类型查询投影 |
+| 2 | `compilation/decl.rs` | `infer_compilation_doc_type_key_with_owner` 从 `fn` 提升为 `pub(crate)` |
+| 3 | `semantic/member/find_index.rs` | alias/class 检查 → `type_def_is_alias` / `type_def_is_class` / `type_def_alias_origin`; 删除无用的 `type_decl` 变量 |
+| 4 | `semantic/member/find_members.rs` | alias 检查 → `type_def_is_alias` / `type_def_alias_origin`; `find_generic_members` 的 alias origin 从 legacy 迁移 |
+| 5 | `semantic/member/infer_raw_member.rs` | `infer_custom_type_raw_member_type`: alias/class/super → summary; `infer_generic_raw_member_type`: alias → summary |
+| 6 | `semantic/type_check/simple_type.rs` | generic alias → summary; Ref enum check → `type_def_is_enum` |
+| 7 | `semantic/type_check/func_type.rs` | generic alias → summary; custom type class check → `type_def_is_class` |
+| 8 | `semantic/type_check/ref_type.rs` | 两处 `is_enum()` → `type_def_is_enum` (fast-fail) |
+| 9 | `semantic/type_check/generic_type.rs` | 2 处 alias check + 3 处 super_types → summary-backed |
+| 10 | `semantic/type_check/mod.rs` | `escape_type` alias check → summary |
+| 11 | `semantic/type_check/complex_type/mod.rs` | generic alias → summary |
+| 12 | `semantic/decl/mod.rs` | `enum_variable_is_param` is_enum → `type_def_is_enum` |
+
+**迁移模式总结：**
+
+本轮迁移建立了一个可复用的模式：
+1. 为语义领域在 `compilation` 层添加 summary-backed 投影函数（`pub(crate)`）。
+2. 语义 consumer 优先使用投影函数，保留 legacy fallback 作为兼容路径。
+3. 名称从冗长的 `find_compilation_type_def_*` 简化为 `type_def_*` / `get_type_def_*`。
+
+**剩余工作（Phase 1 继续）：**
+
+- `semantic/infer/infer_name.rs` — `signature_index` / `decl_index`（需 LuaDecl → SalsaDeclSummary 类型迁移）
+- `semantic/infer/infer_index/mod.rs` — 13+ `type_index` / `member_index` 直读（最大热点）
+- `semantic/infer/infer_call/mod.rs` — `operator_index`
+- `semantic/infer/infer_table.rs` — `type_index` / `decl_index`
+- `semantic/generic/*` — 多处 mixed access
+
 ## 当前最核心的结构性问题
 
 ### 问题 1：运行期 semantic 仍然大量直接读取 legacy index

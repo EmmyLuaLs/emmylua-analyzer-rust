@@ -2,6 +2,7 @@
 mod analyzer;
 mod decl;
 mod global;
+mod member;
 mod module;
 mod summary_builder;
 mod test;
@@ -15,6 +16,7 @@ use crate::{
 };
 pub use decl::*;
 pub use global::*;
+pub(crate) use member::*;
 use emmylua_parser::{LuaBlock, LuaExpr};
 pub use module::*;
 pub use summary_builder::*;

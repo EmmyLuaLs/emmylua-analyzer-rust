@@ -2,7 +2,7 @@ use hashbrown::HashMap;
 
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeCache, LuaTypeDecl,
-    LuaTypeDeclId, RenderLevel, humanize_type,
+    LuaTypeDeclId, RenderLevel, humanize_type, type_def_is_enum,
     semantic::{
         member::find_members,
         type_check::{
@@ -99,8 +99,8 @@ fn check_ref_enum(
             LuaType::from_vec(new_types)
         }
         LuaType::Ref(compact_id) => {
-            if let Some(compact_decl) = context.db.get_type_index().get_type_decl(compact_id)
-                && compact_decl.is_enum()
+            if type_def_is_enum(context.db, compact_id)
+                && let Some(compact_decl) = context.db.get_type_index().get_type_decl(compact_id)
                 && let Some(compact_enum_fields) = compact_decl.get_enum_field_type(context.db)
             {
                 return check_general_type_compact(
@@ -159,8 +159,8 @@ fn check_ref_class(
             }
 
             // `compact`为枚举时的额外处理
-            if let Some(compact_decl) = context.db.get_type_index().get_type_decl(id)
-                && compact_decl.is_enum()
+            if type_def_is_enum(context.db, id)
+                && let Some(compact_decl) = context.db.get_type_index().get_type_decl(id)
                 && let Some(LuaType::Union(enum_fields)) =
                     compact_decl.get_enum_field_type(context.db)
             {

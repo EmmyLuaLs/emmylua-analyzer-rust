@@ -3,7 +3,9 @@ use hashbrown::{HashMap, HashSet};
 use crate::{
     DbIndex, InFiled, InferGuardRef, LuaGenericType, LuaIntersectionType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps, module_query::export::infer_module_export_type,
+    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps,
+    type_def_alias_origin, type_def_is_alias, type_def_is_class,
+    module_query::export::infer_module_export_type, infer_compilation_type_super_types,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -116,11 +118,10 @@ fn find_index_custom_type(
     infer_guard: &InferGuardRef,
 ) -> FindMembersResult {
     infer_guard.check(prefix_type_id).ok()?;
-    let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(prefix_type_id)?;
 
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+    // Use summary-backed projection for alias check
+    if type_def_is_alias(db, prefix_type_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, prefix_type_id) {
             return find_index_operations_guard(db, &origin_type, infer_guard);
         }
         return None;
@@ -149,9 +150,9 @@ fn find_index_custom_type(
         }
     }
 
-    // Find index operations in super types
-    if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(prefix_type_id)
+    // Find index operations in super types (via summary-backed projection)
+    if type_def_is_class(db, prefix_type_id)
+        && let Some(super_types) = infer_compilation_type_super_types(db, prefix_type_id)
     {
         for super_type in super_types {
             if let Some(super_members) = find_index_operations_guard(db, &super_type, infer_guard) {
@@ -308,17 +309,17 @@ fn find_index_generic(
 
     let generic_params = generic.get_params();
     let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
-    let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(&type_decl_id)?;
 
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+    // Use summary-backed projection for alias check
+    if type_def_is_alias(db, &type_decl_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, &type_decl_id) {
             let instantiated_type = instantiate_type_generic(db, &origin_type, &substitutor);
             return find_index_operations_guard(db, &instantiated_type, infer_guard);
         }
         return None;
     }
 
+    let type_index = db.get_type_index();
     let mut members = Vec::new();
 
     // Check for __index operators with generic substitution
@@ -347,8 +348,10 @@ fn find_index_generic(
         }
     }
 
-    // Find index operations in super types
-    if let Some(supers) = type_index.get_super_types(&type_decl_id) {
+    // Find index operations in super types (prefer summary-backed projection)
+    if let Some(supers) = infer_compilation_type_super_types(db, &type_decl_id)
+        .or_else(|| type_index.get_super_types(&type_decl_id))
+    {
         for super_type in supers {
             let instantiated_super = instantiate_type_generic(db, &super_type, &substitutor);
             if let Some(super_members) =

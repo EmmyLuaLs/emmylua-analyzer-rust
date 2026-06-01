@@ -22,7 +22,7 @@ pub use type_check_fail_reason::TypeCheckFailReason;
 use type_check_guard::TypeCheckGuard;
 
 use crate::{
-    LuaUnionType,
+    LuaUnionType, type_def_alias_origin, type_def_is_alias,
     db_index::{DbIndex, LuaType},
     semantic::type_check::type_check_context::TypeCheckContext,
 };
@@ -236,11 +236,10 @@ fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
 fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
     match typ {
         LuaType::Ref(type_id) => {
-            let type_decl = db.get_type_index().get_type_decl(type_id)?;
-            if type_decl.is_alias()
-                && let Some(origin_type) = type_decl.get_alias_origin(db, None)
+            if type_def_is_alias(db, type_id)
+                && let Some(origin_type) = type_def_alias_origin(db, type_id)
             {
-                return Some(origin_type.clone());
+                return Some(origin_type);
             }
         }
         // todo donot escape

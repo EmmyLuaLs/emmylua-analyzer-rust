@@ -6,6 +6,7 @@ use crate::{
     DbIndex, FileId, InferGuardRef, LuaGenericType, LuaInstanceType, LuaIntersectionType,
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
     LuaTypeDeclId, LuaUnionType, find_compilation_decl_by_position,
+    type_def_alias_origin, type_def_is_alias,
     infer_compilation_type_property_type, infer_compilation_type_super_types,
     module_query::export::infer_module_export_type,
     semantic::{
@@ -279,6 +280,16 @@ fn find_custom_type_members(
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
     ctx.infer_guard().check(type_decl_id).ok()?;
+
+    // Use summary-backed projection for alias check
+    if type_def_is_alias(db, type_decl_id) {
+        if let Some(origin) = type_def_alias_origin(db, type_decl_id) {
+            return find_members_guard(db, &origin, ctx, filter);
+        } else {
+            return find_members_guard(db, &LuaType::String, ctx, filter);
+        }
+    }
+
     let type_index = db.get_type_index();
     let type_decl = type_index.get_type_decl(type_decl_id);
     if let Some(type_decl) = type_decl
@@ -561,10 +572,12 @@ fn find_generic_members(
     .collect();
     let substitutor = TypeSubstitutor::from_type_array(instantiated_params);
     let ctx_with_substitutor = ctx.with_substitutor(substitutor.clone());
-    if let Some(type_decl) = db.get_type_index().get_type_decl(&base_ref_id)
-        && let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor))
-    {
-        return find_members_guard(db, &origin, &ctx_with_substitutor, filter);
+    if type_def_is_alias(db, &base_ref_id) {
+        if let Some(origin) = type_def_alias_origin(db, &base_ref_id) {
+            let instantiated_origin = ctx_with_substitutor.instantiate_type(db, &origin);
+            return find_members_guard(db, &instantiated_origin, &ctx_with_substitutor, filter);
+        }
+        return find_members_guard(db, &LuaType::String, &ctx_with_substitutor, filter);
     }
 
     find_members_guard(
