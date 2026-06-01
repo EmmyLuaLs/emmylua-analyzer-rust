@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 use crate::{
     DbIndex, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
-    check_type_compact,
+    check_type_compact, type_def_alias_origin, type_def_is_alias,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
 };
@@ -408,9 +408,8 @@ fn collect_infer_assignments(
                 }
             }
             LuaType::Ref(type_decl_id) => {
-                if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id)
-                    && type_decl.is_alias()
-                    && let Some(origin) = type_decl.get_alias_origin(db, None)
+                if type_def_is_alias(db, type_decl_id)
+                    && let Some(origin) = type_def_alias_origin(db, type_decl_id)
                 {
                     return collect_infer_assignments(db, &origin, pattern, assignments, variance);
                 }

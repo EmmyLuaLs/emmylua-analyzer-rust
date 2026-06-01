@@ -9,7 +9,8 @@ use std::{ops::Deref, sync::Arc};
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
     LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
-    LuaTypeNode, TypeOps, build_compilation_signature_doc_function,
+    LuaTypeNode, TypeOps, build_compilation_signature_doc_function, type_def_alias_origin,
+    type_def_is_alias,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
         VariadicType,
@@ -43,14 +44,11 @@ fn collect_callable_overload_groups_inner(
 ) -> Result<(), InferFailReason> {
     match callable_type {
         LuaType::Ref(type_id) | LuaType::Def(type_id) => {
-            let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
-                return Ok(());
-            };
             if !visiting_aliases.insert(type_id.clone()) {
                 return Ok(());
             }
 
-            let result = if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+            let result = if let Some(origin_type) = type_def_alias_origin(db, type_id) {
                 collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_aliases)
             } else {
                 Ok(())
@@ -64,15 +62,10 @@ fn collect_callable_overload_groups_inner(
                 return Ok(());
             }
             let substitutor = TypeSubstitutor::from_type_array(generic.get_params().to_vec());
-            let Some(type_decl) = db.get_type_index().get_type_decl(&type_id) else {
-                visiting_aliases.remove(&type_id);
-                return Ok(());
-            };
 
-            let result = if let Some(origin_type) =
-                type_decl.get_alias_origin(db, Some(&substitutor))
-            {
-                collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_aliases)
+            let result = if let Some(origin_type) = type_def_alias_origin(db, &type_id) {
+                let instantiated = instantiate_type_generic(db, &origin_type, &substitutor);
+                collect_callable_overload_groups_inner(db, &instantiated, groups, visiting_aliases)
             } else {
                 Ok(())
             };
@@ -444,12 +437,11 @@ fn instantiate_generic_with_context(
     };
 
     if !context.substitutor.check_recursion(&type_decl_id)
-        && let Some(type_decl) = context.db.get_type_index().get_type_decl(&type_decl_id)
-        && type_decl.is_alias()
+        && type_def_is_alias(context.db, &type_decl_id)
     {
         let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
-        if let Some(origin) = type_decl.get_alias_origin(context.db, Some(&new_substitutor)) {
-            return origin;
+        if let Some(origin) = type_def_alias_origin(context.db, &type_decl_id) {
+            return instantiate_type_generic(context.db, &origin, &new_substitutor);
         }
     }
 

@@ -2,7 +2,8 @@ use hashbrown::HashMap;
 
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeCache, LuaTypeDecl,
-    LuaTypeDeclId, RenderLevel, humanize_type, type_def_is_enum,
+    LuaTypeDeclId, RenderLevel, humanize_type, type_def_alias_origin, type_def_is_alias,
+    type_def_is_enum,
     semantic::{
         member::find_members,
         type_check::{
@@ -22,21 +23,8 @@ pub fn check_ref_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let type_decl = context
-        .db
-        .get_type_index()
-        .get_type_decl(source_id)
-        // unreachable!
-        .ok_or(if context.detail {
-            TypeCheckFailReason::TypeNotMatchWithReason(
-                t!("type `%{name}` not found.", name = source_id.get_name()).to_string(),
-            )
-        } else {
-            TypeCheckFailReason::TypeNotMatch
-        })?;
-
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(context.db, None) {
+    if type_def_is_alias(context.db, source_id) {
+        if let Some(origin_type) = type_def_alias_origin(context.db, source_id) {
             let result = check_general_type_compact(
                 context,
                 &origin_type,
@@ -48,11 +36,21 @@ pub fn check_ref_type_compact(
             }
             return result;
         }
-
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
 
-    if type_decl.is_enum() {
+    if type_def_is_enum(context.db, source_id) {
+        let type_decl = context
+            .db
+            .get_type_index()
+            .get_type_decl(source_id)
+            .ok_or(if context.detail {
+                TypeCheckFailReason::TypeNotMatchWithReason(
+                    t!("type `%{name}` not found.", name = source_id.get_name()).to_string(),
+                )
+            } else {
+                TypeCheckFailReason::TypeNotMatch
+            })?;
         check_ref_enum(context, source_id, compact_type, check_guard, type_decl)
     } else {
         check_ref_class(context, source_id, compact_type, check_guard)

@@ -11,7 +11,8 @@ use smol_str::SmolStr;
 use crate::{
     CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
     LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
-    complete_type_generic_args,
+    complete_type_generic_args, get_type_def_kind, type_def_alias_origin, type_def_is_alias,
+    type_def_is_class, type_def_is_enum,
     compilation::{infer_compilation_type_property_type, infer_compilation_type_super_types},
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
@@ -375,15 +376,16 @@ fn infer_custom_type_member(
         .completed_args
         .filter(|args| !args.is_empty())
         .map(TypeSubstitutor::from_type_array);
-    let type_decl = type_index.get_type_decl(&prefix_type_id);
-    if let Some(type_decl) = type_decl
-        && type_decl.is_alias()
-    {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, generic_substitutor.as_ref()) {
-            return infer_member_by_lookup(db, cache, &origin_type, lookup, infer_guard);
-        } else {
-            return Err(InferFailReason::FieldNotFound);
+    if type_def_is_alias(db, &prefix_type_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, &prefix_type_id) {
+            let origin = if let Some(substitutor) = &generic_substitutor {
+                instantiate_type_generic(db, &origin_type, substitutor)
+            } else {
+                origin_type
+            };
+            return infer_member_by_lookup(db, cache, &origin, lookup, infer_guard);
         }
+        return Err(InferFailReason::FieldNotFound);
     }
     if let LuaIndexMemberExpr::IndexExpr(index_expr) = &lookup.index_expr
         && enum_variable_is_param(db, cache, index_expr, &LuaType::Ref(prefix_type_id.clone()))
@@ -692,16 +694,13 @@ fn infer_generic_members_from_super_generics(
     lookup: &MemberLookupQuery,
     infer_guard: &InferGuardRef,
 ) -> Option<LuaType> {
-    let type_index = db.get_type_index();
-
-    let type_decl = type_index.get_type_decl(type_decl_id)?;
-    if !type_decl.is_class() {
+    if !type_def_is_class(db, type_decl_id) {
         return None;
-    };
+    }
 
-    let type_decl_id = type_decl.get_id();
-    if let Some(super_types) = infer_compilation_type_super_types(db, &type_decl_id)
-        .or_else(|| type_index.get_super_types(&type_decl_id))
+    let type_index = db.get_type_index();
+    if let Some(super_types) = infer_compilation_type_super_types(db, type_decl_id)
+        .or_else(|| type_index.get_super_types(type_decl_id))
     {
         super_types.iter().find_map(|super_type| {
             let super_type = instantiate_type_generic(db, super_type, substitutor);
@@ -745,12 +744,11 @@ fn infer_generic_member(
     let substitutor = TypeSubstitutor::from_type_array(generic_params);
 
     if let LuaType::Ref(base_type_decl_id) = &base_type {
-        let type_index = db.get_type_index();
-        if let Some(type_decl) = type_index.get_type_decl(base_type_decl_id)
-            && type_decl.is_alias()
-            && let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor))
+        if type_def_is_alias(db, base_type_decl_id)
+            && let Some(origin_type) = type_def_alias_origin(db, base_type_decl_id)
         {
-            return infer_member_by_lookup(db, cache, &origin_type, lookup, &infer_guard.fork());
+            let instantiated = instantiate_type_generic(db, &origin_type, &substitutor);
+            return infer_member_by_lookup(db, cache, &instantiated, lookup, &infer_guard.fork());
         }
 
         let result = infer_generic_members_from_super_generics(
@@ -907,12 +905,8 @@ fn infer_member_by_index_custom_type(
     infer_guard: &InferGuardRef,
 ) -> InferResult {
     infer_guard.check(prefix_type_id)?;
-    let type_index = db.get_type_index();
-    let type_decl = type_index
-        .get_type_decl(prefix_type_id)
-        .ok_or(InferFailReason::None)?;
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+    if type_def_is_alias(db, prefix_type_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, prefix_type_id) {
             return infer_member_by_operator_key_type(
                 db,
                 cache,
@@ -923,6 +917,8 @@ fn infer_member_by_index_custom_type(
         }
         return Err(InferFailReason::None);
     }
+
+    let type_index = db.get_type_index();
 
     if let Some(index_operator_ids) = db
         .get_operator_index()
@@ -943,7 +939,7 @@ fn infer_member_by_index_custom_type(
     }
 
     // find member by key in super
-    if type_decl.is_class()
+    if type_def_is_class(db, prefix_type_id)
         && let Some(super_types) = infer_compilation_type_super_types(db, prefix_type_id)
             .or_else(|| type_index.get_super_types(prefix_type_id))
     {
@@ -1035,12 +1031,8 @@ fn infer_member_by_index_generic(
     };
     let generic_params = generic.get_params();
     let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
-    let type_index = db.get_type_index();
-    let type_decl = type_index
-        .get_type_decl(&type_decl_id)
-        .ok_or(InferFailReason::None)?;
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+    if type_def_is_alias(db, &type_decl_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, &type_decl_id) {
             return infer_member_by_operator_key_type(
                 db,
                 cache,
@@ -1051,6 +1043,7 @@ fn infer_member_by_index_generic(
         }
         return Err(InferFailReason::None);
     }
+    let type_index = db.get_type_index();
 
     let operator_index = db.get_operator_index();
     if let Some(index_operator_ids) =
@@ -1081,7 +1074,8 @@ fn infer_member_by_index_generic(
     }
 
     // for supers
-    if let Some(supers) = type_index.get_super_types(&type_decl_id) {
+    if let Some(supers) = infer_compilation_type_super_types(db, &type_decl_id)
+        .or_else(|| type_index.get_super_types(&type_decl_id)) {
         for super_type in supers {
             let result = infer_member_by_operator_key_type(
                 db,
@@ -1131,7 +1125,7 @@ fn infer_namespace_member(db: &DbIndex, ns: &str, key: &LuaMemberKey) -> InferRe
 
     let namespace_or_type_id = format!("{}.{}", ns, member_key);
     let type_id = LuaTypeDeclId::global(&namespace_or_type_id);
-    if db.get_type_index().get_type_decl(&type_id).is_some() {
+    if get_type_def_kind(db, &type_id).is_some() {
         return Ok(LuaType::Def(type_id));
     }
 
@@ -1183,16 +1177,18 @@ fn collect_type_member_keys(db: &DbIndex, key_type: &LuaType, keys: &mut HashSet
                 keys.insert(LuaMemberKey::ExprType(current_type.clone()));
             }
             LuaType::Ref(id) => {
-                if let Some(type_decl) = db.get_type_index().get_type_decl(id) {
-                    if type_decl.is_alias() {
-                        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+                if get_type_def_kind(db, id).is_some() {
+                    if type_def_is_alias(db, id) {
+                        if let Some(origin_type) = type_def_alias_origin(db, id) {
                             if !visited.contains(&origin_type) {
                                 stack.push(origin_type);
                             }
                             continue;
                         }
                     }
-                    if type_decl.is_enum() {
+                    if type_def_is_enum(db, id)
+                        && let Some(type_decl) = db.get_type_index().get_type_decl(id)
+                    {
                         let owner = LuaMemberOwner::Type(id.clone());
                         if let Some(members) = db.get_member_index().get_members(&owner) {
                             let is_enum_key = type_decl.is_enum_key();
