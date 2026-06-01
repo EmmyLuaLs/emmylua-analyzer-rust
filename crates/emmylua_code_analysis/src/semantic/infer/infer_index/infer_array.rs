@@ -5,7 +5,7 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaMemberKey, LuaType,
-    TypeOps, find_compilation_decl_by_position,
+    TypeOps, check_type_compact, find_compilation_decl_by_position,
     semantic::infer::narrow::get_var_expr_var_ref_id,
 };
 
