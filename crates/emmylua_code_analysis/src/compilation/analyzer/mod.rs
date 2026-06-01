@@ -1,3 +1,19 @@
+//! Legacy analyzer — compatibility-preserved, not the active write path.
+//!
+//! The update path has moved to summary sync (`LuaCompilation::update_index` →
+//! `SalsaSummaryDatabase`). The modules here are retained for:
+//!
+//! | Module     | Status                                        |
+//! |------------|-----------------------------------------------|
+//! | `doc/`     | Superseded by `summary_builder.analysis`      |
+//! | `decl/`    | Superseded by `summary_builder.analysis`      |
+//! | `flow/`    | Superseded by `summary_builder.analysis`      |
+//! | `unresolve/`| Runtime query logic — migrate to `compilation`|
+//! | `lua/`     | Update-time writer — last to replace          |
+//! | `common/`  | Migrate with consumers or delete              |
+//!
+//! See `compilation_semantic_architecture_CN.md` §第二阶段 for the full catalog.
+
 mod common;
 mod decl;
 mod doc;

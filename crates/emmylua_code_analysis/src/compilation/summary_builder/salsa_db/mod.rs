@@ -10,6 +10,7 @@ use hashbrown::HashMap;
 use lsp_types::Uri;
 
 use crate::{Emmyrc, FileId, Vfs, db_index::Workspace};
+use inputs::SummaryFileListInput;
 
 pub use facade::{
     SalsaSummaryDocQueries, SalsaSummaryFileQueries,
@@ -31,6 +32,7 @@ pub struct SalsaSummaryDatabase {
     files: HashMap<FileId, SummarySourceFileInput>,
     workspaces: Option<SummaryWorkspaceInput>,
     config: Option<SummaryConfigInput>,
+    file_list: Option<SummaryFileListInput>,
 }
 
 impl Default for SalsaSummaryDatabase {
@@ -40,7 +42,24 @@ impl Default for SalsaSummaryDatabase {
             files: HashMap::new(),
             workspaces: None,
             config: None,
+            file_list: None,
         }
+    }
+}
+
+impl SalsaSummaryDatabase {
+    fn sync_file_list(&mut self) {
+        let ids: Vec<FileId> = self.files.keys().copied().collect();
+        self.file_list = Some(SummaryFileListInput::new(self, ids));
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn file_list_input(&self) -> Option<SummaryFileListInput> {
+        self.file_list
+    }
+
+    pub(crate) fn file_ids(&self) -> Vec<FileId> {
+        self.files.keys().copied().collect()
     }
 }
 
@@ -81,6 +100,7 @@ impl SalsaSummaryDatabase {
     ) {
         let input = SummarySourceFileInput::new(self, file_id, path, text, is_remote);
         self.files.insert(file_id, input);
+        self.sync_file_list();
     }
 
     pub fn set_file_from_vfs(&mut self, vfs: &Vfs, file_id: FileId) -> bool {
@@ -93,11 +113,13 @@ impl SalsaSummaryDatabase {
 
     pub fn remove_file(&mut self, file_id: FileId) {
         self.files.remove(&file_id);
+        self.sync_file_list();
     }
 
     pub fn clear(&mut self) {
         self.files.clear();
         self.workspaces = None;
+        self.file_list = None;
     }
 
     pub fn file(&self) -> SalsaSummaryFileQueries<'_> {

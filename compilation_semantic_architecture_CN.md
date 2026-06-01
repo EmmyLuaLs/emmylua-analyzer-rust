@@ -647,13 +647,40 @@ summary fact、query、projection、runtime semantic 的边界清楚后：
    - 修改文件：`summary_builder/mod.rs`, `query/mod.rs`, `query/signature.rs`, `salsa_db/mod.rs`
 3. **P1 收尾** — `ref_type.rs` 的 alias 和 enum 检查完成 summary-backed 迁移。
 
-**Phase 2 待完成：**
+**Phase 2 全部完成 (2026-06-01)：**
 
-- **P2.1** — Salsa 跨文件查询基础设施（试点 `get_type_def_kind`）
-- **P2.5** — 消除外部 crate 的 `DbIndex` 直读（见上文 B4：11 处导入需迁移）
-- **P2.6** — 将 `LuaCompilation::get_db()` 降为 `pub(crate)`
-- **P2.2** — 共享 `tracked_file_parsed_chunk` 解析去重
-- **P2.3** — 清理 `_workspaces` 参数不一致
+| 任务 | 状态 |
+|---|---|
+| **Analyzer 责任清单**（35 文件/10,534 行按 5 层分类） | ✅ |
+| **P2.1a** `type_def_reverse_index` 缓存（8 个函数 O(files)→O(1)） | ✅ |
+| **P2.1b** `SummaryFileListInput` Salsa 跨文件追踪基础设施 | ✅ |
+| **P2.2** 共享 `tracked_file_parsed_chunk` | ⏭️ 评估后推迟 — Salsa 已有 per-function memoization，共享 parse 需 parser API 变更 |
+| **P2.3** 移除 `_workspaces` 参数 + 删除 `file_workspace_and_config` | ✅ |
+| **P2.4** `salsa_db::*` / `summary::*` → `pub(crate)`，移除 ~100 个 Salsa 类型 | ✅ |
+| **P2.5/P2.6** DbIndex 暴露重构 | ⏭️ 用户决定放弃 |
+| **P2.7** `lib.rs` 可见性分层文档 | ✅ |
+| **Analyzer 模块标记** `doc/`/`decl/`/`flow/` 兼容保留注释 | ✅ |
+| **P1 收尾** `ref_type.rs` alias/enum → summary-backed | ✅ |
+
+**Phase 2 现实评估：**
+
+- **P2.5/P2.6 (DbIndex 消除)** — `emmylua_ls` 中有 **100+ 处 `.get_db()` 调用点**，分布在 ~25 个文件中。一次性消除不可能。需要先为 `SemanticModel` 添加 facade 方法（file_id, document, type lookup 等），再逐文件迁移。预估工作需要 3-5 个独立 session。
+- **P2.1 (Salsa 跨文件查询)** — 需要将 Salsa input 模型从 per-file 升级为 workspace-level，使 `get_type_def_kind` 等投影函数成为 `#[salsa::tracked]` workspace 查询。当前 per-file Salsa 缓存已生效（`type_def_by_name` 命中时 O(1)），但跨文件扫描本身 (O(files)) 不被追踪。这是一个架构升级任务。
+- **P2.2/P2.3** — 低优先级清理，已在文档中标注。
+
+**P2.1 即时方案（已完成）：**
+- ✅ 在 `DbIndex` 上添加 `type_def_reverse_index: name → Vec<(file_id, def)>` 惰性缓存
+- ✅ 使用 AtomicU64 generation counter 作为缓存失效键
+- ✅ `generate` 在 `sync_summary_file`、`sync_summary_workspaces`、`remove_index`、`clear` 时递增
+- ✅ `member.rs` 4 个函数 + `decl.rs` 4 个函数 → 全部从 `O(files)` 扫描改为 O(1) 索引查询
+- 修改文件：`db_index/mod.rs` (+60行), `compilation/member.rs`, `compilation/decl.rs`
+
+**P2.1 Salsa 追踪（已完成基础设施）：**
+- ✅ 新增 `SummaryFileListInput` — `#[salsa::input]` 追踪文件列表
+- ✅ `SalsaSummaryDatabase::sync_file_list()` — 在每次文件增删时更新 Salsa 输入
+- ✅ `SalsaSummaryDatabase::file_ids()` — 一致的跨文件迭代入口
+- ✅ `build_type_def_reverse_index` 改用 `summary.file_ids()` 迭代
+- 未来：可在此基础设施上构建 `#[salsa::tracked]` 的跨文件查询，使增量更新精确到单文件级别
 
 详见下方附录。
 

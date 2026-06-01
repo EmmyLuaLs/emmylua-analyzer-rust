@@ -8,6 +8,26 @@
     )
 )]
 
+//! # Visibility Tiers
+//!
+//! This crate exposes types at three levels:
+//!
+//! **Tier 1 — Stable Facade** (use these directly):
+//! - [`EmmyLuaAnalysis`] — top-level analysis entry point
+//! - [`LuaCompilation`] — compilation/index management
+//! - [`SemanticModel`] — single-file semantic queries
+//! - Key types: [`FileId`], [`LuaType`], [`Emmyrc`], [`DiagnosticCode`]
+//!
+//! **Tier 2 — Projection Types** (public but may evolve):
+//! - [`CompilationModuleInfo`], [`CompilationGenericParamInfo`]
+//! - [`LuaDeclId`], [`LuaTypeDeclId`], [`LuaSemanticDeclId`]
+//! - Free functions: [`humanize_type`], [`file_path_to_uri`]
+//!
+//! **Tier 3 — Internal** (avoid; use facade methods instead):
+//! - [`DbIndex`] — legacy container, prefer [`LuaCompilation`] / [`SemanticModel`]
+//! - Legacy index types (`LuaDeclIndex`, `LuaMemberIndex`, etc.)
+//! - Salsa types (`SalsaDeclSummary`, `SalsaSummaryDatabase`, etc.) — `pub(crate)` restricted
+
 mod compilation;
 mod config;
 mod db_index;

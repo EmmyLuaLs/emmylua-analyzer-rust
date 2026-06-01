@@ -116,8 +116,8 @@ use super::{
     },
     SalsaSummaryDatabase, SummaryDb,
     inputs::{
-        SummaryConfigInput, SummarySourceFileInput, SummaryWorkspaceInput, config_input,
-        file_input, parse_chunk, workspace_input,
+        SummaryConfigInput, SummarySourceFileInput, config_input,
+        file_input, parse_chunk,
     },
 };
 use super::super::query::build_semantic_solver_component_result_summary;
@@ -1579,7 +1579,6 @@ fn tracked_file_module_summary(
 fn tracked_file_summary(
     db: &dyn SummaryDb,
     file: SummarySourceFileInput,
-    _workspaces: SummaryWorkspaceInput,
     config: SummaryConfigInput,
 ) -> Arc<SalsaFileSummary> {
     let parsed = parse_chunk(file.file_id(db), &file.text(db), &config.config(db));
@@ -1593,27 +1592,12 @@ fn file_and_config(
     Some((file_input(db, file_id)?, config_input(db)?))
 }
 
-fn file_workspace_and_config(
-    db: &SalsaSummaryDatabase,
-    file_id: FileId,
-) -> Option<(
-    SummarySourceFileInput,
-    SummaryWorkspaceInput,
-    SummaryConfigInput,
-)> {
-    Some((
-        file_input(db, file_id)?,
-        workspace_input(db)?,
-        config_input(db)?,
-    ))
-}
-
 pub(crate) fn file_summary(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
 ) -> Option<Arc<SalsaFileSummary>> {
-    let (file, workspaces, config) = file_workspace_and_config(db, file_id)?;
-    Some(tracked_file_summary(db, file, workspaces, config))
+    let (file, config) = file_and_config(db, file_id)?;
+    Some(tracked_file_summary(db, file, config))
 }
 
 pub(crate) fn file_decl_tree_summary(

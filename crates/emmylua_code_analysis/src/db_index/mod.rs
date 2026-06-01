@@ -16,8 +16,12 @@ mod traits;
 mod r#type;
 
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{Emmyrc, FileId, SalsaSummaryDatabase, Vfs};
+use hashbrown::HashMap;
+use smol_str::SmolStr;
+
+use crate::{Emmyrc, FileId, SalsaDocTypeDefSummary, SalsaSummaryDatabase, Vfs};
 pub use declaration::*;
 pub use dependency::LuaDependencyIndex;
 pub use diagnostic::{AnalyzeError, DiagnosticAction, DiagnosticActionKind, DiagnosticIndex};
@@ -54,6 +58,14 @@ pub struct DbIndex {
     json_schema_index: JsonSchemaIndex,
     summary_db: RwLock<SalsaSummaryDatabase>,
     emmyrc: Arc<Emmyrc>,
+    type_def_rev_gen: AtomicU64,
+    type_def_cache: RwLock<Option<Arc<TypeDefReverseIndex>>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TypeDefReverseIndex {
+    pub(crate) generation: u64,
+    pub(crate) by_name: HashMap<SmolStr, Vec<(FileId, SalsaDocTypeDefSummary)>>,
 }
 
 #[allow(unused)]
@@ -83,6 +95,8 @@ impl DbIndex {
             json_schema_index: JsonSchemaIndex::new(),
             summary_db: RwLock::new(SalsaSummaryDatabase::default()),
             emmyrc: Arc::new(Emmyrc::default()),
+            type_def_rev_gen: AtomicU64::new(0),
+            type_def_cache: RwLock::new(None),
         }
     }
 
@@ -233,11 +247,16 @@ impl DbIndex {
     pub fn sync_summary_workspaces(&mut self) {
         let workspaces = self.modules_index.get_workspaces().to_vec();
         self.summary_db_write().set_workspaces(workspaces);
+        self.type_def_rev_gen.fetch_add(1, Ordering::Release);
     }
 
     pub fn sync_summary_file(&mut self, file_id: FileId) -> bool {
-        self.summary_db_write()
-            .set_file_from_vfs(&self.vfs, file_id)
+        let ok = self.summary_db_write()
+            .set_file_from_vfs(&self.vfs, file_id);
+        if ok {
+            self.type_def_rev_gen.fetch_add(1, Ordering::Release);
+        }
+        ok
     }
 
     pub fn sync_summary_files(&mut self, file_ids: &[FileId]) -> Vec<FileId> {
@@ -268,6 +287,45 @@ impl DbIndex {
             }
         })
     }
+
+    pub(crate) fn get_type_def_reverse_index(&self) -> Arc<TypeDefReverseIndex> {
+        let current_gen = self.type_def_rev_gen.load(Ordering::Acquire);
+        {
+            let cache = self.type_def_cache.read().unwrap();
+            if let Some(cached) = cache.as_ref() {
+                if cached.generation == current_gen {
+                    return cached.clone();
+                }
+            }
+        }
+        let index = self.build_type_def_reverse_index();
+        let index = Arc::new(index);
+        *self.type_def_cache.write().unwrap() = Some(index.clone());
+        index
+    }
+
+    fn build_type_def_reverse_index(&self) -> TypeDefReverseIndex {
+        let current_gen = self.type_def_rev_gen.load(Ordering::Acquire);
+        let mut by_name: HashMap<SmolStr, Vec<(FileId, SalsaDocTypeDefSummary)>> = HashMap::new();
+        let summary = self.summary_db_read();
+        // Use Salsa-tracked file IDs for consistent cross-file dependency tracking
+        let file_ids = summary.file_ids();
+        for file_id in file_ids {
+            let Some(type_def_index) = summary.doc().type_def_index(file_id) else {
+                continue;
+            };
+            for type_def in type_def_index.type_defs.iter() {
+                by_name
+                    .entry(type_def.name.clone())
+                    .or_default()
+                    .push((file_id, type_def.clone()));
+            }
+        }
+        TypeDefReverseIndex {
+            generation: current_gen,
+            by_name,
+        }
+    }
 }
 
 impl LuaIndex for DbIndex {
@@ -287,6 +345,7 @@ impl LuaIndex for DbIndex {
         self.global_index.remove(file_id);
         self.json_schema_index.remove(file_id);
         self.summary_db_write().remove_file(file_id);
+        self.type_def_rev_gen.fetch_add(1, Ordering::Release);
     }
 
     fn clear(&mut self) {
@@ -305,5 +364,6 @@ impl LuaIndex for DbIndex {
         self.global_index.clear();
         self.json_schema_index.clear();
         self.summary_db_write().clear();
+        self.type_def_rev_gen.fetch_add(1, Ordering::Release);
     }
 }

@@ -118,20 +118,12 @@ pub fn find_compilation_type_generic_params(
     type_decl_id: &crate::LuaTypeDeclId,
 ) -> Option<Vec<CompilationGenericParamInfo>> {
     let type_name = type_decl_id.get_name();
-    let mut result = None;
-
-    for file_id in db.get_vfs().get_all_file_ids() {
-        let Some(type_def) = db
-            .get_summary_db()
-            .doc()
-            .type_def_by_name(file_id, type_name.into())
-        else {
-            continue;
-        };
-
-        let workspace_id = db.resolve_workspace_id(file_id).unwrap_or(WorkspaceId::MAIN);
+    let index = db.get_type_def_reverse_index();
+    let defs = index.by_name.get(&SmolStr::new(type_name))?;
+    for (file_id, type_def) in defs {
+        let workspace_id = db.resolve_workspace_id(*file_id).unwrap_or(WorkspaceId::MAIN);
         let projected_type_id = match type_def.visibility {
-            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(file_id, type_name),
+            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(*file_id, type_name),
             SalsaDocVisibilityKindSummary::Internal | SalsaDocVisibilityKindSummary::Package => {
                 crate::LuaTypeDeclId::internal(workspace_id, type_name)
             }
@@ -143,7 +135,7 @@ pub fn find_compilation_type_generic_params(
             continue;
         }
 
-        result = Some(
+        return Some(
             type_def
                 .generic_params
                 .iter()
@@ -151,23 +143,22 @@ pub fn find_compilation_type_generic_params(
                     name: param.name.to_string(),
                     constraint: param.type_offset.and_then(|type_offset| infer_compilation_doc_type_key_with_owner(
                         db,
-                        file_id,
+                        *file_id,
                         Some(type_def.syntax_offset),
                         type_offset,
                     )),
                     default_type: param.default_type_offset.and_then(|type_offset| infer_compilation_doc_type_key_with_owner(
                         db,
-                        file_id,
+                        *file_id,
                         Some(type_def.syntax_offset),
                         type_offset,
                     )),
                 })
                 .collect(),
         );
-        break;
     }
 
-    result
+    None
 }
 
 pub fn infer_compilation_type_alias_origin(
@@ -176,22 +167,16 @@ pub fn infer_compilation_type_alias_origin(
     substitutor: Option<&TypeSubstitutor>,
 ) -> Option<LuaType> {
     let type_name = type_decl_id.get_name();
-
-    for file_id in db.get_vfs().get_all_file_ids() {
-        let Some(type_def) = db
-            .get_summary_db()
-            .doc()
-            .type_def_by_name(file_id, type_name.into())
-        else {
-            continue;
-        };
+    let index = db.get_type_def_reverse_index();
+    let defs = index.by_name.get(&SmolStr::new(type_name))?;
+    for (file_id, type_def) in defs {
         if type_def.kind != SalsaDocTypeDefKindSummary::Alias {
             continue;
         }
 
-        let workspace_id = db.resolve_workspace_id(file_id).unwrap_or(WorkspaceId::MAIN);
+        let workspace_id = db.resolve_workspace_id(*file_id).unwrap_or(WorkspaceId::MAIN);
         let projected_type_id = match type_def.visibility {
-            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(file_id, type_name),
+            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(*file_id, type_name),
             SalsaDocVisibilityKindSummary::Internal | SalsaDocVisibilityKindSummary::Package => {
                 crate::LuaTypeDeclId::internal(workspace_id, type_name)
             }
@@ -206,7 +191,7 @@ pub fn infer_compilation_type_alias_origin(
         let value_type_offset = type_def.value_type_offset?;
         let mut origin = infer_compilation_doc_type_key_with_owner(
             db,
-            file_id,
+            *file_id,
             Some(type_def.syntax_offset),
             value_type_offset,
         )?;
@@ -338,66 +323,24 @@ pub fn infer_compilation_type_property_type(
     key: &LuaMemberKey,
 ) -> Option<LuaType> {
     let type_name = type_decl_id.get_name();
+    let index = db.get_type_def_reverse_index();
     let mut resolved = Vec::new();
-    for file_id in db.get_vfs().get_all_file_ids() {
-        let type_def = db
-            .get_summary_db()
-            .doc()
-            .type_def_by_name(file_id, type_name.into());
-        let owner_offset = type_def.as_ref().map(|type_def| type_def.syntax_offset);
-        let properties = db
-            .get_summary_db()
-            .file()
-            .properties_for_type(file_id, type_name.into())
-            .unwrap_or_default();
+    let defs = index.by_name.get(&SmolStr::new(type_name));
+    if let Some(defs) = defs {
+        for (file_id, type_def) in defs {
+            let owner_offset = Some(type_def.syntax_offset);
+            let properties = db
+                .get_summary_db()
+                .file()
+                .properties_for_type(*file_id, type_name.into())
+                .unwrap_or_default();
 
-        for property in properties {
-            let key_matches = match (&property.key, key) {
-                (SalsaPropertyKeySummary::Name(field_name), LuaMemberKey::Name(name)) => {
-                    field_name == name
-                }
-                (SalsaPropertyKeySummary::Integer(field_index), LuaMemberKey::Integer(index)) => {
-                    field_index == index
-                }
-                _ => false,
-            };
-            if !key_matches {
-                continue;
-            }
-
-            let Some(doc_type_offset) = property.doc_type_offset else {
-                continue;
-            };
-
-            let Some(mut typ) = infer_compilation_doc_type_key_with_owner(
-                db,
-                file_id,
-                owner_offset,
-                doc_type_offset,
-            ) else {
-                continue;
-            };
-            if property.is_nullable && !typ.is_nullable() {
-                typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
-            }
-            resolved.push(typ);
-        }
-
-        if resolved.is_empty()
-            && let Some(type_def) = type_def
-            && let Some(doc_summary) = db.get_summary_db().doc().summary(file_id)
-        {
-            for field in &doc_summary.fields {
-                if field.owner != type_def.owner {
-                    continue;
-                }
-
-                let key_matches = match (&field.key, key) {
-                    (Some(SalsaDocTagFieldKeySummary::Name(field_name)), LuaMemberKey::Name(name))
-                    | (Some(SalsaDocTagFieldKeySummary::String(field_name)), LuaMemberKey::Name(name)) => {
+            for property in properties {
+                let key_matches = match (&property.key, key) {
+                    (SalsaPropertyKeySummary::Name(field_name), LuaMemberKey::Name(name)) => {
                         field_name == name
                     }
-                    (Some(SalsaDocTagFieldKeySummary::Integer(field_index)), LuaMemberKey::Integer(index)) => {
+                    (SalsaPropertyKeySummary::Integer(field_index), LuaMemberKey::Integer(index)) => {
                         field_index == index
                     }
                     _ => false,
@@ -406,21 +349,62 @@ pub fn infer_compilation_type_property_type(
                     continue;
                 }
 
-                let Some(type_offset) = field.type_offset else {
+                let Some(doc_type_offset) = property.doc_type_offset else {
                     continue;
                 };
+
                 let Some(mut typ) = infer_compilation_doc_type_key_with_owner(
                     db,
-                    file_id,
-                    Some(type_def.syntax_offset),
-                    type_offset,
+                    *file_id,
+                    owner_offset,
+                    doc_type_offset,
                 ) else {
                     continue;
                 };
-                if field.is_nullable && !typ.is_nullable() {
+                if property.is_nullable && !typ.is_nullable() {
                     typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
                 }
                 resolved.push(typ);
+            }
+
+            if resolved.is_empty()
+                && let Some(doc_summary) = db.get_summary_db().doc().summary(*file_id)
+            {
+                for field in &doc_summary.fields {
+                    if field.owner != type_def.owner {
+                        continue;
+                    }
+
+                    let key_matches = match (&field.key, key) {
+                        (Some(SalsaDocTagFieldKeySummary::Name(field_name)), LuaMemberKey::Name(name))
+                        | (Some(SalsaDocTagFieldKeySummary::String(field_name)), LuaMemberKey::Name(name)) => {
+                            field_name == name
+                        }
+                        (Some(SalsaDocTagFieldKeySummary::Integer(field_index)), LuaMemberKey::Integer(index)) => {
+                            field_index == index
+                        }
+                        _ => false,
+                    };
+                    if !key_matches {
+                        continue;
+                    }
+
+                    let Some(type_offset) = field.type_offset else {
+                        continue;
+                    };
+                    let Some(mut typ) = infer_compilation_doc_type_key_with_owner(
+                        db,
+                        *file_id,
+                        Some(type_def.syntax_offset),
+                        type_offset,
+                    ) else {
+                        continue;
+                    };
+                    if field.is_nullable && !typ.is_nullable() {
+                        typ = TypeOps::Union.apply(db, &typ, &LuaType::Nil);
+                    }
+                    resolved.push(typ);
+                }
             }
         }
     }
@@ -435,26 +419,21 @@ pub fn infer_compilation_type_super_types(
     type_decl_id: &crate::LuaTypeDeclId,
 ) -> Option<Vec<LuaType>> {
     let type_name = type_decl_id.get_name();
+    let index = db.get_type_def_reverse_index();
     let mut resolved = Vec::new();
-    for file_id in db.get_vfs().get_all_file_ids() {
-        let Some(type_def) = db
-            .get_summary_db()
-            .doc()
-            .type_def_by_name(file_id, type_name.into())
-        else {
-            continue;
-        };
-
-        for super_type_offset in &type_def.super_type_offsets {
-            let Some(typ) = infer_compilation_doc_type_key_with_owner(
-                db,
-                file_id,
-                Some(type_def.syntax_offset),
-                *super_type_offset,
-            ) else {
-                continue;
-            };
-            resolved.push(typ);
+    if let Some(defs) = index.by_name.get(&SmolStr::new(type_name)) {
+        for (file_id, type_def) in defs {
+            for super_type_offset in &type_def.super_type_offsets {
+                let Some(typ) = infer_compilation_doc_type_key_with_owner(
+                    db,
+                    *file_id,
+                    Some(type_def.syntax_offset),
+                    *super_type_offset,
+                ) else {
+                    continue;
+                };
+                resolved.push(typ);
+            }
         }
     }
 

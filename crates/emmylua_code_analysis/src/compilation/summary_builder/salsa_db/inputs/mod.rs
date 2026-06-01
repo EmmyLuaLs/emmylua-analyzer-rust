@@ -108,6 +108,13 @@ pub(crate) struct SummaryConfigInput {
     pub(crate) config: SalsaSummaryConfig,
 }
 
+/// Tracks the set of files in the workspace for cross-file Salsa queries.
+/// Updated whenever files are added or removed.
+#[salsa::input]
+pub(crate) struct SummaryFileListInput {
+    pub(crate) file_ids: Vec<FileId>,
+}
+
 pub(crate) fn file_input(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
@@ -115,6 +122,7 @@ pub(crate) fn file_input(
     db.files.get(&file_id).copied()
 }
 
+#[allow(dead_code)]
 pub(crate) fn workspace_input(db: &SalsaSummaryDatabase) -> Option<SummaryWorkspaceInput> {
     db.workspaces
 }
