@@ -1,6 +1,5 @@
-#[allow(unused)]
-mod analyzer;
 mod decl;
+mod func_body;
 mod global;
 mod member;
 mod module;
@@ -11,26 +10,17 @@ mod test;
 use std::sync::Arc;
 
 use crate::{
-    Emmyrc, FileId, InferFailReason, LuaIndex, LuaInferCache, LuaType, LuaTypeDeclId,
+    Emmyrc, FileId, LuaIndex, LuaInferCache, LuaType, LuaTypeDeclId,
     db_index::DbIndex,
     semantic::SemanticModel,
 };
-use emmylua_parser::{LuaBlock, LuaExpr};
 pub use decl::*;
 pub(crate) use global::*;
 pub(crate) use member::*;
 pub use module::*;
 pub use summary_builder::*;
 
-pub(crate) fn analyze_func_body_missing_return_flags_with<F>(
-    body: LuaBlock,
-    infer_expr_type: &mut F,
-) -> Result<(bool, bool), InferFailReason>
-where
-    F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
-{
-    analyzer::analyze_func_body_missing_return_flags_with(body, infer_expr_type)
-}
+pub(crate) use func_body::analyze_func_body_missing_return_flags_with;
 
 #[derive(Debug)]
 pub struct LuaCompilation {
