@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use luars::{
-    Lua, LuaApi, LuaResult, LuaSandboxApi, LuaState, LuaValue, SafeOption, SandboxConfig, Table,
+    Lua, LuaApi, LuaResult, LuaSandboxApi, LuaState, LuaTable, LuaValue, SafeOption, SandboxConfig,
 };
 use serde_json::Value;
 
 pub fn load_lua_config(content: &str) -> Result<Value, String> {
     let mut lua = Lua::new(SafeOption::default());
-    let libs = [
+    let _ = lua.open_stdlibs(&[
         luars::Stdlib::Package,
         luars::Stdlib::Basic,
         luars::Stdlib::Table,
@@ -15,10 +15,7 @@ pub fn load_lua_config(content: &str) -> Result<Value, String> {
         luars::Stdlib::Math,
         luars::Stdlib::Os,
         luars::Stdlib::Utf8,
-    ];
-    for lib in libs.iter() {
-        let _ = lua.open_stdlib(*lib);
-    }
+    ]);
 
     let _ = lua.set_global("print", LuaValue::cfunction(ls_println));
     let sandbox = SandboxConfig {
@@ -41,7 +38,7 @@ pub fn load_lua_config(content: &str) -> Result<Value, String> {
         ..Default::default()
     };
 
-    let r = match lua.load_sandboxed(content, &sandbox).eval::<Table>() {
+    let r = match lua.load_sandboxed(content, &sandbox).eval::<LuaTable>() {
         Ok(v) => v,
         Err(e) => {
             let err_msg = lua.get_error_message(e);
