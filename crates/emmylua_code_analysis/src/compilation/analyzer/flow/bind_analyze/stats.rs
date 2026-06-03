@@ -199,7 +199,9 @@ pub fn bind_call_expr_stat(
         if let Some(ast) = LuaAst::cast(call_expr.syntax().clone()) {
             bind_each_child(binder, ast, current);
         }
-        current
+        let flow_id = binder.create_node(FlowNodeKind::CallExprStat(call_expr_stat.to_ptr()));
+        binder.add_antecedent(flow_id, current);
+        flow_id
     }
 }
 
