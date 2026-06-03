@@ -305,6 +305,180 @@ mod test {
     }
 
     #[test]
+    fn test_plain_call_condition_keeps_inner_call_prefix_type() {
+        let mut ws = VirtualWorkspace::new();
+        let code = r#"
+        local function a() end
+        local function b() end
+
+        b()
+        if a() then
+            b()
+            inner = b
+        end
+        "#;
+        ws.def(code);
+
+        let ty = ws.expr_ty("inner");
+        assert!(ty.is_function());
+
+        let mut diag_ws = VirtualWorkspace::new();
+        assert!(diag_ws.has_no_diagnostic(DiagnosticCode::CallNonCallable, code));
+    }
+
+    #[test]
+    fn test_false_call_condition_keeps_inner_unrelated_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        ---@type string
+        local value = "ok"
+        if always_false() then
+            inner = value
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("inner"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_true_call_condition_keeps_else_call_prefix_type() {
+        let mut ws = VirtualWorkspace::new();
+        let code = r#"
+        ---@return true
+        local function always_true()
+            return true
+        end
+
+        local function b() end
+        if always_true() then
+        else
+            b()
+        end
+        "#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::CallNonCallable, code));
+    }
+
+    #[test]
+    fn test_false_call_condition_assignment_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        local value = "before"
+        if always_false() then
+            value = 1
+        end
+        after = value
+        "#,
+        );
+
+        let after = ws.expr_ty("after");
+        assert_eq!(ws.humanize_type(after), "string");
+    }
+
+    #[test]
+    fn test_false_call_condition_missing_field_assignment_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function is_windows()
+            return false
+        end
+
+        local command = "ls"
+        local config = {}
+        if is_windows() then
+            command = config.windows_command
+        end
+        after = command
+        "#,
+        );
+
+        let after = ws.expr_ty("after");
+        assert_eq!(ws.humanize_type(after), "string");
+    }
+
+    #[test]
+    fn test_reachable_assignment_over_never_value_contributes_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class NeverBox
+        ---@field value never
+
+        ---@return NeverBox
+        local function make_box() end
+
+        local value = make_box().value
+        local cond ---@type boolean
+        if cond then
+            value = 1
+        end
+        after = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after"), LuaType::IntegerConst(1));
+    }
+
+    #[test]
+    fn test_false_call_condition_tag_cast_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        local value = "before"
+        if always_false() then
+            ---@cast value integer
+        end
+        after = value
+        "#,
+        );
+
+        let after = ws.expr_ty("after");
+        assert_eq!(ws.humanize_type(after), r#""before""#);
+    }
+
+    #[test]
+    fn test_false_call_condition_doc_assignment_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        local value = "before"
+        if always_false() then
+            ---@type integer
+            value = 1
+        end
+        after = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after"), ws.ty("string"));
+    }
+
+    #[test]
     fn test_branch_join_keeps_union_when_only_one_side_narrows() {
         let mut ws = VirtualWorkspace::new();
         let block = r#"
