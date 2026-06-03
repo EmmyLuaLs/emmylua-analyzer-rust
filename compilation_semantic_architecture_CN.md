@@ -1030,3 +1030,72 @@ pub use compilation::{
 - `DbIndex`（6 处）→ 全部迁移到 `LuaCompilation` facade
 - `LuaDocument` → 判断是否需要
 - `file_path_to_uri` → 保留（合理的 utility）
+
+---
+
+## 附录 C：Salsa API 完整度审核 — DbIndex 可以收为薄壳吗？
+
+### 审核时间
+
+2026-06-01
+
+### 核心结论
+
+**是的。** Salsa facade 已提供 ~150 个公开查询方法，覆盖 `DbIndex` 中几乎所有 legacy index 的读路径。`DbIndex` 可以缩减为 `SalsaSummaryDatabase` + `Vfs` + `Emmyrc` 三个核心组件，其余索引作为"外观对象"（薄封装，委托给 Salsa）。
+
+### 逐索引对照
+
+| Legacy Index | Salsa 对应查询 | 覆盖率 | 状态 |
+|---|---|---|---|
+| `decl_index` | `file().decl_tree()`, `file().decl_by_syntax_id()`, `semantic().file().decl_summary()` | 完整 | ✅ 可替换 |
+| `types_index` | `types().decl()`, `types().member()`, `types().global()`, `doc().type_def_by_name()` + 反向索引 | 完整 | ✅ 可替换 |
+| `members_index` | `file().members()`, `file().member_by_syntax_id()`, `types().member()` | 完整 | ✅ 可替换 |
+| `signature_index` | `doc().signature().explain()`, `doc().signature().call_explain()`, `semantic().target().signature_explain()` | 完整 | ✅ 可替换 |
+| `operator_index` | `doc().signature()` 覆盖 operator 签名 | 大部分 | ⚠️ 需补充 |
+| `global_index` | `file().globals()`, `types().global()`, `types().global_index()` | 完整 | ✅ 可替换 |
+| `property_index` | `file().properties()`, `file().property_at()`, `doc().tag_properties()` | 完整 | ✅ 可替换 |
+| `module_index` | `module().summary()`, `module().export()`, `module().resolve_index()` | 完整 | ✅ 可替换 |
+| `flow_index` | `flow().summary()`, `flow().block_at()`, `flow().branch_at()`, ... | 完整 | ✅ 可替换 |
+| `reference_index` | `lexical().use_sites()`, `lexical().use_at()`, `lexical().name_resolution()` | 完整 | ✅ 可替换 |
+| `metatable_index` | 有限覆盖 | 部分 | ⚠️ 需补充 |
+| `diagnostic_index` | 独立组件，非 Salsa 覆盖 | N/A | 单独保留 |
+| `file_dependencies_index` | 可用 Salsa 依赖追踪替代 | N/A | 可删除 |
+| `json_schema_index` | 独立组件，非 Salsa 覆盖 | N/A | 单独保留 |
+
+### 剩余最大的遗留依赖
+
+当前编译代码中仍有约 **60+ 处** `get_type_index()` / `get_signature_index()` / `get_member_index()` / `get_operator_index()` 调用。主要分布在：
+
+| 目录 | 访问量 | 主要问题 |
+|---|---|---|
+| `db_index/type/type_ops/` | ~10 处 | 类型运算直读 legacy index |
+| `db_index/type/type_decl.rs` | ~5 处 | enum/super type 查询 |
+| `semantic/generic/` | ~15 处 | 泛型实例化、tpl_pattern |
+| `semantic/type_check/` | ~10 处 | 类型检查 |
+| `semantic/infer/` | ~10 处 | 类型推断 |
+| `semantic/member/` | ~5 处 | 成员查找 |
+| `semantic/visibility/` | ~3 处 | 可见性检查 |
+
+### 推荐迁移路径
+
+**Phase A（低风险）**：将 `DbIndex` 结构体精简为：
+```rust
+pub struct DbIndex {
+    vfs: Vfs,                                  // 保留
+    summary_db: RwLock<SalsaSummaryDatabase>,   // 保留
+    emmyrc: Arc<Emmyrc>,                        // 保留
+    diagnostic_index: DiagnosticIndex,           // 保留（独立组件）
+    json_schema_index: JsonSchemaIndex,          // 保留（独立组件）
+    type_def_rev_gen: AtomicU64,                // 保留（反向索引缓存）
+    type_def_cache: RwLock<Option<Arc<TypeDefReverseIndex>>>,
+    // 以下改为外观对象，委托给 Salsa：
+    // decl_index, types_index, members_index, signature_index,
+    // operator_index, global_index, property_index, module_index,
+    // flow_index, reference_index, metatable_index,
+    // file_dependencies_index
+}
+```
+
+**Phase B（中等风险）**：将 `type_ops/` 中的遗留类型运算改为使用 Salsa 查询。这是最大的遗留依赖块。
+
+**Phase C（高风险）**：消除 `semantic/` 中对 legacy index 的剩余直接访问，全部改为 Salsa-backed。完成后 `pub use db_index::*` 可以大幅收缩。
