@@ -121,6 +121,7 @@ pub(in crate::semantic) enum CorrelatedDiscriminantNarrow {
 #[derive(Debug, Clone)]
 pub(in crate::semantic) enum ConditionFlowAction {
     Continue,
+    Unreachable,
     Result(LuaType),
     Pending(PendingConditionNarrow),
     NeedExprType {
@@ -712,12 +713,12 @@ pub(in crate::semantic::infer::narrow) fn resolve_expr_type_continuation(
             condition_flow,
         ),
         ExprTypeContinuation::Truthiness { condition_flow } => Ok(match condition_flow {
-            _ if expr_type.is_never() => ConditionFlowAction::Result(LuaType::Never),
+            _ if expr_type.is_never() => ConditionFlowAction::Unreachable,
             InferConditionFlow::TrueCondition if expr_type.is_always_falsy() => {
-                ConditionFlowAction::Result(LuaType::Never)
+                ConditionFlowAction::Unreachable
             }
             InferConditionFlow::FalseCondition if expr_type.is_always_truthy() => {
-                ConditionFlowAction::Result(LuaType::Never)
+                ConditionFlowAction::Unreachable
             }
             _ => ConditionFlowAction::Continue,
         }),
