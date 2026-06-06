@@ -2,7 +2,7 @@
 
 # EmmyLua Analyzer Rust
 
-**A high-performance Lua language server, linter, and documentation generator — built with Rust.**
+**A high-performance Lua language server, code formatter, linter, and documentation generator — built with Rust.**
 
 [![GitHub stars](https://img.shields.io/github/stars/CppCXY/emmylua-analyzer-rust?style=flat-square&logo=github)](https://github.com/CppCXY/emmylua-analyzer-rust/stargazers)
 [![License](https://img.shields.io/github/license/CppCXY/emmylua-analyzer-rust?style=flat-square)](https://github.com/CppCXY/emmylua-analyzer-rust/blob/main/LICENSE)
@@ -31,6 +31,7 @@
 ```bash
 # Via Cargo
 cargo install emmylua_ls          # Language server
+cargo install emmylua_formatter   # Code formatter
 cargo install emmylua_check       # Static analyzer / linter
 cargo install emmylua_doc_cli     # Documentation generator
 ```
@@ -169,6 +170,12 @@ emmylua_ls -c tcp --port 5007 --log-level debug --log-path ./logs
 | `--port` | TCP port (default: 5007) |
 | `--log-level` | `debug` / `info` / `warn` / `error` |
 | `--log-path` | Log output directory |
+
+### Code Formatter
+
+```bash
+luafmt src --write                      # Format src directory
+```
 
 ### Static Analyzer
 
