@@ -1990,9 +1990,6 @@ fn field_requests_alignment(field: &LuaTableField) -> bool {
         return false;
     }
 
-    let Some(value) = field.get_value_expr() else {
-        return false;
-    };
     let Some(assign_token) = field.syntax().children_with_tokens().find_map(|element| {
         let token = element.into_token()?;
         (token.kind() == LuaTokenKind::TkAssign.into()).then_some(token)
@@ -2000,19 +1997,28 @@ fn field_requests_alignment(field: &LuaTableField) -> bool {
         return false;
     };
 
-    let field_start = field.syntax().text_range().start();
-    let gap_start = usize::from(assign_token.text_range().end() - field_start);
-    let gap_end = usize::from(value.syntax().text_range().start() - field_start);
-    if gap_end <= gap_start {
-        return false;
+    let mut gap_width = 0usize;
+    let mut previous = assign_token.prev_token();
+
+    while let Some(token) = previous {
+        match token.kind().to_token() {
+            LuaTokenKind::TkWhitespace => {
+                for ch in token.text().chars().rev() {
+                    if matches!(ch, '\n' | '\r') {
+                        return false;
+                    }
+                    if matches!(ch, ' ' | '\t') {
+                        gap_width += 1;
+                    }
+                }
+                previous = token.prev_token();
+            }
+            LuaTokenKind::TkEndOfLine => return false,
+            _ => break,
+        }
     }
 
-    let text = field.syntax().text().to_string();
-    let Some(gap) = text.get(gap_start..gap_end) else {
-        return false;
-    };
-
-    !gap.contains(['\n', '\r']) && gap.chars().filter(|ch| matches!(ch, ' ' | '\t')).count() > 1
+    gap_width > 1
 }
 
 fn table_group_requests_alignment(entries: &[TableEntry]) -> bool {
