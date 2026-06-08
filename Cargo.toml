@@ -55,7 +55,7 @@ mimalloc = { version = "0.1.50" }
 googletest = "0.14.2"
 ntest = "0.9.5"
 unicode-general-category = "1.0.0"
-luars = { version = "0.25.0", features = ["serde", "sandbox"] }
+luars = { version = "0.26.0", features = ["serde", "sandbox"] }
 # request's default-tls feature pulls in a dependency on aws-lc-rs,
 # which causes a linking error on Windows
 reqwest = { version = "0.13.1", default-features = false, features = [
