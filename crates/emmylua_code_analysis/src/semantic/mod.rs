@@ -39,7 +39,7 @@ use semantic_info::{
     infer_node_semantic_info, infer_token_semantic_decl, infer_token_semantic_info,
 };
 pub(crate) use type_check::check_type_compact;
-use type_check::is_sub_type_of;
+pub(crate) use type_check::is_sub_type_of;
 pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
@@ -58,8 +58,8 @@ pub use infer::infer_call_expr_func;
 pub use infer::infer_param;
 pub(crate) use infer::try_infer_expr_for_index;
 pub(crate) use infer::{infer_expr, try_infer_expr_no_flow};
-pub(crate) use overload_resolve::collect_callable_overload_groups;
 use overload_resolve::resolve_signature;
+pub(crate) use overload_resolve::{callable_accepts_args, collect_callable_overload_groups};
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 

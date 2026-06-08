@@ -332,6 +332,25 @@ mod tests {
     }
 
     #[gtest]
+    fn test_attribute_hover_uses_arg_types() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class custom_attribute: Attribute
+                ---@overload fun(value: string)
+                ---@overload fun(value: integer)
+
+                ---@[custom_at<??>tribute(1)]
+                local a
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(class) custom_attribute(value: integer)\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_alias_desc() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(

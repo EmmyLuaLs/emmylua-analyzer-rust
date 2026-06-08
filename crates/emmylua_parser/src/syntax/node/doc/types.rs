@@ -25,7 +25,6 @@ pub enum LuaDocType {
     Generic(LuaDocGenericType),
     StrTpl(LuaDocStrTplType),
     MultiLineUnion(LuaDocMultiLineUnionType),
-    Attribute(LuaDocAttributeType),
     Mapped(LuaDocMappedType),
     IndexAccess(LuaDocIndexAccessType),
 }
@@ -48,7 +47,6 @@ impl LuaAstNode for LuaDocType {
             LuaDocType::Generic(it) => it.syntax(),
             LuaDocType::StrTpl(it) => it.syntax(),
             LuaDocType::MultiLineUnion(it) => it.syntax(),
-            LuaDocType::Attribute(it) => it.syntax(),
             LuaDocType::Mapped(it) => it.syntax(),
             LuaDocType::IndexAccess(it) => it.syntax(),
         }
@@ -75,7 +73,6 @@ impl LuaAstNode for LuaDocType {
                 | LuaSyntaxKind::TypeGeneric
                 | LuaSyntaxKind::TypeStringTemplate
                 | LuaSyntaxKind::TypeMultiLineUnion
-                | LuaSyntaxKind::TypeAttribute
                 | LuaSyntaxKind::TypeMapped
                 | LuaSyntaxKind::TypeIndexAccess
         )
@@ -119,9 +116,6 @@ impl LuaAstNode for LuaDocType {
             LuaSyntaxKind::TypeMultiLineUnion => Some(LuaDocType::MultiLineUnion(
                 LuaDocMultiLineUnionType::cast(syntax)?,
             )),
-            LuaSyntaxKind::TypeAttribute => {
-                Some(LuaDocType::Attribute(LuaDocAttributeType::cast(syntax)?))
-            }
             _ => None,
         }
     }
@@ -843,41 +837,6 @@ impl LuaDocDescriptionOwner for LuaDocOneLineField {}
 impl LuaDocOneLineField {
     pub fn get_type(&self) -> Option<LuaDocType> {
         self.child()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LuaDocAttributeType {
-    syntax: LuaSyntaxNode,
-}
-
-impl LuaAstNode for LuaDocAttributeType {
-    fn syntax(&self) -> &LuaSyntaxNode {
-        &self.syntax
-    }
-
-    fn can_cast(kind: LuaSyntaxKind) -> bool
-    where
-        Self: Sized,
-    {
-        kind == LuaSyntaxKind::TypeAttribute
-    }
-
-    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if Self::can_cast(syntax.kind().into()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-}
-
-impl LuaDocAttributeType {
-    pub fn get_params(&self) -> LuaAstChildren<LuaDocTypeParam> {
-        self.children()
     }
 }
 

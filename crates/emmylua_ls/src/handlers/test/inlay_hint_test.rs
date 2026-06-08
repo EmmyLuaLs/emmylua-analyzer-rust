@@ -179,7 +179,13 @@ mod tests {
     #[gtest]
     fn test_index_key_alias_hint() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.def(" ---@attribute index_alias(name: string)");
+        ws.def(
+            r#"
+            ---@class Attribute
+            ---@class index_alias: Attribute
+            ---@overload fun(name: string)
+            "#,
+        );
         check!(ws.check_inlay_hint(
             r#"
                 local export = {

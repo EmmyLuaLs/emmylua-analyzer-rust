@@ -1,8 +1,7 @@
-use std::collections::HashSet;
-
 use crate::{
     DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeCheckFailReason,
-    TypeCheckResult, diagnostic::checker::humanize_lint_type, infer_doc_type,
+    TypeCheckResult, diagnostic::checker::humanize_lint_type, get_attribute_constructor_params,
+    infer_doc_type, is_attribute_class,
 };
 use emmylua_parser::{
     LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaLiteralExpr,
@@ -42,26 +41,33 @@ fn check_attribute_use(
     let LuaType::Ref(type_id) = attribute_type else {
         return None;
     };
-    let type_decl = semantic_model
-        .get_db()
-        .get_type_index()
-        .get_type_decl(&type_id)?;
-    if !type_decl.is_attribute() {
+    if !is_attribute_class(semantic_model.get_db(), &type_id) {
         return None;
     }
-    let LuaType::DocAttribute(attr_def) = type_decl.get_attribute_type()? else {
-        return None;
-    };
-
-    let def_params = attr_def.get_params();
     let args = match attribute_use.get_arg_list() {
         Some(arg_list) => arg_list.get_args().collect::<Vec<_>>(),
         None => vec![],
     };
+    let call_arg_types = infer_attribute_arg_types(semantic_model, &args);
+    let def_params =
+        get_attribute_constructor_params(semantic_model.get_db(), &type_id, &call_arg_types);
     check_param_count(context, &def_params, &attribute_use, &args);
-    check_param(context, semantic_model, &def_params, args);
+    check_param(context, semantic_model, &def_params, &args, &call_arg_types);
 
     Some(())
+}
+
+fn infer_attribute_arg_types(
+    semantic_model: &SemanticModel,
+    args: &[LuaLiteralExpr],
+) -> Vec<LuaType> {
+    args.iter()
+        .map(|arg| {
+            semantic_model
+                .infer_expr(LuaExpr::LiteralExpr(arg.clone()))
+                .unwrap_or(LuaType::Unknown)
+        })
+        .collect()
 }
 
 /// 检查参数数量是否匹配
@@ -78,7 +84,7 @@ fn check_param_count(
             if def_param.0 == "..." {
                 break;
             }
-            if def_param.1.as_ref().is_some_and(is_nullable) {
+            if def_param.1.as_ref().is_some_and(LuaType::is_optional) {
                 continue;
             }
             context.add_diagnostic(
@@ -128,30 +134,23 @@ fn check_param(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     def_params: &[(String, Option<LuaType>)],
-    args: Vec<LuaLiteralExpr>,
+    args: &[LuaLiteralExpr],
+    call_arg_types: &[LuaType],
 ) -> Option<()> {
-    let mut call_arg_types = Vec::new();
-    for arg in &args {
-        let arg_type = semantic_model
-            .infer_expr(LuaExpr::LiteralExpr(arg.clone()))
-            .ok()?;
-        call_arg_types.push(arg_type);
-    }
-
     for (idx, param) in def_params.iter().enumerate() {
         if param.0 == "..." {
             if call_arg_types.len() < idx {
                 break;
             }
-            if let Some(variadic_type) = param.1.clone() {
-                for arg_type in call_arg_types[idx..].iter() {
-                    let result = semantic_model.type_check_detail(&variadic_type, arg_type);
+            if let Some(variadic_type) = param.1.as_ref() {
+                for (arg_idx, arg_type) in call_arg_types[idx..].iter().enumerate() {
+                    let result = semantic_model.type_check_detail(variadic_type, arg_type);
                     if result.is_err() {
                         add_type_check_diagnostic(
                             context,
                             semantic_model,
-                            args.get(idx)?.get_range(),
-                            &variadic_type,
+                            args.get(idx + arg_idx)?.get_range(),
+                            variadic_type,
                             arg_type,
                             result,
                         );
@@ -160,15 +159,15 @@ fn check_param(
             }
             break;
         }
-        if let Some(param_type) = param.1.clone() {
+        if let Some(param_type) = param.1.as_ref() {
             let arg_type = call_arg_types.get(idx).unwrap_or(&LuaType::Any);
-            let result = semantic_model.type_check_detail(&param_type, arg_type);
+            let result = semantic_model.type_check_detail(param_type, arg_type);
             if result.is_err() {
                 add_type_check_diagnostic(
                     context,
                     semantic_model,
                     args.get(idx)?.get_range(),
-                    &param_type,
+                    param_type,
                     arg_type,
                     result,
                 );
@@ -211,26 +210,4 @@ fn add_type_check_diagnostic(
             );
         }
     }
-}
-
-fn is_nullable(typ: &LuaType) -> bool {
-    let mut stack: Vec<LuaType> = Vec::new();
-    stack.push(typ.clone());
-    let mut visited = HashSet::new();
-    while let Some(typ) = stack.pop() {
-        if visited.contains(&typ) {
-            continue;
-        }
-        visited.insert(typ.clone());
-        match typ {
-            LuaType::Any | LuaType::Unknown | LuaType::Nil => return true,
-            LuaType::Union(u) => {
-                for t in u.into_vec() {
-                    stack.push(t);
-                }
-            }
-            _ => {}
-        }
-    }
-    false
 }

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocAttributeType, LuaDocBinaryType,
-    LuaDocConditionalType, LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericDecl,
-    LuaDocGenericDeclList, LuaDocGenericType, LuaDocIndexAccessType, LuaDocMappedType,
-    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
-    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaAst, LuaAstNode, LuaClosureExpr, LuaComment, LuaDocBinaryType, LuaDocConditionalType,
+    LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericDecl, LuaDocGenericDeclList,
+    LuaDocGenericType, LuaDocIndexAccessType, LuaDocMappedType, LuaDocMultiLineUnionType,
+    LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType,
+    LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
     LuaTypeUnaryOperator, LuaVarExpr, NumberResult,
 };
 use rowan::TextRange;
@@ -13,8 +13,8 @@ use smol_str::SmolStr;
 
 use crate::{
     AsyncState, DiagnosticCode, FileId, GenericParam, GenericTpl, InFiled, LuaAliasCallKind,
-    LuaArrayLen, LuaArrayType, LuaAttributeType, LuaMultiLineUnion, LuaSignatureId, LuaTupleStatus,
-    LuaTypeDeclId, TypeOps, VariadicType, complete_type_generic_args,
+    LuaArrayLen, LuaArrayType, LuaMultiLineUnion, LuaSignatureId, LuaTupleStatus, LuaTypeDeclId,
+    TypeOps, VariadicType, complete_type_generic_args,
     db_index::{
         AnalyzeError, DbIndex, LuaAliasCallType, LuaConditionalType, LuaFunctionType,
         LuaGenericType, LuaIndexAccessKey, LuaIntersectionType, LuaMappedType, LuaObjectType,
@@ -262,9 +262,6 @@ pub fn infer_type(analyzer: &mut DocTypeAnalyzeContext<'_>, node: LuaDocType) ->
         }
         LuaDocType::MultiLineUnion(multi_union) => {
             return infer_multi_line_union_type(analyzer, multi_union);
-        }
-        LuaDocType::Attribute(attribute_type) => {
-            return infer_attribute_type(analyzer, attribute_type);
         }
         LuaDocType::Conditional(cond_type) => {
             return infer_conditional_type(analyzer, cond_type);
@@ -951,38 +948,6 @@ fn infer_multi_line_union_type(
     }
 
     LuaType::MultiLineUnion(LuaMultiLineUnion::new(union_members).into())
-}
-
-fn infer_attribute_type(
-    analyzer: &mut DocTypeAnalyzeContext<'_>,
-    attribute_type: &LuaDocAttributeType,
-) -> LuaType {
-    let mut params_result = Vec::new();
-    for param in attribute_type.get_params() {
-        let name = if let Some(param) = param.get_name_token() {
-            param.get_name_text().to_string()
-        } else if param.is_dots() {
-            "...".to_string()
-        } else {
-            continue;
-        };
-
-        let nullable = param.is_nullable();
-
-        let type_ref = if let Some(type_ref) = param.get_type() {
-            let mut typ = infer_type(analyzer, type_ref);
-            if nullable && !typ.is_nullable() {
-                typ = TypeOps::Union.apply(analyzer.db, &typ, &LuaType::Nil);
-            }
-            Some(typ)
-        } else {
-            None
-        };
-
-        params_result.push((name, type_ref));
-    }
-
-    LuaType::DocAttribute(LuaAttributeType::new(params_result).into())
 }
 
 fn infer_conditional_type(

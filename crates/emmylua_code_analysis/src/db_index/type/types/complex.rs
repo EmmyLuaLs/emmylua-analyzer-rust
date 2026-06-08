@@ -924,21 +924,6 @@ impl LuaArrayType {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct LuaAttributeType {
-    params: Vec<(String, Option<LuaType>)>,
-}
-
-impl LuaAttributeType {
-    pub fn new(params: Vec<(String, Option<LuaType>)>) -> Self {
-        Self { params }
-    }
-
-    pub fn get_params(&self) -> &[(String, Option<LuaType>)] {
-        &self.params
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LuaConditionalType {
     checked_type: LuaType,
     extends_type: LuaType,

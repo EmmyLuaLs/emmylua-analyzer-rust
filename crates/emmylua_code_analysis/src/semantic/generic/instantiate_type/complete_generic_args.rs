@@ -2,7 +2,7 @@ use hashbrown::HashSet;
 
 use crate::{
     DbIndex, GenericParam, GenericTpl, GenericTplId, LuaAliasCallType, LuaArrayType,
-    LuaAttributeType, LuaConditionalType, LuaMappedType, LuaMultiLineUnion, LuaTypeDeclId,
+    LuaConditionalType, LuaMappedType, LuaMultiLineUnion, LuaTypeDeclId,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
         LuaUnionType, VariadicType,
@@ -223,7 +223,6 @@ fn complete_type_generic_args_in_type_inner(
             let guard = complete_type_generic_args_in_type_inner(db, guard, visiting);
             CompletedType::new(LuaType::TypeGuard(guard.ty.into()), guard.cycled)
         }
-        LuaType::DocAttribute(attribute) => complete_attribute_type(db, attribute, visiting),
         LuaType::Conditional(conditional) => complete_conditional_type(db, conditional, visiting),
         LuaType::Mapped(mapped) => complete_mapped_type(db, mapped, visiting),
         _ => CompletedType::unchanged(ty),
@@ -420,29 +419,6 @@ fn complete_multi_line_union(
         .collect();
     CompletedType::new(
         LuaType::MultiLineUnion(LuaMultiLineUnion::new(unions).into()),
-        cycled,
-    )
-}
-
-fn complete_attribute_type(
-    db: &DbIndex,
-    attribute: &LuaAttributeType,
-    visiting: &mut HashSet<LuaTypeDeclId>,
-) -> CompletedType {
-    let mut cycled = false;
-    let params = attribute
-        .get_params()
-        .iter()
-        .map(|(name, ty)| {
-            let completed = ty
-                .as_ref()
-                .map(|ty| complete_type_generic_args_in_type_inner(db, ty, visiting));
-            cycled |= completed.as_ref().is_some_and(|completed| completed.cycled);
-            (name.clone(), completed.map(|completed| completed.ty))
-        })
-        .collect();
-    CompletedType::new(
-        LuaType::DocAttribute(LuaAttributeType::new(params).into()),
         cycled,
     )
 }

@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     expect_token, if_token_bump, parse_description,
-    types::{parse_fun_type, parse_type, parse_type_list, parse_typed_param},
+    types::{parse_fun_type, parse_type, parse_type_list},
 };
 
 pub fn parse_tag(p: &mut LuaDocParser) {
@@ -57,7 +57,6 @@ fn parse_tag_detail(p: &mut LuaDocParser) -> DocParseResult {
         LuaTokenKind::TkTagUsing => parse_tag_using(p),
         LuaTokenKind::TkTagMeta => parse_tag_meta(p),
         LuaTokenKind::TkLanguage => parse_tag_language(p),
-        LuaTokenKind::TkTagAttribute => parse_tag_attribute(p),
         LuaTokenKind::TkDocAttributeUse => parse_tag_attribute_use(p, true),
         LuaTokenKind::TkCallGeneric => parse_tag_call_generic(p),
         LuaTokenKind::TKTagSchema => parse_tag_schema(p),
@@ -700,40 +699,6 @@ fn parse_tag_language(p: &mut LuaDocParser) -> DocParseResult {
 
     p.set_lexer_state(LuaDocLexerState::Description);
     parse_description(p);
-    Ok(m.complete(p))
-}
-
-// ---@attribute 名称(参数列表)
-fn parse_tag_attribute(p: &mut LuaDocParser) -> DocParseResult {
-    p.set_lexer_state(LuaDocLexerState::Normal);
-    let m = p.mark(LuaSyntaxKind::DocTagAttribute);
-    p.bump();
-
-    // 解析属性名称
-    expect_token(p, LuaTokenKind::TkName)?;
-
-    // 解析参数列表
-    parse_type_attribute(p)?;
-
-    p.set_lexer_state(LuaDocLexerState::Description);
-    parse_description(p);
-    Ok(m.complete(p))
-}
-
-// (param1: type1, param2: type2, ...)
-fn parse_type_attribute(p: &mut LuaDocParser) -> DocParseResult {
-    let m = p.mark(LuaSyntaxKind::TypeAttribute);
-    expect_token(p, LuaTokenKind::TkLeftParen)?;
-
-    if p.current_token() != LuaTokenKind::TkRightParen {
-        parse_typed_param(p)?;
-        while p.current_token() == LuaTokenKind::TkComma {
-            p.bump();
-            parse_typed_param(p)?;
-        }
-    }
-
-    expect_token(p, LuaTokenKind::TkRightParen)?;
     Ok(m.complete(p))
 }
 

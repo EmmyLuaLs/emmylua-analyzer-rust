@@ -1,4 +1,4 @@
-use emmylua_code_analysis::LuaTypeDeclId;
+use emmylua_code_analysis::{LuaTypeDeclId, is_attribute_class};
 use emmylua_parser::{LuaAstNode, LuaDocAttributeUse, LuaDocNameType, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::CompletionItem;
 use std::collections::HashSet;
@@ -76,24 +76,14 @@ pub fn complete_types_by_prefix(
         match completion_type {
             CompletionType::AttributeUse => {
                 if let Some(decl_id) = type_decl {
-                    let type_decl = builder
-                        .semantic_model
-                        .get_db()
-                        .get_type_index()
-                        .get_type_decl(&decl_id)?;
-                    if type_decl.is_attribute() {
+                    if is_attribute_class(builder.semantic_model.get_db(), &decl_id) {
                         add_type_completion_item(builder, &name, Some(decl_id));
                     }
                 }
             }
             CompletionType::Type => {
                 if let Some(decl_id) = &type_decl {
-                    let type_decl = builder
-                        .semantic_model
-                        .get_db()
-                        .get_type_index()
-                        .get_type_decl(decl_id)?;
-                    if type_decl.is_attribute() {
+                    if is_attribute_class(builder.semantic_model.get_db(), decl_id) {
                         continue;
                     }
                 }

@@ -1,8 +1,8 @@
 use super::super::type_visit_trait::TypeVisitTrait;
 use super::{
-    LuaAliasCallType, LuaArrayType, LuaAttributeType, LuaConditionalType, LuaFunctionType,
-    LuaGenericType, LuaIntersectionType, LuaMappedType, LuaMultiLineUnion, LuaObjectType,
-    LuaTupleType, LuaType, LuaUnionType, VariadicType,
+    LuaAliasCallType, LuaArrayType, LuaConditionalType, LuaFunctionType, LuaGenericType,
+    LuaIntersectionType, LuaMappedType, LuaMultiLineUnion, LuaObjectType, LuaTupleType, LuaType,
+    LuaUnionType, VariadicType,
 };
 
 pub trait LuaTypeNode {
@@ -220,16 +220,6 @@ impl LuaTypeNode for LuaArrayType {
     }
 }
 
-impl LuaTypeNode for LuaAttributeType {
-    fn push_direct_children<'a>(&'a self, stack: &mut Vec<&'a LuaType>) {
-        for (_, ty) in self.get_params().iter().rev() {
-            if let Some(ty) = ty {
-                stack.push(ty);
-            }
-        }
-    }
-}
-
 impl LuaTypeNode for LuaConditionalType {
     fn push_direct_children<'a>(&'a self, stack: &mut Vec<&'a LuaType>) {
         stack.push(self.get_false_type());
@@ -278,7 +268,6 @@ impl_type_visit_trait!(
     super::LuaInstanceType,
     LuaMultiLineUnion,
     LuaArrayType,
-    LuaAttributeType,
     LuaConditionalType,
     LuaMappedType,
 );

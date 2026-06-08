@@ -153,7 +153,6 @@ fn build_decl_hover(
 
         // 处理函数类型
         build_function_hover(builder, db, &semantic_decls);
-        // hover_function_type(builder, db, &semantic_decls);
 
         if let Some((LuaSemanticDeclId::Member(member_id), _)) = semantic_decls
             .iter()
