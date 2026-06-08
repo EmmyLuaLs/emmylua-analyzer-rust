@@ -151,6 +151,7 @@ pub(super) fn parse_generic_decl_list(
 // A = type
 fn parse_generic_param(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocGenericParameter);
+    parse_generic_modifier(p)?;
     expect_token(p, LuaTokenKind::TkName)?;
     if p.current_token() == LuaTokenKind::TkDots {
         p.bump();
@@ -167,6 +168,25 @@ fn parse_generic_param(p: &mut LuaDocParser) -> DocParseResult {
         parse_type(p)?;
     }
     Ok(m.complete(p))
+}
+
+fn parse_generic_modifier(p: &mut LuaDocParser) -> Result<(), LuaParseError> {
+    if p.current_token() == LuaTokenKind::TkName && p.current_token_text() == "const" {
+        let range = p.current_token_range();
+        p.set_current_token_kind(LuaTokenKind::TkDocConst);
+        p.bump();
+        if p.current_token() != LuaTokenKind::TkName {
+            return Err(LuaParseError::doc_error_from(
+                &t!(
+                    "Identifier expected. '%{reserved}' is a reserved word that cannot be used here.",
+                    reserved = "const"
+                ),
+                range,
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 // ---@enum A

@@ -10,7 +10,7 @@ use crate::{
 use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
-use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_with_context};
+use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_inner};
 
 pub(super) fn instantiate_alias_call(
     context: &GenericInstantiateContext,
@@ -19,7 +19,7 @@ pub(super) fn instantiate_alias_call(
     let operand_exprs = alias_call.get_operands();
     let operands = operand_exprs
         .iter()
-        .map(|it| instantiate_type_generic_with_context(context, it))
+        .map(|it| instantiate_type_generic_inner(context, it))
         .collect::<Vec<_>>();
 
     match alias_call.get_call_kind() {
@@ -135,9 +135,7 @@ fn resolve_literal_operand(
     substitutor: &TypeSubstitutor,
 ) -> Option<LuaType> {
     match operand {
-        Some(LuaType::TplRef(tpl_ref)) | Some(LuaType::ConstTplRef(tpl_ref)) => {
-            substitutor.get_raw_type(tpl_ref.get_tpl_id()).cloned()
-        }
+        Some(LuaType::TplRef(tpl_ref)) => substitutor.get_raw_type(tpl_ref.get_tpl_id()).cloned(),
         _ => None,
     }
 }

@@ -1,5 +1,5 @@
 use emmylua_code_analysis::{
-    DbIndex, GenericTplId, InferGuard, InferGuardRef, LuaAliasCallKind, LuaAliasCallType,
+    DbIndex, GenericTpl, InferGuard, InferGuardRef, LuaAliasCallKind, LuaAliasCallType,
     LuaDeclLocation, LuaFunctionType, LuaMember, LuaMemberKey, LuaMemberOwner, LuaMultiLineUnion,
     LuaSemanticDeclId, LuaStringTplType, LuaType, LuaTypeCache, LuaTypeDeclId, LuaUnionType,
     RenderLevel, SemanticDeclLevel, TypeSubstitutor, build_call_constraint_context, get_real_type,
@@ -151,11 +151,8 @@ pub fn dispatch_type(
         LuaType::StrTplRef(key) => {
             add_str_tpl_ref_completion(builder, &key);
         }
-        LuaType::ConstTplRef(tpl) => {
-            return add_const_tpl_ref_completion(builder, &tpl.get_tpl_id(), infer_guard);
-        }
         LuaType::TplRef(tpl) => {
-            return add_tpl_ref_completion(builder, &tpl.get_tpl_id(), infer_guard);
+            return add_tpl_ref_completion(builder, &tpl, infer_guard);
         }
         LuaType::Call(special_call) => {
             add_special_call_completion(builder, &special_call);
@@ -401,7 +398,7 @@ fn rebuild_keyof_alias_call(
     substitutor: &TypeSubstitutor,
 ) -> Option<LuaType> {
     let tpl = match original_type {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl,
+        LuaType::TplRef(tpl) => tpl,
         _ => return None,
     };
     let constraint = tpl.get_constraint()?;
@@ -809,9 +806,8 @@ fn add_str_tpl_ref_completion(
     let db = builder.semantic_model.get_db();
     let module_index = db.get_module_index();
     let types = db.get_type_index().get_all_types();
-    let tpl_id = str_tpl.get_tpl_id();
     // 泛型约束
-    let extend_type = get_tpl_ref_extend_type(builder, &tpl_id).unwrap_or(LuaType::Any);
+    let extend_type = str_tpl.get_constraint().cloned().unwrap_or(LuaType::Any);
 
     let mut completion_items: Vec<_> = types
         .into_iter()
@@ -863,16 +859,6 @@ fn add_str_tpl_ref_completion(
     Some(())
 }
 
-fn add_const_tpl_ref_completion(
-    builder: &mut CompletionBuilder,
-    tpl_id: &GenericTplId,
-    infer_guard: &InferGuardRef,
-) -> Option<ProviderDecision> {
-    // 泛型约束
-    let extend_type = get_tpl_ref_extend_type(builder, tpl_id)?;
-    dispatch_type(builder, extend_type, infer_guard)
-}
-
 fn add_special_call_completion(
     builder: &mut CompletionBuilder,
     alias_call: &LuaAliasCallType,
@@ -894,36 +880,6 @@ fn add_special_call_completion(
         add_completions_for_members(builder, &member_info_map, trigger_status);
     }
     Some(())
-}
-
-fn get_tpl_ref_extend_type(builder: &CompletionBuilder, tpl_id: &GenericTplId) -> Option<LuaType> {
-    let token = builder.trigger_token.clone();
-    let mut parent_node = token.parent()?;
-    if LuaLiteralExpr::can_cast(parent_node.kind().into()) {
-        parent_node = parent_node.parent()?;
-    }
-    match parent_node.kind().into() {
-        LuaSyntaxKind::CallArgList => {
-            let call_expr = LuaCallArgList::cast(parent_node)?.get_parent::<LuaCallExpr>()?;
-            let function = builder
-                .semantic_model
-                .infer_expr(call_expr.get_prefix_expr()?.clone())
-                .ok()?;
-            if let LuaType::Signature(signature_id) = function {
-                let signature = builder
-                    .semantic_model
-                    .get_db()
-                    .get_signature_index()
-                    .get(&signature_id)?;
-                let generic_param = signature.generic_params.get(tpl_id.get_idx());
-                if let Some(generic_param) = generic_param {
-                    return Some(generic_param.constraint.clone().unwrap_or(LuaType::Any));
-                }
-            }
-            None
-        }
-        _ => None,
-    }
 }
 
 /// 确保所有成员均为 function 或者 nil, 然后返回 function 的联合类型, 如果非 function 则返回 None
@@ -964,9 +920,9 @@ pub fn get_function_remove_nil(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
 
 fn add_tpl_ref_completion(
     builder: &mut CompletionBuilder,
-    tpl_id: &GenericTplId,
+    tpl: &GenericTpl,
     infer_guard: &InferGuardRef,
 ) -> Option<ProviderDecision> {
-    let extend_type = get_tpl_ref_extend_type(builder, tpl_id)?;
+    let extend_type = tpl.get_constraint().cloned()?;
     dispatch_type(builder, extend_type, infer_guard)
 }

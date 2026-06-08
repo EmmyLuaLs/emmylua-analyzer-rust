@@ -1,8 +1,8 @@
 use hashbrown::HashSet;
 
 use crate::{
-    DbIndex, GenericParam, GenericTplId, LuaAliasCallType, LuaArrayType, LuaAttributeType,
-    LuaConditionalType, LuaMappedType, LuaMultiLineUnion, LuaTypeDeclId,
+    DbIndex, GenericParam, GenericTpl, GenericTplId, LuaAliasCallType, LuaArrayType,
+    LuaAttributeType, LuaConditionalType, LuaMappedType, LuaMultiLineUnion, LuaTypeDeclId,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
         LuaUnionType, VariadicType,
@@ -101,7 +101,7 @@ fn complete_type_generic_args_inner(
             continue;
         }
 
-        if let Some(default_type) = &generic_param.default_type {
+        if let Some(default_type) = &generic_param.default {
             if missing_required_count != 0 {
                 continue;
             }
@@ -295,6 +295,7 @@ fn complete_doc_function(
     visiting: &mut HashSet<LuaTypeDeclId>,
 ) -> CompletedType {
     let mut cycled = false;
+    let generic_params = complete_function_generic_params(db, func, visiting, &mut cycled);
     let params = func
         .get_params()
         .iter()
@@ -315,11 +316,37 @@ fn complete_doc_function(
                 func.is_variadic(),
                 params,
                 ret.ty,
+                Some(generic_params),
             )
             .into(),
         ),
         cycled || ret.cycled,
     )
+}
+
+fn complete_function_generic_params(
+    db: &DbIndex,
+    func: &LuaFunctionType,
+    visiting: &mut HashSet<LuaTypeDeclId>,
+    cycled: &mut bool,
+) -> Vec<GenericTpl> {
+    func.get_generic_params()
+        .iter()
+        .map(|generic_tpl| {
+            let tpl_id = generic_tpl.get_tpl_id();
+            let param = generic_tpl.get_param();
+            let completed = complete_generic_param(db, param, visiting);
+            *cycled |= completed.cycled;
+            GenericTpl::new(
+                tpl_id,
+                completed.param.name,
+                completed.param.constraint,
+                completed.param.default,
+                completed.param.is_const,
+                completed.param.attributes,
+            )
+        })
+        .collect()
 }
 
 fn complete_object_type(
@@ -529,11 +556,11 @@ fn complete_generic_param(
     visiting: &mut HashSet<LuaTypeDeclId>,
 ) -> CompletedGenericParam {
     let constraint = param
-        .type_constraint
+        .constraint
         .as_ref()
         .map(|ty| complete_type_generic_args_in_type_inner(db, ty, visiting));
     let default_type = param
-        .default_type
+        .default
         .as_ref()
         .map(|ty| complete_type_generic_args_in_type_inner(db, ty, visiting));
     let cycled = constraint.as_ref().is_some_and(|ty| ty.cycled)
@@ -543,6 +570,7 @@ fn complete_generic_param(
             param.name.clone(),
             constraint.map(|ty| ty.ty),
             default_type.map(|ty| ty.ty),
+            param.is_const,
             param.attributes.clone(),
         ),
         cycled,

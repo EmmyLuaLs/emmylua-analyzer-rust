@@ -147,6 +147,7 @@ pub enum LuaTokenKind {
     TkDocAs,              // as
     TkDocIn,              // in
     TkDocInfer,           // infer
+    TkDocConst,           // const
     TkDocElse,            // else (for return_cast)
     TkDocContinue,        // ---
     TkDocContinueOr,      // ---| or ---|+  or ---|>

@@ -12,7 +12,6 @@ use crate::{
     semantic::{
         LuaInferCache,
         generic::{
-            instantiate_type::instantiate_doc_function,
             tpl_context::TplContext,
             tpl_pattern::{
                 multi_param_tpl_pattern_match_multi_return, return_type_pattern_match_target_type,
@@ -25,26 +24,25 @@ use crate::{
     },
 };
 use crate::{
-    GenericTpl, LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
+    LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
     collect_callable_overload_groups, infer_node_semantic_decl,
     tpl_pattern_match_args_skip_unknown,
 };
 
-use super::{TypeSubstitutor, instantiate_type_generic};
+use crate::semantic::generic::{TypeSubstitutor, instantiate_type::instantiate_type_generic};
 
-pub fn instantiate_func_generic(
+pub fn infer_call_generic(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     func: &LuaFunctionType,
     call_expr: LuaCallExpr,
 ) -> Result<LuaFunctionType, InferFailReason> {
     let file_id = cache.get_file_id().clone();
-    let (generic_tpls, contain_self) = collect_func_tpl_ids(func);
 
     let origin_params = func.get_params();
-    let mut func_params: Vec<_> = origin_params
+    let mut func_params: Vec<LuaType> = origin_params
         .iter()
-        .map(|(name, t)| (name.clone(), t.clone().unwrap_or(LuaType::Unknown)))
+        .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
         .collect();
 
     let arg_exprs = call_expr
@@ -59,7 +57,18 @@ pub fn instantiate_func_generic(
         substitutor: &mut substitutor,
         call_expr: Some(call_expr.clone()),
     };
-    if !generic_tpls.is_empty() {
+
+    let has_func_generic = func
+        .get_generic_params()
+        .iter()
+        .any(|generic_tpl| generic_tpl.get_tpl_id().is_func());
+    if has_func_generic {
+        let generic_tpls = func
+            .get_generic_params()
+            .iter()
+            .map(|generic_tpl| generic_tpl.get_tpl_id())
+            .filter(GenericTplId::is_func)
+            .collect::<HashSet<_>>();
         context.substitutor.add_need_infer_tpls(generic_tpls);
 
         if let Some(type_list) = call_expr.get_call_generic_type_list() {
@@ -78,11 +87,13 @@ pub fn instantiate_func_generic(
         }
     }
 
+    let contain_self = func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer));
     if contain_self && let Some(self_type) = infer_self_type(db, cache, &call_expr) {
         substitutor.add_self_type(self_type);
     }
 
-    if let LuaType::DocFunction(f) = instantiate_doc_function(db, func, &substitutor) {
+    let func_type = LuaType::DocFunction(func.clone().into());
+    if let LuaType::DocFunction(f) = instantiate_type_generic(db, &func_type, &substitutor) {
         Ok(f.deref().clone())
     } else {
         Ok(func.clone())
@@ -249,15 +260,20 @@ fn instantiate_callable_from_arg_types(
         return None;
     }
 
-    let mut callable_tpls = HashSet::new();
-    callable.visit_nested_types(&mut |ty| {
-        if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
-            callable_tpls.insert(generic_tpl.get_tpl_id());
-        }
-    });
-    if callable_tpls.is_empty() {
+    let has_callable_tpls = callable
+        .get_generic_params()
+        .iter()
+        .any(|generic_tpl| generic_tpl.get_tpl_id().is_func());
+    if !has_callable_tpls {
         return Some(callable.clone());
     }
+
+    let callable_tpls = callable
+        .get_generic_params()
+        .iter()
+        .map(|generic_tpl| generic_tpl.get_tpl_id())
+        .filter(GenericTplId::is_func)
+        .collect::<HashSet<_>>();
 
     let callable_param_types = callable
         .get_params()
@@ -282,14 +298,16 @@ fn instantiate_callable_from_arg_types(
         return None;
     }
 
-    let instantiated = match instantiate_doc_function(context.db, callable, &callable_substitutor) {
-        LuaType::DocFunction(func) => func,
-        _ => callable.clone(),
-    };
+    let callable_type = LuaType::DocFunction(callable.clone());
+    let instantiated =
+        match instantiate_type_generic(context.db, &callable_type, &callable_substitutor) {
+            LuaType::DocFunction(func) => func,
+            _ => callable.clone(),
+        };
     let unresolved_return_tpls = {
         let mut tpl_ids = HashSet::new();
         instantiated.get_ret().visit_type(&mut |ty| {
-            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty
+            if let LuaType::TplRef(generic_tpl) = ty
                 && callable_tpls.contains(&generic_tpl.get_tpl_id())
             {
                 tpl_ids.insert(generic_tpl.get_tpl_id());
@@ -314,7 +332,7 @@ fn instantiate_callable_from_arg_types(
     for tpl_id in callback_return_tpls {
         callable_substitutor.insert_type(tpl_id, LuaType::Unknown, true);
     }
-    match instantiate_doc_function(context.db, callable, &callable_substitutor) {
+    match instantiate_type_generic(context.db, &callable_type, &callable_substitutor) {
         LuaType::DocFunction(func) => Some(func),
         _ => None,
     }
@@ -360,7 +378,7 @@ fn collect_callback_return_tpls(
             continue;
         };
         param_func.get_ret().visit_type(&mut |ty| {
-            if let LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) = ty {
+            if let LuaType::TplRef(generic_tpl) = ty {
                 let tpl_id = generic_tpl.get_tpl_id();
                 if unresolved_return_tpls.contains(&tpl_id) {
                     callback_return_tpls.insert(tpl_id);
@@ -372,120 +390,19 @@ fn collect_callback_return_tpls(
     callback_return_tpls
 }
 
-fn collect_func_tpl_ids(func: &LuaFunctionType) -> (HashSet<GenericTplId>, bool) {
-    let mut generic_tpls = HashSet::new();
-    let mut contain_self = false;
-
-    func.visit_nested_types(&mut |ty| match ty {
-        LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl) => {
-            collect_func_tpl_with_fallback_deps(generic_tpl, &mut generic_tpls);
-        }
-        LuaType::StrTplRef(str_tpl) => {
-            generic_tpls.insert(str_tpl.get_tpl_id());
-        }
-        LuaType::SelfInfer => contain_self = true,
-        _ => {}
-    });
-
-    (generic_tpls, contain_self)
-}
-
-fn collect_func_tpl_with_fallback_deps(
-    generic_tpl: &GenericTpl,
-    generic_tpls: &mut HashSet<GenericTplId>,
-) {
-    let tpl_id = generic_tpl.get_tpl_id();
-    if !tpl_id.is_func() {
-        return;
-    }
-
-    generic_tpls.insert(tpl_id);
-
-    let Some(fallback_type) = generic_tpl
-        .get_default_type()
-        .or(generic_tpl.get_constraint())
-    else {
-        return;
-    };
-
-    // 只有提前加入的泛型才有 None 占位, fallback 展开时才能继续使用它自己的 default/constraint.
-    // 例如 `U = T[]` 或 `U: T[]` 中, 即使函数返回值只直接引用了 `U`, 也需要把 `T` 一并加入.
-    let mut fallback_deps = HashSet::new();
-    let mut visiting_fallbacks = HashSet::new();
-    visiting_fallbacks.insert(tpl_id);
-    if collect_func_tpl_deps_from_fallback_type(
-        fallback_type,
-        &mut fallback_deps,
-        &mut visiting_fallbacks,
-    ) {
-        generic_tpls.extend(fallback_deps);
-    }
-}
-
-fn collect_func_tpl_deps_from_fallback_type(
-    ty: &LuaType,
-    generic_tpls: &mut HashSet<GenericTplId>,
-    visiting_fallbacks: &mut HashSet<GenericTplId>,
-) -> bool {
-    // 返回 false 表示 fallback 依赖链里发现循环.
-    // visit_nested_types 只访问子节点, 所以这里先处理类型自身, 再处理嵌套类型.
-    let mut no_fallback_cycle =
-        collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
-    ty.visit_nested_types(&mut |ty| {
-        no_fallback_cycle &=
-            collect_func_tpl_dep_from_fallback_type(ty, generic_tpls, visiting_fallbacks);
-    });
-    no_fallback_cycle
-}
-
-fn collect_func_tpl_dep_from_fallback_type(
-    ty: &LuaType,
-    generic_tpls: &mut HashSet<GenericTplId>,
-    visiting_fallbacks: &mut HashSet<GenericTplId>,
-) -> bool {
-    let (LuaType::TplRef(generic_tpl) | LuaType::ConstTplRef(generic_tpl)) = ty else {
-        return true;
-    };
-
-    if !generic_tpl.get_tpl_id().is_func() {
-        return true;
-    }
-
-    let tpl_id = generic_tpl.get_tpl_id();
-    if !visiting_fallbacks.insert(tpl_id) {
-        // 遇到 `T = U, U = T` 这类循环 fallback 时, 放弃合并本轮依赖避免递归展开.
-        return false;
-    }
-
-    generic_tpls.insert(tpl_id);
-    let no_fallback_cycle = match generic_tpl
-        .get_default_type()
-        .or(generic_tpl.get_constraint())
-    {
-        Some(fallback_type) => collect_func_tpl_deps_from_fallback_type(
-            fallback_type,
-            generic_tpls,
-            visiting_fallbacks,
-        ),
-        None => true,
-    };
-    visiting_fallbacks.remove(&tpl_id);
-    no_fallback_cycle
-}
-
 fn infer_generic_types_from_call(
     db: &DbIndex,
     context: &mut TplContext,
     func: &LuaFunctionType,
     call_expr: &LuaCallExpr,
-    func_params: &mut Vec<(String, LuaType)>,
+    func_params: &mut Vec<LuaType>,
     arg_exprs: &[LuaExpr],
 ) -> Result<(), InferFailReason> {
     let colon_call = call_expr.is_colon_call();
     let colon_define = func.is_colon_define();
     match (colon_define, colon_call) {
         (true, false) => {
-            func_params.insert(0, ("self".to_string(), LuaType::Any));
+            func_params.insert(0, LuaType::Any);
         }
         (false, true) => {
             if !func_params.is_empty() {
@@ -498,7 +415,7 @@ fn infer_generic_types_from_call(
     let mut unresolve_tpls = vec![];
     for i in 0..func_params.len() {
         if i >= arg_exprs.len() {
-            if let LuaType::Variadic(variadic) = &func_params[i].1 {
+            if let LuaType::Variadic(variadic) = &func_params[i] {
                 variadic_tpl_pattern_match(context, variadic, &[])?;
             }
             break;
@@ -508,14 +425,16 @@ fn infer_generic_types_from_call(
             break;
         }
 
-        let (_, func_param_type) = &func_params[i];
+        let func_param_type = &func_params[i];
         let call_arg_expr = &arg_exprs[i];
         if !func_param_type.contains_tpl_node() {
             continue;
         }
 
+        let doc_param_func = as_doc_function_type(db, func_param_type)?;
+
         if !func_param_type.is_variadic()
-            && check_expr_can_later_infer(context, func_param_type, call_arg_expr)?
+            && check_expr_can_later_infer_with_doc_func(doc_param_func.as_deref(), call_arg_expr)
         {
             // 如果参数不能被后续推断, 那么我们先不处理
             unresolve_tpls.push((func_param_type.clone(), call_arg_expr.clone()));
@@ -528,19 +447,18 @@ fn infer_generic_types_from_call(
             Err(e) => return Err(e),
         };
 
-        if let Some(return_pattern) =
-            as_doc_function_type(context.db, func_param_type)?.map(|func| func.get_ret().clone())
-        {
+        if let Some(doc_func) = &doc_param_func {
+            let return_pattern = doc_func.get_ret();
             if let Some(inferred_return_type) =
                 infer_callable_return_from_remaining_args(context, &arg_type, &arg_exprs[i + 1..])?
             {
                 return_type_pattern_match_target_type(
                     context,
-                    &return_pattern,
+                    return_pattern,
                     &inferred_return_type,
                 )?;
             } else if arg_type.is_any() || arg_type.is_unknown() {
-                return_type_pattern_match_target_type(context, &return_pattern, &LuaType::Unknown)?;
+                return_type_pattern_match_target_type(context, return_pattern, &LuaType::Unknown)?;
             }
         }
 
@@ -555,11 +473,7 @@ fn infer_generic_types_from_call(
                 break;
             }
             (_, LuaType::Variadic(variadic)) => {
-                let func_param_types = func_params[i..]
-                    .iter()
-                    .map(|(_, t)| t)
-                    .cloned()
-                    .collect::<Vec<_>>();
+                let func_param_types = func_params[i..].to_vec();
                 multi_param_tpl_pattern_match_multi_return(context, &func_param_types, variadic)?;
                 break;
             }
@@ -607,9 +521,9 @@ fn build_self_generic_arg(
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
     let Some(arg) = generic_param
-        .default_type
+        .default
         .as_ref()
-        .or(generic_param.type_constraint.as_ref())
+        .or(generic_param.constraint.as_ref())
     else {
         return LuaType::Unknown;
     };
@@ -666,30 +580,23 @@ pub fn infer_self_type(
     None
 }
 
-fn check_expr_can_later_infer(
-    context: &mut TplContext,
-    func_param_type: &LuaType,
+fn check_expr_can_later_infer_with_doc_func(
+    doc_function: Option<&LuaFunctionType>,
     call_arg_expr: &LuaExpr,
-) -> Result<bool, InferFailReason> {
-    let Some(doc_function) = as_doc_function_type(context.db, func_param_type)? else {
-        return Ok(false);
+) -> bool {
+    let Some(doc_function) = doc_function else {
+        return false;
     };
 
     if let LuaExpr::ClosureExpr(_) = call_arg_expr {
-        return Ok(true);
+        return true;
     }
 
     let doc_params = doc_function.get_params();
     let variadic_count = doc_params
         .iter()
-        .filter_map(|(_, t)| {
-            if let Some(LuaType::Variadic(_)) = t {
-                Some(())
-            } else {
-                None
-            }
-        })
+        .filter(|(_, t)| matches!(t, Some(LuaType::Variadic(_))))
         .count();
 
-    Ok(variadic_count > 1)
+    variadic_count > 1
 }

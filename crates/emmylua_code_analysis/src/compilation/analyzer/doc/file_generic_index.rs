@@ -4,24 +4,32 @@ use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-use crate::{GenericParam, GenericTpl, GenericTplId, LuaType};
+use crate::{GenericParam, GenericTpl, GenericTplId};
 
 pub trait GenericIndex: std::fmt::Debug {
     fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericScopeId;
 
-    fn append_generic_param(&mut self, scope_id: GenericScopeId, param: GenericParam);
+    fn append_generic_param(
+        &mut self,
+        scope_id: GenericScopeId,
+        param: GenericParam,
+    ) -> Option<GenericTplId>;
 
     fn append_generic_params(&mut self, scope_id: GenericScopeId, params: Vec<GenericParam>) {
         for param in params {
-            self.append_generic_param(scope_id, param);
+            let _ = self.append_generic_param(scope_id, param);
         }
     }
 
-    fn find_generic(
-        &self,
-        position: TextSize,
-        name: &str,
-    ) -> Option<(GenericTplId, Option<LuaType>, Option<LuaType>)>;
+    fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)>;
+
+    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam>;
+
+    fn mark_generic_const(&mut self, tpl_id: GenericTplId) -> Option<GenericParam> {
+        let param = self.generic_param_mut(tpl_id)?;
+        param.is_const = true;
+        Some(param.clone())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -63,36 +71,38 @@ impl GenericIndex for FileGenericIndex {
         scope_id
     }
 
-    fn append_generic_param(&mut self, scope_id: GenericScopeId, param: GenericParam) {
+    fn append_generic_param(
+        &mut self,
+        scope_id: GenericScopeId,
+        param: GenericParam,
+    ) -> Option<GenericTplId> {
         if let Some(scope) = self.scopes.get_mut(scope_id.id) {
-            scope.insert_param(param);
+            return Some(scope.insert_param(param));
         }
-    }
-
-    fn append_generic_params(&mut self, scope_id: GenericScopeId, params: Vec<GenericParam>) {
-        for param in params {
-            self.append_generic_param(scope_id, param);
-        }
+        None
     }
 
     /// Find generic parameter by position and name.
-    /// return (GenericTplId, constraint, default)
-    fn find_generic(
-        &self,
-        position: TextSize,
-        name: &str,
-    ) -> Option<(GenericTplId, Option<LuaType>, Option<LuaType>)> {
+    fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)> {
         for scope in self.scopes.iter().rev() {
             if !scope.contains(position) {
                 continue;
             }
 
             if let Some((id, param)) = scope.params.get(name) {
-                return Some((
-                    *id,
-                    param.type_constraint.clone(),
-                    param.default_type.clone(),
-                ));
+                return Some((*id, param.clone()));
+            }
+        }
+
+        None
+    }
+
+    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam> {
+        for scope in self.scopes.iter_mut().rev() {
+            for (id, param) in scope.params.values_mut() {
+                if *id == tpl_id {
+                    return Some(param);
+                }
             }
         }
 
@@ -131,10 +141,11 @@ impl FileGenericScope {
         self.next_tpl_id.is_func()
     }
 
-    fn insert_param(&mut self, param: GenericParam) {
+    fn insert_param(&mut self, param: GenericParam) -> GenericTplId {
         let tpl_id = self.next_tpl_id;
         self.next_tpl_id = self.next_tpl_id.with_idx((tpl_id.get_idx() + 1) as u32);
         self.params.insert(param.name.to_string(), (tpl_id, param));
+        tpl_id
     }
 
     fn contains(&self, position: TextSize) -> bool {
@@ -175,18 +186,19 @@ impl ConditionalInferIndex {
 
         let tpl_id = GenericTplId::ConditionalInfer(self.next_infer_id);
         self.next_infer_id += 1;
+        let param = GenericParam::new(SmolStr::new(name), None, None, false, None);
         let tpl = Arc::new(GenericTpl::new(
             tpl_id,
-            SmolStr::new(name).into(),
-            None,
-            None,
+            param.name.clone(),
+            param.constraint.clone(),
+            param.default.clone(),
+            param.is_const,
+            param.attributes.clone(),
         ));
 
         let scope = &mut self.scopes[scope_idx];
         scope.bindings.insert(name.to_string(), tpl.clone());
-        scope
-            .params
-            .push(GenericParam::new(SmolStr::new(name), None, None, None));
+        scope.params.push(param);
         Some(tpl)
     }
 

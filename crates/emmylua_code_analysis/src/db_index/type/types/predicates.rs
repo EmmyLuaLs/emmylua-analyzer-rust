@@ -261,9 +261,10 @@ impl LuaType {
             match ty {
                 LuaType::TplRef(_)
                 | LuaType::StrTplRef(_)
-                | LuaType::ConstTplRef(_)
                 | LuaType::SelfInfer
-                | LuaType::Mapped(_) => return true,
+                | LuaType::Mapped(_) => {
+                    return true;
+                }
                 _ => ty.push_direct_children(&mut stack),
             }
         }

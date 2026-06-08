@@ -9,7 +9,7 @@ use rowan::TextSize;
 use super::return_rows;
 use crate::db_index::signature::async_state::AsyncState;
 use crate::{
-    FileId,
+    FileId, GenericParam, GenericTpl, GenericTplId,
     db_index::{LuaFunctionType, LuaType},
 };
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct LuaSignature {
-    pub generic_params: Vec<Arc<LuaGenericParamInfo>>,
+    pub generic_params: Vec<GenericParam>,
     pub overloads: Vec<Arc<LuaFunctionType>>,
     pub param_docs: HashMap<usize, LuaDocParamInfo>,
     pub params: Vec<String>,
@@ -172,6 +172,7 @@ impl LuaSignature {
             is_vararg,
             params,
             return_type,
+            Some(self.get_function_generic_params()),
         );
         Arc::new(func_type)
     }
@@ -183,9 +184,32 @@ impl LuaSignature {
         }
 
         let return_type = self.get_return_type();
-        let func_type =
-            LuaFunctionType::new(self.async_state, false, self.is_vararg, params, return_type);
+        let func_type = LuaFunctionType::new(
+            self.async_state,
+            false,
+            self.is_vararg,
+            params,
+            return_type,
+            Some(self.get_function_generic_params()),
+        );
         Arc::new(func_type)
+    }
+
+    pub fn get_function_generic_params(&self) -> Vec<GenericTpl> {
+        self.generic_params
+            .iter()
+            .enumerate()
+            .map(|(idx, param)| {
+                GenericTpl::new(
+                    GenericTplId::Func(idx as u32),
+                    param.name.clone(),
+                    param.constraint.clone(),
+                    param.default.clone(),
+                    param.is_const,
+                    param.attributes.clone(),
+                )
+            })
+            .collect()
     }
 }
 
@@ -305,28 +329,4 @@ pub enum SignatureReturnStatus {
     UnResolve,
     DocResolve,
     InferResolve,
-}
-
-#[derive(Debug, Clone)]
-pub struct LuaGenericParamInfo {
-    pub name: String,
-    pub constraint: Option<LuaType>,
-    pub default_type: Option<LuaType>,
-    pub attributes: Option<Vec<LuaAttributeUse>>,
-}
-
-impl LuaGenericParamInfo {
-    pub fn new(
-        name: String,
-        constraint: Option<LuaType>,
-        default_type: Option<LuaType>,
-        attributes: Option<Vec<LuaAttributeUse>>,
-    ) -> Self {
-        Self {
-            name,
-            constraint,
-            default_type,
-            attributes,
-        }
-    }
 }

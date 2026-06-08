@@ -263,7 +263,7 @@ pub fn check_simple_type_compact(
                 return Ok(());
             }
         }
-        LuaType::TplRef(_) | LuaType::ConstTplRef(_) => return Ok(()),
+        LuaType::TplRef(_) => return Ok(()),
         LuaType::Namespace(source_namespace) => {
             if let LuaType::Namespace(compact_namespace) = compact_type
                 && source_namespace == compact_namespace

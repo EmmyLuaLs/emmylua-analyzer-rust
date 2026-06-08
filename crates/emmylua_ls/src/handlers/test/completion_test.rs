@@ -2322,8 +2322,6 @@ mod tests {
             r#"
             ---@alias std.RawGet<T, K> unknown
 
-            ---@alias std.ConstTpl<T> unknown
-
             ---@generic T, K extends keyof T
             ---@param object T
             ---@param key K

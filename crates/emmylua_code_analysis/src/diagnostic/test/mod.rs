@@ -5,6 +5,7 @@ mod call_non_callable_test;
 mod cast_type_mismatch_test;
 mod check_return_count_test;
 mod code_style;
+mod deprecated_test;
 mod disable_line_test;
 mod duplicate_field_test;
 mod duplicate_index_test;

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use internment::ArcIntern;
+
     use smol_str::SmolStr;
     use std::mem::ManuallyDrop;
 
@@ -25,8 +25,10 @@ mod tests {
         let mut ty = LuaType::TplRef(
             GenericTpl::new(
                 GenericTplId::Type(0),
-                ArcIntern::new(SmolStr::new("T")),
+                SmolStr::new("T"),
                 None,
+                None,
+                false,
                 None,
             )
             .into(),

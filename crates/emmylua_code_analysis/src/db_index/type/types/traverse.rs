@@ -49,7 +49,6 @@ pub trait LuaTypeNode {
                 ty,
                 LuaType::TplRef(_)
                     | LuaType::StrTplRef(_)
-                    | LuaType::ConstTplRef(_)
                     | LuaType::SelfInfer
                     | LuaType::Mapped(_)
             )
@@ -62,7 +61,6 @@ pub trait LuaTypeNode {
                 ty,
                 LuaType::TplRef(_)
                     | LuaType::StrTplRef(_)
-                    | LuaType::ConstTplRef(_)
                     | LuaType::SelfInfer
                     | LuaType::Mapped(_)
             )
@@ -244,10 +242,10 @@ impl LuaTypeNode for LuaConditionalType {
 impl LuaTypeNode for LuaMappedType {
     fn push_direct_children<'a>(&'a self, stack: &mut Vec<&'a LuaType>) {
         stack.push(&self.value);
-        if let Some(constraint) = self.param.1.type_constraint.as_ref() {
+        if let Some(constraint) = self.param.1.constraint.as_ref() {
             stack.push(constraint);
         }
-        if let Some(default_type) = self.param.1.default_type.as_ref() {
+        if let Some(default_type) = self.param.1.default.as_ref() {
             stack.push(default_type);
         }
     }

@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
     DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
-    enum_variable_is_param, get_tpl_ref_extend_type,
+    enum_variable_is_param,
 };
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken, LuaSyntaxToken};
 use std::collections::HashMap;
@@ -59,13 +59,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         .infer_expr(prefix_expr.clone())
         .ok()?
     {
-        LuaType::TplRef(tpl) => get_tpl_ref_extend_type(
-            builder.semantic_model.get_db(),
-            &mut builder.semantic_model.get_cache().borrow_mut(),
-            &LuaType::TplRef(tpl.clone()),
-            prefix_expr.clone(),
-            0,
-        )?,
+        LuaType::TplRef(tpl) => tpl.get_constraint().cloned()?,
         prefix_type => prefix_type,
     };
     // 如果是枚举类型且为函数参数, 则不进行补全
