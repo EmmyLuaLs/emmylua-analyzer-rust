@@ -7,6 +7,7 @@ mod test {
     const STACKED_TYPE_GUARDS: usize = 180;
     const LARGE_LINEAR_ASSIGNMENT_STEPS: usize = 2048;
     const MAXWELLHOME_ARRAY_VALUES: usize = 2048;
+    const ISSUE_1100_HIGHLIGHT_GROUPS: usize = 2048;
 
     #[test]
     fn test_closure_return() {
@@ -498,6 +499,47 @@ mod test {
                 .is_some(),
             "expected semantic model for repeated self-call fallback stress repro"
         );
+    }
+
+    #[test]
+    #[timeout(5000)]
+    fn test_issue_1100_repeated_table_field_index_reads_after_unrelated_conditions() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_groups = (0..ISSUE_1100_HIGHLIGHT_GROUPS)
+            .map(|i| {
+                format!(
+                    "if enabled('group_{i}') then\n  hi('Group{i}', {{ fg = p.base0E, bg = p.base01, attr = nil, sp = nil }})\nend\n"
+                )
+            })
+            .collect::<String>();
+        let block = format!(
+            r#"
+        ---@type {{ base01: string, base0E: string }}
+        local palette = {{ base01 = "a", base0E = "b" }}
+
+        local function enabled(name)
+            return name ~= ""
+        end
+
+        local function hi(group, args)
+        end
+
+        local p = palette
+        {repeated_groups}
+        result = p.base0E
+        "#
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for repeated palette field reads"
+        );
+        assert_eq!(ws.expr_ty("result"), ws.ty("string"));
     }
 
     #[test]
