@@ -1,10 +1,15 @@
 #[cfg(test)]
 mod test;
 
+use emmylua_parser::LuaAstNode;
+use emmylua_parser::LuaAstToken;
 use emmylua_parser::LuaBlock;
 use emmylua_parser::LuaClosureExpr;
+use emmylua_parser::LuaFuncStat;
 use emmylua_parser::LuaGeneralToken;
+use emmylua_parser::LuaIndexExpr;
 use emmylua_parser::LuaSyntaxToken;
+use emmylua_parser::LuaVarExpr;
 use emmylua_parser::VisibilityKind;
 
 use crate::CompilationModuleInfo;

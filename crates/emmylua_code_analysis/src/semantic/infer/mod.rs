@@ -12,7 +12,8 @@ mod test;
 use std::ops::Deref;
 
 use emmylua_parser::{
-    LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaSyntaxId, LuaTableExpr,
+    LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken,
+    LuaSyntaxId, LuaTableExpr, LuaVarExpr, NumberResult,
 };
 use infer_binary::infer_binary_expr;
 use infer_call::infer_call_expr;

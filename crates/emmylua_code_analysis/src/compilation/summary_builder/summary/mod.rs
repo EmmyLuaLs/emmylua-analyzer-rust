@@ -51,8 +51,8 @@ pub use flow::{
 };
 pub use member::{
     SalsaMemberIndexSummary, SalsaMemberKindSummary, SalsaMemberPathRootSummary,
-    SalsaMemberPathSummary, SalsaMemberRootSummary, SalsaMemberSegmentsHandle, SalsaMemberSummary,
-    SalsaMemberTargetId, SalsaMemberTargetSummary,
+    SalsaMemberPathSummary, SalsaMemberRootSummary, SalsaMemberSummary, SalsaMemberTargetId,
+    SalsaMemberTargetSummary,
 };
 pub use module::{
     SalsaExportTargetSummary, SalsaModuleExportQuerySummary, SalsaModuleExportResolveStateSummary,

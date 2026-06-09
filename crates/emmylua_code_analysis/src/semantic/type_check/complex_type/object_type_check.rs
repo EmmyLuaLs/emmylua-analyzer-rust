@@ -218,7 +218,7 @@ fn check_object_type_compact_table_const(
     let members = get_members(db, &member_owner).unwrap_or_default();
     for (key_type, source_type) in source_object.get_index_access() {
         for member in &members {
-            let member = *member;
+            // let member = *member;
             if source_fields.contains_key(member.get_key()) {
                 continue;
             }

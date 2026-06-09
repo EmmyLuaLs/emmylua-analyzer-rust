@@ -5,7 +5,9 @@ mod index_flow;
 
 use std::rc::Rc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaChunk, LuaExpr, LuaIndexMemberExpr};
+use emmylua_parser::{
+    LuaAstNode, LuaCallExpr, LuaChunk, LuaExpr, LuaIndexMemberExpr, UnaryOperator,
+};
 
 use crate::{
     DbIndex, FlowId, FlowNode, FlowTree, InferFailReason, InferGuard, LuaArrayLen, LuaArrayType,

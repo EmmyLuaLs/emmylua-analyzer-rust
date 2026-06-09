@@ -412,43 +412,43 @@ pub fn find_self_decl_or_member_id(
 ) -> Option<LuaDeclOrMemberId> {
     let file_id = cache.get_file_id();
     let tree = get_file_decl_tree(db, file_id)?;
+    todo!()
+    // let self_decl = tree.find_local_decl("self", name_expr.get_position())?;
+    // if !self_decl.is_implicit_self() {
+    //     return Some(LuaDeclOrMemberId::Decl(self_decl.get_id()));
+    // }
 
-    let self_decl = tree.find_local_decl("self", name_expr.get_position())?;
-    if !self_decl.is_implicit_self() {
-        return Some(LuaDeclOrMemberId::Decl(self_decl.get_id()));
-    }
+    // let root = name_expr.get_root();
+    // let syntax_id = self_decl.get_syntax_id();
+    // let index_token = syntax_id.to_token_from_root(&root)?;
+    // let index_expr = LuaIndexExpr::cast(index_token.parent()?)?;
+    // let prefix_expr = index_expr.get_prefix_expr()?;
 
-    let root = name_expr.get_root();
-    let syntax_id = self_decl.get_syntax_id();
-    let index_token = syntax_id.to_token_from_root(&root)?;
-    let index_expr = LuaIndexExpr::cast(index_token.parent()?)?;
-    let prefix_expr = index_expr.get_prefix_expr()?;
+    // match prefix_expr {
+    //     LuaExpr::NameExpr(prefix_name) => {
+    //         let name = prefix_name.get_name_text()?;
+    //         let decl = tree.find_local_decl(&name, prefix_name.get_position());
+    //         if let Some(decl) = decl {
+    //             return Some(LuaDeclOrMemberId::Decl(decl.get_id()));
+    //         }
 
-    match prefix_expr {
-        LuaExpr::NameExpr(prefix_name) => {
-            let name = prefix_name.get_name_text()?;
-            let decl = tree.find_local_decl(&name, prefix_name.get_position());
-            if let Some(decl) = decl {
-                return Some(LuaDeclOrMemberId::Decl(decl.get_id()));
-            }
+    //         let id = resolve_global_decl_id(db, cache, &name, Some(&prefix_name))?;
+    //         Some(LuaDeclOrMemberId::Decl(id))
+    //     }
+    //     LuaExpr::IndexExpr(prefix_index) => {
+    //         let semantic_id = infer_node_semantic_decl(
+    //             db,
+    //             cache,
+    //             prefix_index.syntax().clone(),
+    //             SemanticDeclLevel::NoTrace,
+    //         )?;
 
-            let id = resolve_global_decl_id(db, cache, &name, Some(&prefix_name))?;
-            Some(LuaDeclOrMemberId::Decl(id))
-        }
-        LuaExpr::IndexExpr(prefix_index) => {
-            let semantic_id = infer_node_semantic_decl(
-                db,
-                cache,
-                prefix_index.syntax().clone(),
-                SemanticDeclLevel::NoTrace,
-            )?;
-
-            match semantic_id {
-                LuaSemanticDeclId::Member(member_id) => Some(LuaDeclOrMemberId::Member(member_id)),
-                LuaSemanticDeclId::LuaDecl(decl_id) => Some(LuaDeclOrMemberId::Decl(decl_id)),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
+    //         match semantic_id {
+    //             LuaSemanticDeclId::Member(member_id) => Some(LuaDeclOrMemberId::Member(member_id)),
+    //             LuaSemanticDeclId::LuaDecl(decl_id) => Some(LuaDeclOrMemberId::Decl(decl_id)),
+    //             _ => None,
+    //         }
+    //     }
+    //     _ => None,
+    // }
 }

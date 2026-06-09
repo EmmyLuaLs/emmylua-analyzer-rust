@@ -47,6 +47,7 @@ use crate::Emmyrc;
 use crate::FileId;
 use crate::LuaDocument;
 use crate::LuaFunctionType;
+use crate::LuaMemberId;
 use crate::LuaMemberKey;
 use crate::LuaSemanticDeclId;
 use crate::LuaType;
@@ -54,6 +55,8 @@ use crate::LuaTypeDeclId;
 use crate::LuaTypeOwner;
 use crate::compilation::get_type_by_owner;
 use crate::project_module_info;
+use crate::semantic::member::find_members_in_scope;
+use crate::semantic::member::find_members_with_key_in_scope;
 use crate::semantic::type_check::check_type_compact_detail;
 
 pub use crate::semantic::infer::infer_call_expr_func;
