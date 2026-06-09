@@ -12,10 +12,10 @@ mod member;
 
 use std::sync::{Arc, RwLock};
 
-use emmylua_parser::{LuaChunk, LuaExpr};
+use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError};
 
 use crate::compilation::SalsaSummaryDatabase;
-use crate::{Emmyrc, FileId};
+use crate::{Emmyrc, FileId, LuaDocument, Vfs};
 
 pub use infer::{InferFailReason, InferQuery, InferResult};
 pub use member::MemberQuery;
@@ -35,7 +35,6 @@ pub struct SemanticModel {
     root: LuaChunk,
 }
 
-// `Arc<RwLock<>>` 提供了外层 `Sync` 保证。
 unsafe impl Send for SemanticModel {}
 unsafe impl Sync for SemanticModel {}
 
@@ -79,22 +78,15 @@ impl SemanticModel {
     // VFS 桥接（临时 — 后续 VFS 独立抽象后移除）
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    pub fn get_document<'a>(&self, vfs: &'a crate::Vfs) -> crate::LuaDocument<'a> {
+    pub fn get_document<'a>(&self, vfs: &'a Vfs) -> LuaDocument<'a> {
         vfs.get_document(&self.file_id).expect("always exists")
     }
 
-    pub fn get_file_parse_error(
-        &self,
-        vfs: &crate::Vfs,
-    ) -> Option<Vec<emmylua_parser::LuaParseError>> {
+    pub fn get_file_parse_error(&self, vfs: &Vfs) -> Option<Vec<LuaParseError>> {
         vfs.get_file_parse_error(&self.file_id)
     }
 
-    pub fn get_root_by_file_id<'a>(
-        &self,
-        vfs: &'a crate::Vfs,
-        file_id: FileId,
-    ) -> Option<LuaChunk> {
+    pub fn get_root_by_file_id<'a>(&self, vfs: &'a Vfs, file_id: FileId) -> Option<LuaChunk> {
         Some(vfs.get_syntax_tree(&file_id)?.get_chunk_node())
     }
 
@@ -102,17 +94,16 @@ impl SemanticModel {
     // 成员查询
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    pub fn members(&self) -> MemberQuery<'_> {
-        MemberQuery::new(&self.salsa_db, self.file_id)
+    pub fn members(&self) -> MemberQuery {
+        MemberQuery::new(self.salsa_db.clone(), self.file_id)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 类型推断
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    /// 获取推断查询器
-    pub fn infer(&self) -> InferQuery<'_> {
-        InferQuery::new(&self.salsa_db, self.file_id)
+    pub fn infer(&self) -> InferQuery {
+        InferQuery::new(self.salsa_db.clone(), self.file_id)
     }
 
     /// 快捷方法：推断表达式类型

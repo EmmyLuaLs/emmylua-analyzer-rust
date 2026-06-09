@@ -14,20 +14,23 @@ use crate::FileId;
 /// 成员查询器。通过 `SemanticModel::members()` 获取。
 ///
 /// 所有查询都经过 salsa，自动享受增量计算和缓存。
-pub struct MemberQuery<'db> {
-    db: &'db Arc<RwLock<SalsaSummaryDatabase>>,
+pub struct MemberQuery {
+    db: Arc<RwLock<SalsaSummaryDatabase>>,
     file_id: FileId,
 }
 
-impl<'db> MemberQuery<'db> {
-    pub(crate) fn new(db: &'db Arc<RwLock<SalsaSummaryDatabase>>, file_id: FileId) -> Self {
+impl MemberQuery {
+    pub(crate) fn new(db: Arc<RwLock<SalsaSummaryDatabase>>, file_id: FileId) -> Self {
         Self { db, file_id }
+    }
+
+    fn read_db(&self) -> impl std::ops::Deref<Target = SalsaSummaryDatabase> + '_ {
+        self.db.read().unwrap_or_else(|e| e.into_inner())
     }
 
     /// 获取当前文件的所有成员索引。
     pub fn all(&self) -> Option<Arc<SalsaMemberIndexSummary>> {
-        let db = self.db.read().unwrap_or_else(|e| e.into_inner());
-        db.file().members(self.file_id)
+        self.read_db().file().members(self.file_id)
     }
 
     /// 获取当前文件的所有成员列表（克隆）。
@@ -37,8 +40,7 @@ impl<'db> MemberQuery<'db> {
 
     /// 根据语法 ID 查找成员。
     pub fn by_syntax_id(&self, syntax_id: SalsaSyntaxIdSummary) -> Option<SalsaMemberSummary> {
-        let db = self.db.read().unwrap_or_else(|e| e.into_inner());
-        db.file().member_by_syntax_id(self.file_id, syntax_id)
+        self.read_db().file().member_by_syntax_id(self.file_id, syntax_id)
     }
 
     /// 获取某个成员的类型信息。
@@ -46,8 +48,7 @@ impl<'db> MemberQuery<'db> {
         &self,
         member_target: impl Into<SalsaMemberTargetId>,
     ) -> Option<SalsaMemberTypeInfoSummary> {
-        let db = self.db.read().unwrap_or_else(|e| e.into_inner());
-        db.types().member(self.file_id, member_target)
+        self.read_db().types().member(self.file_id, member_target)
     }
 
     /// 查找成员的所有引用。
@@ -55,7 +56,6 @@ impl<'db> MemberQuery<'db> {
         &self,
         member_target: impl Into<SalsaMemberTargetId>,
     ) -> Option<Vec<SalsaMemberUseSummary>> {
-        let db = self.db.read().unwrap_or_else(|e| e.into_inner());
-        db.lexical().member_references(self.file_id, member_target)
+        self.read_db().lexical().member_references(self.file_id, member_target)
     }
 }

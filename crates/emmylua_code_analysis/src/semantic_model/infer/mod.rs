@@ -12,6 +12,9 @@
 //!   5. 全局查找 → SalsaTypeQueries::global()
 
 mod cache;
+mod call;
+mod index;
+mod table;
 
 use std::cell::RefCell;
 use std::sync::{Arc, RwLock};
@@ -30,6 +33,9 @@ use crate::{
 };
 
 pub use cache::InferCache;
+use call::infer_call_expr;
+use index::infer_index_expr;
+use table::infer_table_expr;
 
 pub type InferResult = Result<LuaType, InferFailReason>;
 
@@ -62,17 +68,17 @@ impl InferFailReason {
 /// 类型推断查询器。通过 `SemanticModel::infer()` 获取。
 ///
 /// 设计要点：
-/// - 持有 `SalsaSummaryDatabase` 引用用于快速路径
+/// - 持有 `SalsaSummaryDatabase` 的 Arc 用于快速路径
 /// - 本地 `InferCache` 用于单次会话 memoization
 /// - `file_id` 指明当前分析的文件
-pub struct InferQuery<'db> {
-    db: &'db Arc<RwLock<SalsaSummaryDatabase>>,
+pub struct InferQuery {
+    db: Arc<RwLock<SalsaSummaryDatabase>>,
     file_id: FileId,
     cache: RefCell<InferCache>,
 }
 
-impl<'db> InferQuery<'db> {
-    pub(crate) fn new(db: &'db Arc<RwLock<SalsaSummaryDatabase>>, file_id: FileId) -> Self {
+impl InferQuery {
+    pub(crate) fn new(db: Arc<RwLock<SalsaSummaryDatabase>>, file_id: FileId) -> Self {
         Self {
             db,
             file_id,
@@ -82,6 +88,10 @@ impl<'db> InferQuery<'db> {
 
     pub fn get_file_id(&self) -> FileId {
         self.file_id
+    }
+
+    pub(super) fn read_db(&self) -> impl std::ops::Deref<Target = SalsaSummaryDatabase> + '_ {
+        self.db.read().unwrap_or_else(|e| e.into_inner())
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -142,7 +152,7 @@ impl<'db> InferQuery<'db> {
     /// 当前只能处理名称表达式（NameExpr）。
     fn lookup_salsa_type(&self, expr: &LuaExpr) -> Option<LuaType> {
         if let LuaExpr::NameExpr(name) = expr {
-            let db = self.db.read().unwrap_or_else(|e| e.into_inner());
+            let db = self.read_db();
             let name_info = db.types().name(self.file_id, name.get_position())?;
             let decl_type = name_info.decl_type?;
             return self.resolve_decl_type(&db, decl_type);
@@ -167,7 +177,6 @@ impl<'db> InferQuery<'db> {
         // 需要 VFS + doc type 展开，后续 phase 实现
         if !decl_type.explicit_type_offsets.is_empty() {
             // 留空：需要 infer_compilation_doc_type_keys → VFS
-            // 后续 phase 中实现
         }
 
         // 路径 3：从初始化表达式推断
@@ -188,11 +197,8 @@ impl<'db> InferQuery<'db> {
 
         match types.len() {
             0 => LuaType::Unknown,
-            1 => types.pop().expect("unreachable"),
-            _ => {
-                // 多个命名类型 → union
-                LuaType::Union(LuaUnionType::from_vec(types).into())
-            }
+            1 => types.pop().expect("len checked above"),
+            _ => LuaType::Union(LuaUnionType::from_vec(types).into()),
         }
     }
 
@@ -204,7 +210,6 @@ impl<'db> InferQuery<'db> {
         db: &SalsaSummaryDatabase,
         name: &SmolStr,
     ) -> Option<LuaType> {
-        // 内建基础类型
         match name.as_str() {
             "nil" => return Some(LuaType::Nil),
             "any" => return Some(LuaType::Any),
@@ -219,21 +224,16 @@ impl<'db> InferQuery<'db> {
             _ => {}
         }
 
-        // 查 type_def 获取可见性和泛型参数
         let type_def = db.doc().type_def_by_name(self.file_id, name.as_str())?;
-
         let type_id = self.type_decl_id_from_visibility(name.as_str(), &type_def.visibility);
 
         if type_def.generic_params.is_empty() {
-            // 无泛型参数 → 直接引用
             return Some(LuaType::Ref(type_id));
         }
 
-        // 有泛型参数 → 尝试用默认值填充
         self.resolve_generic_type(db, type_id, &type_def)
     }
 
-    /// 根据可见性构造 LuaTypeDeclId。
     fn type_decl_id_from_visibility(
         &self,
         name: &str,
@@ -245,28 +245,21 @@ impl<'db> InferQuery<'db> {
         }
     }
 
-    /// 解析带泛型参数的类型。
-    /// 如果所有泛型参数都有默认值，构造 LuaType::Ref(type_id)；
-    /// 否则返回 LuaType::Any（无法确定具体类型）。
     fn resolve_generic_type(
         &self,
-        db: &SalsaSummaryDatabase,
+        _db: &SalsaSummaryDatabase,
         type_id: LuaTypeDeclId,
         type_def: &SalsaDocTypeDefSummary,
     ) -> Option<LuaType> {
-        // 检查所有泛型参数是否有默认类型
         let has_all_defaults = type_def
             .generic_params
             .iter()
             .all(|p| p.default_type_offset.is_some());
 
         if !has_all_defaults {
-            // 无法填充泛型 → 返回基础引用，泛型参数留待实例化时确定
             return Some(LuaType::Ref(type_id));
         }
 
-        // 所有参数都有默认值 → 可以直接用 Ref
-        // 完整的泛型实例化需要在 doc type 系统中展开默认值
         Some(LuaType::Ref(type_id))
     }
 
@@ -283,26 +276,10 @@ impl<'db> InferQuery<'db> {
                 let inner = paren.get_expr().ok_or(InferFailReason::None)?;
                 self.infer_expr(inner)
             }
-            LuaExpr::CallExpr(_call) => {
-                // Phase 3+: 函数调用推断
-                Err(InferFailReason::NotImplemented)
-            }
-            LuaExpr::IndexExpr(_index) => {
-                // Phase 3+: 索引表达式推断
-                Err(InferFailReason::NotImplemented)
-            }
-            LuaExpr::TableExpr(_table) => {
-                // Phase 3+: 表推断
-                Err(InferFailReason::NotImplemented)
-            }
-            LuaExpr::BinaryExpr(_binary) => {
-                // Phase 3+: 二元运算推断
-                Err(InferFailReason::NotImplemented)
-            }
-            LuaExpr::UnaryExpr(_unary) => {
-                // Phase 3+: 一元运算推断
-                Err(InferFailReason::NotImplemented)
-            }
+            LuaExpr::CallExpr(call) => infer_call_expr(self, call),
+            LuaExpr::IndexExpr(index) => infer_index_expr(self, index),
+            LuaExpr::TableExpr(table) => infer_table_expr(self, table),
+            LuaExpr::BinaryExpr(_) | LuaExpr::UnaryExpr(_) => Err(InferFailReason::NotImplemented),
         }
     }
 
@@ -343,28 +320,20 @@ impl<'db> InferQuery<'db> {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /// 推断名称表达式的类型。
-    ///
-    /// 完整链路（salsa-first）：
-    /// 1. 特殊名称处理（self → 方法上下文，_G → Global）
-    /// 2. Salsa types::name() → SalsaNameTypeInfoSummary
-    /// 3. 提取 decl_type → named_type_names → LuaType
-    /// 4. 全局查找 → SalsaTypeQueries::global()
     fn infer_name(&self, name_expr: LuaNameExpr) -> InferResult {
         let name_token = name_expr.get_name_token().ok_or(InferFailReason::None)?;
         let name = name_token.get_name_text();
 
-        // 特殊名称
         match name {
             "self" => return self.infer_self(&name_expr),
             "_G" => return Ok(LuaType::Global),
             _ => {}
         }
 
-        let syntax_offset = name_expr.get_position();
-        let db = self.db.read().unwrap_or_else(|e| e.into_inner());
+        let db = self.read_db();
 
         // 路径 1：通过 salsa types 查询名称的类型信息
-        if let Some(name_info) = db.types().name(self.file_id, syntax_offset) {
+        if let Some(name_info) = db.types().name(self.file_id, name_expr.get_position()) {
             if let Some(decl_type) = name_info.decl_type {
                 if let Some(ty) = self.resolve_decl_type(&db, decl_type) {
                     return Ok(ty);
@@ -378,23 +347,17 @@ impl<'db> InferQuery<'db> {
 
     /// 尝试作为全局名称推断类型。
     ///
-    /// 全局变量/函数可以在多个文件中定义，优先级如下：
-    /// 1. 如果全局类型查询返回了带 annotation 的结果 → 使用该类型
-    /// 2. 如果存在全局函数定义 → 函数类型优先
-    /// 3. 如果存在全局变量定义且有命名类型 → 使用该类型
-    /// 4. 如果只有一处定义 → 返回该类型
-    /// 5. 完全无法推断 → Any
+    /// 优先级：
+    /// 1. 全局类型查询返回了带 annotation 的结果 → 使用该类型
+    /// 2. 全局函数定义 → 函数类型优先
+    /// 3. 全局变量定义且有命名类型 → 使用该类型
+    /// 4. 完全无法推断 → Any
     fn infer_global_name(&self, db: &SalsaSummaryDatabase, name: &str) -> InferResult {
-        // 1. 查询 salsa 全局类型索引（聚合了跨文件信息）
+        // 1. salsa 全局类型索引
         if let Some(global_info) = db.types().global(self.file_id, name) {
             if let Some(candidate) = global_info.candidates.first() {
-                // 有 annotation 的类型优先
                 if !candidate.named_type_names.is_empty() {
                     return Ok(self.resolve_named_types(db, &candidate.named_type_names));
-                }
-                // 有显式类型偏移 → 也是 annotation
-                if !candidate.explicit_type_offsets.is_empty() {
-                    // 需要 VFS + doc type 展开，后续 phase
                 }
             }
         }
@@ -417,7 +380,6 @@ impl<'db> InferQuery<'db> {
                         return Ok(self.resolve_named_types(db, &decl_type.named_type_names));
                     }
                 }
-                // 全局变量存在但无法推断具体类型 → Any
                 return Ok(LuaType::Any);
             }
         }
@@ -427,13 +389,9 @@ impl<'db> InferQuery<'db> {
     }
 
     /// 推断 self 的类型。
-    ///
-    /// self 出现在方法定义中，其类型是包含该方法的类/表。
-    /// 通过向上查找包含 self 声明的函数签名来确定。
     fn infer_self(&self, name_expr: &LuaNameExpr) -> InferResult {
-        let db = self.db.read().unwrap_or_else(|e| e.into_inner());
+        let db = self.read_db();
 
-        // 查询 self 名称的类型信息
         if let Some(name_info) = db.types().name(self.file_id, name_expr.get_position()) {
             if let Some(decl_type) = name_info.decl_type {
                 if let Some(ty) = self.resolve_decl_type(&db, decl_type) {
@@ -441,7 +399,6 @@ impl<'db> InferQuery<'db> {
                 }
             }
 
-            // 如果 decl_type 没有直接类型，self 可能是隐式参数
             if let SalsaNameUseResolutionSummary::LocalDecl(decl_id) =
                 name_info.name_use.resolution
             {
