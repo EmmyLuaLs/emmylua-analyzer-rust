@@ -13,9 +13,9 @@ use table_generic_check::check_table_generic_type_compact;
 use tuple_type_check::check_tuple_type_compact;
 
 use crate::{
-    LuaType, LuaUnionType, TypeSubstitutor, type_def_alias_origin, type_def_is_alias,
-    instantiate_type_generic,
-    semantic::type_check::type_check_context::TypeCheckContext,
+    LuaType, LuaUnionType, TypeSubstitutor, instantiate_type_generic,
+    semantic::type_check::type_check_context::TypeCheckContext, type_def_alias_origin,
+    type_def_is_alias,
 };
 
 use super::{

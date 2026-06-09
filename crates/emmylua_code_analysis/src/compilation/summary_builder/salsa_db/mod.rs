@@ -13,9 +13,9 @@ use crate::{Emmyrc, FileId, Vfs, db_index::Workspace};
 use inputs::SummaryFileListInput;
 
 pub use facade::{
-    SalsaSummaryDocQueries, SalsaSummaryFileQueries,
-    SalsaSummaryFlowQueries, SalsaSummaryLexicalQueries, SalsaSummaryModuleQueries,
-    SalsaSummarySemanticQueries, SalsaSummaryTypeQueries,
+    SalsaSummaryDocQueries, SalsaSummaryFileQueries, SalsaSummaryFlowQueries,
+    SalsaSummaryLexicalQueries, SalsaSummaryModuleQueries, SalsaSummarySemanticQueries,
+    SalsaSummaryTypeQueries,
 };
 use inputs::{
     SummaryConfigInput, SummarySourceFileInput, SummaryWorkspaceInput, snapshot_vfs_file,

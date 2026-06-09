@@ -6,6 +6,7 @@ use emmylua_parser::{
     LuaSyntaxToken, LuaVarExpr, VisibilityKind,
 };
 
+use crate::compilation::{get_current_owner, get_member_by_id};
 use crate::{
     CompilationModuleInfo, DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner,
     LuaSemanticDeclId, LuaType, SemanticModel, try_extract_signature_id_from_field,
@@ -76,9 +77,7 @@ fn check_visibility_by_visibility(
     visibility: VisibilityKind,
 ) -> Option<bool> {
     let member_owner = match property_owner {
-        LuaSemanticDeclId::Member(member_id) => {
-            db.get_member_index().get_current_owner(&member_id)?
-        }
+        LuaSemanticDeclId::Member(member_id) => get_current_owner(db, &member_id)?,
         _ => return Some(true),
     };
 
@@ -209,7 +208,7 @@ fn get_property<'a>(
             let LuaSemanticDeclId::Member(member_id) = property_owner else {
                 return None;
             };
-            let member = db.get_member_index().get_member(member_id)?;
+            let member = get_member_by_id(db, member_id)?;
             let signature_id = try_extract_signature_id_from_field(db, member)?;
             db.get_property_index()
                 .get_property(&LuaSemanticDeclId::Signature(signature_id))
@@ -226,7 +225,7 @@ fn check_member_name(
     property_owner: LuaSemanticDeclId,
 ) -> Option<bool> {
     if let LuaSemanticDeclId::Member(member_id) = property_owner
-        && let Some(member) = db.get_member_index().get_member(&member_id)
+        && let Some(member) = get_member_by_id(db, &member_id)
         && let Some(name) = member.get_key().get_name()
     {
         let config = emmyrc;

@@ -4,8 +4,7 @@ use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaVarExpr};
 
 use crate::{
     CompilationModuleInfo, DiagnosticCode, LuaSemanticDeclId, LuaType, SalsaSemanticTargetSummary,
-    SemanticDeclLevel, SemanticModel,
-    parse_require_module_info,
+    SemanticDeclLevel, SemanticModel, parse_require_module_info,
 };
 
 use super::{Checker, DiagnosticContext, check_field, humanize_lint_type};

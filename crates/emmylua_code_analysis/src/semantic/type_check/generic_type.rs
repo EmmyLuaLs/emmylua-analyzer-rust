@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
+use crate::compilation::{get_member_by_id, get_members, get_type_by_owner};
 use crate::{
-    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeDeclId, RenderLevel,
-    TypeSubstitutor, complete_type_generic_args_in_type, humanize_type,
-    compilation::{get_member_by_id, get_members, get_type_by_owner},
-    infer_compilation_type_super_types, instantiate_type_generic, type_def_alias_origin,
-    type_def_is_alias,
+    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeDeclId, RenderLevel, TypeSubstitutor,
+    complete_type_generic_args_in_type, humanize_type, infer_compilation_type_super_types,
+    instantiate_type_generic,
     semantic::{member::find_members, type_check::type_check_context::TypeCheckContext},
+    type_def_alias_origin, type_def_is_alias,
 };
 
 use super::{
@@ -25,8 +25,7 @@ pub fn check_generic_type_compact(
         let substitutor =
             TypeSubstitutor::from_alias(source_generic.get_params().clone(), base_id.clone());
         if let Some(alias_origin) = type_def_alias_origin(context.db, &base_id) {
-            let instantiated =
-                instantiate_type_generic(context.db, &alias_origin, &substitutor);
+            let instantiated = instantiate_type_generic(context.db, &alias_origin, &substitutor);
             return check_general_type_compact(
                 context,
                 &instantiated,
@@ -54,8 +53,14 @@ pub fn check_generic_type_compact(
                 return Ok(());
             }
 
-            if let Some(supers) = infer_compilation_type_super_types(context.db, &compact_generic.get_base_type_id())
-                .or_else(|| context.db.get_type_index().get_super_types(&compact_generic.get_base_type_id()))
+            if let Some(supers) =
+                infer_compilation_type_super_types(context.db, &compact_generic.get_base_type_id())
+                    .or_else(|| {
+                        context
+                            .db
+                            .get_type_index()
+                            .get_super_types(&compact_generic.get_base_type_id())
+                    })
             {
                 for mut super_type in supers {
                     if super_type.contain_tpl() {
@@ -160,8 +165,9 @@ fn check_generic_type_compact_table(
             Some(table_member_id) => {
                 let table_member = get_member_by_id(context.db, table_member_id)
                     .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-                let table_member_type = get_type_by_owner(context.db, &table_member.get_id().into())
-                    .unwrap_or(LuaType::Any);
+                let table_member_type =
+                    get_type_by_owner(context.db, &table_member.get_id().into())
+                        .unwrap_or(LuaType::Any);
 
                 if let Err(err) = check_general_type_compact(
                     context,
@@ -179,7 +185,8 @@ fn check_generic_type_compact_table(
                             name = key.to_path(),
                             expect =
                                 humanize_type(context.db, &source_member_type, RenderLevel::Simple),
-                            got = humanize_type(context.db, &table_member_type, RenderLevel::Simple)
+                            got =
+                                humanize_type(context.db, &table_member_type, RenderLevel::Simple)
                         )
                         .to_string(),
                     ));
@@ -201,7 +208,8 @@ fn check_generic_type_compact_table(
     // 检查超类型
     let source_base_id = source_generic.get_base_type_id();
     if let Some(supers) = infer_compilation_type_super_types(context.db, &source_base_id)
-        .or_else(|| context.db.get_type_index().get_super_types(&source_base_id)) {
+        .or_else(|| context.db.get_type_index().get_super_types(&source_base_id))
+    {
         let element_range = table_owner
             .get_element_range()
             .ok_or(TypeCheckFailReason::TypeNotMatch)?;
@@ -245,9 +253,13 @@ fn check_generic_type_compact_ref_type(
         );
     }
 
-    for super_type in infer_compilation_type_super_types(context.db, ref_id)
-        .unwrap_or_else(|| context.db.get_type_index().get_super_types(ref_id).unwrap_or_default())
-    {
+    for super_type in infer_compilation_type_super_types(context.db, ref_id).unwrap_or_else(|| {
+        context
+            .db
+            .get_type_index()
+            .get_super_types(ref_id)
+            .unwrap_or_default()
+    }) {
         if check_generic_type_compact(
             context,
             source_generic,

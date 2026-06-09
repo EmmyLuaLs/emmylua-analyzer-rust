@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
+use crate::compilation::get_member_item;
+use crate::compilation::get_member_item;
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
-    check_type_compact, infer_compilation_type_super_types, type_def_alias_origin,
-    type_def_is_alias, type_def_is_class,
+    check_type_compact, infer_compilation_type_super_types,
     semantic::generic::{TypeSubstitutor, instantiate_type_generic},
+    type_def_alias_origin, type_def_is_alias, type_def_is_class,
 };
 
 use super::{RawGetMemberTypeResult, get_buildin_type_map_type_id};
@@ -68,10 +70,8 @@ fn infer_owner_raw_member_type(
     member_owner: LuaMemberOwner,
     member_key: &LuaMemberKey,
 ) -> RawGetMemberTypeResult {
-    let member_item = db
-        .get_member_index()
-        .get_member_item(&member_owner, member_key)
-        .ok_or(InferFailReason::FieldNotFound)?;
+    let member_item =
+        get_member_item(db, &member_owner, member_key).ok_or(InferFailReason::FieldNotFound)?;
     member_item.resolve_type(db)
 }
 
@@ -91,7 +91,7 @@ fn infer_custom_type_raw_member_type(
     }
 
     let owner = LuaMemberOwner::Type(type_id.clone());
-    if let Some(member_item) = db.get_member_index().get_member_item(&owner, member_key) {
+    if let Some(member_item) = get_member_item(db, &owner, member_key) {
         return member_item.resolve_type(db);
     }
 

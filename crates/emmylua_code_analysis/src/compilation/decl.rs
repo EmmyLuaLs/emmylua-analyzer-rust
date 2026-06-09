@@ -4,14 +4,14 @@ use smol_str::SmolStr;
 use std::sync::Arc;
 
 use crate::{
-    AsyncState, DbIndex, DocTypeInferContext, FileId, LuaDeclId, LuaFunctionType, LuaInferCache,
-    LuaGenericType, LuaMemberKey, LuaType, SalsaDeclId, SalsaDeclKindSummary, SalsaDeclSummary,
+    AsyncState, DbIndex, DocTypeInferContext, FileId, LuaDeclId, LuaFunctionType, LuaGenericType,
+    LuaInferCache, LuaMemberKey, LuaType, SalsaDeclId, SalsaDeclKindSummary, SalsaDeclSummary,
     SalsaDeclTreeSummary, SalsaDeclTypeInfoSummary, SalsaDocTagFieldKeySummary,
-    SalsaDocTypeDefKindSummary,
-    SalsaDocTypeNodeKey, SalsaDocTypeRef, SalsaDocVisibilityKindSummary,
-    SalsaPropertyKeySummary, SalsaScopeChildSummary, SalsaScopeKindSummary, SalsaScopeSummary,
-    SalsaSummaryHost, SalsaSyntaxIdSummary, TypeOps, TypeSubstitutor, VariadicType,
-    WorkspaceId, infer_doc_type, infer_expr, instantiate_type_generic,
+    SalsaDocTypeDefKindSummary, SalsaDocTypeNodeKey, SalsaDocTypeRef,
+    SalsaDocVisibilityKindSummary, SalsaPropertyKeySummary, SalsaScopeChildSummary,
+    SalsaScopeKindSummary, SalsaScopeSummary, SalsaSummaryHost, SalsaSyntaxIdSummary, TypeOps,
+    TypeSubstitutor, VariadicType, WorkspaceId, infer_doc_type, infer_expr,
+    instantiate_type_generic,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,21 +93,24 @@ pub fn find_compilation_param_generic_params(
             .generics
             .iter()
             .flat_map(|generic| {
-                generic.params.iter().map(move |param| CompilationGenericParamInfo {
-                    name: param.name.to_string(),
-                    constraint: infer_compilation_doc_type_ref_with_owner(
-                        db,
-                        decl.file_id,
-                        generic.syntax_offset,
-                        param.bound_type.as_ref().map(|info| &info.type_ref),
-                    ),
-                    default_type: infer_compilation_doc_type_ref_with_owner(
-                        db,
-                        decl.file_id,
-                        generic.syntax_offset,
-                        param.default_type.as_ref().map(|info| &info.type_ref),
-                    ),
-                })
+                generic
+                    .params
+                    .iter()
+                    .map(move |param| CompilationGenericParamInfo {
+                        name: param.name.to_string(),
+                        constraint: infer_compilation_doc_type_ref_with_owner(
+                            db,
+                            decl.file_id,
+                            generic.syntax_offset,
+                            param.bound_type.as_ref().map(|info| &info.type_ref),
+                        ),
+                        default_type: infer_compilation_doc_type_ref_with_owner(
+                            db,
+                            decl.file_id,
+                            generic.syntax_offset,
+                            param.default_type.as_ref().map(|info| &info.type_ref),
+                        ),
+                    })
             })
             .collect(),
     )
@@ -121,9 +124,13 @@ pub fn find_compilation_type_generic_params(
     let index = db.get_type_def_reverse_index();
     let defs = index.by_name.get(&SmolStr::new(type_name))?;
     for (file_id, type_def) in defs {
-        let workspace_id = db.resolve_workspace_id(*file_id).unwrap_or(WorkspaceId::MAIN);
+        let workspace_id = db
+            .resolve_workspace_id(*file_id)
+            .unwrap_or(WorkspaceId::MAIN);
         let projected_type_id = match type_def.visibility {
-            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(*file_id, type_name),
+            SalsaDocVisibilityKindSummary::Private => {
+                crate::LuaTypeDeclId::local(*file_id, type_name)
+            }
             SalsaDocVisibilityKindSummary::Internal | SalsaDocVisibilityKindSummary::Package => {
                 crate::LuaTypeDeclId::internal(workspace_id, type_name)
             }
@@ -141,18 +148,22 @@ pub fn find_compilation_type_generic_params(
                 .iter()
                 .map(|param| CompilationGenericParamInfo {
                     name: param.name.to_string(),
-                    constraint: param.type_offset.and_then(|type_offset| infer_compilation_doc_type_key_with_owner(
-                        db,
-                        *file_id,
-                        Some(type_def.syntax_offset),
-                        type_offset,
-                    )),
-                    default_type: param.default_type_offset.and_then(|type_offset| infer_compilation_doc_type_key_with_owner(
-                        db,
-                        *file_id,
-                        Some(type_def.syntax_offset),
-                        type_offset,
-                    )),
+                    constraint: param.type_offset.and_then(|type_offset| {
+                        infer_compilation_doc_type_key_with_owner(
+                            db,
+                            *file_id,
+                            Some(type_def.syntax_offset),
+                            type_offset,
+                        )
+                    }),
+                    default_type: param.default_type_offset.and_then(|type_offset| {
+                        infer_compilation_doc_type_key_with_owner(
+                            db,
+                            *file_id,
+                            Some(type_def.syntax_offset),
+                            type_offset,
+                        )
+                    }),
                 })
                 .collect(),
         );
@@ -174,9 +185,13 @@ pub fn infer_compilation_type_alias_origin(
             continue;
         }
 
-        let workspace_id = db.resolve_workspace_id(*file_id).unwrap_or(WorkspaceId::MAIN);
+        let workspace_id = db
+            .resolve_workspace_id(*file_id)
+            .unwrap_or(WorkspaceId::MAIN);
         let projected_type_id = match type_def.visibility {
-            SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(*file_id, type_name),
+            SalsaDocVisibilityKindSummary::Private => {
+                crate::LuaTypeDeclId::local(*file_id, type_name)
+            }
             SalsaDocVisibilityKindSummary::Internal | SalsaDocVisibilityKindSummary::Package => {
                 crate::LuaTypeDeclId::internal(workspace_id, type_name)
             }
@@ -218,8 +233,8 @@ pub fn build_compilation_signature_doc_function(
         .doc()
         .signature()
         .explain(file_id, signature_offset)?;
-    let signature_owner_offset = signature_generic_owner_offset(&signature)
-        .unwrap_or(signature.signature.syntax_offset);
+    let signature_owner_offset =
+        signature_generic_owner_offset(&signature).unwrap_or(signature.signature.syntax_offset);
 
     let params = signature
         .params
@@ -294,10 +309,7 @@ pub fn infer_compilation_decl_type(db: &DbIndex, decl: &CompilationDeclInfo) -> 
         .and_then(|decl_type| infer_compilation_decl_type_info(db, decl.file_id, decl_type))
 }
 
-pub(crate) fn decl_initializer_type(
-    db: &DbIndex,
-    decl: &CompilationDeclInfo,
-) -> Option<LuaType> {
+pub(crate) fn decl_initializer_type(db: &DbIndex, decl: &CompilationDeclInfo) -> Option<LuaType> {
     let expr_syntax_id = decl.decl_type.as_ref()?.value_expr_syntax_id?;
     let syntax_tree = db.get_vfs().get_syntax_tree(&decl.file_id)?;
     let root = syntax_tree.get_red_root();
@@ -340,9 +352,10 @@ pub fn infer_compilation_type_property_type(
                     (SalsaPropertyKeySummary::Name(field_name), LuaMemberKey::Name(name)) => {
                         field_name == name
                     }
-                    (SalsaPropertyKeySummary::Integer(field_index), LuaMemberKey::Integer(index)) => {
-                        field_index == index
-                    }
+                    (
+                        SalsaPropertyKeySummary::Integer(field_index),
+                        LuaMemberKey::Integer(index),
+                    ) => field_index == index,
                     _ => false,
                 };
                 if !key_matches {
@@ -376,13 +389,18 @@ pub fn infer_compilation_type_property_type(
                     }
 
                     let key_matches = match (&field.key, key) {
-                        (Some(SalsaDocTagFieldKeySummary::Name(field_name)), LuaMemberKey::Name(name))
-                        | (Some(SalsaDocTagFieldKeySummary::String(field_name)), LuaMemberKey::Name(name)) => {
-                            field_name == name
-                        }
-                        (Some(SalsaDocTagFieldKeySummary::Integer(field_index)), LuaMemberKey::Integer(index)) => {
-                            field_index == index
-                        }
+                        (
+                            Some(SalsaDocTagFieldKeySummary::Name(field_name)),
+                            LuaMemberKey::Name(name),
+                        )
+                        | (
+                            Some(SalsaDocTagFieldKeySummary::String(field_name)),
+                            LuaMemberKey::Name(name),
+                        ) => field_name == name,
+                        (
+                            Some(SalsaDocTagFieldKeySummary::Integer(field_index)),
+                            LuaMemberKey::Integer(index),
+                        ) => field_index == index,
                         _ => false,
                     };
                     if !key_matches {
@@ -509,7 +527,12 @@ fn signature_generic_owner_offset(
         .doc_owners
         .first()
         .map(|owner| owner.owner_offset)
-        .or_else(|| signature.generics.first().map(|generic| generic.syntax_offset))
+        .or_else(|| {
+            signature
+                .generics
+                .first()
+                .map(|generic| generic.syntax_offset)
+        })
 }
 
 fn infer_compilation_doc_type_keys(
@@ -519,7 +542,8 @@ fn infer_compilation_doc_type_keys(
 ) -> Option<LuaType> {
     let mut combined = None;
     for type_key in type_keys {
-        let ty = infer_compilation_doc_type_ref(db, file_id, Some(&SalsaDocTypeRef::Node(*type_key)))?;
+        let ty =
+            infer_compilation_doc_type_ref(db, file_id, Some(&SalsaDocTypeRef::Node(*type_key)))?;
         combined = Some(match combined {
             Some(existing) => TypeOps::Union.apply(db, &existing, &ty),
             None => ty,
@@ -537,7 +561,10 @@ fn infer_compilation_decl_type_info(
     if let Some(explicit_type) =
         infer_compilation_doc_type_keys(db, file_id, &decl_type.explicit_type_offsets)
     {
-        return Some(crate::complete_type_generic_args_in_type(db, &explicit_type));
+        return Some(crate::complete_type_generic_args_in_type(
+            db,
+            &explicit_type,
+        ));
     }
 
     let mut named_types = decl_type
@@ -557,15 +584,17 @@ fn infer_compilation_named_type(db: &DbIndex, file_id: FileId, name: &str) -> Lu
         .doc()
         .type_def_by_name(file_id, SmolStr::new(name))
     {
-        let workspace_id = db.resolve_workspace_id(file_id).unwrap_or(WorkspaceId::MAIN);
+        let workspace_id = db
+            .resolve_workspace_id(file_id)
+            .unwrap_or(WorkspaceId::MAIN);
         let type_id = match type_def.visibility {
             SalsaDocVisibilityKindSummary::Private => crate::LuaTypeDeclId::local(file_id, name),
-            SalsaDocVisibilityKindSummary::Internal
-            | SalsaDocVisibilityKindSummary::Package => {
+            SalsaDocVisibilityKindSummary::Internal | SalsaDocVisibilityKindSummary::Package => {
                 crate::LuaTypeDeclId::internal(workspace_id, name)
             }
-            SalsaDocVisibilityKindSummary::Public
-            | SalsaDocVisibilityKindSummary::Protected => crate::LuaTypeDeclId::global(name),
+            SalsaDocVisibilityKindSummary::Public | SalsaDocVisibilityKindSummary::Protected => {
+                crate::LuaTypeDeclId::global(name)
+            }
         };
 
         if type_def.generic_params.is_empty() {

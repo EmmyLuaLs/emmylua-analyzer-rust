@@ -1442,7 +1442,8 @@ fn collect_index_access_member_keys_from_named_type(
             SalsaDocTypeDefKindSummary::Alias | SalsaDocTypeDefKindSummary::Attribute => type_def
                 .value_type_offset
                 .map(|value_type_offset| {
-                    let generic_arg_map = build_default_generic_arg_type_map(&type_def.generic_params);
+                    let generic_arg_map =
+                        build_default_generic_arg_type_map(&type_def.generic_params);
                     if generic_arg_map.is_empty() {
                         collect_index_access_member_keys_from_type_offset(
                             value_type_offset,
@@ -2116,32 +2117,41 @@ fn collect_member_candidates_from_type_offset_with_substitution(
                 }
             }
             SalsaDocTypeKindSummary::Object { fields } => {
-                candidates.extend(fields.iter().filter_map(|field| match &field.key {
-                    SalsaDocObjectFieldKeySummary::Name(name)
-                    | SalsaDocObjectFieldKeySummary::String(name)
-                        if name == member_name =>
-                    {
-                        Some((field.syntax_offset, field.value_type_offset))
-                    }
-                    _ => None,
-                }).flat_map(|(syntax_offset, value_type_offset)| {
-                    substitute_type_offsets_shallow(
-                        value_type_offset,
-                        doc_types,
-                        generic_args,
-                    )
-                    .into_iter()
-                    .map(move |offset| SalsaTypeCandidateSummary {
-                        origin: super::data::SalsaTypeCandidateOriginSummary::Property(syntax_offset),
-                        explicit_type_offsets: vec![offset],
-                        named_type_names: Vec::new(),
-                        initializer_offset: None,
-                        value_expr_syntax_id: None,
-                        value_result_index: 0,
-                        source_call_syntax_id: None,
-                        signature_offset: None,
-                    })
-                }));
+                candidates.extend(
+                    fields
+                        .iter()
+                        .filter_map(|field| match &field.key {
+                            SalsaDocObjectFieldKeySummary::Name(name)
+                            | SalsaDocObjectFieldKeySummary::String(name)
+                                if name == member_name =>
+                            {
+                                Some((field.syntax_offset, field.value_type_offset))
+                            }
+                            _ => None,
+                        })
+                        .flat_map(|(syntax_offset, value_type_offset)| {
+                            substitute_type_offsets_shallow(
+                                value_type_offset,
+                                doc_types,
+                                generic_args,
+                            )
+                            .into_iter()
+                            .map(move |offset| {
+                                SalsaTypeCandidateSummary {
+                                    origin: super::data::SalsaTypeCandidateOriginSummary::Property(
+                                        syntax_offset,
+                                    ),
+                                    explicit_type_offsets: vec![offset],
+                                    named_type_names: Vec::new(),
+                                    initializer_offset: None,
+                                    value_expr_syntax_id: None,
+                                    value_result_index: 0,
+                                    source_call_syntax_id: None,
+                                    signature_offset: None,
+                                }
+                            })
+                        }),
+                );
             }
             SalsaDocTypeKindSummary::Binary {
                 left_type_offset,
@@ -2219,9 +2229,13 @@ fn collect_member_candidates_from_type_offset_with_substitution(
                     let arg_types = arg_type_offsets
                         .iter()
                         .flat_map(|offset| {
-                            substitute_type_offsets_shallow(Some(*offset), doc_types, Some(generic_args))
-                                .into_iter()
-                                .map(SalsaDocTypeRef::Node)
+                            substitute_type_offsets_shallow(
+                                Some(*offset),
+                                doc_types,
+                                Some(generic_args),
+                            )
+                            .into_iter()
+                            .map(SalsaDocTypeRef::Node)
                         })
                         .collect::<Vec<_>>();
                     candidates.extend(collect_member_candidates_from_generic_instance(
@@ -2757,18 +2771,20 @@ fn collect_member_candidates_from_named_type(
                             visited_type_names,
                         ));
                     } else {
-                        candidates.extend(collect_member_candidates_from_type_offset_with_substitution(
-                            value_type_offset,
-                            member_name,
-                            property_query_index,
-                            chunk,
-                            doc,
-                            doc_types,
-                            lowered_types,
-                            visited_offsets,
-                            visited_type_names,
-                            Some(&generic_arg_map),
-                        ));
+                        candidates.extend(
+                            collect_member_candidates_from_type_offset_with_substitution(
+                                value_type_offset,
+                                member_name,
+                                property_query_index,
+                                chunk,
+                                doc,
+                                doc_types,
+                                lowered_types,
+                                visited_offsets,
+                                visited_type_names,
+                                Some(&generic_arg_map),
+                            ),
+                        );
                     }
                 }
             }
@@ -2787,18 +2803,20 @@ fn collect_member_candidates_from_named_type(
                             visited_type_names,
                         ));
                     } else {
-                        candidates.extend(collect_member_candidates_from_type_offset_with_substitution(
-                            *super_type_offset,
-                            member_name,
-                            property_query_index,
-                            chunk,
-                            doc,
-                            doc_types,
-                            lowered_types,
-                            visited_offsets,
-                            visited_type_names,
-                            Some(&generic_arg_map),
-                        ));
+                        candidates.extend(
+                            collect_member_candidates_from_type_offset_with_substitution(
+                                *super_type_offset,
+                                member_name,
+                                property_query_index,
+                                chunk,
+                                doc,
+                                doc_types,
+                                lowered_types,
+                                visited_offsets,
+                                visited_type_names,
+                                Some(&generic_arg_map),
+                            ),
+                        );
                     }
                 }
             }

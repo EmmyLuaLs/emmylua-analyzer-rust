@@ -52,7 +52,8 @@ local result = map(1) ---@as string
     let doc = doc_queries.summary(FileId::new(8)).expect("doc summary");
     let doc_types = doc_queries.types(FileId::new(8)).expect("doc type summary");
     let signatures = doc_queries
-        .signature().summary(FileId::new(8))
+        .signature()
+        .summary(FileId::new(8))
         .expect("signature summary");
 
     assert!(doc.type_defs.iter().any(|type_def| matches!(
@@ -568,7 +569,8 @@ local wrapped = fn(3)"#,
 
     let signature_summary = compilation
         .doc()
-        .signature().summary(FileId::new(9))
+        .signature()
+        .summary(FileId::new(9))
         .expect("signature and call summary");
 
     assert!(

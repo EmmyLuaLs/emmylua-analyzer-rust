@@ -1,5 +1,7 @@
 use emmylua_parser::{BinaryOperator, LuaAstNode, LuaCallExpr, LuaChunk, LuaDocOpType};
 
+use crate::compilation::get_type_cache;
+use crate::compilation::get_type_cache;
 use crate::{
     DbIndex, FileId, FlowId, FlowNodeKind, FlowTree, InFiled, InferFailReason, LuaInferCache,
     LuaType, LuaTypeOwner, TypeOps, semantic::infer::narrow::condition_flow::InferConditionFlow,

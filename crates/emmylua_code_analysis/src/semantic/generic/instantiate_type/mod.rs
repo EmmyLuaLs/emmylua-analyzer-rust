@@ -6,17 +6,17 @@ mod instantiate_special_generic;
 use hashbrown::{HashMap, HashSet};
 use std::{ops::Deref, sync::Arc};
 
+use crate::compilation::{find_signature_by_id, get_operator, get_operators};
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
     LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
-    LuaTypeNode, TypeOps, build_compilation_signature_doc_function, type_def_alias_origin,
-    type_def_is_alias,
-    compilation::{get_operator, get_operators},
+    LuaTypeNode, TypeOps, build_compilation_signature_doc_function,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
         VariadicType,
     },
     semantic::infer::InferFailReason,
+    type_def_alias_origin, type_def_is_alias,
 };
 
 use super::type_substitutor::{
@@ -90,7 +90,7 @@ fn collect_callable_overload_groups_inner(
                 sig_id.get_file_id(),
                 sig_id.get_position(),
             );
-            let Some(signature) = db.get_signature_index().get(sig_id) else {
+            let Some(signature) = find_signature_by_id(db, &sig_id) else {
                 if let Some(projected) = projected {
                     groups.push(vec![projected]);
                 }
@@ -538,7 +538,7 @@ fn instantiate_signature(
         return LuaType::Signature(*signature_id);
     };
 
-    if let Some(signature) = context.db.get_signature_index().get(signature_id) {
+    if let Some(signature) = find_signature_by_id(context.db, &signature_id) {
         let origin_type = {
             let fake_doc_function = signature.to_doc_func_type();
             instantiate_doc_function_with_context(context, &fake_doc_function)

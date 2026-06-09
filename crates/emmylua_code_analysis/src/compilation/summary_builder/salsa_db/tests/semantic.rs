@@ -16,7 +16,10 @@ fn test_summary_builder_signature_generic_param_lookup_preserves_default_type() 
     );
 
     let doc = compilation.doc();
-    let signatures = doc.signature().summary(FileId::new(30)).expect("signature summary");
+    let signatures = doc
+        .signature()
+        .summary(FileId::new(30))
+        .expect("signature summary");
     let signature = signatures
         .signatures
         .iter()
@@ -69,7 +72,10 @@ print(result)"#;
 
     let summary = file.summary(FileId::new(10)).expect("file summary");
     let decl_tree = file.decl_tree(FileId::new(10)).expect("decl tree summary");
-    let signatures = doc.signature().summary(FileId::new(10)).expect("signature summary");
+    let signatures = doc
+        .signature()
+        .summary(FileId::new(10))
+        .expect("signature summary");
     let owner_bindings = doc
         .owner_bindings(FileId::new(10))
         .expect("doc owner binding summary");
@@ -195,7 +201,8 @@ print(result)"#;
         }])
     );
     assert_eq!(
-        doc.signature().owner_resolves(FileId::new(10), run_signature_offset),
+        doc.signature()
+            .owner_resolves(FileId::new(10), run_signature_offset),
         Some(vec![SalsaDocOwnerResolveSummary {
             owner_kind: SalsaDocOwnerKindSummary::FuncStat,
             owner_offset: owner_bindings
@@ -499,7 +506,10 @@ local out = Box:run(1)"#;
     set_test_file(&mut compilation, 20, "C:/ws/signature_explain.lua", source);
 
     let doc = compilation.doc();
-    let signature_summary = doc.signature().summary(FileId::new(20)).expect("signature summary");
+    let signature_summary = doc
+        .signature()
+        .summary(FileId::new(20))
+        .expect("signature summary");
     let signature_offset = signature_summary
         .signatures
         .iter()
@@ -524,7 +534,8 @@ local out = Box:run(1)"#;
         .expect("semantic signature summary");
 
     let call_explain = doc
-        .signature().call_explain(FileId::new(20), call_offset)
+        .signature()
+        .call_explain(FileId::new(20), call_offset)
         .expect("call explain");
 
     assert_eq!(
@@ -613,7 +624,8 @@ local out = Box:run(1)"#;
     );
 
     let explain_index = doc
-        .signature().explain_index(FileId::new(20))
+        .signature()
+        .explain_index(FileId::new(20))
         .expect("signature explain index");
     assert!(
         explain_index
@@ -707,7 +719,10 @@ local value = make(1)"#;
     );
 
     let doc = compilation.doc();
-    let signature_summary = doc.signature().summary(FileId::new(21)).expect("signature summary");
+    let signature_summary = doc
+        .signature()
+        .summary(FileId::new(21))
+        .expect("signature summary");
     let call_offset = signature_summary
         .calls
         .iter()
@@ -716,7 +731,8 @@ local value = make(1)"#;
         .expect("call offset");
 
     let call_explain = doc
-        .signature().call_explain(FileId::new(21), call_offset)
+        .signature()
+        .call_explain(FileId::new(21), call_offset)
         .expect("call explain");
 
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);
@@ -758,7 +774,10 @@ local value = pick()"#;
     );
 
     let doc = compilation.doc();
-    let signature_summary = doc.signature().summary(FileId::new(22)).expect("signature summary");
+    let signature_summary = doc
+        .signature()
+        .summary(FileId::new(22))
+        .expect("signature summary");
     let call_offset = signature_summary
         .calls
         .iter()
@@ -767,7 +786,8 @@ local value = pick()"#;
         .expect("call offset");
 
     let call_explain = doc
-        .signature().call_explain(FileId::new(22), call_offset)
+        .signature()
+        .call_explain(FileId::new(22), call_offset)
         .expect("call explain");
 
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);
@@ -812,7 +832,10 @@ local value = Box:run(1)"#;
     );
 
     let doc = compilation.doc();
-    let signature_summary = doc.signature().summary(FileId::new(23)).expect("signature summary");
+    let signature_summary = doc
+        .signature()
+        .summary(FileId::new(23))
+        .expect("signature summary");
     let call_offset = signature_summary
         .calls
         .iter()
@@ -821,7 +844,8 @@ local value = Box:run(1)"#;
         .expect("call offset");
 
     let call_explain = doc
-        .signature().call_explain(FileId::new(23), call_offset)
+        .signature()
+        .call_explain(FileId::new(23), call_offset)
         .expect("call explain");
 
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);
@@ -863,7 +887,10 @@ local ok, value = parse()"#;
     );
 
     let doc = compilation.doc();
-    let signature_summary = doc.signature().summary(FileId::new(24)).expect("signature summary");
+    let signature_summary = doc
+        .signature()
+        .summary(FileId::new(24))
+        .expect("signature summary");
     let call_offset = signature_summary
         .calls
         .iter()
@@ -872,7 +899,8 @@ local ok, value = parse()"#;
         .expect("call offset");
 
     let call_explain = doc
-        .signature().call_explain(FileId::new(24), call_offset)
+        .signature()
+        .call_explain(FileId::new(24), call_offset)
         .expect("call explain");
 
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);
@@ -919,7 +947,10 @@ local out = choose(1)"#;
     );
 
     let doc = compilation.doc();
-    let signature_summary = doc.signature().summary(FileId::new(25)).expect("signature summary");
+    let signature_summary = doc
+        .signature()
+        .summary(FileId::new(25))
+        .expect("signature summary");
     let call_offset = signature_summary
         .calls
         .iter()
@@ -928,7 +959,8 @@ local out = choose(1)"#;
         .expect("call offset");
 
     let call_explain = doc
-        .signature().call_explain(FileId::new(25), call_offset)
+        .signature()
+        .call_explain(FileId::new(25), call_offset)
         .expect("call explain");
 
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);
@@ -969,7 +1001,10 @@ local out = pick("x")"#;
     );
 
     let doc = compilation.doc();
-    let signature_summary = doc.signature().summary(FileId::new(26)).expect("signature summary");
+    let signature_summary = doc
+        .signature()
+        .summary(FileId::new(26))
+        .expect("signature summary");
     let call_offset = signature_summary
         .calls
         .iter()
@@ -978,7 +1013,8 @@ local out = pick("x")"#;
         .expect("call offset");
 
     let call_explain = doc
-        .signature().call_explain(FileId::new(26), call_offset)
+        .signature()
+        .call_explain(FileId::new(26), call_offset)
         .expect("call explain");
 
     assert_eq!(call_explain.candidate_signature_offsets.len(), 1);

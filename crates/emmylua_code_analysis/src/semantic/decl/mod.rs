@@ -6,8 +6,7 @@ use rowan::NodeOrToken;
 use crate::{
     CompilationModuleInfo, DbIndex, LuaDecl, LuaDeclId, LuaInferCache, LuaSemanticDeclId, LuaType,
     SalsaDeclKindSummary, SemanticDeclLevel, SemanticModel, find_compilation_decl_by_position,
-    infer_node_semantic_decl, type_def_is_enum,
-    semantic::semantic_info::infer_token_semantic_decl,
+    infer_node_semantic_decl, semantic::semantic_info::infer_token_semantic_decl, type_def_is_enum,
 };
 
 pub fn enum_variable_is_param(

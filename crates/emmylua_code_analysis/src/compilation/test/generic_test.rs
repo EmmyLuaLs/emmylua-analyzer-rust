@@ -3,13 +3,10 @@ mod test {
     use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaIndexExpr};
 
     use crate::{
-        DiagnosticCode, DocTypeInferContext, LuaMemberKey, LuaSignatureId,
-        LuaType, LuaTypeDeclId, TypeSubstitutor, VirtualWorkspace, compilation::global_type,
-        complete_type_generic_args,
+        DiagnosticCode, DocTypeInferContext, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId,
+        TypeSubstitutor, VirtualWorkspace, compilation::global_type, complete_type_generic_args,
         find_members_with_key, infer_compilation_type_property_type,
-        infer_compilation_type_super_types,
-        infer_doc_type,
-        instantiate_type_generic,
+        infer_compilation_type_super_types, infer_doc_type, instantiate_type_generic,
     };
 
     #[test]
@@ -1052,21 +1049,21 @@ mod test {
             .expect("Parent summary properties");
         let parent_value_property = parent_properties
             .iter()
-            .find(|property| matches!(
-                &property.key,
-                crate::SalsaPropertyKeySummary::Name(name) if name == "value"
-            ))
+            .find(|property| {
+                matches!(
+                    &property.key,
+                    crate::SalsaPropertyKeySummary::Name(name) if name == "value"
+                )
+            })
             .expect("Parent.value summary property");
-        let resolved_property_type = parent_value_property
-            .doc_type_offset
-            .and_then(|type_key| {
-                ws.analysis
-                    .compilation
-                    .get_db()
-                    .get_summary_db()
-                    .doc()
-                    .resolved_type_by_key(file_id, type_key)
-            });
+        let resolved_property_type = parent_value_property.doc_type_offset.and_then(|type_key| {
+            ws.analysis
+                .compilation
+                .get_db()
+                .get_summary_db()
+                .doc()
+                .resolved_type_by_key(file_id, type_key)
+        });
         let reconstructed_property_type = resolved_property_type.as_ref().and_then(|resolved| {
             let tree = ws
                 .analysis
@@ -1137,7 +1134,10 @@ mod test {
         assert_eq!(ws.humanize_type(parent_value), "T");
         assert_eq!(ws.humanize_type(box_super_types[0].clone()), "Parent<T>");
         assert_eq!(ws.humanize_type(instantiated_parent), "Parent<string>");
-        assert_eq!(ws.humanize_type(instantiated_parent_members[0].typ.clone()), "string");
+        assert_eq!(
+            ws.humanize_type(instantiated_parent_members[0].typ.clone()),
+            "string"
+        );
         assert_eq!(members.len(), 1);
         assert_eq!(ws.humanize_type(members[0].typ.clone()), "string");
         assert_eq!(ws.humanize_type(info.typ), "string");

@@ -2,6 +2,8 @@ use std::{ops::Deref, sync::Arc};
 
 use emmylua_parser::{LuaCallExpr, LuaExpr, LuaIndexMemberExpr};
 
+use crate::compilation::find_signature_by_id;
+use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, FlowNode, InferFailReason, LuaAliasCallKind, LuaAliasCallType, LuaFunctionType,
     LuaInferCache, LuaSignatureId, LuaType,
@@ -126,7 +128,7 @@ pub(super) fn get_type_at_call_expr_by_func(
             }
         }
         LuaType::Signature(signature_id) => {
-            let Some(signature) = db.get_signature_index().get(&signature_id) else {
+            let Some(signature) = find_signature_by_id(db, &signature_id) else {
                 return Ok(ConditionFlowAction::Continue);
             };
 
@@ -313,7 +315,7 @@ fn get_type_at_call_expr_by_signature_param_name(
         return Ok(ConditionFlowAction::Continue);
     };
 
-    let Some(signature) = db.get_signature_index().get(&signature_id) else {
+    let Some(signature) = find_signature_by_id(db, &signature_id) else {
         return Ok(ConditionFlowAction::Continue);
     };
 

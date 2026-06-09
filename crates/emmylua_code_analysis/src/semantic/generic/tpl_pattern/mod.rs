@@ -8,6 +8,8 @@ use itertools::Itertools;
 use rowan::NodeOrToken;
 use smol_str::SmolStr;
 
+use crate::compilation::find_signature_by_id;
+use crate::compilation::find_signature_by_id;
 use crate::{
     InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType,
     LuaSemanticDeclId, LuaTupleType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, SemanticDeclLevel,
@@ -585,11 +587,8 @@ fn func_tpl_pattern_match(
             func_tpl_pattern_match_doc_func(context, tpl_func, target_doc_func)?;
         }
         LuaType::Signature(signature_id) => {
-            let signature = context
-                .db
-                .get_signature_index()
-                .get(signature_id)
-                .ok_or(InferFailReason::None)?;
+            let signature =
+                find_signature_by_id(context.db, &signature_id).ok_or(InferFailReason::None)?;
             if !signature.is_resolve_return() {
                 return lambda_tpl_pattern::check_lambda_tpl_pattern(context, *signature_id);
             }
@@ -1010,11 +1009,9 @@ fn try_handle_pairs_metamethod(
         .ok_or(InferFailReason::None)?;
     // 获取迭代函数返回类型
     let meta_return = match &pairs_member.typ {
-        LuaType::Signature(signature_id) => context
-            .db
-            .get_signature_index()
-            .get(signature_id)
-            .map(|s| s.get_return_type()),
+        LuaType::Signature(signature_id) => {
+            find_signature_by_id(context.db, &signature_id).map(|s| s.get_return_type())
+        }
         LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
         _ => None,
     }
@@ -1023,11 +1020,9 @@ fn try_handle_pairs_metamethod(
     // 解析出迭代函数返回类型
     let final_return_type = match meta_return {
         LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
-        LuaType::Signature(signature_id) => context
-            .db
-            .get_signature_index()
-            .get(&signature_id)
-            .map(|s| s.get_return_type()),
+        LuaType::Signature(signature_id) => {
+            find_signature_by_id(context.db, &signature_id).map(|s| s.get_return_type())
+        }
         _ => None,
     };
 

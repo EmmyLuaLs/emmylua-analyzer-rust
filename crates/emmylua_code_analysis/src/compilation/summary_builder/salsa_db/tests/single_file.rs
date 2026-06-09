@@ -39,7 +39,10 @@ return Box"#;
     let summary = file.summary(FileId::new(11)).expect("file summary");
     let decl_tree = file.decl_tree(FileId::new(11)).expect("decl tree");
     let properties = file.properties(FileId::new(11)).expect("properties");
-    let signatures = doc.signature().summary(FileId::new(11)).expect("signatures");
+    let signatures = doc
+        .signature()
+        .summary(FileId::new(11))
+        .expect("signatures");
     let owner_bindings = doc.owner_bindings(FileId::new(11)).expect("owner bindings");
     let use_sites = lexical.use_sites(FileId::new(11)).expect("use sites");
     let module_summary = module.summary(FileId::new(11)).expect("module summary");
@@ -236,7 +239,8 @@ return Box"#;
         .expect("Box decl id");
     let run_signature_offset = compilation
         .doc()
-        .signature().summary(FileId::new(13))
+        .signature()
+        .summary(FileId::new(13))
         .expect("signature summary")
         .signatures
         .iter()

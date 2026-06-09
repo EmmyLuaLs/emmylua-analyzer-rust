@@ -208,17 +208,20 @@ mod test {
         let name_expr = tree
             .get_chunk_node()
             .descendants::<LuaNameExpr>()
-            .find(|name_expr| name_expr.get_name_text().is_some_and(|name| name == "BoxDefault"))
+            .find(|name_expr| {
+                name_expr
+                    .get_name_text()
+                    .is_some_and(|name| name == "BoxDefault")
+            })
             .expect("BoxDefault name expr");
         let doc_type = tree
             .get_chunk_node()
             .descendants::<LuaDocType>()
             .find(|doc_type| {
                 doc_type.syntax().text() == "Box"
-                    && doc_type
-                        .syntax()
-                        .ancestors()
-                        .any(|ancestor| ancestor.kind() == emmylua_parser::LuaSyntaxKind::DocTagType.into())
+                    && doc_type.syntax().ancestors().any(|ancestor| {
+                        ancestor.kind() == emmylua_parser::LuaSyntaxKind::DocTagType.into()
+                    })
             })
             .expect("Box doc type");
         let decl = find_compilation_decl_by_position(
@@ -228,9 +231,10 @@ mod test {
         )
         .expect("compilation decl");
         let type_id = crate::LuaTypeDeclId::global("Box");
-        let completed = complete_type_generic_args(ws.analysis.compilation.get_db(), &type_id, Vec::new())
-            .completed_args
-            .expect("completed args");
+        let completed =
+            complete_type_generic_args(ws.analysis.compilation.get_db(), &type_id, Vec::new())
+                .completed_args
+                .expect("completed args");
         let summary_type_def = ws
             .analysis
             .compilation
@@ -250,15 +254,15 @@ mod test {
             .doc()
             .resolved_type_by_key(file_id, default_type_key)
             .expect("resolved summary default type");
-            let reconstructed_default_doc_type = LuaDocType::cast(
-                resolved_default_type
-                    .doc_type
-                    .syntax_id
-                    .to_lua_syntax_id()
-                    .to_node_from_root(&tree.get_red_root())
-                    .expect("default type syntax node"),
-            )
-            .expect("default type doc node");
+        let reconstructed_default_doc_type = LuaDocType::cast(
+            resolved_default_type
+                .doc_type
+                .syntax_id
+                .to_lua_syntax_id()
+                .to_node_from_root(&tree.get_red_root())
+                .expect("default type syntax node"),
+        )
+        .expect("default type doc node");
         let direct_doc_type = infer_doc_type(
             DocTypeInferContext::new(ws.analysis.compilation.get_db(), file_id),
             &doc_type,
@@ -266,8 +270,8 @@ mod test {
 
         let decl_type = infer_compilation_decl_type(ws.analysis.compilation.get_db(), &decl)
             .expect("compilation decl type");
-        let global = global_type(ws.analysis.compilation.get_db(), "BoxDefault")
-            .expect("global type");
+        let global =
+            global_type(ws.analysis.compilation.get_db(), "BoxDefault").expect("global type");
 
         assert_eq!(completed.len(), 0);
         assert_eq!(summary_type_def.generic_params.len(), 1);
@@ -277,10 +281,16 @@ mod test {
         );
         assert_eq!(reconstructed_default_doc_type.syntax().text(), "string");
         let LuaType::Generic(direct_generic) = &direct_doc_type else {
-            panic!("expected direct doc type generic, got {:?}", direct_doc_type);
+            panic!(
+                "expected direct doc type generic, got {:?}",
+                direct_doc_type
+            );
         };
         assert_eq!(direct_generic.get_params().len(), 1);
-        assert_eq!(ws.humanize_type(direct_generic.get_params()[0].clone()), "string");
+        assert_eq!(
+            ws.humanize_type(direct_generic.get_params()[0].clone()),
+            "string"
+        );
         assert_eq!(ws.humanize_type(direct_doc_type), "Box<string>");
         assert_eq!(ws.humanize_type(decl_type), "Box<string>");
         assert_eq!(ws.humanize_type(global), "Box<string>");
@@ -310,29 +320,47 @@ mod test {
             .get_chunk_node()
             .descendants::<LuaDocType>()
             .filter(|doc_type| doc_type.syntax().text() == "T")
-            .map(|doc_type| infer_doc_type(
-                DocTypeInferContext::new(ws.analysis.compilation.get_db(), file_id),
-                &doc_type,
-            ))
+            .map(|doc_type| {
+                infer_doc_type(
+                    DocTypeInferContext::new(ws.analysis.compilation.get_db(), file_id),
+                    &doc_type,
+                )
+            })
             .collect::<Vec<_>>();
 
         assert_eq!(generic_refs.len(), 2);
 
         let LuaType::TplRef(first_tpl) = &generic_refs[0] else {
-            panic!("expected first type generic tpl ref, got {:?}", generic_refs[0]);
+            panic!(
+                "expected first type generic tpl ref, got {:?}",
+                generic_refs[0]
+            );
         };
         let LuaType::TplRef(second_tpl) = &generic_refs[1] else {
-            panic!("expected second type generic tpl ref, got {:?}", generic_refs[1]);
+            panic!(
+                "expected second type generic tpl ref, got {:?}",
+                generic_refs[1]
+            );
         };
 
         assert_eq!(first_tpl.get_tpl_id(), GenericTplId::Type(0));
         assert_eq!(second_tpl.get_tpl_id(), GenericTplId::Type(0));
         assert_eq!(
-            ws.humanize_type(first_tpl.get_constraint().cloned().expect("first constraint")),
+            ws.humanize_type(
+                first_tpl
+                    .get_constraint()
+                    .cloned()
+                    .expect("first constraint")
+            ),
             "string"
         );
         assert_eq!(
-            ws.humanize_type(second_tpl.get_constraint().cloned().expect("second constraint")),
+            ws.humanize_type(
+                second_tpl
+                    .get_constraint()
+                    .cloned()
+                    .expect("second constraint")
+            ),
             "integer"
         );
     }

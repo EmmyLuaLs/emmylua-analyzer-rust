@@ -4,11 +4,11 @@ use emmylua_parser::{
 };
 use rowan::TextSize;
 
+use crate::compilation::{find_decl_by_id, get_member_by_id, get_member_item, get_type_by_owner};
 use crate::{
     DbIndex, FileId, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType,
     LuaIntersectionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType,
     LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, TypeOps,
-    compilation::{get_member_by_id, get_member_item, get_type_by_owner},
     find_compilation_decl_by_position,
     module_query::{export::infer_module_export_type, identity::find_db_module_info},
     semantic::{
@@ -73,13 +73,12 @@ fn infer_name_expr_semantic_decl(
 
     let decl_id = get_name_decl_id(db, cache, &name, name_expr.clone())?;
     let decl_info = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position);
-    let decl = db.get_decl_index().get_decl(&decl_id)?;
+    let decl = find_decl_by_id(db, &decl_id)?;
     if semantic_guard.reached_limit() {
         return Some(LuaSemanticDeclId::LuaDecl(decl_id));
     }
 
-    let decl_type = get_type_by_owner(db, &decl_id.into())
-        .unwrap_or(LuaType::Unknown);
+    let decl_type = get_type_by_owner(db, &decl_id.into()).unwrap_or(LuaType::Unknown);
     let remove_nil_type = TypeOps::Remove.apply(db, &decl_type, &LuaType::Nil);
     let is_ref_object = remove_nil_type.is_function() || remove_nil_type.is_table();
     if decl.is_local() && !is_ref_object {

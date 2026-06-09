@@ -81,7 +81,8 @@ if x then return x end"#;
         .summary(FileId::new(1))
         .expect("summary builder flow summary");
     let signature_summary = doc
-        .signature().summary(FileId::new(1))
+        .signature()
+        .summary(FileId::new(1))
         .expect("summary builder signature summary");
     let doc_owner_binding_summary = doc
         .owner_bindings(FileId::new(1))

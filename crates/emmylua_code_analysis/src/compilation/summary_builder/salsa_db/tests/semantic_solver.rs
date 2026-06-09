@@ -38,7 +38,8 @@ end
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(601))
+        .signature()
+        .summary(FileId::new(601))
         .expect("signature summary")
         .signatures
         .clone();
@@ -228,7 +229,8 @@ end
         .expect("graph scc index");
     let signature_return_index = compilation
         .doc()
-        .signature().return_index(FileId::new(601))
+        .signature()
+        .return_index(FileId::new(601))
         .expect("signature return index");
     let decl_type_index = compilation
         .types()
@@ -248,7 +250,8 @@ end
         .expect("use sites");
     let signature_explain_index = compilation
         .doc()
-        .signature().explain_index(FileId::new(601))
+        .signature()
+        .explain_index(FileId::new(601))
         .expect("signature explain index");
     let module_export = compilation
         .semantic()
@@ -305,12 +308,13 @@ end
     );
     assert!(!semantic_solver_execution_is_complete(&next_execution));
 
-    let final_execution = execution.tasks.iter().map(|task| task.component_id).fold(
-        next_execution.clone(),
-        |execution_state, component_id| {
+    let final_execution = execution
+        .tasks
+        .iter()
+        .map(|task| task.component_id)
+        .fold(next_execution.clone(), |execution_state, component_id| {
             complete_task(&execution_state, component_id)
-        },
-    );
+        });
     assert!(semantic_solver_execution_is_complete(&final_execution));
 }
 
@@ -350,7 +354,8 @@ return resolved
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(602))
+        .signature()
+        .summary(FileId::new(602))
         .expect("signature summary")
         .signatures
         .clone();
@@ -808,7 +813,8 @@ return resolved
         .expect("scc index");
     let signature_return_index = compilation
         .doc()
-        .signature().return_index(FileId::new(602))
+        .signature()
+        .return_index(FileId::new(602))
         .expect("signature return index");
     let use_sites = compilation
         .lexical()
@@ -816,7 +822,8 @@ return resolved
         .expect("use sites");
     let signature_explain_index = compilation
         .doc()
-        .signature().explain_index(FileId::new(602))
+        .signature()
+        .explain_index(FileId::new(602))
         .expect("signature explain index");
     let module_export = compilation
         .semantic()
@@ -1510,7 +1517,8 @@ local value = make(1)
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(614))
+        .signature()
+        .summary(FileId::new(614))
         .expect("signature summary")
         .signatures
         .clone();
@@ -1573,7 +1581,8 @@ local first, second = pair()
 
     let signature = compilation
         .doc()
-        .signature().summary(FileId::new(616))
+        .signature()
+        .summary(FileId::new(616))
         .expect("signature summary")
         .signatures
         .clone()
@@ -1716,7 +1725,8 @@ holder.first, holder.second = pair()
 
     let signature = compilation
         .doc()
-        .signature().summary(FileId::new(621))
+        .signature()
+        .summary(FileId::new(621))
         .expect("signature summary")
         .signatures
         .clone()
@@ -2101,7 +2111,8 @@ end
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(603))
+        .signature()
+        .summary(FileId::new(603))
         .expect("signature summary")
         .signatures
         .clone();
@@ -2147,7 +2158,8 @@ end
         .expect("member type index");
     let signature_return_index = compilation
         .doc()
-        .signature().return_index(FileId::new(603))
+        .signature()
+        .return_index(FileId::new(603))
         .expect("signature return index");
     let for_range_iter_index = compilation
         .flow()
@@ -2159,7 +2171,8 @@ end
         .expect("use sites");
     let signature_explain_index = compilation
         .doc()
-        .signature().explain_index(FileId::new(603))
+        .signature()
+        .explain_index(FileId::new(603))
         .expect("signature explain index");
     let module_export = compilation
         .semantic()

@@ -8,20 +8,19 @@ use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
 
+use crate::compilation::{
+    get_member_item, get_members, get_operator, get_operators, get_type_by_owner,
+};
 use crate::{
     CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
     LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
-    complete_type_generic_args, get_type_def_kind, type_def_alias_origin, type_def_is_alias,
-    type_def_is_class, type_def_is_enum,
-    compilation::{
-        infer_compilation_type_property_type, infer_compilation_type_super_types,
-        get_member_item, get_members, get_operator, get_operators, get_type_by_owner,
-    },
+    complete_type_generic_args,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type,
+    enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type, get_type_def_kind,
+    infer_compilation_type_property_type, infer_compilation_type_super_types,
     module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
@@ -38,6 +37,7 @@ use crate::{
         member::intersect_member_types,
         type_check::check_type_compact,
     },
+    type_def_alias_origin, type_def_is_alias, type_def_is_class, type_def_is_enum,
 };
 
 use super::{
@@ -397,7 +397,8 @@ fn infer_custom_type_member(
     }
 
     let owner = LuaMemberOwner::Type(prefix_type_id.clone());
-    if let Some(summary_type) = infer_compilation_type_property_type(db, &prefix_type_id, &lookup.key)
+    if let Some(summary_type) =
+        infer_compilation_type_property_type(db, &prefix_type_id, &lookup.key)
     {
         return Ok(if let Some(substitutor) = &generic_substitutor {
             instantiate_type_generic(db, &summary_type, substitutor)
@@ -486,8 +487,8 @@ fn infer_matching_member_key_type(
             _ => continue,
         };
         if check_type_compact(db, key_type, &member_key_type).is_ok() {
-            let member_type = get_type_by_owner(db, &member.get_id().into())
-                .unwrap_or(LuaType::Unknown);
+            let member_type =
+                get_type_by_owner(db, &member.get_id().into()).unwrap_or(LuaType::Unknown);
 
             result_types.push(member_type);
         }
@@ -871,8 +872,7 @@ fn infer_member_by_index_table(
                 .ok_or(InferFailReason::FieldNotFound)?;
 
             for operator_id in &operator_ids {
-                let operator = get_operator(db, operator_id)
-                    .ok_or(InferFailReason::None)?;
+                let operator = get_operator(db, operator_id).ok_or(InferFailReason::None)?;
                 let operand = operator.get_operand(db);
                 let return_type = operator.get_result(db)?;
                 if let Ok(typ) =
@@ -912,12 +912,13 @@ fn infer_member_by_index_custom_type(
         return Err(InferFailReason::None);
     }
 
-    if let Some(index_operator_ids) =
-        get_operators(db, &prefix_type_id.clone().into(), LuaOperatorMetaMethod::Index)
-    {
+    if let Some(index_operator_ids) = get_operators(
+        db,
+        &prefix_type_id.clone().into(),
+        LuaOperatorMetaMethod::Index,
+    ) {
         for operator_id in &index_operator_ids {
-            let operator = get_operator(db, operator_id)
-                .ok_or(InferFailReason::None)?;
+            let operator = get_operator(db, operator_id).ok_or(InferFailReason::None)?;
             let operand = operator.get_operand(db);
             let return_type = operator.get_result(db)?;
             let typ = infer_index_metamethod_by_key_type(db, key_type, &operand, &return_type);
@@ -1037,11 +1038,10 @@ fn infer_member_by_index_generic(
         &type_decl_id.clone().into(),
         LuaOperatorMetaMethod::Index,
     );
-    if let Some(index_operator_ids) = operator_ids
-    {
+    if let Some(index_operator_ids) = operator_ids {
         for index_operator_id in &index_operator_ids {
-            let index_operator = get_operator(db, index_operator_id)
-                .ok_or(InferFailReason::None)?;
+            let index_operator =
+                get_operator(db, index_operator_id).ok_or(InferFailReason::None)?;
             let operand = index_operator.get_operand(db);
             let instianted_operand = instantiate_type_generic(db, &operand, &substitutor);
             let return_type =
@@ -1064,7 +1064,8 @@ fn infer_member_by_index_generic(
 
     // for supers
     if let Some(supers) = infer_compilation_type_super_types(db, &type_decl_id)
-        .or_else(|| db.get_type_index().get_super_types(&type_decl_id)) {
+        .or_else(|| db.get_type_index().get_super_types(&type_decl_id))
+    {
         for super_type in supers {
             let result = infer_member_by_operator_key_type(
                 db,

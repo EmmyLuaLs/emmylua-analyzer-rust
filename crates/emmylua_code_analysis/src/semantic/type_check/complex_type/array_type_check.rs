@@ -1,3 +1,4 @@
+use crate::compilation::{get_member_item, get_member_len};
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaType, TypeCheckFailReason, TypeCheckResult, TypeOps,
     find_index_operations,
@@ -119,12 +120,10 @@ fn check_array_type_compact_table(
     table_owner: LuaMemberOwner,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let member_index = context.db.get_member_index();
-
     let member_len = member_index.get_member_len(&table_owner);
     for i in 0..member_len {
         let key = LuaMemberKey::Integer((i + 1) as i64);
-        if let Some(member_item) = member_index.get_member_item(&table_owner, &key) {
+        if let Some(member_item) = get_member_item(db, &table_owner, &key) {
             let member_type = member_item
                 .resolve_type(context.db)
                 .map_err(|_| TypeCheckFailReason::TypeNotMatch)?;

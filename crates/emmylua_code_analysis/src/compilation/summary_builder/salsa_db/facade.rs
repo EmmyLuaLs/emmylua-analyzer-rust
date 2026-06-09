@@ -13,16 +13,15 @@ use crate::{
 use rowan::TextSize;
 use std::sync::Arc;
 
-use crate::compilation::summary_builder::query::SalsaDocTypeDefQueryIndex;
 use super::{SalsaSummaryDatabase, tracked};
+use crate::compilation::summary_builder::query::SalsaDocTypeDefQueryIndex;
 use crate::{
     SalsaCallExplainSummary, SalsaCallUseSummary, SalsaDeclId, SalsaDeclTreeSummary,
     SalsaDeclTypeInfoSummary, SalsaDeclTypeQueryIndex, SalsaDocOwnerBindingIndexSummary,
     SalsaDocOwnerResolveIndex, SalsaDocOwnerResolveSummary, SalsaDocOwnerSummary, SalsaDocSummary,
-    SalsaDocTagKindSummary, SalsaDocTagPropertySummary, SalsaDocTagSummary,
-    SalsaDocTypeDefSummary, SalsaDocTypeIndexSummary, SalsaDocTypeLoweredIndex,
-    SalsaDocTypeLoweredNode, SalsaDocTypeResolvedIndex, SalsaDocTypeResolvedSummary,
-    SalsaExportTargetSummary,
+    SalsaDocTagKindSummary, SalsaDocTagPropertySummary, SalsaDocTagSummary, SalsaDocTypeDefSummary,
+    SalsaDocTypeIndexSummary, SalsaDocTypeLoweredIndex, SalsaDocTypeLoweredNode,
+    SalsaDocTypeResolvedIndex, SalsaDocTypeResolvedSummary, SalsaExportTargetSummary,
     SalsaFileSummary, SalsaFlowBlockSummary, SalsaFlowBranchGraphSummary, SalsaFlowBranchSummary,
     SalsaFlowConditionGraphSummary, SalsaFlowConditionSummary, SalsaFlowEdgeSummary,
     SalsaFlowGotoSummary, SalsaFlowLabelSummary, SalsaFlowLoopGraphSummary, SalsaFlowLoopSummary,
@@ -41,8 +40,7 @@ use crate::{
     SalsaSignatureGenericParamLookupSummary, SalsaSignatureIndexSummary,
     SalsaSignatureReturnQueryIndex, SalsaSignatureReturnQuerySummary,
     SalsaSingleFileSemanticSummary, SalsaSyntaxIdSummary, SalsaTableShapeIndexSummary,
-    SalsaTableShapeSummary,
-    SalsaUseSiteIndexSummary,
+    SalsaTableShapeSummary, SalsaUseSiteIndexSummary,
 };
 use smol_str::SmolStr;
 
@@ -270,7 +268,11 @@ impl<'db> SalsaSummaryDocQueries<'db> {
         tracked::file_doc_type_def_query_index(self.db, file_id)
     }
 
-    pub fn type_def_by_name(&self, file_id: FileId, name: SmolStr) -> Option<SalsaDocTypeDefSummary> {
+    pub fn type_def_by_name(
+        &self,
+        file_id: FileId,
+        name: SmolStr,
+    ) -> Option<SalsaDocTypeDefSummary> {
         tracked::file_doc_type_def_by_name(self.db, file_id, name)
     }
 
@@ -341,7 +343,6 @@ impl<'db> SalsaSummaryDocQueries<'db> {
     ) -> Option<Vec<SalsaDocOwnerResolveSummary>> {
         tracked::file_doc_owner_resolves_for_member(self.db, file_id, member_target.into())
     }
-
 }
 
 #[derive(Clone, Copy)]

@@ -138,11 +138,9 @@ impl LuaTypeDecl {
         match &self.extra {
             LuaTypeExtra::Alias { origin } => {
                 let type_decl_id = self.get_id();
-                if let Some(origin) = crate::infer_compilation_type_alias_origin(
-                    db,
-                    &type_decl_id,
-                    substitutor,
-                ) {
+                if let Some(origin) =
+                    crate::infer_compilation_type_alias_origin(db, &type_decl_id, substitutor)
+                {
                     return Some(origin);
                 }
 
@@ -151,11 +149,9 @@ impl LuaTypeDecl {
                     return Some(origin.clone());
                 };
 
-                let has_generic_params = crate::find_compilation_type_generic_params(
-                    db,
-                    &type_decl_id,
-                )
-                .is_some_and(|generic_params| !generic_params.is_empty());
+                let has_generic_params =
+                    crate::find_compilation_type_generic_params(db, &type_decl_id)
+                        .is_some_and(|generic_params| !generic_params.is_empty());
                 if !has_generic_params {
                     return Some(origin.clone());
                 }

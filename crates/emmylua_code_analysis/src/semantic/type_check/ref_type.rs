@@ -1,16 +1,16 @@
 use hashbrown::HashMap;
 
+use crate::compilation::{get_member_by_id, get_members, get_type_by_owner};
 use crate::{
-    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDecl,
-    LuaTypeDeclId, RenderLevel, humanize_type, type_def_alias_origin, type_def_is_alias,
-    type_def_is_enum,
-    compilation::{get_member_by_id, get_members, get_type_by_owner},
+    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDecl, LuaTypeDeclId,
+    RenderLevel, humanize_type,
     semantic::{
         member::find_members,
         type_check::{
             intersection_utils::intersection_to_object, type_check_context::TypeCheckContext,
         },
     },
+    type_def_alias_origin, type_def_is_alias, type_def_is_enum,
 };
 
 use super::{
@@ -41,17 +41,18 @@ pub fn check_ref_type_compact(
     }
 
     if type_def_is_enum(context.db, source_id) {
-        let type_decl = context
-            .db
-            .get_type_index()
-            .get_type_decl(source_id)
-            .ok_or(if context.detail {
-                TypeCheckFailReason::TypeNotMatchWithReason(
-                    t!("type `%{name}` not found.", name = source_id.get_name()).to_string(),
-                )
-            } else {
-                TypeCheckFailReason::TypeNotMatch
-            })?;
+        let type_decl =
+            context
+                .db
+                .get_type_index()
+                .get_type_decl(source_id)
+                .ok_or(if context.detail {
+                    TypeCheckFailReason::TypeNotMatchWithReason(
+                        t!("type `%{name}` not found.", name = source_id.get_name()).to_string(),
+                    )
+                } else {
+                    TypeCheckFailReason::TypeNotMatch
+                })?;
         check_ref_enum(context, source_id, compact_type, check_guard, type_decl)
     } else {
         check_ref_class(context, source_id, compact_type, check_guard)
@@ -266,8 +267,8 @@ fn check_ref_type_compact_table(
     };
 
     for source_member in source_type_members {
-        let source_member_type = get_type_by_owner(context.db, &source_member.get_id().into())
-            .unwrap_or(LuaType::Any);
+        let source_member_type =
+            get_type_by_owner(context.db, &source_member.get_id().into()).unwrap_or(LuaType::Any);
         let key = source_member.get_key();
 
         if context.is_key_checked(key) {
@@ -278,8 +279,9 @@ fn check_ref_type_compact_table(
             Some(table_member_id) => {
                 let table_member = get_member_by_id(context.db, table_member_id)
                     .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-                let table_member_type = get_type_by_owner(context.db, &table_member.get_id().into())
-                    .unwrap_or(LuaType::Any);
+                let table_member_type =
+                    get_type_by_owner(context.db, &table_member.get_id().into())
+                        .unwrap_or(LuaType::Any);
 
                 if let Err(err) = check_general_type_compact(
                     context,
@@ -298,7 +300,8 @@ fn check_ref_type_compact_table(
                             name = key.to_path(),
                             expect =
                                 humanize_type(context.db, &source_member_type, RenderLevel::Simple),
-                            got = humanize_type(context.db, &table_member_type, RenderLevel::Simple)
+                            got =
+                                humanize_type(context.db, &table_member_type, RenderLevel::Simple)
                         )
                         .to_string(),
                     ));

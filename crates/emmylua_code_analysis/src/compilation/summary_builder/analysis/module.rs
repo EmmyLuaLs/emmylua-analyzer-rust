@@ -7,8 +7,8 @@ use crate::{
 };
 
 use super::super::{
-    query::{build_module_resolve_index, resolve_module_export_in_index},
     SalsaDeclTreeSummary, SalsaGlobalSummary, SalsaMemberIndexSummary, SalsaModuleSummary,
+    query::{build_module_resolve_index, resolve_module_export_in_index},
 };
 
 pub fn analyze_module_summary(

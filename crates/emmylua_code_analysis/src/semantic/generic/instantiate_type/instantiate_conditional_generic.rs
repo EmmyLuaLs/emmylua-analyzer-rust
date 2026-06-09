@@ -1,11 +1,14 @@
 use hashbrown::{HashMap, HashSet};
 use std::ops::Deref;
 
+use crate::compilation::find_signature_by_id;
+use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
-    check_type_compact, type_def_alias_origin, type_def_is_alias,
+    check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
+    type_def_alias_origin, type_def_is_alias,
 };
 
 use super::{get_default_constructor, instantiate_type_generic_with_context};
@@ -394,7 +397,7 @@ fn collect_infer_assignments(
                 }
             }
             LuaType::Signature(id) => {
-                if let Some(signature) = db.get_signature_index().get(id) {
+                if let Some(signature) = find_signature_by_id(db, &id) {
                     let source_func = signature.to_doc_func_type();
                     collect_infer_assignments(
                         db,

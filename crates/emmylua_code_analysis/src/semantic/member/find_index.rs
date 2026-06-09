@@ -1,16 +1,16 @@
 use hashbrown::{HashMap, HashSet};
 
+use crate::compilation::{get_members, get_operator, get_operators, get_type_by_owner};
 use crate::{
     DbIndex, InFiled, InferGuardRef, LuaGenericType, LuaIntersectionType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps,
-    type_def_alias_origin, type_def_is_alias, type_def_is_class,
-    compilation::{get_members, get_operator, get_operators, get_type_by_owner},
-    module_query::export::infer_module_export_type, infer_compilation_type_super_types,
+    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps, infer_compilation_type_super_types,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
     },
+    type_def_alias_origin, type_def_is_alias, type_def_is_class,
 };
 
 use super::{FindMembersResult, LuaMemberInfo, intersect_member_types};
@@ -59,9 +59,7 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
     let metatable = db.get_metatable_index().get(table_range);
     if let Some(metatable) = metatable {
         let meta_owner = LuaOperatorOwner::Table(metatable.clone());
-        if let Some(operator_ids) =
-            get_operators(db, &meta_owner, LuaOperatorMetaMethod::Index)
-        {
+        if let Some(operator_ids) = get_operators(db, &meta_owner, LuaOperatorMetaMethod::Index) {
             for operator_id in &operator_ids {
                 if let Some(operator) = get_operator(db, operator_id) {
                     let operand = operator.get_operand(db);
@@ -88,8 +86,8 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
                     _ => continue,
                 };
 
-                let member_type = get_type_by_owner(db, &member.get_id().into())
-                    .unwrap_or(LuaType::Unknown);
+                let member_type =
+                    get_type_by_owner(db, &member.get_id().into()).unwrap_or(LuaType::Unknown);
 
                 members.push(LuaMemberInfo {
                     property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
@@ -127,9 +125,11 @@ fn find_index_custom_type(
     let mut members = Vec::new();
 
     // Check for __index operators
-    if let Some(index_operator_ids) =
-        get_operators(db, &prefix_type_id.clone().into(), LuaOperatorMetaMethod::Index)
-    {
+    if let Some(index_operator_ids) = get_operators(
+        db,
+        &prefix_type_id.clone().into(),
+        LuaOperatorMetaMethod::Index,
+    ) {
         for operator_id in &index_operator_ids {
             if let Some(operator) = get_operator(db, operator_id) {
                 let operand = operator.get_operand(db);
@@ -318,10 +318,12 @@ fn find_index_generic(
     let mut members = Vec::new();
 
     // Check for __index operators with generic substitution
-    let operator_ids =
-        get_operators(db, &type_decl_id.clone().into(), LuaOperatorMetaMethod::Index);
-    if let Some(index_operator_ids) = operator_ids
-    {
+    let operator_ids = get_operators(
+        db,
+        &type_decl_id.clone().into(),
+        LuaOperatorMetaMethod::Index,
+    );
+    if let Some(index_operator_ids) = operator_ids {
         for index_operator_id in &index_operator_ids {
             if let Some(index_operator) = get_operator(db, index_operator_id) {
                 let operand = index_operator.get_operand(db);

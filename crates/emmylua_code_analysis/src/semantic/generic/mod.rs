@@ -1,3 +1,4 @@
+use crate::compilation::{find_decl_by_id, get_current_owner};
 mod call_constraint;
 mod instantiate_type;
 mod test;
@@ -21,11 +22,6 @@ pub use type_substitutor::TypeSubstitutor;
 
 use crate::DbIndex;
 use crate::GenericTplId;
-use crate::LuaDeclExtra;
-use crate::LuaInferCache;
-use crate::LuaMemberOwner;
-use crate::LuaSemanticDeclId;
-use crate::LuaType;
 use crate::SemanticDeclLevel;
 use crate::TypeOps;
 use crate::find_compilation_decl_by_position;
@@ -74,14 +70,13 @@ pub fn get_tpl_ref_extend_type(
                 }
                 GenericTplId::Type(tpl_id) => {
                     if let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl {
-                        let decl = db.get_decl_index().get_decl(&decl_id)?;
+                        let decl = find_decl_by_id(db, &decl_id)?;
                         match decl.extra {
                             LuaDeclExtra::Param {
                                 owner_member_id, ..
                             } => {
                                 let owner_member_id = owner_member_id?;
-                                let parent_owner =
-                                    db.get_member_index().get_current_owner(&owner_member_id)?;
+                                let parent_owner = get_current_owner(db, &owner_member_id)?;
                                 match parent_owner {
                                     LuaMemberOwner::Type(type_id) => {
                                         let generic_params =

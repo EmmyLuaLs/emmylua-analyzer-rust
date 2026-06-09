@@ -1682,7 +1682,8 @@ print(holder.second)"#;
 
     let signature = compilation
         .doc()
-        .signature().summary(FileId::new(155))
+        .signature()
+        .summary(FileId::new(155))
         .expect("signature summary")
         .signatures
         .clone()
@@ -1767,7 +1768,8 @@ print(holder[2])"#;
 
     let signature = compilation
         .doc()
-        .signature().summary(FileId::new(157))
+        .signature()
+        .summary(FileId::new(157))
         .expect("signature summary")
         .signatures
         .clone()
@@ -1822,7 +1824,8 @@ print(holder[2])"#;
 
     let signature = compilation
         .doc()
-        .signature().summary(FileId::new(165))
+        .signature()
+        .summary(FileId::new(165))
         .expect("signature summary")
         .signatures
         .clone()

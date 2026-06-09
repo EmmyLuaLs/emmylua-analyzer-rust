@@ -4,9 +4,12 @@ mod get_type_at_flow;
 mod narrow_type;
 mod var_ref_id;
 
+use crate::compilation::get_type_cache;
+use crate::compilation::{find_decl_by_id, get_type_cache};
 use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowTree, InferFailReason,
-    LuaInferCache, compilation::{find_compilation_decl_by_position, infer_compilation_decl_type},
+    LuaInferCache,
+    compilation::{find_compilation_decl_by_position, infer_compilation_decl_type},
     infer_param,
     semantic::infer::{
         InferResult,
@@ -44,10 +47,7 @@ pub(in crate::semantic) fn get_var_ref_type(
     var_ref_id: &VarRefId,
 ) -> InferResult {
     if let Some(decl_id) = var_ref_id.get_decl_id_ref() {
-        let decl = db
-            .get_decl_index()
-            .get_decl(&decl_id)
-            .ok_or(InferFailReason::None)?;
+        let decl = find_decl_by_id(db, &decl_id).ok_or(InferFailReason::None)?;
 
         if decl.is_global() {
             let name = decl.get_name();

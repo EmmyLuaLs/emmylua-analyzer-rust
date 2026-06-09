@@ -72,7 +72,9 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
             continue;
         }
 
-        let Some(module_info) = builder.semantic_model.get_module_by_file_id(legacy_module.file_id)
+        let Some(module_info) = builder
+            .semantic_model
+            .get_module_by_file_id(legacy_module.file_id)
         else {
             continue;
         };

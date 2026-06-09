@@ -3,10 +3,9 @@ mod resolve_global_decl;
 mod semantic_decl_level;
 mod semantic_guard;
 
+use crate::compilation::get_type_by_owner;
 use crate::{
-    DbIndex, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType,
-    compilation::{get_type_by_owner, infer_compilation_decl_type},
-    find_compilation_decl_by_position,
+    DbIndex, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, find_compilation_decl_by_position,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaLocalStat,
@@ -34,7 +33,8 @@ pub fn infer_token_semantic_info(
     match parent.kind().into() {
         LuaSyntaxKind::ForStat | LuaSyntaxKind::ForRangeStat | LuaSyntaxKind::LocalName => {
             let file_id = cache.get_file_id();
-            let compilation_decl = find_compilation_decl_by_position(db, file_id, token.text_range().start());
+            let compilation_decl =
+                find_compilation_decl_by_position(db, file_id, token.text_range().start());
             let decl_id = compilation_decl
                 .as_ref()
                 .map(|decl| decl.decl_id)
@@ -42,10 +42,7 @@ pub fn infer_token_semantic_info(
             let typ = compilation_decl
                 .as_ref()
                 .and_then(|decl| infer_compilation_decl_type(db, decl))
-                .or_else(|| {
-                    get_type_by_owner(db, &decl_id.into())
-                        .filter(|ty| !ty.is_unknown())
-                })
+                .or_else(|| get_type_by_owner(db, &decl_id.into()).filter(|ty| !ty.is_unknown()))
                 .or_else(|| infer_local_name_initializer_type(db, cache, token.clone()))
                 .unwrap_or(LuaType::Unknown);
             Some(SemanticInfo {
@@ -55,7 +52,8 @@ pub fn infer_token_semantic_info(
         }
         LuaSyntaxKind::ParamName => {
             let file_id = cache.get_file_id();
-            let compilation_decl = find_compilation_decl_by_position(db, file_id, token.text_range().start());
+            let compilation_decl =
+                find_compilation_decl_by_position(db, file_id, token.text_range().start());
             let decl_id = compilation_decl
                 .as_ref()
                 .map(|decl| decl.decl_id)
@@ -63,10 +61,7 @@ pub fn infer_token_semantic_info(
             let typ = compilation_decl
                 .as_ref()
                 .and_then(|decl| infer_compilation_decl_type(db, decl))
-                .or_else(|| {
-                    get_type_by_owner(db, &decl_id.into())
-                        .filter(|ty| !ty.is_unknown())
-                })
+                .or_else(|| get_type_by_owner(db, &decl_id.into()).filter(|ty| !ty.is_unknown()))
                 .unwrap_or(LuaType::Unknown);
             Some(SemanticInfo {
                 typ,
@@ -101,8 +96,7 @@ pub fn infer_node_semantic_info(
         table_field_node if LuaTableField::can_cast(table_field_node.kind().into()) => {
             let table_field = LuaTableField::cast(table_field_node)?;
             let member_id = LuaMemberId::new(table_field.get_syntax_id(), cache.get_file_id());
-            let typ = get_type_by_owner(db, &member_id.into())
-                .unwrap_or(LuaType::Unknown);
+            let typ = get_type_by_owner(db, &member_id.into()).unwrap_or(LuaType::Unknown);
             Some(SemanticInfo {
                 typ,
                 semantic_decl: Some(LuaSemanticDeclId::Member(member_id)),
@@ -136,8 +130,7 @@ pub fn infer_node_semantic_info(
                 }
                 LuaDocTag::Field(field) => {
                     let member_id = LuaMemberId::new(field.get_syntax_id(), cache.get_file_id());
-                    let typ = get_type_by_owner(db, &member_id.into())
-                        .unwrap_or(LuaType::Unknown);
+                    let typ = get_type_by_owner(db, &member_id.into()).unwrap_or(LuaType::Unknown);
                     Some(SemanticInfo {
                         typ,
                         semantic_decl: Some(LuaSemanticDeclId::Member(member_id)),

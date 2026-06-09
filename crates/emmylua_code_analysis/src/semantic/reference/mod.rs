@@ -1,6 +1,7 @@
 use emmylua_parser::LuaSyntaxNode;
 
-use crate::{DbIndex, LuaMemberId, LuaSemanticDeclId};
+use crate::compilation::get_current_owner;
+use crate::compilation::get_current_owner;
 
 use super::{
     LuaInferCache, SemanticDeclLevel, member::find_member_origin_owner,
@@ -36,8 +37,8 @@ fn is_member_reference_to(
     node_member_id: LuaMemberId,
     member_id: LuaMemberId,
 ) -> Option<bool> {
-    let node_owner = db.get_member_index().get_current_owner(&node_member_id)?;
-    let owner = db.get_member_index().get_current_owner(&member_id)?;
+    let node_owner = get_current_owner(db, &node_member_id)?;
+    let owner = get_current_owner(db, &member_id)?;
 
     Some(node_owner == owner)
 }

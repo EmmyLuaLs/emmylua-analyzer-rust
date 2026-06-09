@@ -1,5 +1,7 @@
 use emmylua_parser::LuaExpr;
 
+use crate::compilation::get_type_cache;
+use crate::compilation::{get_members, get_type_cache};
 use crate::{
     BasicTypeKind, DbIndex, LuaType, LuaUnionType, TypeOps, check_type_compact,
     db_index::{LuaMemberOwner, LuaTypeCache, LuaTypeDeclId},
@@ -61,11 +63,10 @@ fn can_empty_table_satisfy_type(db: &DbIndex, ty: &LuaType) -> bool {
 /// Checks if a specific type declaration has any required (non-optional) fields.
 /// Only checks direct members, not inherited ones (caller handles hierarchy).
 fn has_required_fields(db: &DbIndex, type_decl_id: &LuaTypeDeclId) -> bool {
-    let member_index = db.get_member_index();
     let type_index = db.get_type_index();
 
     // Get all direct members of this type
-    let members = match member_index.get_members(&LuaMemberOwner::Type(type_decl_id.clone())) {
+    let members = match get_members(db, &LuaMemberOwner::Type(type_decl_id.clone())) {
         Some(members) => members,
         None => return false, // No members = no required fields
     };

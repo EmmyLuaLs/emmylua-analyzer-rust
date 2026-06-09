@@ -28,8 +28,8 @@ pub(super) fn infer_require_call(
 
     let module_file_id = find_db_module_file_id(db, &module_path).ok_or(InferFailReason::None)?;
     let export_type = infer_module_export_type(db, module_file_id).ok_or_else(|| {
-            InferFailReason::UnResolveExpr(InFiled::new(cache.get_file_id(), call_expr.into()))
-        })?;
+        InferFailReason::UnResolveExpr(InFiled::new(cache.get_file_id(), call_expr.into()))
+    })?;
 
     match export_type {
         LuaType::Def(id) => Ok(LuaType::Ref(id)),

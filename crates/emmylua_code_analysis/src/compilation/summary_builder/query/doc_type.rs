@@ -3,10 +3,10 @@ use rowan::TextSize;
 use smol_str::SmolStr;
 
 use crate::{
-    SalsaDocSummary, SalsaDocTypeDefSummary,
-    SalsaDocGenericParamSummary, SalsaDocObjectFieldKeySummary, SalsaDocTypeBinaryOperatorSummary,
-    SalsaDocTypeIndexSummary, SalsaDocTypeKindSummary, SalsaDocTypeNodeKey,
-    SalsaDocTypeNodeSummary, SalsaDocTypeUnaryOperatorSummary, SalsaSyntaxIdSummary,
+    SalsaDocGenericParamSummary, SalsaDocObjectFieldKeySummary, SalsaDocSummary,
+    SalsaDocTypeBinaryOperatorSummary, SalsaDocTypeDefSummary, SalsaDocTypeIndexSummary,
+    SalsaDocTypeKindSummary, SalsaDocTypeNodeKey, SalsaDocTypeNodeSummary,
+    SalsaDocTypeUnaryOperatorSummary, SalsaSyntaxIdSummary,
 };
 
 use super::super::{SalsaLookupBucket, build_lookup_buckets, find_bucket_indices};

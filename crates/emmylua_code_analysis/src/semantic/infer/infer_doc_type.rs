@@ -1,14 +1,15 @@
 use std::{cell::RefCell, sync::Arc};
 
 use emmylua_parser::{
-    LuaAstNode, LuaComment, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
-    LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
-    LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken,
-    LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, NumberResult,
+    LuaAstNode, LuaComment, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner,
+    LuaDocFuncType, LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey,
+    LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType,
+    LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, NumberResult,
 };
 use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
+use crate::LuaTypeNode;
 use crate::{
     AsyncState, DbIndex, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind,
     LuaAliasCallType, LuaArrayLen, LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType,
@@ -16,7 +17,6 @@ use crate::{
     LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, SalsaDocTypeRef, TypeOps, VariadicType,
     WorkspaceId, complete_type_generic_args,
 };
-use crate::LuaTypeNode;
 
 thread_local! {
     static SAME_FILE_NAMED_TYPE_STACK: RefCell<Vec<(FileId, LuaTypeDeclId)>> = const { RefCell::new(Vec::new()) };
@@ -225,12 +225,12 @@ fn infer_signature_generic_tpl(
     let owner_offset = ctx
         .signature_owner_offset
         .or_else(|| find_signature_doc_owner_offset(node))?;
-    let generic_param = ctx
-        .db
-        .get_summary_db()
-        .doc()
-        .signature()
-        .generic_param(ctx.file_id, owner_offset, name)?;
+    let generic_param =
+        ctx.db
+            .get_summary_db()
+            .doc()
+            .signature()
+            .generic_param(ctx.file_id, owner_offset, name)?;
 
     let constraint = generic_param
         .param
@@ -262,7 +262,10 @@ fn infer_type_generic_tpl(
     let doc = ctx.db.get_summary_db().doc().summary(ctx.file_id)?;
     let type_def = doc.type_defs.iter().find(|type_def| {
         type_def.syntax_offset == owner_offset
-            && type_def.generic_params.iter().any(|param| param.name == name)
+            && type_def
+                .generic_params
+                .iter()
+                .any(|param| param.name == name)
     })?;
     let (tpl_idx, generic_param) = type_def
         .generic_params
@@ -421,7 +424,10 @@ fn infer_same_file_named_type(
         .get_summary_db()
         .doc()
         .type_def_by_name(ctx.file_id, SmolStr::new(name))?;
-    let workspace_id = ctx.db.resolve_workspace_id(ctx.file_id).unwrap_or(WorkspaceId::MAIN);
+    let workspace_id = ctx
+        .db
+        .resolve_workspace_id(ctx.file_id)
+        .unwrap_or(WorkspaceId::MAIN);
     let type_id = match type_def.visibility {
         crate::SalsaDocVisibilityKindSummary::Private => LuaTypeDeclId::local(ctx.file_id, name),
         crate::SalsaDocVisibilityKindSummary::Internal
@@ -456,9 +462,9 @@ fn infer_same_file_named_type(
             let touches_active_cycle = SAME_FILE_NAMED_TYPE_STACK.with(|stack| {
                 let active = stack.borrow();
                 default_type.any_type(|ty| match ty {
-                    LuaType::Ref(active_id) | LuaType::Def(active_id) => active.iter().any(
-                        |(file_id, type_id)| *file_id == ctx.file_id && type_id == active_id,
-                    ),
+                    LuaType::Ref(active_id) | LuaType::Def(active_id) => active
+                        .iter()
+                        .any(|(file_id, type_id)| *file_id == ctx.file_id && type_id == active_id),
                     LuaType::Generic(generic) => active.iter().any(|(file_id, type_id)| {
                         *file_id == ctx.file_id && type_id == generic.get_base_type_id_ref()
                     }),

@@ -43,18 +43,18 @@ use type_check::is_sub_type_of;
 pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
+use crate::compilation::get_type_by_owner;
+use crate::compilation::get_type_by_owner;
 pub use crate::semantic::member::find_members_with_key;
 use crate::semantic::type_check::check_type_compact_detail;
 use crate::{
     CompilationGenericParamInfo, CompilationModuleInfo, Emmyrc, LuaDocument, LuaSemanticDeclId,
-    db_index::LuaTypeDeclId,
-    project_module_info,
+    db_index::LuaTypeDeclId, project_module_info,
 };
 use crate::{
     FileId,
     db_index::{DbIndex, LuaType},
 };
-use crate::{LuaFunctionType, LuaMemberId, LuaMemberKey, LuaTypeOwner};
 pub use generic::*;
 pub use guard::{InferGuard, InferGuardRef};
 pub use infer::InferFailReason;

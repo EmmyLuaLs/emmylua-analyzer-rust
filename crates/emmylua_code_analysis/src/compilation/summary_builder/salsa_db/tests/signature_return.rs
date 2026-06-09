@@ -19,7 +19,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(301))
+        .signature()
+        .summary(FileId::new(301))
         .expect("signature summary");
     let signature = signatures
         .signatures
@@ -70,7 +71,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(302))
+        .signature()
+        .summary(FileId::new(302))
         .expect("signature summary");
     let signature = signatures
         .signatures
@@ -119,7 +121,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(311))
+        .signature()
+        .summary(FileId::new(311))
         .expect("signature summary");
     let signature = signatures
         .signatures
@@ -165,7 +168,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(312))
+        .signature()
+        .summary(FileId::new(312))
         .expect("signature summary");
     let signature = signatures
         .signatures
@@ -209,7 +213,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(303))
+        .signature()
+        .summary(FileId::new(303))
         .expect("signature summary");
     let signature = signatures
         .signatures
@@ -261,7 +266,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(304))
+        .signature()
+        .summary(FileId::new(304))
         .expect("signature summary");
 
     for (name, expected_kind) in [
@@ -318,7 +324,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(305))
+        .signature()
+        .summary(FileId::new(305))
         .expect("signature summary");
     let signature = signatures
         .signatures
@@ -362,7 +369,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(306))
+        .signature()
+        .summary(FileId::new(306))
         .expect("signature summary");
     let signature = signatures
         .signatures
@@ -411,7 +419,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(307))
+        .signature()
+        .summary(FileId::new(307))
         .expect("signature summary");
     let forward_signature = signatures
         .signatures
@@ -457,7 +466,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(308))
+        .signature()
+        .summary(FileId::new(308))
         .expect("signature summary");
     let forward_signature = signatures
         .signatures
@@ -501,7 +511,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(309))
+        .signature()
+        .summary(FileId::new(309))
         .expect("signature summary");
     let pair_signature = signatures
         .signatures
@@ -550,7 +561,8 @@ end"#;
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(310))
+        .signature()
+        .summary(FileId::new(310))
         .expect("signature summary");
     let pair_signature = signatures
         .signatures
@@ -565,7 +577,8 @@ end"#;
         .expect("semantic signature return summary");
     let query = compilation
         .doc()
-        .signature().return_query(FileId::new(310), pair_signature.syntax_offset)
+        .signature()
+        .return_query(FileId::new(310), pair_signature.syntax_offset)
         .expect("signature return query");
     let component_result = compilation
         .semantic()

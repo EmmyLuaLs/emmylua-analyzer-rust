@@ -5,10 +5,10 @@ use emmylua_parser::{
     LuaLiteralToken, LuaLocalStat, LuaReturnStat, LuaTableExpr, LuaTableField,
 };
 
+use crate::compilation::{find_decl_by_id, get_type_by_owner, get_type_cache};
 use crate::{
     InFiled, InferGuard, LuaArrayType, LuaDeclId, LuaInferCache, LuaMemberId, LuaTupleStatus,
     LuaTupleType, LuaUnionType, TypeOps, VariadicType, check_type_compact,
-    compilation::{get_type_cache, get_type_by_owner},
     db_index::{DbIndex, LuaType},
     infer_call_expr_func, infer_expr,
 };
@@ -358,7 +358,7 @@ fn infer_table_type_by_assign_stat(
     let name = vars.get(num).ok_or(InferFailReason::None)?;
 
     let decl_id = LuaDeclId::new(cache.get_file_id(), name.get_position());
-    if db.get_decl_index().get_decl(&decl_id).is_some() {
+    if find_decl_by_id(db, &decl_id).is_some() {
         match get_type_by_owner(db, &decl_id.into()) {
             Some(LuaType::TableConst(_)) => Err(InferFailReason::None),
             Some(typ) => Ok(typ),

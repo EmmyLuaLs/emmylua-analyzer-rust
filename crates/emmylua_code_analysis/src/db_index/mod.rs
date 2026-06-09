@@ -15,10 +15,12 @@ mod signature;
 mod traits;
 mod r#type;
 
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
+use rowan::TextSize;
 use smol_str::SmolStr;
 
 use crate::{Emmyrc, FileId, SalsaDocTypeDefSummary, SalsaSummaryDatabase, Vfs};
@@ -60,6 +62,10 @@ pub struct DbIndex {
     emmyrc: Arc<Emmyrc>,
     type_def_rev_gen: AtomicU64,
     type_def_cache: RwLock<Option<Arc<TypeDefReverseIndex>>>,
+    /// Recursion guard for Salsa-backed type inference.
+    /// Tracks `(file_id, position)` of declarations currently being inferred,
+    /// so that re-entrant calls can fall back to the legacy cache.
+    salsa_inferring: RefCell<HashSet<(FileId, TextSize)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +103,7 @@ impl DbIndex {
             emmyrc: Arc::new(Emmyrc::default()),
             type_def_rev_gen: AtomicU64::new(0),
             type_def_cache: RwLock::new(None),
+            salsa_inferring: RefCell::new(HashSet::new()),
         }
     }
 
@@ -251,7 +258,8 @@ impl DbIndex {
     }
 
     pub fn sync_summary_file(&mut self, file_id: FileId) -> bool {
-        let ok = self.summary_db_write()
+        let ok = self
+            .summary_db_write()
             .set_file_from_vfs(&self.vfs, file_id);
         if ok {
             self.type_def_rev_gen.fetch_add(1, Ordering::Release);
@@ -288,10 +296,19 @@ impl DbIndex {
         })
     }
 
+    /// Recursion guard for Salsa-backed type inference.
+    /// Callers that detect re-entrance should fall back to legacy cache.
+    pub(crate) fn salsa_inferring(&self) -> &RefCell<HashSet<(FileId, TextSize)>> {
+        &self.salsa_inferring
+    }
+
     pub(crate) fn get_type_def_reverse_index(&self) -> Arc<TypeDefReverseIndex> {
         let current_gen = self.type_def_rev_gen.load(Ordering::Acquire);
         {
-            let cache = self.type_def_cache.read().unwrap_or_else(|e| e.into_inner());
+            let cache = self
+                .type_def_cache
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = cache.as_ref() {
                 if cached.generation == current_gen {
                     return cached.clone();
@@ -300,7 +317,10 @@ impl DbIndex {
         }
         let index = self.build_type_def_reverse_index();
         let index = Arc::new(index);
-        *self.type_def_cache.write().unwrap_or_else(|e| e.into_inner()) = Some(index.clone());
+        *self
+            .type_def_cache
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(index.clone());
         index
     }
 

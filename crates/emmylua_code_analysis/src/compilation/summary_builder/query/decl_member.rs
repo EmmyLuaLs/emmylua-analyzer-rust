@@ -26,7 +26,10 @@ pub fn build_decl_query_index(summary: &SalsaDeclTreeSummary) -> SalsaDeclQueryI
             .collect(),
     );
 
-    SalsaDeclQueryIndex { decls, by_syntax_id }
+    SalsaDeclQueryIndex {
+        decls,
+        by_syntax_id,
+    }
 }
 
 pub fn build_member_query_index(summary: &SalsaMemberIndexSummary) -> SalsaMemberQueryIndex {

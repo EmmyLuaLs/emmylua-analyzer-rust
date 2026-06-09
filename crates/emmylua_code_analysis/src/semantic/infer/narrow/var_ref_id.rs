@@ -5,6 +5,8 @@ use internment::ArcIntern;
 use rowan::TextSize;
 use smol_str::SmolStr;
 
+use crate::compilation::find_signature_by_id;
+use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, LuaAliasCallKind, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaMemberId,
     LuaMemberKey, LuaType,
@@ -129,10 +131,9 @@ fn get_call_expr_var_ref_id(
 
     let ret = match maybe_func {
         LuaType::DocFunction(f) => f.get_ret().clone(),
-        LuaType::Signature(signature_id) => db
-            .get_signature_index()
-            .get(&signature_id)?
-            .get_return_type(),
+        LuaType::Signature(signature_id) => {
+            find_signature_by_id(db, &signature_id)?.get_return_type()
+        }
         _ => return None,
     };
     let LuaType::Call(alias_call_type) = ret else {

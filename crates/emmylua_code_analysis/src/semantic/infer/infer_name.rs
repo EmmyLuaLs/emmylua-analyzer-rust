@@ -1,14 +1,14 @@
 use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaNameExpr};
 
 use super::{InferFailReason, InferResult};
+use crate::compilation::{
+    find_decl_by_id, find_signature_by_id, get_file_decl_tree, get_member_item_by_member_id,
+};
 use crate::{
-    LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId, LuaType,
-    LuaTypeNode, SemanticDeclLevel, TypeOps,
-    compilation::{
-        CompilationDeclTree, find_compilation_decl_by_position, get_member_item_by_member_id,
-        global_type, infer_compilation_decl_type,
-    },
+    CompilationDeclTree, LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId,
+    LuaType, LuaTypeNode, SemanticDeclLevel, TypeOps,
     db_index::{DbIndex, LuaDeclOrMemberId},
+    find_compilation_decl_by_position, global_type, infer_compilation_decl_type,
     infer_node_semantic_decl,
     semantic::{
         infer::narrow::{VarRefId, get_var_ref_type, infer_expr_narrow_type},
@@ -144,7 +144,7 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
 
     let mut colon_define = false;
     // find local annotation
-    if let Some(signature) = db.get_signature_index().get(&signature_id) {
+    if let Some(signature) = find_signature_by_id(db, &signature_id) {
         colon_define = signature.is_colon_define;
         if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
             let mut typ = param_info.type_ref.clone();
@@ -174,8 +174,7 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
 }
 
 pub fn find_decl_member_type(db: &DbIndex, member_id: LuaMemberId) -> InferResult {
-    let item = get_member_item_by_member_id(db, member_id)
-        .ok_or(InferFailReason::None)?;
+    let item = get_member_item_by_member_id(db, member_id).ok_or(InferFailReason::None)?;
     item.resolve_type(db)
 }
 
@@ -220,7 +219,7 @@ fn find_param_type_from_type(
 ) -> Option<LuaType> {
     match source_type {
         LuaType::Signature(signature_id) => {
-            let signature = db.get_signature_index().get(&signature_id)?;
+            let signature = find_signature_by_id(db, &signature_id)?;
             let adjusted_idx =
                 adjust_param_idx(param_idx, current_colon_define, signature.is_colon_define);
 
@@ -305,7 +304,7 @@ fn find_param_type_from_union(
 ) -> Option<LuaType> {
     match source_type {
         LuaType::Signature(signature_id) => {
-            let signature = db.get_signature_index().get(&signature_id)?;
+            let signature = find_signature_by_id(db, &signature_id)?;
             if !signature.param_docs.is_empty() {
                 return None;
             }
@@ -401,7 +400,7 @@ fn find_summary_local_decl_id(
     let decl_tree = CompilationDeclTree::new(db.get_summary_db().file().decl_tree(file_id)?);
     let decl = decl_tree.find_local_decl(name, position)?;
     let decl_id = crate::LuaDeclId::new(file_id, decl.id.as_position());
-    let decl = db.get_decl_index().get_decl(&decl_id)?;
+    let decl = find_decl_by_id(db, &decl_id)?;
     if decl.is_global() {
         return None;
     }
@@ -415,7 +414,7 @@ pub fn find_self_decl_or_member_id(
     name_expr: &LuaNameExpr,
 ) -> Option<LuaDeclOrMemberId> {
     let file_id = cache.get_file_id();
-    let tree = db.get_decl_index().get_decl_tree(&file_id)?;
+    let tree = get_file_decl_tree(db, &file_id)?;
 
     let self_decl = tree.find_local_decl("self", name_expr.get_position())?;
     if !self_decl.is_implicit_self() {

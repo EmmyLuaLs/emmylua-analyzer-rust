@@ -33,9 +33,9 @@ pub(in crate::semantic) use narrow::{ConditionFlowAction, InferConditionFlow};
 use rowan::TextRange;
 use smol_str::SmolStr;
 
+use crate::compilation::{find_decl_by_id, get_operator, get_operators, get_type_by_owner};
 use crate::{
     InFiled, InferGuard, LuaMemberKey, VariadicType,
-    compilation::{get_operator, get_operators, get_type_by_owner},
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
     find_compilation_decl_by_position,
 };
@@ -65,8 +65,7 @@ fn prepare_expr_cache(
         }
 
         let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
-        if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into())
-        {
+        if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into()) {
             cache
                 .expr_no_flow_cache
                 .insert(syntax_id, CacheEntry::Cache(Some(ty.clone())));
@@ -87,8 +86,7 @@ fn prepare_expr_cache(
     }
 
     let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
-    if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into())
-    {
+    if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into()) {
         cache
             .expr_cache
             .insert(syntax_id, CacheEntry::Cache(ty.clone()));
@@ -223,7 +221,7 @@ fn infer_literal_expr(db: &DbIndex, config: &LuaInferCache, expr: LuaLiteralExpr
                 Some((decl_id, decl))
                     if matches!(decl.summary.kind, crate::SalsaDeclKindSummary::Param { .. }) =>
                 {
-                    if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
+                    if let Some(decl) = find_decl_by_id(db, &decl_id) {
                         let base = infer_param(db, decl).unwrap_or(LuaType::Unknown);
                         LuaType::Variadic(VariadicType::Base(base).into())
                     } else {

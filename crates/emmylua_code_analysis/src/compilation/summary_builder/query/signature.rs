@@ -3,6 +3,7 @@ use rowan::TextSize;
 use smol_str::SmolStr;
 
 use super::super::{SalsaLookupBucket, build_lookup_buckets, find_bucket_indices};
+pub(crate) use super::super::{SalsaSignatureReturnQueryIndex, SalsaSignatureReturnQuerySummary};
 use super::doc_owner::collect_doc_owner_resolves_for_signature;
 use super::doc_tag::{
     build_doc_tag_query_index_from_properties, collect_doc_tag_properties_for_owners_in_index,
@@ -16,7 +17,6 @@ use super::{
     collect_active_type_narrows, find_member_type_at_program_point,
     find_name_type_at_program_point,
 };
-pub(crate) use super::super::{SalsaSignatureReturnQueryIndex, SalsaSignatureReturnQuerySummary};
 
 use crate::{
     SalsaCallSummary, SalsaCallUseSummary, SalsaDeclTreeSummary, SalsaDocGenericSummary,

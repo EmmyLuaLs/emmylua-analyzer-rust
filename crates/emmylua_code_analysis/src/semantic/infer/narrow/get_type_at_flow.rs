@@ -5,6 +5,8 @@ use emmylua_parser::{
 use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
 
+use crate::compilation::get_type_cache;
+use crate::compilation::{find_decl_by_id, get_type_cache};
 use crate::{
     CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
     LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
@@ -543,7 +545,7 @@ impl<'a> FlowTypeEngine<'a> {
             // normal flow walk below; unresolved globals exit to the unresolve
             // pass before self-assignments scan the whole assignment chain.
             if let Some(decl_id) = query.var_ref_id.get_decl_id_ref()
-                && let Some(decl) = self.db.get_decl_index().get_decl(&decl_id)
+                && let Some(decl) = self.find_decl_by_id(db, &decl_id)
                 && decl.is_global()
             {
                 infer_global_type(self.db, decl.get_name())?;
@@ -1348,10 +1350,7 @@ impl<'a> FlowTypeEngine<'a> {
                                 let Some(decl_id) = var_ref_id.get_decl_id_ref() else {
                                     return self.fail_query(&walk.query, err);
                                 };
-                                let decl = self
-                                    .db
-                                    .get_decl_index()
-                                    .get_decl(&decl_id)
+                                let decl = find_decl_by_id(self.db, &decl_id)
                                     .ok_or(InferFailReason::None)?;
                                 if let Some(value_syntax_id) = decl.get_value_syntax_id()
                                     && let Some(node) =

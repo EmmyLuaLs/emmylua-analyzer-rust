@@ -1,12 +1,12 @@
 use std::ops::Deref;
 
 use crate::{
-    DbIndex, LuaType, LuaTypeDeclId, TypeSubstitutor, VariadicType,
-    instantiate_type_generic, type_def_alias_origin, type_def_is_alias, type_def_is_enum,
+    DbIndex, LuaType, LuaTypeDeclId, TypeSubstitutor, VariadicType, instantiate_type_generic,
     semantic::type_check::{
         is_sub_type_of,
         type_check_context::{TypeCheckCheckLevel, TypeCheckContext},
     },
+    type_def_alias_origin, type_def_is_alias, type_def_is_enum,
 };
 
 use super::{
@@ -311,9 +311,7 @@ pub fn check_simple_type_compact(
                 if type_def_is_alias(context.db, &base_id) {
                     let substitutor =
                         TypeSubstitutor::from_alias(generic.get_params().clone(), base_id.clone());
-                    if let Some(alias_origin) =
-                        type_def_alias_origin(context.db, &base_id)
-                    {
+                    if let Some(alias_origin) = type_def_alias_origin(context.db, &base_id) {
                         let instantiated =
                             instantiate_type_generic(context.db, &alias_origin, &substitutor);
                         return check_general_type_compact(
@@ -388,8 +386,7 @@ fn check_base_type_for_ref_compact(
                 {
                     return Ok(());
                 }
-                if type_def_is_enum(context.db, type_decl_id)
-                {
+                if type_def_is_enum(context.db, type_decl_id) {
                     return check_enum_fields_match_source(
                         context,
                         source,

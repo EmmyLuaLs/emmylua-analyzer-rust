@@ -54,7 +54,12 @@ local mixed = { value = 1, 2 }"#;
 fn test_summary_builder_table_shape_supports_direct_lookup_and_range_projection() {
     let mut compilation = setup_compilation();
     let source = r#"local exported = { answer = 42 }"#;
-    set_test_file(&mut compilation, 156, "C:/ws/table_shape_lookup.lua", source);
+    set_test_file(
+        &mut compilation,
+        156,
+        "C:/ws/table_shape_lookup.lua",
+        source,
+    );
 
     let tree = LuaParser::parse(source, ParserConfig::default());
     let table_expr = tree

@@ -3,9 +3,7 @@ use std::sync::Arc;
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaNameExpr};
 
 use crate::{
-    DbIndex, LuaDeclId, LuaInferCache, LuaType,
-    compilation::globals,
-    semantic::overload_resolve::resolve_signature,
+    DbIndex, LuaDeclId, LuaInferCache, LuaType, semantic::overload_resolve::resolve_signature,
 };
 
 pub fn resolve_global_decl_id(
@@ -16,7 +14,10 @@ pub fn resolve_global_decl_id(
 ) -> Option<LuaDeclId> {
     let call_expr = name_expr.and_then(|name_expr| name_expr.get_parent::<LuaCallExpr>());
     let globals = globals(db, name);
-    let first_decl = globals.decls.first().map(|candidate| candidate.decl.decl_id);
+    let first_decl = globals
+        .decls
+        .first()
+        .map(|candidate| candidate.decl.decl_id);
     if globals.decls.len() == 1 {
         return Some(globals.decls[0].decl.decl_id);
     }
@@ -37,7 +38,10 @@ pub fn resolve_global_decl_id(
             return Some(candidate.decl.decl_id);
         }
 
-        if matches!(typ, LuaType::Table | LuaType::Object(_) | LuaType::TableConst(_)) {
+        if matches!(
+            typ,
+            LuaType::Table | LuaType::Object(_) | LuaType::TableConst(_)
+        ) {
             last_table = Some(candidate.decl.decl_id);
         }
     }
@@ -58,7 +62,13 @@ fn resolve_global_call(
             continue;
         };
 
-        if typ.is_def() || typ.is_ref() || matches!(typ, LuaType::Table | LuaType::Object(_) | LuaType::TableConst(_)) {
+        if typ.is_def()
+            || typ.is_ref()
+            || matches!(
+                typ,
+                LuaType::Table | LuaType::Object(_) | LuaType::TableConst(_)
+            )
+        {
             return Some(candidate.decl.decl_id);
         }
 
@@ -76,7 +86,10 @@ fn resolve_global_call(
     let signature = resolve_signature(
         db,
         cache,
-        overloads.iter().map(|(_, doc_func)| doc_func.clone()).collect(),
+        overloads
+            .iter()
+            .map(|(_, doc_func)| doc_func.clone())
+            .collect(),
         call_expr,
         false,
         None,

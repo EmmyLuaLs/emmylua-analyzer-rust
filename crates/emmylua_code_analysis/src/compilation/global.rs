@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
-    DbIndex, LuaDeclId, LuaFunctionType, LuaType, TypeOps,
-};
+use crate::{DbIndex, LuaDeclId, LuaFunctionType, LuaType, TypeOps};
 
 use super::{
     CompilationDeclInfo, build_compilation_signature_doc_function, decl_initializer_type,
@@ -41,7 +39,8 @@ pub fn globals(db: &DbIndex, name: &str) -> CompilationGlobals {
             }
 
             for decl_id in &entry.decl_ids {
-                let Some(decl) = find_compilation_decl_by_position(db, file_id, decl_id.as_position())
+                let Some(decl) =
+                    find_compilation_decl_by_position(db, file_id, decl_id.as_position())
                 else {
                     continue;
                 };
@@ -59,7 +58,11 @@ pub fn globals(db: &DbIndex, name: &str) -> CompilationGlobals {
                 decl_id: function
                     .decl_id
                     .map(|decl_id| LuaDeclId::new(file_id, decl_id.as_position())),
-                typ: build_compilation_signature_doc_function(db, file_id, function.signature_offset),
+                typ: build_compilation_signature_doc_function(
+                    db,
+                    file_id,
+                    function.signature_offset,
+                ),
             });
         }
     }
@@ -70,15 +73,12 @@ pub fn globals(db: &DbIndex, name: &str) -> CompilationGlobals {
 pub fn global_type(db: &DbIndex, name: &str) -> Option<LuaType> {
     let globals = globals(db, name);
     if !globals.functions.is_empty() {
-        let mut function_types = globals
-            .functions
-            .into_iter()
-            .map(|function| {
-                function
-                    .typ
-                    .map(LuaType::DocFunction)
-                    .unwrap_or(LuaType::Function)
-            });
+        let mut function_types = globals.functions.into_iter().map(|function| {
+            function
+                .typ
+                .map(LuaType::DocFunction)
+                .unwrap_or(LuaType::Function)
+        });
         let first = function_types.next()?;
         return Some(function_types.fold(first, |acc, ty| TypeOps::Union.apply(db, &acc, &ty)));
     }

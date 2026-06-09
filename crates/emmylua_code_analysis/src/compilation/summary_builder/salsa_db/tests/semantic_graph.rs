@@ -187,7 +187,8 @@ local holder = {
     });
     let make_signature = compilation
         .doc()
-        .signature().summary(FileId::new(511))
+        .signature()
+        .summary(FileId::new(511))
         .expect("signature summary")
         .signatures
         .clone()
@@ -306,7 +307,8 @@ end
         .expect("alias member");
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(508))
+        .signature()
+        .summary(FileId::new(508))
         .expect("signature summary")
         .signatures
         .clone();
@@ -382,7 +384,8 @@ end
     });
     let from_member_signature = compilation
         .doc()
-        .signature().summary(FileId::new(509))
+        .signature()
+        .summary(FileId::new(509))
         .expect("signature summary")
         .signatures
         .clone()
@@ -505,7 +508,8 @@ end
         .expect("caller decl");
     let callee_signature = compilation
         .doc()
-        .signature().summary(FileId::new(503))
+        .signature()
+        .summary(FileId::new(503))
         .expect("signatures")
         .signatures
         .clone()
@@ -594,7 +598,8 @@ end
         .expect("forwarded member");
     let callee_signature = compilation
         .doc()
-        .signature().summary(FileId::new(504))
+        .signature()
+        .summary(FileId::new(504))
         .expect("signatures")
         .signatures
         .clone()
@@ -654,7 +659,8 @@ end
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(505))
+        .signature()
+        .summary(FileId::new(505))
         .expect("signature summary")
         .signatures
         .clone();
@@ -742,7 +748,8 @@ local result = mid()
 
     let signatures = compilation
         .doc()
-        .signature().summary(FileId::new(506))
+        .signature()
+        .summary(FileId::new(506))
         .expect("signature summary")
         .signatures
         .clone();

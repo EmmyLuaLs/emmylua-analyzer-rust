@@ -149,7 +149,12 @@ impl VirtualWorkspace {
     }
 
     fn find_existing_name_type(&self, name: &str) -> Option<LuaType> {
-        let file_ids = self.analysis.compilation.get_db().get_vfs().get_all_local_file_ids();
+        let file_ids = self
+            .analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_all_local_file_ids();
 
         for file_id in file_ids.into_iter().rev() {
             let tree = self
@@ -171,14 +176,14 @@ impl VirtualWorkspace {
                         continue;
                     }
 
-                    let bound_info = semantic_model
-                        .get_semantic_info(token.syntax().clone().into())?;
+                    let bound_info =
+                        semantic_model.get_semantic_info(token.syntax().clone().into())?;
                     if !bound_info.typ.is_unknown() {
                         return Some(bound_info.typ);
                     }
 
-                    let info = semantic_model
-                        .get_semantic_info(value_expr.syntax().clone().into())?;
+                    let info =
+                        semantic_model.get_semantic_info(value_expr.syntax().clone().into())?;
                     if !info.typ.is_unknown() {
                         return Some(info.typ);
                     }
@@ -198,14 +203,14 @@ impl VirtualWorkspace {
                         continue;
                     }
 
-                    let bound_info = semantic_model
-                        .get_semantic_info(token.syntax().clone().into())?;
+                    let bound_info =
+                        semantic_model.get_semantic_info(token.syntax().clone().into())?;
                     if !bound_info.typ.is_unknown() {
                         return Some(bound_info.typ);
                     }
 
-                    let info = semantic_model
-                        .get_semantic_info(value_expr.syntax().clone().into())?;
+                    let info =
+                        semantic_model.get_semantic_info(value_expr.syntax().clone().into())?;
                     if !info.typ.is_unknown() {
                         return Some(info.typ);
                     }

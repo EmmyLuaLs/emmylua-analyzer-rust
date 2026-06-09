@@ -3,13 +3,13 @@ use emmylua_parser::{LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
 use std::{ops::Deref, sync::Arc};
 
+use crate::compilation::{get_current_owner, get_type_cache};
 use crate::semantic::infer::{InferResult, infer_expr_list_types};
 use crate::{
     DocTypeInferContext, FileId, GenericTplId, LuaFunctionType, LuaGenericType, LuaTypeNode,
     build_compilation_signature_doc_function,
     db_index::{DbIndex, LuaType},
-    find_compilation_type_generic_params,
-    infer_doc_type,
+    find_compilation_type_generic_params, infer_doc_type,
     semantic::{
         LuaInferCache,
         generic::{
@@ -118,9 +118,7 @@ pub fn as_doc_function_type(
                 sig_id.get_position(),
             )
             .or_else(|| {
-                db.get_signature_index()
-                    .get(sig_id)
-                    .map(|signature| signature.to_doc_func_type())
+                find_signature_by_id(db, &sig_id).map(|signature| signature.to_doc_func_type())
             })
             .ok_or(InferFailReason::None)?,
         ),
@@ -356,8 +354,7 @@ fn collect_callback_return_tpls(
             let LuaType::Signature(signature_id) = ty else {
                 return false;
             };
-            db.get_signature_index()
-                .get(signature_id)
+            find_signature_by_id(db, &signature_id)
                 .is_some_and(|signature| !signature.is_resolve_return())
         });
         if !arg_return_unresolved {
@@ -647,7 +644,7 @@ pub fn infer_self_type(
             )?;
             match semantic_decl_id {
                 LuaSemanticDeclId::Member(member_id) => {
-                    let owner = db.get_member_index().get_current_owner(&member_id)?;
+                    let owner = get_current_owner(db, &member_id)?;
                     if let LuaMemberOwner::Type(id) = owner {
                         let typ = LuaType::Ref(id.clone());
                         let self_type = build_self_type(db, &typ);

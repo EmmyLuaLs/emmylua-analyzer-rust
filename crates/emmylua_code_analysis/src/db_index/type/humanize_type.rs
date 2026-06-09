@@ -716,14 +716,13 @@ impl<'a> TypeHumanizer<'a> {
             }
 
             let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
-            let origin_type = crate::infer_compilation_type_alias_origin(
-                self.db,
-                &base_id,
-                Some(&substitutor),
-            )
-            .or_else(|| {
-                type_decl.and_then(|type_decl| type_decl.get_alias_origin(self.db, Some(&substitutor)))
-            });
+            let origin_type =
+                crate::infer_compilation_type_alias_origin(self.db, &base_id, Some(&substitutor))
+                    .or_else(|| {
+                        type_decl.and_then(|type_decl| {
+                            type_decl.get_alias_origin(self.db, Some(&substitutor))
+                        })
+                    });
             if let Some(origin_type) = origin_type {
                 w.write_str(" = ")?;
                 let saved = self.level;

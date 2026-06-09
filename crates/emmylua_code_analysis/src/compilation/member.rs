@@ -1,16 +1,14 @@
 use crate::{
     DbIndex, LuaMemberId, LuaMemberIndexItem, LuaMemberKey, LuaMemberOwner, LuaType, LuaTypeDeclId,
-    compilation::decl::infer_compilation_doc_type_key_with_owner,
+    SalsaDocTypeDefKindSummary, compilation::decl::infer_compilation_doc_type_key_with_owner,
     db_index::LuaMember,
-    SalsaDocTypeDefKindSummary,
 };
 use smol_str::SmolStr;
 
-pub(crate) fn get_members<'a>(
-    db: &'a DbIndex,
-    owner: &LuaMemberOwner,
-) -> Option<Vec<&'a LuaMember>> {
-    db.get_member_index().get_members(owner)
+pub(crate) fn get_members(db: &DbIndex, owner: &LuaMemberOwner) -> Option<Vec<LuaMember>> {
+    db.get_member_index()
+        .get_members(owner)
+        .map(|v| v.into_iter().cloned().collect())
 }
 
 pub(crate) fn get_member_by_id<'a>(db: &'a DbIndex, id: &LuaMemberId) -> Option<&'a LuaMember> {
@@ -29,7 +27,19 @@ pub(crate) fn get_member_item_by_member_id<'a>(
     db: &'a DbIndex,
     member_id: LuaMemberId,
 ) -> Option<&'a LuaMemberIndexItem> {
-    db.get_member_index().get_member_item_by_member_id(member_id)
+    db.get_member_index()
+        .get_member_item_by_member_id(member_id)
+}
+
+pub(crate) fn get_member_len(db: &DbIndex, owner: &LuaMemberOwner) -> usize {
+    db.get_member_index().get_member_len(owner)
+}
+
+pub(crate) fn get_current_owner<'a>(
+    db: &'a DbIndex,
+    id: &LuaMemberId,
+) -> Option<&'a LuaMemberOwner> {
+    db.get_member_index().get_current_owner(id)
 }
 
 pub(crate) fn get_type_def_kind(
@@ -38,7 +48,9 @@ pub(crate) fn get_type_def_kind(
 ) -> Option<SalsaDocTypeDefKindSummary> {
     let type_name: SmolStr = type_decl_id.get_name().into();
     let index = db.get_type_def_reverse_index();
-    index.by_name.get(&type_name)
+    index
+        .by_name
+        .get(&type_name)
         .and_then(|defs| defs.first())
         .map(|(_, def)| def.kind.clone())
 }
@@ -55,10 +67,7 @@ pub(crate) fn type_def_is_enum(db: &DbIndex, type_decl_id: &LuaTypeDeclId) -> bo
     get_type_def_kind(db, type_decl_id) == Some(SalsaDocTypeDefKindSummary::Enum)
 }
 
-pub(crate) fn type_def_alias_origin(
-    db: &DbIndex,
-    type_decl_id: &LuaTypeDeclId,
-) -> Option<LuaType> {
+pub(crate) fn type_def_alias_origin(db: &DbIndex, type_decl_id: &LuaTypeDeclId) -> Option<LuaType> {
     let type_name: SmolStr = type_decl_id.get_name().into();
     let index = db.get_type_def_reverse_index();
     for (file_id, type_def) in index.by_name.get(&type_name)? {

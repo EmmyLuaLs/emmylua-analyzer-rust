@@ -9,7 +9,8 @@ pub(crate) mod identity {
     use super::*;
 
     pub(crate) fn find_db_module_file_id(db: &DbIndex, module_path: &str) -> Option<FileId> {
-        crate::compilation::find_module_by_require_path(db, module_path).map(|module| module.file_id)
+        crate::compilation::find_module_by_require_path(db, module_path)
+            .map(|module| module.file_id)
     }
 
     pub(crate) fn find_db_module_info(

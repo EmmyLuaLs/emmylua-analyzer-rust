@@ -6,8 +6,8 @@ use emmylua_parser::{LuaAstNode, LuaChunk, LuaExpr};
 use rowan::TextSize;
 use smol_str::SmolStr;
 
-use super::super::{SalsaLookupBucket, build_lookup_buckets, find_bucket_indices};
 use super::super::summary::*;
+use super::super::{SalsaLookupBucket, build_lookup_buckets, find_bucket_indices};
 use super::{
     SalsaCallExplainSummary, SalsaDeclTypeQueryIndex, SalsaDocTagQueryIndex,
     SalsaDocTypeLoweredIndex, SalsaDocTypeLoweredKind, SalsaDocTypeRef,

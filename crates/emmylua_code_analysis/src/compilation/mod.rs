@@ -1,4 +1,5 @@
 mod decl;
+mod decl_projections;
 mod func_body;
 mod global;
 mod member;
@@ -12,17 +13,17 @@ mod type_projection;
 use std::sync::Arc;
 
 use crate::{
-    Emmyrc, FileId, LuaIndex, LuaInferCache, LuaType, LuaTypeDeclId,
-    db_index::DbIndex,
+    Emmyrc, FileId, LuaIndex, LuaInferCache, LuaType, LuaTypeDeclId, db_index::DbIndex,
     semantic::SemanticModel,
 };
 pub use decl::*;
+pub(crate) use decl_projections::*;
 pub(crate) use global::*;
 pub(crate) use member::*;
 pub use module::*;
 pub(crate) use operator::*;
-pub(crate) use type_projection::*;
 pub use summary_builder::*;
+pub(crate) use type_projection::*;
 
 pub(crate) use func_body::analyze_func_body_missing_return_flags_with;
 
@@ -92,9 +93,7 @@ impl LuaCompilation {
             }
         }
         for file_id in file_ids {
-            if !synced.contains(&file_id)
-                && !self.db.sync_summary_file(file_id)
-            {
+            if !synced.contains(&file_id) && !self.db.sync_summary_file(file_id) {
                 log::warn!("file_id {:?} not found in vfs for summary sync", file_id);
             }
         }
