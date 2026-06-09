@@ -271,9 +271,9 @@ impl<'db> SalsaSummaryDocQueries<'db> {
     pub fn type_def_by_name(
         &self,
         file_id: FileId,
-        name: SmolStr,
+        name: &str,
     ) -> Option<SalsaDocTypeDefSummary> {
-        tracked::file_doc_type_def_by_name(self.db, file_id, name)
+        tracked::file_doc_type_def_by_name(self.db, file_id, SmolStr::new(name))
     }
 
     pub fn lowered_type_at(
@@ -828,8 +828,8 @@ impl<'db> SalsaSummaryTypeQueries<'db> {
         tracked::file_global_type_query_index(self.db, file_id)
     }
 
-    pub fn global(&self, file_id: FileId, name: SmolStr) -> Option<SalsaGlobalTypeInfoSummary> {
-        tracked::file_global_type_info(self.db, file_id, name)
+    pub fn global(&self, file_id: FileId, name: &str) -> Option<SalsaGlobalTypeInfoSummary> {
+        tracked::file_global_type_info(self.db, file_id, SmolStr::new(name))
     }
 
     pub fn global_name(

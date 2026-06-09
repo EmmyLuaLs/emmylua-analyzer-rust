@@ -436,7 +436,7 @@ fn infer_summary_named_type(
         .db
         .get_summary_db()
         .doc()
-        .type_def_by_name(analyzer.file_id, SmolStr::new(name))?;
+        .type_def_by_name(analyzer.file_id, name)?;
 
     if type_def.generic_params.is_empty() {
         return Some(LuaType::Ref(type_id));

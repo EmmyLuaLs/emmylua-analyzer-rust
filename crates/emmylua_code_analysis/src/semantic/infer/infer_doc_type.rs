@@ -423,7 +423,7 @@ fn infer_same_file_named_type(
         .db
         .get_summary_db()
         .doc()
-        .type_def_by_name(ctx.file_id, SmolStr::new(name))?;
+        .type_def_by_name(ctx.file_id, name)?;
     let workspace_id = ctx
         .db
         .resolve_workspace_id(ctx.file_id)

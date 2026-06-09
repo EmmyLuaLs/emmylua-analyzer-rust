@@ -241,7 +241,7 @@ mod test {
             .get_db()
             .get_summary_db()
             .doc()
-            .type_def_by_name(file_id, smol_str::SmolStr::new("Box"))
+            .type_def_by_name(file_id, "Box")
             .expect("summary type def");
         let default_type_key = summary_type_def.generic_params[0]
             .default_type_offset

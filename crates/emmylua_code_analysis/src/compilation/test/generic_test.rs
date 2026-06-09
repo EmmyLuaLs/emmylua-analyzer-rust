@@ -1086,7 +1086,7 @@ mod test {
                             .get_db()
                             .get_summary_db()
                             .doc()
-                            .type_def_by_name(file_id, "Parent".into())?
+                            .type_def_by_name(file_id, "Parent")?
                             .syntax_offset,
                     ),
                 &doc_type,

@@ -582,7 +582,7 @@ fn infer_compilation_named_type(db: &DbIndex, file_id: FileId, name: &str) -> Lu
     if let Some(type_def) = db
         .get_summary_db()
         .doc()
-        .type_def_by_name(file_id, SmolStr::new(name))
+        .type_def_by_name(file_id, name)
     {
         let workspace_id = db
             .resolve_workspace_id(file_id)

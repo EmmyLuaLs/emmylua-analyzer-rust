@@ -58,7 +58,7 @@ pub struct DbIndex {
     metatable_index: LuaMetatableIndex,
     global_index: LuaGlobalIndex,
     json_schema_index: JsonSchemaIndex,
-    summary_db: RwLock<SalsaSummaryDatabase>,
+    summary_db: Arc<RwLock<SalsaSummaryDatabase>>,
     emmyrc: Arc<Emmyrc>,
     type_def_rev_gen: AtomicU64,
     type_def_cache: RwLock<Option<Arc<TypeDefReverseIndex>>>,
@@ -99,7 +99,7 @@ impl DbIndex {
             metatable_index: LuaMetatableIndex::new(),
             global_index: LuaGlobalIndex::new(),
             json_schema_index: JsonSchemaIndex::new(),
-            summary_db: RwLock::new(SalsaSummaryDatabase::default()),
+            summary_db: Arc::new(RwLock::new(SalsaSummaryDatabase::default())),
             emmyrc: Arc::new(Emmyrc::default()),
             type_def_rev_gen: AtomicU64::new(0),
             type_def_cache: RwLock::new(None),
@@ -249,6 +249,10 @@ impl DbIndex {
 
     pub fn get_summary_db(&self) -> RwLockReadGuard<'_, SalsaSummaryDatabase> {
         self.summary_db_read()
+    }
+
+    pub fn get_salsa_db_arc(&self) -> Arc<RwLock<SalsaSummaryDatabase>> {
+        self.summary_db.clone()
     }
 
     pub fn sync_summary_workspaces(&mut self) {

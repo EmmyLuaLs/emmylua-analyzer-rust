@@ -41,6 +41,8 @@ mod resources;
 mod semantic;
 mod test_lib;
 mod vfs;
+mod semantic_model;
+
 
 // === Tier 1–2: Core API ===
 pub use compilation::*;
