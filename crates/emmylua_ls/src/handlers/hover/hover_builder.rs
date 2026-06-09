@@ -1,6 +1,6 @@
 use emmylua_code_analysis::{
-    GenericTplId, LuaCompilation, LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    RenderLevel, SemanticModel, TypeSubstitutor,
+    GenericTplId, LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType, RenderLevel,
+    SemanticModel, TypeSubstitutor,
 };
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaExpr, LuaLocalName, LuaLocalStat, LuaSyntaxKind, LuaSyntaxToken,
@@ -30,7 +30,6 @@ pub struct HoverBuilder<'a> {
 
     trigger_token: Option<LuaSyntaxToken>,
     pub semantic_model: &'a SemanticModel<'a>,
-    pub compilation: &'a LuaCompilation,
     pub detail_render_level: RenderLevel,
 
     pub is_completion: bool,
@@ -40,7 +39,6 @@ pub struct HoverBuilder<'a> {
 
 impl<'a> HoverBuilder<'a> {
     pub fn new(
-        compilation: &'a LuaCompilation,
         semantic_model: &'a SemanticModel,
         token: Option<LuaSyntaxToken>,
         is_completion: bool,
@@ -59,7 +57,6 @@ impl<'a> HoverBuilder<'a> {
         };
 
         Self {
-            compilation,
             semantic_model,
             primary: MarkedString::String("".to_string()),
             location_path: None,

@@ -63,7 +63,7 @@ pub fn signature_help(
         match node.kind().into() {
             LuaSyntaxKind::CallArgList => {
                 let call_expr = LuaCallExpr::cast(node.parent()?)?;
-                build_signature_helper(&semantic_model, &analysis.compilation, call_expr, token)
+                build_signature_helper(&semantic_model, call_expr, token)
             }
             // todo
             LuaSyntaxKind::TypeGeneric | LuaSyntaxKind::DocTypeList => None,
@@ -90,7 +90,7 @@ pub fn signature_help(
         match node.kind().into() {
             LuaSyntaxKind::CallArgList => {
                 let call_expr = LuaCallExpr::cast(node.parent()?)?;
-                build_signature_helper(&semantic_model, &analysis.compilation, call_expr, token)
+                build_signature_helper(&semantic_model, call_expr, token)
             }
             // todo
             LuaSyntaxKind::TypeGeneric | LuaSyntaxKind::DocTypeList => None,

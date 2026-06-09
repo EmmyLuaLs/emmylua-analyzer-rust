@@ -773,4 +773,57 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_regression_generic_table_field_should_be_function_owner() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@generic T
+                ---@param params ObserverParams<T>
+                function observe(params)
+                end
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                observe({
+                    <??>next = function(value)
+                        return value
+                    end
+                })
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: T) -> T\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_regression_signature_overload_call_selects_matching_alternative() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@overload fun(value: "A"): string
+                ---@overload fun(value: "B"): number
+                ---@param value string
+                ---@return boolean
+                local function pick(value)
+                end
+
+                pi<??>ck("B")
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function pick(value: \"B\") -> number\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
 }

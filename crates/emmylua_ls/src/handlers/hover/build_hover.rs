@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use emmylua_code_analysis::humanize_type;
 use emmylua_code_analysis::{
-    DbIndex, LuaCompilation, LuaDeclExtra, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey,
+    DbIndex, LuaDeclExtra, LuaDeclId, LuaDocument, LuaInferCache, LuaMemberId, LuaMemberKey,
     LuaSemanticDeclId, LuaSignatureId, LuaType, RenderLevel, SemanticInfo, SemanticModel,
+    infer_table_should_be,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAstNode, LuaCallArgList, LuaExpr, LuaSyntaxKind, LuaSyntaxToken,
@@ -12,18 +13,14 @@ use emmylua_parser::{
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 use rowan::TextRange;
 
+use crate::handlers::common::{find_decl_origin_owners, find_member_origin_owners};
 use crate::handlers::hover::function::{build_function_hover, is_function};
 use crate::handlers::hover::humanize_type_decl::build_type_decl_hover;
 use crate::handlers::hover::humanize_types::hover_humanize_type;
 
-use super::{
-    find_origin::{find_decl_origin_owners, find_member_origin_owners},
-    hover_builder::HoverBuilder,
-    humanize_types::hover_const_type,
-};
+use super::{hover_builder::HoverBuilder, humanize_types::hover_const_type};
 
 pub fn build_semantic_info_hover(
-    compilation: &LuaCompilation,
     semantic_model: &SemanticModel,
     db: &DbIndex,
     document: &LuaDocument,
@@ -36,7 +33,6 @@ pub fn build_semantic_info_hover(
         return build_hover_without_property(db, document, token, typ);
     }
     let hover_builder = build_hover_content(
-        compilation,
         semantic_model,
         db,
         Some(typ),
@@ -76,7 +72,6 @@ fn build_hover_without_property(
 }
 
 pub fn build_hover_content_for_completion<'a>(
-    compilation: &'a LuaCompilation,
     semantic_model: &'a SemanticModel,
     db: &DbIndex,
     property_id: LuaSemanticDeclId,
@@ -91,19 +86,10 @@ pub fn build_hover_content_for_completion<'a>(
         }
         _ => None,
     };
-    build_hover_content(
-        compilation,
-        semantic_model,
-        db,
-        typ,
-        property_id,
-        true,
-        token,
-    )
+    build_hover_content(semantic_model, db, typ, property_id, true, token)
 }
 
 fn build_hover_content<'a>(
-    compilation: &'a LuaCompilation,
     semantic_model: &'a SemanticModel,
     db: &DbIndex,
     typ: Option<LuaType>,
@@ -111,7 +97,7 @@ fn build_hover_content<'a>(
     is_completion: bool,
     token: Option<LuaSyntaxToken>,
 ) -> Option<HoverBuilder<'a>> {
-    let mut builder = HoverBuilder::new(compilation, semantic_model, token, is_completion);
+    let mut builder = HoverBuilder::new(semantic_model, token, is_completion);
     match property_id {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
             let typ = typ?;
@@ -139,8 +125,7 @@ fn build_decl_hover(
     let decl = db.get_decl_index().get_decl(&decl_id)?;
 
     let mut semantic_decls =
-        find_decl_origin_owners(builder.compilation, builder.semantic_model, decl_id)
-            .get_types(builder.semantic_model);
+        find_decl_origin_owners(builder.semantic_model, decl_id).get_types(builder.semantic_model);
 
     // 处理类型签名
     if is_function(&typ) {
@@ -227,9 +212,8 @@ fn build_member_hover(
     is_completion: bool,
 ) -> Option<()> {
     let member = db.get_member_index().get_member(&member_id)?;
-    let mut semantic_decls =
-        find_member_origin_owners(builder.compilation, builder.semantic_model, member_id, true)
-            .get_types(builder.semantic_model);
+    let mut semantic_decls = find_member_origin_owners(builder.semantic_model, member_id, true)
+        .get_types(builder.semantic_model);
     if let Some(token) = builder.get_trigger_token() {
         semantic_decls.retain(|(semantic_decl, _)| {
             builder
@@ -390,7 +374,6 @@ pub fn get_hover_type(builder: &HoverBuilder, semantic_model: &SemanticModel) ->
     None
 }
 
-#[allow(unused)]
 fn adjust_semantic_decls(
     builder: &mut HoverBuilder,
     semantic_decls: &mut Vec<(LuaSemanticDeclId, LuaType)>,
@@ -436,24 +419,36 @@ fn adjust_semantic_decls(
 }
 
 fn has_add_to_semantic_decls(
-    builder: &mut HoverBuilder,
+    builder: &HoverBuilder,
     semantic_decl_id: &LuaSemanticDeclId,
 ) -> Option<bool> {
     if let LuaSemanticDeclId::Member(member_id) = semantic_decl_id {
-        let semantic_model = if member_id.file_id == builder.semantic_model.get_file_id() {
-            builder.semantic_model
-        } else {
-            &builder.compilation.get_semantic_model(member_id.file_id)?
-        };
-
-        let root = semantic_model.get_root().syntax();
+        let root = builder
+            .semantic_model
+            .get_root_by_file_id(member_id.file_id)?;
+        let root = root.syntax();
         let current_node = member_id.get_syntax_id().to_node_from_root(root)?;
         if member_id.get_syntax_id().get_kind() == LuaSyntaxKind::TableFieldAssign {
             if LuaTableField::can_cast(current_node.kind().into()) {
                 let table_field = LuaTableField::cast(current_node.clone())?;
                 let parent = table_field.syntax().parent()?;
                 let table_expr = LuaTableExpr::cast(parent)?;
-                let table_type = semantic_model.infer_table_should_be(table_expr.clone())?;
+                let table_type = if member_id.file_id == builder.semantic_model.get_file_id() {
+                    infer_table_should_be(
+                        builder.semantic_model.get_db(),
+                        &mut builder.semantic_model.get_cache().borrow_mut(),
+                        table_expr.clone(),
+                    )
+                    .ok()?
+                } else {
+                    let mut infer_cache = LuaInferCache::new(member_id.file_id, Default::default());
+                    infer_table_should_be(
+                        builder.semantic_model.get_db(),
+                        &mut infer_cache,
+                        table_expr.clone(),
+                    )
+                    .ok()?
+                };
                 if matches!(table_type, LuaType::Ref(_) | LuaType::Generic(_)) {
                     // 如果位于函数调用中, 则不添加
                     let is_in_call = table_expr.ancestors::<LuaCallArgList>().next().is_some();
