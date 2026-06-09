@@ -8,6 +8,7 @@ use emmylua_parser::{
 use crate::{
     InFiled, InferGuard, LuaArrayType, LuaDeclId, LuaInferCache, LuaMemberId, LuaTupleStatus,
     LuaTupleType, LuaUnionType, TypeOps, VariadicType, check_type_compact,
+    compilation::{get_type_cache, get_type_by_owner},
     db_index::{DbIndex, LuaType},
     infer_call_expr_func, infer_expr,
 };
@@ -196,8 +197,8 @@ pub fn infer_table_field_value_should_be(
     }
 
     let member_id = LuaMemberId::new(table_field.get_syntax_id(), cache.get_file_id());
-    if let Some(type_cache) = db.get_type_index().get_type_cache(&member_id.into()) {
-        return Ok(type_cache.as_type().clone());
+    if let Some(typ) = get_type_by_owner(db, &member_id.into()) {
+        return Ok(typ);
     };
 
     Err(InferFailReason::FieldNotFound)
@@ -280,7 +281,7 @@ fn infer_table_field_type_by_parent(
     field: LuaTableField,
 ) -> InferResult {
     let member_id = LuaMemberId::new(field.get_syntax_id(), cache.get_file_id());
-    if let Some(type_cache) = db.get_type_index().get_type_cache(&member_id.into()) {
+    if let Some(type_cache) = get_type_cache(db, &member_id.into()) {
         if type_cache.is_doc() {
             let typ = type_cache.as_type();
             match typ {
@@ -334,11 +335,9 @@ fn infer_table_type_by_local(
 
     let local_name = local_names.get(num).ok_or(InferFailReason::None)?;
     let decl_id = LuaDeclId::new(cache.get_file_id(), local_name.get_position());
-    match db.get_type_index().get_type_cache(&decl_id.into()) {
-        Some(type_cache) => match type_cache.as_type() {
-            LuaType::TableConst(_) => Err(InferFailReason::None),
-            typ => Ok(typ.clone()),
-        },
+    match get_type_by_owner(db, &decl_id.into()) {
+        Some(LuaType::TableConst(_)) => Err(InferFailReason::None),
+        Some(typ) => Ok(typ),
         None => Err(InferFailReason::UnResolveDeclType(decl_id)),
     }
 }
@@ -360,11 +359,9 @@ fn infer_table_type_by_assign_stat(
 
     let decl_id = LuaDeclId::new(cache.get_file_id(), name.get_position());
     if db.get_decl_index().get_decl(&decl_id).is_some() {
-        match db.get_type_index().get_type_cache(&decl_id.into()) {
-            Some(type_cache) => match type_cache.as_type() {
-                LuaType::TableConst(_) => Err(InferFailReason::None),
-                typ => Ok(typ.clone()),
-            },
+        match get_type_by_owner(db, &decl_id.into()) {
+            Some(LuaType::TableConst(_)) => Err(InferFailReason::None),
+            Some(typ) => Ok(typ),
             None => Err(InferFailReason::UnResolveDeclType(decl_id)),
         }
     } else {
@@ -383,15 +380,12 @@ fn infer_table_type_by_return_stat(
     table_expr: LuaTableExpr,
 ) -> InferResult {
     let in_file_syntax_id = InFiled::new(cache.get_file_id(), return_stat.get_syntax_id());
-    let cache_type = match db
-        .get_type_index()
-        .get_type_cache(&in_file_syntax_id.into())
-    {
-        Some(cache) => cache,
+    let typ = match get_type_by_owner(db, &in_file_syntax_id.into()) {
+        Some(typ) => typ,
         None => {
             let in_file_range = InFiled::new(cache.get_file_id(), table_expr.get_range());
             return Ok(LuaType::TableConst(in_file_range));
         }
     };
-    Ok(cache_type.as_type().clone())
+    Ok(typ)
 }

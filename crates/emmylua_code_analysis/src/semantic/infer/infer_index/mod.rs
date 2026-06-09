@@ -13,7 +13,10 @@ use crate::{
     LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
     complete_type_generic_args, get_type_def_kind, type_def_alias_origin, type_def_is_alias,
     type_def_is_class, type_def_is_enum,
-    compilation::{infer_compilation_type_property_type, infer_compilation_type_super_types},
+    compilation::{
+        infer_compilation_type_property_type, infer_compilation_type_super_types,
+        get_member_item, get_members, get_operator, get_operators, get_type_by_owner,
+    },
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
@@ -347,7 +350,7 @@ fn infer_table_member(
     key: &LuaMemberKey,
 ) -> InferResult {
     let owner = LuaMemberOwner::Element(inst);
-    if let Some(member_item) = db.get_member_index().get_member_item(&owner, key) {
+    if let Some(member_item) = get_member_item(db, &owner, key) {
         return member_item.resolve_type(db);
     }
 
@@ -371,7 +374,6 @@ fn infer_custom_type_member(
     infer_guard: &InferGuardRef,
 ) -> InferResult {
     infer_guard.check(&prefix_type_id)?;
-    let type_index = db.get_type_index();
     let generic_substitutor = complete_type_generic_args(db, &prefix_type_id, Vec::new())
         .completed_args
         .filter(|args| !args.is_empty())
@@ -404,7 +406,7 @@ fn infer_custom_type_member(
         });
     }
 
-    if let Some(member_item) = db.get_member_index().get_member_item(&owner, &lookup.key) {
+    if let Some(member_item) = get_member_item(db, &owner, &lookup.key) {
         let member_type = member_item.resolve_type(db)?;
         return Ok(if let Some(substitutor) = &generic_substitutor {
             instantiate_type_generic(db, &member_type, substitutor)
@@ -421,7 +423,7 @@ fn infer_custom_type_member(
     }
 
     if let Some(super_types) = infer_compilation_type_super_types(db, &prefix_type_id)
-        .or_else(|| type_index.get_super_types(&prefix_type_id))
+        .or_else(|| db.get_type_index().get_super_types(&prefix_type_id))
     {
         for super_type in super_types {
             let super_type = if let Some(substitutor) = &generic_substitutor {
@@ -453,7 +455,7 @@ fn infer_type_key_member_type(
 
     let mut result_types = Vec::new();
     for key in keys {
-        if let Some(member_item) = db.get_member_index().get_member_item(owner, &key)
+        if let Some(member_item) = get_member_item(db, owner, &key)
             && let Ok(member_type) = member_item.resolve_type(db)
         {
             result_types.push(member_type);
@@ -472,7 +474,7 @@ fn infer_matching_member_key_type(
     owner: &LuaMemberOwner,
     key_type: &LuaType,
 ) -> Option<LuaType> {
-    let mut members = db.get_member_index().get_members(owner)?;
+    let mut members = get_members(db, owner)?;
     members.sort_by(|a, b| a.get_key().cmp(b.get_key()));
 
     // Build the union once; broad dynamic keys can match thousands of table members.
@@ -484,13 +486,10 @@ fn infer_matching_member_key_type(
             _ => continue,
         };
         if check_type_compact(db, key_type, &member_key_type).is_ok() {
-            let member_type = db
-                .get_type_index()
-                .get_type_cache(&member.get_id().into())
-                .map(|it| it.as_type())
-                .unwrap_or(&LuaType::Unknown);
+            let member_type = get_type_by_owner(db, &member.get_id().into())
+                .unwrap_or(LuaType::Unknown);
 
-            result_types.push(member_type.clone());
+            result_types.push(member_type);
         }
     }
 
@@ -698,9 +697,8 @@ fn infer_generic_members_from_super_generics(
         return None;
     }
 
-    let type_index = db.get_type_index();
     if let Some(super_types) = infer_compilation_type_super_types(db, type_decl_id)
-        .or_else(|| type_index.get_super_types(type_decl_id))
+        .or_else(|| db.get_type_index().get_super_types(type_decl_id))
     {
         super_types.iter().find_map(|super_type| {
             let super_type = instantiate_type_generic(db, super_type, substitutor);
@@ -869,15 +867,11 @@ fn infer_member_by_index_table(
     match metatable {
         Some(metatable) => {
             let meta_owner = LuaOperatorOwner::Table(metatable.clone());
-            let operator_ids = db
-                .get_operator_index()
-                .get_operators(&meta_owner, LuaOperatorMetaMethod::Index)
+            let operator_ids = get_operators(db, &meta_owner, LuaOperatorMetaMethod::Index)
                 .ok_or(InferFailReason::FieldNotFound)?;
 
-            for operator_id in operator_ids {
-                let operator = db
-                    .get_operator_index()
-                    .get_operator(operator_id)
+            for operator_id in &operator_ids {
+                let operator = get_operator(db, operator_id)
                     .ok_or(InferFailReason::None)?;
                 let operand = operator.get_operand(db);
                 let return_type = operator.get_result(db)?;
@@ -918,16 +912,11 @@ fn infer_member_by_index_custom_type(
         return Err(InferFailReason::None);
     }
 
-    let type_index = db.get_type_index();
-
-    if let Some(index_operator_ids) = db
-        .get_operator_index()
-        .get_operators(&prefix_type_id.clone().into(), LuaOperatorMetaMethod::Index)
+    if let Some(index_operator_ids) =
+        get_operators(db, &prefix_type_id.clone().into(), LuaOperatorMetaMethod::Index)
     {
-        for operator_id in index_operator_ids {
-            let operator = db
-                .get_operator_index()
-                .get_operator(operator_id)
+        for operator_id in &index_operator_ids {
+            let operator = get_operator(db, operator_id)
                 .ok_or(InferFailReason::None)?;
             let operand = operator.get_operand(db);
             let return_type = operator.get_result(db)?;
@@ -941,7 +930,7 @@ fn infer_member_by_index_custom_type(
     // find member by key in super
     if type_def_is_class(db, prefix_type_id)
         && let Some(super_types) = infer_compilation_type_super_types(db, prefix_type_id)
-            .or_else(|| type_index.get_super_types(prefix_type_id))
+            .or_else(|| db.get_type_index().get_super_types(prefix_type_id))
     {
         for super_type in super_types {
             let result =
@@ -1043,15 +1032,15 @@ fn infer_member_by_index_generic(
         }
         return Err(InferFailReason::None);
     }
-    let type_index = db.get_type_index();
-
-    let operator_index = db.get_operator_index();
-    if let Some(index_operator_ids) =
-        operator_index.get_operators(&type_decl_id.clone().into(), LuaOperatorMetaMethod::Index)
+    let operator_ids = get_operators(
+        db,
+        &type_decl_id.clone().into(),
+        LuaOperatorMetaMethod::Index,
+    );
+    if let Some(index_operator_ids) = operator_ids
     {
-        for index_operator_id in index_operator_ids {
-            let index_operator = operator_index
-                .get_operator(index_operator_id)
+        for index_operator_id in &index_operator_ids {
+            let index_operator = get_operator(db, index_operator_id)
                 .ok_or(InferFailReason::None)?;
             let operand = index_operator.get_operand(db);
             let instianted_operand = instantiate_type_generic(db, &operand, &substitutor);
@@ -1075,7 +1064,7 @@ fn infer_member_by_index_generic(
 
     // for supers
     if let Some(supers) = infer_compilation_type_super_types(db, &type_decl_id)
-        .or_else(|| type_index.get_super_types(&type_decl_id)) {
+        .or_else(|| db.get_type_index().get_super_types(&type_decl_id)) {
         for super_type in supers {
             let result = infer_member_by_operator_key_type(
                 db,
@@ -1190,22 +1179,20 @@ fn collect_type_member_keys(db: &DbIndex, key_type: &LuaType, keys: &mut HashSet
                         && let Some(type_decl) = db.get_type_index().get_type_decl(id)
                     {
                         let owner = LuaMemberOwner::Type(id.clone());
-                        if let Some(members) = db.get_member_index().get_members(&owner) {
+                        if let Some(members) = get_members(db, &owner) {
                             let is_enum_key = type_decl.is_enum_key();
                             for member in members {
                                 if is_enum_key {
                                     keys.insert(member.get_key().clone());
-                                } else if let Some(typ) = db
-                                    .get_type_index()
-                                    .get_type_cache(&member.get_id().into())
-                                    .map(|it| it.as_type())
+                                } else if let Some(typ) =
+                                    get_type_by_owner(db, &member.get_id().into())
                                 {
                                     match typ {
                                         LuaType::DocStringConst(s) | LuaType::StringConst(s) => {
-                                            keys.insert((*s).to_string().into());
+                                            keys.insert(s.to_string().into());
                                         }
                                         LuaType::DocIntegerConst(i) | LuaType::IntegerConst(i) => {
-                                            keys.insert((*i).into());
+                                            keys.insert(i.into());
                                         }
                                         _ => {}
                                     }

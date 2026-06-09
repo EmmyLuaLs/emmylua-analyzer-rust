@@ -1,6 +1,7 @@
 use crate::{
     TypeSubstitutor, instantiate_type_generic, type_def_alias_origin, type_def_is_alias,
     type_def_is_class,
+    compilation::{get_operator, get_operators},
     db_index::{LuaFunctionType, LuaOperatorMetaMethod, LuaSignatureId, LuaType, LuaTypeDeclId},
     semantic::type_check::type_check_context::TypeCheckContext,
 };
@@ -216,16 +217,11 @@ fn check_doc_func_type_compact_for_custom_type(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     if type_def_is_class(context.db, custom_type_id) {
-        let call_operators = context
-            .db
-            .get_operator_index()
-            .get_operators(&custom_type_id.clone().into(), LuaOperatorMetaMethod::Call)
-            .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-        for operator_id in call_operators {
-            let operator = context
-                .db
-                .get_operator_index()
-                .get_operator(operator_id)
+        let call_operators =
+            get_operators(context.db, &custom_type_id.clone().into(), LuaOperatorMetaMethod::Call)
+                .ok_or(TypeCheckFailReason::TypeNotMatch)?;
+        for operator_id in &call_operators {
+            let operator = get_operator(context.db, operator_id)
                 .ok_or(TypeCheckFailReason::TypeNotMatch)?;
             let call_type = operator.get_operator_func(context.db);
             match call_type {

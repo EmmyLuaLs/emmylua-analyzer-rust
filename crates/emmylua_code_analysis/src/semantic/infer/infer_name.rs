@@ -5,8 +5,8 @@ use crate::{
     LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId, LuaType,
     LuaTypeNode, SemanticDeclLevel, TypeOps,
     compilation::{
-        CompilationDeclTree, find_compilation_decl_by_position, global_type,
-        infer_compilation_decl_type,
+        CompilationDeclTree, find_compilation_decl_by_position, get_member_item_by_member_id,
+        global_type, infer_compilation_decl_type,
     },
     db_index::{DbIndex, LuaDeclOrMemberId},
     infer_node_semantic_decl,
@@ -174,9 +174,7 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
 }
 
 pub fn find_decl_member_type(db: &DbIndex, member_id: LuaMemberId) -> InferResult {
-    let item = db
-        .get_member_index()
-        .get_member_item_by_member_id(member_id)
+    let item = get_member_item_by_member_id(db, member_id)
         .ok_or(InferFailReason::None)?;
     item.resolve_type(db)
 }

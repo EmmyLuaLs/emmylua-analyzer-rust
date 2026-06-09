@@ -11,6 +11,7 @@ use crate::{
     LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
     LuaTypeNode, TypeOps, build_compilation_signature_doc_function, type_def_alias_origin,
     type_def_is_alias,
+    compilation::{get_operator, get_operators},
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
         VariadicType,
@@ -765,11 +766,9 @@ fn collect_mapped_key_atoms(key_ty: &LuaType, acc: &mut Vec<LuaType>) {
 }
 
 pub(super) fn get_default_constructor(db: &DbIndex, decl_id: &LuaTypeDeclId) -> Option<LuaType> {
-    let ids = db
-        .get_operator_index()
-        .get_operators(&decl_id.clone().into(), LuaOperatorMetaMethod::Call)?;
+    let ids = get_operators(db, &decl_id.clone().into(), LuaOperatorMetaMethod::Call)?;
 
     let id = ids.first()?;
-    let operator = db.get_operator_index().get_operator(id)?;
+    let operator = get_operator(db, id)?;
     Some(operator.get_operator_func(db))
 }

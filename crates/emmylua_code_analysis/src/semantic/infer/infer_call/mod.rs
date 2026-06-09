@@ -13,6 +13,7 @@ use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
     LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait, VariadicType,
+    compilation::{get_operator, get_operators},
 };
 use crate::{
     InferGuardRef,
@@ -340,14 +341,11 @@ fn infer_type_doc_function(
         return Err(InferFailReason::None);
     }
 
-    let operator_index = db.get_operator_index();
-    let operator_ids = operator_index
-        .get_operators(&type_id.clone().into(), LuaOperatorMetaMethod::Call)
+    let operator_ids = get_operators(db, &type_id.clone().into(), LuaOperatorMetaMethod::Call)
         .ok_or(InferFailReason::UnResolveOperatorCall)?;
     let mut overloads = Vec::new();
-    for overload_id in operator_ids {
-        let operator = operator_index
-            .get_operator(overload_id)
+    for overload_id in &operator_ids {
+        let operator = get_operator(db, overload_id)
             .ok_or(InferFailReason::None)?;
         let func = operator.get_operator_func(db);
         match func {
@@ -429,14 +427,11 @@ fn infer_generic_type_doc_function(
         return Err(InferFailReason::None);
     }
 
-    let operator_index = db.get_operator_index();
-    let operator_ids = operator_index
-        .get_operators(&type_id.into(), LuaOperatorMetaMethod::Call)
+    let operator_ids = get_operators(db, &type_id.into(), LuaOperatorMetaMethod::Call)
         .ok_or(InferFailReason::None)?;
     let mut overloads = Vec::new();
-    for overload_id in operator_ids {
-        let operator = operator_index
-            .get_operator(overload_id)
+    for overload_id in &operator_ids {
+        let operator = get_operator(db, overload_id)
             .ok_or(InferFailReason::None)?;
         let func = operator.get_operator_func(db);
         match func {
@@ -493,16 +488,13 @@ fn infer_table_type_doc_function(db: &DbIndex, table: InFiled<TextRange>) -> Inf
 
     let meta_table_owner = LuaOperatorOwner::Table(meta_table.clone());
 
-    let call_operators = db
-        .get_operator_index()
-        .get_operators(&meta_table_owner, LuaOperatorMetaMethod::Call)
-        .ok_or(InferFailReason::None)?;
+    let call_operators =
+        get_operators(db, &meta_table_owner, LuaOperatorMetaMethod::Call)
+            .ok_or(InferFailReason::None)?;
 
     // only first one is valid
-    for operator_id in call_operators {
-        let operator = db
-            .get_operator_index()
-            .get_operator(operator_id)
+    for operator_id in &call_operators {
+        let operator = get_operator(db, operator_id)
             .ok_or(InferFailReason::None)?;
         let func = operator.get_operator_func(db);
         match func {

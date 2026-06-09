@@ -1,9 +1,36 @@
 use crate::{
-    DbIndex, LuaType, LuaTypeDeclId,
+    DbIndex, LuaMemberId, LuaMemberIndexItem, LuaMemberKey, LuaMemberOwner, LuaType, LuaTypeDeclId,
     compilation::decl::infer_compilation_doc_type_key_with_owner,
+    db_index::LuaMember,
     SalsaDocTypeDefKindSummary,
 };
 use smol_str::SmolStr;
+
+pub(crate) fn get_members<'a>(
+    db: &'a DbIndex,
+    owner: &LuaMemberOwner,
+) -> Option<Vec<&'a LuaMember>> {
+    db.get_member_index().get_members(owner)
+}
+
+pub(crate) fn get_member_by_id<'a>(db: &'a DbIndex, id: &LuaMemberId) -> Option<&'a LuaMember> {
+    db.get_member_index().get_member(id)
+}
+
+pub(crate) fn get_member_item<'a>(
+    db: &'a DbIndex,
+    owner: &LuaMemberOwner,
+    key: &LuaMemberKey,
+) -> Option<&'a LuaMemberIndexItem> {
+    db.get_member_index().get_member_item(owner, key)
+}
+
+pub(crate) fn get_member_item_by_member_id<'a>(
+    db: &'a DbIndex,
+    member_id: LuaMemberId,
+) -> Option<&'a LuaMemberIndexItem> {
+    db.get_member_index().get_member_item_by_member_id(member_id)
+}
 
 pub(crate) fn get_type_def_kind(
     db: &DbIndex,

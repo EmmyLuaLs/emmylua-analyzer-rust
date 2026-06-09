@@ -7,7 +7,8 @@ use rowan::TextSize;
 use crate::{
     DbIndex, FileId, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType,
     LuaIntersectionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    LuaTypeCache, LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, TypeOps,
+    LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, TypeOps,
+    compilation::{get_member_by_id, get_member_item, get_type_by_owner},
     find_compilation_decl_by_position,
     module_query::{export::infer_module_export_type, identity::find_db_module_info},
     semantic::{
@@ -48,7 +49,7 @@ pub fn infer_expr_semantic_decl(
         ),
         _ => {
             let member_id = LuaMemberId::new(expr.get_syntax_id(), file_id);
-            if db.get_member_index().get_member(&member_id).is_some() {
+            if get_member_by_id(db, &member_id).is_some() {
                 return Some(LuaSemanticDeclId::Member(member_id));
             }
 
@@ -77,10 +78,8 @@ fn infer_name_expr_semantic_decl(
         return Some(LuaSemanticDeclId::LuaDecl(decl_id));
     }
 
-    let decl_type = db
-        .get_type_index()
-        .get_type_cache(&decl_id.into())
-        .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
+    let decl_type = get_type_by_owner(db, &decl_id.into())
+        .unwrap_or(LuaType::Unknown);
     let remove_nil_type = TypeOps::Remove.apply(db, &decl_type, &LuaType::Nil);
     let is_ref_object = remove_nil_type.is_function() || remove_nil_type.is_table();
     if decl.is_local() && !is_ref_object {
@@ -364,7 +363,7 @@ fn infer_table_member_semantic_decl(
     owner: LuaMemberOwner,
     member_key: &LuaMemberKey,
 ) -> Option<LuaSemanticDeclId> {
-    let member_item = db.get_member_index().get_member_item(&owner, member_key)?;
+    let member_item = get_member_item(db, &owner, member_key)?;
     member_item.resolve_semantic_decl(db)
 }
 
@@ -375,8 +374,7 @@ fn infer_custom_type_member_semantic_decl(
     member_key: &LuaMemberKey,
     semantic_guard: SemanticDeclGuard,
 ) -> Option<LuaSemanticDeclId> {
-    let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(&prefix_type_id)?;
+    let type_decl = db.get_type_index().get_type_decl(&prefix_type_id)?;
     if type_decl.is_alias() {
         if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
             return infer_member_semantic_decl_by_member_key(
@@ -398,12 +396,12 @@ fn infer_custom_type_member_semantic_decl(
     }
 
     let owner = LuaMemberOwner::Type(prefix_type_id.clone());
-    if let Some(member_item) = db.get_member_index().get_member_item(&owner, member_key) {
+    if let Some(member_item) = get_member_item(db, &owner, member_key) {
         return member_item.resolve_semantic_decl(db);
     }
 
     if type_decl.is_class() {
-        let super_types = type_index.get_super_types(&prefix_type_id)?;
+        let super_types = db.get_type_index().get_super_types(&prefix_type_id)?;
         for super_type in super_types {
             if let Some(property) = infer_member_semantic_decl_by_member_key(
                 db,

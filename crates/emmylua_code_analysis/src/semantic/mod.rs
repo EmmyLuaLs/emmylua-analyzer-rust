@@ -317,12 +317,7 @@ impl<'a> SemanticModel<'a> {
     }
 
     pub fn get_type(&self, type_owner: LuaTypeOwner) -> LuaType {
-        self.db
-            .get_type_index()
-            .get_type_cache(&type_owner)
-            .map(|cache| cache.as_type())
-            .unwrap_or(&LuaType::Unknown)
-            .clone()
+        crate::get_type_by_owner(self.db, &type_owner).unwrap_or(LuaType::Unknown)
     }
 
     pub fn get_member_key(&self, index_key: &LuaIndexKey) -> Option<LuaMemberKey> {

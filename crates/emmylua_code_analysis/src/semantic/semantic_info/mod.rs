@@ -4,8 +4,9 @@ mod semantic_decl_level;
 mod semantic_guard;
 
 use crate::{
-    DbIndex, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, LuaTypeCache,
-    compilation::infer_compilation_decl_type, find_compilation_decl_by_position,
+    DbIndex, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType,
+    compilation::{get_type_by_owner, infer_compilation_decl_type},
+    find_compilation_decl_by_position,
 };
 use emmylua_parser::{
     LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaLocalStat,
@@ -42,9 +43,7 @@ pub fn infer_token_semantic_info(
                 .as_ref()
                 .and_then(|decl| infer_compilation_decl_type(db, decl))
                 .or_else(|| {
-                    db.get_type_index()
-                        .get_type_cache(&decl_id.into())
-                        .map(|type_cache| type_cache.as_type().clone())
+                    get_type_by_owner(db, &decl_id.into())
                         .filter(|ty| !ty.is_unknown())
                 })
                 .or_else(|| infer_local_name_initializer_type(db, cache, token.clone()))
@@ -65,9 +64,7 @@ pub fn infer_token_semantic_info(
                 .as_ref()
                 .and_then(|decl| infer_compilation_decl_type(db, decl))
                 .or_else(|| {
-                    db.get_type_index()
-                        .get_type_cache(&decl_id.into())
-                        .map(|type_cache| type_cache.as_type().clone())
+                    get_type_by_owner(db, &decl_id.into())
                         .filter(|ty| !ty.is_unknown())
                 })
                 .unwrap_or(LuaType::Unknown);
@@ -104,12 +101,10 @@ pub fn infer_node_semantic_info(
         table_field_node if LuaTableField::can_cast(table_field_node.kind().into()) => {
             let table_field = LuaTableField::cast(table_field_node)?;
             let member_id = LuaMemberId::new(table_field.get_syntax_id(), cache.get_file_id());
-            let type_cache = db
-                .get_type_index()
-                .get_type_cache(&member_id.into())
-                .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
+            let typ = get_type_by_owner(db, &member_id.into())
+                .unwrap_or(LuaType::Unknown);
             Some(SemanticInfo {
-                typ: type_cache.as_type().clone(),
+                typ,
                 semantic_decl: Some(LuaSemanticDeclId::Member(member_id)),
             })
         }
@@ -141,12 +136,10 @@ pub fn infer_node_semantic_info(
                 }
                 LuaDocTag::Field(field) => {
                     let member_id = LuaMemberId::new(field.get_syntax_id(), cache.get_file_id());
-                    let type_cache = db
-                        .get_type_index()
-                        .get_type_cache(&member_id.into())
-                        .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
+                    let typ = get_type_by_owner(db, &member_id.into())
+                        .unwrap_or(LuaType::Unknown);
                     Some(SemanticInfo {
-                        typ: type_cache.as_type().clone(),
+                        typ,
                         semantic_decl: Some(LuaSemanticDeclId::Member(member_id)),
                     })
                 }

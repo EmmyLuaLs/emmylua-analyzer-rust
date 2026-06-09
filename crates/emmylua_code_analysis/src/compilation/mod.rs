@@ -3,9 +3,11 @@ mod func_body;
 mod global;
 mod member;
 mod module;
+mod operator;
 mod resolve;
 mod summary_builder;
 mod test;
+mod type_projection;
 
 use std::sync::Arc;
 
@@ -18,6 +20,8 @@ pub use decl::*;
 pub(crate) use global::*;
 pub(crate) use member::*;
 pub use module::*;
+pub(crate) use operator::*;
+pub(crate) use type_projection::*;
 pub use summary_builder::*;
 
 pub(crate) use func_body::analyze_func_body_missing_return_flags_with;

@@ -35,6 +35,7 @@ use smol_str::SmolStr;
 
 use crate::{
     InFiled, InferGuard, LuaMemberKey, VariadicType,
+    compilation::{get_operator, get_operators, get_type_by_owner},
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
     find_compilation_decl_by_position,
 };
@@ -64,11 +65,8 @@ fn prepare_expr_cache(
         }
 
         let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
-        if let Some(bind_type_cache) = db
-            .get_type_index()
-            .get_type_cache(&in_filed_syntax_id.into())
+        if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into())
         {
-            let ty = bind_type_cache.as_type().clone();
             cache
                 .expr_no_flow_cache
                 .insert(syntax_id, CacheEntry::Cache(Some(ty.clone())));
@@ -89,11 +87,8 @@ fn prepare_expr_cache(
     }
 
     let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
-    if let Some(bind_type_cache) = db
-        .get_type_index()
-        .get_type_cache(&in_filed_syntax_id.into())
+    if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into())
     {
-        let ty = bind_type_cache.as_type().clone();
         cache
             .expr_cache
             .insert(syntax_id, CacheEntry::Cache(ty.clone()));
@@ -261,10 +256,10 @@ fn get_custom_type_operator(
             LuaType::Def(type_id) => type_id,
             _ => return None,
         };
-        let op_ids = db.get_operator_index().get_operators(&type_id.into(), op)?;
+        let op_ids = get_operators(db, &type_id.into(), op)?;
         let operators = op_ids
             .iter()
-            .filter_map(|id| db.get_operator_index().get_operator(id))
+            .filter_map(|id| get_operator(db, id))
             .collect();
 
         Some(operators)

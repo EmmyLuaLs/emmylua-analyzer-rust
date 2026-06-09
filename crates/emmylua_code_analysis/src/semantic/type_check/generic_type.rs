@@ -1,8 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeCache, LuaTypeDeclId, RenderLevel,
+    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeDeclId, RenderLevel,
     TypeSubstitutor, complete_type_generic_args_in_type, humanize_type,
+    compilation::{get_member_by_id, get_members, get_type_by_owner},
     infer_compilation_type_super_types, instantiate_type_generic, type_def_alias_origin,
     type_def_is_alias,
     semantic::{member::find_members, type_check::type_check_context::TypeCheckContext},
@@ -132,11 +133,8 @@ fn check_generic_type_compact_table(
     table_owner: LuaMemberOwner,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let member_index = context.db.get_member_index();
-
     // 构建表成员映射
-    let table_member_map: HashMap<_, _> = member_index
-        .get_members(&table_owner)
+    let table_member_map: HashMap<_, _> = get_members(context.db, &table_owner)
         .map(|members| {
             members
                 .iter()
@@ -160,20 +158,15 @@ fn check_generic_type_compact_table(
 
         match table_member_map.get(&key) {
             Some(table_member_id) => {
-                let table_member = member_index
-                    .get_member(table_member_id)
+                let table_member = get_member_by_id(context.db, table_member_id)
                     .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-                let table_member_type = context
-                    .db
-                    .get_type_index()
-                    .get_type_cache(&table_member.get_id().into())
-                    .unwrap_or(&LuaTypeCache::InferType(LuaType::Any))
-                    .as_type();
+                let table_member_type = get_type_by_owner(context.db, &table_member.get_id().into())
+                    .unwrap_or(LuaType::Any);
 
                 if let Err(err) = check_general_type_compact(
                     context,
                     &source_member_type,
-                    table_member_type,
+                    &table_member_type,
                     next_guard,
                 ) && err.is_type_not_match()
                 {
@@ -186,7 +179,7 @@ fn check_generic_type_compact_table(
                             name = key.to_path(),
                             expect =
                                 humanize_type(context.db, &source_member_type, RenderLevel::Simple),
-                            got = humanize_type(context.db, table_member_type, RenderLevel::Simple)
+                            got = humanize_type(context.db, &table_member_type, RenderLevel::Simple)
                         )
                         .to_string(),
                     ));
