@@ -7,6 +7,7 @@ use emmylua_parser::LuaGeneralToken;
 use emmylua_parser::LuaSyntaxToken;
 use emmylua_parser::VisibilityKind;
 
+use crate::CompilationModuleInfo;
 use crate::DbIndex;
 use crate::Emmyrc;
 use crate::FileId;
@@ -14,7 +15,9 @@ use crate::LuaCommonProperty;
 use crate::LuaMemberOwner;
 use crate::LuaSemanticDeclId;
 use crate::LuaType;
+use crate::SemanticModel;
 use crate::compilation::{get_current_owner, get_member_by_id};
+use crate::try_extract_signature_id_from_field;
 
 use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
 

@@ -7,7 +7,7 @@ use crate::{
     DbIndex, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, compilation::get_type_by_owner,
     find_compilation_decl_by_position, infer_compilation_decl_type,
 };
-use emmylua_parser::{LuaLocalStat, LuaSyntaxNode, LuaSyntaxToken};
+use emmylua_parser::{LuaDocNameType, LuaDocTag, LuaLocalStat, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken};
 pub use infer_expr_semantic_decl::infer_expr_semantic_decl;
 pub use resolve_global_decl::resolve_global_decl_id;
 pub use semantic_decl_level::SemanticDeclLevel;
