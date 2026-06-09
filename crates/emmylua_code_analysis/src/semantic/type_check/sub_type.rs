@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use crate::{DbIndex, LuaType, LuaTypeDeclId};
+use std::collections::HashSet;
 
 /// 检查子类型关系.
 ///

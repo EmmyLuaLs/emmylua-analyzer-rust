@@ -6,21 +6,16 @@ mod infer_raw_member;
 use std::collections::HashSet;
 
 use crate::{
-    DbIndex, LuaMemberFeature, LuaMemberId, LuaMemberKey, LuaSemanticDeclId, TypeOps,
-    db_index::{LuaType, LuaTypeDeclId},
+    DbIndex, InferFailReason, LuaInferCache, LuaMemberFeature, LuaMemberId, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, TypeOps,
+    infer_node_semantic_decl, infer_table_should_be,
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxKind, LuaTableExpr, LuaTableField};
+
 pub use find_index::find_index_operations;
-pub use find_members::{
-    find_members, find_members_in_scope, find_members_with_key, find_members_with_key_in_scope,
-};
+pub use find_members::{find_members, find_members_with_key};
 pub use get_member_map::{get_member_map, get_member_map_in_scope};
 pub use infer_raw_member::infer_raw_member_type;
-
-use super::{
-    InferFailReason, LuaInferCache, SemanticDeclLevel, infer_node_semantic_decl,
-    infer_table_should_be,
-};
 
 pub fn get_buildin_type_map_type_id(type_: &LuaType) -> Option<LuaTypeDeclId> {
     match type_ {

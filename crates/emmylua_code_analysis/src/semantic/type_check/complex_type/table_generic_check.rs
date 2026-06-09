@@ -1,6 +1,6 @@
-use crate::compilation::{get_members, get_type_cache};
 use crate::{
-    LuaMemberKey, LuaMemberOwner, LuaType, TypeCheckFailReason, TypeCheckResult,
+    LuaMemberKey, LuaMemberOwner, LuaType, LuaTypeCache, TypeCheckFailReason, TypeCheckResult,
+    compilation::get_members,
     semantic::type_check::{
         check_general_type_compact, type_check_context::TypeCheckContext,
         type_check_guard::TypeCheckGuard,
@@ -123,7 +123,7 @@ fn check_table_generic_compact_member_owner(
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
 
-    let members = match get_members(db, &member_owner) {
+    let members = match get_members(context.db, &member_owner) {
         Some(members) => members,
         None => return Ok(()),
     };

@@ -1,11 +1,9 @@
 use emmylua_parser::LuaSyntaxNode;
 
-use crate::compilation::get_current_owner;
-use crate::compilation::get_current_owner;
-
-use super::{
-    LuaInferCache, SemanticDeclLevel, member::find_member_origin_owner,
-    semantic_info::infer_node_semantic_decl,
+use crate::{
+    DbIndex, LuaInferCache, LuaMemberId, LuaSemanticDeclId, SemanticDeclLevel,
+    compilation::get_current_owner, infer_node_semantic_decl,
+    semantic::member::find_member_origin_owner,
 };
 
 pub fn is_reference_to(

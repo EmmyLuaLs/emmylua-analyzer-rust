@@ -27,10 +27,7 @@ use lsp_types::Uri;
 pub use member::LuaMemberInfo;
 pub use member::find_index_operations;
 pub use member::get_member_map;
-use member::{
-    find_member_origin_owner, find_members_in_scope, find_members_with_key_in_scope,
-    get_member_map_in_scope,
-};
+use member::{find_member_origin_owner, get_member_map_in_scope};
 use reference::is_reference_to;
 use rowan::{NodeOrToken, TextRange};
 pub use semantic_info::SemanticInfo;
@@ -43,22 +40,27 @@ use type_check::is_sub_type_of;
 pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
+use crate::CompilationGenericParamInfo;
+use crate::CompilationModuleInfo;
+use crate::DbIndex;
+use crate::Emmyrc;
+use crate::FileId;
+use crate::LuaDocument;
+use crate::LuaFunctionType;
+use crate::LuaMemberKey;
+use crate::LuaSemanticDeclId;
+use crate::LuaType;
+use crate::LuaTypeDeclId;
+use crate::LuaTypeOwner;
 use crate::compilation::get_type_by_owner;
-use crate::compilation::get_type_by_owner;
-pub use crate::semantic::member::find_members_with_key;
+use crate::project_module_info;
 use crate::semantic::type_check::check_type_compact_detail;
-use crate::{
-    CompilationGenericParamInfo, CompilationModuleInfo, Emmyrc, LuaDocument, LuaSemanticDeclId,
-    db_index::LuaTypeDeclId, project_module_info,
-};
-use crate::{
-    FileId,
-    db_index::{DbIndex, LuaType},
-};
+
+pub use crate::semantic::infer::infer_call_expr_func;
+pub use crate::semantic::member::find_members_with_key;
 pub use generic::*;
 pub use guard::{InferGuard, InferGuardRef};
 pub use infer::InferFailReason;
-pub use infer::infer_call_expr_func;
 pub use infer::infer_param;
 pub(crate) use infer::try_infer_expr_for_index;
 pub(crate) use infer::{infer_expr, try_infer_expr_no_flow};

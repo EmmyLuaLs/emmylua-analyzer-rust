@@ -4,11 +4,11 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr
 use hashbrown::HashSet;
 use rowan::TextRange;
 
-use crate::compilation::find_signature_by_id;
+use crate::VariadicType;
 use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, DocTypeInferContext, GenericTpl, GenericTplId, LuaFunctionType, LuaSemanticDeclId,
-    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor, VariadicType,
+    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor,
     infer_doc_type,
 };
 

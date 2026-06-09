@@ -12,38 +12,37 @@ mod test;
 use std::ops::Deref;
 
 use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken,
-    LuaSyntaxId, LuaTableExpr, LuaVarExpr, NumberResult,
+    LuaCallExpr, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaSyntaxId, LuaTableExpr,
 };
 use infer_binary::infer_binary_expr;
 use infer_call::infer_call_expr;
-pub use infer_call::infer_call_expr_func;
-pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
-pub use infer_fail_reason::InferFailReason;
-pub use infer_index::infer_index_expr;
 pub(crate) use infer_index::try_infer_expr_for_index;
 use infer_name::infer_name_expr;
-pub use infer_name::{find_self_decl_or_member_id, infer_param};
 use infer_table::infer_table_expr;
-pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
 use infer_unary::infer_unary_expr;
-pub use narrow::VarRefId;
 pub(in crate::semantic) use narrow::{ConditionFlowAction, InferConditionFlow};
 
 use rowan::TextRange;
 use smol_str::SmolStr;
 
-use crate::compilation::{find_decl_by_id, get_operator, get_operators, get_type_by_owner};
 use crate::{
-    InFiled, InferGuard, LuaMemberKey, VariadicType,
-    db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
+    DbIndex, InFiled, InferGuard, LuaMemberKey, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId,
+    LuaType, VariadicType,
+    compilation::{find_decl_by_id, get_operator, get_operators, get_type_by_owner},
     find_compilation_decl_by_position,
 };
 
 use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
 
+pub use infer_call::infer_call_expr_func;
+pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
+pub use infer_fail_reason::InferFailReason;
+pub use infer_index::infer_index_expr;
 pub type InferResult = Result<LuaType, InferFailReason>;
 pub use infer_call::InferCallFuncResult;
+pub use infer_name::{find_self_decl_or_member_id, infer_param};
+pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
+pub use narrow::VarRefId;
 
 fn prepare_expr_cache(
     db: &DbIndex,

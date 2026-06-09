@@ -3,14 +3,11 @@ mod resolve_global_decl;
 mod semantic_decl_level;
 mod semantic_guard;
 
-use crate::compilation::get_type_by_owner;
 use crate::{
-    DbIndex, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, find_compilation_decl_by_position,
+    DbIndex, LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaType, compilation::get_type_by_owner,
+    find_compilation_decl_by_position, infer_compilation_decl_type,
 };
-use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaDocNameType, LuaDocTag, LuaExpr, LuaLocalName, LuaLocalStat,
-    LuaParamName, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
-};
+use emmylua_parser::{LuaLocalStat, LuaSyntaxNode, LuaSyntaxToken};
 pub use infer_expr_semantic_decl::infer_expr_semantic_decl;
 pub use resolve_global_decl::resolve_global_decl_id;
 pub use semantic_decl_level::SemanticDeclLevel;

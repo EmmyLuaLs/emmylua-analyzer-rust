@@ -3,15 +3,16 @@ use emmylua_parser::{LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
 use std::{ops::Deref, sync::Arc};
 
-use crate::compilation::{get_current_owner, get_type_cache};
+use crate::compilation::get_current_owner;
+use crate::find_signature_by_id;
 use crate::semantic::infer::{InferResult, infer_expr_list_types};
 use crate::{
-    DocTypeInferContext, FileId, GenericTplId, LuaFunctionType, LuaGenericType, LuaTypeNode,
-    build_compilation_signature_doc_function,
-    db_index::{DbIndex, LuaType},
-    find_compilation_type_generic_params, infer_doc_type,
+    DbIndex, DocTypeInferContext, FileId, GenericTpl, GenericTplId, InferFailReason, LuaDecl,
+    LuaFunctionType, LuaGenericType, LuaInferCache, LuaMemberOwner, LuaSemanticDeclId, LuaType,
+    LuaTypeNode, LuaTypeOwner, SemanticDeclLevel, TypeSubstitutor, TypeVisitTrait,
+    build_compilation_signature_doc_function, collect_callable_overload_groups,
+    find_compilation_type_generic_params, infer_doc_type, infer_node_semantic_decl,
     semantic::{
-        LuaInferCache,
         generic::{
             instantiate_type::instantiate_doc_function,
             tpl_context::TplContext,
@@ -20,18 +21,13 @@ use crate::{
                 tpl_pattern_match, variadic_tpl_pattern_match,
             },
         },
-        infer::InferFailReason,
         infer_expr,
         overload_resolve::{callable_accepts_args, resolve_signature_by_args},
     },
-};
-use crate::{
-    GenericTpl, LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
-    collect_callable_overload_groups, infer_node_semantic_decl,
     tpl_pattern_match_args_skip_unknown,
 };
 
-use super::{TypeSubstitutor, instantiate_type_generic};
+use super::instantiate_type_generic;
 
 pub fn instantiate_func_generic(
     db: &DbIndex,

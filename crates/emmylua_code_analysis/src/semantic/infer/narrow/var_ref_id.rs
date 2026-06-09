@@ -6,7 +6,6 @@ use rowan::TextSize;
 use smol_str::SmolStr;
 
 use crate::compilation::find_signature_by_id;
-use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, LuaAliasCallKind, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaMemberId,
     LuaMemberKey, LuaType,

@@ -5,23 +5,22 @@ mod object_type_check;
 mod table_generic_check;
 mod tuple_type_check;
 
+use crate::{
+    LuaType, LuaUnionType, TypeCheckFailReason, TypeCheckResult, TypeSubstitutor,
+    instantiate_type_generic,
+    semantic::type_check::{
+        check_general_type_compact, type_check_context::TypeCheckContext,
+        type_check_guard::TypeCheckGuard,
+    },
+    type_def_alias_origin, type_def_is_alias,
+};
+
 use array_type_check::check_array_type_compact;
 use call_type_check::check_call_type_compact;
 use intersection_type_check::check_intersection_type_compact;
 use object_type_check::check_object_type_compact;
 use table_generic_check::check_table_generic_type_compact;
 use tuple_type_check::check_tuple_type_compact;
-
-use crate::{
-    LuaType, LuaUnionType, TypeSubstitutor, instantiate_type_generic,
-    semantic::type_check::type_check_context::TypeCheckContext, type_def_alias_origin,
-    type_def_is_alias,
-};
-
-use super::{
-    TypeCheckResult, check_general_type_compact, type_check_fail_reason::TypeCheckFailReason,
-    type_check_guard::TypeCheckGuard,
-};
 
 // all is duck typing
 pub fn check_complex_type_compact(

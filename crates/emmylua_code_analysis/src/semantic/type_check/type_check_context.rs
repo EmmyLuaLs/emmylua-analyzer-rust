@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use crate::{DbIndex, LuaMemberKey};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeCheckCheckLevel {

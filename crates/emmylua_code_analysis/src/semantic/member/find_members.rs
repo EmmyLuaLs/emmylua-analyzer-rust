@@ -3,10 +3,13 @@ use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 
 use crate::compilation::{get_members, get_type_by_owner};
+use crate::semantic::member::{
+    FindMembersResult, get_buildin_type_map_type_id, intersect_member_types,
+};
 use crate::{
     DbIndex, FileId, InferGuardRef, LuaGenericType, LuaInstanceType, LuaIntersectionType,
-    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
-    LuaTypeDeclId, LuaUnionType, find_compilation_decl_by_position,
+    LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType,
+    LuaType, LuaTypeDeclId, LuaUnionType, find_compilation_decl_by_position,
     infer_compilation_type_property_type, infer_compilation_type_super_types,
     module_query::export::infer_module_export_type,
     semantic::{
@@ -14,10 +17,6 @@ use crate::{
         generic::{TypeSubstitutor, instantiate_type_generic},
     },
     type_def_alias_origin, type_def_is_alias,
-};
-
-use super::{
-    FindMembersResult, LuaMemberInfo, get_buildin_type_map_type_id, intersect_member_types,
 };
 
 #[derive(Debug, Clone)]

@@ -4,13 +4,11 @@ mod get_type_at_flow;
 mod narrow_type;
 mod var_ref_id;
 
-use crate::compilation::get_type_cache;
-use crate::compilation::{find_decl_by_id, get_type_cache};
 use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowTree, InferFailReason,
-    LuaInferCache,
-    compilation::{find_compilation_decl_by_position, infer_compilation_decl_type},
-    infer_param,
+    LuaInferCache, LuaType,
+    compilation::{find_compilation_decl_by_position, find_decl_by_id, get_type_cache},
+    infer_compilation_decl_type, infer_param,
     semantic::infer::{
         InferResult,
         infer_name::{find_decl_member_type, infer_global_type},
@@ -113,8 +111,9 @@ fn get_multi_antecedents(tree: &FlowTree, flow: &FlowNode) -> Result<Vec<FlowId>
 
 #[cfg(test)]
 mod tests {
-    use crate::{CacheEntry, LuaType, VirtualWorkspace};
     use emmylua_parser::{LuaAstNode, LuaTableExpr};
+
+    use crate::VirtualWorkspace;
 
     use super::*;
 

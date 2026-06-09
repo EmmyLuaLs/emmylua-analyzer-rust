@@ -40,7 +40,7 @@ fn check_name_expr(
 
     let decl_id = LuaDeclId::new(semantic_model.get_file_id(), name_expr.get_position());
     if let LuaSemanticDeclId::LuaDecl(id) = &semantic_decl
-        && *id == decl_id
+        && id == decl_id
     {
         return Some(());
     }
@@ -65,7 +65,7 @@ fn check_index_expr(
     )?;
     let member_id = LuaMemberId::new(index_expr.get_syntax_id(), semantic_model.get_file_id());
     if let LuaSemanticDeclId::Member(id) = &semantic_decl
-        && *id == member_id
+        && id == member_id
     {
         return Some(());
     }

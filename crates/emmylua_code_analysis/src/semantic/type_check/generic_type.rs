@@ -1,17 +1,19 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::compilation::{get_member_by_id, get_members, get_type_by_owner};
 use crate::{
-    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeDeclId, RenderLevel, TypeSubstitutor,
+    LuaGenericType, LuaMemberOwner, LuaType, LuaTypeDeclId, RenderLevel, TypeCheckFailReason,
+    TypeCheckResult, TypeSubstitutor,
+    compilation::{get_member_by_id, get_members, get_type_by_owner},
     complete_type_generic_args_in_type, humanize_type, infer_compilation_type_super_types,
     instantiate_type_generic,
-    semantic::{member::find_members, type_check::type_check_context::TypeCheckContext},
+    semantic::{
+        member::find_members,
+        type_check::{
+            check_general_type_compact, type_check_context::TypeCheckContext,
+            type_check_guard::TypeCheckGuard,
+        },
+    },
     type_def_alias_origin, type_def_is_alias,
-};
-
-use super::{
-    TypeCheckResult, check_general_type_compact, type_check_fail_reason::TypeCheckFailReason,
-    type_check_guard::TypeCheckGuard,
 };
 
 pub fn check_generic_type_compact(

@@ -6,17 +6,17 @@ use emmylua_parser::{
     LuaDocObjectType, LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType,
     LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, NumberResult,
 };
-use rowan::{TextRange, TextSize};
-use smol_str::SmolStr;
 
-use crate::LuaTypeNode;
 use crate::{
     AsyncState, DbIndex, FileId, GenericTpl, GenericTplId, InFiled, LuaAliasCallKind,
     LuaAliasCallType, LuaArrayLen, LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType,
     LuaIndexAccessKey, LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType,
-    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, SalsaDocTypeRef, TypeOps, VariadicType,
-    WorkspaceId, complete_type_generic_args,
+    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId, LuaTypeNode, SalsaDocTypeRef, TypeOps,
+    VariadicType, WorkspaceId, complete_type_generic_args,
 };
+
+use rowan::{TextRange, TextSize};
+use smol_str::SmolStr;
 
 thread_local! {
     static SAME_FILE_NAMED_TYPE_STACK: RefCell<Vec<(FileId, LuaTypeDeclId)>> = const { RefCell::new(Vec::new()) };

@@ -1,6 +1,5 @@
-use emmylua_parser::LuaCallExpr;
-
 use crate::{DbIndex, LuaInferCache, TypeSubstitutor};
+use emmylua_parser::LuaCallExpr;
 
 #[derive(Debug)]
 pub struct TplContext<'a> {

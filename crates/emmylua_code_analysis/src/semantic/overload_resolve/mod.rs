@@ -1,15 +1,13 @@
 mod resolve_signature_by_args;
-
+use emmylua_parser::{LuaAstNode, LuaCallExpr};
 use std::sync::Arc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr};
-
-use crate::db_index::{DbIndex, LuaFunctionType, LuaType};
-
-use super::{
-    LuaInferCache,
-    generic::instantiate_func_generic,
-    infer::{InferCallFuncResult, InferFailReason, infer_expr_list_types, try_infer_expr_no_flow},
+use crate::{
+    InferFailReason, LuaInferCache, LuaType,
+    db_index::{DbIndex, LuaFunctionType},
+    instantiate_func_generic,
+    semantic::infer::{InferCallFuncResult, infer_expr_list_types},
+    try_infer_expr_no_flow,
 };
 
 pub(crate) use resolve_signature_by_args::{callable_accepts_args, resolve_signature_by_args};

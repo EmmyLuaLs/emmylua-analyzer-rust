@@ -1,21 +1,19 @@
 use hashbrown::HashMap;
 
-use crate::compilation::{get_member_by_id, get_members, get_type_by_owner};
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDecl, LuaTypeDeclId,
-    RenderLevel, humanize_type,
+    RenderLevel, TypeCheckFailReason, TypeCheckResult,
+    compilation::{get_member_by_id, get_members, get_type_by_owner},
+    humanize_type,
     semantic::{
         member::find_members,
         type_check::{
-            intersection_utils::intersection_to_object, type_check_context::TypeCheckContext,
+            check_general_type_compact, intersection_utils::intersection_to_object, is_sub_type_of,
+            sub_type::get_base_type_id, type_check_context::TypeCheckContext,
+            type_check_guard::TypeCheckGuard,
         },
     },
     type_def_alias_origin, type_def_is_alias, type_def_is_enum,
-};
-
-use super::{
-    TypeCheckResult, check_general_type_compact, is_sub_type_of, sub_type::get_base_type_id,
-    type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard,
 };
 
 pub fn check_ref_type_compact(

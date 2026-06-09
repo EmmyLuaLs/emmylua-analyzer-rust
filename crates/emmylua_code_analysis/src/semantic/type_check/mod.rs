@@ -13,21 +13,17 @@ mod type_check_guard;
 use std::ops::Deref;
 
 use crate::module_query::export::infer_module_export_type;
+use crate::{DbIndex, LuaType, type_def_alias_origin, type_def_is_alias};
+use crate::{LuaUnionType, semantic::type_check::type_check_context::TypeCheckContext};
 use complex_type::check_complex_type_compact;
 use func_type::{check_doc_func_type_compact, check_sig_type_compact};
 use generic_type::check_generic_type_compact;
 use ref_type::check_ref_type_compact;
 use simple_type::check_simple_type_compact;
-pub use type_check_fail_reason::TypeCheckFailReason;
 use type_check_guard::TypeCheckGuard;
 
-use crate::{
-    LuaUnionType,
-    db_index::{DbIndex, LuaType},
-    semantic::type_check::type_check_context::TypeCheckContext,
-    type_def_alias_origin, type_def_is_alias,
-};
 pub use sub_type::is_sub_type_of;
+pub use type_check_fail_reason::TypeCheckFailReason;
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 pub use type_check_context::TypeCheckCheckLevel;
 

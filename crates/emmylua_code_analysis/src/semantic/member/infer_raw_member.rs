@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::compilation::get_member_item;
-use crate::compilation::get_member_item;
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
-    check_type_compact, infer_compilation_type_super_types,
+    check_type_compact,
+    compilation::get_member_item,
+    infer_compilation_type_super_types,
     semantic::generic::{TypeSubstitutor, instantiate_type_generic},
     type_def_alias_origin, type_def_is_alias, type_def_is_class,
 };

@@ -5,12 +5,13 @@ use emmylua_parser::{
     LuaLiteralToken, LuaLocalStat, LuaReturnStat, LuaTableExpr, LuaTableField,
 };
 
-use crate::compilation::{find_decl_by_id, get_type_by_owner, get_type_cache};
 use crate::{
     InFiled, InferGuard, LuaArrayType, LuaDeclId, LuaInferCache, LuaMemberId, LuaTupleStatus,
     LuaTupleType, LuaUnionType, TypeOps, VariadicType, check_type_compact,
+    compilation::{find_decl_by_id, get_type_by_owner, get_type_cache},
     db_index::{DbIndex, LuaType},
-    infer_call_expr_func, infer_expr,
+    infer_expr,
+    semantic::infer::infer_call_expr_func,
 };
 
 use super::{InferFailReason, InferResult, infer_index::infer_member};

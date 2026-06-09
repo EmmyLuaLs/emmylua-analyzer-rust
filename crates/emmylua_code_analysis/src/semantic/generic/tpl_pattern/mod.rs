@@ -8,12 +8,11 @@ use itertools::Itertools;
 use rowan::NodeOrToken;
 use smol_str::SmolStr;
 
-use crate::compilation::find_signature_by_id;
-use crate::compilation::find_signature_by_id;
 use crate::{
     InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType,
     LuaSemanticDeclId, LuaTupleType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, SemanticDeclLevel,
     VariadicType, check_type_compact,
+    compilation::find_signature_by_id,
     db_index::{DbIndex, LuaGenericType, LuaType},
     infer_node_semantic_decl,
     semantic::{

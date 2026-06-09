@@ -1,4 +1,5 @@
 use crate::compilation::{find_decl_by_id, get_current_owner};
+use crate::{LuaDeclExtra, LuaInferCache, LuaMemberOwner, LuaSemanticDeclId, LuaType};
 mod call_constraint;
 mod instantiate_type;
 mod test;

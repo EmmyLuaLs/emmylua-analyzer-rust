@@ -8,40 +8,34 @@ use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
 
-use crate::compilation::{
-    get_member_item, get_members, get_operator, get_operators, get_type_by_owner,
-};
 use crate::{
-    CacheEntry, GenericTpl, InFiled, InferGuardRef, LuaAliasCallKind, LuaDeclOrMemberId,
-    LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
+    CacheEntry, GenericTpl, InFiled, InferFailReason, InferGuardRef, LuaAliasCallKind,
+    LuaDeclOrMemberId, LuaInferCache, LuaInstanceType, LuaMemberOwner, LuaOperatorOwner, TypeOps,
     complete_type_generic_args,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    enum_variable_is_param, get_keyof_members, get_tpl_ref_extend_type, get_type_def_kind,
-    infer_compilation_type_property_type, infer_compilation_type_super_types,
+    enum_variable_is_param, get_keyof_members, get_member_item, get_members, get_operator,
+    get_operators, get_tpl_ref_extend_type, get_type_by_owner, get_type_def_kind,
+    infer_compilation_type_property_type, infer_compilation_type_super_types, infer_expr,
     module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
         infer::{
-            VarRefId,
+            InferResult, VarRefId,
             infer_index::infer_array::{
                 array_member_fallback, check_iter_var_range, infer_array_member_by_key,
             },
-            infer_name::get_name_expr_var_ref_id,
+            infer_name::{get_name_expr_var_ref_id, infer_global_type},
             narrow::infer_expr_narrow_type,
         },
-        member::get_buildin_type_map_type_id,
-        member::intersect_member_types,
+        member::{get_buildin_type_map_type_id, intersect_member_types},
         type_check::check_type_compact,
     },
-    type_def_alias_origin, type_def_is_alias, type_def_is_class, type_def_is_enum,
-};
-
-use super::{
-    InferFailReason, InferResult, infer_expr, infer_name::infer_global_type, try_infer_expr_no_flow,
+    try_infer_expr_no_flow, type_def_alias_origin, type_def_is_alias, type_def_is_class,
+    type_def_is_enum,
 };
 
 pub(crate) fn try_infer_expr_for_index(

@@ -1,3 +1,6 @@
+use hashbrown::HashMap;
+use std::{ops::Deref, vec};
+
 use crate::{
     DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
     LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
@@ -7,8 +10,6 @@ use crate::{
         type_check,
     },
 };
-use hashbrown::HashMap;
-use std::{ops::Deref, vec};
 
 use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_with_context};
 

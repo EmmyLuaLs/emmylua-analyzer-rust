@@ -2,12 +2,9 @@ use hashbrown::HashSet;
 
 use crate::{
     DbIndex, GenericParam, GenericTplId, LuaAliasCallType, LuaArrayType, LuaAttributeType,
-    LuaConditionalType, LuaMappedType, LuaMultiLineUnion, LuaTypeDeclId,
-    db_index::{
-        LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
-        LuaUnionType, VariadicType,
-    },
-    find_compilation_type_generic_params,
+    LuaConditionalType, LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaMappedType,
+    LuaMultiLineUnion, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
+    VariadicType, find_compilation_type_generic_params,
     semantic::generic::type_substitutor::TypeSubstitutor,
 };
 

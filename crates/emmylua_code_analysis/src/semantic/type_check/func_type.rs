@@ -1,15 +1,13 @@
-use crate::compilation::{find_signature_by_id, get_operator, get_operators};
 use crate::{
-    TypeSubstitutor,
+    TypeCheckFailReason, TypeCheckResult, TypeSubstitutor,
+    compilation::{find_signature_by_id, get_operator, get_operators},
     db_index::{LuaFunctionType, LuaOperatorMetaMethod, LuaSignatureId, LuaType, LuaTypeDeclId},
     instantiate_type_generic,
-    semantic::type_check::type_check_context::TypeCheckContext,
+    semantic::type_check::{
+        check_general_type_compact, type_check_context::TypeCheckContext,
+        type_check_guard::TypeCheckGuard,
+    },
     type_def_alias_origin, type_def_is_alias, type_def_is_class,
-};
-
-use super::{
-    TypeCheckResult, check_general_type_compact, type_check_fail_reason::TypeCheckFailReason,
-    type_check_guard::TypeCheckGuard,
 };
 
 pub fn check_doc_func_type_compact(

@@ -4,8 +4,7 @@ use std::collections::BTreeSet;
 use crate::{
     DbIndex, DiagnosticCode, InferFailReason, InferGuard, LuaInferCache, LuaSemanticDeclId,
     LuaType, RenderLevel, SemanticDeclLevel, SemanticModel,
-    diagnostic::checker::humanize_lint_type, get_real_type, humanize_type,
-    semantic::infer_call_expr_func,
+    diagnostic::checker::humanize_lint_type, get_real_type, humanize_type, infer_call_expr_func,
 };
 
 use super::{Checker, DiagnosticContext};

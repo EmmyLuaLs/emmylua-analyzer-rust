@@ -2,7 +2,6 @@ use hashbrown::{HashMap, HashSet};
 use std::ops::Deref;
 
 use crate::compilation::find_signature_by_id;
-use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
     check_type_compact,
@@ -376,7 +375,6 @@ fn collect_infer_assignments(
                                 .into(),
                         ),
                     };
-
                     if !collect_infer_assignments(db, &ty, pattern_ty, assignments, variance.flip())
                     {
                         return false;

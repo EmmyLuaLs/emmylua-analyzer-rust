@@ -6,16 +6,12 @@ mod instantiate_special_generic;
 use hashbrown::{HashMap, HashSet};
 use std::{ops::Deref, sync::Arc};
 
-use crate::compilation::{find_signature_by_id, get_operator, get_operators};
 use crate::{
-    DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
-    LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
-    LuaTypeNode, TypeOps, build_compilation_signature_doc_function,
-    db_index::{
-        LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
-        VariadicType,
-    },
-    semantic::infer::InferFailReason,
+    DbIndex, GenericTpl, GenericTplId, InferFailReason, LuaArrayType, LuaFunctionType,
+    LuaGenericType, LuaIntersectionType, LuaMappedType, LuaMemberKey, LuaObjectType,
+    LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaType, LuaTypeDeclId,
+    LuaTypeNode, LuaUnionType, TypeOps, VariadicType, build_compilation_signature_doc_function,
+    compilation::{find_signature_by_id, get_operator, get_operators},
     type_def_alias_origin, type_def_is_alias,
 };
 

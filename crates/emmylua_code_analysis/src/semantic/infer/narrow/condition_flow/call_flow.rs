@@ -2,11 +2,10 @@ use std::{ops::Deref, sync::Arc};
 
 use emmylua_parser::{LuaCallExpr, LuaExpr, LuaIndexMemberExpr};
 
-use crate::compilation::find_signature_by_id;
-use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, FlowNode, InferFailReason, LuaAliasCallKind, LuaAliasCallType, LuaFunctionType,
     LuaInferCache, LuaSignatureId, LuaType,
+    compilation::find_signature_by_id,
     semantic::infer::{
         VarRefId,
         narrow::{

@@ -4,21 +4,18 @@ use emmylua_parser::{
 };
 use rowan::TextSize;
 
-use crate::compilation::{find_decl_by_id, get_member_by_id, get_member_item, get_type_by_owner};
 use crate::{
     DbIndex, FileId, LuaDeclId, LuaDeclOrMemberId, LuaInferCache, LuaInstanceType,
     LuaIntersectionType, LuaMemberId, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, TypeOps,
-    find_compilation_decl_by_position,
+    LuaTypeDeclId, LuaUnionType, SalsaSemanticTargetSummary, SemanticDeclLevel, TypeOps,
+    compilation::{find_decl_by_id, get_member_by_id, get_member_item, get_type_by_owner},
+    find_compilation_decl_by_position, infer_expr,
     module_query::{export::infer_module_export_type, identity::find_db_module_info},
     semantic::{
-        infer::find_self_decl_or_member_id, member::get_buildin_type_map_type_id,
-        semantic_info::resolve_global_decl_id,
+        infer::find_self_decl_or_member_id,
+        member::get_buildin_type_map_type_id,
+        semantic_info::{SemanticDeclGuard, infer_token_semantic_decl, resolve_global_decl_id},
     },
-};
-
-use super::{
-    SemanticDeclLevel, infer_expr, infer_token_semantic_decl, semantic_guard::SemanticDeclGuard,
 };
 
 pub fn infer_expr_semantic_decl(

@@ -1,16 +1,20 @@
 #[cfg(test)]
 mod test;
 
-use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaFuncStat, LuaGeneralToken, LuaIndexExpr,
-    LuaSyntaxToken, LuaVarExpr, VisibilityKind,
-};
+use emmylua_parser::LuaBlock;
+use emmylua_parser::LuaClosureExpr;
+use emmylua_parser::LuaGeneralToken;
+use emmylua_parser::LuaSyntaxToken;
+use emmylua_parser::VisibilityKind;
 
+use crate::DbIndex;
+use crate::Emmyrc;
+use crate::FileId;
+use crate::LuaCommonProperty;
+use crate::LuaMemberOwner;
+use crate::LuaSemanticDeclId;
+use crate::LuaType;
 use crate::compilation::{get_current_owner, get_member_by_id};
-use crate::{
-    CompilationModuleInfo, DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner,
-    LuaSemanticDeclId, LuaType, SemanticModel, try_extract_signature_id_from_field,
-};
 
 use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
 

@@ -1,35 +1,31 @@
+mod infer_require;
+mod infer_setmetatable;
+
 use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
 use hashbrown::HashSet;
 use rowan::TextRange;
 
-use super::{
-    super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
-    InferFailReason, InferResult,
-};
-use crate::compilation::{find_signature_by_id, get_operator, get_operators};
-use crate::semantic::overload_resolve::callable_accepts_args;
 use crate::{
-    AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
-    LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait, VariadicType,
-};
-use crate::{
-    InferGuardRef,
+    AsyncState, CacheEntry, DbIndex, InFiled, InferFailReason, InferGuard, InferGuardRef,
+    LuaFunctionType, LuaGenericType, LuaInferCache, LuaInstanceType, LuaIntersectionType,
+    LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId, LuaType, LuaTypeDeclId,
+    LuaUnionType, TypeVisitTrait, VariadicType, build_self_type,
+    compilation::{find_signature_by_id, get_operator, get_operators},
+    infer_expr, infer_self_type, instantiate_func_generic, instantiate_type_generic,
     semantic::{
         generic::{
             TypeSubstitutor, collect_callable_overload_groups, get_tpl_ref_extend_type,
             instantiate_doc_function,
         },
-        infer::narrow::get_type_at_call_expr_inline_cast,
+        infer::{InferResult, narrow::get_type_at_call_expr_inline_cast},
+        overload_resolve::{callable_accepts_args, resolve_signature},
     },
 };
+
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
-
-mod infer_require;
-mod infer_setmetatable;
 
 pub type InferCallFuncResult = Result<Arc<LuaFunctionType>, InferFailReason>;
 
@@ -817,9 +813,7 @@ fn signature_is_generic(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        InferFailReason, InferGuard, LuaType, VirtualWorkspace, semantic::infer_call_expr_func,
-    };
+    use crate::{InferFailReason, InferGuard, LuaType, VirtualWorkspace, infer_call_expr_func};
 
     #[test]
     fn test_call_cache_non_callable_not_sticky() {

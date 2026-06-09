@@ -1,18 +1,15 @@
-use std::ops::Deref;
-
 use crate::{
-    DbIndex, LuaType, LuaTypeDeclId, TypeSubstitutor, VariadicType, instantiate_type_generic,
+    DbIndex, LuaType, LuaTypeDeclId, TypeCheckFailReason, TypeCheckResult, TypeSubstitutor,
+    VariadicType, instantiate_type_generic,
     semantic::type_check::{
-        is_sub_type_of,
+        check_general_type_compact, is_sub_type_of,
+        sub_type::get_base_type_id,
         type_check_context::{TypeCheckCheckLevel, TypeCheckContext},
+        type_check_guard::TypeCheckGuard,
     },
     type_def_alias_origin, type_def_is_alias, type_def_is_enum,
 };
-
-use super::{
-    TypeCheckResult, check_general_type_compact, sub_type::get_base_type_id,
-    type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard,
-};
+use std::ops::Deref;
 
 pub fn check_simple_type_compact(
     context: &mut TypeCheckContext,

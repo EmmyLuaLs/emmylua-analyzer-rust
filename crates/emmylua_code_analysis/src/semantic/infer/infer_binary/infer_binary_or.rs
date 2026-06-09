@@ -1,9 +1,8 @@
 use emmylua_parser::LuaExpr;
 
-use crate::compilation::get_type_cache;
-use crate::compilation::{get_members, get_type_cache};
 use crate::{
     BasicTypeKind, DbIndex, LuaType, LuaUnionType, TypeOps, check_type_compact,
+    compilation::get_members,
     db_index::{LuaMemberOwner, LuaTypeCache, LuaTypeDeclId},
     semantic::infer::{InferResult, narrow::remove_false_or_nil},
 };

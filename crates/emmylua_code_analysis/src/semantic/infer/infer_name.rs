@@ -1,20 +1,17 @@
-use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaNameExpr};
-
 use super::{InferFailReason, InferResult};
-use crate::compilation::{
-    find_decl_by_id, find_signature_by_id, get_file_decl_tree, get_member_item_by_member_id,
-};
 use crate::{
     CompilationDeclTree, LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId,
     LuaType, LuaTypeNode, SemanticDeclLevel, TypeOps,
     db_index::{DbIndex, LuaDeclOrMemberId},
-    find_compilation_decl_by_position, global_type, infer_compilation_decl_type,
+    find_compilation_decl_by_position, find_decl_by_id, find_signature_by_id, get_file_decl_tree,
+    get_member_item_by_member_id, global_type, infer_compilation_decl_type,
     infer_node_semantic_decl,
     semantic::{
         infer::narrow::{VarRefId, get_var_ref_type, infer_expr_narrow_type},
         semantic_info::resolve_global_decl_id,
     },
 };
+use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaNameExpr};
 
 pub fn infer_name_expr(
     db: &DbIndex,
@@ -414,7 +411,7 @@ pub fn find_self_decl_or_member_id(
     name_expr: &LuaNameExpr,
 ) -> Option<LuaDeclOrMemberId> {
     let file_id = cache.get_file_id();
-    let tree = get_file_decl_tree(db, &file_id)?;
+    let tree = get_file_decl_tree(db, file_id)?;
 
     let self_decl = tree.find_local_decl("self", name_expr.get_position())?;
     if !self_decl.is_implicit_self() {

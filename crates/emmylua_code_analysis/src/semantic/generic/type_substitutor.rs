@@ -1,8 +1,9 @@
 use hashbrown::{HashMap, HashSet};
 use std::{cell::RefCell, rc::Rc};
 
-use super::tpl_pattern::constant_decay;
 use crate::{DbIndex, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId};
+
+use super::tpl_pattern::constant_decay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UninferredTplPolicy {

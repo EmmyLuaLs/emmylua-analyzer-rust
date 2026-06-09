@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaNameExpr};
-
 use crate::{
-    DbIndex, LuaDeclId, LuaInferCache, LuaType, semantic::overload_resolve::resolve_signature,
+    DbIndex, LuaDeclId, LuaInferCache, LuaType, globals,
+    semantic::overload_resolve::resolve_signature,
 };
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaNameExpr};
 
 pub fn resolve_global_decl_id(
     db: &DbIndex,

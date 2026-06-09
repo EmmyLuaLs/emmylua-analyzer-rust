@@ -1,6 +1,5 @@
-use emmylua_parser::LuaExpr;
-
 use crate::{FileId, InFiled, LuaDeclId, LuaMemberId, LuaSignatureId, LuaTypeDeclId};
+use emmylua_parser::LuaExpr;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum InferFailReason {

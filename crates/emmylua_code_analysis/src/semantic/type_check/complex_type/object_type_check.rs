@@ -1,9 +1,10 @@
 use std::collections::{HashMap, hash_map::Entry};
 
-use crate::compilation::{get_member_item, get_members, get_type_cache};
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, RenderLevel,
-    TypeCheckFailReason, TypeCheckResult, humanize_type,
+    TypeCheckFailReason, TypeCheckResult,
+    compilation::{get_member_item, get_members},
+    humanize_type,
     semantic::{
         member::find_members,
         type_check::{

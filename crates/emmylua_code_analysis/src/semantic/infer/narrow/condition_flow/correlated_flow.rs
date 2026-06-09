@@ -2,11 +2,10 @@ use std::{collections::HashSet, rc::Rc};
 
 use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaChunk};
 
-use crate::compilation::find_signature_by_id;
-use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, FlowId, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType, LuaInferCache,
     LuaSignature, LuaType, TypeOps,
+    compilation::find_signature_by_id,
     semantic::{
         infer::{InferResult, VarRefId, narrow::narrow_down_type, try_infer_expr_no_flow},
         instantiate_func_generic,

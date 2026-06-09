@@ -1,6 +1,6 @@
-use crate::compilation::{get_member_item, get_member_len};
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaType, TypeCheckFailReason, TypeCheckResult, TypeOps,
+    compilation::{get_member_item, get_member_len},
     find_index_operations,
     semantic::type_check::{
         check_general_type_compact, type_check_context::TypeCheckContext,
