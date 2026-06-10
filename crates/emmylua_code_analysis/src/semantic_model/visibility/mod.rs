@@ -27,11 +27,11 @@ pub fn check_visibility(
     match visibility {
         Some(SalsaDocVisibilityKindSummary::Public) => Some(true),
         Some(SalsaDocVisibilityKindSummary::Protected | SalsaDocVisibilityKindSummary::Private) => {
-            let vis = visibility.expect("just checked Some");
+            let vis = visibility?;
             Some(check_class_visibility(db, infer, &token, property_owner, vis).unwrap_or(false))
         }
         Some(SalsaDocVisibilityKindSummary::Package) => {
-            Some(property_owner.get_file_id().map_or(true, |f| f == file_id))
+            Some(property_owner.get_file_id().is_none_or(|f| f == file_id))
         }
         Some(SalsaDocVisibilityKindSummary::Internal) => {
             // TODO: workspace 检查需要 VFS 桥接

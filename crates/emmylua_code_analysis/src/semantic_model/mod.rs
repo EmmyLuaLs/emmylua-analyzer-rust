@@ -7,6 +7,7 @@
 //!
 //! 旧 `semantic/` 模块将在新模块功能完备后逐步废弃。
 
+mod generic;
 mod infer;
 mod member;
 mod reference;
@@ -22,6 +23,7 @@ use crate::{
     Emmyrc, FileId, LuaDocument, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, Vfs,
 };
 
+pub use generic::{GenericBindings, substitute as substitute_generic};
 pub use infer::{InferFailReason, InferQuery, InferResult};
 pub use member::MemberQuery;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
