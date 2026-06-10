@@ -18,7 +18,10 @@ use std::sync::{Arc, RwLock};
 
 use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError, LuaSyntaxNode, LuaSyntaxToken};
 
-use crate::compilation::{SalsaDocVisibilityKindSummary, SalsaSummaryDatabase};
+use crate::compilation::{
+    SalsaDeclId, SalsaDeclTreeSummary, SalsaDocVisibilityKindSummary, SalsaNameUseSummary,
+    SalsaSummaryDatabase,
+};
 use crate::{
     Emmyrc, FileId, LuaDocument, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, Vfs,
 };
@@ -178,5 +181,26 @@ impl SemanticModel {
     ) -> Option<LuaSemanticDeclId> {
         let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
         reference::find_decl(&db, self.file_id, &node, level)
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 声明查询
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// 获取当前文件的声明树。
+    pub fn decl_tree(&self) -> Option<Arc<SalsaDeclTreeSummary>> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        db.file().decl_tree(self.file_id)
+    }
+
+    /// 查询某个声明的所有引用。
+    pub fn decl_references(&self, decl_id: SalsaDeclId) -> Option<Vec<SalsaNameUseSummary>> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        db.lexical().decl_references(self.file_id, decl_id)
+    }
+
+    /// 获取内部 salsa_db 引用（仅供内部子模块使用）。
+    pub(crate) fn salsa_db(&self) -> &Arc<RwLock<SalsaSummaryDatabase>> {
+        &self.salsa_db
     }
 }

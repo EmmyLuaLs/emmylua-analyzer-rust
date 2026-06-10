@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     DbIndex, DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, RenderLevel,
-    VirtualUrlGenerator, check_type_compact, humanize_type,
+    VirtualUrlGenerator, check_type_compact, humanize_type, semantic_model::SemanticModel,
 };
 
 /// A virtual workspace for testing.
@@ -301,6 +301,11 @@ impl VirtualWorkspace {
 
     pub fn get_db_mut(&mut self) -> &mut DbIndex {
         (self.analysis.compilation.get_db_mut()) as _
+    }
+
+    /// 获取新架构 SemanticModel（基于 salsa）。
+    pub fn get_semantic_model(&self, file_id: FileId) -> Option<SemanticModel> {
+        self.analysis.compilation.semantic_model(file_id)
     }
 }
 

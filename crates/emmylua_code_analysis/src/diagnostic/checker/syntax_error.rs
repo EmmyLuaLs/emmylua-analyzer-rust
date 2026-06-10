@@ -1,186 +1,123 @@
+//! Syntax error checker — salsa-native.
+//!
+//! 检查语法错误 + 文档语法错误 + 整数/浮点/字符串字面量溢出 + `...` 误用。
+
 use emmylua_parser::{
     LuaAstNode, LuaClosureExpr, LuaLiteralExpr, LuaParseErrorKind, LuaSyntaxKind, LuaSyntaxToken,
     LuaTokenKind, float_token_value, int_token_value,
 };
 
-use crate::{DiagnosticCode, LuaSignatureId, SemanticModel};
+use crate::semantic_model::SemanticModel;
+use crate::{DiagnosticCode, LuaSignatureId, Vfs};
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct SyntaxErrorChecker;
-
-impl Checker for SyntaxErrorChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::SyntaxError, DiagnosticCode::DocSyntaxError];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        if let Some(parse_errors) = semantic_model.get_file_parse_error() {
-            for parse_error in parse_errors {
-                let code = match parse_error.kind {
-                    LuaParseErrorKind::SyntaxError => DiagnosticCode::SyntaxError,
-                    LuaParseErrorKind::DocError => DiagnosticCode::DocSyntaxError,
-                };
-
-                context.add_diagnostic(code, parse_error.range, parse_error.message, None);
-            }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel, vfs: &Vfs) {
+    // 解析错误
+    if let Some(parse_errors) = model.get_file_parse_error(vfs) {
+        for err in parse_errors {
+            let code = match err.kind {
+                LuaParseErrorKind::SyntaxError => DiagnosticCode::SyntaxError,
+                LuaParseErrorKind::DocError => DiagnosticCode::DocSyntaxError,
+            };
+            context.add_diagnostic(code, err.range, err.message, None);
         }
+    }
 
-        let root = semantic_model.get_root();
-        for node_or_token in root.syntax().descendants_with_tokens() {
-            if let Some(token) = node_or_token.into_token() {
-                match token.kind().into() {
-                    LuaTokenKind::TkInt => {
-                        if let Err(err) = int_token_value(&token) {
-                            context.add_diagnostic(
-                                DiagnosticCode::SyntaxError,
-                                err.range,
-                                err.message,
-                                None,
-                            );
-                        }
-                    }
-                    LuaTokenKind::TkFloat => {
-                        if let Err(err) = float_token_value(&token) {
-                            context.add_diagnostic(
-                                DiagnosticCode::SyntaxError,
-                                err.range,
-                                err.message,
-                                None,
-                            );
-                        }
-                    }
-                    LuaTokenKind::TkString => {
-                        if let Err(err) = check_normal_string_error(&token) {
-                            context.add_diagnostic(
-                                DiagnosticCode::SyntaxError,
-                                token.text_range(),
-                                err,
-                                None,
-                            );
-                        }
-                    }
-                    LuaTokenKind::TkDots => {
-                        check_dots_literal_error(context, semantic_model, &token);
-                    }
-                    _ => {}
+    // 字面量溢出检查
+    let root = model.get_root();
+    for node_or_token in root.syntax().descendants_with_tokens() {
+        let Some(token) = node_or_token.into_token() else { continue };
+        match token.kind().into() {
+            LuaTokenKind::TkInt => {
+                if let Err(err) = int_token_value(&token) {
+                    context.add_diagnostic(DiagnosticCode::SyntaxError, err.range, err.message, None);
                 }
             }
+            LuaTokenKind::TkFloat => {
+                if let Err(err) = float_token_value(&token) {
+                    context.add_diagnostic(DiagnosticCode::SyntaxError, err.range, err.message, None);
+                }
+            }
+            LuaTokenKind::TkString => {
+                if let Err(err) = check_string(&token) {
+                    context.add_diagnostic(DiagnosticCode::SyntaxError, token.text_range(), err, None);
+                }
+            }
+            LuaTokenKind::TkDots => {
+                check_dots(context, model, &token);
+            }
+            _ => {}
         }
     }
 }
 
-// this function is like string_token_value, but optimize for performance
-fn check_normal_string_error(string_token: &LuaSyntaxToken) -> Result<(), String> {
-    let text = string_token.text();
+fn check_string(token: &LuaSyntaxToken) -> Result<(), String> {
+    let text = token.text();
     if text.len() < 2 {
         return Ok(());
     }
-
     let mut chars = text.chars().peekable();
-    let delimiter = match chars.next() {
-        Some(c) => c,
-        None => return Ok(()),
-    };
-
+    let delimiter = chars.next().unwrap();
     while let Some(c) = chars.next() {
         match c {
             '\\' => {
-                if let Some(next_char) = chars.next() {
-                    match next_char {
-                        'a' | 'b' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '\"' | '\r'
-                        | '\n' => {}
-                        'x' => {
-                            // Hexadecimal escape sequence
-                            let hex = chars.by_ref().take(2).collect::<String>();
-                            if hex.len() == 2 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-                                if u8::from_str_radix(&hex, 16).is_err() {
-                                    return Err(t!(
-                                        "Invalid hex escape sequence '\\x%{hex}'",
-                                        hex = hex
-                                    )
-                                    .to_string());
-                                }
-                            } else {
-                                return Err(t!(
-                                    "Invalid hex escape sequence '\\x%{hex}'",
-                                    hex = hex
-                                )
-                                .to_string());
-                            }
-                        }
-                        'u' => {
-                            // Unicode escape sequence
-                            if let Some('{') = chars.next() {
-                                let unicode_hex =
-                                    chars.by_ref().take_while(|c| *c != '}').collect::<String>();
-                                if let Ok(code_point) = u32::from_str_radix(&unicode_hex, 16)
-                                    && std::char::from_u32(code_point).is_none()
-                                {
-                                    return Err(t!(
-                                        "Invalid unicode escape sequence '\\u{{%{unicode_hex}}}'",
-                                        unicode_hex = unicode_hex
-                                    )
-                                    .to_string());
-                                }
-                            }
-                        }
-                        '0'..='9' => {
-                            // Decimal escape sequence
-                            for _ in 0..2 {
-                                if let Some(digit) = chars.peek() {
-                                    if !digit.is_ascii_digit() {
-                                        break;
-                                    }
-                                    chars.next();
-                                }
-                            }
-                        }
-                        'z' => {
-                            // Skip whitespace
-                            while let Some(c) = chars.peek() {
-                                if !c.is_whitespace() {
-                                    break;
-                                }
-                                chars.next();
-                            }
-                        }
-                        _ => {
-                            // donot check other escape sequence
+                let Some(next) = chars.next() else { break };
+                match next {
+                    'x' => {
+                        let hex: String = chars.by_ref().take(2).collect();
+                        if hex.len() != 2 || !hex.chars().all(|c| c.is_ascii_hexdigit())
+                            || u8::from_str_radix(&hex, 16).is_err()
+                        {
+                            return Err(t!("Invalid hex escape sequence '\\x%{hex}'", hex = hex).to_string());
                         }
                     }
+                    'u' => {
+                        if chars.next() == Some('{') {
+                            let unicode: String = chars.by_ref().take_while(|c| *c != '}').collect();
+                            if u32::from_str_radix(&unicode, 16)
+                                .map_or(true, |cp| std::char::from_u32(cp).is_none())
+                            {
+                                return Err(t!("Invalid unicode escape sequence '\\u{{%{unicode}}}'", unicode = unicode).to_string());
+                            }
+                        }
+                    }
+                    '0'..='9' => {
+                        for _ in 0..2 {
+                            if !chars.peek().is_some_and(|d| d.is_ascii_digit()) { break; }
+                            chars.next();
+                        }
+                    }
+                    'z' => {
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) { chars.next(); }
+                    }
+                    _ => {}
                 }
             }
-            _ => {
-                if c == delimiter {
-                    break;
-                }
-            }
+            _ if c == delimiter => break,
+            _ => {}
         }
     }
     Ok(())
 }
 
-fn check_dots_literal_error(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    dots_token: &LuaSyntaxToken,
-) -> Option<()> {
-    if let Some(literal_expr) = dots_token.parent() {
-        if literal_expr.kind() == LuaSyntaxKind::LiteralExpr.into() {
-            let literal_expr = LuaLiteralExpr::cast(literal_expr)?;
-            let closure_expr = literal_expr.ancestors::<LuaClosureExpr>().next()?;
-            let signature_id =
-                LuaSignatureId::from_closure(semantic_model.get_file_id(), &closure_expr);
-            let signature = context.db.get_signature_index().get(&signature_id)?;
-            if !signature.params.iter().any(|param| param == "...") {
-                context.add_diagnostic(
-                    DiagnosticCode::SyntaxError,
-                    literal_expr.get_range(),
-                    t!("Cannot use `...` outside a vararg function.").to_string(),
-                    None,
-                );
-            }
-        }
+fn check_dots(context: &mut DiagnosticContext, model: &SemanticModel, dots_token: &LuaSyntaxToken) {
+    let Some(parent) = dots_token.parent() else { return };
+    if parent.kind() != LuaSyntaxKind::LiteralExpr.into() {
+        return;
     }
-
-    Some(())
+    let Some(literal) = LuaLiteralExpr::cast(parent) else { return };
+    let Some(closure) = literal.ancestors::<LuaClosureExpr>().next() else { return };
+    let sig_id = LuaSignatureId::from_closure(model.get_file_id(), &closure);
+    // TODO: salsa-native signature lookup (后续迁移 SignatureIndex 时完成)
+    // 当前暂时使用 DbIndex 的 signature index
+    let signature = context.db.get_signature_index().get(&sig_id);
+    if signature.is_none() || !signature.unwrap().params.iter().any(|p| p == "...") {
+        context.add_diagnostic(
+            DiagnosticCode::SyntaxError,
+            literal.get_range(),
+            t!("Cannot use `...` outside a vararg function.").to_string(),
+            None,
+        );
+    }
 }

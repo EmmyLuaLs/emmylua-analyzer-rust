@@ -64,10 +64,11 @@ impl LuaDiagnostic {
             return None;
         }
 
-        let semantic_model = compilation.get_semantic_model(file_id)?;
+        let vfs = db.get_vfs();
+        let new_model = compilation.semantic_model(file_id)?;
         let mut context = DiagnosticContext::new(file_id, db, self.config.clone());
 
-        check_file(&mut context, &semantic_model);
+        check_file(&mut context, &new_model, vfs);
 
         Some(context.get_diagnostics())
     }
