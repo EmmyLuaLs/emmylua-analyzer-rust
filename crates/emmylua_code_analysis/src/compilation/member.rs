@@ -23,16 +23,12 @@ pub(crate) fn get_member_item<'a>(
     db.get_member_index().get_member_item(owner, key)
 }
 
-pub(crate) fn get_member_item_by_member_id<'a>(
-    db: &'a DbIndex,
+pub(crate) fn get_member_item_by_member_id(
+    db: &DbIndex,
     member_id: LuaMemberId,
-) -> Option<&'a LuaMemberIndexItem> {
+) -> Option<&LuaMemberIndexItem> {
     db.get_member_index()
         .get_member_item_by_member_id(member_id)
-}
-
-pub(crate) fn get_member_len(db: &DbIndex, owner: &LuaMemberOwner) -> usize {
-    db.get_member_index().get_member_len(owner)
 }
 
 pub(crate) fn get_current_owner<'a>(

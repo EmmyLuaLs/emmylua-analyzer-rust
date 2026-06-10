@@ -21,8 +21,7 @@ pub(crate) fn get_operators(
     method: LuaOperatorMetaMethod,
 ) -> Option<Vec<LuaOperatorId>> {
     db.get_operator_index()
-        .get_operators(owner, method)
-        .map(|ids| ids.clone())
+        .get_operators(owner, method).cloned()
 }
 
 /// Returns an operator by its ID.

@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use crate::{
     Emmyrc, FileId, LuaIndex, LuaInferCache, LuaType, LuaTypeDeclId, db_index::DbIndex,
-    semantic::SemanticModel,
+    semantic::SemanticModel, semantic_model::SemanticModel as NewSemanticModel,
 };
 pub use decl::*;
 pub(crate) use decl_projections::*;
@@ -44,6 +44,8 @@ impl LuaCompilation {
         compilation
     }
 
+    /// 旧 SemanticModel（兼容现有 checker）。
+    /// 待所有 checker 迁移完成后删除。
     pub fn get_semantic_model(&'_ self, file_id: FileId) -> Option<SemanticModel<'_>> {
         let cache = LuaInferCache::new(file_id, Default::default());
         let tree = self.db.get_vfs().get_syntax_tree(&file_id)?;
@@ -51,6 +53,18 @@ impl LuaCompilation {
             file_id,
             &self.db,
             cache,
+            self.emmyrc.clone(),
+            tree.get_chunk_node(),
+        ))
+    }
+
+    /// 新 SemanticModel（基于 salsa，无 DbIndex 泄漏）。
+    pub fn semantic_model(&self, file_id: FileId) -> Option<NewSemanticModel> {
+        let tree = self.db.get_vfs().get_syntax_tree(&file_id)?;
+        let salsa_db = self.db.get_salsa_db_arc();
+        Some(NewSemanticModel::new(
+            file_id,
+            salsa_db,
             self.emmyrc.clone(),
             tree.get_chunk_node(),
         ))
