@@ -9,16 +9,22 @@
 
 mod infer;
 mod member;
+mod reference;
+mod type_check;
+mod visibility;
 
 use std::sync::{Arc, RwLock};
 
-use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError};
+use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError, LuaSyntaxNode, LuaSyntaxToken};
 
-use crate::compilation::SalsaSummaryDatabase;
-use crate::{Emmyrc, FileId, LuaDocument, Vfs};
+use crate::compilation::{SalsaDocVisibilityKindSummary, SalsaSummaryDatabase};
+use crate::{
+    Emmyrc, FileId, LuaDocument, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, Vfs,
+};
 
 pub use infer::{InferFailReason, InferQuery, InferResult};
 pub use member::MemberQuery;
+pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 
 /// 单文件语义模型。直接持有 salsa 数据库的 Arc，所有查询通过 salsa 完成。
 ///
@@ -86,7 +92,7 @@ impl SemanticModel {
         vfs.get_file_parse_error(&self.file_id)
     }
 
-    pub fn get_root_by_file_id<'a>(&self, vfs: &'a Vfs, file_id: FileId) -> Option<LuaChunk> {
+    pub fn get_root_by_file_id(&self, vfs: &Vfs, file_id: FileId) -> Option<LuaChunk> {
         Some(vfs.get_syntax_tree(&file_id)?.get_chunk_node())
     }
 
@@ -103,11 +109,72 @@ impl SemanticModel {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     pub fn infer(&self) -> InferQuery {
-        InferQuery::new(self.salsa_db.clone(), self.file_id)
+        InferQuery::new(self.salsa_db.clone(), self.file_id, self.emmyrc.clone())
     }
 
     /// 快捷方法：推断表达式类型
     pub fn infer_expr(&self, expr: LuaExpr) -> InferResult {
         self.infer().infer_expr(expr)
+    }
+
+    /// 推断成员类型：给定前缀类型和 key，返回成员类型。
+    pub fn infer_member_type(
+        &self,
+        prefix_type: &LuaType,
+        member_key: &LuaMemberKey,
+    ) -> InferResult {
+        self.infer().infer_member_type(prefix_type, member_key)
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 类型检查
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// 检查 source 类型是否兼容 compact 类型。
+    pub fn type_check(&self, source: &LuaType, compact: &LuaType) -> TypeCheckResult {
+        type_check::check_type_compact(self.emmyrc.clone(), source, compact)
+    }
+
+    /// 详细模式类型检查。
+    pub fn type_check_detail(&self, source: &LuaType, compact: &LuaType) -> TypeCheckResult {
+        type_check::check_type_compact_detail(self.emmyrc.clone(), source, compact)
+    }
+
+    /// 判断声明在给定 token 位置是否可见。
+    ///
+    /// `visibility` 是从 doc tag 中解析出的可见性注解。
+    /// 如果为 `None`，则仅检查 emmyrc `private_name` 模式。
+    pub fn is_visible(
+        &self,
+        token: LuaSyntaxToken,
+        decl_id: &LuaSemanticDeclId,
+        visibility: Option<&SalsaDocVisibilityKindSummary>,
+    ) -> Option<bool> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        let infer = self.infer();
+        visibility::check_visibility(
+            &db, &infer, self.file_id, &self.emmyrc, token, decl_id, visibility,
+        )
+    }
+
+    /// 检查 AST 节点是否是对目标声明的引用。
+    pub fn is_reference_to(
+        &self,
+        node: LuaSyntaxNode,
+        decl_id: &LuaSemanticDeclId,
+        level: SemanticDeclLevel,
+    ) -> Option<bool> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        reference::is_reference_to(&db, self.file_id, &node, decl_id, level)
+    }
+
+    /// 查找 AST 节点引用的声明。
+    pub fn find_decl_by_node(
+        &self,
+        node: LuaSyntaxNode,
+        level: SemanticDeclLevel,
+    ) -> Option<LuaSemanticDeclId> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        reference::find_decl(&db, self.file_id, &node, level)
     }
 }

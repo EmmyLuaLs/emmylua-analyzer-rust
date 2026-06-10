@@ -11,10 +11,13 @@
 //!   4. explicit_type_offsets → 需 VFS + doc type 展开（后续 phase）
 //!   5. 全局查找 → SalsaTypeQueries::global()
 
+mod binary;
 mod cache;
 mod call;
 mod index;
+mod member;
 mod table;
+mod unary;
 
 use std::cell::RefCell;
 use std::sync::{Arc, RwLock};
@@ -22,6 +25,7 @@ use std::sync::{Arc, RwLock};
 use emmylua_parser::{
     LuaAstNode, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr, NumberResult,
 };
+use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::compilation::{
@@ -29,7 +33,8 @@ use crate::compilation::{
     SalsaNameUseResolutionSummary, SalsaSummaryDatabase,
 };
 use crate::{
-    FileId, LuaDeclId, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, VariadicType,
+    FileId, LuaDeclId, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType,
+    TypeCheckFailReason, VariadicType,
 };
 
 pub use cache::InferCache;
@@ -74,14 +79,20 @@ impl InferFailReason {
 pub struct InferQuery {
     db: Arc<RwLock<SalsaSummaryDatabase>>,
     file_id: FileId,
+    emmyrc: Arc<crate::Emmyrc>,
     cache: RefCell<InferCache>,
 }
 
 impl InferQuery {
-    pub(crate) fn new(db: Arc<RwLock<SalsaSummaryDatabase>>, file_id: FileId) -> Self {
+    pub(crate) fn new(
+        db: Arc<RwLock<SalsaSummaryDatabase>>,
+        file_id: FileId,
+        emmyrc: Arc<crate::Emmyrc>,
+    ) -> Self {
         Self {
             db,
             file_id,
+            emmyrc,
             cache: RefCell::new(InferCache::new(file_id)),
         }
     }
@@ -92,6 +103,89 @@ impl InferQuery {
 
     pub(super) fn read_db(&self) -> impl std::ops::Deref<Target = SalsaSummaryDatabase> + '_ {
         self.db.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 类型检查快捷方法。
+    pub(super) fn check_type_compact(
+        &self,
+        source: &LuaType,
+        compact: &LuaType,
+    ) -> Result<(), crate::semantic_model::type_check::TypeCheckFailReason> {
+        crate::semantic_model::type_check::check_type_compact(
+            self.emmyrc.clone(),
+            source,
+            compact,
+        )
+    }
+
+    /// 推断成员类型。给前缀类型和 key，返回成员类型。
+    pub fn infer_member_type(&self, prefix_type: &LuaType, member_key: &LuaMemberKey) -> InferResult {
+        let db = self.read_db();
+        member::infer_member_impl(self, &db, prefix_type, member_key)
+    }
+
+    /// 推断表达式列表的类型。
+    ///
+    /// 处理多返回值（Variadic）展开和 `var_count` 截断。
+    pub fn infer_expr_list_types(
+        &self,
+        exprs: &[LuaExpr],
+        var_count: Option<usize>,
+    ) -> Result<Vec<(LuaType, TextRange)>, InferFailReason> {
+        let mut value_types = Vec::new();
+        for (idx, expr) in exprs.iter().enumerate() {
+            if let Some(max_count) = var_count {
+                if value_types.len() >= max_count {
+                    break;
+                }
+            }
+
+            let expr_type = self.infer_expr(expr.clone())?;
+
+            // 多返回值展开
+            if let Some(max_count) = var_count {
+                if expr_type.contain_multi_return() && idx < max_count {
+                    for i in idx..max_count {
+                        if let Some(typ) = expr_type.get_result_slot_type(i - idx) {
+                            value_types.push((typ, expr.get_range()));
+                        } else {
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            match &expr_type {
+                LuaType::Variadic(variadic) => {
+                    match variadic.as_ref() {
+                        VariadicType::Base(base) => {
+                            value_types.push((base.clone(), expr.get_range()));
+                        }
+                        VariadicType::Multi(types) => {
+                            for t in types {
+                                value_types.push((t.clone(), expr.get_range()));
+                            }
+                        }
+                    }
+                    break;
+                }
+                _ => value_types.push((expr_type, expr.get_range())),
+            }
+        }
+        Ok(value_types)
+    }
+
+    /// 推断值绑定的目标类型（右值 → 左值类型推断）。
+    ///
+    /// 例如 `local x: number = expr` 中，从 `expr` 推断 `x` 的类型为 `number`。
+    /// 当前仅实现赋值语句场景，其余返回 `None`。
+    pub fn infer_bind_value_type(&self, _expr: LuaExpr) -> Option<LuaType> {
+        // TODO: 完整实现需要 parent node 检查
+        // - LuaAssignStat: 找到对应的 var，推断 var 的类型
+        // - LuaTableField: 找到包含的表，推断字段类型
+        // - LuaCallArgList: 找到调用的函数，推断参数类型
+        None
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -279,7 +373,8 @@ impl InferQuery {
             LuaExpr::CallExpr(call) => infer_call_expr(self, call),
             LuaExpr::IndexExpr(index) => infer_index_expr(self, index),
             LuaExpr::TableExpr(table) => infer_table_expr(self, table),
-            LuaExpr::BinaryExpr(_) | LuaExpr::UnaryExpr(_) => Err(InferFailReason::NotImplemented),
+            LuaExpr::BinaryExpr(binary) => binary::infer_binary_expr(self, binary),
+            LuaExpr::UnaryExpr(unary) => unary::infer_unary_expr(self, unary),
         }
     }
 

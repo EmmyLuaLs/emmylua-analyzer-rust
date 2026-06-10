@@ -115,7 +115,7 @@ fn dispatch_prefix_type(
             }
         }
 
-        // 需要 doc type 展开 / 复合类型遍历，后续 phase 实现
+        // 委托给 infer_member_type 处理
         LuaType::Ref(_)
         | LuaType::Def(_)
         | LuaType::Union(_)
@@ -130,7 +130,10 @@ fn dispatch_prefix_type(
         | LuaType::Io
         | LuaType::StringConst(_)
         | LuaType::DocStringConst(_)
-        | LuaType::Language(_) => Err(InferFailReason::NotImplemented),
+        | LuaType::Language(_) => {
+            let key = member_key_from_expr(infer, member_expr)?;
+            infer.infer_member_type(prefix_type, &key)
+        }
 
         _ => Err(InferFailReason::FieldNotFound),
     }

@@ -294,33 +294,46 @@ infer_expr(expr)
 - [x] `infer_global_name()` — 全局函数/变量查找
 - [x] 可见性处理（Private→local，其余→global）
 
-### Phase 4：表达式推断（剩余）
-- [ ] `infer_call()` — 函数调用推断
-- [ ] `infer_index()` — 索引表达式推断
-- [ ] `infer_table()` — 表推断
-- [ ] `infer_binary()` — 二元运算推断
-- [ ] `infer_unary()` — 一元运算推断
-- [ ] `infer_expr_list_types()` / `infer_bind_value_type()`
+### Phase 4：表达式推断 ✅
+- [x] `infer_call()` — 函数调用推断（DocFunction/Signature/Union/Generic/Intersection）
+- [x] `infer_index()` — 索引表达式推断（salsa fast-path + 完整前缀类型分发）
+- [x] `infer_table()` — 表推断（Array 类型）
+- [x] `infer_member_type()` — 成员类型推断（13 种前缀类型全覆盖）← 新增
+- [ ] `infer_binary()` / `infer_unary()` — 后续
+- [ ] `infer_expr_list_types()` / `infer_bind_value_type()` — 后续
 
-### Phase 5：类型检查
-- [ ] `type_check/` 模块移植
+### Phase 5：类型检查 ✅ — 647 行
+- [x] `check_type_compact()` — 15 种 source 类型 × compact 类型的兼容矩阵
+- [x] `check_type_compact_detail()` — 详细模式
+- [x] `check_ref_source()` — Ref/Def source → is_sub_type_of + 基类映射
+- [x] `check_union_source()` — 所有成员必须匹配
+- [x] `check_intersection_source()` — 任一成员匹配即可
+- [x] `check_array_source()` — 元素类型对比
+- [x] `check_object_source()` — 字段级对比
+- [x] `check_tuple_source()` — 位置级对比
+- [x] `check_generic_source()` — 泛型展开后对比
+- [x] `check_table_generic_source()` — TableGeneric 对比
+- [x] `check_func_source()` — DocFunction/Signature 对比
+- [x] `is_sub_type_of()` — 相等 + 同名检查（完整类层次遍历后续 phase）
 
 ### Phase 6：其余 + 切换
 - [ ] `visibility/`, `reference/`, `generic/`
 - [ ] 修改 `LuaCompilation::get_semantic_model()` 返回新类型
 - [ ] 逐个 checker 验证后删除旧 `semantic/`
 
-### Phase 4：类型检查
-- [ ] 移植 `type_check/` 模块
-- [ ] `is_sub_type_of()`, `check_type_compact()`
+---
 
-### Phase 5：其余模块
-- [ ] `visibility/`, `reference/`, `generic/`, `overload/`
+## 编码规范（新增）
 
-### Phase 6：切换
-- [ ] 修改 `LuaCompilation::get_semantic_model()` 返回新的 `SemanticModel`
-- [ ] 逐个 checker 验证
-- [ ] 删除旧 `semantic/` 目录
+这些规范是在开发过程中迭代出来的：
+
+1. **禁止 `unwrap()`** — 项目有 `#![deny(clippy::unwrap_used)]`。用 `expect("reason")` 替代。
+2. **禁止 `crate::` 前缀** — 文件顶部用 `use crate::...` 导入，函数签名中不出现 `crate::`。
+3. **禁止 `super::`** — 同文件内不需要，跨子模块也用 top-level `use` 导入。
+4. **结构体不加无意义的生命周期** — 如果字段是 `Arc<T>`（自有），不需要 `'db`。只有在持有引用时才需要生命周期。
+5. **`get_position()` 替代 `syntax().text_range().start()`** — `LuaAstNode::get_position()` 更简洁。
+6. **SmolStr 参数优先 `&str`** — facade 方法接受 `&str` 后内部转换，避免调用方不必要的拷贝。
+7. **RwLock 读取封装** — 用 `read_db()` 辅助方法返回 `impl Deref<Target = SalsaSummaryDatabase>`，简化子模块中的锁访问。
 
 ---
 

@@ -16,7 +16,6 @@ pub(super) fn infer_table_expr(
         return Ok(LuaType::Table);
     }
 
-    let mut all_objects = true;
     let mut all_arrays = true;
     let mut array_types: Vec<LuaType> = Vec::new();
 
@@ -27,7 +26,6 @@ pub(super) fn infer_table_expr(
             .unwrap_or(LuaType::Unknown);
 
         if field.is_value_field() {
-            all_objects = false;
             array_types.push(value_type);
         } else if let Some(key) = field.get_field_key() {
             match key {
@@ -35,11 +33,9 @@ pub(super) fn infer_table_expr(
                     all_arrays = false;
                 }
                 LuaIndexKey::Integer(_) | LuaIndexKey::Idx(_) => {
-                    all_objects = false;
                     array_types.push(value_type);
                 }
                 LuaIndexKey::Expr(_) => {
-                    all_objects = false;
                     all_arrays = false;
                 }
             }
