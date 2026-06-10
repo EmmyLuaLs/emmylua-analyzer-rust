@@ -39,17 +39,6 @@ pub fn infer_call_generic(
 ) -> Result<LuaFunctionType, InferFailReason> {
     let file_id = cache.get_file_id().clone();
 
-    let origin_params = func.get_params();
-    let mut func_params: Vec<LuaType> = origin_params
-        .iter()
-        .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
-        .collect();
-
-    let arg_exprs = call_expr
-        .get_args_list()
-        .ok_or(InferFailReason::None)?
-        .get_args()
-        .collect::<Vec<_>>();
     let mut substitutor = TypeSubstitutor::new();
     let mut context = TplContext {
         db,
@@ -57,6 +46,8 @@ pub fn infer_call_generic(
         substitutor: &mut substitutor,
         call_expr: Some(call_expr.clone()),
     };
+    // 填充前缀类型可能存在的泛型
+    fill_call_prefix_substitutor(&mut context, &call_expr);
 
     let has_func_generic = func
         .get_generic_params()
@@ -76,14 +67,12 @@ pub fn infer_call_generic(
             apply_call_generic_type_list(db, file_id, &mut context, &type_list);
         } else {
             // 如果没有指定泛型, 则需要从调用参数中推断
-            infer_generic_types_from_call(
-                db,
-                &mut context,
-                func,
-                &call_expr,
-                &mut func_params,
-                &arg_exprs,
-            )?;
+            let origin_params = func.get_params();
+            let mut func_params: Vec<LuaType> = origin_params
+                .iter()
+                .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
+                .collect();
+            infer_generic_types_from_call(db, &mut context, func, &call_expr, &mut func_params)?;
         }
     }
 
@@ -396,7 +385,6 @@ fn infer_generic_types_from_call(
     func: &LuaFunctionType,
     call_expr: &LuaCallExpr,
     func_params: &mut Vec<LuaType>,
-    arg_exprs: &[LuaExpr],
 ) -> Result<(), InferFailReason> {
     let colon_call = call_expr.is_colon_call();
     let colon_define = func.is_colon_define();
@@ -413,6 +401,11 @@ fn infer_generic_types_from_call(
     }
 
     let mut unresolve_tpls = vec![];
+    let arg_exprs = call_expr
+        .get_args_list()
+        .ok_or(InferFailReason::None)?
+        .get_args()
+        .collect::<Vec<_>>();
     for i in 0..func_params.len() {
         if i >= arg_exprs.len() {
             if let LuaType::Variadic(variadic) = &func_params[i] {
@@ -599,4 +592,21 @@ fn check_expr_can_later_infer_with_doc_func(
         .count();
 
     variadic_count > 1
+}
+
+fn fill_call_prefix_substitutor(context: &mut TplContext, call_expr: &LuaCallExpr) -> Option<()> {
+    let prefix_expr = call_expr.get_prefix_expr()?;
+    if let LuaExpr::IndexExpr(index_expr) = prefix_expr {
+        let self_expr = index_expr.get_prefix_expr()?;
+        let self_type = infer_expr(context.db, context.cache, self_expr).ok()?;
+        if let LuaType::Generic(generic) = self_type {
+            for (i, param) in generic.get_params().iter().enumerate() {
+                context
+                    .substitutor
+                    .insert_type(GenericTplId::Type(i as u32), param.clone(), true);
+            }
+            return Some(());
+        }
+    }
+    None
 }
