@@ -4,15 +4,19 @@
 //! 已迁移到新架构的 checker 直接在这里调用，未迁移的暂时注释。
 
 // ✅ 已迁移
+pub(crate) mod access_invisible;
 pub(crate) mod check_field;
 pub(crate) mod duplicate_index;
 pub(crate) mod duplicate_require;
 pub(crate) mod local_const_reassign;
 pub(crate) mod need_check_nil;
+pub(crate) mod readonly_check;
 pub(crate) mod redefined_local;
 pub(crate) mod syntax_error;
 pub(crate) mod unbalanced_assignments;
+pub(crate) mod undefined_global;
 pub(crate) mod unnecessary_assert;
+pub(crate) mod unknown_doc_tag;
 pub(crate) mod unnecessary_if;
 pub(crate) mod unused;
 
@@ -29,7 +33,7 @@ pub(crate) mod unused;
 // mod check_param_count;
 // mod check_return_count;
 // mod circle_doc_class;
-// mod code_style;
+pub(crate) mod code_style;
 // mod deprecated;
 // mod discard_returns;
 // mod duplicate_field;
@@ -170,6 +174,11 @@ pub fn check_file(
     duplicate_index::check(context, model);
     duplicate_require::check(context, model);
     unnecessary_if::check(context, model);
+    code_style::invert_if::check(context, model);
+    unknown_doc_tag::check(context, model);
+    readonly_check::check(context, model);
+    undefined_global::check(context, model);
+    access_invisible::check(context, model);
 
     // 以下 checkers 尚未迁移：
     // deprecated::check(context, model);

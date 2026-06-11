@@ -22,7 +22,8 @@ use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError, LuaSyntaxNode, LuaSyntaxT
 use smol_str::SmolStr;
 
 use crate::compilation::{
-    SalsaDeclId, SalsaDeclTreeSummary, SalsaDocTypeDefKindSummary, SalsaDocVisibilityKindSummary,
+    SalsaDeclId, SalsaDeclTreeSummary, SalsaDocOwnerKindSummary, SalsaDocOwnerSummary,
+    SalsaDocTagPropertyEntrySummary, SalsaDocTypeDefKindSummary, SalsaDocVisibilityKindSummary,
     SalsaNameUseSummary, SalsaPropertyKeySummary, SalsaSummaryDatabase,
 };
 use crate::{
@@ -258,6 +259,23 @@ impl SemanticModel {
         db.doc()
             .type_def_by_name(self.file_id, type_id.get_name())
             .is_some_and(|def| matches!(def.kind, SalsaDocTypeDefKindSummary::Class))
+    }
+
+    /// 检查声明是否有指定的 doc tag 属性。
+    pub fn decl_has_doc_property(
+        &self,
+        file_id: FileId,
+        offset: rowan::TextSize,
+        entry: SalsaDocTagPropertyEntrySummary,
+    ) -> bool {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        let owner = SalsaDocOwnerSummary {
+            kind: SalsaDocOwnerKindSummary::None,
+            syntax_offset: Some(offset),
+        };
+        db.doc()
+            .tag_property(file_id, owner)
+            .is_some_and(|p| p.entries.iter().any(|e| *e == entry))
     }
 
     /// 获取内部 salsa_db 引用（仅供内部子模块使用）。
