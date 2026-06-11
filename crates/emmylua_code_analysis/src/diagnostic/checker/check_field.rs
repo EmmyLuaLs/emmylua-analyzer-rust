@@ -9,8 +9,9 @@ use emmylua_parser::{
     LuaIndexExpr, LuaIndexKey, LuaRepeatStat, LuaSyntaxKind, LuaTokenKind, LuaVarExpr, LuaWhileStat,
 };
 
+use crate::compilation::SalsaDeclKindSummary;
 use crate::semantic_model::SemanticModel;
-use crate::{DiagnosticCode, LuaMemberKey, LuaType};
+use crate::{DiagnosticCode, LuaMemberKey, LuaSemanticDeclId, LuaType};
 
 use super::{DiagnosticContext, humanize_lint_type};
 
@@ -229,11 +230,11 @@ fn check_enum_is_param(model: &SemanticModel, prefix_type: &LuaType, index_expr:
     let Some(decl) = model.find_decl_by_node(prefix.syntax().clone(), Default::default()) else {
         return false;
     };
-    let crate::LuaSemanticDeclId::LuaDecl(decl_id) = decl else { return false; };
+    let LuaSemanticDeclId::LuaDecl(decl_id) = decl else { return false; };
     let Some(decl_tree) = model.decl_tree() else { return false; };
     decl_tree.decls.iter().any(|d| {
         d.id.0 == decl_id.position
-            && matches!(d.kind, crate::compilation::SalsaDeclKindSummary::Param { .. })
+            && matches!(d.kind, SalsaDeclKindSummary::Param { .. })
     })
 }
 

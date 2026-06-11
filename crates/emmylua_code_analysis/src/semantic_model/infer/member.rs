@@ -4,8 +4,15 @@
 
 use smol_str::SmolStr;
 
-use crate::compilation::{SalsaDocVisibilityKindSummary, SalsaSummaryDatabase};
-use crate::{FileId, LuaMemberKey, LuaType, LuaTypeDeclId};
+use crate::compilation::{
+    SalsaDeclId, SalsaDocTypeDefKindSummary, SalsaDocTypeLoweredKind, SalsaDocVisibilityKindSummary,
+    SalsaMemberRootSummary, SalsaMemberTargetSummary, SalsaPropertyKeySummary,
+    SalsaSyntaxIdSummary, SalsaSummaryDatabase,
+};
+use crate::{
+    FileId, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaType, LuaTypeDeclId,
+    LuaUnionType,
+};
 
 use super::{InferFailReason, InferQuery, InferResult};
 
@@ -175,11 +182,11 @@ fn key_compatible_with_any_property(
         return false;
     };
     properties.iter().any(|prop| match &prop.key {
-        crate::compilation::SalsaPropertyKeySummary::Name(_) => {
+        SalsaPropertyKeySummary::Name(_) => {
             key_type.is_string() || key_type.is_str_tpl_ref()
         }
-        crate::compilation::SalsaPropertyKeySummary::Integer(_) => key_type.is_integer(),
-        crate::compilation::SalsaPropertyKeySummary::Expr(syntax_id) => {
+        SalsaPropertyKeySummary::Integer(_) => key_type.is_integer(),
+        SalsaPropertyKeySummary::Expr(syntax_id) => {
             // 通过 syntax_id 查找对应声明的类型
             resolve_property_key_type(db, file_id, syntax_id)
                 .is_some_and(|t| key_type.is_string() && t.is_string()
@@ -192,7 +199,7 @@ fn key_compatible_with_any_property(
 fn resolve_property_key_type(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
-    syntax_id: &crate::compilation::SalsaSyntaxIdSummary,
+    syntax_id: &SalsaSyntaxIdSummary,
 ) -> Option<LuaType> {
     let name_info = db.types().name(file_id, syntax_id.start_offset)?;
     let decl_type = name_info.decl_type?;
@@ -217,10 +224,10 @@ fn lookup_property_member(
     let properties = db.file().properties_for_type(file_id, type_name.into())?;
     for prop in properties {
         let key_matches = match (&prop.key, member_key) {
-            (crate::compilation::SalsaPropertyKeySummary::Name(n), LuaMemberKey::Name(k)) => {
+            (SalsaPropertyKeySummary::Name(n), LuaMemberKey::Name(k)) => {
                 n == k
             }
-            (crate::compilation::SalsaPropertyKeySummary::Integer(n), LuaMemberKey::Integer(k)) => {
+            (SalsaPropertyKeySummary::Integer(n), LuaMemberKey::Integer(k)) => {
                 n == k
             }
             _ => false,
@@ -245,10 +252,10 @@ fn lookup_salsa_member_target(
     member_key: &LuaMemberKey,
 ) -> Option<LuaType> {
     let member_name = member_key.get_name()?;
-    let target = crate::compilation::SalsaMemberTargetSummary {
-        root: crate::compilation::SalsaMemberRootSummary::LocalDecl {
+    let target = SalsaMemberTargetSummary {
+        root: SalsaMemberRootSummary::LocalDecl {
             name: type_name.into(),
-            decl_id: crate::compilation::SalsaDeclId(0u32.into()),
+            decl_id: SalsaDeclId(0u32.into()),
         },
         owner_segments: Vec::<SmolStr>::new().into(),
         member_name: SmolStr::new(member_name),
@@ -266,7 +273,7 @@ fn lookup_salsa_member_target(
             0 => None,
             1 => types.into_iter().next(),
             _ => Some(LuaType::Union(
-                crate::LuaUnionType::from_vec(types).into(),
+                LuaUnionType::from_vec(types).into(),
             )),
         }
     } else {
@@ -312,7 +319,7 @@ fn resolve_alias_origin(
     type_name: &str,
 ) -> Option<LuaType> {
     let type_def = db.doc().type_def_by_name(file_id, type_name)?;
-    if !matches!(type_def.kind, crate::compilation::SalsaDocTypeDefKindSummary::Alias) {
+    if !matches!(type_def.kind, SalsaDocTypeDefKindSummary::Alias) {
         return None;
     }
     // alias 的 origin 在 value_type_offset 中
@@ -338,7 +345,7 @@ fn resolve_super_types(
     for offset in &type_def.super_type_offsets {
         let lowered = db.doc().resolved_type_by_key(file_id, *offset)?;
         match &lowered.lowered.kind {
-            crate::compilation::SalsaDocTypeLoweredKind::Name { name } => {
+            SalsaDocTypeLoweredKind::Name { name } => {
                 // 对 super 类型名，解析为 global Ref
                 supers.push(LuaType::Ref(LuaTypeDeclId::global(name.as_str())));
             }
@@ -414,13 +421,13 @@ fn infer_intersection_member(
 fn infer_generic_member(
     infer: &InferQuery,
     db: &SalsaSummaryDatabase,
-    generic: &crate::LuaGenericType,
+    generic: &LuaGenericType,
     member_key: &LuaMemberKey,
 ) -> InferResult {
     // 检查 alias
     let base_ref_id = generic.get_base_type_id_ref();
     if let Some(type_def) = db.doc().type_def_by_name(infer.file_id, base_ref_id.get_name()) {
-        if matches!(type_def.kind, crate::compilation::SalsaDocTypeDefKindSummary::Alias) {
+        if matches!(type_def.kind, SalsaDocTypeDefKindSummary::Alias) {
             // Alias + generic → 后续 phase 实现完整泛型实例化
             return Err(InferFailReason::NotImplemented);
         }
@@ -464,7 +471,7 @@ fn infer_namespace_member(
             LuaTypeDeclId::global(full_name)
         };
         return Ok(match type_def.kind {
-            crate::compilation::SalsaDocTypeDefKindSummary::Alias => LuaType::Def(type_id),
+            SalsaDocTypeDefKindSummary::Alias => LuaType::Def(type_id),
             _ => LuaType::Ref(type_id),
         });
     }
@@ -506,7 +513,7 @@ fn union_all(types: Vec<LuaType>) -> LuaType {
     match unique.len() {
         0 => LuaType::Unknown,
         1 => unique.into_iter().next().expect("len checked"),
-        _ => LuaType::Union(crate::LuaUnionType::from_vec(unique).into()),
+        _ => LuaType::Union(LuaUnionType::from_vec(unique).into()),
     }
 }
 
@@ -521,6 +528,6 @@ fn intersect_types(left: LuaType, right: LuaType) -> LuaType {
         return left;
     }
     LuaType::Intersection(
-        crate::LuaIntersectionType::new(vec![left, right]).into(),
+        LuaIntersectionType::new(vec![left, right]).into(),
     )
 }

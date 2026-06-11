@@ -33,9 +33,11 @@ use crate::compilation::{
     SalsaNameUseResolutionSummary, SalsaSummaryDatabase,
 };
 use crate::{
-    FileId, LuaDeclId, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType,
-    TypeCheckFailReason, VariadicType,
+    Emmyrc, FileId, LuaDeclId, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType,
+    VariadicType,
 };
+
+use super::type_check::TypeCheckFailReason;
 
 pub use cache::InferCache;
 use call::infer_call_expr;
@@ -79,7 +81,7 @@ impl InferFailReason {
 pub struct InferQuery<'a> {
     db: Arc<RwLock<SalsaSummaryDatabase>>,
     file_id: FileId,
-    emmyrc: Arc<crate::Emmyrc>,
+    emmyrc: Arc<Emmyrc>,
     cache: &'a RefCell<InferCache>,
 }
 
@@ -87,7 +89,7 @@ impl<'a> InferQuery<'a> {
     pub(crate) fn with_cache(
         db: Arc<RwLock<SalsaSummaryDatabase>>,
         file_id: FileId,
-        emmyrc: Arc<crate::Emmyrc>,
+        emmyrc: Arc<Emmyrc>,
         cache: &'a RefCell<InferCache>,
     ) -> Self {
         Self { db, file_id, emmyrc, cache }
@@ -106,8 +108,8 @@ impl<'a> InferQuery<'a> {
         &self,
         source: &LuaType,
         compact: &LuaType,
-    ) -> Result<(), crate::semantic_model::type_check::TypeCheckFailReason> {
-        crate::semantic_model::type_check::check_type_compact(
+    ) -> Result<(), TypeCheckFailReason> {
+        super::type_check::check_type_compact(
             self.emmyrc.clone(),
             source,
             compact,

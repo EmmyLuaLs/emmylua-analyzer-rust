@@ -145,6 +145,15 @@ impl SemanticModel {
         self.infer().infer_expr(expr)
     }
 
+    /// 推断表达式列表的类型（处理多返回值展开）。
+    pub fn infer_expr_list_types(
+        &self,
+        exprs: &[LuaExpr],
+        var_count: Option<usize>,
+    ) -> Result<Vec<(LuaType, rowan::TextRange)>, InferFailReason> {
+        self.infer().infer_expr_list_types(exprs, var_count)
+    }
+
     /// 推断成员类型：给定前缀类型和 key，返回成员类型。
     pub fn infer_member_type(
         &self,

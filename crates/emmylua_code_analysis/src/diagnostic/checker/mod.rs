@@ -5,11 +5,15 @@
 
 // ✅ 已迁移
 pub(crate) mod check_field;
+pub(crate) mod duplicate_index;
+pub(crate) mod duplicate_require;
 pub(crate) mod local_const_reassign;
 pub(crate) mod need_check_nil;
 pub(crate) mod redefined_local;
 pub(crate) mod syntax_error;
+pub(crate) mod unbalanced_assignments;
 pub(crate) mod unnecessary_assert;
+pub(crate) mod unnecessary_if;
 pub(crate) mod unused;
 
 // ⏳ 待迁移
@@ -29,8 +33,6 @@ pub(crate) mod unused;
 // mod deprecated;
 // mod discard_returns;
 // mod duplicate_field;
-// mod duplicate_index;
-// mod duplicate_require;
 // mod duplicate_type;
 // mod enum_value_mismatch;
 // mod generic;
@@ -42,11 +44,9 @@ pub(crate) mod unused;
 // mod require_module_visibility;
 // mod return_type_mismatch;
 // mod type_access_modifier;
-// mod unbalanced_assignments;
 // mod undefined_doc_param;
 // mod undefined_global;
 // mod unknown_doc_tag;
-// mod unnecessary_if;
 
 use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind};
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
@@ -166,6 +166,10 @@ pub fn check_file(
     local_const_reassign::check(context, model);
     redefined_local::check(context, model);
     check_field::check(context, model);
+    unbalanced_assignments::check(context, model);
+    duplicate_index::check(context, model);
+    duplicate_require::check(context, model);
+    unnecessary_if::check(context, model);
 
     // 以下 checkers 尚未迁移：
     // deprecated::check(context, model);
