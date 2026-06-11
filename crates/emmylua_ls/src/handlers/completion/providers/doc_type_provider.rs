@@ -162,7 +162,7 @@ fn add_type_completion_item(
     };
 
     let data = if let Some(id) = type_decl {
-        CompletionData::from_property_owner_id(builder, id.into(), None)
+        CompletionData::from_property_owner_id(builder, id.into())
     } else {
         None
     };

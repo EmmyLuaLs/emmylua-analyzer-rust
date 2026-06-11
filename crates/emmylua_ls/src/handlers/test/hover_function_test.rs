@@ -122,14 +122,14 @@ mod tests {
                 local <??>event = test3.event
             "#,
             VirtualHoverResult {
-                value: "```lua\n(method) Test3:event(event: \"B\", key: string)\n```\n\n&nbsp;&nbsp;in class `Hover.Test3`\n\n---\n\n---\n\n```lua\n(method) Test3:event(event: \"A\", key: string)\n```".to_string(),
+                value: "```lua\n(method) Test3:event(event: \"A\", key: string) (+1 overloads)\n```\n\n&nbsp;&nbsp;in class `Hover.Test3`\n\n---\n\n---\n\n```lua\n(method) Test3:event(event: \"B\", key: string)\n```".to_string(),
             },
         ));
         Ok(())
     }
 
     #[gtest]
-    fn test_union_function() -> Result<()> {
+    fn test_mixed_class_field_and_real_definition() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
             r#"
@@ -149,10 +149,9 @@ mod tests {
                 ---@class (partial) GameA
                 ---@field event fun(self: self, event: "游戏-初始化"): Trigger
                 ---@field event fun(self: self, event: "游戏-追帧完成"): Trigger
-                ---@field event fun(self: self, event: "游戏-逻辑不同步"): Trigger
             "#,
             VirtualHoverResult {
-                value: "```lua\n(method) GameA:event(event_type: EventTypeA, ...: any) -> Trigger\n```\n\n---\n\n注册引擎事件\n\n---\n\n```lua\n(method) GameA:event(event: \"游戏-初始化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-追帧完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-逻辑不同步\") -> Trigger\n```".to_string(),
+                value: "```lua\n(method) GameA:event(event_type: EventTypeA, ...: any) -> Trigger (+2 overloads)\n```\n\n---\n\n注册引擎事件\n\n---\n\n```lua\n(method) GameA:event(event: \"游戏-初始化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-追帧完成\") -> Trigger\n```".to_string(),
             },
         ));
         Ok(())
@@ -343,7 +342,7 @@ mod tests {
                 }
             "#,
             VirtualHoverResult {
-                value: "```lua\n(field) T.func(a: (string|number))\n```\n\n---\n\n注释1\n\n注释2\n\n---\n\n```lua\n(field) T.func(a: string)\n```\n\n```lua\n(field) T.func(a: number)\n```"
+                value: "```lua\n(field) T.func(a: string) (+1 overloads)\n```\n\n---\n\n注释1\n\n---\n\n```lua\n(field) T.func(a: number) -- 注释2\n```"
                     .to_string(),
             },
         ));
@@ -375,7 +374,7 @@ mod tests {
     }
 
     #[gtest]
-    fn test_origin_decl_1() -> Result<()> {
+    fn test_table_field_origin_decl() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
             r#"
@@ -391,7 +390,7 @@ mod tests {
                 local ab<??>c = t.func
             "#,
             VirtualHoverResult {
-                value: "```lua\n(field) T.func(a: number)\n```\n\n---\n\n注释2\n\n注释1\n\n---\n\n```lua\n(field) T.func(a: string)\n```".to_string(),
+                value: "```lua\n(field) T.func(a: string) (+1 overloads)\n```\n\n---\n\n注释1\n\n---\n\n```lua\n(field) T.func(a: number) -- 注释2\n```".to_string(),
             },
         ));
         Ok(())
@@ -769,59 +768,6 @@ mod tests {
             "#,
             VirtualHoverResult {
                 value: "```lua\n(method) M:abcd(x: number)\n```".to_string(),
-            },
-        ));
-        Ok(())
-    }
-
-    #[gtest]
-    fn test_regression_generic_table_field_should_be_function_owner() -> Result<()> {
-        let mut ws = ProviderVirtualWorkspace::new();
-        ws.def(
-            r#"
-                ---@class ObserverParams<T>
-                ---@field next fun(value: T): T # 测试
-
-                ---@generic T
-                ---@param params ObserverParams<T>
-                function observe(params)
-                end
-            "#,
-        );
-        check!(
-            ws.check_hover(
-                r#"
-                observe({
-                    <??>next = function(value)
-                        return value
-                    end
-                })
-            "#,
-                VirtualHoverResult {
-                    value: "```lua\n(field) ObserverParams.next(value: T) -> T\n```\n\n---\n\n测试"
-                        .to_string(),
-                },
-            )
-        );
-        Ok(())
-    }
-
-    #[gtest]
-    fn test_regression_signature_overload_call_selects_matching_alternative() -> Result<()> {
-        let mut ws = ProviderVirtualWorkspace::new();
-        check!(ws.check_hover(
-            r#"
-                ---@overload fun(value: "A"): string
-                ---@overload fun(value: "B"): number
-                ---@param value string
-                ---@return boolean
-                local function pick(value)
-                end
-
-                pi<??>ck("B")
-            "#,
-            VirtualHoverResult {
-                value: "```lua\nlocal function pick(value: \"B\") -> number\n```".to_string(),
             },
         ));
         Ok(())

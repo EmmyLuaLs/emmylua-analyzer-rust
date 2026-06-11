@@ -2,14 +2,10 @@ use std::collections::HashSet;
 
 use emmylua_code_analysis::humanize_type;
 use emmylua_code_analysis::{
-    DbIndex, LuaDeclExtra, LuaDeclId, LuaDocument, LuaInferCache, LuaMemberId, LuaMemberKey,
-    LuaSemanticDeclId, LuaSignatureId, LuaType, RenderLevel, SemanticInfo, SemanticModel,
-    infer_table_should_be,
+    DbIndex, LuaDeclExtra, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
+    LuaSignatureId, LuaType, RenderLevel, SemanticInfo, SemanticModel,
 };
-use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaCallArgList, LuaExpr, LuaSyntaxKind, LuaSyntaxToken,
-    LuaTableExpr, LuaTableField,
-};
+use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaExpr, LuaSyntaxToken};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 use rowan::TextRange;
 
@@ -214,6 +210,7 @@ fn build_member_hover(
     let member = db.get_member_index().get_member(&member_id)?;
     let mut semantic_decls = find_member_origin_owners(builder.semantic_model, member_id, true)
         .get_types(builder.semantic_model);
+
     if let Some(token) = builder.get_trigger_token() {
         semantic_decls.retain(|(semantic_decl, _)| {
             builder
@@ -235,7 +232,6 @@ fn build_member_hover(
             &LuaSemanticDeclId::Member(member_id),
             &typ,
         );
-
         build_function_hover(builder, db, &semantic_decls);
 
         builder.set_location_path(Some(member));
@@ -375,7 +371,7 @@ pub fn get_hover_type(builder: &HoverBuilder, semantic_model: &SemanticModel) ->
 }
 
 fn adjust_semantic_decls(
-    builder: &mut HoverBuilder,
+    _builder: &mut HoverBuilder,
     semantic_decls: &mut Vec<(LuaSemanticDeclId, LuaType)>,
     current_semantic_decl_id: &LuaSemanticDeclId,
     current_type: &LuaType,
@@ -384,79 +380,27 @@ fn adjust_semantic_decls(
         .iter()
         .position(|(_, typ)| current_type == typ)
     {
-        let item = semantic_decls.remove(pos);
-        semantic_decls.push(item);
-        return Some(());
-    }
-    // semantic_decls 是追溯最初定义的结果, 不包含当前内容
-    let current_len = semantic_decls.len();
-    if current_len == 0 {
-        // 没有最初定义, 直接添加原始内容
-        semantic_decls.push((current_semantic_decl_id.clone(), current_type.clone()));
-        return Some(());
-    }
-    // 此时有最初定义, 证明当前内容的是派生的或者全部项实例化后联合的结果, 非常难以区分
-    // 如果当前定义是 LuaDecl 且追溯到了最初定义, 那么我们不需要添加
-    if let LuaSemanticDeclId::LuaDecl(_) = current_semantic_decl_id {
-        return Some(());
+        if pos != 0 {
+            let item = semantic_decls.remove(pos);
+            semantic_decls.insert(0, item);
+        }
+    } else {
+        // semantic_decls 是追溯最初定义的结果, 不包含当前内容
+        let current_len = semantic_decls.len();
+        if current_len == 0 {
+            // 没有最初定义, 直接添加原始内容
+            semantic_decls.push((current_semantic_decl_id.clone(), current_type.clone()));
+        }
     }
 
-    // 如果当前定义在最初定义组中存在, 那么我们也不需要添加.
-    // 具有一个难以解决的问题, 返回的`current_semantic_decl_id`为 member 时, 不一定是当前 token 指向的内容, 因此我们还需要再做一层判断,
-    // 如果是具有实际定义的, 我们仍然需要添加, 例如 signature.
-    if semantic_decls
+    // 将第一个是 Signature 的放至前面, 因为我们会使用第一个作为主要签名
+    if let Some(pos) = semantic_decls
         .iter()
-        .any(|(decl, typ)| decl == current_semantic_decl_id && !typ.is_signature())
+        .position(|(_, typ)| typ.is_signature())
     {
-        return Some(());
+        let item = semantic_decls.remove(pos);
+        semantic_decls.insert(0, item);
     }
-
-    if has_add_to_semantic_decls(builder, current_semantic_decl_id).unwrap_or(true) {
-        semantic_decls.push((current_semantic_decl_id.clone(), current_type.clone()));
-    };
 
     Some(())
-}
-
-fn has_add_to_semantic_decls(
-    builder: &HoverBuilder,
-    semantic_decl_id: &LuaSemanticDeclId,
-) -> Option<bool> {
-    if let LuaSemanticDeclId::Member(member_id) = semantic_decl_id {
-        let root = builder
-            .semantic_model
-            .get_root_by_file_id(member_id.file_id)?;
-        let root = root.syntax();
-        let current_node = member_id.get_syntax_id().to_node_from_root(root)?;
-        if member_id.get_syntax_id().get_kind() == LuaSyntaxKind::TableFieldAssign {
-            if LuaTableField::can_cast(current_node.kind().into()) {
-                let table_field = LuaTableField::cast(current_node.clone())?;
-                let parent = table_field.syntax().parent()?;
-                let table_expr = LuaTableExpr::cast(parent)?;
-                let table_type = if member_id.file_id == builder.semantic_model.get_file_id() {
-                    infer_table_should_be(
-                        builder.semantic_model.get_db(),
-                        &mut builder.semantic_model.get_cache().borrow_mut(),
-                        table_expr.clone(),
-                    )
-                    .ok()?
-                } else {
-                    let mut infer_cache = LuaInferCache::new(member_id.file_id, Default::default());
-                    infer_table_should_be(
-                        builder.semantic_model.get_db(),
-                        &mut infer_cache,
-                        table_expr.clone(),
-                    )
-                    .ok()?
-                };
-                if matches!(table_type, LuaType::Ref(_) | LuaType::Generic(_)) {
-                    // 如果位于函数调用中, 则不添加
-                    let is_in_call = table_expr.ancestors::<LuaCallArgList>().next().is_some();
-                    return Some(!is_in_call);
-                }
-            }
-        };
-    }
-
-    Some(true)
 }

@@ -169,7 +169,6 @@ struct HoverFunctionInfo {
     description: Option<DescriptionInfo>,
 }
 
-#[allow(unused)]
 fn build_function_define_hover(
     builder: &mut HoverBuilder,
     db: &DbIndex,
@@ -221,35 +220,64 @@ fn build_function_define_hover(
         });
     }
 
-    // 去重, 这是必须的
+    set_builder_contents(builder, &mut function_infos)?;
+    Some(())
+}
+
+// 统一处理文本设置
+fn set_builder_contents(
+    builder: &mut HoverBuilder,
+    function_infos: &mut Vec<HoverFunctionInfo>,
+) -> Option<()> {
+    // 去重
     function_infos.dedup_by_key(|info| info.primary.clone());
+    if function_infos.is_empty() {
+        return None;
+    }
 
-    // 需要显示重载的情况
-    match function_infos.len() {
-        0 => {
-            return None;
-        }
-        1 => {
-            builder.set_type_description(function_infos[0].primary.clone());
-            builder.add_description_from_info(function_infos[0].description.clone());
-        }
-        _ => {
-            let main_type = function_infos.pop()?;
-            builder.set_type_description(main_type.primary.clone());
-            builder.add_description_from_info(main_type.description.clone());
+    let main = function_infos.remove(0);
 
-            for type_desc in function_infos {
-                builder.add_signature_overload(type_desc.primary.clone());
-                if let Some(overloads) = &type_desc.overloads {
-                    for overload in overloads {
-                        builder.add_signature_overload(overload.clone());
-                    }
-                }
-                builder.add_description_from_info(type_desc.description.clone());
+    // 计算 overload 的总数
+    let overload_count = main.overloads.as_ref().map_or(0, |o| o.len())
+        + function_infos
+            .iter()
+            .map(|info| 1 + info.overloads.as_ref().map_or(0, |o| o.len()))
+            .sum::<usize>();
+
+    let main_primary = if overload_count > 0 {
+        format!("{} (+{} overloads)", main.primary, overload_count)
+    } else {
+        main.primary
+    };
+
+    builder.set_type_description(main_primary);
+    builder.add_description_from_info(main.description);
+
+    // 添加 main 的 overloads
+    if let Some(overloads) = main.overloads {
+        for overload in overloads {
+            builder.add_signature_overload(overload, None);
+        }
+    }
+
+    // 添加其余条目
+    for type_desc in function_infos.drain(..) {
+        let comment = get_description_comment(&type_desc.description);
+        builder.add_signature_overload(type_desc.primary, comment);
+        if let Some(overloads) = type_desc.overloads {
+            for overload in overloads {
+                builder.add_signature_overload(overload, None);
             }
         }
     }
+
     Some(())
+}
+
+fn get_description_comment(description: &Option<DescriptionInfo>) -> Option<String> {
+    description
+        .as_ref()
+        .and_then(|description| description.description.clone())
 }
 
 fn process_function_type(

@@ -30,7 +30,6 @@ pub fn add_member_completion(
     builder: &mut CompletionBuilder,
     member_info: LuaMemberInfo,
     status: CompletionTriggerStatus,
-    overload_count: Option<usize>,
 ) -> Option<()> {
     if builder.is_cancelled() {
         return None;
@@ -60,7 +59,7 @@ pub fn add_member_completion(
                         for key in member_keys {
                             let mut member_info = member_info.clone();
                             member_info.key = key;
-                            add_member_completion(builder, member_info, status, None);
+                            add_member_completion(builder, member_info, status);
                         }
                     }
                 }
@@ -99,9 +98,9 @@ pub fn add_member_completion(
     // 附加数据, 用于在`resolve`时进一步处理
     let completion_data = if let Some(id) = &property_owner {
         if let Some(index) = member_info.overload_index {
-            CompletionData::from_overload(builder, id.clone(), index, overload_count)
+            CompletionData::from_overload(builder, id.clone(), index)
         } else {
-            CompletionData::from_property_owner_id(builder, id.clone(), overload_count)
+            CompletionData::from_property_owner_id(builder, id.clone())
         }
     } else {
         None
@@ -179,7 +178,6 @@ pub fn add_member_completion(
         call_display,
         deprecated,
         label,
-        overload_count,
     );
 
     Some(())
@@ -192,7 +190,6 @@ fn add_signature_overloads(
     call_display: CallDisplay,
     deprecated: Option<bool>,
     label: String,
-    overload_count: Option<usize>,
 ) -> Option<()> {
     let signature_id = match typ {
         LuaType::Signature(signature_id) => signature_id,
@@ -215,7 +212,7 @@ fn add_signature_overloads(
             let description = get_description(builder, &typ);
             let detail = get_detail(builder, &typ, call_display);
             let data = if let Some(id) = &property_owner {
-                CompletionData::from_overload(builder, id.clone(), index, overload_count)
+                CompletionData::from_overload(builder, id.clone(), index)
             } else {
                 None
             };
