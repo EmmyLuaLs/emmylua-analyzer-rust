@@ -49,11 +49,25 @@ pub(super) fn infer_member_impl(
             infer_custom_type_member(infer, db, type_id, member_key)
         }
 
-        // Object 类型 → 精确字段
+        // Object 类型 → 精确字段 / 类型兼容模糊匹配
         LuaType::Object(obj) => {
-            obj.get_field(member_key)
-                .cloned()
-                .ok_or(InferFailReason::FieldNotFound)
+            if let Some(ty) = obj.get_field(member_key) {
+                return Ok(ty.clone());
+            }
+            // ExprType key: 检查是否有字段的 key 类型兼容
+            if let LuaMemberKey::ExprType(key_ty) = member_key {
+                for (mk, _) in obj.get_fields() {
+                    let compatible = match mk {
+                        LuaMemberKey::Name(_) => key_ty.is_string() || key_ty.is_str_tpl_ref(),
+                        LuaMemberKey::Integer(_) => key_ty.is_integer(),
+                        _ => false,
+                    };
+                    if compatible {
+                        return Ok(LuaType::Any);
+                    }
+                }
+            }
+            Err(InferFailReason::FieldNotFound)
         }
 
         // Array 类型 → 整数索引
@@ -147,14 +161,20 @@ fn infer_custom_type_member(
         }
     }
 
-    // 3. 通过 salsa 属性精确查找
-    if let Some(ty) = lookup_property_member(db, infer.file_id, type_name, member_key) {
-        return Ok(ty);
-    }
+    // 3. 检查属性是否声明（跨文件 workspace 查询）
+    let property_exists = lookup_property_member(db, infer.file_id, type_name, member_key).is_some()
+        || property_exists_in_workspace(db, type_name, member_key);
 
-    // 4. 通过 salsa 成员类型查询（构造 member target）
-    if let Some(ty) = lookup_salsa_member_target(db, infer.file_id, type_name, member_key) {
-        return Ok(ty);
+    // 4. 通过 salsa 属性获取类型
+    if property_exists {
+        if let Some(ty) = lookup_property_member(db, infer.file_id, type_name, member_key) {
+            if !matches!(ty, LuaType::Unknown) { return Ok(ty); }
+        }
+        // 属性存在但类型未定 → 查询语义类型
+        if let Some(ty) = lookup_salsa_member_target(db, infer.file_id, type_name, member_key) {
+            return Ok(ty);
+        }
+        return Ok(LuaType::Any); // 属性存在但无法确定类型
     }
 
     // 5. 查找 super types（salsa type_def → super_type_offsets）
@@ -169,6 +189,22 @@ fn infer_custom_type_member(
     }
 
     Err(InferFailReason::FieldNotFound)
+}
+
+/// 检查属性是否在工作区任意文件中声明。
+fn property_exists_in_workspace(
+    db: &SalsaSummaryDatabase,
+    type_name: &str,
+    member_key: &LuaMemberKey,
+) -> bool {
+    let Some(entries) = db.semantic().properties_of_type(type_name) else {
+        return false;
+    };
+    entries.iter().any(|e| match (&e.key, member_key) {
+        (SalsaPropertyKeySummary::Name(n), LuaMemberKey::Name(k)) => n.as_str() == k.as_str(),
+        (SalsaPropertyKeySummary::Integer(n), LuaMemberKey::Integer(k)) => n == k,
+        _ => false,
+    })
 }
 
 /// 检查类型是否有任意属性 key 与 expr 类型兼容（用于 `obj[key]` 模糊匹配）。

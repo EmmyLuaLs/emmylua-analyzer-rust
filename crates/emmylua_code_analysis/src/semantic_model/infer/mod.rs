@@ -29,12 +29,13 @@ use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::compilation::{
-    SalsaDeclTypeInfoSummary, SalsaDocTypeDefSummary, SalsaDocVisibilityKindSummary,
-    SalsaNameUseResolutionSummary, SalsaSummaryDatabase,
+    SalsaDeclId, SalsaDeclTypeInfoSummary, SalsaDocTypeDefSummary, SalsaDocTypeLoweredKind,
+    SalsaDocTypeLoweredNode, SalsaDocVisibilityKindSummary, SalsaNameUseResolutionSummary,
+    SalsaSummaryDatabase,
 };
 use crate::{
-    Emmyrc, FileId, LuaDeclId, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType,
-    VariadicType,
+    Emmyrc, FileId, LuaArrayLen, LuaArrayType, LuaDeclId, LuaMemberKey, LuaSignatureId, LuaType,
+    LuaTypeDeclId, LuaUnionType, VariadicType,
 };
 
 use super::type_check::TypeCheckFailReason;
@@ -240,42 +241,37 @@ impl<'a> InferQuery<'a> {
     // Salsa 快速路径
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    /// 尝试通过 salsa 类型索引直接获取表达式类型。
-    /// 当前只能处理名称表达式（NameExpr）。
     fn lookup_salsa_type(&self, expr: &LuaExpr) -> Option<LuaType> {
         if let LuaExpr::NameExpr(name) = expr {
             let db = self.read_db();
             let name_info = db.types().name(self.file_id, name.get_position())?;
-            let decl_type = name_info.decl_type?;
-            return self.resolve_decl_type(&db, decl_type);
+            if let Some(decl_type) = name_info.decl_type {
+                return self.resolve_decl_type(&db, decl_type);
+            }
+            // decl_type 为空时，通过声明 ID 查找类型
+            if let SalsaNameUseResolutionSummary::LocalDecl(decl_id) = name_info.name_use.resolution {
+                if let Some(dt) = db.types().decl(self.file_id, decl_id) {
+                    return self.resolve_decl_type(&db, dt);
+                }
+            }
         }
         None
     }
 
-    /// 将 SalsaDeclTypeInfoSummary 转换为 LuaType。
-    /// 优先使用 named_type_names（简单、不需要 VFS），
-    /// 其次尝试 explicit_type_offsets（需要 doc type 展开）。
     fn resolve_decl_type(
         &self,
         db: &SalsaSummaryDatabase,
         decl_type: SalsaDeclTypeInfoSummary,
     ) -> Option<LuaType> {
-        // 路径 1：命名类型（如 `: string`, `: MyClass`）
         if !decl_type.named_type_names.is_empty() {
             return Some(self.resolve_named_types(db, &decl_type.named_type_names));
         }
-
-        // 路径 2：显式类型偏移（如 `: string | number` 等复合类型）
-        // 需要 VFS + doc type 展开，后续 phase 实现
+        // 通过 explicit_type_offsets 降级类型查找
         if !decl_type.explicit_type_offsets.is_empty() {
-            // 留空：需要 infer_compilation_doc_type_keys → VFS
+            let key = decl_type.explicit_type_offsets.first()?;
+            let lowered = db.doc().resolved_type_by_key(self.file_id, *key)?;
+            return lowered_node_to_lua_type(&lowered.lowered);
         }
-
-        // 路径 3：从初始化表达式推断
-        if decl_type.value_expr_syntax_id.is_some() {
-            // 留空：需要递归推断 value expression
-        }
-
         None
     }
 
@@ -324,6 +320,50 @@ impl<'a> InferQuery<'a> {
         }
 
         self.resolve_generic_type(db, type_id, &type_def)
+    }
+
+    /// 通过 doc type_tags 查找 @type 注解。
+    fn resolve_doc_type_for_decl(
+        &self,
+        db: &SalsaSummaryDatabase,
+        decl_id: SalsaDeclId,
+    ) -> Option<LuaType> {
+        let doc = db.doc().summary(self.file_id)?;
+        // 找到 decl_id 对应的 owner
+        let resolves = db.doc().owner_resolves_for_decl(self.file_id, decl_id)?;
+        for resolve in &resolves {
+            let owner_offset = resolve.owner_offset;
+            // 在 type_tags 中找匹配的 @type 注解
+            for tag in &doc.type_tags {
+                if tag.owner.syntax_offset == Some(owner_offset)
+                    && let Some(first_key) = tag.type_offsets.first()
+                {
+                    let lowered = db.doc().resolved_type_by_key(self.file_id, *first_key)?;
+                    return lowered_node_to_lua_type(&lowered.lowered);
+                }
+            }
+        }
+        None
+    }
+
+    /// 通过 decl_tree + doc type_tags 按名称查找 @type 注解
+    fn resolve_doc_type_by_name(&self, db: &SalsaSummaryDatabase, name: &str) -> Option<LuaType> {
+        // 先尝试通过 decl_id 查找
+        let decl_tree = db.file().decl_tree(self.file_id)?;
+        if let Some(decl) = decl_tree.decls.iter().find(|d| d.name.as_str() == name) {
+            if let Some(ty) = self.resolve_doc_type_for_decl(db, decl.id) {
+                return Some(ty);
+            }
+        }
+        // 直接扫描 type_tags（最兜底）
+        let doc = db.doc().summary(self.file_id)?;
+        for tag in &doc.type_tags {
+            if let Some(first_key) = tag.type_offsets.first() {
+                let lowered = db.doc().resolved_type_by_key(self.file_id, *first_key)?;
+                return lowered_node_to_lua_type(&lowered.lowered);
+            }
+        }
+        None
     }
 
     fn type_decl_id_from_visibility(
@@ -427,14 +467,29 @@ impl<'a> InferQuery<'a> {
 
         // 路径 1：通过 salsa types 查询名称的类型信息
         if let Some(name_info) = db.types().name(self.file_id, name_expr.get_position()) {
-            if let Some(decl_type) = name_info.decl_type {
-                if let Some(ty) = self.resolve_decl_type(&db, decl_type) {
+            if let Some(ref decl_type) = name_info.decl_type {
+                if let Some(ty) = self.resolve_decl_type(&db, decl_type.clone()) {
+                    return Ok(ty);
+                }
+            }
+            if let SalsaNameUseResolutionSummary::LocalDecl(decl_id) = &name_info.name_use.resolution {
+                if let Some(dt) = db.types().decl(self.file_id, *decl_id) {
+                    if let Some(ty) = self.resolve_decl_type(&db, dt) {
+                        return Ok(ty);
+                    }
+                }
+                if let Some(ty) = self.resolve_doc_type_for_decl(&db, *decl_id) {
                     return Ok(ty);
                 }
             }
         }
 
-        // 路径 2：全局名称查找
+        // 路径 2：通过 decl_tree + doc type_tags 查找（覆盖 name() 返回 None 的情况）
+        if let Some(ty) = self.resolve_doc_type_by_name(&db, name) {
+            return Ok(ty);
+        }
+
+        // 路径 3：全局名称查找
         self.infer_global_name(&db, name)
     }
 
@@ -504,5 +559,34 @@ impl<'a> InferQuery<'a> {
         }
 
         Err(InferFailReason::NotImplemented)
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 类型降级工具
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+pub(super) fn lowered_node_to_lua_type(node: &SalsaDocTypeLoweredNode) -> Option<LuaType> {
+    match &node.kind {
+        SalsaDocTypeLoweredKind::Unknown => Some(LuaType::Any),
+        SalsaDocTypeLoweredKind::Name { name } => {
+            match name.as_str() {
+                "any" | "unknown" => Some(LuaType::Any),
+                "nil" => Some(LuaType::Nil),
+                "boolean" | "bool" => Some(LuaType::Boolean),
+                "string" => Some(LuaType::String),
+                "number" => Some(LuaType::Number),
+                "integer" | "int" => Some(LuaType::Integer),
+                "function" => Some(LuaType::Function),
+                "table" => Some(LuaType::Table),
+                "thread" => Some(LuaType::Thread),
+                "userdata" => Some(LuaType::Userdata),
+                _ => Some(LuaType::Ref(LuaTypeDeclId::global(name))),
+            }
+        }
+        SalsaDocTypeLoweredKind::Array { item_type: _ } => {
+            Some(LuaType::Array(LuaArrayType::new(LuaType::Unknown, LuaArrayLen::None).into()))
+        }
+        _ => None,
     }
 }

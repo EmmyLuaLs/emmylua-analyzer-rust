@@ -154,9 +154,6 @@ impl SalsaSummaryDatabase {
         SalsaSummaryTypeQueries::new(self)
     }
 
-    pub fn workspace(&self) -> SalsaSummaryWorkspaceQueries<'_> {
-        SalsaSummaryWorkspaceQueries::new(self)
-    }
 }
 
 #[derive(Debug)]
@@ -265,9 +262,5 @@ impl SalsaSummaryHost {
 
     pub fn types(&self) -> SalsaSummaryTypeQueries<'_> {
         SalsaSummaryTypeQueries::new(&self.db)
-    }
-
-    pub fn workspace(&self) -> SalsaSummaryWorkspaceQueries<'_> {
-        SalsaSummaryWorkspaceQueries::new(&self.db)
     }
 }

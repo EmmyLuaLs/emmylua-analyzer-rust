@@ -3,10 +3,7 @@
 use emmylua_parser::{LuaAstNode, LuaCallExpr};
 use smol_str::SmolStr;
 
-use crate::compilation::{
-    SalsaDocTypeLoweredKind, SalsaSignatureTypeExplainSummary,
-};
-use crate::{LuaIntersectionType, LuaType, LuaTypeDeclId, LuaUnionType};
+use crate::{LuaIntersectionType, LuaType, LuaUnionType};
 
 use super::{InferFailReason, InferQuery, InferResult};
 
@@ -28,10 +25,14 @@ fn extract_return_type(infer: &InferQuery, prefix_type: &LuaType) -> InferResult
         LuaType::Signature(sig_id) => {
             let db = infer.read_db();
             let explain = db.doc().signature().explain(infer.get_file_id(), sig_id.get_position());
-            if let Some(e) = explain {
+            if let Some(e) = &explain {
                 if let Some(ret) = e.returns.first() {
                     if let Some(item) = ret.items.first() {
-                        return lower_type(&item.doc_type);
+                        if let Some(lt) = item.doc_type.lowered.as_ref() {
+                            if let Some(ty) = super::lowered_node_to_lua_type(lt) {
+                                return Ok(ty);
+                            }
+                        }
                     }
                 }
             }
@@ -66,35 +67,5 @@ fn extract_return_type(infer: &InferQuery, prefix_type: &LuaType) -> InferResult
         }
 
         _ => Err(InferFailReason::NotImplemented),
-    }
-}
-
-/// Convert salsa lowered doc type → LuaType.
-fn lower_type(dt: &SalsaSignatureTypeExplainSummary) -> InferResult {
-    match &dt.lowered {
-        Some(node) => lowered_node_to_lua(node),
-        None => Ok(LuaType::Unknown),
-    }
-}
-
-fn lowered_node_to_lua(node: &crate::compilation::SalsaDocTypeLoweredNode) -> InferResult {
-    match &node.kind {
-        SalsaDocTypeLoweredKind::Unknown => Ok(LuaType::Any),
-        SalsaDocTypeLoweredKind::Name { name } => {
-            match name.as_str() {
-                "any" | "unknown" => Ok(LuaType::Any),
-                "nil" => Ok(LuaType::Nil),
-                "boolean" | "bool" => Ok(LuaType::Boolean),
-                "string" => Ok(LuaType::String),
-                "number" => Ok(LuaType::Number),
-                "integer" | "int" => Ok(LuaType::Integer),
-                "function" => Ok(LuaType::Function),
-                "table" => Ok(LuaType::Table),
-                "thread" => Ok(LuaType::Thread),
-                "userdata" => Ok(LuaType::Userdata),
-                _ => Ok(LuaType::Ref(LuaTypeDeclId::global(name))),
-            }
-        }
-        _ => Ok(LuaType::Unknown),
     }
 }

@@ -47,7 +47,9 @@ fn check_index(
 ) {
     let Some(prefix_expr) = index_expr.get_prefix_expr() else { return };
     let prefix_type = model.infer_expr(prefix_expr.clone()).unwrap_or(LuaType::Unknown);
-    if is_invalid_prefix(&prefix_type) {
+
+    // 对 UndefinedField，无效前缀直接跳过
+    if code == DiagnosticCode::UndefinedField && is_invalid_prefix(&prefix_type) {
         return;
     }
 
@@ -59,6 +61,13 @@ fn check_index(
     // ── 核心：通过 infer_member_type 检查字段是否存在 ──
     if is_valid_access(model, &prefix_type, index_expr, &key, code) {
         return;
+    }
+
+    // InjectField: 即使前缀类型无效，如果属性已声明也不报
+    if code == DiagnosticCode::InjectField && is_invalid_prefix(&prefix_type) {
+        if model.infer_member_type(&prefix_type, &key).is_ok() {
+            return;
+        }
     }
 
     let Some(range) = index_key.get_range() else { return };
@@ -147,18 +156,14 @@ fn is_valid_access(
         }
     }
 
-    // Intersection：任一分支合法即合法
+    // Intersection：任一分支合法即合法，但不阻断后续检查
     if let LuaType::Intersection(inter) = prefix_type {
+        let mut any_ok = false;
         for comp in inter.get_types() {
-            if model.infer_member_type(comp, key).is_ok() {
-                return true;
-            }
+            if model.infer_member_type(comp, key).is_ok() { any_ok = true; }
         }
-        // 仍然尝试整个 intersection 的 member 推断
-        if model.infer_member_type(prefix_type, key).is_ok() {
-            return true;
-        }
-        return false;
+        if !any_ok { any_ok = model.infer_member_type(prefix_type, key).is_ok(); }
+        if any_ok { return true; }
     }
 
     // 条件语句中的 [] 访问可以宽松
@@ -173,6 +178,13 @@ fn is_valid_access(
     }
 
     // ── 主检查：通过 infer_member_type ──
+    // Unknown/Any/Table/Global 在 infer_member 中总是返回 Ok(Any)，
+    // 但对 InjectField 不应盲目放行
+    if code == DiagnosticCode::InjectField
+        && matches!(prefix_type, LuaType::Any | LuaType::Unknown | LuaType::Table | LuaType::Global)
+    {
+        return false;
+    }
     if model.infer_member_type(prefix_type, key).is_ok() {
         return true;
     }
@@ -192,10 +204,7 @@ fn is_valid_access(
     }
 
     // find_decl 能找到声明 → 合法
-    if model
-        .find_decl_by_node(index_expr.syntax().clone(), Default::default())
-        .is_some()
-    {
+    if model.find_decl_by_node(index_expr.syntax().clone(), Default::default()).is_some() {
         return true;
     }
 

@@ -3,57 +3,35 @@
 //! 每个 checker 是一个独立函数，接收 `&mut DiagnosticContext` 和 `&SemanticModel`。
 //! 已迁移到新架构的 checker 直接在这里调用，未迁移的暂时注释。
 
-// ✅ 已迁移
+// ✅ 已迁移 (new model)
 pub(crate) mod access_invisible;
+pub(crate) mod code_style;
 pub(crate) mod analyze_error;
 pub(crate) mod check_field;
 pub(crate) mod check_return_count;
 pub(crate) mod duplicate_index;
 pub(crate) mod discard_returns;
+pub(crate) mod deprecated;
 pub(crate) mod duplicate_require;
 pub(crate) mod local_const_reassign;
 pub(crate) mod need_check_nil;
 pub(crate) mod readonly_check;
+pub(crate) mod param_type_check;
 pub(crate) mod redefined_local;
+pub(crate) mod return_type_mismatch;
 pub(crate) mod syntax_error;
 pub(crate) mod unbalanced_assignments;
+pub(crate) mod undefined_doc_param;
 pub(crate) mod undefined_global;
 pub(crate) mod unnecessary_assert;
 pub(crate) mod unknown_doc_tag;
 pub(crate) mod unnecessary_if;
 pub(crate) mod unused;
 
-// ⏳ 待迁移
-// mod access_invisible;
-// mod analyze_error;
-// mod assign_type_mismatch;
-// mod attribute_check;
-// mod await_in_sync;
-// mod call_non_callable;
-// mod cast_type_mismatch;
-// mod check_export;
-// mod check_field;
-// mod check_param_count;
-// mod check_return_count;
-// mod circle_doc_class;
-pub(crate) mod code_style;
-// mod deprecated;
-// mod discard_returns;
-// mod duplicate_field;
-// mod duplicate_type;
-// mod enum_value_mismatch;
-// mod generic;
-// mod global_non_module;
-// mod incomplete_signature_doc;
-// mod missing_fields;
-// mod param_type_check;
-// mod readonly_check;
-// mod require_module_visibility;
-// mod return_type_mismatch;
-// mod type_access_modifier;
-// mod undefined_doc_param;
-// mod undefined_global;
-// mod unknown_doc_tag;
+// ⏳ 待迁移 (Checker trait bridge)
+mod assign_type_mismatch;
+mod cast_type_mismatch;
+// ...rest not yet migrated
 
 use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind};
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
@@ -66,6 +44,18 @@ use crate::{DiagnosticCode, FileId, LuaType, RenderLevel, Vfs, humanize_type};
 
 use super::lua_diagnostic_code::{get_default_severity, is_code_default_enable};
 use super::lua_diagnostic_config::LuaDiagnosticConfig;
+
+/// Old checker trait — retained for bridge migration.
+pub trait Checker {
+    const CODES: &[DiagnosticCode];
+    fn check(context: &mut DiagnosticContext, semantic_model: &crate::semantic::SemanticModel);
+}
+
+fn run_check<T: Checker>(context: &mut DiagnosticContext, semantic_model: &crate::semantic::SemanticModel) {
+    if T::CODES.iter().any(|code| context.is_checker_enable_by_code(code)) {
+        T::check(context, semantic_model);
+    }
+}
 
 pub struct DiagnosticContext<'a> {
     file_id: FileId,
@@ -178,6 +168,7 @@ pub fn check_file(
     duplicate_require::check(context, model);
     unnecessary_if::check(context, model);
     code_style::invert_if::check(context, model);
+    code_style::non_literal_expressions_in_assert::check(context, model);
     unknown_doc_tag::check(context, model);
     readonly_check::check(context, model);
     undefined_global::check(context, model);
@@ -185,9 +176,23 @@ pub fn check_file(
     check_return_count::check(context, model);
     discard_returns::check(context, model);
     analyze_error::check(context, model);
+    // Bridge: old checkers via Checker trait
+    {
+        if let Some(tree) = context.db.get_vfs().get_syntax_tree(&model.get_file_id()) {
+            let mut cache = crate::LuaInferCache::new(model.get_file_id(), Default::default());
+            let old_model = crate::semantic::SemanticModel::new(
+                model.get_file_id(), context.db, cache, model.get_emmyrc_arc(), tree.get_chunk_node(),
+            );
+            run_check::<assign_type_mismatch::AssignTypeMismatchChecker>(context, &old_model);
+            run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, &old_model);
+            run_check::<deprecated::DeprecatedChecker>(context, &old_model);
+            run_check::<param_type_check::ParamTypeCheckChecker>(context, &old_model);
+            run_check::<return_type_mismatch::ReturnTypeMismatch>(context, &old_model);
+            run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, &old_model);
+        }
+    }
 
     // 以下 checkers 尚未迁移：
-    // deprecated::check(context, model);
     // discard_returns::check(context, model);
     // undefined_global::check(context, model);
     // unnecessary_if::check(context, model);
@@ -259,6 +264,14 @@ pub fn get_return_stats(closure_expr: &LuaClosureExpr) -> impl Iterator<Item = L
                 .next()
                 .is_some_and(|expr| expr == *closure_expr)
         })
+}
+
+fn get_closure_expr_comment(closure_expr: &LuaClosureExpr) -> Option<LuaComment> {
+    let comment = closure_expr.ancestors::<LuaStat>().next()?.syntax().prev_sibling()?;
+    match comment.kind().into() {
+        LuaSyntaxKind::Comment => LuaComment::cast(comment),
+        _ => None,
+    }
 }
 
 pub fn humanize_lint_type(db: &DbIndex, typ: &LuaType) -> String {

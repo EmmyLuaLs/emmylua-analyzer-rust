@@ -15,24 +15,8 @@ pub(super) fn infer_index_expr(
     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
     let prefix_type = infer.infer_expr(prefix_expr)?;
 
-    let db = infer.read_db();
-    if let Some(ty) = lookup_salsa_member_type(&db, infer.get_file_id(), index_expr.get_position()) {
-        return Ok(ty);
-    }
-    drop(db);
-
     let member_expr = LuaIndexMemberExpr::IndexExpr(index_expr);
     dispatch_prefix_type(infer, &prefix_type, &member_expr)
-}
-
-fn lookup_salsa_member_type(
-    db: &SalsaSummaryDatabase,
-    file_id: FileId,
-    syntax_offset: rowan::TextSize,
-) -> Option<LuaType> {
-    let member_info = db.types().member_use(file_id, syntax_offset)?;
-    let candidate = member_info.candidates.first()?;
-    candidates_to_type(db, file_id, &candidate.named_type_names)
 }
 
 fn candidates_to_type(

@@ -332,7 +332,7 @@ fn get_member_keys_workspace(
 ) -> Option<Vec<LuaMemberKey>> {
     match prefix_type {
         LuaType::Ref(type_id) | LuaType::Def(type_id) => {
-            let entries = db.workspace().properties_of_type(type_id.get_name())?;
+            let entries = db.semantic().properties_of_type(type_id.get_name())?;
             let keys: Vec<LuaMemberKey> = entries
                 .iter()
                 .map(|e| match &e.key {

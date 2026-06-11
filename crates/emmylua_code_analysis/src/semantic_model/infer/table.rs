@@ -1,9 +1,9 @@
 //! 表字面量推断 — `{ a = 1, b = "hello" }`
 
-use emmylua_parser::{LuaIndexKey, LuaTableExpr, LuaTableField};
+use emmylua_parser::{LuaIndexKey, LuaTableExpr};
 use smol_str::SmolStr;
 
-use crate::{LuaArrayLen, LuaArrayType, LuaMemberKey, LuaType, LuaUnionType};
+use crate::{LuaArrayLen, LuaArrayType, LuaType, LuaUnionType};
 
 use super::{InferFailReason, InferQuery, InferResult};
 
@@ -11,33 +11,29 @@ pub(super) fn infer_table_expr(
     infer: &InferQuery,
     table_expr: LuaTableExpr,
 ) -> InferResult {
-    let fields: Vec<LuaTableField> = table_expr.get_fields().collect();
-    if fields.is_empty() {
+    let fields_with_keys = table_expr.get_fields_with_keys();
+    if fields_with_keys.is_empty() {
         return Ok(LuaType::Table);
     }
 
     let mut all_arrays = true;
     let mut array_types: Vec<LuaType> = Vec::new();
 
-    for field in &fields {
+    for (field, key) in &fields_with_keys {
         let value_type = field
             .get_value_expr()
             .and_then(|expr| infer.infer_expr(expr).ok())
             .unwrap_or(LuaType::Unknown);
 
-        if field.is_value_field() {
-            array_types.push(value_type);
-        } else if let Some(key) = field.get_field_key() {
-            match key {
-                LuaIndexKey::Name(_) | LuaIndexKey::String(_) => {
-                    all_arrays = false;
-                }
-                LuaIndexKey::Integer(_) | LuaIndexKey::Idx(_) => {
-                    array_types.push(value_type);
-                }
-                LuaIndexKey::Expr(_) => {
-                    all_arrays = false;
-                }
+        match key {
+            LuaIndexKey::Name(_) | LuaIndexKey::String(_) => {
+                all_arrays = false;
+            }
+            LuaIndexKey::Integer(_) | LuaIndexKey::Idx(_) => {
+                array_types.push(value_type);
+            }
+            LuaIndexKey::Expr(_) => {
+                all_arrays = false;
             }
         }
     }
