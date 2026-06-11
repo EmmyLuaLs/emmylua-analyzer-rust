@@ -15,7 +15,7 @@ use inputs::SummaryFileListInput;
 pub use facade::{
     SalsaSummaryDocQueries, SalsaSummaryFileQueries, SalsaSummaryFlowQueries,
     SalsaSummaryLexicalQueries, SalsaSummaryModuleQueries, SalsaSummarySemanticQueries,
-    SalsaSummaryTypeQueries, SalsaSummaryWorkspaceQueries,
+    SalsaSummaryTypeQueries,
 };
 use inputs::{
     SummaryConfigInput, SummarySourceFileInput, SummaryWorkspaceInput, snapshot_vfs_file,

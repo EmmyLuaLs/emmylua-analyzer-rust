@@ -5,8 +5,11 @@
 
 // ✅ 已迁移
 pub(crate) mod access_invisible;
+pub(crate) mod analyze_error;
 pub(crate) mod check_field;
+pub(crate) mod check_return_count;
 pub(crate) mod duplicate_index;
+pub(crate) mod discard_returns;
 pub(crate) mod duplicate_require;
 pub(crate) mod local_const_reassign;
 pub(crate) mod need_check_nil;
@@ -179,6 +182,9 @@ pub fn check_file(
     readonly_check::check(context, model);
     undefined_global::check(context, model);
     access_invisible::check(context, model);
+    check_return_count::check(context, model);
+    discard_returns::check(context, model);
+    analyze_error::check(context, model);
 
     // 以下 checkers 尚未迁移：
     // deprecated::check(context, model);

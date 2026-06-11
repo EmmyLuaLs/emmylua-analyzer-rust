@@ -1,89 +1,53 @@
+//! Discard returns checker — hybrid.
+
 use emmylua_parser::{LuaAstNode, LuaCallExprStat};
-use rowan::NodeOrToken;
 
-use crate::{
-    DiagnosticCode, LuaNoDiscard, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
-};
+use crate::semantic_model::SemanticModel;
+use crate::{DiagnosticCode, LuaNoDiscard, LuaSemanticDeclId, LuaType, SemanticDeclLevel};
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct DiscardReturnsChecker;
-
-impl Checker for DiscardReturnsChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::DiscardReturns];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-        for call_expr_stat in root.descendants::<LuaCallExprStat>() {
-            check_call_expr(context, semantic_model, call_expr_stat);
-        }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for stat in root.descendants::<LuaCallExprStat>() {
+        check_call(context, model, stat);
     }
 }
 
-fn check_call_expr(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    call_expr_stat: LuaCallExprStat,
-) -> Option<()> {
-    let call_expr = call_expr_stat.get_call_expr()?;
-    let prefix_node = call_expr.get_prefix_expr()?.syntax().clone();
-    let semantic_decl = semantic_model.find_decl(
-        NodeOrToken::Node(prefix_node.clone()),
-        SemanticDeclLevel::default(),
-    )?;
+fn check_call(context: &mut DiagnosticContext, model: &SemanticModel, stat: LuaCallExprStat) {
+    let Some(call) = stat.get_call_expr() else { return };
+    let Some(prefix) = call.get_prefix_expr() else { return };
+    let prefix_node = prefix.syntax().clone();
 
-    let signature_id = match semantic_decl {
-        LuaSemanticDeclId::LuaDecl(decl_id) => {
-            let type_cache = semantic_model
-                .get_db()
-                .get_type_index()
-                .get_type_cache(&decl_id.into());
-            if let Some(type_cache) = type_cache {
-                if let LuaType::Signature(signature_id) = type_cache.as_type() {
-                    *signature_id
-                } else {
-                    return Some(());
-                }
-            } else {
-                return Some(());
-            }
-        }
-        LuaSemanticDeclId::Member(member_id) => {
-            let type_cache = semantic_model
-                .get_db()
-                .get_type_index()
-                .get_type_cache(&member_id.into());
-            if let Some(type_cache) = type_cache {
-                if let LuaType::Signature(signature_id) = type_cache.as_type() {
-                    *signature_id
-                } else {
-                    return Some(());
-                }
-            } else {
-                return Some(());
-            }
-        }
-        LuaSemanticDeclId::Signature(signature_id) => signature_id,
-        _ => return Some(()),
+    let Some(decl) = model.find_decl_by_node(prefix_node.clone(), SemanticDeclLevel::default()) else {
+        return;
     };
 
-    let signature = semantic_model
-        .get_db()
-        .get_signature_index()
-        .get(&signature_id)?;
-    if let Some(nodiscard) = &signature.nodiscard {
-        let nodiscard_message = match nodiscard {
+    let sig_id = match &decl {
+        LuaSemanticDeclId::LuaDecl(id) => {
+            let Some(tc) = context.db.get_type_index().get_type_cache(&(*id).into()) else { return };
+            match tc.as_type() {
+                LuaType::Signature(sig) => *sig,
+                _ => return,
+            }
+        }
+        LuaSemanticDeclId::Member(id) => {
+            let Some(tc) = context.db.get_type_index().get_type_cache(&(*id).into()) else { return };
+            match tc.as_type() {
+                LuaType::Signature(sig) => *sig,
+                _ => return,
+            }
+        }
+        LuaSemanticDeclId::Signature(sig) => *sig,
+        _ => return,
+    };
+
+    let Some(sig) = context.db.get_signature_index().get(&sig_id) else { return };
+    if let Some(nd) = &sig.nodiscard {
+        let msg = match nd {
             LuaNoDiscard::NoDiscard => "no discard".to_string(),
-            LuaNoDiscard::NoDiscardWithMessage(message) => message.to_string(),
+            LuaNoDiscard::NoDiscardWithMessage(m) => m.to_string(),
         };
-
-        context.add_diagnostic(
-            DiagnosticCode::DiscardReturns,
-            prefix_node.text_range(),
-            nodiscard_message,
-            None,
-        );
+        context.add_diagnostic(DiagnosticCode::DiscardReturns, prefix_node.text_range(), msg, None);
     }
-
-    Some(())
 }

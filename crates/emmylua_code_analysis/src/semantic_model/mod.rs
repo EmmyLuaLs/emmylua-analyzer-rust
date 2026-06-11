@@ -21,10 +21,13 @@ use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError, LuaSyntaxNode, LuaSyntaxT
 
 use smol_str::SmolStr;
 
+use rowan::TextSize;
+
 use crate::compilation::{
     SalsaDeclId, SalsaDeclTreeSummary, SalsaDocOwnerKindSummary, SalsaDocOwnerSummary,
     SalsaDocTagPropertyEntrySummary, SalsaDocTypeDefKindSummary, SalsaDocVisibilityKindSummary,
-    SalsaNameUseSummary, SalsaPropertyKeySummary, SalsaSummaryDatabase,
+    SalsaNameUseSummary, SalsaPropertyKeySummary, SalsaSignatureExplainSummary,
+    SalsaSignatureIndexSummary, SalsaSummaryDatabase,
 };
 use crate::{
     Emmyrc, FileId, LuaDocument, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId,
@@ -155,6 +158,11 @@ impl SemanticModel {
         self.infer().infer_expr_list_types(exprs, var_count)
     }
 
+    /// 推断值绑定的目标类型。
+    pub fn infer_bind_value_type(&self, expr: LuaExpr) -> Option<LuaType> {
+        self.infer().infer_bind_value_type(expr)
+    }
+
     /// 推断成员类型：给定前缀类型和 key，返回成员类型。
     pub fn infer_member_type(
         &self,
@@ -265,7 +273,7 @@ impl SemanticModel {
     pub fn decl_has_doc_property(
         &self,
         file_id: FileId,
-        offset: rowan::TextSize,
+        offset: TextSize,
         entry: SalsaDocTagPropertyEntrySummary,
     ) -> bool {
         let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
@@ -276,6 +284,35 @@ impl SemanticModel {
         db.doc()
             .tag_property(file_id, owner)
             .is_some_and(|p| p.entries.iter().any(|e| *e == entry))
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 签名查询（check_return_count 等 checker 使用）
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// 获取文件中所有签名。
+    pub fn signatures(&self) -> Option<Arc<SalsaSignatureIndexSummary>> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        db.doc().signature().summary(self.file_id)
+    }
+
+    /// 获取某个签名偏移处的已解析签名信息。
+    pub fn signature_explain(
+        &self,
+        file_id: FileId,
+        offset: TextSize,
+    ) -> Option<SalsaSignatureExplainSummary> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        db.doc().signature().explain(file_id, offset)
+    }
+
+    /// 通过 LuaSignatureId（文件 + TextSize）查签名。
+    pub fn signature_by_id(
+        &self,
+        file_id: FileId,
+        offset: TextSize,
+    ) -> Option<SalsaSignatureExplainSummary> {
+        self.signature_explain(file_id, offset)
     }
 
     /// 获取内部 salsa_db 引用（仅供内部子模块使用）。

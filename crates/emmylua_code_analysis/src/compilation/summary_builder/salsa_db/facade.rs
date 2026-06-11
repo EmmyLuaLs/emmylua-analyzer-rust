@@ -805,6 +805,38 @@ impl<'db> SalsaSummarySemanticQueries<'db> {
     pub fn target(&self) -> SalsaSummarySemanticTargetQueries<'db> {
         SalsaSummarySemanticTargetQueries::new(self.db)
     }
+
+    /// 跨文件成员索引（workspace 级聚合）。
+    pub fn member_index(&self) -> Option<Arc<WorkspaceMemberIndex>> {
+        let file_list = self.db.file_list_input()?;
+        let mut by_type: Vec<(SmolStr, Vec<WorkspacePropertyEntry>)> = Vec::new();
+        for file_id in &file_list.file_ids(self.db) {
+            let Some(index) = tracked::file_properties(self.db, *file_id) else { continue };
+            for prop in &index.properties {
+                let type_name = match &prop.owner {
+                    SalsaPropertyOwnerSummary::Type(name) => name.clone(),
+                    SalsaPropertyOwnerSummary::Decl { name, .. } => name.clone(),
+                    _ => continue,
+                };
+                let entry = WorkspacePropertyEntry { file_id: *file_id, key: prop.key.clone() };
+                if let Some((_, existing)) = by_type.iter_mut().find(|(n, _)| n == &type_name) {
+                    if !existing.iter().any(|e| e.key == entry.key && e.file_id == entry.file_id) {
+                        existing.push(entry);
+                    }
+                } else {
+                    by_type.push((type_name, vec![entry]));
+                }
+            }
+        }
+        if by_type.is_empty() { None } else { Some(Arc::new(WorkspaceMemberIndex { by_type })) }
+    }
+
+    /// 获取某类型在所有文件中定义的属性成员。O(1)。
+    pub fn properties_of_type(&self, type_name: &str) -> Option<Vec<WorkspacePropertyEntry>> {
+        self.member_index()?.by_type.iter()
+            .find(|(n, _)| n.as_str() == type_name)
+            .map(|(_, e)| e.clone())
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1281,61 +1313,5 @@ impl<'db> SalsaSummarySemanticTargetQueries<'db> {
         signature_offset: TextSize,
     ) -> Option<SalsaSignatureExplainSummary> {
         tracked::file_signature_explain(self.db, file_id, signature_offset)
-    }
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Workspace-level queries (cross-file aggregation)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-#[derive(Clone, Copy)]
-pub struct SalsaSummaryWorkspaceQueries<'db> {
-    db: &'db SalsaSummaryDatabase,
-}
-
-impl<'db> SalsaSummaryWorkspaceQueries<'db> {
-    pub(crate) fn new(db: &'db SalsaSummaryDatabase) -> Self {
-        Self { db }
-    }
-
-    /// 工作区级别的跨文件成员索引。
-    /// 遍历所有 synced 文件，聚合每个类型的属性定义。
-    pub fn member_index(&self) -> Option<Arc<WorkspaceMemberIndex>> {
-        let file_list = self.db.file_list_input()?;
-        let mut by_type: Vec<(SmolStr, Vec<WorkspacePropertyEntry>)> = Vec::new();
-
-        for file_id in &file_list.file_ids(self.db) {
-            let Some(index) = tracked::file_properties(self.db, *file_id) else {
-                continue;
-            };
-            for prop in &index.properties {
-                let type_name = match &prop.owner {
-                    SalsaPropertyOwnerSummary::Type(name) => name.clone(),
-                    SalsaPropertyOwnerSummary::Decl { name, .. } => name.clone(),
-                    _ => continue,
-                };
-                let entry = WorkspacePropertyEntry {
-                    file_id: *file_id,
-                    key: prop.key.clone(),
-                };
-                if let Some((_, existing)) = by_type.iter_mut().find(|(n, _)| n == &type_name) {
-                    if !existing.iter().any(|e| e.key == entry.key && e.file_id == entry.file_id) {
-                        existing.push(entry);
-                    }
-                } else {
-                    by_type.push((type_name, vec![entry]));
-                }
-            }
-        }
-
-        if by_type.is_empty() { None }
-        else { Some(Arc::new(WorkspaceMemberIndex { by_type })) }
-    }
-
-    /// 获取某类型在所有文件中定义的属性成员。
-    pub fn properties_of_type(&self, type_name: &str) -> Option<Vec<WorkspacePropertyEntry>> {
-        self.member_index()?.by_type.iter()
-            .find(|(n, _)| n.as_str() == type_name)
-            .map(|(_, e)| e.clone())
     }
 }
