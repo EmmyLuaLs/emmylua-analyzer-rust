@@ -30,8 +30,22 @@ pub(crate) mod unused;
 
 // ⏳ 待迁移 (Checker trait bridge)
 mod assign_type_mismatch;
+mod attribute_check;
+mod await_in_sync;
+mod call_non_callable;
 mod cast_type_mismatch;
-// ...rest not yet migrated
+// mod check_export; // needs check_field::is_valid_member (old API)
+mod check_param_count;
+mod circle_doc_class;
+mod duplicate_field;
+mod duplicate_type;
+mod enum_value_mismatch;
+mod generic;
+mod global_non_module;
+mod incomplete_signature_doc;
+mod missing_fields;
+mod require_module_visibility;
+mod type_access_modifier;
 
 use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaComment, LuaReturnStat, LuaStat, LuaSyntaxKind};
 use lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString};
@@ -71,6 +85,10 @@ impl<'a> DiagnosticContext<'a> {
 
     pub fn get_file_id(&self) -> FileId {
         self.file_id
+    }
+
+    pub fn get_db(&self) -> &DbIndex {
+        self.db
     }
 
     pub fn add_diagnostic(
@@ -184,10 +202,25 @@ pub fn check_file(
                 model.get_file_id(), context.db, cache, model.get_emmyrc_arc(), tree.get_chunk_node(),
             );
             run_check::<assign_type_mismatch::AssignTypeMismatchChecker>(context, &old_model);
+            run_check::<attribute_check::AttributeCheckChecker>(context, &old_model);
+            run_check::<await_in_sync::AwaitInSyncChecker>(context, &old_model);
+            run_check::<call_non_callable::CallNonCallableChecker>(context, &old_model);
             run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, &old_model);
+            run_check::<check_param_count::CheckParamCountChecker>(context, &old_model);
+            run_check::<circle_doc_class::CircleDocClassChecker>(context, &old_model);
+            run_check::<code_style::preferred_local_alias::PreferredLocalAliasChecker>(context, &old_model);
             run_check::<deprecated::DeprecatedChecker>(context, &old_model);
+            run_check::<duplicate_field::DuplicateFieldChecker>(context, &old_model);
+            run_check::<duplicate_type::DuplicateTypeChecker>(context, &old_model);
+            run_check::<enum_value_mismatch::EnumValueMismatchChecker>(context, &old_model);
+            run_check::<generic::generic_constraint_mismatch::GenericConstraintMismatchChecker>(context, &old_model);
+            run_check::<global_non_module::GlobalInNonModuleChecker>(context, &old_model);
+            run_check::<incomplete_signature_doc::IncompleteSignatureDocChecker>(context, &old_model);
+            run_check::<missing_fields::MissingFieldsChecker>(context, &old_model);
             run_check::<param_type_check::ParamTypeCheckChecker>(context, &old_model);
+            run_check::<require_module_visibility::RequireModuleVisibilityChecker>(context, &old_model);
             run_check::<return_type_mismatch::ReturnTypeMismatch>(context, &old_model);
+            run_check::<type_access_modifier::InconsistentTypeAccessModifierChecker>(context, &old_model);
             run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, &old_model);
         }
     }
