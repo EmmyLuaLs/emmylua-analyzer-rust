@@ -11,7 +11,7 @@ mod generic;
 mod infer;
 mod member;
 mod reference;
-mod signature;
+pub mod signature;
 mod type_check;
 mod visibility;
 

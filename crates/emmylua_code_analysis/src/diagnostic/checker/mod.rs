@@ -8,9 +8,11 @@ pub(crate) mod access_invisible;
 pub(crate) mod await_in_sync;
 pub(crate) mod code_style;
 pub(crate) mod analyze_error;
+pub(crate) mod call_non_callable;
 pub(crate) mod check_field;
 pub(crate) mod check_param_count;
 pub(crate) mod check_return_count;
+pub(crate) mod circle_doc_class;
 pub(crate) mod duplicate_index;
 pub(crate) mod discard_returns;
 pub(crate) mod deprecated;
@@ -18,12 +20,12 @@ pub(crate) mod duplicate_require;
 pub(crate) mod local_const_reassign;
 pub(crate) mod need_check_nil;
 pub(crate) mod readonly_check;
-pub(crate) mod param_type_check;
-pub(crate) mod redefined_local;
 pub(crate) mod return_type_mismatch;
+pub(crate) mod param_type_check;
+pub(crate) mod undefined_doc_param;
+pub(crate) mod redefined_local;
 pub(crate) mod syntax_error;
 pub(crate) mod unbalanced_assignments;
-pub(crate) mod undefined_doc_param;
 pub(crate) mod undefined_global;
 pub(crate) mod unnecessary_assert;
 pub(crate) mod unknown_doc_tag;
@@ -33,11 +35,9 @@ pub(crate) mod unused;
 // ⏳ 待迁移 (Checker trait bridge)
 mod assign_type_mismatch;
 mod attribute_check;
-mod call_non_callable;
 mod cast_type_mismatch;
 // mod check_export; // needs check_field::is_valid_member (old API)
 // mod check_param_count; // migrated
-mod circle_doc_class;
 mod duplicate_field;
 mod duplicate_type;
 mod enum_value_mismatch;
@@ -197,6 +197,12 @@ pub fn check_file(
     check_param_count::check(context, model);
     discard_returns::check(context, model);
     analyze_error::check(context, model);
+    call_non_callable::check(context, model);
+    circle_doc_class::check(context, model);
+    deprecated::check(context, model);
+param_type_check::check(context, model);
+    return_type_mismatch::check(context, model);
+    undefined_doc_param::check(context, model);
     // Bridge: old checkers via Checker trait
     {
         if let Some(tree) = context.db.get_vfs().get_syntax_tree(&model.get_file_id()) {
@@ -206,12 +212,9 @@ pub fn check_file(
             );
             run_check::<assign_type_mismatch::AssignTypeMismatchChecker>(context, &old_model);
             run_check::<attribute_check::AttributeCheckChecker>(context, &old_model);
-            run_check::<call_non_callable::CallNonCallableChecker>(context, &old_model);
             run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, &old_model);
             // check_param_count migrated to new model
-            run_check::<circle_doc_class::CircleDocClassChecker>(context, &old_model);
             run_check::<code_style::preferred_local_alias::PreferredLocalAliasChecker>(context, &old_model);
-            run_check::<deprecated::DeprecatedChecker>(context, &old_model);
             run_check::<duplicate_field::DuplicateFieldChecker>(context, &old_model);
             run_check::<duplicate_type::DuplicateTypeChecker>(context, &old_model);
             run_check::<enum_value_mismatch::EnumValueMismatchChecker>(context, &old_model);
@@ -219,11 +222,8 @@ pub fn check_file(
             run_check::<global_non_module::GlobalInNonModuleChecker>(context, &old_model);
             run_check::<incomplete_signature_doc::IncompleteSignatureDocChecker>(context, &old_model);
             run_check::<missing_fields::MissingFieldsChecker>(context, &old_model);
-            run_check::<param_type_check::ParamTypeCheckChecker>(context, &old_model);
             run_check::<require_module_visibility::RequireModuleVisibilityChecker>(context, &old_model);
-            run_check::<return_type_mismatch::ReturnTypeMismatch>(context, &old_model);
             run_check::<type_access_modifier::InconsistentTypeAccessModifierChecker>(context, &old_model);
-            run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, &old_model);
         }
     }
 
