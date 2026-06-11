@@ -590,3 +590,71 @@ pub(super) fn lowered_node_to_lua_type(node: &SalsaDocTypeLoweredNode) -> Option
         _ => None,
     }
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 函数调用推断
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// 解析后的函数信息 — salsa-native 替代 `Arc<LuaFunctionType>`。
+#[derive(Debug, Clone)]
+pub struct CallFunctionInfo {
+    pub params: Vec<(String, Option<LuaType>)>,
+    pub is_colon_define: bool,
+    pub is_variadic: bool,
+    pub return_type: LuaType,
+}
+
+impl CallFunctionInfo {
+    /// Whether the function is async.
+    pub fn is_async(&self) -> bool {
+        false // TODO: implement via salsa doc tags
+    }
+}
+
+impl InferQuery<'_> {
+    /// 推断调用表达式的目标函数信息。
+    /// 纯 salsa 实现，不依赖旧 DbIndex。
+    pub fn infer_call_expr_func(
+        &self,
+        call_expr: emmylua_parser::LuaCallExpr,
+        _arg_count: Option<usize>,
+    ) -> Option<CallFunctionInfo> {
+        let prefix = call_expr.get_prefix_expr()?;
+        let prefix_type = self.infer_expr(prefix).ok()?;
+        resolve_call_info(self, &prefix_type)
+    }
+}
+
+fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInfo> {
+    match ty {
+        LuaType::DocFunction(func) => Some(CallFunctionInfo {
+            params: func.get_params().to_vec(),
+            is_colon_define: func.is_colon_define(),
+            is_variadic: func.get_params().last().is_some_and(|(n, _)| n == "..."),
+            return_type: func.get_ret().clone(),
+        }),
+        LuaType::Signature(sig_id) => {
+            let db = infer.read_db();
+            let explain = db.doc().signature().explain(infer.get_file_id(), sig_id.get_position())?;
+            let params = explain.params.iter().map(|p| {
+                let ty = p.doc_type.as_ref().and_then(|dt| lowered_node_to_lua_type(dt.lowered.as_ref()?));
+                (p.name.to_string(), ty)
+            }).collect();
+            let return_type = explain.returns.first()
+                .and_then(|r| r.items.first())
+                .and_then(|item| lowered_node_to_lua_type(item.doc_type.lowered.as_ref()?))
+                .unwrap_or(LuaType::Unknown);
+            let is_colon = explain.signature.is_method;
+            let is_vararg = explain.signature.params.iter().any(|p| p.is_vararg);
+            Some(CallFunctionInfo { params, is_colon_define: is_colon, is_variadic: is_vararg, return_type })
+        }
+        LuaType::Union(u) => {
+            for m in u.into_vec() {
+                if let Some(info) = resolve_call_info(infer, &m) { return Some(info); }
+            }
+            None
+        }
+        LuaType::Generic(g) => resolve_call_info(infer, &g.get_base_type()),
+        _ => None,
+    }
+}

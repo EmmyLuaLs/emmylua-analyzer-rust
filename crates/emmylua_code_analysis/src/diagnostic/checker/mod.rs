@@ -5,9 +5,11 @@
 
 // ✅ 已迁移 (new model)
 pub(crate) mod access_invisible;
+pub(crate) mod await_in_sync;
 pub(crate) mod code_style;
 pub(crate) mod analyze_error;
 pub(crate) mod check_field;
+pub(crate) mod check_param_count;
 pub(crate) mod check_return_count;
 pub(crate) mod duplicate_index;
 pub(crate) mod discard_returns;
@@ -31,11 +33,10 @@ pub(crate) mod unused;
 // ⏳ 待迁移 (Checker trait bridge)
 mod assign_type_mismatch;
 mod attribute_check;
-mod await_in_sync;
 mod call_non_callable;
 mod cast_type_mismatch;
 // mod check_export; // needs check_field::is_valid_member (old API)
-mod check_param_count;
+// mod check_param_count; // migrated
 mod circle_doc_class;
 mod duplicate_field;
 mod duplicate_type;
@@ -176,6 +177,7 @@ pub fn check_file(
 ) {
     syntax_error::check(context, model, vfs);
     unused::check_unused(context, model);
+    await_in_sync::check(context, model);
     unnecessary_assert::check(context, model);
     need_check_nil::check(context, model);
     local_const_reassign::check(context, model);
@@ -192,6 +194,7 @@ pub fn check_file(
     undefined_global::check(context, model);
     access_invisible::check(context, model);
     check_return_count::check(context, model);
+    check_param_count::check(context, model);
     discard_returns::check(context, model);
     analyze_error::check(context, model);
     // Bridge: old checkers via Checker trait
@@ -203,10 +206,9 @@ pub fn check_file(
             );
             run_check::<assign_type_mismatch::AssignTypeMismatchChecker>(context, &old_model);
             run_check::<attribute_check::AttributeCheckChecker>(context, &old_model);
-            run_check::<await_in_sync::AwaitInSyncChecker>(context, &old_model);
             run_check::<call_non_callable::CallNonCallableChecker>(context, &old_model);
             run_check::<cast_type_mismatch::CastTypeMismatchChecker>(context, &old_model);
-            run_check::<check_param_count::CheckParamCountChecker>(context, &old_model);
+            // check_param_count migrated to new model
             run_check::<circle_doc_class::CircleDocClassChecker>(context, &old_model);
             run_check::<code_style::preferred_local_alias::PreferredLocalAliasChecker>(context, &old_model);
             run_check::<deprecated::DeprecatedChecker>(context, &old_model);

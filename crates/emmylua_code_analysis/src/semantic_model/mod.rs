@@ -11,6 +11,7 @@ mod generic;
 mod infer;
 mod member;
 mod reference;
+mod signature;
 mod type_check;
 mod visibility;
 
@@ -35,7 +36,7 @@ use crate::{
 };
 
 pub use generic::{GenericBindings, substitute as substitute_generic};
-pub use infer::{InferCache, InferFailReason, InferQuery, InferResult};
+pub use infer::{CallFunctionInfo, InferCache, InferFailReason, InferQuery, InferResult};
 pub use member::MemberQuery;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 
@@ -161,6 +162,15 @@ impl SemanticModel {
     /// 推断值绑定的目标类型。
     pub fn infer_bind_value_type(&self, expr: LuaExpr) -> Option<LuaType> {
         self.infer().infer_bind_value_type(expr)
+    }
+
+    /// 推断调用表达式的目标函数信息（纯 salsa）。
+    pub fn infer_call_expr_func(
+        &self,
+        call_expr: emmylua_parser::LuaCallExpr,
+        arg_count: Option<usize>,
+    ) -> Option<CallFunctionInfo> {
+        self.infer().infer_call_expr_func(call_expr, arg_count)
     }
 
     /// 推断成员类型：给定前缀类型和 key，返回成员类型。
@@ -289,6 +299,13 @@ impl SemanticModel {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 签名查询（check_return_count 等 checker 使用）
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// 通过 file_id + offset 查询完整签名信息。
+    /// 这是旧 `LuaSignatureId` + `signature_index.get()` 的 salsa 替代。
+    pub fn get_signature(&self, file_id: FileId, offset: TextSize) -> Option<signature::SignatureInfo> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        signature::SignatureInfo::query(&db, file_id, offset)
+    }
 
     /// 获取文件中所有签名。
     pub fn signatures(&self) -> Option<Arc<SalsaSignatureIndexSummary>> {
