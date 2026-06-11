@@ -133,17 +133,24 @@ fn infer_custom_type_member(
         return infer_member_impl(infer, db, &origin_type, member_key);
     }
 
-    // 2. 通过 salsa 属性查找
+    // 2. ExprType key → 模糊匹配（如 obj[key] where key: string）
+    if let LuaMemberKey::ExprType(key_ty) = member_key {
+        if key_compatible_with_any_property(db, infer.file_id, type_name, key_ty) {
+            return Ok(LuaType::Any);
+        }
+    }
+
+    // 3. 通过 salsa 属性精确查找
     if let Some(ty) = lookup_property_member(db, infer.file_id, type_name, member_key) {
         return Ok(ty);
     }
 
-    // 3. 通过 salsa 成员类型查询（构造 member target）
+    // 4. 通过 salsa 成员类型查询（构造 member target）
     if let Some(ty) = lookup_salsa_member_target(db, infer.file_id, type_name, member_key) {
         return Ok(ty);
     }
 
-    // 4. 查找 super types（salsa type_def → super_type_offsets）
+    // 5. 查找 super types（salsa type_def → super_type_offsets）
     if let Some(super_types) = resolve_super_types(db, infer.file_id, type_name) {
         for super_ty in super_types {
             match infer_member_impl(infer, db, &super_ty, member_key) {
@@ -155,6 +162,49 @@ fn infer_custom_type_member(
     }
 
     Err(InferFailReason::FieldNotFound)
+}
+
+/// 检查类型是否有任意属性 key 与 expr 类型兼容（用于 `obj[key]` 模糊匹配）。
+fn key_compatible_with_any_property(
+    db: &SalsaSummaryDatabase,
+    file_id: FileId,
+    type_name: &str,
+    key_type: &LuaType,
+) -> bool {
+    let Some(properties) = db.file().properties_for_type(file_id, type_name.into()) else {
+        return false;
+    };
+    properties.iter().any(|prop| match &prop.key {
+        crate::compilation::SalsaPropertyKeySummary::Name(_) => {
+            key_type.is_string() || key_type.is_str_tpl_ref()
+        }
+        crate::compilation::SalsaPropertyKeySummary::Integer(_) => key_type.is_integer(),
+        crate::compilation::SalsaPropertyKeySummary::Expr(syntax_id) => {
+            // 通过 syntax_id 查找对应声明的类型
+            resolve_property_key_type(db, file_id, syntax_id)
+                .is_some_and(|t| key_type.is_string() && t.is_string()
+                    || key_type.is_integer() && t.is_integer())
+        }
+        _ => false,
+    })
+}
+
+fn resolve_property_key_type(
+    db: &SalsaSummaryDatabase,
+    file_id: FileId,
+    syntax_id: &crate::compilation::SalsaSyntaxIdSummary,
+) -> Option<LuaType> {
+    let name_info = db.types().name(file_id, syntax_id.start_offset)?;
+    let decl_type = name_info.decl_type?;
+    if decl_type.named_type_names.is_empty() {
+        return None;
+    }
+    let name = &decl_type.named_type_names[0];
+    match name.as_str() {
+        "string" => Some(LuaType::String),
+        "number" | "integer" | "int" => Some(LuaType::Integer),
+        _ => Some(LuaType::Ref(LuaTypeDeclId::global(name))),
+    }
 }
 
 /// 通过 salsa properties_for_type 查找属性成员。
