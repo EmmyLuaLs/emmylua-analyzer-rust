@@ -705,7 +705,16 @@ fn infer_generic_member(
         {
             return infer_member_by_lookup(db, cache, &origin_type, lookup, &infer_guard.fork());
         }
-
+        
+        // First, try to find the member directly on the type itself (explicit @field declarations).
+        // This ensures that explicit @field definitions take priority over inherited table index semantics.
+        let owner = LuaMemberOwner::Type(base_type_decl_id.clone());
+        if let Some(member_item) = db.get_member_index().get_member_item(&owner, &lookup.key) {
+            if let Ok(member_type) = member_item.resolve_type(db) {
+                return Ok(instantiate_type_generic(db, &member_type, &substitutor));
+            }
+        }
+        
         let result = infer_generic_members_from_super_generics(
             db,
             cache,
