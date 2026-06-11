@@ -99,6 +99,19 @@ pub fn check_generic_type_compact(
                 check_guard.next_level()?,
             )
         }
+        LuaType::Union(union_type) => {
+            // When compact_type is a Union, every member of the union must be
+            // assignable to the source generic type for the assignment to be safe.
+            for member_type in union_type.into_vec() {
+                check_generic_type_compact(
+                    context,
+                    source_generic,
+                    &member_type,
+                    check_guard.next_level()?,
+                )?;
+            }
+            Ok(())
+        }
         _ => Err(TypeCheckFailReason::TypeNotMatch),
     }
 }
