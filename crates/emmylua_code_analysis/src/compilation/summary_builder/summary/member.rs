@@ -9,6 +9,8 @@ use internment::ArcIntern;
 use rowan::TextSize;
 use smol_str::SmolStr;
 
+use crate::FileId;
+
 use super::{SalsaDeclId, SalsaGlobalRootSummary, SalsaSyntaxIdSummary};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, salsa::Update)]
@@ -252,4 +254,18 @@ impl SalsaMemberSummary {
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct SalsaMemberIndexSummary {
     pub members: Vec<SalsaMemberSummary>,
+}
+
+/// 跨文件的属性成员条目（workspace 聚合索引）。
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct WorkspacePropertyEntry {
+    pub file_id: FileId,
+    pub key: super::SalsaPropertyKeySummary,
+}
+
+/// 跨文件成员索引：type_name → 所有文件中的属性定义。
+/// 在 workspace 层面聚合，通过 salsa tracked function 生成并缓存。
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct WorkspaceMemberIndex {
+    pub by_type: Vec<(SmolStr, Vec<WorkspacePropertyEntry>)>,
 }

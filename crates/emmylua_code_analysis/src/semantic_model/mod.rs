@@ -235,13 +235,13 @@ impl SemanticModel {
     // 成员查询（check_field 等 checker 使用）
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    /// 获取某个类型的所有成员 key。
+    /// 获取某个类型的所有成员 key（跨文件合并，通过 salsa workspace 聚合索引）。
     ///
-    /// 对于 `Ref`/`Def` 类型，通过 salsa property 索引查找。
-    /// 对于 `Union`，合并所有分支的成员。
+    /// O(1) 查询 — 索引由 salsa 自动构建和缓存。
+    /// 当任何文件 summary 变更时自动失效重建。
     pub fn get_member_infos(&self, prefix_type: &LuaType) -> Option<Vec<LuaMemberKey>> {
         let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
-        get_member_keys_from_type(&db, self.file_id, prefix_type)
+        get_member_keys_workspace(&db, prefix_type)
     }
 
     /// 判断类型 ID 是否指向 enum。
@@ -270,41 +270,34 @@ impl SemanticModel {
 // 内部工具
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-fn get_member_keys_from_type(
+/// 通过 salsa workspace 聚合索引收集成员 key。O(1) 查询。
+fn get_member_keys_workspace(
     db: &SalsaSummaryDatabase,
-    file_id: FileId,
     prefix_type: &LuaType,
 ) -> Option<Vec<LuaMemberKey>> {
     match prefix_type {
         LuaType::Ref(type_id) | LuaType::Def(type_id) => {
-            let name = type_id.get_name();
-            let properties = db.file().properties_for_type(file_id, name.into())?;
-            Some(
-                properties
-                    .iter()
-                    .map(|p| property_key_to_member_key(&p.key))
-                    .collect(),
-            )
+            let entries = db.workspace().properties_of_type(type_id.get_name())?;
+            let keys: Vec<LuaMemberKey> = entries
+                .iter()
+                .map(|e| match &e.key {
+                    SalsaPropertyKeySummary::Name(n) => LuaMemberKey::Name(SmolStr::new(n.as_str())),
+                    SalsaPropertyKeySummary::Integer(i) => LuaMemberKey::Integer(*i),
+                    _ => LuaMemberKey::None,
+                })
+                .filter(|k| !matches!(k, LuaMemberKey::None))
+                .collect();
+            if keys.is_empty() { None } else { Some(keys) }
         }
         LuaType::Union(u) => {
             let mut all = Vec::new();
-            for member in u.into_vec() {
-                if let Some(keys) = get_member_keys_from_type(db, file_id, &member) {
+            for m in u.into_vec() {
+                if let Some(keys) = get_member_keys_workspace(db, &m) {
                     all.extend(keys);
                 }
             }
             if all.is_empty() { None } else { Some(all) }
         }
         _ => None,
-    }
-}
-
-fn property_key_to_member_key(key: &SalsaPropertyKeySummary) -> LuaMemberKey {
-    match key {
-        SalsaPropertyKeySummary::Name(n) => LuaMemberKey::Name(SmolStr::new(n.as_str())),
-        SalsaPropertyKeySummary::Integer(i) => LuaMemberKey::Integer(*i),
-        SalsaPropertyKeySummary::Expr(_) => LuaMemberKey::None,
-        SalsaPropertyKeySummary::Type(_) => LuaMemberKey::None,
-        SalsaPropertyKeySummary::Sequence(_) => LuaMemberKey::None,
     }
 }

@@ -52,7 +52,7 @@ pub use flow::{
 pub use member::{
     SalsaMemberIndexSummary, SalsaMemberKindSummary, SalsaMemberPathRootSummary,
     SalsaMemberPathSummary, SalsaMemberRootSummary, SalsaMemberSummary, SalsaMemberTargetId,
-    SalsaMemberTargetSummary,
+    SalsaMemberTargetSummary, WorkspaceMemberIndex, WorkspacePropertyEntry,
 };
 pub use module::{
     SalsaExportTargetSummary, SalsaModuleExportQuerySummary, SalsaModuleExportResolveStateSummary,

@@ -2624,3 +2624,8 @@ pub(crate) fn file_module_exports_global_variable(
     let module = file_module_summary(db, file_id)?;
     Some(module_exports_global_variable(&module, name.as_str()))
 }
+
+pub(crate) fn file_properties(db: &SalsaSummaryDatabase, file_id: FileId) -> Option<Arc<SalsaPropertyQueryIndex>> {
+    let (file, config) = file_and_config(db, file_id)?;
+    Some(tracked_file_property_query_index(db, file, config))
+}

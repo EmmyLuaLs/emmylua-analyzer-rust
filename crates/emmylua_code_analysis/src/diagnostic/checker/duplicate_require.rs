@@ -35,7 +35,7 @@ fn check_require(
         let parent_block = call_expr
             .ancestors::<LuaBlock>()
             .next()
-            .unwrap_or_else(|| model.get_root().get_block().unwrap());
+            .unwrap_or_else(|| model.get_root().get_block().expect("chunk always has block"));
         let parent_pos = parent_block.get_position();
         for (range, name) in require_calls.iter() {
             if range.contains(parent_pos) && name == s.as_str() {

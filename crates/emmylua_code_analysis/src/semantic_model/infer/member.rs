@@ -172,28 +172,37 @@ fn infer_custom_type_member(
 }
 
 /// 检查类型是否有任意属性 key 与 expr 类型兼容（用于 `obj[key]` 模糊匹配）。
+/// 跨文件查找：遍历所有 synced 文件。
 fn key_compatible_with_any_property(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
     type_name: &str,
     key_type: &LuaType,
 ) -> bool {
-    let Some(properties) = db.file().properties_for_type(file_id, type_name.into()) else {
-        return false;
-    };
-    properties.iter().any(|prop| match &prop.key {
-        SalsaPropertyKeySummary::Name(_) => {
-            key_type.is_string() || key_type.is_str_tpl_ref()
+    let name: SmolStr = type_name.into();
+    for fid in db.file_ids() {
+        let Some(properties) = db.file().properties_for_type(fid, name.clone()) else {
+            continue;
+        };
+        for prop in &properties {
+            let compatible = match &prop.key {
+                SalsaPropertyKeySummary::Name(_) => {
+                    key_type.is_string() || key_type.is_str_tpl_ref()
+                }
+                SalsaPropertyKeySummary::Integer(_) => key_type.is_integer(),
+                SalsaPropertyKeySummary::Expr(syntax_id) => {
+                    resolve_property_key_type(db, file_id, syntax_id)
+                        .is_some_and(|t| key_type.is_string() && t.is_string()
+                            || key_type.is_integer() && t.is_integer())
+                }
+                _ => false,
+            };
+            if compatible {
+                return true;
+            }
         }
-        SalsaPropertyKeySummary::Integer(_) => key_type.is_integer(),
-        SalsaPropertyKeySummary::Expr(syntax_id) => {
-            // 通过 syntax_id 查找对应声明的类型
-            resolve_property_key_type(db, file_id, syntax_id)
-                .is_some_and(|t| key_type.is_string() && t.is_string()
-                    || key_type.is_integer() && t.is_integer())
-        }
-        _ => false,
-    })
+    }
+    false
 }
 
 fn resolve_property_key_type(

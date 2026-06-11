@@ -15,7 +15,7 @@ use inputs::SummaryFileListInput;
 pub use facade::{
     SalsaSummaryDocQueries, SalsaSummaryFileQueries, SalsaSummaryFlowQueries,
     SalsaSummaryLexicalQueries, SalsaSummaryModuleQueries, SalsaSummarySemanticQueries,
-    SalsaSummaryTypeQueries,
+    SalsaSummaryTypeQueries, SalsaSummaryWorkspaceQueries,
 };
 use inputs::{
     SummaryConfigInput, SummarySourceFileInput, SummaryWorkspaceInput, snapshot_vfs_file,
@@ -56,6 +56,10 @@ impl SalsaSummaryDatabase {
     #[allow(dead_code)]
     pub(crate) fn file_list_input(&self) -> Option<SummaryFileListInput> {
         self.file_list
+    }
+
+    pub(crate) fn config_input(&self) -> Option<SummaryConfigInput> {
+        self.config
     }
 
     pub(crate) fn file_ids(&self) -> Vec<FileId> {
@@ -148,6 +152,10 @@ impl SalsaSummaryDatabase {
 
     pub fn types(&self) -> SalsaSummaryTypeQueries<'_> {
         SalsaSummaryTypeQueries::new(self)
+    }
+
+    pub fn workspace(&self) -> SalsaSummaryWorkspaceQueries<'_> {
+        SalsaSummaryWorkspaceQueries::new(self)
     }
 }
 
@@ -257,5 +265,9 @@ impl SalsaSummaryHost {
 
     pub fn types(&self) -> SalsaSummaryTypeQueries<'_> {
         SalsaSummaryTypeQueries::new(&self.db)
+    }
+
+    pub fn workspace(&self) -> SalsaSummaryWorkspaceQueries<'_> {
+        SalsaSummaryWorkspaceQueries::new(&self.db)
     }
 }

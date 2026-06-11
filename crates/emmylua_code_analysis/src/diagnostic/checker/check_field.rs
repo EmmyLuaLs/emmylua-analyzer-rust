@@ -52,24 +52,23 @@ fn check_index(
     }
 
     let Some(index_key) = index_expr.get_index_key() else { return };
-    let key = index_key_to_member_key(model, &index_key, code);
-    if key.is_none() {
+    let Some(key) = index_key_to_member_key(model, &index_key, code) else {
         return;
-    }
+    };
 
     // ── 核心：通过 infer_member_type 检查字段是否存在 ──
-    let key = key.unwrap();
     if is_valid_access(model, &prefix_type, index_expr, &key, code) {
         return;
     }
 
+    let Some(range) = index_key.get_range() else { return };
     let index_name = index_key.get_path_part();
     let db = context.db;
     match code {
         DiagnosticCode::InjectField => {
             context.add_diagnostic(
                 DiagnosticCode::InjectField,
-                index_key.get_range().unwrap(),
+                range,
                 t!("Fields cannot be injected into the reference of `%{class}` for `%{field}`. ",
                     class = humanize_lint_type(db, &prefix_type),
                     field = index_name,
@@ -80,7 +79,7 @@ fn check_index(
         DiagnosticCode::UndefinedField => {
             context.add_diagnostic(
                 DiagnosticCode::UndefinedField,
-                index_key.get_range().unwrap(),
+                range,
                 t!("Undefined field `%{field}`. ", field = index_name).to_string(),
                 None,
             );
