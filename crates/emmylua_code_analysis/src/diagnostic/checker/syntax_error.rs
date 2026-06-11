@@ -27,21 +27,38 @@ pub fn check(context: &mut DiagnosticContext, model: &SemanticModel, vfs: &Vfs) 
     // 字面量溢出检查
     let root = model.get_root();
     for node_or_token in root.syntax().descendants_with_tokens() {
-        let Some(token) = node_or_token.into_token() else { continue };
+        let Some(token) = node_or_token.into_token() else {
+            continue;
+        };
         match token.kind().into() {
             LuaTokenKind::TkInt => {
                 if let Err(err) = int_token_value(&token) {
-                    context.add_diagnostic(DiagnosticCode::SyntaxError, err.range, err.message, None);
+                    context.add_diagnostic(
+                        DiagnosticCode::SyntaxError,
+                        err.range,
+                        err.message,
+                        None,
+                    );
                 }
             }
             LuaTokenKind::TkFloat => {
                 if let Err(err) = float_token_value(&token) {
-                    context.add_diagnostic(DiagnosticCode::SyntaxError, err.range, err.message, None);
+                    context.add_diagnostic(
+                        DiagnosticCode::SyntaxError,
+                        err.range,
+                        err.message,
+                        None,
+                    );
                 }
             }
             LuaTokenKind::TkString => {
                 if let Err(err) = check_string(&token) {
-                    context.add_diagnostic(DiagnosticCode::SyntaxError, token.text_range(), err, None);
+                    context.add_diagnostic(
+                        DiagnosticCode::SyntaxError,
+                        token.text_range(),
+                        err,
+                        None,
+                    );
                 }
             }
             LuaTokenKind::TkDots => {
@@ -58,7 +75,7 @@ fn check_string(token: &LuaSyntaxToken) -> Result<(), String> {
         return Ok(());
     }
     let mut chars = text.chars().peekable();
-    let delimiter = chars.next().unwrap();
+    let delimiter = chars.next().unwrap_or('\"');
     while let Some(c) = chars.next() {
         match c {
             '\\' => {
@@ -66,30 +83,41 @@ fn check_string(token: &LuaSyntaxToken) -> Result<(), String> {
                 match next {
                     'x' => {
                         let hex: String = chars.by_ref().take(2).collect();
-                        if hex.len() != 2 || !hex.chars().all(|c| c.is_ascii_hexdigit())
+                        if hex.len() != 2
+                            || !hex.chars().all(|c| c.is_ascii_hexdigit())
                             || u8::from_str_radix(&hex, 16).is_err()
                         {
-                            return Err(t!("Invalid hex escape sequence '\\x%{hex}'", hex = hex).to_string());
+                            return Err(t!("Invalid hex escape sequence '\\x%{hex}'", hex = hex)
+                                .to_string());
                         }
                     }
                     'u' => {
                         if chars.next() == Some('{') {
-                            let unicode: String = chars.by_ref().take_while(|c| *c != '}').collect();
+                            let unicode: String =
+                                chars.by_ref().take_while(|c| *c != '}').collect();
                             if u32::from_str_radix(&unicode, 16)
                                 .map_or(true, |cp| std::char::from_u32(cp).is_none())
                             {
-                                return Err(t!("Invalid unicode escape sequence '\\u{{%{unicode}}}'", unicode = unicode).to_string());
+                                return Err(t!(
+                                    "Invalid unicode escape sequence '\\u{{%{unicode}}}'",
+                                    unicode = unicode
+                                )
+                                .to_string());
                             }
                         }
                     }
                     '0'..='9' => {
                         for _ in 0..2 {
-                            if !chars.peek().is_some_and(|d| d.is_ascii_digit()) { break; }
+                            if !chars.peek().is_some_and(|d| d.is_ascii_digit()) {
+                                break;
+                            }
                             chars.next();
                         }
                     }
                     'z' => {
-                        while chars.peek().is_some_and(|c| c.is_whitespace()) { chars.next(); }
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                            chars.next();
+                        }
                     }
                     _ => {}
                 }
@@ -102,17 +130,25 @@ fn check_string(token: &LuaSyntaxToken) -> Result<(), String> {
 }
 
 fn check_dots(context: &mut DiagnosticContext, model: &SemanticModel, dots_token: &LuaSyntaxToken) {
-    let Some(parent) = dots_token.parent() else { return };
+    let Some(parent) = dots_token.parent() else {
+        return;
+    };
     if parent.kind() != LuaSyntaxKind::LiteralExpr.into() {
         return;
     }
-    let Some(literal) = LuaLiteralExpr::cast(parent) else { return };
-    let Some(closure) = literal.ancestors::<LuaClosureExpr>().next() else { return };
+    let Some(literal) = LuaLiteralExpr::cast(parent) else {
+        return;
+    };
+    let Some(closure) = literal.ancestors::<LuaClosureExpr>().next() else {
+        return;
+    };
     let sig_id = LuaSignatureId::from_closure(model.get_file_id(), &closure);
     // TODO: salsa-native signature lookup (后续迁移 SignatureIndex 时完成)
     // 当前暂时使用 DbIndex 的 signature index
-    let signature = context.db.get_signature_index().get(&sig_id);
-    if signature.is_none() || !signature.unwrap().params.iter().any(|p| p == "...") {
+    let Some(signature) = context.db.get_signature_index().get(&sig_id) else {
+        return;
+    };
+    if !signature.params.iter().any(|p| p == "...") {
         context.add_diagnostic(
             DiagnosticCode::SyntaxError,
             literal.get_range(),

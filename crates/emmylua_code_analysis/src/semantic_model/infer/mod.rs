@@ -74,27 +74,23 @@ impl InferFailReason {
 ///
 /// 设计要点：
 /// - 持有 `SalsaSummaryDatabase` 的 Arc 用于快速路径
-/// - 本地 `InferCache` 用于单次会话 memoization
+/// - 共享 `InferCache`（由 `SemanticModel` 持有，跨 checker 调用复用）
 /// - `file_id` 指明当前分析的文件
-pub struct InferQuery {
+pub struct InferQuery<'a> {
     db: Arc<RwLock<SalsaSummaryDatabase>>,
     file_id: FileId,
     emmyrc: Arc<crate::Emmyrc>,
-    cache: RefCell<InferCache>,
+    cache: &'a RefCell<InferCache>,
 }
 
-impl InferQuery {
-    pub(crate) fn new(
+impl<'a> InferQuery<'a> {
+    pub(crate) fn with_cache(
         db: Arc<RwLock<SalsaSummaryDatabase>>,
         file_id: FileId,
         emmyrc: Arc<crate::Emmyrc>,
+        cache: &'a RefCell<InferCache>,
     ) -> Self {
-        Self {
-            db,
-            file_id,
-            emmyrc,
-            cache: RefCell::new(InferCache::new(file_id)),
-        }
+        Self { db, file_id, emmyrc, cache }
     }
 
     pub fn get_file_id(&self) -> FileId {

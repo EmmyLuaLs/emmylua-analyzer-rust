@@ -14,20 +14,24 @@ mod reference;
 mod type_check;
 mod visibility;
 
+use std::cell::RefCell;
 use std::sync::{Arc, RwLock};
 
 use emmylua_parser::{LuaChunk, LuaExpr, LuaParseError, LuaSyntaxNode, LuaSyntaxToken};
 
+use smol_str::SmolStr;
+
 use crate::compilation::{
-    SalsaDeclId, SalsaDeclTreeSummary, SalsaDocVisibilityKindSummary, SalsaNameUseSummary,
-    SalsaSummaryDatabase,
+    SalsaDeclId, SalsaDeclTreeSummary, SalsaDocTypeDefKindSummary, SalsaDocVisibilityKindSummary,
+    SalsaNameUseSummary, SalsaPropertyKeySummary, SalsaSummaryDatabase,
 };
 use crate::{
-    Emmyrc, FileId, LuaDocument, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, Vfs,
+    Emmyrc, FileId, LuaDocument, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId,
+    SemanticDeclLevel, Vfs,
 };
 
 pub use generic::{GenericBindings, substitute as substitute_generic};
-pub use infer::{InferFailReason, InferQuery, InferResult};
+pub use infer::{InferCache, InferFailReason, InferQuery, InferResult};
 pub use member::MemberQuery;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 
@@ -38,16 +42,29 @@ pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 /// # Thread Safety
 /// `SalsaSummaryDatabase` 自身不是 `Sync`（salsa 内部使用 `!Sync` storage），
 /// 但通过 `Arc<RwLock<>>` 包装后可以安全地在多线程间共享。
-#[derive(Clone)]
 pub struct SemanticModel {
     file_id: FileId,
     salsa_db: Arc<RwLock<SalsaSummaryDatabase>>,
     emmyrc: Arc<Emmyrc>,
     root: LuaChunk,
+    infer_cache: RefCell<InferCache>,
 }
 
 unsafe impl Send for SemanticModel {}
 unsafe impl Sync for SemanticModel {}
+
+/// Clone 创建新的 `InferCache`（克隆不共享推断缓存）。
+impl Clone for SemanticModel {
+    fn clone(&self) -> Self {
+        Self {
+            file_id: self.file_id,
+            salsa_db: self.salsa_db.clone(),
+            emmyrc: self.emmyrc.clone(),
+            root: self.root.clone(),
+            infer_cache: RefCell::new(InferCache::new(self.file_id)),
+        }
+    }
+}
 
 #[allow(dead_code)]
 impl SemanticModel {
@@ -62,6 +79,7 @@ impl SemanticModel {
             salsa_db,
             emmyrc,
             root,
+            infer_cache: RefCell::new(InferCache::new(file_id)),
         }
     }
 
@@ -113,8 +131,13 @@ impl SemanticModel {
     // 类型推断
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    pub fn infer(&self) -> InferQuery {
-        InferQuery::new(self.salsa_db.clone(), self.file_id, self.emmyrc.clone())
+    pub fn infer(&self) -> InferQuery<'_> {
+        InferQuery::with_cache(
+            self.salsa_db.clone(),
+            self.file_id,
+            self.emmyrc.clone(),
+            &self.infer_cache,
+        )
     }
 
     /// 快捷方法：推断表达式类型
@@ -199,8 +222,80 @@ impl SemanticModel {
         db.lexical().decl_references(self.file_id, decl_id)
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 成员查询（check_field 等 checker 使用）
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// 获取某个类型的所有成员 key。
+    ///
+    /// 对于 `Ref`/`Def` 类型，通过 salsa property 索引查找。
+    /// 对于 `Union`，合并所有分支的成员。
+    pub fn get_member_infos(&self, prefix_type: &LuaType) -> Option<Vec<LuaMemberKey>> {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        get_member_keys_from_type(&db, self.file_id, prefix_type)
+    }
+
+    /// 判断类型 ID 是否指向 enum。
+    pub fn is_enum_type(&self, type_id: &LuaTypeDeclId) -> bool {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        db.doc()
+            .type_def_by_name(self.file_id, type_id.get_name())
+            .is_some_and(|def| matches!(def.kind, SalsaDocTypeDefKindSummary::Enum))
+    }
+
+    /// 判断类型 ID 是否指向 class。
+    pub fn is_class_type(&self, type_id: &LuaTypeDeclId) -> bool {
+        let db = self.salsa_db.read().unwrap_or_else(|e| e.into_inner());
+        db.doc()
+            .type_def_by_name(self.file_id, type_id.get_name())
+            .is_some_and(|def| matches!(def.kind, SalsaDocTypeDefKindSummary::Class))
+    }
+
     /// 获取内部 salsa_db 引用（仅供内部子模块使用）。
     pub(crate) fn salsa_db(&self) -> &Arc<RwLock<SalsaSummaryDatabase>> {
         &self.salsa_db
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 内部工具
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+fn get_member_keys_from_type(
+    db: &SalsaSummaryDatabase,
+    file_id: FileId,
+    prefix_type: &LuaType,
+) -> Option<Vec<LuaMemberKey>> {
+    match prefix_type {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => {
+            let name = type_id.get_name();
+            let properties = db.file().properties_for_type(file_id, name.into())?;
+            Some(
+                properties
+                    .iter()
+                    .map(|p| property_key_to_member_key(&p.key))
+                    .collect(),
+            )
+        }
+        LuaType::Union(u) => {
+            let mut all = Vec::new();
+            for member in u.into_vec() {
+                if let Some(keys) = get_member_keys_from_type(db, file_id, &member) {
+                    all.extend(keys);
+                }
+            }
+            if all.is_empty() { None } else { Some(all) }
+        }
+        _ => None,
+    }
+}
+
+fn property_key_to_member_key(key: &SalsaPropertyKeySummary) -> LuaMemberKey {
+    match key {
+        SalsaPropertyKeySummary::Name(n) => LuaMemberKey::Name(SmolStr::new(n.as_str())),
+        SalsaPropertyKeySummary::Integer(i) => LuaMemberKey::Integer(*i),
+        SalsaPropertyKeySummary::Expr(_) => LuaMemberKey::None,
+        SalsaPropertyKeySummary::Type(_) => LuaMemberKey::None,
+        SalsaPropertyKeySummary::Sequence(_) => LuaMemberKey::None,
     }
 }

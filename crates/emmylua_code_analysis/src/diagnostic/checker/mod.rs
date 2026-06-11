@@ -4,6 +4,7 @@
 //! 已迁移到新架构的 checker 直接在这里调用，未迁移的暂时注释。
 
 // ✅ 已迁移
+pub(crate) mod check_field;
 pub(crate) mod local_const_reassign;
 pub(crate) mod need_check_nil;
 pub(crate) mod redefined_local;
@@ -164,6 +165,7 @@ pub fn check_file(
     need_check_nil::check(context, model);
     local_const_reassign::check(context, model);
     redefined_local::check(context, model);
+    check_field::check(context, model);
 
     // 以下 checkers 尚未迁移：
     // deprecated::check(context, model);
