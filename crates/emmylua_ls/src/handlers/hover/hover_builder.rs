@@ -297,7 +297,7 @@ impl HoverSignatureOverload {
     }
 
     fn append_markdown(&self, content: &mut String) {
-        const LIMIT: usize = 40;
+        const LIMIT: usize = 80;
         let inline_comment = self
             .comment
             .as_deref()

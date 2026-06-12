@@ -772,4 +772,163 @@ mod tests {
         ));
         Ok(())
     }
+
+    #[gtest]
+    fn test_regression_generic_table_field_should_be_function_owner() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@generic T
+                ---@param params ObserverParams<T>
+                function observe(params)
+                end
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                observe({
+                    ---@param value string
+                    <??>next = function(value)
+                        return value
+                    end
+                })
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: string) -> string\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_generic_table_field_value_without_inference_source() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@generic T
+                ---@param params ObserverParams<T>
+                function observe(params)
+                end
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                observe({
+                    <??>next = 1
+                })
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: unknown) -> unknown\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_generic_table_field_hover_filters_union_parent_without_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@class OtherParams1
+                ---@field other string
+
+                ---@class OtherParams2<T>
+                ---@field wait fun(value: T): T # 测试2
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                ---@type OtherParams2<number>|ObserverParams<string>|OtherParams1
+                local params = {
+                    <??>next = function(value)
+                        return value
+                    end
+                }
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: string) -> string\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_table_field_hover_keeps_same_owner_same_name_overloads() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class OverloadedParams
+                ---@field next fun(value: string): string # 字符串
+                ---@field next fun(value: number): number # 数字
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                ---@type OverloadedParams
+                local params = {
+                    <??>next = function(value)
+                        return value
+                    end
+                }
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) OverloadedParams.next(value: string) -> string (+1 overloads)\n```\n\n---\n\n字符串\n\n---\n\n```lua\n(field) OverloadedParams.next(value: number) -> number -- 数字\n```"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_generic_table_field_uses_known_context_type() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@generic T
+                ---@param value T
+                ---@param params ObserverParams<T>
+                function observe(value, params)
+                end
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                observe("x", {
+                    <??>next = function(value)
+                        return value
+                    end
+                })
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: string) -> string\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
 }

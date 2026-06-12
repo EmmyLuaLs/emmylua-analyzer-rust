@@ -225,7 +225,9 @@ fn build_member_hover(
         _ => return None,
     };
 
-    if is_function(&typ) {
+    // 当为表字段时, 如果能够追溯到该成员的定义为 function, 那么我们也需要显示方法的签名而不是当前字段的真实类型
+    if is_function(&typ) || (!semantic_decls.is_empty() && is_function(&semantic_decls.first()?.1))
+    {
         adjust_semantic_decls(
             builder,
             &mut semantic_decls,

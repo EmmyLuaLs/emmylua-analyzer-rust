@@ -1,3 +1,5 @@
+mod table_field;
+
 use std::{collections::HashSet, sync::Arc, vec};
 
 use emmylua_code_analysis::{
@@ -6,6 +8,7 @@ use emmylua_code_analysis::{
     TypeSubstitutor, VariadicType, humanize_type, infer_call_expr_func, infer_call_generic,
     instantiate_type_generic, try_extract_signature_id_from_field,
 };
+use emmylua_parser::LuaCallExpr;
 
 use crate::handlers::hover::{
     HoverBuilder,
@@ -15,6 +18,8 @@ use crate::handlers::hover::{
     },
     infer_prefix_global_name,
 };
+
+use table_field::build_table_field_hover;
 
 pub fn build_function_hover(
     builder: &mut HoverBuilder,
@@ -48,6 +53,10 @@ pub fn build_function_hover(
             &function_name,
             is_local,
         );
+    } else if let Some(result) =
+        build_table_field_hover(builder, db, semantic_decls, &function_name, is_local)
+    {
+        return Some(result);
     } else {
         build_function_define_hover(builder, db, semantic_decls, &function_name, is_local);
     }
@@ -59,7 +68,7 @@ fn build_function_call_hover(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     semantic_decls: &[(LuaSemanticDeclId, LuaType)],
-    call_expr: &emmylua_parser::LuaCallExpr,
+    call_expr: &LuaCallExpr,
     function_name: &str,
     is_local: bool,
 ) -> Option<()> {
@@ -494,7 +503,7 @@ fn hover_doc_function_type(
 fn instantiate_call_return_overloads(
     builder: &HoverBuilder,
     db: &DbIndex,
-    call_expr: &emmylua_parser::LuaCallExpr,
+    call_expr: &LuaCallExpr,
     signature: &LuaSignature,
 ) -> Vec<LuaDocReturnOverloadInfo> {
     let mut cache = builder.semantic_model.get_cache().borrow_mut();
