@@ -3,7 +3,7 @@ use emmylua_code_analysis::{
     SemanticModel, TypeSubstitutor,
 };
 use emmylua_parser::{
-    LuaAstNode, LuaCallExpr, LuaExpr, LuaLocalName, LuaLocalStat, LuaSyntaxKind, LuaSyntaxToken,
+    LuaAstNode, LuaExpr, LuaLocalName, LuaLocalStat, LuaSyntaxKind, LuaSyntaxToken,
 };
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 
@@ -267,18 +267,6 @@ impl<'a> HoverBuilder<'a> {
 
     pub fn get_trigger_token(&self) -> Option<LuaSyntaxToken> {
         self.trigger_token.clone()
-    }
-
-    pub fn get_call_expr(&self) -> Option<LuaCallExpr> {
-        if let Some(token) = self.trigger_token.clone() {
-            let token_start = token.text_range().start();
-            let call_expr = token.parent()?.ancestors().find_map(LuaCallExpr::cast)?;
-            let prefix_expr = call_expr.get_prefix_expr()?;
-            if prefix_expr.syntax().text_range().contains(token_start) {
-                return Some(call_expr);
-            }
-        }
-        None
     }
 }
 

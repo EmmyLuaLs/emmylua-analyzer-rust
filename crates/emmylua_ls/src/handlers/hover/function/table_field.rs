@@ -1,16 +1,15 @@
 use std::collections::HashMap;
 
 use emmylua_code_analysis::{
-    DbIndex, LuaSemanticDeclId, LuaType, LuaTypeDeclId, TypeSubstitutor, infer_table_should_be,
-    instantiate_type_generic,
+    DbIndex, LuaSemanticDeclId, LuaType, LuaTypeDeclId, TypeSubstitutor, instantiate_type_generic,
 };
-use emmylua_parser::{LuaAstNode, LuaTableExpr, LuaTableField};
 
 use crate::handlers::hover::HoverBuilder;
 
 use super::{
-    HoverFunctionInfo, function_member_is_field, get_function_description, process_function_type,
-    set_builder_contents,
+    define_hover::{HoverFunctionInfo, set_builder_contents},
+    extract_function_member, get_function_description,
+    render::process_function_type,
 };
 
 type OwnerSubstitutorCache = HashMap<LuaTypeDeclId, Option<TypeSubstitutor>>;
@@ -19,20 +18,8 @@ pub(super) fn build_table_field_hover(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     semantic_decls: &[(LuaSemanticDeclId, LuaType)],
-    function_name: &str,
-    is_local: bool,
+    parent_table_type: &LuaType,
 ) -> Option<()> {
-    let token = builder.get_trigger_token()?;
-    let table_field = token.parent().and_then(LuaTableField::cast)?;
-    let table_expr = table_field.get_parent::<LuaTableExpr>()?;
-    let parent_table_type = infer_table_should_be(
-        db,
-        &mut builder.semantic_model.get_cache().borrow_mut(),
-        table_expr,
-    )
-    .ok()?;
-
-    let is_field = function_member_is_field(db, semantic_decls);
     let mut function_infos = Vec::new();
     let mut substitutor_cache = OwnerSubstitutorCache::new();
     for (semantic_decl, typ) in semantic_decls {
@@ -40,23 +27,14 @@ pub(super) fn build_table_field_hover(
             db,
             semantic_decl,
             typ,
-            &parent_table_type,
+            parent_table_type,
             &mut substitutor_cache,
         );
-        let function_member = match semantic_decl {
-            LuaSemanticDeclId::Member(id) => db.get_member_index().get_member(id),
-            _ => None,
-        };
+        let function_member = extract_function_member(db, semantic_decl);
 
-        let Some(contents) = process_function_type(
-            builder,
-            db,
-            &typ,
-            function_member,
-            function_name,
-            is_local,
-            is_field,
-        ) else {
+        let Some(contents) =
+            process_function_type(builder, db, &typ, semantic_decl, function_member)
+        else {
             continue;
         };
         if contents.is_empty() {
@@ -64,15 +42,9 @@ pub(super) fn build_table_field_hover(
         }
 
         let description = get_function_description(builder, db, semantic_decl);
-        function_infos.push(HoverFunctionInfo {
-            primary: contents.first()?.clone(),
-            overloads: if contents.len() > 1 {
-                Some(contents[1..].to_vec())
-            } else {
-                None
-            },
-            description,
-        });
+        if let Some(info) = HoverFunctionInfo::from_contents(contents, description) {
+            function_infos.push(info);
+        }
     }
 
     set_builder_contents(builder, &mut function_infos)
