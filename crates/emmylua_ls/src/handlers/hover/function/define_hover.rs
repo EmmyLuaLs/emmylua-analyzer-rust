@@ -60,7 +60,7 @@ pub(super) fn build_function_define_hover(
             .unwrap_or_else(|| decl_info.typ());
 
         let Some(contents) =
-            process_function_type(builder, db, typ, semantic_decl_id, function_member)
+            process_function_type(builder, db, typ, semantic_decl_id, function_member, None)
         else {
             continue;
         };

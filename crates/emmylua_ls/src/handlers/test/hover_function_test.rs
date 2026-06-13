@@ -668,6 +668,30 @@ mod tests {
     }
 
     #[gtest]
+    fn test_call_hover_shows_all_generic_overloads_when_no_match() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@generic T, U
+                ---@overload fun(value: string, fallback: T): T, U
+                ---@overload fun(value: number, fallback: T): T, U
+                ---@param value table
+                ---@param fallback T
+                ---@return T
+                ---@return U
+                function generic_test(value, fallback)
+                end
+
+                generic_te<??>st(true, false)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nfunction generic_test(value: table, fallback: boolean) -> boolean, unknown (+2 overloads)\n```\n\n---\n\n---\n\n```lua\nfunction generic_test(value: string, fallback: boolean) -> boolean, unknown\n```\n\n```lua\nfunction generic_test(value: number, fallback: boolean) -> boolean, unknown\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_fix_method_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(

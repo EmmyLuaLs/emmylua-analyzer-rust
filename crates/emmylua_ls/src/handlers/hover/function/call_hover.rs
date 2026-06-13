@@ -1,9 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use emmylua_code_analysis::{
-    DbIndex, LuaDocReturnOverloadInfo, LuaFunctionType, LuaSignature, LuaType, LuaTypeDeclId,
-    VariadicType, infer_call_generic,
-};
+use emmylua_code_analysis::{DbIndex, LuaFunctionType, LuaType, LuaTypeDeclId, infer_call_generic};
 use emmylua_parser::LuaCallExpr;
 
 use crate::handlers::hover::{HoverBuilder, HoverDeclContext, HoverDeclInfo};
@@ -13,7 +10,10 @@ use super::{
     extract_function_member,
     generic::generic_type_substitutor,
     get_function_description,
-    render::{FunctionRenderContext, build_function_return_overload_rows, process_function_type},
+    render::{
+        FunctionRenderContext, build_function_return_overload_rows,
+        instantiate_call_return_overloads, process_function_type, render_function,
+    },
 };
 
 pub(super) fn build_function_call_hover(
@@ -30,7 +30,9 @@ pub(super) fn build_function_call_hover(
         find_decls_for_call(builder, db, &ordered_decls, &call_arg_types, call_expr);
     if matched_decls.is_empty() {
         for matched_decl in ordered_decls {
-            if let Some(info) = build_decl_hover_function_info(builder, db, matched_decl) {
+            if let Some(info) =
+                build_unmatched_call_hover_function_info(builder, db, matched_decl, call_expr)
+            {
                 function_infos.push(info);
             }
         }
@@ -61,10 +63,11 @@ fn infer_call_arg_types(builder: &HoverBuilder, call_expr: &LuaCallExpr) -> Vec<
         .collect()
 }
 
-fn build_decl_hover_function_info(
+fn build_unmatched_call_hover_function_info(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     matched_decl: &HoverDeclInfo,
+    call_expr: &LuaCallExpr,
 ) -> Option<HoverFunctionInfo> {
     let match_semantic_decl = matched_decl.id();
     let function_member = extract_function_member(db, match_semantic_decl);
@@ -74,6 +77,7 @@ fn build_decl_hover_function_info(
         matched_decl.typ(),
         match_semantic_decl,
         function_member,
+        Some(call_expr),
     )?;
     if contents.is_empty() {
         return None;
@@ -121,7 +125,7 @@ fn build_call_hover_function_info(
                 return_docs: Vec::new(),
                 ret_detail: Some(ret_detail),
             };
-            vec![super::render::render_function(builder, db, ctx)?]
+            vec![render_function(builder, db, ctx)?]
         } else {
             process_function_type(
                 builder,
@@ -129,6 +133,7 @@ fn build_call_hover_function_info(
                 &LuaType::DocFunction(call_func.clone()),
                 match_semantic_decl,
                 function_member,
+                None,
             )?
         }
     } else {
@@ -138,55 +143,12 @@ fn build_call_hover_function_info(
             &LuaType::DocFunction(call_func.clone()),
             match_semantic_decl,
             function_member,
+            None,
         )?
     };
 
     let description = get_function_description(builder, db, match_semantic_decl);
     HoverFunctionInfo::from_contents(contents, description)
-}
-
-fn instantiate_call_return_overloads(
-    builder: &HoverBuilder,
-    db: &DbIndex,
-    call_expr: &LuaCallExpr,
-    signature: &LuaSignature,
-) -> Vec<LuaDocReturnOverloadInfo> {
-    let mut cache = builder.semantic_model.get_cache().borrow_mut();
-
-    signature
-        .return_overloads
-        .iter()
-        .map(|row| {
-            let row_return_type = match row.type_refs.len() {
-                0 => LuaType::Nil,
-                1 => row.type_refs[0].clone(),
-                _ => LuaType::Variadic(VariadicType::Multi(row.type_refs.clone()).into()),
-            };
-            let row_function = LuaFunctionType::new(
-                signature.async_state,
-                signature.is_colon_define,
-                signature.is_vararg,
-                signature.get_type_params(),
-                row_return_type,
-                Some(signature.get_function_generic_params()),
-            );
-            let type_refs = infer_call_generic(db, &mut cache, &row_function, call_expr.clone())
-                .ok()
-                .map(|func| match func.get_ret() {
-                    LuaType::Variadic(variadic) => match variadic.as_ref() {
-                        VariadicType::Multi(types) => types.clone(),
-                        VariadicType::Base(_) => vec![LuaType::Variadic(variadic.clone())],
-                    },
-                    typ => vec![typ.clone()],
-                })
-                .unwrap_or_else(|| row.type_refs.clone());
-
-            LuaDocReturnOverloadInfo {
-                type_refs,
-                description: row.description.clone(),
-            }
-        })
-        .collect()
 }
 
 struct MatchedCallDecl<'a> {

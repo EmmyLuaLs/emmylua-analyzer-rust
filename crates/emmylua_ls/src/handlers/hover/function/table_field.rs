@@ -34,7 +34,7 @@ pub(super) fn build_table_field_hover(
         let function_member = extract_function_member(db, semantic_decl_id);
 
         let Some(contents) =
-            process_function_type(builder, db, &typ, semantic_decl_id, function_member)
+            process_function_type(builder, db, &typ, semantic_decl_id, function_member, None)
         else {
             continue;
         };
