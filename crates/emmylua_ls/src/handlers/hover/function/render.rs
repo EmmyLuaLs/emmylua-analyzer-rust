@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::Write};
 
 use emmylua_code_analysis::{
     AsyncState, DbIndex, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType, LuaMember,
@@ -39,7 +39,7 @@ pub(super) fn process_function_type(
                 return_docs: convert_function_return_to_docs(lua_func),
                 ret_detail: None,
             };
-            let content = render_function_signature(builder, db, ctx)?;
+            let content = render_function(builder, db, ctx)?;
             Some(vec![content])
         }
         LuaType::Signature(signature_id) => {
@@ -50,7 +50,7 @@ pub(super) fn process_function_type(
                 .chain(signature.overloads.iter().map(|overload| overload.as_ref()))
                 .enumerate()
             {
-                // 提前计算 return_docs 和 ret_detail 的差异，避免重复的 hover_doc_function_type 调用
+                // 提前计算 return_docs 和 ret_detail 的差异, 免重复的 hover_doc_function_type 调用
                 let (return_docs, ret_detail) = if i == 0 && !signature.return_overloads.is_empty()
                 {
                     let detail =
@@ -76,7 +76,7 @@ pub(super) fn process_function_type(
                     return_docs,
                     ret_detail,
                 };
-                contents.push(render_function_signature(builder, db, ctx)?);
+                contents.push(render_function(builder, db, ctx)?);
             }
             Some(contents)
         }
@@ -96,7 +96,7 @@ pub(super) fn process_function_type(
 }
 
 /// 渲染单个函数签名的完整 hover 文本
-pub(super) fn render_function_signature(
+pub(super) fn render_function(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     ctx: FunctionRenderContext,
@@ -326,28 +326,23 @@ fn build_function_returns(
         let type_text = build_return_type_text(builder, &return_info.type_ref, i);
 
         if has_multiline {
-            let prefix = if i == 0 {
+            if i == 0 {
                 result.push('\n');
-                "-> ".to_string()
+                result.push_str("  -> ");
             } else {
-                format!("{}. ", i + 1)
-            };
-            let name = return_info.name.clone().unwrap_or_default();
-
-            result.push_str(&format!(
-                "  {}{}{}\n",
-                prefix,
-                if !name.is_empty() {
-                    format!("{}: ", name)
-                } else {
-                    "".to_string()
-                },
-                type_text,
-            ));
+                let _ = write!(result, "  {}. ", i + 1);
+            }
+            if let Some(name) = return_info.name.as_deref().filter(|name| !name.is_empty()) {
+                let _ = write!(result, "{}: ", name);
+            }
+            result.push_str(&type_text);
+            result.push('\n');
         } else if i == 0 {
-            result.push_str(&format!(" -> {}", type_text));
+            result.push_str(" -> ");
+            result.push_str(&type_text);
         } else {
-            result.push_str(&format!(", {}", type_text));
+            result.push_str(", ");
+            result.push_str(&type_text);
         }
     }
 
@@ -365,18 +360,17 @@ pub(super) fn build_function_return_overload_rows(
             continue;
         }
 
-        let row_text = row
-            .type_refs
-            .iter()
-            .enumerate()
-            .map(|(i, typ)| build_return_type_text(builder, typ, i))
-            .collect::<Vec<_>>()
-            .join(", ");
-
         if row_idx == 0 {
             result.push('\n');
         }
-        result.push_str(&format!("  -> {}\n", row_text));
+        result.push_str("  -> ");
+        for (i, typ) in row.type_refs.iter().enumerate() {
+            if i > 0 {
+                result.push_str(", ");
+            }
+            result.push_str(&build_return_type_text(builder, typ, i));
+        }
+        result.push('\n');
     }
 
     result

@@ -359,10 +359,7 @@ mod tests {
                 ---@field func fun(a:number) 注释2
 
                 ---@type T
-                local t = {
-                    func = function(a)
-                    end
-                }
+                local t
 
                 t.fu<??>nc(1)
             "#,
@@ -651,6 +648,26 @@ mod tests {
     }
 
     #[gtest]
+    fn test_call_hover_shows_all_overloads_when_no_match() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@overload fun(a: string): string
+                ---@overload fun(a: number): number
+                ---@param a table
+                function test(a)
+                end
+
+                te<??>st(true)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nfunction test(a: table) (+2 overloads)\n```\n\n---\n\n---\n\n```lua\nfunction test(a: string) -> string\n```\n\n```lua\nfunction test(a: number) -> number\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_fix_method_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
@@ -896,6 +913,30 @@ mod tests {
                 },
             )
         );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_function_candidate_checks_all_origin_decls() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class MixedOrigin
+                ---@field next string # 字符串
+                ---@field next fun(): string # 函数
+            "#,
+        );
+        check!(ws.check_hover(
+            r#"
+                ---@type MixedOrigin
+                local params
+                local next = params.<??>next
+            "#,
+            VirtualHoverResult {
+                value:
+                    "```lua\n(field) MixedOrigin.next() -> string\n```\n\n---\n\n函数".to_string(),
+            },
+        ));
         Ok(())
     }
 

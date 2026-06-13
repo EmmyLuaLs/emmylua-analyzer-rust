@@ -183,6 +183,16 @@ impl<'a> SemanticModel<'a> {
         .ok()
     }
 
+    pub fn callable_accepts_args(
+        &self,
+        func: &LuaFunctionType,
+        expr_types: &[LuaType],
+        is_colon_call: bool,
+        arg_count: Option<usize>,
+    ) -> bool {
+        callable_accepts_args(self.db, func, expr_types, is_colon_call, arg_count)
+    }
+
     /// 推断表达式列表类型, 位于最后的表达式会触发多值推断
     pub fn infer_expr_list_types(
         &self,

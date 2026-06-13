@@ -1,10 +1,11 @@
-use emmylua_code_analysis::{DbIndex, LuaSemanticDeclId, LuaType};
+use emmylua_code_analysis::{DbIndex, TypeSubstitutor};
+use emmylua_parser::{LuaAstNode, LuaLocalName, LuaLocalStat};
 
-use crate::handlers::hover::{HoverBuilder, humanize_types::DescriptionInfo};
+use crate::handlers::hover::{HoverBuilder, HoverDeclContext, humanize_types::DescriptionInfo};
 
 use super::{
-    extract_function_member, get_function_description, hover_instantiate_function_type,
-    render::process_function_type,
+    extract_function_member, generic::index_prefix_substitutor,
+    generic::instantiate_type_if_needed, get_function_description, render::process_function_type,
 };
 
 /// Hover 函数信息聚合
@@ -38,34 +39,56 @@ impl HoverFunctionInfo {
 pub(super) fn build_function_define_hover(
     builder: &mut HoverBuilder,
     db: &DbIndex,
-    semantic_decls: &[(LuaSemanticDeclId, LuaType)],
+    decl_context: &HoverDeclContext,
 ) -> Option<()> {
     let mut function_infos = Vec::new();
-    for (semantic_decl_id, typ) in semantic_decls {
-        let mut typ = typ.clone();
-        let function_member = extract_function_member(db, semantic_decl_id);
+    let ordered_decls = decl_context.ordered_decl_refs();
+    let substitutor = ordered_decls
+        .iter()
+        .any(|decl_info| decl_info.typ().contain_tpl())
+        .then(|| infer_define_substitutor(builder))
+        .flatten();
 
-        if let Some(substitutor) = &builder.substitutor {
-            if let Some(lua_func) = hover_instantiate_function_type(db, &typ, substitutor) {
-                typ = LuaType::DocFunction(lua_func);
-            }
-        }
+    for decl_info in ordered_decls {
+        let semantic_decl_id = decl_info.id();
+        let function_member = extract_function_member(db, semantic_decl_id);
+        let instantiated_type = substitutor
+            .as_ref()
+            .and_then(|substitutor| instantiate_type_if_needed(db, decl_info.typ(), substitutor));
+        let typ = instantiated_type
+            .as_ref()
+            .unwrap_or_else(|| decl_info.typ());
 
         let Some(contents) =
-            process_function_type(builder, db, &typ, semantic_decl_id, function_member)
+            process_function_type(builder, db, typ, semantic_decl_id, function_member)
         else {
             continue;
         };
         if contents.is_empty() {
             continue;
         }
-        let description = get_function_description(builder, db, &semantic_decl_id);
+        let description = get_function_description(builder, db, semantic_decl_id);
         if let Some(info) = HoverFunctionInfo::from_contents(contents, description) {
             function_infos.push(info);
         }
     }
 
     set_builder_contents(builder, &mut function_infos)
+}
+
+fn infer_define_substitutor(builder: &HoverBuilder) -> Option<TypeSubstitutor> {
+    let token = builder.get_trigger_token()?;
+    let target_local_name = LuaLocalName::cast(token.parent()?)?;
+    let local_stat = LuaLocalStat::cast(target_local_name.syntax().parent()?)?;
+
+    for (index, name) in local_stat.get_local_name_list().enumerate() {
+        if target_local_name == name {
+            let value_expr = local_stat.get_value_exprs().nth(index)?;
+            return index_prefix_substitutor(builder, &value_expr);
+        }
+    }
+
+    None
 }
 
 /// 统一处理文本设置

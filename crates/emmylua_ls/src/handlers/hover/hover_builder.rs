@@ -1,10 +1,7 @@
 use emmylua_code_analysis::{
-    GenericTplId, LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType, RenderLevel,
-    SemanticModel, TypeSubstitutor,
+    LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType, RenderLevel, SemanticModel,
 };
-use emmylua_parser::{
-    LuaAstNode, LuaExpr, LuaLocalName, LuaLocalStat, LuaSyntaxKind, LuaSyntaxToken,
-};
+use emmylua_parser::LuaSyntaxToken;
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 
 use crate::handlers::hover::humanize_types::{
@@ -33,8 +30,6 @@ pub struct HoverBuilder<'a> {
     pub detail_render_level: RenderLevel,
 
     pub is_completion: bool,
-    // 默认的泛型替换器
-    pub substitutor: Option<TypeSubstitutor>,
 }
 
 impl<'a> HoverBuilder<'a> {
@@ -50,12 +45,6 @@ impl<'a> HoverBuilder<'a> {
                 RenderLevel::Detailed
             };
 
-        let substitutor = if let Some(token) = token.clone() {
-            infer_substitutor_base_type(semantic_model, token)
-        } else {
-            None
-        };
-
         Self {
             semantic_model,
             primary: MarkedString::String("".to_string()),
@@ -67,7 +56,6 @@ impl<'a> HoverBuilder<'a> {
             type_expansion: None,
             tag_content: None,
             detail_render_level,
-            substitutor,
         }
     }
 
@@ -328,58 +316,4 @@ impl HoverSignatureOverload {
             }
         }
     }
-}
-
-// 推断基础泛型替换器
-fn infer_substitutor_base_type(
-    semantic_model: &SemanticModel,
-    trigger_token: LuaSyntaxToken,
-) -> Option<TypeSubstitutor> {
-    let parent = trigger_token.parent()?;
-    match parent.kind().into() {
-        LuaSyntaxKind::LocalName => {
-            let target_local_name = LuaLocalName::cast(parent.clone())?;
-            let parent = parent.parent()?;
-            match parent.kind().into() {
-                LuaSyntaxKind::LocalStat => {
-                    let local_stat = LuaLocalStat::cast(parent.clone())?;
-                    let local_name_list = local_stat.get_local_name_list().collect::<Vec<_>>();
-                    let value_expr_list = local_stat.get_value_exprs().collect::<Vec<_>>();
-
-                    for (index, name) in local_name_list.iter().enumerate() {
-                        if target_local_name == *name {
-                            let value_expr = value_expr_list.get(index)?;
-                            return substitutor_form_expr(semantic_model, value_expr);
-                        }
-                    }
-                }
-                _ => return None,
-            }
-        }
-        _ => return None,
-    }
-
-    None
-}
-
-pub fn substitutor_form_expr(
-    semantic_model: &SemanticModel,
-    expr: &LuaExpr,
-) -> Option<TypeSubstitutor> {
-    if let LuaExpr::IndexExpr(index_expr) = expr {
-        let prefix_type = semantic_model
-            .infer_expr(index_expr.get_prefix_expr()?)
-            .ok()?;
-        let mut substitutor = TypeSubstitutor::new();
-        if let LuaType::Generic(generic) = prefix_type {
-            for (i, param) in generic.get_params().iter().enumerate() {
-                substitutor.insert_type(GenericTplId::Type(i as u32), param.clone(), true);
-            }
-            return Some(substitutor);
-        } else {
-            return None;
-        }
-    }
-
-    None
 }
