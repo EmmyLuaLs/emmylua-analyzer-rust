@@ -10,10 +10,7 @@ use super::{
     extract_function_member,
     generic::generic_type_substitutor,
     get_function_description,
-    render::{
-        FunctionRenderContext, build_function_return_overload_rows,
-        instantiate_call_return_overloads, process_function_type, render_function,
-    },
+    render::process_function_type,
 };
 
 pub(super) fn build_function_call_hover(
@@ -41,7 +38,7 @@ pub(super) fn build_function_call_hover(
     }
 
     for matched_decl in matched_decls {
-        let info = build_call_hover_function_info(builder, db, matched_decl, call_expr);
+        let info = build_call_hover_function_info(builder, db, matched_decl);
         if let Some(info) = info {
             function_infos.push(info);
         }
@@ -91,61 +88,19 @@ fn build_call_hover_function_info(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     matched_decl: MatchedCallDecl<'_>,
-    call_expr: &LuaCallExpr,
 ) -> Option<HoverFunctionInfo> {
     let match_semantic_decl = matched_decl.decl.id();
-    let match_typ = matched_decl.decl.typ();
     let function_member = extract_function_member(db, match_semantic_decl);
-    let call_func = matched_decl.func;
+    let call_type = LuaType::DocFunction(matched_decl.func);
 
-    let contents = if let LuaType::Signature(signature_id) = match_typ {
-        let signature = db.get_signature_index().get(signature_id)?;
-        let base_function = signature.to_doc_func_type();
-        let instantiated_signature = infer_call_generic(
-            db,
-            &mut builder.semantic_model.get_cache().borrow_mut(),
-            &base_function,
-            call_expr.clone(),
-        )
-        .ok()?;
-
-        if !signature.return_overloads.is_empty()
-            && call_func.get_async_state() == instantiated_signature.get_async_state()
-            && call_func.is_colon_define() == instantiated_signature.is_colon_define()
-            && call_func.is_variadic() == instantiated_signature.is_variadic()
-            && call_func.get_params() == instantiated_signature.get_params()
-        {
-            let return_overloads =
-                instantiate_call_return_overloads(builder, db, call_expr, signature);
-            let ret_detail = build_function_return_overload_rows(builder, &return_overloads);
-            let ctx = FunctionRenderContext {
-                func: call_func.as_ref(),
-                semantic_decl: match_semantic_decl,
-                owner_member: function_member,
-                return_docs: Vec::new(),
-                ret_detail: Some(ret_detail),
-            };
-            vec![render_function(builder, db, ctx)?]
-        } else {
-            process_function_type(
-                builder,
-                db,
-                &LuaType::DocFunction(call_func.clone()),
-                match_semantic_decl,
-                function_member,
-                None,
-            )?
-        }
-    } else {
-        process_function_type(
-            builder,
-            db,
-            &LuaType::DocFunction(call_func.clone()),
-            match_semantic_decl,
-            function_member,
-            None,
-        )?
-    };
+    let contents = process_function_type(
+        builder,
+        db,
+        &call_type,
+        match_semantic_decl,
+        function_member,
+        None,
+    )?;
 
     let description = get_function_description(builder, db, match_semantic_decl);
     HoverFunctionInfo::from_contents(contents, description)
@@ -187,7 +142,7 @@ fn find_callable_for_call(
     let mut visiting_aliases = HashSet::new();
     collect_callable_functions(db, decl_type, &mut overloads, &mut visiting_aliases);
 
-    overloads.iter().find_map(|func| {
+    overloads.into_iter().find_map(|func| {
         let func = if func.contain_tpl() {
             infer_call_generic(
                 db,
@@ -196,9 +151,9 @@ fn find_callable_for_call(
                 call_expr.clone(),
             )
             .map(Arc::new)
-            .unwrap_or_else(|_| func.clone())
+            .unwrap_or(func)
         } else {
-            func.clone()
+            func
         };
 
         builder

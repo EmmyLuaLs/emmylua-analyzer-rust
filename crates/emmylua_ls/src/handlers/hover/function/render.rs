@@ -1,9 +1,9 @@
 use std::{collections::HashSet, fmt::Write, sync::Arc};
 
 use emmylua_code_analysis::{
-    AsyncState, DbIndex, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaFunctionType, LuaMember,
-    LuaMemberOwner, LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel, VariadicType,
-    humanize_type, infer_call_generic,
+    AsyncState, DbIndex, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberOwner,
+    LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel, VariadicType, humanize_type,
+    infer_call_generic,
 };
 use emmylua_parser::LuaCallExpr;
 
@@ -21,7 +21,6 @@ pub(super) struct FunctionRenderContext<'a> {
     pub semantic_decl: &'a LuaSemanticDeclId,
     pub owner_member: Option<&'a LuaMember>,
     pub return_docs: Vec<LuaDocReturnInfo>,
-    pub ret_detail: Option<String>,
 }
 
 /// 根据函数类型分派渲染
@@ -41,7 +40,6 @@ pub(super) fn process_function_type(
                 semantic_decl,
                 owner_member: function_member,
                 return_docs: convert_function_return_to_docs(lua_func.as_ref()),
-                ret_detail: None,
             };
             let content = render_function(builder, db, ctx)?;
             Some(vec![content])
@@ -55,23 +53,13 @@ pub(super) fn process_function_type(
                 .enumerate()
             {
                 let overload = instantiate_function_for_call(builder, db, overload, call_expr);
-                // 提前计算 return_docs 和 ret_detail 的差异, 免重复的 hover_doc_function_type 调用
-                let (return_docs, ret_detail) = if i == 0 && !signature.return_overloads.is_empty()
-                {
-                    let detail =
-                        build_signature_return_overload_rows(builder, db, signature, call_expr);
-                    (Vec::new(), Some(detail))
-                } else {
-                    let docs = signature_return_docs(signature, i, overload.as_ref(), call_expr);
-                    (docs, None)
-                };
+                let return_docs = signature_return_docs(signature, i, overload.as_ref());
 
                 let ctx = FunctionRenderContext {
                     func: overload.as_ref(),
                     semantic_decl,
                     owner_member: function_member,
                     return_docs,
-                    ret_detail,
                 };
                 contents.push(render_function(builder, db, ctx)?);
             }
@@ -120,86 +108,21 @@ fn instantiate_function_for_call(
     .unwrap_or_else(|_| func.clone())
 }
 
-fn build_signature_return_overload_rows(
-    builder: &mut HoverBuilder,
-    db: &DbIndex,
-    signature: &LuaSignature,
-    call_expr: Option<&LuaCallExpr>,
-) -> String {
-    if let Some(call_expr) = call_expr {
-        let return_overloads = instantiate_call_return_overloads(builder, db, call_expr, signature);
-        build_function_return_overload_rows(builder, &return_overloads)
-    } else {
-        build_function_return_overload_rows(builder, &signature.return_overloads)
-    }
-}
-
 fn signature_return_docs(
     signature: &LuaSignature,
     index: usize,
     func: &LuaFunctionType,
-    call_expr: Option<&LuaCallExpr>,
 ) -> Vec<LuaDocReturnInfo> {
+    let mut return_docs = convert_function_return_to_docs(func);
     if index == 0 && !signature.return_docs.is_empty() {
-        if call_expr.is_none() {
-            return signature.return_docs.clone();
+        for (return_doc, declared_doc) in return_docs.iter_mut().zip(&signature.return_docs) {
+            return_doc.name = declared_doc.name.clone();
+            return_doc.description = declared_doc.description.clone();
+            return_doc.attributes = declared_doc.attributes.clone();
         }
-
-        let mut return_docs = signature.return_docs.clone();
-        for (return_doc, inferred_doc) in return_docs
-            .iter_mut()
-            .zip(convert_function_return_to_docs(func))
-        {
-            return_doc.type_ref = inferred_doc.type_ref;
-        }
-        return return_docs;
     }
 
-    convert_function_return_to_docs(func)
-}
-
-pub(super) fn instantiate_call_return_overloads(
-    builder: &HoverBuilder,
-    db: &DbIndex,
-    call_expr: &LuaCallExpr,
-    signature: &LuaSignature,
-) -> Vec<LuaDocReturnOverloadInfo> {
-    let mut cache = builder.semantic_model.get_cache().borrow_mut();
-
-    signature
-        .return_overloads
-        .iter()
-        .map(|row| {
-            let row_return_type = match row.type_refs.len() {
-                0 => LuaType::Nil,
-                1 => row.type_refs[0].clone(),
-                _ => LuaType::Variadic(VariadicType::Multi(row.type_refs.clone()).into()),
-            };
-            let row_function = LuaFunctionType::new(
-                signature.async_state,
-                signature.is_colon_define,
-                signature.is_vararg,
-                signature.get_type_params(),
-                row_return_type,
-                Some(signature.get_function_generic_params()),
-            );
-            let type_refs = infer_call_generic(db, &mut cache, &row_function, call_expr.clone())
-                .ok()
-                .map(|func| match func.get_ret() {
-                    LuaType::Variadic(variadic) => match variadic.as_ref() {
-                        VariadicType::Multi(types) => types.clone(),
-                        VariadicType::Base(_) => vec![LuaType::Variadic(variadic.clone())],
-                    },
-                    typ => vec![typ.clone()],
-                })
-                .unwrap_or_else(|| row.type_refs.clone());
-
-            LuaDocReturnOverloadInfo {
-                type_refs,
-                description: row.description.clone(),
-            }
-        })
-        .collect()
+    return_docs
 }
 
 /// 渲染单个函数签名的完整 hover 文本
@@ -213,7 +136,6 @@ pub(super) fn render_function(
         semantic_decl,
         owner_member,
         return_docs,
-        ret_detail,
     } = ctx;
 
     let async_label = match func.get_async_state() {
@@ -308,7 +230,7 @@ pub(super) fn render_function(
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>();
 
-    let ret_detail = ret_detail.unwrap_or_else(|| build_function_returns(builder, return_docs));
+    let ret_detail = build_function_returns(builder, return_docs);
     Some(format_function_type(
         type_label,
         async_label,
@@ -451,33 +373,6 @@ fn build_function_returns(
             result.push_str(", ");
             result.push_str(&type_text);
         }
-    }
-
-    result
-}
-
-pub(super) fn build_function_return_overload_rows(
-    builder: &mut HoverBuilder,
-    return_overloads: &[LuaDocReturnOverloadInfo],
-) -> String {
-    let mut result = String::new();
-
-    for (row_idx, row) in return_overloads.iter().enumerate() {
-        if row.type_refs.is_empty() {
-            continue;
-        }
-
-        if row_idx == 0 {
-            result.push('\n');
-        }
-        result.push_str("  -> ");
-        for (i, typ) in row.type_refs.iter().enumerate() {
-            if i > 0 {
-                result.push_str(", ");
-            }
-            result.push_str(&build_return_type_text(builder, typ, i));
-        }
-        result.push('\n');
     }
 
     result

@@ -191,7 +191,7 @@ mod tests {
                 local <??>alias = parse
             "#,
                 VirtualHoverResult {
-                    value: "```lua\nlocal function parse()\n  -> true, integer\n  -> false, string\n\n```"
+                    value: "```lua\nlocal function parse() -> (true|false), (string|integer)\n```"
                         .to_string(),
                 },
             )
@@ -212,7 +212,7 @@ mod tests {
                 local <??>alias = parse
             "#,
             VirtualHoverResult {
-                value: "```lua\nlocal function parse()\n  -> true, integer\n  -> false, string\n\n```\n\n---\n\n@*return_overload* #1 — success\n\n@*return_overload* #2 — failed".to_string(),
+                value: "```lua\nlocal function parse() -> (true|false), (string|integer)\n```\n\n---\n\n@*return_overload* #1 — success\n\n@*return_overload* #2 — failed".to_string(),
             },
         ));
         Ok(())
@@ -221,8 +221,9 @@ mod tests {
     #[gtest]
     fn test_return_overload_call_hover() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        check!(ws.check_hover(
-            r#"
+        check!(
+            ws.check_hover(
+                r#"
                 ---@class B
                 local B
 
@@ -235,8 +236,58 @@ mod tests {
 
                 pa<??>rse(B)
             "#,
+                VirtualHoverResult {
+                    value: "```lua\nlocal function parse(x: B) -> (true|false), (B|string)\n```"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_hover_short_row_keeps_nil() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(
+            ws.check_hover(
+                r#"
+                ---@param ok boolean
+                ---@return_overload true, integer
+                ---@return_overload false
+                local function maybe(ok)
+                end
+
+                local <??>alias = maybe
+            "#,
+                VirtualHoverResult {
+                    value:
+                        "```lua\nlocal function maybe(ok: boolean) -> (true|false), integer?\n```"
+                            .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_call_hover_short_generic_row_keeps_nil() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class B
+                local B
+
+                ---@generic T
+                ---@param x T
+                ---@return_overload true, T
+                ---@return_overload false
+                local function parse(x)
+                end
+
+                pa<??>rse(B)
+            "#,
             VirtualHoverResult {
-                value: "```lua\nlocal function parse(x: B)\n  -> true, B\n  -> false, string\n\n```".to_string(),
+                value: "```lua\nlocal function parse(x: B) -> (true|false), B?\n```".to_string(),
             },
         ));
         Ok(())
@@ -257,7 +308,7 @@ mod tests {
                 local a, b = pca<??>ll(foo)
             "#,
             VirtualHoverResult {
-                value: "```lua\nfunction pcall(f: sync fun(a: string, b: table<string,integer>) -> ((false|true),((string,string)|string)), a: string, b: table<string,integer>)\n  -> true, (false|true), ((string,string)|string)\n  -> false, string\n\n```\n\n---\n\n\nCalls function `f` with the given arguments in *protected mode*. This\nmeans that any error inside `f` is not propagated; instead, `pcall` catches\nthe error and returns a status code. Its first result is the status code (a\nboolean), which is true if the call succeeds without errors. In such case,\n`pcall` also returns all results from the call, after this first result. In\ncase of any error, `pcall` returns **false** plus the error message.".to_string(),
+                value: "```lua\nfunction pcall(f: sync fun(a: string, b: table<string,integer>) -> ((false|true),((string,string)|string)), a: string, b: table<string,integer>) -> (true|false), (false|true|string), (((string,string)|string))?\n```\n\n---\n\n\nCalls function `f` with the given arguments in *protected mode*. This\nmeans that any error inside `f` is not propagated; instead, `pcall` catches\nthe error and returns a status code. Its first result is the status code (a\nboolean), which is true if the call succeeds without errors. In such case,\n`pcall` also returns all results from the call, after this first result. In\ncase of any error, `pcall` returns **false** plus the error message.".to_string(),
             },
         ));
         Ok(())
