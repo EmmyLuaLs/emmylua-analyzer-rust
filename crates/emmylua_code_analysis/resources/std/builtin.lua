@@ -128,6 +128,7 @@
 --- built-in type for Rawget
 --- @alias std.RawGet<T, K> unknown
 
+--- @deprecated use `const T` as a replacement, for example `---@generic const T`.
 ---
 --- built-in type for generic template, for match integer const and true/false
 --- @alias std.ConstTpl<T> unknown
@@ -170,9 +171,12 @@
 
 --- attribute
 
+--- @class Attribute
+
 ---
 --- Deprecated. Receives an optional message parameter.
---- @attribute deprecated(message: string?)
+--- @class deprecated: Attribute
+--- @overload fun(message?: string)
 
 ---
 --- Language Server Optimization Items.
@@ -181,13 +185,15 @@
 --- - `check_table_field`: Skip the assign check for table fields. It is recommended to use this option for all large configuration tables.
 --- - `delayed_definition`: Indicates that the type of the variable is determined by the first assignment.
 ---    Only valid for `local` declarations with no initial value.
---- @attribute lsp_optimization(code: "check_table_field"|"delayed_definition")
+--- @class lsp_optimization: Attribute
+--- @overload fun(code: "check_table_field"|"delayed_definition")
 
 ---
 --- Index field alias, will be displayed in `hint` and `completion`.
 ---
 --- Receives a string parameter for the alias name.
---- @attribute index_alias(name: string)
+--- @class index_alias: Attribute
+--- @overload fun(name: string)
 
 ---
 --- This attribute must be applied to function parameters, and the function parameter's type must be a string template generic,
@@ -200,7 +206,8 @@
 --- - `return_mode`: Constructor return strategy. `"self"` forces `self`, `"doc"` uses the documented return type,
 ---                 and `"default"` prefers the documented return type and falls back to `self`.
 ---                 Defaults to `"default"`
---- @attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+--- @class constructor: Attribute
+--- @overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
 
 ---
 --- Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,
@@ -210,4 +217,5 @@
 --- - `convention`: Naming convention, defaults to `camelCase`. Implicitly adds `get` and `set` prefixes. eg: `_age` -> `getAge`, `setAge`.
 --- - `getter`: Getter method name. Takes precedence over `convention`.
 --- - `setter`: Setter method name. Takes precedence over `convention`.
---- @attribute field_accessor(convention: "camelCase"|"PascalCase"|"snake_case"|nil, getter: string?, setter: string?)
+--- @class field_accessor: Attribute
+--- @overload fun(convention?: "camelCase"|"PascalCase"|"snake_case", getter?: string, setter?: string)

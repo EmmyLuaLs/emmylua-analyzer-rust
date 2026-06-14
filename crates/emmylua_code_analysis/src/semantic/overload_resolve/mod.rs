@@ -1,3 +1,4 @@
+mod collect_overloads;
 mod resolve_signature_by_args;
 
 use std::sync::Arc;
@@ -8,11 +9,15 @@ use crate::db_index::{DbIndex, LuaFunctionType, LuaType};
 
 use super::{
     LuaInferCache,
-    generic::instantiate_func_generic,
+    generic::infer_call_generic,
     infer::{InferCallFuncResult, InferFailReason, infer_expr_list_types, try_infer_expr_no_flow},
 };
 
-pub(crate) use resolve_signature_by_args::{callable_accepts_args, resolve_signature_by_args};
+pub(crate) use collect_overloads::collect_callable_overload_groups;
+pub(crate) use resolve_signature_by_args::{
+    callable_accepts_args, get_func_param_type, is_func_last_param_variadic,
+    resolve_signature_by_args,
+};
 
 pub fn resolve_signature(
     db: &DbIndex,
@@ -78,7 +83,7 @@ fn resolve_signature_by_generic(
 ) -> InferCallFuncResult {
     let mut instantiate_funcs = Vec::new();
     for func in overloads {
-        let instantiate_func = instantiate_func_generic(db, cache, &func, call_expr.clone())?;
+        let instantiate_func = infer_call_generic(db, cache, &func, call_expr.clone())?;
         instantiate_funcs.push(Arc::new(instantiate_func));
     }
     resolve_signature_by_args(

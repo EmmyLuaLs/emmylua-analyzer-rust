@@ -8,9 +8,9 @@ use crate::{FileId, InFiled};
 
 use super::super::type_decl::LuaTypeDeclId;
 use super::complex::{
-    GenericTpl, LuaAliasCallType, LuaArrayType, LuaAttributeType, LuaConditionalType,
-    LuaFunctionType, LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMappedType,
-    LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleType, LuaUnionType, VariadicType,
+    GenericTpl, LuaAliasCallType, LuaArrayType, LuaConditionalType, LuaFunctionType,
+    LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMappedType, LuaMultiLineUnion,
+    LuaObjectType, LuaStringTplType, LuaTupleType, LuaUnionType, VariadicType,
 };
 
 #[derive(Debug, Clone)]
@@ -57,10 +57,8 @@ pub enum LuaType {
     Call(Arc<LuaAliasCallType>),
     MultiLineUnion(Arc<LuaMultiLineUnion>),
     TypeGuard(Arc<LuaType>),
-    ConstTplRef(Arc<GenericTpl>),
     Language(ArcIntern<SmolStr>),
     ModuleRef(FileId),
-    DocAttribute(Arc<LuaAttributeType>),
     Conditional(Arc<LuaConditionalType>),
     Mapped(Arc<LuaMappedType>),
 }
@@ -110,10 +108,8 @@ impl PartialEq for LuaType {
             (LuaType::MultiLineUnion(a), LuaType::MultiLineUnion(b)) => a == b,
             (LuaType::TypeGuard(a), LuaType::TypeGuard(b)) => a == b,
             (LuaType::Never, LuaType::Never) => true,
-            (LuaType::ConstTplRef(a), LuaType::ConstTplRef(b)) => a == b,
             (LuaType::Language(a), LuaType::Language(b)) => a == b,
             (LuaType::ModuleRef(a), LuaType::ModuleRef(b)) => a == b,
-            (LuaType::DocAttribute(a), LuaType::DocAttribute(b)) => a == b,
             (LuaType::Conditional(a), LuaType::Conditional(b)) => a == b,
             (LuaType::Mapped(a), LuaType::Mapped(b)) => a == b,
             _ => false,
@@ -168,12 +164,10 @@ impl Hash for LuaType {
             LuaType::MultiLineUnion(a) => (43, Arc::as_ptr(a)).hash(state),
             LuaType::TypeGuard(a) => (44, Arc::as_ptr(a)).hash(state),
             LuaType::Never => 45.hash(state),
-            LuaType::ConstTplRef(a) => (46, Arc::as_ptr(a)).hash(state),
-            LuaType::Language(a) => (47, a).hash(state),
-            LuaType::ModuleRef(a) => (48, a).hash(state),
-            LuaType::Conditional(a) => (49, Arc::as_ptr(a)).hash(state),
-            LuaType::Mapped(a) => (50, Arc::as_ptr(a)).hash(state),
-            LuaType::DocAttribute(a) => (51, a).hash(state),
+            LuaType::Language(a) => (46, a).hash(state),
+            LuaType::ModuleRef(a) => (47, a).hash(state),
+            LuaType::Conditional(a) => (48, Arc::as_ptr(a)).hash(state),
+            LuaType::Mapped(a) => (49, Arc::as_ptr(a)).hash(state),
         }
     }
 }

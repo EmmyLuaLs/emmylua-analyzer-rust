@@ -365,6 +365,10 @@ impl LuaDocGenericDecl {
     pub fn is_variadic(&self) -> bool {
         self.token_by_kind(LuaTokenKind::TkDots).is_some()
     }
+
+    pub fn has_const_modifier(&self) -> bool {
+        self.token_by_kind(LuaTokenKind::TkDocConst).is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

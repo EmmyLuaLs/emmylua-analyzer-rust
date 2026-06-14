@@ -1,8 +1,11 @@
 use crate::{
-    InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaType, LuaTypeNode, TplContext,
-    TypeSubstitutor, instantiate_generic, instantiate_type_generic,
-    semantic::generic::tpl_pattern::{
-        TplPatternMatchResult, tpl_pattern_match, variadic_tpl_pattern_match,
+    InferFailReason, InferGuard, InferGuardRef, LuaFunctionType, LuaGenericType, LuaType,
+    LuaTypeNode, SignatureReturnStatus, TplContext, TypeSubstitutor, instantiate_type_generic,
+    semantic::{
+        generic::tpl_pattern::{
+            TplPatternMatchResult, tpl_pattern_match, variadic_tpl_pattern_match,
+        },
+        member::{find_members_with_key, get_member_map},
     },
 };
 
@@ -122,15 +125,145 @@ fn generic_tpl_pattern_match_inner(
                 )?;
             }
         }
+        LuaType::TableConst(_) => {
+            match_generic_members_with_table_literal(context, source_generic, target)?;
+        }
         _ => {
             // 对于 @alias 类型, 我们能拿到的 target 实际上很有可能是实例化后的类型, 因此我们需要实例化后再进行匹配
             let substitutor = TypeSubstitutor::new();
-            let typ = instantiate_generic(context.db, source_generic, &substitutor);
-            if LuaType::from(source_generic.clone()) != typ {
+            let source_type = LuaType::from(source_generic.clone());
+            let typ = instantiate_type_generic(context.db, &source_type, &substitutor);
+            if source_type != typ {
                 tpl_pattern_match(context, &typ, target)?;
             }
         }
     }
 
     Ok(())
+}
+
+fn match_generic_members_with_table_literal(
+    context: &mut TplContext,
+    source_generic: &LuaGenericType,
+    table_type: &LuaType,
+) -> TplPatternMatchResult {
+    if context.substitutor.is_infer_all_tpl() {
+        return Ok(());
+    }
+
+    let Some(target_member_map) = get_member_map(context.db, table_type) else {
+        return Ok(());
+    };
+
+    let source_type = LuaType::Generic(source_generic.clone().into());
+    for (member_key, target_members) in target_member_map {
+        if context.substitutor.is_infer_all_tpl() {
+            break;
+        }
+
+        let Some(source_members) =
+            find_members_with_key(context.db, &source_type, member_key, true)
+        else {
+            continue;
+        };
+
+        for source_member in source_members {
+            if !source_member.typ.contain_tpl() {
+                continue;
+            }
+
+            for target_member in &target_members {
+                let target_type = erase_implicit_signature_types(context, &target_member.typ);
+                tpl_pattern_match_ignoring_unknown_target(
+                    context,
+                    &source_member.typ,
+                    &target_type,
+                )?;
+                if context.substitutor.is_infer_all_tpl() {
+                    break;
+                }
+            }
+
+            if context.substitutor.is_infer_all_tpl() {
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn erase_implicit_signature_types(context: &TplContext, target: &LuaType) -> LuaType {
+    let LuaType::Signature(signature_id) = target else {
+        return target.clone();
+    };
+    let Some(signature) = context.db.get_signature_index().get(signature_id) else {
+        return target.clone();
+    };
+
+    let params = signature
+        .params
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| {
+            (
+                name.clone(),
+                Some(
+                    signature
+                        .param_docs
+                        .get(&idx)
+                        .map(|param| param.type_ref.clone())
+                        .unwrap_or(LuaType::Unknown),
+                ),
+            )
+        })
+        .collect();
+    let ret = if signature.resolve_return == SignatureReturnStatus::DocResolve {
+        signature.get_return_type()
+    } else {
+        LuaType::Unknown
+    };
+
+    LuaType::DocFunction(
+        LuaFunctionType::new(
+            signature.async_state,
+            signature.is_colon_define,
+            signature.is_vararg,
+            params,
+            ret,
+            Some(signature.get_function_generic_params()),
+        )
+        .into(),
+    )
+}
+
+fn tpl_pattern_match_ignoring_unknown_target(
+    context: &mut TplContext,
+    pattern: &LuaType,
+    target: &LuaType,
+) -> TplPatternMatchResult {
+    if pattern.contain_tpl() && (target.is_any() || target.is_unknown()) {
+        return Ok(());
+    }
+
+    match (pattern, target) {
+        (LuaType::DocFunction(pattern_func), LuaType::DocFunction(target_func)) => {
+            for ((_, pattern_param), (_, target_param)) in pattern_func
+                .get_params()
+                .iter()
+                .zip(target_func.get_params().iter())
+            {
+                let pattern_param = pattern_param.clone().unwrap_or(LuaType::Any);
+                let target_param = target_param.clone().unwrap_or(LuaType::Unknown);
+                tpl_pattern_match_ignoring_unknown_target(context, &pattern_param, &target_param)?;
+            }
+
+            tpl_pattern_match_ignoring_unknown_target(
+                context,
+                pattern_func.get_ret(),
+                target_func.get_ret(),
+            )
+        }
+        _ => tpl_pattern_match(context, pattern, target),
+    }
 }

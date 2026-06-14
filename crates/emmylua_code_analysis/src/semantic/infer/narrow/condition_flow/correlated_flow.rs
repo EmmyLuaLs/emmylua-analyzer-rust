@@ -7,7 +7,7 @@ use crate::{
     LuaSignature, LuaType, TypeOps,
     semantic::{
         infer::{InferResult, VarRefId, narrow::narrow_down_type, try_infer_expr_no_flow},
-        instantiate_func_generic,
+        infer_call_generic,
     },
 };
 
@@ -575,10 +575,9 @@ fn instantiate_return_rows(
             signature.is_vararg,
             signature.get_type_params(),
             return_type.clone(),
+            Some(signature.get_function_generic_params()),
         );
-        match cache
-            .with_no_flow(|cache| instantiate_func_generic(db, cache, &func, call_expr.clone()))
-        {
+        match cache.with_no_flow(|cache| infer_call_generic(db, cache, &func, call_expr.clone())) {
             Ok(instantiated) => instantiated.get_ret().clone(),
             Err(_) => return_type,
         }

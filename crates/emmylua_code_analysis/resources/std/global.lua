@@ -277,9 +277,9 @@ function rawequal(v1, v2) end
 ---
 --- Gets the real value of `table[index]`, the `__index` metamethod. `table`
 --- must be a table; `index` may be any value.
---- @generic T, K
+--- @generic const T, const K
 --- @param table T
---- @param index std.ConstTpl<K>
+--- @param index K
 --- @return std.RawGet<T, K>
 function rawget(table, index) end
 
@@ -340,8 +340,8 @@ function require(modname) end
 --- `index`. a negative number indexes from the end (-1 is the last argument).
 --- Otherwise, `index` must be the string "#", and `select` returns
 --- the total number of extra arguments it received.
---- @generic T, Num: integer | '#'
---- @param index std.ConstTpl<Num>
+--- @generic T, const Num: integer | '#'
+--- @param index Num
 --- @param ...   T...
 --- @return std.Select<T..., Num>
 function select(index, ...) end
@@ -460,9 +460,9 @@ function xpcall(f, msgh, ...) end
 
 --- @version 5.1, JIT
 ---
---- @generic T, Start: integer, End: integer
---- @param i?   std.ConstTpl<Start>
---- @param j?   std.ConstTpl<End>
+--- @generic const T, const Start: integer, const End: integer
+--- @param i?   Start
+--- @param j?   End
 --- @param list T
 --- @return std.Unpack<T, Start, End>
 function unpack(list, i, j) end

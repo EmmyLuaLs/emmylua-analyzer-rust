@@ -555,3 +555,7 @@ unfinished long comment:
   en: unfinished long comment
   zh_CN: 未完成的长注释
   zh_HK: 未完成的長註釋
+Identifier expected. '%{reserved}' is a reserved word that cannot be used here.:
+  en: Identifier expected. '%{reserved}' is a reserved word that cannot be used here.
+  zh_CN: 应为标识符。'%{reserved}' 是保留字，不能在此处使用。
+  zh_HK: 應為標識符。'%{reserved}' 是保留字，不能在此處使用。

@@ -1,18 +1,17 @@
 use emmylua_code_analysis::{
-    LuaCompilation, LuaMemberOwner, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
+    LuaMemberOwner, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr};
 use lsp_types::{Documentation, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel};
 use rowan::NodeOrToken;
 
-use crate::handlers::hover::{find_member_origin_owner, infer_prefix_global_name};
+use crate::handlers::{common::find_member_origin_owner, hover::infer_prefix_global_name};
 
 use super::build_signature_helper::{build_function_label, generate_param_label};
 
 #[derive(Debug)]
 pub struct SignatureHelperBuilder<'a> {
     pub semantic_model: &'a SemanticModel<'a>,
-    pub compilation: &'a LuaCompilation,
 
     pub call_expr: LuaCallExpr,
     pub prefix_name: Option<String>,
@@ -24,13 +23,8 @@ pub struct SignatureHelperBuilder<'a> {
 }
 
 impl<'a> SignatureHelperBuilder<'a> {
-    pub fn new(
-        compilation: &'a LuaCompilation,
-        semantic_model: &'a SemanticModel<'a>,
-        call_expr: LuaCallExpr,
-    ) -> Self {
+    pub fn new(semantic_model: &'a SemanticModel<'a>, call_expr: LuaCallExpr) -> Self {
         let mut builder = Self {
-            compilation,
             semantic_model,
             call_expr,
             prefix_name: None,
@@ -72,8 +66,7 @@ impl<'a> SignatureHelperBuilder<'a> {
         // 推断为来源
         semantic_decl = match semantic_decl {
             Some(LuaSemanticDeclId::Member(member_id)) => {
-                find_member_origin_owner(self.compilation, semantic_model, member_id)
-                    .or(semantic_decl)
+                find_member_origin_owner(semantic_model, member_id).or(semantic_decl)
             }
             Some(LuaSemanticDeclId::LuaDecl(_)) => semantic_decl,
             _ => None,

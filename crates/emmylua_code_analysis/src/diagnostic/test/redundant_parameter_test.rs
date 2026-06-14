@@ -108,20 +108,19 @@ mod test {
     #[test]
     fn test_issue_360() {
         let mut ws = VirtualWorkspace::new();
+        let source = r#"
+            ---@alias buz number
 
-        assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::RedundantParameter,
-            r#"
-                ---@alias buz number
+            ---@param a buz
+            ---@overload fun(): number
+            function test(a)
+            end
 
-                ---@param a buz
-                ---@overload fun(): number
-                function test(a)
-                end
+            local c = test({'test'})
+        "#;
 
-                local c = test({'test'})
-        "#
-        ));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::RedundantParameter, source));
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, source));
     }
 
     #[test]
@@ -130,16 +129,11 @@ mod test {
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
-                ---@class D30
-                local M = {}
-
                 ---@param callback fun()
                 local function with_local(callback)
                 end
 
-                function M:add_local_event()
-                    with_local(function(local_player) end)
-                end
+                with_local(function(local_player) end)
         "#
         ));
     }

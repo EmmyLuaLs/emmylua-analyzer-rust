@@ -1194,7 +1194,13 @@ mod tests {
     #[gtest]
     fn test_index_key_alias() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.def(" ---@attribute index_alias(name: string)");
+        ws.def(
+            r#"
+            ---@class Attribute
+            ---@class index_alias: Attribute
+            ---@overload fun(name: string)
+            "#,
+        );
         check!(ws.check_completion(
             r#"
                 local export = {
@@ -2321,8 +2327,6 @@ mod tests {
         ws.def(
             r#"
             ---@alias std.RawGet<T, K> unknown
-
-            ---@alias std.ConstTpl<T> unknown
 
             ---@generic T, K extends keyof T
             ---@param object T

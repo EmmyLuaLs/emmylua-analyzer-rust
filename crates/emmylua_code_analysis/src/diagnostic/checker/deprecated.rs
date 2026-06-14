@@ -1,4 +1,4 @@
-use emmylua_parser::{LuaAst, LuaAstNode, LuaIndexExpr, LuaNameExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaDocNameType, LuaIndexExpr, LuaNameExpr};
 
 use crate::{
     DiagnosticCode, LuaDeclId, LuaDeprecated, LuaMemberId, LuaSemanticDeclId, SemanticDeclLevel,
@@ -21,6 +21,9 @@ impl Checker for DeprecatedChecker {
                 }
                 LuaAst::LuaIndexExpr(index_expr) => {
                     check_index_expr(context, semantic_model, index_expr);
+                }
+                LuaAst::LuaDocNameType(name_type) => {
+                    check_doc_name_type(context, semantic_model, name_type);
                 }
                 _ => {}
             }
@@ -74,6 +77,32 @@ fn check_index_expr(
     Some(())
 }
 
+fn check_doc_name_type(
+    context: &mut DiagnosticContext,
+    semantic_model: &SemanticModel,
+    name_type: LuaDocNameType,
+) -> Option<()> {
+    let semantic_decl = semantic_model.find_decl(
+        rowan::NodeOrToken::Node(name_type.syntax().clone()),
+        SemanticDeclLevel::default(),
+    )?;
+
+    let LuaSemanticDeclId::TypeDecl(_) = &semantic_decl else {
+        return Some(());
+    };
+
+    if let Some(deprecated_message) = get_deprecated_message(semantic_model, &semantic_decl) {
+        context.add_diagnostic(
+            DiagnosticCode::Deprecated,
+            name_type.get_range(),
+            deprecated_message,
+            None,
+        );
+    }
+
+    Some(())
+}
+
 fn check_deprecated(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
@@ -87,14 +116,11 @@ fn check_deprecated(
     let Some(property) = property else {
         return;
     };
-    if let Some(deprecated) = property.deprecated() {
-        let deprecated_message = match deprecated {
-            LuaDeprecated::Deprecated => "deprecated".to_string(),
-            LuaDeprecated::DeprecatedWithMessage(message) => message.to_string(),
-        };
 
+    if let Some(deprecated_message) = get_deprecated_message(semantic_model, semantic_decl) {
         context.add_diagnostic(DiagnosticCode::Deprecated, range, deprecated_message, None);
     }
+
     // 检查特性
     if let Some(attribute_uses) = property.attribute_uses() {
         for attribute_use in attribute_uses.iter() {
@@ -104,4 +130,24 @@ fn check_deprecated(
             }
         }
     }
+}
+
+fn get_deprecated_message(
+    semantic_model: &SemanticModel,
+    semantic_decl: &LuaSemanticDeclId,
+) -> Option<String> {
+    let property = semantic_model
+        .get_db()
+        .get_property_index()
+        .get_property(semantic_decl);
+    let property = property?;
+    if let Some(deprecated) = property.deprecated() {
+        let deprecated_message = match deprecated {
+            LuaDeprecated::Deprecated => "deprecated".to_string(),
+            LuaDeprecated::DeprecatedWithMessage(message) => message.to_string(),
+        };
+        return Some(deprecated_message);
+    }
+
+    None
 }

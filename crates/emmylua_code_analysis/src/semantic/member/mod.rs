@@ -6,7 +6,7 @@ mod infer_raw_member;
 use std::collections::HashSet;
 
 use crate::{
-    DbIndex, LuaMemberFeature, LuaMemberId, LuaMemberKey, LuaSemanticDeclId, TypeOps,
+    DbIndex, LuaMemberFeature, LuaMemberId, LuaMemberKey, LuaSemanticDeclId, LuaUnionType, TypeOps,
     db_index::{LuaType, LuaTypeDeclId},
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaSyntaxKind, LuaTableExpr, LuaTableField};
@@ -61,7 +61,7 @@ pub fn find_member_origin_owner(
     const MAX_ITERATIONS: usize = 50;
     let mut visited_members = HashSet::new();
 
-    let mut current_owner = resolve_member_owner(db, infer_config, &member_id);
+    let mut current_owner = resolve_member_owner_with_file_cache(db, infer_config, &member_id);
     let mut final_owner = current_owner.clone();
     let mut iteration_count = 0;
 
@@ -73,7 +73,7 @@ pub fn find_member_origin_owner(
         visited_members.insert(*current_member_id);
         iteration_count += 1;
 
-        match resolve_member_owner(db, infer_config, current_member_id) {
+        match resolve_member_owner_with_file_cache(db, infer_config, current_member_id) {
             Some(next_owner) => {
                 final_owner = Some(next_owner.clone());
                 current_owner = Some(next_owner);
@@ -83,6 +83,19 @@ pub fn find_member_origin_owner(
     }
 
     final_owner
+}
+
+fn resolve_member_owner_with_file_cache(
+    db: &DbIndex,
+    infer_config: &mut LuaInferCache,
+    member_id: &LuaMemberId,
+) -> Option<LuaSemanticDeclId> {
+    if infer_config.get_file_id() == member_id.file_id {
+        return resolve_member_owner(db, infer_config, member_id);
+    }
+
+    let mut member_file_cache = infer_config.fork_for_file(member_id.file_id);
+    resolve_member_owner(db, &mut member_file_cache, member_id)
 }
 
 fn resolve_member_owner(
@@ -144,7 +157,7 @@ fn resolve_table_field_through_type_inference(
     let table_expr = LuaTableExpr::cast(parent)?;
     let table_type = infer_table_should_be(db, infer_config, table_expr).ok()?;
 
-    if !matches!(table_type, LuaType::Ref(_) | LuaType::Def(_)) {
+    if !table_is_class(&table_type, 0) {
         return None;
     }
 
@@ -156,4 +169,20 @@ fn resolve_table_field_through_type_inference(
         .first()
         .cloned()
         .and_then(|m| m.property_owner_id)
+}
+
+fn table_is_class(table_type: &LuaType, depth: usize) -> bool {
+    if depth > 10 {
+        return false;
+    }
+
+    match table_type {
+        LuaType::Ref(_) | LuaType::Def(_) | LuaType::Generic(_) => true,
+        LuaType::Union(union) => match union.as_ref() {
+            LuaUnionType::Basic(_) => false,
+            LuaUnionType::Nullable(typ) => table_is_class(typ, depth + 1),
+            LuaUnionType::Multi(types) => types.iter().any(|typ| table_is_class(typ, depth + 1)),
+        },
+        _ => false,
+    }
 }

@@ -18,7 +18,6 @@ pub enum LuaDeclTypeKind {
     Class,
     Enum,
     Alias,
-    Attribute,
 }
 
 flags! {
@@ -64,7 +63,6 @@ impl LuaTypeDecl {
                 LuaDeclTypeKind::Enum => LuaTypeExtra::Enum { base: None },
                 LuaDeclTypeKind::Class => LuaTypeExtra::Class,
                 LuaDeclTypeKind::Alias => LuaTypeExtra::Alias { origin: None },
-                LuaDeclTypeKind::Attribute => LuaTypeExtra::Attribute { typ: None },
             },
         }
     }
@@ -91,10 +89,6 @@ impl LuaTypeDecl {
 
     pub fn is_alias(&self) -> bool {
         matches!(self.extra, LuaTypeExtra::Alias { .. })
-    }
-
-    pub fn is_attribute(&self) -> bool {
-        matches!(self.extra, LuaTypeExtra::Attribute { .. })
     }
 
     pub fn is_exact(&self) -> bool {
@@ -175,20 +169,6 @@ impl LuaTypeDecl {
     pub fn add_enum_base(&mut self, base_type: LuaType) {
         if let LuaTypeExtra::Enum { base } = &mut self.extra {
             *base = Some(base_type);
-        }
-    }
-
-    pub fn add_attribute_type(&mut self, attribute_type: LuaType) {
-        if let LuaTypeExtra::Attribute { typ } = &mut self.extra {
-            *typ = Some(attribute_type);
-        }
-    }
-
-    pub fn get_attribute_type(&self) -> Option<&LuaType> {
-        if let LuaTypeExtra::Attribute { typ: Some(typ) } = &self.extra {
-            Some(typ)
-        } else {
-            None
         }
     }
 
@@ -398,5 +378,4 @@ pub enum LuaTypeExtra {
     Enum { base: Option<LuaType> },
     Class,
     Alias { origin: Option<LuaType> },
-    Attribute { typ: Option<LuaType> },
 }

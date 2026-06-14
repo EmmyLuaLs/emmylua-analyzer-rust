@@ -1,8 +1,8 @@
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCommentOwner, LuaDocDescription,
-    LuaDocDescriptionOwner, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute, LuaDocTagClass,
-    LuaDocTagEnum, LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat, LuaNameExpr,
-    LuaSyntaxId, LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
+    LuaDocDescriptionOwner, LuaDocTag, LuaDocTagAlias, LuaDocTagClass, LuaDocTagEnum,
+    LuaDocTagGeneric, LuaFuncStat, LuaLocalName, LuaLocalStat, LuaNameExpr, LuaSyntaxId,
+    LuaSyntaxKind, LuaTokenKind, LuaVarExpr,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
@@ -10,15 +10,13 @@ use smol_str::SmolStr;
 use super::{
     DocAnalyzer, infer_type::infer_type, preprocess_description, tags::find_owner_closure,
 };
-use crate::GenericParam;
 use crate::compilation::analyzer::doc::tags::report_orphan_tag;
 use crate::{
     DbIndex, LuaTypeCache, LuaTypeDeclId,
     compilation::analyzer::common::bind_type,
-    db_index::{
-        LuaDeclId, LuaGenericParamInfo, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType,
-    },
+    db_index::{LuaDeclId, LuaMemberId, LuaSemanticDeclId, LuaSignatureId, LuaType},
 };
+use crate::{GenericParam, LuaFunctionType};
 use std::{collections::HashSet, sync::Arc, vec};
 
 pub fn analyze_class(analyzer: &mut DocAnalyzer, tag: LuaDocTagClass) -> Option<()> {
@@ -206,34 +204,6 @@ fn alias_chain_ref(typ: &LuaType) -> Option<LuaTypeDeclId> {
     }
 }
 
-/// 分析属性定义
-pub fn analyze_attribute(analyzer: &mut DocAnalyzer, tag: LuaDocTagAttribute) -> Option<()> {
-    let file_id = analyzer.file_id;
-    let workspace_id = analyzer.workspace_id;
-    let name = tag.get_name_token()?.get_name_text().to_string();
-
-    let decl_id = {
-        let decl = analyzer.get_db().get_type_index().find_type_decl(
-            file_id,
-            &name,
-            Some(workspace_id),
-        )?;
-        if !decl.is_attribute() {
-            return None;
-        }
-        decl.get_id()
-    };
-    let attribute_type = infer_type(&mut analyzer.type_context, tag.get_type()?);
-    let attribute_decl = analyzer
-        .get_db()
-        .get_type_index_mut()
-        .get_type_decl_mut(&decl_id)?;
-    attribute_decl.add_attribute_type(attribute_type);
-
-    add_description_for_type_decl(analyzer, &decl_id, tag.get_descriptions());
-    Some(())
-}
-
 fn get_type_generic_params(
     analyzer: &mut DocAnalyzer,
     type_decl_id: &LuaTypeDeclId,
@@ -384,8 +354,7 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
             let Some(name_token) = param.get_name_token() else {
                 continue;
             };
-            let name_text = name_token.get_name_text().to_string();
-            let smol_name = SmolStr::new(name_text.as_str());
+            let smol_name = SmolStr::new(name_token.get_name_text());
 
             let type_ref = param
                 .get_constraint_type()
@@ -394,22 +363,18 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
                 .get_default_type()
                 .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
 
-            analyzer.type_context.generic_index.append_generic_param(
-                scope_id,
-                GenericParam::new(
-                    smol_name.clone(),
-                    type_ref.clone(),
-                    default_type.clone(),
-                    None,
-                ),
-            );
-
-            param_info.push(Arc::new(LuaGenericParamInfo::new(
-                name_text,
+            let generic_param = GenericParam::new(
+                smol_name,
                 type_ref,
                 default_type,
+                param.has_const_modifier(),
                 None,
-            )));
+            );
+            analyzer
+                .type_context
+                .generic_index
+                .append_generic_param(scope_id, generic_param.clone());
+            param_info.push(generic_param);
         }
     }
 
@@ -420,6 +385,26 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
         .get_signature_index_mut()
         .get_or_create(signature_id);
     signature.generic_params = param_info;
+    let signature_generic_params = signature.get_function_generic_params();
+    for overload in &mut signature.overloads {
+        let mut generic_params = signature_generic_params.clone();
+        for generic_param in overload.get_generic_params() {
+            if !generic_params
+                .iter()
+                .any(|tpl| tpl.get_tpl_id() == generic_param.get_tpl_id())
+            {
+                generic_params.push(generic_param.clone());
+            }
+        }
+        *overload = Arc::new(LuaFunctionType::new(
+            overload.get_async_state(),
+            overload.is_colon_define(),
+            overload.is_variadic(),
+            overload.get_params().to_vec(),
+            overload.get_ret().clone(),
+            Some(generic_params),
+        ));
+    }
 
     Some(())
 }

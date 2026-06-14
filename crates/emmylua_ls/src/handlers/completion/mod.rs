@@ -123,7 +123,6 @@ pub fn completion_resolve(
             .get_semantic_model(completion_data.field_id);
         if let Some(semantic_model) = semantic_model {
             resolve_completion(
-                &analysis.compilation,
                 &semantic_model,
                 db,
                 &mut completion_item,

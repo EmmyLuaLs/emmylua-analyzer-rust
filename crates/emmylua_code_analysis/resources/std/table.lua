@@ -106,9 +106,9 @@ function table.sort(list, comp) end
 --- Returns the elements from the given list. This function is equivalent to
 --- return `list[i]`, `list[i+1]`, `···`, `list[j]`
 --- By default, i is 1 and j is #list.
---- @generic T, Start: integer, End: integer
---- @param i?   std.ConstTpl<Start>
---- @param j?   std.ConstTpl<End>
+--- @generic const T, const Start: integer, const End: integer
+--- @param i?   Start
+--- @param j?   End
 --- @param list T
 --- @return std.Unpack<T, Start, End>
 function table.unpack(list, i, j) end

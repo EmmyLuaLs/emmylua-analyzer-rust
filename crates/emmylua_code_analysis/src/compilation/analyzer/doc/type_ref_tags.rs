@@ -4,6 +4,7 @@ use emmylua_parser::{
     LuaDocTagReturnCast, LuaDocTagReturnOverload, LuaDocTagSchema, LuaDocTagSee, LuaDocTagType,
     LuaExpr, LuaLocalName, LuaTokenKind, LuaVarExpr,
 };
+use std::sync::Arc;
 
 use super::{
     DocAnalyzer,
@@ -12,8 +13,8 @@ use super::{
     tags::{find_owner_closure, get_owner_id_or_report},
 };
 use crate::{
-    InFiled, JsonSchemaFile, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
-    SignatureReturnStatus, TypeOps,
+    InFiled, JsonSchemaFile, LuaFunctionType, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner,
+    OperatorFunction, SignatureReturnStatus, TypeOps,
     compilation::analyzer::common::bind_type,
     db_index::{
         LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaMemberId,
@@ -375,6 +376,23 @@ pub fn analyze_overload(analyzer: &mut DocAnalyzer, tag: LuaDocTagOverload) -> O
                 .db
                 .get_signature_index_mut()
                 .get_or_create(id);
+            let mut generic_params = signature.get_function_generic_params();
+            for generic_param in func.get_generic_params() {
+                if !generic_params
+                    .iter()
+                    .any(|tpl| tpl.get_tpl_id() == generic_param.get_tpl_id())
+                {
+                    generic_params.push(generic_param.clone());
+                }
+            }
+            let func = Arc::new(LuaFunctionType::new(
+                func.get_async_state(),
+                func.is_colon_define(),
+                func.is_variadic(),
+                func.get_params().to_vec(),
+                func.get_ret().clone(),
+                Some(generic_params),
+            ));
             signature.overloads.push(func);
         }
     }

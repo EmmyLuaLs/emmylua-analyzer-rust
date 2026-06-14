@@ -1,7 +1,6 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute,
-    LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
-    LuaDocTypeFlag,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagClass, LuaDocTagEnum,
+    LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing, LuaDocTypeFlag,
 };
 use flagset::FlagSet;
 use rowan::TextRange;
@@ -97,24 +96,6 @@ pub fn analyze_doc_tag_alias(analyzer: &mut DeclAnalyzer, alias: LuaDocTagAlias)
         );
     }
 
-    Some(())
-}
-
-pub fn analyze_doc_tag_attribute(
-    analyzer: &mut DeclAnalyzer,
-    attribute: LuaDocTagAttribute,
-) -> Option<()> {
-    let name_token = attribute.get_name_token()?;
-    let name = name_token.get_name_text().to_string();
-    let range = name_token.syntax().text_range();
-
-    add_type_decl(
-        analyzer,
-        &name,
-        range,
-        LuaDeclTypeKind::Attribute,
-        FlagSet::default(),
-    );
     Some(())
 }
 

@@ -136,7 +136,6 @@ pub enum LuaTokenKind {
     TkTagReturnOverload, // return overload
     TkLanguage,          // language
     TKTagSchema,         // schema
-    TkTagAttribute,      // attribute
     TkCallGeneric,       // call generic. function_name--[[@<type>]](...)
 
     TkDocOr,              // |
@@ -147,6 +146,7 @@ pub enum LuaTokenKind {
     TkDocAs,              // as
     TkDocIn,              // in
     TkDocInfer,           // infer
+    TkDocConst,           // const
     TkDocElse,            // else (for return_cast)
     TkDocContinue,        // ---
     TkDocContinueOr,      // ---| or ---|+  or ---|>

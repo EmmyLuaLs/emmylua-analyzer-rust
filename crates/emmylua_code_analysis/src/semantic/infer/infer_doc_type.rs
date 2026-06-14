@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAstNode, LuaDocAttributeType, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType,
-    LuaDocGenericType, LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType,
-    LuaDocStrTplType, LuaDocType, LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken,
-    LuaSyntaxKind, LuaTypeBinaryOperator, LuaTypeUnaryOperator, NumberResult,
+    LuaAstNode, LuaDocBinaryType, LuaDocDescriptionOwner, LuaDocFuncType, LuaDocGenericType,
+    LuaDocMultiLineUnionType, LuaDocObjectFieldKey, LuaDocObjectType, LuaDocStrTplType, LuaDocType,
+    LuaDocUnaryType, LuaDocVariadicType, LuaLiteralToken, LuaSyntaxKind, LuaTypeBinaryOperator,
+    LuaTypeUnaryOperator, NumberResult,
 };
 use rowan::TextRange;
 use smol_str::SmolStr;
 
 use crate::{
     AsyncState, DbIndex, FileId, InFiled, LuaAliasCallKind, LuaAliasCallType, LuaArrayLen,
-    LuaArrayType, LuaAttributeType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey,
-    LuaIntersectionType, LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus,
-    LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, VariadicType, complete_type_generic_args,
+    LuaArrayType, LuaFunctionType, LuaGenericType, LuaIndexAccessKey, LuaIntersectionType,
+    LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleStatus, LuaTupleType, LuaType,
+    LuaTypeDeclId, TypeOps, VariadicType, complete_type_generic_args,
 };
 
 #[derive(Clone, Copy)]
@@ -114,9 +114,6 @@ pub fn infer_doc_type(ctx: DocTypeInferContext<'_>, node: &LuaDocType) -> LuaTyp
         }
         LuaDocType::MultiLineUnion(multi_union) => {
             return infer_multi_line_union_type(ctx, multi_union);
-        }
-        LuaDocType::Attribute(attribute_type) => {
-            return infer_attribute_type(ctx, attribute_type);
         }
         _ => {}
     }
@@ -497,6 +494,7 @@ fn infer_func_type(ctx: DocTypeInferContext<'_>, func: &LuaDocFuncType) -> LuaTy
             is_variadic,
             params_result,
             return_type,
+            None,
         )
         .into(),
     )
@@ -611,36 +609,4 @@ fn infer_multi_line_union_type(
     }
 
     LuaType::MultiLineUnion(LuaMultiLineUnion::new(union_members).into())
-}
-
-fn infer_attribute_type(
-    ctx: DocTypeInferContext<'_>,
-    attribute_type: &LuaDocAttributeType,
-) -> LuaType {
-    let mut params_result = Vec::new();
-    for param in attribute_type.get_params() {
-        let name = if let Some(param) = param.get_name_token() {
-            param.get_name_text().to_string()
-        } else if param.is_dots() {
-            "...".to_string()
-        } else {
-            continue;
-        };
-
-        let nullable = param.is_nullable();
-
-        let type_ref = if let Some(type_ref) = param.get_type() {
-            let mut typ = infer_doc_type(ctx, &type_ref);
-            if nullable && !typ.is_nullable() {
-                typ = TypeOps::Union.apply(ctx.db, &typ, &LuaType::Nil);
-            }
-            Some(typ)
-        } else {
-            None
-        };
-
-        params_result.push((name, type_ref));
-    }
-
-    LuaType::DocAttribute(LuaAttributeType::new(params_result).into())
 }

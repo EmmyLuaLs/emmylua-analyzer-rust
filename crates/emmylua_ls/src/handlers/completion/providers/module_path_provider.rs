@@ -101,7 +101,7 @@ pub fn add_modules(
         if let Some(child_file_id) = child_module_node.file_ids.first() {
             let child_module_info = db.get_module_index().get_module(*child_file_id)?;
             let data = if let Some(property_id) = &child_module_info.semantic_id {
-                CompletionData::from_property_owner_id(builder, property_id.clone(), None)
+                CompletionData::from_property_owner_id(builder, property_id.clone())
             } else {
                 None
             };

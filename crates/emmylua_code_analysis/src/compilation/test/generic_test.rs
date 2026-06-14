@@ -764,10 +764,7 @@ mod test {
             .expect("Box generic params");
         assert_eq!(box_params.len(), 1);
         assert_eq!(box_params[0].name.as_str(), "T");
-        let box_default = box_params[0]
-            .default_type
-            .clone()
-            .expect("Box default type");
+        let box_default = box_params[0].default.clone().expect("Box default type");
         assert_eq!(ws.humanize_type(box_default), "string");
 
         let optional_params = ws
@@ -780,7 +777,7 @@ mod test {
         assert_eq!(optional_params.len(), 1);
         assert_eq!(optional_params[0].name.as_str(), "T");
         let optional_default = optional_params[0]
-            .default_type
+            .default
             .clone()
             .expect("Optional default type");
         assert_eq!(ws.humanize_type(optional_default), "number");
@@ -810,10 +807,103 @@ mod test {
         assert_eq!(signature.generic_params.len(), 1);
         assert_eq!(signature.generic_params[0].name, "T");
         let default_type = signature.generic_params[0]
-            .default_type
+            .default
             .clone()
             .expect("signature default type");
         assert_eq!(ws.humanize_type(default_type), "string");
+    }
+
+    #[test]
+    fn test_generic_const_metadata_storage() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@class Box<const T, U>
+
+            ---@generic const R, S
+            ---@return R
+            local function id()
+            end
+
+            ---@alias Mapper fun<const A, B>(value: A): B
+            "#,
+        );
+
+        let db = ws.analysis.compilation.get_db();
+        let box_params = db
+            .get_type_index()
+            .get_generic_params(&LuaTypeDeclId::global("Box"))
+            .expect("Box generic params");
+        assert_eq!(box_params.len(), 2);
+        assert_eq!(box_params[0].name.as_str(), "T");
+        assert!(box_params[0].is_const);
+        assert_eq!(box_params[1].name.as_str(), "U");
+        assert!(!box_params[1].is_const);
+
+        let closure = ws.get_node::<LuaClosureExpr>(file_id);
+        let signature_id = LuaSignatureId::from_closure(file_id, &closure);
+        let signature = db
+            .get_signature_index()
+            .get(&signature_id)
+            .expect("signature");
+        assert_eq!(signature.generic_params.len(), 2);
+        assert_eq!(signature.generic_params[0].name.as_str(), "R");
+        assert!(signature.generic_params[0].is_const);
+        assert_eq!(signature.generic_params[1].name.as_str(), "S");
+        assert!(!signature.generic_params[1].is_const);
+
+        let function_generic_params = signature.get_function_generic_params();
+        assert!(function_generic_params[0].is_const());
+        assert!(!function_generic_params[1].is_const());
+
+        let mapper_decl = db
+            .get_type_index()
+            .get_type_decl(&LuaTypeDeclId::global("Mapper"))
+            .expect("Mapper alias");
+        let mapper_origin = mapper_decl.get_alias_ref().expect("Mapper alias origin");
+        let LuaType::DocFunction(mapper_func) = mapper_origin else {
+            panic!("expected Mapper alias to be a function type");
+        };
+        let mapper_generic_params = mapper_func.get_generic_params();
+        assert_eq!(mapper_generic_params.len(), 2);
+        assert_eq!(mapper_generic_params[0].get_name(), "A");
+        assert!(mapper_generic_params[0].is_const());
+        assert_eq!(mapper_generic_params[1].get_name(), "B");
+        assert!(!mapper_generic_params[1].is_const());
+    }
+
+    #[test]
+    fn test_legacy_const_tpl_marks_generic_param_metadata() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@alias std.ConstTpl<T> unknown
+
+            ---@generic T
+            ---@param value std.ConstTpl<T>
+            ---@return T
+            function id(value)
+            end
+
+            result = id(1)
+            "#,
+        );
+
+        let closure = ws.get_node::<LuaClosureExpr>(file_id);
+        let signature_id = LuaSignatureId::from_closure(file_id, &closure);
+        {
+            let signature = ws
+                .analysis
+                .compilation
+                .get_db()
+                .get_signature_index()
+                .get(&signature_id)
+                .expect("signature");
+            assert_eq!(signature.generic_params.len(), 1);
+            assert!(signature.generic_params[0].is_const);
+        }
+
+        assert_eq!(ws.expr_ty("result"), LuaType::IntegerConst(1));
     }
 
     #[test]
@@ -954,7 +1044,7 @@ mod test {
             .get_type_index()
             .get_generic_params(&LuaTypeDeclId::global("B"))
             .expect("B generic params");
-        let default_type = b_params[0].default_type.clone().expect("B default type");
+        let default_type = b_params[0].default.clone().expect("B default type");
         assert_eq!(ws.humanize_type(default_type), "A<string>");
     }
 
@@ -982,7 +1072,7 @@ mod test {
             .get_type_index()
             .get_generic_params(&LuaTypeDeclId::global("B"))
             .expect("B generic params");
-        let default_type = b_params[0].default_type.clone().expect("B default type");
+        let default_type = b_params[0].default.clone().expect("B default type");
         assert_eq!(ws.humanize_type(default_type), "A<string>");
     }
 
@@ -1222,8 +1312,6 @@ mod test {
         ws.def(
             r#"
             ---@alias std.RawGet<T, K> unknown
-
-            ---@alias std.ConstTpl<T> unknown
 
             ---@generic T, K extends keyof T
             ---@param object T

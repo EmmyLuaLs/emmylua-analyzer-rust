@@ -11,9 +11,9 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaDocFieldKey,
-    LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocObjectFieldKey, LuaDocType, LuaExpr,
-    LuaGeneralToken, LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode,
-    LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
+    LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocObjectFieldKey, LuaExpr, LuaGeneralToken,
+    LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken,
+    LuaTokenKind, LuaVarExpr,
 };
 use emmylua_parser_desc::{CodeBlockHighlightKind, DescItem, DescItemKind};
 use lsp_types::SemanticToken;
@@ -202,7 +202,6 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkTagReturnCast
         | LuaTokenKind::TkTagReturnOverload
         | LuaTokenKind::TkLanguage
-        | LuaTokenKind::TkTagAttribute
         | LuaTokenKind::TKTagSchema => {
             builder.push_with_modifier(
                 token,
@@ -813,22 +812,6 @@ fn build_node_semantic_token(
                         SemanticTokenModifierKind::DECLARATION
                             | SemanticTokenModifierKind::DEFAULT_LIBRARY,
                     );
-                }
-            }
-        }
-        LuaAst::LuaDocTagAttribute(tag_attribute) => {
-            if let Some(name) = tag_attribute.get_name_token() {
-                builder.push_with_modifier(
-                    name.syntax(),
-                    SemanticTokenTypeKind::Type,
-                    SemanticTokenModifierKind::DECLARATION,
-                );
-            }
-            if let Some(LuaDocType::Attribute(attribute)) = tag_attribute.get_type() {
-                for param in attribute.get_params() {
-                    if let Some(name) = param.get_name_token() {
-                        builder.push(name.syntax(), SemanticTokenTypeKind::Parameter);
-                    }
                 }
             }
         }

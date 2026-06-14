@@ -215,7 +215,6 @@ impl<'a> TypeHumanizer<'a> {
                 self.level = saved;
                 w.write_char('>')
             }
-            LuaType::ConstTplRef(const_tpl) => w.write_str(const_tpl.get_name()),
             LuaType::Language(s) => w.write_str(s),
             LuaType::Conditional(c) => self.write_conditional_type(c, w),
             LuaType::Never => w.write_str("never"),

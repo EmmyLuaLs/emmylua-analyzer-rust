@@ -618,7 +618,7 @@ pub fn first_param_may_not_self(typ: &LuaType) -> bool {
     if typ.is_table()
         || matches!(
             typ,
-            LuaType::TplRef(_) | LuaType::StrTplRef(_) | LuaType::Any
+            LuaType::TplRef(_) | LuaType::StrTplRef(_) | LuaType::Any | LuaType::Unknown
         )
     {
         return true;

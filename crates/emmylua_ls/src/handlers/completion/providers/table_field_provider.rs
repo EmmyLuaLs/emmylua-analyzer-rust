@@ -258,7 +258,7 @@ fn add_field_key_completion(
     }
 
     let data = if let Some(id) = &property_owner {
-        CompletionData::from_property_owner_id(builder, id.clone(), None)
+        CompletionData::from_property_owner_id(builder, id.clone())
     } else {
         None
     };

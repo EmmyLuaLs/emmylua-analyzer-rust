@@ -124,7 +124,6 @@ fn check_general_type_compact(
         | LuaType::DocBooleanConst(_)
         | LuaType::TplRef(_)
         | LuaType::StrTplRef(_)
-        | LuaType::ConstTplRef(_)
         | LuaType::Namespace(_)
         | LuaType::Variadic(_)
         | LuaType::Language(_) => {
@@ -195,11 +194,7 @@ fn check_general_type_compact(
 fn is_like_any(ty: &LuaType) -> bool {
     matches!(
         ty,
-        LuaType::Any
-            | LuaType::Unknown
-            | LuaType::TplRef(_)
-            | LuaType::StrTplRef(_)
-            | LuaType::ConstTplRef(_)
+        LuaType::Any | LuaType::Unknown | LuaType::TplRef(_) | LuaType::StrTplRef(_)
     )
 }
 
