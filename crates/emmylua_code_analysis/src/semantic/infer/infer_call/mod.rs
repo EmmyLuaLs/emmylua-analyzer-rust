@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaSyntaxKind};
 use hashbrown::HashSet;
 use rowan::TextRange;
 
@@ -11,13 +11,15 @@ use super::{
 use crate::semantic::overload_resolve::callable_accepts_args;
 use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
-    LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait, VariadicType,
+    LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaSignature,
+    LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDeclLevel, TypeVisitTrait,
+    VariadicType,
 };
 use crate::{
     InferGuardRef,
     semantic::{
         generic::TypeSubstitutor, infer::narrow::get_type_at_call_expr_inline_cast,
+        infer_node_semantic_decl, member::find_member_origin_owner,
         overload_resolve::collect_callable_overload_groups,
     },
 };
@@ -835,6 +837,67 @@ fn signature_is_generic(
         // 对于 Generic 直接认为是泛型
         LuaType::Generic(_) => Some(true),
         _ => Some(prefix_type.contain_tpl()),
+    }
+}
+
+/// 推断调用者的具体类型.
+pub fn infer_call_receiver_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: &LuaCallExpr,
+) -> Option<LuaType> {
+    match call_expr.get_prefix_expr()? {
+        LuaExpr::IndexExpr(index_expr) => {
+            let decl = infer_node_semantic_decl(
+                db,
+                cache,
+                index_expr.syntax().clone(),
+                SemanticDeclLevel::default(),
+            )?;
+
+            if let LuaSemanticDeclId::Member(member_id) = decl
+                && let Some(LuaSemanticDeclId::Member(member_id)) =
+                    find_member_origin_owner(db, cache, member_id)
+            {
+                let root = db
+                    .get_vfs()
+                    .get_syntax_tree(&member_id.file_id)?
+                    .get_red_root();
+                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
+                let index_expr = LuaIndexExpr::cast(cur_node)?;
+
+                return index_expr.get_prefix_expr().map(|prefix_expr| {
+                    infer_expr(db, cache, prefix_expr).unwrap_or(LuaType::SelfInfer)
+                });
+            }
+
+            index_expr
+                .get_prefix_expr()
+                .map(|prefix_expr| infer_expr(db, cache, prefix_expr).unwrap_or(LuaType::SelfInfer))
+        }
+        LuaExpr::NameExpr(name_expr) => {
+            let decl = infer_node_semantic_decl(
+                db,
+                cache,
+                name_expr.syntax().clone(),
+                SemanticDeclLevel::default(),
+            )?;
+            if let LuaSemanticDeclId::Member(member_id) = decl {
+                let root = db
+                    .get_vfs()
+                    .get_syntax_tree(&member_id.file_id)?
+                    .get_red_root();
+                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
+                let index_expr = LuaIndexExpr::cast(cur_node)?;
+
+                return index_expr.get_prefix_expr().map(|prefix_expr| {
+                    infer_expr(db, cache, prefix_expr).unwrap_or(LuaType::SelfInfer)
+                });
+            }
+
+            None
+        }
+        _ => None,
     }
 }
 

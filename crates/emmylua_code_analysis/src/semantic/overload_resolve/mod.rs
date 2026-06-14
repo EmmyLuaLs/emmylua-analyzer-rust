@@ -14,7 +14,10 @@ use super::{
 };
 
 pub(crate) use collect_overloads::collect_callable_overload_groups;
-pub(crate) use resolve_signature_by_args::{callable_accepts_args, resolve_signature_by_args};
+pub(crate) use resolve_signature_by_args::{
+    callable_accepts_args, get_func_param_type, is_func_last_param_variadic,
+    resolve_signature_by_args,
+};
 
 pub fn resolve_signature(
     db: &DbIndex,

@@ -21,7 +21,7 @@ use emmylua_parser::{
     LuaSyntaxToken, LuaTableExpr,
 };
 pub use infer::infer_index_expr;
-use infer::{infer_bind_value_type, infer_expr_list_types};
+use infer::{infer_bind_value_type, infer_call_receiver_type, infer_expr_list_types};
 pub use infer::{infer_table_field_value_should_be, infer_table_should_be};
 use lsp_types::Uri;
 pub use member::LuaMemberInfo;
@@ -59,7 +59,10 @@ pub use infer::infer_param;
 pub(crate) use infer::try_infer_expr_for_index;
 pub(crate) use infer::{infer_expr, try_infer_expr_no_flow};
 use overload_resolve::resolve_signature;
-pub(crate) use overload_resolve::{callable_accepts_args, collect_callable_overload_groups};
+pub(crate) use overload_resolve::{
+    callable_accepts_args, collect_callable_overload_groups, get_func_param_type,
+    is_func_last_param_variadic,
+};
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 
@@ -327,6 +330,10 @@ impl<'a> SemanticModel<'a> {
 
     pub fn get_member_origin_owner(&self, member_id: LuaMemberId) -> Option<LuaSemanticDeclId> {
         find_member_origin_owner(self.db, &mut self.infer_cache.borrow_mut(), member_id)
+    }
+
+    pub fn infer_call_receiver_type(&self, call_expr: &LuaCallExpr) -> Option<LuaType> {
+        infer_call_receiver_type(self.db, &mut self.infer_cache.borrow_mut(), call_expr)
     }
 
     pub fn get_index_decl_type(&self, index_expr: LuaIndexExpr) -> Option<LuaType> {

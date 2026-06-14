@@ -22,7 +22,7 @@ pub(crate) fn callable_accepts_args(
         let Some(param_index) = get_call_param_index(func, arg_index, is_colon_call) else {
             continue;
         };
-        let Some(param_type) = get_call_arg_param_type(func, param_index) else {
+        let Some(param_type) = get_func_param_type(func, param_index) else {
             return false;
         };
 
@@ -86,7 +86,7 @@ pub fn resolve_signature_by_args(
             let Some(param_index) = get_call_param_index(func, arg_index, is_colon_call) else {
                 continue;
             };
-            let Some(param_type) = get_call_arg_param_type(func, param_index) else {
+            let Some(param_type) = get_func_param_type(func, param_index) else {
                 *opt_func = None;
                 continue;
             };
@@ -236,7 +236,7 @@ pub fn resolve_signature_by_args(
     }
 }
 
-fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
+pub(crate) fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
     if let Some(last_param) = func.get_params().last() {
         last_param.0 == "..."
     } else {
@@ -244,7 +244,7 @@ fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
     }
 }
 
-fn get_call_param_index(
+pub(crate) fn get_call_param_index(
     func: &LuaFunctionType,
     arg_index: usize,
     is_colon_call: bool,
@@ -265,7 +265,7 @@ fn get_call_param_index(
     Some(param_index)
 }
 
-fn get_call_arg_param_type(func: &LuaFunctionType, param_index: usize) -> Option<LuaType> {
+pub(crate) fn get_func_param_type(func: &LuaFunctionType, param_index: usize) -> Option<LuaType> {
     if let Some(param_info) = func.get_params().get(param_index) {
         return Some(param_info.1.clone().unwrap_or(LuaType::Any));
     }

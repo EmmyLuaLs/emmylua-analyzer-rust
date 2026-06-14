@@ -1,12 +1,12 @@
 use std::{ops::Deref, sync::Arc};
 
-use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr};
+use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
 use rowan::TextRange;
 
 use crate::{
-    DbIndex, DocTypeInferContext, GenericTplId, LuaFunctionType, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor, VariadicType, infer_doc_type,
+    DbIndex, DocTypeInferContext, GenericTplId, LuaFunctionType, LuaType, SemanticModel, TypeOps,
+    TypeSubstitutor, VariadicType, infer_doc_type,
 };
 
 use super::{TplContext, tpl_pattern_match_args};
@@ -59,7 +59,7 @@ pub fn build_call_constraint_context(
             params.insert(0, ("self".into(), Some(LuaType::SelfInfer)));
         }
         (true, false) => {
-            let source_type = infer_call_source_type(semantic_model, call_expr)?;
+            let source_type = semantic_model.infer_call_receiver_type(call_expr)?;
             args.insert(
                 0,
                 CallConstraintArg {
@@ -101,75 +101,6 @@ pub fn normalize_constraint_type(db: &DbIndex, ty: LuaType) -> LuaType {
         LuaType::Tuple(tuple) if tuple.is_infer_resolve() => tuple.cast_down_array_base(db),
         _ => ty,
     }
-}
-
-// 解析冒号调用时调用者的具体类型
-fn infer_call_source_type(
-    semantic_model: &SemanticModel,
-    call_expr: &LuaCallExpr,
-) -> Option<LuaType> {
-    match call_expr.get_prefix_expr()? {
-        LuaExpr::IndexExpr(index_expr) => {
-            let decl = semantic_model.find_decl(
-                index_expr.syntax().clone().into(),
-                SemanticDeclLevel::default(),
-            )?;
-
-            if let LuaSemanticDeclId::Member(member_id) = decl
-                && let Some(LuaSemanticDeclId::Member(member_id)) =
-                    semantic_model.get_member_origin_owner(member_id)
-            {
-                let root = semantic_model
-                    .get_db()
-                    .get_vfs()
-                    .get_syntax_tree(&member_id.file_id)?
-                    .get_red_root();
-                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
-                let index_expr = LuaIndexExpr::cast(cur_node)?;
-
-                return index_expr.get_prefix_expr().map(|prefix_expr| {
-                    semantic_model
-                        .infer_expr(prefix_expr.clone())
-                        .unwrap_or(LuaType::SelfInfer)
-                });
-            }
-
-            return if let Some(prefix_expr) = index_expr.get_prefix_expr() {
-                let expr_type = semantic_model
-                    .infer_expr(prefix_expr.clone())
-                    .unwrap_or(LuaType::SelfInfer);
-                Some(expr_type)
-            } else {
-                None
-            };
-        }
-        LuaExpr::NameExpr(name_expr) => {
-            let decl = semantic_model.find_decl(
-                name_expr.syntax().clone().into(),
-                SemanticDeclLevel::default(),
-            )?;
-            if let LuaSemanticDeclId::Member(member_id) = decl {
-                let root = semantic_model
-                    .get_db()
-                    .get_vfs()
-                    .get_syntax_tree(&member_id.file_id)?
-                    .get_red_root();
-                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
-                let index_expr = LuaIndexExpr::cast(cur_node)?;
-
-                return index_expr.get_prefix_expr().map(|prefix_expr| {
-                    semantic_model
-                        .infer_expr(prefix_expr.clone())
-                        .unwrap_or(LuaType::SelfInfer)
-                });
-            }
-
-            return None;
-        }
-        _ => {}
-    }
-
-    None
 }
 
 // 推推导每个实参类型
