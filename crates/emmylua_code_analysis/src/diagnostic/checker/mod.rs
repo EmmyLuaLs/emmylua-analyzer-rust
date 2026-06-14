@@ -7,7 +7,6 @@ mod call_non_callable;
 mod cast_type_mismatch;
 mod check_export;
 mod check_field;
-mod check_param_count;
 mod check_return_count;
 mod circle_doc_class;
 mod code_style;
@@ -24,7 +23,7 @@ mod incomplete_signature_doc;
 mod local_const_reassign;
 mod missing_fields;
 mod need_check_nil;
-mod param_type_check;
+mod param_check;
 mod readonly_check;
 mod redefined_local;
 mod require_module_visibility;
@@ -88,7 +87,7 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<await_in_sync::AwaitInSyncChecker>(context, semantic_model);
     run_check::<call_non_callable::CallNonCallableChecker>(context, semantic_model);
     run_check::<missing_fields::MissingFieldsChecker>(context, semantic_model);
-    run_check::<param_type_check::ParamTypeCheckChecker>(context, semantic_model);
+    run_check::<param_check::ParamCheckChecker>(context, semantic_model);
     run_check::<need_check_nil::NeedCheckNilChecker>(context, semantic_model);
     run_check::<return_type_mismatch::ReturnTypeMismatch>(context, semantic_model);
     run_check::<undefined_doc_param::UndefinedDocParamChecker>(context, semantic_model);
@@ -102,7 +101,6 @@ pub fn check_file(context: &mut DiagnosticContext, semantic_model: &SemanticMode
     run_check::<duplicate_type::DuplicateTypeChecker>(context, semantic_model);
     run_check::<check_return_count::CheckReturnCount>(context, semantic_model);
     run_check::<unbalanced_assignments::UnbalancedAssignmentsChecker>(context, semantic_model);
-    run_check::<check_param_count::CheckParamCountChecker>(context, semantic_model);
     run_check::<duplicate_field::DuplicateFieldChecker>(context, semantic_model);
     run_check::<duplicate_index::DuplicateIndexChecker>(context, semantic_model);
     run_check::<generic::generic_constraint_mismatch::GenericConstraintMismatchChecker>(

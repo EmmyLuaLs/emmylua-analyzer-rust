@@ -130,16 +130,11 @@ mod test {
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
-                ---@class D30
-                local M = {}
-
                 ---@param callback fun()
                 local function with_local(callback)
                 end
 
-                function M:add_local_event()
-                    with_local(function(local_player) end)
-                end
+                with_local(function(local_player) end)
         "#
         ));
     }
