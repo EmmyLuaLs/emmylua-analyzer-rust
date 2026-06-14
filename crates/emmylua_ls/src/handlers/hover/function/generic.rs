@@ -14,15 +14,6 @@ pub(super) fn instantiate_type_if_needed(
         .then(|| instantiate_type_generic(db, typ, substitutor))
 }
 
-pub(super) fn generic_type_substitutor(typ: &LuaType) -> Option<TypeSubstitutor> {
-    match typ {
-        LuaType::Generic(generic) => Some(TypeSubstitutor::from_type_array(
-            generic.get_params().clone(),
-        )),
-        _ => None,
-    }
-}
-
 pub(super) fn index_prefix_substitutor(
     builder: &HoverBuilder,
     expr: &LuaExpr,
@@ -34,7 +25,12 @@ pub(super) fn index_prefix_substitutor(
         .semantic_model
         .infer_expr(index_expr.get_prefix_expr()?)
         .ok()?;
-    generic_type_substitutor(&prefix_type)
+    match prefix_type {
+        LuaType::Generic(generic) => Some(TypeSubstitutor::from_type_array(
+            generic.get_params().clone(),
+        )),
+        _ => None,
+    }
 }
 
 pub(super) fn owner_type_substitutor(
@@ -45,7 +41,9 @@ pub(super) fn owner_type_substitutor(
     match typ {
         LuaType::Generic(generic) => {
             if generic.get_base_type_id_ref() == owner_type_id {
-                generic_type_substitutor(typ)
+                Some(TypeSubstitutor::from_type_array(
+                    generic.get_params().clone(),
+                ))
             } else {
                 None
             }

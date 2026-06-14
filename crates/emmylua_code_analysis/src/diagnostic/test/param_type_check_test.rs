@@ -24,6 +24,29 @@ mod test {
     }
 
     #[test]
+    fn test_param_type_mismatch_still_runs_when_count_diagnostics_disabled() {
+        let mut ws = VirtualWorkspace::new();
+        let diagnostics = param_type_diagnostics(
+            &mut ws,
+            r#"
+                ---@param a string
+                ---@param b string
+                local function test(a, b)
+                end
+
+                test(1)
+        "#,
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(
+            diagnostics[0].message.contains("string"),
+            "{}",
+            diagnostics[0].message
+        );
+    }
+
+    #[test]
     fn test_issue_216() {
         let mut ws = VirtualWorkspace::new();
 

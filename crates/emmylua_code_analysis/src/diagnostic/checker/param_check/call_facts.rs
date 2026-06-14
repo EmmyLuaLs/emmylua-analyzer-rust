@@ -42,73 +42,38 @@ impl CallFacts {
         &self,
         semantic_model: &SemanticModel,
     ) -> (Vec<LuaType>, Vec<TextRange>) {
-        self.inferred_arg_types_and_ranges(semantic_model)
-            .into_iter()
-            .unzip()
-    }
-
-    pub(super) fn arg_types(&self, semantic_model: &SemanticModel) -> Vec<LuaType> {
-        self.inferred_arg_types_and_ranges(semantic_model)
-            .into_iter()
-            .map(|(typ, _)| typ)
-            .collect()
-    }
-
-    pub(super) fn param_count_compatible_funcs(
-        &self,
-        semantic_model: &SemanticModel,
-    ) -> Vec<Arc<LuaFunctionType>> {
-        self.funcs
-            .iter()
-            .filter(|func| self.callable_accepts_arg_count(semantic_model, func))
-            .cloned()
-            .collect()
-    }
-
-    pub(super) fn callable_accepts_arg_count(
-        &self,
-        semantic_model: &SemanticModel,
-        func: &LuaFunctionType,
-    ) -> bool {
-        let Some(call_count) = self.call_arg_count_range(semantic_model, func) else {
-            // 如果调用数量无法确定, 保守保留候选, 避免误报 ParamTypeMismatch.
-            return true;
-        };
-        let param_count = get_param_count_range(semantic_model.get_db(), &self.call_expr, func);
-
-        count_ranges_overlap(call_count, param_count)
-    }
-
-    pub(super) fn call_arg_count_range(
-        &self,
-        semantic_model: &SemanticModel,
-        func: &LuaFunctionType,
-    ) -> Option<CountRange> {
-        let mut count = self.base_call_arg_count_range(semantic_model)?;
-        if self.call_expr.is_colon_call() && !func.is_colon_define() {
-            count.min += 1;
-            count.max = count.max.map(|max| max + 1);
-        }
-
-        Some(count)
-    }
-
-    fn inferred_arg_types_and_ranges(
-        &self,
-        semantic_model: &SemanticModel,
-    ) -> Vec<(LuaType, TextRange)> {
         let mut cached = self.arg_types_and_ranges.borrow_mut();
         if cached.is_none() {
             *cached = Some(semantic_model.infer_expr_list_types(&self.arg_exprs, None));
         }
 
-        cached.as_ref().cloned().unwrap_or_default()
+        cached
+            .as_ref()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .unzip()
     }
 
-    fn base_call_arg_count_range(&self, semantic_model: &SemanticModel) -> Option<CountRange> {
-        *self
+    // 计算当前调用表达式的实参列表能提供多少个实参槽位.
+    pub(super) fn call_arg_count_range(
+        &self,
+        semantic_model: &SemanticModel,
+        func: &LuaFunctionType,
+    ) -> Option<CountRange> {
+        let mut count = self
             .base_call_arg_count_range
             .get_or_init(|| get_base_call_arg_count_range(semantic_model, &self.arg_exprs))
+            .as_ref()
+            .copied()?;
+        if self.call_expr.is_colon_call() && !func.is_colon_define() {
+            // 冒号调用普通函数时, `obj:foo(x)` 等价于 `obj.foo(obj, x)`.
+            // 这里要把 receiver 计入调用侧的实参槽位.
+            count.min += 1;
+            count.max = count.max.map(|max| max + 1);
+        }
+
+        Some(count)
     }
 }
 
@@ -142,10 +107,9 @@ fn collect_diagnostic_callables(
     (!funcs.is_empty()).then_some(funcs)
 }
 
+// 比较调用侧能提供的实参数量, 和函数侧能接受的形参数量是否有交集.
 pub(super) fn count_ranges_overlap(call_count: CountRange, param_count: CountRange) -> bool {
-    // 调用方最多能提供的参数数量, 必须覆盖被调方至少需要的参数数量.
     let enough_args = call_count.max.is_none_or(|max| max >= param_count.min);
-    // 调用方至少会提供的参数数量, 不能超过被调方最多能接收的参数数量.
     let not_too_many_args = param_count.max.is_none_or(|max| call_count.min <= max);
 
     enough_args && not_too_many_args
@@ -153,7 +117,9 @@ pub(super) fn count_ranges_overlap(call_count: CountRange, param_count: CountRan
 
 #[derive(Clone, Copy)]
 pub(super) struct CountRange {
+    // 数量下界: 调用侧至少会提供多少, 或函数侧至少要求多少.
     pub(super) min: usize,
+    // 数量上界: 调用侧最多会提供多少, 或函数侧最多接受多少; None 表示无上限.
     pub(super) max: Option<usize>,
 }
 
@@ -182,13 +148,15 @@ fn get_base_call_arg_count_range(
     Some(count)
 }
 
+// 计算当前候选函数签名能接受多少个形参槽位.
 pub(super) fn get_param_count_range(
     db: &DbIndex,
-    call_expr: &LuaCallExpr,
     func: &LuaFunctionType,
+    call_expr: &LuaCallExpr,
 ) -> CountRange {
     let params = func.get_params();
-    let self_offset = usize::from(needs_implicit_self_param(call_expr, func));
+    // 如果以点调用但函数是冒号定义, 则表示需要传入 self 参数.
+    let self_offset = usize::from(!call_expr.is_colon_call() && func.is_colon_define());
 
     let mut min = self_offset;
     // 最小数量取最后一个非 nullable 形参, 因为前面的可选参数可以省略.
@@ -215,22 +183,6 @@ pub(super) fn get_param_count_range(
     };
 
     CountRange { min, max }
-}
-
-pub(super) fn adjusted_params(
-    call_expr: &LuaCallExpr,
-    func: &LuaFunctionType,
-) -> Vec<(String, Option<LuaType>)> {
-    let mut params = func.get_params().to_vec();
-    if needs_implicit_self_param(call_expr, func) {
-        params.insert(0, ("self".to_string(), Some(LuaType::SelfInfer)));
-    }
-
-    params
-}
-
-fn needs_implicit_self_param(call_expr: &LuaCallExpr, func: &LuaFunctionType) -> bool {
-    !call_expr.is_colon_call() && func.is_colon_define()
 }
 
 pub(super) fn is_dots_expr(expr: &LuaExpr) -> bool {

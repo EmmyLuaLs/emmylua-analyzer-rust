@@ -40,7 +40,12 @@ impl Checker for ParamCheckChecker {
                     }
 
                     if check_param_type {
-                        type_mismatch::check_param_types(context, semantic_model, &facts);
+                        type_mismatch::check_param_types(
+                            context,
+                            semantic_model,
+                            &facts,
+                            check_param_count,
+                        );
                     }
                 }
                 LuaAst::LuaClosureExpr(closure_expr) if check_param_count => {

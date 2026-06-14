@@ -8,20 +8,39 @@ use crate::{
 };
 
 use super::super::DiagnosticContext;
-use super::call_facts::CallFacts;
+use super::call_facts::{CallFacts, count_ranges_overlap, get_param_count_range};
 
 pub(super) fn check_param_types(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     facts: &CallFacts,
+    count_diagnostics_enabled: bool,
 ) -> Option<()> {
-    let (arg_types, arg_ranges) = facts.arg_types_and_ranges(semantic_model);
-
-    let mut candidates = facts.param_count_compatible_funcs(semantic_model);
+    let db = semantic_model.get_db();
+    let mut candidates = facts
+        .funcs()
+        .iter()
+        .filter(|func| {
+            let Some(call_count) = facts.call_arg_count_range(semantic_model, func) else {
+                // 如果调用数量无法确定, 保守保留候选
+                return true;
+            };
+            let param_count = get_param_count_range(db, func, &facts.call_expr);
+            // 计算实参范围和形参范围是否有交集, 若有则保留候选.
+            // 不在交集范围的的函数的诊断我们交由参数数量诊断器诊断.
+            count_ranges_overlap(call_count, param_count)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     if candidates.is_empty() {
-        // 所有候选的参数数量都不匹配时, 交给参数数量诊断器报错.
-        return Some(());
+        if count_diagnostics_enabled {
+            return Some(());
+        }
+        // 参数数量诊断器在未启用时我们需要对所有函数候选都进行参数类型检查.
+        candidates = facts.funcs().to_vec();
     }
+
+    let (arg_types, arg_ranges) = facts.arg_types_and_ranges(semantic_model);
 
     let source_type = semantic_model.infer_call_receiver_type(&facts.call_expr);
     let colon_range = facts
@@ -82,6 +101,9 @@ pub(super) fn check_param_types(
 
         if next_candidates.is_empty() {
             let failed_arg = failed_arg?;
+            if failed_param_types.is_empty() {
+                return Some(());
+            }
             let param_type = LuaType::from_vec(failed_param_types);
             let result = semantic_model.type_check_detail(&param_type, &failed_arg.typ);
             if result.is_ok() {

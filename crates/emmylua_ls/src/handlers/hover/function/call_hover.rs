@@ -1,15 +1,15 @@
 use std::{collections::HashSet, sync::Arc};
 
-use emmylua_code_analysis::{DbIndex, LuaFunctionType, LuaType, LuaTypeDeclId, infer_call_generic};
+use emmylua_code_analysis::{
+    DbIndex, LuaFunctionType, LuaType, LuaTypeDeclId, TypeSubstitutor, infer_call_generic,
+};
 use emmylua_parser::LuaCallExpr;
 
 use crate::handlers::hover::{HoverBuilder, HoverDeclContext, HoverDeclInfo};
 
 use super::{
     define_hover::{HoverFunctionInfo, set_builder_contents},
-    extract_function_member,
-    generic::generic_type_substitutor,
-    get_function_description,
+    extract_function_member, get_function_description,
     render::process_function_type,
 };
 
@@ -190,13 +190,11 @@ fn collect_callable_functions(
         }
         LuaType::Generic(generic) => {
             let type_id = generic.get_base_type_id();
+            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
             if !visiting_aliases.insert(type_id.clone()) {
                 return;
             }
 
-            let Some(substitutor) = generic_type_substitutor(typ) else {
-                return;
-            };
             if let Some(type_decl) = db.get_type_index().get_type_decl(&type_id)
                 && let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor))
             {
