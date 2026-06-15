@@ -60,8 +60,10 @@ pub(crate) use infer::try_infer_expr_for_index;
 pub(crate) use infer::{infer_expr, try_infer_expr_no_flow};
 use overload_resolve::resolve_signature;
 pub(crate) use overload_resolve::{
-    callable_accepts_args, collect_callable_overload_groups, get_func_param_type,
-    is_func_last_param_variadic,
+    callable_accepts_args, get_func_param_type, is_func_last_param_variadic,
+};
+pub use overload_resolve::{
+    collect_callable_overload_groups, filter_callable_overloads, find_callable_overload,
 };
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};

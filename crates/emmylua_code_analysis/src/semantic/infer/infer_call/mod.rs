@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaSyntaxKind};
-use hashbrown::HashSet;
 use rowan::TextRange;
 
 use super::{
     super::{InferGuard, LuaInferCache, instantiate_type_generic, resolve_signature},
     InferFailReason, InferResult,
 };
-use crate::semantic::overload_resolve::callable_accepts_args;
 use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaSignature,
@@ -18,9 +16,11 @@ use crate::{
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::TypeSubstitutor, infer::narrow::get_type_at_call_expr_inline_cast,
-        infer_node_semantic_decl, member::find_member_origin_owner,
-        overload_resolve::collect_callable_overload_groups,
+        generic::TypeSubstitutor,
+        infer::narrow::get_type_at_call_expr_inline_cast,
+        infer_node_semantic_decl,
+        member::find_member_origin_owner,
+        overload_resolve::{collect_callable_overload_groups, match_callable_by_arg_types},
     },
 };
 use crate::{build_self_type, infer_call_generic, infer_self_type, semantic::infer_expr};
@@ -236,13 +236,12 @@ fn infer_doc_function(
     Ok(func.clone().into())
 }
 
-fn filter_callable_overloads_by_call_args(
+fn filter_callable_overloads_by_args(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     overloads: Vec<Arc<LuaFunctionType>>,
     call_expr: &LuaCallExpr,
     args_count: Option<usize>,
-    strict_arg_filter: bool,
 ) -> Result<Vec<Arc<LuaFunctionType>>, InferFailReason> {
     let args = call_expr.get_args_list().ok_or(InferFailReason::None)?;
     let expr_types = super::infer_expr_list_types(
@@ -255,35 +254,11 @@ fn filter_callable_overloads_by_call_args(
     .into_iter()
     .map(|(ty, _)| ty)
     .collect::<Vec<_>>();
-    let is_colon_call = call_expr.is_colon_call();
 
     Ok(overloads
         .into_iter()
-        .filter(|func| {
-            let callable_tpls = func
-                .get_generic_params()
-                .iter()
-                .map(|generic_tpl| generic_tpl.get_tpl_id())
-                .collect::<HashSet<_>>();
-
-            if callable_tpls.is_empty() && !strict_arg_filter {
-                return true;
-            }
-
-            let has_tpls = !callable_tpls.is_empty();
-            let mut substitutor = TypeSubstitutor::new();
-            substitutor.add_need_infer_tpls(callable_tpls);
-            let match_func = if has_tpls {
-                let func_type = LuaType::DocFunction(func.clone());
-                match instantiate_type_generic(db, &func_type, &substitutor) {
-                    LuaType::DocFunction(doc_func) => doc_func,
-                    _ => func.clone(),
-                }
-            } else {
-                func.clone()
-            };
-
-            callable_accepts_args(db, &match_func, &expr_types, is_colon_call, args_count)
+        .filter_map(|func| {
+            match_callable_by_arg_types(db, cache, func, &expr_types, call_expr, args_count, true)
         })
         .collect())
 }
@@ -542,13 +517,12 @@ fn infer_union(
         let mut overload_groups = Vec::new();
         collect_callable_overload_groups(db, &ty, &mut overload_groups)?;
         for overloads in overload_groups {
-            let compatible_overloads = filter_callable_overloads_by_call_args(
+            let compatible_overloads = filter_callable_overloads_by_args(
                 db,
                 cache,
                 overloads.clone(),
                 &call_expr,
                 args_count,
-                true,
             )?;
             if compatible_overloads.is_empty() {
                 fallback_overloads.extend(overloads);
@@ -586,14 +560,6 @@ fn infer_union(
     let Some(first_func) = first_func else {
         if !fallback_overloads.is_empty() {
             let contains_tpl = fallback_overloads.iter().any(|func| func.contain_tpl());
-            let fallback_overloads = filter_callable_overloads_by_call_args(
-                db,
-                cache,
-                fallback_overloads,
-                &call_expr,
-                args_count,
-                false,
-            )?;
             return resolve_signature(
                 db,
                 cache,

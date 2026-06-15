@@ -5,7 +5,7 @@ use emmylua_code_analysis::{DbIndex, LuaSemanticDeclId, LuaType, LuaTypeDeclId, 
 use crate::handlers::hover::{HoverBuilder, HoverDeclContext};
 
 use super::{
-    define_hover::{HoverFunctionInfo, set_builder_contents},
+    define_hover::{HoverFunctionInfo, set_function_info_to_builder},
     extract_function_member,
     generic::{instantiate_type_if_needed, owner_type_substitutor, unknown_type_substitutor},
     get_function_description,
@@ -48,7 +48,7 @@ pub(super) fn build_table_field_hover(
         }
     }
 
-    set_builder_contents(builder, &mut function_infos)
+    set_function_info_to_builder(builder, &mut function_infos)
 }
 
 fn resolve_semantic_decl_type(

@@ -73,7 +73,7 @@ pub(super) fn build_function_define_hover(
         }
     }
 
-    set_builder_contents(builder, &mut function_infos)
+    set_function_info_to_builder(builder, &mut function_infos)
 }
 
 fn infer_define_substitutor(builder: &HoverBuilder) -> Option<TypeSubstitutor> {
@@ -92,7 +92,7 @@ fn infer_define_substitutor(builder: &HoverBuilder) -> Option<TypeSubstitutor> {
 }
 
 /// 统一处理文本设置
-pub(super) fn set_builder_contents(
+pub(super) fn set_function_info_to_builder(
     builder: &mut HoverBuilder,
     function_infos: &mut Vec<HoverFunctionInfo>,
 ) -> Option<()> {

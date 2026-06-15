@@ -1,14 +1,12 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
-use emmylua_code_analysis::{
-    DbIndex, LuaFunctionType, LuaType, LuaTypeDeclId, TypeSubstitutor, infer_call_generic,
-};
+use emmylua_code_analysis::{DbIndex, LuaFunctionType, LuaType, find_callable_overload};
 use emmylua_parser::LuaCallExpr;
 
 use crate::handlers::hover::{HoverBuilder, HoverDeclContext, HoverDeclInfo};
 
 use super::{
-    define_hover::{HoverFunctionInfo, set_builder_contents},
+    define_hover::{HoverFunctionInfo, set_function_info_to_builder},
     extract_function_member, get_function_description,
     render::process_function_type,
 };
@@ -34,7 +32,7 @@ pub(super) fn build_function_call_hover(
             }
         }
 
-        return set_builder_contents(builder, &mut function_infos);
+        return set_function_info_to_builder(builder, &mut function_infos);
     }
 
     for matched_decl in matched_decls {
@@ -44,7 +42,7 @@ pub(super) fn build_function_call_hover(
         }
     }
 
-    set_builder_contents(builder, &mut function_infos)
+    set_function_info_to_builder(builder, &mut function_infos)
 }
 
 fn infer_call_arg_types(builder: &HoverBuilder, call_expr: &LuaCallExpr) -> Vec<LuaType> {
@@ -138,87 +136,15 @@ fn find_callable_for_call(
     call_arg_types: &[LuaType],
     call_expr: &LuaCallExpr,
 ) -> Option<Arc<LuaFunctionType>> {
-    let mut overloads = Vec::new();
-    let mut visiting_aliases = HashSet::new();
-    collect_callable_functions(db, decl_type, &mut overloads, &mut visiting_aliases);
-
-    overloads.into_iter().find_map(|func| {
-        let func = if func.contain_tpl() {
-            infer_call_generic(
-                db,
-                &mut builder.semantic_model.get_cache().borrow_mut(),
-                func.as_ref(),
-                call_expr.clone(),
-            )
-            .map(Arc::new)
-            .unwrap_or(func)
-        } else {
-            func
-        };
-
-        builder
-            .semantic_model
-            .callable_accepts_args(
-                func.as_ref(),
-                call_arg_types,
-                call_expr.is_colon_call(),
-                None,
-            )
-            .then_some(func)
-    })
-}
-
-fn collect_callable_functions(
-    db: &DbIndex,
-    typ: &LuaType,
-    overloads: &mut Vec<Arc<LuaFunctionType>>,
-    visiting_aliases: &mut HashSet<LuaTypeDeclId>,
-) {
-    match typ {
-        LuaType::Ref(type_id) | LuaType::Def(type_id) => {
-            let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
-                return;
-            };
-            if !visiting_aliases.insert(type_id.clone()) {
-                return;
-            }
-
-            if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-                collect_callable_functions(db, &origin_type, overloads, visiting_aliases);
-            }
-            visiting_aliases.remove(type_id);
-        }
-        LuaType::Generic(generic) => {
-            let type_id = generic.get_base_type_id();
-            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
-            if !visiting_aliases.insert(type_id.clone()) {
-                return;
-            }
-
-            if let Some(type_decl) = db.get_type_index().get_type_decl(&type_id)
-                && let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor))
-            {
-                collect_callable_functions(db, &origin_type, overloads, visiting_aliases);
-            }
-            visiting_aliases.remove(&type_id);
-        }
-        LuaType::Union(union) => {
-            for member in union.into_vec() {
-                collect_callable_functions(db, &member, overloads, visiting_aliases);
-            }
-        }
-        LuaType::Intersection(intersection) => {
-            for member in intersection.get_types() {
-                collect_callable_functions(db, member, overloads, visiting_aliases);
-            }
-        }
-        LuaType::DocFunction(func) => overloads.push(func.clone()),
-        LuaType::Signature(signature_id) => {
-            if let Some(signature) = db.get_signature_index().get(signature_id) {
-                overloads.extend(signature.overloads.iter().cloned());
-                overloads.push(signature.to_doc_func_type());
-            }
-        }
-        _ => {}
-    }
+    find_callable_overload(
+        db,
+        &mut builder.semantic_model.get_cache().borrow_mut(),
+        decl_type,
+        call_arg_types,
+        call_expr,
+        None,
+        true,
+    )
+    .ok()
+    .flatten()
 }

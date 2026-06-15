@@ -10,7 +10,7 @@ use crate::{
     },
 };
 
-pub(crate) fn collect_callable_overload_groups(
+pub fn collect_callable_overload_groups(
     db: &DbIndex,
     callable_type: &LuaType,
     groups: &mut Vec<Vec<Arc<LuaFunctionType>>>,
