@@ -7,7 +7,7 @@ mod lua;
 mod unresolve;
 
 use crate::{
-    Emmyrc, FileId, InFiled, InferFailReason, LuaType, LuaTypeDeclId,
+    CacheOptions, Emmyrc, FileId, InFiled, InferFailReason, LuaType, LuaTypeDeclId,
     db_index::{DbIndex, WorkspaceId},
     profile::Profile,
 };
@@ -27,12 +27,17 @@ where
     lua::func_body::analyze_func_body_missing_return_flags_with(body, infer_expr_type)
 }
 
-pub fn analyze(db: &mut DbIndex, need_analyzed_files: Vec<InFiled<LuaChunk>>, config: Arc<Emmyrc>) {
+pub fn analyze(
+    db: &mut DbIndex,
+    need_analyzed_files: Vec<InFiled<LuaChunk>>,
+    config: Arc<Emmyrc>,
+    cache_options: CacheOptions,
+) {
     if need_analyzed_files.is_empty() {
         return;
     }
 
-    let contexts = module_analyze(db, need_analyzed_files, config);
+    let contexts = module_analyze(db, need_analyzed_files, config, cache_options);
 
     for (workspace_id, mut context) in contexts {
         context.workspace_id = Some(workspace_id);
@@ -58,6 +63,7 @@ fn module_analyze(
     db: &mut DbIndex,
     need_analyzed_files: Vec<InFiled<LuaChunk>>,
     config: Arc<Emmyrc>,
+    cache_options: CacheOptions,
 ) -> Vec<(WorkspaceId, AnalyzeContext)> {
     if need_analyzed_files.len() == 1 {
         let in_filed_tree = need_analyzed_files[0].clone();
@@ -75,11 +81,11 @@ fn module_analyze(
                 .get_module_index_mut()
                 .add_module_by_path(file_id, path_str);
             let workspace_id = workspace_id.unwrap_or(WorkspaceId::MAIN);
-            let mut context = AnalyzeContext::new(config);
+            let mut context = AnalyzeContext::new(config, cache_options);
             context.add_tree_chunk(in_filed_tree);
             return vec![(workspace_id, context)];
         } else if db.get_vfs().is_remote_file(&file_id) {
-            let mut context = AnalyzeContext::new(config);
+            let mut context = AnalyzeContext::new(config, cache_options);
             context.add_tree_chunk(in_filed_tree);
             return vec![(WorkspaceId::REMOTE, context)];
         };
@@ -118,14 +124,14 @@ fn module_analyze(
 
     let mut contexts = Vec::new();
     if let Some(std_lib) = file_tree_map.remove(&WorkspaceId::STD) {
-        let mut context = AnalyzeContext::new(config.clone());
+        let mut context = AnalyzeContext::new(config.clone(), cache_options);
         context.tree_list = std_lib;
         contexts.push((WorkspaceId::STD, context));
     }
 
     let mut main_vec = Vec::new();
     for (workspace_id, tree_list) in file_tree_map {
-        let mut context = AnalyzeContext::new(config.clone());
+        let mut context = AnalyzeContext::new(config.clone(), cache_options);
         context.tree_list = tree_list;
         if workspace_id.is_library() || workspace_id.is_remote() {
             contexts.push((workspace_id, context));
@@ -153,13 +159,13 @@ pub struct AnalyzeContext {
 }
 
 impl AnalyzeContext {
-    pub fn new(emmyrc: Arc<Emmyrc>) -> Self {
+    pub fn new(emmyrc: Arc<Emmyrc>, cache_options: CacheOptions) -> Self {
         Self {
             tree_list: Vec::new(),
             config: emmyrc,
             metas: HashSet::new(),
             unresolves: Vec::new(),
-            infer_manager: InferCacheManager::new(),
+            infer_manager: InferCacheManager::new(cache_options),
             workspace_id: None,
             pending_type_generic_headers: Vec::new(),
         }

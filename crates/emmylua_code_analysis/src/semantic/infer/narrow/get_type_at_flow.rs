@@ -35,6 +35,10 @@ use crate::{
     },
 };
 
+// Past this point a single flow query is already too expensive to be useful:
+// cache `unknown` instead of letting semantic model construction stall.
+const FLOW_INFERENCE_STEP_BUDGET: usize = 50_000;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 // One cached flow query: one ref at one flow node, optionally without replaying
 // pending condition narrows.
@@ -139,6 +143,20 @@ enum Continuation {
         condition_flow: InferConditionFlow,
         pending_correlated_condition: PendingCorrelatedCondition,
     },
+}
+
+impl Continuation {
+    fn query(&self) -> &FlowQuery {
+        match self {
+            Continuation::Merge { walk, .. }
+            | Continuation::AssignmentAntecedent { walk, .. }
+            | Continuation::ExprReplay { walk, .. }
+            | Continuation::TagCastAntecedent { walk, .. }
+            | Continuation::ConditionDependency { walk, .. }
+            | Continuation::FieldLiteralSiblingDependency { walk, .. }
+            | Continuation::CorrelatedSearchRoot { walk, .. } => &walk.query,
+        }
+    }
 }
 
 enum FlowExprReplay {
@@ -418,13 +436,15 @@ struct FlowTypeEngine<'a> {
     tree: &'a FlowTree,
     cache: &'a mut LuaInferCache,
     root: &'a LuaChunk,
+    steps_remaining: Option<usize>,
 }
 
 impl<'a> FlowTypeEngine<'a> {
     fn run(&mut self, var_ref_id: &VarRefId, flow_id: FlowId) -> InferResult {
         let mut stack = Vec::new();
+        let root_query = FlowQuery::new(self.cache, var_ref_id, flow_id);
         let mut step = SchedulerStep::StartQuery {
-            query: FlowQuery::new(self.cache, var_ref_id, flow_id),
+            query: root_query.clone(),
             continuation: None,
         };
 
@@ -434,12 +454,34 @@ impl<'a> FlowTypeEngine<'a> {
                     query,
                     continuation,
                 } => {
+                    if !self.consume_step() {
+                        let fallback_type = self.finish_budget_fallback(
+                            &root_query,
+                            None,
+                            continuation.as_ref(),
+                            &stack,
+                        );
+                        break Ok(fallback_type);
+                    }
+
                     if let Some(continuation) = continuation {
                         stack.push(continuation);
                     }
                     self.start_query(query)
                 }
-                SchedulerStep::ContinueWalk(walk) => self.evaluate_walk(walk),
+                SchedulerStep::ContinueWalk(walk) => {
+                    if self.steps_remaining == Some(0) {
+                        let fallback_type = self.finish_budget_fallback(
+                            &root_query,
+                            Some(&walk.query),
+                            None,
+                            &stack,
+                        );
+                        break Ok(fallback_type);
+                    }
+
+                    self.evaluate_walk(walk)
+                }
                 SchedulerStep::ResumeNext(query_result) => match stack.pop() {
                     Some(Continuation::Merge {
                         walk,
@@ -520,6 +562,69 @@ impl<'a> FlowTypeEngine<'a> {
             }
             .unwrap_or_else(|err| SchedulerStep::ResumeNext(Err(err)));
         }
+    }
+
+    fn consume_step(&mut self) -> bool {
+        let Some(steps_remaining) = &mut self.steps_remaining else {
+            return true;
+        };
+
+        if *steps_remaining == 0 {
+            return false;
+        }
+
+        *steps_remaining -= 1;
+        true
+    }
+
+    fn finish_budget_fallback(
+        &mut self,
+        root_query: &FlowQuery,
+        current_query: Option<&FlowQuery>,
+        pending_continuation: Option<&Continuation>,
+        stack: &[Continuation],
+    ) -> LuaType {
+        let used_steps = FLOW_INFERENCE_STEP_BUDGET - self.steps_remaining.unwrap_or_default();
+        log::warn!(
+            "flow inference step budget exceeded after {used_steps} steps: file={:?}, ref={:?}, flow={:?}, mode={:?}, stack_depth={}",
+            self.cache.get_file_id(),
+            root_query.var_ref_id,
+            root_query.flow_id,
+            root_query.mode,
+            stack.len(),
+        );
+
+        // The aborted run may leave recursive-infer guards in either cache.
+        for var_cache in &mut self.cache.flow_var_caches {
+            var_cache
+                .type_cache
+                .retain(|_, entry| !matches!(entry, CacheEntry::Ready));
+            var_cache
+                .condition_cache
+                .retain(|_, entry| !matches!(entry, CacheEntry::Ready));
+        }
+
+        self.cache_query_unknown(root_query);
+        if let Some(current_query) = current_query {
+            self.cache_query_unknown(current_query);
+        }
+        if let Some(continuation) = pending_continuation {
+            self.cache_query_unknown(continuation.query());
+        }
+        for continuation in stack {
+            self.cache_query_unknown(continuation.query());
+        }
+
+        LuaType::Unknown
+    }
+
+    fn cache_query_unknown(&mut self, query: &FlowQuery) {
+        get_flow_var_cache(self.cache, query.var_cache_idx)
+            .type_cache
+            .insert(
+                (query.flow_id, query.mode),
+                CacheEntry::Cache(LuaType::Unknown),
+            );
     }
 
     // Begin one flow query. If this `(var_ref, flow_id, mode)` pair is already
@@ -1292,6 +1397,10 @@ impl<'a> FlowTypeEngine<'a> {
     // continuation point like a branch merge.
     fn evaluate_walk(&mut self, mut walk: QueryWalk) -> Result<SchedulerStep, InferFailReason> {
         loop {
+            if !self.consume_step() {
+                return Ok(SchedulerStep::ContinueWalk(walk));
+            }
+
             let flow_node = self
                 .tree
                 .get_flow_node(walk.antecedent_flow_id)
@@ -1569,11 +1678,14 @@ pub(super) fn get_type_at_flow(
     var_ref_id: &VarRefId,
     flow_id: FlowId,
 ) -> InferResult {
+    let steps_remaining = (!cache.get_config().disable_flow_inference_step_budget)
+        .then_some(FLOW_INFERENCE_STEP_BUDGET);
     FlowTypeEngine {
         db,
         tree,
         cache,
         root,
+        steps_remaining,
     }
     .run(var_ref_id, flow_id)
 }
