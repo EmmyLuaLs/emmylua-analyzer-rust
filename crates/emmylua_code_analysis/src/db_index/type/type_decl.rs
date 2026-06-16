@@ -271,7 +271,7 @@ impl LuaTypeDeclId {
         }) as _
     }
 
-    pub fn collect_super_types(&self, db: &DbIndex, collected_types: &mut Vec<LuaType>) {
+    fn collect_super_types(&self, db: &DbIndex, collected_types: &mut Vec<LuaType>) {
         // 必须广度优先
         let mut queue = Vec::new();
         queue.push(self.clone());

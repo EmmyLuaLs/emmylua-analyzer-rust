@@ -391,13 +391,12 @@ fn instantiate_function_generic_params(
         .filter_map(|generic_tpl| {
             let tpl_id = generic_tpl.get_tpl_id();
             let param = generic_tpl.get_param();
-            // A pending entry means this generic belongs to the current instantiation boundary
-            // and has been finalized into the function params/return. Foreign nested generics
-            // are absent from the substitutor and remain owned by the nested function.
+            // substitutor 中存在该泛型时, 说明它有实际类型, 无需保留.
             if context.substitutor.get(tpl_id).is_some() {
                 return None;
             }
 
+            // 对约束与默认值做一次实例化尝试以传递给后续.
             let constraint = param
                 .constraint
                 .as_ref()
