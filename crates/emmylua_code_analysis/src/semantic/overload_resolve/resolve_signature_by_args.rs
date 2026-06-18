@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use crate::{
@@ -112,14 +113,6 @@ pub fn resolve_signature_by_args(
                 *opt_func = None;
                 continue;
             }
-
-            if !has_declined_no_flow_arg
-                && match_result > ParamMatchResult::Any
-                && arg_index + 1 == expr_len
-                && param_index + 1 == func.get_params().len()
-            {
-                return Ok(func.clone());
-            }
         }
 
         if current_match_result == ParamMatchResult::Not {
@@ -147,6 +140,18 @@ pub fn resolve_signature_by_args(
                 .expect("Resolve function should exist"));
         }
         _ => {}
+    }
+
+    if !has_declined_no_flow_arg
+        && let Some(func) = choose_more_specific_callable(
+            db,
+            &rest_need_resolve_funcs,
+            expr_types,
+            is_colon_call,
+            declined_no_flow_args,
+        )
+    {
+        return Ok(func);
     }
 
     let start_param_index = expr_len;
@@ -233,6 +238,110 @@ pub fn resolve_signature_by_args(
         Ok(first)
     } else {
         Err(InferFailReason::None)
+    }
+}
+
+fn choose_more_specific_callable(
+    db: &DbIndex,
+    funcs: &[Option<Arc<LuaFunctionType>>],
+    expr_types: &[LuaType],
+    is_colon_call: bool,
+    declined_no_flow_args: &[bool],
+) -> Option<Arc<LuaFunctionType>> {
+    if expr_types.is_empty()
+        || expr_types.iter().enumerate().all(|(i, expr_type)| {
+            declined_no_flow_args.get(i).copied().unwrap_or(false)
+                || expr_type.is_any()
+                || expr_type.is_unknown()
+        })
+    {
+        return None;
+    }
+
+    let mut best: Option<Arc<LuaFunctionType>> = None;
+    let mut has_strict_better = false;
+    for func in funcs.iter().flatten() {
+        let Some(best_func) = best.as_ref() else {
+            best = Some(func.clone());
+            continue;
+        };
+
+        match compare_callable_specificity(
+            db,
+            func,
+            best_func,
+            expr_types,
+            is_colon_call,
+            declined_no_flow_args,
+        ) {
+            Some(Ordering::Greater) => {
+                best = Some(func.clone());
+                has_strict_better = true;
+            }
+            Some(Ordering::Less) => {
+                has_strict_better = true;
+            }
+            Some(Ordering::Equal) => {}
+            None => return None,
+        }
+    }
+
+    if has_strict_better { best } else { None }
+}
+
+fn compare_callable_specificity(
+    db: &DbIndex,
+    a: &LuaFunctionType,
+    b: &LuaFunctionType,
+    expr_types: &[LuaType],
+    is_colon_call: bool,
+    declined_no_flow_args: &[bool],
+) -> Option<Ordering> {
+    let mut result = Ordering::Equal;
+    for (arg_index, expr_type) in expr_types.iter().enumerate() {
+        if declined_no_flow_args
+            .get(arg_index)
+            .copied()
+            .unwrap_or(false)
+            || expr_type.is_any()
+            || expr_type.is_unknown()
+        {
+            continue;
+        }
+
+        let param_index = get_call_param_index(a, arg_index, is_colon_call)?;
+        let a_param = get_func_param_type(a, param_index)?;
+        let b_param = get_func_param_type(b, param_index)?;
+        let param_order = compare_param_specificity(db, &a_param, &b_param);
+        match (result, param_order) {
+            (Ordering::Equal, order) => result = order,
+            (Ordering::Greater, Ordering::Less) | (Ordering::Less, Ordering::Greater) => {
+                return None;
+            }
+            _ => {}
+        }
+    }
+
+    Some(result)
+}
+
+fn compare_param_specificity(db: &DbIndex, a: &LuaType, b: &LuaType) -> Ordering {
+    if a == b {
+        return Ordering::Equal;
+    }
+
+    match (a.is_any() || a.is_unknown(), b.is_any() || b.is_unknown()) {
+        (true, false) => return Ordering::Less,
+        (false, true) => return Ordering::Greater,
+        _ => {}
+    }
+
+    let a_sub_b = check_type_compact(db, b, a).is_ok();
+    let b_sub_a = check_type_compact(db, a, b).is_ok();
+    match (a_sub_b, b_sub_a) {
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        _ => Ordering::Equal,
     }
 }
 

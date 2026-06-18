@@ -91,8 +91,9 @@ fn collect_callable_overload_groups_inner(
             let Some(signature) = db.get_signature_index().get(sig_id) else {
                 return Ok(());
             };
-            let mut overloads = signature.overloads.to_vec();
-            overloads.push(signature.to_doc_func_type());
+            // 主签名描述了函数实现本身, 当它和 overload 同时可匹配时应作为同等匹配下的优先候选.
+            let mut overloads = vec![signature.to_doc_func_type()];
+            overloads.extend(signature.overloads.iter().cloned());
             groups.push(overloads);
         }
         LuaType::Instance(instance) => {

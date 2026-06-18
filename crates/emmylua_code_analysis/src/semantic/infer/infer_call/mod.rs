@@ -933,6 +933,33 @@ mod tests {
     }
 
     #[test]
+    fn test_generic_main_signature_preferred_for_callback_arg_overload() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param fov (fun(): T?)
+            ---@return T?
+            ---@overload fun(fov: T): T
+            function fn_or_val(fov)
+            end
+
+            ---@type fun(): string?
+            local fn
+
+            local foo = fn_or_val(fn)
+            result = foo
+            value_result = fn_or_val("bar")
+            "#,
+        );
+
+        let foo = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(foo), "string?");
+        let value = ws.expr_ty("value_result");
+        assert_eq!(ws.humanize_type(value), "string");
+    }
+
+    #[test]
     fn test_union_call_ignores_unresolved_alias_member() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
