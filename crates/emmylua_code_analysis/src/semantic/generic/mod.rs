@@ -1,4 +1,3 @@
-mod call_constraint;
 mod infer_call_generic;
 mod instantiate_type;
 mod test;
@@ -6,11 +5,9 @@ mod tpl_context;
 mod tpl_pattern;
 mod type_substitutor;
 
-pub use call_constraint::{
-    CallConstraintArg, CallConstraintContext, build_call_constraint_context,
-    normalize_constraint_type,
+pub use infer_call_generic::{
+    build_call_generic_substitutor, build_self_type, infer_call_generic, infer_self_type,
 };
-pub use infer_call_generic::{build_self_type, infer_call_generic, infer_self_type};
 pub use instantiate_type::get_keyof_members;
 pub use instantiate_type::*;
 pub use tpl_context::TplContext;

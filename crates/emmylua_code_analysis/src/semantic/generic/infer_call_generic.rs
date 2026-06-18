@@ -37,49 +37,7 @@ pub fn infer_call_generic(
     func: &LuaFunctionType,
     call_expr: LuaCallExpr,
 ) -> Result<LuaFunctionType, InferFailReason> {
-    let file_id = cache.get_file_id().clone();
-
-    let mut substitutor = TypeSubstitutor::new();
-    let mut context = TplContext {
-        db,
-        cache,
-        substitutor: &mut substitutor,
-        call_expr: Some(call_expr.clone()),
-    };
-    // 填充前缀类型可能存在的泛型
-    fill_call_prefix_substitutor(&mut context, &call_expr);
-
-    let has_func_generic = func
-        .get_generic_params()
-        .iter()
-        .any(|generic_tpl| generic_tpl.get_tpl_id().is_func());
-    if has_func_generic {
-        let generic_tpls = func
-            .get_generic_params()
-            .iter()
-            .map(|generic_tpl| generic_tpl.get_tpl_id())
-            .filter(GenericTplId::is_func)
-            .collect::<HashSet<_>>();
-        context.substitutor.add_need_infer_tpls(generic_tpls);
-
-        if let Some(type_list) = call_expr.get_call_generic_type_list() {
-            // 如果使用了`obj:abc--[[@<string>]]("abc")`强制指定了泛型, 那么我们只需要直接应用
-            apply_call_generic_type_list(db, file_id, &mut context, &type_list);
-        } else {
-            // 如果没有指定泛型, 则需要从调用参数中推断
-            let origin_params = func.get_params();
-            let mut func_params: Vec<LuaType> = origin_params
-                .iter()
-                .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
-                .collect();
-            infer_generic_types_from_call(db, &mut context, func, &call_expr, &mut func_params)?;
-        }
-    }
-
-    let contain_self = func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer));
-    if contain_self && let Some(self_type) = infer_self_type(db, cache, &call_expr) {
-        substitutor.add_self_type(self_type);
-    }
+    let substitutor = build_call_generic_substitutor(db, cache, func, &call_expr)?;
 
     let func_type = LuaType::DocFunction(func.clone().into());
     if let LuaType::DocFunction(f) = instantiate_type_generic(db, &func_type, &substitutor) {
@@ -87,6 +45,61 @@ pub fn infer_call_generic(
     } else {
         Ok(func.clone())
     }
+}
+
+pub fn build_call_generic_substitutor(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    func: &LuaFunctionType,
+    call_expr: &LuaCallExpr,
+) -> Result<TypeSubstitutor, InferFailReason> {
+    let file_id = cache.get_file_id().clone();
+
+    let mut substitutor = TypeSubstitutor::new();
+    {
+        let mut context = TplContext {
+            db,
+            cache,
+            substitutor: &mut substitutor,
+            call_expr: Some(call_expr.clone()),
+        };
+        // 填充前缀类型可能存在的泛型
+        fill_call_prefix_substitutor(&mut context, call_expr);
+
+        let has_func_generic = func
+            .get_generic_params()
+            .iter()
+            .any(|generic_tpl| generic_tpl.get_tpl_id().is_func());
+        if has_func_generic {
+            let generic_tpls = func
+                .get_generic_params()
+                .iter()
+                .map(|generic_tpl| generic_tpl.get_tpl_id())
+                .filter(GenericTplId::is_func)
+                .collect::<HashSet<_>>();
+            context.substitutor.add_need_infer_tpls(generic_tpls);
+
+            if let Some(type_list) = call_expr.get_call_generic_type_list() {
+                // 如果使用了`obj:abc--[[@<string>]]("abc")`强制指定了泛型, 那么我们只需要直接应用
+                apply_call_generic_type_list(db, file_id, &mut context, &type_list);
+            } else {
+                // 如果没有指定泛型, 则需要从调用参数中推断
+                let origin_params = func.get_params();
+                let mut func_params: Vec<LuaType> = origin_params
+                    .iter()
+                    .map(|(_, t)| t.clone().unwrap_or(LuaType::Unknown))
+                    .collect();
+                infer_generic_types_from_call(db, &mut context, func, call_expr, &mut func_params)?;
+            }
+        }
+    }
+
+    let contain_self = func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer));
+    if contain_self && let Some(self_type) = infer_self_type(db, cache, call_expr) {
+        substitutor.add_self_type(self_type);
+    }
+
+    Ok(substitutor)
 }
 
 fn apply_call_generic_type_list(

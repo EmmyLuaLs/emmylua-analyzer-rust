@@ -67,7 +67,7 @@ impl LuaTupleType {
         self.contain_tpl_children()
     }
 
-    pub fn cast_down_array_base(&self, db: &DbIndex) -> LuaType {
+    pub fn collapse_to_union(&self, db: &DbIndex) -> LuaType {
         let mut ty = LuaType::Never;
         for t in &self.types {
             match t {

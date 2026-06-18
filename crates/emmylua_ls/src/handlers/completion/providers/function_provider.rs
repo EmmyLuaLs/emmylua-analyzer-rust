@@ -2,7 +2,7 @@ use emmylua_code_analysis::{
     DbIndex, GenericTpl, InferGuard, InferGuardRef, LuaAliasCallKind, LuaAliasCallType,
     LuaDeclLocation, LuaFunctionType, LuaMemberKey, LuaMemberOwner, LuaMultiLineUnion,
     LuaStringTplType, LuaType, LuaTypeCache, LuaTypeDeclId, LuaUnionType, RenderLevel,
-    filter_callable_overloads, get_real_type, normalize_constraint_type,
+    filter_callable_overloads, get_real_type,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaClosureExpr,
@@ -355,10 +355,14 @@ fn infer_call_arg_list(
             .get(param_idx)
             .and_then(|param| param.1.clone())
         {
-            types.push(normalize_constraint_type(
-                builder.semantic_model.get_db(),
-                typ,
-            ));
+            // 转换为更易比较的形式
+            let normalized_typ = match typ {
+                LuaType::Tuple(tuple) if tuple.is_infer_resolve() => {
+                    tuple.collapse_to_union(builder.semantic_model.get_db())
+                }
+                _ => typ,
+            };
+            types.push(normalized_typ);
         }
     }
 

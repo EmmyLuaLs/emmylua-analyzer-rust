@@ -3,8 +3,8 @@ use std::sync::Arc;
 use emmylua_parser::LuaCallExpr;
 
 use crate::{
-    DbIndex, LuaFunctionType, LuaType,
-    semantic::{LuaInferCache, generic::infer_call_generic, infer::InferFailReason},
+    DbIndex, LuaFunctionType, LuaType, infer_call_generic,
+    semantic::{LuaInferCache, infer::InferFailReason},
 };
 
 use super::{
