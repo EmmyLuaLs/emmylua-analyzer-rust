@@ -1218,6 +1218,25 @@ mod test {
     }
 
     #[test]
+    fn test_nested_function_keeps_unresolved_variadic_return_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic R
+            ---@return fun(): R...
+            function make()
+            end
+
+            local f = make()
+            Result = f()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "unknown");
+    }
+
+    #[test]
     fn test_generic_defaults_visible_before_cross_file_doc_analysis() {
         let mut ws = VirtualWorkspace::new();
         ws.def_files(vec![

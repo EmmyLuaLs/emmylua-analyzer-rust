@@ -92,6 +92,43 @@ mod test {
     }
 
     #[test]
+    fn test_pcall_array_return_narrow_after_error_guard() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        ws.def(
+            r#"
+        ---@class Runner
+
+        ---@class File
+
+        ---@param specs string[]
+        ---@param runner Runner
+        ---@return File[] files
+        local function startTests(specs, runner)
+            local ok, result = pcall(function ()
+                ---@type File[]
+                local files
+
+                return files
+            end)
+
+            outside = result
+            if not ok then
+                error(result)
+            end
+            ---@cast result - string
+
+            narrowed = result
+            return result
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("outside"), ws.ty("File[]|string"));
+        assert_eq!(ws.expr_ty("narrowed"), ws.ty("File[]"));
+    }
+
+    #[test]
     fn test_nested_pcall_like_without_return_overload() {
         let mut ws = VirtualWorkspace::new();
 

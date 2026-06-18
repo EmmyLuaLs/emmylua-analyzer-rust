@@ -566,47 +566,39 @@ fn instantiate_variadic_type(
 ) -> LuaType {
     match variadic {
         VariadicType::Base(base) => match base {
-            LuaType::TplRef(tpl) => {
-                if let Some(value) = context.substitutor.get(tpl.get_tpl_id()) {
-                    match value {
-                        SubstitutorValue::None => {
-                            let fallback = instantiate_uninferred_tpl_fallback(tpl, context);
-                            return match fallback {
-                                LuaType::Variadic(_) | LuaType::Never => fallback,
-                                LuaType::Nil | LuaType::Any | LuaType::Unknown => fallback,
-                                _ => LuaType::Variadic(VariadicType::Base(fallback).into()),
-                            };
-                        }
-                        SubstitutorValue::Type(ty) => {
-                            let resolved_type = substitutor_type_for_tpl(tpl, ty);
-                            if matches!(
-                                resolved_type,
-                                LuaType::Nil | LuaType::Any | LuaType::Unknown | LuaType::Never
-                            ) {
-                                return resolved_type.clone();
-                            }
-                            return LuaType::Variadic(
-                                VariadicType::Base(resolved_type.clone()).into(),
-                            );
-                        }
-                        SubstitutorValue::MultiTypes(types) => {
-                            return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
-                        }
-                        SubstitutorValue::Params(params) => {
-                            let types = params
-                                .iter()
-                                .filter_map(|(_, ty)| ty.clone())
-                                .collect::<Vec<_>>();
-                            return LuaType::Variadic(VariadicType::Multi(types).into());
-                        }
-                        SubstitutorValue::MultiBase(base) => {
-                            return LuaType::Variadic(VariadicType::Base(base.clone()).into());
-                        }
+            LuaType::TplRef(tpl) => match context.substitutor.get(tpl.get_tpl_id()) {
+                Some(SubstitutorValue::Type(ty)) => {
+                    let resolved_type = substitutor_type_for_tpl(tpl, ty);
+                    if matches!(
+                        resolved_type,
+                        LuaType::Nil | LuaType::Any | LuaType::Unknown | LuaType::Never
+                    ) {
+                        return resolved_type.clone();
                     }
-                } else {
-                    return LuaType::Never;
+                    return LuaType::Variadic(VariadicType::Base(resolved_type.clone()).into());
                 }
-            }
+                Some(SubstitutorValue::MultiTypes(types)) => {
+                    return LuaType::Variadic(VariadicType::Multi(types.clone()).into());
+                }
+                Some(SubstitutorValue::Params(params)) => {
+                    let types = params
+                        .iter()
+                        .filter_map(|(_, ty)| ty.clone())
+                        .collect::<Vec<_>>();
+                    return LuaType::Variadic(VariadicType::Multi(types).into());
+                }
+                Some(SubstitutorValue::MultiBase(base)) => {
+                    return LuaType::Variadic(VariadicType::Base(base.clone()).into());
+                }
+                Some(SubstitutorValue::None) | None => {
+                    let fallback = instantiate_uninferred_tpl_fallback(tpl, context);
+                    return match fallback {
+                        LuaType::Variadic(_) | LuaType::Never => fallback,
+                        LuaType::Nil | LuaType::Any | LuaType::Unknown => fallback,
+                        _ => LuaType::Variadic(VariadicType::Base(fallback).into()),
+                    };
+                }
+            },
             LuaType::Generic(generic) => {
                 return instantiate_generic_type(context, generic);
             }

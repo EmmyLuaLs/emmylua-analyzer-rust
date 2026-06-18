@@ -334,6 +334,38 @@ mod tests {
     }
 
     #[test]
+    fn test_pcall_return_array_after_error_guard() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class Runner
+
+            ---@class File
+
+            ---@param specs string[]
+            ---@param runner Runner
+            ---@return File[] files
+            local function startTests(specs, runner)
+                local ok, result = pcall(function ()
+                    ---@type File[]
+                    local files
+
+                    return files
+                end)
+                if not ok then
+                    error(result)
+                end
+                ---@cast result - string
+
+                return result
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_variadic_return_type_mismatch() {
         let mut ws = VirtualWorkspace::new();
 
