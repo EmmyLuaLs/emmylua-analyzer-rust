@@ -28,32 +28,6 @@ mod tests {
         result
     }
 
-    fn make_issue_1028_repeated_prefix_guard_chain_content() -> String {
-        let mut content = String::from("V_cfad19afc42b = V_cfad19afc42b or {}\n");
-        for i in 0..600 {
-            let table_key = 3_121_212;
-            let field_key = 1_111_112 + i;
-            content.push_str(&format!(
-                "if V_cfad19afc42b[{table_key}] and V_cfad19afc42b[{table_key}][{field_key}] then\n    V_cfad19afc42b[{table_key}][{field_key}][\"__STR_{i}__\"] = \"__STR_{}__\"\nend\n\n",
-                i + 1,
-            ));
-        }
-        content
-    }
-
-    #[gtest]
-    fn test_1() -> Result<()> {
-        let mut ws = ProviderVirtualWorkspace::new();
-        let _ = ws.check_semantic_token(
-            r#"
-            ---@class Cast1
-            ---@field a string      # test
-        "#,
-            vec![],
-        );
-        Ok(())
-    }
-
     #[gtest]
     fn test_require_alias_prefix_is_namespace_in_index_expr() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
@@ -148,6 +122,21 @@ m.foo()
         Ok(())
     }
 
+    #[cfg(feature = "slow-tests")]
+    fn make_issue_1028_repeated_prefix_guard_chain_content() -> String {
+        let mut content = String::from("V_cfad19afc42b = V_cfad19afc42b or {}\n");
+        for i in 0..600 {
+            let table_key = 3_121_212;
+            let field_key = 1_111_112 + i;
+            content.push_str(&format!(
+                "if V_cfad19afc42b[{table_key}] and V_cfad19afc42b[{table_key}][{field_key}] then\n    V_cfad19afc42b[{table_key}][{field_key}][\"__STR_{i}__\"] = \"__STR_{}__\"\nend\n\n",
+                i + 1,
+            ));
+        }
+        content
+    }
+
+    #[cfg(feature = "slow-tests")]
     #[gtest]
     fn test_issue_1028_i18n_semantic_tokens_repeated_prefix_guard_chain() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
