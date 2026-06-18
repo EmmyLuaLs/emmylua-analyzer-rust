@@ -4,8 +4,8 @@ use emmylua_parser::{LuaAstNode, LuaIndexMemberExpr, LuaTableExpr, LuaVarExpr};
 
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaDocParamInfo, LuaDocReturnInfo,
-    LuaFunctionType, LuaInferCache, LuaSignature, LuaType, SignatureReturnStatus, TypeOps,
-    get_real_type, infer_call_expr_func, infer_expr, infer_table_should_be,
+    LuaFunctionType, LuaInferCache, LuaMemberId, LuaSignature, LuaType, SignatureReturnStatus,
+    TypeOps, get_real_type, infer_call_expr_func, infer_expr, infer_table_should_be,
 };
 
 use super::{
@@ -205,7 +205,7 @@ pub fn try_resolve_closure_parent_params(
     if !signature.param_docs.is_empty() {
         return Ok(());
     }
-    let self_type;
+    let mut self_type = None;
     let member_type = match &closure_params.parent_ast {
         UnResolveParentAst::LuaFuncStat(func_stat) => {
             let func_name = func_stat.get_func_name().ok_or(InferFailReason::None)?;
@@ -227,19 +227,36 @@ pub fn try_resolve_closure_parent_params(
             }
         }
         UnResolveParentAst::LuaTableField(table_field) => {
-            let parnet_table_expr = table_field
-                .get_parent::<LuaTableExpr>()
-                .ok_or(InferFailReason::None)?;
-            let parent_table_type = infer_table_should_be(db, cache, parnet_table_expr)?;
-            self_type = Some(parent_table_type.clone());
-            find_best_function_type(
-                db,
-                cache,
-                &parent_table_type,
-                LuaIndexMemberExpr::TableField(table_field.clone()),
-                signature,
-            )
-            .ok_or(InferFailReason::None)?
+            let parent_member_type = if let Some(parent_table_expr) =
+                table_field.get_parent::<LuaTableExpr>()
+            {
+                if let Ok(parent_table_type) = infer_table_should_be(db, cache, parent_table_expr) {
+                    self_type = Some(parent_table_type.clone());
+                    find_best_function_type(
+                        db,
+                        cache,
+                        &parent_table_type,
+                        LuaIndexMemberExpr::TableField(table_field.clone()),
+                        signature,
+                    )
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(parent_member_type) = parent_member_type {
+                parent_member_type
+            } else {
+                let member_id =
+                    LuaMemberId::new(table_field.get_syntax_id(), closure_params.file_id);
+                db.get_type_index()
+                    .get_type_cache(&member_id.into())
+                    .filter(|type_cache| type_cache.is_doc())
+                    .map(|type_cache| type_cache.as_type().clone())
+                    .ok_or(InferFailReason::None)?
+            }
         }
         UnResolveParentAst::LuaAssignStat(assign) => {
             let (vars, exprs) = assign.get_var_and_expr_list();
