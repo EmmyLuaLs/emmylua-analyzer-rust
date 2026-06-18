@@ -5,7 +5,6 @@ mod test {
     use ntest::timeout;
 
     const STACKED_TYPE_GUARDS: usize = 180;
-    const LARGE_LINEAR_ASSIGNMENT_STEPS: usize = 2048;
     const MAXWELLHOME_ARRAY_VALUES: usize = 2048;
 
     #[test]
@@ -438,6 +437,7 @@ mod test {
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
     }
 
+    #[cfg(feature = "slow-tests")]
     #[test]
     fn test_large_linear_assignment_file_builds_semantic_model() {
         let mut ws = VirtualWorkspace::new();
@@ -449,7 +449,7 @@ mod test {
         "#,
         );
 
-        for i in 0..LARGE_LINEAR_ASSIGNMENT_STEPS {
+        for i in 0..2048 {
             block.push_str(&format!("local alias_{i} = value\n"));
             block.push_str(&format!("value = alias_{i}\n"));
         }

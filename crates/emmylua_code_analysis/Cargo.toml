@@ -57,6 +57,7 @@ hashbrown.workspace = true
 [features]
 default = []
 reqwest = ["dep:reqwest"]
+slow-tests = []
 
 [package.metadata.i18n]
 available-locales = ["en", "zh_CN", "zh_HK"]
