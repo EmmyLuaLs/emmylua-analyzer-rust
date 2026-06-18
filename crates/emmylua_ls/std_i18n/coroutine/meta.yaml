@@ -12,7 +12,7 @@ b:
   e:
   - ['coroutinelib.isyieldable', 'd', doc, [26, 0, 31, 0], '20f67ae45ee960e5']
 - a: 'function coroutine.close(co) end'
-  g: '@version > 5.4'
+  g: '@version >5.4'
   r: [36, 0, 42, 27]
   e:
   - ['coroutinelib.close', 'd', doc, [37, 0, 40, 0], '5764a16103c9f082']
@@ -27,7 +27,7 @@ b:
   e:
   - ['coroutinelib.running@5.1,JIT', 'd', doc, [64, 0, 66, 0], '7c8c404ec5933d56']
 - a: 'function coroutine.running() end'
-  g: '@version > 5.2'
+  g: '@version >5.2'
   r: [70, 0, 75, 14]
   e:
   - ['coroutinelib.running@>5.2', 'd', doc, [71, 0, 74, 0], '3b9508453c78ef79']

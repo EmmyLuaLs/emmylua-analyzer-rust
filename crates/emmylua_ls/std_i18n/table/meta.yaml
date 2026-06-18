@@ -12,7 +12,7 @@ b:
   e:
   - ['tablelib.insert', 'd', doc, [31, 0, 36, 0], '3f149377193529ce']
 - a: 'function table.move(a1, f, e, t, a2) end'
-  g: '@version > 5.3'
+  g: '@version >5.3'
   r: [42, 0, 56, 17]
   e:
   - ['tablelib.move', 'd', doc, [43, 0, 50, 0], '4eaddc2518d941b3']
@@ -32,12 +32,12 @@ b:
   e:
   - ['tablelib.sort', 'd', doc, [84, 0, 98, 0], 'b11a809b5964de0f']
 - a: 'function table.unpack(list, i, j) end'
-  g: '@version > 5.2, JIT'
+  g: '@version >5.2, JIT'
   r: [103, 0, 112, 37]
   e:
   - ['tablelib.unpack', 'd', doc, [104, 0, 108, 0], 'ae6b75e5905939b2']
 - a: 'function table.pack(...) end'
-  g: '@version > 5.2, JIT'
+  g: '@version >5.2, JIT'
   r: [115, 0, 122, 14]
   e:
   - ['tablelib.pack', 'd', doc, [116, 0, 119, 0], 'fb27f783adc7ab01']
