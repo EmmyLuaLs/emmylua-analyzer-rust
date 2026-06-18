@@ -570,4 +570,24 @@ mod tests {
 
         Ok(())
     }
+
+    #[gtest]
+    fn test_hover_right_expr() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                local max = 0
+                local key
+                if type(key) ~= "number" then
+                    return false
+                end
+                m<??>ax = key
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal max: integer\n```".to_string(),
+            },
+        ));
+
+        Ok(())
+    }
 }

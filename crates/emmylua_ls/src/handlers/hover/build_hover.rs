@@ -159,8 +159,9 @@ fn build_decl_hover(
             };
             builder.set_type_description(format!("{}{}: {}", prefix, decl.get_name(), const_value));
         } else {
-            let decl_hover_type =
-                get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
+            let target_type = builder.semantic_model.get_type(decl_id.into()).clone();
+            let decl_hover_type = get_hover_type(builder, builder.semantic_model, &target_type)
+                .unwrap_or(typ.clone());
             let type_humanize_text =
                 hover_humanize_type(builder, &decl_hover_type, Some(builder.detail_render_level));
             let prefix = if decl.is_local() {
@@ -250,8 +251,12 @@ fn build_member_hover(
             builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
             builder.set_location_path(Some(member));
         } else {
-            let member_hover_type =
-                get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
+            let target_type = builder
+                .semantic_model
+                .get_type(member.get_id().into())
+                .clone();
+            let member_hover_type = get_hover_type(builder, builder.semantic_model, &target_type)
+                .unwrap_or(typ.clone());
             let level = if member_hover_type.is_module_ref() {
                 builder.detail_render_level
             } else {
@@ -338,12 +343,23 @@ pub fn add_signature_ret_description(
             ));
         }
     }
-    for (i, ret_overload) in signature.return_overloads.iter().enumerate() {
-        if let Some(description) = ret_overload.description.clone() {
+    for ret_overload in &signature.return_overloads {
+        let return_overload_types = ret_overload
+            .type_refs
+            .iter()
+            .map(|ty| humanize_type(db, ty, RenderLevel::Simple))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let description = ret_overload.description.as_deref().unwrap_or_default();
+        if description.is_empty() {
             s.push_str(&format!(
-                "@*return_overload* #{} — {}\n\n",
-                i + 1,
-                description
+                "@*return_overload* `{}`\n\n",
+                return_overload_types
+            ));
+        } else {
+            s.push_str(&format!(
+                "@*return_overload* `{}` — {}\n\n",
+                return_overload_types, description
             ));
         }
     }
@@ -353,7 +369,11 @@ pub fn add_signature_ret_description(
     Some(())
 }
 
-pub fn get_hover_type(builder: &HoverBuilder, semantic_model: &SemanticModel) -> Option<LuaType> {
+pub fn get_hover_type(
+    builder: &HoverBuilder,
+    semantic_model: &SemanticModel,
+    target_type: &LuaType,
+) -> Option<LuaType> {
     let assign_stat = LuaAssignStat::cast(builder.get_trigger_token()?.parent()?.parent()?)?;
     let (vars, exprs) = assign_stat.get_var_and_expr_list();
     for (i, var) in vars.iter().enumerate() {
@@ -374,9 +394,16 @@ pub fn get_hover_type(builder: &HoverBuilder, semantic_model: &SemanticModel) ->
             match expr_type {
                 Ok(expr_type) => match expr_type {
                     LuaType::Variadic(muli_return) => {
-                        return muli_return.get_type(multi_return_index).cloned();
+                        let expr_type = muli_return.get_type(multi_return_index).cloned()?;
+                        if semantic_model.type_check(target_type, &expr_type).is_ok() {
+                            return Some(expr_type);
+                        }
                     }
-                    _ => return Some(expr_type),
+                    _ => {
+                        if semantic_model.type_check(target_type, &expr_type).is_ok() {
+                            return Some(expr_type);
+                        }
+                    }
                 },
                 Err(_) => return None,
             }
