@@ -2,7 +2,10 @@
 mod test {
     use emmylua_parser::{LuaAstNode, LuaLocalName};
 
-    use crate::{DiagnosticCode, LuaDeclId, LuaSemanticDeclId, VirtualWorkspace};
+    use crate::{
+        DiagnosticCode, LuaDeclId, LuaDeprecated, LuaMemberKey, LuaMemberOwner, LuaSemanticDeclId,
+        VirtualWorkspace,
+    };
 
     fn assert_type_decl_deprecated(content: &str, name: &str) {
         let mut ws = VirtualWorkspace::new();
@@ -16,6 +19,70 @@ mod test {
             .get_property_index()
             .get_property(&LuaSemanticDeclId::TypeDecl(type_decl.get_id()))
             .expect("type declaration property must exist");
+
+        assert!(property.deprecated().is_some());
+    }
+
+    fn assert_type_decl_deprecated_message(content: &str, name: &str, expected: &str) {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(content);
+        let db = ws.analysis.compilation.get_db();
+        let type_decl = db
+            .get_type_index()
+            .find_type_decl(file_id, name, db.resolve_workspace_id(file_id))
+            .expect("type declaration must exist");
+        let property = db
+            .get_property_index()
+            .get_property(&LuaSemanticDeclId::TypeDecl(type_decl.get_id()))
+            .expect("type declaration property must exist");
+
+        match property.deprecated() {
+            Some(LuaDeprecated::DeprecatedWithMessage(message)) => assert_eq!(message, expected),
+            Some(LuaDeprecated::Deprecated) => panic!("deprecated message must exist"),
+            None => panic!("deprecated property must exist"),
+        }
+    }
+
+    fn assert_type_decl_description(content: &str, name: &str, expected: &str) {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(content);
+        let db = ws.analysis.compilation.get_db();
+        let type_decl = db
+            .get_type_index()
+            .find_type_decl(file_id, name, db.resolve_workspace_id(file_id))
+            .expect("type declaration must exist");
+        let property = db
+            .get_property_index()
+            .get_property(&LuaSemanticDeclId::TypeDecl(type_decl.get_id()))
+            .expect("type declaration property must exist");
+
+        assert_eq!(property.description().map(|it| it.as_str()), Some(expected));
+    }
+
+    fn assert_field_deprecated(content: &str, type_name: &str, field_name: &str) {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(content);
+        let db = ws.analysis.compilation.get_db();
+        let type_decl = db
+            .get_type_index()
+            .find_type_decl(file_id, type_name, db.resolve_workspace_id(file_id))
+            .expect("type declaration must exist");
+        let member_item = db
+            .get_member_index()
+            .get_member_item(
+                &LuaMemberOwner::Type(type_decl.get_id()),
+                &LuaMemberKey::Name(field_name.into()),
+            )
+            .expect("field member must exist");
+        let member_id = member_item
+            .get_member_ids()
+            .into_iter()
+            .next()
+            .expect("field member id must exist");
+        let property = db
+            .get_property_index()
+            .get_property(&LuaSemanticDeclId::Member(member_id))
+            .expect("field property must exist");
 
         assert!(property.deprecated().is_some());
     }
@@ -169,6 +236,48 @@ mod test {
             local Foo = {}
         "#,
             "Foo",
+        );
+    }
+
+    #[test]
+    fn test_deprecated_class_keeps_attached_description() {
+        assert_type_decl_description(
+            r#"
+            ---Old user class
+            ---@deprecated use ModernUser instead
+            ---@class OldUser
+            local OldUser = {}
+        "#,
+            "OldUser",
+            "Old user class",
+        );
+    }
+
+    #[test]
+    fn test_deprecated_message_uses_inline_text_only() {
+        assert_type_decl_deprecated_message(
+            r#"
+            ---@deprecated use ModernUser instead
+            ---Old user class
+            ---@class OldUser
+            local OldUser = {}
+        "#,
+            "OldUser",
+            "use ModernUser instead",
+        );
+    }
+
+    #[test]
+    fn test_deprecated_field_attaches_to_field() {
+        assert_field_deprecated(
+            r#"
+            ---@class APIResponse
+            ---@field success boolean
+            ---@deprecated use errorMessage instead
+            ---@field error string
+        "#,
+            "APIResponse",
+            "error",
         );
     }
 }
