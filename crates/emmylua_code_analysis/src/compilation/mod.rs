@@ -3,6 +3,8 @@ mod test;
 
 use std::sync::Arc;
 
+pub(crate) use analyzer::{analyze_func_body_returns_with, analyze_return_point};
+
 use crate::{
     Emmyrc, FileId, InFiled, InferFailReason, LuaIndex, LuaInferCache, LuaType, db_index::DbIndex,
     semantic::SemanticModel,

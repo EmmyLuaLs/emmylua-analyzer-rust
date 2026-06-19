@@ -492,7 +492,6 @@ fn infer_generic_types_from_call(
     if !context.substitutor.is_infer_all_tpl() {
         for (func_param_type, call_arg_expr) in unresolve_tpls {
             let closure_type = infer_expr(db, context.cache, call_arg_expr)?;
-
             tpl_pattern_match(context, &func_param_type, &closure_type)?;
         }
     }

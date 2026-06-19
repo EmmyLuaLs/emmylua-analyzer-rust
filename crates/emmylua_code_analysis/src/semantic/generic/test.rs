@@ -298,4 +298,29 @@ result = {
             "#
         ));
     }
+
+    #[test]
+    fn test_generic_map_lambda_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T, U
+            ---@param list T[]
+            ---@param fn fun(item: T): U
+            ---@return U[]
+            local function map(list, fn)
+            end
+
+            local list_1 = {} ---@type string[]
+
+            _mapped_2 = map(list_1, function (item)
+                return item
+            end)
+        "#,
+        );
+
+        let ty = ws.expr_ty("_mapped_2");
+        let expected = ws.ty("string[]");
+        assert_eq!(ty, expected);
+    }
 }
