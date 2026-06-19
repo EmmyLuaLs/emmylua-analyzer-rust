@@ -115,16 +115,13 @@ fn check_ref_enum(
         _ => compact_type.clone(),
     };
 
-    // 当 enum 的值全为整数常量时, 可能会用于位运算, 此时右值推断为整数
+    // 整数 enum 参与位运算时结果会被推断为宽泛 Integer, 但直接写入整数常量仍需匹配 enum 字段.
     if let LuaType::Union(union_types) = &enum_fields
         && union_types
             .into_vec()
             .iter()
             .all(|t| matches!(t, LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)))
-        && matches!(
-            compact_type,
-            LuaType::Integer | LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)
-        )
+        && matches!(compact_type, LuaType::Integer)
     {
         return Ok(());
     }

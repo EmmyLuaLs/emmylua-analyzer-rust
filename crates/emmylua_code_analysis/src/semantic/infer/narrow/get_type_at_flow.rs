@@ -1114,6 +1114,15 @@ impl<'a> FlowTypeEngine<'a> {
             );
             return Ok(self.finish_walk(walk, result_type));
         }
+        // 为整数 enum 的 flag 赋值保留声明类型.
+        if let Some(declared_enum_type) = integer_enum_assignment_declared_type(
+            self.db,
+            self.cache,
+            &walk.query.var_ref_id,
+            &expr_type,
+        ) {
+            return Ok(self.finish_walk(walk, declared_enum_type));
+        }
 
         // Broad RHS types replace the previous runtime type. The old path still
         // queried the antecedent and then discarded it in finish_assignment_result.
@@ -1697,6 +1706,38 @@ fn can_reuse_narrowed_assignment_source(
 
 fn preserves_assignment_expr_type(typ: &LuaType) -> bool {
     matches!(typ, LuaType::TableConst(_) | LuaType::Object(_)) || is_exact_assignment_expr_type(typ)
+}
+
+fn integer_enum_assignment_declared_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    var_ref_id: &VarRefId,
+    expr_type: &LuaType,
+) -> Option<LuaType> {
+    // enum 字段参与位运算后会被推断为宽泛 `Integer`, 但把结果写回 enum 类型槽位时, 不应该把该槽位的 flow 类型降级成 `Integer`.
+    if !matches!(expr_type, LuaType::Integer) {
+        return None;
+    }
+
+    let declared_type = get_var_ref_type(db, cache, var_ref_id).ok()?;
+    let enum_decl_id = match &declared_type {
+        LuaType::Def(id) | LuaType::Ref(id) => id,
+        _ => return None,
+    };
+    let enum_decl = db.get_type_index().get_type_decl(enum_decl_id)?;
+    if !enum_decl.is_enum() {
+        return None;
+    }
+
+    let LuaType::Union(enum_fields) = enum_decl.get_enum_field_type(db)? else {
+        return None;
+    };
+    // 整数字段组成的 enum 才按 flag 处理, 允许它在位运算后回写到原 enum 槽位.
+    enum_fields
+        .into_vec()
+        .iter()
+        .all(|t| matches!(t, LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)))
+        .then_some(declared_type)
 }
 
 fn is_partial_assignment_expr_compatible(

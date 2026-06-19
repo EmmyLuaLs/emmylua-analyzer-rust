@@ -3380,6 +3380,31 @@ _2 = a[1]
     }
 
     #[test]
+    fn test_enum_flag_bitop_assignment_keeps_declared_field_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@enum SubscriberFlags
+            local SubscriberFlags = {
+                Tracking = 1 << 0
+            }
+
+            ---@class Subscriber
+            ---@field flags SubscriberFlags
+
+            ---@type Subscriber
+            local subscriber
+
+            subscriber.flags = subscriber.flags & ~SubscriberFlags.Tracking
+            after_bitop = subscriber.flags
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_bitop"), ws.ty("SubscriberFlags"));
+    }
+
+    #[test]
     fn test_index_expr_replay_keeps_literal_field_narrowing() {
         let mut ws = VirtualWorkspace::new();
 

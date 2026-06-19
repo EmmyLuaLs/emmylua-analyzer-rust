@@ -88,9 +88,7 @@ mod tests {
             "#
         ));
 
-        // TODO: 解决枚举值运算结果的推断问题
-        // 暂时没有好的方式去处理这个警告, 在 ts 中, 枚举值运算的结果不是实际值, 但我们目前的结果是实际值, 所以难以处理
-        assert!(ws.has_no_diagnostic_in_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@enum SubscriberFlags
@@ -752,32 +750,6 @@ return t
 
         --- @type Type2
         local _ = ty1 or 'untracked'
-        "#
-        ));
-    }
-
-    #[test]
-    fn test_issue_295() {
-        let mut ws = VirtualWorkspace::new();
-        // TODO: 解决枚举值运算结果的推断问题
-        // 暂时没有好的方式去处理这个警告, 在 ts 中, 枚举值运算的结果不是实际值, 但我们目前的结果是实际值, 所以难以处理
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
-            r#"
-
-            ---@enum SubscriberFlags
-            local SubscriberFlags = {
-                Tracking = 1 << 0,
-            }
-            ---@class Subscriber
-            ---@field flags SubscriberFlags
-
-            ---@type Subscriber
-            local subscriber
-
-            subscriber.flags = subscriber.flags & ~SubscriberFlags.Tracking
-
-            subscriber.flags = 9
         "#
         ));
     }
