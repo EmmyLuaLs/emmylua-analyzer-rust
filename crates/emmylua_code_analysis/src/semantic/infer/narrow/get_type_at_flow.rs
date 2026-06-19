@@ -730,6 +730,11 @@ impl<'a> FlowTypeEngine<'a> {
                         expr_type,
                     ),
                     Ok(None) => Ok(ConditionFlowAction::Continue),
+                    // 条件 replay 只是在尝试利用当前条件收窄查询变量. 如果条件里的字段或调用因为后置定义暂时解析不到,
+                    // 就跳过这次条件收窄, 避免把条件表达式的临时失败误传成当前变量的类型失败.
+                    Err(InferFailReason::None | InferFailReason::FieldNotFound) => {
+                        Ok(ConditionFlowAction::Continue)
+                    }
                     Err(err) => Err(err),
                 };
                 let action = match action_result {

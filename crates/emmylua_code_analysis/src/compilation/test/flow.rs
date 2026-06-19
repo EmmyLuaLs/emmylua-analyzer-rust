@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
-    use emmylua_parser::{LuaAstToken, LuaLocalName};
+    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName};
     use ntest::timeout;
 
     const STACKED_TYPE_GUARDS: usize = 180;
@@ -574,6 +574,58 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_decl_initializer_assert_after_forward_method_guard_keeps_value_type() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+        ---@class Foo
+        local Foo = {}
+
+        ---@type string?
+        local nullable_string
+
+        function Foo:main()
+            assert(self:defined_later())
+
+            local _v3 = assert(nullable_string)
+        end
+
+        ---@return boolean
+        function Foo:defined_later()
+            return false
+        end
+        "#,
+        );
+
+        let tree = ws
+            .analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_syntax_tree(&file_id)
+            .expect("syntax tree must exist");
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("semantic model must exist");
+        let local_name = tree
+            .get_chunk_node()
+            .descendants::<LuaLocalName>()
+            .find(|name| {
+                name.get_name_token()
+                    .is_some_and(|token| token.get_name_text() == "_v3")
+            })
+            .expect("_v3 local name must exist");
+        let token = local_name.get_name_token().expect("_v3 token must exist");
+        let info = semantic_model
+            .get_semantic_info(token.syntax().clone().into())
+            .expect("_v3 semantic info must exist");
+
+        assert_eq!(ws.humanize_type(info.typ), "string");
     }
 
     #[test]
