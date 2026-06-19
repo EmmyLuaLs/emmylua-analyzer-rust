@@ -419,8 +419,8 @@ pub fn bind_if_stat(binder: &mut FlowBinder, if_stat: LuaIfStat, current: FlowId
 
     for elseif_clause in if_stat.get_else_if_clause_list() {
         let pre_elseif_label = finish_flow_label(binder, else_label, current);
-        let post_elseif_label = binder.create_branch_label();
         let elseif_then_label = binder.create_branch_label();
+        let post_elseif_label = binder.create_branch_label();
         if let Some(condition_expr) = elseif_clause.get_condition_expr() {
             bind_condition_expr(
                 binder,
@@ -430,7 +430,9 @@ pub fn bind_if_stat(binder: &mut FlowBinder, if_stat: LuaIfStat, current: FlowId
                 post_elseif_label,
             );
         }
-        else_label = finish_flow_label(binder, post_elseif_label, current);
+        // 后续 elseif/else 必须从当前 elseif 的 false 分支进入.
+        // 这里保留 label, 让下一段条件回溯时还能看到当前条件为 false 的事实.
+        else_label = post_elseif_label;
         if let Some(elseif_block) = elseif_clause.get_block() {
             let current = finish_flow_label(binder, elseif_then_label, current);
             let block_id = bind_block(binder, elseif_block, current);

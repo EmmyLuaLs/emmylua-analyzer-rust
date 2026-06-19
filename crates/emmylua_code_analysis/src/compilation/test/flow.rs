@@ -1199,6 +1199,22 @@ end
     }
 
     #[test]
+    fn test_elseif_chain_keeps_previous_false_conditions() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+local stat ---@type { size: integer }?
+if math.random() > 0.5 then
+elseif not stat then
+elseif stat.size > 0 then
+end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_issue_266() {
         let mut ws = VirtualWorkspace::new();
 
