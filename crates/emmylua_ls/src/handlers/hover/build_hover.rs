@@ -1,9 +1,7 @@
-use std::collections::HashSet;
-
 use emmylua_code_analysis::humanize_type;
 use emmylua_code_analysis::{
     DbIndex, LuaDeclExtra, LuaDeclId, LuaDocument, LuaMemberId, LuaMemberKey, LuaSemanticDeclId,
-    LuaSignatureId, LuaType, RenderLevel, SemanticInfo, SemanticModel,
+    LuaSignatureId, LuaType, LuaTypeDeclId, RenderLevel, SemanticInfo, SemanticModel,
 };
 use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaExpr, LuaSyntaxToken};
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
@@ -150,6 +148,7 @@ fn build_decl_hover(
         builder
             .add_signature_params_rets_description(builder.semantic_model.get_type(decl_id.into()));
     } else {
+        let target_type = builder.semantic_model.get_type(decl_id.into()).clone();
         if typ.is_const() {
             let const_value = hover_const_type(db, &typ);
             let prefix = if decl.is_local() {
@@ -159,9 +158,9 @@ fn build_decl_hover(
             };
             builder.set_type_description(format!("{}{}: {}", prefix, decl.get_name(), const_value));
         } else {
-            let target_type = builder.semantic_model.get_type(decl_id.into()).clone();
-            let decl_hover_type = get_hover_type(builder, builder.semantic_model, &target_type)
-                .unwrap_or(typ.clone());
+            let decl_hover_type =
+                get_assignment_hover_type(builder, builder.semantic_model, &target_type, &typ)
+                    .unwrap_or(typ.clone());
             let type_humanize_text =
                 hover_humanize_type(builder, &decl_hover_type, Some(builder.detail_render_level));
             let prefix = if decl.is_local() {
@@ -178,15 +177,13 @@ fn build_decl_hover(
         }
 
         // 添加注释文本
-        let mut semantic_decl_set = HashSet::new();
-        let decl_decl = LuaSemanticDeclId::LuaDecl(decl_id);
-        semantic_decl_set.insert(&decl_decl);
-        if !is_completion {
-            semantic_decl_set.extend(semantic_decls.iter().map(|(decl, _)| decl));
-        }
-        for semantic_decl in semantic_decl_set {
-            builder.add_description(semantic_decl);
-        }
+        add_hover_descriptions(
+            builder,
+            LuaSemanticDeclId::LuaDecl(decl_id),
+            &target_type,
+            semantic_decls.iter().map(|(decl, typ)| (decl, typ)),
+            is_completion,
+        );
     }
 
     if let LuaDeclExtra::Param {
@@ -246,17 +243,18 @@ fn build_member_hover(
             builder.semantic_model.get_type(member.get_id().into()),
         );
     } else {
+        let target_type = builder
+            .semantic_model
+            .get_type(member.get_id().into())
+            .clone();
         if typ.is_const() {
             let const_value = hover_const_type(db, &typ);
             builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
             builder.set_location_path(Some(member));
         } else {
-            let target_type = builder
-                .semantic_model
-                .get_type(member.get_id().into())
-                .clone();
-            let member_hover_type = get_hover_type(builder, builder.semantic_model, &target_type)
-                .unwrap_or(typ.clone());
+            let member_hover_type =
+                get_assignment_hover_type(builder, builder.semantic_model, &target_type, &typ)
+                    .unwrap_or(typ.clone());
             let level = if member_hover_type.is_module_ref() {
                 builder.detail_render_level
             } else {
@@ -269,23 +267,84 @@ fn build_member_hover(
         }
 
         // 添加注释文本
-        let mut semantic_decl_set = HashSet::new();
-        let member_decl = LuaSemanticDeclId::Member(member.get_id());
-        semantic_decl_set.insert(&member_decl);
-        if !is_completion {
-            semantic_decl_set.extend(
-                hover_decl_context
-                    .origin_decls()
-                    .iter()
-                    .map(|decl_info| decl_info.id()),
-            );
-        }
-        for semantic_decl in semantic_decl_set {
-            builder.add_description(semantic_decl);
-        }
+        add_hover_descriptions(
+            builder,
+            LuaSemanticDeclId::Member(member.get_id()),
+            &target_type,
+            hover_decl_context
+                .origin_decls()
+                .iter()
+                .map(|decl_info| (decl_info.id(), decl_info.typ())),
+            is_completion,
+        );
     }
 
     Some(())
+}
+
+fn add_hover_descriptions<'a, I>(
+    builder: &mut HoverBuilder,
+    primary_owner: LuaSemanticDeclId,
+    target_type: &LuaType,
+    origin_decls: I,
+    is_completion: bool,
+) where
+    I: IntoIterator<Item = (&'a LuaSemanticDeclId, &'a LuaType)>,
+{
+    let mut description_owners = Vec::new();
+    description_owners.push(primary_owner);
+    collect_type_decl_description_owners(target_type, &mut description_owners);
+
+    if !is_completion {
+        for (origin_owner, origin_type) in origin_decls {
+            if !description_owners.contains(origin_owner) {
+                description_owners.push(origin_owner.clone());
+            }
+            collect_type_decl_description_owners(origin_type, &mut description_owners);
+        }
+    }
+
+    for owner in &description_owners {
+        builder.add_description(owner);
+    }
+}
+
+fn collect_type_decl_description_owners(
+    typ: &LuaType,
+    description_owners: &mut Vec<LuaSemanticDeclId>,
+) {
+    match typ {
+        LuaType::Def(type_decl_id) | LuaType::Ref(type_decl_id) => {
+            push_type_decl_description_owner(description_owners, type_decl_id.clone());
+        }
+        LuaType::Generic(generic) => {
+            push_type_decl_description_owner(description_owners, generic.get_base_type_id());
+        }
+        LuaType::Instance(instance) => {
+            collect_type_decl_description_owners(instance.get_base(), description_owners);
+        }
+        LuaType::Union(union) => {
+            for typ in union.into_vec() {
+                collect_type_decl_description_owners(&typ, description_owners);
+            }
+        }
+        LuaType::Intersection(intersection) => {
+            for typ in intersection.get_types() {
+                collect_type_decl_description_owners(typ, description_owners);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn push_type_decl_description_owner(
+    description_owners: &mut Vec<LuaSemanticDeclId>,
+    type_decl_id: LuaTypeDeclId,
+) {
+    let owner = LuaSemanticDeclId::TypeDecl(type_decl_id);
+    if !description_owners.contains(&owner) {
+        description_owners.push(owner);
+    }
 }
 
 fn into_hover_decl_infos(semantic_decls: Vec<(LuaSemanticDeclId, LuaType)>) -> Vec<HoverDeclInfo> {
@@ -369,10 +428,11 @@ pub fn add_signature_ret_description(
     Some(())
 }
 
-pub fn get_hover_type(
+fn get_assignment_hover_type(
     builder: &HoverBuilder,
     semantic_model: &SemanticModel,
     target_type: &LuaType,
+    fallback_type: &LuaType,
 ) -> Option<LuaType> {
     let assign_stat = LuaAssignStat::cast(builder.get_trigger_token()?.parent()?.parent()?)?;
     let (vars, exprs) = assign_stat.get_var_and_expr_list();
@@ -395,14 +455,20 @@ pub fn get_hover_type(
                 Ok(expr_type) => match expr_type {
                     LuaType::Variadic(muli_return) => {
                         let expr_type = muli_return.get_type(multi_return_index).cloned()?;
-                        if semantic_model.type_check(target_type, &expr_type).is_ok() {
-                            return Some(expr_type);
-                        }
+                        return select_assignment_hover_type(
+                            semantic_model,
+                            target_type,
+                            fallback_type,
+                            expr_type,
+                        );
                     }
                     _ => {
-                        if semantic_model.type_check(target_type, &expr_type).is_ok() {
-                            return Some(expr_type);
-                        }
+                        return select_assignment_hover_type(
+                            semantic_model,
+                            target_type,
+                            fallback_type,
+                            expr_type,
+                        );
                     }
                 },
                 Err(_) => return None,
@@ -411,4 +477,28 @@ pub fn get_hover_type(
     }
 
     None
+}
+
+fn select_assignment_hover_type(
+    semantic_model: &SemanticModel,
+    target_type: &LuaType,
+    fallback_type: &LuaType,
+    expr_type: LuaType,
+) -> Option<LuaType> {
+    let mut should_keep = false;
+    if matches!(expr_type, LuaType::Table | LuaType::TableConst(_)) {
+        let mut type_decl_description_owners = Vec::new();
+        collect_type_decl_description_owners(target_type, &mut type_decl_description_owners);
+        should_keep = !type_decl_description_owners.is_empty();
+    }
+
+    if should_keep {
+        return Some(target_type.clone());
+    }
+
+    if semantic_model.type_check(target_type, &expr_type).is_ok() {
+        return Some(expr_type);
+    }
+
+    Some(fallback_type.clone())
 }

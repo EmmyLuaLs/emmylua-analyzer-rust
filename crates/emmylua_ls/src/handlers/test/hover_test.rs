@@ -332,6 +332,65 @@ mod tests {
     }
 
     #[gtest]
+    fn test_hover_class_bound_local_decl_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                --- This is the MyModule documentation.
+                --- It should appear when hovering over MyModule.
+                --- @class MyModule
+                local My<??>Module
+            "#,
+            VirtualHoverResult {
+                value: dedent(
+                    r#"
+                    ```lua
+                    local MyModule: MyModule
+                    ```
+
+                    ---
+
+                    This is the MyModule documentation.
+                    It should appear when hovering over MyModule.
+                    "#,
+                ),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_class_bound_member_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                --- @class MyModule
+                local MyModule = {}
+
+                --- This is the SubModule documentation.
+                --- It should appear when hovering over SubModule.
+                --- @class MyModule.SubModule
+                MyModule.Sub<??>Module = {}
+            "#,
+            VirtualHoverResult {
+                value: dedent(
+                    r#"
+                    ```lua
+                    (field) SubModule: MyModule.SubModule
+                    ```
+
+                    ---
+
+                    This is the SubModule documentation.
+                    It should appear when hovering over SubModule.
+                    "#,
+                ),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_attribute_hover_uses_arg_types() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
