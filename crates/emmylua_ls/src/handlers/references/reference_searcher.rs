@@ -4,12 +4,12 @@ use std::{
 };
 
 use emmylua_code_analysis::{
-    DeclReferenceCell, FileId, LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberKey,
+    DeclReferenceCell, FileId, LuaClosureId, LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberKey,
     LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaNameToken, LuaStringToken,
-    LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaGotoStat, LuaLabelStat,
+    LuaNameToken, LuaStringToken, LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
 };
 use lsp_types::Location;
 
@@ -25,6 +25,10 @@ pub fn search_references(
     token: LuaSyntaxToken,
 ) -> Option<Vec<Location>> {
     let mut result = Vec::new();
+    if search_label_references(semantic_model, token.clone(), &mut result).is_some() {
+        return Some(result);
+    }
+
     if let Some(semantic_decl) =
         semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default())
     {
@@ -58,6 +62,32 @@ pub fn search_references(
     // Some(filtered_result)
 
     Some(result)
+}
+
+fn search_label_references(
+    semantic_model: &SemanticModel,
+    token: LuaSyntaxToken,
+    result: &mut Vec<Location>,
+) -> Option<()> {
+    let name_token = LuaNameToken::cast(token.clone())?;
+    let parent = token.parent()?;
+    if LuaGotoStat::cast(parent.clone()).is_none() && LuaLabelStat::cast(parent.clone()).is_none() {
+        return None;
+    }
+
+    let closure_id = LuaClosureId::from_node(&parent);
+    let label_name = name_token.get_name_text();
+    let ranges = semantic_model
+        .get_db()
+        .get_reference_index()
+        .get_label_references(&semantic_model.get_file_id(), closure_id, label_name)?;
+    let document = semantic_model.get_document();
+    for range in ranges {
+        let location = document.to_lsp_location(range)?;
+        result.push(location);
+    }
+
+    Some(())
 }
 
 pub fn search_decl_references_with_token(

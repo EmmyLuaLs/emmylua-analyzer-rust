@@ -104,6 +104,24 @@ mod tests {
     }
 
     #[gtest]
+    fn test_goto_label_definition() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_definition(
+            r#"
+                while true do
+                    goto co<??>nt
+                    ::cont::
+                end
+            "#,
+            vec![Expected {
+                file: "".to_string(),
+                line: 3
+            }]
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_goto_overload() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def_file(

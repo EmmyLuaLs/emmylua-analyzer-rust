@@ -1,8 +1,8 @@
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaBlock, LuaBreakStat, LuaCallArgList,
-    LuaCallExprStat, LuaDoStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat, LuaGotoStat,
-    LuaIfStat, LuaLabelStat, LuaLocalName, LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaVarExpr,
-    LuaWhileStat,
+    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaBreakStat,
+    LuaCallArgList, LuaCallExprStat, LuaDoStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat,
+    LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalName, LuaLocalStat, LuaRepeatStat, LuaReturnStat,
+    LuaVarExpr, LuaWhileStat,
 };
 
 use crate::{
@@ -226,6 +226,12 @@ pub fn bind_label_stat(
     };
     let label_name = label_name_token.get_name_text();
     let closure_id = LuaClosureId::from_node(label_stat.syntax());
+    binder.db.get_reference_index_mut().add_label_declaration(
+        binder.file_id,
+        closure_id,
+        label_name,
+        label_name_token.get_range(),
+    );
     let name_label = binder.create_name_label(label_name, closure_id);
     binder.add_antecedent(name_label, current);
 
@@ -265,6 +271,12 @@ pub fn bind_goto_stat(binder: &mut FlowBinder, goto_stat: LuaGotoStat, current: 
     };
 
     let label_name = label_token.get_name_text();
+    binder.db.get_reference_index_mut().add_label_reference(
+        binder.file_id,
+        closure_id,
+        label_name,
+        label_token.get_range(),
+    );
     let return_flow_id = binder.create_return();
     binder.cache_goto_flow(closure_id, label_token.clone(), label_name, return_flow_id);
     binder.add_antecedent(return_flow_id, current);
