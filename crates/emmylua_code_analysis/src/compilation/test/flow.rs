@@ -1,11 +1,41 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
-    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName};
+    use crate::{DiagnosticCode, FileId, LuaType, VirtualWorkspace};
+    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName, LuaNameExpr};
     use ntest::timeout;
 
     const STACKED_TYPE_GUARDS: usize = 180;
     const MAXWELLHOME_ARRAY_VALUES: usize = 2048;
+
+    fn last_name_expr_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
+        let tree = ws
+            .analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_syntax_tree(&file_id)
+            .expect("syntax tree must exist");
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("semantic model must exist");
+        let name_expr = tree
+            .get_chunk_node()
+            .descendants::<LuaNameExpr>()
+            .filter(|name_expr| {
+                name_expr
+                    .get_name_token()
+                    .is_some_and(|token| token.get_name_text() == name)
+            })
+            .last()
+            .expect("name expr must exist");
+
+        semantic_model
+            .get_semantic_info(name_expr.syntax().clone().into())
+            .expect("name expr semantic info must exist")
+            .typ
+    }
 
     #[test]
     fn test_closure_return() {
@@ -1518,9 +1548,10 @@ n = n + 1
 
         ws.def(
             r#"
+        local stop ---@type integer
         local value ---@type string?
 
-        for i = 1, 3 do
+        for i = 1, stop do
             value = "loop"
         end
 
@@ -1529,6 +1560,117 @@ n = n + 1
         );
 
         assert_eq!(ws.expr_ty("after_loop"), ws.ty("string?"));
+    }
+
+    #[test]
+    fn test_numeric_for_post_flow_adds_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local thing = nil
+        for i = 1, 10 do
+            thing = {} --[[@as MyClass]]
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+        let thing_type_desc = ws.humanize_type(thing_type);
+
+        assert!(thing_type_desc.contains("MyClass"), "{thing_type_desc}");
+    }
+
+    #[test]
+    fn test_dynamic_numeric_for_post_flow_ignores_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local stop ---@type integer
+        local thing = nil
+        for i = 1, stop do
+            thing = {} --[[@as MyClass]]
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+
+        assert_eq!(ws.humanize_type(thing_type), "nil");
+    }
+
+    #[test]
+    fn test_while_true_break_post_flow_adds_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local thing = nil
+        while true do
+            thing = {} --[[@as MyClass]]
+            break
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+        let thing_type_desc = ws.humanize_type(thing_type);
+
+        assert!(thing_type_desc.contains("MyClass"), "{thing_type_desc}");
+    }
+
+    #[test]
+    fn test_dynamic_while_post_flow_ignores_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local condition ---@type boolean
+        local thing = nil
+        while condition do
+            thing = {} --[[@as MyClass]]
+            break
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+
+        assert_eq!(ws.humanize_type(thing_type), "nil");
+    }
+
+    #[test]
+    fn test_while_false_post_flow_ignores_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local thing = nil
+        while false do
+            thing = {} --[[@as MyClass]]
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+
+        assert_eq!(ws.humanize_type(thing_type), "nil");
     }
 
     #[test]
