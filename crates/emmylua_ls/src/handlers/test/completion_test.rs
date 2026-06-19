@@ -2,9 +2,38 @@
 mod tests {
     use emmylua_code_analysis::{DocSyntax, Emmyrc, EmmyrcFilenameConvention};
     use googletest::prelude::*;
-    use lsp_types::{CompletionItemKind, CompletionTriggerKind};
+    use lsp_types::{
+        CompletionItem, CompletionItemKind, CompletionResponse, CompletionTriggerKind,
+    };
+    use tokio_util::sync::CancellationToken;
 
-    use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualCompletionItem, check};
+    use crate::handlers::{
+        completion::completion,
+        test_lib::{ProviderVirtualWorkspace, VirtualCompletionItem, check},
+    };
+
+    fn get_completion_items(
+        ws: &mut ProviderVirtualWorkspace,
+        block_str: &str,
+        trigger_kind: CompletionTriggerKind,
+    ) -> Result<Vec<CompletionItem>> {
+        let (content, position) = ProviderVirtualWorkspace::handle_file_content(block_str)?;
+        let file_id = ws.def(&content);
+        let result = completion(
+            &ws.analysis,
+            file_id,
+            position,
+            trigger_kind,
+            CancellationToken::new(),
+        )
+        .ok_or("failed to get completion")
+        .or_fail()?;
+
+        Ok(match result {
+            CompletionResponse::Array(items) => items,
+            CompletionResponse::List(list) => list.items,
+        })
+    }
 
     #[gtest]
     fn test_1() -> Result<()> {
@@ -21,6 +50,88 @@ mod tests {
                 ..Default::default()
             }],
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_array_append_index_completion_after_len_operator() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                local someTable = {}
+                someTable[#<??>]
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+        let item = items
+            .iter()
+            .find(|item| item.label == "#someTable + 1")
+            .ok_or_else(|| format!("completion item `#someTable + 1` not found in {items:?}"))
+            .or_fail()?;
+        let completion_edit_text = match item.text_edit.as_ref() {
+            Some(lsp_types::CompletionTextEdit::Edit(edit)) => Some(edit.new_text.as_str()),
+            Some(lsp_types::CompletionTextEdit::InsertAndReplace(edit)) => {
+                Some(edit.new_text.as_str())
+            }
+            None => item.insert_text.as_deref(),
+        };
+
+        verify_eq!(item.kind, Some(CompletionItemKind::SNIPPET))?;
+        verify_eq!(completion_edit_text, Some("someTable + 1] = $0"))?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_array_append_index_completion_for_integer_indexed_class() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                ---@class A
+                ---@field [int] string
+
+                ---@type A
+                local a
+                a[#<??>]
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+        let item = items
+            .iter()
+            .find(|item| item.label == "#a + 1")
+            .ok_or_else(|| format!("completion item `#a + 1` not found in {items:?}"))
+            .or_fail()?;
+        let completion_edit_text = match item.text_edit.as_ref() {
+            Some(lsp_types::CompletionTextEdit::Edit(edit)) => Some(edit.new_text.as_str()),
+            Some(lsp_types::CompletionTextEdit::InsertAndReplace(edit)) => {
+                Some(edit.new_text.as_str())
+            }
+            None => item.insert_text.as_deref(),
+        };
+
+        verify_eq!(item.kind, Some(CompletionItemKind::SNIPPET))?;
+        verify_eq!(completion_edit_text, Some("a + 1] = $0"))?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_array_append_index_completion_only_after_left_bracket() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                local someTable = {}
+                someTable[1 + #<??>]
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+
+        if items.iter().any(|item| item.label == "#someTable + 1") {
+            fail!("unexpected completion item `#someTable + 1` found in {items:?}")?;
+        }
         Ok(())
     }
 
