@@ -2209,6 +2209,77 @@ end
     }
 
     #[test]
+    fn test_assignment_in_all_type_alias_branches_drops_original_union() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            ---@class FlowAliasA
+            local A
+
+            ---@class FlowAliasDisposable
+
+            ---@class FlowAliasAnonymousObserver: FlowAliasDisposable
+
+            ---@return FlowAliasAnonymousObserver
+            local function createAnonymousObserver()
+            end
+
+            ---@param observer fun() | string
+            function A:subscribe(observer)
+                local typ = type(observer)
+                if typ == 'function' then
+                    observer = createAnonymousObserver()
+                elseif typ == 'string' then
+                    observer = createAnonymousObserver()
+                else
+                    after_else_observer = observer
+                end
+
+                after_observer = observer
+            end
+            "#,
+        );
+        let after_else_observer = ws.expr_ty("after_else_observer");
+        assert_eq!(ws.humanize_type(after_else_observer), "never");
+        let after_observer = ws.expr_ty("after_observer");
+        assert_eq!(
+            ws.humanize_type(after_observer),
+            "FlowAliasAnonymousObserver"
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class A
+            local A
+
+            ---@class IDisposable
+
+            ---@class AnonymousObserver: IDisposable
+
+            ---@return AnonymousObserver
+            local function createAnonymousObserver()
+            end
+
+            ---@param observer fun() | string
+            ---@return IDisposable
+            function A:subscribe(observer)
+                local typ = type(observer)
+                if typ == 'function' then
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    observer = createAnonymousObserver()
+                elseif typ == 'string' then
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    observer = createAnonymousObserver()
+                end
+
+                return observer
+            end
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_issue_524() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
