@@ -454,6 +454,9 @@ fn check_ref_type_compact_tuple(
                 }
 
                 let Some(tuple_type) = tuple_types.get(*index as usize - 1) else {
+                    if member.typ.is_optional() {
+                        continue;
+                    }
                     return Err(TypeCheckFailReason::TypeNotMatch);
                 };
 
@@ -476,6 +479,9 @@ fn check_ref_type_compact_tuple(
                 }
             }
             _ => {
+                if member.typ.is_optional() {
+                    continue;
+                }
                 return Err(TypeCheckFailReason::TypeNotMatch);
             }
         }

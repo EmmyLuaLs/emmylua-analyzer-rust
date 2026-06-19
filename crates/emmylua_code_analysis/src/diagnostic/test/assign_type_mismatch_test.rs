@@ -1150,6 +1150,44 @@ return t
     }
 
     #[test]
+    fn test_ref_index_key_match_tuple_with_optional_super_member() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class OptsBase
+                ---@field foo? boolean
+
+                ---@class Opts : OptsBase
+                ---@field [integer] string
+
+                ---@type Opts
+                local opts1 = { "hello" }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_ref_index_key_match_tuple_with_required_super_member() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class OptsBase
+                ---@field foo boolean
+
+                ---@class Opts : OptsBase
+                ---@field [integer] string
+
+                ---@type Opts
+                local opts1 = { "hello" }
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_ref_index_access_assign_class_to_object_mismatch() {
         let mut ws = VirtualWorkspace::new();
 
