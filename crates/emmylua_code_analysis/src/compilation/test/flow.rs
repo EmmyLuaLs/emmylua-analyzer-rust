@@ -1215,6 +1215,22 @@ end
     }
 
     #[test]
+    fn test_not_logical_and_return_narrows_rhs_to_truthy() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+local n ---@type number?
+if not (n and n > 0) then
+    return
+end
+n = n + 1
+        "#
+        ));
+    }
+
+    #[test]
     fn test_issue_266() {
         let mut ws = VirtualWorkspace::new();
 

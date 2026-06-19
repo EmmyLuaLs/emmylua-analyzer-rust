@@ -2,7 +2,7 @@ mod bind_binary_expr;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaNameExpr,
-    LuaTableExpr, LuaUnaryExpr,
+    LuaTableExpr, LuaUnaryExpr, UnaryOperator,
 };
 
 use crate::{
@@ -113,6 +113,24 @@ pub fn bind_unary_expr(
     current: FlowId,
 ) -> Option<()> {
     let inner_expr = unary_expr.get_expr()?;
+
+    if unary_expr
+        .get_op_token()
+        .is_some_and(|op| op.get_op() == UnaryOperator::OpNot)
+    {
+        let old_true_target = binder.true_target;
+        let old_false_target = binder.false_target;
+
+        // not 会反转条件出口, 内层 and/or 的短路分支也要落到反转后的路径.
+        binder.true_target = old_false_target;
+        binder.false_target = old_true_target;
+        bind_expr(binder, inner_expr, current);
+        binder.true_target = old_true_target;
+        binder.false_target = old_false_target;
+
+        return Some(());
+    }
+
     bind_expr(binder, inner_expr, current);
     Some(())
 }
