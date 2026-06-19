@@ -1090,6 +1090,22 @@ print(a.field)
     }
 
     #[test]
+    fn test_numeric_for_len_expr_narrows_loop_body_value_to_non_nil() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        ---@type false|fun(...)[]?
+        local calls
+
+        for i = 1, #calls do
+            calls[i](...)
+        end
+        "#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::NeedCheckNil, code));
+    }
+
+    #[test]
     fn test_issue_224() {
         let mut ws = VirtualWorkspace::new();
 

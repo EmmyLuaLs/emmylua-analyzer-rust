@@ -1,6 +1,6 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaChunk, LuaDocOpType, LuaExpr, LuaIndexKey, LuaIndexMemberExpr,
-    LuaSyntaxId, LuaTableExpr, LuaVarExpr,
+    LuaAssignStat, LuaAstNode, LuaChunk, LuaDocOpType, LuaExpr, LuaForStat, LuaIndexKey,
+    LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaUnaryExpr, LuaVarExpr, UnaryOperator,
 };
 use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
@@ -1289,6 +1289,53 @@ impl<'a> FlowTypeEngine<'a> {
         })
     }
 
+    fn step_for_i_stat(
+        &mut self,
+        mut walk: QueryWalk,
+        flow_node: &FlowNode,
+        for_ptr: &emmylua_parser::LuaAstPtr<LuaForStat>,
+    ) -> Result<SchedulerStep, InferFailReason> {
+        let antecedent_flow_id = get_single_antecedent(flow_node)?;
+        if !walk.query.mode.uses_conditions() {
+            walk.antecedent_flow_id = antecedent_flow_id;
+            return Ok(SchedulerStep::ContinueWalk(walk));
+        }
+
+        let for_stat = for_ptr.to_node(self.root).ok_or(InferFailReason::None)?;
+        let var_ref_id = walk.query.var_ref_id.clone();
+        let db = self.db;
+        let cache = &mut *self.cache;
+        let len_expr_matches = for_stat.get_iter_expr().any(|iter_expr| {
+            iter_expr.descendants::<LuaUnaryExpr>().any(|unary_expr| {
+                let is_len_expr = unary_expr
+                    .get_op_token()
+                    .is_some_and(|op| op.get_op() == UnaryOperator::OpLen);
+                if !is_len_expr {
+                    return false;
+                }
+
+                let Some(inner_expr) = unary_expr.get_expr() else {
+                    return false;
+                };
+
+                get_var_expr_var_ref_id(db, cache, inner_expr)
+                    .is_some_and(|len_ref_id| len_ref_id == var_ref_id)
+            })
+        });
+
+        // A numeric for body can only run after all bound expressions were evaluated.
+        // If one of those bounds used `#value`, the value cannot be nil in the loop body.
+        if len_expr_matches {
+            walk.pending_condition_narrows
+                .push(PendingConditionNarrow::Truthiness(
+                    InferConditionFlow::TrueCondition,
+                ));
+        }
+
+        walk.antecedent_flow_id = antecedent_flow_id;
+        Ok(SchedulerStep::ContinueWalk(walk))
+    }
+
     // Walk one query backward through straight-line antecedents until it either
     // produces a final type, needs another query first, or reaches a saved
     // continuation point like a branch merge.
@@ -1305,11 +1352,14 @@ impl<'a> FlowTypeEngine<'a> {
                         get_var_ref_type(self.db, self.cache, &walk.query.var_ref_id)?;
                     return Ok(self.finish_walk(walk, result_type));
                 }
-                FlowNodeKind::LoopLabel
-                | FlowNodeKind::Break
-                | FlowNodeKind::Return
-                | FlowNodeKind::ForIStat(_) => {
+                FlowNodeKind::LoopLabel | FlowNodeKind::Break | FlowNodeKind::Return => {
                     walk.antecedent_flow_id = get_single_antecedent(flow_node)?;
+                }
+                FlowNodeKind::ForIStat(for_ptr) => {
+                    match self.step_for_i_stat(walk, flow_node, for_ptr)? {
+                        SchedulerStep::ContinueWalk(next_walk) => walk = next_walk,
+                        step => return Ok(step),
+                    }
                 }
                 FlowNodeKind::BranchLabel | FlowNodeKind::NamedLabel(_) => {
                     let branch_flow_ids = if matches!(&flow_node.kind, FlowNodeKind::BranchLabel) {
