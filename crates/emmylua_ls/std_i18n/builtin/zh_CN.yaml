@@ -115,3 +115,4 @@ field_accessor: |
   - `convention`: 命名约定，默认为 `camelCase`。隐式添加 `get` 和 `set` 前缀，例如 `_age` -> `getAge`、`setAge`。
   - `getter`: Getter 方法名。优先级高于 `convention`。
   - `setter`: Setter 方法名。优先级高于 `convention`。
+

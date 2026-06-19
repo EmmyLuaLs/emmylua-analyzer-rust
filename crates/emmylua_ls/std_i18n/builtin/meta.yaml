@@ -41,68 +41,68 @@ b:
   r: [122, 0, 124, 44]
   e:
   - ['std.Unpack', 'd', doc, [122, 0, 124, 0], 'c7ad7bb74235dc8c']
-- a: '--- @deprecated use `const T` as a replacement, for example `---@generic const T`.'
+- a: '--- built-in type for generic template, for match integer const and `true`/`false`'
   g: 'built-in type for Rawget'
   r: [126, 0, 128, 35]
   e:
   - ['std.RawGet', 'd', doc, [126, 0, 128, 0], '7327558f3445dea6']
 - a: '--- compact luals'
-  g: '@deprecated use `const T` as a replacement, for example `---@generic const T`.'
-  r: [130, 0, 133, 34]
+  g: 'built-in type for generic template, for match integer const and `true`/`false`'
+  r: [130, 0, 132, 34]
   e:
-  - ['std.ConstTpl', 'd', doc, [131, 0, 133, 0], '32302db51b5d0fa9']
+  - ['std.ConstTpl', 'd', doc, [130, 0, 131, 0], '9f53c3bc7c4277c5']
 - a: '---'
   g: 'Get the parameters of a function as a tuple'
-  r: [147, 0, 149, 91]
+  r: [146, 0, 148, 91]
   e:
-  - ['Parameters', 'd', doc, [147, 0, 149, 0], '71b070c2fa27cbf9']
+  - ['Parameters', 'd', doc, [146, 0, 148, 0], '71b070c2fa27cbf9']
 - a: '--- Get the return type of a function type'
   g: 'Get the parameters of a constructor as a tuple'
-  r: [151, 0, 153, 89]
+  r: [150, 0, 152, 89]
   e:
-  - ['ConstructorParameters', 'd', doc, [151, 0, 153, 0], '2f4bebd14d7824cb']
+  - ['ConstructorParameters', 'd', doc, [150, 0, 152, 0], '2f4bebd14d7824cb']
 - a: '---'
   g: 'Get the return type of a function type'
-  r: [155, 0, 156, 89]
+  r: [154, 0, 155, 89]
   e:
-  - ['ReturnType', 'd', doc, [155, 0, 156, 0], '41b603e3e6dc5ac8']
+  - ['ReturnType', 'd', doc, [154, 0, 155, 0], '41b603e3e6dc5ac8']
 - a: '---'
   g: 'Make all properties in T optional'
-  r: [158, 0, 160, 47]
+  r: [157, 0, 159, 47]
   e:
-  - ['Partial', 'd', doc, [158, 0, 160, 0], '5e4213a7c3937182']
+  - ['Partial', 'd', doc, [157, 0, 159, 0], '5e4213a7c3937182']
 - a: '---'
   g: 'Exclude from T those types that are assignable to U'
-  r: [162, 0, 164, 51]
+  r: [161, 0, 163, 51]
   e:
-  - ['Exclude', 'd', doc, [162, 0, 164, 0], 'ace067261f694c21']
+  - ['Exclude', 'd', doc, [161, 0, 163, 0], 'ace067261f694c21']
 - a: '--- attribute'
   g: 'Extract from T those types that are assignable to U'
-  r: [166, 0, 168, 51]
+  r: [165, 0, 167, 51]
   e:
-  - ['Extract', 'd', doc, [166, 0, 168, 0], 'a615fc46f215439e']
+  - ['Extract', 'd', doc, [165, 0, 167, 0], 'a615fc46f215439e']
 - a: '---'
   g: 'Deprecated. Receives an optional message parameter.'
-  r: [175, 0, 178, 35]
+  r: [174, 0, 177, 35]
   e:
-  - ['deprecated', 'd', doc, [175, 0, 177, 0], 'dac958f30ae5a8bf']
+  - ['deprecated', 'd', doc, [174, 0, 176, 0], 'dac958f30ae5a8bf']
 - a: '---'
   g: 'Language Server Optimization Items.'
-  r: [180, 0, 188, 65]
+  r: [179, 0, 187, 65]
   e:
-  - ['lsp_optimization', 'd', doc, [180, 0, 187, 0], 'cbbaeb7c5eb9f754']
+  - ['lsp_optimization', 'd', doc, [179, 0, 186, 0], 'cbbaeb7c5eb9f754']
 - a: '---'
   g: 'Index field alias, will be displayed in `hint` and `completion`.'
-  r: [190, 0, 195, 31]
+  r: [189, 0, 194, 31]
   e:
-  - ['index_alias', 'd', doc, [190, 0, 194, 0], 'f6bfb08eccdd16a2']
+  - ['index_alias', 'd', doc, [189, 0, 193, 0], 'f6bfb08eccdd16a2']
 - a: '---'
   g: 'This attribute must be applied to function parameters, and the function parameter''s type must be a string template generic,'
-  r: [197, 0, 209, 112]
+  r: [196, 0, 208, 112]
   e:
-  - ['constructor', 'd', doc, [197, 0, 208, 0], '9e70b48984094843']
+  - ['constructor', 'd', doc, [196, 0, 207, 0], '9e70b48984094843']
 -
   g: 'Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,'
-  r: [211, 0, 220, 103]
+  r: [210, 0, 219, 103]
   e:
-  - ['field_accessor', 'd', doc, [211, 0, 219, 0], '9a4d0401a6f8cc0e']
+  - ['field_accessor', 'd', doc, [210, 0, 218, 0], '9a4d0401a6f8cc0e']

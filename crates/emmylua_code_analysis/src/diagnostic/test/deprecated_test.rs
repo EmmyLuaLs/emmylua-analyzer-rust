@@ -154,6 +154,19 @@ mod test {
     }
 
     #[test]
+    fn test_deprecated_alias_keeps_attached_description() {
+        assert_type_decl_description(
+            r#"
+            ---this A
+            ---@deprecated message
+            ---@alias A<T> unknown
+        "#,
+            "A",
+            "this A",
+        );
+    }
+
+    #[test]
     fn test_deprecated_class_no_usage_error() {
         let mut ws = VirtualWorkspace::new();
 
