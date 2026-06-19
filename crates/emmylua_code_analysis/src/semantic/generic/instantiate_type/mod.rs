@@ -324,7 +324,9 @@ fn instantiate_nested_doc_function(
         generic_params.push(generic_param);
     }
 
-    let nested_substitutor = context.substitutor.without_pending_tpls(&transferred_tpls);
+    let nested_substitutor = context
+        .substitutor
+        .without_pending_tpls(|tpl_id| transferred_tpls.contains(&tpl_id));
     let nested_context = context.with_substitutor(&nested_substitutor);
     let doc_func = LuaFunctionType::new(
         doc_func.get_async_state(),

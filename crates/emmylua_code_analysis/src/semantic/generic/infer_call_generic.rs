@@ -5,8 +5,7 @@ use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::{InferResult, infer_expr_list_types};
 use crate::{
-    DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
-    LuaTypeNode,
+    DocTypeInferContext, FileId, GenericTplId, LuaFunctionType, LuaGenericType, LuaTypeNode,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
     semantic::{
@@ -66,17 +65,8 @@ pub fn build_call_generic_substitutor(
         // 填充前缀类型可能存在的泛型
         fill_call_prefix_substitutor(&mut context, call_expr);
 
-        let has_func_generic = func
-            .get_generic_params()
-            .iter()
-            .any(|generic_tpl| generic_tpl.get_tpl_id().is_func());
-        if has_func_generic {
-            let generic_tpls = func
-                .get_generic_params()
-                .iter()
-                .map(|generic_tpl| generic_tpl.get_tpl_id())
-                .filter(GenericTplId::is_func)
-                .collect::<HashSet<_>>();
+        let generic_tpls = collect_call_infer_tpls(func);
+        if !generic_tpls.is_empty() {
             context.substitutor.add_need_infer_tpls(generic_tpls);
 
             if let Some(type_list) = call_expr.get_call_generic_type_list() {
@@ -94,12 +84,40 @@ pub fn build_call_generic_substitutor(
         }
     }
 
-    let contain_self = func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer));
-    if contain_self && let Some(self_type) = infer_self_type(db, cache, call_expr) {
+    let self_type = if func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer)) {
+        infer_self_type(db, cache, call_expr, &substitutor)
+    } else {
+        None
+    };
+    if let Some(self_type) = self_type {
         substitutor.add_self_type(self_type);
     }
 
     Ok(substitutor)
+}
+
+fn collect_call_infer_tpls(func: &LuaFunctionType) -> HashSet<GenericTplId> {
+    let mut generic_tpls = func
+        .get_generic_params()
+        .iter()
+        .map(|generic_tpl| generic_tpl.get_tpl_id())
+        .filter(GenericTplId::is_func)
+        .collect::<HashSet<_>>();
+
+    for (_, param_type) in func.get_params() {
+        let Some(param_type) = param_type else {
+            continue;
+        };
+        param_type.visit_type(&mut |ty| {
+            if let LuaType::TplRef(tpl) = ty
+                && tpl.get_tpl_id().is_type()
+            {
+                generic_tpls.insert(tpl.get_tpl_id());
+            }
+        });
+    }
+
+    generic_tpls
 }
 
 fn apply_call_generic_type_list(
@@ -499,54 +517,49 @@ fn infer_generic_types_from_call(
     Ok(())
 }
 
-pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
-    match self_type {
-        LuaType::Def(id) | LuaType::Ref(id) => {
-            if let Some(generic) = db.get_type_index().get_generic_params(id) {
+pub(crate) fn infer_self_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: &LuaCallExpr,
+    call_substitutor: &TypeSubstitutor,
+) -> Option<LuaType> {
+    let build_self_type = |self_type: &LuaType| match self_type {
+        LuaType::Def(id) | LuaType::Ref(id) => match db.get_type_index().get_generic_params(id) {
+            Some(generic) => {
                 let mut params = Vec::with_capacity(generic.len());
-                let mut substitutor = TypeSubstitutor::new();
+                let mut substitutor = call_substitutor.clone();
                 for (i, generic_param) in generic.iter().enumerate() {
                     let tpl_id = GenericTplId::Type(i as u32);
-                    let param = build_self_generic_arg(db, generic_param, &substitutor);
+                    let param = call_substitutor
+                        .get_type(tpl_id)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            match generic_param
+                                .default
+                                .as_ref()
+                                .or(generic_param.constraint.as_ref())
+                            {
+                                Some(arg) => instantiate_type_generic(db, arg, &substitutor),
+                                None => LuaType::Unknown,
+                            }
+                        });
                     substitutor.insert_type(tpl_id, param.clone(), true);
                     params.push(param);
                 }
                 let generic = LuaGenericType::new(id.clone(), params);
-                return LuaType::Generic(Arc::new(generic));
+                LuaType::Generic(Arc::new(generic))
             }
-        }
-        _ => {}
-    };
-    self_type.clone()
-}
-
-fn build_self_generic_arg(
-    db: &DbIndex,
-    generic_param: &GenericParam,
-    substitutor: &TypeSubstitutor,
-) -> LuaType {
-    let Some(arg) = generic_param
-        .default
-        .as_ref()
-        .or(generic_param.constraint.as_ref())
-    else {
-        return LuaType::Unknown;
+            None => self_type.clone(),
+        },
+        _ => self_type.clone(),
     };
 
-    instantiate_type_generic(db, arg, substitutor)
-}
-
-pub fn infer_self_type(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    call_expr: &LuaCallExpr,
-) -> Option<LuaType> {
     let prefix_expr = call_expr.get_prefix_expr()?;
     match prefix_expr {
         LuaExpr::IndexExpr(index) => {
             let self_expr = index.get_prefix_expr()?;
             let self_type = infer_expr(db, cache, self_expr).ok()?;
-            let self_type = build_self_type(db, &self_type);
+            let self_type = build_self_type(&self_type);
             return Some(self_type);
         }
         LuaExpr::NameExpr(name) => {
@@ -561,7 +574,7 @@ pub fn infer_self_type(
                     let owner = db.get_member_index().get_current_owner(&member_id)?;
                     if let LuaMemberOwner::Type(id) = owner {
                         let typ = LuaType::Ref(id.clone());
-                        let self_type = build_self_type(db, &typ);
+                        let self_type = build_self_type(&typ);
                         return Some(self_type);
                     }
                     return None;
@@ -573,7 +586,7 @@ pub fn infer_self_type(
                         .map(|cache| cache.as_type())
                         .unwrap_or(&LuaType::Unknown)
                         .clone();
-                    let self_type = build_self_type(db, &typ);
+                    let self_type = build_self_type(&typ);
                     return Some(self_type);
                 }
                 _ => return None,

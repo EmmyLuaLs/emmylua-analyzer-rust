@@ -2,8 +2,8 @@ use std::{collections::HashSet, fmt::Write, sync::Arc};
 
 use emmylua_code_analysis::{
     AsyncState, DbIndex, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberOwner,
-    LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel, VariadicType, humanize_type,
-    infer_call_generic,
+    LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel, VariadicType,
+    build_call_generic_substitutor, humanize_type, instantiate_type_generic,
 };
 use emmylua_parser::LuaCallExpr;
 
@@ -98,14 +98,21 @@ fn instantiate_function_for_call(
         return func.clone();
     }
 
-    infer_call_generic(
+    let substitutor = build_call_generic_substitutor(
         db,
         &mut builder.semantic_model.get_cache().borrow_mut(),
         func.as_ref(),
-        call_expr.clone(),
+        call_expr,
     )
-    .map(Arc::new)
-    .unwrap_or_else(|_| func.clone())
+    .map(|substitutor| substitutor.without_pending_tpls(|tpl_id| tpl_id.is_type()));
+
+    let Ok(substitutor) = substitutor else {
+        return func.clone();
+    };
+    match instantiate_type_generic(db, &LuaType::DocFunction(func.clone()), &substitutor) {
+        LuaType::DocFunction(func) => func,
+        _ => func.clone(),
+    }
 }
 
 fn signature_return_docs(

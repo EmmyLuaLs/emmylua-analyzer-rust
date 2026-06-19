@@ -16,14 +16,14 @@ use crate::{
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::TypeSubstitutor,
+        generic::{TypeSubstitutor, infer_self_type},
         infer::narrow::get_type_at_call_expr_inline_cast,
         infer_node_semantic_decl,
         member::find_member_origin_owner,
         overload_resolve::{collect_callable_overload_groups, match_callable_by_arg_types},
     },
 };
-use crate::{build_self_type, infer_call_generic, infer_self_type, semantic::infer_expr};
+use crate::{infer_call_generic, semantic::infer_expr};
 use infer_require::infer_require_call;
 use infer_setmetatable::infer_setmetatable_call;
 
@@ -76,7 +76,6 @@ pub fn infer_call_expr_func(
             cache,
             type_def_id.clone(),
             call_expr.clone(),
-            &call_expr_type,
             infer_guard,
             args_count,
         ),
@@ -85,7 +84,6 @@ pub fn infer_call_expr_func(
             cache,
             type_ref_id.clone(),
             call_expr.clone(),
-            &call_expr_type,
             infer_guard,
             args_count,
         ),
@@ -290,7 +288,6 @@ fn infer_type_doc_function(
     cache: &mut LuaInferCache,
     type_id: LuaTypeDeclId,
     call_expr: LuaCallExpr,
-    call_expr_type: &LuaType,
     infer_guard: &InferGuardRef,
     args_count: Option<usize>,
 ) -> InferCallFuncResult {
@@ -340,13 +337,16 @@ fn infer_type_doc_function(
                     overloads.push(Arc::new(result));
                 } else if f.contain_self() {
                     let mut substitutor = TypeSubstitutor::new();
-                    let self_type = build_self_type(db, call_expr_type);
-                    substitutor.add_self_type(self_type);
-                    let func_type = LuaType::DocFunction(f.clone());
-                    if let LuaType::DocFunction(f) =
-                        instantiate_type_generic(db, &func_type, &substitutor)
-                    {
-                        overloads.push(f);
+                    if let Some(self_type) = infer_self_type(db, cache, &call_expr, &substitutor) {
+                        substitutor.add_self_type(self_type);
+                        let func_type = LuaType::DocFunction(f.clone());
+                        if let LuaType::DocFunction(f) =
+                            instantiate_type_generic(db, &func_type, &substitutor)
+                        {
+                            overloads.push(f);
+                        }
+                    } else {
+                        overloads.push(f.clone());
                     }
                 } else {
                     overloads.push(f.clone());
@@ -677,7 +677,8 @@ fn unwrapp_return_type(
             return Ok(ty.get_result_slot_type(0).unwrap_or(LuaType::Nil));
         }
         LuaType::SelfInfer => {
-            if let Some(self_type) = infer_self_type(db, cache, &call_expr) {
+            let substitutor = TypeSubstitutor::new();
+            if let Some(self_type) = infer_self_type(db, cache, &call_expr, &substitutor) {
                 return Ok(self_type);
             }
         }

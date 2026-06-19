@@ -36,7 +36,7 @@ pub(super) fn build_function_call_hover(
     }
 
     for matched_decl in matched_decls {
-        let info = build_call_hover_function_info(builder, db, matched_decl);
+        let info = build_call_hover_function_info(builder, db, matched_decl, call_expr);
         if let Some(info) = info {
             function_infos.push(info);
         }
@@ -86,6 +86,7 @@ fn build_call_hover_function_info(
     builder: &mut HoverBuilder,
     db: &DbIndex,
     matched_decl: MatchedCallDecl<'_>,
+    call_expr: &LuaCallExpr,
 ) -> Option<HoverFunctionInfo> {
     let match_semantic_decl = matched_decl.decl.id();
     let function_member = extract_function_member(db, match_semantic_decl);
@@ -97,7 +98,7 @@ fn build_call_hover_function_info(
         &call_type,
         match_semantic_decl,
         function_member,
-        None,
+        Some(call_expr),
     )?;
 
     let description = get_function_description(builder, db, match_semantic_decl);
@@ -143,7 +144,7 @@ fn find_callable_for_call(
         call_arg_types,
         call_expr,
         None,
-        true,
+        false,
     )
     .ok()
     .flatten()

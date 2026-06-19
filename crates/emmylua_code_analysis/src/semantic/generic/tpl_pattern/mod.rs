@@ -138,11 +138,9 @@ pub fn tpl_pattern_match(
 
     match pattern {
         LuaType::TplRef(tpl) => {
-            if tpl.get_tpl_id().is_func() {
-                context
-                    .substitutor
-                    .infer_type(tpl.get_tpl_id(), target.clone(), !tpl.is_const());
-            }
+            context
+                .substitutor
+                .infer_type(tpl.get_tpl_id(), target.clone(), !tpl.is_const());
         }
         LuaType::StrTplRef(str_tpl) => {
             if let LuaType::StringConst(s) = target {

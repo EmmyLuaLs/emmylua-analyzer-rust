@@ -169,7 +169,7 @@ mod test {
 
         let ty = ws.expr_ty("A");
         let ty_desc = ws.humanize_type(ty);
-        assert_eq!(ty_desc, "ClassB<unknown>");
+        assert_eq!(ty_desc, "ClassB<string>");
     }
 
     #[test]

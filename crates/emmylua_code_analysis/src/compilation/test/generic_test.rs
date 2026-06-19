@@ -1518,6 +1518,29 @@ mod test {
     }
 
     #[test]
+    fn test_overload_self_return_infers_class_generic_from_arg() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class BaseClass
+
+            ---@class ExtendedClass: BaseClass
+
+            ---@class GenericClass<T: BaseClass>
+            ---@overload fun(t: T): self
+            local GenericClass
+
+            return_val = GenericClass(
+                {} --[[@as ExtendedClass]]
+            )
+            "#,
+        );
+
+        let return_ty = ws.expr_ty("return_val");
+        assert_eq!(ws.humanize_type(return_ty), "GenericClass<ExtendedClass>");
+    }
+
+    #[test]
     fn test_conditional_generic_missing_class_arg_uses_unknown_operand() {
         let mut ws = VirtualWorkspace::new();
         // `extends unknown` 几乎等效于返回`true`分支结果

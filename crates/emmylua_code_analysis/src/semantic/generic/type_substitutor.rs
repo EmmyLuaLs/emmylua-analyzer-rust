@@ -287,17 +287,14 @@ impl TypeSubstitutor {
         self.tpl_replace_map.get(&tpl_id)
     }
 
-    pub(super) fn without_pending_tpls(&self, tpl_ids: &HashSet<GenericTplId>) -> Self {
+    pub fn without_pending_tpls(
+        &self,
+        mut should_remove: impl FnMut(GenericTplId) -> bool,
+    ) -> Self {
         let mut substitutor = self.clone();
-        for tpl_id in tpl_ids {
-            if substitutor
-                .tpl_replace_map
-                .get(tpl_id)
-                .is_some_and(SubstitutorValue::is_none)
-            {
-                substitutor.tpl_replace_map.remove(tpl_id);
-            }
-        }
+        substitutor
+            .tpl_replace_map
+            .retain(|tpl_id, value| !(value.is_none() && should_remove(*tpl_id)));
 
         substitutor
     }
@@ -305,6 +302,13 @@ impl TypeSubstitutor {
     pub fn get_raw_type(&self, tpl_id: GenericTplId) -> Option<&LuaType> {
         match self.tpl_replace_map.get(&tpl_id) {
             Some(SubstitutorValue::Type(ty)) => Some(ty.raw()),
+            _ => None,
+        }
+    }
+
+    pub fn get_type(&self, tpl_id: GenericTplId) -> Option<&LuaType> {
+        match self.tpl_replace_map.get(&tpl_id) {
+            Some(SubstitutorValue::Type(ty)) => Some(ty.default()),
             _ => None,
         }
     }
