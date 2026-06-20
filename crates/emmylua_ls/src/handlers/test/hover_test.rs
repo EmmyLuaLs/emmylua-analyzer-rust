@@ -51,6 +51,24 @@ mod tests {
     }
 
     #[gtest]
+    fn test_hover_class_index_signature() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class Foo
+                ---@field [integer] string
+
+                ---@type Foo
+                local <??>foo
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal foo: Foo {\n    [integer]: string,\n}\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_right_to_left() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         // check!(ws.check_hover(

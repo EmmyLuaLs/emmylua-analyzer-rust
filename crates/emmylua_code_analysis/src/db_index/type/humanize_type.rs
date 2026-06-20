@@ -350,7 +350,7 @@ impl<'a> TypeHumanizer<'a> {
         if count < all_count {
             for function_key in &function_vec {
                 w.write_str("    ")?;
-                write_member_key_and_separator(function_key, saved, w)?;
+                self.write_member_key_and_separator(function_key, saved, w)?;
                 w.write_str("function,\n")?;
                 count += 1;
                 if count >= max_display_count {
@@ -1033,7 +1033,7 @@ impl<'a> TypeHumanizer<'a> {
         parent_level: RenderLevel,
         w: &mut W,
     ) -> fmt::Result {
-        write_member_key_and_separator(member_key, parent_level, w)?;
+        self.write_member_key_and_separator(member_key, parent_level, w)?;
 
         if parent_level == RenderLevel::Detailed {
             // Show "integer = 42" style for const types
@@ -1060,32 +1060,40 @@ impl<'a> TypeHumanizer<'a> {
             self.write_type(ty, w)
         }
     }
+
+    fn write_member_key_and_separator<W: Write>(
+        &mut self,
+        member_key: &LuaMemberKey,
+        level: RenderLevel,
+        w: &mut W,
+    ) -> fmt::Result {
+        let separator = if level == RenderLevel::Detailed {
+            ": "
+        } else {
+            " = "
+        };
+
+        match member_key {
+            LuaMemberKey::Name(name) => {
+                w.write_str(name)?;
+                w.write_str(separator)
+            }
+            LuaMemberKey::Integer(i) => {
+                write!(w, "[{}]", i)?;
+                w.write_str(separator)
+            }
+            LuaMemberKey::TypeKey(typ) => {
+                w.write_char('[')?;
+                self.write_type(typ, w)?;
+                w.write_char(']')?;
+                w.write_str(separator)
+            }
+            LuaMemberKey::None => Ok(()),
+        }
+    }
 }
 
 // ─── Free helper functions ──────────────────────────────────────────────────
-
-fn write_member_key_and_separator<W: Write>(
-    member_key: &LuaMemberKey,
-    level: RenderLevel,
-    w: &mut W,
-) -> fmt::Result {
-    let separator = if level == RenderLevel::Detailed {
-        ": "
-    } else {
-        " = "
-    };
-    match member_key {
-        LuaMemberKey::Name(name) => {
-            w.write_str(name)?;
-            w.write_str(separator)
-        }
-        LuaMemberKey::Integer(i) => {
-            write!(w, "[{}]", i)?;
-            w.write_str(separator)
-        }
-        LuaMemberKey::None | LuaMemberKey::TypeKey(_) => Ok(()),
-    }
-}
 
 /// Write an escaped version of `s` directly into `w`.
 fn write_hover_escape_string<W: Write>(s: &str, w: &mut W) -> fmt::Result {
