@@ -622,7 +622,7 @@ impl<'a> TypeHumanizer<'a> {
                     w.write_str(": ")?;
                     self.write_type(field.1, w)?;
                 }
-                LuaMemberKey::None | LuaMemberKey::ExprType(_) => {
+                LuaMemberKey::None | LuaMemberKey::TypeKey(_) => {
                     self.write_type(field.1, w)?;
                 }
             }
@@ -1083,7 +1083,7 @@ fn write_member_key_and_separator<W: Write>(
             write!(w, "[{}]", i)?;
             w.write_str(separator)
         }
-        LuaMemberKey::None | LuaMemberKey::ExprType(_) => Ok(()),
+        LuaMemberKey::None | LuaMemberKey::TypeKey(_) => Ok(()),
     }
 }
 

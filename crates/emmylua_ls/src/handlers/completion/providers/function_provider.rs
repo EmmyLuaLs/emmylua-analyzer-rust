@@ -196,7 +196,7 @@ fn add_type_ref_completion(
                     LuaMemberKey::Name(str) => to_enum_label(builder, str.as_str()),
                     LuaMemberKey::Integer(i) => i.to_string(),
                     LuaMemberKey::None => continue,
-                    LuaMemberKey::ExprType(_) => continue,
+                    LuaMemberKey::TypeKey(_) => continue,
                 };
 
                 let completion_item = CompletionItem {

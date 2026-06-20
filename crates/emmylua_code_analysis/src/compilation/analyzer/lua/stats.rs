@@ -515,7 +515,7 @@ pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> 
                     .infer_manager
                     .get_infer_cache(analyzer.file_id);
                 if let Ok(member_key) = LuaMemberKey::from_index_key(db, cache, &field_key) {
-                    if !matches!(member_key, LuaMemberKey::ExprType(ref typ) if typ.is_unknown()) {
+                    if !matches!(member_key, LuaMemberKey::TypeKey(ref typ) if typ.is_unknown()) {
                         if let Some(table_expr) = field.get_parent::<LuaTableExpr>() {
                             let owner_id = LuaMemberOwner::Element(InFiled::new(
                                 analyzer.file_id,

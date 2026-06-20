@@ -493,7 +493,7 @@ fn table_generic_tpl_pattern_member_owner_match(
         let key_type = match k {
             LuaMemberKey::Integer(i) => LuaType::IntegerConst(i),
             LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
-            LuaMemberKey::ExprType(typ) => typ,
+            LuaMemberKey::TypeKey(typ) => typ,
             _ => continue,
         };
 
@@ -529,7 +529,7 @@ fn table_generic_tpl_pattern_member_owner_match(
                     return;
                 }
                 let key_type = match &m.key {
-                    LuaMemberKey::ExprType(typ) => typ.clone(),
+                    LuaMemberKey::TypeKey(typ) => typ.clone(),
                     _ => return,
                 };
                 if check_type_compact(context.db, &target_key_type, &key_type).is_ok() {

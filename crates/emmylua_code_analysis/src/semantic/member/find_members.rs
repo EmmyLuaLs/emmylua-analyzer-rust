@@ -213,7 +213,7 @@ fn find_table_generic_members(
 
     let key_type = ctx.instantiate_type(db, &table_type[0]);
     let value_type = ctx.instantiate_type(db, &table_type[1]);
-    let member_key = LuaMemberKey::ExprType(key_type);
+    let member_key = LuaMemberKey::TypeKey(key_type);
 
     if should_include_member(&member_key, filter) {
         members.push(LuaMemberInfo {

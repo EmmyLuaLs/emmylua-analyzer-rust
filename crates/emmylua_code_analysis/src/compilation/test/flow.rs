@@ -3019,6 +3019,26 @@ _2 = a[1]
     }
 
     #[test]
+    fn test_or_table_literal_with_required_fields_narrows_to_class() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Foo
+            --- @field [integer] string
+            --- @field other number
+
+            local foo --- @type Foo?
+
+            E = foo or { other = 5 }
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "Foo");
+    }
+
+    #[test]
     fn test_or_empty_table_union_of_tables() {
         let mut ws = VirtualWorkspace::new();
 

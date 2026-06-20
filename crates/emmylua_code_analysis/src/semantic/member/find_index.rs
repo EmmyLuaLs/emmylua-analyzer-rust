@@ -69,7 +69,7 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
                     if let Ok(return_type) = operator.get_result(db) {
                         members.push(LuaMemberInfo {
                             property_owner_id: None,
-                            key: LuaMemberKey::ExprType(operand),
+                            key: LuaMemberKey::TypeKey(operand),
                             typ: return_type,
                             feature: None,
                             overload_index: None,
@@ -83,10 +83,8 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
         let member_owner = LuaMemberOwner::Element(table_range.clone());
         if let Some(table_members) = db.get_member_index().get_members(&member_owner) {
             for member in table_members {
-                let member_key_type = match member.get_key() {
-                    LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
-                    LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
-                    _ => continue,
+                let Some(member_key_type) = member.get_key().to_index_type() else {
+                    continue;
                 };
 
                 let member_type = db
@@ -97,7 +95,7 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
 
                 members.push(LuaMemberInfo {
                     property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
-                    key: LuaMemberKey::ExprType(member_key_type),
+                    key: LuaMemberKey::TypeKey(member_key_type),
                     typ: member_type,
                     feature: Some(member.get_feature()),
                     overload_index: None,
@@ -142,7 +140,7 @@ fn find_index_custom_type(
                 if let Ok(return_type) = operator.get_result(db) {
                     members.push(LuaMemberInfo {
                         property_owner_id: None,
-                        key: LuaMemberKey::ExprType(operand),
+                        key: LuaMemberKey::TypeKey(operand),
                         typ: return_type,
                         feature: None,
                         overload_index: None,
@@ -182,7 +180,7 @@ fn find_index_array(db: &DbIndex, base: &LuaType) -> FindMembersResult {
     // Array accepts integer indices
     members.push(LuaMemberInfo {
         property_owner_id: None,
-        key: LuaMemberKey::ExprType(LuaType::Integer),
+        key: LuaMemberKey::TypeKey(LuaType::Integer),
         typ: expression_type.clone(),
         feature: None,
         overload_index: None,
@@ -191,7 +189,7 @@ fn find_index_array(db: &DbIndex, base: &LuaType) -> FindMembersResult {
     // Array accepts number indices (for compatibility)
     members.push(LuaMemberInfo {
         property_owner_id: None,
-        key: LuaMemberKey::ExprType(LuaType::Number),
+        key: LuaMemberKey::TypeKey(LuaType::Number),
         typ: expression_type,
         feature: None,
         overload_index: None,
@@ -208,7 +206,7 @@ fn find_index_object(db: &DbIndex, object: &LuaObjectType) -> FindMembersResult 
     for (key, field) in access_member_type {
         members.push(LuaMemberInfo {
             property_owner_id: None,
-            key: LuaMemberKey::ExprType(key.clone()),
+            key: LuaMemberKey::TypeKey(key.clone()),
             typ: field.clone(),
             feature: None,
             overload_index: None,
@@ -340,7 +338,7 @@ fn find_index_generic(
 
                     members.push(LuaMemberInfo {
                         property_owner_id: None,
-                        key: LuaMemberKey::ExprType(instantiated_operand),
+                        key: LuaMemberKey::TypeKey(instantiated_operand),
                         typ: instantiated_return_type,
                         feature: None,
                         overload_index: None,
@@ -381,7 +379,7 @@ fn find_index_table_generic(db: &DbIndex, table_params: &[LuaType]) -> FindMembe
 
     members.push(LuaMemberInfo {
         property_owner_id: None,
-        key: LuaMemberKey::ExprType(key_type.clone()),
+        key: LuaMemberKey::TypeKey(key_type.clone()),
         typ: value_type.clone(),
         feature: None,
         overload_index: None,

@@ -192,7 +192,7 @@ impl LuaTypeDecl {
                 let fake_type = match member_key {
                     LuaMemberKey::Name(name) => LuaType::DocStringConst(name.clone().into()),
                     LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
-                    LuaMemberKey::ExprType(typ) => typ.clone(),
+                    LuaMemberKey::TypeKey(typ) => typ.clone(),
                     LuaMemberKey::None => continue,
                 };
 

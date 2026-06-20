@@ -74,7 +74,6 @@ fn infer_union_binary_expr(
     let mut result = None;
     let types = u.into_vec();
     for ty in types.iter() {
-        // 只在实际调用时才 clone，而不是预先 clone
         let ty_result = if is_left_union {
             infer_binary_expr_type(db, ty.clone(), other.clone(), op)
         } else {

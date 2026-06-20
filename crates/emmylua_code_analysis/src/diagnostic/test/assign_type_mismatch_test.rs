@@ -1160,6 +1160,39 @@ return t
     }
 
     #[test]
+    fn test_or_table_literal_satisfies_class_with_index_signature() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class Foo
+                ---@field [integer] string
+                ---@field other number
+
+                local foo ---@type Foo?
+                foo = foo or { other = 5 }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_table_literal_index_member_must_match_class_index_signature() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class Foo
+                ---@field [integer] string
+
+                ---@type Foo
+                local foo = { [1] = 1 }
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_ref_index_access_assign_class_to_object_mismatch() {
         let mut ws = VirtualWorkspace::new();
 

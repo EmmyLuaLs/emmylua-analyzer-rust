@@ -125,7 +125,7 @@ fn can_use_as_array(builder: &CompletionBuilder, typ: &LuaType) -> bool {
                         members.iter().any(|member| {
                             matches!(
                                 &member.key,
-                                LuaMemberKey::Integer(_) | LuaMemberKey::ExprType(LuaType::Integer)
+                                LuaMemberKey::Integer(_) | LuaMemberKey::TypeKey(LuaType::Integer)
                             )
                         })
                     })

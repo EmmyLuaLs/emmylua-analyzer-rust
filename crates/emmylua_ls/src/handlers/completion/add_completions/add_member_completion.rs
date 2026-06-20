@@ -45,7 +45,7 @@ pub fn add_member_completion(
         CompletionTriggerStatus::Dot => match member_key {
             LuaMemberKey::Name(name) => name.to_string(),
             LuaMemberKey::Integer(index) => format!("[{}]", index),
-            LuaMemberKey::ExprType(typ) => {
+            LuaMemberKey::TypeKey(typ) => {
                 if let LuaType::Call(alias_call) = typ {
                     if alias_call.get_call_kind() == LuaAliasCallKind::KeyOf
                         && alias_call.get_operands().len() == 1
