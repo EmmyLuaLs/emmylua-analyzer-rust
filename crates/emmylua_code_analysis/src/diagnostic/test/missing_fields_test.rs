@@ -259,4 +259,24 @@ foo({})
         "#
         ));
     }
+
+    #[test]
+    fn test_multiline_union_nil_field_is_optional() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@alias PersonAge
+            --- | integer
+            --- | nil
+
+            ---@class Person
+            ---@field name string
+            ---@field age PersonAge
+
+            ---@type Person
+            local person = { name = "123" }
+        "#
+        ));
+    }
 }
