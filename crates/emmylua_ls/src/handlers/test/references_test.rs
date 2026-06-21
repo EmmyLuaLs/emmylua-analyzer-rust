@@ -184,6 +184,42 @@ mod tests {
     }
 
     #[gtest]
+    fn test_constructor_attribute_references_class_call() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        check!(ws.check_references(
+            r#"
+                ---@generic T
+                ---@[constructor("init")]
+                ---@param class `T`
+                ---@return T
+                function meta(class)
+                    return {}
+                end
+
+                ---@class AAAA
+                local AAAA = meta("AAAA")
+
+                function AAAA:in<??>it()
+                end
+
+                local c = AAAA()
+            "#,
+            vec![],
+            vec![
+                VirtualLocation {
+                    file: "".to_string(),
+                    line: 12,
+                },
+                VirtualLocation {
+                    file: "".to_string(),
+                    line: 15,
+                },
+            ],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_goto_label_references() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_references(
