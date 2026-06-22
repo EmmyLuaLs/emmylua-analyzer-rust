@@ -8,6 +8,7 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - main
+  workflow_dispatch:
 
 env:
   RUST_BACKTRACE: 1
@@ -74,9 +75,9 @@ jobs:
           cargo run --bin schema_json_gen
           # Check for uncommitted changes
           if [[ -n "$(git status --porcelain)" ]]; then
-            echo '❌ Uncommitted changes detected after running `cargo run --bin schema_json_gen`:'
+            echo 'Uncommitted changes detected after running `cargo run --bin schema_json_gen`:'
             git --no-pager diff
             exit 1
           else
-            echo "✅ No changes — schema is up to date."
+            echo "No changes - schema is up to date."
           fi
