@@ -65,7 +65,30 @@ pub fn get_detail(
     builder: &CompletionBuilder,
     typ: &LuaType,
     display: CallDisplay,
+    show_literal_params: bool,
 ) -> Option<String> {
+    let db = builder.semantic_model.get_db();
+    let param_text = |param: &(String, Option<LuaType>)| {
+        if show_literal_params
+            && let Some(typ) = &param.1
+            && matches!(
+                typ,
+                LuaType::Nil
+                    | LuaType::BooleanConst(_)
+                    | LuaType::StringConst(_)
+                    | LuaType::IntegerConst(_)
+                    | LuaType::FloatConst(_)
+                    | LuaType::DocStringConst(_)
+                    | LuaType::DocIntegerConst(_)
+                    | LuaType::DocBooleanConst(_)
+            )
+        {
+            return humanize_type(db, typ, RenderLevel::Minimal);
+        }
+
+        param.0.clone()
+    };
+
     match typ {
         LuaType::Signature(signature_id) => {
             let signature = builder
@@ -77,7 +100,7 @@ pub fn get_detail(
             let mut params_str = signature
                 .get_type_params()
                 .iter()
-                .map(|param| param.0.clone())
+                .map(param_text)
                 .collect::<Vec<_>>();
 
             match display {
@@ -113,11 +136,7 @@ pub fn get_detail(
             Some(format!("({}){}", params_str.join(", "), rets_detail))
         }
         LuaType::DocFunction(f) => {
-            let mut params_str = f
-                .get_params()
-                .iter()
-                .map(|param| param.0.clone())
-                .collect::<Vec<_>>();
+            let mut params_str = f.get_params().iter().map(param_text).collect::<Vec<_>>();
 
             match display {
                 CallDisplay::AddSelf => {
@@ -222,16 +241,6 @@ pub fn get_function_snippet(
             ))
         }
         _ => None,
-    }
-}
-
-#[allow(unused)]
-fn truncate_with_ellipsis(s: &str, max_len: usize) -> String {
-    if s.chars().count() > max_len {
-        let truncated: String = s.chars().take(max_len).collect();
-        format!("   {}...", truncated)
-    } else {
-        format!("   {}", s)
     }
 }
 

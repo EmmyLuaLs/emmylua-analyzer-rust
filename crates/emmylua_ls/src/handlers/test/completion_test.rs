@@ -295,6 +295,94 @@ mod tests {
     }
 
     #[gtest]
+    fn test_overload_completion_literal_param_detail() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                ---@class Root
+                local Root
+
+                ---@overload fun(idx: 0): "IgnoreNetwork"
+                ---@overload fun(idx: 1): "StructureLocked"
+                ---@param idx int
+                function Root:PropertyName(idx) end
+
+                Root:<??>
+            "#,
+            CompletionTriggerKind::INVOKED,
+        )?;
+        let mut details = items
+            .iter()
+            .filter(|item| item.label == "PropertyName")
+            .map(|item| {
+                item.label_details
+                    .as_ref()
+                    .and_then(|details| details.detail.clone())
+            })
+            .collect::<Vec<_>>();
+        details.sort();
+
+        verify_eq!(
+            details,
+            vec![
+                Some("(0)-> \"IgnoreNetwork\"".to_string()),
+                Some("(1)-> \"StructureLocked\"".to_string()),
+                Some("(idx)".to_string()),
+            ]
+        )?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_overload_completion_all_doc_literal_param_details() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                ---@class Root
+                local Root
+
+                ---@overload fun(value: "network"): "StringLiteral"
+                ---@overload fun(value: 0): "IntegerLiteral"
+                ---@overload fun(value: true): "TrueLiteral"
+                ---@overload fun(value: false): "FalseLiteral"
+                ---@overload fun(value: nil): "NilLiteral"
+                ---@param value string|integer|boolean|nil
+                function Root:LiteralName(value) end
+
+                Root:<??>
+            "#,
+            CompletionTriggerKind::INVOKED,
+        )?;
+        let mut details = items
+            .iter()
+            .filter(|item| item.label == "LiteralName")
+            .map(|item| {
+                item.label_details
+                    .as_ref()
+                    .and_then(|details| details.detail.clone())
+            })
+            .collect::<Vec<_>>();
+        details.sort();
+
+        verify_eq!(
+            details,
+            vec![
+                Some("(\"network\")-> \"StringLiteral\"".to_string()),
+                Some("(0)-> \"IntegerLiteral\"".to_string()),
+                Some("(false)-> \"FalseLiteral\"".to_string()),
+                Some("(nil)-> \"NilLiteral\"".to_string()),
+                Some("(true)-> \"TrueLiteral\"".to_string()),
+                Some("(value)".to_string()),
+            ]
+        )?;
+
+        Ok(())
+    }
+
+    #[gtest]
     fn test_4() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
         check!(ws.check_completion(

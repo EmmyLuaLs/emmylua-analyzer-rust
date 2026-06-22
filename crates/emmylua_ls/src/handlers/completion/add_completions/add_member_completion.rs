@@ -109,7 +109,7 @@ pub fn add_member_completion(
     let call_display = get_call_show(builder.semantic_model.get_db(), &remove_nil_type, status)
         .unwrap_or(CallDisplay::None);
     // 紧靠着 label 显示的描述
-    let detail = get_detail(builder, &remove_nil_type, call_display);
+    let detail = get_detail(builder, &remove_nil_type, call_display, false);
     // 在`detail`更右侧, 且不紧靠着`detail`显示
     let description = get_description(builder, &remove_nil_type);
 
@@ -210,7 +210,7 @@ fn add_signature_overloads(
         .for_each(|(index, overload)| {
             let typ = LuaType::DocFunction(overload);
             let description = get_description(builder, &typ);
-            let detail = get_detail(builder, &typ, call_display);
+            let detail = get_detail(builder, &typ, call_display, true);
             let data = if let Some(id) = &property_owner {
                 CompletionData::from_overload(builder, id.clone(), index)
             } else {

@@ -24,7 +24,7 @@ pub fn add_decl_completion(
         kind: Some(get_completion_kind(typ)),
         data: CompletionData::from_property_owner_id(builder, decl_id.into()),
         label_details: Some(lsp_types::CompletionItemLabelDetails {
-            detail: get_detail(builder, typ, CallDisplay::None),
+            detail: get_detail(builder, typ, CallDisplay::None, false),
             description: get_description(builder, typ),
         }),
         ..Default::default()
