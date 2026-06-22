@@ -1,5 +1,6 @@
 mod connection;
 mod error;
+pub mod health_check;
 mod lsp_server;
 mod main_loop;
 mod message_processor;
@@ -41,7 +42,6 @@ pub async fn run_ls(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + Send
 
     connection.initialize_finish(id, initialize_data)?;
 
-    // Create async connection wrapper
     let async_connection = AsyncConnection::from_sync(connection);
     main_loop::main_loop(async_connection, initialization_params, cmd_args).await?;
     threads.join()?;

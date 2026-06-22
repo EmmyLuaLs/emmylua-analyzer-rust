@@ -1,134 +1,70 @@
-name: Rust
+name: Build emmylua_ls
 
 on:
   push:
-    branches:
-     - main
-    tags:
-     - "*"
+    branches: [main, master]
+    tags: ['v*']
   pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-     - main
+    branches: [main, master]
 
 jobs:
   build:
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-22.04,   target: x86_64-unknown-linux-gnu,    platform: linux-x64,     cross: general }
-          - { os: ubuntu-22.04,   target: x86_64-unknown-linux-gnu,    platform: linux-x64,     cross: zigbuild, glibc: 2.17 }
-          - { os: ubuntu-22.04,   target: aarch64-unknown-linux-gnu,   platform: linux-aarch64, cross: zigbuild, glibc: 2.17 }
-          - { os: ubuntu-22.04,   target: riscv64gc-unknown-linux-gnu, platform: linux-riscv64, cross: cross }
-          - { os: ubuntu-22.04,   target: x86_64-unknown-linux-musl,   platform: linux-musl,    cross: cross }
-          - { os: macos-latest,   target: x86_64-apple-darwin,         platform: darwin-x64,    cross: general }
-          - { os: macos-latest,   target: aarch64-apple-darwin,        platform: darwin-arm64,  cross: general }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc,      platform: win32-x64,     cross: general }
-          - { os: windows-latest, target: i686-pc-windows-msvc,        platform: win32-ia32,    cross: general }
-          - { os: windows-latest, target: aarch64-pc-windows-msvc,     platform: win32-arm64,   cross: general }
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: emmylua_ls.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: emmylua_ls
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: emmylua_ls
+
     runs-on: ${{ matrix.os }}
-    env:
-      PACKAGE_ARGS: -p emmylua_ls -p emmylua_check -p emmylua_doc_cli -p emmylua_formatter
-      BINARY_NAMES: emmylua_ls emmylua_check emmylua_doc_cli luafmt
+
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Install Rust toolchain
+
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      - name: edit version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          echo "current ref ${{ github.ref }}"
-          cargo run -p edit_version -- ${{ github.ref }}
-      - name: Build - General
-        if: ${{ matrix.cross == 'general' }}
-        shell: bash
-        run: |
-          rustup target add ${{ matrix.target }}
-          cargo build --release --target ${{ matrix.target }} $PACKAGE_ARGS
-      - name: Build - cross
-        if: ${{ matrix.cross == 'cross' }}
-        shell: bash
-        run: |
-          cargo install cross
-          cross build --release --target ${{ matrix.target }} $PACKAGE_ARGS
-      - name: Build -zigbuild
-        if: ${{ matrix.cross == 'zigbuild' }}
-        shell: bash
-        run: |
-          rustup target add ${{ matrix.target }}
-          cargo install --locked cargo-zigbuild
-          pip3 install ziglang
-          cargo zigbuild --release --target ${{ matrix.target }}.${{ matrix.glibc }} $PACKAGE_ARGS
-      - name: Stage binaries
-        shell: bash
-        run: |
-          if [ "${{ matrix.cross }}" = "zigbuild" ]; then
-            artifact_platform="${{ matrix.platform }}-glibc.${{ matrix.glibc }}"
-            target_dir="${{ matrix.target }}"
-          else
-            artifact_platform="${{ matrix.platform }}"
-            target_dir="${{ matrix.target }}"
-          fi
+        with:
+          targets: ${{ matrix.target }}
 
-          mkdir -p "$GITHUB_WORKSPACE/artifact"
-          binaries=($BINARY_NAMES)
-          for binary in "${binaries[@]}"; do
-            bundle_dir="$GITHUB_WORKSPACE/artifact/${binary}-${artifact_platform}"
-            mkdir -p "$bundle_dir"
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-            source_path="$GITHUB_WORKSPACE/target/${target_dir}/release/${binary}"
-            if [ "${{ runner.os }}" = "Windows" ]; then
-              source_path="${source_path}.exe"
-            fi
+      - name: Build
+        run: cargo build --release -p emmylua_ls
 
-            cp "$source_path" "$bundle_dir/"
-          done
-      - name: Upload
-        if: ${{ matrix.cross != 'zigbuild' }}
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.platform }}
-          path: ${{ github.workspace }}/artifact/
-      - name: Upload zigbuild
-        if: ${{ matrix.cross == 'zigbuild' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.platform }}-glibc.${{ matrix.glibc }}
-          path: ${{ github.workspace }}/artifact/
+          name: emmylua_ls-${{ matrix.os }}
+          path: target/release/${{ matrix.artifact }}
+
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
     steps:
-      - name: Download
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
-      - name: Compress artifacts
-        shell: bash
-        run: |
-          shopt -s nullglob
 
-          for dir in build-*/*; do
-            [ -d "$dir" ] || continue
-
-            base_name="$(basename "$dir")"
-            if [[ "$base_name" == *win32* ]]; then
-              zip -j "${base_name}.zip" "$dir"/*.exe
-            else
-              chmod +x "$dir"/*
-              tar -zcvf "${base_name}.tar.gz" -C "$dir" .
-            fi
-          done
-      - name: Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: emmylua_ls
-          draft: false
-          generate_release_notes: true
           files: |
-            *.zip
-            *.tar.gz
-
-          token: ${{ secrets.RELEASE }}
+            emmylua_ls-windows-latest/emmylua_ls.exe
+            emmylua_ls-ubuntu-latest/emmylua_ls
+            emmylua_ls-macos-latest/emmylua_ls
