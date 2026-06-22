@@ -38,9 +38,9 @@ impl LspServer {
 
     pub(super) async fn run(mut self) -> Result<(), Box<dyn Error + Sync + Send>> {
         let health_check = Arc::new(HealthCheck::new());
-        health_check.clone().start_monitoring(
-            self.server_context.snapshot().client().clone(),
-        );
+        let snapshot = self.server_context.snapshot();
+        let client = Arc::new(snapshot.client().clone());
+        health_check.clone().start_monitoring(client);
 
         self.wait_for_initialization().await?;
 
