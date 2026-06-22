@@ -308,6 +308,9 @@ impl<'a> TypeHumanizer<'a> {
         let mut function_vec = Vec::new();
         for member in members {
             let member_key = member.get_key();
+            if matches!(member_key, LuaMemberKey::TypeKey(typ) if typ.is_nil()) {
+                continue;
+            }
             let type_cache = self
                 .db
                 .get_type_index()
@@ -781,6 +784,9 @@ impl<'a> TypeHumanizer<'a> {
 
         for member in members {
             let key = member.get_key();
+            if matches!(key, LuaMemberKey::TypeKey(typ) if typ.is_nil()) {
+                continue;
+            }
             let type_cache = self
                 .db
                 .get_type_index()

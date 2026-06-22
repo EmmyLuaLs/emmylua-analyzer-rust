@@ -69,6 +69,22 @@ mod tests {
     }
 
     #[gtest]
+    fn test_hover_class_nil_type_key_hidden() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class <??>AAA
+                ---@field [true] 1
+                ---@field [nil] 2
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(class) AAA {\n    [true]: integer = 1,\n}\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_right_to_left() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         // check!(ws.check_hover(
