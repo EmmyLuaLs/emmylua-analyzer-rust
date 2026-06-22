@@ -157,7 +157,14 @@ pub fn resolve_signature_by_args(
     let start_param_index = expr_len;
     let mut max_param_len = 0;
     for func in rest_need_resolve_funcs.iter().flatten() {
-        let param_len = func.get_params().len();
+        let mut param_len = func.get_params().len();
+        if func
+            .get_params()
+            .last()
+            .is_some_and(|last_param| last_param.0 == "...")
+        {
+            param_len = param_len.saturating_sub(1);
+        }
         if param_len > max_param_len {
             max_param_len = param_len;
         }
@@ -312,7 +319,7 @@ fn compare_callable_specificity(
         let param_index = get_call_param_index(a, arg_index, is_colon_call)?;
         let a_param = get_func_param_type(a, param_index)?;
         let b_param = get_func_param_type(b, param_index)?;
-        let param_order = compare_param_specificity(db, &a_param, &b_param);
+        let param_order = compare_param_specificity(db, &a_param, &b_param, expr_type);
         match (result, param_order) {
             (Ordering::Equal, order) => result = order,
             (Ordering::Greater, Ordering::Less) | (Ordering::Less, Ordering::Greater) => {
@@ -325,9 +332,49 @@ fn compare_callable_specificity(
     Some(result)
 }
 
-fn compare_param_specificity(db: &DbIndex, a: &LuaType, b: &LuaType) -> Ordering {
+fn compare_param_specificity(
+    db: &DbIndex,
+    a: &LuaType,
+    b: &LuaType,
+    expr_type: &LuaType,
+) -> Ordering {
     if a == b {
         return Ordering::Equal;
+    }
+
+    // 字面量实参直接命中对应 overload 时, 该 overload 比基础类型主签名更具体.
+    match (expr_type, a, b) {
+        (
+            LuaType::IntegerConst(expr) | LuaType::DocIntegerConst(expr),
+            LuaType::DocIntegerConst(a),
+            LuaType::Integer | LuaType::Number,
+        ) if expr == a => return Ordering::Greater,
+        (
+            LuaType::IntegerConst(expr) | LuaType::DocIntegerConst(expr),
+            LuaType::Integer | LuaType::Number,
+            LuaType::DocIntegerConst(b),
+        ) if expr == b => return Ordering::Less,
+        (
+            LuaType::StringConst(expr) | LuaType::DocStringConst(expr),
+            LuaType::DocStringConst(a),
+            LuaType::String,
+        ) if expr == a => return Ordering::Greater,
+        (
+            LuaType::StringConst(expr) | LuaType::DocStringConst(expr),
+            LuaType::String,
+            LuaType::DocStringConst(b),
+        ) if expr == b => return Ordering::Less,
+        (
+            LuaType::BooleanConst(expr) | LuaType::DocBooleanConst(expr),
+            LuaType::DocBooleanConst(a),
+            LuaType::Boolean,
+        ) if expr == a => return Ordering::Greater,
+        (
+            LuaType::BooleanConst(expr) | LuaType::DocBooleanConst(expr),
+            LuaType::Boolean,
+            LuaType::DocBooleanConst(b),
+        ) if expr == b => return Ordering::Less,
+        _ => {}
     }
 
     match (a.is_any() || a.is_unknown(), b.is_any() || b.is_unknown()) {

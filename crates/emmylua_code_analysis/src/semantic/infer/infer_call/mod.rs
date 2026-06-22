@@ -951,6 +951,17 @@ mod tests {
             local foo = fn_or_val(fn)
             result = foo
             value_result = fn_or_val("bar")
+
+            ---@generic U
+            ---@param fov (fun(...): U?)
+            ---@param ... unknown
+            ---@return U?
+            ---@overload fun(fov: U): U
+            function fn_or_val_args(fov, ...)
+            end
+
+            local foo_args = fn_or_val_args(fn)
+            result_args = foo_args
             "#,
         );
 
@@ -958,6 +969,36 @@ mod tests {
         assert_eq!(ws.humanize_type(foo), "string?");
         let value = ws.expr_ty("value_result");
         assert_eq!(ws.humanize_type(value), "string");
+        let args_result = ws.expr_ty("result_args");
+        assert_eq!(ws.humanize_type(args_result), "string?");
+    }
+
+    #[test]
+    fn test_literal_overload_preferred_over_broad_main_signature() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Root
+            local Root
+
+            ---@overload fun(idx: 0): "IgnoreNetwork"
+            ---@overload fun(idx: 1): "StructureLocked"
+            ---@param idx int
+            ---@return string
+            function Root:PropertyName(idx) end
+
+            A = Root:PropertyName(1)
+
+            ---@type int
+            local idx
+            B = Root:PropertyName(idx)
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(result_ty), "\"StructureLocked\"");
+        let wide_result_ty = ws.expr_ty("B");
+        assert_eq!(ws.humanize_type(wide_result_ty), "string");
     }
 
     #[test]
