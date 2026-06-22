@@ -5,7 +5,7 @@ mod tests {
     use emmylua_parser::VisibilityKind;
 
     use crate::{
-        Emmyrc, FileId, WorkspaceId,
+        Emmyrc, EmmyrcWorkspaceModuleMap, FileId, WorkspaceId,
         db_index::{
             module::{LuaModuleIndex, ModuleVisibility},
             traits::LuaIndex,
@@ -214,6 +214,99 @@ mod tests {
             let module_info = m.find_module("treesitter-context").unwrap();
             assert_eq!(module_info.full_module_name, "lua.treesitter-context");
         }
+    }
+
+    #[test]
+    fn test_module_map_applies_to_factorio_require_paths() {
+        let mut config = Emmyrc::default();
+        config.workspace.module_map = vec![
+            EmmyrcWorkspaceModuleMap {
+                pattern: "^__(.*)__(.*)$".to_string(),
+                replace: "$1$2".to_string(),
+            },
+            EmmyrcWorkspaceModuleMap {
+                pattern: "^(.*)\\.lua$".to_string(),
+                replace: "$1".to_string(),
+            },
+        ];
+
+        let mut m = LuaModuleIndex::new();
+        m.update_config(Arc::new(config));
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents/mods").into(),
+            WorkspaceId::MAIN,
+        );
+
+        let file_id = FileId { id: 1 };
+        m.add_module_by_path(
+            file_id,
+            "C:/Users/username/Documents/mods/signalstrings/signalstrings.lua",
+        );
+
+        for module_path in [
+            "__signalstrings__/signalstrings.lua",
+            "__signalstrings__.signalstrings",
+            "__signalstrings__/signalstrings",
+        ] {
+            let module_info = m.find_module(module_path).unwrap();
+            assert_eq!(module_info.file_id, file_id);
+            assert_eq!(module_info.full_module_name, "signalstrings.signalstrings");
+        }
+    }
+
+    #[test]
+    fn test_module_map_keeps_configured_rule_order() {
+        let mut config = Emmyrc::default();
+        config.workspace.module_map = vec![
+            EmmyrcWorkspaceModuleMap {
+                pattern: "^foo$".to_string(),
+                replace: "bar".to_string(),
+            },
+            EmmyrcWorkspaceModuleMap {
+                pattern: "^bar$".to_string(),
+                replace: "baz".to_string(),
+            },
+        ];
+
+        let mut m = LuaModuleIndex::new();
+        m.update_config(Arc::new(config));
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+
+        let file_id = FileId { id: 1 };
+        m.add_module_by_path(file_id, "C:/Users/username/Documents/bar.lua");
+
+        let module_info = m.find_module("foo").unwrap();
+        assert_eq!(module_info.file_id, file_id);
+        assert_eq!(module_info.full_module_name, "baz");
+    }
+
+    #[test]
+    fn test_module_map_exact_match_has_priority_over_fuzzy_match() {
+        let mut config = Emmyrc::default();
+        config.workspace.module_map = vec![EmmyrcWorkspaceModuleMap {
+            pattern: "^foo$".to_string(),
+            replace: "bar.baz".to_string(),
+        }];
+
+        let mut m = LuaModuleIndex::new();
+        m.update_config(Arc::new(config));
+        m.add_workspace_root(
+            Path::new("C:/Users/username/Documents").into(),
+            WorkspaceId::MAIN,
+        );
+
+        let mapped_file_id = FileId { id: 1 };
+        m.add_module_by_path(mapped_file_id, "C:/Users/username/Documents/bar/baz.lua");
+
+        let fuzzy_file_id = FileId { id: 2 };
+        m.add_module_by_path(fuzzy_file_id, "C:/Users/username/Documents/x/foo.lua");
+
+        let module_info = m.find_module("foo").unwrap();
+        assert_eq!(module_info.file_id, mapped_file_id);
+        assert_eq!(module_info.full_module_name, "bar.baz");
     }
 
     #[test]
