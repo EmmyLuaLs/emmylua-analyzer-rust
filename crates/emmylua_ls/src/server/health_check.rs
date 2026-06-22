@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::context::ClientProxy;
-use lsp_types::MessageType;
+use lsp_types::{MessageType, ShowMessageParams};
 
 pub struct HealthCheck {
     last_heartbeat: Arc<AtomicU64>,
@@ -37,10 +37,13 @@ impl HealthCheck {
                     .as_secs();
                 if last > 0 && now - last > 30 {
                     log::error!("Health check failed! {}s since last heartbeat", now - last);
-                    client.show_message(
-                        MessageType::ERROR,
-                        format!("Language server unresponsive for {}s. Consider restarting.", now - last),
-                    );
+                    client.show_message(ShowMessageParams {
+                        typ: MessageType::ERROR,
+                        message: format!(
+                            "Language server unresponsive for {}s. Consider restarting (EmmyLua: Restart Lua Server).",
+                            now - last
+                        ),
+                    });
                 }
             }
         });
