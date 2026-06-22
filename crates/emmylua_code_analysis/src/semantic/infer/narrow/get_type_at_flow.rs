@@ -26,7 +26,7 @@ use crate::{
                 },
                 get_multi_antecedents, get_single_antecedent,
                 get_type_at_cast_flow::cast_type,
-                get_var_ref_type, narrow_down_type,
+                get_var_ref_type, narrow_down_type, remove_false_or_nil,
                 var_ref_id::get_var_expr_var_ref_id,
             },
             try_infer_expr_no_flow,
@@ -1882,6 +1882,21 @@ fn finish_assignment_result(
     // Unknown RHS usually means the lookup failed, so keep the last known runtime type.
     if expr_type.is_unknown() {
         return source_type.clone();
+    }
+
+    // 处理 `if obj = nil then obj = {} end`
+    if *source_type == LuaType::Nil
+        && matches!(expr_type, LuaType::TableConst(_) | LuaType::Object(_))
+        && let Ok(slot_type) = get_var_ref_type(db, cache, var_ref_id)
+    {
+        // RHS 此时为 `{}`, 即 `slot_type` 必须存在值
+        let truthy_slot_type = remove_false_or_nil(slot_type);
+        if !truthy_slot_type.is_unknown()
+            && let Some(narrowed_slot_type) =
+                narrow_down_type(db, truthy_slot_type, expr_type.clone(), None)
+        {
+            return narrowed_slot_type;
+        }
     }
 
     let narrowed = if *source_type == LuaType::Nil {

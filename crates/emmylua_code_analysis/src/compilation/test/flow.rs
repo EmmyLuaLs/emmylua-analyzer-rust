@@ -3694,6 +3694,69 @@ _2 = a[1]
     }
 
     #[test]
+    fn test_empty_table_fallback_assignment_keeps_indexed_table_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@type table<int, table<int, table>>
+            local archiveCache = {}
+
+            local playerCache = archiveCache[0]
+            if not playerCache then
+                playerCache = {}
+            end
+
+            A = playerCache
+            "#,
+        );
+
+        let actual = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(actual), "table<integer,table>");
+    }
+
+    #[test]
+    fn test_empty_table_fallback_assignment_keeps_nullable_table_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local playerCache ---@type table<int, table>?
+            if not playerCache then
+                playerCache = {}
+            end
+
+            A = playerCache
+            "#,
+        );
+
+        let actual = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(actual), "table<integer,table>");
+    }
+
+    #[test]
+    fn test_empty_table_nil_guard_does_not_drop_false_slot_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local playerCache ---@type table<int, table>|false
+            if playerCache == nil then
+                playerCache = {}
+            end
+
+            A = playerCache
+            "#,
+        );
+
+        let actual = ws.expr_ty("A");
+        assert_eq!(
+            ws.humanize_type_detailed(actual),
+            "(table<integer,table>|false)"
+        );
+    }
+
+    #[test]
     fn test_partial_table_reassignment_preserves_branch_narrowing() {
         let mut ws = VirtualWorkspace::new();
 
