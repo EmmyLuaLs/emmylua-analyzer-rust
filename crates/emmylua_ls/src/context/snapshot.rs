@@ -28,6 +28,10 @@ impl ServerContextSnapshot {
         &self.inner.client
     }
 
+    pub fn client_arc(&self) -> Arc<ClientProxy> {
+        self.inner.client.clone()
+    }
+
     pub fn file_diagnostic(&self) -> &FileDiagnostic {
         &self.inner.file_diagnostic
     }
