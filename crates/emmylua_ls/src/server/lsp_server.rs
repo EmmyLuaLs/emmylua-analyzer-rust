@@ -54,7 +54,6 @@ impl LspServer {
         }
 
         while let Some(msg) = self.connection.recv().await {
-            health_check.heartbeat();
             if self
                 .processor
                 .process_message(msg, &mut self.connection, &mut self.server_context)
