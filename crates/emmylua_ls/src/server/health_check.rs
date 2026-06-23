@@ -29,6 +29,14 @@ impl HealthCheck {
     }
 
     pub fn start_monitoring(self: Arc<Self>, client: Arc<ClientProxy>) {
+        let heartbeat = self.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                heartbeat.heartbeat();
+            }
+        });
+
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(10)).await;
