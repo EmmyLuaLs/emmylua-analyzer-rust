@@ -7,12 +7,14 @@ use lsp_types::{MessageType, ShowMessageParams};
 
 pub struct HealthCheck {
     last_heartbeat: Arc<AtomicU64>,
+    last_warning: Arc<AtomicU64>,
 }
 
 impl HealthCheck {
     pub fn new() -> Self {
         Self {
             last_heartbeat: Arc::new(AtomicU64::new(0)),
+            last_warning: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -35,15 +37,19 @@ impl HealthCheck {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs();
-                if last > 0 && now - last > 30 {
-                    log::error!("Health check failed! {}s since last heartbeat", now - last);
-                    client.show_message(ShowMessageParams {
-                        typ: MessageType::ERROR,
-                        message: format!(
-                            "Language server unresponsive for {}s. Consider restarting (EmmyLua: Restart Lua Server).",
-                            now - last
-                        ),
-                    });
+                if last > 0 && now - last > 120 {
+                    let last_warn = self.last_warning.load(Ordering::Acquire);
+                    if now - last_warn > 300 {
+                        self.last_warning.store(now, Ordering::Release);
+                        log::warn!("Health check: {}s since last heartbeat", now - last);
+                        client.show_message(ShowMessageParams {
+                            typ: MessageType::WARNING,
+                            message: format!(
+                                "Language server busy for {}s. Performance may be slow.",
+                                now - last
+                            ),
+                        });
+                    }
                 }
             }
         });
