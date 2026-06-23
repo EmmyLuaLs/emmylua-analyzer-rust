@@ -15,9 +15,19 @@ pub fn bind_type(
     let decl_type_cache = db.get_type_index().get_type_cache(&type_owner);
 
     if let Some(existing_cache) = decl_type_cache {
-        // FIX: 如果已有 DocType（来自 @type 注解），不要用 InferType 覆盖
-        if matches!(existing_cache, LuaTypeCache::DocType(_)) && type_cache.is_infer() {
-            return Some(());
+        // FIX: DocType 始终优先于 InferType
+        match (&existing_cache, &type_cache) {
+            // 已有 DocType，新类型是 InferType → 保留 DocType
+            (LuaTypeCache::DocType(_), cache) if cache.is_infer() => {
+                return Some(());
+            }
+            // 已有 InferType，新类型是 DocType → 用 DocType 覆盖
+            (cache, LuaTypeCache::DocType(_)) if cache.is_infer() => {
+                db.get_type_index_mut()
+                    .bind_type(type_owner.clone(), type_cache);
+                return Some(());
+            }
+            _ => {}
         }
 
         let decl_type = existing_cache.as_type();
