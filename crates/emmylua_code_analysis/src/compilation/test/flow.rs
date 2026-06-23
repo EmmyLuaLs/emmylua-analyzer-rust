@@ -8,6 +8,7 @@ mod test {
     const LARGE_LINEAR_ASSIGNMENT_STEPS: usize = 2048;
     const MAXWELLHOME_ARRAY_VALUES: usize = 2048;
     const ISSUE_1100_HIGHLIGHT_GROUPS: usize = 2048;
+    const ISSUE_1114_REPEATED_ASSIGNMENT_STEPS: usize = 512;
 
     #[test]
     fn test_closure_return() {
@@ -467,6 +468,53 @@ mod test {
         );
         let after_assign = ws.expr_ty("after_assign");
         assert_eq!(ws.humanize_type(after_assign), "integer");
+    }
+
+    #[test]
+    #[timeout(5000)]
+    fn test_issue_1114_repeated_self_dependent_assignments_build_semantic_model() {
+        let cases = [
+            (
+                "concat",
+                r#"local value = """#,
+                "value = value .. config.pic[idx][index]",
+            ),
+            (
+                "add",
+                "local value = 0",
+                "value = value + config.pic[idx][index]",
+            ),
+            (
+                "comparison",
+                "local value = true",
+                "value = value == config.pic[idx][index]",
+            ),
+        ];
+
+        for (name, init, assignment) in cases {
+            let mut ws = VirtualWorkspace::new();
+            let repeated_assignments =
+                format!("{assignment}\n").repeat(ISSUE_1114_REPEATED_ASSIGNMENT_STEPS);
+            let block = format!(
+                r#"
+            function f(idx, index)
+                {init}
+                {repeated_assignments}
+                return value
+            end
+            "#
+            );
+
+            let file_id = ws.def(&block);
+
+            assert!(
+                ws.analysis
+                    .compilation
+                    .get_semantic_model(file_id)
+                    .is_some(),
+                "expected semantic model for repeated self-dependent {name} assignment"
+            );
+        }
     }
 
     #[test]

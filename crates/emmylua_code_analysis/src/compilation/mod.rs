@@ -4,8 +4,8 @@ mod test;
 use std::sync::Arc;
 
 use crate::{
-    Emmyrc, FileId, InFiled, InferFailReason, LuaIndex, LuaInferCache, LuaType, db_index::DbIndex,
-    semantic::SemanticModel,
+    CacheOptions, Emmyrc, FileId, InFiled, InferFailReason, LuaIndex, LuaInferCache, LuaType,
+    db_index::DbIndex, semantic::SemanticModel,
 };
 use emmylua_parser::{LuaBlock, LuaExpr};
 
@@ -23,6 +23,7 @@ where
 pub struct LuaCompilation {
     db: DbIndex,
     emmyrc: Arc<Emmyrc>,
+    cache_options: CacheOptions,
 }
 
 impl LuaCompilation {
@@ -30,6 +31,7 @@ impl LuaCompilation {
         let mut compilation = Self {
             db: DbIndex::new(),
             emmyrc: emmyrc.clone(),
+            cache_options: CacheOptions::default(),
         };
 
         compilation.db.update_config(emmyrc.clone());
@@ -37,7 +39,7 @@ impl LuaCompilation {
     }
 
     pub fn get_semantic_model(&'_ self, file_id: FileId) -> Option<SemanticModel<'_>> {
-        let cache = LuaInferCache::new(file_id, Default::default());
+        let cache = LuaInferCache::new(file_id, self.cache_options);
         let tree = self.db.get_vfs().get_syntax_tree(&file_id)?;
         Some(SemanticModel::new(
             file_id,
@@ -64,7 +66,12 @@ impl LuaCompilation {
             });
         }
 
-        analyzer::analyze(&mut self.db, need_analyzed_files, self.emmyrc.clone());
+        analyzer::analyze(
+            &mut self.db,
+            need_analyzed_files,
+            self.emmyrc.clone(),
+            self.cache_options,
+        );
     }
 
     pub fn remove_index(&mut self, file_ids: Vec<FileId>) {
@@ -81,6 +88,10 @@ impl LuaCompilation {
 
     pub fn get_db_mut(&mut self) -> &mut DbIndex {
         &mut self.db
+    }
+
+    pub fn get_cache_options_mut(&mut self) -> &mut CacheOptions {
+        &mut self.cache_options
     }
 
     pub fn update_config(&mut self, config: Arc<Emmyrc>) {
