@@ -29,7 +29,7 @@ flags! {
         Constructor,
         Public,
         Internal,
-        Private
+        File
     }
 }
 
@@ -222,7 +222,7 @@ impl LuaTypeDecl {
 pub enum LuaTypeIdentifier {
     Global(SmolStr),
     Internal(WorkspaceId, SmolStr),
-    Local(FileId, SmolStr),
+    File(FileId, SmolStr),
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -237,9 +237,9 @@ impl LuaTypeDeclId {
         }
     }
 
-    pub fn local(file_id: FileId, str: &str) -> Self {
+    pub fn file(file_id: FileId, str: &str) -> Self {
         Self {
-            id: ArcIntern::new(LuaTypeIdentifier::Local(file_id, SmolStr::new(str))),
+            id: ArcIntern::new(LuaTypeIdentifier::File(file_id, SmolStr::new(str))),
         }
     }
 
@@ -257,7 +257,7 @@ impl LuaTypeDeclId {
         match self.id.as_ref() {
             LuaTypeIdentifier::Global(name) => name.as_ref(),
             LuaTypeIdentifier::Internal(_, name) => name.as_ref(),
-            LuaTypeIdentifier::Local(_, name) => name.as_ref(),
+            LuaTypeIdentifier::File(_, name) => name.as_ref(),
         }
     }
 
@@ -305,7 +305,7 @@ impl LuaTypeDeclId {
     }
 
     pub fn is_local(&self) -> bool {
-        matches!(self.id.as_ref(), LuaTypeIdentifier::Local(_, _))
+        matches!(self.id.as_ref(), LuaTypeIdentifier::File(_, _))
     }
 }
 
@@ -320,7 +320,7 @@ impl Serialize for LuaTypeDeclId {
                 let s = format!("ws:{}|{}", workspace_id.id, &name);
                 serializer.serialize_str(&s)
             }
-            LuaTypeIdentifier::Local(file_id, name) => {
+            LuaTypeIdentifier::File(file_id, name) => {
                 let s = format!("{}|{}", file_id.id, &name);
                 serializer.serialize_str(&s)
             }
@@ -355,7 +355,7 @@ impl<'de> Deserialize<'de> for LuaTypeDeclId {
                         ));
                     }
                     let file_id = file_id_str.parse::<u32>().map_err(E::custom)?;
-                    Ok(LuaTypeDeclId::local(FileId { id: file_id }, name))
+                    Ok(LuaTypeDeclId::file(FileId { id: file_id }, name))
                 } else {
                     Ok(LuaTypeDeclId::global(value))
                 }

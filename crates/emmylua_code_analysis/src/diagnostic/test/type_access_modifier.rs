@@ -71,13 +71,13 @@ mod tests {
     }
 
     #[test]
-    fn private_and_implicit_public_access_modifiers_report_inconsistency() {
+    fn file_and_implicit_public_access_modifiers_report_inconsistency() {
         let mut ws = VirtualWorkspace::new();
 
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::InconsistentTypeAccessModifier,
             r#"
-                ---@class (private) Foo
+                ---@class (file) Foo
                 local Foo = {}
 
                 ---@class Foo
@@ -119,12 +119,12 @@ mod tests {
     }
 
     #[test]
-    fn private_types_in_other_files_do_not_affect_current_file() {
+    fn file_types_in_other_files_do_not_affect_current_file() {
         let mut ws = VirtualWorkspace::new();
         ws.def_file(
             "lib.lua",
             r#"
-                ---@class (private) Foo
+                ---@class (file) Foo
                 local Foo = {}
             "#,
         );

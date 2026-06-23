@@ -106,7 +106,7 @@ fn parse_tag_class(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-// (partial, global, local, private)
+// (partial, global, file)
 fn parse_doc_type_flag(p: &mut LuaDocParser) -> DocParseResult {
     let m = p.mark(LuaSyntaxKind::DocTypeFlag);
     p.bump();
@@ -240,7 +240,7 @@ fn parse_enum_field(p: &mut LuaDocParser) -> DocParseResult {
     Ok(m.complete(p))
 }
 
-// ---@alias (private) A
+// ---@alias (file) A
 // ---@alias A string
 // ---@alias A<T> keyof T
 fn parse_tag_alias(p: &mut LuaDocParser) -> DocParseResult {

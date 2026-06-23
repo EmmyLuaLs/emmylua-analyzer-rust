@@ -2,14 +2,14 @@ use std::fmt::Write;
 
 pub struct EmmyLuaEmitter {
     output: String,
-    write_private: bool,
+    write_file: bool,
 }
 
 impl EmmyLuaEmitter {
-    pub fn new(write_private: bool) -> Self {
+    pub fn new(write_file: bool) -> Self {
         Self {
             output: String::new(),
-            write_private,
+            write_file,
         }
     }
 
@@ -36,7 +36,7 @@ impl EmmyLuaEmitter {
         let _ = writeln!(
             self.output,
             "---@class{} {}",
-            if self.write_private { "(private)" } else { "" },
+            if self.write_file { "(file)" } else { "" },
             name
         );
     }
@@ -47,7 +47,7 @@ impl EmmyLuaEmitter {
         let _ = writeln!(
             self.output,
             "---@class{} {} : {}",
-            if self.write_private { "(private)" } else { "" },
+            if self.write_file { "(file)" } else { "" },
             name,
             parent
         );
@@ -78,7 +78,7 @@ impl EmmyLuaEmitter {
         let _ = writeln!(
             self.output,
             "---@alias{} {}",
-            if self.write_private { "(private)" } else { "" },
+            if self.write_file { "(file)" } else { "" },
             name
         );
     }

@@ -79,13 +79,13 @@ impl Checker for InconsistentTypeAccessModifierChecker {
 enum TypeAccessModifier {
     Public,
     Internal,
-    Private,
+    File,
 }
 
 impl TypeAccessModifier {
     fn from_location_flags(flags: flagset::FlagSet<LuaTypeFlag>) -> Self {
-        if flags.contains(LuaTypeFlag::Private) {
-            Self::Private
+        if flags.contains(LuaTypeFlag::File) {
+            Self::File
         } else if flags.contains(LuaTypeFlag::Internal) {
             Self::Internal
         } else {
@@ -97,7 +97,7 @@ impl TypeAccessModifier {
         match type_identifier {
             LuaTypeIdentifier::Global(_) => Self::Public,
             LuaTypeIdentifier::Internal(_, _) => Self::Internal,
-            LuaTypeIdentifier::Local(_, _) => Self::Private,
+            LuaTypeIdentifier::File(_, _) => Self::File,
         }
     }
 
@@ -105,7 +105,7 @@ impl TypeAccessModifier {
         match self {
             Self::Public => "public",
             Self::Internal => "internal",
-            Self::Private => "private",
+            Self::File => "file",
         }
     }
 }

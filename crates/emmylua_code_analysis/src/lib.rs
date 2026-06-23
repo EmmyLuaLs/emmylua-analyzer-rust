@@ -410,7 +410,7 @@ impl EmmyLuaAnalysis {
                         .get_json_schema_index_mut()
                         .get_schema_file_mut(&url)
                     {
-                        *f = JsonSchemaFile::Resolved(LuaTypeDeclId::local(
+                        *f = JsonSchemaFile::Resolved(LuaTypeDeclId::file(
                             file_id,
                             &convert_result.root_type_name,
                         ));

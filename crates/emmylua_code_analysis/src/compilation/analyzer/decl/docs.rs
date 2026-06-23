@@ -61,8 +61,8 @@ fn get_type_flag_value(
                 "internal" => {
                     attr |= LuaTypeFlag::Internal;
                 }
-                "private" => {
-                    attr |= LuaTypeFlag::Private;
+                "private" | "file" => {
+                    attr |= LuaTypeFlag::File;
                 }
                 _ => {}
             }
@@ -199,8 +199,8 @@ fn add_type_decl(
     let full_name = option_namespace
         .map(|ns| format!("{}.{}", ns, basic_name))
         .unwrap_or(basic_name.to_string());
-    let id = if flag.contains(LuaTypeFlag::Private) {
-        LuaTypeDeclId::local(file_id, &full_name)
+    let id = if flag.contains(LuaTypeFlag::File) {
+        LuaTypeDeclId::file(file_id, &full_name)
     } else if flag.contains(LuaTypeFlag::Internal) {
         LuaTypeDeclId::internal(workspace_id, &full_name)
     } else {

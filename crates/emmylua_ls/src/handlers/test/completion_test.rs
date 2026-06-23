@@ -694,12 +694,17 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "private".to_string(),
+                    label: "file".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "public".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -729,12 +734,17 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "private".to_string(),
+                    label: "file".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "public".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -763,17 +773,17 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "exact".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "private".to_string(),
+                    label: "file".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "public".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },

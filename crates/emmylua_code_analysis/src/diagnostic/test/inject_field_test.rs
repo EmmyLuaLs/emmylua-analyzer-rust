@@ -233,7 +233,7 @@ mod test {
         ws.def_file(
             "a.lua",
             r#"
-            --- @class (private) vim.var_accessor
+            --- @class (file) vim.var_accessor
             --- @field [string] any
             --- @field [integer] vim.var_accessor
 
