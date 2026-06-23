@@ -25,7 +25,6 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
         for local_name in name_list {
             let position = local_name.get_position();
             let decl_id = LuaDeclId::new(analyzer.file_id, position);
-            // 标记了延迟定义属性, 此时将跳过绑定类型, 等待第一次赋值时再绑定类型
             if has_delayed_definition_attribute(analyzer, decl_id) {
                 return Some(());
             }
@@ -51,7 +50,6 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
             Ok(expr_type) => {
                 let expr_type = expr_type.get_result_slot_type(0).unwrap_or(expr_type);
                 let decl_id = LuaDeclId::new(analyzer.file_id, position);
-                // 当`call`参数包含表时, 表可能未被分析, 需要延迟
                 if let LuaType::Instance(instance) = &expr_type
                     && instance.get_base().is_unknown()
                     && call_expr_has_effect_table_arg(&expr).is_some()
@@ -99,7 +97,6 @@ pub fn analyze_local_stat(analyzer: &mut LuaAnalyzer, local_stat: LuaLocalStat) 
         }
     }
 
-    // The complexity brought by multiple return values is too high
     if name_count > expr_count {
         let last_expr = expr_list.last();
         if let Some(last_expr) = last_expr {
@@ -207,19 +204,15 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
 
     let prefix_type = match analyzer.infer_expr_no_flow(&prefix_expr) {
         Ok(Some(prefix_type)) => Ok(prefix_type),
-        // `None` can hide nested unresolved prefixes; fall back so we keep the retry.
         Ok(None) => analyzer.infer_expr(&prefix_expr),
         Err(reason) => Err(reason),
     };
 
     match prefix_type {
         Ok(prefix_type) => {
-            // Prefer declared global types for name prefixes when choosing a member owner.
-            // This keeps stdlib members (like table.unpack) attached to their type defs.
             let prefix_type = if let LuaExpr::NameExpr(name_expr) = &prefix_expr {
                 let mut explicit_type = None;
                 if let Some(name) = name_expr.get_name_text() {
-                    // Avoid attaching members to stdlib globals when a local shadows the name.
                     let is_shadowed = analyzer
                         .db
                         .get_decl_index()
@@ -231,7 +224,6 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
                         && let Some(decl_ids) =
                             analyzer.db.get_global_index().get_global_decl_ids(&name)
                     {
-                        // Pick the first resolvable global type cache as the owner type.
                         for decl_id in decl_ids {
                             if let Some(type_cache) = analyzer
                                 .db
@@ -245,10 +237,8 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
                     }
                 }
 
-                // Fall back to the inferred prefix type when no explicit type exists.
                 explicit_type.unwrap_or(prefix_type)
             } else {
-                // Non-name prefixes keep the inferred prefix type.
                 prefix_type
             };
 
@@ -269,7 +259,6 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
                     );
                     return Some(());
                 }
-                // is ref need extend field?
                 _ => {
                     return None;
                 }
@@ -279,7 +268,6 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
         }
         Err(InferFailReason::None) => {}
         Err(reason) => {
-            // record unresolve
             let unresolve_member = UnResolveMember {
                 file_id: analyzer.file_id,
                 member_id: LuaMemberId::new(var_expr.get_syntax_id(), file_id),
@@ -296,7 +284,6 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
     Some(())
 }
 
-// assign stat is toooooooooo complex
 pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignStat) -> Option<()> {
     let (var_list, expr_list) = assign_stat.get_var_and_expr_list();
     let expr_count = expr_list.len();
@@ -351,7 +338,6 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
             }
         };
 
-        // 如果具有延迟定义属性, 则先绑定最初的定义
         if let LuaVarExpr::NameExpr(name_expr) = var {
             if let Some(decl_id) = get_delayed_definition_decl_id(analyzer, name_expr) {
                 bind_type(
@@ -364,7 +350,6 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
         assign_merge_type_owner_and_expr_type(analyzer, type_owner, &expr_type, 0);
     }
 
-    // The complexity brought by multiple return values is too high
     if var_count > expr_count
         && let Some(last_expr) = expr_list.last()
     {
@@ -400,8 +385,6 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
         }
     }
 
-    // Expressions like a, b are not valid
-
     Some(())
 }
 
@@ -412,6 +395,14 @@ fn assign_merge_type_owner_and_expr_type(
     idx: usize,
 ) -> Option<()> {
     let expr_type = expr_type.get_result_slot_type(idx).unwrap_or(LuaType::Nil);
+
+    // FIX: 检查是否已有 DocType（来自 @type 注解）
+    // 如果已有 DocType，不覆盖，保留用户的显式类型注解
+    if let Some(existing_cache) = analyzer.db.get_type_index().get_type_cache(&type_owner) {
+        if matches!(existing_cache, LuaTypeCache::DocType(_)) {
+            return Some(());
+        }
+    }
 
     bind_type(analyzer.db, type_owner, LuaTypeCache::InferType(expr_type));
 
@@ -488,16 +479,6 @@ pub fn analyze_local_func_stat(
     Some(())
 }
 
-/// Analyzes an assignment-style table field.
-///
-/// Table-declaration analysis already registers static keys and value fields, for
-/// example `{ name = value }`, `{ ["name"] = value }`, `{ [1] = value }`, and
-/// `{ value1, value2 }`.
-///
-/// This pass binds the field value type and eagerly materializes resolved
-/// bracket-key members such as `{ [key] = value }`, `{ [true] = value }`, or
-/// `{ [SomeEnum.A] = value }` so later consumers like table inference and
-/// `pairs` can see them before the unresolved table-field pass runs.
 pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> Option<()> {
     if !field.is_assign_field() {
         return Some(());
@@ -505,8 +486,6 @@ pub fn analyze_table_field(analyzer: &mut LuaAnalyzer, field: LuaTableField) -> 
 
     if let Some(field_key) = field.get_field_key() {
         if let LuaIndexKey::Expr(_) = &field_key {
-            // Decl analysis leaves `[expr] = value` fields unresolved. If the key
-            // already resolves here, materialize the member now.
             let db = &mut *analyzer.db;
             let member_id = LuaMemberId::new(field.get_syntax_id(), analyzer.file_id);
             if db.get_member_index().get_member(&member_id).is_none() {
@@ -612,7 +591,6 @@ fn has_delayed_definition_attribute(analyzer: &LuaAnalyzer, decl_id: LuaDeclId) 
     false
 }
 
-// 获取延迟定义的声明id
 fn get_delayed_definition_decl_id(
     analyzer: &LuaAnalyzer,
     name_expr: &LuaNameExpr,
