@@ -16,15 +16,12 @@ use lsp_types::ClientCapabilities;
 pub use snapshot::ServerContextSnapshot;
 pub use status_bar::ProgressTask;
 pub use status_bar::StatusBar;
-use std::time::Duration;
 use std::{collections::HashMap, future::Future, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 pub use workspace_manager::*;
 
 use crate::context::snapshot::ServerContextInner;
-
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct ServerContext {
     #[allow(unused)]
@@ -91,14 +88,7 @@ impl ServerContext {
         let sender = self.conn.sender.clone();
         let cancellations = self.cancellations.clone();
         tokio::spawn(async move {
-            let result = tokio::time::timeout(REQUEST_TIMEOUT, exec(cancel_token.clone())).await;
-            let res = match result {
-                Ok(r) => r,
-                Err(_) => {
-                    log::warn!("Request {:?} timed out after {:?}", req_id, REQUEST_TIMEOUT);
-                    None
-                }
-            };
+            let res = exec(cancel_token.clone()).await;
             if cancel_token.is_cancelled() {
                 let response = Response::new_err(
                     req_id.clone(),
