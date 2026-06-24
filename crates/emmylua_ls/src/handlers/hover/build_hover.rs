@@ -267,8 +267,16 @@ fn build_member_hover(
             builder.set_type_description(format!("(field) {}: {}", member_name, const_value));
             builder.set_location_path(Some(member));
         } else {
-            let member_hover_type =
-                get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone());
+            let member_type_owner = member_id.into();
+            let has_explicit_doc_type = db
+                .get_type_index()
+                .get_type_cache(&member_type_owner)
+                .is_some_and(|type_cache| type_cache.is_doc());
+            let member_hover_type = if has_explicit_doc_type {
+                typ.clone()
+            } else {
+                get_hover_type(builder, builder.semantic_model).unwrap_or(typ.clone())
+            };
             let level = if member_hover_type.is_module_ref() {
                 builder.detail_render_level
             } else {

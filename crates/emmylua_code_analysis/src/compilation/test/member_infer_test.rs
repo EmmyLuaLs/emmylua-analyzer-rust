@@ -300,6 +300,33 @@ mod test {
     }
 
     #[test]
+    fn test_doc_type_on_self_ref_member_nil_is_registered_on_class_owner() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@class p_role_head
+        ---@field role_id integer
+
+        ---@class InviteController
+        local InviteController = {}
+
+        function InviteController:init()
+            ---@type p_role_head
+            self.mInviterHead = nil
+        end
+
+        ---@type InviteController
+        local controller = {}
+
+        Result = controller.mInviterHead
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("Result"), ws.ty("p_role_head"));
+    }
+
+    #[test]
     fn test_global_member_owner_prefers_declared_type() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

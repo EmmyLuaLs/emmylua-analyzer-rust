@@ -197,10 +197,28 @@ fn get_var_owner(analyzer: &mut LuaAnalyzer, var: LuaVarExpr) -> LuaTypeOwner {
     }
 }
 
+fn is_implicit_self_prefix(analyzer: &LuaAnalyzer, prefix_expr: &LuaExpr) -> bool {
+    let LuaExpr::NameExpr(name_expr) = prefix_expr else {
+        return false;
+    };
+
+    if name_expr.get_name_text().as_deref() != Some("self") {
+        return false;
+    }
+
+    analyzer
+        .db
+        .get_decl_index()
+        .get_decl_tree(&analyzer.file_id)
+        .and_then(|tree| tree.find_local_decl("self", name_expr.get_position()))
+        .is_some_and(|decl| decl.is_implicit_self())
+}
+
 fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Option<()> {
     let file_id = analyzer.file_id;
     let index_expr = LuaIndexExpr::cast(var_expr.syntax().clone())?;
     let prefix_expr = index_expr.get_prefix_expr()?;
+    let should_add_ref_to_owner = is_implicit_self_prefix(analyzer, &prefix_expr);
 
     let prefix_type = match analyzer.infer_expr_no_flow(&prefix_expr) {
         Ok(Some(prefix_type)) => Ok(prefix_type),
@@ -253,10 +271,16 @@ fn set_index_expr_owner(analyzer: &mut LuaAnalyzer, var_expr: LuaVarExpr) -> Opt
                 LuaType::Ref(ref_id) => {
                     let member_owner = LuaMemberOwner::Type(ref_id);
                     analyzer.db.get_member_index_mut().set_member_owner(
-                        member_owner,
+                        member_owner.clone(),
                         member_id.file_id,
                         member_id,
                     );
+                    if should_add_ref_to_owner {
+                        analyzer
+                            .db
+                            .get_member_index_mut()
+                            .add_member_to_owner(member_owner, member_id);
+                    }
                     return Some(());
                 }
                 _ => {

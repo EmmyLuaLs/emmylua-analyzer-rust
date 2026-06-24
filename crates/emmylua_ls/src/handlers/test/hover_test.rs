@@ -155,6 +155,54 @@ mod tests {
     }
 
     #[gtest]
+    fn test_hover_self_member_keeps_doc_type_for_nil_assignment() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class p_role_head
+
+                ---@class InvitePanel
+                local M = {}
+
+                function M:init()
+                    ---@type p_role_head 邀请者头像数据
+                    self.mInviterHead = nil
+                end
+
+                ---@type InvitePanel
+                local panel
+                panel.mInvi<??>terHead
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) mInviterHead: p_role_head\n```\n\n---\n\n邀请者头像数据".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_self_member_assignment_keeps_explicit_array_doc_type() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class ThunderStrikeGuardianDataStruct
+
+                ---@class ThunderStrikeGuardian
+                local M = {}
+
+                function M:init()
+                    ---@type ThunderStrikeGuardianDataStruct[] 已参加护法列表
+                    self.tbPro<??>tectors = {}
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) tbProtectors: ThunderStrikeGuardianDataStruct[]\n```\n\n---\n\n已参加护法列表".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_hover_param_string() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
