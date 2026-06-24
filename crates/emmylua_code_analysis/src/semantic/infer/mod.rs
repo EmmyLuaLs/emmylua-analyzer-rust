@@ -28,6 +28,7 @@ use infer_table::infer_table_expr;
 pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
 use infer_unary::infer_unary_expr;
 pub use narrow::VarRefId;
+pub(super) use narrow::apply_assignment_target_casts;
 pub(in crate::semantic) use narrow::{ConditionFlowAction, InferConditionFlow};
 
 use rowan::TextRange;

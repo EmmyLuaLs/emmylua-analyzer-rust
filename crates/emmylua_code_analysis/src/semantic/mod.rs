@@ -21,7 +21,7 @@ use emmylua_parser::{
     LuaSyntaxToken, LuaTableExpr,
 };
 pub use infer::infer_index_expr;
-use infer::{infer_bind_value_type, infer_expr_list_types};
+use infer::{apply_assignment_target_casts, infer_bind_value_type, infer_expr_list_types};
 pub use infer::{infer_table_field_value_should_be, infer_table_should_be};
 use lsp_types::Uri;
 pub use member::LuaMemberInfo;
@@ -130,6 +130,19 @@ impl<'a> SemanticModel<'a> {
 
     pub fn infer_expr(&self, expr: LuaExpr) -> Result<LuaType, InferFailReason> {
         infer_expr(self.db, &mut self.infer_cache.borrow_mut(), expr)
+    }
+
+    pub(crate) fn apply_assignment_target_casts(
+        &self,
+        target_expr: LuaExpr,
+        source_type: LuaType,
+    ) -> LuaType {
+        apply_assignment_target_casts(
+            self.db,
+            &mut self.infer_cache.borrow_mut(),
+            target_expr,
+            source_type,
+        )
     }
 
     pub fn infer_table_should_be(&self, table: LuaTableExpr) -> Option<LuaType> {
