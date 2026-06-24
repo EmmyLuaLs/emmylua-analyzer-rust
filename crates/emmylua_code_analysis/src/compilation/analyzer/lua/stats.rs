@@ -351,7 +351,7 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
         // FIX: 检查是否有 DocType 绑定到赋值表达式的 member_id
         // 如果有，将其传播到类的字段成员
         if let LuaVarExpr::IndexExpr(index_expr) = &var {
-            propagate_doctype_to_class_member(analyzer, index_expr, &type_owner);
+            propagate_doctype_to_class_member(analyzer, index_expr);
         }
 
         assign_merge_type_owner_and_expr_type(analyzer, type_owner, &expr_type, 0);
@@ -400,13 +400,13 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
 fn propagate_doctype_to_class_member(
     analyzer: &mut LuaAnalyzer,
     index_expr: &LuaIndexExpr,
-    type_owner: &LuaTypeOwner,
 ) -> Option<()> {
     // 检查赋值表达式的 member_id 是否有 DocType
     let expr_member_id = LuaMemberId::new(index_expr.get_syntax_id(), analyzer.file_id);
     let expr_type_owner = LuaTypeOwner::Member(expr_member_id);
 
-    let doc_type = analyzer.db.get_type_index().get_type_cache(&expr_type_owner)?;
+    // 先 clone doc_type 以释放对 analyzer.db 的不可变借用
+    let doc_type = analyzer.db.get_type_index().get_type_cache(&expr_type_owner)?.clone();
     if !matches!(doc_type, LuaTypeCache::DocType(_)) {
         return None; // 没有 DocType，不需要传播
     }
@@ -444,10 +444,10 @@ fn propagate_doctype_to_class_member(
             // 只在类字段没有 DocType 时才传播
             let existing = analyzer.db.get_type_index().get_type_cache(&class_type_owner);
             if existing.is_none() || matches!(existing, Some(c) if c.is_infer()) {
-                analyzer.db.get_type_index_mut().bind_type(
-                    class_type_owner,
-                    doc_type.clone(),
-                );
+                analyzer
+                    .db
+                    .get_type_index_mut()
+                    .bind_type(class_type_owner, doc_type);
             }
             return Some(());
         }
