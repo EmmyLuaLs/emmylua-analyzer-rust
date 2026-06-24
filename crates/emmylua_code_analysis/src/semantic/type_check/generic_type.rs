@@ -7,8 +7,8 @@ use crate::{
 };
 
 use super::{
-    TypeCheckResult, check_general_type_compact, type_check_fail_reason::TypeCheckFailReason,
-    type_check_guard::TypeCheckGuard,
+    TypeCheckResult, check_general_type_compact, instantiate_generic_alias_origin,
+    type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard,
 };
 
 pub fn check_generic_type_compact(
@@ -17,23 +17,13 @@ pub fn check_generic_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let base_id = source_generic.get_base_type_id();
-    if let Some(decl) = context
-        .db
-        .get_type_index()
-        .get_type_decl(&source_generic.get_base_type_id())
-        && decl.is_alias()
-    {
-        let substitutor =
-            TypeSubstitutor::from_alias(source_generic.get_params().clone(), base_id.clone());
-        if let Some(alias_origin) = decl.get_alias_origin(context.db, Some(&substitutor)) {
-            return check_general_type_compact(
-                context,
-                &alias_origin,
-                compact_type,
-                check_guard.next_level()?,
-            );
-        }
+    if let Some(alias_origin) = instantiate_generic_alias_origin(context.db, source_generic) {
+        return check_general_type_compact(
+            context,
+            &alias_origin,
+            compact_type,
+            check_guard.next_level()?,
+        );
     }
 
     // 不检查尚未实例化的泛型类

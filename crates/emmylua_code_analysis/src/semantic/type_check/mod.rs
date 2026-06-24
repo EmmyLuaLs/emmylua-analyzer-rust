@@ -21,7 +21,7 @@ pub use type_check_fail_reason::TypeCheckFailReason;
 use type_check_guard::TypeCheckGuard;
 
 use crate::{
-    LuaUnionType,
+    LuaGenericType, LuaUnionType, TypeSubstitutor,
     db_index::{DbIndex, LuaType},
     semantic::type_check::type_check_context::TypeCheckContext,
 };
@@ -239,10 +239,24 @@ fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
     }
 }
 
+fn instantiate_generic_alias_origin(db: &DbIndex, generic: &LuaGenericType) -> Option<LuaType> {
+    let base_id = generic.get_base_type_id();
+    let decl = db.get_type_index().get_type_decl(&base_id)?;
+    if !decl.is_alias() {
+        return None;
+    }
+
+    let substitutor = TypeSubstitutor::from_alias(generic.get_params().clone(), base_id);
+    decl.get_alias_origin(db, Some(&substitutor))
+}
+
 fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
     match typ {
         LuaType::TplRef(_) => {
             return generic_tpl_constraint_type(typ).cloned();
+        }
+        LuaType::Generic(generic) if !generic.contain_tpl() => {
+            return instantiate_generic_alias_origin(db, generic);
         }
         LuaType::Ref(type_id) => {
             let type_decl = db.get_type_index().get_type_decl(type_id)?;
