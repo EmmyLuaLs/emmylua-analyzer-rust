@@ -2,7 +2,7 @@ use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaDocDescriptionOwner, LuaDocTagAs, LuaDocTagCast,
     LuaDocTagModule, LuaDocTagOther, LuaDocTagOverload, LuaDocTagParam, LuaDocTagReturn,
     LuaDocTagReturnCast, LuaDocTagReturnOverload, LuaDocTagSchema, LuaDocTagSee, LuaDocTagType,
-    LuaExpr, LuaIndexExpr, LuaLocalName, LuaTokenKind, LuaVarExpr,
+    LuaExpr, LuaLocalName, LuaTokenKind, LuaVarExpr,
 };
 
 use super::{
@@ -12,12 +12,12 @@ use super::{
     tags::{find_owner_closure, get_owner_id_or_report},
 };
 use crate::{
-    InFiled, JsonSchemaFile, LuaMemberKey, LuaMemberOwner, LuaOperatorMetaMethod, LuaTypeCache,
-    LuaTypeOwner, OperatorFunction, SignatureReturnStatus, TypeOps,
+    InFiled, JsonSchemaFile, LuaOperatorMetaMethod, LuaTypeCache, LuaTypeOwner, OperatorFunction,
+    SignatureReturnStatus, TypeOps,
     compilation::analyzer::common::bind_type,
     db_index::{
-        LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaMember,
-        LuaMemberFeature, LuaMemberId, LuaOperator, LuaSemanticDeclId, LuaSignatureId, LuaType,
+        LuaDeclId, LuaDocParamInfo, LuaDocReturnInfo, LuaDocReturnOverloadInfo, LuaMemberId,
+        LuaOperator, LuaSemanticDeclId, LuaSignatureId, LuaType,
     },
 };
 use crate::{
@@ -89,10 +89,6 @@ fn bind_type_to_owner(
                             .get_db()
                             .get_type_index_mut()
                             .bind_type(member_id.into(), LuaTypeCache::DocType(type_ref.clone()));
-
-                        // FIX: 同时将 DocType 传播到类的字段定义
-                        // 这样在其他位置访问同一个字段时也能找到 DocType
-                        propagate_type_to_class_field(analyzer, &index_expr, type_ref.clone());
 
                         // bind description
                         if let Some(ref desc) = description
@@ -171,73 +167,6 @@ fn bind_type_to_owner(
             report_orphan_tag(analyzer, tag);
         }
     }
-
-    Some(())
-}
-
-/// 将 @type 注解的类型传播到类的字段定义
-/// 这样在其他位置访问同一个字段时也能找到 DocType
-fn propagate_type_to_class_field(
-    analyzer: &mut DocAnalyzer,
-    index_expr: &LuaIndexExpr,
-    type_ref: LuaType,
-) -> Option<()> {
-    let prefix_expr = index_expr.get_prefix_expr()?;
-    let index_key = index_expr.get_index_key()?;
-
-    // 尝试推断前缀类型（如 self 的类型）
-    let prefix_type = analyzer.type_context.infer_expr(&prefix_expr).ok()?;
-
-    // 根据前缀类型找到类的成员所有者
-    let member_owner = match &prefix_type {
-        LuaType::TableConst(in_file_range) => LuaMemberOwner::Element(in_file_range.clone()),
-        LuaType::Def(def_id) => LuaMemberOwner::Type(def_id.clone()),
-        LuaType::Instance(instance) => LuaMemberOwner::Element(instance.get_range().clone()),
-        LuaType::Ref(ref_id) => LuaMemberOwner::Type(ref_id.clone()),
-        _ => return None,
-    };
-
-    // 将 index_key 转换为 member_key
-    let cache = analyzer
-        .type_context
-        .infer_manager
-        .get_infer_cache(analyzer.file_id);
-    let member_key = LuaMemberKey::from_index_key(analyzer.get_db(), cache, &index_key).ok()?;
-
-    // 查找类中是否已有该字段
-    let member_index = analyzer.get_db().get_member_index();
-    let existing_members = member_index.get_members(&member_owner)?;
-
-    for member in existing_members {
-        if member.get_key() == &member_key {
-            // 找到已有字段，绑定 DocType
-            let existing_member_id = member.get_id();
-            analyzer.get_db().get_type_index_mut().bind_type(
-                existing_member_id.into(),
-                LuaTypeCache::DocType(type_ref),
-            );
-            return Some(());
-        }
-    }
-
-    // 如果类中没有该字段，创建一个新的
-    let new_member_id = LuaMemberId::new(index_expr.get_syntax_id(), analyzer.file_id);
-    let new_member = LuaMember::new(
-        new_member_id,
-        member_key,
-        LuaMemberFeature::FileDefine,
-        None,
-    );
-    analyzer
-        .get_db()
-        .get_member_index_mut()
-        .add_member(member_owner, new_member);
-
-    // 绑定 DocType
-    analyzer.get_db().get_type_index_mut().bind_type(
-        new_member_id.into(),
-        LuaTypeCache::DocType(type_ref),
-    );
 
     Some(())
 }
