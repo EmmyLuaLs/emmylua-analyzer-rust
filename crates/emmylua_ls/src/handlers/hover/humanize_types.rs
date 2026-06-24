@@ -25,10 +25,17 @@ pub fn hover_const_type(db: &DbIndex, typ: &LuaType) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HoverTypeRenderContext {
+    SymbolHover,
+    TypeExpression,
+}
+
 pub fn hover_humanize_type(
     builder: &mut HoverBuilder,
     ty: &LuaType,
     fallback_level: Option<RenderLevel>, // 当有值时, 若获取类型描述为空会回退到使用`humanize_type()`
+    context: HoverTypeRenderContext,
 ) -> String {
     let db = builder.semantic_model.get_db();
     match ty {
@@ -51,6 +58,26 @@ pub fn hover_humanize_type(
             hover_multi_line_union_type(builder, db, multi_union.as_ref(), None).unwrap_or_default()
         }
         LuaType::Union(union) => hover_union_type(builder, union, RenderLevel::Detailed),
+        LuaType::TplRef(tpl) => {
+            let mut text = tpl.get_name().to_string();
+            if context == HoverTypeRenderContext::SymbolHover
+                && let Some(constraint) = tpl.get_constraint()
+            {
+                text.push_str(" extends ");
+                text.push_str(&humanize_type(db, constraint, RenderLevel::Simple));
+            }
+            text
+        }
+        LuaType::StrTplRef(str_tpl) => {
+            let mut text = humanize_type(db, ty, fallback_level.unwrap_or(RenderLevel::Simple));
+            if context == HoverTypeRenderContext::SymbolHover
+                && let Some(constraint) = str_tpl.get_constraint()
+            {
+                text.push_str(" extends ");
+                text.push_str(&humanize_type(db, constraint, RenderLevel::Simple));
+            }
+            text
+        }
         _ => humanize_type(db, ty, fallback_level.unwrap_or(RenderLevel::Simple)),
     }
 }
@@ -61,7 +88,12 @@ fn hover_union_type(
     level: RenderLevel,
 ) -> String {
     format_union_type(union, level, |ty, level| {
-        hover_humanize_type(builder, ty, Some(level))
+        hover_humanize_type(
+            builder,
+            ty,
+            Some(level),
+            HoverTypeRenderContext::TypeExpression,
+        )
     })
 }
 

@@ -10,7 +10,8 @@ use emmylua_parser::LuaCallExpr;
 use crate::handlers::hover::{
     HoverBuilder,
     humanize_types::{
-        extract_owner_name_from_element, extract_parent_type_from_element, hover_humanize_type,
+        HoverTypeRenderContext, extract_owner_name_from_element, extract_parent_type_from_element,
+        hover_humanize_type,
     },
     infer_prefix_global_name,
 };
@@ -21,6 +22,15 @@ pub(super) struct FunctionRenderContext<'a> {
     pub semantic_decl: &'a LuaSemanticDeclId,
     pub owner_member: Option<&'a LuaMember>,
     pub return_docs: Vec<LuaDocReturnInfo>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FunctionDisplayKind {
+    Function,
+    LocalFunction,
+    Parameter,
+    Field,
+    Method,
 }
 
 /// 根据函数类型分派渲染
@@ -151,16 +161,22 @@ pub(super) fn render_function(
         _ => "",
     };
     let mut is_method = func.is_colon_define();
-    let mut type_label = if owner_member.is_none() && semantic_decl_is_local(db, semantic_decl) {
-        "local function "
-    } else {
-        "function "
-    };
+    let mut display_kind = FunctionDisplayKind::Function;
+    if owner_member.is_none()
+        && let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl
+        && let Some(decl) = db.get_decl_index().get_decl(decl_id)
+    {
+        if decl.is_param() {
+            display_kind = FunctionDisplayKind::Parameter;
+        } else if decl.is_local() {
+            display_kind = FunctionDisplayKind::LocalFunction;
+        }
+    }
 
     // 有可能来源于类. 例如: `local add = class.add`, `add()`应被视为类方法
     let full_name = if let Some(owner_member) = owner_member {
         if semantic_decl_is_field(db, semantic_decl, owner_member) {
-            type_label = "(field) ";
+            display_kind = FunctionDisplayKind::Field;
         }
 
         let member_key = owner_member.get_key().to_path();
@@ -171,7 +187,7 @@ pub(super) fn render_function(
             let owner_ty = LuaType::Ref(type_decl_id);
             is_method = func.is_method(builder.semantic_model, Some(&owner_ty));
             if is_method {
-                type_label = "(method) ";
+                display_kind = FunctionDisplayKind::Method;
             }
             name.push(if is_method { ':' } else { '.' });
         };
@@ -199,7 +215,7 @@ pub(super) fn render_function(
                     {
                         name.push_str(&owner_name);
                         if is_method {
-                            type_label = "(method) ";
+                            display_kind = FunctionDisplayKind::Method;
                         }
                         name.push(if is_method { ':' } else { '.' });
                     }
@@ -239,7 +255,7 @@ pub(super) fn render_function(
 
     let ret_detail = build_function_returns(builder, return_docs);
     Some(format_function_type(
-        type_label,
+        display_kind,
         async_label,
         full_name,
         params.join(", "),
@@ -273,16 +289,6 @@ fn semantic_decl_is_field(
     })
 }
 
-fn semantic_decl_is_local(db: &DbIndex, semantic_decl: &LuaSemanticDeclId) -> bool {
-    match semantic_decl {
-        LuaSemanticDeclId::LuaDecl(decl_id) => db
-            .get_decl_index()
-            .get_decl(decl_id)
-            .is_some_and(|decl| decl.is_local()),
-        _ => false,
-    }
-}
-
 fn semantic_decl_function_name(db: &DbIndex, semantic_decl: &LuaSemanticDeclId) -> Option<String> {
     match semantic_decl {
         LuaSemanticDeclId::LuaDecl(decl_id) => Some(
@@ -302,18 +308,35 @@ fn semantic_decl_function_name(db: &DbIndex, semantic_decl: &LuaSemanticDeclId) 
 }
 
 fn format_function_type(
-    type_label: &str,
+    display_kind: FunctionDisplayKind,
     async_label: &str,
     full_name: String,
     params: String,
     rets: String,
 ) -> String {
-    let prefix = if type_label.starts_with("function") {
-        format!("{}{}", async_label, type_label)
-    } else {
-        format!("{}{}", type_label, async_label)
-    };
-    format!("{}{}({}){}", prefix, full_name, params, rets)
+    match display_kind {
+        FunctionDisplayKind::Parameter => {
+            format!(
+                "(parameter) {}: {}fun({}){}",
+                full_name, async_label, params, rets
+            )
+        }
+        FunctionDisplayKind::Function => {
+            format!("{}function {}({}){}", async_label, full_name, params, rets)
+        }
+        FunctionDisplayKind::LocalFunction => {
+            format!(
+                "local function {}{}({}){}",
+                async_label, full_name, params, rets
+            )
+        }
+        FunctionDisplayKind::Field => {
+            format!("(field) {}{}({}){}", async_label, full_name, params, rets)
+        }
+        FunctionDisplayKind::Method => {
+            format!("(method) {}{}({}){}", async_label, full_name, params, rets)
+        }
+    }
 }
 
 pub(super) fn convert_function_return_to_docs(func: &LuaFunctionType) -> Vec<LuaDocReturnInfo> {
@@ -388,7 +411,12 @@ fn build_function_returns(
 fn build_return_type_text(builder: &mut HoverBuilder, typ: &LuaType, i: usize) -> String {
     let type_expansion_count = builder.get_type_expansion_count();
     // 在这个过程中可能会设置`type_expansion`
-    let type_text = hover_humanize_type(builder, typ, Some(RenderLevel::Simple));
+    let type_text = hover_humanize_type(
+        builder,
+        typ,
+        Some(RenderLevel::Simple),
+        HoverTypeRenderContext::TypeExpression,
+    );
     if builder.get_type_expansion_count() > type_expansion_count {
         // 重新设置`type_expansion`
         if let Some(pop_type_expansion) =

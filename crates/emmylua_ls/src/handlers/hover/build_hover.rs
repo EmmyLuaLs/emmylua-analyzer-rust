@@ -10,7 +10,10 @@ use rowan::TextRange;
 use crate::handlers::common::{find_decl_origin_owners, find_member_origin_owners};
 use crate::handlers::hover::function::{build_function_hover, has_function_candidate, is_function};
 use crate::handlers::hover::humanize_type_decl::build_type_decl_hover;
-use crate::handlers::hover::humanize_types::hover_humanize_type;
+use crate::handlers::hover::humanize_types::{
+    DescriptionInfo, HoverTypeRenderContext, extract_description_from_property_owner,
+    hover_humanize_type,
+};
 
 use super::{
     HoverDeclContext, HoverDeclInfo, hover_builder::HoverBuilder, humanize_types::hover_const_type,
@@ -151,7 +154,9 @@ fn build_decl_hover(
         let target_type = builder.semantic_model.get_type(decl_id.into()).clone();
         if typ.is_const() {
             let const_value = hover_const_type(db, &typ);
-            let prefix = if decl.is_local() {
+            let prefix = if decl.is_param() {
+                "(parameter) "
+            } else if decl.is_local() {
                 "local "
             } else {
                 "(global) "
@@ -161,9 +166,15 @@ fn build_decl_hover(
             let decl_hover_type =
                 get_assignment_hover_type(builder, builder.semantic_model, &target_type, &typ)
                     .unwrap_or(typ.clone());
-            let type_humanize_text =
-                hover_humanize_type(builder, &decl_hover_type, Some(builder.detail_render_level));
-            let prefix = if decl.is_local() {
+            let type_humanize_text = hover_humanize_type(
+                builder,
+                &decl_hover_type,
+                Some(builder.detail_render_level),
+                HoverTypeRenderContext::SymbolHover,
+            );
+            let prefix = if decl.is_param() {
+                "(parameter) "
+            } else if decl.is_local() {
                 "local "
             } else {
                 "(global) "
@@ -260,7 +271,12 @@ fn build_member_hover(
             } else {
                 RenderLevel::Simple
             };
-            let type_humanize_text = hover_humanize_type(builder, &member_hover_type, Some(level));
+            let type_humanize_text = hover_humanize_type(
+                builder,
+                &member_hover_type,
+                Some(level),
+                HoverTypeRenderContext::SymbolHover,
+            );
             builder
                 .set_type_description(format!("(field) {}: {}", member_name, type_humanize_text));
             builder.set_location_path(Some(member));
@@ -304,8 +320,21 @@ fn add_hover_descriptions<'a, I>(
         }
     }
 
+    let mut seen_descriptions: Vec<DescriptionInfo> = Vec::new();
     for owner in &description_owners {
-        builder.add_description(owner);
+        if let Some(desc_info) =
+            extract_description_from_property_owner(builder.semantic_model, owner)
+        {
+            if seen_descriptions.iter().any(|seen| {
+                seen.description == desc_info.description
+                    && seen.tag_content == desc_info.tag_content
+            }) {
+                continue;
+            }
+
+            seen_descriptions.push(desc_info.clone());
+            builder.add_description_from_info(Some(desc_info));
+        }
     }
 }
 

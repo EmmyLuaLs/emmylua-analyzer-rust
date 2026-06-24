@@ -201,7 +201,7 @@ mod tests {
                 value: dedent(
                     r#"
                     ```lua
-                    local n: string
+                    (parameter) n: string
                     ```
 
                     ---
@@ -227,7 +227,7 @@ mod tests {
                 value: dedent(
                     r#"
                     ```lua
-                    local function n() -> boolean
+                    (parameter) n: fun() -> boolean
                     ```
 
                     ---
@@ -235,6 +235,61 @@ mod tests {
                     doc
                     "#
                 )
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_generic_param_constraint_and_field_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class Animal
+                ---@field name string 名字
+                ---@field age integer 年龄
+
+                ---@generic T: Animal
+                ---@param animal T
+                function checkAnimal(<??>animal)
+                    print(animal.age)
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(parameter) animal: T extends Animal\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class Animal
+                ---@field name string 名字
+                ---@field age integer 年龄
+
+                ---@generic T: Animal
+                ---@param animal T
+                function checkAnimal(animal)
+                    print(animal.<??>age)
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) age: integer\n```\n\n---\n\n年龄".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class Animal
+                ---@field name string 名字
+                ---@field age integer 年龄
+
+                ---@generic T: Animal
+                ---@param animal T?
+                function checkAnimal(<??>animal)
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(parameter) animal: T?\n```".to_string(),
             },
         ));
         Ok(())
@@ -260,7 +315,7 @@ mod tests {
                 value: dedent(
                     r#"
                     ```lua
-                    local function n() -> boolean
+                    (parameter) n: fun() -> boolean
                     ```
                     "#
                 ),
