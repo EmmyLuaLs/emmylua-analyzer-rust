@@ -489,19 +489,9 @@ impl LuaTypeIndex {
         self.full_name_type_map.get_mut(decl_id)
     }
 
-    /// Bind a type to an owner.
-    /// FIX: DocType can override InferType, but not vice versa.
     pub fn bind_type(&mut self, owner: LuaTypeOwner, cache: LuaTypeCache) {
-        if let Some(existing) = self.types.get(&owner) {
-            // DocType can override InferType
-            if matches!(existing, LuaTypeCache::DocType(_)) && cache.is_infer() {
-                return; // Keep DocType
-            }
-            if existing.is_infer() && matches!(cache, LuaTypeCache::DocType(_)) {
-                self.types.insert(owner, cache); // Override InferType with DocType
-                return;
-            }
-            return; // Keep existing type for other cases
+        if self.types.contains_key(&owner) {
+            return;
         }
         self.types.insert(owner.clone(), cache);
         self.in_filed_type_owner
