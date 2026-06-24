@@ -347,13 +347,6 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
                 );
             }
         }
-
-        // FIX: 检查是否有 DocType 绑定到赋值表达式的 member_id
-        // 如果有，将其传播到类的字段成员
-        if let LuaVarExpr::IndexExpr(index_expr) = &var {
-            propagate_doctype_to_class_member(analyzer, index_expr);
-        }
-
         assign_merge_type_owner_and_expr_type(analyzer, type_owner, &expr_type, 0);
     }
 
@@ -389,67 +382,6 @@ pub fn analyze_assign_stat(analyzer: &mut LuaAnalyzer, assign_stat: LuaAssignSta
                     );
                 }
             }
-        }
-    }
-
-    Some(())
-}
-
-/// 将 DocType 从赋值表达式的 member_id 传播到类的字段成员
-/// 这样在其他位置访问同一个字段时也能找到 DocType
-fn propagate_doctype_to_class_member(
-    analyzer: &mut LuaAnalyzer,
-    index_expr: &LuaIndexExpr,
-) -> Option<()> {
-    // 检查赋值表达式的 member_id 是否有 DocType
-    let expr_member_id = LuaMemberId::new(index_expr.get_syntax_id(), analyzer.file_id);
-    let expr_type_owner = LuaTypeOwner::Member(expr_member_id);
-
-    // 先 clone doc_type 以释放对 analyzer.db 的不可变借用
-    let doc_type = analyzer.db.get_type_index().get_type_cache(&expr_type_owner)?.clone();
-    if !matches!(doc_type, LuaTypeCache::DocType(_)) {
-        return None; // 没有 DocType，不需要传播
-    }
-
-    // 获取 index_key
-    let index_key = index_expr.get_index_key()?;
-
-    // 推断前缀类型
-    let prefix_expr = index_expr.get_prefix_expr()?;
-    let prefix_type = analyzer.infer_expr_no_flow(&prefix_expr).ok()??;
-
-    // 根据前缀类型找到类的成员所有者
-    let member_owner = match &prefix_type {
-        LuaType::TableConst(in_file_range) => LuaMemberOwner::Element(in_file_range.clone()),
-        LuaType::Def(def_id) => LuaMemberOwner::Type(def_id.clone()),
-        LuaType::Instance(instance) => LuaMemberOwner::Element(instance.get_range().clone()),
-        LuaType::Ref(ref_id) => LuaMemberOwner::Type(ref_id.clone()),
-        _ => return None,
-    };
-
-    // 将 index_key 转换为 member_key
-    let cache = analyzer.context.infer_manager.get_infer_cache(analyzer.file_id);
-    let member_key = LuaMemberKey::from_index_key(analyzer.db, cache, &index_key).ok()?;
-
-    // 查找类中对应的字段
-    let member_index = analyzer.db.get_member_index();
-    let existing_members = member_index.get_members(&member_owner)?;
-
-    for member in existing_members {
-        if member.get_key() == &member_key {
-            // 找到类字段，将 DocType 传播过去
-            let class_member_id = member.get_id();
-            let class_type_owner = LuaTypeOwner::Member(class_member_id);
-
-            // 只在类字段没有 DocType 时才传播
-            let existing = analyzer.db.get_type_index().get_type_cache(&class_type_owner);
-            if existing.is_none() || matches!(existing, Some(c) if c.is_infer()) {
-                analyzer
-                    .db
-                    .get_type_index_mut()
-                    .bind_type(class_type_owner, doc_type);
-            }
-            return Some(());
         }
     }
 
