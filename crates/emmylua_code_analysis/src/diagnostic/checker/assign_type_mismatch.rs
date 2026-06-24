@@ -230,10 +230,19 @@ pub fn check_table_expr(
     }
 
     let table_type = table_type?;
-    if let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) {
-        return check_table_expr_content(context, semantic_model, table_type, &table_expr);
+    let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) else {
+        return Some(false);
+    };
+
+    let cache_key = (table_expr.get_syntax_id(), table_type.clone());
+    if let Some(has_diagnostic) = context.get_table_expr_check_result(&cache_key) {
+        return Some(has_diagnostic);
     }
-    Some(false)
+
+    let has_diagnostic =
+        check_table_expr_content(context, semantic_model, table_type, &table_expr)?;
+    context.set_table_expr_check_result(cache_key, has_diagnostic);
+    Some(has_diagnostic)
 }
 
 // 处理 value_expr 是 TableExpr 的情况, 但不会处理 `local a = { x = 1 }, local v = a`

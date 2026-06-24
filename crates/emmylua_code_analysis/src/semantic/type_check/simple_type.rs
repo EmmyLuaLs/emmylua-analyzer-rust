@@ -288,23 +288,20 @@ pub fn check_simple_type_compact(
         _ => {}
     }
 
-    match compact_type {
-        LuaType::Union(union) => {
-            for sub_compact in union.into_vec() {
-                match check_simple_type_compact(
-                    context,
-                    source,
-                    &sub_compact,
-                    check_guard.next_level()?,
-                ) {
-                    Ok(_) => {}
-                    Err(err) => return Err(err),
-                }
+    if let LuaType::Union(union) = compact_type {
+        for sub_compact in union.into_vec() {
+            match check_simple_type_compact(
+                context,
+                source,
+                &sub_compact,
+                check_guard.next_level()?,
+            ) {
+                Ok(_) => {}
+                Err(err) => return Err(err),
             }
-
-            return Ok(());
         }
-        _ => {}
+
+        return Ok(());
     }
 
     // complex infer
