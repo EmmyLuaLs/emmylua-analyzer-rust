@@ -102,6 +102,18 @@ fn check_general_type_compact(
 
     match source {
         LuaType::Unknown | LuaType::Any => Ok(()),
+        LuaType::TplRef(tpl) => {
+            if let Some(source_constraint) = tpl.get_constraint() {
+                return check_general_type_compact(
+                    context,
+                    source_constraint,
+                    compact_type,
+                    check_guard.next_level()?,
+                );
+            }
+
+            check_simple_type_compact(context, source, compact_type, check_guard)
+        }
         // simple type
         LuaType::Nil
         | LuaType::Table
@@ -122,7 +134,6 @@ fn check_general_type_compact(
         | LuaType::DocStringConst(_)
         | LuaType::DocIntegerConst(_)
         | LuaType::DocBooleanConst(_)
-        | LuaType::TplRef(_)
         | LuaType::StrTplRef(_)
         | LuaType::Namespace(_)
         | LuaType::Variadic(_)
@@ -192,10 +203,11 @@ fn check_general_type_compact(
 }
 
 fn is_like_any(ty: &LuaType) -> bool {
-    matches!(
-        ty,
-        LuaType::Any | LuaType::Unknown | LuaType::TplRef(_) | LuaType::StrTplRef(_)
-    )
+    match ty {
+        LuaType::Any | LuaType::Unknown => true,
+        LuaType::TplRef(tpl) => tpl.get_constraint().is_none(),
+        _ => false,
+    }
 }
 
 fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
@@ -229,6 +241,9 @@ fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
 
 fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
     match typ {
+        LuaType::TplRef(_) => {
+            return generic_tpl_constraint_type(typ).cloned();
+        }
         LuaType::Ref(type_id) => {
             let type_decl = db.get_type_index().get_type_decl(type_id)?;
             if type_decl.is_alias()
@@ -257,4 +272,11 @@ fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
     }
 
     None
+}
+
+fn generic_tpl_constraint_type(typ: &LuaType) -> Option<&LuaType> {
+    match typ {
+        LuaType::TplRef(tpl) => tpl.get_constraint().filter(|constraint| *constraint != typ),
+        _ => None,
+    }
 }

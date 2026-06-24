@@ -110,9 +110,12 @@ fn is_invalid_prefix_type(typ: &LuaType) -> bool {
             LuaType::Any
             | LuaType::Unknown
             | LuaType::Table
-            | LuaType::TplRef(_)
             | LuaType::StrTplRef(_)
             | LuaType::TableConst(_) => return true,
+            LuaType::TplRef(tpl) => match tpl.get_constraint() {
+                Some(constraint) => current_typ = constraint,
+                None => return true,
+            },
             LuaType::Instance(instance_typ) => {
                 current_typ = instance_typ.get_base();
             }
@@ -213,15 +216,14 @@ pub(super) fn is_valid_member(
 
     let key_type = if let LuaIndexKey::Expr(expr) = index_key {
         match semantic_model.infer_expr(expr.clone()) {
-            Ok(
-                LuaType::Any
-                | LuaType::Unknown
-                | LuaType::Table
-                | LuaType::TplRef(_)
-                | LuaType::StrTplRef(_),
-            ) => {
+            Ok(LuaType::Any | LuaType::Unknown | LuaType::Table) => {
                 return Some(());
             }
+            Ok(LuaType::TplRef(tpl)) => match tpl.get_constraint() {
+                Some(constraint) => constraint.clone(),
+                None => return Some(()),
+            },
+            Ok(LuaType::StrTplRef(_)) => return Some(()),
             Ok(typ) => typ,
             // 解析失败时认为其是合法的, 因为他可能没有标注类型
             Err(InferFailReason::UnResolveDeclType(_)) => {

@@ -1319,4 +1319,38 @@ return t
             "#,
         ));
     }
+
+    #[test]
+    fn test_generic_constraint_assign_to_incompatible_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                ---@type string
+                local name = animal
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                ---@type Animal
+                local same = animal
+            end
+        "#
+        ));
+    }
 }

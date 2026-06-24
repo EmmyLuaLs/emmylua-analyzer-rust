@@ -530,6 +530,92 @@ mod test {
     }
 
     #[test]
+    fn test_generic_constraint_unknown_field() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@class Animal
+            ---@field name string
+            ---@field age integer
+
+            ---@generic T: Animal
+            ---@param animal T
+            ---@return T
+            function checkAnimal(animal)
+                local a = animal.name
+            end
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@class Animal
+            ---@field name string
+            ---@field age integer
+
+            ---@generic T: Animal
+            ---@param animal T
+            ---@return T
+            function checkAnimal(animal)
+                local a = animal.test
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic T
+            ---@param value T
+            local function checkValue(value)
+                local a = value.test
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic K: string
+            ---@param key K
+            local function readStringKey(key)
+                ---@type table<string, string>
+                local values
+                local value = values[key]
+            end
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic K: string
+            ---@param key K
+            local function readIntegerKey(key)
+                ---@type table<integer, string>
+                local values
+                local value = values[key]
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic K
+            ---@param key K
+            local function readUnknownKey(key)
+                ---@type table<integer, string>
+                local values
+                local value = values[key]
+            end
+        "#
+        ));
+    }
+
+    #[test]
     fn test_ref_field() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(

@@ -804,4 +804,38 @@ mod tests {
             "#
         ));
     }
+
+    #[test]
+    fn test_generic_constraint_return_incompatible_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            ---@return string
+            local function checkAnimal(animal)
+                return animal
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            ---@return Animal
+            local function checkAnimal(animal)
+                return animal
+            end
+        "#
+        ));
+    }
 }

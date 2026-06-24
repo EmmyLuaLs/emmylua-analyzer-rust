@@ -1687,7 +1687,47 @@ mod test {
             r#"
             local filename = 'flag.text'
             assert(io.open(filename, 'r'))
-        "#,
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_generic_constraint_arg_to_incompatible_param() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@param value string
+            local function takeString(value)
+            end
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                takeString(animal)
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@param value Animal
+            local function takeAnimal(value)
+            end
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                takeAnimal(animal)
+            end
+        "#
         ));
     }
 }
