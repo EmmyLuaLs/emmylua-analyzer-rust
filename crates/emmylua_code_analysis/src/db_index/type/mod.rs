@@ -33,7 +33,6 @@ pub struct LuaTypeIndex {
     supers: HashMap<LuaTypeDeclId, Vec<InFiled<LuaType>>>,
     types: HashMap<LuaTypeOwner, LuaTypeCache>,
     in_filed_type_owner: HashMap<FileId, HashSet<LuaTypeOwner>>,
-    // type name index
     global_name_type_map: HashMap<String, LuaTypeDeclId>,
     internal_name_type_map: HashMap<WorkspaceId, HashMap<String, LuaTypeDeclId>>,
     local_name_type_map: HashMap<FileId, HashMap<String, LuaTypeDeclId>>,
@@ -81,7 +80,6 @@ impl LuaTypeIndex {
         self.file_using_namespace.get(file_id)
     }
 
-    /// return previous FileId if exist
     pub fn add_type_decl(&mut self, file_id: FileId, type_decl: LuaTypeDecl) {
         let id = type_decl.get_id();
         self.index_type_decl_name(&id);
@@ -189,16 +187,6 @@ impl LuaTypeIndex {
         self.find_scoped_type_decl_by_name(file_id, workspace_id, name, true)
     }
 
-    /// 查找当前作用域下 `prefix` 下一层可见的类型项.
-    ///
-    /// 注意, 这里返回的不是“所有完整名称以 `prefix` 开头的类型”.
-    /// 返回值会按下一层名称折叠:
-    /// - `Some(LuaTypeDeclId)` 表示该名称已经落到具体类型节点.
-    /// - `None` 表示该名称只是中间 namespace 节点, 下面仍有更深层的类型.
-    ///
-    /// 例如存在 `pkg.Bar` 与 `pkg.nested.Inner` 时:
-    /// - 查询 `""` 会得到 `pkg -> None`
-    /// - 查询 `"pkg."` 会得到 `Bar -> Some(...)` 与 `nested -> None`
     pub fn find_type_decls(
         &self,
         file_id: FileId,
@@ -257,7 +245,6 @@ impl LuaTypeIndex {
                 if let Some(rest_name) = id_name.strip_prefix(prefix) {
                     if let Some(i) = rest_name.find('.') {
                         let name = rest_name[..i].to_string();
-                        // 仍然存在更深层路径时只暴露当前层级名称, 并标记为 namespace 节点
                         prefix_results[idx].entry(name).or_insert(None);
                     } else {
                         prefix_results[idx].insert(rest_name.to_string(), Some(id.clone()));
@@ -389,22 +376,17 @@ impl LuaTypeIndex {
             .any(|super_id| self.super_reaches(super_id, target_id, visited))
     }
 
-    /// Get all direct subclasses of a given type
-    /// Returns a vector of type declarations that directly inherit from the given type
     pub fn get_sub_types(&self, decl_id: &LuaTypeDeclId) -> Vec<&LuaTypeDecl> {
         let mut sub_types = Vec::new();
 
-        // Iterate through all types and check their super types
         for (type_id, supers) in &self.supers {
             for super_filed in supers {
-                // Check if this super type references our target type
                 if let LuaType::Ref(super_id) = &super_filed.value {
                     if super_id == decl_id {
-                        // Found a subclass
                         if let Some(sub_decl) = self.full_name_type_map.get(type_id) {
                             sub_types.push(sub_decl);
                         }
-                        break; // No need to check other supers of this type
+                        break;
                     }
                 }
             }
@@ -413,8 +395,6 @@ impl LuaTypeIndex {
         sub_types
     }
 
-    /// Get all subclasses (direct and indirect) of a given type recursively
-    /// Returns a vector of type declarations in the inheritance hierarchy
     pub fn get_all_sub_types(&self, decl_id: &LuaTypeDeclId) -> Vec<&LuaTypeDecl> {
         let mut all_sub_types = Vec::new();
         let mut visited = HashSet::new();
@@ -425,7 +405,6 @@ impl LuaTypeIndex {
                 continue;
             }
 
-            // Find direct subclasses of current_id
             let direct_subs = self.get_sub_types(&current_id);
             for sub_decl in direct_subs {
                 let sub_id = sub_decl.get_id();
@@ -510,9 +489,19 @@ impl LuaTypeIndex {
         self.full_name_type_map.get_mut(decl_id)
     }
 
+    /// Bind a type to an owner.
+    /// FIX: DocType can override InferType, but not vice versa.
     pub fn bind_type(&mut self, owner: LuaTypeOwner, cache: LuaTypeCache) {
-        if self.types.contains_key(&owner) {
-            return;
+        if let Some(existing) = self.types.get(&owner) {
+            // DocType can override InferType
+            if matches!(existing, LuaTypeCache::DocType(_)) && cache.is_infer() {
+                return; // Keep DocType
+            }
+            if existing.is_infer() && matches!(cache, LuaTypeCache::DocType(_)) {
+                self.types.insert(owner, cache); // Override InferType with DocType
+                return;
+            }
+            return; // Keep existing type for other cases
         }
         self.types.insert(owner.clone(), cache);
         self.in_filed_type_owner
@@ -613,7 +602,6 @@ fn get_real_type_with_depth<'a>(
     }
 }
 
-// 第一个参数是否不应该视为 self
 pub fn first_param_may_not_self(typ: &LuaType) -> bool {
     if typ.is_table()
         || matches!(
