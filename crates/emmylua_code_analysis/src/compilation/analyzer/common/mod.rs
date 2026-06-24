@@ -14,25 +14,7 @@ pub fn bind_type(
 ) -> Option<()> {
     let decl_type_cache = db.get_type_index().get_type_cache(&type_owner);
 
-    if let Some(existing_cache) = decl_type_cache {
-        // FIX: DocType 始终优先于 InferType
-        match (&existing_cache, &type_cache) {
-            // 已有 DocType，新类型是 InferType → 保留 DocType
-            (LuaTypeCache::DocType(_), cache) if cache.is_infer() => {
-                return Some(());
-            }
-            // 已有 InferType，新类型是 DocType → 用 DocType 覆盖
-            (cache, LuaTypeCache::DocType(_)) if cache.is_infer() => {
-                db.get_type_index_mut()
-                    .bind_type(type_owner.clone(), type_cache);
-                return Some(());
-            }
-            _ => {}
-        }
-
-        let decl_type = existing_cache.as_type();
-        merge_def_type(db, decl_type.clone(), type_cache.as_type().clone(), 0);
-    } else {
+    if decl_type_cache.is_none() {
         // type backward
         if type_cache.is_infer()
             && let LuaTypeOwner::Decl(decl_id) = &type_owner
@@ -53,6 +35,9 @@ pub fn bind_type(
         db.get_type_index_mut()
             .bind_type(type_owner.clone(), type_cache);
         migrate_global_members_when_type_resolve(db, type_owner);
+    } else {
+        let decl_type = decl_type_cache?.as_type();
+        merge_def_type(db, decl_type.clone(), type_cache.as_type().clone(), 0);
     }
 
     Some(())
