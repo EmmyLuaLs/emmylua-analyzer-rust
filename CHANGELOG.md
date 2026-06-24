@@ -2,6 +2,13 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+---
+## [0.23.3] - Unreleased
+
+### 🔧 Changed
+
+- **Rename table field optimization**: `lsp_optimization("skip_table_fields_check")` is now the documented name for skipping table field diagnostics. The old `check_table_field` name remains supported as a compatibility alias.
+
 ## [0.23.2] - 2026-5-29
 
 - **Fix some stuck loading issue**: Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace

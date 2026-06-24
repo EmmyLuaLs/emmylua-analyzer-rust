@@ -86,7 +86,7 @@ lsp_optimization: |
 
   ### 参数
 
-  - `check_table_field`: 跳过表字段的赋值检查。建议对所有大型配置表使用此选项。
+  - `skip_table_fields_check`: 跳过表字段诊断。建议对所有大型配置表使用此选项。
   - `delayed_definition`: 表示变量类型由第一次赋值决定，仅对没有初始值的 `local` 声明有效。
 
 index_alias: |

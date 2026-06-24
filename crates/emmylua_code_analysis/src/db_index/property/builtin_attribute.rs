@@ -189,7 +189,9 @@ impl LuaAttributeUse {
         }
 
         let code = match self.get_string_param("code")? {
-            "check_table_field" => LuaLspOptimizationCode::CheckTableField,
+            "skip_table_fields_check" | "check_table_field" => {
+                LuaLspOptimizationCode::SkipTableFieldsCheck
+            }
             "delayed_definition" => LuaLspOptimizationCode::DelayedDefinition,
             _ => return None,
         };
@@ -250,14 +252,14 @@ pub struct LuaDeprecatedAttribute<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LuaLspOptimizationCode {
-    CheckTableField,
+    SkipTableFieldsCheck,
     DelayedDefinition,
 }
 
 impl LuaLspOptimizationCode {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::CheckTableField => "check_table_field",
+            Self::SkipTableFieldsCheck => "skip_table_fields_check",
             Self::DelayedDefinition => "delayed_definition",
         }
     }
@@ -269,8 +271,8 @@ pub struct LuaLspOptimizationAttribute {
 }
 
 impl LuaLspOptimizationAttribute {
-    pub fn is_check_table_field(self) -> bool {
-        self.code == LuaLspOptimizationCode::CheckTableField
+    pub fn is_skip_table_fields_check(self) -> bool {
+        self.code == LuaLspOptimizationCode::SkipTableFieldsCheck
     }
 
     pub fn is_delayed_definition(self) -> bool {
@@ -405,5 +407,21 @@ mod tests {
             lsp_optimization.code,
             LuaLspOptimizationCode::DelayedDefinition
         );
+    }
+
+    #[test]
+    fn lsp_optimization_accepts_skip_table_fields_check_aliases() {
+        for code in ["skip_table_fields_check", "check_table_field"] {
+            let attribute = LuaAttributeUse::new(
+                LuaTypeDeclId::global("lsp_optimization"),
+                vec![("code".into(), Some(doc_string(code)))],
+            );
+
+            let lsp_optimization = attribute.as_lsp_optimization().unwrap();
+            assert_eq!(
+                lsp_optimization.code,
+                LuaLspOptimizationCode::SkipTableFieldsCheck
+            );
+        }
     }
 }

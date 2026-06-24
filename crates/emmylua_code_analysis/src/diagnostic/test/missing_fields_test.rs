@@ -281,7 +281,7 @@ foo({})
     }
 
     #[test]
-    fn test_lsp_optimization_check_table_field_skips_missing_fields() {
+    fn test_lsp_optimization_skip_table_fields_check_skips_missing_fields() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::MissingFields,
@@ -292,7 +292,7 @@ foo({})
             ---@class D32.Config
             ---@field child D32.Child
 
-            ---@[lsp_optimization("check_table_field")]
+            ---@[lsp_optimization("skip_table_fields_check")]
             ---@type D32.Config
             local config = {
                 child = {},

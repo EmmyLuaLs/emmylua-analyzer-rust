@@ -181,11 +181,11 @@
 --- Language Server Optimization Items.
 ---
 --- Parameters:
---- - `check_table_field`: Skip the assign check for table fields. It is recommended to use this option for all large configuration tables.
+--- - `skip_table_fields_check`: Skip table field diagnostics. It is recommended to use this option for all large configuration tables.
 --- - `delayed_definition`: Indicates that the type of the variable is determined by the first assignment.
 ---    Only valid for `local` declarations with no initial value.
 --- @class lsp_optimization: Attribute
---- @overload fun(code: "check_table_field"|"delayed_definition")
+--- @overload fun(code: "skip_table_fields_check"|"delayed_definition")
 
 ---
 --- Index field alias, will be displayed in `hint` and `completion`.

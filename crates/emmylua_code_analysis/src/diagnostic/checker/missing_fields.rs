@@ -31,7 +31,7 @@ impl Checker for MissingFieldsChecker {
                 continue;
             }
 
-            if table_expr_has_check_table_field_optimization(semantic_model, &expr) {
+            if table_expr_has_skip_table_fields_check_optimization(semantic_model, &expr) {
                 skipped_table_exprs.insert(expr_syntax_id);
                 skipped_table_exprs.extend(
                     expr.descendants::<LuaTableExpr>()
@@ -149,7 +149,7 @@ fn check_table_expr(
     Some(())
 }
 
-fn table_expr_has_check_table_field_optimization(
+fn table_expr_has_skip_table_fields_check_optimization(
     semantic_model: &SemanticModel,
     expr: &LuaTableExpr,
 ) -> bool {
@@ -201,7 +201,7 @@ fn table_expr_has_check_table_field_optimization(
     property
         .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
         .and_then(|attribute_use| attribute_use.as_lsp_optimization())
-        .is_some_and(|attribute| attribute.is_check_table_field())
+        .is_some_and(|attribute| attribute.is_skip_table_fields_check())
 }
 
 fn get_required_fields<'a>(

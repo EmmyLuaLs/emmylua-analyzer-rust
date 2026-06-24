@@ -7,9 +7,9 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaLspOptimizationCode,
-    LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
-    TypeCheckFailReason, TypeCheckResult, VariadicType, infer_index_expr,
+    DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, TypeCheckFailReason,
+    TypeCheckResult, VariadicType, infer_index_expr,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -222,7 +222,7 @@ pub fn check_table_expr(
             if property
                 .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
                 .and_then(|attribute_use| attribute_use.as_lsp_optimization())
-                .is_some_and(|attribute| attribute.code == LuaLspOptimizationCode::CheckTableField)
+                .is_some_and(|attribute| attribute.is_skip_table_fields_check())
             {
                 return Some(false);
             }

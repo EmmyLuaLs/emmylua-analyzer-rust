@@ -88,9 +88,9 @@ b:
   - ['deprecated', 'd', doc, [174, 0, 176, 0], 'dac958f30ae5a8bf']
 - a: '---'
   g: 'Language Server Optimization Items.'
-  r: [179, 0, 187, 65]
+  r: [179, 0, 187, 71]
   e:
-  - ['lsp_optimization', 'd', doc, [179, 0, 186, 0], 'cbbaeb7c5eb9f754']
+  - ['lsp_optimization', 'd', doc, [179, 0, 186, 0], '30b907e00779f691']
 - a: '---'
   g: 'Index field alias, will be displayed in `hint` and `completion`.'
   r: [189, 0, 194, 31]
