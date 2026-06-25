@@ -53,9 +53,17 @@ impl Checker for ParamCheckChecker {
                     };
 
                     if should_check_param_type(check_param_type, &param_count_diagnostic_ranges) {
+                        let fallback_candidates;
                         let candidates = match count_compatible_funcs.as_ref() {
                             Some(funcs) => funcs.as_slice(),
-                            None => facts.funcs(),
+                            None => {
+                                fallback_candidates = facts
+                                    .callables()
+                                    .iter()
+                                    .map(|callable| callable.func.clone())
+                                    .collect::<Vec<_>>();
+                                fallback_candidates.as_slice()
+                            }
                         };
                         type_mismatch::check_param_types(
                             context,

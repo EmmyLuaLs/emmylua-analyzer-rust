@@ -21,13 +21,19 @@ pub(super) fn check_call_param_count(
     let Some(base_call_count) = get_base_call_arg_count_range(semantic_model, &facts.arg_exprs)
     else {
         // `...` 无法精确给出数量范围, 类型检查仍然需要保留所有候选.
-        return facts.funcs().to_vec();
+        return facts
+            .callables()
+            .iter()
+            .map(|callable| callable.func.clone())
+            .collect();
     };
 
     let db = semantic_model.get_db();
     let mut count_compatible_funcs = Vec::new();
     let mut best_candidate = None;
-    for func in facts.funcs() {
+    for callable in facts.callables() {
+        let func = &callable.func;
+        let origin_func = &callable.origin_func;
         let mut call_count = base_call_count;
         if facts.call_expr.is_colon_call() && !func.is_colon_define() {
             // 冒号调用普通函数时, `obj:foo(x)` 等价于 `obj.foo(obj, x)`.
@@ -36,7 +42,7 @@ pub(super) fn check_call_param_count(
             call_count.max = call_count.max.map(|max| max + 1);
         }
 
-        let param_count = get_param_count_range(db, func, &facts.call_expr);
+        let param_count = get_param_count_range(db, func, origin_func, &facts.call_expr);
         let enough_args = call_count.max.is_none_or(|max| max >= param_count.min);
         let not_too_many_args = param_count.max.is_none_or(|max| call_count.min <= max);
 
@@ -55,6 +61,7 @@ pub(super) fn check_call_param_count(
                     expected_count: param_count.min,
                     found_count: max_call_count,
                     func,
+                    origin_func,
                 },
             );
             continue;
@@ -88,6 +95,7 @@ pub(super) fn check_call_param_count(
             expected_count,
             found_count,
             func,
+            origin_func,
             ..
         } => emit_missing_parameter(
             context,
@@ -96,6 +104,7 @@ pub(super) fn check_call_param_count(
             expected_count,
             found_count,
             func,
+            origin_func,
             param_count_diagnostic_ranges,
         ),
         CountDiagnosticCandidate::Redundant {
@@ -125,6 +134,7 @@ enum CountDiagnosticCandidate<'a> {
         expected_count: usize,
         found_count: usize,
         func: &'a Arc<LuaFunctionType>,
+        origin_func: &'a Arc<LuaFunctionType>,
     },
     Redundant {
         mismatch: usize,
@@ -203,12 +213,20 @@ fn emit_missing_parameter(
     expected_count: usize,
     found_count: usize,
     func: &Arc<LuaFunctionType>,
+    origin_func: &Arc<LuaFunctionType>,
     param_count_diagnostic_ranges: &mut ParamCountDiagnosticRanges,
 ) {
     let mut miss_parameter_info = Vec::new();
 
     for param_index in found_count..expected_count {
-        add_missing_parameter_info(db, call_expr, func, param_index, &mut miss_parameter_info);
+        add_missing_parameter_info(
+            db,
+            call_expr,
+            func,
+            origin_func,
+            param_index,
+            &mut miss_parameter_info,
+        );
     }
 
     if !miss_parameter_info.is_empty() {
@@ -271,12 +289,13 @@ fn add_missing_parameter_info(
     db: &DbIndex,
     call_expr: &LuaCallExpr,
     func: &LuaFunctionType,
+    origin_func: &LuaFunctionType,
     adjusted_index: usize,
     miss_parameter_info: &mut Vec<String>,
 ) {
     if !call_expr.is_colon_call() && func.is_colon_define() {
         if adjusted_index == 0 {
-            if !is_nullable(db, &LuaType::SelfInfer) {
+            if !is_nullable(db, &LuaType::SelfInfer, None) {
                 miss_parameter_info
                     .push(t!("missing parameter: %{name}", name = "self",).to_string());
             }
@@ -285,8 +304,12 @@ fn add_missing_parameter_info(
         let Some((name, typ)) = func.get_params().get(adjusted_index - 1) else {
             return;
         };
+        let origin_typ = origin_func
+            .get_params()
+            .get(adjusted_index - 1)
+            .and_then(|(_, typ)| typ.as_ref());
         if let Some(typ) = typ
-            && !is_nullable(db, typ)
+            && !is_nullable(db, typ, origin_typ)
         {
             miss_parameter_info.push(t!("missing parameter: %{name}", name = name,).to_string());
         }
@@ -296,8 +319,12 @@ fn add_missing_parameter_info(
     let Some((name, typ)) = func.get_params().get(adjusted_index) else {
         return;
     };
+    let origin_typ = origin_func
+        .get_params()
+        .get(adjusted_index)
+        .and_then(|(_, typ)| typ.as_ref());
     if let Some(typ) = typ
-        && !is_nullable(db, typ)
+        && !is_nullable(db, typ, origin_typ)
     {
         miss_parameter_info.push(t!("missing parameter: %{name}", name = name,).to_string());
     }
@@ -346,20 +373,26 @@ fn get_base_call_arg_count_range(
 fn get_param_count_range(
     db: &DbIndex,
     func: &LuaFunctionType,
+    origin_func: &LuaFunctionType,
     call_expr: &LuaCallExpr,
 ) -> CountRange {
     let params = func.get_params();
+    let origin_params = origin_func.get_params();
     // 如果以点调用但函数是冒号定义, 则表示需要传入 self 参数.
     let self_offset = usize::from(!call_expr.is_colon_call() && func.is_colon_define());
 
     let mut min = self_offset;
-    // 最小数量取最后一个非 nullable 形参, 因为前面的可选参数可以省略.
+    // 最小数量取最后一个必填形参, 因为前面的可选参数可以省略.
     for (idx, (name, typ)) in params.iter().enumerate() {
         if name == "..." || typ.as_ref().is_some_and(|typ| typ.is_variadic()) {
             break;
         }
 
-        if typ.as_ref().is_some_and(|typ| !is_nullable(db, typ)) {
+        let origin_typ = origin_params.get(idx).and_then(|(_, typ)| typ.as_ref());
+        if typ
+            .as_ref()
+            .is_some_and(|typ| !is_nullable(db, typ, origin_typ))
+        {
             min = idx + self_offset + 1;
         }
     }
@@ -379,7 +412,7 @@ fn get_param_count_range(
     CountRange { min, max }
 }
 
-fn is_nullable(db: &DbIndex, typ: &LuaType) -> bool {
+fn is_nullable(db: &DbIndex, typ: &LuaType, origin_typ: Option<&LuaType>) -> bool {
     let mut stack: Vec<LuaType> = Vec::new();
     stack.push(typ.clone());
     let mut visited = HashSet::new();
@@ -389,7 +422,15 @@ fn is_nullable(db: &DbIndex, typ: &LuaType) -> bool {
         }
         visited.insert(typ.clone());
         match typ {
-            LuaType::Any | LuaType::Unknown | LuaType::Nil => return true,
+            LuaType::Any | LuaType::Nil => return true,
+            LuaType::Unknown => {
+                if let Some(origin_typ) = origin_typ
+                    && origin_typ.contain_tpl()
+                {
+                    return is_nullable(db, origin_typ, None);
+                }
+                return true;
+            }
             LuaType::Ref(decl_id) => {
                 if let Some(decl) = db.get_type_index().get_type_decl(&decl_id)
                     && decl.is_alias()

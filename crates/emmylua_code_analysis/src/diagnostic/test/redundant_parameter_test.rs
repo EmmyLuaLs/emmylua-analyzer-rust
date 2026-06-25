@@ -173,6 +173,29 @@ mod test {
     }
 
     #[test]
+    fn test_generic_variadic_instantiated_params_reports_redundant_parameter() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param ... T...
+            ---@return fun(...: T...)
+            local function bind(...)
+            end
+
+            bound = bind(1, "a")
+            "#,
+        );
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::RedundantParameter,
+            r#"
+            bound(1, "a", true)
+        "#
+        ));
+    }
+
+    #[test]
     fn test_issue_894() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
