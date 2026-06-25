@@ -59,11 +59,11 @@ pub(super) fn build_call_constraint_context(
             params.insert(0, ("self".into(), Some(LuaType::SelfInfer)));
         }
         (true, false) => {
-            let source_type = semantic_model.infer_call_receiver_type(call_expr)?;
+            let self_type = semantic_model.infer_call_self_type(call_expr)?;
             args.insert(
                 0,
                 CallConstraintArg {
-                    raw_type: source_type,
+                    raw_type: self_type,
                     range: call_expr.get_colon_token()?.get_range(),
                 },
             );

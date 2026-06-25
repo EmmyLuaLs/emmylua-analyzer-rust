@@ -21,7 +21,7 @@ use emmylua_parser::{
     LuaSyntaxToken, LuaTableExpr,
 };
 pub use infer::infer_index_expr;
-use infer::{infer_bind_value_type, infer_call_receiver_type, infer_expr_list_types};
+use infer::{infer_bind_value_type, infer_call_self_type, infer_expr_list_types};
 pub use infer::{infer_table_field_value_should_be, infer_table_should_be};
 use lsp_types::Uri;
 pub use member::LuaMemberInfo;
@@ -334,8 +334,8 @@ impl<'a> SemanticModel<'a> {
         find_member_origin_owner(self.db, &mut self.infer_cache.borrow_mut(), member_id)
     }
 
-    pub fn infer_call_receiver_type(&self, call_expr: &LuaCallExpr) -> Option<LuaType> {
-        infer_call_receiver_type(self.db, &mut self.infer_cache.borrow_mut(), call_expr)
+    pub fn infer_call_self_type(&self, call_expr: &LuaCallExpr) -> Option<LuaType> {
+        infer_call_self_type(self.db, &mut self.infer_cache.borrow_mut(), call_expr)
     }
 
     pub fn get_index_decl_type(&self, index_expr: LuaIndexExpr) -> Option<LuaType> {

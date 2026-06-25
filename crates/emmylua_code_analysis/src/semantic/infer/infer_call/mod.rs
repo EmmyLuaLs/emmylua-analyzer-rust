@@ -807,8 +807,8 @@ fn signature_is_generic(
     }
 }
 
-/// 推断调用者的具体类型.
-pub fn infer_call_receiver_type(
+/// 推断调用表达式中用于 self 参数的类型.
+pub fn infer_call_self_type(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: &LuaCallExpr,
