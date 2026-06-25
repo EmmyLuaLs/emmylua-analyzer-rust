@@ -424,6 +424,14 @@ fn infer_generic_types_from_call(
             func_params.insert(0, LuaType::Any);
         }
         (false, true) => {
+            if let Some(self_param) = func_params.first().cloned()
+                && self_param.contains_tpl_node()
+                && let Some(self_type) =
+                    infer_self_type(context.db, context.cache, call_expr, context.substitutor)
+            {
+                // 点定义被冒号调用时, 隐式 self 仍然会传给第一个参数.
+                tpl_pattern_match(context, &self_param, &self_type)?;
+            }
             if !func_params.is_empty() {
                 func_params.remove(0);
             }

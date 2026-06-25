@@ -285,7 +285,7 @@ result = {
             function toArray(value)
 
             end
-        "#,
+            "#,
         );
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
@@ -297,6 +297,30 @@ result = {
             local arraySuites = toArray(suite)
             "#
         ));
+    }
+
+    #[test]
+    fn test_dot_defined_generic_constructor_called_with_colon() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class a
+            local a = {}
+
+            ---@generic T
+            ---@param cls T
+            ---@return T
+            function a.create(cls)
+                local instance = setmetatable({}, cls)
+                return instance
+            end
+
+            b = a:create()
+            "#,
+        );
+
+        let ty = ws.expr_ty("b");
+        assert_eq!(ws.humanize_type(ty), "a");
     }
 
     #[test]
