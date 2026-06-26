@@ -35,6 +35,7 @@ use crate::{
             narrow_down_type, narrow_false_or_nil, remove_false_or_nil,
             var_ref_id::get_var_expr_var_ref_id,
         },
+        try_infer_expr_no_flow,
     },
     semantic::type_check::is_sub_type_of,
 };
@@ -63,9 +64,6 @@ pub(in crate::semantic) enum ExprTypeContinuation {
     ReceiverMethodCall {
         idx: LuaIndexMemberExpr,
         call_expr: LuaCallExpr,
-        condition_flow: InferConditionFlow,
-    },
-    Truthiness {
         condition_flow: InferConditionFlow,
     },
     ArrayLen {
@@ -645,12 +643,30 @@ pub(super) fn get_type_at_condition_flow(
                     return Ok(action);
                 }
 
-                let antecedent_flow_id = get_single_antecedent(flow_node)?;
-                return Ok(ConditionFlowAction::NeedExprType {
-                    flow_id: antecedent_flow_id,
-                    expr: LuaExpr::CallExpr(call_expr),
-                    resume: ExprTypeContinuation::Truthiness { condition_flow },
-                });
+                // The call does not narrow this ref. Only branch reachability
+                // matters here, so avoid starting another flow-aware replay.
+                return Ok(
+                    match try_infer_expr_no_flow(db, cache, LuaExpr::CallExpr(call_expr)) {
+                        Ok(Some(expr_type)) => {
+                            let unreachable_branch = expr_type.is_never()
+                                || match condition_flow {
+                                    InferConditionFlow::TrueCondition => {
+                                        expr_type.is_always_falsy()
+                                    }
+                                    InferConditionFlow::FalseCondition => {
+                                        expr_type.is_always_truthy()
+                                    }
+                                };
+
+                            if unreachable_branch {
+                                ConditionFlowAction::Result(LuaType::Never)
+                            } else {
+                                ConditionFlowAction::Continue
+                            }
+                        }
+                        _ => ConditionFlowAction::Continue,
+                    },
+                );
             }
             LuaExpr::IndexExpr(index_expr) => {
                 return get_type_at_index_expr(db, cache, var_ref_id, index_expr, condition_flow);
@@ -760,16 +776,6 @@ pub(in crate::semantic::infer::narrow) fn resolve_expr_type_continuation(
             call_expr,
             condition_flow,
         ),
-        ExprTypeContinuation::Truthiness { condition_flow } => Ok(match condition_flow {
-            _ if expr_type.is_never() => ConditionFlowAction::Result(LuaType::Never),
-            InferConditionFlow::TrueCondition if expr_type.is_always_falsy() => {
-                ConditionFlowAction::Result(LuaType::Never)
-            }
-            InferConditionFlow::FalseCondition if expr_type.is_always_truthy() => {
-                ConditionFlowAction::Result(LuaType::Never)
-            }
-            _ => ConditionFlowAction::Continue,
-        }),
         ExprTypeContinuation::ArrayLen {
             subquery_condition_flow,
             max_adjustment,

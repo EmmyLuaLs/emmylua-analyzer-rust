@@ -276,6 +276,8 @@ pub(super) fn is_valid_member(
                             }
                         } else if typ.is_integer() && key_types.iter().any(|typ| typ.is_integer()) {
                             return Some(());
+                        } else if key_types.iter().any(|kt| kt == typ) {
+                            return Some(());
                         }
                     }
                     LuaMemberKey::Name(_) => {
@@ -378,6 +380,9 @@ fn get_key_types(db: &DbIndex, typ: &LuaType) -> HashSet<LuaType> {
                 type_set.insert(current_type);
             }
             LuaType::DocStringConst(_) | LuaType::DocIntegerConst(_) => {
+                type_set.insert(current_type);
+            }
+            LuaType::Boolean | LuaType::Thread | LuaType::Number | LuaType::Userdata => {
                 type_set.insert(current_type);
             }
             LuaType::Call(alias_call) => {

@@ -986,4 +986,48 @@ mod test {
         assert_eq!(ws.expr_ty("alias_result"), ws.ty("string?"));
         assert_eq!(ws.expr_ty("numeric_result"), ws.ty("string?"));
     }
+
+    #[test]
+    fn test_table_generic_value_with_thread_key() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@class Box<T>
+                ---@field value T
+
+                ---@class Container
+                ---@field items table<thread, Box<unknown>?>
+                local Container = {}
+
+                ---@param co thread
+                function Container:get(co)
+                    local item = self.items[co]
+                    return item
+                end
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_table_generic_value_with_boolean_key() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+                ---@class Box<T>
+                ---@field value T
+
+                ---@class Container
+                ---@field items table<boolean, Box<unknown>?>
+                local Container = {}
+
+                ---@param key boolean
+                function Container:get(key)
+                    local item = self.items[key]
+                    return item
+                end
+            "#
+        ));
+    }
 }

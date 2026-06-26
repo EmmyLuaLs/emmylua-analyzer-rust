@@ -12,6 +12,7 @@ Our project is organized into several crates:
 | [🖥️ **emmylua_ls**](./crates/emmylua_ls)                       | [![emmylua_ls](https://img.shields.io/crates/v/emmylua_ls.svg?style=flat-square)](https://crates.io/crates/emmylua_ls)                                  | The complete Language Server Protocol implementation offering rich IDE features across all major editors. |
 | [📚 **emmylua_doc_cli**](./crates/emmylua_doc_cli/)            | [![emmylua_doc_cli](https://img.shields.io/crates/v/emmylua_doc_cli.svg?style=flat-square)](https://crates.io/crates/emmylua_doc_cli)                   | Professional documentation generator creating beautiful, searchable API docs from your Lua code and annotations. |
 | [✅ **emmylua_check**](./crates/emmylua_check)                 | [![emmylua_check](https://img.shields.io/crates/v/emmylua_check.svg?style=flat-square)](https://crates.io/crates/emmylua_check)                         | Comprehensive static analysis tool for code quality assurance, catching bugs before they reach production. |
+| [🧹 **emmylua_formatter**](./crates/emmylua_formatter)         | [![emmylua_formatter](https://img.shields.io/crates/v/emmylua_formatter.svg?style=flat-square)](https://crates.io/crates/emmylua_formatter)             | The Lua formatter used by the EmmyLua Analyzer Rust workspace. |
 
 
 ## Testing

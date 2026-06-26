@@ -649,7 +649,7 @@ local zzz = 3
             r#"
 local t = {
     x = 1,
-    long_name =  2,
+    long_name  = 2,
     yy = 3,
 }
 "#,
@@ -681,13 +681,47 @@ local t = {
         };
 
         assert_format_with_config!(
-            r#"local t = { x = 1, long_name =  2, yy = 3 }
+            r#"local t = { x = 1, long_name  = 2, yy = 3 }
 "#,
             r#"
 local t = {
     x         = 1,
     long_name = 2,
     yy        = 3
+}
+"#,
+            config
+        );
+    }
+
+    #[test]
+    fn test_table_field_extra_space_after_equal_does_not_trigger_alignment() {
+        use crate::{
+            assert_format_with_config,
+            config::{LayoutConfig, LuaFormatConfig},
+        };
+
+        let config = LuaFormatConfig {
+            layout: LayoutConfig {
+                table_expand: crate::config::ExpandStrategy::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_format_with_config!(
+            r#"
+local t = {
+    x = 1,
+    long_name =  2,
+    yy = 3,
+}
+"#,
+            r#"
+local t = {
+    x = 1,
+    long_name = 2,
+    yy = 3
 }
 "#,
             config
@@ -808,7 +842,7 @@ end
             r#"
 local t = {
     x = 100, -- first
-    long_name =  2, -- second
+    long_name  = 2, -- second
 }
 "#,
             r#"
@@ -840,7 +874,7 @@ local t = {
             r#"
 local t = {
     a = "very very long",  -- first
-    b =  2, -- second
+    b  = 2, -- second
     c = 3,
     d = 4,  -- third
     e = 5 -- fourth

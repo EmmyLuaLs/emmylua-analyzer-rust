@@ -1,6 +1,7 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaChunk, LuaDocOpType, LuaExpr, LuaForStat, LuaIndexKey,
-    LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaUnaryExpr, LuaVarExpr, UnaryOperator,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaChunk, LuaDocOpType, LuaExpr, LuaForStat,
+    LuaIndexKey, LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaUnaryExpr, LuaVarExpr,
+    UnaryOperator,
 };
 use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
@@ -200,6 +201,26 @@ impl FlowReplayQuery {
         self.dependency_queries.get(self.next_dependency_idx)
     }
 
+    fn accept_resolved_dependencies(&mut self) -> Result<(), InferFailReason> {
+        while let Some(typ) = self
+            .dependency_queries
+            .get(self.next_dependency_idx)
+            .and_then(|query| query.resolved_type.clone())
+        {
+            self.accept_result(Ok(typ))?;
+        }
+
+        Ok(())
+    }
+
+    fn resolve_dependencies(&mut self, var_ref_id: &VarRefId, typ: LuaType) {
+        for query in &mut self.dependency_queries {
+            if query.var_ref_id == *var_ref_id {
+                query.resolved_type = Some(typ.clone());
+            }
+        }
+    }
+
     fn accept_result(&mut self, dependency_result: InferResult) -> Result<(), InferFailReason> {
         let dependency_query = self
             .dependency_queries
@@ -269,6 +290,7 @@ struct FlowExprTypeQuery {
     syntax_id: LuaSyntaxId,
     literal_shape_type: Option<LuaType>,
     next_dependency_idx_on_success: Option<usize>,
+    resolved_type: Option<LuaType>,
 }
 
 fn collect_expr_dependency_queries(
@@ -294,6 +316,7 @@ fn collect_expr_dependency_queries(
                 syntax_id: expr.get_syntax_id(),
                 literal_shape_type: None,
                 next_dependency_idx_on_success: None,
+                resolved_type: None,
             });
         }
         return;
@@ -341,6 +364,7 @@ fn collect_expr_dependency_queries(
                     syntax_id: expr.get_syntax_id(),
                     literal_shape_type,
                     next_dependency_idx_on_success: None,
+                    resolved_type: None,
                 });
                 Some(query_idx)
             } else {
@@ -646,8 +670,10 @@ impl<'a> FlowTypeEngine<'a> {
         &mut self,
         walk: QueryWalk,
         replay: FlowExprReplay,
-        replay_query: FlowReplayQuery,
+        mut replay_query: FlowReplayQuery,
     ) -> Result<SchedulerStep, InferFailReason> {
+        replay_query.accept_resolved_dependencies()?;
+
         let next_query = replay_query
             .next_query()
             .map(|query| (query.var_ref_id.clone(), query.flow_id));
@@ -1051,14 +1077,20 @@ impl<'a> FlowTypeEngine<'a> {
             let expr_idx = i.min(last_expr_idx);
             let result_slot = i.saturating_sub(last_expr_idx);
             let expr = assignment_info.exprs[expr_idx].clone();
-            let replay_query = FlowReplayQuery::new(
+            let mut replay_query = FlowReplayQuery::new(
                 self.db,
                 Some(self.tree),
                 self.cache,
                 antecedent_flow_id,
-                expr,
+                expr.clone(),
                 true,
             );
+            // A plain self-dependent RHS would replay this assignment while
+            // trying to type itself. Treat that self read as unknown; `and`/`or`
+            // assignments still need the antecedent value for their semantics.
+            if explicit_var_type.is_none() && !contains_short_circuit_binary_expr(&expr) {
+                replay_query.resolve_dependencies(&var_ref_id, LuaType::Unknown);
+            }
             return self.start_expr_replay(
                 walk,
                 FlowExprReplay::Assignment {
@@ -1355,6 +1387,23 @@ impl<'a> FlowTypeEngine<'a> {
     // continuation point like a branch merge.
     fn evaluate_walk(&mut self, mut walk: QueryWalk) -> Result<SchedulerStep, InferFailReason> {
         loop {
+            // Replays can suspend a query and later revisit an older antecedent
+            // that another query already finished. Use that cached type instead
+            // of walking back through the same replay chain again.
+            if walk.antecedent_flow_id != walk.query.flow_id
+                && let Some(CacheEntry::Cache(narrow_type)) = self
+                    .cache
+                    .flow_var_caches
+                    .get(walk.query.var_cache_idx as usize)
+                    .and_then(|var_cache| {
+                        var_cache
+                            .type_cache
+                            .get(&(walk.antecedent_flow_id, walk.query.mode))
+                    })
+            {
+                return Ok(self.finish_walk(walk, narrow_type.clone()));
+            }
+
             let flow_node = self
                 .tree
                 .get_flow_node(walk.antecedent_flow_id)
@@ -1743,6 +1792,17 @@ fn integer_enum_assignment_declared_type(
         .iter()
         .all(|t| matches!(t, LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)))
         .then_some(declared_type)
+}
+
+fn contains_short_circuit_binary_expr(expr: &LuaExpr) -> bool {
+    expr.descendants::<LuaExpr>().any(|expr| {
+        let LuaExpr::BinaryExpr(binary_expr) = expr else {
+            return false;
+        };
+        binary_expr.get_op_token().is_some_and(|token| {
+            matches!(token.get_op(), BinaryOperator::OpAnd | BinaryOperator::OpOr)
+        })
+    })
 }
 
 fn is_partial_assignment_expr_compatible(

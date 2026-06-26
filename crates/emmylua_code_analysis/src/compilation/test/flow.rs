@@ -6,6 +6,9 @@ mod test {
 
     const STACKED_TYPE_GUARDS: usize = 180;
     const MAXWELLHOME_ARRAY_VALUES: usize = 2048;
+    const ISSUE_1100_HIGHLIGHT_GROUPS: usize = 2048;
+    const REPEATED_SELF_ASSIGNMENT_STEPS: usize = 512;
+    const REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS: usize = 128;
 
     fn last_name_expr_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
         let tree = ws
@@ -528,6 +531,47 @@ mod test {
                 .is_some(),
             "expected semantic model for repeated self-call fallback stress repro"
         );
+    }
+
+    #[test]
+    #[timeout(5000)]
+    fn test_issue_1100_repeated_table_field_index_reads_after_unrelated_conditions() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_groups = (0..ISSUE_1100_HIGHLIGHT_GROUPS)
+            .map(|i| {
+                format!(
+                    "if enabled('group_{i}') then\n  hi('Group{i}', {{ fg = p.base0E, bg = p.base01, attr = nil, sp = nil }})\nend\n"
+                )
+            })
+            .collect::<String>();
+        let block = format!(
+            r#"
+        ---@type {{ base01: string, base0E: string }}
+        local palette = {{ base01 = "a", base0E = "b" }}
+
+        local function enabled(name)
+            return name ~= ""
+        end
+
+        local function hi(group, args)
+        end
+
+        local p = palette
+        {repeated_groups}
+        result = p.base0E
+        "#
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for repeated palette field reads"
+        );
+        assert_eq!(ws.expr_ty("result"), ws.ty("string"));
     }
 
     #[test]
@@ -3231,6 +3275,187 @@ _2 = a[1]
         );
         let after_assign = ws.expr_ty("after_assign");
         assert_eq!(ws.humanize_type(after_assign), "Pattern");
+    }
+
+    #[test]
+    fn test_assignment_binary_rhs_replays_non_self_dependency() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class FooValue
+        ---@field kind "foo"
+        ---@field value integer
+
+        ---@class BarValue
+        ---@field kind "bar"
+        ---@field value string
+
+        local right ---@type FooValue|BarValue
+
+        if right.kind == "foo" then
+            local value
+            value = right.value + 1
+            after_assign = value
+        end
+        "#,
+        );
+
+        let after_assign = ws.expr_ty("after_assign");
+        assert_eq!(ws.humanize_type(after_assign), "integer");
+    }
+
+    #[test]
+    fn test_assignment_rhs_keeps_flow_dependent_concat_operator() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Rope
+        ---@operator concat(Rope): Rope
+
+        local left ---@type Rope?
+        local right ---@type Rope?
+
+        if not left then return end
+        if not right then return end
+        left = left .. right
+        after_assign = left
+        "#,
+        );
+
+        let after_assign = ws.expr_ty("after_assign");
+        assert_eq!(ws.humanize_type(after_assign), "Rope");
+    }
+
+    #[test]
+    fn test_assignment_rhs_keeps_flow_dependent_add_operator() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Counter
+        ---@operator add(Counter): Counter
+
+        local left ---@type Counter?
+        local right ---@type Counter?
+
+        if not left then return end
+        if not right then return end
+        left = left + right
+        after_assign = left
+        "#,
+        );
+
+        let after_assign = ws.expr_ty("after_assign");
+        assert_eq!(ws.humanize_type(after_assign), "Counter");
+    }
+
+    #[test]
+    #[timeout(5000)]
+    fn test_issue_1114_repeated_self_dependent_assignments_build_semantic_model() {
+        let cases = [
+            (
+                "concat",
+                r#"local value = """#,
+                "value = value .. config.pic[idx][index]",
+                REPEATED_SELF_ASSIGNMENT_STEPS,
+            ),
+            (
+                "add",
+                "local value = 0",
+                "value = value + config.pic[idx][index]",
+                REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS,
+            ),
+            (
+                "parenthesized concat",
+                r#"local value = """#,
+                "value = (value .. config.pic[idx][index])",
+                REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS,
+            ),
+            (
+                "unary",
+                "local value = 0",
+                "value = -(value + config.pic[idx][index])",
+                REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS,
+            ),
+            (
+                "comparison",
+                "local value = true",
+                "value = value == config.pic[idx][index]",
+                REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS,
+            ),
+        ];
+
+        for (name, init, assignment, steps) in cases {
+            let mut ws = VirtualWorkspace::new();
+            let repeated_assignments = format!("{assignment}\n").repeat(steps);
+            let block = format!(
+                r#"
+            function f(config, idx, index)
+                {init}
+                {repeated_assignments}
+                return value
+            end
+            "#
+            );
+
+            let file_id = ws.def(&block);
+
+            assert!(
+                ws.analysis
+                    .compilation
+                    .get_semantic_model(file_id)
+                    .is_some(),
+                "expected semantic model for repeated self-dependent {name} assignment"
+            );
+        }
+    }
+
+    #[test]
+    #[timeout(5000)]
+    fn test_issue_1116_generic_call_index_replay_builds_semantic_model() {
+        let mut ws = VirtualWorkspace::new();
+        let repeated_assignments =
+            "value = id(value .. config.pic[idx][index])\n".repeat(REPEATED_SELF_ASSIGNMENT_STEPS);
+        let block = format!(
+            r#"
+        ---@generic T
+        ---@param value T
+        ---@return T
+        local function id(value)
+            return value
+        end
+
+        function f(config, idx, index)
+            local value
+            {repeated_assignments}
+            return value
+        end
+        "#
+        );
+
+        let file_id = ws.def(&block);
+
+        assert!(
+            ws.analysis
+                .compilation
+                .get_semantic_model(file_id)
+                .is_some(),
+            "expected semantic model for generic call index replay repro"
+        );
+    }
+
+    #[test]
+    fn test_binary_assignment_infer_error_keeps_previous_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        local value = "prior"
+        value = config.pic + 1
+        after_assign = value
+        "#,
+        );
+
+        let after_assign = ws.expr_ty("after_assign");
+        assert_eq!(ws.humanize_type(after_assign), "string");
     }
 
     #[test]
