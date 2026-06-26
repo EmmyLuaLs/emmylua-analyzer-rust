@@ -4,19 +4,10 @@ use std::{cell::RefCell, rc::Rc};
 use super::tpl_pattern::constant_decay;
 use crate::{DbIndex, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum UninferredTplPolicy {
-    /// 未推断模板按 `default -> constraint -> unknown` 推断成实际类型.
-    Fallback,
-    /// 没有默认值的未推断模板仍保留为 `TplRef`, 让后续调用点继续参与参数推导.
-    PreserveTplRef,
-}
-
 #[derive(Debug)]
 pub struct GenericInstantiateContext<'a> {
     pub db: &'a DbIndex,
     pub substitutor: &'a TypeSubstitutor,
-    policy: UninferredTplPolicy,
     instantiating_signatures: Rc<RefCell<HashSet<LuaSignatureId>>>,
 }
 
@@ -25,17 +16,7 @@ impl<'a> GenericInstantiateContext<'a> {
         Self {
             db,
             substitutor,
-            policy: UninferredTplPolicy::Fallback,
             instantiating_signatures: Rc::new(RefCell::new(HashSet::new())),
-        }
-    }
-
-    pub(super) fn with_policy(&self, policy: UninferredTplPolicy) -> GenericInstantiateContext<'a> {
-        GenericInstantiateContext {
-            db: self.db,
-            substitutor: self.substitutor,
-            policy,
-            instantiating_signatures: self.instantiating_signatures.clone(),
         }
     }
 
@@ -46,13 +27,8 @@ impl<'a> GenericInstantiateContext<'a> {
         GenericInstantiateContext {
             db: self.db,
             substitutor,
-            policy: self.policy,
             instantiating_signatures: self.instantiating_signatures.clone(),
         }
-    }
-
-    pub fn should_preserve_tpl_ref(&self) -> bool {
-        self.policy == UninferredTplPolicy::PreserveTplRef
     }
 
     pub(super) fn enter_signature(
@@ -169,6 +145,17 @@ impl TypeSubstitutor {
         self.insert_type_value(tpl_id, SubstitutorTypeValue::new(replace_type, decay));
     }
 
+    pub fn infer_type(&mut self, tpl_id: GenericTplId, replace_type: LuaType, decay: bool) {
+        if tpl_id.is_conditional_infer() || !self.can_infer_type(tpl_id) {
+            return;
+        }
+
+        self.tpl_replace_map.insert(
+            tpl_id,
+            SubstitutorValue::Type(SubstitutorTypeValue::new(replace_type, decay)),
+        );
+    }
+
     pub(super) fn replace_type(
         &mut self,
         tpl_id: GenericTplId,
@@ -214,12 +201,32 @@ impl TypeSubstitutor {
         true
     }
 
+    fn can_infer_type(&self, tpl_id: GenericTplId) -> bool {
+        self.tpl_replace_map
+            .get(&tpl_id)
+            .is_some_and(SubstitutorValue::is_none)
+    }
+
     pub fn insert_params(&mut self, tpl_id: GenericTplId, params: Vec<(String, Option<LuaType>)>) {
         if tpl_id.is_conditional_infer() {
             return;
         }
 
         if !self.can_insert_type(tpl_id) {
+            return;
+        }
+
+        let params = params
+            .into_iter()
+            .map(|(name, ty)| (name, ty.map(into_ref_type)))
+            .collect();
+
+        self.tpl_replace_map
+            .insert(tpl_id, SubstitutorValue::Params(params));
+    }
+
+    pub fn infer_params(&mut self, tpl_id: GenericTplId, params: Vec<(String, Option<LuaType>)>) {
+        if tpl_id.is_conditional_infer() || !self.can_infer_type(tpl_id) {
             return;
         }
 
@@ -245,6 +252,15 @@ impl TypeSubstitutor {
             .insert(tpl_id, SubstitutorValue::MultiTypes(types));
     }
 
+    pub fn infer_multi_types(&mut self, tpl_id: GenericTplId, types: Vec<LuaType>) {
+        if tpl_id.is_conditional_infer() || !self.can_infer_type(tpl_id) {
+            return;
+        }
+
+        self.tpl_replace_map
+            .insert(tpl_id, SubstitutorValue::MultiTypes(types));
+    }
+
     pub fn insert_multi_base(&mut self, tpl_id: GenericTplId, type_base: LuaType) {
         if tpl_id.is_conditional_infer() {
             return;
@@ -258,8 +274,32 @@ impl TypeSubstitutor {
             .insert(tpl_id, SubstitutorValue::MultiBase(type_base));
     }
 
+    pub fn infer_multi_base(&mut self, tpl_id: GenericTplId, type_base: LuaType) {
+        if tpl_id.is_conditional_infer() || !self.can_infer_type(tpl_id) {
+            return;
+        }
+
+        self.tpl_replace_map
+            .insert(tpl_id, SubstitutorValue::MultiBase(type_base));
+    }
+
     pub fn get(&self, tpl_id: GenericTplId) -> Option<&SubstitutorValue> {
         self.tpl_replace_map.get(&tpl_id)
+    }
+
+    pub(super) fn without_pending_tpls(&self, tpl_ids: &HashSet<GenericTplId>) -> Self {
+        let mut substitutor = self.clone();
+        for tpl_id in tpl_ids {
+            if substitutor
+                .tpl_replace_map
+                .get(tpl_id)
+                .is_some_and(SubstitutorValue::is_none)
+            {
+                substitutor.tpl_replace_map.remove(tpl_id);
+            }
+        }
+
+        substitutor
     }
 
     pub fn get_raw_type(&self, tpl_id: GenericTplId) -> Option<&LuaType> {

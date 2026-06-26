@@ -497,6 +497,7 @@ fn infer_func_type(ctx: DocTypeInferContext<'_>, func: &LuaDocFuncType) -> LuaTy
             is_variadic,
             params_result,
             return_type,
+            None,
         )
         .into(),
     )

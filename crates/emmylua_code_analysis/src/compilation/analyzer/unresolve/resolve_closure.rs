@@ -409,6 +409,7 @@ fn resolve_closure_member_type(
                     signature.is_vararg,
                     final_params,
                     final_ret,
+                    Some(signature.get_function_generic_params()),
                 ),
                 self_type,
             )
