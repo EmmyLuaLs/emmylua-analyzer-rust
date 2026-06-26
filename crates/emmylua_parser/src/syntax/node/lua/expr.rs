@@ -23,6 +23,8 @@ pub enum LuaExpr {
     ParenExpr(LuaParenExpr),
     NameExpr(LuaNameExpr),
     IndexExpr(LuaIndexExpr),
+    TernaryExpr(LuaTernaryExpr),
+    NilCoalescingExpr(LuaNilCoalescingExpr),
 }
 
 impl LuaAstNode for LuaExpr {
@@ -37,6 +39,8 @@ impl LuaAstNode for LuaExpr {
             LuaExpr::ParenExpr(node) => node.syntax(),
             LuaExpr::NameExpr(node) => node.syntax(),
             LuaExpr::IndexExpr(node) => node.syntax(),
+            LuaExpr::TernaryExpr(node) => node.syntax(),
+            LuaExpr::NilCoalescingExpr(node) => node.syntax(),
         }
     }
 
@@ -62,6 +66,9 @@ impl LuaAstNode for LuaExpr {
                 | LuaSyntaxKind::ParenExpr
                 | LuaSyntaxKind::NameExpr
                 | LuaSyntaxKind::IndexExpr
+                | LuaSyntaxKind::SafeIndexExpr
+                | LuaSyntaxKind::TernaryExpr
+                | LuaSyntaxKind::NilCoalescingExpr
         )
     }
 
@@ -88,6 +95,11 @@ impl LuaAstNode for LuaExpr {
             LuaSyntaxKind::ParenExpr => LuaParenExpr::cast(syntax).map(LuaExpr::ParenExpr),
             LuaSyntaxKind::NameExpr => LuaNameExpr::cast(syntax).map(LuaExpr::NameExpr),
             LuaSyntaxKind::IndexExpr => LuaIndexExpr::cast(syntax).map(LuaExpr::IndexExpr),
+            LuaSyntaxKind::SafeIndexExpr => LuaIndexExpr::cast(syntax).map(LuaExpr::IndexExpr),
+            LuaSyntaxKind::TernaryExpr => LuaTernaryExpr::cast(syntax).map(LuaExpr::TernaryExpr),
+            LuaSyntaxKind::NilCoalescingExpr => {
+                LuaNilCoalescingExpr::cast(syntax).map(LuaExpr::NilCoalescingExpr)
+            }
             _ => None,
         }
     }
@@ -264,7 +276,7 @@ impl LuaAstNode for LuaIndexExpr {
     where
         Self: Sized,
     {
-        kind == LuaSyntaxKind::IndexExpr
+        kind == LuaSyntaxKind::IndexExpr || kind == LuaSyntaxKind::SafeIndexExpr
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>
@@ -285,7 +297,21 @@ impl LuaIndexExpr {
     }
 
     pub fn get_index_token(&self) -> Option<LuaIndexToken> {
-        self.token()
+        let mut it = self
+            .syntax()
+            .children_with_tokens()
+            .filter_map(|it| it.into_token().and_then(LuaIndexToken::cast));
+        let first = it.next()?;
+        if first.is_safe_navigation() {
+            let second = it.next();
+            if second.is_none() {
+                return first.into();
+            }
+
+            return second;
+        }
+
+        first.into()
     }
 
     pub fn get_index_key(&self) -> Option<LuaIndexKey> {
@@ -334,6 +360,10 @@ impl LuaIndexExpr {
 
     pub fn get_name_token(&self) -> Option<LuaNameToken> {
         self.token()
+    }
+
+    pub fn is_safe_index(&self) -> bool {
+        self.syntax().kind() == LuaSyntaxKind::SafeIndexExpr.into()
     }
 }
 
@@ -760,5 +790,106 @@ impl LuaParenExpr {
 impl From<LuaParenExpr> for LuaExpr {
     fn from(expr: LuaParenExpr) -> Self {
         LuaExpr::ParenExpr(expr)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaTernaryExpr {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaTernaryExpr {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::TernaryExpr
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaTernaryExpr {
+    pub fn get_condition_expr(&self) -> Option<LuaExpr> {
+        let mut exprs = self.children::<LuaExpr>();
+        exprs.next()
+    }
+
+    pub fn get_true_false_exprs(&self) -> Option<(LuaExpr, LuaExpr)> {
+        let mut exprs = self.children::<LuaExpr>();
+        exprs.next();
+        let true_expr = exprs.next()?;
+        let false_expr = exprs.next()?;
+        Some((true_expr, false_expr))
+    }
+
+    pub fn get_exprs(&self) -> Option<(LuaExpr, LuaExpr, LuaExpr)> {
+        let mut exprs = self.children::<LuaExpr>();
+        let condition_expr = exprs.next()?;
+        let true_expr = exprs.next()?;
+        let false_expr = exprs.next()?;
+        Some((condition_expr, true_expr, false_expr))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaNilCoalescingExpr {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaNilCoalescingExpr {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::NilCoalescingExpr
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+}
+
+impl LuaNilCoalescingExpr {
+    pub fn get_left_right_exprs(&self) -> Option<(LuaExpr, LuaExpr)> {
+        let mut exprs = self.children::<LuaExpr>();
+        let left_expr = exprs.next()?;
+        let right_expr = exprs.next()?;
+        Some((left_expr, right_expr))
+    }
+
+    pub fn get_left_expr(&self) -> Option<LuaExpr> {
+        let mut exprs = self.children::<LuaExpr>();
+        exprs.next()
+    }
+
+    pub fn get_right_expr(&self) -> Option<LuaExpr> {
+        let mut exprs = self.children::<LuaExpr>();
+        exprs.next();
+        exprs.next()
     }
 }

@@ -40,6 +40,8 @@ pub enum EmmyrcLuaVersion {
     /// LuaJIT
     #[serde(rename = "LuaJIT")]
     LuaJIT,
+    #[serde(rename = "LuaJIT-Ext", alias = "LuaJIT Ext")]
+    LuaJITExt,
     /// Lua 5.2
     #[serde(rename = "Lua5.2", alias = "Lua 5.2")]
     Lua52,
@@ -63,6 +65,7 @@ impl EmmyrcLuaVersion {
         match self {
             EmmyrcLuaVersion::Lua51 => LuaVersionNumber::new(5, 1, 0),
             EmmyrcLuaVersion::LuaJIT => LuaVersionNumber::LUA_JIT,
+            EmmyrcLuaVersion::LuaJITExt => LuaVersionNumber::LUA_JIT_EXT,
             EmmyrcLuaVersion::Lua52 => LuaVersionNumber::new(5, 2, 0),
             EmmyrcLuaVersion::Lua53 => LuaVersionNumber::new(5, 3, 0),
             EmmyrcLuaVersion::Lua54 => LuaVersionNumber::new(5, 4, 0),

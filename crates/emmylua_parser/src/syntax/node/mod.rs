@@ -47,6 +47,8 @@ pub enum LuaAst {
     LuaCallExpr(LuaCallExpr),
     LuaLiteralExpr(LuaLiteralExpr),
     LuaClosureExpr(LuaClosureExpr),
+    LuaTernaryExpr(LuaTernaryExpr),
+    LuaNilCoalescingExpr(LuaNilCoalescingExpr),
 
     // other lua struct
     LuaTableField(LuaTableField),
@@ -144,6 +146,8 @@ impl LuaAstNode for LuaAst {
             LuaAst::LuaCallExpr(node) => node.syntax(),
             LuaAst::LuaLiteralExpr(node) => node.syntax(),
             LuaAst::LuaClosureExpr(node) => node.syntax(),
+            LuaAst::LuaTernaryExpr(node) => node.syntax(),
+            LuaAst::LuaNilCoalescingExpr(node) => node.syntax(),
             LuaAst::LuaComment(node) => node.syntax(),
             LuaAst::LuaTableField(node) => node.syntax(),
             LuaAst::LuaParamList(node) => node.syntax(),
@@ -229,6 +233,7 @@ impl LuaAstNode for LuaAst {
                 | LuaSyntaxKind::GlobalStat
                 | LuaSyntaxKind::NameExpr
                 | LuaSyntaxKind::IndexExpr
+                | LuaSyntaxKind::SafeIndexExpr
                 | LuaSyntaxKind::TableEmptyExpr
                 | LuaSyntaxKind::TableArrayExpr
                 | LuaSyntaxKind::TableObjectExpr
@@ -243,6 +248,8 @@ impl LuaAstNode for LuaAst {
                 | LuaSyntaxKind::SetmetatableCallExpr
                 | LuaSyntaxKind::LiteralExpr
                 | LuaSyntaxKind::ClosureExpr
+                | LuaSyntaxKind::TernaryExpr
+                | LuaSyntaxKind::NilCoalescingExpr
                 | LuaSyntaxKind::ParamList
                 | LuaSyntaxKind::CallArgList
                 | LuaSyntaxKind::LocalName
@@ -331,7 +338,9 @@ impl LuaAstNode for LuaAst {
             LuaSyntaxKind::ReturnStat => LuaReturnStat::cast(syntax).map(LuaAst::LuaReturnStat),
             LuaSyntaxKind::GlobalStat => LuaGlobalStat::cast(syntax).map(LuaAst::LuaGlobalStat),
             LuaSyntaxKind::NameExpr => LuaNameExpr::cast(syntax).map(LuaAst::LuaNameExpr),
-            LuaSyntaxKind::IndexExpr => LuaIndexExpr::cast(syntax).map(LuaAst::LuaIndexExpr),
+            LuaSyntaxKind::IndexExpr | LuaSyntaxKind::SafeIndexExpr => {
+                LuaIndexExpr::cast(syntax).map(LuaAst::LuaIndexExpr)
+            }
             LuaSyntaxKind::TableEmptyExpr
             | LuaSyntaxKind::TableArrayExpr
             | LuaSyntaxKind::TableObjectExpr => {
@@ -350,6 +359,10 @@ impl LuaAstNode for LuaAst {
             }
             LuaSyntaxKind::LiteralExpr => LuaLiteralExpr::cast(syntax).map(LuaAst::LuaLiteralExpr),
             LuaSyntaxKind::ClosureExpr => LuaClosureExpr::cast(syntax).map(LuaAst::LuaClosureExpr),
+            LuaSyntaxKind::TernaryExpr => LuaTernaryExpr::cast(syntax).map(LuaAst::LuaTernaryExpr),
+            LuaSyntaxKind::NilCoalescingExpr => {
+                LuaNilCoalescingExpr::cast(syntax).map(LuaAst::LuaNilCoalescingExpr)
+            }
             LuaSyntaxKind::Comment => LuaComment::cast(syntax).map(LuaAst::LuaComment),
             LuaSyntaxKind::TableFieldAssign | LuaSyntaxKind::TableFieldValue => {
                 LuaTableField::cast(syntax).map(LuaAst::LuaTableField)

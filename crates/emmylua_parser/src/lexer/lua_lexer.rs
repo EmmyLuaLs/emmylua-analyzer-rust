@@ -224,14 +224,26 @@ impl<'a> LuaLexer<'a> {
             }
             '~' => {
                 self.reader.bump();
-                if self.reader.current_char() != '=' {
-                    if !self.support(LuaFeatures::BitwiseOperation) {
-                        self.error(|| t!("bitwise operation is not supported"));
+                match self.reader.current_char() {
+                    '=' => {
+                        self.reader.bump();
+                        LuaTokenKind::TkNe
                     }
-                    return LuaTokenKind::TkBitXor;
+                    '>' if self.support(LuaFeatures::ShiftRightArithmetic)
+                        && self.reader.next_char() == '>' =>
+                    {
+                        self.reader.bump();
+                        self.reader.bump();
+
+                        LuaTokenKind::TkShrArithmetic
+                    }
+                    _ => {
+                        if !self.support(LuaFeatures::BitwiseOperation) {
+                            self.error(|| t!("bitwise operation is not supported"));
+                        }
+                        LuaTokenKind::TkNe
+                    }
                 }
-                self.reader.bump();
-                LuaTokenKind::TkNe
             }
             ':' => {
                 self.reader.bump();
@@ -448,12 +460,7 @@ impl<'a> LuaLexer<'a> {
                         self.reader.bump();
                         LuaTokenKind::TkSafeNavigation
                     }
-                    ch => {
-                        if ch == ':' && self.support(LuaFeatures::TernaryColon) {
-                            self.reader.bump();
-                            return LuaTokenKind::TkTernaryColon;
-                        }
-
+                    _ => {
                         if self.support(LuaFeatures::Ternary) {
                             return LuaTokenKind::TkTernary;
                         }

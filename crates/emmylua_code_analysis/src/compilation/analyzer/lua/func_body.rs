@@ -426,5 +426,6 @@ fn can_analyze_condition(expr: &LuaExpr) -> bool {
             can_analyze_condition(&left) && can_analyze_condition(&right)
         }),
         LuaExpr::NameExpr(_) | LuaExpr::IndexExpr(_) => false,
+        _ => true, // TernaryExpr, NilCoalescingExpr
     }
 }

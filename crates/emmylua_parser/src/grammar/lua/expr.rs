@@ -758,6 +758,7 @@ fn parse_safe_index_struct(p: &mut LuaParser) -> Result<(), ParseFailReason> {
                     | LuaTokenKind::TkLeftBrace
                     | LuaTokenKind::TkString
                     | LuaTokenKind::TkLongString
+                    | LuaTokenKind::TkSafeNavigation
             ) {
                 p.push_error(LuaParseError::syntax_error_from(
                     &t!(

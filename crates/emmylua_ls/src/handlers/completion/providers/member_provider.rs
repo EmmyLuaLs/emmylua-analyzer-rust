@@ -43,7 +43,7 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
 
     let index_expr = LuaIndexExpr::cast(builder.trigger_token.parent()?)?;
     let index_token = index_expr.get_index_token()?;
-    let completion_status = if index_token.is_dot() {
+    let completion_status = if index_token.is_dot() || index_token.is_safe_navigation() {
         CompletionTriggerStatus::Dot
     } else if index_token.is_colon() {
         CompletionTriggerStatus::Colon

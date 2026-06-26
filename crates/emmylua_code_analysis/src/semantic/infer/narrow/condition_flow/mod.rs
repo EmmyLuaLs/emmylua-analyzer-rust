@@ -659,6 +659,10 @@ pub(super) fn get_type_at_condition_flow(
                 condition = inner_expr;
                 continue;
             }
+            // todo next version
+            _ => {
+                return Ok(ConditionFlowAction::Continue);
+            }
         }
     }
 }

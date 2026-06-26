@@ -2,13 +2,15 @@ mod bind_binary_expr;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaNameExpr,
-    LuaTableExpr, LuaUnaryExpr,
+    LuaNilCoalescingExpr, LuaTableExpr, LuaTernaryExpr, LuaUnaryExpr,
 };
 
 use crate::{
     FlowId, FlowNodeKind,
     compilation::analyzer::flow::{
-        bind_analyze::{bind_each_child, exprs::bind_binary_expr::is_binary_logical},
+        bind_analyze::{
+            bind_each_child, exprs::bind_binary_expr::is_binary_logical, finish_flow_label,
+        },
         binder::FlowBinder,
     },
 };
@@ -54,6 +56,10 @@ pub fn bind_expr(binder: &mut FlowBinder, expr: LuaExpr, current: FlowId) -> Flo
         LuaExpr::IndexExpr(index_expr) => bind_index_expr(binder, index_expr, current),
         LuaExpr::BinaryExpr(binary_expr) => bind_binary_expr(binder, binary_expr, current),
         LuaExpr::UnaryExpr(unary_expr) => bind_unary_expr(binder, unary_expr, current),
+        LuaExpr::TernaryExpr(ternary_expr) => bind_ternary_expr(binder, ternary_expr, current),
+        LuaExpr::NilCoalescingExpr(nil_coalescing_expr) => {
+            bind_nil_coalescing_expr(binder, nil_coalescing_expr, current)
+        }
     };
 
     current
@@ -123,5 +129,55 @@ pub fn bind_call_expr(
     current: FlowId,
 ) -> Option<()> {
     bind_each_child(binder, LuaAst::LuaCallExpr(call_expr.clone()), current);
+    Some(())
+}
+
+fn bind_ternary_expr(
+    binder: &mut FlowBinder,
+    ternary_expr: LuaTernaryExpr,
+    current: FlowId,
+) -> Option<()> {
+    let condition = ternary_expr.get_condition_expr()?;
+    let (true_expr, false_expr) = ternary_expr.get_true_false_exprs()?;
+
+    let pre_false = binder.create_branch_label();
+    bind_condition_expr(binder, condition, current, binder.true_target, pre_false);
+    let current = finish_flow_label(binder, pre_false, current);
+    bind_condition_expr(
+        binder,
+        true_expr,
+        current,
+        binder.true_target,
+        binder.false_target,
+    );
+    bind_condition_expr(
+        binder,
+        false_expr,
+        current,
+        binder.true_target,
+        binder.false_target,
+    );
+
+    Some(())
+}
+
+fn bind_nil_coalescing_expr(
+    binder: &mut FlowBinder,
+    nil_coalescing_expr: LuaNilCoalescingExpr,
+    current: FlowId,
+) -> Option<()> {
+    let (left, right) = nil_coalescing_expr.get_left_right_exprs()?;
+
+    let pre_right = binder.create_branch_label();
+    bind_condition_expr(binder, left, current, binder.true_target, pre_right);
+    let current = finish_flow_label(binder, pre_right, current);
+    bind_condition_expr(
+        binder,
+        right,
+        current,
+        binder.true_target,
+        binder.false_target,
+    );
+
     Some(())
 }

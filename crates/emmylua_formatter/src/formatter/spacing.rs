@@ -53,6 +53,7 @@ pub(crate) fn space_around_binary_op(op: BinaryOperator, config: &LuaFormatConfi
         | BinaryOperator::OpShl
         | BinaryOperator::OpShr
         | BinaryOperator::OpNop
+        | BinaryOperator::OpShrAthrimetic
         | BinaryOperator::OpNilCoalescing => SpaceRule::Space,
         BinaryOperator::OpConcat => {
             if config.spacing.space_around_concat_operator {

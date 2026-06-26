@@ -343,6 +343,19 @@ fn process_expr(
             }
         }
         LuaExpr::NameExpr(_) | LuaExpr::LiteralExpr(_) => {}
+        LuaExpr::NilCoalescingExpr(nil_coalescing_expr) => {
+            if let Some((left, right)) = nil_coalescing_expr.get_left_right_exprs() {
+                process_expr(builder, left, parent_id, inline_table_to_parent)?;
+                process_expr(builder, right, parent_id, inline_table_to_parent)?;
+            }
+        }
+        LuaExpr::TernaryExpr(ternary_expr) => {
+            if let Some((condition, true_expr, false_expr)) = ternary_expr.get_exprs() {
+                process_expr(builder, condition, parent_id, inline_table_to_parent)?;
+                process_expr(builder, true_expr, parent_id, inline_table_to_parent)?;
+                process_expr(builder, false_expr, parent_id, inline_table_to_parent)?;
+            }
+        }
     }
 
     Some(())

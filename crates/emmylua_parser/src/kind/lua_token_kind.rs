@@ -29,35 +29,36 @@ pub enum LuaTokenKind {
     TkWhile,
     TkGlobal, // global *
 
-    TkWhitespace, // whitespace
-    TkEndOfLine,  // end of line
-    TkPlus,       // +
-    TkMinus,      // -
-    TkMul,        // *
-    TkDiv,        // /
-    TkIDiv,       // //
-    TkDot,        // .
-    TkConcat,     // ..
-    TkDots,       // ...
-    TkComma,      // ,
-    TkAssign,     // =
-    TkEq,         // ==
-    TkGe,         // >=
-    TkLe,         // <=
-    TkNe,         // ~=
-    TkShl,        // <<
-    TkShr,        // >>
-    TkLt,         // <
-    TkGt,         // >
-    TkMod,        // %
-    TkPow,        // ^
-    TkLen,        // #
-    TkBitAnd,     // &
-    TkBitOr,      // |
-    TkBitXor,     // ~
-    TkColon,      // :
-    TkDbColon,    // ::
-    TkSemicolon,  // ;
+    TkWhitespace,    // whitespace
+    TkEndOfLine,     // end of line
+    TkPlus,          // +
+    TkMinus,         // -
+    TkMul,           // *
+    TkDiv,           // /
+    TkIDiv,          // //
+    TkDot,           // .
+    TkConcat,        // ..
+    TkDots,          // ...
+    TkComma,         // ,
+    TkAssign,        // =
+    TkEq,            // ==
+    TkGe,            // >=
+    TkLe,            // <=
+    TkNe,            // ~=
+    TkShl,           // <<
+    TkShr,           // >>
+    TkShrArithmetic, // "~>>"
+    TkLt,            // <
+    TkGt,            // >
+    TkMod,           // %
+    TkPow,           // ^
+    TkLen,           // #
+    TkBitAnd,        // &
+    TkBitOr,         // |
+    TkBitXor,        // ~
+    TkColon,         // :
+    TkDbColon,       // ::
+    TkSemicolon,     // ;
 
     // extension assignment operators
     TkPlusAssign,        // +=
@@ -75,7 +76,6 @@ pub enum LuaTokenKind {
     TkNilCoalescing,  // ??
     TkSafeNavigation, // ?.
     TkTernary,        // ?
-    TkTernaryColon,   // ?:
 
     TkLeftBracket,  // [
     TkRightBracket, // ]
@@ -247,6 +247,10 @@ impl LuaTokenKind {
             LuaTokenKind::TkRightParen => ")",
             LuaTokenKind::TkLeftBrace => "{",
             LuaTokenKind::TkRightBrace => "}",
+            LuaTokenKind::TkShrArithmetic => "~>>",
+            LuaTokenKind::TkNilCoalescing => "??",
+            LuaTokenKind::TkSafeNavigation => "?.",
+            LuaTokenKind::TkTernary => "?",
             _ => return None,
         })
     }

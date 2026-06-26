@@ -109,7 +109,11 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkBitAnd
         | LuaTokenKind::TkBitOr
         | LuaTokenKind::TkBitXor
-        | LuaTokenKind::TkAssign => {
+        | LuaTokenKind::TkAssign
+        | LuaTokenKind::TkTernary
+        | LuaTokenKind::TkSafeNavigation
+        | LuaTokenKind::TkShrArithmetic
+        | LuaTokenKind::TkNilCoalescing => {
             builder.push(token, SemanticTokenTypeKind::Operator);
         }
         LuaTokenKind::TkLeftBrace | LuaTokenKind::TkRightBrace => {

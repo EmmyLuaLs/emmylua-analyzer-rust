@@ -11,32 +11,33 @@ pub enum UnaryOperator {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum BinaryOperator {
-    OpAdd,    // +
-    OpSub,    // -
-    OpMul,    // *
-    OpDiv,    // /
-    OpIDiv,   // //
-    OpMod,    // %
-    OpPow,    // ^
-    OpBAnd,   // &
-    OpBOr,    // |
-    OpBXor,   // ~
-    OpShl,    // <<
-    OpShr,    // >>
-    OpConcat, // ..
-    OpLt,     // <
-    OpLe,     // <=
-    OpGt,     // >
-    OpGe,     // >=
-    OpEq,     // ==
-    OpNe,     // ~=
-    OpAnd,    // and
-    OpOr,     // or
+    OpAdd,           // +
+    OpSub,           // -
+    OpMul,           // *
+    OpDiv,           // /
+    OpIDiv,          // //
+    OpMod,           // %
+    OpPow,           // ^
+    OpBAnd,          // &
+    OpBOr,           // |
+    OpBXor,          // ~
+    OpShl,           // <<
+    OpShr,           // >>
+    OpShrAthrimetic, // ~>>
+    OpConcat,        // ..
+    OpLt,            // <
+    OpLe,            // <=
+    OpGt,            // >
+    OpGe,            // >=
+    OpEq,            // ==
+    OpNe,            // ~=
+    OpAnd,           // and
+    OpOr,            // or
     OpNilCoalescing, // ??
-    OpNop,    // (empty)
+    OpNop,           // (empty)
 }
 
-pub const PRIORITY: [PriorityTable; 23] = [
+pub const PRIORITY: [PriorityTable; 25] = [
     PriorityTable {
         left: 10,
         right: 10,
@@ -70,6 +71,7 @@ pub const PRIORITY: [PriorityTable; 23] = [
     PriorityTable { left: 5, right: 5 }, // OPR_BXOR
     PriorityTable { left: 7, right: 7 }, // OPR_SHL
     PriorityTable { left: 7, right: 7 }, // OPR_SHR
+    PriorityTable { left: 7, right: 7 }, // OPR_SHR_ATHRIMETIC
     PriorityTable { left: 9, right: 8 }, // OPR_CONCAT
     PriorityTable { left: 3, right: 3 }, // OPR_EQ
     PriorityTable { left: 3, right: 3 }, // OPR_LT
@@ -80,6 +82,7 @@ pub const PRIORITY: [PriorityTable; 23] = [
     PriorityTable { left: 2, right: 2 }, // OPR_AND
     PriorityTable { left: 1, right: 1 }, // OPR_OR
     PriorityTable { left: 1, right: 1 }, // OPR_NIL_COALESCING
+    PriorityTable { left: 1, right: 1 }, // OPR_TERNARY_COLON
     PriorityTable { left: 0, right: 0 }, // OPR_NOP (unreachable)
 ];
 

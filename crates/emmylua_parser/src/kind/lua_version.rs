@@ -24,10 +24,18 @@ impl LuaVersionNumber {
         patch: 0,
     };
 
+    pub const LUA_JIT_EXT: Self = Self {
+        major: 3,
+        minor: 0,
+        patch: 0,
+    };
+
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         if s == "JIT" {
             return Some(Self::LUA_JIT);
+        } else if s == "JIT-Ext" {
+            return Some(Self::LUA_JIT_EXT);
         }
 
         let mut iter = s.split('.').map(|it| it.parse::<u32>().unwrap_or(0));

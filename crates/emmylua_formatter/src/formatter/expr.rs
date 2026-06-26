@@ -1,9 +1,9 @@
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAstNode, LuaAstToken, LuaBinaryExpr, LuaCallArgList,
     LuaCallExpr, LuaClosureExpr, LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind,
-    LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaParamList, LuaParenExpr,
-    LuaSingleArgExpr, LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken,
-    LuaTableExpr, LuaTableField, LuaTokenKind, LuaUnaryExpr,
+    LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaNilCoalescingExpr, LuaParamList,
+    LuaParenExpr, LuaSingleArgExpr, LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode,
+    LuaSyntaxToken, LuaTableExpr, LuaTableField, LuaTernaryExpr, LuaTokenKind, LuaUnaryExpr,
 };
 use rowan::TextRange;
 
@@ -60,6 +60,8 @@ pub fn format_expr_with_options(
         LuaExpr::CallExpr(expr) => format_call_expr(ctx, plan, expr),
         LuaExpr::TableExpr(expr) => format_table_expr(ctx, plan, expr),
         LuaExpr::ClosureExpr(expr) => format_closure_expr(ctx, plan, expr),
+        LuaExpr::TernaryExpr(expr) => format_ternary_expr(ctx, plan, expr),
+        LuaExpr::NilCoalescingExpr(expr) => format_nil_coalescing_expr(ctx, plan, expr),
     }
 }
 
@@ -2339,6 +2341,45 @@ fn format_closure_expr(
 
     let shell_plan = collect_closure_shell_plan(ctx, plan, expr);
     render_closure_shell(ctx, plan, expr, shell_plan)
+}
+
+fn format_ternary_expr(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    expr: &LuaTernaryExpr,
+) -> Vec<DocIR> {
+    let Some(cond_expr) = expr.get_condition_expr() else {
+        return vec![ir::source_node(expr.syntax().clone())];
+    };
+    let Some((true_expr, false_expr)) = expr.get_true_false_exprs() else {
+        return vec![ir::source_node(expr.syntax().clone())];
+    };
+    let mut docs = format_expr(ctx, plan, &cond_expr);
+    docs.push(ir::space());
+    docs.push(ir::syntax_token(LuaTokenKind::TkTernary));
+    docs.push(ir::space());
+    docs.extend(format_expr(ctx, plan, &true_expr));
+    docs.push(ir::space());
+    docs.push(ir::syntax_token(LuaTokenKind::TkColon));
+    docs.push(ir::space());
+    docs.extend(format_expr(ctx, plan, &false_expr));
+    docs
+}
+
+fn format_nil_coalescing_expr(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    expr: &LuaNilCoalescingExpr,
+) -> Vec<DocIR> {
+    let Some((left_expr, right_expr)) = expr.get_left_right_exprs() else {
+        return vec![ir::source_node(expr.syntax().clone())];
+    };
+    let mut docs = format_expr(ctx, plan, &left_expr);
+    docs.push(ir::space());
+    docs.push(ir::syntax_token(LuaTokenKind::TkNilCoalescing));
+    docs.push(ir::space());
+    docs.extend(format_expr(ctx, plan, &right_expr));
+    docs
 }
 
 fn try_format_simple_inline_closure_expr(
