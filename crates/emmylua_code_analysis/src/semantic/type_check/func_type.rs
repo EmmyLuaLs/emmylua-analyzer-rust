@@ -1,12 +1,13 @@
 use crate::{
-    TypeSubstitutor,
+    TypeCheckFailReason, TypeCheckResult, TypeSubstitutor,
+    compilation::{find_signature_by_id, get_operator, get_operators},
     db_index::{LuaFunctionType, LuaOperatorMetaMethod, LuaSignatureId, LuaType, LuaTypeDeclId},
-    semantic::type_check::type_check_context::TypeCheckContext,
-};
-
-use super::{
-    TypeCheckResult, check_general_type_compact, type_check_fail_reason::TypeCheckFailReason,
-    type_check_guard::TypeCheckGuard,
+    instantiate_type_generic,
+    semantic::type_check::{
+        check_general_type_compact, type_check_context::TypeCheckContext,
+        type_check_guard::TypeCheckGuard,
+    },
+    type_def_alias_origin, type_def_is_alias, type_def_is_class,
 };
 
 pub fn check_doc_func_type_compact(
@@ -20,16 +21,16 @@ pub fn check_doc_func_type_compact(
     if let LuaType::Generic(generic) = compact_type {
         if !generic.contain_tpl() {
             let base_id = generic.get_base_type_id();
-            if let Some(decl) = context.db.get_type_index().get_type_decl(&base_id)
-                && decl.is_alias()
-            {
+            if type_def_is_alias(context.db, &base_id) {
                 let substitutor =
                     TypeSubstitutor::from_alias(generic.get_params().clone(), base_id.clone());
-                if let Some(alias_origin) = decl.get_alias_origin(context.db, Some(&substitutor)) {
+                if let Some(alias_origin) = type_def_alias_origin(context.db, &base_id) {
+                    let instantiated =
+                        instantiate_type_generic(context.db, &alias_origin, &substitutor);
                     return check_general_type_compact(
                         context,
                         &LuaType::DocFunction(source_func.clone().into()),
-                        &alias_origin,
+                        &instantiated,
                         check_guard.next_level()?,
                     );
                 }
@@ -166,11 +167,8 @@ fn check_doc_func_type_compact_for_signature(
     signature_id: &LuaSignatureId,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let signature = context
-        .db
-        .get_signature_index()
-        .get(signature_id)
-        .ok_or(TypeCheckFailReason::TypeNotMatch)?;
+    let signature =
+        find_signature_by_id(context.db, &signature_id).ok_or(TypeCheckFailReason::TypeNotMatch)?;
 
     // dotnot check generic method
     if signature.is_generic() {
@@ -214,24 +212,16 @@ fn check_doc_func_type_compact_for_custom_type(
     custom_type_id: &LuaTypeDeclId,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let type_decl = context
-        .db
-        .get_type_index()
-        .get_type_decl(custom_type_id)
+    if type_def_is_class(context.db, custom_type_id) {
+        let call_operators = get_operators(
+            context.db,
+            &custom_type_id.clone().into(),
+            LuaOperatorMetaMethod::Call,
+        )
         .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-
-    if type_decl.is_class() {
-        let call_operators = context
-            .db
-            .get_operator_index()
-            .get_operators(&custom_type_id.clone().into(), LuaOperatorMetaMethod::Call)
-            .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-        for operator_id in call_operators {
-            let operator = context
-                .db
-                .get_operator_index()
-                .get_operator(operator_id)
-                .ok_or(TypeCheckFailReason::TypeNotMatch)?;
+        for operator_id in &call_operators {
+            let operator =
+                get_operator(context.db, operator_id).ok_or(TypeCheckFailReason::TypeNotMatch)?;
             let call_type = operator.get_operator_func(context.db);
             match call_type {
                 LuaType::DocFunction(doc_func) => {
@@ -247,10 +237,7 @@ fn check_doc_func_type_compact_for_custom_type(
                     }
                 }
                 LuaType::Signature(signature_id) => {
-                    let signature = context
-                        .db
-                        .get_signature_index()
-                        .get(&signature_id)
+                    let signature = find_signature_by_id(context.db, &signature_id)
                         .ok_or(TypeCheckFailReason::TypeNotMatch)?;
                     let doc_f = signature.to_call_operator_func_type();
                     match check_doc_func_type_compact_for_params(
@@ -278,11 +265,8 @@ pub fn check_sig_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let signature = context
-        .db
-        .get_signature_index()
-        .get(sig_id)
-        .ok_or(TypeCheckFailReason::TypeNotMatch)?;
+    let signature =
+        find_signature_by_id(context.db, &sig_id).ok_or(TypeCheckFailReason::TypeNotMatch)?;
 
     // cannot check generic method
     if signature.is_generic() {

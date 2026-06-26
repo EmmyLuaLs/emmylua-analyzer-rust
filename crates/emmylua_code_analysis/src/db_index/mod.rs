@@ -15,9 +15,15 @@ mod signature;
 mod traits;
 mod r#type;
 
-use std::sync::Arc;
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::{Emmyrc, FileId, Vfs};
+use hashbrown::{HashMap, HashSet};
+use rowan::TextSize;
+use smol_str::SmolStr;
+
+use crate::{Emmyrc, FileId, SalsaDocTypeDefSummary, SalsaSummaryDatabase, Vfs};
 pub use declaration::*;
 pub use dependency::LuaDependencyIndex;
 pub use diagnostic::{AnalyzeError, DiagnosticAction, DiagnosticActionKind, DiagnosticIndex};
@@ -52,7 +58,20 @@ pub struct DbIndex {
     metatable_index: LuaMetatableIndex,
     global_index: LuaGlobalIndex,
     json_schema_index: JsonSchemaIndex,
+    summary_db: Arc<SalsaSummaryDatabase>,
     emmyrc: Arc<Emmyrc>,
+    type_def_rev_gen: AtomicU64,
+    type_def_cache: RwLock<Option<Arc<TypeDefReverseIndex>>>,
+    /// Recursion guard for Salsa-backed type inference.
+    /// Tracks `(file_id, position)` of declarations currently being inferred,
+    /// so that re-entrant calls can fall back to the legacy cache.
+    salsa_inferring: RefCell<HashSet<(FileId, TextSize)>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TypeDefReverseIndex {
+    pub(crate) generation: u64,
+    pub(crate) by_name: HashMap<SmolStr, Vec<(FileId, SalsaDocTypeDefSummary)>>,
 }
 
 #[allow(unused)]
@@ -80,7 +99,11 @@ impl DbIndex {
             metatable_index: LuaMetatableIndex::new(),
             global_index: LuaGlobalIndex::new(),
             json_schema_index: JsonSchemaIndex::new(),
+            summary_db: Arc::new(SalsaSummaryDatabase::default()),
             emmyrc: Arc::new(Emmyrc::default()),
+            type_def_rev_gen: AtomicU64::new(0),
+            type_def_cache: RwLock::new(None),
+            salsa_inferring: RefCell::new(HashSet::new()),
         }
     }
 
@@ -210,9 +233,47 @@ impl DbIndex {
         &mut self.json_schema_index
     }
 
+    fn summary_db(&self) -> &SalsaSummaryDatabase {
+        &self.summary_db
+    }
+
+    fn summary_db_mut(&mut self) -> &mut SalsaSummaryDatabase {
+        Arc::get_mut(&mut self.summary_db).expect("DbIndex has exclusive ownership")
+    }
+
+    pub fn get_summary_db(&self) -> &SalsaSummaryDatabase {
+        self.summary_db()
+    }
+
+    pub fn get_salsa_db_arc(&self) -> Arc<SalsaSummaryDatabase> {
+        self.summary_db.clone()
+    }
+
+    pub fn sync_summary_file(&mut self, file_id: FileId) -> bool {
+        let db = Arc::get_mut(&mut self.summary_db).expect("exclusive");
+        // Snapshot from VFS and sync to salsa DB
+        let Some(text) = self.vfs.get_file_content(&file_id).cloned() else {
+            return false;
+        };
+        let path = self.vfs.get_file_path(&file_id).cloned();
+        let is_remote = self.vfs.is_remote_file(&file_id);
+        db.set_file(file_id, path, text, is_remote);
+        self.type_def_rev_gen.fetch_add(1, Ordering::Release);
+        true
+    }
+
+    pub fn sync_summary_files(&mut self, file_ids: &[FileId]) -> Vec<FileId> {
+        file_ids
+            .iter()
+            .copied()
+            .filter(|file_id| self.sync_summary_file(*file_id))
+            .collect()
+    }
+
     pub fn update_config(&mut self, config: Arc<Emmyrc>) {
         self.vfs.update_config(config.clone());
         self.modules_index.update_config(config.clone());
+        self.summary_db_mut().update_config(config.clone());
         self.emmyrc = config;
     }
 
@@ -228,6 +289,57 @@ impl DbIndex {
                 None
             }
         })
+    }
+
+    /// Recursion guard for Salsa-backed type inference.
+    /// Callers that detect re-entrance should fall back to legacy cache.
+    pub(crate) fn salsa_inferring(&self) -> &RefCell<HashSet<(FileId, TextSize)>> {
+        &self.salsa_inferring
+    }
+
+    pub(crate) fn get_type_def_reverse_index(&self) -> Arc<TypeDefReverseIndex> {
+        let current_gen = self.type_def_rev_gen.load(Ordering::Acquire);
+        {
+            let cache = self
+                .type_def_cache
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(cached) = cache.as_ref() {
+                if cached.generation == current_gen {
+                    return cached.clone();
+                }
+            }
+        }
+        let index = self.build_type_def_reverse_index();
+        let index = Arc::new(index);
+        *self
+            .type_def_cache
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(index.clone());
+        index
+    }
+
+    fn build_type_def_reverse_index(&self) -> TypeDefReverseIndex {
+        let current_gen = self.type_def_rev_gen.load(Ordering::Acquire);
+        let mut by_name: HashMap<SmolStr, Vec<(FileId, SalsaDocTypeDefSummary)>> = HashMap::new();
+        let summary = self.summary_db();
+        // Use Salsa-tracked file IDs for consistent cross-file dependency tracking
+        let file_ids = summary.file_ids();
+        for file_id in file_ids {
+            let Some(type_def_index) = summary.doc().type_def_index(file_id) else {
+                continue;
+            };
+            for type_def in type_def_index.type_defs.iter() {
+                by_name
+                    .entry(type_def.name.clone())
+                    .or_default()
+                    .push((file_id, type_def.clone()));
+            }
+        }
+        TypeDefReverseIndex {
+            generation: current_gen,
+            by_name,
+        }
     }
 }
 
@@ -247,6 +359,8 @@ impl LuaIndex for DbIndex {
         self.metatable_index.remove(file_id);
         self.global_index.remove(file_id);
         self.json_schema_index.remove(file_id);
+        self.summary_db_mut().remove_file(file_id);
+        self.type_def_rev_gen.fetch_add(1, Ordering::Release);
     }
 
     fn clear(&mut self) {
@@ -264,5 +378,7 @@ impl LuaIndex for DbIndex {
         self.metatable_index.clear();
         self.global_index.clear();
         self.json_schema_index.clear();
+        self.summary_db_mut().clear();
+        self.type_def_rev_gen.fetch_add(1, Ordering::Release);
     }
 }

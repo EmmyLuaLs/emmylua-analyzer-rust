@@ -2,7 +2,9 @@ use std::ops::Deref;
 
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, RenderLevel,
-    TypeCheckFailReason, TypeCheckResult, VariadicType, humanize_type,
+    TypeCheckFailReason, TypeCheckResult, VariadicType,
+    compilation::get_member_item,
+    humanize_type,
     semantic::type_check::{
         check_general_type_compact, type_check_context::TypeCheckContext,
         type_check_guard::TypeCheckGuard,
@@ -184,11 +186,10 @@ fn check_tuple_type_compact_table(
     table_owner: LuaMemberOwner,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let member_index = context.db.get_member_index();
     let tuple_members = source_tuple.get_types();
     for (i, source_tuple_member_type) in tuple_members.iter().enumerate() {
         let key = LuaMemberKey::Integer((i + 1) as i64);
-        if let Some(member_item) = member_index.get_member_item(&table_owner, &key) {
+        if let Some(member_item) = get_member_item(context.db, &table_owner, &key) {
             let member_type = member_item
                 .resolve_type(context.db)
                 .map_err(|_| TypeCheckFailReason::TypeNotMatch)?;

@@ -3,14 +3,16 @@ use emmylua_parser::{LuaCallExpr, LuaExpr};
 use hashbrown::HashSet;
 use std::{ops::Deref, sync::Arc};
 
+use crate::compilation::get_current_owner;
+use crate::find_signature_by_id;
 use crate::semantic::infer::{InferResult, infer_expr_list_types};
 use crate::{
-    DocTypeInferContext, FileId, GenericParam, GenericTplId, LuaFunctionType, LuaGenericType,
-    LuaTypeNode,
-    db_index::{DbIndex, LuaType},
-    infer_doc_type,
+    DbIndex, DocTypeInferContext, FileId, GenericTpl, GenericTplId, InferFailReason,
+    LuaFunctionType, LuaGenericType, LuaInferCache, LuaMemberOwner, LuaSemanticDeclId, LuaType,
+    LuaTypeNode, LuaTypeOwner, SemanticDeclLevel, TypeSubstitutor, TypeVisitTrait,
+    build_compilation_signature_doc_function, collect_callable_overload_groups,
+    find_compilation_type_generic_params, infer_doc_type, infer_node_semantic_decl,
     semantic::{
-        LuaInferCache,
         generic::{
             tpl_context::TplContext,
             tpl_pattern::{
@@ -18,18 +20,13 @@ use crate::{
                 tpl_pattern_match, variadic_tpl_pattern_match,
             },
         },
-        infer::InferFailReason,
         infer_expr,
         overload_resolve::{callable_accepts_args, resolve_signature_by_args},
     },
-};
-use crate::{
-    LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
-    collect_callable_overload_groups, infer_node_semantic_decl,
     tpl_pattern_match_args_skip_unknown,
 };
 
-use crate::semantic::generic::{TypeSubstitutor, instantiate_type::instantiate_type_generic};
+use super::instantiate_type_generic;
 
 pub fn infer_call_generic(
     db: &DbIndex,
@@ -122,10 +119,15 @@ pub fn as_doc_function_type(
     Ok(match callable_type {
         LuaType::DocFunction(doc_func) => Some(doc_func.clone()),
         LuaType::Signature(sig_id) => Some(
-            db.get_signature_index()
-                .get(sig_id)
-                .ok_or(InferFailReason::None)?
-                .to_doc_func_type(),
+            build_compilation_signature_doc_function(
+                db,
+                sig_id.get_file_id(),
+                sig_id.get_position(),
+            )
+            .or_else(|| {
+                find_signature_by_id(db, &sig_id).map(|signature| signature.to_doc_func_type())
+            })
+            .ok_or(InferFailReason::None)?,
         ),
         _ => None,
     })
@@ -366,8 +368,7 @@ fn collect_callback_return_tpls(
             let LuaType::Signature(signature_id) = ty else {
                 return false;
             };
-            db.get_signature_index()
-                .get(signature_id)
+            find_signature_by_id(db, &signature_id)
                 .is_some_and(|signature| !signature.is_resolve_return())
         });
         if !arg_return_unresolved {
@@ -497,7 +498,7 @@ fn infer_generic_types_from_call(
 pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
     match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => {
-            if let Some(generic) = db.get_type_index().get_generic_params(id) {
+            if let Some(generic) = find_compilation_type_generic_params(db, id) {
                 let mut params = Vec::with_capacity(generic.len());
                 let mut substitutor = TypeSubstitutor::new();
                 for (i, generic_param) in generic.iter().enumerate() {
@@ -517,7 +518,7 @@ pub fn build_self_type(db: &DbIndex, self_type: &LuaType) -> LuaType {
 
 fn build_self_generic_arg(
     db: &DbIndex,
-    generic_param: &GenericParam,
+    generic_param: &crate::CompilationGenericParamInfo,
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
     let Some(arg) = generic_param
@@ -553,7 +554,7 @@ pub fn infer_self_type(
             )?;
             match semantic_decl_id {
                 LuaSemanticDeclId::Member(member_id) => {
-                    let owner = db.get_member_index().get_current_owner(&member_id)?;
+                    let owner = get_current_owner(db, &member_id)?;
                     if let LuaMemberOwner::Type(id) = owner {
                         let typ = LuaType::Ref(id.clone());
                         let self_type = build_self_type(db, &typ);

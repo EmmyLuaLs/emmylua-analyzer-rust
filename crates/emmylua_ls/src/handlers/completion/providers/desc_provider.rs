@@ -119,9 +119,10 @@ fn add_global_completions(builder: &mut CompletionBuilder) -> Option<()> {
 
     // Types in current module.
     if let Some(module) = builder.semantic_model.get_module()
-        && let Some(member_info_map) = builder
+        && let Some(export_type) = builder
             .semantic_model
-            .get_member_info_map(module.export_type.as_ref().unwrap_or(&LuaType::Nil))
+            .resolve_module_export_type(module.file_id)
+        && let Some(member_info_map) = builder.semantic_model.get_member_info_map(&export_type)
     {
         seen_types.extend(member_info_map.values().flat_map(|members| {
             members.iter().filter_map(|member| match &member.typ {

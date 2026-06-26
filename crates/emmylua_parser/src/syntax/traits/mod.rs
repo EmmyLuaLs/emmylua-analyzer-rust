@@ -111,6 +111,10 @@ pub trait LuaAstNode {
     {
         LuaAstPtr::new(self)
     }
+
+    fn is<N: LuaAstNode>(&self) -> bool {
+        N::can_cast(self.syntax().kind().into())
+    }
 }
 
 /// An iterator over `SyntaxNode` children of a particular AST type.

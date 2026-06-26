@@ -57,17 +57,18 @@ impl LuaDiagnostic {
             return None;
         }
 
-        let db = compilation.get_db();
-        if let Some(module_info) = db.get_module_index().get_workspace_id(file_id)
-            && !module_info.is_main()
-        {
-            return None;
-        }
+        // let db = compilation.get_db();
+        // if let Some(module_info) = db.get_module_index().get_workspace_id(file_id)
+        //     && !module_info.is_main()
+        // {
+        //     return None;
+        // }
 
-        let semantic_model = compilation.get_semantic_model(file_id)?;
-        let mut context = DiagnosticContext::new(file_id, db, self.config.clone());
+        let model = compilation.semantic_model(file_id)?;
+        let salsa_db = compilation.get_salsa_db();
+        let mut context = DiagnosticContext::new(file_id, salsa_db, self.config.clone());
 
-        check_file(&mut context, &semantic_model);
+        check_file(&mut context, &model);
 
         Some(context.get_diagnostics())
     }

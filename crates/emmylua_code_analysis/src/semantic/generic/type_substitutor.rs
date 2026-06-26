@@ -1,7 +1,6 @@
 use hashbrown::{HashMap, HashSet};
 use std::{cell::RefCell, rc::Rc};
 
-use super::tpl_pattern::constant_decay;
 use crate::{DbIndex, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId};
 
 #[derive(Debug)]

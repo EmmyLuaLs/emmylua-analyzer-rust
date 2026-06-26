@@ -12,6 +12,7 @@ use crate::{
     InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType,
     LuaSemanticDeclId, LuaTupleType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, SemanticDeclLevel,
     VariadicType, check_type_compact,
+    compilation::find_signature_by_id,
     db_index::{DbIndex, LuaGenericType, LuaType},
     infer_node_semantic_decl,
     semantic::{
@@ -586,11 +587,8 @@ fn func_tpl_pattern_match(
             func_tpl_pattern_match_doc_func(context, tpl_func, target_doc_func)?;
         }
         LuaType::Signature(signature_id) => {
-            let signature = context
-                .db
-                .get_signature_index()
-                .get(signature_id)
-                .ok_or(InferFailReason::None)?;
+            let signature =
+                find_signature_by_id(context.db, &signature_id).ok_or(InferFailReason::None)?;
             if !signature.is_resolve_return() {
                 return lambda_tpl_pattern::check_lambda_tpl_pattern(context, *signature_id);
             }
@@ -968,12 +966,12 @@ fn is_pairs_call(context: &mut TplContext) -> Option<bool> {
     let LuaSemanticDeclId::LuaDecl(decl_id) = semantic_decl else {
         return None;
     };
-    let decl = context.db.get_decl_index().get_decl(&decl_id)?;
-    if !context.db.get_module_index().is_std(&decl.get_file_id()) {
+    let decl =
+        crate::find_compilation_decl_by_position(context.db, decl_id.file_id, decl_id.position)?;
+    if !context.db.get_module_index().is_std(&decl.file_id) {
         return None;
     }
-    let name = decl.get_name();
-    if name != "pairs" {
+    if decl.summary.name != "pairs" {
         return None;
     }
     Some(true)
@@ -991,11 +989,9 @@ fn try_handle_pairs_metamethod(
         .ok_or(InferFailReason::None)?;
     // 获取迭代函数返回类型
     let meta_return = match &pairs_member.typ {
-        LuaType::Signature(signature_id) => context
-            .db
-            .get_signature_index()
-            .get(signature_id)
-            .map(|s| s.get_return_type()),
+        LuaType::Signature(signature_id) => {
+            find_signature_by_id(context.db, &signature_id).map(|s| s.get_return_type())
+        }
         LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
         _ => None,
     }
@@ -1004,11 +1000,9 @@ fn try_handle_pairs_metamethod(
     // 解析出迭代函数返回类型
     let final_return_type = match meta_return {
         LuaType::DocFunction(doc_func) => Some(doc_func.get_ret().clone()),
-        LuaType::Signature(signature_id) => context
-            .db
-            .get_signature_index()
-            .get(&signature_id)
-            .map(|s| s.get_return_type()),
+        LuaType::Signature(signature_id) => {
+            find_signature_by_id(context.db, &signature_id).map(|s| s.get_return_type())
+        }
         _ => None,
     };
 

@@ -4,9 +4,12 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaIndexExpr
 use hashbrown::HashSet;
 use rowan::TextRange;
 
+use crate::VariadicType;
+use crate::compilation::find_signature_by_id;
 use crate::{
-    DbIndex, DocTypeInferContext, GenericTplId, LuaFunctionType, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor, VariadicType, infer_doc_type,
+    DbIndex, DocTypeInferContext, GenericTpl, GenericTplId, LuaFunctionType, LuaSemanticDeclId,
+    LuaType, LuaTypeNode, SemanticDeclLevel, SemanticModel, TypeOps, TypeSubstitutor,
+    infer_doc_type,
 };
 
 use super::{TplContext, tpl_pattern_match_args};
@@ -202,10 +205,7 @@ fn infer_call_doc_function(
     let function = semantic_model.infer_expr(prefix_expr).ok()?;
     match function {
         LuaType::Signature(signature_id) => {
-            let signature = semantic_model
-                .get_db()
-                .get_signature_index()
-                .get(&signature_id)?;
+            let signature = find_signature_by_id(semantic_model.get_db(), &signature_id)?;
             if !signature.overloads.is_empty() {
                 // When a signature has overloads, `to_doc_func_type()` merges all overload
                 // parameter types into unions on the main signature. This produces incorrect

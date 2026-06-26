@@ -17,17 +17,10 @@ use emmylua_parser::{
 };
 use infer_binary::infer_binary_expr;
 use infer_call::infer_call_expr;
-pub use infer_call::infer_call_expr_func;
-pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
-pub use infer_fail_reason::InferFailReason;
-pub use infer_index::infer_index_expr;
 pub(crate) use infer_index::try_infer_expr_for_index;
 use infer_name::infer_name_expr;
-pub use infer_name::{find_self_decl_or_member_id, infer_param};
 use infer_table::infer_table_expr;
-pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
 use infer_unary::infer_unary_expr;
-pub use narrow::VarRefId;
 pub(in crate::semantic) use narrow::{ConditionFlowAction, InferConditionFlow};
 
 use rowan::TextRange;
@@ -41,8 +34,15 @@ use crate::{
 
 use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
 
+pub use infer_call::infer_call_expr_func;
+pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
+pub use infer_fail_reason::InferFailReason;
+pub use infer_index::infer_index_expr;
 pub type InferResult = Result<LuaType, InferFailReason>;
 pub use infer_call::InferCallFuncResult;
+pub use infer_name::{find_self_decl_or_member_id, infer_param};
+pub use infer_table::{infer_table_field_value_should_be, infer_table_should_be};
+pub use narrow::VarRefId;
 
 fn prepare_expr_cache(
     db: &DbIndex,
@@ -64,11 +64,7 @@ fn prepare_expr_cache(
         }
 
         let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
-        if let Some(bind_type_cache) = db
-            .get_type_index()
-            .get_type_cache(&in_filed_syntax_id.into())
-        {
-            let ty = bind_type_cache.as_type().clone();
+        if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into()) {
             cache
                 .expr_no_flow_cache
                 .insert(syntax_id, CacheEntry::Cache(Some(ty.clone())));
@@ -89,11 +85,7 @@ fn prepare_expr_cache(
     }
 
     let in_filed_syntax_id = InFiled::new(file_id, syntax_id);
-    if let Some(bind_type_cache) = db
-        .get_type_index()
-        .get_type_cache(&in_filed_syntax_id.into())
-    {
-        let ty = bind_type_cache.as_type().clone();
+    if let Some(ty) = get_type_by_owner(db, &in_filed_syntax_id.into()) {
         cache
             .expr_cache
             .insert(syntax_id, CacheEntry::Cache(ty.clone()));
@@ -217,11 +209,24 @@ fn infer_literal_expr(db: &DbIndex, config: &LuaInferCache, expr: LuaLiteralExpr
                 .get_local_reference(&file_id)
                 .and_then(|file_ref| file_ref.get_decl_id(&range));
 
-            let decl_type = match decl_id.and_then(|id| db.get_decl_index().get_decl(&id)) {
-                Some(decl) if decl.is_global() => LuaType::Any,
-                Some(decl) if decl.is_param() => {
-                    let base = infer_param(db, decl).unwrap_or(LuaType::Unknown);
-                    LuaType::Variadic(VariadicType::Base(base).into())
+            let decl_type = match decl_id.and_then(|id| {
+                find_compilation_decl_by_position(db, id.file_id, id.position)
+                    .map(|decl| (id, decl))
+            }) {
+                Some((_, decl))
+                    if matches!(decl.summary.kind, crate::SalsaDeclKindSummary::Global) =>
+                {
+                    LuaType::Any
+                }
+                Some((decl_id, decl))
+                    if matches!(decl.summary.kind, crate::SalsaDeclKindSummary::Param { .. }) =>
+                {
+                    if let Some(decl) = find_decl_by_id(db, &decl_id) {
+                        let base = infer_param(db, decl).unwrap_or(LuaType::Unknown);
+                        LuaType::Variadic(VariadicType::Base(base).into())
+                    } else {
+                        LuaType::Variadic(VariadicType::Base(LuaType::Any).into())
+                    }
                 }
                 _ => LuaType::Variadic(VariadicType::Base(LuaType::Any).into()),
             };
@@ -249,10 +254,10 @@ fn get_custom_type_operator(
             LuaType::Def(type_id) => type_id,
             _ => return None,
         };
-        let op_ids = db.get_operator_index().get_operators(&type_id.into(), op)?;
+        let op_ids = get_operators(db, &type_id.into(), op)?;
         let operators = op_ids
             .iter()
-            .filter_map(|id| db.get_operator_index().get_operator(id))
+            .filter_map(|id| get_operator(db, id))
             .collect();
 
         Some(operators)

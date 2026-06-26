@@ -1,3 +1,7 @@
+use crate::{
+    DbIndex, LuaInferCache, LuaOperatorMetaMethod, LuaType, TypeOps, check_type_compact,
+    get_real_type,
+};
 mod infer_binary_and;
 mod infer_binary_or;
 
@@ -5,12 +9,6 @@ use emmylua_parser::{BinaryOperator, LuaBinaryExpr};
 use infer_binary_and::{infer_binary_expr_and, special_and_rule};
 use infer_binary_or::{infer_binary_expr_or, special_or_rule};
 use smol_str::SmolStr;
-
-use crate::{
-    LuaInferCache, TypeOps, check_type_compact,
-    db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
-    get_real_type,
-};
 
 use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
 

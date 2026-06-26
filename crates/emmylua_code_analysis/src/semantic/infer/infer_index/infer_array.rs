@@ -5,9 +5,11 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaMemberKey, LuaType,
-    TypeOps, check_type_compact,
-    semantic::infer::{infer_index::infer_expr_for_index, narrow::get_var_expr_var_ref_id},
+    TypeOps, check_type_compact, find_compilation_decl_by_position,
+    semantic::infer::narrow::get_var_expr_var_ref_id,
 };
+
+use super::infer_expr_for_index;
 
 pub(super) fn infer_array_member_by_key(
     db: &DbIndex,
@@ -103,8 +105,8 @@ fn check_index_var_in_range(
         .get_reference_index()
         .get_var_reference_decl(&cache.get_file_id(), iter_var.get_range())?;
 
-    let decl = db.get_decl_index().get_decl(&decl_id)?;
-    let decl_syntax_id = decl.get_syntax_id();
+    let decl = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)?;
+    let decl_syntax_id = decl.summary.syntax_id?.to_lua_syntax_id();
     if !decl_syntax_id.is_token() {
         return None;
     }

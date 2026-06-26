@@ -1,69 +1,44 @@
-use crate::{DiagnosticCode, LocalAttribute, LuaDeclExtra, LuaDeclId, SemanticModel};
+//! Local const reassign checker — salsa-native.
 
-use super::{Checker, DiagnosticContext};
+use crate::DiagnosticCode;
+use crate::compilation::{
+    SalsaDeclKindSummary, SalsaLocalAttributeSummary, SalsaUseSiteRoleSummary,
+};
+use crate::semantic_model::SemanticModel;
 
-pub struct LocalConstReassignChecker;
+use super::DiagnosticContext;
 
-impl Checker for LocalConstReassignChecker {
-    const CODES: &[DiagnosticCode] = &[
-        DiagnosticCode::LocalConstReassign,
-        DiagnosticCode::IterVariableReassign,
-    ];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let file_id = semantic_model.get_file_id();
-        let Some(decl_tree) = semantic_model
-            .get_db()
-            .get_decl_index()
-            .get_decl_tree(&file_id)
-        else {
-            return;
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let Some(decl_tree) = model.decl_tree() else {
+        return;
+    };
+    for decl in &decl_tree.decls {
+        let attrib = match &decl.kind {
+            SalsaDeclKindSummary::Local { attrib: Some(a) } => a,
+            _ => continue,
         };
-        for (decl_id, decl) in decl_tree.get_decls() {
-            if let LuaDeclExtra::Local {
-                attrib: Some(attrib @ (LocalAttribute::Const | LocalAttribute::IterConst)),
-                ..
-            } = &decl.extra
-            {
-                check_local_const_reassign(context, semantic_model, decl_id, attrib);
+        let code = match attrib {
+            SalsaLocalAttributeSummary::Const => DiagnosticCode::LocalConstReassign,
+            SalsaLocalAttributeSummary::IterConst => DiagnosticCode::IterVariableReassign,
+            _ => continue,
+        };
+
+        let Some(refs) = model.decl_references(decl.id) else {
+            continue;
+        };
+        for r in &refs {
+            if r.role == SalsaUseSiteRoleSummary::Write {
+                let message = match code {
+                    DiagnosticCode::LocalConstReassign => {
+                        t!("Cannot reassign to a constant variable").to_string()
+                    }
+                    DiagnosticCode::IterVariableReassign => {
+                        t!("Should not reassign to iter variable").to_string()
+                    }
+                    _ => continue,
+                };
+                context.add_diagnostic(code, r.syntax_id.text_range(), message, None);
             }
         }
     }
-}
-
-fn check_local_const_reassign(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    decl_id: &LuaDeclId,
-    attrib: &LocalAttribute,
-) -> Option<()> {
-    let file_id = semantic_model.get_file_id();
-    let refs_index = semantic_model.get_db().get_reference_index();
-    let local_refs = refs_index.get_local_reference(&file_id)?;
-    let decl_refs = local_refs.get_decl_references(decl_id)?;
-    for decl_ref in &decl_refs.cells {
-        if decl_ref.is_write {
-            match attrib {
-                LocalAttribute::Const => {
-                    context.add_diagnostic(
-                        DiagnosticCode::LocalConstReassign,
-                        decl_ref.range,
-                        t!("Cannot reassign to a constant variable").to_string(),
-                        None,
-                    );
-                }
-                LocalAttribute::IterConst => {
-                    context.add_diagnostic(
-                        DiagnosticCode::IterVariableReassign,
-                        decl_ref.range,
-                        t!("Should not reassign to iter variable").to_string(),
-                        None,
-                    );
-                }
-                _ => {}
-            }
-        }
-    }
-
-    Some(())
 }

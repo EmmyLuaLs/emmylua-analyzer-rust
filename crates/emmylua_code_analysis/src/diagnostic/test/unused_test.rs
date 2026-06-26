@@ -31,4 +31,17 @@ mod test {
         "#
         ));
     }
+
+    #[test]
+    fn test_unused_local() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::Unused,
+            r#"
+            local used = 1
+            local _unused = 2
+            print(used)
+        "#
+        ));
+    }
 }

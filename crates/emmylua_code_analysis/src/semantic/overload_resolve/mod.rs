@@ -1,9 +1,7 @@
 mod collect_overloads;
 mod resolve_signature_by_args;
-
-use std::sync::Arc;
-
 use emmylua_parser::{LuaAstNode, LuaCallExpr};
+use std::sync::Arc;
 
 use crate::db_index::{DbIndex, LuaFunctionType, LuaType};
 

@@ -6,8 +6,7 @@ use hashbrown::{HashMap, HashSet};
 use std::{mem, rc::Rc, sync::Arc};
 
 use crate::{
-    FileId, FlowId, LuaFunctionType,
-    db_index::LuaType,
+    FileId, FlowId, LuaFunctionType, LuaType,
     semantic::infer::{ConditionFlowAction, InferConditionFlow, VarRefId},
 };
 

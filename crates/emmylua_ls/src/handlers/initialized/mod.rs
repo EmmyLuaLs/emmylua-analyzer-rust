@@ -7,8 +7,8 @@ use std::{path::PathBuf, sync::Arc};
 use crate::{
     cmd_args::CmdArgs,
     context::{
-        FileDiagnostic, LspFeatures, ProgressTask, ServerContextSnapshot, StatusBar, get_client_id,
-        load_emmy_config,
+        AnalysisLock, FileDiagnostic, LspFeatures, ProgressTask, ServerContextSnapshot, StatusBar,
+        get_client_id, load_emmy_config,
     },
     handlers::{
         initialized::std_i18n::try_generate_translated_std, text_document::register_files_watch,
@@ -17,11 +17,9 @@ use crate::{
 };
 pub use client_config::{ClientConfig, get_client_config};
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, Emmyrc, WorkspaceFolder, build_workspace_folders, collect_workspace_files,
-    uri_to_file_path,
+    Emmyrc, WorkspaceFolder, build_workspace_folders, collect_workspace_files, uri_to_file_path,
 };
 use lsp_types::InitializeParams;
-use tokio::sync::RwLock;
 
 pub async fn initialized_handler(
     context: ServerContextSnapshot,
@@ -98,7 +96,7 @@ pub async fn initialized_handler(
 }
 
 pub async fn init_analysis(
-    analysis: &RwLock<EmmyLuaAnalysis>,
+    analysis: &AnalysisLock,
     status_bar: &StatusBar,
     file_diagnostic: &FileDiagnostic,
     lsp_features: &LspFeatures,
@@ -208,11 +206,7 @@ pub fn get_workspace_folders(params: &InitializeParams) -> Vec<WorkspaceFolder> 
     workspace_folders
 }
 
-pub async fn init_std_lib(
-    analysis: &RwLock<EmmyLuaAnalysis>,
-    cmd_args: &CmdArgs,
-    emmyrc: Arc<Emmyrc>,
-) {
+pub async fn init_std_lib(analysis: &AnalysisLock, cmd_args: &CmdArgs, emmyrc: Arc<Emmyrc>) {
     log::info!(
         "initializing std lib with resources path: {:?}",
         cmd_args.resources_path

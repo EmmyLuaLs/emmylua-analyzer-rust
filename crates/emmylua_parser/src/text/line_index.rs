@@ -1,6 +1,6 @@
 use rowan::TextSize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LineIndex {
     line_offsets: Vec<u32>,
     line_only_ascii_vec: Vec<bool>,

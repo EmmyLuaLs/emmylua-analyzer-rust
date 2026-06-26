@@ -1,15 +1,28 @@
 #[cfg(test)]
 mod test;
 
-use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaFuncStat, LuaGeneralToken, LuaIndexExpr,
-    LuaSyntaxToken, LuaVarExpr, VisibilityKind,
-};
+use emmylua_parser::LuaAstNode;
+use emmylua_parser::LuaAstToken;
+use emmylua_parser::LuaBlock;
+use emmylua_parser::LuaClosureExpr;
+use emmylua_parser::LuaFuncStat;
+use emmylua_parser::LuaGeneralToken;
+use emmylua_parser::LuaIndexExpr;
+use emmylua_parser::LuaSyntaxToken;
+use emmylua_parser::LuaVarExpr;
+use emmylua_parser::VisibilityKind;
 
-use crate::{
-    DbIndex, Emmyrc, FileId, LuaCommonProperty, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    ModuleInfo, SemanticModel, try_extract_signature_id_from_field,
-};
+use crate::CompilationModuleInfo;
+use crate::DbIndex;
+use crate::Emmyrc;
+use crate::FileId;
+use crate::LuaCommonProperty;
+use crate::LuaMemberOwner;
+use crate::LuaSemanticDeclId;
+use crate::LuaType;
+use crate::SemanticModel;
+use crate::compilation::{get_current_owner, get_member_by_id};
+use crate::try_extract_signature_id_from_field;
 
 use super::{LuaInferCache, infer_expr, type_check::is_sub_type_of};
 
@@ -76,9 +89,7 @@ fn check_visibility_by_visibility(
     visibility: VisibilityKind,
 ) -> Option<bool> {
     let member_owner = match property_owner {
-        LuaSemanticDeclId::Member(member_id) => {
-            db.get_member_index().get_current_owner(&member_id)?
-        }
+        LuaSemanticDeclId::Member(member_id) => get_current_owner(db, &member_id)?,
         _ => return Some(true),
     };
 
@@ -209,7 +220,7 @@ fn get_property<'a>(
             let LuaSemanticDeclId::Member(member_id) = property_owner else {
                 return None;
             };
-            let member = db.get_member_index().get_member(member_id)?;
+            let member = get_member_by_id(db, member_id)?;
             let signature_id = try_extract_signature_id_from_field(db, member)?;
             db.get_property_index()
                 .get_property(&LuaSemanticDeclId::Signature(signature_id))
@@ -226,7 +237,7 @@ fn check_member_name(
     property_owner: LuaSemanticDeclId,
 ) -> Option<bool> {
     if let LuaSemanticDeclId::Member(member_id) = property_owner
-        && let Some(member) = db.get_member_index().get_member(&member_id)
+        && let Some(member) = get_member_by_id(db, &member_id)
         && let Some(name) = member.get_key().get_name()
     {
         let config = emmyrc;
@@ -258,11 +269,19 @@ fn check_member_name(
 
 pub fn check_module_visibility(
     semantic_model: &SemanticModel,
-    module_info: &ModuleInfo,
+    module_info: &CompilationModuleInfo,
 ) -> Option<bool> {
     let current_workspace_id = semantic_model
         .get_db()
         .get_module_index()
         .get_workspace_id(semantic_model.get_file_id())?;
-    Some(module_info.is_requireable_from(current_workspace_id))
+
+    Some(match module_info.visible {
+        crate::ModuleVisibility::Public | crate::ModuleVisibility::Default => true,
+        crate::ModuleVisibility::Hide => false,
+        crate::ModuleVisibility::Internal => {
+            (!module_info.workspace_id.is_library() && !current_workspace_id.is_library())
+                || module_info.workspace_id == current_workspace_id
+        }
+    })
 }

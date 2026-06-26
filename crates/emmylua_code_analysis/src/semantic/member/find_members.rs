@@ -2,18 +2,21 @@ use hashbrown::{HashMap, HashSet};
 
 use smol_str::SmolStr;
 
+use crate::compilation::{get_members, get_type_by_owner};
+use crate::semantic::member::{
+    FindMembersResult, get_buildin_type_map_type_id, intersect_member_types,
+};
 use crate::{
     DbIndex, FileId, InferGuardRef, LuaGenericType, LuaInstanceType, LuaIntersectionType,
-    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
-    LuaTypeDeclId, LuaUnionType,
+    LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType,
+    LuaType, LuaTypeDeclId, LuaUnionType, find_compilation_decl_by_position,
+    infer_compilation_type_property_type, infer_compilation_type_super_types,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
     },
-};
-
-use super::{
-    FindMembersResult, LuaMemberInfo, get_buildin_type_map_type_id, intersect_member_types,
+    type_def_alias_origin, type_def_is_alias,
 };
 
 #[derive(Debug, Clone)]
@@ -128,6 +131,16 @@ impl FindMembersContext {
     }
 }
 
+fn normalize_generic_member_param(db: &DbIndex, ty: LuaType) -> LuaType {
+    match ty {
+        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl
+            .get_default_type()
+            .map(|default_type| crate::complete_type_generic_args_in_type(db, default_type))
+            .unwrap_or(LuaType::TplRef(tpl)),
+        other => crate::complete_type_generic_args_in_type(db, &other),
+    }
+}
+
 fn find_members_guard(
     db: &DbIndex,
     prefix_type: &LuaType,
@@ -171,11 +184,8 @@ fn find_members_guard(
         LuaType::Instance(inst) => find_instance_members(db, inst, ctx, filter),
         LuaType::Namespace(ns) => find_namespace_members(db, ctx, ns, filter),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info
-                && let Some(export_type) = &module_info.export_type
-            {
-                return find_members_guard(db, export_type, ctx, filter);
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
+                return find_members_guard(db, &export_type, ctx, filter);
             }
 
             None
@@ -234,18 +244,14 @@ fn find_normal_members(
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
     let mut members = Vec::new();
-    let member_index = db.get_member_index();
-    let owner_members = member_index.get_members(&member_owner)?;
+    let owner_members = get_members(db, &member_owner)?;
 
     for member in owner_members {
         let member_key = member.get_key().clone();
 
         if should_include_member(&member_key, filter) {
-            let raw_type = db
-                .get_type_index()
-                .get_type_cache(&member.get_id().into())
-                .map(|t| t.as_type().clone())
-                .unwrap_or(LuaType::Unknown);
+            let raw_type =
+                get_type_by_owner(db, &member.get_id().into()).unwrap_or(LuaType::Unknown);
             members.push(LuaMemberInfo {
                 property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
                 key: member_key,
@@ -270,9 +276,21 @@ fn find_custom_type_members(
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
     ctx.infer_guard().check(type_decl_id).ok()?;
+
+    // Use summary-backed projection for alias check
+    if type_def_is_alias(db, type_decl_id) {
+        if let Some(origin) = type_def_alias_origin(db, type_decl_id) {
+            return find_members_guard(db, &origin, ctx, filter);
+        } else {
+            return find_members_guard(db, &LuaType::String, ctx, filter);
+        }
+    }
+
     let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(type_decl_id)?;
-    if type_decl.is_alias() {
+    let type_decl = type_index.get_type_decl(type_decl_id);
+    if let Some(type_decl) = type_decl
+        && type_decl.is_alias()
+    {
         if let Some(origin) = type_decl.get_alias_origin(db, None) {
             return find_members_guard(db, &origin, ctx, filter);
         } else {
@@ -280,20 +298,54 @@ fn find_custom_type_members(
         }
     }
 
-    let mut members = Vec::new();
-    let member_index = db.get_member_index();
-    if let Some(type_members) =
-        member_index.get_members(&LuaMemberOwner::Type(type_decl_id.clone()))
+    if let FindMemberFilter::ByKey {
+        member_key,
+        find_all: _,
+    } = filter
+        && let Some(summary_type) =
+            infer_compilation_type_property_type(db, type_decl_id, member_key)
     {
+        let mut members = vec![LuaMemberInfo {
+            property_owner_id: Some(LuaSemanticDeclId::TypeDecl(type_decl_id.clone())),
+            key: member_key.clone(),
+            typ: ctx.instantiate_type(db, &summary_type),
+            feature: None,
+            overload_index: None,
+        }];
+
+        if should_stop_collecting(members.len(), filter) {
+            return Some(members);
+        }
+
+        if let Some(type_members) = get_members(db, &LuaMemberOwner::Type(type_decl_id.clone())) {
+            for member in type_members {
+                let member_key = member.get_key().clone();
+
+                if should_include_member(&member_key, filter) {
+                    let raw_type =
+                        get_type_by_owner(db, &member.get_id().into()).unwrap_or(LuaType::Unknown);
+                    members.push(LuaMemberInfo {
+                        property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
+                        key: member_key,
+                        typ: ctx.instantiate_type(db, &raw_type),
+                        feature: Some(member.get_feature()),
+                        overload_index: None,
+                    });
+                }
+            }
+        }
+
+        return Some(members);
+    }
+
+    let mut members = Vec::new();
+    if let Some(type_members) = get_members(db, &LuaMemberOwner::Type(type_decl_id.clone())) {
         for member in type_members {
             let member_key = member.get_key().clone();
 
             if should_include_member(&member_key, filter) {
-                let raw_type = db
-                    .get_type_index()
-                    .get_type_cache(&member.get_id().into())
-                    .map(|t| t.as_type().clone())
-                    .unwrap_or(LuaType::Unknown);
+                let raw_type =
+                    get_type_by_owner(db, &member.get_id().into()).unwrap_or(LuaType::Unknown);
                 members.push(LuaMemberInfo {
                     property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
                     key: member_key,
@@ -309,8 +361,8 @@ fn find_custom_type_members(
         }
     }
 
-    if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(type_decl_id)
+    if let Some(super_types) = infer_compilation_type_super_types(db, type_decl_id)
+        .or_else(|| type_index.get_super_types(type_decl_id))
     {
         for super_type in super_types {
             let instantiated_super = ctx.instantiate_type(db, &super_type);
@@ -490,16 +542,26 @@ fn find_generic_members(
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
     let base_ref_id = generic_type.get_base_type_id_ref();
-    let instantiated_params: Vec<LuaType> = generic_type
+    let provided_params: Vec<LuaType> = generic_type
         .get_params()
         .iter()
         .map(|param| ctx.instantiate_type(db, param))
         .collect();
+    let instantiated_params: Vec<LuaType> =
+        crate::complete_type_generic_args(db, base_ref_id, provided_params)
+            .completed_args
+            .unwrap_or_default()
+            .into_iter()
+            .map(|param| normalize_generic_member_param(db, param))
+            .collect();
     let substitutor = TypeSubstitutor::from_type_array(instantiated_params);
-    let type_decl = db.get_type_index().get_type_decl(&base_ref_id)?;
     let ctx_with_substitutor = ctx.with_substitutor(substitutor.clone());
-    if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor)) {
-        return find_members_guard(db, &origin, &ctx_with_substitutor, filter);
+    if type_def_is_alias(db, &base_ref_id) {
+        if let Some(origin) = type_def_alias_origin(db, &base_ref_id) {
+            let instantiated_origin = ctx_with_substitutor.instantiate_type(db, &origin);
+            return find_members_guard(db, &instantiated_origin, &ctx_with_substitutor, filter);
+        }
+        return find_members_guard(db, &LuaType::String, &ctx_with_substitutor, filter);
     }
 
     find_members_guard(
@@ -518,15 +580,12 @@ fn find_global_members(
     let mut members = Vec::new();
     let global_decls = db.get_global_index().get_all_global_decl_ids();
     for decl_id in global_decls {
-        if let Some(decl) = db.get_decl_index().get_decl(&decl_id) {
-            let member_key = LuaMemberKey::Name(decl.get_name().to_string().into());
+        if let Some(decl) = find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)
+        {
+            let member_key = LuaMemberKey::Name(decl.summary.name.to_string().into());
 
             if should_include_member(&member_key, filter) {
-                let raw_type = db
-                    .get_type_index()
-                    .get_type_cache(&decl_id.into())
-                    .map(|t| t.as_type().clone())
-                    .unwrap_or(LuaType::Unknown);
+                let raw_type = get_type_by_owner(db, &decl_id.into()).unwrap_or(LuaType::Unknown);
                 members.push(LuaMemberInfo {
                     property_owner_id: Some(LuaSemanticDeclId::LuaDecl(decl_id)),
                     key: member_key,

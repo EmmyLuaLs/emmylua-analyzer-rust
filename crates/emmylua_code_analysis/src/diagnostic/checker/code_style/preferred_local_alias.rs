@@ -1,50 +1,48 @@
+//! Preferred local alias — pure salsa.
+
 use hashbrown::{HashMap, HashSet};
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaLocalStat, LuaSyntaxKind, PathTrait,
 };
-use rowan::{NodeOrToken, TextRange};
+use rowan::TextRange;
 use serde_json::json;
 
-use crate::{
-    DiagnosticCode, LuaDeclId, LuaSemanticDeclId, SemanticDeclLevel, SemanticModel,
-    diagnostic::checker::{Checker, DiagnosticContext},
-};
+use crate::SalsaUseSiteRoleSummary;
+use crate::semantic_model::SemanticModel;
+use crate::{DiagnosticCode, LuaSemanticDeclId, SemanticDeclLevel, compilation::SalsaDeclId};
+use crate::semantic_model::offset_types::DeclPosition;
 
-pub struct PreferredLocalAliasChecker;
+use super::super::DiagnosticContext;
 
-impl Checker for PreferredLocalAliasChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::PreferredLocalAlias];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let mut local_alias_set = LocalAliasSet::new();
-        let root = semantic_model.get_root().clone();
-        for walk in root.walk_descendants::<LuaAst>() {
-            match walk {
-                rowan::WalkEvent::Enter(node) => {
-                    if is_scope(&node) {
-                        local_alias_set.push();
-                    }
-
-                    match node {
-                        LuaAst::LuaLocalStat(local_stat) => {
-                            collect_local_alias(&mut local_alias_set, semantic_model, &local_stat);
-                        }
-                        LuaAst::LuaIndexExpr(index_expr) => {
-                            check_index_expr_preference(
-                                context,
-                                &mut local_alias_set,
-                                semantic_model,
-                                &index_expr,
-                            );
-                        }
-                        _ => {}
-                    }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let mut local_alias_set = LocalAliasSet::new();
+    let root = model.get_root().clone();
+    for walk in root.walk_descendants::<LuaAst>() {
+        match walk {
+            rowan::WalkEvent::Enter(node) => {
+                if is_scope(&node) {
+                    local_alias_set.push();
                 }
-                rowan::WalkEvent::Leave(node) => {
-                    if is_scope(&node) {
-                        local_alias_set.pop();
+
+                match node {
+                    LuaAst::LuaLocalStat(local_stat) => {
+                        collect_local_alias(&mut local_alias_set, model, &local_stat);
                     }
+                    LuaAst::LuaIndexExpr(index_expr) => {
+                        check_index_expr_preference(
+                            context,
+                            &mut local_alias_set,
+                            model,
+                            &index_expr,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            rowan::WalkEvent::Leave(node) => {
+                if is_scope(&node) {
+                    local_alias_set.pop();
                 }
             }
         }
@@ -60,7 +58,7 @@ fn is_scope(node: &LuaAst) -> bool {
 
 fn collect_local_alias(
     local_alias_set: &mut LocalAliasSet,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     local_stat: &LuaLocalStat,
 ) -> Option<()> {
     let local_list = local_stat.get_local_name_list().collect::<Vec<_>>();
@@ -70,14 +68,13 @@ fn collect_local_alias(
         let local_name = &local_list[i];
         let value_expr = &value_expr[i];
         if is_only_dot_index_expr(value_expr).unwrap_or(false) {
-            let decl_id = LuaDeclId::new(semantic_model.get_file_id(), local_name.get_position());
-            let decl_refs = semantic_model
-                .get_db()
-                .get_reference_index()
-                .get_decl_references(&semantic_model.get_file_id(), &decl_id);
-            if let Some(decl_refs) = decl_refs
-                && decl_refs.mutable
-            {
+            // Check if mutable via salsa decl references
+            let salsa_decl_id = SalsaDeclId(DeclPosition(local_name.get_position()));
+            let is_mutable = model.decl_references(salsa_decl_id).is_some_and(|refs| {
+                refs.iter()
+                    .any(|r| matches!(r.role, SalsaUseSiteRoleSummary::Write))
+            });
+            if is_mutable {
                 continue;
             }
 
@@ -88,13 +85,12 @@ fn collect_local_alias(
                 },
                 _ => continue,
             };
-            let node_or_token = NodeOrToken::Node(value_expr.syntax().clone());
             if let Some(semantic_id) =
-                semantic_model.find_decl(node_or_token, SemanticDeclLevel::NoTrace)
+                model.find_decl_by_node(value_expr.syntax().clone(), SemanticDeclLevel::NoTrace)
             {
                 let name_token = local_name.get_name_token()?;
                 let preferred_name = name_token.get_name_text();
-                let ref_var = match find_ref_var_decl_id(semantic_model, value_expr) {
+                let ref_var = match find_ref_var_decl_id(model, value_expr) {
                     Some(id) => id,
                     None => continue,
                 };
@@ -113,16 +109,13 @@ fn collect_local_alias(
     Some(())
 }
 
-fn find_ref_var_decl_id(
-    semantic_model: &SemanticModel,
-    expr: &LuaExpr,
-) -> Option<LuaSemanticDeclId> {
+fn find_ref_var_decl_id(model: &SemanticModel, expr: &LuaExpr) -> Option<LuaSemanticDeclId> {
     let mut prefix = expr.clone();
     while let LuaExpr::IndexExpr(index_expr) = prefix {
         match index_expr.get_prefix_expr() {
             Some(LuaExpr::NameExpr(name_expr)) => {
-                let node_or_token = NodeOrToken::Node(name_expr.syntax().clone());
-                return semantic_model.find_decl(node_or_token, SemanticDeclLevel::NoTrace);
+                return model
+                    .find_decl_by_node(name_expr.syntax().clone(), SemanticDeclLevel::NoTrace);
             }
             Some(LuaExpr::IndexExpr(prefix_index_expr)) => {
                 prefix = LuaExpr::IndexExpr(prefix_index_expr);
@@ -239,7 +232,7 @@ impl LocalAliasSet {
 fn check_index_expr_preference(
     context: &mut DiagnosticContext,
     local_alias_set: &mut LocalAliasSet,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     index_expr: &LuaIndexExpr,
 ) -> Option<()> {
     if local_alias_set.is_disable_check(&index_expr.get_range()) {
@@ -274,19 +267,25 @@ fn check_index_expr_preference(
     }
 
     let var_expr = get_first_name_expr(index_expr)?;
-    if !semantic_model.is_reference_to(
-        var_expr.syntax().clone(),
-        alias_info.ref_var.clone(),
-        SemanticDeclLevel::NoTrace,
-    ) {
+    if !model
+        .is_reference_to(
+            var_expr.syntax().clone(),
+            &alias_info.ref_var,
+            SemanticDeclLevel::NoTrace,
+        )
+        .unwrap_or(false)
+    {
         return Some(());
     }
 
-    if !semantic_model.is_reference_to(
-        index_expr.syntax().clone(),
-        alias_info.ref_field.clone(),
-        SemanticDeclLevel::NoTrace,
-    ) {
+    if !model
+        .is_reference_to(
+            index_expr.syntax().clone(),
+            &alias_info.ref_field,
+            SemanticDeclLevel::NoTrace,
+        )
+        .unwrap_or(false)
+    {
         return Some(());
     }
 

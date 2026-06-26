@@ -3,10 +3,11 @@ use emmylua_parser::{
     LuaIfStat, LuaRepeatStat, LuaReturnStat, LuaStat, LuaWhileStat,
 };
 
-use crate::{InferFailReason, LuaType};
+use crate::LuaType;
+use crate::semantic_model::InferFailReason;
 
 #[derive(Debug, Clone)]
-pub enum LuaReturnPoint {
+pub(crate) enum LuaReturnPoint {
     Expr(LuaExpr),
     MuliExpr(Vec<LuaExpr>),
     Nil,
@@ -26,13 +27,7 @@ struct ReturnFlow {
     return_points: Vec<LuaReturnPoint>,
     can_fall_through: bool,
     can_break: bool,
-    // Some reachable path is proven to loop forever instead of returning or
-    // reaching the following statements, e.g. `while true do end`.
     is_infinite: bool,
-    // Some reachable path can stay inside a runtime-dependent loop without
-    // proving the body itself is infinite. Keep this separate from
-    // reachability so stricter loop diagnostics can opt into it later without
-    // affecting inferred return types.
     may_diverge: bool,
 }
 
@@ -53,7 +48,7 @@ impl ReturnFlow {
     }
 }
 
-pub fn analyze_func_body_returns_with<F>(
+pub(crate) fn analyze_func_body_returns_with<F>(
     body: LuaBlock,
     infer_expr_type: &mut F,
 ) -> Result<Vec<LuaReturnPoint>, InferFailReason>
@@ -68,7 +63,7 @@ where
     Ok(flow.return_points)
 }
 
-pub(in crate::compilation::analyzer) fn analyze_func_body_missing_return_flags_with<F>(
+pub(crate) fn analyze_func_body_missing_return_flags_with<F>(
     body: LuaBlock,
     infer_expr_type: &mut F,
 ) -> Result<(bool, bool), InferFailReason>
@@ -185,12 +180,7 @@ where
                 return_points: body.return_points,
                 can_fall_through: true,
                 can_break: false,
-                // A dynamic condition may skip the loop entirely, but a body
-                // that is already proven infinite remains infinite once
-                // entered.
                 is_infinite: body.is_infinite,
-                // We keep dynamic loops in `may_diverge` rather than trying to
-                // prove exit from body progress here.
                 may_diverge: body.can_fall_through || body.may_diverge,
             })
         }
@@ -230,8 +220,6 @@ where
         }
         ConditionState::Dynamic => {
             flow.can_fall_through = true;
-            // Same rule as dynamic `while`: the loop body is reachable, but
-            // the exit still depends on runtime state.
             flow.may_diverge = true;
         }
         ConditionState::Never => {}
@@ -412,9 +400,6 @@ fn condition_state_from_type(condition_type: &LuaType) -> ConditionState {
 fn can_analyze_condition(expr: &LuaExpr) -> bool {
     match expr {
         LuaExpr::LiteralExpr(_) | LuaExpr::TableExpr(_) | LuaExpr::ClosureExpr(_) => true,
-        // Return-flow analysis keeps call conditions dynamic. A call like `pred()`
-        // can change after rebinding or depend on another file, so we only fold
-        // self-contained expressions here.
         LuaExpr::CallExpr(_) => false,
         LuaExpr::ParenExpr(paren_expr) => paren_expr
             .get_expr()

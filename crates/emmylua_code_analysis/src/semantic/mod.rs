@@ -27,14 +27,11 @@ use lsp_types::Uri;
 pub use member::LuaMemberInfo;
 pub use member::find_index_operations;
 pub use member::get_member_map;
-use member::{
-    find_member_origin_owner, find_members_in_scope, find_members_with_key_in_scope,
-    get_member_map_in_scope,
-};
+use member::{find_member_origin_owner, get_member_map_in_scope};
 use reference::is_reference_to;
 use rowan::{NodeOrToken, TextRange};
 pub use semantic_info::SemanticInfo;
-pub(crate) use semantic_info::{infer_node_semantic_decl, resolve_global_decl_id};
+pub(crate) use semantic_info::infer_node_semantic_decl;
 use semantic_info::{
     infer_node_semantic_info, infer_token_semantic_decl, infer_token_semantic_info,
 };
@@ -43,23 +40,32 @@ use type_check::is_sub_type_of;
 pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
-pub use crate::semantic::member::find_members_with_key;
+use crate::CompilationGenericParamInfo;
+use crate::CompilationModuleInfo;
+use crate::DbIndex;
+use crate::Emmyrc;
+use crate::FileId;
+use crate::LuaDocument;
+use crate::LuaFunctionType;
+use crate::LuaMemberId;
+use crate::LuaMemberKey;
+use crate::LuaSemanticDeclId;
+use crate::LuaType;
+use crate::LuaTypeDeclId;
+use crate::LuaTypeOwner;
+use crate::project_module_info;
+use crate::semantic::member::find_members_in_scope;
+use crate::semantic::member::find_members_with_key_in_scope;
 use crate::semantic::type_check::check_type_compact_detail;
-use crate::{Emmyrc, LuaDocument, LuaSemanticDeclId, ModuleInfo, db_index::LuaTypeDeclId};
-use crate::{
-    FileId,
-    db_index::{DbIndex, LuaType},
-};
-use crate::{LuaFunctionType, LuaMemberId, LuaMemberKey, LuaTypeOwner};
+
+pub use crate::semantic::infer::infer_call_expr_func;
+pub use crate::semantic::member::find_members_with_key;
 pub use generic::*;
 pub use guard::{InferGuard, InferGuardRef};
 pub use infer::InferFailReason;
-pub use infer::infer_call_expr_func;
 pub use infer::infer_param;
 pub(crate) use infer::try_infer_expr_for_index;
 pub(crate) use infer::{infer_expr, try_infer_expr_no_flow};
-pub(crate) use overload_resolve::collect_callable_overload_groups;
-use overload_resolve::resolve_signature;
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 
@@ -102,8 +108,27 @@ impl<'a> SemanticModel<'a> {
             .expect("always exists")
     }
 
-    pub fn get_module(&self) -> Option<&ModuleInfo> {
-        self.db.get_module_index().get_module(self.file_id)
+    pub fn get_module(&self) -> Option<CompilationModuleInfo> {
+        project_module_info(self.db, self.file_id)
+    }
+
+    pub fn get_module_by_file_id(&self, file_id: FileId) -> Option<CompilationModuleInfo> {
+        project_module_info(self.db, file_id)
+    }
+
+    pub fn find_module_by_require_path(&self, module_path: &str) -> Option<CompilationModuleInfo> {
+        crate::find_module_by_require_path(self.db, module_path)
+    }
+
+    pub fn resolve_module_export_type(&self, file_id: FileId) -> Option<LuaType> {
+        crate::resolve_projected_module_export_type(self.db, file_id)
+    }
+
+    pub fn get_type_generic_params(
+        &self,
+        type_decl_id: &LuaTypeDeclId,
+    ) -> Option<Vec<CompilationGenericParamInfo>> {
+        crate::find_compilation_type_generic_params(self.db, type_decl_id)
     }
 
     pub fn get_document_by_file_id(&'_ self, file_id: FileId) -> Option<LuaDocument<'_>> {
@@ -295,12 +320,7 @@ impl<'a> SemanticModel<'a> {
     }
 
     pub fn get_type(&self, type_owner: LuaTypeOwner) -> LuaType {
-        self.db
-            .get_type_index()
-            .get_type_cache(&type_owner)
-            .map(|cache| cache.as_type())
-            .unwrap_or(&LuaType::Unknown)
-            .clone()
+        crate::get_type_by_owner(self.db, &type_owner).unwrap_or(LuaType::Unknown)
     }
 
     pub fn get_member_key(&self, index_key: &LuaIndexKey) -> Option<LuaMemberKey> {

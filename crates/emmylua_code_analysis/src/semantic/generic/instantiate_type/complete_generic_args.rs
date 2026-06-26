@@ -65,7 +65,7 @@ fn complete_type_generic_args_inner(
     provided_args: Vec<LuaType>,
     visiting: &mut HashSet<LuaTypeDeclId>,
 ) -> GenericArgumentCompletion {
-    let Some(generic_params) = db.get_type_index().get_generic_params(type_decl_id) else {
+    let Some(generic_params) = find_compilation_type_generic_params(db, type_decl_id) else {
         return GenericArgumentCompletion {
             completed_args: Some(provided_args),
             missing_required_count: 0,

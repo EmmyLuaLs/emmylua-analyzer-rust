@@ -1,53 +1,56 @@
+//! Check assign type mismatch — pure salsa.
+
 use std::ops::Deref;
 
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaLocalStat,
-    LuaNameExpr, LuaSyntaxNode, LuaSyntaxToken, LuaTableExpr, LuaVarExpr,
+    LuaNameExpr, LuaTableExpr, LuaVarExpr,
 };
 use rowan::{NodeOrToken, TextRange};
 
+use crate::semantic_model::{DeclPosition, SemanticModel, TypeCheckFailReason, TypeCheckResult};
 use crate::{
-    DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaLspOptimizationCode,
-    LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
-    TypeCheckFailReason, TypeCheckResult, VariadicType, infer_index_expr,
+    DiagnosticCode, LuaDeclId, LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel,
+    VariadicType,
 };
 
-use super::{Checker, DiagnosticContext, humanize_lint_type};
+use super::{DiagnosticContext, humanize_lint_type_salsa};
 
-pub struct AssignTypeMismatchChecker;
-
-impl Checker for AssignTypeMismatchChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::AssignTypeMismatch];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        for node in semantic_model.get_root().descendants::<LuaAst>() {
-            match node {
-                LuaAst::LuaAssignStat(assign) => {
-                    check_assign_stat(context, semantic_model, &assign);
-                }
-                LuaAst::LuaLocalStat(local) => {
-                    check_local_stat(context, semantic_model, &local);
-                }
-                _ => {}
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    for node in model.get_root().descendants::<LuaAst>() {
+        match node {
+            LuaAst::LuaAssignStat(assign) => {
+                check_assign_stat(context, model, &assign);
             }
+            LuaAst::LuaLocalStat(local) => {
+                check_local_stat(context, model, &local);
+            }
+            _ => {}
         }
     }
 }
 
 fn check_assign_stat(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     assign: &LuaAssignStat,
 ) -> Option<()> {
     let (vars, exprs) = assign.get_var_and_expr_list();
-    let value_types = semantic_model.infer_expr_list_types(&exprs, Some(vars.len()));
+    // Use the old infer for now — the new model doesn't have infer_expr_list_types in equivalent form
+    let value_types: Vec<(LuaType, TextRange)> = exprs
+        .iter()
+        .map(|e| {
+            let ty = model.infer_expr(e.clone()).unwrap_or(LuaType::Any);
+            (ty, e.get_range())
+        })
+        .collect();
 
     for (idx, var) in vars.iter().enumerate() {
         match var {
             LuaVarExpr::IndexExpr(index_expr) => {
                 check_index_expr(
                     context,
-                    semantic_model,
+                    model,
                     index_expr,
                     exprs.get(idx).cloned(),
                     value_types.get(idx)?.0.clone(),
@@ -56,7 +59,7 @@ fn check_assign_stat(
             LuaVarExpr::NameExpr(name_expr) => {
                 check_name_expr(
                     context,
-                    semantic_model,
+                    model,
                     name_expr,
                     exprs.get(idx).cloned(),
                     value_types.get(idx)?.0.clone(),
@@ -69,44 +72,22 @@ fn check_assign_stat(
 
 fn check_name_expr(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     name_expr: &LuaNameExpr,
     expr: Option<LuaExpr>,
     value_type: LuaType,
 ) -> Option<()> {
-    let semantic_decl = semantic_model.find_decl(
-        NodeOrToken::Node(name_expr.syntax().clone()),
-        SemanticDeclLevel::default(),
-    )?;
-    let source_type = match semantic_decl.clone() {
+    let semantic_decl =
+        model.find_decl_by_node(name_expr.syntax().clone(), SemanticDeclLevel::default())?;
+    let source_type = match &semantic_decl {
         LuaSemanticDeclId::LuaDecl(decl_id) => {
-            let decl = semantic_model
-                .get_db()
-                .get_decl_index()
-                .get_decl(&decl_id)?;
-            match decl.extra {
-                LuaDeclExtra::Param {
-                    idx, signature_id, ..
-                } => {
-                    let signature = semantic_model
-                        .get_db()
-                        .get_signature_index()
-                        .get(&signature_id)?;
-                    let param_type = signature.get_param_info_by_id(idx)?;
-                    Some(param_type.type_ref.clone())
-                }
-                _ => semantic_model
-                    .get_db()
-                    .get_type_index()
-                    .get_type_cache(&decl_id.into())
-                    .map(|cache| cache.as_type().clone()),
-            }
+            model.get_type_by_decl_position(DeclPosition(decl_id.position))
         }
         _ => None,
     };
     check_assign_type_mismatch(
         context,
-        semantic_model,
+        model,
         name_expr.get_range(),
         source_type.as_ref(),
         &value_type,
@@ -115,7 +96,7 @@ fn check_name_expr(
     if let Some(expr) = expr {
         check_table_expr(
             context,
-            semantic_model,
+            model,
             NodeOrToken::Node(name_expr.syntax().clone()),
             &expr,
             source_type.as_ref(),
@@ -127,22 +108,19 @@ fn check_name_expr(
 
 fn check_index_expr(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     index_expr: &LuaIndexExpr,
     expr: Option<LuaExpr>,
     value_type: LuaType,
 ) -> Option<()> {
-    let source_type = infer_index_expr(
-        semantic_model.get_db(),
-        &mut semantic_model.get_cache().borrow_mut(),
-        index_expr.clone(),
-        false,
-    )
-    .ok();
+    // Use new model's infer_expr for index expressions
+    let source_type = model
+        .infer_expr(LuaExpr::IndexExpr(index_expr.clone()))
+        .ok();
 
     check_assign_type_mismatch(
         context,
-        semantic_model,
+        model,
         index_expr.get_range(),
         source_type.as_ref(),
         &value_type,
@@ -151,7 +129,7 @@ fn check_index_expr(
     if let Some(expr) = expr {
         check_table_expr(
             context,
-            semantic_model,
+            model,
             NodeOrToken::Node(index_expr.syntax().clone()),
             &expr,
             source_type.as_ref(),
@@ -162,42 +140,36 @@ fn check_index_expr(
 
 fn check_local_stat(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     local: &LuaLocalStat,
 ) -> Option<()> {
     let vars = local.get_local_name_list().collect::<Vec<_>>();
     let value_exprs = local.get_value_exprs().collect::<Vec<_>>();
-    let value_types = semantic_model.infer_expr_list_types(&value_exprs, Some(vars.len()));
+    let value_types: Vec<(LuaType, TextRange)> = value_exprs
+        .iter()
+        .map(|e| {
+            let ty = model.infer_expr(e.clone()).unwrap_or(LuaType::Any);
+            (ty, e.get_range())
+        })
+        .collect();
 
     for (idx, var) in vars.iter().enumerate() {
         let name_token = var.get_name_token()?;
-        let decl_id = LuaDeclId::new(semantic_model.get_file_id(), name_token.get_position());
-        let range = semantic_model
-            .get_db()
-            .get_decl_index()
-            .get_decl(&decl_id)?
-            .get_range();
-        let var_type = semantic_model
-            .get_db()
-            .get_type_index()
-            .get_type_cache(&decl_id.into())
-            .map(|cache| cache.as_type().clone())?;
+        let pos = name_token.get_position();
+        // Use name_token range as fallback when decl tree isn't available
+        let range = model
+            .get_decl_range(DeclPosition(pos))
+            .unwrap_or_else(|| name_token.get_range());
+        let var_type = model.get_type_by_decl_position(DeclPosition(pos));
         let value_type = value_types.get(idx)?.0.clone();
-        check_assign_type_mismatch(
-            context,
-            semantic_model,
-            range,
-            Some(&var_type),
-            &value_type,
-            false,
-        );
+        check_assign_type_mismatch(context, model, range, var_type.as_ref(), &value_type, false);
         if let Some(expr) = value_exprs.get(idx) {
             check_table_expr(
                 context,
-                semantic_model,
+                model,
                 NodeOrToken::Node(var.syntax().clone()),
                 expr,
-                Some(&var_type),
+                var_type.as_ref(),
             );
         }
     }
@@ -207,39 +179,22 @@ fn check_local_stat(
 /// 检查整个表, 返回`true`表示诊断出异常.
 pub fn check_table_expr(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    decl_node: NodeOrToken<LuaSyntaxNode, LuaSyntaxToken>,
+    model: &SemanticModel,
+    _decl_node: NodeOrToken<emmylua_parser::LuaSyntaxNode, emmylua_parser::LuaSyntaxToken>,
     table_expr: &LuaExpr,
     table_type: Option<&LuaType>, // 记录的类型
 ) -> Option<bool> {
-    // 检查是否附加了元数据以跳过诊断
-    if let Some(semantic_decl) = semantic_model.find_decl(decl_node, SemanticDeclLevel::default()) {
-        if let Some(property) = semantic_model
-            .get_db()
-            .get_property_index()
-            .get_property(&semantic_decl)
-        {
-            if property
-                .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
-                .and_then(|attribute_use| attribute_use.as_lsp_optimization())
-                .is_some_and(|attribute| attribute.code == LuaLspOptimizationCode::CheckTableField)
-            {
-                return Some(false);
-            }
-        }
-    }
-
     let table_type = table_type?;
     if let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) {
-        return check_table_expr_content(context, semantic_model, table_type, &table_expr);
+        return check_table_expr_content(context, model, table_type, &table_expr);
     }
     Some(false)
 }
 
-// 处理 value_expr 是 TableExpr 的情况, 但不会处理 `local a = { x = 1 }, local v = a`
+// 处理 value_expr 是 TableExpr 的情况
 fn check_table_expr_content(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     table_type: &LuaType,
     table_expr: &LuaTableExpr,
 ) -> Option<bool> {
@@ -258,18 +213,16 @@ fn check_table_expr_content(
             continue;
         };
 
-        let expr_type = semantic_model
-            .infer_expr(value_expr.clone())
-            .unwrap_or(LuaType::Any);
+        let expr_type = model.infer_expr(value_expr.clone()).unwrap_or(LuaType::Any);
 
-        // 位于的最后的 TableFieldValue 允许接受函数调用返回的多值, 而且返回的值必然会从下标 1 开始覆盖掉所有索引字段.
+        // 位于的最后的 TableFieldValue 允许接受函数调用返回的多值
         if field.is_value_field()
             && idx == fields.len() - 1
             && let LuaType::Variadic(variadic) = &expr_type
         {
             if let Some(result) = check_table_last_variadic_type(
                 context,
-                semantic_model,
+                model,
                 table_type,
                 idx,
                 variadic,
@@ -280,11 +233,11 @@ fn check_table_expr_content(
             continue;
         }
 
-        let Some(member_key) = semantic_model.get_member_key(field_key) else {
+        let Some(member_key) = model.get_member_key(field_key.clone()) else {
             continue;
         };
 
-        let source_type = match semantic_model.infer_member_type(table_type, &member_key) {
+        let source_type = match model.infer_member_type(table_type, &member_key) {
             Ok(typ) => typ,
             Err(_) => {
                 continue;
@@ -296,7 +249,7 @@ fn check_table_expr_content(
         {
             // 检查子表
             if let Some(result) =
-                check_table_expr_content(context, semantic_model, &source_type, &table_expr)
+                check_table_expr_content(context, model, &source_type, &table_expr)
             {
                 has_diagnostic = has_diagnostic || result;
             }
@@ -307,7 +260,7 @@ fn check_table_expr_content(
 
         if let Some(result) = check_assign_type_mismatch(
             context,
-            semantic_model,
+            model,
             field.get_range(),
             Some(&source_type),
             &expr_type,
@@ -322,18 +275,15 @@ fn check_table_expr_content(
 
 fn check_table_last_variadic_type(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     table_type: &LuaType,
     idx: usize,
     value_variadic: &VariadicType,
     range: TextRange,
 ) -> Option<bool> {
-    // test max 10
     for offset in idx..(idx + 10) {
         let member_key = LuaMemberKey::Integer((idx + offset) as i64 + 1);
-        let source_type = semantic_model
-            .infer_member_type(table_type, &member_key)
-            .ok()?;
+        let source_type = model.infer_member_type(table_type, &member_key).ok()?;
         match source_type {
             LuaType::Variadic(source_variadic) => {
                 return Some(source_variadic.deref() != value_variadic);
@@ -343,7 +293,7 @@ fn check_table_last_variadic_type(
 
                 if let Some(result) = check_assign_type_mismatch(
                     context,
-                    semantic_model,
+                    model,
                     range,
                     Some(&source_type),
                     expr_type,
@@ -361,7 +311,7 @@ fn check_table_last_variadic_type(
 
 fn check_assign_type_mismatch(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     range: TextRange,
     source_type: Option<&LuaType>,
     value_type: &LuaType,
@@ -373,16 +323,14 @@ fn check_assign_type_mismatch(
         return Some(false);
     }
 
-    // 某些情况下我们应允许可空, 例如: boolean[]
+    // 某些情况下我们应允许可空
     if allow_nil && value_type.is_nullable() {
         return Some(false);
     }
 
     match (&source_type, &value_type) {
-        // 如果源类型是定义类型, 则仅在目标类型是定义类型或引用类型时进行类型检查
         (LuaType::Def(_), LuaType::Def(_) | LuaType::Ref(_)) => {}
         (LuaType::Def(_), _) => return Some(false),
-        // 此时检查交给 table_field
         (LuaType::Ref(_) | LuaType::Tuple(_) | LuaType::Generic(_), LuaType::TableConst(_)) => {
             return Some(false);
         }
@@ -395,16 +343,9 @@ fn check_assign_type_mismatch(
         _ => {}
     }
 
-    let result = semantic_model.type_check_detail(source_type, value_type);
+    let result = model.type_check_detail(source_type, value_type);
     if result.is_err() {
-        add_type_check_diagnostic(
-            context,
-            semantic_model,
-            range,
-            source_type,
-            value_type,
-            result,
-        );
+        add_type_check_diagnostic(context, model, range, source_type, value_type, &result);
         return Some(true);
     }
     Some(false)
@@ -412,18 +353,17 @@ fn check_assign_type_mismatch(
 
 fn add_type_check_diagnostic(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    _model: &SemanticModel,
     range: TextRange,
     source_type: &LuaType,
     value_type: &LuaType,
-    result: TypeCheckResult,
+    result: &TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
     match result {
         Ok(_) => (),
         Err(reason) => {
             let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
+                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason.clone(),
                 TypeCheckFailReason::TypeRecursion => t!("type recursion").to_string(),
                 _ => "".to_string(),
             };
@@ -433,8 +373,16 @@ fn add_type_check_diagnostic(
                 range,
                 t!(
                     "Cannot assign `%{value}` to `%{source}`. %{reason}",
-                    value = humanize_lint_type(db, value_type),
-                    source = humanize_lint_type(db, source_type),
+                    value = humanize_lint_type_salsa(
+                        context.get_salsa_db(),
+                        context.get_file_id(),
+                        value_type
+                    ),
+                    source = humanize_lint_type_salsa(
+                        context.get_salsa_db(),
+                        context.get_file_id(),
+                        source_type
+                    ),
                     reason = reason_message
                 )
                 .to_string(),

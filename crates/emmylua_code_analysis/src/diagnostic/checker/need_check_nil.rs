@@ -1,46 +1,33 @@
+//! Need-check-nil checker — salsa-native.
+
 use emmylua_parser::{
     BinaryOperator, LuaAstNode, LuaBinaryExpr, LuaCallExpr, LuaExpr, LuaIndexExpr,
 };
 
-use crate::{DiagnosticCode, SemanticModel};
+use crate::DiagnosticCode;
+use crate::semantic_model::SemanticModel;
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct NeedCheckNilChecker;
-
-impl Checker for NeedCheckNilChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::NeedCheckNil];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-        for expr in root.descendants::<LuaExpr>() {
-            match expr {
-                LuaExpr::CallExpr(call_expr) => {
-                    check_call_expr(context, semantic_model, call_expr);
-                }
-                LuaExpr::BinaryExpr(binary_expr) => {
-                    check_binary_expr(context, semantic_model, binary_expr);
-                }
-                LuaExpr::IndexExpr(index_expr) => {
-                    check_index_expr(context, semantic_model, index_expr);
-                }
-                _ => {}
-            }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for expr in root.descendants::<LuaExpr>() {
+        match expr {
+            LuaExpr::CallExpr(call) => check_call(context, model, call),
+            LuaExpr::BinaryExpr(binary) => check_binary(context, model, binary),
+            LuaExpr::IndexExpr(index) => check_index(context, model, index),
+            _ => {}
         }
     }
 }
 
-fn check_call_expr(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    call_expr: LuaCallExpr,
-) -> Option<()> {
-    if call_expr.has_safe_navigation() {
-        return None;
-    }
-
-    let prefix = call_expr.get_prefix_expr()?;
-    let func = semantic_model.infer_expr(prefix.clone()).ok()?;
+fn check_call(context: &mut DiagnosticContext, model: &SemanticModel, call: LuaCallExpr) {
+    let Some(prefix) = call.get_prefix_expr() else {
+        return;
+    };
+    let Ok(func) = model.infer_expr(prefix.clone()) else {
+        return;
+    };
     if func.is_nullable() {
         context.add_diagnostic(
             DiagnosticCode::NeedCheckNil,
@@ -49,21 +36,15 @@ fn check_call_expr(
             None,
         );
     }
-
-    Some(())
 }
 
-fn check_index_expr(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    index_expr: LuaIndexExpr,
-) -> Option<()> {
-    if index_expr.is_safe_index() {
-        return None;
-    }
-
-    let prefix = index_expr.get_prefix_expr()?;
-    let prefix_type = semantic_model.infer_expr(prefix.clone()).ok()?;
+fn check_index(context: &mut DiagnosticContext, model: &SemanticModel, index: LuaIndexExpr) {
+    let Some(prefix) = index.get_prefix_expr() else {
+        return;
+    };
+    let Ok(prefix_type) = model.infer_expr(prefix.clone()) else {
+        return;
+    };
     if prefix_type.is_nullable() {
         context.add_diagnostic(
             DiagnosticCode::NeedCheckNil,
@@ -72,46 +53,47 @@ fn check_index_expr(
             None,
         );
     }
-
-    Some(())
 }
 
-fn check_binary_expr(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    binary_expr: LuaBinaryExpr,
-) -> Option<()> {
-    let op = binary_expr.get_op_token()?.get_op();
-    if matches!(
-        op,
+fn check_binary(context: &mut DiagnosticContext, model: &SemanticModel, binary: LuaBinaryExpr) {
+    let Some(op_token) = binary.get_op_token() else {
+        return;
+    };
+    if !matches!(
+        op_token.get_op(),
         BinaryOperator::OpAdd
             | BinaryOperator::OpSub
             | BinaryOperator::OpMul
             | BinaryOperator::OpDiv
             | BinaryOperator::OpMod
     ) {
-        let (left, right) = binary_expr.get_exprs()?;
-        let left_type = semantic_model.infer_expr(left.clone()).ok()?;
+        return;
+    }
+    let Some((left, right)) = binary.get_exprs() else {
+        return;
+    };
 
-        if left_type.is_nullable() {
-            context.add_diagnostic(
-                DiagnosticCode::NeedCheckNil,
-                left.get_range(),
-                t!("%{name} value may be nil", name = left.syntax().text()).to_string(),
-                None,
-            );
-        }
-
-        let right_type = semantic_model.infer_expr(right.clone()).ok()?;
-        if right_type.is_nullable() {
-            context.add_diagnostic(
-                DiagnosticCode::NeedCheckNil,
-                right.get_range(),
-                t!("%{name} value may be nil", name = right.syntax().text()).to_string(),
-                None,
-            );
-        }
+    let Ok(left_type) = model.infer_expr(left.clone()) else {
+        return;
+    };
+    if left_type.is_nullable() {
+        context.add_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            left.get_range(),
+            t!("%{name} value may be nil", name = left.syntax().text()).to_string(),
+            None,
+        );
     }
 
-    Some(())
+    let Ok(right_type) = model.infer_expr(right.clone()) else {
+        return;
+    };
+    if right_type.is_nullable() {
+        context.add_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            right.get_range(),
+            t!("%{name} value may be nil", name = right.syntax().text()).to_string(),
+            None,
+        );
+    }
 }

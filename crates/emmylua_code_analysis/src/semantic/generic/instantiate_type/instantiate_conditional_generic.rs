@@ -1,11 +1,13 @@
 use hashbrown::{HashMap, HashSet};
 use std::ops::Deref;
 
+use crate::compilation::find_signature_by_id;
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
     check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
     semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
+    type_def_alias_origin, type_def_is_alias,
 };
 
 use super::{get_default_constructor, instantiate_type_generic_inner};
@@ -368,7 +370,6 @@ fn collect_infer_assignments(
                                 .into(),
                         ),
                     };
-
                     if !collect_infer_assignments(db, &ty, pattern_ty, assignments, variance.flip())
                     {
                         return false;
@@ -389,7 +390,7 @@ fn collect_infer_assignments(
                 }
             }
             LuaType::Signature(id) => {
-                if let Some(signature) = db.get_signature_index().get(id) {
+                if let Some(signature) = find_signature_by_id(db, &id) {
                     let source_func = signature.to_doc_func_type();
                     collect_infer_assignments(
                         db,
@@ -403,9 +404,8 @@ fn collect_infer_assignments(
                 }
             }
             LuaType::Ref(type_decl_id) => {
-                if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id)
-                    && type_decl.is_alias()
-                    && let Some(origin) = type_decl.get_alias_origin(db, None)
+                if type_def_is_alias(db, type_decl_id)
+                    && let Some(origin) = type_def_alias_origin(db, type_decl_id)
                 {
                     return collect_infer_assignments(db, &origin, pattern, assignments, variance);
                 }

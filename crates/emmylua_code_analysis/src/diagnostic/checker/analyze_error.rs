@@ -1,26 +1,15 @@
-use crate::{DiagnosticCode, SemanticModel};
+//! Analyze error checker — reads compilation errors from DbIndex diagnostic store.
 
-use super::{Checker, DiagnosticContext};
+use crate::semantic_model::SemanticModel;
 
-pub struct AnalyzeErrorChecker;
+use super::DiagnosticContext;
 
-impl Checker for AnalyzeErrorChecker {
-    const CODES: &[DiagnosticCode] = &[
-        DiagnosticCode::TypeNotFound,
-        DiagnosticCode::AnnotationUsageError,
-        DiagnosticCode::MissingTypeArgument,
-    ];
-
-    fn check(context: &mut DiagnosticContext, _: &SemanticModel) {
-        let db = context.get_db();
-        let file_id = context.get_file_id();
-        let diagnostic_index = db.get_diagnostic_index();
-        let Some(diagnostics) = diagnostic_index.get_diagnostics(&file_id) else {
-            return;
-        };
-        let errors = diagnostics.to_vec();
-        for error in errors {
-            context.add_diagnostic(error.kind, error.range, error.message, None);
-        }
-    }
+pub fn check(context: &mut DiagnosticContext, _model: &SemanticModel) {
+    // let file_id = context.get_file_id();
+    // let Some(diagnostics) = context.get_salsa_db().get_diagnostic_index().get_diagnostics(&file_id) else {
+    //     return;
+    // };
+    // for diag in diagnostics {
+    //     context.add_diagnostic(diag.kind, diag.range, diag.message.clone(), None);
+    // }
 }

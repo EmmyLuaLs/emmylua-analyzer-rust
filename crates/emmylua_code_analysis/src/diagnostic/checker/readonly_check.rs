@@ -1,101 +1,74 @@
-use emmylua_parser::{LuaAssignStat, LuaAst, LuaAstNode, LuaExpr, LuaSyntaxId, LuaSyntaxKind};
-use rowan::{NodeOrToken, TextRange};
+//! Readonly check — salsa-native.
 
-use crate::{
-    DiagnosticCode, LuaDeclId, LuaMemberId, LuaSemanticDeclId, PropertyDeclFeature,
-    SemanticDeclLevel, SemanticModel,
-};
+use emmylua_parser::{LuaAssignStat, LuaAstNode, LuaExpr, LuaSyntaxId, LuaSyntaxKind};
+use rowan::TextRange;
 
-use super::{Checker, DiagnosticContext};
+use crate::compilation::SalsaDocTagPropertyEntrySummary;
+use crate::semantic_model::{OwnerPosition, SemanticModel};
+use crate::{DiagnosticCode, LuaDeclId, LuaMemberId, LuaSemanticDeclId, SemanticDeclLevel};
 
-pub struct ReadOnlyChecker;
+use super::DiagnosticContext;
 
-impl Checker for ReadOnlyChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::ReadOnly];
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for assign in root.descendants::<LuaAssignStat>() {
+        check_assign(context, model, &assign);
+    }
+}
 
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-        for ast_node in root.descendants::<LuaAst>() {
-            match ast_node {
-                LuaAst::LuaAssignStat(assign_stat) => {
-                    check_assign_stat(context, semantic_model, &assign_stat);
-                }
-                // need check?
-                LuaAst::LuaFuncStat(_) => {}
-                // we need known function is readonly
-                LuaAst::LuaCallExpr(_) => {}
-                _ => {}
-            }
+fn check_assign(context: &mut DiagnosticContext, model: &SemanticModel, assign: &LuaAssignStat) {
+    let (vars, _) = assign.get_var_and_expr_list();
+    for var in vars {
+        let mut cur = LuaExpr::cast(var.syntax().clone());
+        while let Some(expr) = cur {
+            let Some(decl_id) =
+                model.find_decl_by_node(expr.syntax().clone(), SemanticDeclLevel::default())
+            else {
+                break;
+            };
+            check_readonly(context, model, expr.get_range(), &decl_id);
+            cur = match &expr {
+                LuaExpr::IndexExpr(ix) => ix.get_prefix_expr(),
+                _ => break,
+            };
         }
     }
 }
 
-fn check_and_report_semantic_id(
+fn check_readonly(
     context: &mut DiagnosticContext,
+    model: &SemanticModel,
     range: TextRange,
-    semantic_decl_id: LuaSemanticDeclId,
-) -> Option<()> {
-    match semantic_decl_id {
-        LuaSemanticDeclId::LuaDecl(decl_id) => {
-            let self_decl_id = LuaDeclId::new(context.file_id, range.start());
-            if decl_id == self_decl_id {
-                return None;
+    decl_id: &LuaSemanticDeclId,
+) {
+    let (file_id, offset) = match decl_id {
+        LuaSemanticDeclId::LuaDecl(id) => {
+            let self_id = LuaDeclId::new(context.get_file_id(), range.start());
+            if *id == self_id {
+                return;
             }
+            (id.file_id, id.position)
         }
         LuaSemanticDeclId::Member(member_id) => {
             let syntax_id = LuaSyntaxId::new(LuaSyntaxKind::IndexExpr.into(), range);
-            let self_member_id = LuaMemberId::new(syntax_id, context.file_id);
-            if member_id == self_member_id {
-                return None;
+            let self_id = LuaMemberId::new(syntax_id, context.get_file_id());
+            if *member_id == self_id {
+                return;
             }
+            (
+                member_id.file_id,
+                member_id.get_syntax_id().get_range().start(),
+            )
         }
-        _ => {}
+        _ => return,
+    };
+
+    if model.decl_has_doc_property(file_id, OwnerPosition(offset), SalsaDocTagPropertyEntrySummary::Readonly) {
+        context.add_diagnostic(
+            DiagnosticCode::ReadOnly,
+            range,
+            t!("The variable is marked as readonly and cannot be assigned to.").to_string(),
+            None,
+        );
     }
-
-    // TODO filter self
-    let property_index = context.db.get_property_index();
-    if let Some(property) = property_index.get_property(&semantic_decl_id) {
-        if property
-            .decl_features
-            .has_feature(PropertyDeclFeature::ReadOnly)
-        {
-            context.add_diagnostic(
-                DiagnosticCode::ReadOnly,
-                range,
-                t!("The variable is marked as readonly and cannot be assigned to.").to_string(),
-                None,
-            );
-        }
-    }
-
-    Some(())
-}
-
-fn check_assign_stat(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    assign_stat: &LuaAssignStat,
-) -> Option<()> {
-    let (vars, _) = assign_stat.get_var_and_expr_list();
-    for var in vars {
-        let mut var = LuaExpr::cast(var.syntax().clone())?;
-        loop {
-            let node_or_token = NodeOrToken::Node(var.syntax().clone());
-            let semantic_decl_id =
-                semantic_model.find_decl(node_or_token, SemanticDeclLevel::default());
-            if let Some(semantic_decl_id) = semantic_decl_id {
-                check_and_report_semantic_id(context, var.get_range(), semantic_decl_id);
-            }
-            match var {
-                LuaExpr::IndexExpr(index_expr) => {
-                    var = index_expr.get_prefix_expr()?;
-                }
-                _ => {
-                    break;
-                }
-            }
-        }
-    }
-
-    Some(())
 }

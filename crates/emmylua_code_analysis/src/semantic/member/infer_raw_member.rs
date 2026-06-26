@@ -6,7 +6,10 @@ use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
     check_type_compact,
+    compilation::get_member_item,
+    infer_compilation_type_super_types,
     semantic::generic::{TypeSubstitutor, instantiate_type_generic},
+    type_def_alias_origin, type_def_is_alias, type_def_is_class,
 };
 
 use super::{RawGetMemberTypeResult, get_buildin_type_map_type_id};
@@ -67,10 +70,8 @@ fn infer_owner_raw_member_type(
     member_owner: LuaMemberOwner,
     member_key: &LuaMemberKey,
 ) -> RawGetMemberTypeResult {
-    let member_item = db
-        .get_member_index()
-        .get_member_item(&member_owner, member_key)
-        .ok_or(InferFailReason::FieldNotFound)?;
+    let member_item =
+        get_member_item(db, &member_owner, member_key).ok_or(InferFailReason::FieldNotFound)?;
     member_item.resolve_type(db)
 }
 
@@ -81,25 +82,22 @@ fn infer_custom_type_raw_member_type(
     infer_guard: &InferGuardRef,
 ) -> RawGetMemberTypeResult {
     infer_guard.check(type_id)?;
-    let type_index = db.get_type_index();
-    let type_decl = type_index
-        .get_type_decl(type_id)
-        .ok_or(InferFailReason::None)?;
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+
+    if type_def_is_alias(db, type_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, type_id) {
             return infer_raw_member_type_guard(db, &origin_type, member_key, infer_guard);
-        } else {
-            return Err(InferFailReason::None);
         }
+        return Err(InferFailReason::None);
     }
 
     let owner = LuaMemberOwner::Type(type_id.clone());
-    if let Some(member_item) = db.get_member_index().get_member_item(&owner, member_key) {
+    if let Some(member_item) = get_member_item(db, &owner, member_key) {
         return member_item.resolve_type(db);
     }
 
-    if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(type_id)
+    if type_def_is_class(db, type_id)
+        && let Some(super_types) = infer_compilation_type_super_types(db, type_id)
+            .or_else(|| db.get_type_index().get_super_types(type_id))
     {
         for super_type in super_types {
             let result =
@@ -215,13 +213,13 @@ fn infer_generic_raw_member_type(
     let base_ref_id = generic_type.get_base_type_id_ref();
     let generic_params = generic_type.get_params();
     let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
-    let type_decl = db
-        .get_type_index()
-        .get_type_decl(&base_ref_id)
-        .ok_or(InferFailReason::None)?;
 
-    if let Some(origin) = type_decl.get_alias_origin(db, Some(&substitutor)) {
-        return infer_raw_member_type(db, &origin, member_key);
+    if type_def_is_alias(db, &base_ref_id) {
+        if let Some(origin) = type_def_alias_origin(db, &base_ref_id) {
+            let instantiated_origin = instantiate_type_generic(db, &origin, &substitutor);
+            return infer_raw_member_type(db, &instantiated_origin, member_key);
+        }
+        return Err(InferFailReason::None);
     }
 
     let base_ref_type = LuaType::Ref(base_ref_id.clone());

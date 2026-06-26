@@ -5,13 +5,6 @@ mod index_flow;
 
 use std::rc::Rc;
 
-use self::{
-    binary_flow::{get_type_at_binary_expr, narrow_eq_condition},
-    correlated_flow::{
-        CorrelatedConditionNarrowing, PendingCorrelatedCondition,
-        prepare_var_from_return_overload_condition,
-    },
-};
 use emmylua_parser::{
     LuaAstNode, LuaCallExpr, LuaChunk, LuaExpr, LuaIndexMemberExpr, UnaryOperator,
 };
@@ -19,25 +12,32 @@ use emmylua_parser::{
 use crate::{
     DbIndex, FlowId, FlowNode, FlowTree, InferFailReason, InferGuard, LuaArrayLen, LuaArrayType,
     LuaDeclId, LuaInferCache, LuaSignatureCast, LuaSignatureId, LuaType, TypeOps,
-    semantic::infer::{
-        InferResult, VarRefId,
-        infer_index::{infer_member_by_key_type, infer_member_by_member_key},
-        narrow::{
-            condition_flow::{
-                call_flow::{
-                    get_type_at_call_expr, get_type_at_call_expr_by_func,
-                    needs_deferred_receiver_method_lookup,
+    semantic::{
+        infer::{
+            InferResult, VarRefId,
+            infer_index::{infer_member_by_key_type, infer_member_by_member_key},
+            narrow::{
+                condition_flow::{
+                    binary_flow::{get_type_at_binary_expr, narrow_eq_condition},
+                    call_flow::{
+                        get_type_at_call_expr, get_type_at_call_expr_by_func,
+                        needs_deferred_receiver_method_lookup,
+                    },
+                    correlated_flow::{
+                        CorrelatedConditionNarrowing, PendingCorrelatedCondition,
+                        prepare_var_from_return_overload_condition,
+                    },
+                    index_flow::get_type_at_index_expr,
                 },
-                index_flow::get_type_at_index_expr,
+                get_single_antecedent,
+                get_type_at_cast_flow::cast_type,
+                narrow_down_type, narrow_false_or_nil, remove_false_or_nil,
+                var_ref_id::get_var_expr_var_ref_id,
             },
-            get_single_antecedent,
-            get_type_at_cast_flow::cast_type,
-            narrow_down_type, narrow_false_or_nil, remove_false_or_nil,
-            var_ref_id::get_var_expr_var_ref_id,
+            try_infer_expr_no_flow,
         },
-        try_infer_expr_no_flow,
+        type_check::is_sub_type_of,
     },
-    semantic::type_check::is_sub_type_of,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

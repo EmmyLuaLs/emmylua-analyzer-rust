@@ -29,7 +29,7 @@ pub fn get_type_at_call_expr_inline_cast(
             return_type,
             InferConditionFlow::TrueCondition,
         ) {
-            Ok(typ) => typ,
+            Ok(ty) => ty,
             Err(_) => return None,
         };
     }

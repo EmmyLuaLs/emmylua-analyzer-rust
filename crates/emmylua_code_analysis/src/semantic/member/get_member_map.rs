@@ -1,17 +1,14 @@
 use std::collections::HashMap;
 
-use crate::{DbIndex, FileId, LuaMemberKey, LuaType};
-
-use super::{
-    LuaMemberInfo,
-    find_members::{self},
+use crate::{
+    DbIndex, FileId, LuaMemberInfo, LuaMemberKey, LuaType, semantic::member::find_members,
 };
 
 pub fn get_member_map(
     db: &DbIndex,
     prefix_type: &LuaType,
 ) -> Option<HashMap<LuaMemberKey, Vec<LuaMemberInfo>>> {
-    let members = find_members::find_members(db, prefix_type)?;
+    let members = find_members(db, prefix_type)?;
     build_member_map(members)
 }
 

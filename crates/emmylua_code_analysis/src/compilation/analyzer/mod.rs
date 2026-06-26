@@ -1,3 +1,19 @@
+//! Legacy analyzer — compatibility-preserved, not the active write path.
+//!
+//! The update path has moved to summary sync (`LuaCompilation::update_index` →
+//! `SalsaSummaryDatabase`). The modules here are retained for:
+//!
+//! | Module     | Status                                        |
+//! |------------|-----------------------------------------------|
+//! | `doc/`     | Superseded by `summary_builder.analysis`      |
+//! | `decl/`    | Superseded by `summary_builder.analysis`      |
+//! | `flow/`    | Superseded by `summary_builder.analysis`      |
+//! | `unresolve/`| Runtime query logic — migrate to `compilation`|
+//! | `lua/`     | Update-time writer — last to replace          |
+//! | `common/`  | Migrate with consumers or delete              |
+//!
+//! See `compilation_semantic_architecture_CN.md` §第二阶段 for the full catalog.
+
 mod common;
 mod decl;
 mod doc;
@@ -11,21 +27,11 @@ use crate::{
     db_index::{DbIndex, WorkspaceId},
     profile::Profile,
 };
-use emmylua_parser::{LuaBlock, LuaChunk, LuaDocGenericDeclList, LuaExpr};
+use emmylua_parser::{LuaChunk, LuaDocGenericDeclList};
 use hashbrown::{HashMap, HashSet};
 use infer_cache_manager::InferCacheManager;
 use std::sync::Arc;
 use unresolve::UnResolve;
-
-pub(super) fn analyze_func_body_missing_return_flags_with<F>(
-    body: LuaBlock,
-    infer_expr_type: &mut F,
-) -> Result<(bool, bool), InferFailReason>
-where
-    F: FnMut(&LuaExpr) -> Result<LuaType, InferFailReason>,
-{
-    lua::func_body::analyze_func_body_missing_return_flags_with(body, infer_expr_type)
-}
 
 pub fn analyze(db: &mut DbIndex, need_analyzed_files: Vec<InFiled<LuaChunk>>, config: Arc<Emmyrc>) {
     if need_analyzed_files.is_empty() {

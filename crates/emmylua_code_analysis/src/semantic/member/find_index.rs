@@ -1,13 +1,16 @@
 use hashbrown::{HashMap, HashSet};
 
+use crate::compilation::{get_members, get_operator, get_operators, get_type_by_owner};
 use crate::{
     DbIndex, InFiled, InferGuardRef, LuaGenericType, LuaIntersectionType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps,
+    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps, infer_compilation_type_super_types,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
     },
+    type_def_alias_origin, type_def_is_alias, type_def_is_class,
 };
 
 use super::{FindMembersResult, LuaMemberInfo, intersect_member_types};
@@ -39,11 +42,8 @@ pub fn find_index_operations_guard(
             find_index_operations_guard(db, base, infer_guard)
         }
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id);
-            if let Some(module_info) = module_info
-                && let Some(export_type) = &module_info.export_type
-            {
-                return find_index_operations_guard(db, export_type, infer_guard);
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
+                return find_index_operations_guard(db, &export_type, infer_guard);
             }
 
             None
@@ -59,12 +59,9 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
     let metatable = db.get_metatable_index().get(table_range);
     if let Some(metatable) = metatable {
         let meta_owner = LuaOperatorOwner::Table(metatable.clone());
-        if let Some(operator_ids) = db
-            .get_operator_index()
-            .get_operators(&meta_owner, LuaOperatorMetaMethod::Index)
-        {
-            for operator_id in operator_ids {
-                if let Some(operator) = db.get_operator_index().get_operator(operator_id) {
+        if let Some(operator_ids) = get_operators(db, &meta_owner, LuaOperatorMetaMethod::Index) {
+            for operator_id in &operator_ids {
+                if let Some(operator) = get_operator(db, operator_id) {
                     let operand = operator.get_operand(db);
                     if let Ok(return_type) = operator.get_result(db) {
                         members.push(LuaMemberInfo {
@@ -81,7 +78,7 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
     } else {
         // Check for direct table members
         let member_owner = LuaMemberOwner::Element(table_range.clone());
-        if let Some(table_members) = db.get_member_index().get_members(&member_owner) {
+        if let Some(table_members) = get_members(db, &member_owner) {
             for member in table_members {
                 let member_key_type = match member.get_key() {
                     LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
@@ -89,11 +86,8 @@ fn find_index_table(db: &DbIndex, table_range: &InFiled<TextRange>) -> FindMembe
                     _ => continue,
                 };
 
-                let member_type = db
-                    .get_type_index()
-                    .get_type_cache(&member.get_id().into())
-                    .map(|it| it.as_type().clone())
-                    .unwrap_or(LuaType::Unknown);
+                let member_type =
+                    get_type_by_owner(db, &member.get_id().into()).unwrap_or(LuaType::Unknown);
 
                 members.push(LuaMemberInfo {
                     property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
@@ -119,11 +113,10 @@ fn find_index_custom_type(
     infer_guard: &InferGuardRef,
 ) -> FindMembersResult {
     infer_guard.check(prefix_type_id).ok()?;
-    let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(prefix_type_id)?;
 
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
+    // Use summary-backed projection for alias check
+    if type_def_is_alias(db, prefix_type_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, prefix_type_id) {
             return find_index_operations_guard(db, &origin_type, infer_guard);
         }
         return None;
@@ -132,12 +125,13 @@ fn find_index_custom_type(
     let mut members = Vec::new();
 
     // Check for __index operators
-    if let Some(index_operator_ids) = db
-        .get_operator_index()
-        .get_operators(&prefix_type_id.clone().into(), LuaOperatorMetaMethod::Index)
-    {
-        for operator_id in index_operator_ids {
-            if let Some(operator) = db.get_operator_index().get_operator(operator_id) {
+    if let Some(index_operator_ids) = get_operators(
+        db,
+        &prefix_type_id.clone().into(),
+        LuaOperatorMetaMethod::Index,
+    ) {
+        for operator_id in &index_operator_ids {
+            if let Some(operator) = get_operator(db, operator_id) {
                 let operand = operator.get_operand(db);
                 if let Ok(return_type) = operator.get_result(db) {
                     members.push(LuaMemberInfo {
@@ -152,9 +146,9 @@ fn find_index_custom_type(
         }
     }
 
-    // Find index operations in super types
-    if type_decl.is_class()
-        && let Some(super_types) = type_index.get_super_types(prefix_type_id)
+    // Find index operations in super types (via summary-backed projection)
+    if type_def_is_class(db, prefix_type_id)
+        && let Some(super_types) = infer_compilation_type_super_types(db, prefix_type_id)
     {
         for super_type in super_types {
             if let Some(super_members) = find_index_operations_guard(db, &super_type, infer_guard) {
@@ -311,11 +305,10 @@ fn find_index_generic(
 
     let generic_params = generic.get_params();
     let substitutor = TypeSubstitutor::from_type_array(generic_params.clone());
-    let type_index = db.get_type_index();
-    let type_decl = type_index.get_type_decl(&type_decl_id)?;
 
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+    // Use summary-backed projection for alias check
+    if type_def_is_alias(db, &type_decl_id) {
+        if let Some(origin_type) = type_def_alias_origin(db, &type_decl_id) {
             let instantiated_type = instantiate_type_generic(db, &origin_type, &substitutor);
             return find_index_operations_guard(db, &instantiated_type, infer_guard);
         }
@@ -325,12 +318,14 @@ fn find_index_generic(
     let mut members = Vec::new();
 
     // Check for __index operators with generic substitution
-    let operator_index = db.get_operator_index();
-    if let Some(index_operator_ids) =
-        operator_index.get_operators(&type_decl_id.clone().into(), LuaOperatorMetaMethod::Index)
-    {
-        for index_operator_id in index_operator_ids {
-            if let Some(index_operator) = operator_index.get_operator(index_operator_id) {
+    let operator_ids = get_operators(
+        db,
+        &type_decl_id.clone().into(),
+        LuaOperatorMetaMethod::Index,
+    );
+    if let Some(index_operator_ids) = operator_ids {
+        for index_operator_id in &index_operator_ids {
+            if let Some(index_operator) = get_operator(db, index_operator_id) {
                 let operand = index_operator.get_operand(db);
                 let instantiated_operand = instantiate_type_generic(db, &operand, &substitutor);
 
@@ -350,8 +345,10 @@ fn find_index_generic(
         }
     }
 
-    // Find index operations in super types
-    if let Some(supers) = type_index.get_super_types(&type_decl_id) {
+    // Find index operations in super types (prefer summary-backed projection)
+    if let Some(supers) = infer_compilation_type_super_types(db, &type_decl_id)
+        .or_else(|| db.get_type_index().get_super_types(&type_decl_id))
+    {
         for super_type in supers {
             let instantiated_super = instantiate_type_generic(db, &super_type, &substitutor);
             if let Some(super_members) =

@@ -1,3 +1,5 @@
+use crate::compilation::{find_decl_by_id, get_current_owner};
+use crate::{LuaDeclExtra, LuaInferCache, LuaMemberOwner, LuaSemanticDeclId, LuaType};
 mod call_constraint;
 mod infer_call_generic;
 mod instantiate_type;

@@ -1,17 +1,15 @@
-use std::ops::Deref;
-
 use crate::{
-    DbIndex, LuaType, LuaTypeDeclId, TypeSubstitutor, VariadicType,
+    DbIndex, LuaType, LuaTypeDeclId, TypeCheckFailReason, TypeCheckResult, TypeSubstitutor,
+    VariadicType, instantiate_type_generic,
     semantic::type_check::{
-        is_sub_type_of,
+        check_general_type_compact, is_sub_type_of,
+        sub_type::get_base_type_id,
         type_check_context::{TypeCheckCheckLevel, TypeCheckContext},
+        type_check_guard::TypeCheckGuard,
     },
+    type_def_alias_origin, type_def_is_alias, type_def_is_enum,
 };
-
-use super::{
-    TypeCheckResult, check_general_type_compact, sub_type::get_base_type_id,
-    type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard,
-};
+use std::ops::Deref;
 
 pub fn check_simple_type_compact(
     context: &mut TypeCheckContext,
@@ -307,18 +305,16 @@ pub fn check_simple_type_compact(
         LuaType::Generic(generic) => {
             if !generic.contain_tpl() {
                 let base_id = generic.get_base_type_id();
-                if let Some(decl) = context.db.get_type_index().get_type_decl(&base_id)
-                    && decl.is_alias()
-                {
+                if type_def_is_alias(context.db, &base_id) {
                     let substitutor =
                         TypeSubstitutor::from_alias(generic.get_params().clone(), base_id.clone());
-                    if let Some(alias_origin) =
-                        decl.get_alias_origin(context.db, Some(&substitutor))
-                    {
+                    if let Some(alias_origin) = type_def_alias_origin(context.db, &base_id) {
+                        let instantiated =
+                            instantiate_type_generic(context.db, &alias_origin, &substitutor);
                         return check_general_type_compact(
                             context,
                             source,
-                            &alias_origin,
+                            &instantiated,
                             check_guard.next_level()?,
                         );
                     }
@@ -387,9 +383,7 @@ fn check_base_type_for_ref_compact(
                 {
                     return Ok(());
                 }
-                if let Some(decl) = context.db.get_type_index().get_type_decl(type_decl_id)
-                    && decl.is_enum()
-                {
+                if type_def_is_enum(context.db, type_decl_id) {
                     return check_enum_fields_match_source(
                         context,
                         source,

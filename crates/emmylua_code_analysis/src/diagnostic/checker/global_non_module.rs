@@ -1,36 +1,41 @@
+//! Global in non-module checker — pure salsa.
+
 use emmylua_parser::{LuaAssignStat, LuaAst, LuaAstNode, LuaBlock, LuaVarExpr};
 
-use crate::{DiagnosticCode, LuaDeclId, SemanticModel, resolve_global_decl_id};
+use crate::DiagnosticCode;
+use crate::compilation::SalsaDeclKindSummary;
+use crate::semantic_model::SemanticModel;
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct GlobalInNonModuleChecker;
-
-impl Checker for GlobalInNonModuleChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::GlobalInNonModule];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-        for assign_stat in root.descendants::<LuaAssignStat>() {
-            check_assign_stat(context, semantic_model, assign_stat);
-        }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for assign in root.descendants::<LuaAssignStat>() {
+        check_assign(context, model, assign);
     }
 }
 
-fn check_assign_stat(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    assign_stat: LuaAssignStat,
-) -> Option<()> {
-    let file_id = semantic_model.get_file_id();
+fn check_assign(context: &mut DiagnosticContext, model: &SemanticModel, assign: LuaAssignStat) {
+    let _file_id = model.get_file_id();
+    let (vars, _) = assign.get_var_and_expr_list();
+    let Some(decl_tree) = model.decl_tree() else {
+        return;
+    };
 
-    let (vars, _) = assign_stat.get_var_and_expr_list();
     for var in vars {
-        let decl_id = LuaDeclId::new(file_id, var.get_position());
-        if let Some(decl) = semantic_model.get_db().get_decl_index().get_decl(&decl_id)
-            && decl.is_global()
-            && is_global_define_in_non_module_scope(semantic_model, var.clone(), decl_id)
-        {
+        // Check if this var is in a non-module scope
+        let in_module_scope = is_in_module_scope(&var);
+        if in_module_scope {
+            continue;
+        }
+
+        // Find matching declaration
+        let decl = decl_tree
+            .decls
+            .iter()
+            .find(|d| d.name.as_str() == var.get_text().as_str());
+        let Some(decl) = decl else { continue };
+        if matches!(decl.kind, SalsaDeclKindSummary::Global) {
             context.add_diagnostic(
                 DiagnosticCode::GlobalInNonModule,
                 var.get_range(),
@@ -39,37 +44,15 @@ fn check_assign_stat(
             );
         }
     }
-
-    Some(())
 }
 
-fn is_global_define_in_non_module_scope(
-    semantic_model: &SemanticModel,
-    var: LuaVarExpr,
-    decl_id: LuaDeclId,
-) -> bool {
+fn is_in_module_scope(var: &LuaVarExpr) -> bool {
     for block in var.ancestors::<LuaBlock>() {
-        let parent = block.get_parent::<LuaAst>();
-        match parent {
-            Some(LuaAst::LuaChunk(_)) => {
-                return false;
-            }
-            Some(LuaAst::LuaClosureExpr(_)) => {
-                break;
-            }
+        match block.get_parent::<LuaAst>() {
+            Some(LuaAst::LuaChunk(_)) => return true,
+            Some(LuaAst::LuaClosureExpr(_)) => break,
             _ => {}
         }
     }
-
-    let name = var.get_text();
-    let Some(global_id) = resolve_global_decl_id(
-        semantic_model.get_db(),
-        &mut semantic_model.get_cache().borrow_mut(),
-        &name,
-        None,
-    ) else {
-        return true;
-    };
-
-    global_id == decl_id
+    false
 }

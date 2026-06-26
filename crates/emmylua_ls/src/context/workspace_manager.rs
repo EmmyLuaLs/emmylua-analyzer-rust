@@ -10,19 +10,19 @@ use std::{
 };
 
 use super::{ClientProxy, FileDiagnostic};
-use crate::context::ServerContextSnapshot;
 use crate::context::lsp_features::LspFeatures;
+use crate::context::{AnalysisLock, ServerContextSnapshot};
 use crate::handlers::{ClientConfig, init_analysis, register_files_watch};
 use emmylua_code_analysis::{
-    EmmyLuaAnalysis, Emmyrc, WorkspaceFileMatcher, WorkspaceFolder, load_configs,
-    read_file_with_encoding, uri_to_file_path,
+    Emmyrc, WorkspaceFileMatcher, WorkspaceFolder, load_configs, read_file_with_encoding,
+    uri_to_file_path,
 };
 use lsp_types::Uri;
-use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio_util::sync::CancellationToken;
 
 pub struct WorkspaceManager {
-    analysis: Arc<RwLock<EmmyLuaAnalysis>>,
+    analysis: Arc<AnalysisLock>,
     client: Arc<ClientProxy>,
     config_reload_token: Arc<PendingTask>,
     reindex_token: Arc<PendingTask>,
@@ -42,7 +42,7 @@ pub struct WorkspaceManager {
 
 impl WorkspaceManager {
     pub fn new(
-        analysis: Arc<RwLock<EmmyLuaAnalysis>>,
+        analysis: Arc<AnalysisLock>,
         client: Arc<ClientProxy>,
         file_diagnostic: Arc<FileDiagnostic>,
         lsp_features: Arc<LspFeatures>,
@@ -520,7 +520,7 @@ async fn sync_reloaded_open_files(
 }
 
 async fn apply_open_file_sync(
-    analysis: &RwLock<EmmyLuaAnalysis>,
+    analysis: &AnalysisLock,
     current_open_files: Vec<(Uri, String)>,
     removed_actions: Vec<OpenFileSyncAction>,
 ) -> Vec<Uri> {

@@ -1,86 +1,82 @@
+//! Undefined global checker — salsa-native.
+
 use std::collections::HashSet;
 
-use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaNameExpr};
+use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaFuncStat, LuaNameExpr, LuaVarExpr};
 use rowan::TextRange;
 
-use crate::{DiagnosticCode, LuaSignatureId, SemanticModel};
+use crate::DiagnosticCode;
+use crate::semantic_model::SemanticModel;
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct UndefinedGlobalChecker;
-
-impl Checker for UndefinedGlobalChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::UndefinedGlobal];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-        let mut use_range_set = HashSet::new();
-        calc_name_expr_ref(semantic_model, &mut use_range_set);
-        for name_expr in root.descendants::<LuaNameExpr>() {
-            check_name_expr(context, semantic_model, &mut use_range_set, name_expr);
-        }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let use_ranges = collect_use_ranges(model);
+    let root = model.get_root().clone();
+    for name_expr in root.descendants::<LuaNameExpr>() {
+        check_name(context, model, &use_ranges, name_expr);
     }
 }
 
-fn calc_name_expr_ref(
-    semantic_model: &SemanticModel,
-    use_range_set: &mut HashSet<TextRange>,
-) -> Option<()> {
-    let file_id = semantic_model.get_file_id();
-    let db = semantic_model.get_db();
-    let refs_index = db.get_reference_index().get_local_reference(&file_id)?;
-    for decl_refs in refs_index.get_decl_references_map().values() {
-        for decl_ref in &decl_refs.cells {
-            use_range_set.insert(decl_ref.range);
+fn collect_use_ranges(model: &SemanticModel) -> HashSet<TextRange> {
+    let Some(decl_tree) = model.decl_tree() else {
+        return HashSet::new();
+    };
+    let mut ranges = HashSet::new();
+    for decl in &decl_tree.decls {
+        if let Some(refs) = model.decl_references(decl.id) {
+            for r in &refs {
+                ranges.insert(r.syntax_id.text_range());
+            }
         }
     }
-
-    None
+    ranges
 }
 
-fn check_name_expr(
+fn check_name(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    use_range_set: &mut HashSet<TextRange>,
+    model: &SemanticModel,
+    use_ranges: &HashSet<TextRange>,
     name_expr: LuaNameExpr,
-) -> Option<()> {
+) {
     let name_range = name_expr.get_range();
-    if use_range_set.contains(&name_range) {
-        return Some(());
+    if use_ranges.contains(&name_range) {
+        return;
     }
 
-    let name_text = name_expr.get_name_text()?;
+    let Some(name_text) = name_expr.get_name_text() else {
+        return;
+    };
     if name_text == "_" {
-        return Some(());
+        return;
     }
 
-    if semantic_model
-        .get_db()
-        .get_global_index()
-        .is_exist_global_decl(&name_text)
-    {
-        return Some(());
+    // 全局声明存在？
+    let db = model.salsa_db();
+    if db.types().global(model.get_file_id(), &name_text).is_some() {
+        return;
     }
 
+    // 配置中的例外
     if context
         .config
         .global_disable_set
         .contains(name_text.as_str())
     {
-        return Some(());
+        return;
     }
-
     if context
         .config
         .global_disable_glob
         .iter()
         .any(|re| re.is_match(&name_text))
     {
-        return Some(());
+        return;
     }
 
-    if name_text == "self" && check_self_name(semantic_model, name_expr).is_some() {
-        return Some(());
+    // self 检查
+    if name_text == "self" && is_self_valid(name_expr) {
+        return;
     }
 
     context.add_diagnostic(
@@ -89,22 +85,21 @@ fn check_name_expr(
         t!("undefined global variable: %{name}", name = name_text).to_string(),
         None,
     );
-
-    Some(())
 }
 
-fn check_self_name(semantic_model: &SemanticModel, name_expr: LuaNameExpr) -> Option<()> {
-    let closure_expr = name_expr.ancestors::<LuaClosureExpr>();
-    for closure_expr in closure_expr {
-        let signature_id =
-            LuaSignatureId::from_closure(semantic_model.get_file_id(), &closure_expr);
-        let signature = semantic_model
-            .get_db()
-            .get_signature_index()
-            .get(&signature_id)?;
-        if signature.is_method(semantic_model, None) {
-            return Some(());
+/// self 在 `function t:method()` 的 body 中总是合法。
+fn is_self_valid(name_expr: LuaNameExpr) -> bool {
+    let closures = name_expr.ancestors::<LuaClosureExpr>();
+    for closure in closures {
+        let Some(func_stat) = closure.get_parent::<LuaFuncStat>() else {
+            continue;
+        };
+        let Some(func_name) = func_stat.get_func_name() else {
+            continue;
+        };
+        if matches!(func_name, LuaVarExpr::IndexExpr(_)) {
+            return true;
         }
     }
-    None
+    false
 }

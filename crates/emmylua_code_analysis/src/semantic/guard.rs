@@ -1,6 +1,5 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
-
 use crate::{InferFailReason, LuaTypeDeclId};
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 pub type InferGuardRef = Rc<InferGuard>;
 

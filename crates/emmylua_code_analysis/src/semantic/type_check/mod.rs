@@ -12,20 +12,18 @@ mod type_check_guard;
 
 use std::ops::Deref;
 
+use crate::module_query::export::infer_module_export_type;
+use crate::{DbIndex, LuaType, type_def_alias_origin, type_def_is_alias};
+use crate::{LuaUnionType, semantic::type_check::type_check_context::TypeCheckContext};
 use complex_type::check_complex_type_compact;
 use func_type::{check_doc_func_type_compact, check_sig_type_compact};
 use generic_type::check_generic_type_compact;
 use ref_type::check_ref_type_compact;
 use simple_type::check_simple_type_compact;
-pub use type_check_fail_reason::TypeCheckFailReason;
 use type_check_guard::TypeCheckGuard;
 
-use crate::{
-    LuaUnionType,
-    db_index::{DbIndex, LuaType},
-    semantic::type_check::type_check_context::TypeCheckContext,
-};
 pub use sub_type::is_sub_type_of;
+pub use type_check_fail_reason::TypeCheckFailReason;
 pub type TypeCheckResult = Result<(), TypeCheckFailReason>;
 pub use type_check_context::TypeCheckCheckLevel;
 
@@ -230,11 +228,10 @@ fn fast_eq_check(a: &LuaType, b: &LuaType) -> bool {
 fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
     match typ {
         LuaType::Ref(type_id) => {
-            let type_decl = db.get_type_index().get_type_decl(type_id)?;
-            if type_decl.is_alias()
-                && let Some(origin_type) = type_decl.get_alias_origin(db, None)
+            if type_def_is_alias(db, type_id)
+                && let Some(origin_type) = type_def_alias_origin(db, type_id)
             {
-                return Some(origin_type.clone());
+                return Some(origin_type);
             }
         }
         // todo donot escape
@@ -248,9 +245,8 @@ fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
         }
         LuaType::TypeGuard(_) => return Some(LuaType::Boolean),
         LuaType::ModuleRef(file_id) => {
-            let module_info = db.get_module_index().get_module(*file_id)?;
-            if let Some(export_type) = &module_info.export_type {
-                return Some(export_type.clone());
+            if let Some(export_type) = infer_module_export_type(db, *file_id) {
+                return Some(export_type);
             }
         }
         _ => {}

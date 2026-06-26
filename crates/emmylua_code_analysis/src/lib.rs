@@ -8,35 +8,62 @@
     )
 )]
 
+//! # Visibility Tiers
+//!
+//! ## Tier 1 — Stable Facade
+//! Use these directly as the primary API:
+//! - [`EmmyLuaAnalysis`] — top-level entry: file management, diagnostics, reindex
+//! - [`LuaCompilation`] — compilation/index lifecycle
+//! - [`SemanticModel`] — single-file semantic queries (infer, member lookup, etc.)
+//! - Key types: [`FileId`], [`LuaType`], [`Emmyrc`], [`DiagnosticCode`], [`WorkspaceId`]
+//!
+//! ## Tier 2 — Public Projection Types
+//! Stable but may gain methods/fields:
+//! - [`CompilationModuleInfo`], [`CompilationGenericParamInfo`], [`CompilationDeclInfo`]
+//! - [`LuaDeclId`], [`LuaTypeDeclId`], [`LuaMemberId`], [`LuaSemanticDeclId`]
+//! - Free functions: [`humanize_type`], [`file_path_to_uri`], [`uri_to_file_path`]
+//!
+//! ## Tier 3 — Internal / Legacy
+//! Prefer Tier 1/2 alternatives when available:
+//! - [`DbIndex`] — legacy container; use [`LuaCompilation`] / [`SemanticModel`] instead
+//! - `LuaDeclIndex`, `LuaMemberIndex`, `LuaOperatorIndex` — internal indexes
+//! - `Salsa*` types — restricted to `pub(crate)` where possible
+
+// === Modules ===
 mod compilation;
 mod config;
 mod db_index;
 mod diagnostic;
 mod locale;
+mod module_query;
 mod profile;
 mod resources;
 mod semantic;
+mod semantic_model;
 mod test_lib;
 mod vfs;
 
 pub use compilation::*;
 pub use config::*;
-pub use db_index::*;
 pub use diagnostic::*;
-use hashbrown::HashMap;
+pub use vfs::*;
+
 pub use locale::get_locale_code;
-use lsp_types::Uri;
 pub use profile::Profile;
 pub use resources::get_best_resources_dir;
 pub use resources::load_resource_from_include_dir;
+
+pub use db_index::*;
+pub use semantic::*;
+pub use test_lib::VirtualWorkspace;
+
+use hashbrown::HashMap;
+use lsp_types::Uri;
 use resources::load_resource_std;
 use schema_to_emmylua::SchemaConverter;
-pub use semantic::*;
 use std::str::FromStr;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
-pub use test_lib::VirtualWorkspace;
 use tokio_util::sync::CancellationToken;
-pub use vfs::*;
 
 #[macro_use]
 extern crate rust_i18n;
@@ -124,33 +151,24 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn update_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> Option<FileId> {
-        let is_removed = text.is_none();
         let file_id = self
             .compilation
             .get_db_mut()
             .get_vfs_mut()
-            .set_file_content(uri, text);
+            .set_file_content(uri, text.clone());
 
-        self.compilation.remove_index(vec![file_id]);
-        if !is_removed {
-            self.compilation.update_index(vec![file_id]);
+        // 同步到 salsa DB（新 checker 依赖），使用相同的 FileId
+        if let Some(file_text) = text {
+            self.compilation.sync_file_to_salsa(file_id, file_text);
+        } else {
+            self.compilation.remove_file_by_uri(uri);
         }
 
         Some(file_id)
     }
 
     pub fn update_remote_file_by_uri(&mut self, uri: &Uri, text: Option<String>) -> FileId {
-        let is_removed = text.is_none();
-        let fid = self
-            .compilation
-            .get_db_mut()
-            .get_vfs_mut()
-            .set_remote_file_content(uri, text);
-
-        self.compilation.remove_index(vec![fid]);
-        if !is_removed {
-            self.compilation.update_index(vec![fid]);
-        }
+        let fid = self.compilation.update_file_by_uri(uri, text);
         fid
     }
 
@@ -166,21 +184,14 @@ impl EmmyLuaAnalysis {
             let _p = Profile::new("update files");
             for (uri, text) in files {
                 let is_new_text = text.is_some();
-                let file_id = self
-                    .compilation
-                    .get_db_mut()
-                    .get_vfs_mut()
-                    .set_file_content(&uri, text);
+                let file_id = self.compilation.update_file_by_uri(&uri, text);
                 removed_files.insert(file_id);
                 if is_new_text {
                     updated_files.insert(file_id);
                 }
             }
         }
-        self.compilation
-            .remove_index(removed_files.into_iter().collect());
         let updated_files: Vec<FileId> = updated_files.into_iter().collect();
-        self.compilation.update_index(updated_files.clone());
         updated_files
     }
 
@@ -195,11 +206,7 @@ impl EmmyLuaAnalysis {
             let _p = Profile::new("update files");
             for (uri, text) in files {
                 let is_new_text = text.is_some();
-                let file_id = self
-                    .compilation
-                    .get_db_mut()
-                    .get_vfs_mut()
-                    .set_file_content(&uri, text);
+                let file_id = self.compilation.update_file_by_uri(&uri, text);
                 removed_files.insert(file_id);
                 if is_new_text {
                     updated_files.insert(file_id);
@@ -215,12 +222,7 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn remove_file_by_uri(&mut self, uri: &Uri) -> Option<FileId> {
-        if let Some(file_id) = self.compilation.get_db_mut().get_vfs_mut().remove_file(uri) {
-            self.compilation.remove_index(vec![file_id]);
-            return Some(file_id);
-        }
-
-        None
+        self.compilation.remove_file_by_uri(uri)
     }
 
     pub fn update_files_by_path(&mut self, files: Vec<(PathBuf, Option<String>)>) -> Vec<FileId> {
@@ -311,7 +313,7 @@ impl EmmyLuaAnalysis {
         {
             self.reindex_count += 1;
         }
-        let file_ids = self.compilation.get_db().get_vfs().get_all_file_ids();
+        let file_ids = self.compilation.get_all_file_ids();
         self.compilation.clear_index();
         self.compilation.update_index(file_ids);
     }
@@ -320,9 +322,9 @@ impl EmmyLuaAnalysis {
     pub fn cleanup_nonexistent_files(&mut self) {
         let mut files_to_remove = Vec::new();
 
-        // 获取所有当前在VFS中的文件
-        let vfs = self.compilation.get_db().get_vfs();
-        for file_id in vfs.get_all_local_file_ids() {
+        // 获取所有当前在 salsa DB 中的文件
+        let salsa_db = self.compilation.get_salsa_db();
+        for file_id in salsa_db.file_ids() {
             if self
                 .compilation
                 .get_db()
@@ -331,7 +333,10 @@ impl EmmyLuaAnalysis {
             {
                 continue;
             }
-            if let Some(path) = vfs.get_file_path(&file_id).filter(|path| !path.exists())
+            if salsa_db.is_remote_file(file_id) {
+                continue;
+            }
+            if let Some(path) = salsa_db.file_path(file_id).filter(|path| !path.exists())
                 && let Some(uri) = file_path_to_uri(path)
             {
                 files_to_remove.push(uri);

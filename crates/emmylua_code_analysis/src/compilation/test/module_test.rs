@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, ModuleVisibility, VirtualWorkspace};
+    use crate::{
+        DiagnosticCode, LuaType, ModuleVisibility, SalsaModuleExportSummary,
+        SalsaSemanticTargetSummary, VirtualWorkspace, resolve_projected_module_export_type,
+    };
 
     #[test]
     fn test_module_annotation() {
@@ -169,5 +172,23 @@ mod test {
                 export.hidden = 1
                 "#,
         ));
+    }
+
+    #[test]
+    fn test_compilation_module_projection_resolves_table_export_type_without_ast_search() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def_file(
+            "a.lua",
+            r#"
+                return { answer = 42 }
+                "#,
+        );
+
+        let export_type =
+            resolve_projected_module_export_type(ws.analysis.compilation.get_db(), file_id)
+                .expect("export type");
+
+        assert!(matches!(export_type, LuaType::TableConst(_)));
     }
 }

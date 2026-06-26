@@ -1,224 +1,104 @@
-use hashbrown::{HashMap, HashSet};
+//! Missing fields checker — pure salsa.
+
+use std::collections::HashSet;
 
 use emmylua_parser::{LuaAstNode, LuaTableExpr};
 
-use crate::{DiagnosticCode, LuaMemberOwner, LuaType, LuaTypeCache, LuaTypeDeclId, SemanticModel};
+use crate::compilation::SalsaPropertyKeySummary;
+use crate::semantic_model::SemanticModel;
+use crate::{DiagnosticCode, LuaType};
 
-use super::{Checker, DiagnosticContext, humanize_lint_type};
-use itertools::Itertools;
+use super::{DiagnosticContext, humanize_lint_type_salsa};
 
-pub struct MissingFieldsChecker;
-
-impl Checker for MissingFieldsChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::MissingFields];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-
-        let mut type_cache = HashMap::new();
-        for expr in root.descendants::<LuaTableExpr>() {
-            check_table_expr(context, semantic_model, &expr, &mut type_cache);
-        }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for expr in root.descendants::<LuaTableExpr>() {
+        check_table(context, model, &expr);
     }
 }
 
-fn check_table_expr(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    expr: &LuaTableExpr,
-    type_cache: &mut HashMap<LuaType, HashSet<String>>,
-) -> Option<()> {
-    let db = context.db;
-
-    let table_type = match semantic_model.infer_table_should_be(expr.clone())? {
-        LuaType::Union(union) => {
-            let mut set = HashSet::new();
-            for ty in union.into_vec().iter() {
-                match ty {
-                    LuaType::Ref(_)
-                    | LuaType::Object(_)
-                    | LuaType::Generic(_)
-                    | LuaType::Intersection(_) => {
-                        set.insert(ty.clone());
-                    }
-                    LuaType::Table | LuaType::Userdata => {
-                        return Some(());
-                    }
-                    LuaType::TableGeneric(_) => {
-                        return Some(());
-                    }
-                    _ => {}
-                }
+fn check_table(context: &mut DiagnosticContext, model: &SemanticModel, expr: &LuaTableExpr) {
+    let table_type = match model.infer_table_should_be(expr.clone()) {
+        Some(LuaType::Union(u)) => {
+            let types: Vec<LuaType> = u
+                .into_vec()
+                .into_iter()
+                .filter(|t| {
+                    matches!(
+                        t,
+                        LuaType::Ref(_) | LuaType::Object(_) | LuaType::Generic(_)
+                    )
+                })
+                .collect();
+            if types.len() != 1 {
+                return;
             }
-            match set.len() {
-                1 => set.into_iter().next()?.clone(),
-                _ => {
-                    return Some(());
-                }
-            }
+            types.into_iter().next().expect("Expected exactly one type")
         }
-        LuaType::TableConst(in_file_range) => {
-            let file_id = in_file_range.file_id;
-            if file_id == semantic_model.get_file_id() {
-                let range = in_file_range.value;
-                if expr.get_range() == range {
-                    return Some(());
-                }
-            }
-
-            LuaType::TableConst(in_file_range)
-        }
-
-        table_type => table_type,
+        Some(t) => t,
+        None => return,
     };
 
+    // Get declared fields
     let fields = expr.get_fields_with_keys();
     if fields.len() > 50 {
-        return Some(());
+        return;
     }
+    let current: HashSet<String> = fields.iter().map(|(_, k)| k.get_path_part()).collect();
 
-    let current_fields = fields.iter().map(|(_, key)| key.get_path_part()).collect();
-
-    let required_fields = match &table_type {
-        LuaType::Ref(type_decl_id) => type_cache.entry(table_type.clone()).or_insert_with(|| {
-            let types = type_decl_id.collect_super_types_with_self(context.db, table_type.clone());
-            get_required_fields(context, &types).unwrap_or_default()
-        }),
-        LuaType::Generic(generic_type) => {
-            let type_decl_id = generic_type.get_base_type_id();
-            type_cache.entry(table_type.clone()).or_insert_with(|| {
-                let types =
-                    type_decl_id.collect_super_types_with_self(context.db, table_type.clone());
-                get_required_fields(context, &types).unwrap_or_default()
-            })
-        }
-        LuaType::Object(_) => type_cache.entry(table_type.clone()).or_insert_with(|| {
-            get_required_fields(context, &vec![table_type.clone()]).unwrap_or_default()
-        }),
-        LuaType::Intersection(intersections) => {
-            type_cache.entry(table_type.clone()).or_insert_with(|| {
-                let mut computed_fields = HashSet::new();
-                for intersection_component in intersections.get_types() {
-                    computed_fields.extend(
-                        get_required_fields(context, &vec![intersection_component.clone()])
-                            .unwrap_or_default(),
-                    );
-                }
-                computed_fields
-            })
-        }
-        _ => return Some(()),
+    // Get required (non-nullable) fields from type
+    let type_name = match &table_type {
+        LuaType::Ref(id) | LuaType::Def(id) => id.get_name().to_string(),
+        LuaType::Generic(g) => g.get_base_type_id().get_name().to_string(),
+        _ => return,
     };
 
-    let missing_fields = required_fields
-        .difference(&current_fields)
-        .map(|s| format!("`{}`", s))
-        .sorted()
-        .join(", ");
+    let Some(members) = model.get_property_entries(&type_name) else {
+        return;
+    };
 
-    if !missing_fields.is_empty() {
+    let mut required: HashSet<String> = HashSet::new();
+    let mut optional: HashSet<String> = HashSet::new();
+
+    for m in &members {
+        if m.is_nullable {
+            optional.insert(key_name(&m.key));
+        } else {
+            required.insert(key_name(&m.key));
+        }
+    }
+    // Remove optionals from required
+    for name in &optional {
+        required.remove(name);
+    }
+
+    let missing: Vec<String> = required
+        .difference(&current)
+        .map(|s| format!("`{}`", s))
+        .collect();
+    if !missing.is_empty() {
         context.add_diagnostic(
             DiagnosticCode::MissingFields,
             expr.get_range(),
             t!(
                 "Missing required fields in type `%{typ}`: %{fields}",
-                typ = humanize_lint_type(db, &table_type),
-                fields = missing_fields
+                typ = humanize_lint_type_salsa(
+                    context.get_salsa_db(),
+                    context.get_file_id(),
+                    &table_type
+                ),
+                fields = missing.join(", ")
             )
             .to_string(),
             None,
         );
     }
-
-    Some(())
 }
 
-fn get_required_fields(
-    context: &mut DiagnosticContext,
-    // types 应为广度优先, 子类型会先于父类型被遍历, 而子类型的优先级高于父类型
-    types: &Vec<LuaType>,
-) -> Option<HashSet<String>> {
-    let member_index = context.db.get_member_index();
-    let mut required_fields: HashSet<String> = HashSet::new();
-
-    let mut optional_type = HashSet::new();
-    for super_type in types {
-        match super_type {
-            LuaType::Ref(type_decl_id) => process_type_decl_id(
-                context,
-                member_index,
-                &mut required_fields,
-                &mut optional_type,
-                type_decl_id.clone(),
-            ),
-            LuaType::Generic(generic_type) => process_type_decl_id(
-                context,
-                member_index,
-                &mut required_fields,
-                &mut optional_type,
-                generic_type.get_base_type_id().clone(),
-            ),
-            // 处理 ---@class test: { a: number }
-            LuaType::Object(object_type) => {
-                let fields = object_type.get_fields();
-                for (key, decl_type) in fields {
-                    let name = key.to_path();
-                    record_required_fields(
-                        &mut required_fields,
-                        &mut optional_type,
-                        name,
-                        decl_type.clone(),
-                    );
-                }
-                continue;
-            }
-            _ => continue,
-        };
+fn key_name(key: &SalsaPropertyKeySummary) -> String {
+    match key {
+        SalsaPropertyKeySummary::Name(n) => n.to_string(),
+        SalsaPropertyKeySummary::Integer(i) => i.to_string(),
+        _ => String::new(),
     }
-
-    fn process_type_decl_id(
-        context: &DiagnosticContext,
-        member_index: &crate::LuaMemberIndex,
-        required_fields: &mut HashSet<String>,
-        optional_type: &mut HashSet<String>,
-        type_decl_id: LuaTypeDeclId,
-    ) -> Option<()> {
-        let members = member_index.get_members(&LuaMemberOwner::Type(type_decl_id))?;
-        for member in members {
-            let name = member.get_key().to_path();
-            let decl_type = context
-                .db
-                .get_type_index()
-                .get_type_cache(&member.get_id().into())
-                .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown))
-                .as_type()
-                .clone();
-            record_required_fields(required_fields, optional_type, name, decl_type);
-        }
-
-        Some(())
-    }
-
-    Some(required_fields)
-}
-
-fn record_required_fields(
-    required_fields: &mut HashSet<String>,
-    optional_type: &mut HashSet<String>,
-    name: String,
-    decl_type: LuaType,
-) {
-    if name.is_empty() {
-        return;
-    }
-
-    if decl_type.is_nullable() || decl_type.is_any() {
-        optional_type.insert(name);
-        return;
-    }
-    if optional_type.contains(&name) {
-        return;
-    }
-
-    required_fields.insert(name);
 }

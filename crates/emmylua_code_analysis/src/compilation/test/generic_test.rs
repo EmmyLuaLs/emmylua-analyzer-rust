@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod test {
-    use emmylua_parser::LuaClosureExpr;
+    use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaDocType, LuaIndexExpr};
 
     use crate::{
-        DiagnosticCode, LuaSignatureId, LuaType, LuaTypeDeclId, VirtualWorkspace,
-        complete_type_generic_args,
+        DiagnosticCode, DocTypeInferContext, LuaMemberKey, LuaType, LuaTypeDeclId, TypeSubstitutor,
+        VirtualWorkspace, compilation::global_type, complete_type_generic_args,
+        find_members_with_key, infer_compilation_type_property_type,
+        infer_compilation_type_super_types, infer_doc_type, instantiate_type_generic,
     };
 
     #[test]
@@ -1134,6 +1136,136 @@ mod test {
     }
 
     #[test]
+    fn test_class_super_index_expr_semantic_type() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@class Parent<T>
+            ---@field value T
+
+            ---@class Box<T = string>: Parent<T>
+
+            ---@type Box
+            local box
+            BoxValue = box.value
+            "#,
+        );
+
+        let index_expr = ws.get_node::<LuaIndexExpr>(file_id);
+        let semantic_model = ws.analysis.compilation.get_semantic_model(file_id).unwrap();
+        let prefix_expr = index_expr.get_prefix_expr().expect("box prefix expr");
+        let prefix_info = semantic_model
+            .get_semantic_info(prefix_expr.syntax().clone().into())
+            .expect("box semantic info");
+        let info = semantic_model
+            .get_semantic_info(index_expr.syntax().clone().into())
+            .expect("box.value semantic info");
+        let box_type = prefix_info.typ.clone();
+        let parent_properties = ws
+            .analysis
+            .compilation
+            .get_db()
+            .get_summary_db()
+            .file()
+            .properties_for_type(file_id, "Parent".into())
+            .expect("Parent summary properties");
+        let parent_value_property = parent_properties
+            .iter()
+            .find(|property| {
+                matches!(
+                    &property.key,
+                    crate::SalsaPropertyKeySummary::Name(name) if name == "value"
+                )
+            })
+            .expect("Parent.value summary property");
+        let resolved_property_type = parent_value_property.doc_type_offset.and_then(|type_key| {
+            ws.analysis
+                .compilation
+                .get_db()
+                .get_summary_db()
+                .doc()
+                .resolved_type_by_key(file_id, type_key)
+        });
+        let reconstructed_property_type = resolved_property_type.as_ref().and_then(|resolved| {
+            let tree = ws
+                .analysis
+                .compilation
+                .get_db()
+                .get_vfs()
+                .get_syntax_tree(&file_id)?;
+            let doc_type = LuaDocType::cast(
+                resolved
+                    .doc_type
+                    .syntax_id
+                    .to_lua_syntax_id()
+                    .to_node_from_root(&tree.get_red_root())?,
+            )?;
+            Some(infer_doc_type(
+                DocTypeInferContext::new(ws.analysis.compilation.get_db(), file_id)
+                    .with_type_owner_offset(
+                        ws.analysis
+                            .compilation
+                            .get_db()
+                            .get_summary_db()
+                            .doc()
+                            .type_def_by_name(file_id, "Parent")?
+                            .syntax_offset,
+                    ),
+                &doc_type,
+            ))
+        });
+        let parent_value = infer_compilation_type_property_type(
+            ws.analysis.compilation.get_db(),
+            &LuaTypeDeclId::global("Parent"),
+            &LuaMemberKey::Name("value".into()),
+        )
+        .expect("Parent.value property type");
+        let box_super_types = infer_compilation_type_super_types(
+            ws.analysis.compilation.get_db(),
+            &LuaTypeDeclId::global("Box"),
+        )
+        .expect("Box super types");
+        let string_type = ws.ty("string");
+        let instantiated_parent = instantiate_type_generic(
+            ws.analysis.compilation.get_db(),
+            &box_super_types[0],
+            &TypeSubstitutor::from_type_array(vec![string_type]),
+        );
+        let instantiated_parent_members = find_members_with_key(
+            ws.analysis.compilation.get_db(),
+            &instantiated_parent,
+            LuaMemberKey::Name("value".into()),
+            false,
+        )
+        .expect("Parent<string>.value members");
+        let members = find_members_with_key(
+            ws.analysis.compilation.get_db(),
+            &box_type,
+            LuaMemberKey::Name("value".into()),
+            false,
+        )
+        .expect("Box.value members");
+
+        assert_eq!(ws.humanize_type(prefix_info.typ), "Box<string>");
+        assert!(parent_value_property.doc_type_offset.is_some());
+        assert!(resolved_property_type.is_some());
+        assert_eq!(
+            ws.humanize_type(reconstructed_property_type.expect("reconstructed Parent.value type")),
+            "T"
+        );
+        assert_eq!(ws.humanize_type(parent_value), "T");
+        assert_eq!(ws.humanize_type(box_super_types[0].clone()), "Parent<T>");
+        assert_eq!(ws.humanize_type(instantiated_parent), "Parent<string>");
+        assert_eq!(
+            ws.humanize_type(instantiated_parent_members[0].typ.clone()),
+            "string"
+        );
+        assert_eq!(members.len(), 1);
+        assert_eq!(ws.humanize_type(members[0].typ.clone()), "string");
+        assert_eq!(ws.humanize_type(info.typ), "string");
+    }
+
+    #[test]
     fn test_function_generic_defaults_at_call_sites() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1166,6 +1298,37 @@ mod test {
         assert_eq!(ws.humanize_type(explicit_result), "number");
         let inferred_result = ws.expr_ty("InferredResult");
         assert_eq!(ws.humanize_type(inferred_result), "integer");
+    }
+
+    #[test]
+    fn test_function_generic_default_call_expr_semantic_type() {
+        let mut ws = VirtualWorkspace::new();
+        let file_id = ws.def(
+            r#"
+            ---@generic T = string
+            ---@return T
+            function use_default()
+            end
+
+            DefaultResult = use_default()
+            "#,
+        );
+
+        let call_expr = ws.get_node::<LuaCallExpr>(file_id);
+        let semantic_model = ws.analysis.compilation.get_semantic_model(file_id).unwrap();
+        let direct_global_type = global_type(ws.analysis.compilation.get_db(), "use_default")
+            .expect("global function type");
+        let prefix_expr = call_expr.get_prefix_expr().expect("call prefix expr");
+        let prefix_info = semantic_model
+            .get_semantic_info(prefix_expr.syntax().clone().into())
+            .expect("call prefix semantic info");
+        let info = semantic_model
+            .get_semantic_info(call_expr.syntax().clone().into())
+            .expect("call expr semantic info");
+
+        assert_eq!(ws.humanize_type(direct_global_type), "fun() -> T");
+        assert_eq!(ws.humanize_type(prefix_info.typ), "fun() -> T");
+        assert_eq!(ws.humanize_type(info.typ), "string");
     }
 
     #[test]
@@ -1534,6 +1697,7 @@ mod test {
         );
 
         let result_ty = ws.expr_ty("Result");
+
         assert_eq!(ws.humanize_type(result_ty), "boolean");
 
         let extends_unknown_ty = ws.expr_ty("ExtendsUnknownResult");

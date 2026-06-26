@@ -1,19 +1,19 @@
 use hashbrown::HashMap;
 
 use crate::{
-    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeCache, LuaTypeDecl,
-    LuaTypeDeclId, RenderLevel, humanize_type,
+    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDecl, LuaTypeDeclId,
+    RenderLevel, TypeCheckFailReason, TypeCheckResult,
+    compilation::{get_member_by_id, get_members, get_type_by_owner},
+    humanize_type,
     semantic::{
         member::find_members,
         type_check::{
-            intersection_utils::intersection_to_object, type_check_context::TypeCheckContext,
+            check_general_type_compact, intersection_utils::intersection_to_object, is_sub_type_of,
+            sub_type::get_base_type_id, type_check_context::TypeCheckContext,
+            type_check_guard::TypeCheckGuard,
         },
     },
-};
-
-use super::{
-    TypeCheckResult, check_general_type_compact, is_sub_type_of, sub_type::get_base_type_id,
-    type_check_fail_reason::TypeCheckFailReason, type_check_guard::TypeCheckGuard,
+    type_def_alias_origin, type_def_is_alias, type_def_is_enum,
 };
 
 pub fn check_ref_type_compact(
@@ -22,21 +22,8 @@ pub fn check_ref_type_compact(
     compact_type: &LuaType,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let type_decl = context
-        .db
-        .get_type_index()
-        .get_type_decl(source_id)
-        // unreachable!
-        .ok_or(if context.detail {
-            TypeCheckFailReason::TypeNotMatchWithReason(
-                t!("type `%{name}` not found.", name = source_id.get_name()).to_string(),
-            )
-        } else {
-            TypeCheckFailReason::TypeNotMatch
-        })?;
-
-    if type_decl.is_alias() {
-        if let Some(origin_type) = type_decl.get_alias_origin(context.db, None) {
+    if type_def_is_alias(context.db, source_id) {
+        if let Some(origin_type) = type_def_alias_origin(context.db, source_id) {
             let result = check_general_type_compact(
                 context,
                 &origin_type,
@@ -48,11 +35,22 @@ pub fn check_ref_type_compact(
             }
             return result;
         }
-
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
 
-    if type_decl.is_enum() {
+    if type_def_is_enum(context.db, source_id) {
+        let type_decl =
+            context
+                .db
+                .get_type_index()
+                .get_type_decl(source_id)
+                .ok_or(if context.detail {
+                    TypeCheckFailReason::TypeNotMatchWithReason(
+                        t!("type `%{name}` not found.", name = source_id.get_name()).to_string(),
+                    )
+                } else {
+                    TypeCheckFailReason::TypeNotMatch
+                })?;
         check_ref_enum(context, source_id, compact_type, check_guard, type_decl)
     } else {
         check_ref_class(context, source_id, compact_type, check_guard)
@@ -99,8 +97,8 @@ fn check_ref_enum(
             LuaType::from_vec(new_types)
         }
         LuaType::Ref(compact_id) => {
-            if let Some(compact_decl) = context.db.get_type_index().get_type_decl(compact_id)
-                && compact_decl.is_enum()
+            if type_def_is_enum(context.db, compact_id)
+                && let Some(compact_decl) = context.db.get_type_index().get_type_decl(compact_id)
                 && let Some(compact_enum_fields) = compact_decl.get_enum_field_type(context.db)
             {
                 return check_general_type_compact(
@@ -159,8 +157,8 @@ fn check_ref_class(
             }
 
             // `compact`为枚举时的额外处理
-            if let Some(compact_decl) = context.db.get_type_index().get_type_decl(id)
-                && compact_decl.is_enum()
+            if type_def_is_enum(context.db, id)
+                && let Some(compact_decl) = context.db.get_type_index().get_type_decl(id)
                 && let Some(LuaType::Union(enum_fields)) =
                     compact_decl.get_enum_field_type(context.db)
             {
@@ -251,9 +249,7 @@ fn check_ref_type_compact_table(
     table_owner: LuaMemberOwner,
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
-    let member_index = context.db.get_member_index();
-    let table_member_map: HashMap<_, _> = member_index
-        .get_members(&table_owner)
+    let table_member_map: HashMap<_, _> = get_members(context.db, &table_owner)
         .map(|members| {
             members
                 .iter()
@@ -263,18 +259,14 @@ fn check_ref_type_compact_table(
         .unwrap_or_default();
 
     let source_type_members =
-        member_index.get_members(&LuaMemberOwner::Type(source_type_id.clone()));
+        get_members(context.db, &LuaMemberOwner::Type(source_type_id.clone()));
     let Some(source_type_members) = source_type_members else {
         return Ok(()); // empty member donot need check
     };
 
     for source_member in source_type_members {
-        let source_member_type = context
-            .db
-            .get_type_index()
-            .get_type_cache(&source_member.get_id().into())
-            .unwrap_or(&LuaTypeCache::InferType(LuaType::Any))
-            .as_type();
+        let source_member_type =
+            get_type_by_owner(context.db, &source_member.get_id().into()).unwrap_or(LuaType::Any);
         let key = source_member.get_key();
 
         if context.is_key_checked(key) {
@@ -283,20 +275,16 @@ fn check_ref_type_compact_table(
 
         match table_member_map.get(key) {
             Some(table_member_id) => {
-                let table_member = member_index
-                    .get_member(table_member_id)
+                let table_member = get_member_by_id(context.db, table_member_id)
                     .ok_or(TypeCheckFailReason::TypeNotMatch)?;
-                let table_member_type = context
-                    .db
-                    .get_type_index()
-                    .get_type_cache(&table_member.get_id().into())
-                    .unwrap_or(&LuaTypeCache::InferType(LuaType::Any))
-                    .as_type();
+                let table_member_type =
+                    get_type_by_owner(context.db, &table_member.get_id().into())
+                        .unwrap_or(LuaType::Any);
 
                 if let Err(err) = check_general_type_compact(
                     context,
-                    source_member_type,
-                    table_member_type,
+                    &source_member_type,
+                    &table_member_type,
                     check_guard.next_level()?,
                 ) && err.is_type_not_match()
                 {
@@ -309,8 +297,9 @@ fn check_ref_type_compact_table(
                             "member %{name} type not match, expect %{expect}, got %{got}",
                             name = key.to_path(),
                             expect =
-                                humanize_type(context.db, source_member_type, RenderLevel::Simple),
-                            got = humanize_type(context.db, table_member_type, RenderLevel::Simple)
+                                humanize_type(context.db, &source_member_type, RenderLevel::Simple),
+                            got =
+                                humanize_type(context.db, &table_member_type, RenderLevel::Simple)
                         )
                         .to_string(),
                     ));

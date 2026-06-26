@@ -1,8 +1,3 @@
-use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaBinaryExpr, LuaChunk, LuaExpr, LuaIndexMemberExpr,
-    LuaLiteralToken, UnaryOperator,
-};
-
 use crate::{
     DbIndex, FlowNode, FlowTree, InferFailReason, LuaInferCache, LuaType, TypeOps,
     semantic::infer::{
@@ -19,6 +14,10 @@ use crate::{
         },
         try_infer_expr_no_flow,
     },
+};
+use emmylua_parser::{
+    BinaryOperator, LuaAstNode, LuaBinaryExpr, LuaChunk, LuaExpr, LuaIndexMemberExpr,
+    LuaLiteralToken, UnaryOperator,
 };
 
 #[allow(clippy::too_many_arguments)]

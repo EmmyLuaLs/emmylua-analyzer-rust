@@ -1168,11 +1168,9 @@ fn check_ref_is_require_def(
     ref_id: &LuaTypeDeclId,
 ) -> Option<bool> {
     let module_info = parse_require_module_info(semantic_model, decl)?;
-    match &module_info.export_type {
-        Some(ty) => match ty {
-            LuaType::Def(id) => Some(id == ref_id),
-            _ => Some(false),
-        },
+    match semantic_model.resolve_module_export_type(module_info.file_id) {
+        Some(LuaType::Def(id)) => Some(&id == ref_id),
+        Some(_) => Some(false),
         None => None,
     }
 }

@@ -1,9 +1,9 @@
-mod false_or_nil_type;
-
 use crate::{
     DbIndex, LuaInstanceType, LuaIntersectionType, LuaType, TypeOps, get_real_type,
     semantic::type_check::is_sub_type_of,
 };
+mod false_or_nil_type;
+
 pub use false_or_nil_type::{narrow_false_or_nil, remove_false_or_nil};
 
 fn is_class_def(db: &DbIndex, declared_type: &LuaType) -> bool {

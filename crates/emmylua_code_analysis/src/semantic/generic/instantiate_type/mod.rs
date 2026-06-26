@@ -459,12 +459,11 @@ fn instantiate_generic_type(
     };
 
     if !context.substitutor.check_recursion(&type_decl_id)
-        && let Some(type_decl) = context.db.get_type_index().get_type_decl(&type_decl_id)
-        && type_decl.is_alias()
+        && type_def_is_alias(context.db, &type_decl_id)
     {
         let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
-        if let Some(origin) = type_decl.get_alias_origin(context.db, Some(&new_substitutor)) {
-            return origin;
+        if let Some(origin) = type_def_alias_origin(context.db, &type_decl_id) {
+            return instantiate_type_generic(context.db, &origin, &new_substitutor);
         }
     }
 
@@ -538,7 +537,7 @@ fn instantiate_signature(
         return LuaType::Signature(*signature_id);
     };
 
-    if let Some(signature) = context.db.get_signature_index().get(signature_id) {
+    if let Some(signature) = find_signature_by_id(context.db, &signature_id) {
         let origin_type = {
             let fake_doc_function = signature.to_doc_func_type();
             instantiate_doc_function_with_context(context, &fake_doc_function)
@@ -766,11 +765,9 @@ fn collect_mapped_key_atoms(key_ty: &LuaType, acc: &mut Vec<LuaType>) {
 }
 
 pub(super) fn get_default_constructor(db: &DbIndex, decl_id: &LuaTypeDeclId) -> Option<LuaType> {
-    let ids = db
-        .get_operator_index()
-        .get_operators(&decl_id.clone().into(), LuaOperatorMetaMethod::Call)?;
+    let ids = get_operators(db, &decl_id.clone().into(), LuaOperatorMetaMethod::Call)?;
 
     let id = ids.first()?;
-    let operator = db.get_operator_index().get_operator(id)?;
+    let operator = get_operator(db, id)?;
     Some(operator.get_operator_func(db))
 }

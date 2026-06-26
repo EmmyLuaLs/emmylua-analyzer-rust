@@ -1,16 +1,16 @@
-use emmylua_parser::{LuaAstNode, LuaExpr, LuaIndexExpr, LuaNameExpr};
-
 use super::{InferFailReason, InferResult};
 use crate::{
-    LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, TypeOps,
+    CompilationDeclTree, LuaDecl, LuaDeclExtra, LuaInferCache, LuaMemberId, LuaType, LuaTypeNode,
+    TypeOps,
     db_index::{DbIndex, LuaDeclOrMemberId},
-    infer_node_semantic_decl,
+    find_compilation_decl_by_position, find_decl_by_id, find_signature_by_id, get_file_decl_tree,
+    get_member_item_by_member_id, global_type, infer_compilation_decl_type,
     semantic::{
         infer::narrow::{VarRefId, get_var_ref_type, infer_expr_narrow_type},
         semantic_info::resolve_global_decl_id,
     },
 };
+use emmylua_parser::{LuaAstNode, LuaExpr, LuaNameExpr};
 
 pub fn infer_name_expr(
     db: &DbIndex,
@@ -26,22 +26,53 @@ pub fn infer_name_expr(
     }
 
     let file_id = cache.get_file_id();
-    let references_index = db.get_reference_index();
-    let range = name_expr.get_range();
-    let file_ref = references_index
+    let decl_id = db
+        .get_reference_index()
         .get_local_reference(&file_id)
-        .ok_or(InferFailReason::None)?;
-    let decl_id = file_ref.get_decl_id(&range);
+        .and_then(|file_ref| file_ref.get_decl_id(&name_expr.get_range()))
+        .or_else(|| find_summary_local_decl_id(db, file_id, name, name_expr.get_position()));
     if let Some(decl_id) = decl_id {
-        infer_var_ref_type(
+        let result = infer_var_ref_type(
             db,
             cache,
             LuaExpr::NameExpr(name_expr),
             VarRefId::VarRef(decl_id),
-        )
+        );
+        match result {
+            Ok(typ) if !typ.is_unknown() => Ok(typ),
+            Ok(_) | Err(InferFailReason::UnResolveDeclType(_) | InferFailReason::None) => {
+                if let Some(summary_decl) =
+                    find_compilation_decl_by_position(db, decl_id.file_id, decl_id.position)
+                    && let Some(summary_type) = infer_compilation_decl_type(db, &summary_decl)
+                {
+                    return Ok(summary_type);
+                }
+
+                result
+            }
+            Err(_) => result,
+        }
     } else {
+        if let Some(summary_type) =
+            infer_summary_local_decl_type(db, file_id, name, name_expr.get_position())
+        {
+            return Ok(summary_type);
+        }
+
         infer_global_type(db, name)
     }
+}
+
+fn infer_summary_local_decl_type(
+    db: &DbIndex,
+    file_id: crate::FileId,
+    name: &str,
+    position: rowan::TextSize,
+) -> Option<LuaType> {
+    let decl_tree = CompilationDeclTree::new(db.get_summary_db().file().decl_tree(file_id)?);
+    let decl = decl_tree.find_local_decl(name, position)?;
+    find_compilation_decl_by_position(db, file_id, decl.id.as_position())
+        .and_then(|summary_decl| infer_compilation_decl_type(db, &summary_decl))
 }
 
 fn infer_self(db: &DbIndex, cache: &mut LuaInferCache, name_expr: LuaNameExpr) -> InferResult {
@@ -82,10 +113,12 @@ pub fn get_name_expr_var_ref_id(
         }
         _ => {
             let file_id = cache.get_file_id();
-            let references_index = db.get_reference_index();
-            let range = name_expr.get_range();
-            let file_ref = references_index.get_local_reference(&file_id)?;
-            if let Some(decl_id) = file_ref.get_decl_id(&range) {
+            if let Some(decl_id) = db
+                .get_reference_index()
+                .get_local_reference(&file_id)
+                .and_then(|file_ref| file_ref.get_decl_id(&name_expr.get_range()))
+                .or_else(|| find_summary_local_decl_id(db, file_id, name, name_expr.get_position()))
+            {
                 return Some(VarRefId::VarRef(decl_id));
             }
 
@@ -107,7 +140,7 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
 
     let mut colon_define = false;
     // find local annotation
-    if let Some(signature) = db.get_signature_index().get(&signature_id) {
+    if let Some(signature) = find_signature_by_id(db, &signature_id) {
         colon_define = signature.is_colon_define;
         if let Some(param_info) = signature.get_param_info_by_id(param_idx) {
             let mut typ = param_info.type_ref.clone();
@@ -137,10 +170,7 @@ pub fn infer_param(db: &DbIndex, decl: &LuaDecl) -> InferResult {
 }
 
 pub fn find_decl_member_type(db: &DbIndex, member_id: LuaMemberId) -> InferResult {
-    let item = db
-        .get_member_index()
-        .get_member_item_by_member_id(member_id)
-        .ok_or(InferFailReason::None)?;
+    let item = get_member_item_by_member_id(db, member_id).ok_or(InferFailReason::None)?;
     item.resolve_type(db)
 }
 
@@ -185,7 +215,7 @@ fn find_param_type_from_type(
 ) -> Option<LuaType> {
     match source_type {
         LuaType::Signature(signature_id) => {
-            let signature = db.get_signature_index().get(&signature_id)?;
+            let signature = find_signature_by_id(db, &signature_id)?;
             let adjusted_idx =
                 adjust_param_idx(param_idx, current_colon_define, signature.is_colon_define);
 
@@ -270,7 +300,7 @@ fn find_param_type_from_union(
 ) -> Option<LuaType> {
     match source_type {
         LuaType::Signature(signature_id) => {
-            let signature = db.get_signature_index().get(&signature_id)?;
+            let signature = find_signature_by_id(db, &signature_id)?;
             if !signature.param_docs.is_empty() {
                 return None;
             }
@@ -345,119 +375,79 @@ fn find_param_type_from_union(
 }
 
 pub fn infer_global_type(db: &DbIndex, name: &str) -> InferResult {
-    let decl_ids = db
-        .get_global_index()
-        .get_global_decl_ids(name)
-        .ok_or(InferFailReason::None)?;
-    if decl_ids.len() == 1 {
-        let id = decl_ids[0];
-        let typ = match db.get_type_index().get_type_cache(&id.into()) {
-            Some(type_cache) => type_cache.as_type().clone(),
-            None => return Err(InferFailReason::UnResolveDeclType(id)),
-        };
-        // todo: 不置为 Unknown 有可能引用泛型函数中的泛型参数导致泄露, 但这样会导致丢失类型, 我们可能需要更好的办法去处理
-        return if !typ.is_generic() && typ.contain_tpl() {
-            // This decl is located in a generic function,
-            // and is type contains references to generic variables
-            // of this function.
-            Ok(LuaType::Unknown)
-        } else {
-            Ok(typ)
-        };
+    let typ = global_type(db, name).ok_or(InferFailReason::None)?;
+    if matches!(typ, LuaType::DocFunction(_) | LuaType::Signature(_))
+        || typ.any_type(LuaType::is_function)
+    {
+        Ok(typ)
+    } else if !typ.is_generic() && typ.contain_tpl() {
+        Ok(LuaType::Unknown)
+    } else {
+        Ok(typ)
+    }
+}
+
+fn find_summary_local_decl_id(
+    db: &DbIndex,
+    file_id: crate::FileId,
+    name: &str,
+    position: rowan::TextSize,
+) -> Option<crate::LuaDeclId> {
+    let decl_tree = CompilationDeclTree::new(db.get_summary_db().file().decl_tree(file_id)?);
+    let decl = decl_tree.find_local_decl(name, position)?;
+    let decl_id = crate::LuaDeclId::new(file_id, decl.id.as_position());
+    let decl = find_decl_by_id(db, &decl_id)?;
+    if decl.is_global() {
+        return None;
     }
 
-    let mut sorted_decl_ids = decl_ids.to_vec();
-    sorted_decl_ids.sort_by(|a, b| {
-        let a_is_std = db.get_module_index().is_std(&a.file_id);
-        let b_is_std = db.get_module_index().is_std(&b.file_id);
-        b_is_std.cmp(&a_is_std)
-    });
-
-    // TODO: 或许应该联合所有定义的类型?
-    let mut valid_type = LuaType::Never;
-    let mut last_resolve_reason = InferFailReason::None;
-    for decl_id in sorted_decl_ids {
-        let decl_type_cache = db.get_type_index().get_type_cache(&decl_id.into());
-        match decl_type_cache {
-            Some(type_cache) => {
-                let typ = type_cache.as_type();
-
-                if typ.contain_tpl() {
-                    // This decl is located in a generic function,
-                    // and is type contains references to generic variables
-                    // of this function.
-                    continue;
-                }
-
-                if typ.is_def() || typ.is_ref() {
-                    return Ok(typ.clone());
-                }
-
-                if typ.is_function() {
-                    valid_type = TypeOps::Union.apply(db, &valid_type, typ);
-                }
-
-                if type_cache.is_table() {
-                    valid_type = typ.clone();
-                }
-            }
-            None => {
-                last_resolve_reason = InferFailReason::UnResolveDeclType(decl_id);
-            }
-        }
-    }
-
-    if !valid_type.is_never() {
-        return Ok(valid_type);
-    }
-
-    Err(last_resolve_reason)
+    Some(decl_id)
 }
 
 pub fn find_self_decl_or_member_id(
     db: &DbIndex,
     cache: &mut LuaInferCache,
-    name_expr: &LuaNameExpr,
+    _name_expr: &LuaNameExpr,
 ) -> Option<LuaDeclOrMemberId> {
     let file_id = cache.get_file_id();
-    let tree = db.get_decl_index().get_decl_tree(&file_id)?;
+    let _tree = get_file_decl_tree(db, file_id)?;
+    todo!()
+    // let self_decl = tree.find_local_decl("self", name_expr.get_position())?;
+    // if !self_decl.is_implicit_self() {
+    //     return Some(LuaDeclOrMemberId::Decl(self_decl.get_id()));
+    // }
 
-    let self_decl = tree.find_local_decl("self", name_expr.get_position())?;
-    if !self_decl.is_implicit_self() {
-        return Some(LuaDeclOrMemberId::Decl(self_decl.get_id()));
-    }
+    // let root = name_expr.get_root();
+    // let syntax_id = self_decl.get_syntax_id();
+    // let index_token = syntax_id.to_token_from_root(&root)?;
+    // let index_expr = LuaIndexExpr::cast(index_token.parent()?)?;
+    // let prefix_expr = index_expr.get_prefix_expr()?;
 
-    let root = name_expr.get_root();
-    let syntax_id = self_decl.get_syntax_id();
-    let index_token = syntax_id.to_token_from_root(&root)?;
-    let index_expr = LuaIndexExpr::cast(index_token.parent()?)?;
-    let prefix_expr = index_expr.get_prefix_expr()?;
+    // match prefix_expr {
+    //     LuaExpr::NameExpr(prefix_name) => {
+    //         let name = prefix_name.get_name_text()?;
+    //         let decl = tree.find_local_decl(&name, prefix_name.get_position());
+    //         if let Some(decl) = decl {
+    //             return Some(LuaDeclOrMemberId::Decl(decl.get_id()));
+    //         }
 
-    match prefix_expr {
-        LuaExpr::NameExpr(prefix_name) => {
-            let name = prefix_name.get_name_text()?;
-            let decl = tree.find_local_decl(&name, prefix_name.get_position());
-            if let Some(decl) = decl {
-                return Some(LuaDeclOrMemberId::Decl(decl.get_id()));
-            }
+    //         let id = resolve_global_decl_id(db, cache, &name, Some(&prefix_name))?;
+    //         Some(LuaDeclOrMemberId::Decl(id))
+    //     }
+    //     LuaExpr::IndexExpr(prefix_index) => {
+    //         let semantic_id = infer_node_semantic_decl(
+    //             db,
+    //             cache,
+    //             prefix_index.syntax().clone(),
+    //             SemanticDeclLevel::NoTrace,
+    //         )?;
 
-            let id = resolve_global_decl_id(db, cache, &name, Some(&prefix_name))?;
-            Some(LuaDeclOrMemberId::Decl(id))
-        }
-        LuaExpr::IndexExpr(prefix_index) => {
-            let semantic_id = infer_node_semantic_decl(
-                db,
-                cache,
-                prefix_index.syntax().clone(),
-                SemanticDeclLevel::NoTrace,
-            )?;
-
-            match semantic_id {
-                LuaSemanticDeclId::Member(member_id) => Some(LuaDeclOrMemberId::Member(member_id)),
-                LuaSemanticDeclId::LuaDecl(decl_id) => Some(LuaDeclOrMemberId::Decl(decl_id)),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
+    //         match semantic_id {
+    //             LuaSemanticDeclId::Member(member_id) => Some(LuaDeclOrMemberId::Member(member_id)),
+    //             LuaSemanticDeclId::LuaDecl(decl_id) => Some(LuaDeclOrMemberId::Decl(decl_id)),
+    //             _ => None,
+    //         }
+    //     }
+    //     _ => None,
+    // }
 }

@@ -2,7 +2,9 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
     LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, RenderLevel,
-    TypeCheckFailReason, TypeCheckResult, humanize_type,
+    TypeCheckFailReason, TypeCheckResult,
+    compilation::{get_member_item, get_members},
+    humanize_type,
     semantic::{
         member::find_members,
         type_check::{
@@ -182,12 +184,11 @@ fn check_object_type_compact_table_const(
 ) -> TypeCheckResult {
     let db = context.db;
     let member_owner = LuaMemberOwner::Element(table_range.clone());
-    let member_index = db.get_member_index();
     let source_fields = source_object.get_fields();
 
     // 检查名称字段
     for (key, source_type) in source_fields {
-        let member_item = match member_index.get_member_item(&member_owner, key) {
+        let member_item = match get_member_item(db, &member_owner, &key) {
             Some(member_item) => member_item,
             None => {
                 if source_type.is_nullable() || source_type.is_any() {
@@ -214,10 +215,10 @@ fn check_object_type_compact_table_const(
     }
 
     // 检查索引访问字段
-    let members = member_index.get_members(&member_owner).unwrap_or_default();
+    let members = get_members(db, &member_owner).unwrap_or_default();
     for (key_type, source_type) in source_object.get_index_access() {
         for member in &members {
-            let member = *member;
+            // let member = *member;
             if source_fields.contains_key(member.get_key()) {
                 continue;
             }

@@ -1,12 +1,10 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use emmylua_code_analysis::EmmyLuaAnalysis;
-
 use crate::context::lsp_features::LspFeatures;
 
 use super::{
-    client::ClientProxy, file_diagnostic::FileDiagnostic, status_bar::StatusBar,
+    AnalysisLock, client::ClientProxy, file_diagnostic::FileDiagnostic, status_bar::StatusBar,
     workspace_manager::WorkspaceManager,
 };
 
@@ -20,7 +18,7 @@ impl ServerContextSnapshot {
         Self { inner }
     }
 
-    pub fn analysis(&self) -> &RwLock<EmmyLuaAnalysis> {
+    pub fn analysis(&self) -> &AnalysisLock {
         &self.inner.analysis
     }
 
@@ -46,7 +44,7 @@ impl ServerContextSnapshot {
 }
 
 pub struct ServerContextInner {
-    pub analysis: Arc<RwLock<EmmyLuaAnalysis>>,
+    pub analysis: Arc<AnalysisLock>,
     pub client: Arc<ClientProxy>,
     pub file_diagnostic: Arc<FileDiagnostic>,
     pub workspace_manager: Arc<RwLock<WorkspaceManager>>,
