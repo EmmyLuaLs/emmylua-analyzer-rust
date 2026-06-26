@@ -1001,6 +1001,49 @@ return t
     }
 
     #[test]
+    fn test_optional_alias_field_rejects_table_literal_regardless_of_declaration_order() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@alias B true?
+
+            ---@class A
+            ---@field field B
+
+            ---@type A
+            local var = { field = {} }
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@alias B true?
+
+            ---@class A
+            ---@field field? B
+
+            ---@type A
+            local var = { field = {} }
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@field field? B
+
+            ---@alias B true?
+
+            ---@type A
+            local var = { field = {} }
+        "#
+        ));
+    }
+
+    #[test]
     fn test_issue_525() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
