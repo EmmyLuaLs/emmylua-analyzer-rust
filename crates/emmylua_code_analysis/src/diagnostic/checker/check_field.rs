@@ -272,9 +272,9 @@ pub(super) fn is_valid_member(
                             {
                                 return Some(());
                             }
-                        } else if typ.is_integer() && key_types.iter().any(|typ| typ.is_integer()) {
-                            return Some(());
-                        } else if key_types.iter().any(|kt| kt == typ) {
+                        } else if (typ.is_integer() && key_types.iter().any(|typ| typ.is_integer()))
+                            || key_types.iter().any(|kt| kt == typ)
+                        {
                             return Some(());
                         }
                     }
