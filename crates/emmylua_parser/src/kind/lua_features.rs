@@ -32,6 +32,7 @@ pub enum LuaFeatures {
     // luajit3.0
     ShiftRightArithmetic,   // "~>>"
     Ternary,                // "a ? b : c"
+    TernaryColon,           // "?:"
     SafeNavigationOperator, // "?."
     NilCoalescingOperator,  // "??"
 }

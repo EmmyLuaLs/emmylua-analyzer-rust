@@ -437,6 +437,32 @@ impl<'a> LuaLexer<'a> {
                 self.reader.bump();
                 LuaTokenKind::TkAt
             }
+            '?' => {
+                self.reader.bump();
+                match self.reader.current_char() {
+                    '?' if self.support(LuaFeatures::NilCoalescingOperator) => {
+                        self.reader.bump();
+                        LuaTokenKind::TkNilCoalescing
+                    }
+                    '.' if self.support(LuaFeatures::SafeNavigationOperator) => {
+                        self.reader.bump();
+                        LuaTokenKind::TkSafeNavigation
+                    }
+                    ch => {
+                        if ch == ':' && self.support(LuaFeatures::TernaryColon) {
+                            self.reader.bump();
+                            return LuaTokenKind::TkTernaryColon;
+                        }
+
+                        if self.support(LuaFeatures::Ternary) {
+                            return LuaTokenKind::TkTernary;
+                        }
+
+                        self.error(|| t!("ternary operator is not supported"));
+                        LuaTokenKind::TkUnknown
+                    }
+                }
+            }
             _ if self.reader.is_eof() => LuaTokenKind::TkEof,
             ch if is_name_start(ch) => {
                 self.reader.bump();

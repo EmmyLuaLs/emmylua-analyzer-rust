@@ -59,7 +59,7 @@ pub enum LuaTokenKind {
     TkDbColon,    // ::
     TkSemicolon,  // ;
 
-    // Non-standard assignment operators
+    // extension assignment operators
     TkPlusAssign,        // +=
     TkMinusAssign,       // -=
     TkStarAssign,        // *=
@@ -71,6 +71,11 @@ pub enum LuaTokenKind {
     TkAmpAssign,         // &=
     TkShiftLeftAssign,   // <<=
     TkShiftRightAssign,  // >>=
+
+    TkNilCoalescing,  // ??
+    TkSafeNavigation, // ?.
+    TkTernary,        // ?
+    TkTernaryColon,   // ?:
 
     TkLeftBracket,  // [
     TkRightBracket, // ]
