@@ -47,6 +47,9 @@ pub enum LuaSyntaxKind {
     SetmetatableCallExpr, // setmetatable(a, b)
     IndexExpr,
     NameExpr,
+    TernaryExpr,
+    SafeIndexExpr,
+    NilCoalescingExpr,
 
     // other
     LocalName,

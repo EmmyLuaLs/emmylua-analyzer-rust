@@ -174,6 +174,7 @@ impl LuaOpKind {
             LuaTokenKind::TkNe => BinaryOperator::OpNe,
             LuaTokenKind::TkAnd => BinaryOperator::OpAnd,
             LuaTokenKind::TkOr => BinaryOperator::OpOr,
+            LuaTokenKind::TkNilCoalescing => BinaryOperator::OpNilCoalescing,
             _ => BinaryOperator::OpNop,
         }
     }

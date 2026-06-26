@@ -52,7 +52,8 @@ pub(crate) fn space_around_binary_op(op: BinaryOperator, config: &LuaFormatConfi
         | BinaryOperator::OpBXor
         | BinaryOperator::OpShl
         | BinaryOperator::OpShr
-        | BinaryOperator::OpNop => SpaceRule::Space,
+        | BinaryOperator::OpNop
+        | BinaryOperator::OpNilCoalescing => SpaceRule::Space,
         BinaryOperator::OpConcat => {
             if config.spacing.space_around_concat_operator {
                 SpaceRule::Space

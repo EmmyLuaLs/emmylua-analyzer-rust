@@ -32,10 +32,11 @@ pub enum BinaryOperator {
     OpNe,     // ~=
     OpAnd,    // and
     OpOr,     // or
+    OpNilCoalescing, // ??
     OpNop,    // (empty)
 }
 
-pub const PRIORITY: [PriorityTable; 21] = [
+pub const PRIORITY: [PriorityTable; 23] = [
     PriorityTable {
         left: 10,
         right: 10,
@@ -78,6 +79,8 @@ pub const PRIORITY: [PriorityTable; 21] = [
     PriorityTable { left: 3, right: 3 }, // OPR_GE
     PriorityTable { left: 2, right: 2 }, // OPR_AND
     PriorityTable { left: 1, right: 1 }, // OPR_OR
+    PriorityTable { left: 1, right: 1 }, // OPR_NIL_COALESCING
+    PriorityTable { left: 0, right: 0 }, // OPR_NOP (unreachable)
 ];
 
 impl BinaryOperator {
