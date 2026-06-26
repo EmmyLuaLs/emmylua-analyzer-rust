@@ -2,10 +2,11 @@
 mod tests {
     use crate::text::Reader;
     use crate::{
-        LuaNonStdSymbol,
+        LuaFeatures,
         lexer::{LexerConfig, LuaLexer},
         parser_error::LuaParseError,
     };
+    use crate::{LuaFeaturesSet, LuaLanguageLevel};
 
     #[test]
     fn test_all_lua_token() {
@@ -1118,28 +1119,28 @@ LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 2036, leng
         continue
         "#;
 
-        let mut config = LexerConfig::default();
-        config.non_std_symbols.extends(vec![
-            LuaNonStdSymbol::DoubleSlash,
-            LuaNonStdSymbol::SlashStar,
-            LuaNonStdSymbol::Backtick,
-            LuaNonStdSymbol::PlusAssign,
-            LuaNonStdSymbol::MinusAssign,
-            LuaNonStdSymbol::StarAssign,
-            LuaNonStdSymbol::SlashAssign,
-            LuaNonStdSymbol::PercentAssign,
-            LuaNonStdSymbol::CaretAssign,
-            LuaNonStdSymbol::DoubleSlashAssign,
-            LuaNonStdSymbol::PipeAssign,
-            LuaNonStdSymbol::AmpAssign,
-            LuaNonStdSymbol::ShiftLeftAssign,
-            LuaNonStdSymbol::ShiftRightAssign,
-            LuaNonStdSymbol::DoublePipe,
-            LuaNonStdSymbol::DoubleAmp,
-            LuaNonStdSymbol::Exclamation,
-            LuaNonStdSymbol::NotEqual,
-            LuaNonStdSymbol::Continue,
+        let set: LuaFeaturesSet = LuaFeaturesSet::new(vec![
+            LuaFeatures::DoubleSlash,
+            LuaFeatures::SlashStar,
+            LuaFeatures::Backtick,
+            LuaFeatures::PlusAssign,
+            LuaFeatures::MinusAssign,
+            LuaFeatures::StarAssign,
+            LuaFeatures::SlashAssign,
+            LuaFeatures::PercentAssign,
+            LuaFeatures::CaretAssign,
+            LuaFeatures::DoubleSlashAssign,
+            LuaFeatures::PipeAssign,
+            LuaFeatures::AmpAssign,
+            LuaFeatures::ShiftLeftAssign,
+            LuaFeatures::ShiftRightAssign,
+            LuaFeatures::DoublePipe,
+            LuaFeatures::DoubleAmp,
+            LuaFeatures::Exclamation,
+            LuaFeatures::NotEqual,
+            LuaFeatures::Continue,
         ]);
+        let config = LexerConfig::new_with_extended_features(LuaLanguageLevel::Lua55, set);
 
         let mut errors: Vec<LuaParseError> = Vec::new();
         let mut lexer = LuaLexer::new(Reader::new(text), config, Some(&mut errors));

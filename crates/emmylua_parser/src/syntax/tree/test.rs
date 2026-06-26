@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use crate::{
-        LuaAstNode, LuaLanguageLevel, LuaNonStdSymbolSet, LuaParser, ParserConfig, set_locale,
+        LuaAstNode, LuaFeaturesSet, LuaLanguageLevel, LuaParser, ParserConfig, set_locale,
     };
     // use std::time::Instant;
     use std::{collections::HashMap, thread};
@@ -42,7 +42,7 @@ end
             LuaLanguageLevel::Lua51,
             None,
             HashMap::new(),
-            LuaNonStdSymbolSet::new(),
+            LuaFeaturesSet::default(),
             false,
         );
         let tree = LuaParser::parse(code, parse_config);
@@ -100,7 +100,7 @@ local t
             LuaLanguageLevel::Lua54,
             None,
             HashMap::new(),
-            LuaNonStdSymbolSet::new(),
+            LuaFeaturesSet::default(),
             false,
         );
         let t = LuaParser::parse(code, c);
@@ -122,7 +122,7 @@ end"#;
             LuaLanguageLevel::Lua54,
             None,
             HashMap::new(),
-            LuaNonStdSymbolSet::new(),
+            LuaFeaturesSet::default(),
             false,
         );
         let t = LuaParser::parse(code, c);

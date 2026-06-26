@@ -1,5 +1,5 @@
+mod lua_features;
 mod lua_language_level;
-mod lua_non_std_symbol;
 mod lua_operator_kind;
 mod lua_syntax_kind;
 mod lua_token_kind;
@@ -7,8 +7,8 @@ mod lua_type_operator_kind;
 mod lua_version;
 mod lua_visibility_kind;
 
+pub use lua_features::{LuaFeatures, LuaFeaturesSet};
 pub use lua_language_level::LuaLanguageLevel;
-pub use lua_non_std_symbol::{LuaNonStdSymbol, LuaNonStdSymbolSet};
 pub use lua_operator_kind::{BinaryOperator, UNARY_PRIORITY, UnaryOperator};
 pub use lua_syntax_kind::LuaSyntaxKind;
 pub use lua_token_kind::LuaTokenKind;

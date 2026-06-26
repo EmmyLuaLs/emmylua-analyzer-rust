@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rowan::NodeCache;
 
-use crate::{LuaNonStdSymbolSet, kind::LuaLanguageLevel, lexer::LexerConfig};
+use crate::{LuaFeaturesSet, kind::LuaLanguageLevel, lexer::LexerConfig};
 
 pub struct ParserConfig<'cache> {
     pub level: LuaLanguageLevel,
@@ -17,15 +17,12 @@ impl<'cache> ParserConfig<'cache> {
         level: LuaLanguageLevel,
         node_cache: Option<&'cache mut NodeCache>,
         special_like: HashMap<String, SpecialFunction>,
-        non_std_symbols: LuaNonStdSymbolSet,
+        ext_features: LuaFeaturesSet,
         enable_emmylua_doc: bool,
     ) -> Self {
         Self {
             level,
-            lexer_config: LexerConfig {
-                language_level: level,
-                non_std_symbols,
-            },
+            lexer_config: LexerConfig::new_with_extended_features(level, ext_features),
             node_cache,
             special_like,
             enable_emmylua_doc,
@@ -69,10 +66,7 @@ impl<'cache> ParserConfig<'cache> {
     pub fn with_level(level: LuaLanguageLevel) -> Self {
         Self {
             level,
-            lexer_config: LexerConfig {
-                language_level: level,
-                non_std_symbols: LuaNonStdSymbolSet::new(),
-            },
+            lexer_config: LexerConfig::new(level),
             node_cache: None,
             special_like: HashMap::new(),
             enable_emmylua_doc: true,
@@ -84,10 +78,7 @@ impl Default for ParserConfig<'_> {
     fn default() -> Self {
         Self {
             level: LuaLanguageLevel::Lua55,
-            lexer_config: LexerConfig {
-                language_level: LuaLanguageLevel::Lua55,
-                non_std_symbols: LuaNonStdSymbolSet::new(),
-            },
+            lexer_config: LexerConfig::new(LuaLanguageLevel::Lua55),
             node_cache: None,
             special_like: HashMap::new(),
             enable_emmylua_doc: true,

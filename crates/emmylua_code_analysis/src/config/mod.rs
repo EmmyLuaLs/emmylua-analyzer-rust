@@ -15,7 +15,7 @@ pub use configs::{
     EmmyrcSemanticToken, EmmyrcSignature, EmmyrcStrict, EmmyrcWorkspace, EmmyrcWorkspaceModuleMap,
     EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem,
 };
-use emmylua_parser::{LuaLanguageLevel, LuaNonStdSymbolSet, ParserConfig, SpecialFunction};
+use emmylua_parser::{LuaFeaturesSet, LuaLanguageLevel, ParserConfig, SpecialFunction};
 use rowan::NodeCache;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -79,7 +79,7 @@ impl Emmyrc {
         for name in self.runtime.require_like_function.iter() {
             special_like.insert(name.clone(), SpecialFunction::Require);
         }
-        let mut non_std_symbols = LuaNonStdSymbolSet::new();
+        let mut non_std_symbols = LuaFeaturesSet::default();
         for symbol in self.runtime.nonstandard_symbol.iter() {
             non_std_symbols.add((*symbol).into());
         }
