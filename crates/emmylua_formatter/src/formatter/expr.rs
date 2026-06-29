@@ -343,7 +343,7 @@ fn format_index_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaIndexExpr
     let indent_tail = matches!(
         access_docs.first(),
         Some(DocIR::SyntaxToken(
-            LuaTokenKind::TkDot | LuaTokenKind::TkColon
+            LuaTokenKind::TkDot | LuaTokenKind::TkColon | LuaTokenKind::TkSafeNavigation
         ))
     );
 
@@ -2347,22 +2347,34 @@ fn format_ternary_expr(
     plan: &FormatPlan,
     expr: &LuaTernaryExpr,
 ) -> Vec<DocIR> {
+    if node_has_direct_comment_child(expr.syntax()) {
+        return vec![ir::source_node_trimmed(expr.syntax().clone())];
+    }
+
     let Some(cond_expr) = expr.get_condition_expr() else {
         return vec![ir::source_node(expr.syntax().clone())];
     };
     let Some((true_expr, false_expr)) = expr.get_true_false_exprs() else {
         return vec![ir::source_node(expr.syntax().clone())];
     };
-    let mut docs = format_expr(ctx, plan, &cond_expr);
-    docs.push(ir::space());
-    docs.push(ir::syntax_token(LuaTokenKind::TkTernary));
-    docs.push(ir::space());
-    docs.extend(format_expr(ctx, plan, &true_expr));
-    docs.push(ir::space());
-    docs.push(ir::syntax_token(LuaTokenKind::TkColon));
-    docs.push(ir::space());
-    docs.extend(format_expr(ctx, plan, &false_expr));
-    docs
+
+    let cond_docs = format_expr(ctx, plan, &cond_expr);
+    let true_docs = format_expr(ctx, plan, &true_expr);
+    let false_docs = format_expr(ctx, plan, &false_expr);
+
+    vec![ir::group(vec![
+        ir::list(cond_docs),
+        ir::indent(vec![
+            continuation_break_ir(true),
+            ir::syntax_token(LuaTokenKind::TkTernary),
+            ir::space(),
+            ir::list(true_docs),
+            continuation_break_ir(true),
+            ir::syntax_token(LuaTokenKind::TkColon),
+            ir::space(),
+            ir::list(false_docs),
+        ]),
+    ])]
 }
 
 fn try_format_simple_inline_closure_expr(
@@ -3248,6 +3260,9 @@ fn format_index_access_ir(
             docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_colon() {
             docs.push(ir::syntax_token(LuaTokenKind::TkColon));
+            docs.extend(format_named_index_key_ir(expr));
+        } else if index_token.is_safe_navigation() {
+            docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
             docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_left_bracket() {
             docs.push(ir::syntax_token(LuaTokenKind::TkLeftBracket));

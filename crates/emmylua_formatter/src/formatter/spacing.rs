@@ -220,6 +220,9 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
             apply_space_rule(spacing, syntax_id, space_around_assign(ctx.config));
         }
         LuaTokenKind::TkLocal
+        | LuaTokenKind::TkConst
+        | LuaTokenKind::TkBreak
+        | LuaTokenKind::TkContinue
         | LuaTokenKind::TkFunction
         | LuaTokenKind::TkIf
         | LuaTokenKind::TkWhile

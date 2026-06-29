@@ -180,6 +180,19 @@ impl<'a> LuaParser<'a> {
         }
     }
 
+    pub fn peek_nth_token(&self, n: usize) -> LuaTokenKind {
+        let mut index = self.token_index;
+        for _ in 0..=n {
+            index += 1;
+            self.skip_trivia(&mut index);
+        }
+        if index >= self.tokens.len() {
+            LuaTokenKind::None
+        } else {
+            self.tokens[index].kind
+        }
+    }
+
     fn skip_trivia(&self, index: &mut usize) {
         if index >= &mut self.tokens.len() {
             return;
