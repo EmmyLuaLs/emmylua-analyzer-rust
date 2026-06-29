@@ -590,6 +590,10 @@ fn check_doc_tag_type(
             .get_db()
             .get_type_index()
             .get_generic_params(&generic_type.get_base_type_id())?;
+        let substitutor = TypeSubstitutor::from_alias(
+            generic_type.get_params().clone(),
+            generic_type.get_base_type_id(),
+        );
         for (i, param_type) in generic_type
             .get_params()
             .iter()
@@ -602,14 +606,19 @@ fn check_doc_tag_type(
             else {
                 continue;
             };
-            let result = semantic_model.type_check_detail(extend_type, param_type);
+            let extend_type = normalize_constraint_type(
+                semantic_model.get_db(),
+                instantiate_type_generic(semantic_model.get_db(), extend_type, &substitutor),
+            );
+            let param_type = normalize_constraint_type(semantic_model.get_db(), param_type.clone());
+            let result = semantic_model.type_check_detail(&extend_type, &param_type);
             if result.is_err() {
                 add_type_check_diagnostic(
                     context,
                     semantic_model,
                     explicit_args.get(i)?.get_range(),
-                    extend_type,
-                    param_type,
+                    &extend_type,
+                    &param_type,
                     result,
                 );
             }

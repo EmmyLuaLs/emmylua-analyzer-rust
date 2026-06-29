@@ -227,6 +227,43 @@ mod test {
     }
 
     #[test]
+    fn test_alias_keyof_constraint_accepts_union_of_valid_keys() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+            ---@field three 3
+
+            ---@alias Pick<T, K extends keyof T> nil
+
+            ---@type Pick<A, 'one' | 'two'>
+            local tmp
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_alias_keyof_constraint_rejects_union_with_invalid_key() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+
+            ---@alias Pick<T, K extends keyof T> nil
+
+            ---@type Pick<A, 'one' | 'missing'>
+            local tmp
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_class_generic_default_constraint_match() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
