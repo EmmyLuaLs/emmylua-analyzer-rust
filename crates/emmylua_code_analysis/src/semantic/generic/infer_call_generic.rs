@@ -28,6 +28,9 @@ use crate::{
     tpl_pattern_match_args_skip_unknown,
 };
 
+use super::type_substitutor::{
+    GenericCandidate, GenericResolveMode, LiteralPolicy, SubstitutorValue,
+};
 use crate::semantic::generic::{TypeSubstitutor, instantiate_type::instantiate_type_generic};
 
 pub fn infer_call_generic(
@@ -129,9 +132,10 @@ fn apply_call_generic_type_list(
     let doc_ctx = DocTypeInferContext::new(db, file_id);
     for (i, doc_type) in type_list.get_types().enumerate() {
         let typ = infer_doc_type(doc_ctx, &doc_type);
-        context
-            .substitutor
-            .insert_type(GenericTplId::Func(i as u32), typ, true);
+        context.substitutor.insert_value(
+            GenericTplId::Func(i as u32),
+            SubstitutorValue::Type(GenericCandidate::new(typ, LiteralPolicy::Preserve)),
+        );
     }
 }
 
@@ -350,7 +354,13 @@ fn instantiate_callable_from_arg_types(
     }
 
     for tpl_id in callback_return_tpls {
-        callable_substitutor.insert_type(tpl_id, LuaType::Unknown, true);
+        callable_substitutor.insert_value(
+            tpl_id,
+            SubstitutorValue::Type(GenericCandidate::new(
+                LuaType::Unknown,
+                LiteralPolicy::Widen,
+            )),
+        );
     }
     match instantiate_type_generic(context.db, &callable_type, &callable_substitutor) {
         LuaType::DocFunction(func) => Some(func),
@@ -539,7 +549,7 @@ pub(crate) fn infer_self_type(
                 for (i, generic_param) in generic.iter().enumerate() {
                     let tpl_id = GenericTplId::Type(i as u32);
                     let param = call_substitutor
-                        .get_type(tpl_id)
+                        .resolve_type(tpl_id, GenericResolveMode::Value, generic_param.is_const)
                         .cloned()
                         .unwrap_or_else(|| {
                             match generic_param
@@ -551,7 +561,13 @@ pub(crate) fn infer_self_type(
                                 None => LuaType::Unknown,
                             }
                         });
-                    substitutor.insert_type(tpl_id, param.clone(), true);
+                    substitutor.insert_value(
+                        tpl_id,
+                        SubstitutorValue::Type(GenericCandidate::new(
+                            param.clone(),
+                            LiteralPolicy::Preserve,
+                        )),
+                    );
                     params.push(param);
                 }
                 let generic = LuaGenericType::new(id.clone(), params);
@@ -634,9 +650,13 @@ fn fill_call_prefix_substitutor(context: &mut TplContext, call_expr: &LuaCallExp
         let self_type = infer_expr(context.db, context.cache, self_expr).ok()?;
         if let LuaType::Generic(generic) = self_type {
             for (i, param) in generic.get_params().iter().enumerate() {
-                context
-                    .substitutor
-                    .insert_type(GenericTplId::Type(i as u32), param.clone(), true);
+                context.substitutor.insert_value(
+                    GenericTplId::Type(i as u32),
+                    SubstitutorValue::Type(GenericCandidate::new(
+                        param.clone(),
+                        LiteralPolicy::Preserve,
+                    )),
+                );
             }
             return Some(());
         }

@@ -7,7 +7,9 @@ use crate::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
         LuaUnionType, VariadicType,
     },
-    semantic::generic::type_substitutor::TypeSubstitutor,
+    semantic::generic::type_substitutor::{
+        GenericCandidate, LiteralPolicy, SubstitutorValue, TypeSubstitutor,
+    },
 };
 
 use super::instantiate_type_generic;
@@ -68,7 +70,13 @@ impl<'a> GenericDefaultContext<'a> {
             .enumerate()
         {
             slots[idx] = GenericDefaultSlot::Resolved(provided_arg.clone());
-            substitutor.insert_type(GenericTplId::Type(idx as u32), provided_arg, true);
+            substitutor.insert_value(
+                GenericTplId::Type(idx as u32),
+                SubstitutorValue::Type(GenericCandidate::new(
+                    provided_arg,
+                    LiteralPolicy::Preserve,
+                )),
+            );
         }
 
         Self {
@@ -80,8 +88,10 @@ impl<'a> GenericDefaultContext<'a> {
 
     fn set_resolved(&mut self, idx: usize, ty: LuaType) {
         self.slots[idx] = GenericDefaultSlot::Resolved(ty.clone());
-        self.substitutor
-            .insert_type(GenericTplId::Type(idx as u32), ty, true);
+        self.substitutor.insert_value(
+            GenericTplId::Type(idx as u32),
+            SubstitutorValue::Type(GenericCandidate::new(ty, LiteralPolicy::Preserve)),
+        );
     }
 
     fn into_completed_args(self, provided_args: &[LuaType]) -> Vec<LuaType> {

@@ -4,6 +4,7 @@ mod test;
 mod tpl_context;
 mod tpl_pattern;
 mod type_substitutor;
+mod widening;
 
 pub(crate) use infer_call_generic::infer_self_type;
 pub use infer_call_generic::{build_call_generic_substitutor, infer_call_generic};
@@ -12,4 +13,4 @@ pub use instantiate_type::*;
 pub use tpl_context::TplContext;
 pub use tpl_pattern::tpl_pattern_match_args;
 pub use tpl_pattern::tpl_pattern_match_args_skip_unknown;
-pub use type_substitutor::TypeSubstitutor;
+pub use type_substitutor::{GenericResolveMode, TypeSubstitutor};

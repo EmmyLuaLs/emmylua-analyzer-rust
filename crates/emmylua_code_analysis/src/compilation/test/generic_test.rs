@@ -390,6 +390,89 @@ mod test {
     }
 
     #[test]
+    fn test_type_mapped_pick_single_key() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one   1
+            ---@field two   2
+            ---@field three 3
+
+            ---@alias Pick<T, K extends keyof T> {[P in K]: T[P];}
+
+            ---@type Pick<A, 'one'>
+            Tmp = nil
+            "#,
+        );
+
+        let tmp_ty = ws.expr_ty("Tmp");
+        assert_eq!(
+            ws.humanize_type_detailed(tmp_ty),
+            "Pick<A,\"one\"> = { one: 1 }"
+        );
+    }
+
+    #[test]
+    fn test_type_mapped_pick_literal_union_keys() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one   1
+            ---@field two   2
+            ---@field three 3
+
+            ---@alias Pick<T, K extends keyof T> {[P in K]: T[P];}
+            ---@alias Value<T, K extends keyof T> T[K]
+
+            ---@type Pick<A, 'one' | 'two'>
+            Picked = nil
+
+            ---@type Value<A, 'one' | 'two'>
+            Value = nil
+            "#,
+        );
+
+        let picked_ty = ws.expr_ty("Picked");
+        assert_eq!(
+            ws.humanize_type_detailed(picked_ty),
+            "Pick<A,(\"one\"|\"two\")> = { one: 1, two: 2 }"
+        );
+
+        let value_ty = ws.expr_ty("Value");
+        assert_eq!(
+            ws.humanize_type_detailed(value_ty),
+            "Value<A,(\"one\"|\"two\")> = (1|2)"
+        );
+    }
+
+    #[test]
+    fn test_explicit_call_generic_literal_used_as_index_key() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+
+            ---@generic T, K extends keyof T
+            ---@return T[K]
+            function get_explicit()
+            end
+
+            Result = get_explicit--[[@<A, "one">]]()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "1");
+    }
+
+    #[test]
     fn test_alias_generic_constraint_references_later_param() {
         let mut ws = VirtualWorkspace::new();
 
@@ -1346,6 +1429,44 @@ mod test {
     }
 
     #[test]
+    fn test_non_const_generic_call_inference_widens_literal_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return T
+            function identity(value)
+            end
+
+            Result = identity("literal")
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "string");
+    }
+
+    #[test]
+    fn test_const_generic_call_inference_preserves_literal_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic const T
+            ---@param value T
+            ---@return T
+            function identity(value)
+            end
+
+            Result = identity("literal")
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "\"literal\"");
+    }
+
+    #[test]
     fn test_function_generic_default_can_reference_earlier_param_at_call_sites() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1545,6 +1666,32 @@ mod test {
             ---@alias TestC<T> T extends 111 and number or string
             "#,
         ));
+    }
+
+    #[test]
+    fn test_conditional_generic_literal_check_operand_preserved() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias IsKnown<T> T extends ("one" | "two") and 1 or 2
+
+            ---@generic T
+            ---@return IsKnown<T>
+            function check_explicit()
+            end
+
+            ---@type IsKnown<"one">
+            Direct = nil
+
+            Result = check_explicit--[[@<"one">]]()
+            "#,
+        );
+
+        let direct_ty = ws.expr_ty("Direct");
+        assert_eq!(ws.humanize_type_detailed(direct_ty), "IsKnown<\"one\"> = 1");
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "1");
     }
 
     #[test]
@@ -1987,5 +2134,24 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("A"), ws.ty("string|integer"));
+    }
+
+    #[test]
+    fn test_conditional_infer_preserves_literal_from_type_level_source() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@alias ValueOf<T> T extends { value: infer P } and P or never
+
+                ---@type ValueOf<{ value: "one" }>
+                A = nil
+            "#,
+        );
+
+        let a_ty = ws.expr_ty("A");
+        assert_eq!(
+            ws.humanize_type_detailed(a_ty),
+            "ValueOf<{ value: \"one\" }> = \"one\""
+        );
     }
 }

@@ -10,7 +10,9 @@ use crate::{
 use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
-use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_inner};
+use super::{
+    GenericInstantiateContext, GenericResolveMode, TypeSubstitutor, instantiate_type_generic_inner,
+};
 
 pub(super) fn instantiate_alias_call(
     context: &GenericInstantiateContext,
@@ -147,7 +149,13 @@ fn resolve_literal_operand(
     substitutor: &TypeSubstitutor,
 ) -> Option<LuaType> {
     match operand {
-        Some(LuaType::TplRef(tpl_ref)) => substitutor.get_raw_type(tpl_ref.get_tpl_id()).cloned(),
+        Some(LuaType::TplRef(tpl_ref)) => substitutor
+            .resolve_type(
+                tpl_ref.get_tpl_id(),
+                GenericResolveMode::Literal,
+                tpl_ref.is_const(),
+            )
+            .cloned(),
         _ => None,
     }
 }
@@ -309,6 +317,24 @@ fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
 }
 
 fn instantiate_rawget_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaType {
+    if let LuaType::Union(union) = key {
+        let mut result = LuaType::Never;
+        for member in union.into_vec() {
+            let member_type = instantiate_rawget_call(db, owner, &member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
+    }
+
+    if let LuaType::MultiLineUnion(multi) = key {
+        let mut result = LuaType::Never;
+        for (member, _) in multi.get_unions() {
+            let member_type = instantiate_rawget_call(db, owner, member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
+    }
+
     let member_key = match key {
         LuaType::DocStringConst(s) => LuaMemberKey::Name(s.deref().clone()),
         LuaType::StringConst(s) => LuaMemberKey::Name(s.deref().clone()),
@@ -323,6 +349,24 @@ fn instantiate_rawget_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaT
 fn instantiate_index_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaType {
     if owner.is_unknown() {
         return LuaType::Unknown;
+    }
+
+    if let LuaType::Union(union) = key {
+        let mut result = LuaType::Never;
+        for member in union.into_vec() {
+            let member_type = instantiate_index_call(db, owner, &member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
+    }
+
+    if let LuaType::MultiLineUnion(multi) = key {
+        let mut result = LuaType::Never;
+        for (member, _) in multi.get_unions() {
+            let member_type = instantiate_index_call(db, owner, member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
     }
 
     if let LuaType::Variadic(variadic) = owner {

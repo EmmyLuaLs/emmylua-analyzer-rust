@@ -11,10 +11,11 @@ use super::call_constraint::{
 };
 use crate::diagnostic::{checker::Checker, lua_diagnostic::DiagnosticContext};
 use crate::{
-    DiagnosticCode, DocTypeInferContext, GenericParam, GenericTplId, LuaArrayType, LuaGenericType,
-    LuaIntersectionType, LuaObjectType, LuaSignatureId, LuaStringTplType, LuaTupleType, LuaType,
-    LuaUnionType, RenderLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult,
-    TypeSubstitutor, VariadicType, humanize_type, infer_doc_type, instantiate_type_generic,
+    DiagnosticCode, DocTypeInferContext, GenericParam, GenericResolveMode, GenericTplId,
+    LuaArrayType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaSignatureId,
+    LuaStringTplType, LuaTupleType, LuaType, LuaUnionType, RenderLevel, SemanticModel,
+    TypeCheckFailReason, TypeCheckResult, TypeSubstitutor, VariadicType, humanize_type,
+    infer_doc_type, instantiate_type_generic_full,
 };
 
 pub struct GenericConstraintMismatchChecker;
@@ -608,7 +609,12 @@ fn check_doc_tag_type(
             };
             let extend_type = normalize_constraint_type(
                 semantic_model.get_db(),
-                instantiate_type_generic(semantic_model.get_db(), extend_type, &substitutor),
+                instantiate_type_generic_full(
+                    semantic_model.get_db(),
+                    extend_type,
+                    &substitutor,
+                    GenericResolveMode::Literal,
+                ),
             );
             let param_type = normalize_constraint_type(semantic_model.get_db(), param_type.clone());
             let result = semantic_model.type_check_detail(&extend_type, &param_type);
@@ -649,7 +655,12 @@ fn check_call_arg(
             let extend_type = str_tpl_ref.get_constraint().map(|ty| {
                 normalize_constraint_type(
                     semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), ty, substitutor),
+                    instantiate_type_generic_full(
+                        semantic_model.get_db(),
+                        ty,
+                        substitutor,
+                        GenericResolveMode::Literal,
+                    ),
                 )
             });
             check_str_tpl_ref(
@@ -666,7 +677,12 @@ fn check_call_arg(
             if let Some(extend_type) = tpl_ref.get_constraint().map(|ty| {
                 normalize_constraint_type(
                     semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), ty, substitutor),
+                    instantiate_type_generic_full(
+                        semantic_model.get_db(),
+                        ty,
+                        substitutor,
+                        GenericResolveMode::Literal,
+                    ),
                 )
             }) {
                 let result = check_generic_default_satisfies_constraint(

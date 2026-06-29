@@ -2,6 +2,8 @@
 mod test {
 
     use crate::{DiagnosticCode, VirtualWorkspace};
+    use lsp_types::NumberOrString;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn test_1() {
@@ -261,6 +263,42 @@ mod test {
             local tmp
             "#,
         ));
+    }
+
+    #[test]
+    fn test_alias_keyof_constraint_reports_invalid_literal_key() {
+        let mut ws = VirtualWorkspace::new();
+        ws.enable_check(DiagnosticCode::GenericConstraintMismatch);
+        let file_id = ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@alias Pick<T, K extends keyof T> nil
+
+            ---@type Pick<A, 'missing'>
+            local tmp
+            "#,
+        );
+
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap();
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::GenericConstraintMismatch
+                .get_name()
+                .to_string(),
+        ));
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == code)
+            .expect("expected generic constraint mismatch diagnostic");
+        assert!(
+            diagnostic.message.contains("\"missing\""),
+            "{}",
+            diagnostic.message
+        );
     }
 
     #[test]

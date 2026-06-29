@@ -16,8 +16,10 @@ use crate::{
     infer_node_semantic_decl,
     semantic::{
         generic::{
-            tpl_context::TplContext, tpl_pattern::generic_tpl_pattern::generic_tpl_pattern_match,
-            type_substitutor::SubstitutorValue,
+            tpl_context::TplContext,
+            tpl_pattern::generic_tpl_pattern::generic_tpl_pattern_match,
+            type_substitutor::{GenericCandidate, LiteralPolicy, SubstitutorValue},
+            widening::widen_literal_type,
         },
         member::{find_index_operations, get_member_map},
     },
@@ -138,9 +140,15 @@ pub fn tpl_pattern_match(
 
     match pattern {
         LuaType::TplRef(tpl) => {
-            context
-                .substitutor
-                .infer_type(tpl.get_tpl_id(), target.clone(), !tpl.is_const());
+            let policy = if tpl.is_const() {
+                LiteralPolicy::Preserve
+            } else {
+                LiteralPolicy::FreshWidening
+            };
+            context.substitutor.infer_value(
+                tpl.get_tpl_id(),
+                SubstitutorValue::Type(GenericCandidate::new(target.clone(), policy)),
+            );
         }
         LuaType::StrTplRef(str_tpl) => {
             if let LuaType::StringConst(s) = target {
@@ -175,9 +183,13 @@ pub fn tpl_pattern_match(
                         .unwrap_or(LuaType::Ref(LuaTypeDeclId::global(&type_name))),
                 };
 
-                context
-                    .substitutor
-                    .infer_type(str_tpl.get_tpl_id(), inferred_type, true);
+                context.substitutor.infer_value(
+                    str_tpl.get_tpl_id(),
+                    SubstitutorValue::Type(GenericCandidate::new(
+                        inferred_type,
+                        LiteralPolicy::FreshWidening,
+                    )),
+                );
             }
         }
         LuaType::Array(array_type) => {
@@ -207,19 +219,9 @@ pub fn tpl_pattern_match(
     Ok(())
 }
 
-pub fn constant_decay(typ: LuaType) -> LuaType {
-    match &typ {
-        LuaType::FloatConst(_) => LuaType::Number,
-        LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_) => LuaType::Integer,
-        LuaType::DocStringConst(_) | LuaType::StringConst(_) => LuaType::String,
-        LuaType::DocBooleanConst(_) | LuaType::BooleanConst(_) => LuaType::Boolean,
-        _ => typ,
-    }
-}
-
 fn maybe_decay_type(typ: &LuaType, decay: bool) -> LuaType {
     if decay {
-        constant_decay(typ.clone())
+        widen_literal_type(typ.clone())
     } else {
         typ.clone()
     }
@@ -723,9 +725,18 @@ pub(crate) fn return_type_pattern_match_target_type(
                     VariadicType::Base(source_base) => {
                         if let LuaType::TplRef(type_ref) = source_base {
                             let tpl_id = type_ref.get_tpl_id();
-                            context
-                                .substitutor
-                                .infer_type(tpl_id, target_base.clone(), true);
+                            let policy = if type_ref.is_const() {
+                                LiteralPolicy::Preserve
+                            } else {
+                                LiteralPolicy::FreshWidening
+                            };
+                            context.substitutor.infer_value(
+                                tpl_id,
+                                SubstitutorValue::Type(GenericCandidate::new(
+                                    target_base.clone(),
+                                    policy,
+                                )),
+                            );
                         }
                     }
                     VariadicType::Multi(source_multi) => {
@@ -736,10 +747,17 @@ pub(crate) fn return_type_pattern_match_target_type(
                                         && let LuaType::TplRef(type_ref) = base
                                     {
                                         let tpl_id = type_ref.get_tpl_id();
-                                        context.substitutor.infer_type(
+                                        let policy = if type_ref.is_const() {
+                                            LiteralPolicy::Preserve
+                                        } else {
+                                            LiteralPolicy::FreshWidening
+                                        };
+                                        context.substitutor.infer_value(
                                             tpl_id,
-                                            target_base.clone(),
-                                            true,
+                                            SubstitutorValue::Type(GenericCandidate::new(
+                                                target_base.clone(),
+                                                policy,
+                                            )),
                                         );
                                     }
 
@@ -747,10 +765,17 @@ pub(crate) fn return_type_pattern_match_target_type(
                                 }
                                 LuaType::TplRef(tpl_ref) => {
                                     let tpl_id = tpl_ref.get_tpl_id();
-                                    context.substitutor.infer_type(
+                                    let policy = if tpl_ref.is_const() {
+                                        LiteralPolicy::Preserve
+                                    } else {
+                                        LiteralPolicy::FreshWidening
+                                    };
+                                    context.substitutor.infer_value(
                                         tpl_id,
-                                        target_base.clone(),
-                                        true,
+                                        SubstitutorValue::Type(GenericCandidate::new(
+                                            target_base.clone(),
+                                            policy,
+                                        )),
                                     );
                                 }
                                 _ => {}
@@ -790,12 +815,14 @@ fn func_varargs_tpl_pattern_match(
         VariadicType::Base(base) => {
             if let LuaType::TplRef(tpl_ref) = base {
                 let tpl_id = tpl_ref.get_tpl_id();
-                substitutor.infer_params(
+                substitutor.infer_value(
                     tpl_id,
-                    target_rest_params
-                        .iter()
-                        .map(|(n, t)| (n.clone(), t.clone()))
-                        .collect(),
+                    SubstitutorValue::Params(
+                        target_rest_params
+                            .iter()
+                            .map(|(n, t)| (n.clone(), t.clone()))
+                            .collect(),
+                    ),
                 );
             }
         }
@@ -818,7 +845,9 @@ pub fn variadic_tpl_pattern_match(
                 match target_rest_types.len() {
                     0 => {
                         // Zero varargs are an empty sequence, not one nil return slot.
-                        context.substitutor.infer_multi_types(tpl_id, Vec::new());
+                        context
+                            .substitutor
+                            .infer_value(tpl_id, SubstitutorValue::MultiTypes(Vec::new()));
                     }
                     1 => {
                         // If the single argument is itself a multi-return (e.g. a function call
@@ -828,41 +857,69 @@ pub fn variadic_tpl_pattern_match(
                             LuaType::Variadic(variadic) => match variadic.deref() {
                                 VariadicType::Multi(types) => match types.len() {
                                     0 => {
-                                        context.substitutor.infer_multi_types(tpl_id, Vec::new());
+                                        context.substitutor.infer_value(
+                                            tpl_id,
+                                            SubstitutorValue::MultiTypes(Vec::new()),
+                                        );
                                     }
                                     1 => {
-                                        context.substitutor.infer_type(
+                                        let policy = if tpl_ref.is_const() {
+                                            LiteralPolicy::Preserve
+                                        } else {
+                                            LiteralPolicy::FreshWidening
+                                        };
+                                        context.substitutor.infer_value(
                                             tpl_id,
-                                            types[0].clone(),
-                                            decay,
+                                            SubstitutorValue::Type(GenericCandidate::new(
+                                                types[0].clone(),
+                                                policy,
+                                            )),
                                         );
                                     }
                                     _ => {
-                                        context.substitutor.infer_multi_types(
+                                        context.substitutor.infer_value(
                                             tpl_id,
-                                            types
-                                                .iter()
-                                                .map(|t| maybe_decay_type(t, decay))
-                                                .collect(),
+                                            SubstitutorValue::MultiTypes(
+                                                types
+                                                    .iter()
+                                                    .map(|t| maybe_decay_type(t, decay))
+                                                    .collect(),
+                                            ),
                                         );
                                     }
                                 },
                                 VariadicType::Base(base) => {
-                                    context.substitutor.infer_multi_base(tpl_id, base.clone());
+                                    context.substitutor.infer_value(
+                                        tpl_id,
+                                        SubstitutorValue::MultiBase(base.clone()),
+                                    );
                                 }
                             },
                             arg => {
-                                context.substitutor.infer_type(tpl_id, arg.clone(), decay);
+                                let policy = if tpl_ref.is_const() {
+                                    LiteralPolicy::Preserve
+                                } else {
+                                    LiteralPolicy::FreshWidening
+                                };
+                                context.substitutor.infer_value(
+                                    tpl_id,
+                                    SubstitutorValue::Type(GenericCandidate::new(
+                                        arg.clone(),
+                                        policy,
+                                    )),
+                                );
                             }
                         }
                     }
                     _ => {
-                        context.substitutor.infer_multi_types(
+                        context.substitutor.infer_value(
                             tpl_id,
-                            target_rest_types
-                                .iter()
-                                .map(|t| maybe_decay_type(t, decay))
-                                .collect(),
+                            SubstitutorValue::MultiTypes(
+                                target_rest_types
+                                    .iter()
+                                    .map(|t| maybe_decay_type(t, decay))
+                                    .collect(),
+                            ),
                         );
                     }
                 }
@@ -882,7 +939,18 @@ pub fn variadic_tpl_pattern_match(
                         let tpl_id = tpl_ref.get_tpl_id();
                         match target_rest_types.get(i) {
                             Some(t) => {
-                                context.substitutor.infer_type(tpl_id, t.clone(), true);
+                                let policy = if tpl_ref.is_const() {
+                                    LiteralPolicy::Preserve
+                                } else {
+                                    LiteralPolicy::FreshWidening
+                                };
+                                context.substitutor.infer_value(
+                                    tpl_id,
+                                    SubstitutorValue::Type(GenericCandidate::new(
+                                        t.clone(),
+                                        policy,
+                                    )),
+                                );
                             }
                             None => {
                                 break;
@@ -933,9 +1001,10 @@ fn tuple_tpl_pattern_match(
                     VariadicType::Base(base) => {
                         if let LuaType::TplRef(tpl_ref) = base {
                             let tpl_id = tpl_ref.get_tpl_id();
-                            context
-                                .substitutor
-                                .infer_multi_base(tpl_id, target_array_base.get_base().clone());
+                            context.substitutor.infer_value(
+                                tpl_id,
+                                SubstitutorValue::MultiBase(target_array_base.get_base().clone()),
+                            );
                         }
                     }
                     VariadicType::Multi(_) => {}
