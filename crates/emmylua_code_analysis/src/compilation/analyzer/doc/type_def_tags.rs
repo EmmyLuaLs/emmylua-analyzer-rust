@@ -144,7 +144,7 @@ pub fn analyze_alias(analyzer: &mut DocAnalyzer, tag: LuaDocTagAlias) -> Option<
 
     if tag.get_generic_decl_list().is_some() {
         let generic_params = get_type_generic_params(analyzer, &alias_decl_id);
-        let range = analyzer.comment.get_range();
+        let range = tag.get_range();
         let scope_id = analyzer
             .type_context
             .generic_index

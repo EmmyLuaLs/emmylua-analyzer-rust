@@ -101,6 +101,22 @@ mod test {
     }
 
     #[test]
+    fn test_adjacent_alias_generic_scope_for_mapped_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::InjectField,
+            r#"
+                ---@alias AA<T> true
+                ---@alias FakePartial<T> {[P in keyof T]?: T[P]; }
+
+                ---@type FakePartial<{[1]:boolean}>
+                local tmp
+                tmp[1] = nil
+            "#
+        ));
+    }
+
+    #[test]
     fn test_any_key() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         assert!(ws.has_no_diagnostic(
