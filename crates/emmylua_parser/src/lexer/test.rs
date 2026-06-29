@@ -1267,7 +1267,7 @@ LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 311, lengt
 LuaTokenData { kind: TkName, range: SourceRange { start_offset: 312, length: 1 } }
 LuaTokenData { kind: TkEndOfLine, range: SourceRange { start_offset: 313, length: 1 } }
 LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 314, length: 8 } }
-LuaTokenData { kind: TkBreak, range: SourceRange { start_offset: 322, length: 8 } }
+LuaTokenData { kind: TkContinue, range: SourceRange { start_offset: 322, length: 8 } }
 LuaTokenData { kind: TkEndOfLine, range: SourceRange { start_offset: 330, length: 1 } }
 LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 331, length: 8 } }
         "#;
