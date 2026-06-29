@@ -122,6 +122,12 @@ pub const KEYWORD_COMPLETIONS: &[KeywordCompletionInfo] = &[
         kind: CompletionItemKind::KEYWORD,
     },
     KeywordCompletionInfo {
+        label: "const",
+        detail: " name = value",
+        insert_text: "const ${1:name} = ${2:value}",
+        kind: CompletionItemKind::SNIPPET,
+    },
+    KeywordCompletionInfo {
         label: "local function",
         detail: " name(...) .. end",
         insert_text: "local function ${1:name}(${2:})\n\t${0}\nend",
@@ -183,5 +189,11 @@ pub const KEYWORD_EXPR_COMPLETIONS: &[KeywordCompletionInfo] = &[
         detail: "(a and b or c)",
         insert_text: "${1:a} and ${2:b} or ${3:c}",
         kind: CompletionItemKind::SNIPPET,
+    },
+    KeywordCompletionInfo {
+        label: "continue",
+        detail: "",
+        insert_text: "continue",
+        kind: CompletionItemKind::KEYWORD,
     },
 ];

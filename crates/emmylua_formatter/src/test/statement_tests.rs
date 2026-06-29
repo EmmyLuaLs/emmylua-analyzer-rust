@@ -2002,4 +2002,15 @@ end
         let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
         assert_eq!(result, expected);
     }
+
+    #[test]
+    fn test_safe_call_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "self.call?.()\n";
+        let expected = "self.call?.()\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
 }

@@ -1,3 +1,4 @@
+use emmylua_code_analysis::EmmyrcLuaVersion::LuaJITExt;
 use emmylua_parser::{LuaAstNode, LuaKind, LuaNameExpr, LuaSyntaxKind, LuaTokenKind};
 use lsp_types::{CompletionItem, CompletionItemLabelDetails, InsertTextFormat, InsertTextMode};
 
@@ -89,6 +90,7 @@ fn add_stat_keyword_completions(
     builder: &mut CompletionBuilder,
     name_expr: Option<LuaNameExpr>,
 ) -> Option<()> {
+    let level = builder.semantic_model.get_emmyrc().runtime.version;
     if let Some(name_expr) = name_expr
         && name_expr.syntax().parent()?.parent()?.kind() != LuaSyntaxKind::Block.into()
     {
@@ -114,6 +116,9 @@ fn add_stat_keyword_completions(
                     keyword_info.insert_text.to_string(),
                 )
             };
+        if level != LuaJITExt && keyword_info.label == "continue" {
+            continue;
+        }
 
         let item = CompletionItem {
             label: keyword_info.label.to_string(),

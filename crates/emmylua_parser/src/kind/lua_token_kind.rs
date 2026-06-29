@@ -32,6 +32,7 @@ pub enum LuaTokenKind {
     // extension keywords
     TkContinue, // continue
     TkConst,    // const
+    TkToggle,   // !
 
     TkWhitespace,    // whitespace
     TkEndOfLine,     // end of line
@@ -77,6 +78,7 @@ pub enum LuaTokenKind {
     TkShiftLeftAssign,     // <<=
     TkShiftRightAssign,    // >>=
     TkShrArithmeticAssign, // ~>>=
+    TkConcatAssign,        // ..=
 
     TkNilCoalescing,  // ??
     TkSafeNavigation, // ?.
@@ -201,6 +203,7 @@ impl LuaTokenKind {
             LuaTokenKind::TkLocal => "local",
             LuaTokenKind::TkNil => "nil",
             LuaTokenKind::TkNot => "not",
+            LuaTokenKind::TkToggle => "!",
             LuaTokenKind::TkOr => "or",
             LuaTokenKind::TkRepeat => "repeat",
             LuaTokenKind::TkReturn => "return",
@@ -258,6 +261,7 @@ impl LuaTokenKind {
             LuaTokenKind::TkSafeNavigation => "?.",
             LuaTokenKind::TkTernary => "?",
             LuaTokenKind::TkShrArithmeticAssign => "~>>=",
+            LuaTokenKind::TkConcatAssign => "..=",
             _ => return None,
         })
     }
@@ -307,6 +311,7 @@ impl LuaTokenKind {
                 | LuaTokenKind::TkShiftLeftAssign
                 | LuaTokenKind::TkShiftRightAssign
                 | LuaTokenKind::TkShrArithmeticAssign
+                | LuaTokenKind::TkConcatAssign
         )
     }
 }

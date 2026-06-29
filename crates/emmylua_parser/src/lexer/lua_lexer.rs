@@ -289,6 +289,12 @@ impl<'a> LuaLexer<'a> {
                 }
                 self.reader.bump();
                 if self.reader.current_char() != '.' {
+                    if self.support(LuaFeatures::ConcatAssign) && self.reader.current_char() == '='
+                    {
+                        self.reader.bump();
+                        return LuaTokenKind::TkConcatAssign;
+                    }
+
                     return LuaTokenKind::TkConcat;
                 }
                 self.reader.bump();
@@ -396,7 +402,7 @@ impl<'a> LuaLexer<'a> {
                     self.reader.bump();
                     return LuaTokenKind::TkNe;
                 }
-                LuaTokenKind::TkNot
+                LuaTokenKind::TkToggle
             }
             '&' => {
                 self.reader.bump();

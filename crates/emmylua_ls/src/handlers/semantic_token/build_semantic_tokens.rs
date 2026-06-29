@@ -115,6 +115,7 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkTernary
         | LuaTokenKind::TkSafeNavigation
         | LuaTokenKind::TkShrArithmetic
+        | LuaTokenKind::TkToggle
         | LuaTokenKind::TkNilCoalescing => {
             builder.push(token, SemanticTokenTypeKind::Operator);
         }
@@ -291,6 +292,9 @@ fn build_tokens_semantic_token(
         }
         LuaTokenKind::TkDocStart | LuaTokenKind::TkDocContinue | LuaTokenKind::TkDocContinueOr => {
             render_doc_at(builder, token)
+        }
+        ch if ch.is_assign_op() => {
+            builder.push(token, SemanticTokenTypeKind::Operator);
         }
         _ => {}
     }

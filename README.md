@@ -198,7 +198,6 @@ emmylua_doc_cli ./src --output ./docs
 - [**Configuration**](./docs/config/emmyrc_json_EN.md) - Advanced configuration options
 - [**Formatter Guide**](./docs/emmylua_formatter/README_EN.md) - Formatter behavior, options, and usage guide
 - [**Annotations Reference**](./docs/emmylua_doc/annotations_EN/README.md) - Detailed annotation documentation
-- [**Old Formatter**](https://github.com/CppCXY/EmmyLuaCodeStyle/blob/master/README_EN.md) - Formatting and style guidelines
 - [**External Formatter Integration**](./docs/external_format/external_formatter_options_EN.md) - Using external formatters
 
 ---

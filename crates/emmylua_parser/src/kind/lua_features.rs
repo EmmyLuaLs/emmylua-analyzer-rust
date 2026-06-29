@@ -26,6 +26,7 @@ pub enum LuaFeatures {
     ShiftLeftAssign,        // "<<="
     ShiftRightAssign,       // ">>="
     ShrArithmeticAssign,    // "~>>="
+    ConcatAssign,           // "..="
     DoublePipe,             // "||"
     DoubleAmp,              // "&&"
     Exclamation,            // "!"
@@ -92,7 +93,6 @@ impl LuaFeaturesSet {
         // lua5.3+
         set.add(LuaFeatures::IntegerFloorDivision);
         // luajit-extension
-        set.add(LuaFeatures::DoubleSlash);
         set.add(LuaFeatures::PlusAssign);
         set.add(LuaFeatures::MinusAssign);
         set.add(LuaFeatures::StarAssign);
@@ -109,6 +109,7 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::NotEqual);
         set.add(LuaFeatures::ShiftRightArithmetic);
         set.add(LuaFeatures::ShrArithmeticAssign);
+        set.add(LuaFeatures::ConcatAssign);
         set.add(LuaFeatures::Continue);
         set.add(LuaFeatures::Ternary);
         set.add(LuaFeatures::SafeNavigationOperator);

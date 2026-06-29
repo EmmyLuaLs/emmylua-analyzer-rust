@@ -586,6 +586,10 @@ fn format_call_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaCallExpr) 
         .map(|prefix| format_expr(ctx, plan, &prefix))
         .unwrap_or_default();
 
+    if expr.has_safe_navigation() {
+        docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+    }
+
     let Some(args_list) = expr.get_args_list() else {
         return docs;
     };

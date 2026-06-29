@@ -470,6 +470,10 @@ impl LuaCallExpr {
 
         None
     }
+
+    pub fn has_safe_navigation(&self) -> bool {
+        self.token_by_kind(LuaTokenKind::TkSafeNavigation).is_some()
+    }
 }
 
 impl PathTrait for LuaCallExpr {}

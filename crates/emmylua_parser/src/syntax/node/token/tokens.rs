@@ -259,6 +259,7 @@ impl LuaAstToken for LuaKeywordToken {
                 | LuaTokenKind::TkLocal
                 | LuaTokenKind::TkNil
                 | LuaTokenKind::TkNot
+                | LuaTokenKind::TkToggle
                 | LuaTokenKind::TkOr
                 | LuaTokenKind::TkRepeat
                 | LuaTokenKind::TkReturn
@@ -266,6 +267,9 @@ impl LuaAstToken for LuaKeywordToken {
                 | LuaTokenKind::TkTrue
                 | LuaTokenKind::TkUntil
                 | LuaTokenKind::TkWhile
+                | LuaTokenKind::TkGlobal
+                | LuaTokenKind::TkConst
+                | LuaTokenKind::TkContinue
         )
     }
 

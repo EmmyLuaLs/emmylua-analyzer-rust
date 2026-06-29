@@ -143,7 +143,7 @@ impl From<LuaTypeTernaryOperator> for LuaOpKind {
 impl LuaOpKind {
     pub fn to_unary_operator(kind: LuaTokenKind) -> UnaryOperator {
         match kind {
-            LuaTokenKind::TkNot => UnaryOperator::OpNot,
+            LuaTokenKind::TkNot | LuaTokenKind::TkToggle => UnaryOperator::OpNot,
             LuaTokenKind::TkLen => UnaryOperator::OpLen,
             LuaTokenKind::TkMinus => UnaryOperator::OpUnm,
             LuaTokenKind::TkBitXor => UnaryOperator::OpBNot,
