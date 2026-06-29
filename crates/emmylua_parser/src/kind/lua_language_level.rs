@@ -5,6 +5,7 @@ pub enum LuaLanguageLevel {
     Lua51,
     LuaJIT,
     LuaJITExt,
+    LuaJIT3,
     Lua52,
     Lua53,
     Lua54,
@@ -21,6 +22,7 @@ impl fmt::Display for LuaLanguageLevel {
             LuaLanguageLevel::Lua54 => write!(f, "Lua 5.4"),
             LuaLanguageLevel::LuaJIT => write!(f, "LuaJIT"),
             LuaLanguageLevel::LuaJITExt => write!(f, "LuaJIT-Ext"),
+            LuaLanguageLevel::LuaJIT3 => write!(f, "LuaJIT3"),
             LuaLanguageLevel::Lua55 => write!(f, "Lua 5.5"),
         }
     }

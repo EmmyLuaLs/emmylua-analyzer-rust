@@ -1122,7 +1122,7 @@ LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 2036, leng
         let set: LuaFeaturesSet = LuaFeaturesSet::new(vec![
             LuaFeatures::DoubleSlash,
             LuaFeatures::SlashStar,
-            LuaFeatures::Backtick,
+            LuaFeatures::StringInterpolation,
             LuaFeatures::PlusAssign,
             LuaFeatures::MinusAssign,
             LuaFeatures::StarAssign,

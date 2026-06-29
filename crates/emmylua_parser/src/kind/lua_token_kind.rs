@@ -79,6 +79,7 @@ pub enum LuaTokenKind {
     TkShiftRightAssign,    // >>=
     TkShrArithmeticAssign, // ~>>=
     TkConcatAssign,        // ..=
+    TkNilCoalescingAssign, // ??=
 
     TkNilCoalescing,  // ??
     TkSafeNavigation, // ?.
@@ -262,6 +263,7 @@ impl LuaTokenKind {
             LuaTokenKind::TkTernary => "?",
             LuaTokenKind::TkShrArithmeticAssign => "~>>=",
             LuaTokenKind::TkConcatAssign => "..=",
+            LuaTokenKind::TkNilCoalescingAssign => "??=",
             _ => return None,
         })
     }
@@ -312,6 +314,7 @@ impl LuaTokenKind {
                 | LuaTokenKind::TkShiftRightAssign
                 | LuaTokenKind::TkShrArithmeticAssign
                 | LuaTokenKind::TkConcatAssign
+                | LuaTokenKind::TkNilCoalescingAssign
         )
     }
 }

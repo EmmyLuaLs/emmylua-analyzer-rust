@@ -269,7 +269,7 @@ impl<'a> LuaLexer<'a> {
             }
             '"' | '\'' | '`' => {
                 let quote = self.reader.current_char();
-                if quote == '`' && !self.support(LuaFeatures::Backtick) {
+                if quote == '`' && !self.support(LuaFeatures::StringInterpolation) {
                     self.reader.bump();
                     return LuaTokenKind::TkUnknown;
                 }
@@ -474,6 +474,13 @@ impl<'a> LuaLexer<'a> {
                 match self.reader.current_char() {
                     '?' if self.support(LuaFeatures::NilCoalescingOperator) => {
                         self.reader.bump();
+
+                        if self.support(LuaFeatures::NilCoalescingAssign)
+                            && self.reader.current_char() == '='
+                        {
+                            self.reader.bump();
+                            return LuaTokenKind::TkNilCoalescingAssign;
+                        }
                         LuaTokenKind::TkNilCoalescing
                     }
                     '.' if self.support(LuaFeatures::SafeNavigationOperator) => {

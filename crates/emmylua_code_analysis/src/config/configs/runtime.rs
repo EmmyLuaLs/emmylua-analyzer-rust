@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_parser::{LuaFeatures, LuaVersionNumber, SpecialFunction};
+use emmylua_parser::{LuaFeatures, LuaLanguageLevel, LuaVersionNumber, SpecialFunction};
 use schemars::JsonSchema;
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,8 @@ pub enum EmmyrcLuaVersion {
     LuaJIT,
     #[serde(rename = "LuaJIT-Ext", alias = "LuaJIT Ext")]
     LuaJITExt,
+    #[serde(rename = "LuaJIT3", alias = "LuaJIT 3")]
+    LuaJIT3,
     /// Lua 5.2
     #[serde(rename = "Lua5.2", alias = "Lua 5.2")]
     Lua52,
@@ -66,11 +68,26 @@ impl EmmyrcLuaVersion {
             EmmyrcLuaVersion::Lua51 => LuaVersionNumber::new(5, 1, 0),
             EmmyrcLuaVersion::LuaJIT => LuaVersionNumber::LUA_JIT,
             EmmyrcLuaVersion::LuaJITExt => LuaVersionNumber::LUA_JIT_EXT,
+            EmmyrcLuaVersion::LuaJIT3 => LuaVersionNumber::LUA_JIT3,
             EmmyrcLuaVersion::Lua52 => LuaVersionNumber::new(5, 2, 0),
             EmmyrcLuaVersion::Lua53 => LuaVersionNumber::new(5, 3, 0),
             EmmyrcLuaVersion::Lua54 => LuaVersionNumber::new(5, 4, 0),
             EmmyrcLuaVersion::LuaLatest => LuaVersionNumber::new(5, 4, 0),
             EmmyrcLuaVersion::Lua55 => LuaVersionNumber::new(5, 5, 0),
+        }
+    }
+
+    pub fn get_language_level(&self) -> LuaLanguageLevel {
+        match self {
+            EmmyrcLuaVersion::Lua51 => LuaLanguageLevel::Lua51,
+            EmmyrcLuaVersion::LuaJIT => LuaLanguageLevel::LuaJIT,
+            EmmyrcLuaVersion::LuaJITExt => LuaLanguageLevel::LuaJITExt,
+            EmmyrcLuaVersion::LuaJIT3 => LuaLanguageLevel::LuaJIT3,
+            EmmyrcLuaVersion::Lua52 => LuaLanguageLevel::Lua52,
+            EmmyrcLuaVersion::Lua53 => LuaLanguageLevel::Lua53,
+            EmmyrcLuaVersion::Lua54 => LuaLanguageLevel::Lua54,
+            EmmyrcLuaVersion::LuaLatest => LuaLanguageLevel::Lua55,
+            EmmyrcLuaVersion::Lua55 => LuaLanguageLevel::Lua55,
         }
     }
 }
@@ -127,7 +144,7 @@ impl From<EmmyrcNonStdSymbol> for LuaFeatures {
         match symbol {
             EmmyrcNonStdSymbol::DoubleSlash => LuaFeatures::DoubleSlash,
             EmmyrcNonStdSymbol::SlashStar => LuaFeatures::SlashStar,
-            EmmyrcNonStdSymbol::Backtick => LuaFeatures::Backtick,
+            EmmyrcNonStdSymbol::Backtick => LuaFeatures::StringInterpolation,
             EmmyrcNonStdSymbol::PlusAssign => LuaFeatures::PlusAssign,
             EmmyrcNonStdSymbol::MinusAssign => LuaFeatures::MinusAssign,
             EmmyrcNonStdSymbol::StarAssign => LuaFeatures::StarAssign,

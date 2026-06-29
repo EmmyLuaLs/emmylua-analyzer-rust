@@ -216,9 +216,7 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         | LuaTokenKind::TkDocNew => {
             apply_space_rule(spacing, syntax_id, SpaceRule::Space);
         }
-        LuaTokenKind::TkAssign => {
-            apply_space_rule(spacing, syntax_id, space_around_assign(ctx.config));
-        }
+
         LuaTokenKind::TkLocal
         | LuaTokenKind::TkConst
         | LuaTokenKind::TkBreak
@@ -245,6 +243,9 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         LuaTokenKind::TkDocQuestion => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
+        }
+        ch if ch.is_assign_op() => {
+            apply_space_rule(spacing, syntax_id, space_around_assign(ctx.config));
         }
         _ => {}
     }

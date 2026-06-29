@@ -11,9 +11,8 @@ pub enum LuaFeatures {
     // non-standard symbols
     DoubleSlash, // "//"
     SlashStar,   // "/**/"
-    Backtick,    // "`"
 
-    // luajit-extension symbols
+    // luajit2-extension symbols
     PlusAssign,             // "+="
     MinusAssign,            // "-="
     StarAssign,             // "*="
@@ -37,6 +36,10 @@ pub enum LuaFeatures {
     SafeNavigationOperator, // "?."
     NilCoalescingOperator,  // "??"
     ConstStatement,         // "const"
+
+    // luajit3
+    StringInterpolation, // "`"
+    NilCoalescingAssign, // "??="
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -90,8 +93,7 @@ impl LuaFeaturesSet {
 
     pub fn features_luajit_extension() -> Self {
         let mut set = LuaFeaturesSet::features_luajit();
-        // lua5.3+
-        set.add(LuaFeatures::IntegerFloorDivision);
+
         // luajit-extension
         set.add(LuaFeatures::PlusAssign);
         set.add(LuaFeatures::MinusAssign);
@@ -115,6 +117,17 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::SafeNavigationOperator);
         set.add(LuaFeatures::NilCoalescingOperator);
         set.add(LuaFeatures::ConstStatement);
+        set
+    }
+
+    pub fn features_luajit3() -> Self {
+        let mut set = LuaFeaturesSet::features_luajit_extension();
+        // lua5.3+
+        set.add(LuaFeatures::IntegerFloorDivision);
+
+        // luajit3
+        set.add(LuaFeatures::NilCoalescingAssign);
+        set.add(LuaFeatures::StringInterpolation);
         set
     }
 

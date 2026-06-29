@@ -21,7 +21,7 @@
 
 ## syntax
 
-- `level`：Lua 语法等级，支持 `Lua51`、`Lua52`、`Lua53`、`Lua54`、`Lua55`、`LuaJIT`、`LuaJITExt`
+- `level`：Lua 语法等级，支持 `Lua51`、`Lua52`、`Lua53`、`Lua54`、`Lua55`、`LuaJIT`、`LuaJITExt`、`LuaJIT3`
 
 默认值：
 

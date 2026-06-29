@@ -17,6 +17,7 @@ impl LexerConfig {
                 LuaLanguageLevel::Lua54 => LuaFeaturesSet::features_lua54(),
                 LuaLanguageLevel::LuaJIT => LuaFeaturesSet::features_luajit(),
                 LuaLanguageLevel::LuaJITExt => LuaFeaturesSet::features_luajit_extension(),
+                LuaLanguageLevel::LuaJIT3 => LuaFeaturesSet::features_luajit3(),
                 LuaLanguageLevel::Lua55 => LuaFeaturesSet::features_lua55(),
             },
         }

@@ -21,7 +21,7 @@ Supported explicit config formats are:
 
 ## syntax
 
-- `level`: Lua grammar level. Supported values are `Lua51`, `Lua52`, `Lua53`, `Lua54`, `Lua55`, `LuaJIT` and `LuaJITExt`.
+- `level`: Lua grammar level. Supported values are `Lua51`, `Lua52`, `Lua53`, `Lua54`, `Lua55`, `LuaJIT`, `LuaJITExt`, `LuaJIT3`.
 
 Default:
 

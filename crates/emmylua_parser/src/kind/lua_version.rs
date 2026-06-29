@@ -25,6 +25,12 @@ impl LuaVersionNumber {
     };
 
     pub const LUA_JIT_EXT: Self = Self {
+        major: 2,
+        minor: 2,
+        patch: 0,
+    };
+
+    pub const LUA_JIT3: Self = Self {
         major: 3,
         minor: 0,
         patch: 0,
@@ -36,6 +42,8 @@ impl LuaVersionNumber {
             return Some(Self::LUA_JIT);
         } else if s == "JIT-Ext" {
             return Some(Self::LUA_JIT_EXT);
+        } else if s == "JIT3" {
+            return Some(Self::LUA_JIT3);
         }
 
         let mut iter = s.split('.').map(|it| it.parse::<u32>().unwrap_or(0));
