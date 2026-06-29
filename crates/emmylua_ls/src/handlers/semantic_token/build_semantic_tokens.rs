@@ -80,6 +80,8 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkThen
         | LuaTokenKind::TkUntil
         | LuaTokenKind::TkWhile
+        | LuaTokenKind::TkConst
+        | LuaTokenKind::TkContinue
         | LuaTokenKind::TkGlobal => {
             builder.push(token, SemanticTokenTypeKind::Keyword);
         }
