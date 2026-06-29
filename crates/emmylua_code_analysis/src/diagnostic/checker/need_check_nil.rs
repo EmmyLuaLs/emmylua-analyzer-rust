@@ -58,6 +58,10 @@ fn check_index_expr(
     semantic_model: &SemanticModel,
     index_expr: LuaIndexExpr,
 ) -> Option<()> {
+    if index_expr.is_safe_index() {
+        return None;
+    }
+
     let prefix = index_expr.get_prefix_expr()?;
     let prefix_type = semantic_model.infer_expr(prefix.clone()).ok()?;
     if prefix_type.is_nullable() {

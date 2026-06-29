@@ -88,17 +88,17 @@ pub fn infer_index_expr(
         &InferGuard::new(),
     )?;
 
-    let result_type = if is_safe && prefix_type.is_nullable() {
-        TypeOps::Union.apply(db, &member_type, &LuaType::Nil)
+    let mut result_type = if pass_flow {
+        infer_member_type_pass_flow(db, cache, index_expr, member_type)?
     } else {
         member_type
     };
 
-    if pass_flow {
-        infer_member_type_pass_flow(db, cache, index_expr, result_type)
-    } else {
-        Ok(result_type)
+    if is_safe && prefix_type.is_optional() {
+        result_type = TypeOps::Union.apply(db, &result_type, &LuaType::Nil);
     }
+
+    Ok(result_type)
 }
 
 pub fn infer_ternary_expr(

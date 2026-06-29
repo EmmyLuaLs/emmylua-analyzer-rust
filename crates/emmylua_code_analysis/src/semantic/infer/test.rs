@@ -228,4 +228,20 @@ mod test {
 
         assert_eq!(ws.expr_ty("c"), ws.ty("any"));
     }
+
+    #[test]
+    fn test_safe_nav() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        --- @class MyClass
+        --- @field public myField? string
+        local MyClass = {}
+
+        a = MyClass.myField?.byte
+        "#,
+        );
+
+        assert!(ws.expr_ty("a").is_nullable());
+    }
 }
