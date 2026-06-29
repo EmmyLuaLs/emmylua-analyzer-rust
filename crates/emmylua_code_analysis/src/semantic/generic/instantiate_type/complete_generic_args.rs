@@ -2,7 +2,7 @@ use hashbrown::HashSet;
 
 use crate::{
     DbIndex, GenericParam, GenericTpl, GenericTplId, LuaAliasCallType, LuaArrayType,
-    LuaConditionalType, LuaMappedType, LuaMultiLineUnion, LuaTypeDeclId,
+    LuaConditionalType, LuaMappedType, LuaMultiLineUnion, LuaTypeDeclId, TypeVisitTrait,
     db_index::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
         LuaUnionType, VariadicType,
@@ -41,6 +41,64 @@ impl CompletedType {
 struct CompletedTypeList {
     types: Vec<LuaType>,
     cycled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GenericDefaultSlot {
+    Pending,
+    Visiting,
+    Resolved(LuaType),
+}
+
+struct GenericDefaultContext<'a> {
+    generic_params: &'a [GenericParam],
+    slots: Vec<GenericDefaultSlot>,
+    substitutor: TypeSubstitutor,
+}
+
+impl<'a> GenericDefaultContext<'a> {
+    fn new(generic_params: &'a [GenericParam], provided_args: &[LuaType]) -> Self {
+        // 先把调用方显式传入的实参固定下来, 后续 default 求值不能覆盖这些位置.
+        let mut slots = vec![GenericDefaultSlot::Pending; generic_params.len()];
+        let mut substitutor = TypeSubstitutor::new();
+        for (idx, provided_arg) in provided_args
+            .iter()
+            .take(generic_params.len())
+            .cloned()
+            .enumerate()
+        {
+            slots[idx] = GenericDefaultSlot::Resolved(provided_arg.clone());
+            substitutor.insert_type(GenericTplId::Type(idx as u32), provided_arg, true);
+        }
+
+        Self {
+            generic_params,
+            slots,
+            substitutor,
+        }
+    }
+
+    fn set_resolved(&mut self, idx: usize, ty: LuaType) {
+        self.slots[idx] = GenericDefaultSlot::Resolved(ty.clone());
+        self.substitutor
+            .insert_type(GenericTplId::Type(idx as u32), ty, true);
+    }
+
+    fn into_completed_args(self, provided_args: &[LuaType]) -> Vec<LuaType> {
+        let mut completed_args = self
+            .slots
+            .into_iter()
+            .map(|slot| match slot {
+                GenericDefaultSlot::Resolved(ty) => ty,
+                GenericDefaultSlot::Pending | GenericDefaultSlot::Visiting => LuaType::Unknown,
+            })
+            .collect::<Vec<_>>();
+        if provided_args.len() > self.generic_params.len() {
+            completed_args.extend(provided_args[self.generic_params.len()..].iter().cloned());
+        }
+
+        completed_args
+    }
 }
 
 /// 根据已提供的类型泛型实参补齐默认实参.
@@ -89,49 +147,109 @@ fn complete_type_generic_args_inner(
         };
     }
 
-    let mut params = Vec::with_capacity(generic_params.len().max(provided_args.len()));
-    let mut substitutor = TypeSubstitutor::new();
+    let mut default_context = GenericDefaultContext::new(generic_params, &provided_args);
+
+    // 逐个具化缺失实参. default 可以依赖同一声明列表里的任意参数,
+    // 所以这里不能再按 left-to-right 简单替换.
     let mut missing_required_count = 0;
     let mut cycled = false;
-    for (idx, generic_param) in generic_params.iter().enumerate() {
-        if let Some(provided_arg) = provided_args.get(idx) {
-            let provided_arg = provided_arg.clone();
-            substitutor.insert_type(GenericTplId::Type(idx as u32), provided_arg.clone(), true);
-            params.push(provided_arg);
+    for idx in 0..default_context.generic_params.len() {
+        if matches!(&default_context.slots[idx], GenericDefaultSlot::Resolved(_)) {
             continue;
         }
 
-        if let Some(default_type) = &generic_param.default {
-            if missing_required_count != 0 {
-                continue;
-            }
-
-            let completed_type =
-                complete_type_generic_args_in_type_inner(db, default_type, visiting);
-            cycled |= completed_type.cycled;
-            let default_type = if completed_type.cycled {
-                default_type.clone()
-            } else {
-                completed_type.ty
-            };
-            let instantiated = instantiate_type_generic(db, &default_type, &substitutor);
-            substitutor.insert_type(GenericTplId::Type(idx as u32), instantiated.clone(), true);
-            params.push(instantiated);
-        } else {
-            missing_required_count += 1;
+        match resolve_generic_default_arg(db, &mut default_context, idx, visiting) {
+            Some(default_cycled) => cycled |= default_cycled,
+            None => missing_required_count += 1,
         }
     }
 
-    if missing_required_count == 0 && provided_args.len() > generic_params.len() {
-        params.extend(provided_args[generic_params.len()..].iter().cloned());
-    }
+    // 只有所有必填参数都有结果时才返回完整实参列表; 多余实参沿用旧行为追加回结果.
+    let completed_args = if missing_required_count == 0 {
+        Some(default_context.into_completed_args(&provided_args))
+    } else {
+        None
+    };
 
     visiting.remove(type_decl_id);
     GenericArgumentCompletion {
-        completed_args: (missing_required_count == 0).then_some(params),
+        completed_args,
         missing_required_count,
         cycled,
     }
+}
+
+fn resolve_generic_default_arg(
+    db: &DbIndex,
+    context: &mut GenericDefaultContext<'_>,
+    idx: usize,
+    visiting: &mut HashSet<LuaTypeDeclId>,
+) -> Option<bool> {
+    // 显式实参或已经具化过的 default 都直接复用.
+    if matches!(&context.slots[idx], GenericDefaultSlot::Resolved(_)) {
+        return Some(false);
+    }
+
+    if matches!(&context.slots[idx], GenericDefaultSlot::Visiting) {
+        // 重新遇到正在求值的参数, 说明本地 default 依赖成环.
+        context.set_resolved(idx, LuaType::Unknown);
+        return Some(true);
+    }
+
+    let default_type = context.generic_params[idx].default.clone()?;
+
+    context.slots[idx] = GenericDefaultSlot::Visiting;
+    let mut cycled = false;
+    // 先具化当前 default 直接引用的本地泛型参数, 例如 `A = B[]`.
+    for dep_idx in collect_local_default_deps(&default_type, context.generic_params.len()) {
+        if dep_idx == idx {
+            // `T = T` 是最短的本地 default 环, 直接落到 unknown.
+            context.set_resolved(idx, LuaType::Unknown);
+            return Some(true);
+        }
+
+        match resolve_generic_default_arg(db, context, dep_idx, visiting) {
+            Some(dep_cycled) => cycled |= dep_cycled,
+            None => {
+                // 依赖的参数本身缺少 default, 当前 default 也无法安全具化.
+                context.slots[idx] = GenericDefaultSlot::Pending;
+                return None;
+            }
+        }
+    }
+
+    if cycled {
+        // 依赖链中出现 default 环时, 当前参数也使用 unknown, 避免留下半解析的 TplRef.
+        context.set_resolved(idx, LuaType::Unknown);
+        return Some(true);
+    }
+
+    let completed_type = complete_type_generic_args_in_type_inner(db, &default_type, visiting);
+    let default_type = if completed_type.cycled {
+        default_type.clone()
+    } else {
+        completed_type.ty
+    };
+    // 本地依赖已经写入 substitutor, 这里直接把 default 里的 TplRef 替换成实际类型.
+    let resolved = instantiate_type_generic(db, &default_type, &context.substitutor);
+    context.set_resolved(idx, resolved);
+
+    Some(completed_type.cycled)
+}
+
+fn collect_local_default_deps(ty: &LuaType, generic_count: usize) -> Vec<usize> {
+    let mut deps = Vec::new();
+    ty.visit_type(&mut |inner_ty| {
+        if let LuaType::TplRef(tpl) = inner_ty
+            && let GenericTplId::Type(idx) = tpl.get_tpl_id()
+        {
+            let idx = idx as usize;
+            if idx < generic_count && !deps.contains(&idx) {
+                deps.push(idx);
+            }
+        }
+    });
+    deps
 }
 
 fn complete_type_generic_args_in_type_inner(

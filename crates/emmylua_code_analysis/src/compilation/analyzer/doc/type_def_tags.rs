@@ -352,16 +352,34 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
 
     let mut param_info = Vec::new();
     if let Some(params_list) = tag.get_generic_decl_list() {
-        for param in params_list.get_generic_decl() {
-            let Some(name_token) = param.get_name_token() else {
+        let mut declared_params = Vec::new();
+        for generic_decl in params_list.get_generic_decl() {
+            let Some(name_token) = generic_decl.get_name_token() else {
                 continue;
             };
             let smol_name = SmolStr::new(name_token.get_name_text());
 
-            let type_ref = param
+            let placeholder = GenericParam::new(
+                smol_name.clone(),
+                None,
+                None,
+                generic_decl.has_const_modifier(),
+                None,
+            );
+            if let Some(tpl_id) = analyzer
+                .type_context
+                .generic_index
+                .append_generic_param(scope_id, placeholder)
+            {
+                declared_params.push((tpl_id, generic_decl, smol_name));
+            }
+        }
+
+        for (tpl_id, generic_decl, smol_name) in declared_params {
+            let type_ref = generic_decl
                 .get_constraint_type()
                 .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
-            let default_type = param
+            let default_type = generic_decl
                 .get_default_type()
                 .map(|type_ref| infer_type(&mut analyzer.type_context, type_ref));
 
@@ -369,13 +387,13 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
                 smol_name,
                 type_ref,
                 default_type,
-                param.has_const_modifier(),
+                generic_decl.has_const_modifier(),
                 None,
             );
             analyzer
                 .type_context
                 .generic_index
-                .append_generic_param(scope_id, generic_param.clone());
+                .update_generic_param(tpl_id, generic_param.clone());
             param_info.push(generic_param);
         }
     }
@@ -386,6 +404,12 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
         .get_db()
         .get_signature_index_mut()
         .get_or_create(signature_id);
+    if let LuaAst::LuaFuncStat(func_stat) = &comment_owner
+        && let Some(LuaVarExpr::IndexExpr(index_expr)) = func_stat.get_func_name()
+        && let Some(index_token) = index_expr.get_index_token()
+    {
+        signature.is_colon_define = index_token.is_colon();
+    }
     signature.generic_params = param_info;
     let signature_generic_params = signature.get_function_generic_params();
     for overload in &mut signature.overloads {

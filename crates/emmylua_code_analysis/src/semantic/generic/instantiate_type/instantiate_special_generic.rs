@@ -82,6 +82,12 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
+            if operands.iter().any(LuaType::contains_tpl_node) {
+                return LuaType::Call(
+                    LuaAliasCallType::new(LuaAliasCallKind::RawGet, operands).into(),
+                );
+            }
+
             let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
                 .unwrap_or_else(|| operands[1].clone());
 
@@ -90,6 +96,12 @@ pub(super) fn instantiate_alias_call(
         LuaAliasCallKind::Index => {
             if operands.len() != 2 {
                 return LuaType::Unknown;
+            }
+
+            if operands.iter().any(LuaType::contains_tpl_node) {
+                return LuaType::Call(
+                    LuaAliasCallType::new(LuaAliasCallKind::Index, operands).into(),
+                );
             }
 
             let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)

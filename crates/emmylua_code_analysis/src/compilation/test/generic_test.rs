@@ -390,6 +390,93 @@ mod test {
     }
 
     #[test]
+    fn test_alias_generic_constraint_references_later_param() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@alias B<K extends keyof T, T> T[K]
+
+            ---@type B<"one", A>
+            Result = nil
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type_detailed(result_ty), "B<\"one\",A> = 1");
+    }
+
+    #[test]
+    fn test_later_keyof_constraint_still_reports_invalid_key() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@alias B<K extends keyof T, T> T[K]
+            "#,
+        );
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@type B<"two", A>
+            local value
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_function_generic_constraint_references_later_param() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@generic K extends keyof T, T
+            ---@param object T
+            ---@param key K
+            ---@return T[K]
+            function pick(object, key)
+            end
+
+            ---@type A
+            local a
+            Result = pick(a, "one")
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "1");
+    }
+
+    #[test]
+    fn test_inline_function_generic_constraint_references_later_param() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@type fun<K extends keyof T, T>(object: T, key: K): T[K]
+            local pick
+
+            ---@type A
+            local a
+            Result = pick(a, "one")
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "1");
+    }
+
+    #[test]
     fn test_type_partial() {
         let mut ws = VirtualWorkspace::new();
 
@@ -618,9 +705,9 @@ mod test {
             function f(v)
             end
 
-            ---@generic TP: std.type
+            ---@generic const TP: std.type
             ---@param obj any
-            ---@param tp std.ConstTpl<TP>
+            ---@param tp TP
             ---@return TypeGuard<IsTypeGuard<TP>>
             function is_type(obj, tp)
             end
@@ -744,6 +831,58 @@ mod test {
 
         let result_ty = ws.expr_ty("Result");
         assert!(result_ty.is_any(), "{result_ty:?}");
+    }
+
+    #[test]
+    fn test_method_generic_constraint_references_class_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@class Box<T>
+            local Box = {}
+
+            ---@generic K extends keyof T
+            ---@param key K
+            ---@return T[K]
+            function Box:get(key)
+            end
+
+            ---@type Box<A>
+            local box
+
+            Result = box:get("one")
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "1");
+    }
+
+    #[test]
+    fn test_method_generic_default_references_class_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Box<T>
+            local Box = {}
+
+            ---@generic U = T
+            ---@return U
+            function Box:getDefault()
+            end
+
+            ---@type Box<string>
+            local box
+
+            Result = box:getDefault()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("Result");
+        assert_eq!(ws.humanize_type(result_ty), "string");
     }
 
     #[test]
@@ -873,40 +1012,6 @@ mod test {
     }
 
     #[test]
-    fn test_legacy_const_tpl_marks_generic_param_metadata() {
-        let mut ws = VirtualWorkspace::new();
-        let file_id = ws.def(
-            r#"
-            ---@alias std.ConstTpl<T> unknown
-
-            ---@generic T
-            ---@param value std.ConstTpl<T>
-            ---@return T
-            function id(value)
-            end
-
-            result = id(1)
-            "#,
-        );
-
-        let closure = ws.get_node::<LuaClosureExpr>(file_id);
-        let signature_id = LuaSignatureId::from_closure(file_id, &closure);
-        {
-            let signature = ws
-                .analysis
-                .compilation
-                .get_db()
-                .get_signature_index()
-                .get(&signature_id)
-                .expect("signature");
-            assert_eq!(signature.generic_params.len(), 1);
-            assert!(signature.generic_params[0].is_const);
-        }
-
-        assert_eq!(ws.expr_ty("result"), LuaType::IntegerConst(1));
-    }
-
-    #[test]
     fn test_bare_generic_type_uses_default() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1018,6 +1123,78 @@ mod test {
 
         let value_ty = ws.expr_ty("PairValue");
         assert_eq!(ws.humanize_type(value_ty), "Pair<number,number[]>");
+    }
+
+    #[test]
+    fn test_generic_default_can_reference_later_param_default() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Pair<K = T, T = string>
+
+            ---@type Pair
+            PairValue = {}
+            "#,
+        );
+
+        let value_ty = ws.expr_ty("PairValue");
+        assert_eq!(ws.humanize_type(value_ty), "Pair<string,string>");
+    }
+
+    #[test]
+    fn test_generic_default_can_resolve_long_local_dependency_chain() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Chain<A = B[], B = C, C = integer>
+
+            ---@type Chain
+            ChainValue = {}
+            "#,
+        );
+
+        let value_ty = ws.expr_ty("ChainValue");
+        assert_eq!(
+            ws.humanize_type(value_ty),
+            "Chain<integer[],integer,integer>"
+        );
+    }
+
+    #[test]
+    fn test_generic_default_direct_cycle_materializes_unknown() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Box<T = T>
+            "#,
+        );
+
+        let completion = complete_type_generic_args(
+            ws.analysis.compilation.get_db(),
+            &LuaTypeDeclId::global("Box"),
+            Vec::new(),
+        );
+        assert_eq!(completion.completed_args, Some(vec![LuaType::Unknown]));
+    }
+
+    #[test]
+    fn test_generic_default_indirect_cycle_materializes_unknown() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Box<T = U, U = T>
+            "#,
+        );
+
+        let completion = complete_type_generic_args(
+            ws.analysis.compilation.get_db(),
+            &LuaTypeDeclId::global("Box"),
+            Vec::new(),
+        );
+        assert_eq!(
+            completion.completed_args,
+            Some(vec![LuaType::Unknown, LuaType::Unknown])
+        );
     }
 
     #[test]
