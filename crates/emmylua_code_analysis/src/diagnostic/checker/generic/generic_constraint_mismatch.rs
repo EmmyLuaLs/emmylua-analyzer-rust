@@ -596,7 +596,12 @@ fn check_doc_tag_type(
             .take(explicit_args.len())
             .enumerate()
         {
-            let extend_type = generic_params.get(i)?.constraint.as_ref()?;
+            let Some(extend_type) = generic_params
+                .get(i)
+                .and_then(|param| param.constraint.as_ref())
+            else {
+                continue;
+            };
             let result = semantic_model.type_check_detail(extend_type, param_type);
             if result.is_err() {
                 add_type_check_diagnostic(

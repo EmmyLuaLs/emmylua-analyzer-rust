@@ -193,6 +193,40 @@ mod test {
     }
 
     #[test]
+    fn test_alias_multi_generic_keyof_constraint_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@alias B<T, K extends keyof A> A[K]
+
+            ---@type B<A, 'two'>
+            local tmp
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_alias_multi_generic_keyof_constraint_match() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@alias B<T, K extends keyof A> A[K]
+
+            ---@type B<A, 'one'>
+            local tmp
+            "#
+        ));
+    }
+
+    #[test]
     fn test_class_generic_default_constraint_match() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
