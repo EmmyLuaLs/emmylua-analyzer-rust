@@ -1151,7 +1151,6 @@ LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 2036, leng
             .map(|x| format!("{:?}", x))
             .collect::<Vec<String>>()
             .join("\n");
-
         let expected = r#"
 LuaTokenData { kind: TkShebang, range: SourceRange { start_offset: 0, length: 19 } }
 LuaTokenData { kind: TkEndOfLine, range: SourceRange { start_offset: 19, length: 1 } }
@@ -1256,7 +1255,7 @@ LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 285, lengt
 LuaTokenData { kind: TkName, range: SourceRange { start_offset: 286, length: 1 } }
 LuaTokenData { kind: TkEndOfLine, range: SourceRange { start_offset: 287, length: 1 } }
 LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 288, length: 8 } }
-LuaTokenData { kind: TkNot, range: SourceRange { start_offset: 296, length: 1 } }
+LuaTokenData { kind: TkToggle, range: SourceRange { start_offset: 296, length: 1 } }
 LuaTokenData { kind: TkName, range: SourceRange { start_offset: 297, length: 1 } }
 LuaTokenData { kind: TkEndOfLine, range: SourceRange { start_offset: 298, length: 1 } }
 LuaTokenData { kind: TkWhitespace, range: SourceRange { start_offset: 299, length: 8 } }
