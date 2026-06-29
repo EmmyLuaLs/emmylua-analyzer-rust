@@ -2013,4 +2013,15 @@ end
         let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
         assert_eq!(result, expected);
     }
+
+    #[test]
+    fn test_safe_method_colon_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = MyClass.myField?.:byte(1)\n";
+        let expected = "local x = MyClass.myField?.:byte(1)\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
 }

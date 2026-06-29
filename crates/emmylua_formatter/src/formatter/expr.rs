@@ -3258,17 +3258,27 @@ fn format_index_access_ir(
     expr: &LuaIndexExpr,
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
+    let is_safe = expr.is_safe_index();
     if let Some(index_token) = expr.get_index_token() {
         if index_token.is_dot() {
+            if is_safe {
+                docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+            }
             docs.push(ir::syntax_token(LuaTokenKind::TkDot));
             docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_colon() {
+            if is_safe {
+                docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+            }
             docs.push(ir::syntax_token(LuaTokenKind::TkColon));
             docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_safe_navigation() {
             docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
             docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_left_bracket() {
+            if is_safe {
+                docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+            }
             docs.push(ir::syntax_token(LuaTokenKind::TkLeftBracket));
             if ctx.config.spacing.space_inside_brackets {
                 docs.push(ir::space());

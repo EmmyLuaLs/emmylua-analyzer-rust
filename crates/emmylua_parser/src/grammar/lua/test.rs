@@ -1283,6 +1283,43 @@ Syntax(Chunk)@0..27
     }
 
     #[test]
+    fn test_safe_method_colon() {
+        let code = "local x = a?.field?.:method()\n";
+        let result = r#"
+Syntax(Chunk)@0..30
+  Syntax(Block)@0..30
+    Syntax(LocalStat)@0..29
+      Token(TkLocal)@0..5 "local"
+      Token(TkWhitespace)@5..6 " "
+      Syntax(LocalName)@6..7
+        Token(TkName)@6..7 "x"
+      Token(TkWhitespace)@7..8 " "
+      Token(TkAssign)@8..9 "="
+      Token(TkWhitespace)@9..10 " "
+      Syntax(CallExpr)@10..29
+        Syntax(SafeIndexExpr)@10..27
+          Syntax(SafeIndexExpr)@10..18
+            Syntax(NameExpr)@10..11
+              Token(TkName)@10..11 "a"
+            Token(TkSafeNavigation)@11..13 "?."
+            Token(TkName)@13..18 "field"
+          Token(TkSafeNavigation)@18..20 "?."
+          Token(TkColon)@20..21 ":"
+          Token(TkName)@21..27 "method"
+        Syntax(CallArgList)@27..29
+          Token(TkLeftParen)@27..28 "("
+          Token(TkRightParen)@28..29 ")"
+    Token(TkEndOfLine)@29..30 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
     fn test_safe_navigation_dot() {
         let code = "local x = obj?.field\n";
         let result = r#"
