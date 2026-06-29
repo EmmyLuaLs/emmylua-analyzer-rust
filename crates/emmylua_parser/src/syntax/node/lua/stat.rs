@@ -440,6 +440,10 @@ impl LuaLocalFuncStat {
     pub fn get_closure(&self) -> Option<LuaClosureExpr> {
         self.child()
     }
+
+    pub fn is_const(&self) -> bool {
+        self.token_by_kind(LuaTokenKind::TkConst).is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

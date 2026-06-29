@@ -35,6 +35,10 @@ fn check_call_expr(
     semantic_model: &SemanticModel,
     call_expr: LuaCallExpr,
 ) -> Option<()> {
+    if call_expr.has_safe_navigation() {
+        return None;
+    }
+
     let prefix = call_expr.get_prefix_expr()?;
     let func = semantic_model.infer_expr(prefix.clone()).ok()?;
     if func.is_nullable() {

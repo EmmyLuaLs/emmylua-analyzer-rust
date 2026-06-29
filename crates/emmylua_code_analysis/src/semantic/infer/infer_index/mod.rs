@@ -75,6 +75,7 @@ pub fn infer_index_expr(
     index_expr: LuaIndexExpr,
     pass_flow: bool,
 ) -> InferResult {
+    let is_safe = index_expr.is_safe_index();
     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
     let prefix_type = infer_expr_for_index(db, cache, prefix_expr)?;
     let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
@@ -87,10 +88,16 @@ pub fn infer_index_expr(
         &InferGuard::new(),
     )?;
 
-    if pass_flow {
-        infer_member_type_pass_flow(db, cache, index_expr, member_type)
+    let result_type = if is_safe && prefix_type.is_nullable() {
+        TypeOps::Union.apply(db, &member_type, &LuaType::Nil)
     } else {
-        Ok(member_type)
+        member_type
+    };
+
+    if pass_flow {
+        infer_member_type_pass_flow(db, cache, index_expr, result_type)
+    } else {
+        Ok(result_type)
     }
 }
 

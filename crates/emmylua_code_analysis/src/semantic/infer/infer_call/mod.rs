@@ -12,7 +12,7 @@ use crate::semantic::overload_resolve::callable_accepts_args;
 use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
     LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeVisitTrait, VariadicType,
+    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps, TypeVisitTrait, VariadicType,
 };
 use crate::{
     InferGuardRef,
@@ -767,18 +767,26 @@ pub fn infer_call_expr(
 
     check_can_infer(db, cache, &call_expr)?;
 
+    let is_safe_call = call_expr.has_safe_navigation();
+
     let prefix_expr = call_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
     let prefix_type = infer_expr(db, cache, prefix_expr)?;
     let ret_type = infer_call_expr_func(
         db,
         cache,
         call_expr.clone(),
-        prefix_type,
+        prefix_type.clone(),
         &InferGuard::new(),
         None,
     )?
     .get_ret()
     .clone();
+
+    let ret_type = if is_safe_call && prefix_type.is_nullable() {
+        TypeOps::Union.apply(db, &ret_type, &LuaType::Nil)
+    } else {
+        ret_type
+    };
 
     if !cache.is_no_flow()
         && let Some(tree) = db.get_flow_index().get_flow_tree(&cache.get_file_id())

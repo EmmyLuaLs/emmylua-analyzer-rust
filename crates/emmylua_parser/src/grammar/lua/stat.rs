@@ -646,10 +646,33 @@ fn parse_local(p: &mut LuaParser) -> ParseResult {
 }
 
 fn parse_const(p: &mut LuaParser) -> ParseResult {
-    let m = p.mark(LuaSyntaxKind::ConstStat);
+    let mut m = p.mark(LuaSyntaxKind::ConstStat);
     p.bump(); // consume 'const'
 
     match p.current_token() {
+        LuaTokenKind::TkFunction => {
+            p.bump();
+            m.set_kind(p, LuaSyntaxKind::LocalFuncStat);
+
+            match parse_local_name(p, false) {
+                Ok(_) => {}
+                Err(_) => {
+                    p.push_error(LuaParseError::syntax_error_from(
+                        &t!("expected function name after 'local function'"),
+                        p.current_token_range(),
+                    ));
+                }
+            }
+            match parse_closure_expr(p) {
+                Ok(_) => {}
+                Err(_) => {
+                    p.push_error(LuaParseError::syntax_error_from(
+                        &t!("invalid function definition"),
+                        p.current_token_range(),
+                    ));
+                }
+            }
+        }
         LuaTokenKind::TkName => {
             parse_variable_name_list(p, false)?;
 

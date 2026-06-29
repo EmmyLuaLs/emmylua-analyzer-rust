@@ -95,7 +95,31 @@ pub fn bind_index_expr(
     current: FlowId,
 ) -> Option<()> {
     binder.bind_syntax_node(index_expr.get_syntax_id(), current);
+    if index_expr.is_safe_index() {
+        return bind_safe_index_expr(binder, index_expr, current);
+    }
     bind_each_child(binder, LuaAst::LuaIndexExpr(index_expr.clone()), current);
+    Some(())
+}
+
+fn bind_safe_index_expr(
+    binder: &mut FlowBinder,
+    index_expr: LuaIndexExpr,
+    current: FlowId,
+) -> Option<()> {
+    let prefix_expr = index_expr.get_prefix_expr()?;
+
+    let pre_access = binder.create_branch_label();
+    bind_condition_expr(
+        binder,
+        prefix_expr,
+        current,
+        pre_access,
+        binder.false_target,
+    );
+    let current = finish_flow_label(binder, pre_access, current);
+
+    bind_each_child(binder, LuaAst::LuaIndexExpr(index_expr), current);
     Some(())
 }
 

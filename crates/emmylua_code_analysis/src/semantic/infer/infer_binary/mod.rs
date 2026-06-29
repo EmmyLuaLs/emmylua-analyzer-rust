@@ -113,6 +113,9 @@ fn infer_binary_expr_type(
         BinaryOperator::OpConcat => infer_binary_expr_concat(db, left_type, right_type),
         BinaryOperator::OpOr => infer_binary_expr_or(db, left_type, right_type),
         BinaryOperator::OpAnd => infer_binary_expr_and(db, left_type, right_type),
+        BinaryOperator::OpNilCoalescing => {
+            infer_binary_expr_nil_coalescing(db, left_type, right_type)
+        }
         BinaryOperator::OpLt
         | BinaryOperator::OpLe
         | BinaryOperator::OpGt
@@ -536,4 +539,21 @@ fn float_cmp(left: f64, right: f64, op: BinaryOperator) -> bool {
         BinaryOperator::OpNe => left != right,
         _ => false,
     }
+}
+
+fn infer_binary_expr_nil_coalescing(db: &DbIndex, left: LuaType, right: LuaType) -> InferResult {
+    if left.is_nil() || left.is_any() || left.is_unknown() {
+        return Ok(right);
+    }
+
+    if right.is_nil() || right.is_any() || right.is_unknown() {
+        return Ok(left);
+    }
+
+    let left_without_nil = TypeOps::Remove.apply(db, &left, &LuaType::Nil);
+    if left_without_nil.is_unknown() {
+        return Ok(right);
+    }
+
+    Ok(TypeOps::Union.apply(db, &left_without_nil, &right))
 }
