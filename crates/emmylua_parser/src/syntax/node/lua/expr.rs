@@ -24,7 +24,6 @@ pub enum LuaExpr {
     NameExpr(LuaNameExpr),
     IndexExpr(LuaIndexExpr),
     TernaryExpr(LuaTernaryExpr),
-    NilCoalescingExpr(LuaNilCoalescingExpr),
 }
 
 impl LuaAstNode for LuaExpr {
@@ -40,7 +39,6 @@ impl LuaAstNode for LuaExpr {
             LuaExpr::NameExpr(node) => node.syntax(),
             LuaExpr::IndexExpr(node) => node.syntax(),
             LuaExpr::TernaryExpr(node) => node.syntax(),
-            LuaExpr::NilCoalescingExpr(node) => node.syntax(),
         }
     }
 
@@ -68,7 +66,6 @@ impl LuaAstNode for LuaExpr {
                 | LuaSyntaxKind::IndexExpr
                 | LuaSyntaxKind::SafeIndexExpr
                 | LuaSyntaxKind::TernaryExpr
-                | LuaSyntaxKind::NilCoalescingExpr
         )
     }
 
@@ -97,9 +94,6 @@ impl LuaAstNode for LuaExpr {
             LuaSyntaxKind::IndexExpr => LuaIndexExpr::cast(syntax).map(LuaExpr::IndexExpr),
             LuaSyntaxKind::SafeIndexExpr => LuaIndexExpr::cast(syntax).map(LuaExpr::IndexExpr),
             LuaSyntaxKind::TernaryExpr => LuaTernaryExpr::cast(syntax).map(LuaExpr::TernaryExpr),
-            LuaSyntaxKind::NilCoalescingExpr => {
-                LuaNilCoalescingExpr::cast(syntax).map(LuaExpr::NilCoalescingExpr)
-            }
             _ => None,
         }
     }
@@ -842,54 +836,5 @@ impl LuaTernaryExpr {
         let true_expr = exprs.next()?;
         let false_expr = exprs.next()?;
         Some((condition_expr, true_expr, false_expr))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LuaNilCoalescingExpr {
-    syntax: LuaSyntaxNode,
-}
-
-impl LuaAstNode for LuaNilCoalescingExpr {
-    fn syntax(&self) -> &LuaSyntaxNode {
-        &self.syntax
-    }
-
-    fn can_cast(kind: LuaSyntaxKind) -> bool
-    where
-        Self: Sized,
-    {
-        kind == LuaSyntaxKind::NilCoalescingExpr
-    }
-
-    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if Self::can_cast(syntax.kind().into()) {
-            Some(Self { syntax })
-        } else {
-            None
-        }
-    }
-}
-
-impl LuaNilCoalescingExpr {
-    pub fn get_left_right_exprs(&self) -> Option<(LuaExpr, LuaExpr)> {
-        let mut exprs = self.children::<LuaExpr>();
-        let left_expr = exprs.next()?;
-        let right_expr = exprs.next()?;
-        Some((left_expr, right_expr))
-    }
-
-    pub fn get_left_expr(&self) -> Option<LuaExpr> {
-        let mut exprs = self.children::<LuaExpr>();
-        exprs.next()
-    }
-
-    pub fn get_right_expr(&self) -> Option<LuaExpr> {
-        let mut exprs = self.children::<LuaExpr>();
-        exprs.next();
-        exprs.next()
     }
 }

@@ -23,6 +23,8 @@ pub enum LuaSyntaxKind {
     FuncStat,
     LabelStat,
     BreakStat,
+    ContinueStat,
+    ConstStat,
     ReturnStat,
     GotoStat,
     CallExprStat,
@@ -47,9 +49,8 @@ pub enum LuaSyntaxKind {
     SetmetatableCallExpr, // setmetatable(a, b)
     IndexExpr,
     NameExpr,
-    TernaryExpr,       // a ? b : c
-    SafeIndexExpr,     // a?.b
-    NilCoalescingExpr, // a ?? b
+    TernaryExpr,   // a ? b : c
+    SafeIndexExpr, // a?.b
 
     // other
     LocalName,

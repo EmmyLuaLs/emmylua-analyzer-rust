@@ -111,7 +111,14 @@ impl<'a> LuaLexer<'a> {
             "while" => LuaTokenKind::TkWhile,
             "continue" => {
                 if self.support(LuaFeatures::Continue) {
-                    LuaTokenKind::TkBreak
+                    LuaTokenKind::TkContinue
+                } else {
+                    LuaTokenKind::TkName
+                }
+            }
+            "const" => {
+                if self.support(LuaFeatures::ConstStatement) {
+                    LuaTokenKind::TkConst
                 } else {
                     LuaTokenKind::TkName
                 }
@@ -234,6 +241,13 @@ impl<'a> LuaLexer<'a> {
                     {
                         self.reader.bump();
                         self.reader.bump();
+
+                        if self.support(LuaFeatures::ShrArithmeticAssign)
+                            && self.reader.current_char() == '='
+                        {
+                            self.reader.bump();
+                            return LuaTokenKind::TkShrArithmeticAssign;
+                        }
 
                         LuaTokenKind::TkShrArithmetic
                     }

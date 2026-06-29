@@ -32,6 +32,7 @@ pub enum LuaStat {
     LabelStat(LuaLabelStat),
     EmptyStat(LuaEmptyStat),
     GlobalStat(LuaGlobalStat),
+    ContinueStat(LuaContinueStat),
 }
 
 impl LuaAstNode for LuaStat {
@@ -54,6 +55,7 @@ impl LuaAstNode for LuaStat {
             LuaStat::LabelStat(node) => node.syntax(),
             LuaStat::EmptyStat(node) => node.syntax(),
             LuaStat::GlobalStat(node) => node.syntax(),
+            LuaStat::ContinueStat(node) => node.syntax(),
         }
     }
 
@@ -80,6 +82,8 @@ impl LuaAstNode for LuaStat {
                 | LuaSyntaxKind::LabelStat
                 | LuaSyntaxKind::EmptyStat
                 | LuaSyntaxKind::GlobalStat
+                | LuaSyntaxKind::ConstStat
+                | LuaSyntaxKind::ContinueStat
         )
     }
 
@@ -88,7 +92,9 @@ impl LuaAstNode for LuaStat {
         Self: Sized,
     {
         match syntax.kind().into() {
-            LuaSyntaxKind::LocalStat => Some(LuaStat::LocalStat(LuaLocalStat::cast(syntax)?)),
+            LuaSyntaxKind::LocalStat | LuaSyntaxKind::ConstStat => {
+                Some(LuaStat::LocalStat(LuaLocalStat::cast(syntax)?))
+            }
             LuaSyntaxKind::AssignStat => Some(LuaStat::AssignStat(LuaAssignStat::cast(syntax)?)),
             LuaSyntaxKind::CallExprStat => {
                 Some(LuaStat::CallExprStat(LuaCallExprStat::cast(syntax)?))
@@ -111,6 +117,9 @@ impl LuaAstNode for LuaStat {
             LuaSyntaxKind::LabelStat => Some(LuaStat::LabelStat(LuaLabelStat::cast(syntax)?)),
             LuaSyntaxKind::EmptyStat => Some(LuaStat::EmptyStat(LuaEmptyStat::cast(syntax)?)),
             LuaSyntaxKind::GlobalStat => Some(LuaStat::GlobalStat(LuaGlobalStat::cast(syntax)?)),
+            LuaSyntaxKind::ContinueStat => {
+                Some(LuaStat::ContinueStat(LuaContinueStat::cast(syntax)?))
+            }
             _ => None,
         }
     }
@@ -193,14 +202,14 @@ impl LuaAstNode for LuaLocalStat {
     where
         Self: Sized,
     {
-        kind == LuaSyntaxKind::LocalStat
+        kind == LuaSyntaxKind::LocalStat || kind == LuaSyntaxKind::ConstStat
     }
 
     fn cast(syntax: LuaSyntaxNode) -> Option<Self>
     where
         Self: Sized,
     {
-        if syntax.kind() == LuaSyntaxKind::LocalStat.into() {
+        if Self::can_cast(syntax.kind().into()) {
             Some(Self { syntax })
         } else {
             None
@@ -236,6 +245,10 @@ impl LuaLocalStat {
 
     pub fn get_attrib(&self) -> Option<LuaLocalAttribute> {
         self.child()
+    }
+
+    pub fn is_const(&self) -> bool {
+        self.syntax.kind() == LuaSyntaxKind::ConstStat.into()
     }
 }
 
@@ -1041,5 +1054,34 @@ impl LuaGlobalStat {
 
     pub fn is_any_global(&self) -> bool {
         self.token_by_kind(LuaTokenKind::TkMul).is_some()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LuaContinueStat {
+    syntax: LuaSyntaxNode,
+}
+
+impl LuaAstNode for LuaContinueStat {
+    fn syntax(&self) -> &LuaSyntaxNode {
+        &self.syntax
+    }
+
+    fn can_cast(kind: LuaSyntaxKind) -> bool
+    where
+        Self: Sized,
+    {
+        kind == LuaSyntaxKind::ContinueStat
+    }
+
+    fn cast(syntax: LuaSyntaxNode) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if Self::can_cast(syntax.kind().into()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
     }
 }

@@ -2,7 +2,7 @@ mod bind_binary_expr;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaNameExpr,
-    LuaNilCoalescingExpr, LuaTableExpr, LuaTernaryExpr, LuaUnaryExpr,
+    LuaTableExpr, LuaTernaryExpr, LuaUnaryExpr,
 };
 
 use crate::{
@@ -57,9 +57,6 @@ pub fn bind_expr(binder: &mut FlowBinder, expr: LuaExpr, current: FlowId) -> Flo
         LuaExpr::BinaryExpr(binary_expr) => bind_binary_expr(binder, binary_expr, current),
         LuaExpr::UnaryExpr(unary_expr) => bind_unary_expr(binder, unary_expr, current),
         LuaExpr::TernaryExpr(ternary_expr) => bind_ternary_expr(binder, ternary_expr, current),
-        LuaExpr::NilCoalescingExpr(nil_coalescing_expr) => {
-            bind_nil_coalescing_expr(binder, nil_coalescing_expr, current)
-        }
     };
 
     current
@@ -153,27 +150,6 @@ fn bind_ternary_expr(
     bind_condition_expr(
         binder,
         false_expr,
-        current,
-        binder.true_target,
-        binder.false_target,
-    );
-
-    Some(())
-}
-
-fn bind_nil_coalescing_expr(
-    binder: &mut FlowBinder,
-    nil_coalescing_expr: LuaNilCoalescingExpr,
-    current: FlowId,
-) -> Option<()> {
-    let (left, right) = nil_coalescing_expr.get_left_right_exprs()?;
-
-    let pre_right = binder.create_branch_label();
-    bind_condition_expr(binder, left, current, binder.true_target, pre_right);
-    let current = finish_flow_label(binder, pre_right, current);
-    bind_condition_expr(
-        binder,
-        right,
         current,
         binder.true_target,
         binder.false_target,

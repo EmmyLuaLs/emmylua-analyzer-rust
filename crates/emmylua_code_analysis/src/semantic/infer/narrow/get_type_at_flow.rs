@@ -1353,6 +1353,7 @@ impl<'a> FlowTypeEngine<'a> {
                 }
                 FlowNodeKind::LoopLabel
                 | FlowNodeKind::Break
+                | FlowNodeKind::Continue
                 | FlowNodeKind::Return
                 | FlowNodeKind::ForIStat(_) => {
                     walk.antecedent_flow_id = get_single_antecedent(flow_node)?;

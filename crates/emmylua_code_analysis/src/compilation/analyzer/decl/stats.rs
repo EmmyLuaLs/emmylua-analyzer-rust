@@ -16,6 +16,11 @@ use super::{DeclAnalyzer, members::find_index_owner};
 pub fn analyze_local_stat(analyzer: &mut DeclAnalyzer, stat: LuaLocalStat) -> Option<()> {
     let local_name_list = stat.get_local_name_list().collect::<Vec<_>>();
     let value_expr_list = stat.get_value_exprs().collect::<Vec<_>>();
+    let is_const = if stat.is_const() {
+        Some(LocalAttribute::Const)
+    } else {
+        None
+    };
 
     for (index, local_name) in local_name_list.iter().enumerate() {
         let name = if let Some(name_token) = local_name.get_name_token() {
@@ -29,10 +34,10 @@ pub fn analyze_local_stat(analyzer: &mut DeclAnalyzer, stat: LuaLocalStat) -> Op
             } else if attrib.is_close() {
                 Some(LocalAttribute::Close)
             } else {
-                None
+                is_const.clone()
             }
         } else {
-            None
+            is_const.clone()
         };
 
         let file_id = analyzer.get_file_id();

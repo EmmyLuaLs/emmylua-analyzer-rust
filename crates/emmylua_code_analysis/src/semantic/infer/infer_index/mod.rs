@@ -1,8 +1,7 @@
 mod infer_array;
 
 use emmylua_parser::{
-    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, LuaNilCoalescingExpr, LuaTernaryExpr,
-    NumberResult, PathTrait,
+    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, LuaTernaryExpr, NumberResult, PathTrait,
 };
 use hashbrown::HashSet;
 use internment::ArcIntern;
@@ -106,19 +105,6 @@ pub fn infer_ternary_expr(
     let true_type = infer_expr(db, cache, true_expr)?;
     let false_type = infer_expr(db, cache, false_expr)?;
     Ok(TypeOps::Union.apply(db, &true_type, &false_type))
-}
-
-pub fn infer_nil_coalescing_expr(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    nil_coalescing_expr: LuaNilCoalescingExpr,
-) -> InferResult {
-    let Some((left_expr, right_expr)) = nil_coalescing_expr.get_left_right_exprs() else {
-        return Err(InferFailReason::None);
-    };
-    let left_type = infer_expr(db, cache, left_expr)?;
-    let right_type = infer_expr(db, cache, right_expr)?;
-    Ok(TypeOps::Union.apply(db, &left_type, &right_type))
 }
 
 fn infer_member_type_pass_flow(

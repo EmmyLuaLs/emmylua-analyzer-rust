@@ -116,5 +116,6 @@ fn is_statement_start_token(token: LuaTokenKind) -> bool {
             | LuaTokenKind::TkName
             | LuaTokenKind::TkReturn
             | LuaTokenKind::TkBreak
+            | LuaTokenKind::TkContinue
     )
 }

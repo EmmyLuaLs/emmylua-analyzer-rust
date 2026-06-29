@@ -239,6 +239,8 @@ fn parse_stat(p: &mut LuaParser) -> ParseResult {
         LuaTokenKind::TkLocal => parse_local(p)?,
         LuaTokenKind::TkReturn => parse_return(p)?,
         LuaTokenKind::TkBreak => parse_break(p)?,
+        LuaTokenKind::TkContinue => parse_continue(p)?,
+        LuaTokenKind::TkConst => parse_const(p)?,
         LuaTokenKind::TkDo => parse_do(p)?,
         LuaTokenKind::TkRepeat => parse_repeat(p)?,
         LuaTokenKind::TkGoto => parse_goto(p)?,
@@ -588,7 +590,7 @@ fn parse_local(p: &mut LuaParser) -> ParseResult {
             parse_variable_name_list(p, true)?;
 
             // 可选的初始化表达式
-            if p.current_token().is_assign_op() {
+            if p.current_token() == LuaTokenKind::TkAssign {
                 p.bump();
                 if parse_expr_list_impl(p).is_err() {
                     push_expr_error_lazy(p, || t!("expected initialization expression after '='"));
@@ -609,7 +611,7 @@ fn parse_local(p: &mut LuaParser) -> ParseResult {
 
                 parse_variable_name_list(p, true)?;
 
-                if p.current_token().is_assign_op() {
+                if p.current_token() == LuaTokenKind::TkAssign {
                     p.bump();
                     if parse_expr_list_impl(p).is_err() {
                         push_expr_error_lazy(p, || {
@@ -632,6 +634,35 @@ fn parse_local(p: &mut LuaParser) -> ParseResult {
         _ => {
             p.push_error(LuaParseError::syntax_error_from(
                 &t!("expected 'function', variable name, or attribute after 'local'"),
+                p.current_token_range(),
+            ));
+
+            return Err(ParseFailReason::UnexpectedToken);
+        }
+    }
+
+    if_token_bump(p, LuaTokenKind::TkSemicolon);
+    Ok(m.complete(p))
+}
+
+fn parse_const(p: &mut LuaParser) -> ParseResult {
+    let m = p.mark(LuaSyntaxKind::ConstStat);
+    p.bump(); // consume 'const'
+
+    match p.current_token() {
+        LuaTokenKind::TkName => {
+            parse_variable_name_list(p, false)?;
+
+            if p.current_token() == LuaTokenKind::TkAssign {
+                p.bump();
+                if parse_expr_list_impl(p).is_err() {
+                    push_expr_error_lazy(p, || t!("expected initialization expression after '='"));
+                }
+            }
+        }
+        _ => {
+            p.push_error(LuaParseError::syntax_error_from(
+                &t!("expected variable name after 'const'"),
                 p.current_token_range(),
             ));
 
@@ -712,6 +743,13 @@ fn parse_return(p: &mut LuaParser) -> ParseResult {
 
 fn parse_break(p: &mut LuaParser) -> ParseResult {
     let m = p.mark(LuaSyntaxKind::BreakStat);
+    p.bump();
+    if_token_bump(p, LuaTokenKind::TkSemicolon);
+    Ok(m.complete(p))
+}
+
+fn parse_continue(p: &mut LuaParser) -> ParseResult {
+    let m = p.mark(LuaSyntaxKind::ContinueStat);
     p.bump();
     if_token_bump(p, LuaTokenKind::TkSemicolon);
     Ok(m.complete(p))

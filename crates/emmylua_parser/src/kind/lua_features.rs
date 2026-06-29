@@ -8,32 +8,34 @@ pub enum LuaFeatures {
     BitwiseOperation,     // "5 & 2"
     IntegerFloorDivision, // "5 // 2"
     GlobalDeclaration,    // "global a = 1"
-    // non-standard symbols or luajit-extension symbols
-    DoubleSlash,       // "//"
-    SlashStar,         // "/**/"
-    Backtick,          // "`"
-    PlusAssign,        // "+="
-    MinusAssign,       // "-="
-    StarAssign,        // "*="
-    SlashAssign,       // "/="
-    PercentAssign,     // "%="
-    CaretAssign,       // "^="
-    DoubleSlashAssign, // "//="
-    PipeAssign,        // "|="
-    AmpAssign,         // "&="
-    ShiftLeftAssign,   // "<<="
-    ShiftRightAssign,  // ">>="
-    DoublePipe,        // "||"
-    DoubleAmp,         // "&&"
-    Exclamation,       // "!"
-    NotEqual,          // "!="
-    Continue,          // "continue"
+    // non-standard symbols
+    DoubleSlash, // "//"
+    SlashStar,   // "/**/"
+    Backtick,    // "`"
 
-    // luajit3.0
+    // luajit-extension symbols
+    PlusAssign,             // "+="
+    MinusAssign,            // "-="
+    StarAssign,             // "*="
+    SlashAssign,            // "/="
+    PercentAssign,          // "%="
+    CaretAssign,            // "^="
+    DoubleSlashAssign,      // "//="
+    PipeAssign,             // "|="
+    AmpAssign,              // "&="
+    ShiftLeftAssign,        // "<<="
+    ShiftRightAssign,       // ">>="
+    ShrArithmeticAssign,    // "~>>="
+    DoublePipe,             // "||"
+    DoubleAmp,              // "&&"
+    Exclamation,            // "!"
+    NotEqual,               // "!="
+    Continue,               // "continue"
     ShiftRightArithmetic,   // "~>>"
     Ternary,                // "a ? b : c"
     SafeNavigationOperator, // "?."
     NilCoalescingOperator,  // "??"
+    ConstStatement,         // "const"
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -89,7 +91,7 @@ impl LuaFeaturesSet {
         let mut set = LuaFeaturesSet::features_luajit();
         // lua5.3+
         set.add(LuaFeatures::IntegerFloorDivision);
-
+        // luajit-extension
         set.add(LuaFeatures::DoubleSlash);
         set.add(LuaFeatures::PlusAssign);
         set.add(LuaFeatures::MinusAssign);
@@ -106,9 +108,12 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::Exclamation);
         set.add(LuaFeatures::NotEqual);
         set.add(LuaFeatures::ShiftRightArithmetic);
+        set.add(LuaFeatures::ShrArithmeticAssign);
+        set.add(LuaFeatures::Continue);
         set.add(LuaFeatures::Ternary);
         set.add(LuaFeatures::SafeNavigationOperator);
         set.add(LuaFeatures::NilCoalescingOperator);
+        set.add(LuaFeatures::ConstStatement);
         set
     }
 

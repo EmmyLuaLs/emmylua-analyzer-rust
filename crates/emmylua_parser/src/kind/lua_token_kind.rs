@@ -29,6 +29,10 @@ pub enum LuaTokenKind {
     TkWhile,
     TkGlobal, // global *
 
+    // extension keywords
+    TkContinue, // continue
+    TkConst,    // const
+
     TkWhitespace,    // whitespace
     TkEndOfLine,     // end of line
     TkPlus,          // +
@@ -61,17 +65,18 @@ pub enum LuaTokenKind {
     TkSemicolon,     // ;
 
     // extension assignment operators
-    TkPlusAssign,        // +=
-    TkMinusAssign,       // -=
-    TkStarAssign,        // *=
-    TkSlashAssign,       // /=
-    TkPercentAssign,     // %=
-    TkCaretAssign,       // ^=
-    TkDoubleSlashAssign, // //=
-    TkPipeAssign,        // |=
-    TkAmpAssign,         // &=
-    TkShiftLeftAssign,   // <<=
-    TkShiftRightAssign,  // >>=
+    TkPlusAssign,          // +=
+    TkMinusAssign,         // -=
+    TkStarAssign,          // *=
+    TkSlashAssign,         // /=
+    TkPercentAssign,       // %=
+    TkCaretAssign,         // ^=
+    TkDoubleSlashAssign,   // //=
+    TkPipeAssign,          // |=
+    TkAmpAssign,           // &=
+    TkShiftLeftAssign,     // <<=
+    TkShiftRightAssign,    // >>=
+    TkShrArithmeticAssign, // ~>>=
 
     TkNilCoalescing,  // ??
     TkSafeNavigation, // ?.
@@ -182,6 +187,7 @@ impl LuaTokenKind {
         Some(match self {
             LuaTokenKind::TkAnd => "and",
             LuaTokenKind::TkBreak => "break",
+            LuaTokenKind::TkContinue => "continue",
             LuaTokenKind::TkDo => "do",
             LuaTokenKind::TkElse => "else",
             LuaTokenKind::TkElseIf => "elseif",
@@ -251,6 +257,7 @@ impl LuaTokenKind {
             LuaTokenKind::TkNilCoalescing => "??",
             LuaTokenKind::TkSafeNavigation => "?.",
             LuaTokenKind::TkTernary => "?",
+            LuaTokenKind::TkShrArithmeticAssign => "~>>=",
             _ => return None,
         })
     }
@@ -280,6 +287,7 @@ impl LuaTokenKind {
                 | LuaTokenKind::TkTrue
                 | LuaTokenKind::TkUntil
                 | LuaTokenKind::TkWhile
+                | LuaTokenKind::TkContinue
         )
     }
 
@@ -298,6 +306,7 @@ impl LuaTokenKind {
                 | LuaTokenKind::TkAmpAssign
                 | LuaTokenKind::TkShiftLeftAssign
                 | LuaTokenKind::TkShiftRightAssign
+                | LuaTokenKind::TkShrArithmeticAssign
         )
     }
 }
