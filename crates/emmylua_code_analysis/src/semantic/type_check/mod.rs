@@ -21,8 +21,9 @@ pub use type_check_fail_reason::TypeCheckFailReason;
 use type_check_guard::TypeCheckGuard;
 
 use crate::{
-    LuaGenericType, LuaUnionType, TypeSubstitutor,
+    LuaAliasCallKind, LuaGenericType, LuaUnionType, TypeSubstitutor,
     db_index::{DbIndex, LuaType},
+    instantiate_type_generic,
     semantic::type_check::type_check_context::TypeCheckContext,
 };
 pub use sub_type::is_sub_type_of;
@@ -264,6 +265,17 @@ fn escape_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
                 && let Some(origin_type) = type_decl.get_alias_origin(db, None)
             {
                 return Some(origin_type.clone());
+            }
+        }
+        LuaType::Call(alias_call)
+            if matches!(
+                alias_call.get_call_kind(),
+                LuaAliasCallKind::Index | LuaAliasCallKind::RawGet
+            ) && !typ.contain_tpl() =>
+        {
+            let resolved = instantiate_type_generic(db, typ, &TypeSubstitutor::new());
+            if resolved != *typ {
+                return Some(resolved);
             }
         }
         // todo donot escape

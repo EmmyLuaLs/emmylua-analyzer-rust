@@ -540,27 +540,41 @@ impl<'a> TypeHumanizer<'a> {
         let operands = inner.get_operands();
         let saved = self.level;
         self.level = self.child_level();
-        let result = (|| match inner.get_call_kind() {
+        let result = match inner.get_call_kind() {
             LuaAliasCallKind::KeyOf => {
-                w.write_str("keyof ")?;
+                let mut result = w.write_str("keyof ");
                 for (i, ty) in operands.iter().enumerate() {
-                    if i > 0 {
-                        w.write_char(',')?;
+                    if result.is_ok() && i > 0 {
+                        result = w.write_char(',');
                     }
-                    self.write_type(ty, w)?;
+                    if result.is_ok() {
+                        result = self.write_type(ty, w);
+                    }
                 }
-                Ok(())
+                result
             }
             LuaAliasCallKind::Extends if operands.len() == 2 => {
-                self.write_type(&operands[0], w)?;
-                w.write_str(" extends ")?;
-                self.write_type(&operands[1], w)
+                let mut result = self.write_type(&operands[0], w);
+                if result.is_ok() {
+                    result = w.write_str(" extends ");
+                }
+                if result.is_ok() {
+                    result = self.write_type(&operands[1], w);
+                }
+                result
             }
             LuaAliasCallKind::Index if operands.len() == 2 => {
-                self.write_type(&operands[0], w)?;
-                w.write_char('[')?;
-                self.write_type(&operands[1], w)?;
-                w.write_char(']')
+                let mut result = self.write_type(&operands[0], w);
+                if result.is_ok() {
+                    result = w.write_char('[');
+                }
+                if result.is_ok() {
+                    result = self.write_type(&operands[1], w);
+                }
+                if result.is_ok() {
+                    result = w.write_char(']');
+                }
+                result
             }
             call_kind => {
                 let basic = match call_kind {
@@ -574,17 +588,24 @@ impl<'a> TypeHumanizer<'a> {
                     LuaAliasCallKind::RawGet => "rawget",
                     LuaAliasCallKind::Merge => "Merge",
                 };
-                w.write_str(basic)?;
-                w.write_char('<')?;
-                for (i, ty) in operands.iter().enumerate() {
-                    if i > 0 {
-                        w.write_char(',')?;
-                    }
-                    self.write_type(ty, w)?;
+                let mut result = w.write_str(basic);
+                if result.is_ok() {
+                    result = w.write_char('<');
                 }
-                w.write_char('>')
+                for (i, ty) in operands.iter().enumerate() {
+                    if result.is_ok() && i > 0 {
+                        result = w.write_char(',');
+                    }
+                    if result.is_ok() {
+                        result = self.write_type(ty, w);
+                    }
+                }
+                if result.is_ok() {
+                    result = w.write_char('>');
+                }
+                result
             }
-        })();
+        };
         self.level = saved;
         result
     }

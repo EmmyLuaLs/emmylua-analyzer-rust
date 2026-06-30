@@ -1538,6 +1538,28 @@ mod test {
     }
 
     #[test]
+    fn test_index_access_with_keyof_alias() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@alias KeyofA keyof A
+            ---@type A[KeyofA]
+            local tmp
+
+            ---@param v 1
+            local function test(v)
+            end
+
+            test(tmp)
+        "#,
+        ));
+    }
+
+    #[test]
     fn test_origin_self() {
         let mut ws = VirtualWorkspace::new();
         ws.def(

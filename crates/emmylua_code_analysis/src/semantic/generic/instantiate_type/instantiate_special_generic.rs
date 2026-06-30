@@ -44,7 +44,9 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
-            let members = get_keyof_members(context.db, &operands[0]).unwrap_or_default();
+            let owner = instantiate_alias_origin_operand(context, &operands[0])
+                .unwrap_or_else(|| operands[0].clone());
+            let members = get_keyof_members(context.db, &owner).unwrap_or_default();
             // keyof 表示可取键的联合类型, 不是按位置展开的 tuple.
             let member_key_types = members
                 .iter()
@@ -92,6 +94,7 @@ pub(super) fn instantiate_alias_call(
             }
 
             let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
+                .or_else(|| instantiate_alias_origin_operand(context, &operands[1]))
                 .unwrap_or_else(|| operands[1].clone());
 
             instantiate_rawget_call(context.db, &operands[0], &key)
@@ -108,12 +111,29 @@ pub(super) fn instantiate_alias_call(
             }
 
             let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
+                .or_else(|| instantiate_alias_origin_operand(context, &operands[1]))
                 .unwrap_or_else(|| operands[1].clone());
 
             instantiate_index_call(context.db, &operands[0], &key)
         }
         LuaAliasCallKind::Merge => instantiate_merge_call(context.db, &operands),
     }
+}
+
+fn instantiate_alias_origin_operand(
+    context: &GenericInstantiateContext,
+    operand: &LuaType,
+) -> Option<LuaType> {
+    let LuaType::Ref(type_id) = operand else {
+        return None;
+    };
+    let type_decl = context.db.get_type_index().get_type_decl(type_id)?;
+    if !type_decl.is_alias() {
+        return None;
+    }
+
+    let origin = type_decl.get_alias_origin(context.db, Some(context.substitutor))?;
+    Some(instantiate_type_generic_inner(context, &origin))
 }
 
 fn instantiate_merge_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
