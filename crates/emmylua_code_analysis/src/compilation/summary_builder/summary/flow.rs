@@ -41,6 +41,7 @@ pub enum SalsaFlowStatementKindSummary {
     Loop,
     Return,
     Break,
+    Continue,
     Goto,
     Label,
 }

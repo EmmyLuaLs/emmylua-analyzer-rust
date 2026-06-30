@@ -316,7 +316,7 @@ fn check_source_type(ctx: &CheckContext, source: &LuaType, compact: &LuaType) ->
             }
         }
 
-        LuaType::TplRef(_) | LuaType::ConstTplRef(_) => return Ok(()),
+        LuaType::TplRef(_) => return Ok(()),
 
         LuaType::Namespace(source_ns) => {
             if let LuaType::Namespace(compact_ns) = compact {

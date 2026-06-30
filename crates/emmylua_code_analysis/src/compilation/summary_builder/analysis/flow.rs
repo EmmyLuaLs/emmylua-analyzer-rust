@@ -194,6 +194,7 @@ fn build_statement_summary(block_offset: TextSize, stat: LuaStat) -> SalsaFlowSt
         LuaStat::ReturnStat(_) => SalsaFlowStatementKindSummary::Return,
         LuaStat::BreakStat(_) => SalsaFlowStatementKindSummary::Break,
         LuaStat::GotoStat(_) => SalsaFlowStatementKindSummary::Goto,
+        LuaState::ContinueStat(_) => SalsaFlowStatementKindSummary::Continue,
         LuaStat::LabelStat(_) => SalsaFlowStatementKindSummary::Label,
         LuaStat::LocalStat(_)
         | LuaStat::AssignStat(_)
