@@ -1,6 +1,7 @@
 use emmylua_code_analysis::{
     DbIndex, InFiled, LuaMember, LuaMultiLineUnion, LuaSemanticDeclId, LuaType, LuaUnionType,
-    RenderLevel, SemanticDeclLevel, SemanticModel, format_union_type,
+    RenderLevel, SemanticDeclLevel, SemanticModel, TypeSubstitutor, format_union_type,
+    instantiate_type_generic,
 };
 
 use emmylua_code_analysis::humanize_type;
@@ -38,6 +39,10 @@ pub fn hover_humanize_type(
     context: HoverTypeRenderContext,
 ) -> String {
     let db = builder.semantic_model.get_db();
+    if let Some(resolved) = resolve_hover_type_usage(db, ty) {
+        return hover_humanize_type(builder, &resolved, fallback_level, context);
+    }
+
     match ty {
         LuaType::Ref(type_decl_id) => {
             if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id)
@@ -79,6 +84,40 @@ pub fn hover_humanize_type(
             text
         }
         _ => humanize_type(db, ty, fallback_level.unwrap_or(RenderLevel::Simple)),
+    }
+}
+
+pub fn resolve_hover_type_usage(db: &DbIndex, ty: &LuaType) -> Option<LuaType> {
+    match ty {
+        LuaType::Call(_) | LuaType::Conditional(_) => {
+            if ty.contain_tpl() {
+                return None;
+            }
+
+            let resolved = instantiate_type_generic(db, ty, &TypeSubstitutor::new());
+            if resolved == *ty || matches!(resolved, LuaType::Unknown | LuaType::Never) {
+                None
+            } else {
+                Some(resolved)
+            }
+        }
+        LuaType::Generic(generic) => {
+            let type_decl = db
+                .get_type_index()
+                .get_type_decl(&generic.get_base_type_id())?;
+            if !type_decl.is_alias() || ty.contain_tpl() {
+                return None;
+            }
+
+            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
+            let resolved = type_decl.get_alias_origin(db, Some(&substitutor))?;
+            if resolved == *ty || matches!(resolved, LuaType::Unknown | LuaType::Never) {
+                None
+            } else {
+                Some(resolved)
+            }
+        }
+        _ => None,
     }
 }
 

@@ -307,7 +307,48 @@ mod tests {
                 local <??>key
             "#,
             VirtualHoverResult {
-                value: "```lua\nlocal key: keyof KeyofHoverShape\n```".to_string(),
+                value: "```lua\nlocal key: \"name\"\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class IndexHoverShape
+                ---@field name string
+
+                ---@type IndexHoverShape["name"]
+                local <??>value
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal value: string\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class GenericIndexHoverShape
+                ---@field name string
+
+                ---@alias GenericIndexHoverPick<K extends keyof T, T> T[K]
+
+                ---@type GenericIndexHoverPick<"name", GenericIndexHoverShape>
+                local <??>value
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal value: string\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class ExtendsHoverShape
+                ---@field name string
+
+                ---@type ExtendsHoverShape extends table and number or string
+                local <??>is_table
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal is_table: number\n```".to_string(),
             },
         ));
 

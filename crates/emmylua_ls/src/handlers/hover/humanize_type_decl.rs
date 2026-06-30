@@ -4,7 +4,7 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{LuaAstNode, LuaDocAttributeUse, LuaExpr};
 
-use crate::handlers::hover::HoverBuilder;
+use crate::handlers::hover::{HoverBuilder, humanize_types::resolve_hover_type_usage};
 
 pub fn build_type_decl_hover(
     builder: &mut HoverBuilder,
@@ -16,6 +16,7 @@ pub fn build_type_decl_hover(
         if let Some(origin) = type_decl.get_alias_origin(db, None) {
             let type_name =
                 humanize_type(db, &LuaType::Def(type_decl_id.clone()), RenderLevel::Normal);
+            let origin = resolve_hover_type_usage(db, &origin).unwrap_or(origin);
             let origin_type = humanize_type(db, &origin, builder.detail_render_level);
             format!("(alias) {} = {}", type_name, origin_type)
         } else {
