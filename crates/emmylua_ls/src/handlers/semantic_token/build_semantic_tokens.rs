@@ -11,9 +11,9 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaDocFieldKey,
-    LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocObjectFieldKey, LuaExpr, LuaGeneralToken,
-    LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken,
-    LuaTokenKind, LuaVarExpr,
+    LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocMappedKey, LuaDocObjectFieldKey, LuaExpr,
+    LuaGeneralToken, LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode,
+    LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
 use emmylua_parser_desc::{CodeBlockHighlightKind, DescItem, DescItemKind};
 use lsp_types::SemanticToken;
@@ -341,6 +341,17 @@ fn build_node_semantic_token(
             );
             if let Some(generic_decl_list) = doc_alias.get_generic_decl_list() {
                 render_type_parameter_list(builder, &generic_decl_list);
+            }
+            if let Some(alias_type) = doc_alias.get_type() {
+                for mapped_key in alias_type
+                    .syntax()
+                    .descendants()
+                    .filter_map(LuaDocMappedKey::cast)
+                {
+                    if let Some(type_decl) = mapped_key.child::<LuaDocGenericDecl>() {
+                        render_type_parameter(builder, &type_decl);
+                    }
+                }
             }
         }
         LuaAst::LuaDocTagField(doc_field) => {

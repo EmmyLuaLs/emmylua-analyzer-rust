@@ -106,6 +106,27 @@ m.foo()
     }
 
     #[gtest]
+    fn test_mapped_type_parameter_is_highlighted() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let data = ws.get_semantic_token_data(
+            r#"---@alias Pick<T, K> {[P in K]: T[P];}
+"#,
+        )?;
+        let tokens = decode(&data);
+        let typ = SemanticTokenTypeKind::Type.to_u32();
+        let declaration = SemanticTokenModifierKind::DECLARATION.to_u32();
+
+        verify_that!(
+            &tokens,
+            all![
+                contains(eq(&(0, 23, 1, typ, declaration))),
+                contains(eq(&(0, 34, 1, typ, 0))),
+            ]
+        )?;
+        Ok(())
+    }
+
+    #[gtest]
     fn test_local_function() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         let data = ws.get_semantic_token_data(
