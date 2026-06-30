@@ -313,19 +313,6 @@ mod tests {
 
         check!(ws.check_hover(
             r#"
-                ---@class ExtendsHoverShape
-                ---@field name string
-
-                ---@type ExtendsHoverShape extends table
-                local <??>is_table
-            "#,
-            VirtualHoverResult {
-                value: "```lua\nlocal is_table: ExtendsHoverShape extends table\n```".to_string(),
-            },
-        ));
-
-        check!(ws.check_hover(
-            r#"
                 ---@alias AB<??>C<K extends keyof T, T> T[K]
             "#,
             VirtualHoverResult {

@@ -3690,4 +3690,30 @@ Syntax(Chunk)@0..47
           "#;
         assert_ast_eq!(code, result);
     }
+
+    #[test]
+    fn test_type_bare_extends_requires_conditional_branches() {
+        let code = r#"---@type ExtendsHoverShape extends table"#;
+        let tree = LuaParser::parse(code, ParserConfig::default());
+        let errors = tree.get_errors();
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].kind, LuaParseErrorKind::DocError);
+        assert_eq!(errors[0].message, "expected \"and\"");
+        assert!(errors[0].range.is_empty());
+        assert_eq!(u32::from(errors[0].range.start()) as usize, code.len());
+    }
+
+    #[test]
+    fn test_type_extends_requires_or_branch() {
+        let code = r#"---@type ExtendsHoverShape extends table and true"#;
+        let tree = LuaParser::parse(code, ParserConfig::default());
+        let errors = tree.get_errors();
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].kind, LuaParseErrorKind::DocError);
+        assert_eq!(errors[0].message, "expected \"or\"");
+        assert!(errors[0].range.is_empty());
+        assert_eq!(u32::from(errors[0].range.start()) as usize, code.len());
+    }
 }

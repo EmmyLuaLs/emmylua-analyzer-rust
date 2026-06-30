@@ -762,7 +762,35 @@ mod test {
             local person
 
             pick(person, "name")
-        "#
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_constraint_can_use_conditional_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@generic U, T extends U extends string and number or boolean
+                ---@param val T
+                function process(val)
+                    return val
+                end
+            "#,
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                process--[[@<string, number>]](123)
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+                process--[[@<string, boolean>]](true)
+            "#,
         ));
     }
 

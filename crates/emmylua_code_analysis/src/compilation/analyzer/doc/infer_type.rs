@@ -559,6 +559,17 @@ fn infer_binary_type(
                     }
                 },
                 LuaTypeBinaryOperator::Extends => {
+                    // 避免 `T extends object` 这种没有跟随 `and or` 表达式的情况
+                    let is_conditional_condition = matches!(
+                        binary_type
+                            .syntax()
+                            .parent()
+                            .map(|parent| parent.kind().into()),
+                        Some(LuaSyntaxKind::TypeConditional)
+                    );
+                    if !is_conditional_condition {
+                        return LuaType::Any;
+                    }
                     return LuaType::Call(
                         LuaAliasCallType::new(
                             LuaAliasCallKind::Extends,
