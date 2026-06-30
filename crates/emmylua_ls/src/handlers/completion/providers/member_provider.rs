@@ -2,7 +2,9 @@ use emmylua_code_analysis::{
     DbIndex, LuaMemberInfo, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticModel,
     enum_variable_is_param,
 };
-use emmylua_parser::{LuaAstNode, LuaAstToken, LuaIndexExpr, LuaStringToken, LuaSyntaxToken};
+use emmylua_parser::{
+    LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaStringToken, LuaSyntaxToken, LuaTokenKind,
+};
 use std::collections::HashMap;
 
 use crate::handlers::completion::{
@@ -20,11 +22,16 @@ impl CompletionProvider for MemberProvider {
     }
 
     fn supports(&self, builder: &CompletionBuilder) -> bool {
-        builder
+        if builder
             .trigger_token
             .parent()
             .and_then(LuaIndexExpr::cast)
             .is_some()
+        {
+            return true;
+        }
+
+        builder.trigger_token.kind() == LuaTokenKind::TkColon.into()
     }
 
     fn complete(&self, builder: &mut CompletionBuilder) -> ProviderDecision {
@@ -41,19 +48,39 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         return None;
     }
 
-    let index_expr = LuaIndexExpr::cast(builder.trigger_token.parent()?)?;
-    let index_token = index_expr.get_index_token()?;
-    let completion_status = if index_token.is_dot() || index_token.is_safe_navigation() {
-        CompletionTriggerStatus::Dot
-    } else if index_token.is_colon() {
-        CompletionTriggerStatus::Colon
-    } else if LuaStringToken::can_cast(builder.trigger_token.kind().into()) {
-        CompletionTriggerStatus::InString
-    } else {
-        CompletionTriggerStatus::LeftBracket
-    };
+    let (prefix_expr, completion_status, index_expr) =
+        if let Some(index_expr) = LuaIndexExpr::cast(builder.trigger_token.parent()?) {
+            let index_token = index_expr.get_index_token()?;
+            let completion_status = if index_token.is_dot() || index_token.is_safe_navigation() {
+                CompletionTriggerStatus::Dot
+            } else if index_token.is_colon() {
+                CompletionTriggerStatus::Colon
+            } else if LuaStringToken::can_cast(builder.trigger_token.kind().into()) {
+                CompletionTriggerStatus::InString
+            } else {
+                CompletionTriggerStatus::LeftBracket
+            };
 
-    let prefix_expr = index_expr.get_prefix_expr()?;
+            (
+                index_expr.get_prefix_expr()?,
+                completion_status,
+                Some(index_expr),
+            )
+        } else if builder.trigger_token.kind() == LuaTokenKind::TkColon.into() {
+            let trigger_pos = builder.trigger_token.text_range().start();
+            let prefix_expr = builder
+                .trigger_token
+                .prev_token()?
+                .parent_ancestors()
+                .take_while(|node| node.text_range().end() == trigger_pos)
+                .filter_map(LuaExpr::cast)
+                .last()?;
+
+            (prefix_expr, CompletionTriggerStatus::Colon, None)
+        } else {
+            return None;
+        };
+
     let prefix_type = match builder
         .semantic_model
         .infer_expr(prefix_expr.clone())
@@ -63,13 +90,14 @@ fn complete_provider(builder: &mut CompletionBuilder) -> Option<()> {
         prefix_type => prefix_type,
     };
     // 如果是枚举类型且为函数参数, 则不进行补全
-    if enum_variable_is_param(
-        builder.semantic_model.get_db(),
-        &mut builder.semantic_model.get_cache().borrow_mut(),
-        &index_expr,
-        &prefix_type,
-    )
-    .is_some()
+    if let Some(index_expr) = index_expr
+        && enum_variable_is_param(
+            builder.semantic_model.get_db(),
+            &mut builder.semantic_model.get_cache().borrow_mut(),
+            &index_expr,
+            &prefix_type,
+        )
+        .is_some()
     {
         return None;
     }

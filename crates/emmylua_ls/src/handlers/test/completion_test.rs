@@ -2350,6 +2350,35 @@ mod tests {
     }
 
     #[gtest]
+    fn test_colon_member_completion_after_method_trigger() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+            ---@class B
+            local B = {}
+            function B:one()
+                return self
+            end
+
+            do
+                B:<??>
+            end
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+
+        let item = items
+            .iter()
+            .find(|item| item.label == "one")
+            .ok_or_else(|| format!("completion item `one` not found in {items:?}"))
+            .or_fail()?;
+        verify_eq!(item.kind, Some(CompletionItemKind::FUNCTION))?;
+
+        Ok(())
+    }
+
+    #[gtest]
     fn test_see_completion() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         ws.def(
