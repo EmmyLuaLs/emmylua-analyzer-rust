@@ -61,9 +61,12 @@ pub fn find_decl_covers_node(
             db.file()
                 .decl_tree(file_id)
                 .and_then(|tree| {
-                    tree.decls.iter().find(|d| d.id.as_text_size() == pos).map(|d| {
-                        d.start_offset <= node_range.start() && d.end_offset >= node_range.end()
-                    })
+                    tree.decls
+                        .iter()
+                        .find(|d| d.id.as_text_size() == pos)
+                        .map(|d| {
+                            d.start_offset <= node_range.start() && d.end_offset >= node_range.end()
+                        })
                 })
                 .unwrap_or(false)
         }

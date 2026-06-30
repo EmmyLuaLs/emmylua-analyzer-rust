@@ -7,10 +7,14 @@ use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
 use hashbrown::HashSet;
 use rowan::TextRange;
 
+use crate::semantic::infer::InferResult;
+use crate::semantic::overload_resolve::{callable_accepts_args, resolve_signature};
 use crate::{
-    AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
-    LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
-    LuaType, LuaTypeDeclId, LuaUnionType, TypeOps, TypeVisitTrait, VariadicType,
+    AsyncState, CacheEntry, DbIndex, InFiled, InferFailReason, InferGuard, LuaFunctionType,
+    LuaGenericType, LuaInferCache, LuaInstanceType, LuaIntersectionType, LuaOperatorMetaMethod,
+    LuaOperatorOwner, LuaSignature, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, TypeOps,
+    TypeVisitTrait, VariadicType, find_signature_by_id, get_operator, get_operators,
+    instantiate_type_generic,
 };
 use crate::{
     InferGuardRef,

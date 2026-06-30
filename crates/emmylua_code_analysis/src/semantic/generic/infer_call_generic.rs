@@ -6,12 +6,13 @@ use std::{ops::Deref, sync::Arc};
 use crate::compilation::get_current_owner;
 use crate::find_signature_by_id;
 use crate::semantic::infer::{InferResult, infer_expr_list_types};
+use crate::semantic::overload_resolve::collect_callable_overload_groups;
 use crate::{
     DbIndex, DocTypeInferContext, FileId, GenericTpl, GenericTplId, InferFailReason,
     LuaFunctionType, LuaGenericType, LuaInferCache, LuaMemberOwner, LuaSemanticDeclId, LuaType,
     LuaTypeNode, LuaTypeOwner, SemanticDeclLevel, TypeSubstitutor, TypeVisitTrait,
-    build_compilation_signature_doc_function, collect_callable_overload_groups,
-    find_compilation_type_generic_params, infer_doc_type, infer_node_semantic_decl,
+    build_compilation_signature_doc_function, find_compilation_type_generic_params, infer_doc_type,
+    infer_node_semantic_decl,
     semantic::{
         generic::{
             tpl_context::TplContext,
@@ -522,7 +523,7 @@ fn build_self_generic_arg(
     substitutor: &TypeSubstitutor,
 ) -> LuaType {
     let Some(arg) = generic_param
-        .default
+        .default_type
         .as_ref()
         .or(generic_param.constraint.as_ref())
     else {

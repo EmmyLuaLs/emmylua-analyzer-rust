@@ -17,6 +17,7 @@ mod call;
 mod index;
 mod member;
 mod table;
+mod ternary;
 mod unary;
 
 use std::cell::RefCell;
@@ -31,13 +32,13 @@ use smol_str::SmolStr;
 
 use crate::compilation::{
     SalsaDeclId, SalsaDeclTypeInfoSummary, SalsaDocTypeDefKindSummary, SalsaDocTypeDefSummary,
-    SalsaDocTypeLoweredKind, SalsaDocTypeLoweredNode, SalsaDocTypeLoweredParam,
-    SalsaDocTypeRef, SalsaDocVisibilityKindSummary, SalsaLexicalUseSummary,
-    SalsaNameUseResolutionSummary, SalsaSummaryDatabase,
+    SalsaDocTypeLoweredKind, SalsaDocTypeLoweredNode, SalsaDocTypeLoweredParam, SalsaDocTypeRef,
+    SalsaDocVisibilityKindSummary, SalsaLexicalUseSummary, SalsaNameUseResolutionSummary,
+    SalsaSummaryDatabase,
 };
 use crate::semantic_model::SigQuery;
-use crate::semantic_model::type_check::check_type_compact;
 use crate::semantic_model::offset_types::DeclPosition;
+use crate::semantic_model::type_check::check_type_compact;
 use crate::{
     AsyncState, Emmyrc, FileId, LuaArrayLen, LuaArrayType, LuaDeclId, LuaFunctionType,
     LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, VariadicType,
@@ -496,29 +497,23 @@ impl<'db> InferQuery<'db> {
         if let Some(sid) = &decl_type.value_expr_syntax_id {
             if sid.kind == LuaSyntaxKind::NameExpr {
                 // Path A: lexical name resolution by syntax_id (most precise)
-                if let Some(name_use) =
-                    db.lexical().name_resolution_by_syntax_id(self.file_id, *sid)
+                if let Some(name_use) = db
+                    .lexical()
+                    .name_resolution_by_syntax_id(self.file_id, *sid)
                 {
-                    if let SalsaNameUseResolutionSummary::LocalDecl(decl_id) =
-                        &name_use.resolution
+                    if let SalsaNameUseResolutionSummary::LocalDecl(decl_id) = &name_use.resolution
                     {
                         if let Some(dt) = db.types().decl(self.file_id, *decl_id) {
-                            if let Some(ty) =
-                                self.resolve_decl_type_depth(db, dt, depth + 1)
-                            {
+                            if let Some(ty) = self.resolve_decl_type_depth(db, dt, depth + 1) {
                                 return Some(ty);
                             }
                         }
                     }
                 }
                 // Path B: fallback via name type info at start_offset
-                if let Some(name_info) =
-                    db.types().name(self.file_id, sid.start_offset)
-                {
+                if let Some(name_info) = db.types().name(self.file_id, sid.start_offset) {
                     if let Some(dt) = &name_info.decl_type {
-                        if let Some(ty) =
-                            self.resolve_decl_type_depth(db, dt.clone(), depth + 1)
-                        {
+                        if let Some(ty) = self.resolve_decl_type_depth(db, dt.clone(), depth + 1) {
                             return Some(ty);
                         }
                     }
@@ -526,9 +521,7 @@ impl<'db> InferQuery<'db> {
                         &name_info.name_use.resolution
                     {
                         if let Some(dt) = db.types().decl(self.file_id, *decl_id) {
-                            if let Some(ty) =
-                                self.resolve_decl_type_depth(db, dt, depth + 1)
-                            {
+                            if let Some(ty) = self.resolve_decl_type_depth(db, dt, depth + 1) {
                                 return Some(ty);
                             }
                         }
@@ -586,38 +579,49 @@ impl<'db> InferQuery<'db> {
                 let file_id = self.file_id;
                 if let Some(resolved) = db.doc().resolved_type_by_key(file_id, *key) {
                     match &resolved.lowered.kind {
-                        SalsaDocTypeLoweredKind::Function { params, returns, .. } => {
+                        SalsaDocTypeLoweredKind::Function {
+                            params, returns, ..
+                        } => {
                             let func_params: Vec<(String, Option<LuaType>)> = params
                                 .iter()
                                 .map(|p| {
-                                    let name = p.name.clone().unwrap_or(
-                                        SmolStr::new("")).to_string();
+                                    let name =
+                                        p.name.clone().unwrap_or(SmolStr::new("")).to_string();
                                     let ty = match &p.doc_type {
-                                        SalsaDocTypeRef::Node(pk) => {
-                                            db.doc().lowered_type_by_key(file_id, *pk)
-                                                .and_then(|n| lowered_node_to_lua_type(&n))
-                                        }
+                                        SalsaDocTypeRef::Node(pk) => db
+                                            .doc()
+                                            .lowered_type_by_key(file_id, *pk)
+                                            .and_then(|n| lowered_node_to_lua_type(&n)),
                                         _ => None,
                                     };
                                     (name, ty)
                                 })
                                 .collect();
-                            let is_colon = func_params.first()
-                                .map(|(n, _)| n == "self").unwrap_or(false);
-                            let ret = returns.first()
+                            let is_colon = func_params
+                                .first()
+                                .map(|(n, _)| n == "self")
+                                .unwrap_or(false);
+                            let ret = returns
+                                .first()
                                 .and_then(|r| match &r.doc_type {
-                                    SalsaDocTypeRef::Node(rk) => {
-                                        db.doc().lowered_type_by_key(file_id, *rk)
-                                            .and_then(|n| lowered_node_to_lua_type(&n))
-                                    }
+                                    SalsaDocTypeRef::Node(rk) => db
+                                        .doc()
+                                        .lowered_type_by_key(file_id, *rk)
+                                        .and_then(|n| lowered_node_to_lua_type(&n)),
                                     _ => None,
                                 })
                                 .unwrap_or(LuaType::Nil);
                             let is_var = params.last().is_some_and(|p| p.is_dots);
                             return Some(LuaType::DocFunction(
                                 LuaFunctionType::new(
-                                    AsyncState::None, is_colon, is_var, func_params, ret,
-                                ).into(),
+                                    AsyncState::None,
+                                    is_colon,
+                                    is_var,
+                                    func_params,
+                                    ret,
+                                    None,
+                                )
+                                .into(),
                             ));
                         }
                         _ => {
@@ -858,6 +862,7 @@ impl<'db> InferQuery<'db> {
             LuaExpr::TableExpr(table) => infer_table_expr(self, table),
             LuaExpr::BinaryExpr(binary) => binary::infer_binary_expr(self, binary),
             LuaExpr::UnaryExpr(unary) => unary::infer_unary_expr(self, unary),
+            LuaExpr::TernaryExpr(ternary) => ternary::infer_ternary_expr(self, ternary),
         }
     }
 
@@ -1219,29 +1224,36 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                 if let Some(key) = &type_def.value_type_offset {
                     if let Some(resolved) = db.doc().resolved_type_by_key(file_id, *key) {
                         // Handle Function lowered kind directly — build CallFunctionInfo
-                        if let SalsaDocTypeLoweredKind::Function { params, returns, .. } = &resolved.lowered.kind {
+                        if let SalsaDocTypeLoweredKind::Function {
+                            params, returns, ..
+                        } = &resolved.lowered.kind
+                        {
                             let func_params: Vec<(String, Option<LuaType>)> = params
                                 .iter()
                                 .map(|p| {
-                                    let name = p.name.clone().unwrap_or(SmolStr::new("")).to_string();
+                                    let name =
+                                        p.name.clone().unwrap_or(SmolStr::new("")).to_string();
                                     let ty = match &p.doc_type {
-                                        SalsaDocTypeRef::Node(pk) => {
-                                            db.doc().lowered_type_by_key(file_id, *pk)
-                                                .and_then(|n| lowered_node_to_lua_type(&n))
-                                        }
+                                        SalsaDocTypeRef::Node(pk) => db
+                                            .doc()
+                                            .lowered_type_by_key(file_id, *pk)
+                                            .and_then(|n| lowered_node_to_lua_type(&n)),
                                         _ => None,
                                     };
                                     (name, ty)
                                 })
                                 .collect();
-                            let is_colon = func_params.first()
-                                .map(|(n, _)| n == "self").unwrap_or(false);
-                            let ret = returns.first()
+                            let is_colon = func_params
+                                .first()
+                                .map(|(n, _)| n == "self")
+                                .unwrap_or(false);
+                            let ret = returns
+                                .first()
                                 .and_then(|r| match &r.doc_type {
-                                    SalsaDocTypeRef::Node(rk) => {
-                                        db.doc().lowered_type_by_key(file_id, *rk)
-                                            .and_then(|n| lowered_node_to_lua_type(&n))
-                                    }
+                                    SalsaDocTypeRef::Node(rk) => db
+                                        .doc()
+                                        .lowered_type_by_key(file_id, *rk)
+                                        .and_then(|n| lowered_node_to_lua_type(&n)),
                                     _ => None,
                                 })
                                 .unwrap_or(LuaType::Nil);

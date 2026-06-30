@@ -149,7 +149,10 @@ pub(crate) fn tracked_file_doc_tag_properties(
 /// 缓存 LineIndex — 等价于 rust-analyzer 的 `line_index` 查询。
 /// 每次文件变化时自动重算，跨调用者复用。
 #[salsa::tracked]
-pub(crate) fn tracked_line_index(db: &dyn SummaryDb, file: SummarySourceFileInput) -> CachedLineIndex {
+pub(crate) fn tracked_line_index(
+    db: &dyn SummaryDb,
+    file: SummarySourceFileInput,
+) -> CachedLineIndex {
     CachedLineIndex(LineIndex::parse(file.text(db)))
 }
 

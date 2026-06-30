@@ -98,13 +98,16 @@ impl LuaCompilation {
 
     /// VFS + salsa 联动：更新文件内容。
     pub fn update_file_by_uri(&mut self, uri: &lsp_types::Uri, text: Option<String>) -> FileId {
-        let file_id = self.salsa_db.lookup_file_id(uri)
+        let file_id = self
+            .salsa_db
+            .lookup_file_id(uri)
             .unwrap_or_else(|| self.salsa_db.intern_uri(uri));
 
         if let Some(ref file_text) = text {
             let path = self.salsa_db.file_path(file_id).cloned();
             let is_remote = self.salsa_db.is_remote_file(file_id);
-            self.salsa_db.set_file(file_id, path, file_text.clone(), is_remote);
+            self.salsa_db
+                .set_file(file_id, path, file_text.clone(), is_remote);
         } else {
             self.salsa_db.remove_file(file_id);
         }

@@ -1,10 +1,13 @@
 //! Deprecated checker — pure salsa.
 
-use emmylua_parser::{LuaAst, LuaAstNode, LuaIndexExpr, LuaNameExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaDocNameType, LuaIndexExpr, LuaNameExpr};
 
 use crate::compilation::SalsaDocTagPropertyEntrySummary;
 use crate::semantic_model::SemanticModel;
-use crate::{DiagnosticCode, LuaSemanticDeclId, SemanticDeclLevel};
+use crate::{
+    DiagnosticCode, LuaSemanticDeclId, SalsaDocOwnerKindSummary, SalsaDocOwnerSummary,
+    SemanticDeclLevel,
+};
 
 use super::DiagnosticContext;
 
@@ -38,31 +41,31 @@ fn check_index(context: &mut DiagnosticContext, model: &SemanticModel, ix: LuaIn
     check_deprecated(context, model, tk.text_range(), &decl);
 }
 
-fn check_doc_name_type(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    name_type: LuaDocNameType,
-) -> Option<()> {
-    let semantic_decl = semantic_model.find_decl(
-        rowan::NodeOrToken::Node(name_type.syntax().clone()),
-        SemanticDeclLevel::default(),
-    )?;
+// fn check_doc_name_type(
+//     context: &mut DiagnosticContext,
+//     semantic_model: &SemanticModel,
+//     name_type: LuaDocNameType,
+// ) -> Option<()> {
+//     let semantic_decl = semantic_model.find_decl(
+//         rowan::NodeOrToken::Node(name_type.syntax().clone()),
+//         SemanticDeclLevel::default(),
+//     )?;
 
-    let LuaSemanticDeclId::TypeDecl(_) = &semantic_decl else {
-        return Some(());
-    };
+//     let LuaSemanticDeclId::TypeDecl(_) = &semantic_decl else {
+//         return Some(());
+//     };
 
-    if let Some(deprecated_message) = get_deprecated_message(semantic_model, &semantic_decl) {
-        context.add_diagnostic(
-            DiagnosticCode::Deprecated,
-            name_type.get_range(),
-            deprecated_message,
-            None,
-        );
-    }
+//     if let Some(deprecated_message) = get_deprecated_message(semantic_model, &semantic_decl) {
+//         context.add_diagnostic(
+//             DiagnosticCode::Deprecated,
+//             name_type.get_range(),
+//             deprecated_message,
+//             None,
+//         );
+//     }
 
-    Some(())
-}
+//     Some(())
+// }
 
 fn check_deprecated(
     context: &mut DiagnosticContext,
@@ -76,8 +79,8 @@ fn check_deprecated(
         _ => return,
     };
     let db = model.salsa_db();
-    let owner = crate::compilation::SalsaDocOwnerSummary {
-        kind: crate::compilation::SalsaDocOwnerKindSummary::None,
+    let owner = SalsaDocOwnerSummary {
+        kind: SalsaDocOwnerKindSummary::None,
         syntax_offset: Some(offset),
     };
     if let Some(props) = db.doc().tag_property(file_id, owner) {
@@ -94,22 +97,22 @@ fn check_deprecated(
     }
 }
 
-fn get_deprecated_message(
-    semantic_model: &SemanticModel,
-    semantic_decl: &LuaSemanticDeclId,
-) -> Option<String> {
-    let property = semantic_model
-        .get_db()
-        .get_property_index()
-        .get_property(semantic_decl);
-    let property = property?;
-    if let Some(deprecated) = property.deprecated() {
-        let deprecated_message = match deprecated {
-            LuaDeprecated::Deprecated => "deprecated".to_string(),
-            LuaDeprecated::DeprecatedWithMessage(message) => message.to_string(),
-        };
-        return Some(deprecated_message);
-    }
+// fn get_deprecated_message(
+//     semantic_model: &SemanticModel,
+//     semantic_decl: &LuaSemanticDeclId,
+// ) -> Option<String> {
+//     let property = semantic_model
+//         .get_db()
+//         .get_property_index()
+//         .get_property(semantic_decl);
+//     let property = property?;
+//     if let Some(deprecated) = property.deprecated() {
+//         let deprecated_message = match deprecated {
+//             LuaDeprecated::Deprecated => "deprecated".to_string(),
+//             LuaDeprecated::DeprecatedWithMessage(message) => message.to_string(),
+//         };
+//         return Some(deprecated_message);
+//     }
 
-    None
-}
+//     None
+// }

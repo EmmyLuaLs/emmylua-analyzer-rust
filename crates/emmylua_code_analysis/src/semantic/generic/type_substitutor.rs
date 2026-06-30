@@ -1,7 +1,10 @@
 use hashbrown::{HashMap, HashSet};
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{DbIndex, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId};
+use crate::{
+    DbIndex, GenericTplId, LuaSignatureId, LuaType, LuaTypeDeclId,
+    semantic::generic::tpl_pattern::constant_decay,
+};
 
 #[derive(Debug)]
 pub struct GenericInstantiateContext<'a> {

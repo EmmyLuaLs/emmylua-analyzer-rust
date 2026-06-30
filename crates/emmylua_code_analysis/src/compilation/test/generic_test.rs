@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod test {
-    use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaDocType, LuaIndexExpr};
+    use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaDocType, LuaIndexExpr};
 
     use crate::{
-        DiagnosticCode, DocTypeInferContext, LuaMemberKey, LuaType, LuaTypeDeclId, TypeSubstitutor,
-        VirtualWorkspace, compilation::global_type, complete_type_generic_args,
+        DiagnosticCode, DocTypeInferContext, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId,
+        TypeSubstitutor, VirtualWorkspace, compilation::global_type, complete_type_generic_args,
         find_members_with_key, infer_compilation_type_property_type,
         infer_compilation_type_super_types, infer_doc_type, instantiate_type_generic,
     };

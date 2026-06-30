@@ -138,7 +138,7 @@ impl GenericBindings {
 
     fn match_one(&mut self, pattern: &LuaType, target: &LuaType) {
         match pattern {
-            LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => {
+            LuaType::TplRef(tpl) => {
                 if tpl.get_tpl_id().is_func() {
                     self.map.insert(tpl.get_tpl_id(), target.clone());
                 }
@@ -198,7 +198,7 @@ impl<'a> SubstitutionContext<'a> {
 
         match ty {
             // ── 直接替换 ──
-            LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => self
+            LuaType::TplRef(tpl) => self
                 .bindings
                 .get(tpl.get_tpl_id())
                 .cloned()

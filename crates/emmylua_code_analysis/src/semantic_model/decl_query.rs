@@ -113,7 +113,11 @@ impl<'db> DeclQuery<'db> {
 
     /// Fallback: when the owner-binding chain doesn't link @class to the decl,
     /// look for type_defs whose owner is near this position.
-    fn resolve_nearby_class(&self, db: &SalsaSummaryDatabase, position: TextSize) -> Option<LuaType> {
+    fn resolve_nearby_class(
+        &self,
+        db: &SalsaSummaryDatabase,
+        position: TextSize,
+    ) -> Option<LuaType> {
         let doc = db.doc().summary(self.file_id)?;
         for type_def in &doc.type_defs {
             if let Some(owner_offset) = type_def.owner.syntax_offset {

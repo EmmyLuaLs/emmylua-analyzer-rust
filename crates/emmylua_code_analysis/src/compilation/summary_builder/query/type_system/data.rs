@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use rowan::TextSize;
 use smol_str::SmolStr;
 
+use crate::compilation::summary_builder::query::doc_type::{
+    SalsaDocTypeLoweredIndex, SalsaDocTypeLoweredKind, find_lowered_doc_type_by_key,
+};
 use crate::compilation::summary_builder::query::{
     SalsaDocOwnerResolveIndex, collect_doc_owner_resolves_for_decl,
     collect_doc_owner_resolves_for_member,
-};
-use crate::compilation::summary_builder::query::doc_type::{
-    SalsaDocTypeLoweredIndex, SalsaDocTypeLoweredKind, find_lowered_doc_type_by_key,
 };
 use crate::compilation::summary_builder::{
     SalsaLookupBucket, build_lookup_buckets, find_bucket_indices,
@@ -146,9 +146,7 @@ pub fn build_decl_type_query_index(
     let decls = decl_tree
         .decls
         .iter()
-        .map(|decl| {
-            build_decl_type_info(decl, doc, signatures, owner_resolve_index, lowered_types)
-        })
+        .map(|decl| build_decl_type_info(decl, doc, signatures, owner_resolve_index, lowered_types))
         .collect::<Vec<_>>();
     let by_decl_id = build_lookup_buckets(
         decls
@@ -480,14 +478,9 @@ fn collect_decl_named_type_names(
                         && let Some(type_offset) = doc_param.type_offset
                     {
                         if let Some(lowered) =
-                            find_lowered_doc_type_by_key(
-                                lowered_types,
-                                type_offset,
-                            )
+                            find_lowered_doc_type_by_key(lowered_types, type_offset)
                         {
-                            if let SalsaDocTypeLoweredKind::Name { name } =
-                                &lowered.kind
-                            {
+                            if let SalsaDocTypeLoweredKind::Name { name } = &lowered.kind {
                                 collected.insert(name.clone());
                             }
                         }

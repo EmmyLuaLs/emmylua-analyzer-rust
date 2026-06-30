@@ -248,6 +248,8 @@ fn infer_signature_generic_tpl(
         SmolStr::new(name).into(),
         constraint,
         default_type,
+        false,
+        None,
     )))
 }
 
@@ -284,6 +286,8 @@ fn infer_type_generic_tpl(
         SmolStr::new(name).into(),
         constraint,
         default_type,
+        false,
+        None,
     )))
 }
 

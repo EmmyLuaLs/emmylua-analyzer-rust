@@ -454,15 +454,15 @@ fn lowered_kind_to_type(
             if let Ok(i) = text.parse::<i64>() {
                 Some(LuaType::DocIntegerConst(i))
             } else {
-                Some(LuaType::DocStringConst(smol_str::SmolStr::new(text.as_str()).into()))
+                Some(LuaType::DocStringConst(
+                    smol_str::SmolStr::new(text.as_str()).into(),
+                ))
             }
         }
         SalsaDocTypeLoweredKind::Union { item_types } => {
             let types: Vec<LuaType> = item_types
                 .iter()
-                .filter_map(|ty_ref| {
-                    resolve_doc_type_ref(db, file_id, ty_ref)
-                })
+                .filter_map(|ty_ref| resolve_doc_type_ref(db, file_id, ty_ref))
                 .collect();
             if types.is_empty() {
                 None
@@ -518,7 +518,8 @@ fn check_ref_as_compact(
             match &type_def.kind {
                 SalsaDocTypeDefKindSummary::Alias => {
                     if let Some(value_key) = &type_def.value_type_offset {
-                        if let Some(resolved_type) = resolve_alias_target_type(ctx, fid, value_key) {
+                        if let Some(resolved_type) = resolve_alias_target_type(ctx, fid, value_key)
+                        {
                             return check_general(ctx, source, &resolved_type);
                         }
                     }

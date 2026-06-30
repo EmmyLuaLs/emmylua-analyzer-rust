@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use emmylua_parser::{
-    LuaChunk, LuaLanguageLevel, LuaNonStdSymbol, LuaNonStdSymbolSet, LuaParser, ParserConfig,
+    LuaChunk, LuaFeatures, LuaFeaturesSet, LuaLanguageLevel, LuaParser, ParserConfig,
     SpecialFunction,
 };
 use rowan::NodeCache;
@@ -14,7 +14,7 @@ use super::{SalsaSummaryDatabase, SummaryDb};
 pub struct SalsaSummaryConfig {
     language_level: LuaLanguageLevel,
     special_like: Vec<(String, SpecialFunction)>,
-    non_std_symbols: Vec<LuaNonStdSymbol>,
+    non_std_symbols: Vec<LuaFeatures>,
     module_extract_patterns: Vec<String>,
     module_replace_patterns: Vec<(String, String)>,
 }
@@ -35,7 +35,7 @@ impl SalsaSummaryConfig {
             .runtime
             .nonstandard_symbol
             .iter()
-            .map(|symbol| LuaNonStdSymbol::from(*symbol))
+            .map(|symbol| LuaFeatures::from(*symbol))
             .collect::<Vec<_>>();
         non_std_symbols.sort_by_key(|symbol| *symbol as u64);
         non_std_symbols.dedup();
@@ -87,7 +87,7 @@ impl SalsaSummaryConfig {
             .iter()
             .cloned()
             .collect::<std::collections::HashMap<_, _>>();
-        let mut non_std_symbols = LuaNonStdSymbolSet::new();
+        let mut non_std_symbols = LuaFeaturesSet::default();
         non_std_symbols.extends(self.non_std_symbols.clone());
 
         ParserConfig::new(

@@ -180,8 +180,12 @@ impl<'a> DiagnosticContext<'a> {
     }
 
     fn translate_range(&self, range: TextRange) -> Option<lsp_types::Range> {
-        let (start_line, start_character) = self.salsa_db.offset_to_line_col(self.file_id, range.start())?;
-        let (end_line, end_character) = self.salsa_db.offset_to_line_col(self.file_id, range.end())?;
+        let (start_line, start_character) = self
+            .salsa_db
+            .offset_to_line_col(self.file_id, range.start())?;
+        let (end_line, end_character) = self
+            .salsa_db
+            .offset_to_line_col(self.file_id, range.end())?;
         Some(lsp_types::Range {
             start: lsp_types::Position {
                 line: start_line as u32,

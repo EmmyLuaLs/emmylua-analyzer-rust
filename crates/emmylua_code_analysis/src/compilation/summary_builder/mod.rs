@@ -7,7 +7,6 @@ pub(crate) use analysis::*;
 pub(crate) use index::*;
 #[cfg(test)]
 pub(crate) use query::*;
-pub use summary::SalsaFileDiagnosticStatus;
 pub use query::{
     SalsaCallArgExplainSummary, SalsaCallExplainSummary, SalsaDeclQueryIndex,
     SalsaDeclTypeInfoSummary, SalsaDeclTypeQueryIndex, SalsaDocDiagnosticActionKindSummary,
@@ -36,4 +35,5 @@ pub use query::{
     SalsaSingleFileSemanticSummary, SalsaTableShapeQueryIndex, SalsaTypeCandidateOriginSummary,
     SalsaTypeCandidateSummary, SalsaTypeNarrowSummary,
 };
+pub use summary::SalsaFileDiagnosticStatus;
 pub(crate) use summary::*;

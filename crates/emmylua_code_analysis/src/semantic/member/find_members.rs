@@ -133,7 +133,7 @@ impl FindMembersContext {
 
 fn normalize_generic_member_param(db: &DbIndex, ty: LuaType) -> LuaType {
     match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl
+        LuaType::TplRef(tpl) => tpl
             .get_default_type()
             .map(|default_type| crate::complete_type_generic_args_in_type(db, default_type))
             .unwrap_or(LuaType::TplRef(tpl)),

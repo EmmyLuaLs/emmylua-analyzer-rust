@@ -279,6 +279,7 @@ pub fn build_compilation_signature_doc_function(
         is_variadic,
         params,
         return_type,
+        None,
     )))
 }
 

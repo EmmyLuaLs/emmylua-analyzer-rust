@@ -16,7 +16,10 @@ use crate::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    enum_variable_is_param, get_keyof_members,
+    enum_variable_is_param, get_keyof_members, get_member_item, get_members, get_operator,
+    get_operators, get_type_by_owner, get_type_def_kind, infer_compilation_type_property_type,
+    infer_compilation_type_super_types, infer_expr,
+    module_query::export::infer_module_export_type,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -723,7 +726,7 @@ fn infer_generic_members_from_super_generics(
 
 fn normalize_generic_member_param(db: &DbIndex, ty: LuaType) -> LuaType {
     match ty {
-        LuaType::TplRef(tpl) | LuaType::ConstTplRef(tpl) => tpl
+        LuaType::TplRef(tpl) => tpl
             .get_default_type()
             .map(|default_type| crate::complete_type_generic_args_in_type(db, default_type))
             .unwrap_or(LuaType::TplRef(tpl)),

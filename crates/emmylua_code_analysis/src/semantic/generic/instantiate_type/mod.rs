@@ -15,6 +15,7 @@ use crate::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaType, LuaUnionType,
         VariadicType,
     },
+    find_signature_by_id, get_operator, get_operators, type_def_alias_origin, type_def_is_alias,
 };
 
 use super::type_substitutor::{

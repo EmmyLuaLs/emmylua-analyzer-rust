@@ -10,8 +10,8 @@ use serde_json::json;
 
 use crate::SalsaUseSiteRoleSummary;
 use crate::semantic_model::SemanticModel;
-use crate::{DiagnosticCode, LuaSemanticDeclId, SemanticDeclLevel, compilation::SalsaDeclId};
 use crate::semantic_model::offset_types::DeclPosition;
+use crate::{DiagnosticCode, LuaSemanticDeclId, SemanticDeclLevel, compilation::SalsaDeclId};
 
 use super::super::DiagnosticContext;
 

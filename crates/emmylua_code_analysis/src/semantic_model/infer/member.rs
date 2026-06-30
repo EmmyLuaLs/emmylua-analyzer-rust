@@ -132,7 +132,7 @@ fn infer_member_impl_inner(
         LuaType::ModuleRef(_) => Err(InferFailReason::NotImplemented),
 
         // TplRef → 需要 extend type（后续 phase）
-        LuaType::TplRef(_) | LuaType::ConstTplRef(_) => Err(InferFailReason::NotImplemented),
+        LuaType::TplRef(_) => Err(InferFailReason::NotImplemented),
 
         // Namespace → 子命名空间或类型
         LuaType::Namespace(ns) => match member_key {

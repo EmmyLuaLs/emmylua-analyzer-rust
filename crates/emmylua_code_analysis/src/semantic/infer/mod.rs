@@ -29,6 +29,8 @@ use smol_str::SmolStr;
 use crate::{
     InFiled, InferGuard, LuaMemberKey, VariadicType,
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
+    find_compilation_decl_by_position, find_decl_by_id, get_operator, get_operators,
+    get_type_by_owner,
     semantic::infer::infer_index::infer_ternary_expr,
 };
 

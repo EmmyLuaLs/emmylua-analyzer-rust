@@ -7,6 +7,7 @@ use crate::{
         LuaFunctionType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaTupleType, LuaType,
         LuaUnionType, VariadicType,
     },
+    find_compilation_type_generic_params,
     semantic::generic::type_substitutor::TypeSubstitutor,
 };
 
@@ -101,7 +102,7 @@ fn complete_type_generic_args_inner(
             continue;
         }
 
-        if let Some(default_type) = &generic_param.default {
+        if let Some(default_type) = &generic_param.default_type {
             if missing_required_count != 0 {
                 continue;
             }

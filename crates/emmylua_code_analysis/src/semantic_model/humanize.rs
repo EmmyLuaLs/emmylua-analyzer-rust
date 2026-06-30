@@ -131,7 +131,7 @@ impl<'a> TypeHumanizerSalsa<'a> {
             LuaType::BooleanConst(b) => write!(w, "{}", b),
             LuaType::DocIntegerConst(n) => write!(w, "{}", n),
             LuaType::DocBooleanConst(b) => write!(w, "{}", b),
-            LuaType::TplRef(_) | LuaType::ConstTplRef(_) => w.write_str("T"),
+            LuaType::TplRef(_) => w.write_str("T"),
             LuaType::StrTplRef(_) => w.write_str("`T`"),
             LuaType::Instance(i) => self.write_type(i.get_base(), w),
             LuaType::ModuleRef(_) => w.write_str("module"),

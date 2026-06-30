@@ -309,7 +309,8 @@ fn check_enum_type_access(
     let db = model.salsa_db();
     let salsa_did = SalsaDeclId(DeclPosition(decl_id.position));
     if let Some(dt) = db.types().decl(model.get_file_id(), salsa_did) {
-        if dt.named_type_names
+        if dt
+            .named_type_names
             .iter()
             .any(|n| n.as_str() == type_id.get_name())
         {

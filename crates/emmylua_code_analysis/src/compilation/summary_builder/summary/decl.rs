@@ -15,15 +15,15 @@ impl SalsaDeclId {
     }
 
     pub fn as_u32(self) -> u32 {
-        self.0 .0.into()
+        self.0.0.into()
     }
 
     pub fn as_text_size(self) -> TextSize {
-        self.0 .0
+        self.0.0
     }
 
     pub fn as_position(self) -> TextSize {
-        self.0 .0
+        self.0.0
     }
 }
 

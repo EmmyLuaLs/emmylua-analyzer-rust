@@ -14,7 +14,10 @@ use crate::compilation::{
 };
 use crate::semantic_model::infer;
 use crate::semantic_model::signature::SignatureInfo;
-use crate::{FileId, LuaType, LuaTypeDeclId};
+use crate::{
+    AsyncState, FileId, LuaFunctionType, LuaGenericType, LuaIndexAccessKey, LuaObjectType, LuaType,
+    LuaTypeDeclId, SalsaDocTypeLoweredObjectFieldKey,
+};
 
 /// 签名与调用查询器。
 pub struct SigQuery<'db> {
@@ -192,40 +195,40 @@ impl<'db> SigQuery<'db> {
                     .and_then(|r| self.resolve_type_ref(&r.doc_type, depth + 1))
                     .unwrap_or(LuaType::Nil);
                 // Detect colon define: first param named "self" implies implicit self
-                let is_colon = func_params.first()
+                let is_colon = func_params
+                    .first()
                     .map(|(name, _)| name == "self")
                     .unwrap_or(false);
-                let func_type = crate::LuaFunctionType::new(
-                    crate::AsyncState::None,
+                let func_type = LuaFunctionType::new(
+                    AsyncState::None,
                     is_colon,
                     is_variadic,
                     func_params,
                     ret,
+                    None,
                 );
                 Some(LuaType::DocFunction(func_type.into()))
             }
 
             SalsaDocTypeLoweredKind::Object { fields } => {
-                let mut obj_fields: Vec<(crate::LuaIndexAccessKey, LuaType)> = Vec::new();
+                let mut obj_fields: Vec<(LuaIndexAccessKey, LuaType)> = Vec::new();
                 for f in fields {
                     let ty = self
                         .resolve_type_ref(&f.value_type, depth + 1)
                         .unwrap_or(LuaType::Any);
                     let key = match &f.key {
-                        crate::compilation::SalsaDocTypeLoweredObjectFieldKey::Name(n)
-                        | crate::compilation::SalsaDocTypeLoweredObjectFieldKey::String(n) => {
-                            crate::LuaIndexAccessKey::String(SmolStr::new(n.as_str()))
+                        SalsaDocTypeLoweredObjectFieldKey::Name(n)
+                        | SalsaDocTypeLoweredObjectFieldKey::String(n) => {
+                            LuaIndexAccessKey::String(SmolStr::new(n.as_str()))
                         }
-                        crate::compilation::SalsaDocTypeLoweredObjectFieldKey::Integer(i) => {
-                            crate::LuaIndexAccessKey::Integer(*i)
+                        SalsaDocTypeLoweredObjectFieldKey::Integer(i) => {
+                            LuaIndexAccessKey::Integer(*i)
                         }
                         _ => continue,
                     };
                     obj_fields.push((key, ty));
                 }
-                Some(LuaType::Object(
-                    crate::LuaObjectType::new(obj_fields).into(),
-                ))
+                Some(LuaType::Object(LuaObjectType::new(obj_fields).into()))
             }
 
             SalsaDocTypeLoweredKind::Generic {
@@ -241,7 +244,7 @@ impl<'db> SigQuery<'db> {
                     Some(base)
                 } else if let LuaType::Ref(type_id) = &base {
                     Some(LuaType::Generic(
-                        crate::LuaGenericType::new(type_id.clone(), args).into(),
+                        LuaGenericType::new(type_id.clone(), args).into(),
                     ))
                 } else {
                     Some(base)

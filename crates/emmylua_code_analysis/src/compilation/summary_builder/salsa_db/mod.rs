@@ -19,7 +19,7 @@ pub use facade::{
     SalsaSummaryLexicalQueries, SalsaSummaryModuleQueries, SalsaSummarySemanticQueries,
     SalsaSummaryTypeQueries,
 };
-use inputs::{SummaryConfigInput, SalsaSummaryConfig};
+use inputs::{SalsaSummaryConfig, SummaryConfigInput};
 
 #[salsa::db]
 pub trait SummaryDb: salsa::Database {
@@ -220,7 +220,8 @@ impl SalsaSummaryDatabase {
         if let Some(path) = self.file_id_to_path.remove(&file_id) {
             self.path_to_file_id.remove(&path);
         }
-        self.remote_uri_to_file_id.retain(|_, &mut fid| fid != file_id);
+        self.remote_uri_to_file_id
+            .retain(|_, &mut fid| fid != file_id);
     }
 
     /// Remove a file by URI.
@@ -245,7 +246,10 @@ impl SalsaSummaryDatabase {
     }
 
     /// Get parse errors for a file (from cached syntax tree).
-    pub fn get_file_parse_error(&self, file_id: FileId) -> Option<Vec<emmylua_parser::LuaParseError>> {
+    pub fn get_file_parse_error(
+        &self,
+        file_id: FileId,
+    ) -> Option<Vec<emmylua_parser::LuaParseError>> {
         let tree = self.get_syntax_tree(file_id)?;
         let errors = tree.get_errors().to_vec();
         if errors.is_empty() {
@@ -256,7 +260,11 @@ impl SalsaSummaryDatabase {
     }
 
     /// Convert a text offset to (line, col) — 0-based.
-    pub fn offset_to_line_col(&self, file_id: FileId, offset: rowan::TextSize) -> Option<(usize, usize)> {
+    pub fn offset_to_line_col(
+        &self,
+        file_id: FileId,
+        offset: rowan::TextSize,
+    ) -> Option<(usize, usize)> {
         use emmylua_parser::LineIndex;
         let input = self.files.get(&file_id)?;
         let cached = tracked::tracked_line_index(self, *input);

@@ -39,14 +39,13 @@ use crate::compilation::{
     SalsaSummaryDatabase, TypeDefEntry, WorkspacePropertyEntry,
 };
 use crate::{
-    Emmyrc, FileId, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId,
-    SemanticDeclLevel,
+    Emmyrc, FileId, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel,
 };
 
 pub use decl_query::DeclQuery;
 pub use infer::{CallFunctionInfo, InferCache, InferFailReason, InferQuery, InferResult};
-pub use offset_types::{DeclPosition, OwnerPosition};
 pub use member::MemberQuery;
+pub use offset_types::{DeclPosition, OwnerPosition};
 pub use sig_query::SigQuery;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 pub use type_query::TypeQuery;

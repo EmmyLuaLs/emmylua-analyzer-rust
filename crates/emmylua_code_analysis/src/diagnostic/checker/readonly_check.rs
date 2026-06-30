@@ -63,7 +63,11 @@ fn check_readonly(
         _ => return,
     };
 
-    if model.decl_has_doc_property(file_id, OwnerPosition(offset), SalsaDocTagPropertyEntrySummary::Readonly) {
+    if model.decl_has_doc_property(
+        file_id,
+        OwnerPosition(offset),
+        SalsaDocTagPropertyEntrySummary::Readonly,
+    ) {
         context.add_diagnostic(
             DiagnosticCode::ReadOnly,
             range,
