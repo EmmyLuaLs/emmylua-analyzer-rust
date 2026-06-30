@@ -248,6 +248,118 @@ mod test {
     }
 
     #[test]
+    fn test_alias_keyof_constraint_accepts_keyof_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+            ---@field three 3
+
+            ---@alias C<K extends keyof A> any
+
+            ---@type C<keyof A>
+            local tmp
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_alias_keyof_constraint_rejects_keyof_type_with_invalid_key() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+
+            ---@class B
+            ---@field one 1
+            ---@field missing 3
+
+            ---@alias C<K extends keyof A> any
+
+            ---@type C<keyof B>
+            local tmp
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_alias_keyof_constraint_rejects_invalid_union_for_keyof_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+
+            ---@alias C<K extends keyof A> any
+
+            ---@type C<'one' | 'missing'>
+            local tmp
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_alias_dependent_keyof_constraint_uses_explicit_type_arg() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Base
+            ---@field common 1
+
+            ---@class Exact: Base
+            ---@field one 1
+            ---@field two 2
+
+            ---@alias PickFrom<T extends Base, K extends keyof T> any
+
+            ---@type PickFrom<Exact, keyof Exact>
+            local tmp
+            "#,
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@type PickFrom<Exact, 'error'>
+            local tmp
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_alias_dependent_keyof_constraint_rejects_keyof_other_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Base
+            ---@field common 1
+
+            ---@class Exact: Base
+            ---@field one 1
+
+            ---@class Extra: Base
+            ---@field one 1
+            ---@field missing 2
+
+            ---@alias PickFrom<T extends Base, K extends keyof T> any
+
+            ---@type PickFrom<Exact, keyof Extra>
+            local tmp
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_alias_keyof_constraint_rejects_union_with_invalid_key() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
@@ -342,6 +454,40 @@ mod test {
             r#"
             ---@class Box<T extends string, U extends string = T>
             "#
+        ));
+    }
+
+    #[test]
+    fn test_dependent_keyof_default_must_satisfy_any_valid_type_arg() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Base
+            ---@field common 1
+
+            ---@class Exact: Base
+            ---@field one 1
+
+            ---@alias PickFrom<T extends Base = Exact, K extends keyof T = keyof Exact> any
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_dependent_keyof_default_can_reference_same_type_param() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Base
+            ---@field common 1
+
+            ---@class Exact: Base
+            ---@field one 1
+
+            ---@alias PickFrom<T extends Base = Exact, K extends keyof T = keyof T> any
+            "#,
         ));
     }
 

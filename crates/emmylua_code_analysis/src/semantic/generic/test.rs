@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use crate::{
+        DiagnosticCode, LuaType, RenderLevel, TypeSubstitutor, VirtualWorkspace, humanize_type,
+    };
 
     #[test]
     fn test_variadic_func() {
@@ -270,6 +272,53 @@ result = {
         let a = ws.expr_ty("arraySuites");
         let expected = ws.ty("Suite[]");
         assert_eq!(a, expected);
+    }
+
+    #[test]
+    fn test_keyof_generic_instantiates_to_union() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+            ---@field three 3
+
+            ---@alias B<T> T extends any and keyof T or never
+            "#,
+        );
+
+        let ty = ws.ty("B<A>");
+        let db = ws.analysis.compilation.get_db();
+        let origin = match ty {
+            LuaType::Generic(generic) => {
+                let type_decl = db
+                    .get_type_index()
+                    .get_type_decl(&generic.get_base_type_id())
+                    .expect("B must resolve to an alias declaration");
+                let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
+                type_decl
+                    .get_alias_origin(&db, Some(&substitutor))
+                    .expect("B<A> must expand to its instantiated alias origin")
+            }
+            ty => ty,
+        };
+
+        let LuaType::Union(union) = &origin else {
+            panic!(
+                "keyof generic should instantiate to union, got {}",
+                humanize_type(&db, &origin, RenderLevel::Detailed)
+            );
+        };
+
+        let mut keys = union
+            .into_vec()
+            .iter()
+            .map(|ty| humanize_type(&db, ty, RenderLevel::Brief))
+            .collect::<Vec<_>>();
+        keys.sort();
+
+        assert_eq!(keys, vec!["\"one\"", "\"three\"", "\"two\""]);
     }
 
     #[test]

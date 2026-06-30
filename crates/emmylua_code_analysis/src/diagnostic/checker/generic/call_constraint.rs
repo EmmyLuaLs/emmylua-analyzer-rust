@@ -4,8 +4,9 @@ use emmylua_parser::{LuaAstToken, LuaCallExpr};
 use rowan::TextRange;
 
 use crate::{
-    DbIndex, LuaFunctionType, LuaType, LuaTypeNode, SemanticModel, TypeSubstitutor,
-    build_call_generic_substitutor, collect_callable_overload_groups, instantiate_type_generic,
+    DbIndex, LuaAliasCallKind, LuaFunctionType, LuaType, LuaTypeNode, SemanticModel,
+    TypeSubstitutor, build_call_generic_substitutor, collect_callable_overload_groups,
+    instantiate_type_generic,
 };
 
 // 泛型约束上下文
@@ -188,6 +189,16 @@ fn generic_arg_count(
 pub fn normalize_constraint_type(db: &DbIndex, ty: LuaType) -> LuaType {
     match ty {
         LuaType::Tuple(tuple) if tuple.is_infer_resolve() => tuple.collapse_to_union(db),
+        LuaType::Call(alias_call)
+            if alias_call.get_call_kind() == LuaAliasCallKind::KeyOf
+                && !LuaType::Call(alias_call.clone()).contains_tpl_node() =>
+        {
+            let call_type = LuaType::Call(alias_call);
+            normalize_constraint_type(
+                db,
+                instantiate_type_generic(db, &call_type, &TypeSubstitutor::new()),
+            )
+        }
         _ => ty,
     }
 }

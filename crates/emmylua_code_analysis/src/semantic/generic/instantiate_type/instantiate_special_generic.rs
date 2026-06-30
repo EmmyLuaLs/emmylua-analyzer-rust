@@ -1,6 +1,6 @@
 use crate::{
     DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
-    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
+    LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
     semantic::{
         generic::key_type_to_member_key,
         member::{find_members, infer_raw_member_type},
@@ -45,6 +45,7 @@ pub(super) fn instantiate_alias_call(
             }
 
             let members = get_keyof_members(context.db, &operands[0]).unwrap_or_default();
+            // keyof 表示可取键的联合类型, 不是按位置展开的 tuple.
             let member_key_types = members
                 .iter()
                 .filter_map(|m| match &m.key {
@@ -53,7 +54,7 @@ pub(super) fn instantiate_alias_call(
                     _ => None,
                 })
                 .collect::<Vec<_>>();
-            LuaType::Tuple(LuaTupleType::new(member_key_types, LuaTupleStatus::InferResolve).into())
+            TypeOps::union_all(context.db, member_key_types)
         }
         // 条件类型不在此处理
         LuaAliasCallKind::Extends => {
