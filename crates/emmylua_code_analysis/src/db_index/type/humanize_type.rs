@@ -266,7 +266,7 @@ impl<'a> TypeHumanizer<'a> {
         w.write_char('<')?;
         let saved = self.level;
         self.level = self.child_level();
-        let result = (|| {
+        let result = (|| -> fmt::Result {
             for (i, param) in generic.iter().enumerate() {
                 if i > 0 {
                     w.write_str(", ")?;
