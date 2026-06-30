@@ -14,8 +14,10 @@ pub fn build_type_decl_hover(
     let type_decl = db.get_type_index().get_type_decl(&type_decl_id)?;
     let type_description = if type_decl.is_alias() {
         if let Some(origin) = type_decl.get_alias_origin(db, None) {
+            let type_name =
+                humanize_type(db, &LuaType::Def(type_decl_id.clone()), RenderLevel::Normal);
             let origin_type = humanize_type(db, &origin, builder.detail_render_level);
-            format!("(alias) {} = {}", type_decl.get_name(), origin_type)
+            format!("(alias) {} = {}", type_name, origin_type)
         } else {
             "".to_string()
         }

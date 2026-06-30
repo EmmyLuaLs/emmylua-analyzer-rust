@@ -296,6 +296,63 @@ mod tests {
     }
 
     #[gtest]
+    fn test_hover_special_alias_call_type_syntax() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class KeyofHoverShape
+                ---@field name string
+
+                ---@type keyof KeyofHoverShape
+                local <??>key
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal key: keyof KeyofHoverShape\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class ExtendsHoverShape
+                ---@field name string
+
+                ---@type ExtendsHoverShape extends table
+                local <??>is_table
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal is_table: ExtendsHoverShape extends table\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@alias AB<??>C<K extends keyof T, T> T[K]
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(alias) ABC<K extends keyof T, T> = T[K]\n```".to_string(),
+            },
+        ));
+
+        check!(
+            ws.check_hover(
+                r#"
+                ---@class BoxHoverShape
+                ---@field name string
+
+                ---@class BoxHoverShape<??>Box<K extends keyof BoxHoverShape, T>
+                ---@field value T
+            "#,
+                VirtualHoverResult {
+                    value:
+                        "```lua\n(class) BoxHoverShapeBox<K extends keyof BoxHoverShape, T>\n```"
+                            .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
     fn test_hover_narrowed_function_type() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(

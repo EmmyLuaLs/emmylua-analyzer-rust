@@ -259,13 +259,35 @@ impl<'a> TypeHumanizer<'a> {
         };
 
         w.write_str(&full_name)?;
-        w.write_char('<')?;
-        for (i, param) in generic.iter().enumerate() {
-            if i > 0 {
-                w.write_str(", ")?;
-            }
-            w.write_str(&param.name)?;
+        if generic.is_empty() {
+            return Ok(());
         }
+
+        w.write_char('<')?;
+        let saved = self.level;
+        self.level = self.child_level();
+        let result = (|| {
+            for (i, param) in generic.iter().enumerate() {
+                if i > 0 {
+                    w.write_str(", ")?;
+                }
+                if param.is_const {
+                    w.write_str("const ")?;
+                }
+                w.write_str(&param.name)?;
+                if let Some(constraint) = &param.constraint {
+                    w.write_str(" extends ")?;
+                    self.write_type(constraint, w)?;
+                }
+                if let Some(default_type) = &param.default {
+                    w.write_str(" = ")?;
+                    self.write_type(default_type, w)?;
+                }
+            }
+            Ok(())
+        })();
+        self.level = saved;
+        result?;
         w.write_char('>')
     }
 
@@ -515,29 +537,56 @@ impl<'a> TypeHumanizer<'a> {
     // ─── Call (alias call) ──────────────────────────────────────────
 
     fn write_call_type<W: Write>(&mut self, inner: &LuaAliasCallType, w: &mut W) -> fmt::Result {
-        let basic = match inner.get_call_kind() {
-            LuaAliasCallKind::Sub => "sub",
-            LuaAliasCallKind::Add => "add",
-            LuaAliasCallKind::KeyOf => "keyof",
-            LuaAliasCallKind::Extends => "extends",
-            LuaAliasCallKind::Select => "select",
-            LuaAliasCallKind::Unpack => "unpack",
-            LuaAliasCallKind::Index => "index",
-            LuaAliasCallKind::RawGet => "rawget",
-            LuaAliasCallKind::Merge => "Merge",
-        };
-        w.write_str(basic)?;
-        w.write_char('<')?;
+        let operands = inner.get_operands();
         let saved = self.level;
         self.level = self.child_level();
-        for (i, ty) in inner.get_operands().iter().enumerate() {
-            if i > 0 {
-                w.write_char(',')?;
+        let result = (|| match inner.get_call_kind() {
+            LuaAliasCallKind::KeyOf => {
+                w.write_str("keyof ")?;
+                for (i, ty) in operands.iter().enumerate() {
+                    if i > 0 {
+                        w.write_char(',')?;
+                    }
+                    self.write_type(ty, w)?;
+                }
+                Ok(())
             }
-            self.write_type(ty, w)?;
-        }
+            LuaAliasCallKind::Extends if operands.len() == 2 => {
+                self.write_type(&operands[0], w)?;
+                w.write_str(" extends ")?;
+                self.write_type(&operands[1], w)
+            }
+            LuaAliasCallKind::Index if operands.len() == 2 => {
+                self.write_type(&operands[0], w)?;
+                w.write_char('[')?;
+                self.write_type(&operands[1], w)?;
+                w.write_char(']')
+            }
+            call_kind => {
+                let basic = match call_kind {
+                    LuaAliasCallKind::Sub => "sub",
+                    LuaAliasCallKind::Add => "add",
+                    LuaAliasCallKind::KeyOf => "keyof",
+                    LuaAliasCallKind::Extends => "extends",
+                    LuaAliasCallKind::Select => "select",
+                    LuaAliasCallKind::Unpack => "unpack",
+                    LuaAliasCallKind::Index => "index",
+                    LuaAliasCallKind::RawGet => "rawget",
+                    LuaAliasCallKind::Merge => "Merge",
+                };
+                w.write_str(basic)?;
+                w.write_char('<')?;
+                for (i, ty) in operands.iter().enumerate() {
+                    if i > 0 {
+                        w.write_char(',')?;
+                    }
+                    self.write_type(ty, w)?;
+                }
+                w.write_char('>')
+            }
+        })();
         self.level = saved;
-        w.write_char('>')
+        result
     }
 
     // ─── DocFunction ────────────────────────────────────────────────
