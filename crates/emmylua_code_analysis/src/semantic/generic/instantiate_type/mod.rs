@@ -8,7 +8,7 @@ use std::ops::Deref;
 use smol_str::SmolStr;
 
 use crate::{
-    DbIndex, GenericTpl, GenericTplId, LuaArrayType, LuaMappedType, LuaMemberKey,
+    DbIndex, GenericTpl, GenericTplId, LuaAliasCallKind, LuaArrayType, LuaMappedType, LuaMemberKey,
     LuaOperatorMetaMethod, LuaSignatureId, LuaTupleStatus, LuaTupleType, LuaTypeDeclId,
     LuaTypeNode, TypeOps,
     db_index::{
@@ -664,13 +664,25 @@ fn instantiate_variadic_type(
 
 fn instantiate_mapped_type(context: &GenericInstantiateContext, mapped: &LuaMappedType) -> LuaType {
     let key_context = context.with_resolve_mode(GenericResolveMode::Literal);
+    let homomorphic_source = mapped.param.1.constraint.as_ref().and_then(|constraint| {
+        let LuaType::Call(alias_call) = constraint else {
+            return None;
+        };
+        if alias_call.get_call_kind() != LuaAliasCallKind::KeyOf {
+            return None;
+        }
+
+        let [source] = alias_call.get_operands().as_slice() else {
+            return None;
+        };
+        Some(instantiate_type_generic_inner(&key_context, source))
+    });
     let constraint = mapped
         .param
         .1
         .constraint
         .as_ref()
         .map(|ty| instantiate_type_generic_inner(&key_context, ty));
-
     if let Some(constraint) = constraint {
         let mut key_types = Vec::new();
         collect_mapped_key_atoms(&constraint, &mut key_types);
@@ -699,28 +711,18 @@ fn instantiate_mapped_type(context: &GenericInstantiateContext, mapped: &LuaMapp
         }
 
         if !fields.is_empty() || !index_access.is_empty() {
-            // key 从 0 开始递增才被视为元组
-            if constraint.is_tuple() {
-                let mut index = 0;
-                let mut is_tuple = true;
-                for (key, _) in &fields {
-                    if let LuaMemberKey::Integer(i) = key {
-                        if *i != index {
-                            is_tuple = false;
-                            break;
-                        }
-                        index += 1;
-                    } else {
-                        is_tuple = false;
-                        break;
-                    }
+            // 同态映射会保留源 tuple 或可变返回值的按位形态.
+            if match &homomorphic_source {
+                Some(LuaType::Tuple(_)) => true,
+                Some(LuaType::Variadic(variadic)) => {
+                    matches!(variadic.deref(), VariadicType::Multi(_))
                 }
-                if is_tuple {
-                    let types = fields.into_iter().map(|(_, ty)| ty).collect();
-                    return LuaType::Tuple(
-                        LuaTupleType::new(types, LuaTupleStatus::InferResolve).into(),
-                    );
-                }
+                _ => false,
+            } {
+                let types = fields.into_iter().map(|(_, ty)| ty).collect();
+                return LuaType::Tuple(
+                    LuaTupleType::new(types, LuaTupleStatus::InferResolve).into(),
+                );
             }
             let field_map: HashMap<LuaMemberKey, LuaType> = fields.into_iter().collect();
             return LuaType::Object(LuaObjectType::new_with_fields(field_map, index_access).into());

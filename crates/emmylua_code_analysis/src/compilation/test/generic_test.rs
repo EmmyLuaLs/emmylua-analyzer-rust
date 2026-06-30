@@ -613,6 +613,37 @@ mod test {
     }
 
     #[test]
+    fn test_mapped_keyof_alias_does_preserve_tuple_result() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@class Wrapper<T>
+
+            ---@alias Keys<T> keyof T
+            ---@alias UnwrapUnion<T> { [K in Keys<T>]: T[K] extends Wrapper<infer U> and U or unknown; }
+
+            ---@generic T
+            ---@param ... T...
+            ---@return UnwrapUnion<T>...
+            function unwrap(...) end
+            "#,
+        );
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type Wrapper<int>, Wrapper<int>, Wrapper<string>
+            local a, b, c
+
+            D, E, F = unwrap(a, b, c)
+            "#,
+        ));
+        assert_ne!(ws.expr_ty("D"), ws.ty("int"));
+        assert_ne!(ws.expr_ty("E"), ws.ty("int"));
+        assert_ne!(ws.expr_ty("F"), ws.ty("string"));
+    }
+
+    #[test]
     fn test_infer_new_constructor() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
