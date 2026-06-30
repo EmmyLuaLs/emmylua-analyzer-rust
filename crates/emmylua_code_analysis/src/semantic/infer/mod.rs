@@ -36,6 +36,7 @@ use smol_str::SmolStr;
 use crate::{
     InFiled, InferGuard, LuaMemberKey, VariadicType,
     db_index::{DbIndex, LuaOperator, LuaOperatorMetaMethod, LuaSignatureId, LuaType},
+    semantic::infer::infer_index::infer_ternary_expr,
 };
 
 use super::{CacheEntry, LuaInferCache, member::infer_raw_member_type};
@@ -132,6 +133,7 @@ pub fn infer_expr(db: &DbIndex, cache: &mut LuaInferCache, expr: LuaExpr) -> Inf
         ),
         LuaExpr::NameExpr(name_expr) => infer_name_expr(db, cache, name_expr),
         LuaExpr::IndexExpr(index_expr) => infer_index_expr(db, cache, index_expr, !no_flow),
+        LuaExpr::TernaryExpr(ternary_expr) => infer_ternary_expr(db, cache, ternary_expr),
     };
 
     match &result_type {

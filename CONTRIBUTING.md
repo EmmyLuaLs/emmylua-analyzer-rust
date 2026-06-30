@@ -15,6 +15,8 @@ Our project is organized into several crates:
 | [🧹 **emmylua_formatter**](./crates/emmylua_formatter)         | [![emmylua_formatter](https://img.shields.io/crates/v/emmylua_formatter.svg?style=flat-square)](https://crates.io/crates/emmylua_formatter)             | The Lua formatter used by the EmmyLua Analyzer Rust workspace. |
 
 
+Note: We don't accept PRs that change formatting output, but you can report formatting bugs via issues — I'll verify and fix them myself. This is because most people aren't fully aware of the complexities involved in formatting
+
 ## Testing
 
 We use the standard Rust testing harness, along with assert macros from [`googletest-rust`]:

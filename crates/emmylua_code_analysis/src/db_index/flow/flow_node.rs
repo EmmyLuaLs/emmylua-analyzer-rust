@@ -56,6 +56,8 @@ pub enum FlowNodeKind {
     TagCast(LuaAstPtr<LuaDocTagCast>),
     /// Break statement
     Break,
+    /// Continue statement
+    Continue,
     /// Return statement
     Return,
 }
@@ -75,7 +77,10 @@ impl FlowNodeKind {
     }
 
     pub fn is_change_flow(&self) -> bool {
-        matches!(self, FlowNodeKind::Break | FlowNodeKind::Return)
+        matches!(
+            self,
+            FlowNodeKind::Break | FlowNodeKind::Return | FlowNodeKind::Continue
+        )
     }
 
     pub fn is_assignment(&self) -> bool {

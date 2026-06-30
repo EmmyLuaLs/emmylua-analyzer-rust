@@ -131,7 +131,10 @@ pub fn add_member_completion(
 
     if status == CompletionTriggerStatus::Dot
         && member_key.is_integer()
-        && builder.trigger_token.kind() == LuaTokenKind::TkDot.into()
+        && matches!(
+            builder.trigger_token.kind().into(),
+            LuaTokenKind::TkDot | LuaTokenKind::TkSafeNavigation
+        )
     {
         let document = builder.semantic_model.get_document();
         let remove_range = builder.trigger_token.text_range();

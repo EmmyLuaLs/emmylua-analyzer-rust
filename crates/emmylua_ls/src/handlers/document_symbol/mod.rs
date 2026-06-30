@@ -218,6 +218,7 @@ fn process_stat(
         }
         LuaStat::GotoStat(_)
         | LuaStat::BreakStat(_)
+        | LuaStat::ContinueStat(_)
         | LuaStat::LabelStat(_)
         | LuaStat::EmptyStat(_) => {}
     }
@@ -343,6 +344,13 @@ fn process_expr(
             }
         }
         LuaExpr::NameExpr(_) | LuaExpr::LiteralExpr(_) => {}
+        LuaExpr::TernaryExpr(ternary_expr) => {
+            if let Some((condition, true_expr, false_expr)) = ternary_expr.get_exprs() {
+                process_expr(builder, condition, parent_id, inline_table_to_parent)?;
+                process_expr(builder, true_expr, parent_id, inline_table_to_parent)?;
+                process_expr(builder, false_expr, parent_id, inline_table_to_parent)?;
+            }
+        }
     }
 
     Some(())

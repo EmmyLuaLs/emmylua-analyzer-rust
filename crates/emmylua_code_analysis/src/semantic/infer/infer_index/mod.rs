@@ -1,7 +1,7 @@
 mod infer_array;
 
 use emmylua_parser::{
-    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult, PathTrait,
+    LuaExpr, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, LuaTernaryExpr, NumberResult, PathTrait,
 };
 use hashbrown::HashSet;
 use internment::ArcIntern;
@@ -75,6 +75,7 @@ pub fn infer_index_expr(
     index_expr: LuaIndexExpr,
     pass_flow: bool,
 ) -> InferResult {
+    let is_safe = index_expr.is_safe_index();
     let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
     let prefix_type = infer_expr_for_index(db, cache, prefix_expr)?;
     let index_member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
@@ -87,11 +88,30 @@ pub fn infer_index_expr(
         &InferGuard::new(),
     )?;
 
-    if pass_flow {
-        infer_member_type_pass_flow(db, cache, index_expr, member_type)
+    let mut result_type = if pass_flow {
+        infer_member_type_pass_flow(db, cache, index_expr, member_type)?
     } else {
-        Ok(member_type)
+        member_type
+    };
+
+    if is_safe && prefix_type.is_optional() {
+        result_type = TypeOps::Union.apply(db, &result_type, &LuaType::Nil);
     }
+
+    Ok(result_type)
+}
+
+pub fn infer_ternary_expr(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    ternary_expr: LuaTernaryExpr,
+) -> InferResult {
+    let Some((true_expr, false_expr)) = ternary_expr.get_true_false_exprs() else {
+        return Err(InferFailReason::None);
+    };
+    let true_type = infer_expr(db, cache, true_expr)?;
+    let false_type = infer_expr(db, cache, false_expr)?;
+    Ok(TypeOps::Union.apply(db, &true_type, &false_type))
 }
 
 fn infer_member_type_pass_flow(

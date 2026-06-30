@@ -1415,7 +1415,10 @@ impl<'a> FlowTypeEngine<'a> {
                         get_var_ref_type(self.db, self.cache, &walk.query.var_ref_id)?;
                     return Ok(self.finish_walk(walk, result_type));
                 }
-                FlowNodeKind::LoopLabel | FlowNodeKind::Break | FlowNodeKind::Return => {
+                FlowNodeKind::LoopLabel
+                | FlowNodeKind::Break
+                | FlowNodeKind::Continue
+                | FlowNodeKind::Return => {
                     walk.antecedent_flow_id = get_single_antecedent(flow_node)?;
                 }
                 FlowNodeKind::ForIStat(for_ptr) => {

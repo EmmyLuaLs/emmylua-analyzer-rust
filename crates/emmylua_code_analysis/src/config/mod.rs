@@ -15,7 +15,7 @@ pub use configs::{
     EmmyrcSemanticToken, EmmyrcSignature, EmmyrcStrict, EmmyrcWorkspace, EmmyrcWorkspaceModuleMap,
     EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem,
 };
-use emmylua_parser::{LuaLanguageLevel, LuaNonStdSymbolSet, ParserConfig, SpecialFunction};
+use emmylua_parser::{LuaFeaturesSet, LuaLanguageLevel, ParserConfig, SpecialFunction};
 use rowan::NodeCache;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -79,7 +79,7 @@ impl Emmyrc {
         for name in self.runtime.require_like_function.iter() {
             special_like.insert(name.clone(), SpecialFunction::Require);
         }
-        let mut non_std_symbols = LuaNonStdSymbolSet::new();
+        let mut non_std_symbols = LuaFeaturesSet::default();
         for symbol in self.runtime.nonstandard_symbol.iter() {
             non_std_symbols.add((*symbol).into());
         }
@@ -94,15 +94,7 @@ impl Emmyrc {
     }
 
     pub fn get_language_level(&self) -> LuaLanguageLevel {
-        match self.runtime.version {
-            EmmyrcLuaVersion::Lua51 => LuaLanguageLevel::Lua51,
-            EmmyrcLuaVersion::Lua52 => LuaLanguageLevel::Lua52,
-            EmmyrcLuaVersion::Lua53 => LuaLanguageLevel::Lua53,
-            EmmyrcLuaVersion::Lua54 => LuaLanguageLevel::Lua54,
-            EmmyrcLuaVersion::LuaJIT => LuaLanguageLevel::LuaJIT,
-            EmmyrcLuaVersion::Lua55 => LuaLanguageLevel::Lua55,
-            EmmyrcLuaVersion::LuaLatest => LuaLanguageLevel::Lua55,
-        }
+        self.runtime.version.get_language_level()
     }
 
     pub fn pre_process_emmyrc(&mut self, workspace_root: &Path) {

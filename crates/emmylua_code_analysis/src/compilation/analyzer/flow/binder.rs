@@ -108,6 +108,10 @@ impl<'a> FlowBinder<'a> {
         self.create_node(FlowNodeKind::Break)
     }
 
+    pub fn create_continue(&mut self) -> FlowId {
+        self.create_node(FlowNodeKind::Continue)
+    }
+
     pub fn create_return(&mut self) -> FlowId {
         self.create_node(FlowNodeKind::Return)
     }

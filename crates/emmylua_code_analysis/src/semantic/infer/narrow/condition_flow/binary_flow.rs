@@ -83,7 +83,34 @@ pub fn get_type_at_binary_expr(
             condition_flow,
             false,
         ),
+        BinaryOperator::OpNilCoalescing => {
+            try_get_at_nil_coalescing(db, cache, var_ref_id, left_expr, condition_flow)
+        }
         _ => Ok(ConditionFlowAction::Continue),
+    }
+}
+
+fn try_get_at_nil_coalescing(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    var_ref_id: &VarRefId,
+    left_expr: LuaExpr,
+    condition_flow: InferConditionFlow,
+) -> Result<ConditionFlowAction, InferFailReason> {
+    let Some(left_ref_id) = get_var_expr_var_ref_id(db, cache, left_expr) else {
+        return Ok(ConditionFlowAction::Continue);
+    };
+
+    if !var_ref_id.eq(&left_ref_id) {
+        return Ok(ConditionFlowAction::Continue);
+    }
+
+    if condition_flow == InferConditionFlow::FalseCondition {
+        Ok(ConditionFlowAction::Pending(
+            PendingConditionNarrow::NarrowTo(LuaType::Nil),
+        ))
+    } else {
+        Ok(ConditionFlowAction::Continue)
     }
 }
 

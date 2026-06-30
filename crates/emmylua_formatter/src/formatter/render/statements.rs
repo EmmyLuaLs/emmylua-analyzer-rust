@@ -24,17 +24,21 @@ pub(crate) fn render_local_stat(
         return Vec::new();
     };
 
+    let is_const = stat.syntax().kind() == LuaKind::Syntax(LuaSyntaxKind::ConstStat);
+
     if node_has_direct_comment_child(stat.syntax()) {
         return format_local_stat_trivia_aware(ctx, plan, &stat);
     }
 
-    let local_token = first_direct_token(stat.syntax(), LuaTokenKind::TkLocal);
+    let keyword_kind = if is_const {
+        LuaTokenKind::TkConst
+    } else {
+        LuaTokenKind::TkLocal
+    };
+    let local_token = first_direct_token(stat.syntax(), keyword_kind);
     let comma_token = first_direct_token(stat.syntax(), LuaTokenKind::TkComma);
     let assign_token = first_direct_token(stat.syntax(), LuaTokenKind::TkAssign);
-    let mut docs = vec![token_or_kind_doc(
-        local_token.as_ref(),
-        LuaTokenKind::TkLocal,
-    )];
+    let mut docs = vec![token_or_kind_doc(local_token.as_ref(), keyword_kind)];
     docs.extend(token_right_spacing_docs(plan, local_token.as_ref()));
     let local_names: Vec<_> = stat.get_local_name_list().collect();
     for (index, local_name) in local_names.iter().enumerate() {
@@ -267,6 +271,14 @@ pub(crate) fn render_empty_stat(root: &LuaSyntaxNode, syntax_id: LuaSyntaxId) ->
     vec![ir::source_node_trimmed(node)]
 }
 
+pub(crate) fn render_break_stat(_root: &LuaSyntaxNode, _syntax_id: LuaSyntaxId) -> Vec<DocIR> {
+    vec![ir::syntax_token(LuaTokenKind::TkBreak)]
+}
+
+pub(crate) fn render_continue_stat(_root: &LuaSyntaxNode, _syntax_id: LuaSyntaxId) -> Vec<DocIR> {
+    vec![ir::syntax_token(LuaTokenKind::TkContinue)]
+}
+
 fn format_local_stat_trivia_aware(
     ctx: &FormatContext,
     plan: &FormatPlan,
@@ -278,11 +290,14 @@ fn format_local_stat_trivia_aware(
         rhs_entries,
     } = collect_local_stat_entries(ctx, plan, stat);
     let syntax_id = stat.get_syntax_id();
-    let local_token = first_direct_token(stat.syntax(), LuaTokenKind::TkLocal);
-    let mut docs = vec![token_or_kind_doc(
-        local_token.as_ref(),
-        LuaTokenKind::TkLocal,
-    )];
+    let is_const = stat.syntax().kind() == LuaKind::Syntax(LuaSyntaxKind::ConstStat);
+    let keyword_kind = if is_const {
+        LuaTokenKind::TkConst
+    } else {
+        LuaTokenKind::TkLocal
+    };
+    let local_token = first_direct_token(stat.syntax(), keyword_kind);
+    let mut docs = vec![token_or_kind_doc(local_token.as_ref(), keyword_kind)];
     let has_inline_comment = plan
         .layout
         .statement_trivia

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emmylua_parser::{LuaNonStdSymbol, LuaVersionNumber, SpecialFunction};
+use emmylua_parser::{LuaFeatures, LuaLanguageLevel, LuaVersionNumber, SpecialFunction};
 use schemars::JsonSchema;
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,10 @@ pub enum EmmyrcLuaVersion {
     /// LuaJIT
     #[serde(rename = "LuaJIT")]
     LuaJIT,
+    #[serde(rename = "LuaJIT-Ext", alias = "LuaJIT Ext")]
+    LuaJITExt,
+    #[serde(rename = "LuaJIT3", alias = "LuaJIT 3")]
+    LuaJIT3,
     /// Lua 5.2
     #[serde(rename = "Lua5.2", alias = "Lua 5.2")]
     Lua52,
@@ -63,11 +67,27 @@ impl EmmyrcLuaVersion {
         match self {
             EmmyrcLuaVersion::Lua51 => LuaVersionNumber::new(5, 1, 0),
             EmmyrcLuaVersion::LuaJIT => LuaVersionNumber::LUA_JIT,
+            EmmyrcLuaVersion::LuaJITExt => LuaVersionNumber::LUA_JIT_EXT,
+            EmmyrcLuaVersion::LuaJIT3 => LuaVersionNumber::LUA_JIT3,
             EmmyrcLuaVersion::Lua52 => LuaVersionNumber::new(5, 2, 0),
             EmmyrcLuaVersion::Lua53 => LuaVersionNumber::new(5, 3, 0),
             EmmyrcLuaVersion::Lua54 => LuaVersionNumber::new(5, 4, 0),
             EmmyrcLuaVersion::LuaLatest => LuaVersionNumber::new(5, 4, 0),
             EmmyrcLuaVersion::Lua55 => LuaVersionNumber::new(5, 5, 0),
+        }
+    }
+
+    pub fn get_language_level(&self) -> LuaLanguageLevel {
+        match self {
+            EmmyrcLuaVersion::Lua51 => LuaLanguageLevel::Lua51,
+            EmmyrcLuaVersion::LuaJIT => LuaLanguageLevel::LuaJIT,
+            EmmyrcLuaVersion::LuaJITExt => LuaLanguageLevel::LuaJITExt,
+            EmmyrcLuaVersion::LuaJIT3 => LuaLanguageLevel::LuaJIT3,
+            EmmyrcLuaVersion::Lua52 => LuaLanguageLevel::Lua52,
+            EmmyrcLuaVersion::Lua53 => LuaLanguageLevel::Lua53,
+            EmmyrcLuaVersion::Lua54 => LuaLanguageLevel::Lua54,
+            EmmyrcLuaVersion::LuaLatest => LuaLanguageLevel::Lua55,
+            EmmyrcLuaVersion::Lua55 => LuaLanguageLevel::Lua55,
         }
     }
 }
@@ -119,28 +139,28 @@ pub enum EmmyrcNonStdSymbol {
     Continue, // "continue"
 }
 
-impl From<EmmyrcNonStdSymbol> for LuaNonStdSymbol {
+impl From<EmmyrcNonStdSymbol> for LuaFeatures {
     fn from(symbol: EmmyrcNonStdSymbol) -> Self {
         match symbol {
-            EmmyrcNonStdSymbol::DoubleSlash => LuaNonStdSymbol::DoubleSlash,
-            EmmyrcNonStdSymbol::SlashStar => LuaNonStdSymbol::SlashStar,
-            EmmyrcNonStdSymbol::Backtick => LuaNonStdSymbol::Backtick,
-            EmmyrcNonStdSymbol::PlusAssign => LuaNonStdSymbol::PlusAssign,
-            EmmyrcNonStdSymbol::MinusAssign => LuaNonStdSymbol::MinusAssign,
-            EmmyrcNonStdSymbol::StarAssign => LuaNonStdSymbol::StarAssign,
-            EmmyrcNonStdSymbol::SlashAssign => LuaNonStdSymbol::SlashAssign,
-            EmmyrcNonStdSymbol::PercentAssign => LuaNonStdSymbol::PercentAssign,
-            EmmyrcNonStdSymbol::CaretAssign => LuaNonStdSymbol::CaretAssign,
-            EmmyrcNonStdSymbol::DoubleSlashAssign => LuaNonStdSymbol::DoubleSlashAssign,
-            EmmyrcNonStdSymbol::PipeAssign => LuaNonStdSymbol::PipeAssign,
-            EmmyrcNonStdSymbol::AmpAssign => LuaNonStdSymbol::AmpAssign,
-            EmmyrcNonStdSymbol::ShiftLeftAssign => LuaNonStdSymbol::ShiftLeftAssign,
-            EmmyrcNonStdSymbol::ShiftRightAssign => LuaNonStdSymbol::ShiftRightAssign,
-            EmmyrcNonStdSymbol::DoublePipe => LuaNonStdSymbol::DoublePipe,
-            EmmyrcNonStdSymbol::DoubleAmp => LuaNonStdSymbol::DoubleAmp,
-            EmmyrcNonStdSymbol::Exclamation => LuaNonStdSymbol::Exclamation,
-            EmmyrcNonStdSymbol::NotEqual => LuaNonStdSymbol::NotEqual,
-            EmmyrcNonStdSymbol::Continue => LuaNonStdSymbol::Continue,
+            EmmyrcNonStdSymbol::DoubleSlash => LuaFeatures::DoubleSlash,
+            EmmyrcNonStdSymbol::SlashStar => LuaFeatures::SlashStar,
+            EmmyrcNonStdSymbol::Backtick => LuaFeatures::StringInterpolation,
+            EmmyrcNonStdSymbol::PlusAssign => LuaFeatures::PlusAssign,
+            EmmyrcNonStdSymbol::MinusAssign => LuaFeatures::MinusAssign,
+            EmmyrcNonStdSymbol::StarAssign => LuaFeatures::StarAssign,
+            EmmyrcNonStdSymbol::SlashAssign => LuaFeatures::SlashAssign,
+            EmmyrcNonStdSymbol::PercentAssign => LuaFeatures::PercentAssign,
+            EmmyrcNonStdSymbol::CaretAssign => LuaFeatures::CaretAssign,
+            EmmyrcNonStdSymbol::DoubleSlashAssign => LuaFeatures::DoubleSlashAssign,
+            EmmyrcNonStdSymbol::PipeAssign => LuaFeatures::PipeAssign,
+            EmmyrcNonStdSymbol::AmpAssign => LuaFeatures::AmpAssign,
+            EmmyrcNonStdSymbol::ShiftLeftAssign => LuaFeatures::ShiftLeftAssign,
+            EmmyrcNonStdSymbol::ShiftRightAssign => LuaFeatures::ShiftRightAssign,
+            EmmyrcNonStdSymbol::DoublePipe => LuaFeatures::DoublePipe,
+            EmmyrcNonStdSymbol::DoubleAmp => LuaFeatures::DoubleAmp,
+            EmmyrcNonStdSymbol::Exclamation => LuaFeatures::Exclamation,
+            EmmyrcNonStdSymbol::NotEqual => LuaFeatures::NotEqual,
+            EmmyrcNonStdSymbol::Continue => LuaFeatures::Continue,
         }
     }
 }

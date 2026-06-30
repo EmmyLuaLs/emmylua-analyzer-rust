@@ -829,6 +829,13 @@
     "EmmyrcLuaVersion": {
       "oneOf": [
         {
+          "type": "string",
+          "enum": [
+            "LuaJIT-Ext",
+            "LuaJIT3"
+          ]
+        },
+        {
           "description": "Lua 5.1",
           "type": "string",
           "const": "Lua5.1"

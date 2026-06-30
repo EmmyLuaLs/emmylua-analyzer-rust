@@ -12,10 +12,10 @@ use crate::{
             comment::bind_comment,
             exprs::bind_expr,
             stats::{
-                bind_assign_stat, bind_break_stat, bind_call_expr_stat, bind_do_stat,
-                bind_for_range_stat, bind_for_stat, bind_func_stat, bind_goto_stat, bind_if_stat,
-                bind_label_stat, bind_local_func_stat, bind_local_stat, bind_repeat_stat,
-                bind_return_stat, bind_while_stat,
+                bind_assign_stat, bind_break_stat, bind_call_expr_stat, bind_continue_stat,
+                bind_do_stat, bind_for_range_stat, bind_for_stat, bind_func_stat, bind_goto_stat,
+                bind_if_stat, bind_label_stat, bind_local_func_stat, bind_local_stat,
+                bind_repeat_stat, bind_return_stat, bind_while_stat,
             },
         },
         binder::FlowBinder,
@@ -41,7 +41,7 @@ fn bind_block(binder: &mut FlowBinder, block: LuaBlock, current: FlowId) -> Flow
 
         if let Some(flow_node) = binder.get_flow(return_flow_id) {
             match &flow_node.kind {
-                FlowNodeKind::Return | FlowNodeKind::Break => {
+                FlowNodeKind::Return | FlowNodeKind::Break | FlowNodeKind::Continue => {
                     return_flow_id = binder.unreachable;
                     can_change_flow = false;
                 }
@@ -72,6 +72,9 @@ fn bind_node(binder: &mut FlowBinder, node: LuaAst, current: FlowId) -> FlowId {
         }
         LuaAst::LuaLabelStat(label_stat) => bind_label_stat(binder, label_stat, current),
         LuaAst::LuaBreakStat(break_stat) => bind_break_stat(binder, break_stat, current),
+        LuaAst::LuaContinueStat(continue_stat) => {
+            bind_continue_stat(binder, continue_stat, current)
+        }
         LuaAst::LuaGotoStat(goto_stat) => bind_goto_stat(binder, goto_stat, current),
         LuaAst::LuaReturnStat(return_stat) => bind_return_stat(binder, return_stat, current),
         LuaAst::LuaDoStat(do_stat) => bind_do_stat(binder, do_stat, current),

@@ -2,13 +2,15 @@ mod bind_binary_expr;
 
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaExpr, LuaIndexExpr, LuaNameExpr,
-    LuaTableExpr, LuaUnaryExpr, UnaryOperator,
+    LuaTableExpr, LuaTernaryExpr, LuaUnaryExpr, UnaryOperator,
 };
 
 use crate::{
     FlowId, FlowNodeKind,
     compilation::analyzer::flow::{
-        bind_analyze::{bind_each_child, exprs::bind_binary_expr::is_binary_logical},
+        bind_analyze::{
+            bind_each_child, exprs::bind_binary_expr::is_binary_logical, finish_flow_label,
+        },
         binder::FlowBinder,
     },
 };
@@ -54,6 +56,7 @@ pub fn bind_expr(binder: &mut FlowBinder, expr: LuaExpr, current: FlowId) -> Flo
         LuaExpr::IndexExpr(index_expr) => bind_index_expr(binder, index_expr, current),
         LuaExpr::BinaryExpr(binary_expr) => bind_binary_expr(binder, binary_expr, current),
         LuaExpr::UnaryExpr(unary_expr) => bind_unary_expr(binder, unary_expr, current),
+        LuaExpr::TernaryExpr(ternary_expr) => bind_ternary_expr(binder, ternary_expr, current),
     };
 
     current
@@ -92,7 +95,31 @@ pub fn bind_index_expr(
     current: FlowId,
 ) -> Option<()> {
     binder.bind_syntax_node(index_expr.get_syntax_id(), current);
+    if index_expr.is_safe_index() {
+        return bind_safe_index_expr(binder, index_expr, current);
+    }
     bind_each_child(binder, LuaAst::LuaIndexExpr(index_expr.clone()), current);
+    Some(())
+}
+
+fn bind_safe_index_expr(
+    binder: &mut FlowBinder,
+    index_expr: LuaIndexExpr,
+    current: FlowId,
+) -> Option<()> {
+    let prefix_expr = index_expr.get_prefix_expr()?;
+
+    let pre_access = binder.create_branch_label();
+    bind_condition_expr(
+        binder,
+        prefix_expr,
+        current,
+        pre_access,
+        binder.false_target,
+    );
+    let current = finish_flow_label(binder, pre_access, current);
+
+    bind_each_child(binder, LuaAst::LuaIndexExpr(index_expr), current);
     Some(())
 }
 
@@ -141,5 +168,34 @@ pub fn bind_call_expr(
     current: FlowId,
 ) -> Option<()> {
     bind_each_child(binder, LuaAst::LuaCallExpr(call_expr.clone()), current);
+    Some(())
+}
+
+fn bind_ternary_expr(
+    binder: &mut FlowBinder,
+    ternary_expr: LuaTernaryExpr,
+    current: FlowId,
+) -> Option<()> {
+    let condition = ternary_expr.get_condition_expr()?;
+    let (true_expr, false_expr) = ternary_expr.get_true_false_exprs()?;
+
+    let pre_false = binder.create_branch_label();
+    bind_condition_expr(binder, condition, current, binder.true_target, pre_false);
+    let current = finish_flow_label(binder, pre_false, current);
+    bind_condition_expr(
+        binder,
+        true_expr,
+        current,
+        binder.true_target,
+        binder.false_target,
+    );
+    bind_condition_expr(
+        binder,
+        false_expr,
+        current,
+        binder.true_target,
+        binder.false_target,
+    );
+
     Some(())
 }

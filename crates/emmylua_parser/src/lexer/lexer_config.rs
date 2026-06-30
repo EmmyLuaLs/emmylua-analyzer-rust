@@ -1,43 +1,44 @@
-use crate::{LuaNonStdSymbolSet, kind::LuaLanguageLevel};
+use crate::{LuaFeatures, LuaFeaturesSet, kind::LuaLanguageLevel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LexerConfig {
     pub language_level: LuaLanguageLevel,
-    pub non_std_symbols: LuaNonStdSymbolSet,
+    features: LuaFeaturesSet,
 }
 
 impl LexerConfig {
-    pub fn support_goto(&self) -> bool {
-        self.language_level >= LuaLanguageLevel::Lua52
-            || self.language_level == LuaLanguageLevel::LuaJIT
+    pub fn new(language_level: LuaLanguageLevel) -> Self {
+        LexerConfig {
+            language_level,
+            features: match language_level {
+                LuaLanguageLevel::Lua51 => LuaFeaturesSet::features_lua51(),
+                LuaLanguageLevel::Lua52 => LuaFeaturesSet::features_lua52(),
+                LuaLanguageLevel::Lua53 => LuaFeaturesSet::features_lua53(),
+                LuaLanguageLevel::Lua54 => LuaFeaturesSet::features_lua54(),
+                LuaLanguageLevel::LuaJIT => LuaFeaturesSet::features_luajit(),
+                LuaLanguageLevel::LuaJITExt => LuaFeaturesSet::features_luajit_extension(),
+                LuaLanguageLevel::LuaJIT3 => LuaFeaturesSet::features_luajit3(),
+                LuaLanguageLevel::Lua55 => LuaFeaturesSet::features_lua55(),
+            },
+        }
     }
 
-    pub fn support_complex_number(&self) -> bool {
-        matches!(self.language_level, LuaLanguageLevel::LuaJIT)
+    pub fn new_with_extended_features(
+        language_level: LuaLanguageLevel,
+        features: LuaFeaturesSet,
+    ) -> Self {
+        let mut config = Self::new(language_level);
+        config.features.extends_set(features);
+        config
     }
 
-    pub fn support_ll_integer(&self) -> bool {
-        matches!(self.language_level, LuaLanguageLevel::LuaJIT)
-    }
-
-    pub fn support_binary_integer(&self) -> bool {
-        matches!(self.language_level, LuaLanguageLevel::LuaJIT)
-    }
-
-    pub fn support_integer_operation(&self) -> bool {
-        self.language_level >= LuaLanguageLevel::Lua53
-    }
-
-    pub fn support_global_decl(&self) -> bool {
-        self.language_level >= LuaLanguageLevel::Lua55
+    pub fn support(&self, feature: LuaFeatures) -> bool {
+        self.features.support(feature)
     }
 }
 
 impl Default for LexerConfig {
     fn default() -> Self {
-        LexerConfig {
-            language_level: LuaLanguageLevel::Lua55,
-            non_std_symbols: LuaNonStdSymbolSet::new(),
-        }
+        LexerConfig::new(LuaLanguageLevel::Lua55)
     }
 }

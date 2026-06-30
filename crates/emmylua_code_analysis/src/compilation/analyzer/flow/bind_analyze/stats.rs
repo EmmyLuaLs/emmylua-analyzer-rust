@@ -1,8 +1,9 @@
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaBreakStat,
-    LuaCallArgList, LuaCallExprStat, LuaDoStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat,
-    LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLiteralToken, LuaLocalName, LuaLocalStat,
-    LuaRepeatStat, LuaReturnStat, LuaVarExpr, LuaWhileStat, NumberResult, UnaryOperator,
+    LuaCallArgList, LuaCallExprStat, LuaContinueStat, LuaDoStat, LuaExpr, LuaForRangeStat,
+    LuaForStat, LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLiteralToken, LuaLocalName,
+    LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaVarExpr, LuaWhileStat, NumberResult,
+    UnaryOperator,
 };
 
 use crate::{
@@ -259,6 +260,29 @@ pub fn bind_break_stat(
     binder.add_antecedent(break_flow_id, current);
     binder.add_antecedent(binder.break_target_label, break_flow_id);
     break_flow_id
+}
+
+pub fn bind_continue_stat(
+    binder: &mut FlowBinder,
+    continue_stat: LuaContinueStat,
+    current: FlowId,
+) -> FlowId {
+    let continue_flow_id = binder.create_continue();
+    if let Some(loop_flow) = binder.get_flow(binder.loop_label)
+        && loop_flow.kind.is_unreachable()
+    {
+        // report a error if we are trying to continue outside a loop
+        binder.report_error(AnalyzeError::new(
+            DiagnosticCode::SyntaxError,
+            &t!("Continue outside loop"),
+            continue_stat.get_range(),
+        ));
+        return current;
+    }
+
+    binder.add_antecedent(continue_flow_id, current);
+    binder.add_antecedent(binder.loop_label, continue_flow_id);
+    continue_flow_id
 }
 
 pub fn bind_goto_stat(binder: &mut FlowBinder, goto_stat: LuaGotoStat, current: FlowId) -> FlowId {

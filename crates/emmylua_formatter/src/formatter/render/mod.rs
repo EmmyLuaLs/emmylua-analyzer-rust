@@ -30,8 +30,8 @@ use self::control::{
 use self::helpers::*;
 pub(super) use self::statements::{
     format_statement_value_expr, has_direct_comment_before_token, render_assign_stat,
-    render_call_expr_stat, render_empty_stat, render_header_exprs_with_leading_docs,
-    render_local_stat, render_return_stat,
+    render_break_stat, render_call_expr_stat, render_continue_stat, render_empty_stat,
+    render_header_exprs_with_leading_docs, render_local_stat, render_return_stat,
 };
 use self::statements::{render_statement_align_split, render_statement_line_content};
 
@@ -105,8 +105,11 @@ fn render_layout_node(
                 render_aligned_block_layout_nodes(ctx, root, &syntax_plan.children, plan)
             }
             LuaSyntaxKind::LocalStat => render_local_stat(ctx, root, syntax_plan.syntax_id, plan),
+            LuaSyntaxKind::ConstStat => render_local_stat(ctx, root, syntax_plan.syntax_id, plan),
             LuaSyntaxKind::AssignStat => render_assign_stat(ctx, root, syntax_plan.syntax_id, plan),
             LuaSyntaxKind::ReturnStat => render_return_stat(ctx, root, syntax_plan.syntax_id, plan),
+            LuaSyntaxKind::BreakStat => render_break_stat(root, syntax_plan.syntax_id),
+            LuaSyntaxKind::ContinueStat => render_continue_stat(root, syntax_plan.syntax_id),
             LuaSyntaxKind::WhileStat => render_while_stat(ctx, root, syntax_plan, plan),
             LuaSyntaxKind::ForStat => render_for_stat(ctx, root, syntax_plan, plan),
             LuaSyntaxKind::ForRangeStat => render_for_range_stat(ctx, root, syntax_plan, plan),

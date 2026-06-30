@@ -3,7 +3,7 @@ use emmylua_parser::{
     LuaCallExpr, LuaClosureExpr, LuaComment, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaKind,
     LuaLiteralExpr, LuaLiteralToken, LuaLocalStat, LuaNameExpr, LuaParamList, LuaParenExpr,
     LuaSingleArgExpr, LuaStat, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxNode, LuaSyntaxToken,
-    LuaTableExpr, LuaTableField, LuaTokenKind, LuaUnaryExpr,
+    LuaTableExpr, LuaTableField, LuaTernaryExpr, LuaTokenKind, LuaUnaryExpr,
 };
 use rowan::TextRange;
 
@@ -60,6 +60,7 @@ pub fn format_expr_with_options(
         LuaExpr::CallExpr(expr) => format_call_expr(ctx, plan, expr),
         LuaExpr::TableExpr(expr) => format_table_expr(ctx, plan, expr),
         LuaExpr::ClosureExpr(expr) => format_closure_expr(ctx, plan, expr),
+        LuaExpr::TernaryExpr(expr) => format_ternary_expr(ctx, plan, expr),
     }
 }
 
@@ -342,7 +343,7 @@ fn format_index_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaIndexExpr
     let indent_tail = matches!(
         access_docs.first(),
         Some(DocIR::SyntaxToken(
-            LuaTokenKind::TkDot | LuaTokenKind::TkColon
+            LuaTokenKind::TkDot | LuaTokenKind::TkColon | LuaTokenKind::TkSafeNavigation
         ))
     );
 
@@ -584,6 +585,10 @@ fn format_call_expr(ctx: &FormatContext, plan: &FormatPlan, expr: &LuaCallExpr) 
     let mut docs = prefix_expr
         .map(|prefix| format_expr(ctx, plan, &prefix))
         .unwrap_or_default();
+
+    if expr.has_safe_navigation() {
+        docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+    }
 
     let Some(args_list) = expr.get_args_list() else {
         return docs;
@@ -2341,6 +2346,41 @@ fn format_closure_expr(
     render_closure_shell(ctx, plan, expr, shell_plan)
 }
 
+fn format_ternary_expr(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    expr: &LuaTernaryExpr,
+) -> Vec<DocIR> {
+    if node_has_direct_comment_child(expr.syntax()) {
+        return vec![ir::source_node_trimmed(expr.syntax().clone())];
+    }
+
+    let Some(cond_expr) = expr.get_condition_expr() else {
+        return vec![ir::source_node(expr.syntax().clone())];
+    };
+    let Some((true_expr, false_expr)) = expr.get_true_false_exprs() else {
+        return vec![ir::source_node(expr.syntax().clone())];
+    };
+
+    let cond_docs = format_expr(ctx, plan, &cond_expr);
+    let true_docs = format_expr(ctx, plan, &true_expr);
+    let false_docs = format_expr(ctx, plan, &false_expr);
+
+    vec![ir::group(vec![
+        ir::list(cond_docs),
+        ir::indent(vec![
+            continuation_break_ir(true),
+            ir::syntax_token(LuaTokenKind::TkTernary),
+            ir::space(),
+            ir::list(true_docs),
+            continuation_break_ir(true),
+            ir::syntax_token(LuaTokenKind::TkColon),
+            ir::space(),
+            ir::list(false_docs),
+        ]),
+    ])]
+}
+
 fn try_format_simple_inline_closure_expr(
     ctx: &FormatContext,
     plan: &FormatPlan,
@@ -3218,14 +3258,27 @@ fn format_index_access_ir(
     expr: &LuaIndexExpr,
 ) -> Vec<DocIR> {
     let mut docs = Vec::new();
+    let is_safe = expr.is_safe_index();
     if let Some(index_token) = expr.get_index_token() {
         if index_token.is_dot() {
+            if is_safe {
+                docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+            }
             docs.push(ir::syntax_token(LuaTokenKind::TkDot));
             docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_colon() {
+            if is_safe {
+                docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+            }
             docs.push(ir::syntax_token(LuaTokenKind::TkColon));
             docs.extend(format_named_index_key_ir(expr));
+        } else if index_token.is_safe_navigation() {
+            docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+            docs.extend(format_named_index_key_ir(expr));
         } else if index_token.is_left_bracket() {
+            if is_safe {
+                docs.push(ir::syntax_token(LuaTokenKind::TkSafeNavigation));
+            }
             docs.push(ir::syntax_token(LuaTokenKind::TkLeftBracket));
             if ctx.config.spacing.space_inside_brackets {
                 docs.push(ir::space());

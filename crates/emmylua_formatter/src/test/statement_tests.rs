@@ -1904,4 +1904,124 @@ end
 "#
         );
     }
+
+    // ========== LuaJIT extension: const ==========
+
+    #[test]
+    fn test_const_stat_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "const x = 1\n";
+        let expected = "const x = 1\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_const_stat_assign_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "const a,b = 1,2\n";
+        let expected = "const a, b = 1, 2\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    // ========== LuaJIT extension: continue ==========
+
+    #[test]
+    fn test_continue_stat_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "while true do\n    if x then\n        continue\n    end\nend\n";
+        let expected = "while true do\n    if x then\n        continue\n    end\nend\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    // ========== LuaJIT extension: ternary ==========
+
+    #[test]
+    fn test_ternary_format_inline() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = a ? b : c\n";
+        let expected = "local x = a ? b : c\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_ternary_format_nested() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = a ? b ? c : d : e\n";
+        let expected = "local x = a ? b ? c : d : e\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    // ========== LuaJIT extension: safe navigation ==========
+
+    #[test]
+    fn test_safe_navigation_dot_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = obj?.field\n";
+        let expected = "local x = obj?.field\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    // ========== LuaJIT extension: nil-coalescing ==========
+
+    #[test]
+    fn test_nil_coalescing_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = a ?? b\n";
+        let expected = "local x = a ?? b\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_nil_coalescing_chain_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = a ?? b ?? c\n";
+        let expected = "local x = a ?? b ?? c\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_safe_call_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "self.call?.()\n";
+        let expected = "self.call?.()\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_safe_method_colon_format() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = MyClass.myField?.:byte(1)\n";
+        let expected = "local x = MyClass.myField?.:byte(1)\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
 }

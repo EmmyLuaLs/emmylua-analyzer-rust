@@ -693,8 +693,12 @@ fn render_named_function_stat_source_order(
                             kind
                         ),
                         (
-                            Some(LuaTokenKind::TkLocal | LuaTokenKind::TkGlobal),
-                            LuaTokenKind::TkFunction
+                            Some(
+                                LuaTokenKind::TkLocal
+                                    | LuaTokenKind::TkGlobal
+                                    | LuaTokenKind::TkConst,
+                            ),
+                            LuaTokenKind::TkFunction,
                         )
                     )
                 {

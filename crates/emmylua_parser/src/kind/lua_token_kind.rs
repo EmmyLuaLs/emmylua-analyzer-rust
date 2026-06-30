@@ -29,48 +29,61 @@ pub enum LuaTokenKind {
     TkWhile,
     TkGlobal, // global *
 
-    TkWhitespace, // whitespace
-    TkEndOfLine,  // end of line
-    TkPlus,       // +
-    TkMinus,      // -
-    TkMul,        // *
-    TkDiv,        // /
-    TkIDiv,       // //
-    TkDot,        // .
-    TkConcat,     // ..
-    TkDots,       // ...
-    TkComma,      // ,
-    TkAssign,     // =
-    TkEq,         // ==
-    TkGe,         // >=
-    TkLe,         // <=
-    TkNe,         // ~=
-    TkShl,        // <<
-    TkShr,        // >>
-    TkLt,         // <
-    TkGt,         // >
-    TkMod,        // %
-    TkPow,        // ^
-    TkLen,        // #
-    TkBitAnd,     // &
-    TkBitOr,      // |
-    TkBitXor,     // ~
-    TkColon,      // :
-    TkDbColon,    // ::
-    TkSemicolon,  // ;
+    // extension keywords
+    TkContinue, // continue
+    TkConst,    // const
+    TkToggle,   // !
 
-    // Non-standard assignment operators
-    TkPlusAssign,        // +=
-    TkMinusAssign,       // -=
-    TkStarAssign,        // *=
-    TkSlashAssign,       // /=
-    TkPercentAssign,     // %=
-    TkCaretAssign,       // ^=
-    TkDoubleSlashAssign, // //=
-    TkPipeAssign,        // |=
-    TkAmpAssign,         // &=
-    TkShiftLeftAssign,   // <<=
-    TkShiftRightAssign,  // >>=
+    TkWhitespace,    // whitespace
+    TkEndOfLine,     // end of line
+    TkPlus,          // +
+    TkMinus,         // -
+    TkMul,           // *
+    TkDiv,           // /
+    TkIDiv,          // //
+    TkDot,           // .
+    TkConcat,        // ..
+    TkDots,          // ...
+    TkComma,         // ,
+    TkAssign,        // =
+    TkEq,            // ==
+    TkGe,            // >=
+    TkLe,            // <=
+    TkNe,            // ~=
+    TkShl,           // <<
+    TkShr,           // >>
+    TkShrArithmetic, // "~>>"
+    TkLt,            // <
+    TkGt,            // >
+    TkMod,           // %
+    TkPow,           // ^
+    TkLen,           // #
+    TkBitAnd,        // &
+    TkBitOr,         // |
+    TkBitXor,        // ~
+    TkColon,         // :
+    TkDbColon,       // ::
+    TkSemicolon,     // ;
+
+    // extension assignment operators
+    TkPlusAssign,          // +=
+    TkMinusAssign,         // -=
+    TkStarAssign,          // *=
+    TkSlashAssign,         // /=
+    TkPercentAssign,       // %=
+    TkCaretAssign,         // ^=
+    TkDoubleSlashAssign,   // //=
+    TkPipeAssign,          // |=
+    TkAmpAssign,           // &=
+    TkShiftLeftAssign,     // <<=
+    TkShiftRightAssign,    // >>=
+    TkShrArithmeticAssign, // ~>>=
+    TkConcatAssign,        // ..=
+    TkNilCoalescingAssign, // ??=
+
+    TkNilCoalescing,  // ??
+    TkSafeNavigation, // ?.
+    TkTernary,        // ?
 
     TkLeftBracket,  // [
     TkRightBracket, // ]
@@ -176,6 +189,7 @@ impl LuaTokenKind {
         Some(match self {
             LuaTokenKind::TkAnd => "and",
             LuaTokenKind::TkBreak => "break",
+            LuaTokenKind::TkContinue => "continue",
             LuaTokenKind::TkDo => "do",
             LuaTokenKind::TkElse => "else",
             LuaTokenKind::TkElseIf => "elseif",
@@ -189,6 +203,7 @@ impl LuaTokenKind {
             LuaTokenKind::TkLocal => "local",
             LuaTokenKind::TkNil => "nil",
             LuaTokenKind::TkNot => "not",
+            LuaTokenKind::TkToggle => "!",
             LuaTokenKind::TkOr => "or",
             LuaTokenKind::TkRepeat => "repeat",
             LuaTokenKind::TkReturn => "return",
@@ -241,6 +256,13 @@ impl LuaTokenKind {
             LuaTokenKind::TkRightParen => ")",
             LuaTokenKind::TkLeftBrace => "{",
             LuaTokenKind::TkRightBrace => "}",
+            LuaTokenKind::TkShrArithmetic => "~>>",
+            LuaTokenKind::TkNilCoalescing => "??",
+            LuaTokenKind::TkSafeNavigation => "?.",
+            LuaTokenKind::TkTernary => "?",
+            LuaTokenKind::TkShrArithmeticAssign => "~>>=",
+            LuaTokenKind::TkConcatAssign => "..=",
+            LuaTokenKind::TkNilCoalescingAssign => "??=",
             _ => return None,
         })
     }
@@ -270,6 +292,7 @@ impl LuaTokenKind {
                 | LuaTokenKind::TkTrue
                 | LuaTokenKind::TkUntil
                 | LuaTokenKind::TkWhile
+                | LuaTokenKind::TkContinue
         )
     }
 
@@ -288,6 +311,9 @@ impl LuaTokenKind {
                 | LuaTokenKind::TkAmpAssign
                 | LuaTokenKind::TkShiftLeftAssign
                 | LuaTokenKind::TkShiftRightAssign
+                | LuaTokenKind::TkShrArithmeticAssign
+                | LuaTokenKind::TkConcatAssign
+                | LuaTokenKind::TkNilCoalescingAssign
         )
     }
 }

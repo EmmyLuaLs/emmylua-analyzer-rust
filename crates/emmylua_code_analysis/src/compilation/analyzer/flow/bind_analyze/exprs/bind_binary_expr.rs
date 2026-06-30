@@ -18,6 +18,7 @@ pub fn bind_binary_expr(
     match op_token.get_op() {
         BinaryOperator::OpAnd => bind_and_expr(binder, binary_expr, current),
         BinaryOperator::OpOr => bind_or_expr(binder, binary_expr, current),
+        BinaryOperator::OpNilCoalescing => bind_or_expr(binder, binary_expr, current),
         _ => {
             bind_each_child(binder, LuaAst::LuaBinaryExpr(binary_expr.clone()), current);
             Some(())
@@ -74,7 +75,7 @@ pub fn is_binary_logical(expr: &LuaExpr) -> bool {
 
             return matches!(
                 op_token.get_op(),
-                BinaryOperator::OpAnd | BinaryOperator::OpOr
+                BinaryOperator::OpAnd | BinaryOperator::OpOr | BinaryOperator::OpNilCoalescing
             );
         }
         LuaExpr::ParenExpr(paren_expr) => {

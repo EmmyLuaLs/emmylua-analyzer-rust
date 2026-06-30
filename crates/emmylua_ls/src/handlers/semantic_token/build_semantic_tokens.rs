@@ -80,6 +80,8 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkThen
         | LuaTokenKind::TkUntil
         | LuaTokenKind::TkWhile
+        | LuaTokenKind::TkConst
+        | LuaTokenKind::TkContinue
         | LuaTokenKind::TkGlobal => {
             builder.push(token, SemanticTokenTypeKind::Keyword);
         }
@@ -109,7 +111,12 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkBitAnd
         | LuaTokenKind::TkBitOr
         | LuaTokenKind::TkBitXor
-        | LuaTokenKind::TkAssign => {
+        | LuaTokenKind::TkAssign
+        | LuaTokenKind::TkTernary
+        | LuaTokenKind::TkSafeNavigation
+        | LuaTokenKind::TkShrArithmetic
+        | LuaTokenKind::TkToggle
+        | LuaTokenKind::TkNilCoalescing => {
             builder.push(token, SemanticTokenTypeKind::Operator);
         }
         LuaTokenKind::TkLeftBrace | LuaTokenKind::TkRightBrace => {
@@ -284,6 +291,9 @@ fn build_tokens_semantic_token(
         }
         LuaTokenKind::TkDocStart | LuaTokenKind::TkDocContinue | LuaTokenKind::TkDocContinueOr => {
             render_doc_at(builder, token)
+        }
+        ch if ch.is_assign_op() => {
+            builder.push(token, SemanticTokenTypeKind::Operator);
         }
         _ => {}
     }

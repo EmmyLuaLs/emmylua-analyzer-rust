@@ -1,8 +1,8 @@
 use crate::config::LuaFormatConfig;
 use crate::ir::{self, DocIR};
 use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaChunk, LuaKind, LuaSyntaxId, LuaSyntaxKind, LuaSyntaxToken,
-    LuaTokenKind,
+    BinaryOperator, LuaAstNode, LuaChunk, LuaKind, LuaOpKind, LuaSyntaxId, LuaSyntaxKind,
+    LuaSyntaxToken, LuaTokenKind,
 };
 use smol_str::SmolStr;
 
@@ -52,7 +52,9 @@ pub(crate) fn space_around_binary_op(op: BinaryOperator, config: &LuaFormatConfi
         | BinaryOperator::OpBXor
         | BinaryOperator::OpShl
         | BinaryOperator::OpShr
-        | BinaryOperator::OpNop => SpaceRule::Space,
+        | BinaryOperator::OpNop
+        | BinaryOperator::OpShrAthrimetic
+        | BinaryOperator::OpNilCoalescing => SpaceRule::Space,
         BinaryOperator::OpConcat => {
             if config.spacing.space_around_concat_operator {
                 SpaceRule::Space
@@ -214,10 +216,11 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         | LuaTokenKind::TkDocNew => {
             apply_space_rule(spacing, syntax_id, SpaceRule::Space);
         }
-        LuaTokenKind::TkAssign => {
-            apply_space_rule(spacing, syntax_id, space_around_assign(ctx.config));
-        }
+
         LuaTokenKind::TkLocal
+        | LuaTokenKind::TkConst
+        | LuaTokenKind::TkBreak
+        | LuaTokenKind::TkContinue
         | LuaTokenKind::TkFunction
         | LuaTokenKind::TkIf
         | LuaTokenKind::TkWhile
@@ -229,13 +232,20 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         | LuaTokenKind::TkElse
         | LuaTokenKind::TkThen
         | LuaTokenKind::TkUntil
-        | LuaTokenKind::TkIn
-        | LuaTokenKind::TkNot => {
+        | LuaTokenKind::TkNot
+        | LuaTokenKind::TkIn => {
             apply_space_rule(spacing, syntax_id, SpaceRule::Space);
+        }
+        LuaTokenKind::TkToggle => {
+            spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(1));
+            spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(0));
         }
         LuaTokenKind::TkDocQuestion => {
             spacing.add_token_left_expected(syntax_id, TokenSpacingExpected::Space(0));
             spacing.add_token_right_expected(syntax_id, TokenSpacingExpected::Space(1));
+        }
+        ch if ch.is_assign_op() => {
+            apply_space_rule(spacing, syntax_id, space_around_assign(ctx.config));
         }
         _ => {}
     }
@@ -429,31 +439,7 @@ fn comment_start_looks_like_long_comment_prefix(token: &LuaSyntaxToken) -> bool 
 }
 
 fn binary_space_rule_for_token(ctx: &FormatContext, token: &LuaSyntaxToken) -> Option<SpaceRule> {
-    let op = match token.kind().to_token() {
-        LuaTokenKind::TkPlus => BinaryOperator::OpAdd,
-        LuaTokenKind::TkMinus => BinaryOperator::OpSub,
-        LuaTokenKind::TkMul => BinaryOperator::OpMul,
-        LuaTokenKind::TkDiv => BinaryOperator::OpDiv,
-        LuaTokenKind::TkIDiv => BinaryOperator::OpIDiv,
-        LuaTokenKind::TkMod => BinaryOperator::OpMod,
-        LuaTokenKind::TkPow => BinaryOperator::OpPow,
-        LuaTokenKind::TkConcat => BinaryOperator::OpConcat,
-        LuaTokenKind::TkBitAnd => BinaryOperator::OpBAnd,
-        LuaTokenKind::TkBitOr => BinaryOperator::OpBOr,
-        LuaTokenKind::TkBitXor => BinaryOperator::OpBXor,
-        LuaTokenKind::TkShl => BinaryOperator::OpShl,
-        LuaTokenKind::TkShr => BinaryOperator::OpShr,
-        LuaTokenKind::TkEq => BinaryOperator::OpEq,
-        LuaTokenKind::TkGe => BinaryOperator::OpGe,
-        LuaTokenKind::TkGt => BinaryOperator::OpGt,
-        LuaTokenKind::TkLe => BinaryOperator::OpLe,
-        LuaTokenKind::TkLt => BinaryOperator::OpLt,
-        LuaTokenKind::TkNe => BinaryOperator::OpNe,
-        LuaTokenKind::TkAnd => BinaryOperator::OpAnd,
-        LuaTokenKind::TkOr => BinaryOperator::OpOr,
-        _ => return None,
-    };
-
+    let op = LuaOpKind::to_binary_operator(token.kind().to_token());
     Some(space_around_binary_op(op, ctx.config))
 }
 

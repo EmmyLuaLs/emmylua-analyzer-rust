@@ -259,6 +259,7 @@ impl LuaAstToken for LuaKeywordToken {
                 | LuaTokenKind::TkLocal
                 | LuaTokenKind::TkNil
                 | LuaTokenKind::TkNot
+                | LuaTokenKind::TkToggle
                 | LuaTokenKind::TkOr
                 | LuaTokenKind::TkRepeat
                 | LuaTokenKind::TkReturn
@@ -266,6 +267,9 @@ impl LuaAstToken for LuaKeywordToken {
                 | LuaTokenKind::TkTrue
                 | LuaTokenKind::TkUntil
                 | LuaTokenKind::TkWhile
+                | LuaTokenKind::TkGlobal
+                | LuaTokenKind::TkConst
+                | LuaTokenKind::TkContinue
         )
     }
 
@@ -462,6 +466,7 @@ impl LuaAstToken for LuaIndexToken {
         kind == LuaTokenKind::TkDot
             || kind == LuaTokenKind::TkColon
             || kind == LuaTokenKind::TkLeftBracket
+            || kind == LuaTokenKind::TkSafeNavigation
     }
 
     fn cast(syntax: LuaSyntaxToken) -> Option<Self>
@@ -487,6 +492,10 @@ impl LuaIndexToken {
 
     pub fn is_left_bracket(&self) -> bool {
         self.token.kind() == LuaTokenKind::TkLeftBracket.into()
+    }
+
+    pub fn is_safe_navigation(&self) -> bool {
+        self.token.kind() == LuaTokenKind::TkSafeNavigation.into()
     }
 }
 
