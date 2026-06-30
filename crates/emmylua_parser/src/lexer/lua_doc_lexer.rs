@@ -690,6 +690,7 @@ impl LuaDocLexer<'_> {
                     "false" => LuaTokenKind::TkFalse,
                     "nil" => LuaTokenKind::TkNil,
                     "new" => LuaTokenKind::TkDocNew,
+                    "keyof" => LuaTokenKind::TkDocKeyOf,
                     _ => LuaTokenKind::TkName,
                 }
             }

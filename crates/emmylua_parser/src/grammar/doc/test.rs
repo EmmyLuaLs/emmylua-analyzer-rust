@@ -3079,6 +3079,54 @@ Syntax(Chunk)@0..106
     }
 
     #[test]
+    fn test_alias_conditional_keyof() {
+        let code = r#"---@alias D<T,K> K extends keyof T and K or never"#;
+        let result = r#"
+Syntax(Chunk)@0..49
+  Syntax(Block)@0..49
+    Syntax(Comment)@0..49
+      Token(TkDocStart)@0..4 "---@"
+      Syntax(DocTagAlias)@4..49
+        Token(TkTagAlias)@4..9 "alias"
+        Token(TkWhitespace)@9..10 " "
+        Token(TkName)@10..11 "D"
+        Syntax(DocGenericDeclareList)@11..16
+          Token(TkLt)@11..12 "<"
+          Syntax(DocGenericParameter)@12..13
+            Token(TkName)@12..13 "T"
+          Token(TkComma)@13..14 ","
+          Syntax(DocGenericParameter)@14..15
+            Token(TkName)@14..15 "K"
+          Token(TkGt)@15..16 ">"
+        Token(TkWhitespace)@16..17 " "
+        Syntax(TypeConditional)@17..49
+          Syntax(TypeBinary)@17..34
+            Syntax(TypeName)@17..18
+              Token(TkName)@17..18 "K"
+            Token(TkWhitespace)@18..19 " "
+            Token(TkDocExtends)@19..26 "extends"
+            Token(TkWhitespace)@26..27 " "
+            Syntax(TypeUnary)@27..34
+              Token(TkDocKeyOf)@27..32 "keyof"
+              Token(TkWhitespace)@32..33 " "
+              Syntax(TypeName)@33..34
+                Token(TkName)@33..34 "T"
+          Token(TkWhitespace)@34..35 " "
+          Token(TkAnd)@35..38 "and"
+          Token(TkWhitespace)@38..39 " "
+          Syntax(TypeName)@39..40
+            Token(TkName)@39..40 "K"
+          Token(TkWhitespace)@40..41 " "
+          Token(TkOr)@41..43 "or"
+          Token(TkWhitespace)@43..44 " "
+          Syntax(TypeName)@44..49
+            Token(TkName)@44..49 "never"
+"#;
+
+        assert_ast_eq!(code, result);
+    }
+
+    #[test]
     fn test_alias_nested_conditional() {
         let code = r#"
         ---@alias IsFortyTwo<T> T extends number and T extends 42 and true or false or false
