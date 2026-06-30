@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::{collections::HashSet, path::PathBuf, process::Command};
+use std::{borrow::Cow, collections::HashSet, path::PathBuf, process::Command};
 
 use crate::config::configs::{EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem};
 
@@ -60,10 +60,9 @@ impl PreProcessContext {
     }
 
     fn pre_process_path(&self, path: &str) -> String {
-        let mut path = path.to_string();
-        path = self.replace_env_var(&path);
+        let path = self.replace_env_var(path);
         // ${workspaceFolder}  == {workspaceFolder}
-        path = path.replace("$", "");
+        let mut path = path.replace("$", ""); // ideally, this should be `Cow`
         let workspace_str = match self.workspace.to_str() {
             Some(path) => path,
             None => {
@@ -74,24 +73,18 @@ impl PreProcessContext {
 
         path = self.replace_placeholders(&path, workspace_str);
 
-        if path.starts_with('~') {
+        if let Some(suffix) = path.strip_prefix("~/") {
             let home_dir = match dirs::home_dir() {
-                Some(path) => path,
+                Some(h) => h,
                 None => {
                     log::error!("Warning: Home directory not found");
                     return path;
                 }
             };
-            path = home_dir.join(&path[2..]).to_string_lossy().to_string();
-        } else if path.starts_with("./") {
-            path = self
-                .workspace
-                .join(&path[2..])
-                .to_string_lossy()
-                .to_string();
-        } else if PathBuf::from(&path).is_absolute() {
-            path = path.to_string();
-        } else {
+            path = home_dir.join(suffix).to_string_lossy().to_string();
+        } else if let Some(suffix) = path.strip_prefix("./") {
+            path = self.workspace.join(suffix).to_string_lossy().to_string();
+        } else if !PathBuf::from(&path).is_absolute() {
             path = self.workspace.join(&path).to_string_lossy().to_string();
         }
 
@@ -129,10 +122,10 @@ impl PreProcessContext {
     }
 
     // compact luals
-    fn replace_env_var(&self, path: &str) -> String {
+    fn replace_env_var<'a>(&self, path: &'a str) -> Cow<'a, str> {
         let re = match &self.env_var_regex {
             Some(re) => re,
-            None => return path.to_string(),
+            None => return Cow::Borrowed(path),
         };
         re.replace_all(path, |caps: &regex::Captures| {
             let key = &caps[1];
@@ -141,7 +134,6 @@ impl PreProcessContext {
                 String::new()
             })
         })
-        .to_string()
     }
 
     fn replace_placeholders(&self, input: &str, workspace_folder: &str) -> String {
