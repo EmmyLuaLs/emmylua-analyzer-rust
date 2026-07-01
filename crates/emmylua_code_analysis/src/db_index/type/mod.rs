@@ -108,7 +108,7 @@ impl LuaTypeIndex {
                     .entry(name.to_string())
                     .or_insert_with(|| decl_id.clone());
             }
-            LuaTypeIdentifier::Local(file_id, name) => {
+            LuaTypeIdentifier::File(file_id, name) => {
                 self.local_name_type_map
                     .entry(*file_id)
                     .or_default()
@@ -135,7 +135,7 @@ impl LuaTypeIndex {
                     self.internal_name_type_map.remove(workspace_id);
                 }
             }
-            LuaTypeIdentifier::Local(file_id, name) => {
+            LuaTypeIdentifier::File(file_id, name) => {
                 let should_remove_file =
                     if let Some(type_names) = self.local_name_type_map.get_mut(file_id) {
                         type_names.remove(name.as_str());
@@ -244,7 +244,7 @@ impl LuaTypeIndex {
                         continue;
                     }
                 }
-                LuaTypeIdentifier::Local(owner_file_id, name) => {
+                LuaTypeIdentifier::File(owner_file_id, name) => {
                     if *owner_file_id == file_id {
                         name.as_str()
                     } else {
@@ -618,7 +618,7 @@ pub fn first_param_may_not_self(typ: &LuaType) -> bool {
     if typ.is_table()
         || matches!(
             typ,
-            LuaType::TplRef(_) | LuaType::StrTplRef(_) | LuaType::Any
+            LuaType::TplRef(_) | LuaType::StrTplRef(_) | LuaType::Any | LuaType::Unknown
         )
     {
         return true;

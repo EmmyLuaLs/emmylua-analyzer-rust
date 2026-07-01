@@ -259,4 +259,45 @@ foo({})
         "#
         ));
     }
+
+    #[test]
+    fn test_multiline_union_nil_field_is_optional() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@alias PersonAge
+            --- | integer
+            --- | nil
+
+            ---@class Person
+            ---@field name string
+            ---@field age PersonAge
+
+            ---@type Person
+            local person = { name = "123" }
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_lsp_optimization_skip_table_fields_check_skips_missing_fields() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class D32.Child
+            ---@field name string
+
+            ---@class D32.Config
+            ---@field child D32.Child
+
+            ---@[lsp_optimization("skip_table_fields_check")]
+            ---@type D32.Config
+            local config = {
+                child = {},
+            }
+        "#
+        ));
+    }
 }

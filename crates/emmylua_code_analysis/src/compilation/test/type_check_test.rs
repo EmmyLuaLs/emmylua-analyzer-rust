@@ -46,4 +46,28 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_enum_flag_bitop_assignment_keeps_later_assign_check() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@enum SubscriberFlags
+            local SubscriberFlags = {
+                Tracking = 1 << 0
+            }
+
+            ---@class Subscriber
+            ---@field flags SubscriberFlags
+
+            ---@type Subscriber
+            local subscriber
+
+            subscriber.flags = subscriber.flags & ~SubscriberFlags.Tracking
+            subscriber.flags = 9
+            "#,
+        ));
+    }
 }

@@ -32,12 +32,12 @@ b:
   e:
   - ['packagelib.preload', 'd', doc, [91, 0, 95, 55], '32d7fb054c43a96e']
 - a: 'package.searchers = {}'
-  g: '@version > 5.2'
+  g: '@version >5.2'
   r: [101, 0, 144, 46]
   e:
   - ['packagelib.searchers', 'd', doc, [102, 0, 144, 46], 'd329697db2376aef']
 - a: 'function package.searchpath(name, path, sep, rep) end'
-  g: '@version > 5.2, JIT'
+  g: '@version >5.2, JIT'
   r: [147, 0, 170, 36]
   e:
   - ['packagelib.searchpath', 'd', doc, [148, 0, 165, 0], 'e3a24a24ba7ced35']

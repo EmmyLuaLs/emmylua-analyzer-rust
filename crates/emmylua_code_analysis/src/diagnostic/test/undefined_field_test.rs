@@ -101,6 +101,22 @@ mod test {
     }
 
     #[test]
+    fn test_adjacent_alias_generic_scope_for_mapped_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::InjectField,
+            r#"
+                ---@alias AA<T> true
+                ---@alias FakePartial<T> {[P in keyof T]?: T[P]; }
+
+                ---@type FakePartial<{[1]:boolean}>
+                local tmp
+                tmp[1] = nil
+            "#
+        ));
+    }
+
+    #[test]
     fn test_any_key() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         assert!(ws.has_no_diagnostic(
@@ -524,6 +540,92 @@ mod test {
                 local config
 
                 local superClass = config[super]
+            end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_constraint_unknown_field() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@class Animal
+            ---@field name string
+            ---@field age integer
+
+            ---@generic T: Animal
+            ---@param animal T
+            ---@return T
+            function checkAnimal(animal)
+                local a = animal.name
+            end
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@class Animal
+            ---@field name string
+            ---@field age integer
+
+            ---@generic T: Animal
+            ---@param animal T
+            ---@return T
+            function checkAnimal(animal)
+                local a = animal.test
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic T
+            ---@param value T
+            local function checkValue(value)
+                local a = value.test
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic K: string
+            ---@param key K
+            local function readStringKey(key)
+                ---@type table<string, string>
+                local values
+                local value = values[key]
+            end
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic K: string
+            ---@param key K
+            local function readIntegerKey(key)
+                ---@type table<integer, string>
+                local values
+                local value = values[key]
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@generic K
+            ---@param key K
+            local function readUnknownKey(key)
+                ---@type table<integer, string>
+                local values
+                local value = values[key]
             end
         "#
         ));

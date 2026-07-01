@@ -1,7 +1,6 @@
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagAttribute,
-    LuaDocTagClass, LuaDocTagEnum, LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing,
-    LuaDocTypeFlag,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocTag, LuaDocTagAlias, LuaDocTagClass, LuaDocTagEnum,
+    LuaDocTagMeta, LuaDocTagNamespace, LuaDocTagUsing, LuaDocTypeFlag,
 };
 use flagset::FlagSet;
 use rowan::TextRange;
@@ -62,8 +61,8 @@ fn get_type_flag_value(
                 "internal" => {
                     attr |= LuaTypeFlag::Internal;
                 }
-                "private" => {
-                    attr |= LuaTypeFlag::Private;
+                "private" | "file" => {
+                    attr |= LuaTypeFlag::File;
                 }
                 _ => {}
             }
@@ -97,24 +96,6 @@ pub fn analyze_doc_tag_alias(analyzer: &mut DeclAnalyzer, alias: LuaDocTagAlias)
         );
     }
 
-    Some(())
-}
-
-pub fn analyze_doc_tag_attribute(
-    analyzer: &mut DeclAnalyzer,
-    attribute: LuaDocTagAttribute,
-) -> Option<()> {
-    let name_token = attribute.get_name_token()?;
-    let name = name_token.get_name_text().to_string();
-    let range = name_token.syntax().text_range();
-
-    add_type_decl(
-        analyzer,
-        &name,
-        range,
-        LuaDeclTypeKind::Attribute,
-        FlagSet::default(),
-    );
     Some(())
 }
 
@@ -218,8 +199,8 @@ fn add_type_decl(
     let full_name = option_namespace
         .map(|ns| format!("{}.{}", ns, basic_name))
         .unwrap_or(basic_name.to_string());
-    let id = if flag.contains(LuaTypeFlag::Private) {
-        LuaTypeDeclId::local(file_id, &full_name)
+    let id = if flag.contains(LuaTypeFlag::File) {
+        LuaTypeDeclId::file(file_id, &full_name)
     } else if flag.contains(LuaTypeFlag::Internal) {
         LuaTypeDeclId::internal(workspace_id, &full_name)
     } else {

@@ -84,6 +84,43 @@ mod test {
     }
 
     #[test]
+    fn test_setmetatable_local_table_argument_keeps_table_shape() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            local t = { foo = 123, bar = 321 }
+            local tt = setmetatable(t, { v = 1 })
+
+            Foo = tt.foo
+            Bar = tt.bar
+        "#,
+        );
+
+        let integer = ws.ty("integer");
+        let foo = ws.expr_ty("Foo");
+        let bar = ws.expr_ty("Bar");
+        assert!(ws.check_type(&integer, &foo));
+        assert!(ws.check_type(&integer, &bar));
+    }
+
+    #[test]
+    fn test_setmetatable_global_table_argument_does_not_use_global_shape() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            T = { foo = 123 }
+            local tt = setmetatable(T, { v = 1 })
+
+            Foo = tt.foo
+        "#,
+        );
+
+        let integer = ws.ty("integer");
+        let foo = ws.expr_ty("Foo");
+        assert!(!ws.check_type(&integer, &foo));
+    }
+
+    #[test]
     fn test_no_flow_overload_call_keeps_shared_return_when_arg_declines() {
         let mut ws = VirtualWorkspace::new();
         let file_id = ws.def(

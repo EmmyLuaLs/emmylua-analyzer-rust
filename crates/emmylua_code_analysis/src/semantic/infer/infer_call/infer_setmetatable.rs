@@ -50,6 +50,12 @@ pub(super) fn infer_setmetatable_call(
             )))
         }
         _ => {
+            if !is_index
+                && let Some(basic_type) = infer_local_basic_table_type(db, cache, &basic_table)
+            {
+                return Ok(basic_type);
+            }
+
             if meta_type.is_unknown() {
                 return infer_expr(db, cache, basic_table);
             }
@@ -59,30 +65,29 @@ pub(super) fn infer_setmetatable_call(
     }
 }
 
-// wrong implementation, should be removed
-// fn meta_type_contain_table(
-//     db: &DbIndex,
-//     cache: &mut LuaInferCache,
-//     meta_type: LuaType,
-//     table_expr: LuaTableExpr,
-// ) -> Option<LuaType> {
-//     let meta_members =
-//         find_members_with_key(db, &meta_type, LuaMemberKey::Name("__index".into()), true)?;
-//     for member in meta_members {
-//         let index_members = find_members(db, &member.typ)?;
-//         let table_type = infer_expr(db, cache, LuaExpr::TableExpr(table_expr.clone())).ok()?;
-//         let table_members = find_members(db, &table_type)?;
-//         // 如果 index_members 包含了 table_members 中的所有成员，则返回 meta_type
-//         if table_members.iter().all(|table_member| {
-//             index_members
-//                 .iter()
-//                 .any(|index_member| index_member.key.to_path() == table_member.key.to_path())
-//         }) {
-//             return Some(meta_type);
-//         }
-//     }
-//     None
-// }
+fn infer_local_basic_table_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    basic_table: &LuaExpr,
+) -> Option<LuaType> {
+    let LuaExpr::NameExpr(name_expr) = basic_table else {
+        return None;
+    };
+
+    let file_id = cache.get_file_id();
+    let decl_id = db
+        .get_reference_index()
+        .get_local_reference(&file_id)?
+        .get_decl_id(&name_expr.get_range())?;
+    let decl = db.get_decl_index().get_decl(&decl_id)?;
+    if !decl.is_local() {
+        return None;
+    }
+
+    // 第一个变量如果是 local 定义的表变量, 那么我们使用他作为 setmetatable 的返回值
+    let basic_type = infer_expr(db, cache, basic_table.clone()).ok()?;
+    basic_type.is_table().then_some(basic_type)
+}
 
 fn infer_metatable_index_type(
     db: &DbIndex,

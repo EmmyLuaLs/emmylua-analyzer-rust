@@ -102,33 +102,11 @@ fn add_resolve_member_infos(
 ) -> Option<()> {
     if member_infos.len() == 1 {
         let member_info = &member_infos[0];
-        let overload_count = match &member_info.typ {
-            LuaType::DocFunction(_) => None,
-            LuaType::Signature(id) => {
-                if let Some(signature) = builder
-                    .semantic_model
-                    .get_db()
-                    .get_signature_index()
-                    .get(id)
-                {
-                    let count = signature.overloads.len();
-                    if count == 0 { None } else { Some(count) }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-        add_member_completion(
-            builder,
-            member_info.clone(),
-            completion_status,
-            overload_count,
-        );
+        add_member_completion(builder, member_info.clone(), completion_status);
         return Some(());
     }
 
-    let (filtered_member_infos, overload_count) = filter_member_infos(
+    let filtered_member_infos = filter_member_infos(
         &builder.semantic_model,
         &builder.trigger_token,
         member_infos,
@@ -139,35 +117,20 @@ fn add_resolve_member_infos(
     for member_info in filtered_member_infos {
         match resolve_state {
             MemberResolveState::All => {
-                add_member_completion(
-                    builder,
-                    member_info.clone(),
-                    completion_status,
-                    overload_count,
-                );
+                add_member_completion(builder, member_info.clone(), completion_status);
             }
             MemberResolveState::Meta => {
                 if let Some(feature) = member_info.feature
                     && feature.is_meta_decl()
                 {
-                    add_member_completion(
-                        builder,
-                        member_info.clone(),
-                        completion_status,
-                        overload_count,
-                    );
+                    add_member_completion(builder, member_info.clone(), completion_status);
                 }
             }
             MemberResolveState::FileDecl => {
                 if let Some(feature) = member_info.feature
                     && feature.is_file_decl()
                 {
-                    add_member_completion(
-                        builder,
-                        member_info.clone(),
-                        completion_status,
-                        overload_count,
-                    );
+                    add_member_completion(builder, member_info.clone(), completion_status);
                 }
             }
         }
@@ -176,12 +139,12 @@ fn add_resolve_member_infos(
     Some(())
 }
 
-/// 过滤成员信息，返回需要的成员列表和重载数量
+/// 过滤成员信息，返回需要的成员列表
 fn filter_member_infos<'a>(
     semantic_model: &SemanticModel,
     trigger_token: &LuaSyntaxToken,
     member_infos: &'a [LuaMemberInfo],
-) -> Option<(Vec<&'a LuaMemberInfo>, Option<usize>)> {
+) -> Option<Vec<&'a LuaMemberInfo>> {
     if member_infos.is_empty() {
         return None;
     }
@@ -202,7 +165,6 @@ fn filter_member_infos<'a>(
     let mut member_with_owners: Vec<(&LuaMemberInfo, Option<LuaTypeDeclId>)> =
         Vec::with_capacity(visible_member_infos.len());
     let mut all_doc_function = true;
-    let mut overload_count = 0;
 
     // 一次遍历收集所有信息
     for member_info in visible_member_infos {
@@ -217,18 +179,9 @@ fn filter_member_infos<'a>(
             file_decl_member = Some(member_info);
         }
 
-        // 检查是否全为 DocFunction，同时计算重载数量
+        // 检查是否全为 DocFunction
         match &member_info.typ {
-            LuaType::DocFunction(_) => {
-                overload_count += 1;
-            }
-            LuaType::Signature(id) => {
-                all_doc_function = false;
-                overload_count += 1;
-                if let Some(signature) = semantic_model.get_db().get_signature_index().get(id) {
-                    overload_count += signature.overloads.len();
-                }
-            }
+            LuaType::DocFunction(_) => {}
             _ => {
                 all_doc_function = false;
             }
@@ -268,20 +221,12 @@ fn filter_member_infos<'a>(
         })
         .collect();
 
-    // 处理重载计数
-    let final_overload_count = if overload_count >= 1 {
-        let count = overload_count - 1;
-        if count == 0 { None } else { Some(count) }
-    } else {
-        None
-    };
-
     // 如果全为 DocFunction, 只保留第一个
     if all_doc_function && !filtered_member_infos.is_empty() {
         filtered_member_infos.truncate(1);
     }
 
-    Some((filtered_member_infos, final_overload_count))
+    Some(filtered_member_infos)
 }
 
 enum MemberResolveState {

@@ -201,7 +201,7 @@ fn member_key_from_type(key_type: &LuaType) -> LuaMemberKey {
     match key_type {
         LuaType::StringConst(s) | LuaType::DocStringConst(s) => LuaMemberKey::Name((**s).clone()),
         LuaType::IntegerConst(i) | LuaType::DocIntegerConst(i) => LuaMemberKey::Integer(*i),
-        _ => LuaMemberKey::ExprType(key_type.clone()),
+        _ => LuaMemberKey::TypeKey(key_type.clone()),
     }
 }
 
@@ -471,11 +471,10 @@ fn infer_matching_member_key_type(
     // Build the union once; broad dynamic keys can match thousands of table members.
     let mut result_types = Vec::new();
     for member in members {
-        let member_key_type = match member.get_key() {
-            LuaMemberKey::Name(s) => LuaType::StringConst(s.clone().into()),
-            LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
-            _ => continue,
+        let Some(member_key_type) = member.get_key().to_index_type() else {
+            continue;
         };
+
         if check_type_compact(db, key_type, &member_key_type).is_ok() {
             let member_type = db
                 .get_type_index()
@@ -531,7 +530,7 @@ fn infer_tuple_member(
                 None => Err(InferFailReason::FieldNotFound),
             };
         }
-        LuaMemberKey::ExprType(expr_type) => match expr_type {
+        LuaMemberKey::TypeKey(type_key) => match type_key {
             LuaType::IntegerConst(i) => {
                 let index = if *i > 0 { *i - 1 } else { 0 };
                 return match tuple_type.get_type(index as usize) {
@@ -1152,7 +1151,7 @@ fn collect_type_member_keys(db: &DbIndex, key_type: &LuaType, keys: &mut HashSet
                 }
             }
             LuaType::TableConst(_) | LuaType::Tuple(_) => {
-                keys.insert(LuaMemberKey::ExprType(current_type.clone()));
+                keys.insert(LuaMemberKey::TypeKey(current_type.clone()));
             }
             LuaType::Ref(id) => {
                 if let Some(type_decl) = db.get_type_index().get_type_decl(id) {

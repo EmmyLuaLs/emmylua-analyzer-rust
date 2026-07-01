@@ -102,9 +102,9 @@ pub fn special_or_rule(
             }
         }
         LuaExpr::TableExpr(table_expr) => {
+            let left_without_nil = remove_false_or_nil(left_type.clone());
             if table_expr.is_empty() {
                 // Remove nil/false from left type and check if result is table-compatible
-                let left_without_nil = remove_false_or_nil(left_type.clone());
                 if check_type_compact(db, &left_without_nil, &LuaType::Table).is_ok() {
                     // Only narrow if empty table can actually satisfy the type
                     // (i.e., the type has no required fields)
@@ -113,6 +113,8 @@ pub fn special_or_rule(
                     }
                     // Otherwise, fall through to regular OR logic which will create a union
                 }
+            } else if check_type_compact(db, &left_without_nil, right_type).is_ok() {
+                return Some(left_without_nil);
             }
         }
         LuaExpr::LiteralExpr(_) => {

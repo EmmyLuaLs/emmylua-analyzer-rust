@@ -325,6 +325,20 @@ fn infer_member_semantic_decl_by_member_key(
             member_key,
             semantic_guard.next_level()?,
         ),
+        LuaType::TplRef(tpl) => infer_member_semantic_decl_by_member_key(
+            db,
+            cache,
+            tpl.get_constraint()?,
+            member_key,
+            semantic_guard.next_level()?,
+        ),
+        LuaType::StrTplRef(str_tpl) => infer_member_semantic_decl_by_member_key(
+            db,
+            cache,
+            str_tpl.get_constraint()?,
+            member_key,
+            semantic_guard.next_level()?,
+        ),
         _ => None,
     }
 }

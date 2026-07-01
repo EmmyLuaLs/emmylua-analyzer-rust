@@ -1,6 +1,7 @@
 #[cfg(feature = "cli")]
 use clap::{Parser, ValueEnum};
 
+use lsp_types::DiagnosticSeverity;
 use std::path::PathBuf;
 
 #[allow(unused)]
@@ -44,6 +45,10 @@ pub struct CmdArgs {
     #[cfg_attr(feature = "cli", arg(long))]
     pub warnings_as_errors: bool,
 
+    /// Only output diagnostics at this severity or above
+    #[cfg_attr(feature = "cli", arg(long, value_enum, ignore_case = true))]
+    pub severity: Option<DiagnosticSeverityFilter>,
+
     /// Verbose output
     #[cfg_attr(feature = "cli", arg(long))]
     pub verbose: bool,
@@ -55,6 +60,35 @@ pub enum OutputFormat {
     Json,
     Text,
     Sarif,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
+pub enum DiagnosticSeverityFilter {
+    Error,
+    Warn,
+    Info,
+    Hint,
+}
+
+impl DiagnosticSeverityFilter {
+    pub fn allows(self, severity: Option<DiagnosticSeverity>) -> bool {
+        match severity {
+            Some(severity) => severity <= self.into(),
+            None => false,
+        }
+    }
+}
+
+impl From<DiagnosticSeverityFilter> for DiagnosticSeverity {
+    fn from(value: DiagnosticSeverityFilter) -> Self {
+        match value {
+            DiagnosticSeverityFilter::Error => DiagnosticSeverity::ERROR,
+            DiagnosticSeverityFilter::Warn => DiagnosticSeverity::WARNING,
+            DiagnosticSeverityFilter::Info => DiagnosticSeverity::INFORMATION,
+            DiagnosticSeverityFilter::Hint => DiagnosticSeverity::HINT,
+        }
+    }
 }
 
 #[allow(unused)]

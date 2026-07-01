@@ -690,6 +690,7 @@ impl LuaDocLexer<'_> {
                     "false" => LuaTokenKind::TkFalse,
                     "nil" => LuaTokenKind::TkNil,
                     "new" => LuaTokenKind::TkDocNew,
+                    "keyof" => LuaTokenKind::TkDocKeyOf,
                     _ => LuaTokenKind::TkName,
                 }
             }
@@ -828,7 +829,6 @@ fn to_tag(text: &str) -> LuaTokenKind {
         "using" => LuaTokenKind::TkTagUsing,
         "source" => LuaTokenKind::TkTagSource,
         "language" => LuaTokenKind::TkLanguage,
-        "attribute" => LuaTokenKind::TkTagAttribute,
         "schema" => LuaTokenKind::TKTagSchema,
         _ => LuaTokenKind::TkTagOther,
     }

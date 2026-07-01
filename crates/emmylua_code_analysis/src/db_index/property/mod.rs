@@ -10,7 +10,7 @@ pub use builtin_attribute::{
     LuaAttributeCollectionExt, LuaAttributeUse, LuaBuiltinAttributeKind, LuaConstructorAttribute,
     LuaConstructorReturnMode, LuaDeprecatedAttribute, LuaFieldAccessorAttribute,
     LuaFieldAccessorConvention, LuaIndexAliasAttribute, LuaLspOptimizationAttribute,
-    LuaLspOptimizationCode,
+    LuaLspOptimizationCode, get_attribute_constructor_params, is_attribute_class,
 };
 pub use decl_feature::{DeclFeatureFlag, PropertyDeclFeature};
 use emmylua_parser::{LuaAstNode, LuaDocTagField, LuaDocType, LuaVersionCondition, VisibilityKind};

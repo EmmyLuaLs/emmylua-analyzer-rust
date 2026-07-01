@@ -1,8 +1,9 @@
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaBlock, LuaBreakStat, LuaCallArgList,
-    LuaCallExprStat, LuaContinueStat, LuaDoStat, LuaExpr, LuaForRangeStat, LuaForStat, LuaFuncStat,
-    LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLocalName, LuaLocalStat, LuaRepeatStat, LuaReturnStat,
-    LuaVarExpr, LuaWhileStat,
+    BinaryOperator, LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaBreakStat,
+    LuaCallArgList, LuaCallExprStat, LuaContinueStat, LuaDoStat, LuaExpr, LuaForRangeStat,
+    LuaForStat, LuaFuncStat, LuaGotoStat, LuaIfStat, LuaLabelStat, LuaLiteralToken, LuaLocalName,
+    LuaLocalStat, LuaRepeatStat, LuaReturnStat, LuaVarExpr, LuaWhileStat, NumberResult,
+    UnaryOperator,
 };
 
 use crate::{
@@ -226,6 +227,12 @@ pub fn bind_label_stat(
     };
     let label_name = label_name_token.get_name_text();
     let closure_id = LuaClosureId::from_node(label_stat.syntax());
+    binder.db.get_reference_index_mut().add_label_declaration(
+        binder.file_id,
+        closure_id,
+        label_name,
+        label_name_token.get_range(),
+    );
     let name_label = binder.create_name_label(label_name, closure_id);
     binder.add_antecedent(name_label, current);
 
@@ -288,6 +295,12 @@ pub fn bind_goto_stat(binder: &mut FlowBinder, goto_stat: LuaGotoStat, current: 
     };
 
     let label_name = label_token.get_name_text();
+    binder.db.get_reference_index_mut().add_label_reference(
+        binder.file_id,
+        closure_id,
+        label_name,
+        label_token.get_range(),
+    );
     let return_flow_id = binder.create_return();
     binder.cache_goto_flow(closure_id, label_token.clone(), label_name, return_flow_id);
     binder.add_antecedent(return_flow_id, current);
@@ -350,32 +363,45 @@ pub fn bind_while_stat(
     current: FlowId,
 ) -> FlowId {
     let pre_while_label = binder.create_loop_label();
-    let post_while_label = binder.create_branch_label();
+    let after_while_label = binder.create_branch_label();
     let pre_block_label = binder.create_branch_label();
     binder.add_antecedent(pre_while_label, current);
     let Some(condition_expr) = while_stat.get_condition_expr() else {
         return current;
     };
 
-    bind_condition_expr(
-        binder,
-        condition_expr,
-        current,
-        pre_block_label,
-        post_while_label,
-    );
-
-    let block_current = finish_flow_label(binder, pre_block_label, current);
+    let loop_enters = match static_literal_truthiness(&condition_expr) {
+        Some(true) => true,
+        Some(false) => return current,
+        None => {
+            bind_condition_expr(
+                binder,
+                condition_expr.clone(),
+                current,
+                pre_block_label,
+                after_while_label,
+            );
+            false
+        }
+    };
+    let block_current = if loop_enters {
+        current
+    } else {
+        finish_flow_label(binder, pre_block_label, current)
+    };
 
     if let Some(iter_block) = while_stat.get_block() {
         // Bind the block of code inside the while loop
-        bind_iter_block(
+        let block_flow = bind_iter_block(
             binder,
             iter_block,
             block_current,
             pre_while_label,
-            post_while_label,
+            after_while_label,
         );
+        if loop_enters {
+            return finish_entered_loop_post_flow(binder, after_while_label, block_flow);
+        }
     }
 
     current
@@ -430,8 +456,8 @@ pub fn bind_if_stat(binder: &mut FlowBinder, if_stat: LuaIfStat, current: FlowId
 
     for elseif_clause in if_stat.get_else_if_clause_list() {
         let pre_elseif_label = finish_flow_label(binder, else_label, current);
-        let post_elseif_label = binder.create_branch_label();
         let elseif_then_label = binder.create_branch_label();
+        let post_elseif_label = binder.create_branch_label();
         if let Some(condition_expr) = elseif_clause.get_condition_expr() {
             bind_condition_expr(
                 binder,
@@ -441,7 +467,9 @@ pub fn bind_if_stat(binder: &mut FlowBinder, if_stat: LuaIfStat, current: FlowId
                 post_elseif_label,
             );
         }
-        else_label = finish_flow_label(binder, post_elseif_label, current);
+        // 后续 elseif/else 必须从当前 elseif 的 false 分支进入.
+        // 这里保留 label, 让下一段条件回溯时还能看到当前条件为 false 的事实.
+        else_label = post_elseif_label;
         if let Some(elseif_block) = elseif_clause.get_block() {
             let current = finish_flow_label(binder, elseif_then_label, current);
             let block_id = bind_block(binder, elseif_block, current);
@@ -532,7 +560,29 @@ pub fn bind_for_stat(binder: &mut FlowBinder, for_stat: LuaForStat, current: Flo
     let post_for_label = binder.create_branch_label();
     binder.add_antecedent(pre_for_label, current);
 
-    for var_expr in for_stat.get_iter_expr() {
+    let iter_exprs = for_stat.get_iter_expr().collect::<Vec<_>>();
+    let loop_enters = match iter_exprs.as_slice() {
+        [start_expr, stop_expr] => match (
+            static_number_value(start_expr),
+            static_number_value(stop_expr),
+        ) {
+            (Some(start), Some(stop)) => start <= stop,
+            _ => false,
+        },
+        [start_expr, stop_expr, step_expr, ..] => match (
+            static_number_value(start_expr),
+            static_number_value(stop_expr),
+            static_number_value(step_expr),
+        ) {
+            (Some(start), Some(stop), Some(step)) => {
+                (step > 0.0 && start <= stop) || (step < 0.0 && start >= stop)
+            }
+            _ => false,
+        },
+        _ => false,
+    };
+
+    for var_expr in &iter_exprs {
         bind_expr(binder, var_expr.clone(), current);
     }
 
@@ -541,8 +591,69 @@ pub fn bind_for_stat(binder: &mut FlowBinder, for_stat: LuaForStat, current: Flo
 
     if let Some(iter_block) = for_stat.get_block() {
         // Bind the block of code inside the for loop
-        bind_iter_block(binder, iter_block, for_node, pre_for_label, post_for_label);
+        let block_flow =
+            bind_iter_block(binder, iter_block, for_node, pre_for_label, post_for_label);
+        if loop_enters {
+            return finish_entered_loop_post_flow(binder, post_for_label, block_flow);
+        }
     }
 
     current
+}
+
+fn finish_entered_loop_post_flow(
+    binder: &mut FlowBinder,
+    after_loop_label: FlowId,
+    block_flow: FlowId,
+) -> FlowId {
+    // 这里使用悲观合流: 只有静态确认循环体会执行时, 才把循环体 flow 合到循环之后.
+    binder.add_antecedent(after_loop_label, block_flow);
+    if binder
+        .get_flow(after_loop_label)
+        .is_some_and(|flow_node| flow_node.antecedent.is_some())
+    {
+        after_loop_label
+    } else {
+        binder.unreachable
+    }
+}
+
+/// 这里是循环可达性的静态判断, 只接受最直观的字面量真假值.
+///
+/// 它不是完整的常量求值或路径推断, 动态表达式和复杂常量表达式会返回 unknown,
+/// 后续按不能确认进入循环处理.
+fn static_literal_truthiness(expr: &LuaExpr) -> Option<bool> {
+    match expr {
+        LuaExpr::LiteralExpr(literal_expr) => match literal_expr.get_literal()? {
+            LuaLiteralToken::Bool(bool_token) => Some(bool_token.is_true()),
+            LuaLiteralToken::Nil(_) => Some(false),
+            LuaLiteralToken::String(_) | LuaLiteralToken::Number(_) => Some(true),
+            LuaLiteralToken::Dots(_) | LuaLiteralToken::Question(_) => None,
+        },
+        LuaExpr::ParenExpr(paren_expr) => static_literal_truthiness(&paren_expr.get_expr()?),
+        LuaExpr::UnaryExpr(unary_expr)
+            if unary_expr
+                .get_op_token()
+                .is_some_and(|op| op.get_op() == UnaryOperator::OpNot) =>
+        {
+            static_literal_truthiness(&unary_expr.get_expr()?).map(|truthy| !truthy)
+        }
+        _ => None,
+    }
+}
+
+fn static_number_value(expr: &LuaExpr) -> Option<f64> {
+    match expr {
+        LuaExpr::LiteralExpr(literal_expr) => match literal_expr.get_literal()? {
+            LuaLiteralToken::Number(number_token) => match number_token.get_number_value() {
+                NumberResult::Int(value) => Some(value as f64),
+                NumberResult::Uint(value) => Some(value as f64),
+                NumberResult::Float(value) => Some(value),
+                NumberResult::Number => None,
+            },
+            _ => None,
+        },
+        LuaExpr::ParenExpr(paren_expr) => static_number_value(&paren_expr.get_expr()?),
+        _ => None,
+    }
 }

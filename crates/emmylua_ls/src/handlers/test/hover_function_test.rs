@@ -122,14 +122,14 @@ mod tests {
                 local <??>event = test3.event
             "#,
             VirtualHoverResult {
-                value: "```lua\n(method) Test3:event(event: \"B\", key: string)\n```\n\n&nbsp;&nbsp;in class `Hover.Test3`\n\n---\n\n---\n\n```lua\n(method) Test3:event(event: \"A\", key: string)\n```".to_string(),
+                value: "```lua\n(method) Test3:event(event: \"A\", key: string) (+1 overloads)\n```\n\n&nbsp;&nbsp;in class `Hover.Test3`\n\n---\n\n---\n\n```lua\n(method) Test3:event(event: \"B\", key: string)\n```".to_string(),
             },
         ));
         Ok(())
     }
 
     #[gtest]
-    fn test_union_function() -> Result<()> {
+    fn test_mixed_class_field_and_real_definition() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
             r#"
@@ -149,10 +149,9 @@ mod tests {
                 ---@class (partial) GameA
                 ---@field event fun(self: self, event: "游戏-初始化"): Trigger
                 ---@field event fun(self: self, event: "游戏-追帧完成"): Trigger
-                ---@field event fun(self: self, event: "游戏-逻辑不同步"): Trigger
             "#,
             VirtualHoverResult {
-                value: "```lua\n(method) GameA:event(event_type: EventTypeA, ...: any) -> Trigger\n```\n\n---\n\n注册引擎事件\n\n---\n\n```lua\n(method) GameA:event(event: \"游戏-初始化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-追帧完成\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-逻辑不同步\") -> Trigger\n```".to_string(),
+                value: "```lua\n(method) GameA:event(event_type: EventTypeA, ...: any) -> Trigger (+2 overloads)\n```\n\n---\n\n注册引擎事件\n\n---\n\n```lua\n(method) GameA:event(event: \"游戏-初始化\") -> Trigger\n```\n\n```lua\n(method) GameA:event(event: \"游戏-追帧完成\") -> Trigger\n```".to_string(),
             },
         ));
         Ok(())
@@ -191,11 +190,10 @@ mod tests {
 
                 local <??>alias = parse
             "#,
-                VirtualHoverResult {
-                    value: "```lua\nlocal function parse()\n  -> true, integer\n  -> false, string\n\n```"
-                        .to_string(),
-                },
-            )
+            VirtualHoverResult {
+                value: "```lua\nlocal function parse() -> (true|false), (string|integer)\n```\n\n---\n\n@*return_overload* `true, integer`\n\n@*return_overload* `false, string`".to_string(),
+            },
+        )
         );
         Ok(())
     }
@@ -213,7 +211,7 @@ mod tests {
                 local <??>alias = parse
             "#,
             VirtualHoverResult {
-                value: "```lua\nlocal function parse()\n  -> true, integer\n  -> false, string\n\n```\n\n---\n\n@*return_overload* #1 — success\n\n@*return_overload* #2 — failed".to_string(),
+                value: "```lua\nlocal function parse() -> (true|false), (string|integer)\n```\n\n---\n\n@*return_overload* `true, integer` — success\n\n@*return_overload* `false, string` — failed".to_string(),
             },
         ));
         Ok(())
@@ -222,8 +220,9 @@ mod tests {
     #[gtest]
     fn test_return_overload_call_hover() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        check!(ws.check_hover(
-            r#"
+        check!(
+            ws.check_hover(
+                r#"
                 ---@class B
                 local B
 
@@ -237,7 +236,54 @@ mod tests {
                 pa<??>rse(B)
             "#,
             VirtualHoverResult {
-                value: "```lua\nlocal function parse(x: B)\n  -> true, B\n  -> false, string\n\n```".to_string(),
+                value: "```lua\nlocal function parse(x: B) -> (true|false), (B|string)\n```\n\n---\n\n@*return_overload* `true, T`\n\n@*return_overload* `false, string`".to_string(),
+            },
+        )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_hover_short_row_keeps_nil() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(
+            ws.check_hover(
+                r#"
+                ---@param ok boolean
+                ---@return_overload true, integer
+                ---@return_overload false
+                local function maybe(ok)
+                end
+
+                local <??>alias = maybe
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function maybe(ok: boolean) -> (true|false), integer?\n```\n\n---\n\n@*return_overload* `true, integer`\n\n@*return_overload* `false`".to_string(),
+            },
+        )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_return_overload_call_hover_short_generic_row_keeps_nil() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class B
+                local B
+
+                ---@generic T
+                ---@param x T
+                ---@return_overload true, T
+                ---@return_overload false
+                local function parse(x)
+                end
+
+                pa<??>rse(B)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal function parse(x: B) -> (true|false), B?\n```\n\n---\n\n@*return_overload* `true, T`\n\n@*return_overload* `false`".to_string(),
             },
         ));
         Ok(())
@@ -258,7 +304,7 @@ mod tests {
                 local a, b = pca<??>ll(foo)
             "#,
             VirtualHoverResult {
-                value: "```lua\nfunction pcall(f: sync fun(a: string, b: table<string,integer>) -> ((false|true),((string,string)|string)), a: string, b: table<string,integer>)\n  -> true, (false|true), ((string,string)|string)\n  -> false, string\n\n```\n\n---\n\n\nCalls function `f` with the given arguments in *protected mode*. This\nmeans that any error inside `f` is not propagated; instead, `pcall` catches\nthe error and returns a status code. Its first result is the status code (a\nboolean), which is true if the call succeeds without errors. In such case,\n`pcall` also returns all results from the call, after this first result. In\ncase of any error, `pcall` returns **false** plus the error message.".to_string(),
+                value: "```lua\nfunction pcall(f: sync fun(a: string, b: table<string,integer>) -> ((false|true),((string,string)|string)), a: string, b: table<string,integer>) -> (true|false), (false|true|string), (((string,string)|string))?\n```\n\n---\n\n\nCalls function `f` with the given arguments in *protected mode*. This\nmeans that any error inside `f` is not propagated; instead, `pcall` catches\nthe error and returns a status code. Its first result is the status code (a\nboolean), which is true if the call succeeds without errors. In such case,\n`pcall` also returns all results from the call, after this first result. In\ncase of any error, `pcall` returns **false** plus the error message.\n\n@*return_overload* `true, R ...`\n\n@*return_overload* `false, string`".to_string(),
             },
         ));
         Ok(())
@@ -343,7 +389,7 @@ mod tests {
                 }
             "#,
             VirtualHoverResult {
-                value: "```lua\n(field) T.func(a: (string|number))\n```\n\n---\n\n注释1\n\n注释2\n\n---\n\n```lua\n(field) T.func(a: string)\n```\n\n```lua\n(field) T.func(a: number)\n```"
+                value: "```lua\n(field) T.func(a: string) (+1 overloads)\n```\n\n---\n\n注释1\n\n---\n\n```lua\n(field) T.func(a: number) -- 注释2\n```"
                     .to_string(),
             },
         ));
@@ -360,10 +406,7 @@ mod tests {
                 ---@field func fun(a:number) 注释2
 
                 ---@type T
-                local t = {
-                    func = function(a)
-                    end
-                }
+                local t
 
                 t.fu<??>nc(1)
             "#,
@@ -375,7 +418,7 @@ mod tests {
     }
 
     #[gtest]
-    fn test_origin_decl_1() -> Result<()> {
+    fn test_table_field_origin_decl() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
             r#"
@@ -391,7 +434,7 @@ mod tests {
                 local ab<??>c = t.func
             "#,
             VirtualHoverResult {
-                value: "```lua\n(field) T.func(a: number)\n```\n\n---\n\n注释2\n\n注释1\n\n---\n\n```lua\n(field) T.func(a: string)\n```".to_string(),
+                value: "```lua\n(field) T.func(a: string) (+1 overloads)\n```\n\n---\n\n注释1\n\n---\n\n```lua\n(field) T.func(a: number) -- 注释2\n```".to_string(),
             },
         ));
         Ok(())
@@ -652,6 +695,50 @@ mod tests {
     }
 
     #[gtest]
+    fn test_call_hover_shows_all_overloads_when_no_match() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@overload fun(a: string): string
+                ---@overload fun(a: number): number
+                ---@param a table
+                function test(a)
+                end
+
+                te<??>st(true)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nfunction test(a: table) (+2 overloads)\n```\n\n---\n\n---\n\n```lua\nfunction test(a: string) -> string\n```\n\n```lua\nfunction test(a: number) -> number\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_call_hover_shows_all_generic_overloads_when_no_match() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@generic T, U
+                ---@overload fun(value: string, fallback: T): T, U
+                ---@overload fun(value: number, fallback: T): T, U
+                ---@param value table
+                ---@param fallback T
+                ---@return T
+                ---@return U
+                function generic_test(value, fallback)
+                end
+
+                generic_te<??>st(true, false)
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nfunction generic_test(value: table, fallback: boolean) -> boolean, unknown (+2 overloads)\n```\n\n---\n\n---\n\n```lua\nfunction generic_test(value: string, fallback: boolean) -> boolean, unknown\n```\n\n```lua\nfunction generic_test(value: number, fallback: boolean) -> boolean, unknown\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_fix_method_1() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         check!(ws.check_hover(
@@ -771,6 +858,189 @@ mod tests {
                 value: "```lua\n(method) M:abcd(x: number)\n```".to_string(),
             },
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_regression_generic_table_field_should_be_function_owner() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@generic T
+                ---@param params ObserverParams<T>
+                function observe(params)
+                end
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                observe({
+                    ---@param value string
+                    <??>next = function(value)
+                        return value
+                    end
+                })
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: string) -> string\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_generic_table_field_value_without_inference_source() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@generic T
+                ---@param params ObserverParams<T>
+                function observe(params)
+                end
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                observe({
+                    <??>next = 1
+                })
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: unknown) -> unknown\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_generic_table_field_hover_filters_union_parent_without_field() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@class OtherParams1
+                ---@field other string
+
+                ---@class OtherParams2<T>
+                ---@field wait fun(value: T): T # 测试2
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                ---@type OtherParams2<number>|ObserverParams<string>|OtherParams1
+                local params = {
+                    <??>next = function(value)
+                        return value
+                    end
+                }
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: string) -> string\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_table_field_hover_keeps_same_owner_same_name_overloads() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class OverloadedParams
+                ---@field next fun(value: string): string # 字符串
+                ---@field next fun(value: number): number # 数字
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                ---@type OverloadedParams
+                local params = {
+                    <??>next = function(value)
+                        return value
+                    end
+                }
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) OverloadedParams.next(value: string) -> string (+1 overloads)\n```\n\n---\n\n字符串\n\n---\n\n```lua\n(field) OverloadedParams.next(value: number) -> number -- 数字\n```"
+                        .to_string(),
+                },
+            )
+        );
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_function_candidate_checks_all_origin_decls() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class MixedOrigin
+                ---@field next string # 字符串
+                ---@field next fun(): string # 函数
+            "#,
+        );
+        check!(ws.check_hover(
+            r#"
+                ---@type MixedOrigin
+                local params
+                local next = params.<??>next
+            "#,
+            VirtualHoverResult {
+                value:
+                    "```lua\n(field) MixedOrigin.next() -> string\n```\n\n---\n\n函数".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_generic_table_field_uses_known_context_type() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class ObserverParams<T>
+                ---@field next fun(value: T): T # 测试
+
+                ---@generic T
+                ---@param value T
+                ---@param params ObserverParams<T>
+                function observe(value, params)
+                end
+            "#,
+        );
+        check!(
+            ws.check_hover(
+                r#"
+                observe("x", {
+                    <??>next = function(value)
+                        return value
+                    end
+                })
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(field) ObserverParams.next(value: string) -> string\n```\n\n---\n\n测试"
+                        .to_string(),
+                },
+            )
+        );
         Ok(())
     }
 }

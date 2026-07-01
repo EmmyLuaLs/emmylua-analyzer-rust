@@ -40,7 +40,7 @@ mod test {
                 ---@class (internal) InternalType
                 local InternalType = {}
 
-                ---@class (private) PrivateType
+                ---@class (file) PrivateType
                 local PrivateType = {}
             "#,
         );

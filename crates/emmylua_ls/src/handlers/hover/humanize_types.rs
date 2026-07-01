@@ -1,6 +1,7 @@
 use emmylua_code_analysis::{
     DbIndex, InFiled, LuaMember, LuaMultiLineUnion, LuaSemanticDeclId, LuaType, LuaUnionType,
-    RenderLevel, SemanticDeclLevel, SemanticModel, format_union_type,
+    RenderLevel, SemanticDeclLevel, SemanticModel, TypeSubstitutor, format_union_type,
+    instantiate_type_generic,
 };
 
 use emmylua_code_analysis::humanize_type;
@@ -25,12 +26,23 @@ pub fn hover_const_type(db: &DbIndex, typ: &LuaType) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HoverTypeRenderContext {
+    SymbolHover,
+    TypeExpression,
+}
+
 pub fn hover_humanize_type(
     builder: &mut HoverBuilder,
     ty: &LuaType,
     fallback_level: Option<RenderLevel>, // 当有值时, 若获取类型描述为空会回退到使用`humanize_type()`
+    context: HoverTypeRenderContext,
 ) -> String {
     let db = builder.semantic_model.get_db();
+    if let Some(resolved) = resolve_hover_type_usage(db, ty) {
+        return hover_humanize_type(builder, &resolved, fallback_level, context);
+    }
+
     match ty {
         LuaType::Ref(type_decl_id) => {
             if let Some(type_decl) = db.get_type_index().get_type_decl(type_decl_id)
@@ -51,7 +63,61 @@ pub fn hover_humanize_type(
             hover_multi_line_union_type(builder, db, multi_union.as_ref(), None).unwrap_or_default()
         }
         LuaType::Union(union) => hover_union_type(builder, union, RenderLevel::Detailed),
+        LuaType::TplRef(tpl) => {
+            let mut text = tpl.get_name().to_string();
+            if context == HoverTypeRenderContext::SymbolHover
+                && let Some(constraint) = tpl.get_constraint()
+            {
+                text.push_str(" extends ");
+                text.push_str(&humanize_type(db, constraint, RenderLevel::Simple));
+            }
+            text
+        }
+        LuaType::StrTplRef(str_tpl) => {
+            let mut text = humanize_type(db, ty, fallback_level.unwrap_or(RenderLevel::Simple));
+            if context == HoverTypeRenderContext::SymbolHover
+                && let Some(constraint) = str_tpl.get_constraint()
+            {
+                text.push_str(" extends ");
+                text.push_str(&humanize_type(db, constraint, RenderLevel::Simple));
+            }
+            text
+        }
         _ => humanize_type(db, ty, fallback_level.unwrap_or(RenderLevel::Simple)),
+    }
+}
+
+pub fn resolve_hover_type_usage(db: &DbIndex, ty: &LuaType) -> Option<LuaType> {
+    match ty {
+        LuaType::Call(_) | LuaType::Conditional(_) => {
+            if ty.contain_tpl() {
+                return None;
+            }
+
+            let resolved = instantiate_type_generic(db, ty, &TypeSubstitutor::new());
+            if resolved == *ty || matches!(resolved, LuaType::Unknown | LuaType::Never) {
+                None
+            } else {
+                Some(resolved)
+            }
+        }
+        LuaType::Generic(generic) => {
+            let type_decl = db
+                .get_type_index()
+                .get_type_decl(&generic.get_base_type_id())?;
+            if !type_decl.is_alias() || ty.contain_tpl() {
+                return None;
+            }
+
+            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
+            let resolved = type_decl.get_alias_origin(db, Some(&substitutor))?;
+            if resolved == *ty || matches!(resolved, LuaType::Unknown | LuaType::Never) {
+                None
+            } else {
+                Some(resolved)
+            }
+        }
+        _ => None,
     }
 }
 
@@ -61,7 +127,12 @@ fn hover_union_type(
     level: RenderLevel,
 ) -> String {
     format_union_type(union, level, |ty, level| {
-        hover_humanize_type(builder, ty, Some(level))
+        hover_humanize_type(
+            builder,
+            ty,
+            Some(level),
+            HoverTypeRenderContext::TypeExpression,
+        )
     })
 }
 

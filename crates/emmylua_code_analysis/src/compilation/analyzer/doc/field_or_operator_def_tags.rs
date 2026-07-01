@@ -106,7 +106,7 @@ pub fn analyze_field(analyzer: &mut DocAnalyzer, tag: LuaDocTagField) -> Option<
                 .get_db()
                 .get_operator_index_mut()
                 .add_operator(operator);
-            LuaMemberKey::ExprType(key_type_ref)
+            LuaMemberKey::TypeKey(key_type_ref)
         }
     };
 

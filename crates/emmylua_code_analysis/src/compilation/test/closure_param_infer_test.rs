@@ -514,4 +514,28 @@ mod test {
         let expected = ws.ty("integer");
         assert_eq!(ty, expected);
     }
+
+    #[test]
+    fn test_table_field_doc_type_alias_closure_param() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias test fun(a:int,b:string)
+
+            ---@type test
+            local test
+
+            local t = {
+                ---@type test
+                A = function(a, b)
+                    ParamA = a
+                    ParamB = b
+                end
+            }
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("ParamA"), ws.ty("integer"));
+        assert_eq!(ws.expr_ty("ParamB"), ws.ty("string"));
+    }
 }

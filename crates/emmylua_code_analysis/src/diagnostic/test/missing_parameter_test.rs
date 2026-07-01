@@ -42,6 +42,62 @@ mod test {
     }
 
     #[test]
+    fn test_overload_param_count_gap_reports_missing_parameter() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@class Callable
+                ---@overload fun(a: string)
+                ---@overload fun(a: string, b: string, c: string)
+                ---@type Callable
+                local callable
+
+                callable("a", "b")
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_required_param_reports_missing_parameter() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@generic T
+                ---@param v T
+                ---@return T
+                local function getBox(v)
+                    return v
+                end
+
+                getBox()
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_return_does_not_make_unknown_param_required() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingParameter,
+            r#"
+                ---@generic T
+                ---@param v unknown
+                ---@return T
+                local function getBox(v)
+                    return v
+                end
+
+                getBox()
+        "#
+        ));
+    }
+
+    #[test]
     fn test_1() {
         let mut ws = VirtualWorkspace::new();
 

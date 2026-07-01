@@ -99,6 +99,10 @@ expected %{token}, but get %{current}:
   en: expected %{token}, but get %{current}
   zh_CN: 期望 %{token}, 但得到 %{current}
   zh_HK: 期望 %{token}, 但得到 %{current}
+expected %{token}:
+  en: expected "%{token}"
+  zh_CN: 期望 "%{token}"
+  zh_HK: 期望 "%{token}"
 integer division is not supported:
   en: integer division is not supported
   zh_CN: 不支持整数除法

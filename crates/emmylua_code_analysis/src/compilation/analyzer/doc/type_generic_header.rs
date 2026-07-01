@@ -1,16 +1,15 @@
 use emmylua_parser::{LuaAstNode, LuaDocGenericDeclList, LuaDocType};
-use rowan::{TextRange, TextSize};
 use smol_str::SmolStr;
 
 use crate::{
-    FileId, GenericParam, GenericTplId,
+    FileId, GenericParam,
     compilation::analyzer::AnalyzeContext,
     db_index::{DbIndex, LuaType, WorkspaceId},
     semantic::complete_type_generic_args_in_type,
 };
 
 use super::{
-    file_generic_index::{GenericIndex, GenericScopeId},
+    file_generic_index::FileGenericIndex,
     infer_type::{DocTypeAnalyzeContext, DocTypeAnalyzeOptions, infer_type},
 };
 
@@ -79,9 +78,9 @@ fn resolve_generic_params(
     workspace_id: WorkspaceId,
     generic_decl_list: LuaDocGenericDeclList,
 ) -> Vec<GenericParam> {
-    let mut generic_index = HeaderGenericIndex::new();
+    let mut generic_index = FileGenericIndex::new();
     let scope_id = generic_index.add_generic_scope(vec![generic_decl_list.get_range()], false);
-    let mut params = Vec::new();
+    let mut declared_params = Vec::new();
 
     for generic_decl in generic_decl_list.get_generic_decl() {
         let Some(name_token) = generic_decl.get_name_token() else {
@@ -89,6 +88,21 @@ fn resolve_generic_params(
         };
 
         let name = SmolStr::new(name_token.get_name_text());
+        let placeholder = GenericParam::new(
+            name.clone(),
+            None,
+            None,
+            generic_decl.has_const_modifier(),
+            None,
+        );
+        if let Some(tpl_id) = generic_index.append_generic_param(scope_id, placeholder) {
+            declared_params.push((tpl_id, generic_decl, name));
+        }
+    }
+
+    let mut params = Vec::new();
+
+    for (tpl_id, generic_decl, name) in declared_params {
         let constraint = generic_decl.get_constraint_type().map(|type_ref| {
             infer_header_type(db, file_id, workspace_id, &mut generic_index, type_ref)
         });
@@ -104,7 +118,7 @@ fn resolve_generic_params(
             generic_decl.has_const_modifier(),
             None,
         );
-        generic_index.append_generic_param(scope_id, param.clone());
+        let _ = generic_index.update_generic_param(tpl_id, param.clone());
         params.push(param);
     }
 
@@ -115,115 +129,10 @@ fn infer_header_type(
     db: &mut DbIndex,
     file_id: FileId,
     workspace_id: WorkspaceId,
-    generic_index: &mut HeaderGenericIndex,
+    generic_index: &mut FileGenericIndex,
     type_ref: LuaDocType,
 ) -> LuaType {
     let mut context = DocTypeAnalyzeContext::new(db, file_id, generic_index, workspace_id)
         .with_options(DocTypeAnalyzeOptions::header_preprocess());
     infer_type(&mut context, type_ref)
-}
-
-#[derive(Debug, Default)]
-struct HeaderGenericIndex {
-    scopes: Vec<HeaderGenericScope>,
-}
-
-impl HeaderGenericIndex {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn next_index(&self, position: TextSize, is_func: bool) -> usize {
-        self.scopes
-            .iter()
-            .filter(|scope| scope.next_tpl_id.is_func() == is_func && scope.contains(position))
-            .map(|scope| scope.params.len())
-            .sum()
-    }
-
-    fn next_tpl_id(&self, position: TextSize, is_func: bool) -> GenericTplId {
-        generic_tpl_id(is_func, self.next_index(position, is_func) as u32)
-    }
-}
-
-impl GenericIndex for HeaderGenericIndex {
-    fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericScopeId {
-        let next_tpl_id = ranges
-            .first()
-            .map(|range| self.next_tpl_id(range.start(), is_func))
-            .unwrap_or_else(|| generic_tpl_id(is_func, 0));
-        let id = GenericScopeId {
-            id: self.scopes.len(),
-        };
-        self.scopes.push(HeaderGenericScope {
-            ranges,
-            next_tpl_id,
-            params: Vec::new(),
-        });
-        id
-    }
-
-    fn append_generic_param(
-        &mut self,
-        scope_id: GenericScopeId,
-        param: GenericParam,
-    ) -> Option<GenericTplId> {
-        let scope = self.scopes.get_mut(scope_id.id)?;
-        let tpl_id = scope.next_tpl_id;
-        scope.next_tpl_id = scope.next_tpl_id.with_idx((tpl_id.get_idx() + 1) as u32);
-        scope.params.push((tpl_id, param));
-        Some(tpl_id)
-    }
-
-    fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)> {
-        for scope in self.scopes.iter().rev() {
-            if !scope.contains(position) {
-                continue;
-            }
-
-            if let Some((tpl_id, param)) = scope
-                .params
-                .iter()
-                .rev()
-                .find(|(_, param)| param.name == name)
-            {
-                return Some((*tpl_id, param.clone()));
-            }
-        }
-
-        None
-    }
-
-    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam> {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some((_, param)) = scope.params.iter_mut().find(|(id, _)| *id == tpl_id) {
-                return Some(param);
-            }
-        }
-
-        None
-    }
-}
-
-fn generic_tpl_id(is_func: bool, idx: u32) -> GenericTplId {
-    if is_func {
-        GenericTplId::Func(idx)
-    } else {
-        GenericTplId::Type(idx)
-    }
-}
-
-#[derive(Debug)]
-struct HeaderGenericScope {
-    ranges: Vec<TextRange>,
-    next_tpl_id: GenericTplId,
-    params: Vec<(GenericTplId, GenericParam)>,
-}
-
-impl HeaderGenericScope {
-    fn contains(&self, position: TextSize) -> bool {
-        self.ranges
-            .iter()
-            .any(|range| range.contains(position) || range.start() == position)
-    }
 }

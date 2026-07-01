@@ -1,6 +1,6 @@
 use crate::{
     DbIndex, LuaAliasCallKind, LuaAliasCallType, LuaMemberInfo, LuaMemberKey, LuaObjectType,
-    LuaTupleStatus, LuaTupleType, LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
+    LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
     semantic::{
         generic::key_type_to_member_key,
         member::{find_members, infer_raw_member_type},
@@ -10,7 +10,9 @@ use crate::{
 use hashbrown::HashMap;
 use std::{ops::Deref, vec};
 
-use super::{GenericInstantiateContext, TypeSubstitutor, instantiate_type_generic_inner};
+use super::{
+    GenericInstantiateContext, GenericResolveMode, TypeSubstitutor, instantiate_type_generic_inner,
+};
 
 pub(super) fn instantiate_alias_call(
     context: &GenericInstantiateContext,
@@ -42,7 +44,10 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
-            let members = get_keyof_members(context.db, &operands[0]).unwrap_or_default();
+            let owner = instantiate_alias_origin_operand(context, &operands[0])
+                .unwrap_or_else(|| operands[0].clone());
+            let members = get_keyof_members(context.db, &owner).unwrap_or_default();
+            // keyof 表示可取键的联合类型, 不是按位置展开的 tuple.
             let member_key_types = members
                 .iter()
                 .filter_map(|m| match &m.key {
@@ -51,7 +56,7 @@ pub(super) fn instantiate_alias_call(
                     _ => None,
                 })
                 .collect::<Vec<_>>();
-            LuaType::Tuple(LuaTupleType::new(member_key_types, LuaTupleStatus::InferResolve).into())
+            TypeOps::union_all(context.db, member_key_types)
         }
         // 条件类型不在此处理
         LuaAliasCallKind::Extends => {
@@ -82,7 +87,14 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
+            if operands.iter().any(LuaType::contains_tpl_node) {
+                return LuaType::Call(
+                    LuaAliasCallType::new(LuaAliasCallKind::RawGet, operands).into(),
+                );
+            }
+
             let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
+                .or_else(|| instantiate_alias_origin_operand(context, &operands[1]))
                 .unwrap_or_else(|| operands[1].clone());
 
             instantiate_rawget_call(context.db, &operands[0], &key)
@@ -92,13 +104,36 @@ pub(super) fn instantiate_alias_call(
                 return LuaType::Unknown;
             }
 
+            if operands.iter().any(LuaType::contains_tpl_node) {
+                return LuaType::Call(
+                    LuaAliasCallType::new(LuaAliasCallKind::Index, operands).into(),
+                );
+            }
+
             let key = resolve_literal_operand(operand_exprs.get(1), context.substitutor)
+                .or_else(|| instantiate_alias_origin_operand(context, &operands[1]))
                 .unwrap_or_else(|| operands[1].clone());
 
             instantiate_index_call(context.db, &operands[0], &key)
         }
         LuaAliasCallKind::Merge => instantiate_merge_call(context.db, &operands),
     }
+}
+
+fn instantiate_alias_origin_operand(
+    context: &GenericInstantiateContext,
+    operand: &LuaType,
+) -> Option<LuaType> {
+    let LuaType::Ref(type_id) = operand else {
+        return None;
+    };
+    let type_decl = context.db.get_type_index().get_type_decl(type_id)?;
+    if !type_decl.is_alias() {
+        return None;
+    }
+
+    let origin = type_decl.get_alias_origin(context.db, Some(context.substitutor))?;
+    Some(instantiate_type_generic_inner(context, &origin))
 }
 
 fn instantiate_merge_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
@@ -135,7 +170,13 @@ fn resolve_literal_operand(
     substitutor: &TypeSubstitutor,
 ) -> Option<LuaType> {
     match operand {
-        Some(LuaType::TplRef(tpl_ref)) => substitutor.get_raw_type(tpl_ref.get_tpl_id()).cloned(),
+        Some(LuaType::TplRef(tpl_ref)) => substitutor
+            .resolve_type(
+                tpl_ref.get_tpl_id(),
+                GenericResolveMode::Literal,
+                tpl_ref.is_const(),
+            )
+            .cloned(),
         _ => None,
     }
 }
@@ -297,6 +338,24 @@ fn instantiate_unpack_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
 }
 
 fn instantiate_rawget_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaType {
+    if let LuaType::Union(union) = key {
+        let mut result = LuaType::Never;
+        for member in union.into_vec() {
+            let member_type = instantiate_rawget_call(db, owner, &member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
+    }
+
+    if let LuaType::MultiLineUnion(multi) = key {
+        let mut result = LuaType::Never;
+        for (member, _) in multi.get_unions() {
+            let member_type = instantiate_rawget_call(db, owner, member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
+    }
+
     let member_key = match key {
         LuaType::DocStringConst(s) => LuaMemberKey::Name(s.deref().clone()),
         LuaType::StringConst(s) => LuaMemberKey::Name(s.deref().clone()),
@@ -311,6 +370,24 @@ fn instantiate_rawget_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaT
 fn instantiate_index_call(db: &DbIndex, owner: &LuaType, key: &LuaType) -> LuaType {
     if owner.is_unknown() {
         return LuaType::Unknown;
+    }
+
+    if let LuaType::Union(union) = key {
+        let mut result = LuaType::Never;
+        for member in union.into_vec() {
+            let member_type = instantiate_index_call(db, owner, &member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
+    }
+
+    if let LuaType::MultiLineUnion(multi) = key {
+        let mut result = LuaType::Never;
+        for (member, _) in multi.get_unions() {
+            let member_type = instantiate_index_call(db, owner, member);
+            result = TypeOps::Union.apply(db, &result, &member_type);
+        }
+        return result;
     }
 
     if let LuaType::Variadic(variadic) = owner {

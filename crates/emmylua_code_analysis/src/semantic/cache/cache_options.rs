@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CacheOptions {
     pub analysis_phase: LuaAnalysisPhase,
 }
@@ -11,7 +11,7 @@ impl Default for CacheOptions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum LuaAnalysisPhase {
     // Ordered phase
     Ordered,

@@ -666,7 +666,19 @@ fn is_colon_call_lookahead(p: &LuaParser) -> bool {
                     | LuaTokenKind::TkSafeNavigation
             )
         }
-        LuaTokenKind::None | LuaTokenKind::TkEof => true,
+        LuaTokenKind::None
+        | LuaTokenKind::TkEof
+        | LuaTokenKind::TkEnd
+        | LuaTokenKind::TkElse
+        | LuaTokenKind::TkElseIf
+        | LuaTokenKind::TkUntil
+        | LuaTokenKind::TkThen
+        | LuaTokenKind::TkDo
+        | LuaTokenKind::TkComma
+        | LuaTokenKind::TkSemicolon
+        | LuaTokenKind::TkRightParen
+        | LuaTokenKind::TkRightBracket
+        | LuaTokenKind::TkRightBrace => true,
         _ => false,
     }
 }

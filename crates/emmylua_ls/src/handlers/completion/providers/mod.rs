@@ -1,3 +1,4 @@
+mod array_append_provider;
 mod auto_require_provider;
 pub(super) mod desc_provider;
 pub(super) mod doc_name_token_provider;
@@ -14,6 +15,7 @@ mod postfix_provider;
 pub(super) mod table_field_provider;
 
 use super::{completion_builder::CompletionBuilder, completion_context::CompletionContext};
+pub use array_append_provider::ArrayAppendProvider;
 pub use auto_require_provider::AutoRequireProvider;
 pub use desc_provider::DescProvider;
 pub use doc_name_token_provider::DocNameTokenProvider;
@@ -50,6 +52,7 @@ pub trait CompletionProvider: Sync {
 }
 
 static GENERAL_PRIMARY_PROVIDERS: &[&dyn CompletionProvider] = &[
+    &ArrayAppendProvider,
     &PostfixProvider,
     &FunctionProvider,
     &EqualityProvider,

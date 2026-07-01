@@ -149,7 +149,6 @@ pub enum LuaTokenKind {
     TkTagReturnOverload, // return overload
     TkLanguage,          // language
     TKTagSchema,         // schema
-    TkTagAttribute,      // attribute
     TkCallGeneric,       // call generic. function_name--[[@<type>]](...)
 
     TkDocOr,              // |

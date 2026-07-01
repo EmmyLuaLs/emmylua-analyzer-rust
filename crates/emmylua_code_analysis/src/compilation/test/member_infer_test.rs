@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod test {
+    use emmylua_parser::{LuaAstNode, LuaTableField};
     use smol_str::SmolStr;
 
-    use crate::{LuaType, LuaUnionType, VirtualWorkspace};
+    use crate::{
+        LuaMemberId, LuaMemberKey, LuaSemanticDeclId, LuaType, LuaUnionType, VirtualWorkspace,
+    };
 
     #[test]
     fn test_issue_318() {
@@ -581,5 +584,65 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("result"), ws.ty("integer?"));
+    }
+
+    #[test]
+    fn test_member_origin_owner_switches_cache_for_cross_file_table_field() {
+        let mut ws = VirtualWorkspace::new();
+        let defs_file = ws.def_file(
+            "defs.lua",
+            r#"
+        ---@class CrossFileOwner
+        ---@field fn fun(): string
+
+        local function fallback()
+        end
+
+        ---@type CrossFileOwner
+        local value = {
+            fn = fallback,
+        }
+        "#,
+        );
+        let main_file = ws.def_file("main.lua", "local main = 1");
+
+        let root = ws
+            .analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_syntax_tree(&defs_file)
+            .expect("defs tree must exist")
+            .get_chunk_node();
+        let table_field = root
+            .descendants::<LuaTableField>()
+            .next()
+            .expect("table field must exist");
+        let member_id = LuaMemberId::new(table_field.get_syntax_id(), defs_file);
+
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(main_file)
+            .expect("main model must exist");
+        let origin = semantic_model
+            .get_member_origin_owner(member_id)
+            .expect("origin owner must resolve");
+        let LuaSemanticDeclId::Member(origin_member_id) = origin else {
+            panic!("expected member origin, got {origin:?}");
+        };
+        let origin_member = ws
+            .analysis
+            .compilation
+            .get_db()
+            .get_member_index()
+            .get_member(&origin_member_id)
+            .expect("origin member must exist");
+
+        assert_eq!(
+            origin_member.get_key(),
+            &LuaMemberKey::Name(SmolStr::new("fn"))
+        );
+        assert!(origin_member.is_field());
     }
 }

@@ -96,7 +96,6 @@ pub enum LuaSyntaxKind {
     DocTagReadonly,
     DocTagReturnCast,
     DocTagLanguage,
-    DocTagAttribute,
     DocTagAttributeUse, // '@['
     DocTagCallGeneric,
     DocTagSchema,
@@ -117,7 +116,6 @@ pub enum LuaSyntaxKind {
     TypeNullable, // <Type>?
     TypeStringTemplate, // prefixName.`T`
     TypeMultiLineUnion, // | simple type # description
-    TypeAttribute, // declare. attribute<(paramList)>
 
     // follow donot support now
     TypeMatch,

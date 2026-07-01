@@ -1,4 +1,86 @@
-use crate::{LuaType, LuaTypeDeclId};
+use std::sync::Arc;
+
+use crate::{
+    DbIndex, LuaFunctionType, LuaOperatorMetaMethod, LuaType, LuaTypeDeclId, callable_accepts_args,
+    is_sub_type_of,
+};
+
+const ATTRIBUTE_BASE_TYPE_NAME: &str = "Attribute";
+
+pub fn is_attribute_class(db: &DbIndex, type_id: &LuaTypeDeclId) -> bool {
+    let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
+        return false;
+    };
+    if !type_decl.is_class() {
+        return false;
+    }
+
+    let attribute_type_id = LuaTypeDeclId::global(ATTRIBUTE_BASE_TYPE_NAME);
+    is_sub_type_of(db, type_id, &attribute_type_id)
+}
+
+pub fn get_attribute_constructor_params(
+    db: &DbIndex,
+    type_id: &LuaTypeDeclId,
+    arg_types: &[LuaType],
+) -> Vec<(String, Option<LuaType>)> {
+    select_attribute_constructor_func(db, type_id, arg_types)
+        .map(|func| func.get_params().to_vec())
+        .unwrap_or_default()
+}
+
+fn select_attribute_constructor_func(
+    db: &DbIndex,
+    type_id: &LuaTypeDeclId,
+    arg_types: &[LuaType],
+) -> Option<Arc<LuaFunctionType>> {
+    let arg_count = arg_types.len();
+    let operator_ids = db
+        .get_operator_index()
+        .get_operators(&type_id.clone().into(), LuaOperatorMetaMethod::Call)?;
+
+    let mut fallback = None;
+    let mut count_fallback = None;
+    let only_candidate = operator_ids.len() == 1;
+    for operator_id in operator_ids {
+        let Some(operator) = db.get_operator_index().get_operator(operator_id) else {
+            continue;
+        };
+        let LuaType::DocFunction(func) = operator.get_operator_func(db) else {
+            continue;
+        };
+
+        let params = func.get_params();
+        fallback.get_or_insert_with(|| Arc::clone(&func));
+        if !attribute_params_accept_arg_count(&params, arg_count) {
+            continue;
+        }
+
+        count_fallback.get_or_insert_with(|| Arc::clone(&func));
+        if only_candidate || callable_accepts_args(db, &func, arg_types, false, Some(arg_count)) {
+            return Some(func);
+        }
+    }
+
+    count_fallback.or(fallback)
+}
+
+fn attribute_params_accept_arg_count(
+    def_params: &[(String, Option<LuaType>)],
+    arg_count: usize,
+) -> bool {
+    let required_count = def_params
+        .iter()
+        .take_while(|(name, typ)| name != "..." && !typ.as_ref().is_some_and(LuaType::is_variadic))
+        .filter(|(_, typ)| !typ.as_ref().is_some_and(LuaType::is_optional))
+        .count();
+
+    let allows_more = def_params
+        .last()
+        .is_some_and(|(name, typ)| name == "..." || typ.as_ref().is_some_and(LuaType::is_variadic));
+
+    arg_count >= required_count && (allows_more || arg_count <= def_params.len())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LuaBuiltinAttributeKind {
@@ -107,7 +189,9 @@ impl LuaAttributeUse {
         }
 
         let code = match self.get_string_param("code")? {
-            "check_table_field" => LuaLspOptimizationCode::CheckTableField,
+            "skip_table_fields_check" | "check_table_field" => {
+                LuaLspOptimizationCode::SkipTableFieldsCheck
+            }
             "delayed_definition" => LuaLspOptimizationCode::DelayedDefinition,
             _ => return None,
         };
@@ -168,14 +252,14 @@ pub struct LuaDeprecatedAttribute<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LuaLspOptimizationCode {
-    CheckTableField,
+    SkipTableFieldsCheck,
     DelayedDefinition,
 }
 
 impl LuaLspOptimizationCode {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::CheckTableField => "check_table_field",
+            Self::SkipTableFieldsCheck => "skip_table_fields_check",
             Self::DelayedDefinition => "delayed_definition",
         }
     }
@@ -187,8 +271,8 @@ pub struct LuaLspOptimizationAttribute {
 }
 
 impl LuaLspOptimizationAttribute {
-    pub fn is_check_table_field(self) -> bool {
-        self.code == LuaLspOptimizationCode::CheckTableField
+    pub fn is_skip_table_fields_check(self) -> bool {
+        self.code == LuaLspOptimizationCode::SkipTableFieldsCheck
     }
 
     pub fn is_delayed_definition(self) -> bool {
@@ -323,5 +407,21 @@ mod tests {
             lsp_optimization.code,
             LuaLspOptimizationCode::DelayedDefinition
         );
+    }
+
+    #[test]
+    fn lsp_optimization_accepts_skip_table_fields_check_aliases() {
+        for code in ["skip_table_fields_check", "check_table_field"] {
+            let attribute = LuaAttributeUse::new(
+                LuaTypeDeclId::global("lsp_optimization"),
+                vec![("code".into(), Some(doc_string(code)))],
+            );
+
+            let lsp_optimization = attribute.as_lsp_optimization().unwrap();
+            assert_eq!(
+                lsp_optimization.code,
+                LuaLspOptimizationCode::SkipTableFieldsCheck
+            );
+        }
     }
 }

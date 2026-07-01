@@ -3,3 +3,35 @@ completion.index %{label}:
   en: index %{label}
   zh_CN: 索引 %{label}
   zh_HK: 索引 %{label}
+completion.typeFlag.key:
+  en: Uses enum field names as enum values.
+  zh_CN: 使用枚举字段名作为枚举值。
+  zh_HK: 使用枚舉字段名作為枚舉值。
+completion.typeFlag.partial:
+  en: Allows the type declaration to be merged with other partial declarations.
+  zh_CN: 允许类型声明与其他 partial 声明合并。
+  zh_HK: 允許類型聲明與其他 partial 聲明合併。
+completion.typeFlag.exact:
+  en: Currently, it is almost equivalent to doing nothing.
+  zh_CN: 目前几乎等效于什么都不做。
+  zh_HK: 目前幾乎等效於什麼都不做。
+completion.typeFlag.constructor:
+  en: Marks that the `class` is being defined at the actual code location and suppresses one duplicate type definition check.
+  zh_CN: 标记为正在实际代码处定义 `class`，并抑制一次类型重复定义检查。
+  zh_HK: 標記為正在實際代碼處定義 `class`，並抑制一次類型重複定義檢查。
+completion.typeFlag.public:
+  en: Makes the type visible to all workspaces.
+  zh_CN: 使类型对所有工作区可见。
+  zh_HK: 使類型對所有工作區可見。
+completion.typeFlag.internal:
+  en: Makes the type visible only within the current workspace.
+  zh_CN: 使类型仅在当前工作区内可见。
+  zh_HK: 使類型僅在當前工作區內可見。
+completion.typeFlag.file:
+  en: Makes the type visible only within the current file.
+  zh_CN: 使类型仅在当前文件内可见。
+  zh_HK: 使類型僅在當前文件內可見。
+completion.typeFlag.private:
+  en: Deprecated. Use `file` instead; it has the same file-local visibility.
+  zh_CN: 已弃用。请改用 `file`, 它具有相同的文件内可见性。
+  zh_HK: 已棄用。請改用 `file`, 它具有相同的文件內可見性。

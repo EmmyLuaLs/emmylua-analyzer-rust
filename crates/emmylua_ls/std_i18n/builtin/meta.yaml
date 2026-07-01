@@ -41,16 +41,16 @@ b:
   r: [122, 0, 124, 44]
   e:
   - ['std.Unpack', 'd', doc, [122, 0, 124, 0], 'c7ad7bb74235dc8c']
-- a: '---'
+- a: '--- built-in type for generic template, for match integer const and `true`/`false`'
   g: 'built-in type for Rawget'
   r: [126, 0, 128, 35]
   e:
   - ['std.RawGet', 'd', doc, [126, 0, 128, 0], '7327558f3445dea6']
 - a: '--- compact luals'
-  g: 'built-in type for generic template, for match integer const and true/false'
+  g: 'built-in type for generic template, for match integer const and `true`/`false`'
   r: [130, 0, 132, 34]
   e:
-  - ['std.ConstTpl', 'd', doc, [130, 0, 132, 0], '0e263d1e0caa6b3b']
+  - ['std.ConstTpl', 'd', doc, [130, 0, 131, 0], '9f53c3bc7c4277c5']
 - a: '---'
   g: 'Get the parameters of a function as a tuple'
   r: [146, 0, 148, 91]
@@ -81,3 +81,28 @@ b:
   r: [165, 0, 167, 51]
   e:
   - ['Extract', 'd', doc, [165, 0, 167, 0], 'a615fc46f215439e']
+- a: '---'
+  g: 'Deprecated. Receives an optional message parameter.'
+  r: [174, 0, 177, 35]
+  e:
+  - ['deprecated', 'd', doc, [174, 0, 176, 0], 'dac958f30ae5a8bf']
+- a: '---'
+  g: 'Language Server Optimization Items.'
+  r: [179, 0, 187, 71]
+  e:
+  - ['lsp_optimization', 'd', doc, [179, 0, 186, 0], '30b907e00779f691']
+- a: '---'
+  g: 'Index field alias, will be displayed in `hint` and `completion`.'
+  r: [189, 0, 194, 31]
+  e:
+  - ['index_alias', 'd', doc, [189, 0, 193, 0], 'f6bfb08eccdd16a2']
+- a: '---'
+  g: 'This attribute must be applied to function parameters, and the function parameter''s type must be a string template generic,'
+  r: [196, 0, 208, 112]
+  e:
+  - ['constructor', 'd', doc, [196, 0, 207, 0], '9e70b48984094843']
+-
+  g: 'Associates `getter` and `setter` methods with a field. Currently provides only definition navigation functionality,'
+  r: [210, 0, 219, 103]
+  e:
+  - ['field_accessor', 'd', doc, [210, 0, 218, 0], '9a4d0401a6f8cc0e']

@@ -10,7 +10,7 @@ use emmylua_parser::{
 };
 use lsp_types::Location;
 
-use crate::handlers::hover::find_member_origin_owner;
+use crate::handlers::common::find_member_origin_owner;
 
 pub fn search_implementations(
     semantic_model: &SemanticModel,
@@ -57,7 +57,7 @@ pub fn search_member_implementations(
 
     let mut semantic_cache = HashMap::new();
 
-    let property_owner = find_member_origin_owner(compilation, semantic_model, member_id)
+    let property_owner = find_member_origin_owner(semantic_model, member_id)
         .unwrap_or(LuaSemanticDeclId::Member(member_id));
     for in_filed_syntax_id in index_references {
         let semantic_model =

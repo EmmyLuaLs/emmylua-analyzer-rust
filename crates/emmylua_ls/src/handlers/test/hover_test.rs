@@ -51,6 +51,40 @@ mod tests {
     }
 
     #[gtest]
+    fn test_hover_class_index_signature() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class Foo
+                ---@field [integer] string
+
+                ---@type Foo
+                local <??>foo
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal foo: Foo {\n    [integer]: string,\n}\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_class_nil_type_key_hidden() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class <??>AAA
+                ---@field [true] 1
+                ---@field [nil] 2
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(class) AAA {\n    [true]: integer = 1,\n}\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_right_to_left() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
         // check!(ws.check_hover(
@@ -167,7 +201,7 @@ mod tests {
                 value: dedent(
                     r#"
                     ```lua
-                    local n: string
+                    (parameter) n: string
                     ```
 
                     ---
@@ -193,7 +227,7 @@ mod tests {
                 value: dedent(
                     r#"
                     ```lua
-                    local function n() -> boolean
+                    (parameter) n: fun() -> boolean
                     ```
 
                     ---
@@ -203,6 +237,146 @@ mod tests {
                 )
             },
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_generic_param_constraint_and_field_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class Animal
+                ---@field name string 名字
+                ---@field age integer 年龄
+
+                ---@generic T: Animal
+                ---@param animal T
+                function checkAnimal(<??>animal)
+                    print(animal.age)
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(parameter) animal: T extends Animal\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class Animal
+                ---@field name string 名字
+                ---@field age integer 年龄
+
+                ---@generic T: Animal
+                ---@param animal T
+                function checkAnimal(animal)
+                    print(animal.<??>age)
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(field) age: integer\n```\n\n---\n\n年龄".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class Animal
+                ---@field name string 名字
+                ---@field age integer 年龄
+
+                ---@generic T: Animal
+                ---@param animal T?
+                function checkAnimal(<??>animal)
+                end
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(parameter) animal: T?\n```".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_special_alias_call_type_syntax() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class KeyofHoverShape
+                ---@field name string
+
+                ---@type keyof KeyofHoverShape
+                local <??>key
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal key: \"name\"\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class IndexHoverShape
+                ---@field name string
+
+                ---@type IndexHoverShape["name"]
+                local <??>value
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal value: string\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class GenericIndexHoverShape
+                ---@field name string
+
+                ---@alias GenericIndexHoverPick<K extends keyof T, T> T[K]
+
+                ---@type GenericIndexHoverPick<"name", GenericIndexHoverShape>
+                local <??>value
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal value: string\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@class ExtendsHoverShape
+                ---@field name string
+
+                ---@type ExtendsHoverShape extends table and number or string
+                local <??>is_table
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal is_table: number\n```".to_string(),
+            },
+        ));
+
+        check!(ws.check_hover(
+            r#"
+                ---@alias AB<??>C<K extends keyof T, T> T[K]
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(alias) ABC<K extends keyof T, T> = T[K]\n```".to_string(),
+            },
+        ));
+
+        check!(
+            ws.check_hover(
+                r#"
+                ---@class BoxHoverShape
+                ---@field name string
+
+                ---@class BoxHoverShape<??>Box<K extends keyof BoxHoverShape, T>
+                ---@field value T
+            "#,
+                VirtualHoverResult {
+                    value:
+                        "```lua\n(class) BoxHoverShapeBox<K extends keyof BoxHoverShape, T>\n```"
+                            .to_string(),
+                },
+            )
+        );
         Ok(())
     }
 
@@ -226,7 +400,7 @@ mod tests {
                 value: dedent(
                     r#"
                     ```lua
-                    local function n() -> boolean
+                    (parameter) n: fun() -> boolean
                     ```
                     "#
                 ),
@@ -326,6 +500,84 @@ mod tests {
             "#,
             VirtualHoverResult {
                 value: "```lua\n(class) ABC\n```\n\n---\n\nA1".to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_class_bound_local_decl_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                --- This is the MyModule documentation.
+                --- It should appear when hovering over MyModule.
+                --- @class MyModule
+                local My<??>Module
+            "#,
+            VirtualHoverResult {
+                value: dedent(
+                    r#"
+                    ```lua
+                    local MyModule: MyModule
+                    ```
+
+                    ---
+
+                    This is the MyModule documentation.
+                    It should appear when hovering over MyModule.
+                    "#,
+                ),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_class_bound_member_description() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                --- @class MyModule
+                local MyModule = {}
+
+                --- This is the SubModule documentation.
+                --- It should appear when hovering over SubModule.
+                --- @class MyModule.SubModule
+                MyModule.Sub<??>Module = {}
+            "#,
+            VirtualHoverResult {
+                value: dedent(
+                    r#"
+                    ```lua
+                    (field) SubModule: MyModule.SubModule
+                    ```
+
+                    ---
+
+                    This is the SubModule documentation.
+                    It should appear when hovering over SubModule.
+                    "#,
+                ),
+            },
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_attribute_hover_uses_arg_types() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                ---@class custom_attribute: Attribute
+                ---@overload fun(value: string)
+                ---@overload fun(value: integer)
+
+                ---@[custom_at<??>tribute(1)]
+                local a
+            "#,
+            VirtualHoverResult {
+                value: "```lua\n(class) custom_attribute(value: integer)\n```".to_string(),
             },
         ));
         Ok(())
@@ -546,6 +798,26 @@ mod tests {
             VirtualHoverResult {
                 value:
                     "```lua\n(field) aAnnotation: string = \"a\"\n```\n\n---\n\na标签".to_string(),
+            },
+        ));
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_hover_right_expr() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        check!(ws.check_hover(
+            r#"
+                local max = 0
+                local key
+                if type(key) ~= "number" then
+                    return false
+                end
+                m<??>ax = key
+            "#,
+            VirtualHoverResult {
+                value: "```lua\nlocal max: integer\n```".to_string(),
             },
         ));
 

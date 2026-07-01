@@ -95,6 +95,7 @@ impl LuaType {
         match self {
             LuaType::Nil => true,
             LuaType::Union(u) => u.is_nullable(),
+            LuaType::MultiLineUnion(u) => u.to_union().is_nullable(),
             _ => false,
         }
     }
@@ -103,6 +104,7 @@ impl LuaType {
         match self {
             LuaType::Nil | LuaType::Any | LuaType::Unknown => true,
             LuaType::Union(u) => u.is_optional(),
+            LuaType::MultiLineUnion(u) => u.to_union().is_optional(),
             LuaType::Variadic(_) => true,
             _ => false,
         }
@@ -113,6 +115,7 @@ impl LuaType {
             LuaType::Nil | LuaType::Boolean | LuaType::Any | LuaType::Unknown => false,
             LuaType::BooleanConst(boolean) | LuaType::DocBooleanConst(boolean) => *boolean,
             LuaType::Union(u) => u.is_always_truthy(),
+            LuaType::MultiLineUnion(u) => u.to_union().is_always_truthy(),
             LuaType::TypeGuard(_) => false,
             _ => true,
         }
@@ -122,6 +125,7 @@ impl LuaType {
         match self {
             LuaType::Nil | LuaType::BooleanConst(false) | LuaType::DocBooleanConst(false) => true,
             LuaType::Union(u) => u.is_always_falsy(),
+            LuaType::MultiLineUnion(u) => u.to_union().is_always_falsy(),
             LuaType::TypeGuard(_) => false,
             _ => false,
         }

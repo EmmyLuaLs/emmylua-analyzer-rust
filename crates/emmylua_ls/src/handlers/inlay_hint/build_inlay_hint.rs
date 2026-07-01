@@ -838,7 +838,7 @@ fn find_matching_enum_member<'a>(
             match (member_key, arg_type) {
                 (LuaMemberKey::Name(s), LuaType::StringConst(arg_s)) => s == arg_s.as_ref(),
                 (LuaMemberKey::Integer(i), LuaType::IntegerConst(arg_i)) => *i == *arg_i,
-                (LuaMemberKey::ExprType(typ), _) => typ == arg_type,
+                (LuaMemberKey::TypeKey(typ), _) => typ == arg_type,
                 _ => false,
             }
         } else if let Some(type_cache) = semantic_model

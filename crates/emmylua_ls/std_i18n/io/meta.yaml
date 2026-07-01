@@ -74,8 +74,8 @@ b:
   e:
   - ['file', 'd', doc, [138, 0, 139, 0], '44f701b90e451a28']
 - a: 'function file:close() end'
-  g: '@version > 5.2'
-  r: [142, 0, 151, 50]
+  g: '@version >5.2'
+  r: [142, 0, 151, 52]
   e:
   - ['file.close@>5.2', 'd', doc, [143, 0, 150, 0], '506043bf254a978d']
 - a: 'function file:close() end'

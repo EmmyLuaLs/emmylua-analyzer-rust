@@ -2,9 +2,38 @@
 mod tests {
     use emmylua_code_analysis::{DocSyntax, Emmyrc, EmmyrcFilenameConvention};
     use googletest::prelude::*;
-    use lsp_types::{CompletionItemKind, CompletionTriggerKind};
+    use lsp_types::{
+        CompletionItem, CompletionItemKind, CompletionResponse, CompletionTriggerKind,
+    };
+    use tokio_util::sync::CancellationToken;
 
-    use crate::handlers::test_lib::{ProviderVirtualWorkspace, VirtualCompletionItem, check};
+    use crate::handlers::{
+        completion::completion,
+        test_lib::{ProviderVirtualWorkspace, VirtualCompletionItem, check},
+    };
+
+    fn get_completion_items(
+        ws: &mut ProviderVirtualWorkspace,
+        block_str: &str,
+        trigger_kind: CompletionTriggerKind,
+    ) -> Result<Vec<CompletionItem>> {
+        let (content, position) = ProviderVirtualWorkspace::handle_file_content(block_str)?;
+        let file_id = ws.def(&content);
+        let result = completion(
+            &ws.analysis,
+            file_id,
+            position,
+            trigger_kind,
+            CancellationToken::new(),
+        )
+        .ok_or("failed to get completion")
+        .or_fail()?;
+
+        Ok(match result {
+            CompletionResponse::Array(items) => items,
+            CompletionResponse::List(list) => list.items,
+        })
+    }
 
     #[gtest]
     fn test_1() -> Result<()> {
@@ -21,6 +50,88 @@ mod tests {
                 ..Default::default()
             }],
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_array_append_index_completion_after_len_operator() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                local someTable = {}
+                someTable[#<??>]
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+        let item = items
+            .iter()
+            .find(|item| item.label == "#someTable + 1")
+            .ok_or_else(|| format!("completion item `#someTable + 1` not found in {items:?}"))
+            .or_fail()?;
+        let completion_edit_text = match item.text_edit.as_ref() {
+            Some(lsp_types::CompletionTextEdit::Edit(edit)) => Some(edit.new_text.as_str()),
+            Some(lsp_types::CompletionTextEdit::InsertAndReplace(edit)) => {
+                Some(edit.new_text.as_str())
+            }
+            None => item.insert_text.as_deref(),
+        };
+
+        verify_eq!(item.kind, Some(CompletionItemKind::SNIPPET))?;
+        verify_eq!(completion_edit_text, Some("someTable + 1] = $0"))?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_array_append_index_completion_for_integer_indexed_class() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                ---@class A
+                ---@field [int] string
+
+                ---@type A
+                local a
+                a[#<??>]
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+        let item = items
+            .iter()
+            .find(|item| item.label == "#a + 1")
+            .ok_or_else(|| format!("completion item `#a + 1` not found in {items:?}"))
+            .or_fail()?;
+        let completion_edit_text = match item.text_edit.as_ref() {
+            Some(lsp_types::CompletionTextEdit::Edit(edit)) => Some(edit.new_text.as_str()),
+            Some(lsp_types::CompletionTextEdit::InsertAndReplace(edit)) => {
+                Some(edit.new_text.as_str())
+            }
+            None => item.insert_text.as_deref(),
+        };
+
+        verify_eq!(item.kind, Some(CompletionItemKind::SNIPPET))?;
+        verify_eq!(completion_edit_text, Some("a + 1] = $0"))?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_array_append_index_completion_only_after_left_bracket() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                local someTable = {}
+                someTable[1 + #<??>]
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+
+        if items.iter().any(|item| item.label == "#someTable + 1") {
+            fail!("unexpected completion item `#someTable + 1` found in {items:?}")?;
+        }
         Ok(())
     }
 
@@ -180,6 +291,94 @@ mod tests {
                 label_detail: Some("(a, b)".to_string()),
             }],
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_overload_completion_literal_param_detail() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                ---@class Root
+                local Root
+
+                ---@overload fun(idx: 0): "IgnoreNetwork"
+                ---@overload fun(idx: 1): "StructureLocked"
+                ---@param idx int
+                function Root:PropertyName(idx) end
+
+                Root:<??>
+            "#,
+            CompletionTriggerKind::INVOKED,
+        )?;
+        let mut details = items
+            .iter()
+            .filter(|item| item.label == "PropertyName")
+            .map(|item| {
+                item.label_details
+                    .as_ref()
+                    .and_then(|details| details.detail.clone())
+            })
+            .collect::<Vec<_>>();
+        details.sort();
+
+        verify_eq!(
+            details,
+            vec![
+                Some("(0)-> \"IgnoreNetwork\"".to_string()),
+                Some("(1)-> \"StructureLocked\"".to_string()),
+                Some("(idx)".to_string()),
+            ]
+        )?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_overload_completion_all_doc_literal_param_details() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+                ---@class Root
+                local Root
+
+                ---@overload fun(value: "network"): "StringLiteral"
+                ---@overload fun(value: 0): "IntegerLiteral"
+                ---@overload fun(value: true): "TrueLiteral"
+                ---@overload fun(value: false): "FalseLiteral"
+                ---@overload fun(value: nil): "NilLiteral"
+                ---@param value string|integer|boolean|nil
+                function Root:LiteralName(value) end
+
+                Root:<??>
+            "#,
+            CompletionTriggerKind::INVOKED,
+        )?;
+        let mut details = items
+            .iter()
+            .filter(|item| item.label == "LiteralName")
+            .map(|item| {
+                item.label_details
+                    .as_ref()
+                    .and_then(|details| details.detail.clone())
+            })
+            .collect::<Vec<_>>();
+        details.sort();
+
+        verify_eq!(
+            details,
+            vec![
+                Some("(\"network\")-> \"StringLiteral\"".to_string()),
+                Some("(0)-> \"IntegerLiteral\"".to_string()),
+                Some("(false)-> \"FalseLiteral\"".to_string()),
+                Some("(nil)-> \"NilLiteral\"".to_string()),
+                Some("(true)-> \"TrueLiteral\"".to_string()),
+                Some("(value)".to_string()),
+            ]
+        )?;
+
         Ok(())
     }
 
@@ -495,12 +694,17 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "private".to_string(),
+                    label: "file".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "public".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -530,12 +734,17 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "private".to_string(),
+                    label: "file".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "public".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -564,17 +773,17 @@ mod tests {
                     ..Default::default()
                 },
                 VirtualCompletionItem {
-                    label: "exact".to_string(),
-                    kind: CompletionItemKind::ENUM_MEMBER,
-                    ..Default::default()
-                },
-                VirtualCompletionItem {
-                    label: "private".to_string(),
+                    label: "file".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
                 VirtualCompletionItem {
                     label: "public".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "private".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -1194,7 +1403,13 @@ mod tests {
     #[gtest]
     fn test_index_key_alias() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();
-        ws.def(" ---@attribute index_alias(name: string)");
+        ws.def(
+            r#"
+            ---@class Attribute
+            ---@class index_alias: Attribute
+            ---@overload fun(name: string)
+            "#,
+        );
         check!(ws.check_completion(
             r#"
                 local export = {
@@ -2131,6 +2346,134 @@ mod tests {
                 ..Default::default()
             },],
         ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_colon_member_completion_after_method_trigger() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new();
+        let items = get_completion_items(
+            &mut ws,
+            r#"
+            ---@class B
+            local B = {}
+            function B:one()
+                return self
+            end
+
+            do
+                B:one():<??>
+            end
+            "#,
+            CompletionTriggerKind::TRIGGER_CHARACTER,
+        )?;
+
+        let item = items
+            .iter()
+            .find(|item| item.label == "one")
+            .ok_or_else(|| format!("completion item `one` not found in {items:?}"))
+            .or_fail()?;
+        verify_eq!(item.kind, Some(CompletionItemKind::FUNCTION))?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_colon_member_completion_before_scope_boundaries() -> Result<()> {
+        let cases = [
+            (
+                "before end",
+                r#"
+                do
+                    B:one():<??>
+                end
+                "#,
+            ),
+            (
+                "before else",
+                r#"
+                if true then
+                    B:one():<??>
+                else
+                end
+                "#,
+            ),
+            (
+                "before elseif",
+                r#"
+                if true then
+                    B:one():<??>
+                elseif false then
+                end
+                "#,
+            ),
+            (
+                "before until",
+                r#"
+                repeat
+                    B:one():<??>
+                until true
+                "#,
+            ),
+            (
+                "before then",
+                r#"
+                if B:one():<??> then
+                end
+                "#,
+            ),
+            (
+                "before while do",
+                r#"
+                while B:one():<??> do
+                end
+                "#,
+            ),
+            (
+                "before numeric for comma",
+                r#"
+                for i = B:one():<??>, 10 do
+                end
+                "#,
+            ),
+            (
+                "before numeric for do",
+                r#"
+                for i = 1, B:one():<??> do
+                end
+                "#,
+            ),
+            (
+                "before generic for do",
+                r#"
+                for _, v in B:one():<??> do
+                end
+                "#,
+            ),
+        ];
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class B
+                B = {}
+                function B:one()
+                    return self
+                end
+        "#,
+        );
+
+        for (name, block) in cases {
+            let items =
+                get_completion_items(&mut ws, block, CompletionTriggerKind::TRIGGER_CHARACTER)?;
+
+            let item = items
+                .iter()
+                .find(|item| item.label == "one")
+                .ok_or_else(|| format!("completion item `one` not found in {name}: {items:?}"))
+                .or_fail()?;
+            verify_eq!(item.kind, Some(CompletionItemKind::FUNCTION))?;
+        }
+
         Ok(())
     }
 

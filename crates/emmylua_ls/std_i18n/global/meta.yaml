@@ -168,8 +168,8 @@ b:
   e:
   - ['xpcall', 'd', doc, [450, 0, 453, 0], '8f9f463f8371a2f0']
 - a: 'function warn(msg1, ...) end'
-  g: '@version > 5.4'
-  r: [469, 0, 478, 29]
+  g: '@version >5.4'
+  r: [469, 0, 478, 31]
   e:
   - ['warn', 'd', doc, [470, 0, 477, 0], 'b218e0d598d2986d']
 - a: '_ENV = {}'
@@ -179,15 +179,15 @@ b:
   - ['_ENV', 'd', doc, [484, 0, 486, 0], '450d61ac9994e275']
 - a: 'function setfenv(f, env) end'
   g: '@version 5.1, JIT'
-  r: [490, 0, 494, 80]
+  r: [490, 0, 494, 82]
   e:
   - ['setfenv', 'd', doc, [491, 0, 493, 0], '79ac6333c6044892']
-  - ['setfenv.param.f', 'p:f', tail, [493, 32, 493, 84], '45534d1ea636fab4']
-  - ['setfenv.param.env', 'p:env', tail, [494, 32, 494, 80], '405f4286ea2c7329']
+  - ['setfenv.param.f', 'p:f', tail, [493, 34, 493, 86], '45534d1ea636fab4']
+  - ['setfenv.param.env', 'p:env', tail, [494, 34, 494, 82], '405f4286ea2c7329']
 - a: 'function getfenv(f) end'
   g: '@version 5.1, JIT'
   r: [497, 0, 501, 75]
   e:
   - ['getfenv', 'd', doc, [498, 0, 500, 0], '3c8b579e5297fcd6']
-  - ['getfenv.param.f', 'p:f', tail, [500, 30, 500, 80], '61d794dd7c91d37d']
+  - ['getfenv.param.f', 'p:f', tail, [500, 32, 500, 82], '61d794dd7c91d37d']
   - ['getfenv.return.1', 'r:1', tail, [501, 22, 501, 75], '41910412fe03bad4']

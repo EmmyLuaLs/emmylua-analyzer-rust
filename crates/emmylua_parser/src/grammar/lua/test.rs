@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{LuaLanguageLevel, LuaParser, parser::ParserConfig};
+    use crate::{LuaAstNode, LuaIndexExpr, LuaLanguageLevel, LuaParser, parser::ParserConfig};
 
     macro_rules! assert_ast_eq {
         ($lua_code:expr, $expected:expr) => {
@@ -1133,6 +1133,41 @@ Syntax(Chunk)@0..4
         "#;
 
         assert_ast_eq!(code, result);
+    }
+
+    #[test]
+    fn test_colon_completion_before_expression_boundaries() {
+        let cases = [
+            ("do a(): end", "before end"),
+            ("if true then a(): else end", "before else"),
+            ("if true then a(): elseif false then end", "before elseif"),
+            ("repeat a(): until true", "before until"),
+            ("if a(): then end", "before then"),
+            ("while a(): do end", "before while do"),
+            ("for i = a():, 10 do end", "before numeric for comma"),
+            ("for i = 1, a(): do end", "before numeric for do"),
+            ("for _, v in a(): do end", "before generic for do"),
+            ("local x = (a():)", "before right paren"),
+            ("local x = { a(): }", "before right brace"),
+            ("local x = t[a():]", "before right bracket"),
+        ];
+
+        for (code, name) in cases {
+            let tree = LuaParser::parse(code, ParserConfig::default());
+            let chunk = tree.get_chunk_node();
+            let has_unfinished_colon_index = chunk.descendants::<LuaIndexExpr>().any(|index| {
+                let end = u32::from(index.syntax().text_range().end()) as usize;
+                index
+                    .get_index_token()
+                    .is_some_and(|token| token.is_colon())
+                    && code.as_bytes().get(end.saturating_sub(1)) == Some(&b':')
+            });
+            assert!(
+                has_unfinished_colon_index,
+                "missing unfinished colon index {name}: {:#?}",
+                tree.get_red_root()
+            );
+        }
     }
 
     #[test]

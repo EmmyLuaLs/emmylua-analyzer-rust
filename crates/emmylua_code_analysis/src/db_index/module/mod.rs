@@ -80,7 +80,7 @@ impl LuaModuleIndex {
         info!("update module pattern: {:?}", self.module_patterns);
     }
 
-    pub fn set_module_replace_patterns(&mut self, patterns: HashMap<String, String>) {
+    pub fn set_module_replace_patterns(&mut self, patterns: Vec<(String, String)>) {
         self.module_replace_vec.clear();
         for (key, value) in patterns {
             let key_pattern = match Regex::new(&key) {
@@ -218,23 +218,56 @@ impl LuaModuleIndex {
 
     pub fn find_module(&self, module_path: &str) -> Option<&ModuleInfo> {
         let module_path = module_path.replace(['\\', '/'], ".");
+        // require 路径已经和模块索引完全一致时, 优先保留原始命中结果.
+        if let Some(module_info) = self.find_module_by_normalized_path(&module_path) {
+            return Some(module_info);
+        }
+
+        // moduleMap 是用户显式配置的 require 路径重写规则, 需要在 fuzzy 兜底前尝试.
+        let mapped_module_path = if self.module_replace_vec.is_empty() {
+            None
+        } else {
+            let mapped_module_path = self.replace_module_path(&module_path);
+            if mapped_module_path == module_path {
+                None
+            } else {
+                Some(mapped_module_path)
+            }
+        };
+
+        if let Some(mapped_module_path) = mapped_module_path.as_deref()
+            && let Some(module_info) = self.find_module_by_normalized_path(mapped_module_path)
+        {
+            return Some(module_info);
+        }
+
+        if self.fuzzy_search {
+            // mapped 路径也允许使用 fuzzy 匹配, 但仍然排在原始路径 fuzzy 匹配之前.
+            if let Some(mapped_module_path) = mapped_module_path.as_deref() {
+                let mapped_module_parts: Vec<&str> = mapped_module_path.split('.').collect();
+                if let Some(last_name) = mapped_module_parts.last()
+                    && let Some(module_info) = self.fuzzy_find_module(mapped_module_path, last_name)
+                {
+                    return Some(module_info);
+                }
+            }
+
+            let module_parts: Vec<&str> = module_path.split('.').collect();
+            if let Some(last_name) = module_parts.last() {
+                return self.fuzzy_find_module(&module_path, last_name);
+            }
+        }
+
+        None
+    }
+
+    fn find_module_by_normalized_path(&self, module_path: &str) -> Option<&ModuleInfo> {
         let module_parts: Vec<&str> = module_path.split('.').collect();
         if module_parts.is_empty() {
             return None;
         }
 
-        let result = self.exact_find_module(&module_parts);
-        if result.is_some() {
-            return result;
-        }
-
-        if self.fuzzy_search {
-            let last_name = module_parts.last()?;
-
-            return self.fuzzy_find_module(&module_path, last_name);
-        }
-
-        None
+        self.exact_find_module(&module_parts)
     }
 
     fn exact_find_module(&self, module_parts: &Vec<&str>) -> Option<&ModuleInfo> {

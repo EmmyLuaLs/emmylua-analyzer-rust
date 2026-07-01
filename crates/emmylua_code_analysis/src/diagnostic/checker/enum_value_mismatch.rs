@@ -128,7 +128,7 @@ fn get_enum_value_types(
                     LuaMemberKey::Integer(i) => {
                         values.push(LuaType::IntegerConst(*i));
                     }
-                    LuaMemberKey::ExprType(typ) => {
+                    LuaMemberKey::TypeKey(typ) => {
                         if let Some(value) = get_constant_type(typ) {
                             values.push(value.clone());
                         }

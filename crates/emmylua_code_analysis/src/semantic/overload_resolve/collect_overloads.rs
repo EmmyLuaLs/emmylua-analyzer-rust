@@ -2,12 +2,15 @@ use hashbrown::HashSet;
 use std::sync::Arc;
 
 use crate::{
-    DbIndex, LuaTypeDeclId,
+    DbIndex, LuaOperatorMetaMethod, LuaOperatorOwner, LuaTypeDeclId,
     db_index::{LuaFunctionType, LuaType},
-    semantic::{generic::TypeSubstitutor, infer::InferFailReason},
+    semantic::{
+        generic::{TypeSubstitutor, instantiate_type_generic},
+        infer::InferFailReason,
+    },
 };
 
-pub(crate) fn collect_callable_overload_groups(
+pub fn collect_callable_overload_groups(
     db: &DbIndex,
     callable_type: &LuaType,
     groups: &mut Vec<Vec<Arc<LuaFunctionType>>>,
@@ -36,6 +39,10 @@ fn collect_callable_overload_groups_inner(
             } else {
                 Ok(())
             };
+            // alias 的可调用性来自 origin, 非 alias 类型再补充自身的 __call 候选
+            if !type_decl.is_alias() && !type_decl.is_enum() {
+                push_call_operator_overload_group(db, &type_id.clone().into(), groups, None);
+            }
             visiting_aliases.remove(type_id);
             result?;
         }
@@ -57,6 +64,15 @@ fn collect_callable_overload_groups_inner(
             } else {
                 Ok(())
             };
+            // 泛型类型的 __call 需要先替换类型模板, 否则候选会保留未实例化的 T
+            if !type_decl.is_alias() && !type_decl.is_enum() {
+                push_call_operator_overload_group(
+                    db,
+                    &type_id.clone().into(),
+                    groups,
+                    Some(&substitutor),
+                );
+            }
             visiting_aliases.remove(&type_id);
             result?;
         }
@@ -75,12 +91,78 @@ fn collect_callable_overload_groups_inner(
             let Some(signature) = db.get_signature_index().get(sig_id) else {
                 return Ok(());
             };
-            let mut overloads = signature.overloads.to_vec();
-            overloads.push(signature.to_doc_func_type());
+            // 主签名描述了函数实现本身, 当它和 overload 同时可匹配时应作为同等匹配下的优先候选.
+            let mut overloads = vec![signature.to_doc_func_type()];
+            overloads.extend(signature.overloads.iter().cloned());
             groups.push(overloads);
+        }
+        LuaType::Instance(instance) => {
+            // instance 的可调用性由它的 base 决定.
+            collect_callable_overload_groups_inner(
+                db,
+                instance.get_base(),
+                groups,
+                visiting_aliases,
+            )?;
+        }
+        LuaType::TableConst(table) => {
+            // setmetatable 产生的 __call 挂在 metatable owner 上.
+            if let Some(meta_table) = db.get_metatable_index().get(table) {
+                push_call_operator_overload_group(
+                    db,
+                    &LuaOperatorOwner::Table(meta_table.clone()),
+                    groups,
+                    None,
+                );
+            }
         }
         _ => {}
     }
 
     Ok(())
+}
+
+fn push_call_operator_overload_group(
+    db: &DbIndex,
+    owner: &LuaOperatorOwner,
+    groups: &mut Vec<Vec<Arc<LuaFunctionType>>>,
+    substitutor: Option<&TypeSubstitutor>,
+) {
+    let Some(operator_ids) = db
+        .get_operator_index()
+        .get_operators(owner, LuaOperatorMetaMethod::Call)
+    else {
+        return;
+    };
+
+    // 同一个 owner 的 call operators 作为一个 overload group, 由调用方再做参数匹配.
+    let mut overloads = Vec::new();
+    for operator_id in operator_ids {
+        let Some(operator) = db.get_operator_index().get_operator(operator_id) else {
+            continue;
+        };
+
+        let mut func_type = operator.get_operator_func(db);
+        if let Some(substitutor) = substitutor {
+            func_type = instantiate_type_generic(db, &func_type, substitutor);
+        }
+
+        match func_type {
+            LuaType::DocFunction(func) => overloads.push(func),
+            LuaType::Signature(signature_id) => {
+                let Some(signature) = db.get_signature_index().get(&signature_id) else {
+                    continue;
+                };
+                // 未解析返回的 signature 不能安全转换成候选, 这里先跳过.
+                if signature.is_resolve_return() {
+                    overloads.push(signature.to_call_operator_func_type());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !overloads.is_empty() {
+        groups.push(overloads);
+    }
 }

@@ -1,6 +1,7 @@
 mod goto_def_definition;
 mod goto_doc_see;
 mod goto_function;
+mod goto_label;
 mod goto_module_file;
 mod goto_path;
 
@@ -13,6 +14,7 @@ pub use goto_def_definition::goto_def_definition;
 use goto_def_definition::goto_str_tpl_ref_definition;
 pub use goto_doc_see::goto_doc_see;
 pub use goto_function::compare_function_types;
+use goto_label::goto_label_definition;
 pub use goto_module_file::goto_module_file;
 use lsp_types::{
     ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, OneOf, Position,
@@ -71,6 +73,10 @@ pub fn definition(
             return None;
         }
     };
+
+    if let Some(goto_label_response) = goto_label_definition(&semantic_model, file_id, &token) {
+        return Some(goto_label_response);
+    }
 
     if let Some(semantic_decl) =
         semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default())

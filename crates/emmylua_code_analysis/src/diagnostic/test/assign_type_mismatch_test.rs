@@ -88,9 +88,7 @@ mod tests {
             "#
         ));
 
-        // TODO: 解决枚举值运算结果的推断问题
-        // 暂时没有好的方式去处理这个警告, 在 ts 中, 枚举值运算的结果不是实际值, 但我们目前的结果是实际值, 所以难以处理
-        assert!(ws.has_no_diagnostic_in_namespace(
+        assert!(!ws.has_no_diagnostic_in_namespace(
             DiagnosticCode::AssignTypeMismatch,
             r#"
                 ---@enum SubscriberFlags
@@ -757,32 +755,6 @@ return t
     }
 
     #[test]
-    fn test_issue_295() {
-        let mut ws = VirtualWorkspace::new();
-        // TODO: 解决枚举值运算结果的推断问题
-        // 暂时没有好的方式去处理这个警告, 在 ts 中, 枚举值运算的结果不是实际值, 但我们目前的结果是实际值, 所以难以处理
-        assert!(ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
-            r#"
-
-            ---@enum SubscriberFlags
-            local SubscriberFlags = {
-                Tracking = 1 << 0,
-            }
-            ---@class Subscriber
-            ---@field flags SubscriberFlags
-
-            ---@type Subscriber
-            local subscriber
-
-            subscriber.flags = subscriber.flags & ~SubscriberFlags.Tracking
-
-            subscriber.flags = 9
-        "#
-        ));
-    }
-
-    #[test]
     fn test_issue_285() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
@@ -1029,6 +1001,49 @@ return t
     }
 
     #[test]
+    fn test_optional_alias_field_rejects_table_literal_regardless_of_declaration_order() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@alias B true?
+
+            ---@class A
+            ---@field field B
+
+            ---@type A
+            local var = { field = {} }
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@alias B true?
+
+            ---@class A
+            ---@field field? B
+
+            ---@type A
+            local var = { field = {} }
+        "#
+        ));
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@field field? B
+
+            ---@alias B true?
+
+            ---@type A
+            local var = { field = {} }
+        "#
+        ));
+    }
+
+    #[test]
     fn test_issue_525() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
@@ -1145,6 +1160,77 @@ return t
                     { id = 2 },
                     { id = 2 },
                 }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_ref_index_key_match_tuple_with_optional_super_member() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class OptsBase
+                ---@field foo? boolean
+
+                ---@class Opts : OptsBase
+                ---@field [integer] string
+
+                ---@type Opts
+                local opts1 = { "hello" }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_ref_index_key_match_tuple_with_required_super_member() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class OptsBase
+                ---@field foo boolean
+
+                ---@class Opts : OptsBase
+                ---@field [integer] string
+
+                ---@type Opts
+                local opts1 = { "hello" }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_or_table_literal_satisfies_class_with_index_signature() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class Foo
+                ---@field [integer] string
+                ---@field other number
+
+                local foo ---@type Foo?
+                foo = foo or { other = 5 }
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_table_literal_index_member_must_match_class_index_signature() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@class Foo
+                ---@field [integer] string
+
+                ---@type Foo
+                local foo = { [1] = 1 }
             "#,
         ));
     }
@@ -1274,6 +1360,40 @@ return t
 
             state.results = result
             "#,
+        ));
+    }
+
+    #[test]
+    fn test_generic_constraint_assign_to_incompatible_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                ---@type string
+                local name = animal
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                ---@type Animal
+                local same = animal
+            end
+        "#
         ));
     }
 }

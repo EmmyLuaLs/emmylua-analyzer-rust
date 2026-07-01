@@ -73,6 +73,13 @@ Output diagnostics in JSON format to a file for further processing:
 emmylua_check . -f json --output ./diag.json
 ```
 
+#### Filter by Severity
+
+Only output warnings and errors:
+```shell
+emmylua_check . --severity warn
+```
+
 ---
 
 ## ⚙️ Configuration
@@ -130,9 +137,10 @@ Arguments:
 Options:
   -c, --config <CONFIG>                Path to configuration file. If not provided, ".emmyrc.json" and ".luarc.json" will be searched in the workspace directory
   -i, --ignore <IGNORE>                Comma-separated list of ignore patterns. Patterns must follow glob syntax
-  -f, --output-format <OUTPUT_FORMAT>  Specify output format [default: text] [possible values: json, text]
+  -f, --output-format <OUTPUT_FORMAT>  Specify output format [default: text] [possible values: json, text, sarif]
       --output <OUTPUT>                Specify output target (stdout or file path, only used when output_format is json) [default: stdout]
       --warnings-as-errors             Treat warnings as errors
+      --severity <SEVERITY>            Only output diagnostics at this severity or above [possible values: error, warn, info, hint]
       --verbose                        Verbose output
   -h, --help                           Print help information
   -V, --version                        Print version information

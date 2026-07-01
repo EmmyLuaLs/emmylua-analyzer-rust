@@ -8,7 +8,7 @@ use emmylua_code_analysis::{DbIndex, FileId};
 use lsp_types::Diagnostic;
 use tokio::sync::mpsc::Receiver;
 
-use crate::cmd_args::{OutputDestination, OutputFormat};
+use crate::cmd_args::{DiagnosticSeverityFilter, OutputDestination, OutputFormat};
 
 use crate::terminal_display::TerminalDisplay;
 
@@ -23,6 +23,7 @@ pub async fn output_result(
     output_format: OutputFormat,
     output: OutputDestination,
     warnings_as_errors: bool,
+    severity_filter: Option<DiagnosticSeverityFilter>,
 ) -> i32 {
     let mut writer: Box<dyn OutputWriter> = match output_format {
         OutputFormat::Json => Box::new(json_output_writer::JsonOutputWriter::new(output)),
@@ -42,7 +43,11 @@ pub async fn output_result(
 
     while let Some((file_id, diagnostics)) = receiver.recv().await {
         count += 1;
-        if let Some(diagnostics) = diagnostics {
+        if let Some(mut diagnostics) = diagnostics {
+            if let Some(severity_filter) = severity_filter {
+                diagnostics.retain(|diagnostic| severity_filter.allows(diagnostic.severity));
+            }
+
             for diagnostic in &diagnostics {
                 match diagnostic.severity {
                     Some(lsp_types::DiagnosticSeverity::ERROR) => {

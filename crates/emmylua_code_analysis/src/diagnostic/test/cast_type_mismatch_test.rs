@@ -245,4 +245,36 @@ mod tests {
             "#
         ));
     }
+
+    #[test]
+    fn test_generic_constraint_cast_to_incompatible_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::CastTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                ---@cast animal string
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::CastTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                ---@cast animal Animal
+            end
+        "#
+        ));
+    }
 }

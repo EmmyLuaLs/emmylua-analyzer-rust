@@ -14,10 +14,10 @@ use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
 use crate::{
     handlers::{
+        common::{find_all_same_named_members, find_member_origin_owner},
         definition::goto_function::{
             find_function_call_origin, find_matching_function_definitions,
         },
-        hover::{find_all_same_named_members, find_member_origin_owner},
     },
     util::{to_camel_case, to_pascal_case, to_snake_case},
 };
@@ -114,7 +114,7 @@ fn handle_member_definition(
         trigger_token,
         &same_named_members,
     ) {
-        process_matched_members(semantic_model, compilation, &match_members, &mut locations);
+        process_matched_members(semantic_model, &match_members, &mut locations);
         if !locations.is_empty() {
             return Some(GotoDefinitionResponse::Array(locations));
         }
@@ -164,7 +164,6 @@ fn handle_type_decl_definition(
 
 fn process_matched_members(
     semantic_model: &SemanticModel,
-    compilation: &LuaCompilation,
     match_members: &[LuaSemanticDeclId],
     locations: &mut Vec<Location>,
 ) {
@@ -173,7 +172,7 @@ fn process_matched_members(
             LuaSemanticDeclId::Member(member_id) => {
                 if should_trace_member(semantic_model, member_id).unwrap_or(false) {
                     // 尝试搜索这个成员最原始的定义
-                    match find_member_origin_owner(compilation, semantic_model, *member_id) {
+                    match find_member_origin_owner(semantic_model, *member_id) {
                         Some(LuaSemanticDeclId::Member(origin_member_id)) => {
                             if let Some(location) =
                                 get_member_location(semantic_model, &origin_member_id)

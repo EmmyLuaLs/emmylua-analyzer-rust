@@ -200,6 +200,13 @@ impl LuaOperator {
         }
     }
 
+    pub fn get_default_class_ctor_signature_id(&self) -> Option<LuaSignatureId> {
+        match self.func {
+            OperatorFunction::DefaultClassCtor { id, .. } => Some(id),
+            _ => None,
+        }
+    }
+
     pub fn get_file_id(&self) -> FileId {
         self.file_id
     }

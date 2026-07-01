@@ -2,6 +2,30 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+## [0.23.3] - Unreleased
+
+### ✨ Added
+
+- **Support const generic parameters**: Added the `const T` syntax for generics, for example `---@generic const T`.
+- **emmylua_check severity filter**: Added the `--severity` option to filter diagnostic output by minimum severity.
+
+### ⚠️ Deprecated
+
+- **std.ConstTpl**: Marked `std.ConstTpl` as deprecated. Use the new `const T` generic syntax instead.
+
+### 🔧 Changed
+
+- **Rename table field optimization**: `lsp_optimization("skip_table_fields_check")` is now the documented name for skipping table field diagnostics. The old `check_table_field` name remains supported as a compatibility alias.
+- **Refactor hover signature**: Refactored signature rendering in hover.
+
+### 🗑️ Removed
+
+- **`---@attribute` tag**: Removed the `---@attribute` tag. Attribute definitions now use C#-like class definitions:
+```lua
+---@class NewAttribute: Attribute
+---@overload fun(args)
+```
+
 ## [0.23.2] - 2026-6-3
 
 - **Fix some stuck loading issue**: Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace
