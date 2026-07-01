@@ -92,7 +92,7 @@ pub fn init_logger(root: Option<&str>, cmd_args: &CmdArgs) {
     }
 
     let uri = file_path_to_uri(&log_file_path).unwrap();
-    eprintln!("init logger success with file: {}", uri.as_str());
+    info!("init logger success with file: {}", uri.as_str());
     info!("{} v{}", CRATE_NAME, CRATE_VERSION);
 }
 
