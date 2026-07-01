@@ -104,6 +104,10 @@ fn check_name_expr(
         }
         _ => None,
     };
+    let source_type = source_type.map(|source_type| {
+        semantic_model
+            .apply_assignment_target_casts(LuaExpr::NameExpr(name_expr.clone()), source_type)
+    });
     check_assign_type_mismatch(
         context,
         semantic_model,
@@ -139,6 +143,10 @@ fn check_index_expr(
         false,
     )
     .ok();
+    let source_type = source_type.map(|source_type| {
+        semantic_model
+            .apply_assignment_target_casts(LuaExpr::IndexExpr(index_expr.clone()), source_type)
+    });
 
     check_assign_type_mismatch(
         context,
