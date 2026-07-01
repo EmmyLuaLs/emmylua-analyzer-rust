@@ -2362,7 +2362,7 @@ mod tests {
             end
 
             do
-                B:<??>
+                B:one():<??>
             end
             "#,
             CompletionTriggerKind::TRIGGER_CHARACTER,
@@ -2374,6 +2374,105 @@ mod tests {
             .ok_or_else(|| format!("completion item `one` not found in {items:?}"))
             .or_fail()?;
         verify_eq!(item.kind, Some(CompletionItemKind::FUNCTION))?;
+
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_colon_member_completion_before_scope_boundaries() -> Result<()> {
+        let cases = [
+            (
+                "before end",
+                r#"
+                do
+                    B:one():<??>
+                end
+                "#,
+            ),
+            (
+                "before else",
+                r#"
+                if true then
+                    B:one():<??>
+                else
+                end
+                "#,
+            ),
+            (
+                "before elseif",
+                r#"
+                if true then
+                    B:one():<??>
+                elseif false then
+                end
+                "#,
+            ),
+            (
+                "before until",
+                r#"
+                repeat
+                    B:one():<??>
+                until true
+                "#,
+            ),
+            (
+                "before then",
+                r#"
+                if B:one():<??> then
+                end
+                "#,
+            ),
+            (
+                "before while do",
+                r#"
+                while B:one():<??> do
+                end
+                "#,
+            ),
+            (
+                "before numeric for comma",
+                r#"
+                for i = B:one():<??>, 10 do
+                end
+                "#,
+            ),
+            (
+                "before numeric for do",
+                r#"
+                for i = 1, B:one():<??> do
+                end
+                "#,
+            ),
+            (
+                "before generic for do",
+                r#"
+                for _, v in B:one():<??> do
+                end
+                "#,
+            ),
+        ];
+        let mut ws = ProviderVirtualWorkspace::new();
+        ws.def(
+            r#"
+                ---@class B
+                B = {}
+                function B:one()
+                    return self
+                end
+        "#,
+        );
+
+        for (name, block) in cases {
+            let items =
+                get_completion_items(&mut ws, block, CompletionTriggerKind::TRIGGER_CHARACTER)?;
+
+            let item = items
+                .iter()
+                .find(|item| item.label == "one")
+                .ok_or_else(|| format!("completion item `one` not found in {name}: {items:?}"))
+                .or_fail()?;
+            verify_eq!(item.kind, Some(CompletionItemKind::FUNCTION))?;
+        }
 
         Ok(())
     }
