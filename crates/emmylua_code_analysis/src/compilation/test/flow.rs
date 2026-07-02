@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use crate::{DiagnosticCode, EmmyrcLuaVersion, LuaType, VirtualWorkspace};
     use emmylua_parser::{LuaAstToken, LuaLocalName};
     use ntest::timeout;
 
@@ -1473,6 +1473,30 @@ end
         );
 
         assert_eq!(ws.expr_ty("after_loop"), ws.ty("string?"));
+    }
+
+    #[test]
+    #[timeout(5000)]
+    fn test_unreachable_continue_loop_after_return_does_not_cycle() {
+        let mut ws = VirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.runtime.version = EmmyrcLuaVersion::LuaJITExt;
+        ws.update_emmyrc(emmyrc);
+
+        ws.def(
+            r#"
+        local side_effect = 0
+        return boolean
+
+        local continue_counter = 0
+        for i = 1, 5 do
+            if i % 2 == 0 then
+                continue
+            end
+            continue_counter = continue_counter + 1
+        end
+        "#,
+        );
     }
 
     #[test]
