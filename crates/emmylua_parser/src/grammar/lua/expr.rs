@@ -42,6 +42,7 @@ fn parse_sub_expr(p: &mut LuaParser, limit: i32) -> ParseResult {
         if p.current_token() == LuaTokenKind::TkTernary && TERNARY_LEFT > limit {
             let m = cm.precede(p, LuaSyntaxKind::TernaryExpr);
             p.bump(); // consume '?'
+            p.enter_ternary();
             match parse_sub_expr(p, 0) {
                 Ok(_) => {}
                 Err(_) => {
@@ -51,6 +52,7 @@ fn parse_sub_expr(p: &mut LuaParser, limit: i32) -> ParseResult {
                     ));
                 }
             }
+            p.leave_ternary();
             match expect_token(p, LuaTokenKind::TkColon) {
                 Ok(_) => {}
                 Err(_) => {
@@ -524,6 +526,7 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
             let m = p.mark(LuaSyntaxKind::ParenExpr);
             let paren_range = p.current_token_range();
             p.bump();
+            p.enter_paren();
             match parse_expr(p) {
                 Ok(_) => {}
                 Err(err) => {
@@ -531,10 +534,12 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
                         &t!("expected expression inside parentheses"),
                         paren_range,
                     ));
+                    p.leave_paren();
                     m.complete(p);
                     return Err(err);
                 }
             }
+            p.leave_paren();
             if p.current_token() == LuaTokenKind::TkRightParen {
                 p.bump();
             } else {
@@ -565,7 +570,7 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
                 cm = m.complete(p);
             }
             LuaTokenKind::TkColon => {
-                if !is_colon_call_lookahead(p) {
+                if p.inside_ternary_branch() && !p.inside_paren() {
                     return Ok(cm);
                 }
                 let m = cm.precede(p, LuaSyntaxKind::IndexExpr);
@@ -650,25 +655,6 @@ fn parse_name_or_special_function(p: &mut LuaParser) -> ParseResult {
     }
 
     Ok(cm)
-}
-
-fn is_colon_call_lookahead(p: &LuaParser) -> bool {
-    let name_token = p.peek_next_token();
-    match name_token {
-        LuaTokenKind::TkName => {
-            let after_name = p.peek_nth_token(1);
-            matches!(
-                after_name,
-                LuaTokenKind::TkLeftParen
-                    | LuaTokenKind::TkLeftBrace
-                    | LuaTokenKind::TkString
-                    | LuaTokenKind::TkLongString
-                    | LuaTokenKind::TkSafeNavigation
-            )
-        }
-        LuaTokenKind::None | LuaTokenKind::TkEof => true,
-        _ => false,
-    }
 }
 
 fn parse_index_struct(p: &mut LuaParser) -> Result<(), ParseFailReason> {
