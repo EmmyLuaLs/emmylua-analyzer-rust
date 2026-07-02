@@ -6,8 +6,8 @@ use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    CacheEntry, DbIndex, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason, LuaDeclId,
-    LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
+    CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason,
+    LuaDeclId, LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
     semantic::{
         cache::{FlowAssignmentInfo, FlowMode, FlowVarCache},
         infer::{
@@ -1381,6 +1381,8 @@ impl<'a> FlowTypeEngine<'a> {
                 FlowNodeKind::BranchLabel | FlowNodeKind::NamedLabel(_) => {
                     let branch_flow_ids = if matches!(&flow_node.kind, FlowNodeKind::BranchLabel) {
                         get_branch_label_flow_ids(self.tree, self.cache, flow_node)?
+                    } else if let Some(FlowAntecedent::Single(single)) = &flow_node.antecedent {
+                        Arc::<[FlowId]>::from([*single].as_slice())
                     } else {
                         Arc::<[FlowId]>::from(get_multi_antecedents(self.tree, flow_node)?)
                     };

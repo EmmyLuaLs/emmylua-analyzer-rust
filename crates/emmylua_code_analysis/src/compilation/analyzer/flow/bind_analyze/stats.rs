@@ -390,21 +390,28 @@ pub fn bind_repeat_stat(
     let post_repeat_label = binder.create_branch_label();
     binder.add_antecedent(pre_repeat_label, current);
 
-    let mut block_flow_id = pre_repeat_label;
+    let block_entry = finish_flow_label(binder, pre_repeat_label, current);
+    let mut block_flow_id = block_entry;
     // Bind the block of code inside the repeat statement
     if let Some(iter_block) = repeat_stat.get_block() {
         block_flow_id = bind_iter_block(
             binder,
             iter_block,
-            pre_repeat_label,
+            block_entry,
             pre_repeat_label,
             post_repeat_label,
         );
     }
 
-    // Bind the condition expression
+    // Bind the condition expression as a condition node
     if let Some(condition_expr) = repeat_stat.get_condition_expr() {
-        bind_expr(binder, condition_expr, block_flow_id);
+        bind_condition_expr(
+            binder,
+            condition_expr,
+            block_flow_id,
+            post_repeat_label,
+            pre_repeat_label,
+        );
     }
 
     finish_flow_label(binder, post_repeat_label, block_flow_id)
