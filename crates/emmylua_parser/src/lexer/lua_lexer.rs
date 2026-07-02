@@ -255,7 +255,7 @@ impl<'a> LuaLexer<'a> {
                         if !self.support(LuaFeatures::BitwiseOperation) {
                             self.error(|| t!("bitwise operation is not supported"));
                         }
-                        LuaTokenKind::TkNe
+                        LuaTokenKind::TkBitXor
                     }
                 }
             }

@@ -105,6 +105,7 @@ impl LuaFeaturesSet {
         let mut set = LuaFeaturesSet::features_luajit();
 
         // luajit-extension
+        set.add(LuaFeatures::BitwiseOperation);
         set.add(LuaFeatures::PlusAssign);
         set.add(LuaFeatures::MinusAssign);
         set.add(LuaFeatures::StarAssign);
