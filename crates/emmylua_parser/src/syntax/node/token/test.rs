@@ -161,6 +161,10 @@ mod tests {
     test_float_token_value!(test_number_token_value_hex_float5, "0x1.8p-1", 0.75);
     test_float_token_value!(test_number_token_value_hex_float6, "0xABCDE2", 11259362.0);
 
+    test_float_token_value!(test_float_token_value_underscore, "1_000.5", 1000.5);
+    test_float_token_value!(test_float_token_value_underscore_2, "1_000.5e2", 100050.0);
+    test_float_token_value!(test_float_token_value_underscore_hex, "0x1_0.0p0", 16.0);
+
     macro_rules! test_int_token_value {
         ($name:ident, $code:expr, $expected:expr) => {
             #[test]
@@ -181,4 +185,13 @@ mod tests {
     test_int_token_value!(test_number_token_value_int7, "0x0", 0);
     test_int_token_value!(test_number_token_value_int8, "0x11LL", 17);
     test_int_token_value!(test_number_token_value_int9, "0b10101", 21);
+
+    test_int_token_value!(test_number_token_value_int_underscore, "1_000", 1000);
+    test_int_token_value!(
+        test_number_token_value_int_underscore_2,
+        "1_000_000",
+        1000000
+    );
+    test_int_token_value!(test_number_token_value_int_underscore_hex, "0xFF_FF", 65535);
+    test_int_token_value!(test_number_token_value_int_underscore_bin, "0b1_0", 2);
 }

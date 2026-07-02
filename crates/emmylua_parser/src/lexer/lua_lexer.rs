@@ -475,12 +475,13 @@ impl<'a> LuaLexer<'a> {
                     '?' if self.support(LuaFeatures::NilCoalescingOperator) => {
                         self.reader.bump();
 
-                        if self.support(LuaFeatures::NilCoalescingAssign)
-                            && self.reader.current_char() == '='
-                        {
-                            self.reader.bump();
-                            return LuaTokenKind::TkNilCoalescingAssign;
-                        }
+                        // luajit abandoned this syntax
+                        // if self.support(LuaFeatures::NilCoalescingAssign)
+                        //     && self.reader.current_char() == '='
+                        // {
+                        //     self.reader.bump();
+                        //     return LuaTokenKind::TkNilCoalescingAssign;
+                        // }
                         LuaTokenKind::TkNilCoalescing
                     }
                     '.' if self.support(LuaFeatures::SafeNavigationOperator) => {
@@ -645,6 +646,10 @@ impl<'a> LuaLexer<'a> {
 
         while !self.reader.is_eof() {
             let ch = self.reader.current_char();
+            if self.lexer_config.support(LuaFeatures::UnderscoreNumber) && ch == '_' {
+                self.reader.bump();
+                continue;
+            }
             let continue_ = match state {
                 NumberState::Int => match ch {
                     '0'..='9' => true,

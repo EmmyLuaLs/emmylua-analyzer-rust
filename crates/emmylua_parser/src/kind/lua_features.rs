@@ -1,18 +1,24 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u64)]
 pub enum LuaFeatures {
+    // std lua
     Goto = 1,             // "goto"
-    ComplexNumber,        // "0x1.2p3i"
-    LLInteger,            // "0LL"
-    BinaryInteger,        // "0b1010"
     BitwiseOperation,     // "5 & 2"
     IntegerFloorDivision, // "5 // 2"
+    LocalAttrib,          // "local a<const> = 1"
     GlobalDeclaration,    // "global a = 1"
+    NamedVararg,          // "function f(a, b, c, ...args) end"
+
     // non-standard symbols
     DoubleSlash, // "//"
     SlashStar,   // "/**/"
 
-    // luajit2-extension symbols
+    // luajit
+    ComplexNumber, // "0x1.2p3i"
+    LLInteger,     // "0LL"
+    BinaryInteger, // "0b1010"
+
+    // luajit2-extension
     PlusAssign,             // "+="
     MinusAssign,            // "-="
     StarAssign,             // "*="
@@ -39,7 +45,9 @@ pub enum LuaFeatures {
 
     // luajit3
     StringInterpolation, // "`"
-    NilCoalescingAssign, // "??="
+    // luajit not consider this syntax
+    // NilCoalescingAssign, // "??="
+    UnderscoreNumber, // "1_23"
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -72,13 +80,15 @@ impl LuaFeaturesSet {
     }
 
     pub fn features_lua54() -> Self {
-        let set = LuaFeaturesSet::features_lua53();
+        let mut set = LuaFeaturesSet::features_lua53();
+        set.add(LuaFeatures::LocalAttrib);
         set
     }
 
     pub fn features_lua55() -> Self {
         let mut set = LuaFeaturesSet::features_lua54();
         set.add(LuaFeatures::GlobalDeclaration);
+        set.add(LuaFeatures::NamedVararg);
         set
     }
 
@@ -122,12 +132,13 @@ impl LuaFeaturesSet {
 
     pub fn features_luajit3() -> Self {
         let mut set = LuaFeaturesSet::features_luajit_extension();
-        // lua5.3+
-        set.add(LuaFeatures::IntegerFloorDivision);
 
         // luajit3
-        set.add(LuaFeatures::NilCoalescingAssign);
+        set.add(LuaFeatures::IntegerFloorDivision);
+        // set.add(LuaFeatures::NilCoalescingAssign);
         set.add(LuaFeatures::StringInterpolation);
+        set.add(LuaFeatures::UnderscoreNumber);
+        set.add(LuaFeatures::NamedVararg);
         set
     }
 

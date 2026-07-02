@@ -1,5 +1,5 @@
 use crate::{
-    SpecialFunction,
+    LuaFeatures, SpecialFunction,
     grammar::{ParseFailReason, ParseResult, lua::is_statement_start_token},
     kind::{BinaryOperator, LuaOpKind, LuaSyntaxKind, LuaTokenKind, UNARY_PRIORITY, UnaryOperator},
     parser::{LuaParser, MarkerEventContainer},
@@ -259,7 +259,7 @@ fn parse_param_name(p: &mut LuaParser, is_vararg: &mut bool) -> ParseResult {
             *is_vararg = true;
             p.bump();
             if token == LuaTokenKind::TkDots
-                && p.parse_config.support_named_var_args()
+                && p.parse_config.support(LuaFeatures::NamedVararg)
                 && p.current_token() == LuaTokenKind::TkName
             {
                 p.bump();

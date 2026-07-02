@@ -1,5 +1,5 @@
 use crate::{
-    LuaLanguageLevel,
+    LuaFeatures, LuaLanguageLevel,
     grammar::{ParseFailReason, ParseResult, lua::is_statement_start_token},
     kind::{LuaSyntaxKind, LuaTokenKind},
     parser::{CompleteMarker, LuaParser, MarkerEventContainer},
@@ -737,7 +737,7 @@ fn parse_attrib(p: &mut LuaParser) -> ParseResult {
             ));
         }
     }
-    if !p.parse_config.support_local_attrib() {
+    if !p.parse_config.support(LuaFeatures::LocalAttrib) {
         p.errors.push(LuaParseError::syntax_error_from(
             &t!(
                 "local attribute is not supported for current version: %{level}",

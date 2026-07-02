@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rowan::NodeCache;
 
-use crate::{LuaFeaturesSet, kind::LuaLanguageLevel, lexer::LexerConfig};
+use crate::{LuaFeatures, LuaFeaturesSet, kind::LuaLanguageLevel, lexer::LexerConfig};
 
 pub struct ParserConfig<'cache> {
     pub level: LuaLanguageLevel,
@@ -33,16 +33,12 @@ impl<'cache> ParserConfig<'cache> {
         self.lexer_config
     }
 
-    pub fn support_local_attrib(&self) -> bool {
-        self.level >= LuaLanguageLevel::Lua54
+    pub fn support(&self, symbol: LuaFeatures) -> bool {
+        self.lexer_config.support(symbol)
     }
 
     pub fn support_emmylua_doc(&self) -> bool {
         self.enable_emmylua_doc
-    }
-
-    pub fn support_named_var_args(&self) -> bool {
-        self.level >= LuaLanguageLevel::Lua55
     }
 
     pub fn node_cache(&mut self) -> Option<&mut NodeCache> {
