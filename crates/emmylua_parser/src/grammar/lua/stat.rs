@@ -1,5 +1,5 @@
 use crate::{
-    LuaLanguageLevel,
+    LuaFeatures, LuaLanguageLevel,
     grammar::{ParseFailReason, ParseResult, lua::is_statement_start_token},
     kind::{LuaSyntaxKind, LuaTokenKind},
     parser::{CompleteMarker, LuaParser, MarkerEventContainer},
@@ -240,13 +240,13 @@ fn parse_stat(p: &mut LuaParser) -> ParseResult {
         LuaTokenKind::TkReturn => parse_return(p)?,
         LuaTokenKind::TkBreak => parse_break(p)?,
         LuaTokenKind::TkContinue => parse_continue(p)?,
-        LuaTokenKind::TkConst => parse_const(p)?,
+        LuaTokenKind::TkConst => try_parse_const(p)?,
         LuaTokenKind::TkDo => parse_do(p)?,
         LuaTokenKind::TkRepeat => parse_repeat(p)?,
         LuaTokenKind::TkGoto => parse_goto(p)?,
         LuaTokenKind::TkDbColon => parse_label_stat(p)?,
         LuaTokenKind::TkSemicolon => parse_empty_stat(p)?,
-        _ => parse_assign_or_expr_or_global_stat(p)?,
+        _ => parse_assign_or_expr_or_soft_keyword_stat(p)?,
     };
 
     Ok(cm)
@@ -645,8 +645,9 @@ fn parse_local(p: &mut LuaParser) -> ParseResult {
     Ok(m.complete(p))
 }
 
-fn parse_const(p: &mut LuaParser) -> ParseResult {
+fn try_parse_const(p: &mut LuaParser) -> ParseResult {
     let mut m = p.mark(LuaSyntaxKind::ConstStat);
+    p.set_current_token_kind(LuaTokenKind::TkConst);
     p.bump(); // consume 'const'
 
     match p.current_token() {
@@ -737,7 +738,7 @@ fn parse_attrib(p: &mut LuaParser) -> ParseResult {
             ));
         }
     }
-    if !p.parse_config.support_local_attrib() {
+    if !p.parse_config.support(LuaFeatures::LocalAttrib) {
         p.errors.push(LuaParseError::syntax_error_from(
             &t!(
                 "local attribute is not supported for current version: %{level}",
@@ -773,6 +774,7 @@ fn parse_break(p: &mut LuaParser) -> ParseResult {
 
 fn parse_continue(p: &mut LuaParser) -> ParseResult {
     let m = p.mark(LuaSyntaxKind::ContinueStat);
+    p.set_current_token_kind(LuaTokenKind::TkContinue);
     p.bump();
     if_token_bump(p, LuaTokenKind::TkSemicolon);
     Ok(m.complete(p))
@@ -878,12 +880,24 @@ fn try_parse_global_stat(p: &mut LuaParser) -> ParseResult {
     Ok(m.complete(p))
 }
 
-fn parse_assign_or_expr_or_global_stat(p: &mut LuaParser) -> ParseResult {
-    if p.parse_config.level >= LuaLanguageLevel::Lua55 && p.current_token() == LuaTokenKind::TkName
-    {
-        let token_text = p.current_token_text();
-        if token_text == "global" {
-            let cm = try_parse_global_stat(p)?;
+fn try_soft_keyword_stat(p: &mut LuaParser) -> Option<ParseResult> {
+    let keyword = p.current_token_text();
+    match keyword {
+        "global" if p.parse_config.support(LuaFeatures::GlobalDeclaration) => {
+            Some(try_parse_global_stat(p))
+        }
+        "const" if p.parse_config.support(LuaFeatures::ConstDeclaration) => {
+            Some(try_parse_const(p))
+        }
+        "continue" if p.parse_config.support(LuaFeatures::Continue) => Some(parse_continue(p)),
+        _ => None,
+    }
+}
+
+fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
+    if p.current_token() == LuaTokenKind::TkName {
+        if let Some(cm_result) = try_soft_keyword_stat(p) {
+            let cm = cm_result?;
             if !cm.is_invalid() {
                 return Ok(cm);
             }
@@ -921,7 +935,10 @@ fn parse_assign_or_expr_or_global_stat(p: &mut LuaParser) -> ParseResult {
     }
 
     // 验证左值
-    if !matches!(cm.kind, LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr) {
+    if !matches!(
+        cm.kind,
+        LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr | LuaSyntaxKind::SafeIndexExpr
+    ) {
         p.push_error(LuaParseError::syntax_error_from(
             &t!("invalid left-hand side in assignment (expected variable or table index)"),
             range,
@@ -937,7 +954,9 @@ fn parse_assign_or_expr_or_global_stat(p: &mut LuaParser) -> ParseResult {
             Ok(expr_cm) => {
                 if !matches!(
                     expr_cm.kind,
-                    LuaSyntaxKind::NameExpr | LuaSyntaxKind::IndexExpr
+                    LuaSyntaxKind::NameExpr
+                        | LuaSyntaxKind::IndexExpr
+                        | LuaSyntaxKind::SafeIndexExpr
                 ) {
                     p.push_error(LuaParseError::syntax_error_from(
                         &t!(

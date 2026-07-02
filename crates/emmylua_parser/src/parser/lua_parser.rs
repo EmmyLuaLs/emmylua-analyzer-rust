@@ -23,6 +23,8 @@ pub struct LuaParser<'a> {
     mark_level: usize,
     pub parse_config: ParserConfig<'a>,
     pub(crate) errors: &'a mut Vec<LuaParseError>,
+    ternary_depth: usize,
+    paren_depth: usize,
 }
 
 impl MarkerEventContainer for LuaParser<'_> {
@@ -61,6 +63,8 @@ impl<'a> LuaParser<'a> {
             parse_config: config,
             mark_level: 0,
             errors: &mut errors,
+            ternary_depth: 0,
+            paren_depth: 0,
         };
 
         parse_chunk(&mut parser);
@@ -191,6 +195,30 @@ impl<'a> LuaParser<'a> {
         } else {
             self.tokens[index].kind
         }
+    }
+
+    pub fn enter_ternary(&mut self) {
+        self.ternary_depth += 1;
+    }
+
+    pub fn leave_ternary(&mut self) {
+        self.ternary_depth = self.ternary_depth.saturating_sub(1);
+    }
+
+    pub fn inside_ternary_branch(&self) -> bool {
+        self.ternary_depth > 0
+    }
+
+    pub fn enter_paren(&mut self) {
+        self.paren_depth += 1;
+    }
+
+    pub fn leave_paren(&mut self) {
+        self.paren_depth = self.paren_depth.saturating_sub(1);
+    }
+
+    pub fn inside_paren(&self) -> bool {
+        self.paren_depth > 0
     }
 
     fn skip_trivia(&self, index: &mut usize) {
@@ -399,6 +427,8 @@ mod tests {
             parse_config: config,
             mark_level: 0,
             errors,
+            ternary_depth: 0,
+            paren_depth: 0,
         };
         parser.init();
 

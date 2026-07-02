@@ -69,7 +69,7 @@ impl EmmyLuaAnalysis {
     }
 
     pub fn init_std_lib(&mut self, create_resources_dir: Option<String>) {
-        let is_jit = matches!(self.emmyrc.runtime.version, EmmyrcLuaVersion::LuaJIT);
+        let is_jit = self.emmyrc.runtime.version.is_luajit();
         let (std_root, files) = load_resource_std(create_resources_dir, is_jit);
         self.compilation
             .get_db_mut()

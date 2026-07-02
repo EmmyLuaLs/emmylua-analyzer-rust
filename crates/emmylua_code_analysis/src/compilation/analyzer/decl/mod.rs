@@ -139,6 +139,7 @@ fn is_scope_owner(node: &LuaAst) -> bool {
             | LuaSyntaxKind::FuncStat
             | LuaSyntaxKind::LocalFuncStat
             | LuaSyntaxKind::AssignStat
+            | LuaSyntaxKind::ConstStat
     )
 }
 

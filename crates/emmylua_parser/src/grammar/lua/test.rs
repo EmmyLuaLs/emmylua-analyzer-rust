@@ -1263,6 +1263,141 @@ Syntax(Chunk)@0..20
     }
 
     #[test]
+    fn test_ternary_right_assoc() {
+        let code = "local x = a ? b ? c : d : e\n";
+        let result = r#"
+Syntax(Chunk)@0..28
+  Syntax(Block)@0..28
+    Syntax(LocalStat)@0..27
+      Token(TkLocal)@0..5 "local"
+      Token(TkWhitespace)@5..6 " "
+      Syntax(LocalName)@6..7
+        Token(TkName)@6..7 "x"
+      Token(TkWhitespace)@7..8 " "
+      Token(TkAssign)@8..9 "="
+      Token(TkWhitespace)@9..10 " "
+      Syntax(TernaryExpr)@10..27
+        Syntax(NameExpr)@10..11
+          Token(TkName)@10..11 "a"
+        Token(TkWhitespace)@11..12 " "
+        Token(TkTernary)@12..13 "?"
+        Token(TkWhitespace)@13..14 " "
+        Syntax(TernaryExpr)@14..23
+          Syntax(NameExpr)@14..15
+            Token(TkName)@14..15 "b"
+          Token(TkWhitespace)@15..16 " "
+          Token(TkTernary)@16..17 "?"
+          Token(TkWhitespace)@17..18 " "
+          Syntax(NameExpr)@18..19
+            Token(TkName)@18..19 "c"
+          Token(TkWhitespace)@19..20 " "
+          Token(TkColon)@20..21 ":"
+          Token(TkWhitespace)@21..22 " "
+          Syntax(NameExpr)@22..23
+            Token(TkName)@22..23 "d"
+        Token(TkWhitespace)@23..24 " "
+        Token(TkColon)@24..25 ":"
+        Token(TkWhitespace)@25..26 " "
+        Syntax(NameExpr)@26..27
+          Token(TkName)@26..27 "e"
+    Token(TkEndOfLine)@27..28 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
+    fn test_ternary_with_paren_method_call() {
+        let code = "local x = a ? (b:call()) : c\n";
+        let result = r#"
+Syntax(Chunk)@0..29
+  Syntax(Block)@0..29
+    Syntax(LocalStat)@0..28
+      Token(TkLocal)@0..5 "local"
+      Token(TkWhitespace)@5..6 " "
+      Syntax(LocalName)@6..7
+        Token(TkName)@6..7 "x"
+      Token(TkWhitespace)@7..8 " "
+      Token(TkAssign)@8..9 "="
+      Token(TkWhitespace)@9..10 " "
+      Syntax(TernaryExpr)@10..28
+        Syntax(NameExpr)@10..11
+          Token(TkName)@10..11 "a"
+        Token(TkWhitespace)@11..12 " "
+        Token(TkTernary)@12..13 "?"
+        Token(TkWhitespace)@13..14 " "
+        Syntax(ParenExpr)@14..24
+          Token(TkLeftParen)@14..15 "("
+          Syntax(CallExpr)@15..23
+            Syntax(IndexExpr)@15..21
+              Syntax(NameExpr)@15..16
+                Token(TkName)@15..16 "b"
+              Token(TkColon)@16..17 ":"
+              Token(TkName)@17..21 "call"
+            Syntax(CallArgList)@21..23
+              Token(TkLeftParen)@21..22 "("
+              Token(TkRightParen)@22..23 ")"
+          Token(TkRightParen)@23..24 ")"
+        Token(TkWhitespace)@24..25 " "
+        Token(TkColon)@25..26 ":"
+        Token(TkWhitespace)@26..27 " "
+        Syntax(NameExpr)@27..28
+          Token(TkName)@27..28 "c"
+    Token(TkEndOfLine)@28..29 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
+    fn test_method_chain_no_ternary() {
+        let code = "local x = a:b():c()\n";
+        let result = r#"
+Syntax(Chunk)@0..20
+  Syntax(Block)@0..20
+    Syntax(LocalStat)@0..19
+      Token(TkLocal)@0..5 "local"
+      Token(TkWhitespace)@5..6 " "
+      Syntax(LocalName)@6..7
+        Token(TkName)@6..7 "x"
+      Token(TkWhitespace)@7..8 " "
+      Token(TkAssign)@8..9 "="
+      Token(TkWhitespace)@9..10 " "
+      Syntax(CallExpr)@10..19
+        Syntax(IndexExpr)@10..17
+          Syntax(CallExpr)@10..15
+            Syntax(IndexExpr)@10..13
+              Syntax(NameExpr)@10..11
+                Token(TkName)@10..11 "a"
+              Token(TkColon)@11..12 ":"
+              Token(TkName)@12..13 "b"
+            Syntax(CallArgList)@13..15
+              Token(TkLeftParen)@13..14 "("
+              Token(TkRightParen)@14..15 ")"
+          Token(TkColon)@15..16 ":"
+          Token(TkName)@16..17 "c"
+        Syntax(CallArgList)@17..19
+          Token(TkLeftParen)@17..18 "("
+          Token(TkRightParen)@18..19 ")"
+    Token(TkEndOfLine)@19..20 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
     fn test_const_stat() {
         let code = "const x = 1\n";
         let result = r#"
@@ -1345,6 +1480,63 @@ Syntax(Chunk)@0..30
           Token(TkLeftParen)@27..28 "("
           Token(TkRightParen)@28..29 ")"
     Token(TkEndOfLine)@29..30 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
+    fn test_safe_navigation_assign() {
+        let code = "obj?.field = 1\n";
+        let result = r#"
+Syntax(Chunk)@0..15
+  Syntax(Block)@0..15
+    Syntax(AssignStat)@0..14
+      Syntax(SafeIndexExpr)@0..10
+        Syntax(NameExpr)@0..3
+          Token(TkName)@0..3 "obj"
+        Token(TkSafeNavigation)@3..5 "?."
+        Token(TkName)@5..10 "field"
+      Token(TkWhitespace)@10..11 " "
+      Token(TkAssign)@11..12 "="
+      Token(TkWhitespace)@12..13 " "
+      Syntax(LiteralExpr)@13..14
+        Token(TkInt)@13..14 "1"
+    Token(TkEndOfLine)@14..15 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
+    fn test_safe_navigation_assign_chain() {
+        let code = "a?.b?.c = 2\n";
+        let result = r#"
+Syntax(Chunk)@0..12
+  Syntax(Block)@0..12
+    Syntax(AssignStat)@0..11
+      Syntax(SafeIndexExpr)@0..7
+        Syntax(SafeIndexExpr)@0..4
+          Syntax(NameExpr)@0..1
+            Token(TkName)@0..1 "a"
+          Token(TkSafeNavigation)@1..3 "?."
+          Token(TkName)@3..4 "b"
+        Token(TkSafeNavigation)@4..6 "?."
+        Token(TkName)@6..7 "c"
+      Token(TkWhitespace)@7..8 " "
+      Token(TkAssign)@8..9 "="
+      Token(TkWhitespace)@9..10 " "
+      Syntax(LiteralExpr)@10..11
+        Token(TkInt)@10..11 "2"
+    Token(TkEndOfLine)@11..12 "\n"
         "#;
 
         assert_ast_eq!(
