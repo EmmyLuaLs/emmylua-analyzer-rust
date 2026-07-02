@@ -161,20 +161,31 @@ fn bind_ternary_expr(
     let condition = ternary_expr.get_condition_expr()?;
     let (true_expr, false_expr) = ternary_expr.get_true_false_exprs()?;
 
-    let pre_false = binder.create_branch_label();
-    bind_condition_expr(binder, condition, current, binder.true_target, pre_false);
-    let current = finish_flow_label(binder, pre_false, current);
+    let true_branch_label = binder.create_branch_label();
+    let false_branch_label = binder.create_branch_label();
+
+    bind_condition_expr(
+        binder,
+        condition,
+        current,
+        true_branch_label,
+        false_branch_label,
+    );
+
+    let true_branch_start = finish_flow_label(binder, true_branch_label, binder.unreachable);
     bind_condition_expr(
         binder,
         true_expr,
-        current,
+        true_branch_start,
         binder.true_target,
         binder.false_target,
     );
+
+    let false_branch_start = finish_flow_label(binder, false_branch_label, binder.unreachable);
     bind_condition_expr(
         binder,
         false_expr,
-        current,
+        false_branch_start,
         binder.true_target,
         binder.false_target,
     );
