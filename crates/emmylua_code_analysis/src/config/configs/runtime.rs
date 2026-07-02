@@ -90,6 +90,13 @@ impl EmmyrcLuaVersion {
             EmmyrcLuaVersion::Lua55 => LuaLanguageLevel::Lua55,
         }
     }
+
+    pub fn is_luajit(&self) -> bool {
+        matches!(
+            self,
+            EmmyrcLuaVersion::LuaJIT | EmmyrcLuaVersion::LuaJITExt | EmmyrcLuaVersion::LuaJIT3
+        )
+    }
 }
 
 #[allow(unused)]
