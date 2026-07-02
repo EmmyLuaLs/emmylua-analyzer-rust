@@ -1322,7 +1322,18 @@ impl<'a> FlowTypeEngine<'a> {
     // produces a final type, needs another query first, or reaches a saved
     // continuation point like a branch merge.
     fn evaluate_walk(&mut self, mut walk: QueryWalk) -> Result<SchedulerStep, InferFailReason> {
+        // Most walks are acyclic, so only start tracking after loop control can
+        // feed a later flow node back into an earlier loop label.
+        let mut visited_flow_ids = None::<HashSet<FlowId>>;
+
         loop {
+            if let Some(visited_flow_ids) = &mut visited_flow_ids
+                && !visited_flow_ids.insert(walk.antecedent_flow_id)
+            {
+                let result_type = get_var_ref_type(self.db, self.cache, &walk.query.var_ref_id)?;
+                return Ok(self.finish_walk(walk, result_type));
+            }
+
             // Replays can suspend a query and later revisit an older antecedent
             // that another query already finished. Use that cached type instead
             // of walking back through the same replay chain again.
@@ -1356,6 +1367,15 @@ impl<'a> FlowTypeEngine<'a> {
                 | FlowNodeKind::Continue
                 | FlowNodeKind::Return
                 | FlowNodeKind::ForIStat(_) => {
+                    if matches!(
+                        &flow_node.kind,
+                        FlowNodeKind::LoopLabel | FlowNodeKind::Continue
+                    ) && visited_flow_ids.is_none()
+                    {
+                        let mut visited = HashSet::new();
+                        visited.insert(walk.antecedent_flow_id);
+                        visited_flow_ids = Some(visited);
+                    }
                     walk.antecedent_flow_id = get_single_antecedent(flow_node)?;
                 }
                 FlowNodeKind::BranchLabel | FlowNodeKind::NamedLabel(_) => {
