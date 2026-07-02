@@ -109,20 +109,6 @@ impl<'a> LuaLexer<'a> {
             "true" => LuaTokenKind::TkTrue,
             "until" => LuaTokenKind::TkUntil,
             "while" => LuaTokenKind::TkWhile,
-            "continue" => {
-                if self.support(LuaFeatures::Continue) {
-                    LuaTokenKind::TkContinue
-                } else {
-                    LuaTokenKind::TkName
-                }
-            }
-            "const" => {
-                if self.support(LuaFeatures::ConstStatement) {
-                    LuaTokenKind::TkConst
-                } else {
-                    LuaTokenKind::TkName
-                }
-            }
             _ => LuaTokenKind::TkName,
         }
     }

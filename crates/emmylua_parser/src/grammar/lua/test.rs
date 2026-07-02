@@ -1455,6 +1455,63 @@ Syntax(Chunk)@0..30
     }
 
     #[test]
+    fn test_safe_navigation_assign() {
+        let code = "obj?.field = 1\n";
+        let result = r#"
+Syntax(Chunk)@0..15
+  Syntax(Block)@0..15
+    Syntax(AssignStat)@0..14
+      Syntax(SafeIndexExpr)@0..10
+        Syntax(NameExpr)@0..3
+          Token(TkName)@0..3 "obj"
+        Token(TkSafeNavigation)@3..5 "?."
+        Token(TkName)@5..10 "field"
+      Token(TkWhitespace)@10..11 " "
+      Token(TkAssign)@11..12 "="
+      Token(TkWhitespace)@12..13 " "
+      Syntax(LiteralExpr)@13..14
+        Token(TkInt)@13..14 "1"
+    Token(TkEndOfLine)@14..15 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
+    fn test_safe_navigation_assign_chain() {
+        let code = "a?.b?.c = 2\n";
+        let result = r#"
+Syntax(Chunk)@0..12
+  Syntax(Block)@0..12
+    Syntax(AssignStat)@0..11
+      Syntax(SafeIndexExpr)@0..7
+        Syntax(SafeIndexExpr)@0..4
+          Syntax(NameExpr)@0..1
+            Token(TkName)@0..1 "a"
+          Token(TkSafeNavigation)@1..3 "?."
+          Token(TkName)@3..4 "b"
+        Token(TkSafeNavigation)@4..6 "?."
+        Token(TkName)@6..7 "c"
+      Token(TkWhitespace)@7..8 " "
+      Token(TkAssign)@8..9 "="
+      Token(TkWhitespace)@9..10 " "
+      Syntax(LiteralExpr)@10..11
+        Token(TkInt)@10..11 "2"
+    Token(TkEndOfLine)@11..12 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
     fn test_safe_navigation_dot() {
         let code = "local x = obj?.field\n";
         let result = r#"

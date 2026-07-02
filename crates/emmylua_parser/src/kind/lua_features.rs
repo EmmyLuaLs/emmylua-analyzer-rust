@@ -41,7 +41,7 @@ pub enum LuaFeatures {
     Ternary,                // "a ? b : c"
     SafeNavigationOperator, // "?."
     NilCoalescingOperator,  // "??"
-    ConstStatement,         // "const"
+    ConstDeclaration,       // "const"
 
     // luajit3
     StringInterpolation, // "`"
@@ -127,7 +127,7 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::Ternary);
         set.add(LuaFeatures::SafeNavigationOperator);
         set.add(LuaFeatures::NilCoalescingOperator);
-        set.add(LuaFeatures::ConstStatement);
+        set.add(LuaFeatures::ConstDeclaration);
         set
     }
 
