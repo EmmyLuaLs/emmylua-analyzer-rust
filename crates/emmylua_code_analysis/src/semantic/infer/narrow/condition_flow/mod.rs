@@ -119,6 +119,7 @@ pub(in crate::semantic) enum CorrelatedDiscriminantNarrow {
 #[derive(Debug, Clone)]
 pub(in crate::semantic) enum ConditionFlowAction {
     Continue,
+    Unreachable,
     Result(LuaType),
     Pending(PendingConditionNarrow),
     NeedExprType {
@@ -610,7 +611,7 @@ pub(super) fn get_type_at_condition_flow(
                                 };
 
                             if unreachable_branch {
-                                ConditionFlowAction::Result(LuaType::Never)
+                                ConditionFlowAction::Unreachable
                             } else {
                                 ConditionFlowAction::Continue
                             }

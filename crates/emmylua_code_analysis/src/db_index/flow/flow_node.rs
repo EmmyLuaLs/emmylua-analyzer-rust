@@ -1,6 +1,6 @@
 use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaAstPtr, LuaChunk, LuaClosureExpr, LuaDocTagCast, LuaExpr,
-    LuaForStat, LuaFuncStat, LuaSyntaxKind, LuaSyntaxNode,
+    LuaAssignStat, LuaAstNode, LuaAstPtr, LuaCallExprStat, LuaChunk, LuaClosureExpr, LuaDocTagCast,
+    LuaExpr, LuaForStat, LuaFuncStat, LuaSyntaxKind, LuaSyntaxNode,
 };
 use internment::ArcIntern;
 use rowan::{TextRange, TextSize};
@@ -44,6 +44,8 @@ pub enum FlowNodeKind {
     DeclPosition(TextSize),
     /// Variable assignment
     Assignment(LuaAstPtr<LuaAssignStat>),
+    /// Call expression statement
+    CallExprStat(LuaAstPtr<LuaCallExprStat>),
     /// Conditional flow (type guards, existence checks)
     TrueCondition(LuaAstPtr<LuaExpr>),
     /// Conditional flow (type guards, existence checks)

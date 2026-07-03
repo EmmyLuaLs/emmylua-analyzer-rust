@@ -1,6 +1,6 @@
 use emmylua_parser::{
-    BinaryOperator, LuaAssignStat, LuaAstNode, LuaChunk, LuaDocOpType, LuaExpr, LuaIndexKey,
-    LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaVarExpr,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaChunk, LuaDocOpType, LuaExpr,
+    LuaIndexKey, LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaVarExpr,
 };
 use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
@@ -9,7 +9,7 @@ use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason,
     LuaDeclId, LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
     semantic::{
-        cache::{FlowAssignmentInfo, FlowMode, FlowVarCache},
+        cache::{FlowAssignmentInfo, FlowMode, FlowQueryResult, FlowVarCache},
         infer::{
             InferResult, VarRefId,
             infer_name::infer_global_type,
@@ -36,8 +36,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// One cached flow query: one ref at one flow node, optionally without replaying
-// pending condition narrows.
+// One cached flow query: one ref at one flow node under one flow mode.
 // Example: "what is `x` at flow 42, with current guards applied?"
 struct FlowQuery {
     var_ref_id: VarRefId,
@@ -52,7 +51,7 @@ impl FlowQuery {
             var_ref_id: var_ref_id.clone(),
             var_cache_idx: get_flow_cache_var_ref_id(cache, var_ref_id),
             flow_id,
-            mode: FlowMode::WithConditions,
+            mode: FlowMode::Normal,
         }
     }
 
@@ -99,6 +98,12 @@ enum Continuation {
         antecedent_flow_id: FlowId,
         expr_type: LuaType,
         reuse_antecedent_narrowing: bool,
+    },
+    // Resume an assignment result after proving the branch can reach the
+    // assignment. An impossible branch must not contribute this result to a merge.
+    AssignmentReachability {
+        walk: QueryWalk,
+        result_type: LuaType,
     },
     // Resume structural expression replay after resolving the flow-aware refs
     // it depends on. The replay itself stays no-flow; only this continuation
@@ -412,7 +417,7 @@ fn collect_expr_dependency_queries(
 // `StartQuery` begins one query, optionally saving the current query first.
 // `ContinueWalk` keeps scanning backward through the current query.
 // `ResumeNext(result)` pops one suspended query from `stack` and resumes it
-// with the result of the dependency query that just finished.
+// with the internal result of the dependency query that just finished.
 enum SchedulerStep {
     // Start or reuse one `(var_ref, flow_id, mode)` query.
     // If `continuation` is present, save that suspended query first so this
@@ -431,8 +436,10 @@ enum SchedulerStep {
     // query result.
     // Example: after querying `shape.kind`, continue narrowing
     // `if shape.kind == "circle" then`.
-    ResumeNext(InferResult),
+    ResumeNext(FlowResult),
 }
+
+type FlowResult = Result<FlowQueryResult, InferFailReason>;
 
 // Single owner of flow evaluation. Only this engine is allowed to schedule
 // follow-up queries, which keeps the flow path iterative.
@@ -488,11 +495,25 @@ impl<'a> FlowTypeEngine<'a> {
                         reuse_antecedent_narrowing,
                         query_result,
                     ),
+                    Some(Continuation::AssignmentReachability { walk, result_type }) => {
+                        match query_result {
+                            Ok(FlowQueryResult::Unreachable) => {
+                                Ok(self.finish_unreachable_branch(walk))
+                            }
+                            Ok(FlowQueryResult::Type(_)) => Ok(self.finish_walk(walk, result_type)),
+                            Err(err) => self.fail_query(&walk.query, err),
+                        }
+                    }
                     Some(Continuation::ExprReplay {
                         walk,
                         replay,
                         replay_query,
-                    }) => self.resume_expr_replay(walk, replay, replay_query, query_result),
+                    }) => self.resume_expr_replay(
+                        walk,
+                        replay,
+                        replay_query,
+                        query_result.map(FlowQueryResult::into_type),
+                    ),
                     Some(Continuation::TagCastAntecedent {
                         walk,
                         cast_op_types,
@@ -507,7 +528,7 @@ impl<'a> FlowTypeEngine<'a> {
                         flow_id,
                         condition_flow,
                         subquery,
-                        query_result,
+                        query_result.map(FlowQueryResult::into_type),
                     ),
                     Some(Continuation::FieldLiteralSiblingDependency {
                         walk,
@@ -519,7 +540,7 @@ impl<'a> FlowTypeEngine<'a> {
                         flow_id,
                         condition_flow,
                         subquery,
-                        query_result,
+                        query_result.map(FlowQueryResult::into_type),
                     ),
                     Some(Continuation::CorrelatedSearchRoot {
                         walk,
@@ -533,12 +554,12 @@ impl<'a> FlowTypeEngine<'a> {
                         advance_pending_correlated_condition(
                             self.db,
                             pending_correlated_condition,
-                            query_result,
+                            query_result.map(FlowQueryResult::into_type),
                         ),
                     ),
                     // No suspended query is waiting on this result, so it is the
                     // final answer for the original `run(...)` request.
-                    None => break query_result,
+                    None => break query_result.map(FlowQueryResult::into_type),
                 },
             }
             .unwrap_or_else(|err| SchedulerStep::ResumeNext(Err(err)));
@@ -557,7 +578,7 @@ impl<'a> FlowTypeEngine<'a> {
             .and_then(|var_cache| var_cache.type_cache.get(&type_cache_key))
         {
             Ok(SchedulerStep::ResumeNext(match cache_entry {
-                CacheEntry::Cache(narrow_type) => Ok(narrow_type.clone()),
+                CacheEntry::Cache(query_result) => Ok(query_result.clone()),
                 CacheEntry::Ready => Err(InferFailReason::RecursiveInfer),
             }))
         } else {
@@ -591,10 +612,10 @@ impl<'a> FlowTypeEngine<'a> {
         branch_flow_ids: Arc<[FlowId]>,
         next_pending_idx: usize,
         merged_type: LuaType,
-        branch_result: InferResult,
+        branch_result: FlowResult,
     ) -> Result<SchedulerStep, InferFailReason> {
         let branch_type = match branch_result {
-            Ok(branch_type) => branch_type,
+            Ok(branch_result) => branch_result.into_type(),
             Err(err) => return self.fail_query(&walk.query, err),
         };
 
@@ -606,10 +627,12 @@ impl<'a> FlowTypeEngine<'a> {
         // Branches are resumed from the end because the initial merge setup
         // schedules the last incoming branch first.
         let branch_idx = next_pending_idx - 1;
+        // The remaining predecessor is still a merge contribution. Preserve
+        // MergeBranch so an unreachable condition edge contributes `never`
+        // instead of continuing to the type from before the merge.
+        let branch_mode = walk.query.mode.for_merge_contribution();
         Ok(SchedulerStep::StartQuery {
-            query: walk
-                .query
-                .at_flow(branch_flow_ids[branch_idx], walk.query.mode),
+            query: walk.query.at_flow(branch_flow_ids[branch_idx], branch_mode),
             continuation: Some(Continuation::Merge {
                 walk,
                 branch_flow_ids,
@@ -629,10 +652,13 @@ impl<'a> FlowTypeEngine<'a> {
         antecedent_flow_id: FlowId,
         expr_type: LuaType,
         reuse_antecedent_narrowing: bool,
-        antecedent_result: InferResult,
+        antecedent_result: FlowResult,
     ) -> Result<SchedulerStep, InferFailReason> {
         let antecedent_type = match antecedent_result {
-            Ok(antecedent_type) => antecedent_type,
+            Ok(FlowQueryResult::Type(antecedent_type)) => antecedent_type,
+            Ok(FlowQueryResult::Unreachable) => {
+                return Ok(self.finish_unreachable_branch(walk));
+            }
             Err(err) => return self.fail_query(&walk.query, err),
         };
 
@@ -641,7 +667,7 @@ impl<'a> FlowTypeEngine<'a> {
         {
             let next_query = walk
                 .query
-                .at_flow(antecedent_flow_id, FlowMode::WithoutConditions);
+                .at_flow(antecedent_flow_id, FlowMode::IgnoreConditions);
             return Ok(SchedulerStep::StartQuery {
                 query: next_query,
                 continuation: Some(Continuation::AssignmentAntecedent {
@@ -843,10 +869,13 @@ impl<'a> FlowTypeEngine<'a> {
         &mut self,
         walk: QueryWalk,
         cast_op_types: Vec<LuaDocOpType>,
-        antecedent_result: InferResult,
+        antecedent_result: FlowResult,
     ) -> Result<SchedulerStep, InferFailReason> {
         let mut cast_input_type = match antecedent_result {
-            Ok(resolved_type) => resolved_type,
+            Ok(FlowQueryResult::Type(resolved_type)) => resolved_type,
+            Ok(FlowQueryResult::Unreachable) => {
+                return Ok(self.finish_unreachable_branch(walk));
+            }
             // `---@cast` is an explicit assertion, so unresolved source types
             // should still be narrowed by applying the cast from `unknown`.
             Err(_) => LuaType::Unknown,
@@ -1123,6 +1152,20 @@ impl<'a> FlowTypeEngine<'a> {
         self.finish_assignment_expr_type(walk, antecedent_flow_id, explicit_var_type, expr_type)
     }
 
+    fn start_assignment_reachability(
+        walk: QueryWalk,
+        antecedent_flow_id: FlowId,
+        result_type: LuaType,
+    ) -> SchedulerStep {
+        let query = walk
+            .query
+            .at_flow(antecedent_flow_id, FlowMode::MergeBranch);
+        SchedulerStep::StartQuery {
+            query,
+            continuation: Some(Continuation::AssignmentReachability { walk, result_type }),
+        }
+    }
+
     fn finish_assignment_expr_type(
         &mut self,
         walk: QueryWalk,
@@ -1141,20 +1184,31 @@ impl<'a> FlowTypeEngine<'a> {
                 true,
                 Some(explicit_var_type.clone()),
             );
+            if matches!(walk.query.mode, FlowMode::MergeBranch) {
+                return Ok(Self::start_assignment_reachability(
+                    walk,
+                    antecedent_flow_id,
+                    result_type,
+                ));
+            }
+
             return Ok(self.finish_walk(walk, result_type));
         }
 
         // Broad RHS types replace the previous runtime type. The old path still
         // queried the antecedent and then discarded it in finish_assignment_result.
         let reuse_antecedent_narrowing = preserves_assignment_expr_type(&expr_type);
-        if !expr_type.is_unknown() && !reuse_antecedent_narrowing {
+        if !expr_type.is_unknown()
+            && !reuse_antecedent_narrowing
+            && !matches!(walk.query.mode, FlowMode::MergeBranch)
+        {
             return Ok(self.finish_walk(walk, expr_type));
         }
 
-        let mode = if reuse_antecedent_narrowing {
-            FlowMode::WithConditions
-        } else {
-            FlowMode::WithoutConditions
+        let mode = match (walk.query.mode, reuse_antecedent_narrowing) {
+            (FlowMode::MergeBranch, _) => FlowMode::MergeBranch,
+            (_, true) => FlowMode::Normal,
+            (_, false) => FlowMode::IgnoreConditions,
         };
         let subquery = walk.query.at_flow(antecedent_flow_id, mode);
         Ok(SchedulerStep::StartQuery {
@@ -1176,26 +1230,40 @@ impl<'a> FlowTypeEngine<'a> {
         err: InferFailReason,
     ) -> Result<SchedulerStep, InferFailReason> {
         if let Some(explicit_var_type) = explicit_var_type {
-            return Ok(self.finish_walk(walk, explicit_var_type));
+            return self.finish_assignment_expr_type(
+                walk,
+                antecedent_flow_id,
+                Some(explicit_var_type),
+                LuaType::Unknown,
+            );
         }
 
         let var_ref_id = walk.query.var_ref_id.clone();
-        if matches!(var_ref_id, VarRefId::IndexRef(_, _))
+        let fallback_type = if matches!(var_ref_id, VarRefId::IndexRef(_, _))
             && let Ok(origin_type) = get_var_ref_type(self.db, self.cache, &var_ref_id)
         {
             let non_nil_origin = TypeOps::Remove.apply(self.db, &origin_type, &LuaType::Nil);
-            return Ok(self.finish_walk(
-                walk,
-                if non_nil_origin.is_never() {
-                    origin_type
-                } else {
-                    non_nil_origin
-                },
-            ));
-        }
+            Some(if non_nil_origin.is_never() {
+                origin_type
+            } else {
+                non_nil_origin
+            })
+        } else if matches!(err, InferFailReason::FieldNotFound | InferFailReason::None) {
+            Some(LuaType::Nil)
+        } else {
+            None
+        };
 
-        if matches!(err, InferFailReason::FieldNotFound | InferFailReason::None) {
-            return Ok(self.finish_walk(walk, LuaType::Nil));
+        if let Some(fallback_type) = fallback_type {
+            if matches!(walk.query.mode, FlowMode::MergeBranch) {
+                return Ok(Self::start_assignment_reachability(
+                    walk,
+                    antecedent_flow_id,
+                    fallback_type,
+                ));
+            }
+
+            return Ok(self.finish_walk(walk, fallback_type));
         }
 
         walk.antecedent_flow_id = antecedent_flow_id;
@@ -1210,7 +1278,7 @@ impl<'a> FlowTypeEngine<'a> {
         condition_flow: InferConditionFlow,
     ) -> Result<SchedulerStep, InferFailReason> {
         let antecedent_flow_id = get_single_antecedent(flow_node)?;
-        if !walk.query.mode.uses_conditions() {
+        if matches!(walk.query.mode, FlowMode::IgnoreConditions) {
             walk.antecedent_flow_id = antecedent_flow_id;
             return Ok(SchedulerStep::ContinueWalk(walk));
         }
@@ -1264,7 +1332,10 @@ impl<'a> FlowTypeEngine<'a> {
         if cached_action {
             return match action {
                 ConditionFlowAction::Continue => Ok(SchedulerStep::ContinueWalk(walk)),
-                ConditionFlowAction::Result(result_type) => Ok(self.finish_walk(walk, result_type)),
+                ConditionFlowAction::Unreachable => Ok(self.finish_unreachable_condition(walk)),
+                ConditionFlowAction::Result(result_type) => {
+                    Ok(self.finish_condition_result(walk, result_type))
+                }
                 ConditionFlowAction::Pending(pending_condition_narrow) => {
                     let mut walk = walk;
                     walk.pending_condition_narrows
@@ -1306,9 +1377,8 @@ impl<'a> FlowTypeEngine<'a> {
         }
 
         let antecedent_flow_id = get_single_antecedent(flow_node)?;
-        let subquery = walk
-            .query
-            .at_flow(antecedent_flow_id, FlowMode::WithConditions);
+        let mode = walk.query.mode.for_point_dependency();
+        let subquery = walk.query.at_flow(antecedent_flow_id, mode);
         Ok(SchedulerStep::StartQuery {
             query: subquery,
             continuation: Some(Continuation::TagCastAntecedent {
@@ -1338,7 +1408,7 @@ impl<'a> FlowTypeEngine<'a> {
             // that another query already finished. Use that cached type instead
             // of walking back through the same replay chain again.
             if walk.antecedent_flow_id != walk.query.flow_id
-                && let Some(CacheEntry::Cache(narrow_type)) = self
+                && let Some(cached_result) = self
                     .cache
                     .flow_var_caches
                     .get(walk.query.var_cache_idx as usize)
@@ -1347,8 +1417,15 @@ impl<'a> FlowTypeEngine<'a> {
                             .type_cache
                             .get(&(walk.antecedent_flow_id, walk.query.mode))
                     })
+                    .and_then(|cache_entry| match cache_entry {
+                        CacheEntry::Cache(query_result) => Some(query_result.clone()),
+                        CacheEntry::Ready => None,
+                    })
             {
-                return Ok(self.finish_walk(walk, narrow_type.clone()));
+                return Ok(match cached_result {
+                    FlowQueryResult::Type(narrow_type) => self.finish_walk(walk, narrow_type),
+                    FlowQueryResult::Unreachable => self.finish_unreachable_branch(walk),
+                });
             }
 
             let flow_node = self
@@ -1378,6 +1455,21 @@ impl<'a> FlowTypeEngine<'a> {
                     }
                     walk.antecedent_flow_id = get_single_antecedent(flow_node)?;
                 }
+                FlowNodeKind::CallExprStat(call_stat_ptr) => {
+                    let antecedent_flow_id = get_single_antecedent(flow_node)?;
+                    if matches!(walk.query.mode, FlowMode::MergeBranch)
+                        && call_expr_stat_returns_never(
+                            self.db,
+                            self.cache,
+                            self.root,
+                            call_stat_ptr,
+                        )
+                    {
+                        return Ok(self.finish_unreachable_branch(walk));
+                    }
+
+                    walk.antecedent_flow_id = antecedent_flow_id;
+                }
                 FlowNodeKind::BranchLabel | FlowNodeKind::NamedLabel(_) => {
                     let branch_flow_ids = if matches!(&flow_node.kind, FlowNodeKind::BranchLabel) {
                         get_branch_label_flow_ids(self.tree, self.cache, flow_node)?
@@ -1386,13 +1478,25 @@ impl<'a> FlowTypeEngine<'a> {
                     } else {
                         Arc::<[FlowId]>::from(get_multi_antecedents(self.tree, flow_node)?)
                     };
-                    let Some(next_pending_idx) = branch_flow_ids.len().checked_sub(1) else {
-                        return Ok(self.finish_walk(walk, LuaType::Never));
-                    };
+                    match branch_flow_ids.len() {
+                        0 => return Ok(self.finish_unreachable_branch(walk)),
+                        // A single predecessor is just a branch-entry label, not a merge.
+                        // Keep the current mode so queries inside an impossible then/else
+                        // body can still resolve unrelated symbols from their declarations.
+                        1 => {
+                            walk.antecedent_flow_id = branch_flow_ids[0];
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    let next_pending_idx = branch_flow_ids.len() - 1;
                     let q = &walk.query;
-                    let next_query = q.at_flow(branch_flow_ids[next_pending_idx], q.mode);
+                    // Multiple predecessors make this a merge. Query each
+                    // predecessor as a merge contribution so an unreachable
+                    // condition edge contributes `never` to the final union.
+                    let branch_mode = q.mode.for_merge_contribution();
                     return Ok(SchedulerStep::StartQuery {
-                        query: next_query,
+                        query: q.at_flow(branch_flow_ids[next_pending_idx], branch_mode),
                         continuation: Some(Continuation::Merge {
                             walk,
                             branch_flow_ids,
@@ -1524,6 +1628,15 @@ impl<'a> FlowTypeEngine<'a> {
                     );
                 Ok(SchedulerStep::ContinueWalk(walk))
             }
+            ConditionFlowAction::Unreachable => {
+                get_flow_var_cache(self.cache, walk.query.var_cache_idx)
+                    .condition_cache
+                    .insert(
+                        (flow_id, condition_flow),
+                        CacheEntry::Cache(ConditionFlowAction::Unreachable),
+                    );
+                Ok(self.finish_unreachable_condition(walk))
+            }
             ConditionFlowAction::Result(result_type) => {
                 get_flow_var_cache(self.cache, walk.query.var_cache_idx)
                     .condition_cache
@@ -1531,7 +1644,7 @@ impl<'a> FlowTypeEngine<'a> {
                         (flow_id, condition_flow),
                         CacheEntry::Cache(ConditionFlowAction::Result(result_type.clone())),
                     );
-                Ok(self.finish_walk(walk, result_type))
+                Ok(self.finish_condition_result(walk, result_type))
             }
             ConditionFlowAction::Pending(pending_condition_narrow) => self.start_pending_condition(
                 walk,
@@ -1569,9 +1682,10 @@ impl<'a> FlowTypeEngine<'a> {
                 self.start_field_literal_sibling_subquery(walk, flow_id, condition_flow, subquery)
             ),
             ConditionFlowAction::NeedCorrelated(pending_correlated_condition) => {
+                let mode = walk.query.mode.for_point_dependency();
                 let subquery = walk.query.at_flow(
                     pending_correlated_condition.current_search_root_flow_id,
-                    FlowMode::WithConditions,
+                    mode,
                 );
                 Ok(SchedulerStep::StartQuery {
                     query: subquery,
@@ -1586,6 +1700,39 @@ impl<'a> FlowTypeEngine<'a> {
         }
     }
 
+    fn finish_unreachable_condition(&mut self, walk: QueryWalk) -> SchedulerStep {
+        // Unreachable describes the condition edge, not the queried symbol. A
+        // merge query asks what this branch contributes, so the answer is
+        // `never`; point queries continue to the antecedent so unrelated
+        // symbols inside impossible branches keep their declared types.
+        match walk.query.mode {
+            FlowMode::MergeBranch => self.finish_unreachable_branch(walk),
+            FlowMode::Normal | FlowMode::IgnoreConditions => SchedulerStep::ContinueWalk(walk),
+        }
+    }
+
+    fn finish_condition_result(&mut self, walk: QueryWalk, result_type: LuaType) -> SchedulerStep {
+        // Condition results describe a guard edge. If the guard removes every
+        // possible type while calculating a merge contribution, the branch is
+        // unreachable rather than an ordinary `never`-typed value.
+        if matches!(walk.query.mode, FlowMode::MergeBranch) && result_type.is_never() {
+            self.finish_unreachable_branch(walk)
+        } else {
+            self.finish_walk(walk, result_type)
+        }
+    }
+
+    fn finish_unreachable_branch(&mut self, walk: QueryWalk) -> SchedulerStep {
+        let query = walk.query;
+        get_flow_var_cache(self.cache, query.var_cache_idx)
+            .type_cache
+            .insert(
+                (query.flow_id, query.mode),
+                CacheEntry::Cache(FlowQueryResult::Unreachable),
+            );
+        SchedulerStep::ResumeNext(Ok(FlowQueryResult::Unreachable))
+    }
+
     fn finish_walk(&mut self, walk: QueryWalk, narrow_type: LuaType) -> SchedulerStep {
         let QueryWalk {
             query,
@@ -1593,18 +1740,28 @@ impl<'a> FlowTypeEngine<'a> {
             ..
         } = walk;
         let mut final_type = narrow_type;
-        if query.mode.uses_conditions() {
+        let mut condition_made_unreachable = false;
+        if !matches!(query.mode, FlowMode::IgnoreConditions) {
             for pending_condition_narrow in pending_condition_narrows.into_iter().rev() {
+                let was_possible = !final_type.is_never();
                 final_type = pending_condition_narrow.apply(self.db, self.cache, final_type);
+                condition_made_unreachable |= matches!(query.mode, FlowMode::MergeBranch)
+                    && was_possible
+                    && final_type.is_never();
             }
         }
+        let query_result = if condition_made_unreachable {
+            FlowQueryResult::Unreachable
+        } else {
+            FlowQueryResult::Type(final_type)
+        };
         get_flow_var_cache(self.cache, query.var_cache_idx)
             .type_cache
             .insert(
                 (query.flow_id, query.mode),
-                CacheEntry::Cache(final_type.clone()),
+                CacheEntry::Cache(query_result.clone()),
             );
-        SchedulerStep::ResumeNext(Ok(final_type))
+        SchedulerStep::ResumeNext(Ok(query_result))
     }
 
     fn fail_query<T>(
@@ -1820,6 +1977,28 @@ fn get_branch_label_flow_ids(
     let branch_flow_ids = Arc::<[FlowId]>::from(branch_flow_ids);
     cache.flow_branch_inputs_cache[flow_index] = Some(branch_flow_ids.clone());
     Ok(branch_flow_ids)
+}
+
+fn call_expr_stat_returns_never(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    root: &LuaChunk,
+    call_stat_ptr: &emmylua_parser::LuaAstPtr<LuaCallExprStat>,
+) -> bool {
+    let Some(call_stat) = call_stat_ptr.to_node(root) else {
+        return false;
+    };
+    let Some(call_expr) = call_stat.get_call_expr() else {
+        return false;
+    };
+    let Ok(Some(call_type)) = try_infer_expr_no_flow(db, cache, LuaExpr::CallExpr(call_expr))
+    else {
+        return false;
+    };
+
+    call_type
+        .get_result_slot_type(0)
+        .is_some_and(|ret| ret.is_never())
 }
 
 fn get_flow_assignment_info(

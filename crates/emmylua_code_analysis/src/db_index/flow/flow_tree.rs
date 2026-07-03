@@ -1,15 +1,18 @@
+use std::collections::VecDeque;
+
 use hashbrown::{HashMap, HashSet};
 
 use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaExpr, LuaSyntaxId};
 use rowan::TextSize;
 
-use crate::{FlowAntecedent, FlowId, FlowNode, LuaDeclId};
+use crate::{FlowAntecedent, FlowId, FlowNode, FlowNodeKind, LuaDeclId};
 
 #[derive(Debug)]
 pub struct FlowTree {
     decl_bind_expr_ref: HashMap<LuaDeclId, LuaAstPtr<LuaExpr>>,
     decl_multi_return_ref: HashMap<LuaDeclId, Vec<DeclMultiReturnRefAt>>,
     flow_nodes: Vec<FlowNode>,
+    has_tag_cast: bool,
     multiple_antecedents: Vec<Vec<FlowId>>,
     // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
     bindings: HashMap<LuaSyntaxId, FlowId>,
@@ -24,10 +27,14 @@ impl FlowTree {
         // labels: HashMap<LuaClosureId, HashMap<SmolStr, FlowId>>,
         bindings: HashMap<LuaSyntaxId, FlowId>,
     ) -> Self {
+        let has_tag_cast = flow_nodes
+            .iter()
+            .any(|node| matches!(node.kind, FlowNodeKind::TagCast(_)));
         Self {
             decl_bind_expr_ref,
             decl_multi_return_ref,
             flow_nodes,
+            has_tag_cast,
             multiple_antecedents,
             bindings,
         }
@@ -41,10 +48,32 @@ impl FlowTree {
         self.flow_nodes.get(flow_id.0 as usize)
     }
 
+    pub fn has_tag_cast(&self) -> bool {
+        self.has_tag_cast
+    }
+
     pub fn get_multi_antecedents(&self, id: u32) -> Option<&[FlowId]> {
         self.multiple_antecedents
             .get(id as usize)
             .map(|v| v.as_slice())
+    }
+
+    /// Returns the first backward-reachable flow node shared by all starting flows.
+    pub fn get_nearest_common_antecedent(&self, flow_ids: &[FlowId]) -> Option<FlowId> {
+        let (first_flow_id, rest_flow_ids) = flow_ids.split_first()?;
+        let first_antecedents = self.collect_antecedents(*first_flow_id);
+        let rest_antecedents = rest_flow_ids
+            .iter()
+            .map(|flow_id| {
+                self.collect_antecedents(*flow_id)
+                    .into_iter()
+                    .collect::<HashSet<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        first_antecedents
+            .into_iter()
+            .find(|flow_id| rest_antecedents.iter().all(|set| set.contains(flow_id)))
     }
 
     pub fn get_decl_ref_expr(&self, decl_id: &LuaDeclId) -> Option<LuaAstPtr<LuaExpr>> {
@@ -262,6 +291,35 @@ impl FlowTree {
                 None => return vec![start_flow_id],
             }
         }
+    }
+
+    fn collect_antecedents(&self, flow_id: FlowId) -> Vec<FlowId> {
+        let mut antecedents = Vec::new();
+        let mut pending = VecDeque::from([flow_id]);
+        let mut visited = HashSet::new();
+        while let Some(flow_id) = pending.pop_front() {
+            if !visited.insert(flow_id) {
+                continue;
+            }
+
+            antecedents.push(flow_id);
+            let Some(flow_node) = self.get_flow_node(flow_id) else {
+                continue;
+            };
+            match flow_node.antecedent.as_ref() {
+                Some(FlowAntecedent::Single(antecedent_flow_id)) => {
+                    pending.push_back(*antecedent_flow_id);
+                }
+                Some(FlowAntecedent::Multiple(multi_id)) => {
+                    if let Some(branch_flow_ids) = self.get_multi_antecedents(*multi_id) {
+                        pending.extend(branch_flow_ids.iter().copied());
+                    }
+                }
+                None => {}
+            }
+        }
+
+        antecedents
     }
 }
 
