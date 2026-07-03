@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "rowan",
  "rust-i18n",
@@ -691,7 +691,7 @@ dependencies = [
 
 [[package]]
 name = "emmylua_parser_desc"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "emmylua_parser",
  "googletest",
