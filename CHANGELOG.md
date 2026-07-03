@@ -2,6 +2,11 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+## [0.24.0] - Unreleased
+- **Support LuaJIT-Ext**: Added support for LuaJIT‑Ext syntax, including compound assignment operators, null‑safe navigation, the null‑coalescing operator, constant variables, and the continue statement.
+
+- **Support LuaJIT3**: Besides LuaJIT‑Ext syntax, named variadic arguments and integer division are also supported.
+
 ## [0.23.2] - 2026-6-3
 
 - **Fix some stuck loading issue**: Fixed some issue that cause the language server stuck at loading workspace, and improve the loading performance of large workspace
