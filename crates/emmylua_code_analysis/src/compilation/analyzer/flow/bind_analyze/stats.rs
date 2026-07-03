@@ -522,12 +522,13 @@ pub fn bind_for_range_stat(
     let decl_flow = binder.create_decl(for_range_stat.get_position());
     binder.add_antecedent(decl_flow, pre_for_range_label);
 
+    let block_entry = finish_flow_label(binder, pre_for_range_label, current);
     if let Some(iter_block) = for_range_stat.get_block() {
         // Bind the block of code inside the for loop
         bind_iter_block(
             binder,
             iter_block,
-            decl_flow,
+            block_entry,
             pre_for_range_label,
             post_for_range_label,
         );
@@ -548,9 +549,16 @@ pub fn bind_for_stat(binder: &mut FlowBinder, for_stat: LuaForStat, current: Flo
     let for_node = binder.create_node(FlowNodeKind::ForIStat(for_stat.to_ptr()));
     binder.add_antecedent(for_node, pre_for_label);
 
+    let block_entry = finish_flow_label(binder, pre_for_label, current);
     if let Some(iter_block) = for_stat.get_block() {
         // Bind the block of code inside the for loop
-        bind_iter_block(binder, iter_block, for_node, pre_for_label, post_for_label);
+        bind_iter_block(
+            binder,
+            iter_block,
+            block_entry,
+            pre_for_label,
+            post_for_label,
+        );
     }
 
     current

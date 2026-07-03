@@ -1191,6 +1191,60 @@ Syntax(Chunk)@0..26
     }
 
     #[test]
+    fn test_ternary_inside_paren() {
+        let code = "local d = (i % 2 == 0 ? i : -i)\n";
+        let result = r#"
+Syntax(Chunk)@0..32
+  Syntax(Block)@0..32
+    Syntax(LocalStat)@0..31
+      Token(TkLocal)@0..5 "local"
+      Token(TkWhitespace)@5..6 " "
+      Syntax(LocalName)@6..7
+        Token(TkName)@6..7 "d"
+      Token(TkWhitespace)@7..8 " "
+      Token(TkAssign)@8..9 "="
+      Token(TkWhitespace)@9..10 " "
+      Syntax(ParenExpr)@10..31
+        Token(TkLeftParen)@10..11 "("
+        Syntax(TernaryExpr)@11..30
+          Syntax(BinaryExpr)@11..21
+            Syntax(BinaryExpr)@11..16
+              Syntax(NameExpr)@11..12
+                Token(TkName)@11..12 "i"
+              Token(TkWhitespace)@12..13 " "
+              Token(TkMod)@13..14 "%"
+              Token(TkWhitespace)@14..15 " "
+              Syntax(LiteralExpr)@15..16
+                Token(TkInt)@15..16 "2"
+            Token(TkWhitespace)@16..17 " "
+            Token(TkEq)@17..19 "=="
+            Token(TkWhitespace)@19..20 " "
+            Syntax(LiteralExpr)@20..21
+              Token(TkInt)@20..21 "0"
+          Token(TkWhitespace)@21..22 " "
+          Token(TkTernary)@22..23 "?"
+          Token(TkWhitespace)@23..24 " "
+          Syntax(NameExpr)@24..25
+            Token(TkName)@24..25 "i"
+          Token(TkWhitespace)@25..26 " "
+          Token(TkColon)@26..27 ":"
+          Token(TkWhitespace)@27..28 " "
+          Syntax(UnaryExpr)@28..30
+            Token(TkMinus)@28..29 "-"
+            Syntax(NameExpr)@29..30
+              Token(TkName)@29..30 "i"
+        Token(TkRightParen)@30..31 ")"
+    Token(TkEndOfLine)@31..32 "\n"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
+
+    #[test]
     fn test_ternary_expr() {
         let code = "local x = a ? b : c\n";
         let result = r#"
@@ -1774,6 +1828,211 @@ Syntax(Chunk)@0..16
             code,
             result,
             ParserConfig::with_level(LuaLanguageLevel::Lua55)
+        );
+    }
+
+    #[test]
+    fn test_soft_keywords() {
+        let code = "
+const const = {
+    const = function ()
+        for i = 1, 2 do
+            if i == 1 then
+                continue
+            else
+                return i
+            end
+        end
+    end
+}
+
+continue ={
+    const = function (continue)
+        return continue
+    end
+}
+
+const continue = continue.const {
+    const.contiue
+}
+
+print(continue)
+        ";
+        let result = r#"
+Syntax(Chunk)@0..356
+  Syntax(Block)@0..356
+    Token(TkEndOfLine)@0..1 "\n"
+    Syntax(ConstStat)@1..196
+      Token(TkConst)@1..6 "const"
+      Token(TkWhitespace)@6..7 " "
+      Syntax(LocalName)@7..12
+        Token(TkName)@7..12 "const"
+      Token(TkWhitespace)@12..13 " "
+      Token(TkAssign)@13..14 "="
+      Token(TkWhitespace)@14..15 " "
+      Syntax(TableObjectExpr)@15..196
+        Token(TkLeftBrace)@15..16 "{"
+        Token(TkEndOfLine)@16..17 "\n"
+        Token(TkWhitespace)@17..21 "    "
+        Syntax(TableFieldAssign)@21..194
+          Token(TkName)@21..26 "const"
+          Token(TkWhitespace)@26..27 " "
+          Token(TkAssign)@27..28 "="
+          Token(TkWhitespace)@28..29 " "
+          Syntax(ClosureExpr)@29..194
+            Token(TkFunction)@29..37 "function"
+            Token(TkWhitespace)@37..38 " "
+            Syntax(ParamList)@38..40
+              Token(TkLeftParen)@38..39 "("
+              Token(TkRightParen)@39..40 ")"
+            Syntax(Block)@40..191
+              Token(TkEndOfLine)@40..41 "\n"
+              Token(TkWhitespace)@41..49 "        "
+              Syntax(ForStat)@49..186
+                Token(TkFor)@49..52 "for"
+                Token(TkWhitespace)@52..53 " "
+                Token(TkName)@53..54 "i"
+                Token(TkWhitespace)@54..55 " "
+                Token(TkAssign)@55..56 "="
+                Token(TkWhitespace)@56..57 " "
+                Syntax(LiteralExpr)@57..58
+                  Token(TkInt)@57..58 "1"
+                Token(TkComma)@58..59 ","
+                Token(TkWhitespace)@59..60 " "
+                Syntax(LiteralExpr)@60..61
+                  Token(TkInt)@60..61 "2"
+                Token(TkWhitespace)@61..62 " "
+                Token(TkDo)@62..64 "do"
+                Syntax(Block)@64..183
+                  Token(TkEndOfLine)@64..65 "\n"
+                  Token(TkWhitespace)@65..77 "            "
+                  Syntax(IfStat)@77..174
+                    Token(TkIf)@77..79 "if"
+                    Token(TkWhitespace)@79..80 " "
+                    Syntax(BinaryExpr)@80..86
+                      Syntax(NameExpr)@80..81
+                        Token(TkName)@80..81 "i"
+                      Token(TkWhitespace)@81..82 " "
+                      Token(TkEq)@82..84 "=="
+                      Token(TkWhitespace)@84..85 " "
+                      Syntax(LiteralExpr)@85..86
+                        Token(TkInt)@85..86 "1"
+                    Token(TkWhitespace)@86..87 " "
+                    Token(TkThen)@87..91 "then"
+                    Syntax(Block)@91..129
+                      Token(TkEndOfLine)@91..92 "\n"
+                      Token(TkWhitespace)@92..108 "                "
+                      Syntax(ContinueStat)@108..116
+                        Token(TkContinue)@108..116 "continue"
+                      Token(TkEndOfLine)@116..117 "\n"
+                      Token(TkWhitespace)@117..129 "            "
+                    Syntax(ElseClauseStat)@129..171
+                      Token(TkElse)@129..133 "else"
+                      Syntax(Block)@133..171
+                        Token(TkEndOfLine)@133..134 "\n"
+                        Token(TkWhitespace)@134..150 "                "
+                        Syntax(ReturnStat)@150..158
+                          Token(TkReturn)@150..156 "return"
+                          Token(TkWhitespace)@156..157 " "
+                          Syntax(NameExpr)@157..158
+                            Token(TkName)@157..158 "i"
+                        Token(TkEndOfLine)@158..159 "\n"
+                        Token(TkWhitespace)@159..171 "            "
+                    Token(TkEnd)@171..174 "end"
+                  Token(TkEndOfLine)@174..175 "\n"
+                  Token(TkWhitespace)@175..183 "        "
+                Token(TkEnd)@183..186 "end"
+              Token(TkEndOfLine)@186..187 "\n"
+              Token(TkWhitespace)@187..191 "    "
+            Token(TkEnd)@191..194 "end"
+        Token(TkEndOfLine)@194..195 "\n"
+        Token(TkRightBrace)@195..196 "}"
+    Token(TkEndOfLine)@196..197 "\n"
+    Token(TkEndOfLine)@197..198 "\n"
+    Syntax(AssignStat)@198..275
+      Syntax(NameExpr)@198..206
+        Token(TkName)@198..206 "continue"
+      Token(TkWhitespace)@206..207 " "
+      Token(TkAssign)@207..208 "="
+      Syntax(TableObjectExpr)@208..275
+        Token(TkLeftBrace)@208..209 "{"
+        Token(TkEndOfLine)@209..210 "\n"
+        Token(TkWhitespace)@210..214 "    "
+        Syntax(TableFieldAssign)@214..273
+          Token(TkName)@214..219 "const"
+          Token(TkWhitespace)@219..220 " "
+          Token(TkAssign)@220..221 "="
+          Token(TkWhitespace)@221..222 " "
+          Syntax(ClosureExpr)@222..273
+            Token(TkFunction)@222..230 "function"
+            Token(TkWhitespace)@230..231 " "
+            Syntax(ParamList)@231..241
+              Token(TkLeftParen)@231..232 "("
+              Syntax(ParamName)@232..240
+                Token(TkName)@232..240 "continue"
+              Token(TkRightParen)@240..241 ")"
+            Syntax(Block)@241..270
+              Token(TkEndOfLine)@241..242 "\n"
+              Token(TkWhitespace)@242..250 "        "
+              Syntax(ReturnStat)@250..265
+                Token(TkReturn)@250..256 "return"
+                Token(TkWhitespace)@256..257 " "
+                Syntax(NameExpr)@257..265
+                  Token(TkName)@257..265 "continue"
+              Token(TkEndOfLine)@265..266 "\n"
+              Token(TkWhitespace)@266..270 "    "
+            Token(TkEnd)@270..273 "end"
+        Token(TkEndOfLine)@273..274 "\n"
+        Token(TkRightBrace)@274..275 "}"
+    Token(TkEndOfLine)@275..276 "\n"
+    Token(TkEndOfLine)@276..277 "\n"
+    Syntax(ConstStat)@277..330
+      Token(TkConst)@277..282 "const"
+      Token(TkWhitespace)@282..283 " "
+      Syntax(LocalName)@283..291
+        Token(TkName)@283..291 "continue"
+      Token(TkWhitespace)@291..292 " "
+      Token(TkAssign)@292..293 "="
+      Token(TkWhitespace)@293..294 " "
+      Syntax(CallExpr)@294..330
+        Syntax(IndexExpr)@294..308
+          Syntax(NameExpr)@294..302
+            Token(TkName)@294..302 "continue"
+          Token(TkDot)@302..303 "."
+          Token(TkName)@303..308 "const"
+        Token(TkWhitespace)@308..309 " "
+        Syntax(CallArgList)@309..330
+          Syntax(TableArrayExpr)@309..330
+            Token(TkLeftBrace)@309..310 "{"
+            Token(TkEndOfLine)@310..311 "\n"
+            Token(TkWhitespace)@311..315 "    "
+            Syntax(TableFieldValue)@315..328
+              Syntax(IndexExpr)@315..328
+                Syntax(NameExpr)@315..320
+                  Token(TkName)@315..320 "const"
+                Token(TkDot)@320..321 "."
+                Token(TkName)@321..328 "contiue"
+            Token(TkEndOfLine)@328..329 "\n"
+            Token(TkRightBrace)@329..330 "}"
+    Token(TkEndOfLine)@330..331 "\n"
+    Token(TkEndOfLine)@331..332 "\n"
+    Syntax(CallExprStat)@332..347
+      Syntax(CallExpr)@332..347
+        Syntax(NameExpr)@332..337
+          Token(TkName)@332..337 "print"
+        Syntax(CallArgList)@337..347
+          Token(TkLeftParen)@337..338 "("
+          Syntax(NameExpr)@338..346
+            Token(TkName)@338..346 "continue"
+          Token(TkRightParen)@346..347 ")"
+    Token(TkEndOfLine)@347..348 "\n"
+    Token(TkWhitespace)@348..356 "        "
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
         );
     }
 }
