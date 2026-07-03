@@ -2,11 +2,16 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
-## [0.23.3] - Unreleased
+## [0.24.0] - Unreleased
 
 ### ✨ Added
 
+- **Support LuaJIT-Ext**: Added support for LuaJIT‑Ext syntax, including compound assignment operators, null‑safe navigation, the null‑coalescing operator, constant variables, and the continue statement.
+
+- **Support LuaJIT3**: Besides LuaJIT‑Ext syntax, named variadic arguments and integer division are also supported.
+
 - **Support const generic parameters**: Added the `const T` syntax for generics, for example `---@generic const T`.
+
 - **emmylua_check severity filter**: Added the `--severity` option to filter diagnostic output by minimum severity.
 
 ### ⚠️ Deprecated

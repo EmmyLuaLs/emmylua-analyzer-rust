@@ -28,10 +28,6 @@ pub fn narrow_down_type(
         return Some(source);
     }
 
-    if source.is_never() {
-        return Some(LuaType::Never);
-    }
-
     let declared_override = if let Some(declared_type) = &declared
         && matches!(declared_type, LuaType::Def(_) | LuaType::Ref(_))
     {

@@ -42,6 +42,96 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_cast_add_type_allows_assignment() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type string
+            local val
+
+            ---@cast val + boolean
+            local after_cast = 1
+            val = true
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_cast_add_type_allows_assignment_from_declared_union_in_narrowed_branch() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type string|number
+            local val
+
+            ---@cast val + boolean
+            if val == "a" then
+                val = true
+            end
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_cast_add_type_allows_assignment_after_branch_join() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type string
+            local val
+
+            ---@cast val + boolean
+            local cond ---@type boolean
+            if cond then
+                local branch = 1
+            end
+
+            val = true
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_branch_local_cast_does_not_allow_assignment_after_join() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type string
+            local val
+
+            local cond ---@type boolean
+            if cond then
+                ---@cast val + boolean
+                local branch = 1
+            end
+
+            val = true
+            "#
+        ));
+    }
+
+    #[test]
+    fn test_field_cast_add_type_allows_assignment() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class CastField
+            ---@field value string
+
+            local obj ---@type CastField
+
+            ---@cast obj.value + boolean
+            obj.value = true
+            "#
+        ));
+    }
+
     // #[test]
     // fn test_3() {
     //     let mut ws = VirtualWorkspace::new();

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, FileId, LuaType, VirtualWorkspace};
+    use crate::{DiagnosticCode, EmmyrcLuaVersion, FileId, LuaType, VirtualWorkspace};
     use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName, LuaNameExpr};
     use ntest::timeout;
 
@@ -334,6 +334,180 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_plain_call_condition_keeps_inner_call_prefix_type() {
+        let mut ws = VirtualWorkspace::new();
+        let code = r#"
+        local function a() end
+        local function b() end
+
+        b()
+        if a() then
+            b()
+            inner = b
+        end
+        "#;
+        ws.def(code);
+
+        let ty = ws.expr_ty("inner");
+        assert!(ty.is_function());
+
+        let mut diag_ws = VirtualWorkspace::new();
+        assert!(diag_ws.has_no_diagnostic(DiagnosticCode::CallNonCallable, code));
+    }
+
+    #[test]
+    fn test_false_call_condition_keeps_inner_unrelated_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        ---@type string
+        local value = "ok"
+        if always_false() then
+            inner = value
+        end
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("inner"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_true_call_condition_keeps_else_call_prefix_type() {
+        let mut ws = VirtualWorkspace::new();
+        let code = r#"
+        ---@return true
+        local function always_true()
+            return true
+        end
+
+        local function b() end
+        if always_true() then
+        else
+            b()
+        end
+        "#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::CallNonCallable, code));
+    }
+
+    #[test]
+    fn test_false_call_condition_assignment_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        local value = "before"
+        if always_false() then
+            value = 1
+        end
+        after = value
+        "#,
+        );
+
+        let after = ws.expr_ty("after");
+        assert_eq!(ws.humanize_type(after), "string");
+    }
+
+    #[test]
+    fn test_false_call_condition_missing_field_assignment_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function is_windows()
+            return false
+        end
+
+        local command = "ls"
+        local config = {}
+        if is_windows() then
+            command = config.windows_command
+        end
+        after = command
+        "#,
+        );
+
+        let after = ws.expr_ty("after");
+        assert_eq!(ws.humanize_type(after), "string");
+    }
+
+    #[test]
+    fn test_reachable_assignment_over_never_value_contributes_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class NeverBox
+        ---@field value never
+
+        ---@return NeverBox
+        local function make_box() end
+
+        local value = make_box().value
+        local cond ---@type boolean
+        if cond then
+            value = 1
+        end
+        after = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after"), LuaType::IntegerConst(1));
+    }
+
+    #[test]
+    fn test_false_call_condition_tag_cast_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        local value = "before"
+        if always_false() then
+            ---@cast value integer
+        end
+        after = value
+        "#,
+        );
+
+        let after = ws.expr_ty("after");
+        assert_eq!(ws.humanize_type(after), r#""before""#);
+    }
+
+    #[test]
+    fn test_false_call_condition_doc_assignment_does_not_contribute_to_merge() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@return false
+        local function always_false()
+            return false
+        end
+
+        local value = "before"
+        if always_false() then
+            ---@type integer
+            value = 1
+        end
+        after = value
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after"), ws.ty("string"));
     }
 
     #[test]
@@ -1718,6 +1892,30 @@ n = n + 1
     }
 
     #[test]
+    #[timeout(5000)]
+    fn test_unreachable_continue_loop_after_return_does_not_cycle() {
+        let mut ws = VirtualWorkspace::new();
+        let mut emmyrc = ws.get_emmyrc();
+        emmyrc.runtime.version = EmmyrcLuaVersion::LuaJITExt;
+        ws.update_emmyrc(emmyrc);
+
+        ws.def(
+            r#"
+        local side_effect = 0
+        return boolean
+
+        local continue_counter = 0
+        for i = 1, 5 do
+            if i % 2 == 0 then
+                continue
+            end
+            continue_counter = continue_counter + 1
+        end
+        "#,
+        );
+    }
+
+    #[test]
     fn test_for_in_loop_post_flow_keeps_incoming_type_after_break() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
 
@@ -1832,6 +2030,59 @@ n = n + 1
 
         let b = ws.expr_ty("b");
         assert_eq!(b, LuaType::String);
+    }
+
+    #[test]
+    fn test_issue_877_never_return_call_narrows_after_guard() {
+        let mut ws = VirtualWorkspace::new();
+
+        let source = r#"
+        ---@param _num integer
+        local function accept_num(_num)
+        end
+
+        ---@return never
+        local function panic()
+            error("panic!")
+        end
+
+        ---@type integer?
+        local num
+        if num == nil then
+            panic()
+        end
+
+        accept_num(num)
+        after_guard = num
+        "#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, source));
+        assert_eq!(ws.expr_ty("after_guard"), LuaType::Integer);
+    }
+
+    #[test]
+    fn test_never_return_call_after_branch_statement_narrows_after_guard() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+        ---@return never
+        local function panic()
+            error("panic!")
+        end
+
+        ---@type integer?
+        local num
+        if num == nil then
+            local reason = "bad"
+            panic()
+        end
+
+        after_guard = num
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_guard"), LuaType::Integer);
     }
 
     #[test]

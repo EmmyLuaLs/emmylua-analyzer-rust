@@ -239,7 +239,7 @@ fn parse_stat(p: &mut LuaParser) -> ParseResult {
         LuaTokenKind::TkLocal => parse_local(p)?,
         LuaTokenKind::TkReturn => parse_return(p)?,
         LuaTokenKind::TkBreak => parse_break(p)?,
-        LuaTokenKind::TkContinue => parse_continue(p)?,
+        LuaTokenKind::TkContinue => try_parse_continue(p)?,
         LuaTokenKind::TkConst => try_parse_const(p)?,
         LuaTokenKind::TkDo => parse_do(p)?,
         LuaTokenKind::TkRepeat => parse_repeat(p)?,
@@ -647,19 +647,18 @@ fn parse_local(p: &mut LuaParser) -> ParseResult {
 
 fn try_parse_const(p: &mut LuaParser) -> ParseResult {
     let mut m = p.mark(LuaSyntaxKind::ConstStat);
-    p.set_current_token_kind(LuaTokenKind::TkConst);
-    p.bump(); // consume 'const'
-
-    match p.current_token() {
+    match p.peek_next_token() {
         LuaTokenKind::TkFunction => {
-            p.bump();
+            p.set_current_token_kind(LuaTokenKind::TkConst);
+            p.bump(); // consume 'const'
+            p.bump(); // consume 'function'
             m.set_kind(p, LuaSyntaxKind::LocalFuncStat);
 
             match parse_local_name(p, false) {
                 Ok(_) => {}
                 Err(_) => {
                     p.push_error(LuaParseError::syntax_error_from(
-                        &t!("expected function name after 'local function'"),
+                        &t!("expected function name after 'const function'"),
                         p.current_token_range(),
                     ));
                 }
@@ -675,6 +674,8 @@ fn try_parse_const(p: &mut LuaParser) -> ParseResult {
             }
         }
         LuaTokenKind::TkName => {
+            p.set_current_token_kind(LuaTokenKind::TkConst);
+            p.bump(); // consume 'const'
             parse_variable_name_list(p, false)?;
 
             if p.current_token() == LuaTokenKind::TkAssign {
@@ -685,12 +686,7 @@ fn try_parse_const(p: &mut LuaParser) -> ParseResult {
             }
         }
         _ => {
-            p.push_error(LuaParseError::syntax_error_from(
-                &t!("expected variable name after 'const'"),
-                p.current_token_range(),
-            ));
-
-            return Err(ParseFailReason::UnexpectedToken);
+            return Ok(m.undo(p));
         }
     }
 
@@ -772,10 +768,23 @@ fn parse_break(p: &mut LuaParser) -> ParseResult {
     Ok(m.complete(p))
 }
 
-fn parse_continue(p: &mut LuaParser) -> ParseResult {
+fn try_parse_continue(p: &mut LuaParser) -> ParseResult {
     let m = p.mark(LuaSyntaxKind::ContinueStat);
-    p.set_current_token_kind(LuaTokenKind::TkContinue);
-    p.bump();
+    match p.peek_next_token() {
+        LuaTokenKind::TkEnd
+        | LuaTokenKind::TkElseIf
+        | LuaTokenKind::TkElse
+        | LuaTokenKind::TkEof
+        | LuaTokenKind::TkUntil
+        | LuaTokenKind::TkSemicolon => {
+            p.set_current_token_kind(LuaTokenKind::TkContinue);
+            p.bump();
+        }
+        _ => {
+            return Ok(m.undo(p));
+        }
+    }
+
     if_token_bump(p, LuaTokenKind::TkSemicolon);
     Ok(m.complete(p))
 }
@@ -880,27 +889,23 @@ fn try_parse_global_stat(p: &mut LuaParser) -> ParseResult {
     Ok(m.complete(p))
 }
 
-fn try_soft_keyword_stat(p: &mut LuaParser) -> Option<ParseResult> {
+fn try_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
     let keyword = p.current_token_text();
     match keyword {
         "global" if p.parse_config.support(LuaFeatures::GlobalDeclaration) => {
-            Some(try_parse_global_stat(p))
+            try_parse_global_stat(p)
         }
-        "const" if p.parse_config.support(LuaFeatures::ConstDeclaration) => {
-            Some(try_parse_const(p))
-        }
-        "continue" if p.parse_config.support(LuaFeatures::Continue) => Some(parse_continue(p)),
-        _ => None,
+        "const" if p.parse_config.support(LuaFeatures::ConstDeclaration) => try_parse_const(p),
+        "continue" if p.parse_config.support(LuaFeatures::Continue) => try_parse_continue(p),
+        _ => Ok(CompleteMarker::empty()),
     }
 }
 
 fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
     if p.current_token() == LuaTokenKind::TkName {
-        if let Some(cm_result) = try_soft_keyword_stat(p) {
-            let cm = cm_result?;
-            if !cm.is_invalid() {
-                return Ok(cm);
-            }
+        let cm = try_soft_keyword_stat(p)?;
+        if !cm.is_invalid() {
+            return Ok(cm);
         }
     }
 

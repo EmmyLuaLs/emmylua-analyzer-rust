@@ -7,10 +7,10 @@ members = [
 
 [workspace.dependencies]
 # local
-emmylua_code_analysis = { path = "crates/emmylua_code_analysis", version = "0.23.2" }
-emmylua_formatter = { path = "crates/emmylua_formatter", version = "0.23.2" }
-emmylua_parser = { path = "crates/emmylua_parser", version = "0.26.0" }
-emmylua_parser_desc = { path = "crates/emmylua_parser_desc", version = "0.26.0" }
+emmylua_code_analysis = { path = "crates/emmylua_code_analysis", version = "0.24.0" }
+emmylua_formatter = { path = "crates/emmylua_formatter", version = "0.24.0" }
+emmylua_parser = { path = "crates/emmylua_parser", version = "0.27.0" }
+emmylua_parser_desc = { path = "crates/emmylua_parser_desc", version = "0.27.0" }
 emmylua_diagnostic_macro = { path = "crates/emmylua_diagnostic_macro", version = "0.5.0" }
 schema_to_emmylua = { path = "crates/schema_to_emmylua", version = "0.1.0" }
 
@@ -51,11 +51,11 @@ itertools = "0.14.0"
 clap = { version = "4.6.1", features = ["derive", "wrap_help"] }
 ansi_term = "0.12.1"
 num-traits = { version = "0.2", features = ["std"] }
-mimalloc = { version = "0.1.50" }
+mimalloc = { version = "0.1.52", features = ["v2"] }
 googletest = "0.14.2"
 ntest = "0.9.5"
 unicode-general-category = "1.0.0"
-luars = { version = "0.26.1", features = ["serde", "sandbox"] }
+luars = { version = "0.26.2", features = ["serde", "sandbox"] }
 # request's default-tls feature pulls in a dependency on aws-lc-rs,
 # which causes a linking error on Windows
 reqwest = { version = "0.13.1", default-features = false, features = [

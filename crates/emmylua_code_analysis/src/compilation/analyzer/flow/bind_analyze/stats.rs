@@ -200,7 +200,9 @@ pub fn bind_call_expr_stat(
         if let Some(ast) = LuaAst::cast(call_expr.syntax().clone()) {
             bind_each_child(binder, ast, current);
         }
-        current
+        let flow_id = binder.create_node(FlowNodeKind::CallExprStat(call_expr_stat.to_ptr()));
+        binder.add_antecedent(flow_id, current);
+        flow_id
     }
 }
 
@@ -416,21 +418,28 @@ pub fn bind_repeat_stat(
     let post_repeat_label = binder.create_branch_label();
     binder.add_antecedent(pre_repeat_label, current);
 
-    let mut block_flow_id = pre_repeat_label;
+    let block_entry = finish_flow_label(binder, pre_repeat_label, current);
+    let mut block_flow_id = block_entry;
     // Bind the block of code inside the repeat statement
     if let Some(iter_block) = repeat_stat.get_block() {
         block_flow_id = bind_iter_block(
             binder,
             iter_block,
-            pre_repeat_label,
+            block_entry,
             pre_repeat_label,
             post_repeat_label,
         );
     }
 
-    // Bind the condition expression
+    // Bind the condition expression as a condition node
     if let Some(condition_expr) = repeat_stat.get_condition_expr() {
-        bind_expr(binder, condition_expr, block_flow_id);
+        bind_condition_expr(
+            binder,
+            condition_expr,
+            block_flow_id,
+            post_repeat_label,
+            pre_repeat_label,
+        );
     }
 
     finish_flow_label(binder, post_repeat_label, block_flow_id)
@@ -541,12 +550,13 @@ pub fn bind_for_range_stat(
     let decl_flow = binder.create_decl(for_range_stat.get_position());
     binder.add_antecedent(decl_flow, pre_for_range_label);
 
+    let block_entry = finish_flow_label(binder, pre_for_range_label, current);
     if let Some(iter_block) = for_range_stat.get_block() {
         // Bind the block of code inside the for loop
         bind_iter_block(
             binder,
             iter_block,
-            decl_flow,
+            block_entry,
             pre_for_range_label,
             post_for_range_label,
         );

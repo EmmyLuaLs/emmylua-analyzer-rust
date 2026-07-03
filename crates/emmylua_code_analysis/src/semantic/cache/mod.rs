@@ -26,19 +26,51 @@ pub(in crate::semantic) struct FlowAssignmentInfo {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::semantic) enum FlowMode {
-    WithConditions,
-    WithoutConditions,
+    Normal,
+    // Query one predecessor of a merge label; if that walk reaches an
+    // unreachable condition edge, it contributes `never` to the merged type.
+    MergeBranch,
+    // Re-query assignment antecedents without applying condition narrows.
+    IgnoreConditions,
 }
 
 impl FlowMode {
-    pub fn uses_conditions(self) -> bool {
-        matches!(self, Self::WithConditions)
+    pub(in crate::semantic) fn for_merge_contribution(self) -> Self {
+        match self {
+            Self::Normal | Self::MergeBranch => Self::MergeBranch,
+            Self::IgnoreConditions => Self::IgnoreConditions,
+        }
+    }
+
+    pub(in crate::semantic) fn for_point_dependency(self) -> Self {
+        match self {
+            Self::MergeBranch => Self::MergeBranch,
+            Self::Normal | Self::IgnoreConditions => Self::Normal,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::semantic) enum FlowQueryResult {
+    Type(LuaType),
+    // A merge contribution crossed an impossible condition edge. Keep this
+    // separate from `Type(Never)` because reachable code can still have a real
+    // never-typed value and assign over it before the merge.
+    Unreachable,
+}
+
+impl FlowQueryResult {
+    pub(in crate::semantic) fn into_type(self) -> LuaType {
+        match self {
+            Self::Type(typ) => typ,
+            Self::Unreachable => LuaType::Never,
+        }
     }
 }
 
 #[derive(Debug, Default)]
 pub(in crate::semantic) struct FlowVarCache {
-    pub type_cache: HashMap<(FlowId, FlowMode), CacheEntry<LuaType>>,
+    pub type_cache: HashMap<(FlowId, FlowMode), CacheEntry<FlowQueryResult>>,
     pub condition_cache: HashMap<(FlowId, InferConditionFlow), CacheEntry<ConditionFlowAction>>,
 }
 

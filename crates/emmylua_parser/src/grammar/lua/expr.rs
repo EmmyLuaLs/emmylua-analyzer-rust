@@ -570,7 +570,7 @@ fn parse_suffixed_expr(p: &mut LuaParser) -> ParseResult {
                 cm = m.complete(p);
             }
             LuaTokenKind::TkColon => {
-                if p.inside_ternary_branch() && !p.inside_paren() {
+                if p.inside_ternary_branch() && !p.paren_depth_exceeds_ternary_ref() {
                     return Ok(cm);
                 }
                 let m = cm.precede(p, LuaSyntaxKind::IndexExpr);
