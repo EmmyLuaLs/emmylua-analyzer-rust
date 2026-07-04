@@ -48,6 +48,9 @@ fn main() {
     if let Some(dep) = dependencies.get_mut("emmylua_code_analysis") {
         dep["version"] = value(version.clone());
     }
+    if let Some(dep) = dependencies.get_mut("emmylua_formatter") {
+        dep["version"] = value(version.clone());
+    }
 
     fs::write(&workspacec_cargo, doc.to_string())
         .unwrap_or_else(|_| panic!("Unable to write to {:?}", workspacec_cargo));
