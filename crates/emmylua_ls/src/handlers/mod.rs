@@ -2,6 +2,7 @@ mod call_hierarchy;
 mod code_actions;
 mod code_lens;
 mod command;
+mod common;
 mod completion;
 mod configuration;
 mod definition;

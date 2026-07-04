@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use crate::{
@@ -22,7 +23,7 @@ pub(crate) fn callable_accepts_args(
         let Some(param_index) = get_call_param_index(func, arg_index, is_colon_call) else {
             continue;
         };
-        let Some(param_type) = get_call_arg_param_type(func, param_index) else {
+        let Some(param_type) = get_func_param_type(func, param_index) else {
             return false;
         };
 
@@ -86,7 +87,7 @@ pub fn resolve_signature_by_args(
             let Some(param_index) = get_call_param_index(func, arg_index, is_colon_call) else {
                 continue;
             };
-            let Some(param_type) = get_call_arg_param_type(func, param_index) else {
+            let Some(param_type) = get_func_param_type(func, param_index) else {
                 *opt_func = None;
                 continue;
             };
@@ -111,14 +112,6 @@ pub fn resolve_signature_by_args(
             if match_result == ParamMatchResult::Not {
                 *opt_func = None;
                 continue;
-            }
-
-            if !has_declined_no_flow_arg
-                && match_result > ParamMatchResult::Any
-                && arg_index + 1 == expr_len
-                && param_index + 1 == func.get_params().len()
-            {
-                return Ok(func.clone());
             }
         }
 
@@ -149,10 +142,29 @@ pub fn resolve_signature_by_args(
         _ => {}
     }
 
+    if !has_declined_no_flow_arg
+        && let Some(func) = choose_more_specific_callable(
+            db,
+            &rest_need_resolve_funcs,
+            expr_types,
+            is_colon_call,
+            declined_no_flow_args,
+        )
+    {
+        return Ok(func);
+    }
+
     let start_param_index = expr_len;
     let mut max_param_len = 0;
     for func in rest_need_resolve_funcs.iter().flatten() {
-        let param_len = func.get_params().len();
+        let mut param_len = func.get_params().len();
+        if func
+            .get_params()
+            .last()
+            .is_some_and(|last_param| last_param.0 == "...")
+        {
+            param_len = param_len.saturating_sub(1);
+        }
         if param_len > max_param_len {
             max_param_len = param_len;
         }
@@ -236,7 +248,151 @@ pub fn resolve_signature_by_args(
     }
 }
 
-fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
+fn choose_more_specific_callable(
+    db: &DbIndex,
+    funcs: &[Option<Arc<LuaFunctionType>>],
+    expr_types: &[LuaType],
+    is_colon_call: bool,
+    declined_no_flow_args: &[bool],
+) -> Option<Arc<LuaFunctionType>> {
+    if expr_types.is_empty()
+        || expr_types.iter().enumerate().all(|(i, expr_type)| {
+            declined_no_flow_args.get(i).copied().unwrap_or(false)
+                || expr_type.is_any()
+                || expr_type.is_unknown()
+        })
+    {
+        return None;
+    }
+
+    let mut best: Option<Arc<LuaFunctionType>> = None;
+    let mut has_strict_better = false;
+    for func in funcs.iter().flatten() {
+        let Some(best_func) = best.as_ref() else {
+            best = Some(func.clone());
+            continue;
+        };
+
+        match compare_callable_specificity(
+            db,
+            func,
+            best_func,
+            expr_types,
+            is_colon_call,
+            declined_no_flow_args,
+        ) {
+            Some(Ordering::Greater) => {
+                best = Some(func.clone());
+                has_strict_better = true;
+            }
+            Some(Ordering::Less) => {
+                has_strict_better = true;
+            }
+            Some(Ordering::Equal) => {}
+            None => return None,
+        }
+    }
+
+    if has_strict_better { best } else { None }
+}
+
+fn compare_callable_specificity(
+    db: &DbIndex,
+    a: &LuaFunctionType,
+    b: &LuaFunctionType,
+    expr_types: &[LuaType],
+    is_colon_call: bool,
+    declined_no_flow_args: &[bool],
+) -> Option<Ordering> {
+    let mut result = Ordering::Equal;
+    for (arg_index, expr_type) in expr_types.iter().enumerate() {
+        if declined_no_flow_args
+            .get(arg_index)
+            .copied()
+            .unwrap_or(false)
+            || expr_type.is_any()
+            || expr_type.is_unknown()
+        {
+            continue;
+        }
+
+        let param_index = get_call_param_index(a, arg_index, is_colon_call)?;
+        let a_param = get_func_param_type(a, param_index)?;
+        let b_param = get_func_param_type(b, param_index)?;
+        let param_order = compare_param_specificity(db, &a_param, &b_param, expr_type);
+        match (result, param_order) {
+            (Ordering::Equal, order) => result = order,
+            (Ordering::Greater, Ordering::Less) | (Ordering::Less, Ordering::Greater) => {
+                return None;
+            }
+            _ => {}
+        }
+    }
+
+    Some(result)
+}
+
+fn compare_param_specificity(
+    db: &DbIndex,
+    a: &LuaType,
+    b: &LuaType,
+    expr_type: &LuaType,
+) -> Ordering {
+    if a == b {
+        return Ordering::Equal;
+    }
+
+    // 字面量实参直接命中对应 overload 时, 该 overload 比基础类型主签名更具体.
+    match (expr_type, a, b) {
+        (
+            LuaType::IntegerConst(expr) | LuaType::DocIntegerConst(expr),
+            LuaType::DocIntegerConst(a),
+            LuaType::Integer | LuaType::Number,
+        ) if expr == a => return Ordering::Greater,
+        (
+            LuaType::IntegerConst(expr) | LuaType::DocIntegerConst(expr),
+            LuaType::Integer | LuaType::Number,
+            LuaType::DocIntegerConst(b),
+        ) if expr == b => return Ordering::Less,
+        (
+            LuaType::StringConst(expr) | LuaType::DocStringConst(expr),
+            LuaType::DocStringConst(a),
+            LuaType::String,
+        ) if expr == a => return Ordering::Greater,
+        (
+            LuaType::StringConst(expr) | LuaType::DocStringConst(expr),
+            LuaType::String,
+            LuaType::DocStringConst(b),
+        ) if expr == b => return Ordering::Less,
+        (
+            LuaType::BooleanConst(expr) | LuaType::DocBooleanConst(expr),
+            LuaType::DocBooleanConst(a),
+            LuaType::Boolean,
+        ) if expr == a => return Ordering::Greater,
+        (
+            LuaType::BooleanConst(expr) | LuaType::DocBooleanConst(expr),
+            LuaType::Boolean,
+            LuaType::DocBooleanConst(b),
+        ) if expr == b => return Ordering::Less,
+        _ => {}
+    }
+
+    match (a.is_any() || a.is_unknown(), b.is_any() || b.is_unknown()) {
+        (true, false) => return Ordering::Less,
+        (false, true) => return Ordering::Greater,
+        _ => {}
+    }
+
+    let a_sub_b = check_type_compact(db, b, a).is_ok();
+    let b_sub_a = check_type_compact(db, a, b).is_ok();
+    match (a_sub_b, b_sub_a) {
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        _ => Ordering::Equal,
+    }
+}
+
+pub(crate) fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
     if let Some(last_param) = func.get_params().last() {
         last_param.0 == "..."
     } else {
@@ -244,7 +400,7 @@ fn is_func_last_param_variadic(func: &LuaFunctionType) -> bool {
     }
 }
 
-fn get_call_param_index(
+pub(crate) fn get_call_param_index(
     func: &LuaFunctionType,
     arg_index: usize,
     is_colon_call: bool,
@@ -265,7 +421,7 @@ fn get_call_param_index(
     Some(param_index)
 }
 
-fn get_call_arg_param_type(func: &LuaFunctionType, param_index: usize) -> Option<LuaType> {
+pub(crate) fn get_func_param_type(func: &LuaFunctionType, param_index: usize) -> Option<LuaType> {
     if let Some(param_info) = func.get_params().get(param_index) {
         return Some(param_info.1.clone().unwrap_or(LuaType::Any));
     }

@@ -7,9 +7,9 @@ use emmylua_parser::{
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaLspOptimizationCode,
-    LuaMemberKey, LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel,
-    TypeCheckFailReason, TypeCheckResult, VariadicType, infer_index_expr,
+    DbIndex, DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaMemberKey,
+    LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, TypeCheckFailReason,
+    TypeCheckResult, VariadicType, get_real_type, infer_index_expr,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -230,7 +230,7 @@ pub fn check_table_expr(
             if property
                 .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
                 .and_then(|attribute_use| attribute_use.as_lsp_optimization())
-                .is_some_and(|attribute| attribute.code == LuaLspOptimizationCode::CheckTableField)
+                .is_some_and(|attribute| attribute.is_skip_table_fields_check())
             {
                 return Some(false);
             }
@@ -238,10 +238,19 @@ pub fn check_table_expr(
     }
 
     let table_type = table_type?;
-    if let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) {
-        return check_table_expr_content(context, semantic_model, table_type, &table_expr);
+    let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) else {
+        return Some(false);
+    };
+
+    let cache_key = (table_expr.get_syntax_id(), table_type.clone());
+    if let Some(has_diagnostic) = context.get_table_expr_check_result(&cache_key) {
+        return Some(has_diagnostic);
     }
-    Some(false)
+
+    let has_diagnostic =
+        check_table_expr_content(context, semantic_model, table_type, &table_expr)?;
+    context.set_table_expr_check_result(cache_key, has_diagnostic);
+    Some(has_diagnostic)
 }
 
 // 处理 value_expr 是 TableExpr 的情况, 但不会处理 `local a = { x = 1 }, local v = a`
@@ -299,7 +308,8 @@ fn check_table_expr_content(
             }
         };
 
-        if (source_type.is_table() || source_type.is_custom_type())
+        let real_source_type = get_real_type_or_self(semantic_model.get_db(), &source_type);
+        if (real_source_type.is_table() || real_source_type.is_custom_type())
             && let Some(table_expr) = LuaTableExpr::cast(value_expr.syntax().clone())
         {
             // 检查子表
@@ -386,7 +396,8 @@ fn check_assign_type_mismatch(
         return Some(false);
     }
 
-    match (&source_type, &value_type) {
+    let real_source_type = get_real_type_or_self(semantic_model.get_db(), source_type);
+    match (real_source_type, value_type) {
         // 如果源类型是定义类型, 则仅在目标类型是定义类型或引用类型时进行类型检查
         (LuaType::Def(_), LuaType::Def(_) | LuaType::Ref(_)) => {}
         (LuaType::Def(_), _) => return Some(false),
@@ -450,4 +461,8 @@ fn add_type_check_diagnostic(
             );
         }
     }
+}
+
+fn get_real_type_or_self<'a>(db: &'a DbIndex, ty: &'a LuaType) -> &'a LuaType {
+    get_real_type(db, ty).unwrap_or(ty)
 }

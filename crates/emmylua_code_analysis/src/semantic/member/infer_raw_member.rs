@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use smol_str::SmolStr;
-
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
     LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
@@ -98,6 +96,34 @@ fn infer_custom_type_raw_member_type(
         return member_item.resolve_type(db);
     }
 
+    if let Some(access_key_type) = member_key.to_index_type() {
+        let mut result_types = Vec::new();
+        for member in db
+            .get_member_index()
+            .get_members(&owner)
+            .unwrap_or_default()
+        {
+            let LuaMemberKey::TypeKey(index_key_type) = member.get_key() else {
+                continue;
+            };
+
+            if check_type_compact(db, index_key_type, &access_key_type).is_err() {
+                continue;
+            }
+
+            let member_type = db
+                .get_type_index()
+                .get_type_cache(&member.get_id().into())
+                .map(|cache| cache.as_type().clone())
+                .unwrap_or(LuaType::Unknown);
+            result_types.push(member_type);
+        }
+
+        if !result_types.is_empty() {
+            return Ok(LuaType::from_vec(result_types));
+        }
+    }
+
     if type_decl.is_class()
         && let Some(super_types) = type_index.get_super_types(type_id)
     {
@@ -145,11 +171,8 @@ fn infer_object_raw_member_type(
 
     let index_accesses = object.get_index_access();
     for (key, value) in index_accesses {
-        let access_key_type = match &member_key {
-            LuaMemberKey::Name(name) => LuaType::StringConst(name.clone().into()),
-            LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
-            LuaMemberKey::ExprType(lua_type) => lua_type.clone(),
-            LuaMemberKey::None => continue,
+        let Some(access_key_type) = member_key.to_index_type() else {
+            continue;
         };
 
         if check_type_compact(db, key, &access_key_type).is_ok() {
@@ -172,7 +195,7 @@ fn infer_array_raw_member_type(
     };
     match member_key {
         LuaMemberKey::Integer(_) => Ok(typ),
-        LuaMemberKey::ExprType(member_type) => {
+        LuaMemberKey::TypeKey(member_type) => {
             if member_type.is_integer() {
                 Ok(typ)
             } else {
@@ -193,12 +216,10 @@ fn infer_table_generic_raw_member_type(
     }
     let key_type = &table_params[0];
     let value_type = &table_params[1];
-    let access_key_type = match member_key {
-        LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
-        LuaMemberKey::Name(name) => LuaType::StringConst(SmolStr::new(name.as_str()).into()),
-        LuaMemberKey::ExprType(expr_type) => expr_type.clone(),
-        LuaMemberKey::None => return Err(InferFailReason::FieldNotFound),
+    let Some(access_key_type) = member_key.to_index_type() else {
+        return Err(InferFailReason::FieldNotFound);
     };
+
     if check_type_compact(db, key_type, &access_key_type).is_ok() {
         return Ok(value_type.clone());
     }

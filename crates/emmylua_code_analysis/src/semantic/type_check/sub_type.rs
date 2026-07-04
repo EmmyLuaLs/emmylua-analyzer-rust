@@ -1,6 +1,6 @@
-use std::collections::HashSet;
+use hashbrown::HashSet;
 
-use crate::{DbIndex, LuaType, LuaTypeDeclId};
+use crate::{DbIndex, LuaType, LuaTypeDeclId, LuaTypeIdentifier};
 
 /// 检查子类型关系.
 ///
@@ -10,16 +10,16 @@ pub fn is_sub_type_of(
     sub_type_ref_id: &LuaTypeDeclId,
     super_type_ref_id: &LuaTypeDeclId,
 ) -> bool {
-    check_sub_type_of_iterative(db, sub_type_ref_id, super_type_ref_id).unwrap_or(false)
+    check_sub_type_of_iterative(db, sub_type_ref_id, super_type_ref_id)
 }
 
 fn check_sub_type_of_iterative(
     db: &DbIndex,
     sub_type_ref_id: &LuaTypeDeclId,
     super_type_ref_id: &LuaTypeDeclId,
-) -> Option<bool> {
+) -> bool {
     if sub_type_ref_id == super_type_ref_id {
-        return Some(true);
+        return true;
     }
 
     let type_index = db.get_type_index();
@@ -27,11 +27,8 @@ fn check_sub_type_of_iterative(
     let mut visited = HashSet::with_capacity(4);
 
     stack.push(sub_type_ref_id);
+    visited.insert(sub_type_ref_id);
     while let Some(current_id) = stack.pop() {
-        if !visited.insert(current_id) {
-            continue;
-        }
-
         let supers_iter = match type_index.get_super_types_iter(current_id) {
             Some(iter) => iter,
             None => continue,
@@ -42,9 +39,9 @@ fn check_sub_type_of_iterative(
                 LuaType::Ref(super_id) => {
                     // TODO: 不相等时可以判断必要字段是否全部匹配, 如果匹配则认为相等
                     if super_id == super_type_ref_id {
-                        return Some(true);
+                        return true;
                     }
-                    if !visited.contains(super_id) {
+                    if visited.insert(super_id) {
                         stack.push(super_id);
                     }
                 }
@@ -52,56 +49,63 @@ fn check_sub_type_of_iterative(
                 LuaType::Generic(generic) => {
                     let base_type_id = generic.get_base_type_id_ref();
                     if base_type_id == super_type_ref_id {
-                        return Some(true);
+                        return true;
                     }
-                    if !visited.contains(&base_type_id) {
+                    if visited.insert(base_type_id) {
                         stack.push(base_type_id);
                     }
                 }
                 _ => {
-                    if let Some(base_id) = get_base_type_id(super_type)
-                        && base_id == *super_type_ref_id
-                    {
-                        return Some(true);
+                    if is_base_type_id(super_type, super_type_ref_id) {
+                        return true;
                     }
                 }
             }
         }
     }
 
-    Some(false)
+    false
 }
 
 pub fn get_base_type_id(typ: &LuaType) -> Option<LuaTypeDeclId> {
+    base_type_name(typ).map(LuaTypeDeclId::global)
+}
+
+fn is_base_type_id(typ: &LuaType, type_id: &LuaTypeDeclId) -> bool {
+    let LuaTypeIdentifier::Global(type_name) = type_id.get_id() else {
+        return false;
+    };
+    let type_name: &str = type_name.as_ref();
+
+    base_type_name(typ).is_some_and(|base_name| base_name == type_name)
+}
+
+fn base_type_name(typ: &LuaType) -> Option<&'static str> {
     match typ {
         LuaType::Integer | LuaType::IntegerConst(_) | LuaType::DocIntegerConst(_) => {
-            Some(LuaTypeDeclId::global("integer"))
+            Some("integer")
         }
-        LuaType::Number | LuaType::FloatConst(_) => Some(LuaTypeDeclId::global("number")),
+        LuaType::Number | LuaType::FloatConst(_) => Some("number"),
         LuaType::Boolean | LuaType::BooleanConst(_) | LuaType::DocBooleanConst(_) => {
-            Some(LuaTypeDeclId::global("boolean"))
+            Some("boolean")
         }
-        LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => {
-            Some(LuaTypeDeclId::global("string"))
-        }
+        LuaType::String | LuaType::StringConst(_) | LuaType::DocStringConst(_) => Some("string"),
         LuaType::Table
         | LuaType::TableGeneric(_)
         | LuaType::TableConst(_)
         | LuaType::Tuple(_)
         | LuaType::Array(_)
-        | LuaType::Object(_) => Some(LuaTypeDeclId::global("table")),
+        | LuaType::Object(_) => Some("table"),
         LuaType::Intersection(intersection) => {
-            intersection.get_types().iter().find_map(get_base_type_id)
+            intersection.get_types().iter().find_map(base_type_name)
         }
-        LuaType::DocFunction(_) | LuaType::Function | LuaType::Signature(_) => {
-            Some(LuaTypeDeclId::global("function"))
-        }
-        LuaType::Thread => Some(LuaTypeDeclId::global("thread")),
-        LuaType::Userdata => Some(LuaTypeDeclId::global("userdata")),
-        LuaType::Io => Some(LuaTypeDeclId::global("io")),
-        LuaType::Global => Some(LuaTypeDeclId::global("global")),
-        LuaType::SelfInfer => Some(LuaTypeDeclId::global("self")),
-        LuaType::Nil => Some(LuaTypeDeclId::global("nil")),
+        LuaType::DocFunction(_) | LuaType::Function | LuaType::Signature(_) => Some("function"),
+        LuaType::Thread => Some("thread"),
+        LuaType::Userdata => Some("userdata"),
+        LuaType::Io => Some("io"),
+        LuaType::Global => Some("global"),
+        LuaType::SelfInfer => Some("self"),
+        LuaType::Nil => Some("nil"),
         _ => None,
     }
 }

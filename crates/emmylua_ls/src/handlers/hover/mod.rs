@@ -1,5 +1,5 @@
 mod build_hover;
-mod find_origin;
+mod decl_context;
 mod function;
 mod hover_builder;
 mod humanize_type_decl;
@@ -11,10 +11,10 @@ use crate::context::ServerContextSnapshot;
 use crate::util::{find_ref_at, resolve_ref_single};
 pub use build_hover::build_hover_content_for_completion;
 use build_hover::build_semantic_info_hover;
+pub(crate) use decl_context::{HoverDeclContext, HoverDeclInfo};
 use emmylua_code_analysis::{EmmyLuaAnalysis, FileId, WorkspaceId};
 use emmylua_parser::{LuaAstNode, LuaDocDescription, LuaTokenKind};
 use emmylua_parser_desc::parse_ref_target;
-pub use find_origin::{find_all_same_named_members, find_member_origin_owner};
 pub use hover_builder::HoverBuilder;
 pub use humanize_types::infer_prefix_global_name;
 use keyword_hover::{hover_keyword, is_keyword};
@@ -101,7 +101,6 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
             let semantic_info = resolve_ref_single(db, file_id, &path, &detail)?;
 
             build_semantic_info_hover(
-                &analysis.compilation,
                 &semantic_model,
                 db,
                 &document,
@@ -120,7 +119,6 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
             let semantic_info = resolve_ref_single(db, file_id, &path, &doc_see)?;
 
             build_semantic_info_hover(
-                &analysis.compilation,
                 &semantic_model,
                 db,
                 &document,
@@ -135,15 +133,7 @@ pub fn hover(analysis: &EmmyLuaAnalysis, file_id: FileId, position: Position) ->
             let document = semantic_model.get_document();
             let range = token.text_range();
 
-            build_semantic_info_hover(
-                &analysis.compilation,
-                &semantic_model,
-                db,
-                &document,
-                token,
-                semantic_info,
-                range,
-            )
+            build_semantic_info_hover(&semantic_model, db, &document, token, semantic_info, range)
         }
     }
 }

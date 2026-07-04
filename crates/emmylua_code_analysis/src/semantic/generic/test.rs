@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, LuaType, VirtualWorkspace};
+    use crate::{
+        DiagnosticCode, LuaType, RenderLevel, TypeSubstitutor, VirtualWorkspace, humanize_type,
+    };
 
     #[test]
     fn test_variadic_func() {
@@ -273,6 +275,53 @@ result = {
     }
 
     #[test]
+    fn test_keyof_generic_instantiates_to_union() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@field one 1
+            ---@field two 2
+            ---@field three 3
+
+            ---@alias B<T> T extends any and keyof T or never
+            "#,
+        );
+
+        let ty = ws.ty("B<A>");
+        let db = ws.analysis.compilation.get_db();
+        let origin = match ty {
+            LuaType::Generic(generic) => {
+                let type_decl = db
+                    .get_type_index()
+                    .get_type_decl(&generic.get_base_type_id())
+                    .expect("B must resolve to an alias declaration");
+                let substitutor = TypeSubstitutor::from_type_array(generic.get_params().clone());
+                type_decl
+                    .get_alias_origin(&db, Some(&substitutor))
+                    .expect("B<A> must expand to its instantiated alias origin")
+            }
+            ty => ty,
+        };
+
+        let LuaType::Union(union) = &origin else {
+            panic!(
+                "keyof generic should instantiate to union, got {}",
+                humanize_type(&db, &origin, RenderLevel::Detailed)
+            );
+        };
+
+        let mut keys = union
+            .into_vec()
+            .iter()
+            .map(|ty| humanize_type(&db, ty, RenderLevel::Brief))
+            .collect::<Vec<_>>();
+        keys.sort();
+
+        assert_eq!(keys, vec!["\"one\"", "\"three\"", "\"two\""]);
+    }
+
+    #[test]
     fn test_generic_alias_instantiation2() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -285,7 +334,7 @@ result = {
             function toArray(value)
 
             end
-        "#,
+            "#,
         );
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
@@ -297,5 +346,54 @@ result = {
             local arraySuites = toArray(suite)
             "#
         ));
+    }
+
+    #[test]
+    fn test_dot_defined_generic_constructor_called_with_colon() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class a
+            local a = {}
+
+            ---@generic T
+            ---@param cls T
+            ---@return T
+            function a.create(cls)
+                local instance = setmetatable({}, cls)
+                return instance
+            end
+
+            b = a:create()
+            "#,
+        );
+
+        let ty = ws.expr_ty("b");
+        assert_eq!(ws.humanize_type(ty), "a");
+    }
+
+    #[test]
+    fn test_generic_map_lambda_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T, U
+            ---@param list T[]
+            ---@param fn fun(item: T): U
+            ---@return U[]
+            local function map(list, fn)
+            end
+
+            local list_1 = {} ---@type string[]
+
+            _mapped_2 = map(list_1, function (item)
+                return item
+            end)
+        "#,
+        );
+
+        let ty = ws.expr_ty("_mapped_2");
+        let expected = ws.ty("string[]");
+        assert_eq!(ty, expected);
     }
 }

@@ -108,20 +108,19 @@ mod test {
     #[test]
     fn test_issue_360() {
         let mut ws = VirtualWorkspace::new();
+        let source = r#"
+            ---@alias buz number
 
-        assert!(!ws.has_no_diagnostic(
-            DiagnosticCode::RedundantParameter,
-            r#"
-                ---@alias buz number
+            ---@param a buz
+            ---@overload fun(): number
+            function test(a)
+            end
 
-                ---@param a buz
-                ---@overload fun(): number
-                function test(a)
-                end
+            local c = test({'test'})
+        "#;
 
-                local c = test({'test'})
-        "#
-        ));
+        assert!(ws.has_no_diagnostic(DiagnosticCode::RedundantParameter, source));
+        assert!(!ws.has_no_diagnostic(DiagnosticCode::ParamTypeMismatch, source));
     }
 
     #[test]
@@ -130,16 +129,11 @@ mod test {
         assert!(!ws.has_no_diagnostic(
             DiagnosticCode::RedundantParameter,
             r#"
-                ---@class D30
-                local M = {}
-
                 ---@param callback fun()
                 local function with_local(callback)
                 end
 
-                function M:add_local_event()
-                    with_local(function(local_player) end)
-                end
+                with_local(function(local_player) end)
         "#
         ));
     }
@@ -174,6 +168,29 @@ mod test {
             DiagnosticCode::RedundantParameter,
             r#"
             sum(1, 2, 3)
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_variadic_instantiated_params_reports_redundant_parameter() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param ... T...
+            ---@return fun(...: T...)
+            local function bind(...)
+            end
+
+            bound = bind(1, "a")
+            "#,
+        );
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::RedundantParameter,
+            r#"
+            bound(1, "a", true)
         "#
         ));
     }

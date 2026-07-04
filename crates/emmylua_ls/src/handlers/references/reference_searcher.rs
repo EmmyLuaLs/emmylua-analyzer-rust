@@ -4,12 +4,13 @@ use std::{
 };
 
 use emmylua_code_analysis::{
-    DeclReferenceCell, FileId, LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberKey,
-    LuaSemanticDeclId, LuaType, LuaTypeDeclId, SemanticDeclLevel, SemanticModel,
+    DeclReferenceCell, FileId, LuaClosureId, LuaCompilation, LuaDeclId, LuaMemberId, LuaMemberKey,
+    LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaType, LuaTypeDeclId,
+    SemanticDeclLevel, SemanticModel,
 };
 use emmylua_parser::{
-    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaNameToken, LuaStringToken,
-    LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
+    LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallExpr, LuaExpr, LuaGotoStat,
+    LuaLabelStat, LuaNameToken, LuaStringToken, LuaSyntaxNode, LuaSyntaxToken, LuaTableField,
 };
 use lsp_types::Location;
 
@@ -25,6 +26,10 @@ pub fn search_references(
     token: LuaSyntaxToken,
 ) -> Option<Vec<Location>> {
     let mut result = Vec::new();
+    if search_label_references(semantic_model, token.clone(), &mut result).is_some() {
+        return Some(result);
+    }
+
     if let Some(semantic_decl) =
         semantic_model.find_decl(token.clone().into(), SemanticDeclLevel::default())
     {
@@ -58,6 +63,32 @@ pub fn search_references(
     // Some(filtered_result)
 
     Some(result)
+}
+
+fn search_label_references(
+    semantic_model: &SemanticModel,
+    token: LuaSyntaxToken,
+    result: &mut Vec<Location>,
+) -> Option<()> {
+    let name_token = LuaNameToken::cast(token.clone())?;
+    let parent = token.parent()?;
+    if LuaGotoStat::cast(parent.clone()).is_none() && LuaLabelStat::cast(parent.clone()).is_none() {
+        return None;
+    }
+
+    let closure_id = LuaClosureId::from_node(&parent);
+    let label_name = name_token.get_name_text();
+    let ranges = semantic_model
+        .get_db()
+        .get_reference_index()
+        .get_label_references(&semantic_model.get_file_id(), closure_id, label_name)?;
+    let document = semantic_model.get_document();
+    for range in ranges {
+        let location = document.to_lsp_location(range)?;
+        result.push(location);
+    }
+
+    Some(())
 }
 
 pub fn search_decl_references_with_token(
@@ -242,6 +273,85 @@ fn search_member_references_with_ctx<'a>(
                 result,
                 worklist,
             );
+        }
+    }
+
+    search_default_class_ctor_references(
+        semantic_model,
+        compilation,
+        semantic_cache,
+        member_id,
+        result,
+    );
+
+    Some(())
+}
+
+fn search_default_class_ctor_references<'a>(
+    semantic_model: &SemanticModel<'a>,
+    compilation: &'a LuaCompilation,
+    semantic_cache: &mut HashMap<FileId, Arc<SemanticModel<'a>>>,
+    member_id: LuaMemberId,
+    result: &mut Vec<Location>,
+) -> Option<()> {
+    let signature_id = match semantic_model.get_type(member_id.into()) {
+        LuaType::Signature(signature_id) => signature_id,
+        _ => return None,
+    };
+    let type_id = semantic_model
+        .get_db()
+        .get_member_index()
+        .get_current_owner(&member_id)?
+        .get_type_id()?;
+    let call_operator_ids = semantic_model.get_db().get_operator_index().get_operators(
+        &LuaOperatorOwner::Type(type_id.clone()),
+        LuaOperatorMetaMethod::Call,
+    )?;
+    let has_constructor_operator = call_operator_ids.iter().any(|operator_id| {
+        semantic_model
+            .get_db()
+            .get_operator_index()
+            .get_operator(operator_id)
+            .and_then(|operator| operator.get_default_class_ctor_signature_id())
+            == Some(signature_id)
+    });
+    if !has_constructor_operator {
+        return None;
+    }
+
+    for file_id in semantic_model.get_db().get_vfs().get_all_file_ids() {
+        let Some(reference_semantic_model) =
+            get_semantic_model_cached(compilation, semantic_cache, file_id)
+        else {
+            continue;
+        };
+        let root = reference_semantic_model.get_root();
+        for node in root.descendants::<LuaAst>() {
+            let LuaAst::LuaCallExpr(call_expr) = node else {
+                continue;
+            };
+            let Some(prefix_expr) = call_expr.get_prefix_expr() else {
+                continue;
+            };
+            // `---@[constructor]` makes the class value callable. The call site references the
+            // constructor method only when the called value resolves to that class definition.
+            let Ok(LuaType::Def(call_type_id)) =
+                reference_semantic_model.infer_expr(prefix_expr.clone())
+            else {
+                continue;
+            };
+            if call_type_id != *type_id {
+                continue;
+            }
+
+            let document = reference_semantic_model.get_document();
+            let range = match prefix_expr {
+                LuaExpr::NameExpr(name_expr) => name_expr.get_range(),
+                LuaExpr::IndexExpr(index_expr) => index_expr.get_range(),
+                _ => call_expr.get_range(),
+            };
+            let location = document.to_lsp_location(range)?;
+            result.push(location);
         }
     }
 

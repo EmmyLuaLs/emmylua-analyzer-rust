@@ -1,5 +1,6 @@
 use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaBinaryExpr, LuaCallExpr, LuaExpr, LuaIndexExpr,
+    BinaryOperator, LuaAssignStat, LuaAstNode, LuaBinaryExpr, LuaCallExpr, LuaExpr, LuaIndexExpr,
+    PathTrait,
 };
 
 use crate::{DiagnosticCode, SemanticModel};
@@ -65,6 +66,10 @@ fn check_index_expr(
     let prefix = index_expr.get_prefix_expr()?;
     let prefix_type = semantic_model.infer_expr(prefix.clone()).ok()?;
     if prefix_type.is_nullable() {
+        if assign_rhs_asserts_lhs_prefix(&prefix, &index_expr) {
+            return Some(());
+        }
+
         context.add_diagnostic(
             DiagnosticCode::NeedCheckNil,
             prefix.get_range(),
@@ -74,6 +79,81 @@ fn check_index_expr(
     }
 
     Some(())
+}
+
+fn assign_rhs_asserts_lhs_prefix(prefix: &LuaExpr, index_expr: &LuaIndexExpr) -> bool {
+    // 只认可同一条赋值语句里的 RHS assert, 避免跨语句误消除 nil 诊断.
+    let Some(assign) = index_expr.ancestors::<LuaAssignStat>().next() else {
+        return false;
+    };
+
+    let (vars, exprs) = assign.get_var_and_expr_list();
+    let index_range = index_expr.get_range();
+    // 当前被检查的索引必须属于赋值左侧, 例如 `res[1][1]` 中的外层访问.
+    if !vars
+        .iter()
+        .any(|var| var.get_range().contains_range(index_range))
+    {
+        return false;
+    }
+
+    let Some(prefix_path) = expr_access_path(prefix) else {
+        return false;
+    };
+
+    // RHS 里 assert 的必须是同一个访问路径, 例如 `assert(res[1])` 才能保护 `res[1][1]`.
+    exprs
+        .iter()
+        .any(|expr| expr_contains_asserted_path(expr, &prefix_path))
+}
+
+fn expr_contains_asserted_path(expr: &LuaExpr, expected_path: &str) -> bool {
+    match expr {
+        // 闭包体不会在当前赋值求值时立即执行, 里面的 assert 不能保护当前左侧访问.
+        LuaExpr::ClosureExpr(_) => false,
+        LuaExpr::CallExpr(call_expr) => {
+            // assert 的第一个参数才是被证明非 nil 的值.
+            if call_expr.is_assert()
+                && call_expr
+                    .get_args_list()
+                    .and_then(|args| args.get_args().next())
+                    .and_then(|arg| expr_access_path(&arg))
+                    .as_deref()
+                    == Some(expected_path)
+            {
+                return true;
+            }
+
+            // assert 可能嵌在调用前缀或参数里, 递归查找当前 RHS 表达式树.
+            if call_expr
+                .get_prefix_expr()
+                .is_some_and(|prefix| expr_contains_asserted_path(&prefix, expected_path))
+            {
+                return true;
+            }
+
+            call_expr.get_args_list().is_some_and(|args| {
+                args.get_args()
+                    .any(|arg| expr_contains_asserted_path(&arg, expected_path))
+            })
+        }
+        LuaExpr::ParenExpr(paren_expr) => paren_expr
+            .get_expr()
+            .is_some_and(|inner| expr_contains_asserted_path(&inner, expected_path)),
+        _ => expr
+            .children::<LuaExpr>()
+            .any(|child| expr_contains_asserted_path(&child, expected_path)),
+    }
+}
+
+fn expr_access_path(expr: &LuaExpr) -> Option<String> {
+    // 只比较稳定的变量/索引访问路径
+    match expr {
+        LuaExpr::NameExpr(name_expr) => name_expr.get_access_path().map(|path| path.to_string()),
+        LuaExpr::IndexExpr(index_expr) => index_expr.get_access_path().map(|path| path.to_string()),
+        LuaExpr::ParenExpr(paren_expr) => expr_access_path(&paren_expr.get_expr()?),
+        _ => None,
+    }
 }
 
 fn check_binary_expr(

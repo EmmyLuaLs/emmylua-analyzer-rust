@@ -165,15 +165,6 @@ fn check_member_value(
     }
 }
 
-fn member_key_type_for_index(member_key: &LuaMemberKey) -> Option<LuaType> {
-    match member_key {
-        LuaMemberKey::Integer(i) => Some(LuaType::IntegerConst(*i)),
-        LuaMemberKey::Name(name) => Some(LuaType::StringConst(name.clone().into())),
-        LuaMemberKey::ExprType(typ) => Some(typ.clone()),
-        LuaMemberKey::None => None,
-    }
-}
-
 fn check_object_type_compact_table_const(
     context: &mut TypeCheckContext,
     source_object: &LuaObjectType,
@@ -221,7 +212,7 @@ fn check_object_type_compact_table_const(
             if source_fields.contains_key(member.get_key()) {
                 continue;
             }
-            let Some(member_key_type) = member_key_type_for_index(member.get_key()) else {
+            let Some(member_key_type) = member.get_key().to_index_type() else {
                 continue;
             };
 
@@ -306,7 +297,7 @@ fn check_object_type_compact_type_ref(
                 continue;
             }
 
-            let Some(member_key_type) = member_key_type_for_index(member_key) else {
+            let Some(member_key_type) = member_key.to_index_type() else {
                 continue;
             };
 

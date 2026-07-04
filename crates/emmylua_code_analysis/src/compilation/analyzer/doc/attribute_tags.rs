@@ -11,6 +11,7 @@ use crate::{
         infer_type::infer_type,
         tags::{get_owner_id, report_orphan_tag},
     },
+    get_attribute_constructor_params, is_attribute_class,
 };
 
 pub fn analyze_tag_attribute_use(
@@ -64,27 +65,19 @@ pub fn infer_attribute_uses(
             LuaDocType::Name(attribute_use.get_type()?),
         );
         if let LuaType::Ref(type_id) = attribute_type {
+            if !is_attribute_class(analyzer.type_context.db, &type_id) {
+                continue;
+            }
+
             let arg_types: Vec<LuaType> = attribute_use
                 .get_arg_list()
                 .map(|arg_list| arg_list.get_args().map(infer_attribute_arg_type).collect())
                 .unwrap_or_default();
-            let param_names = analyzer
-                .type_context
-                .db
-                .get_type_index()
-                .get_type_decl(&type_id)
-                .and_then(|decl| decl.get_attribute_type())
-                .and_then(|typ| match typ {
-                    LuaType::DocAttribute(attr_type) => Some(
-                        attr_type
-                            .get_params()
-                            .iter()
-                            .map(|(name, _)| name.clone())
-                            .collect::<Vec<_>>(),
-                    ),
-                    _ => None,
-                })
-                .unwrap_or_default();
+            let param_names: Vec<String> =
+                get_attribute_constructor_params(analyzer.type_context.db, &type_id, &arg_types)
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect();
 
             let mut params = Vec::new();
             for (idx, arg_type) in arg_types.into_iter().enumerate() {

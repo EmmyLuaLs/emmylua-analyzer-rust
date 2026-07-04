@@ -58,7 +58,7 @@ std.RawGet: |
   Rawget 的内置类型
 
 std.ConstTpl: |
-  泛型模板的内置类型，用于匹配整数常量和 true/false
+  泛型模板的内置类型，用于匹配整数常量和 `true`/`false`
 
 Parameters: |
   以元组形式获取函数的参数
@@ -77,4 +77,42 @@ Exclude: |
 
 Extract: |
   提取 T 中可以赋值给 U 的类型
+
+deprecated: |
+  标记为`已弃用`。接收一个可选的消息参数。
+
+lsp_optimization: |
+  语言服务器优化项。
+
+  ### 参数
+
+  - `skip_table_fields_check`: 跳过表字段诊断。建议对所有大型配置表使用此选项。
+  - `delayed_definition`: 表示变量类型由第一次赋值决定，仅对没有初始值的 `local` 声明有效。
+
+index_alias: |
+  为 `[int]` 字段设置一个字符串别名，这个别名仅在 `hint` 与 `completion` 中生效。
+
+  接收一个字符串参数作为别名名称。
+
+constructor: |
+  用于指定类的默认构造函数。
+  此属性必须应用于函数参数，且函数参数类型必须是字符串模板泛型。
+
+  ### 参数
+
+  - `name`: 作为构造函数的方法名。
+  - `root_class`: 用于标记根类，以本特性创建的类会隐式继承此类，例如 C# 中的 `System.Object`。默认为空。
+  - `strip_self`: 调用构造函数时是否可以省略 `self` 参数，默认为 `true`。
+  - `return_mode`: 构造函数返回策略。`"self"` 强制返回 `self`，`"doc"` 使用注解的返回类型，
+  `"default"` 优先使用注解的返回类型，并在没有声明注解时回退到 `self`。默认为 `"default"`。
+
+field_accessor: |
+  将 `getter` 和 `setter` 方法与字段关联。目前仅提供定义跳转功能，
+  且目标方法必须位于同一个类中。
+
+  ### 参数
+
+  - `convention`: 命名约定，默认为 `camelCase`。隐式添加 `get` 和 `set` 前缀，例如 `_age` -> `getAge`、`setAge`。
+  - `getter`: Getter 方法名。优先级高于 `convention`。
+  - `setter`: Setter 方法名。优先级高于 `convention`。
 

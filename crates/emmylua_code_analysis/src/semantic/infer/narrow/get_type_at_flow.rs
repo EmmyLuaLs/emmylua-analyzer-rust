@@ -1,6 +1,7 @@
 use emmylua_parser::{
     BinaryOperator, LuaAssignStat, LuaAstNode, LuaCallExprStat, LuaChunk, LuaDocOpType, LuaExpr,
-    LuaIndexKey, LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaVarExpr,
+    LuaForStat, LuaIndexKey, LuaIndexMemberExpr, LuaSyntaxId, LuaTableExpr, LuaUnaryExpr,
+    LuaVarExpr, UnaryOperator,
 };
 use hashbrown::HashSet;
 use std::{rc::Rc, sync::Arc};
@@ -26,7 +27,7 @@ use crate::{
                 },
                 get_multi_antecedents, get_single_antecedent,
                 get_type_at_cast_flow::cast_type,
-                get_var_ref_type, narrow_down_type,
+                get_var_ref_type, narrow_down_type, remove_false_or_nil,
                 var_ref_id::get_var_expr_var_ref_id,
             },
             try_infer_expr_no_flow,
@@ -781,6 +782,11 @@ impl<'a> FlowTypeEngine<'a> {
                         expr_type,
                     ),
                     Ok(None) => Ok(ConditionFlowAction::Continue),
+                    // 条件 replay 只是在尝试利用当前条件收窄查询变量. 如果条件里的字段或调用因为后置定义暂时解析不到,
+                    // 就跳过这次条件收窄, 避免把条件表达式的临时失败误传成当前变量的类型失败.
+                    Err(InferFailReason::None | InferFailReason::FieldNotFound) => {
+                        Ok(ConditionFlowAction::Continue)
+                    }
                     Err(err) => Err(err),
                 };
                 let action = match action_result {
@@ -876,8 +882,10 @@ impl<'a> FlowTypeEngine<'a> {
             Ok(FlowQueryResult::Unreachable) => {
                 return Ok(self.finish_unreachable_branch(walk));
             }
-            // `---@cast` is an explicit assertion, so unresolved source types
-            // should still be narrowed by applying the cast from `unknown`.
+            Err(err) if err.is_need_resolve() => return self.fail_query(&walk.query, err),
+            // `---@cast` is an explicit assertion, so source types without a
+            // resolvable origin can still be narrowed by applying the cast from
+            // `unknown`.
             Err(_) => LuaType::Unknown,
         };
         for cast_op_type in cast_op_types {
@@ -1194,6 +1202,15 @@ impl<'a> FlowTypeEngine<'a> {
 
             return Ok(self.finish_walk(walk, result_type));
         }
+        // 为整数 enum 的 flag 赋值保留声明类型.
+        if let Some(declared_enum_type) = integer_enum_assignment_declared_type(
+            self.db,
+            self.cache,
+            &walk.query.var_ref_id,
+            &expr_type,
+        ) {
+            return Ok(self.finish_walk(walk, declared_enum_type));
+        }
 
         // Broad RHS types replace the previous runtime type. The old path still
         // queried the antecedent and then discarded it in finish_assignment_result.
@@ -1388,6 +1405,49 @@ impl<'a> FlowTypeEngine<'a> {
         })
     }
 
+    fn apply_for_i_stat_narrows(
+        &mut self,
+        walk: &mut QueryWalk,
+        for_ptr: &emmylua_parser::LuaAstPtr<LuaForStat>,
+    ) -> Result<(), InferFailReason> {
+        if matches!(walk.query.mode, FlowMode::IgnoreConditions) {
+            return Ok(());
+        }
+
+        let for_stat = for_ptr.to_node(self.root).ok_or(InferFailReason::None)?;
+        let var_ref_id = walk.query.var_ref_id.clone();
+        let db = self.db;
+        let cache = &mut *self.cache;
+        let len_expr_matches = for_stat.get_iter_expr().any(|iter_expr| {
+            iter_expr.descendants::<LuaUnaryExpr>().any(|unary_expr| {
+                let is_len_expr = unary_expr
+                    .get_op_token()
+                    .is_some_and(|op| op.get_op() == UnaryOperator::OpLen);
+                if !is_len_expr {
+                    return false;
+                }
+
+                let Some(inner_expr) = unary_expr.get_expr() else {
+                    return false;
+                };
+
+                get_var_expr_var_ref_id(db, cache, inner_expr)
+                    .is_some_and(|len_ref_id| len_ref_id == var_ref_id)
+            })
+        });
+
+        // A numeric for body can only run after all bound expressions were evaluated.
+        // If one of those bounds used `#value`, the value cannot be nil in the loop body.
+        if len_expr_matches {
+            walk.pending_condition_narrows
+                .push(PendingConditionNarrow::Truthiness(
+                    InferConditionFlow::TrueCondition,
+                ));
+        }
+
+        Ok(())
+    }
+
     // Walk one query backward through straight-line antecedents until it either
     // produces a final type, needs another query first, or reaches a saved
     // continuation point like a branch merge.
@@ -1444,6 +1504,9 @@ impl<'a> FlowTypeEngine<'a> {
                 | FlowNodeKind::Continue
                 | FlowNodeKind::Return
                 | FlowNodeKind::ForIStat(_) => {
+                    if let FlowNodeKind::ForIStat(for_ptr) = &flow_node.kind {
+                        self.apply_for_i_stat_narrows(&mut walk, for_ptr)?;
+                    }
                     if matches!(
                         &flow_node.kind,
                         FlowNodeKind::LoopLabel | FlowNodeKind::Continue
@@ -1558,6 +1621,7 @@ impl<'a> FlowTypeEngine<'a> {
                         step => return Ok(step),
                     }
                 }
+
                 FlowNodeKind::ImplFunc(func_ptr) => {
                     let func_stat = func_ptr.to_node(self.root).ok_or(InferFailReason::None)?;
                     let Some(func_name) = func_stat.get_func_name() else {
@@ -1875,6 +1939,38 @@ fn preserves_assignment_expr_type(typ: &LuaType) -> bool {
     matches!(typ, LuaType::TableConst(_) | LuaType::Object(_)) || is_exact_assignment_expr_type(typ)
 }
 
+fn integer_enum_assignment_declared_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    var_ref_id: &VarRefId,
+    expr_type: &LuaType,
+) -> Option<LuaType> {
+    // enum 字段参与位运算后会被推断为宽泛 `Integer`, 但把结果写回 enum 类型槽位时, 不应该把该槽位的 flow 类型降级成 `Integer`.
+    if !matches!(expr_type, LuaType::Integer) {
+        return None;
+    }
+
+    let declared_type = get_var_ref_type(db, cache, var_ref_id).ok()?;
+    let enum_decl_id = match &declared_type {
+        LuaType::Def(id) | LuaType::Ref(id) => id,
+        _ => return None,
+    };
+    let enum_decl = db.get_type_index().get_type_decl(enum_decl_id)?;
+    if !enum_decl.is_enum() {
+        return None;
+    }
+
+    let LuaType::Union(enum_fields) = enum_decl.get_enum_field_type(db)? else {
+        return None;
+    };
+    // 整数字段组成的 enum 才按 flag 处理, 允许它在位运算后回写到原 enum 槽位.
+    enum_fields
+        .into_vec()
+        .iter()
+        .all(|t| matches!(t, LuaType::DocIntegerConst(_) | LuaType::IntegerConst(_)))
+        .then_some(declared_type)
+}
+
 fn contains_short_circuit_binary_expr(expr: &LuaExpr) -> bool {
     expr.descendants::<LuaExpr>().any(|expr| {
         let LuaExpr::BinaryExpr(binary_expr) = expr else {
@@ -2045,6 +2141,21 @@ fn finish_assignment_result(
     // Unknown RHS usually means the lookup failed, so keep the last known runtime type.
     if expr_type.is_unknown() {
         return source_type.clone();
+    }
+
+    // 处理 `if obj = nil then obj = {} end`
+    if *source_type == LuaType::Nil
+        && matches!(expr_type, LuaType::TableConst(_) | LuaType::Object(_))
+        && let Ok(slot_type) = get_var_ref_type(db, cache, var_ref_id)
+    {
+        // RHS 此时为 `{}`, 即 `slot_type` 必须存在值
+        let truthy_slot_type = remove_false_or_nil(slot_type);
+        if !truthy_slot_type.is_unknown()
+            && let Some(narrowed_slot_type) =
+                narrow_down_type(db, truthy_slot_type, expr_type.clone(), None)
+        {
+            return narrowed_slot_type;
+        }
     }
 
     let narrowed = if *source_type == LuaType::Nil {

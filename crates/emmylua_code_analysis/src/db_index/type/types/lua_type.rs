@@ -8,9 +8,9 @@ use crate::{FileId, InFiled};
 
 use super::super::type_decl::LuaTypeDeclId;
 use super::complex::{
-    GenericTpl, LuaAliasCallType, LuaArrayType, LuaAttributeType, LuaConditionalType,
-    LuaFunctionType, LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMappedType,
-    LuaMultiLineUnion, LuaObjectType, LuaStringTplType, LuaTupleType, LuaUnionType, VariadicType,
+    GenericTpl, LuaAliasCallType, LuaArrayType, LuaConditionalType, LuaFunctionType,
+    LuaGenericType, LuaInstanceType, LuaIntersectionType, LuaMappedType, LuaMultiLineUnion,
+    LuaObjectType, LuaStringTplType, LuaTupleType, LuaUnionType, VariadicType,
 };
 
 #[derive(Debug, Clone)]
@@ -59,7 +59,6 @@ pub enum LuaType {
     TypeGuard(Arc<LuaType>),
     Language(ArcIntern<SmolStr>),
     ModuleRef(FileId),
-    DocAttribute(Arc<LuaAttributeType>),
     Conditional(Arc<LuaConditionalType>),
     Mapped(Arc<LuaMappedType>),
 }
@@ -111,7 +110,6 @@ impl PartialEq for LuaType {
             (LuaType::Never, LuaType::Never) => true,
             (LuaType::Language(a), LuaType::Language(b)) => a == b,
             (LuaType::ModuleRef(a), LuaType::ModuleRef(b)) => a == b,
-            (LuaType::DocAttribute(a), LuaType::DocAttribute(b)) => a == b,
             (LuaType::Conditional(a), LuaType::Conditional(b)) => a == b,
             (LuaType::Mapped(a), LuaType::Mapped(b)) => a == b,
             _ => false,
@@ -170,7 +168,6 @@ impl Hash for LuaType {
             LuaType::ModuleRef(a) => (47, a).hash(state),
             LuaType::Conditional(a) => (48, Arc::as_ptr(a)).hash(state),
             LuaType::Mapped(a) => (49, Arc::as_ptr(a)).hash(state),
-            LuaType::DocAttribute(a) => (50, a).hash(state),
         }
     }
 }

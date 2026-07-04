@@ -310,7 +310,7 @@ impl PendingConditionNarrow {
                         .unwrap_or_else(|| narrow.clone())
                 }
                 InferConditionFlow::FalseCondition => {
-                    TypeOps::Remove.apply(db, &antecedent_type, narrow)
+                    remove_type_guard(db, antecedent_type, narrow.clone())
                 }
             },
             PendingConditionNarrow::NarrowTo(target_type) => {
@@ -379,6 +379,55 @@ fn narrow_type_guard(db: &DbIndex, antecedent_type: LuaType, narrow: LuaType) ->
     }
 
     narrow_down_type(db, antecedent_type, narrow, None)
+}
+
+fn remove_type_guard(db: &DbIndex, antecedent_type: LuaType, narrow: LuaType) -> LuaType {
+    match (&antecedent_type, &narrow) {
+        (LuaType::Union(source_union), _) => {
+            let remaining = source_union
+                .into_vec()
+                .into_iter()
+                .map(|member| remove_type_guard(db, member, narrow.clone()))
+                .filter(|member| !member.is_never())
+                .collect::<Vec<_>>();
+            return LuaType::from_vec(remaining);
+        }
+        (LuaType::MultiLineUnion(source_union), _) => {
+            let remaining = source_union
+                .get_unions()
+                .iter()
+                .map(|(member, _)| remove_type_guard(db, member.clone(), narrow.clone()))
+                .filter(|member| !member.is_never())
+                .collect::<Vec<_>>();
+            return LuaType::from_vec(remaining);
+        }
+        (_, LuaType::Union(target_union)) => {
+            return target_union
+                .into_vec()
+                .into_iter()
+                .fold(antecedent_type, |source, target| {
+                    remove_type_guard(db, source, target)
+                });
+        }
+        (_, LuaType::MultiLineUnion(target_union)) => {
+            return target_union
+                .get_unions()
+                .iter()
+                .fold(antecedent_type, |source, (target, _)| {
+                    remove_type_guard(db, source, target.clone())
+                });
+        }
+        _ => {}
+    }
+
+    // 如果 guard 结果仍等于它本身, 说明 false 分支结果应为 `never`.
+    if narrow_type_guard(db, antecedent_type.clone(), narrow.clone())
+        .is_some_and(|narrowed| narrowed == antecedent_type)
+    {
+        return LuaType::Never;
+    }
+
+    TypeOps::Remove.apply(db, &antecedent_type, &narrow)
 }
 
 pub(super) fn eq_condition_action(
@@ -1007,7 +1056,7 @@ impl CorrelatedSubquery {
                             .unwrap_or(narrow)
                     }
                     InferConditionFlow::FalseCondition => {
-                        TypeOps::Remove.apply(ctx.db, &antecedent_type, &narrow)
+                        remove_type_guard(ctx.db, antecedent_type, narrow)
                     }
                 }
             }

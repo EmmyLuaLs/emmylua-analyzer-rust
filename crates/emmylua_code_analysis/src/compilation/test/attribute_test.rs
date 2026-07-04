@@ -16,7 +16,9 @@ mod test {
             (
                 "meta.lua",
                 r#"
-            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+            ---@class Attribute
+            ---@class constructor: Attribute
+            ---@overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
 
             ---@generic T
             ---@[constructor("__init")]
@@ -39,10 +41,28 @@ mod test {
         ws.has_no_diagnostic(
             DiagnosticCode::AssignTypeMismatch,
             r#"
-        ---@[lsp_optimization("check_table_field")]
+        ---@[lsp_optimization("skip_table_fields_check")]
         local config = {}
         "#,
         );
+    }
+
+    #[test]
+    fn test_attribute_overload_uses_arg_type_for_diagnostic() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AttributeParamTypeMismatch,
+            r#"
+        ---@class Attribute
+        ---@class custom_attribute: Attribute
+        ---@overload fun(value: string)
+        ---@overload fun(value: integer)
+
+        ---@[custom_attribute(1)]
+        local value
+        "#,
+        ));
     }
 
     #[test]
@@ -96,7 +116,9 @@ mod test {
             (
                 "3_meta.lua",
                 r#"
-                ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+                ---@class Attribute
+                ---@class constructor: Attribute
+                ---@overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
 
                 ---@class class
                 ---@field is_class true
@@ -121,7 +143,9 @@ mod test {
         ws.def_file(
             "init.lua",
             r#"
-            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+            ---@class Attribute
+            ---@class constructor: Attribute
+            ---@overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
 
             ---@generic T
             ---@[constructor("init")]
@@ -145,7 +169,7 @@ mod test {
 
         let ty = ws.expr_ty("A");
         let ty_desc = ws.humanize_type(ty);
-        assert_eq!(ty_desc, "ClassB<unknown>");
+        assert_eq!(ty_desc, "ClassB<string>");
     }
 
     #[test]
@@ -154,7 +178,9 @@ mod test {
         ws.def_file(
             "init.lua",
             r#"
-            ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+            ---@class Attribute
+            ---@class constructor: Attribute
+            ---@overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
 
             ---@generic T
             ---@[constructor("init")]
@@ -189,7 +215,9 @@ mod test {
         ws.def_file(
             "init.lua",
             r#"
-                ---@attribute constructor(name: string, root_class: string?, strip_self: boolean?, return_mode: "self"|"doc"|"default"?)
+                ---@class Attribute
+                ---@class constructor: Attribute
+                ---@overload fun(name: string, root_class?: string, strip_self?: boolean, return_mode?: "self"|"doc"|"default")
 
                 ---@generic T
                 ---@[constructor("__init")]

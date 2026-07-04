@@ -1,9 +1,8 @@
 use emmylua_code_analysis::{
     DbIndex, GenericTpl, InferGuard, InferGuardRef, LuaAliasCallKind, LuaAliasCallType,
-    LuaDeclLocation, LuaFunctionType, LuaMember, LuaMemberKey, LuaMemberOwner, LuaMultiLineUnion,
-    LuaSemanticDeclId, LuaStringTplType, LuaType, LuaTypeCache, LuaTypeDeclId, LuaUnionType,
-    RenderLevel, SemanticDeclLevel, TypeSubstitutor, build_call_constraint_context, get_real_type,
-    instantiate_type_generic, normalize_constraint_type,
+    LuaDeclLocation, LuaFunctionType, LuaMemberKey, LuaMemberOwner, LuaMultiLineUnion,
+    LuaStringTplType, LuaType, LuaTypeCache, LuaTypeDeclId, LuaUnionType, RenderLevel,
+    filter_callable_overloads, get_real_type,
 };
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaClosureExpr,
@@ -12,7 +11,6 @@ use emmylua_parser::{
 };
 use itertools::Itertools;
 use lsp_types::{CompletionItem, Documentation};
-use std::sync::Arc;
 
 use crate::handlers::{
     completion::{
@@ -198,7 +196,7 @@ fn add_type_ref_completion(
                     LuaMemberKey::Name(str) => to_enum_label(builder, str.as_str()),
                     LuaMemberKey::Integer(i) => i.to_string(),
                     LuaMemberKey::None => continue,
-                    LuaMemberKey::ExprType(_) => continue,
+                    LuaMemberKey::TypeKey(_) => continue,
                 };
 
                 let completion_item = CompletionItem {
@@ -325,236 +323,70 @@ fn infer_call_arg_list(
     token: LuaSyntaxToken,
 ) -> Option<Vec<LuaType>> {
     let call_expr = call_arg_list.get_parent::<LuaCallExpr>()?;
-    let mut param_idx = get_current_param_index(&call_expr, &token)?;
-    let call_expr_func = builder
-        .semantic_model
-        .infer_call_expr_func(call_expr.clone(), Some(param_idx + 1))?;
-    let colon_call = call_expr.is_colon_call();
-    let colon_define = call_expr_func.is_colon_define();
-    match (colon_call, colon_define) {
-        (true, true) | (false, false) | (false, true) => {}
-        (true, false) => {
-            param_idx += 1;
-        }
-    }
-    let constraint_substitutor = build_call_constraint_context(&builder.semantic_model, &call_expr)
-        .map(|ctx| ctx.substitutor);
-    let substitutor = constraint_substitutor.as_ref();
-    let typ = call_expr_func
-        .get_params()
-        .get(param_idx)?
-        .1
-        .clone()
-        .unwrap_or(LuaType::Unknown);
-    let typ = resolve_param_type(builder, typ, substitutor);
-    let mut types = Vec::new();
-    types.push(typ);
-    push_function_overloads_param(
-        builder,
-        &call_expr,
-        call_expr_func.get_params(),
-        param_idx,
-        substitutor,
-        &mut types,
-    );
-    Some(types.into_iter().unique().collect()) // 需要去重
-}
-
-fn resolve_param_type(
-    builder: &CompletionBuilder,
-    mut typ: LuaType,
-    substitutor: Option<&TypeSubstitutor>,
-) -> LuaType {
-    let db = builder.semantic_model.get_db();
-    if let Some(substitutor) = substitutor {
-        typ = apply_substitutor_to_type(db, typ, substitutor);
-    }
-    normalize_constraint_type(db, typ)
-}
-
-fn apply_substitutor_to_type(db: &DbIndex, typ: LuaType, substitutor: &TypeSubstitutor) -> LuaType {
-    if let LuaType::Call(alias_call) = &typ {
-        if alias_call.get_call_kind() == LuaAliasCallKind::KeyOf {
-            let operands = alias_call
-                .get_operands()
-                .iter()
-                .map(|operand| instantiate_type_generic(db, operand, substitutor))
-                .collect::<Vec<_>>();
-            return LuaType::Call(Arc::new(LuaAliasCallType::new(
-                alias_call.get_call_kind(),
-                operands,
-            )));
-        }
-    }
-    if let Some(alias_call) = rebuild_keyof_alias_call(db, &typ, substitutor) {
-        return alias_call;
-    }
-    instantiate_type_generic(db, &typ, substitutor)
-}
-
-fn rebuild_keyof_alias_call(
-    db: &DbIndex,
-    original_type: &LuaType,
-    substitutor: &TypeSubstitutor,
-) -> Option<LuaType> {
-    let tpl = match original_type {
-        LuaType::TplRef(tpl) => tpl,
-        _ => return None,
-    };
-    let constraint = tpl.get_constraint()?;
-    let LuaType::Call(alias_call) = constraint else {
-        return None;
-    };
-    if alias_call.get_call_kind() != LuaAliasCallKind::KeyOf {
-        return None;
-    }
-
-    let operands = alias_call
-        .get_operands()
-        .iter()
-        .map(|operand| instantiate_type_generic(db, operand, substitutor))
-        .collect::<Vec<_>>();
-    Some(LuaType::Call(Arc::new(LuaAliasCallType::new(
-        alias_call.get_call_kind(),
-        operands,
-    ))))
-}
-
-fn push_function_overloads_param(
-    builder: &mut CompletionBuilder,
-    call_expr: &LuaCallExpr,
-    call_params: &[(String, Option<LuaType>)],
-    param_idx: usize,
-    substitutor: Option<&TypeSubstitutor>,
-    types: &mut Vec<LuaType>,
-) -> Option<()> {
-    let member_index = builder.semantic_model.get_db().get_member_index();
+    let param_idx = get_current_param_index(&call_expr, &token)?;
     let prefix_expr = call_expr.get_prefix_expr()?;
-    let semantic_decl = builder.semantic_model.find_decl(
-        prefix_expr.syntax().clone().into(),
-        SemanticDeclLevel::default(),
-    )?;
+    let prefix_type = builder.semantic_model.infer_expr(prefix_expr).ok()?;
+    let call_arg_types = infer_call_arg_types(builder, &call_expr, Some(param_idx))?;
+    let call_expr_funcs = filter_callable_overloads(
+        builder.semantic_model.get_db(),
+        &mut builder.semantic_model.get_cache().borrow_mut(),
+        &prefix_type,
+        &call_arg_types,
+        &call_expr,
+        Some(param_idx),
+        true,
+    )
+    .ok()?;
 
-    // 收集函数类型
-    let functions = match semantic_decl {
-        LuaSemanticDeclId::Member(member_id) => {
-            let member = member_index.get_member(&member_id)?;
-            let key = member.get_key().to_path();
-            let owner = member_index.get_current_owner(&member_id)?;
-            let members = member_index.get_members(owner)?;
-            let functions = filter_function_members(builder.semantic_model.get_db(), members, key);
-            Some(functions)
+    let mut types = Vec::new();
+    for call_expr_func in call_expr_funcs {
+        let mut param_idx = param_idx;
+        let colon_call = call_expr.is_colon_call();
+        let colon_define = call_expr_func.is_colon_define();
+        match (colon_call, colon_define) {
+            (true, true) | (false, false) | (false, true) => {}
+            (true, false) => {
+                param_idx += 1;
+            }
         }
-        LuaSemanticDeclId::LuaDecl(decl_id) => {
-            let decl = builder
-                .semantic_model
-                .get_db()
-                .get_decl_index()
-                .get_decl(&decl_id)?;
 
-            let typ = builder
-                .semantic_model
-                .get_db()
-                .get_type_index()
-                .get_type_cache(&decl_id.into())
-                .map(|cache| cache.as_type().clone())
-                .unwrap_or(LuaType::Unknown);
-            match typ {
-                LuaType::Signature(_) | LuaType::DocFunction(_) => Some(vec![typ.clone()]),
-                _ => {
-                    let key = decl.get_name();
-                    let type_id = LuaTypeDeclId::global(decl.get_name());
-                    let members = member_index.get_members(&LuaMemberOwner::Type(type_id))?;
-                    let functions = filter_function_members(
-                        builder.semantic_model.get_db(),
-                        members,
-                        key.to_string(),
-                    );
-                    Some(functions)
+        if let Some(typ) = call_expr_func
+            .get_params()
+            .get(param_idx)
+            .and_then(|param| param.1.clone())
+        {
+            // 转换为更易比较的形式
+            let normalized_typ = match typ {
+                LuaType::Tuple(tuple) if tuple.is_infer_resolve() => {
+                    tuple.collapse_to_union(builder.semantic_model.get_db())
                 }
-            }
-        }
-        _ => None,
-    }?;
-
-    // 获取重载函数列表
-    let signature_index = builder.semantic_model.get_db().get_signature_index();
-    let mut overloads = Vec::new();
-    for function in functions {
-        match function {
-            LuaType::Signature(signature_id) => {
-                if let Some(signature) = signature_index.get(&signature_id) {
-                    overloads.extend(signature.overloads.iter().cloned());
-                }
-            }
-            LuaType::DocFunction(doc_function) => {
-                overloads.push(doc_function);
-            }
-            _ => {}
+                _ => typ,
+            };
+            types.push(normalized_typ);
         }
     }
 
-    // 筛选匹配的参数类型并添加到结果中
-    for overload in overloads.iter() {
-        let overload_params = overload.get_params();
-
-        // 检查前面的参数是否匹配
-        if !params_match_prefix(call_params, overload_params, param_idx) {
-            continue;
-        }
-
-        // 添加匹配的参数类型
-        if let Some(param_type) = overload_params.get(param_idx).and_then(|p| p.1.clone()) {
-            let param_type = resolve_param_type(builder, param_type, substitutor);
-            types.push(param_type);
-        }
+    if types.is_empty() {
+        None
+    } else {
+        Some(types.into_iter().unique().collect())
     }
+}
 
-    /// 过滤出函数类型的成员
-    fn filter_function_members(
-        db: &DbIndex,
-        members: Vec<&LuaMember>,
-        key: String,
-    ) -> Vec<LuaType> {
-        let mut result_members = vec![];
-        for member in members {
-            if member.get_key().to_path() == key {
-                let member_type = db
-                    .get_type_index()
-                    .get_type_cache(&member.get_id().into())
-                    .unwrap_or(&LuaTypeCache::InferType(LuaType::Unknown));
-                if let LuaType::Signature(_) | LuaType::DocFunction(_) = member_type.as_type() {
-                    result_members.push(member_type.as_type().clone());
-                }
-            }
-        }
-
-        result_members
-    }
-
-    /// 判断前面的参数是否匹配
-    fn params_match_prefix(
-        call_params: &[(String, Option<LuaType>)],
-        overload_params: &[(String, Option<LuaType>)],
-        param_idx: usize,
-    ) -> bool {
-        if param_idx == 0 {
-            return true;
-        }
-
-        for i in 0..param_idx {
-            if let (Some(call_param), Some(overload_param)) =
-                (call_params.get(i), overload_params.get(i))
-                && call_param.1 != overload_param.1
-            {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    Some(())
+fn infer_call_arg_types(
+    builder: &CompletionBuilder,
+    call_expr: &LuaCallExpr,
+    arg_count: Option<usize>,
+) -> Option<Vec<LuaType>> {
+    let args = call_expr.get_args_list()?.get_args().collect::<Vec<_>>();
+    Some(
+        builder
+            .semantic_model
+            .infer_expr_list_types(&args, arg_count)
+            .into_iter()
+            .map(|(typ, _)| typ)
+            .collect(),
+    )
 }
 
 fn add_multi_line_union_member_completion(

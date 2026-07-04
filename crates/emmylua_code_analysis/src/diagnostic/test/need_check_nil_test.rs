@@ -120,4 +120,30 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_asserted_index_assignment_prefix_is_not_nil() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+        ---@type integer[][]
+        local res
+        res[1][1] = assert(res[1])[2]
+        "#,
+        ));
+    }
+
+    #[test]
+    fn test_different_asserted_index_assignment_prefix_still_needs_nil_check() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+        ---@type integer[][]
+        local res
+        res[1][1] = assert(res[2])[2]
+        "#,
+        ));
+    }
 }

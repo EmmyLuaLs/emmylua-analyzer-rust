@@ -9,7 +9,10 @@ use crate::{
 };
 
 use super::{get_default_constructor, instantiate_type_generic_inner};
-use crate::semantic::generic::type_substitutor::GenericInstantiateContext;
+use crate::semantic::generic::type_substitutor::{
+    GenericCandidate, GenericInstantiateContext, GenericResolveMode, LiteralPolicy,
+    SubstitutorValue,
+};
 
 #[derive(Debug, Clone, Copy)]
 enum InferVariance {
@@ -103,7 +106,10 @@ fn instantiate_distributed_conditional(
     conditional: &LuaConditionalType,
 ) -> Option<LuaType> {
     let tpl_id = naked_checked_type_tpl_id(conditional.get_checked_type())?;
-    let raw_checked_type = context.substitutor.get_raw_type(tpl_id)?;
+    let raw_checked_type =
+        context
+            .substitutor
+            .resolve_type(tpl_id, GenericResolveMode::Literal, false)?;
 
     if raw_checked_type.is_never() {
         return Some(LuaType::Never);
@@ -113,7 +119,10 @@ fn instantiate_distributed_conditional(
     let mut result = LuaType::Never;
     for member in members {
         let mut member_substitutor = context.substitutor.clone();
-        member_substitutor.replace_type(tpl_id, member, false);
+        member_substitutor.replace_value(
+            tpl_id,
+            SubstitutorValue::Type(GenericCandidate::new(member, LiteralPolicy::Preserve)),
+        );
         let member_context = context.with_substitutor(&member_substitutor);
         let member_result = instantiate_conditional_once(&member_context, conditional);
         result = TypeOps::Union.apply(context.db, &result, &member_result);
@@ -154,7 +163,10 @@ fn instantiate_true_branch(
 
     let mut true_substitutor = context.substitutor.clone();
     for (tpl_id, ty) in infer_assignments {
-        true_substitutor.insert_conditional_infer_type(tpl_id, ty);
+        true_substitutor.replace_value(
+            tpl_id,
+            SubstitutorValue::Type(GenericCandidate::new(ty, LiteralPolicy::Preserve)),
+        );
     }
     let true_context = context.with_substitutor(&true_substitutor);
     instantiate_type_generic_inner(&true_context, conditional.get_true_type())
@@ -645,10 +657,15 @@ fn instantiate_conditional_operand(
     checked: bool,
     has_new: bool,
 ) -> LuaType {
-    let mut result = instantiate_type_generic_inner(context, operand);
+    let operand_context = context.with_resolve_mode(GenericResolveMode::Literal);
+    let mut result = instantiate_type_generic_inner(&operand_context, operand);
     if let LuaType::TplRef(tpl_ref) = operand {
         let tpl_id = tpl_ref.get_tpl_id();
-        if let Some(raw) = context.substitutor.get_raw_type(tpl_id) {
+        if let Some(raw) = context.substitutor.resolve_type(
+            tpl_id,
+            GenericResolveMode::Literal,
+            tpl_ref.is_const(),
+        ) {
             result = raw.clone();
         } else if checked && result.contains_tpl_node() {
             result = LuaType::Unknown;

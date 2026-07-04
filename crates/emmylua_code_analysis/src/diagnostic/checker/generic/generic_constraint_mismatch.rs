@@ -5,16 +5,17 @@ use emmylua_parser::{
 use rowan::TextRange;
 use smol_str::SmolStr;
 
-use crate::diagnostic::{checker::Checker, lua_diagnostic::DiagnosticContext};
-use crate::semantic::{
+use super::call_constraint::{
     CallConstraintArg, CallConstraintContext, build_call_constraint_context,
     normalize_constraint_type,
 };
+use crate::diagnostic::{checker::Checker, lua_diagnostic::DiagnosticContext};
 use crate::{
-    DiagnosticCode, DocTypeInferContext, GenericTplId, LuaArrayType, LuaGenericType,
-    LuaIntersectionType, LuaObjectType, LuaSignatureId, LuaStringTplType, LuaTupleType, LuaType,
-    LuaUnionType, RenderLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult,
-    TypeSubstitutor, VariadicType, humanize_type, infer_doc_type, instantiate_type_generic,
+    DiagnosticCode, DocTypeInferContext, GenericParam, GenericResolveMode, GenericTplId,
+    LuaArrayType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaSignatureId,
+    LuaStringTplType, LuaTupleType, LuaType, LuaUnionType, RenderLevel, SemanticModel,
+    TypeCheckFailReason, TypeCheckResult, TypeSubstitutor, VariadicType, humanize_type,
+    infer_doc_type, instantiate_type_generic_full,
 };
 
 pub struct GenericConstraintMismatchChecker;
@@ -68,10 +69,9 @@ fn check_call_expr(
             continue;
         };
 
-        check_param(
+        check_call_arg(
             context,
             semantic_model,
-            &call_expr,
             i,
             param_type,
             &args,
@@ -101,16 +101,7 @@ fn check_doc_tag_class(
         .get_db()
         .get_type_index()
         .get_generic_params(&type_decl.get_id())?;
-    let generic_param_types = generic_params
-        .iter()
-        .map(|param| (param.constraint.clone(), param.default.clone()))
-        .collect::<Vec<_>>();
-    check_generic_decl_defaults(
-        context,
-        semantic_model,
-        generic_decl_list,
-        &generic_param_types,
-    )
+    check_generic_decl_defaults(context, semantic_model, generic_decl_list, generic_params)
 }
 
 fn check_doc_tag_alias(
@@ -131,16 +122,7 @@ fn check_doc_tag_alias(
         .get_db()
         .get_type_index()
         .get_generic_params(&type_decl.get_id())?;
-    let generic_param_types = generic_params
-        .iter()
-        .map(|param| (param.constraint.clone(), param.default.clone()))
-        .collect::<Vec<_>>();
-    check_generic_decl_defaults(
-        context,
-        semantic_model,
-        generic_decl_list,
-        &generic_param_types,
-    )
+    check_generic_decl_defaults(context, semantic_model, generic_decl_list, generic_params)
 }
 
 fn check_doc_tag_generic(
@@ -148,80 +130,59 @@ fn check_doc_tag_generic(
     semantic_model: &SemanticModel,
     doc_tag_generic: LuaDocTagGeneric,
 ) -> Option<()> {
-    let generic_decl_list = doc_tag_generic.get_generic_decl_list()?;
-    let closure = find_doc_tag_owner_closure(&doc_tag_generic)?;
+    let comment = doc_tag_generic.get_parent::<LuaComment>()?;
+    let closure = match comment.get_owner()? {
+        LuaAst::LuaFuncStat(func) => func.get_closure(),
+        LuaAst::LuaLocalFuncStat(local_func) => local_func.get_closure(),
+        owner => owner.descendants::<LuaClosureExpr>().next(),
+    }?;
     let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), &closure);
     let signature = semantic_model
         .get_db()
         .get_signature_index()
         .get(&signature_id)?;
-    let generic_param_types = signature
-        .generic_params
-        .iter()
-        .map(|param| (param.constraint.clone(), param.default.clone()))
-        .collect::<Vec<_>>();
+    let generic_decl_list = doc_tag_generic.get_generic_decl_list()?;
     check_generic_decl_defaults(
         context,
         semantic_model,
         generic_decl_list,
-        &generic_param_types,
+        &signature.generic_params,
     )
-}
-
-fn find_doc_tag_owner_closure(doc_tag_generic: &LuaDocTagGeneric) -> Option<LuaClosureExpr> {
-    let comment = doc_tag_generic.get_parent::<LuaComment>()?;
-    match comment.get_owner()? {
-        LuaAst::LuaFuncStat(func) => func.get_closure(),
-        LuaAst::LuaLocalFuncStat(local_func) => local_func.get_closure(),
-        owner => owner.descendants::<LuaClosureExpr>().next(),
-    }
 }
 
 fn check_generic_decl_defaults(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     generic_decl_list: LuaDocGenericDeclList,
-    generic_params: &[(Option<LuaType>, Option<LuaType>)],
+    generic_params: &[GenericParam],
 ) -> Option<()> {
     for (idx, generic_decl) in generic_decl_list.get_generic_decl().enumerate() {
-        let Some((constraint, default_type)) = generic_params.get(idx) else {
+        let Some(generic_param) = generic_params.get(idx) else {
             continue;
         };
-        let display_constraint = constraint
-            .as_ref()
-            .map(|ty| normalize_constraint_type(semantic_model.get_db(), ty.clone()));
-        let display_default_type = default_type
-            .as_ref()
-            .map(|ty| normalize_constraint_type(semantic_model.get_db(), ty.clone()));
-
-        if let (
-            Some(constraint),
-            Some(default_type),
-            Some(display_constraint),
-            Some(display_default_type),
-            Some(default_doc_type),
-        ) = (
-            constraint.as_ref(),
-            default_type.as_ref(),
-            display_constraint.as_ref(),
-            display_default_type.as_ref(),
+        let (Some(constraint), Some(default_type), Some(default_doc_type)) = (
+            generic_param.constraint.as_ref(),
+            generic_param.default.as_ref(),
             generic_decl.get_default_type(),
-        ) {
-            let result = check_generic_default_satisfies_constraint(
+        ) else {
+            continue;
+        };
+
+        let result =
+            check_generic_default_satisfies_constraint(semantic_model, constraint, default_type);
+        if result.is_err() {
+            let display_constraint =
+                normalize_constraint_type(semantic_model.get_db(), constraint.clone());
+            let display_default_type =
+                normalize_constraint_type(semantic_model.get_db(), default_type.clone());
+            add_type_check_diagnostic(
+                context,
                 semantic_model,
-                constraint,
-                default_type,
+                default_doc_type.get_range(),
+                &display_constraint,
+                &display_default_type,
+                result,
             );
-            if result.is_err() {
-                add_type_check_diagnostic(
-                    context,
-                    semantic_model,
-                    default_doc_type.get_range(),
-                    display_constraint,
-                    display_default_type,
-                    result,
-                );
-            }
         }
     }
 
@@ -255,11 +216,11 @@ fn check_generic_default_satisfies_constraint_inner(
             return Ok(());
         }
 
-        if let Some(default_bound) = generic_upper_bound(default_type) {
+        if let Some(default_constraint) = generic_tpl_constraint(default_type) {
             return check_generic_default_satisfies_constraint_inner(
                 semantic_model,
                 constraint,
-                default_bound,
+                default_constraint,
                 depth + 1,
             );
         }
@@ -281,11 +242,11 @@ fn check_generic_default_satisfies_constraint_inner(
         return Err(TypeCheckFailReason::TypeNotMatch);
     }
 
-    if let Some(default_bound) = generic_upper_bound(default_type) {
+    if let Some(default_constraint) = generic_tpl_constraint(default_type) {
         return check_generic_default_satisfies_constraint_inner(
             semantic_model,
             constraint,
-            default_bound,
+            default_constraint,
             depth + 1,
         );
     }
@@ -428,8 +389,8 @@ fn check_generic_default_satisfies_constraint_inner(
         _ => {}
     }
 
-    let check_constraint = instantiate_decl_constraint_for_check(constraint);
-    let check_default = instantiate_decl_default_for_check(default_type);
+    let check_constraint = instantiate_decl_type_for_check(constraint, false);
+    let check_default = instantiate_decl_type_for_check(default_type, true);
     semantic_model.type_check_detail(&check_constraint, &check_default)
 }
 
@@ -473,7 +434,7 @@ fn generic_tpl_id(ty: &LuaType) -> Option<GenericTplId> {
     }
 }
 
-fn generic_upper_bound(ty: &LuaType) -> Option<&LuaType> {
+fn generic_tpl_constraint(ty: &LuaType) -> Option<&LuaType> {
     match ty {
         LuaType::TplRef(tpl) => tpl.get_constraint(),
         LuaType::StrTplRef(str_tpl) => str_tpl.get_constraint(),
@@ -481,30 +442,25 @@ fn generic_upper_bound(ty: &LuaType) -> Option<&LuaType> {
     }
 }
 
-fn instantiate_decl_constraint_for_check(ty: &LuaType) -> LuaType {
-    instantiate_decl_type_for_check(ty, false)
-}
-
-fn instantiate_decl_default_for_check(ty: &LuaType) -> LuaType {
-    instantiate_decl_type_for_check(ty, true)
-}
-
-fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) -> LuaType {
+/// 将泛型声明中的约束/默认值转换成普通类型检查可比较的形态.
+///
+/// 对于默认值中的泛型, 我们需要回退到自身声明约束上进行检查.
+fn instantiate_decl_type_for_check(ty: &LuaType, is_default: bool) -> LuaType {
     match ty {
         LuaType::TplRef(tpl) => {
-            if use_generic_upper_bound && let Some(constraint) = tpl.get_constraint() {
-                return instantiate_decl_default_for_check(constraint);
+            if is_default && let Some(constraint) = tpl.get_constraint() {
+                return instantiate_decl_type_for_check(constraint, true);
             }
             rigid_generic_placeholder(tpl.get_tpl_id())
         }
         LuaType::StrTplRef(str_tpl) => {
-            if use_generic_upper_bound && let Some(constraint) = str_tpl.get_constraint() {
-                return instantiate_decl_default_for_check(constraint);
+            if is_default && let Some(constraint) = str_tpl.get_constraint() {
+                return instantiate_decl_type_for_check(constraint, true);
             }
             rigid_generic_placeholder(str_tpl.get_tpl_id())
         }
         LuaType::Array(array) => {
-            let base = instantiate_decl_type_for_check(array.get_base(), use_generic_upper_bound);
+            let base = instantiate_decl_type_for_check(array.get_base(), is_default);
             LuaType::Array(LuaArrayType::new(base, array.get_len().clone()).into())
         }
         LuaType::Tuple(tuple) => LuaType::Tuple(
@@ -512,7 +468,7 @@ fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) 
                 tuple
                     .get_types()
                     .iter()
-                    .map(|ty| instantiate_decl_type_for_check(ty, use_generic_upper_bound))
+                    .map(|ty| instantiate_decl_type_for_check(ty, is_default))
                     .collect(),
                 tuple.status,
             )
@@ -522,20 +478,15 @@ fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) 
             let fields = object
                 .get_fields()
                 .iter()
-                .map(|(key, ty)| {
-                    (
-                        key.clone(),
-                        instantiate_decl_type_for_check(ty, use_generic_upper_bound),
-                    )
-                })
+                .map(|(key, ty)| (key.clone(), instantiate_decl_type_for_check(ty, is_default)))
                 .collect();
             let index_access = object
                 .get_index_access()
                 .iter()
                 .map(|(key, value)| {
                     (
-                        instantiate_decl_type_for_check(key, use_generic_upper_bound),
-                        instantiate_decl_type_for_check(value, use_generic_upper_bound),
+                        instantiate_decl_type_for_check(key, is_default),
+                        instantiate_decl_type_for_check(value, is_default),
                     )
                 })
                 .collect();
@@ -546,7 +497,7 @@ fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) 
                 union
                     .into_vec()
                     .iter()
-                    .map(|ty| instantiate_decl_type_for_check(ty, use_generic_upper_bound))
+                    .map(|ty| instantiate_decl_type_for_check(ty, is_default))
                     .collect(),
             )
             .into(),
@@ -556,7 +507,7 @@ fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) 
                 intersection
                     .get_types()
                     .iter()
-                    .map(|ty| instantiate_decl_type_for_check(ty, use_generic_upper_bound))
+                    .map(|ty| instantiate_decl_type_for_check(ty, is_default))
                     .collect(),
             )
             .into(),
@@ -567,7 +518,7 @@ fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) 
                 generic
                     .get_params()
                     .iter()
-                    .map(|ty| instantiate_decl_type_for_check(ty, use_generic_upper_bound))
+                    .map(|ty| instantiate_decl_type_for_check(ty, is_default))
                     .collect(),
             )
             .into(),
@@ -575,20 +526,19 @@ fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) 
         LuaType::TableGeneric(params) => LuaType::TableGeneric(
             params
                 .iter()
-                .map(|ty| instantiate_decl_type_for_check(ty, use_generic_upper_bound))
+                .map(|ty| instantiate_decl_type_for_check(ty, is_default))
                 .collect::<Vec<_>>()
                 .into(),
         ),
         LuaType::Variadic(variadic) => LuaType::Variadic(
             match variadic.as_ref() {
-                VariadicType::Base(base) => VariadicType::Base(instantiate_decl_type_for_check(
-                    base,
-                    use_generic_upper_bound,
-                )),
+                VariadicType::Base(base) => {
+                    VariadicType::Base(instantiate_decl_type_for_check(base, is_default))
+                }
                 VariadicType::Multi(types) => VariadicType::Multi(
                     types
                         .iter()
-                        .map(|ty| instantiate_decl_type_for_check(ty, use_generic_upper_bound))
+                        .map(|ty| instantiate_decl_type_for_check(ty, is_default))
                         .collect(),
                 ),
             }
@@ -598,6 +548,9 @@ fn instantiate_decl_type_for_check(ty: &LuaType, use_generic_upper_bound: bool) 
     }
 }
 
+// 过渡期小技巧, 用于泛型默认值约束检查.
+//
+// 用内部 namespace 名字承载声明处泛型的刚性占位, 避免普通 type_check 将 T 当作可兼容模板放宽.
 fn rigid_generic_placeholder(tpl_id: GenericTplId) -> LuaType {
     let name = match tpl_id {
         GenericTplId::Type(idx) => format!("__generic_decl_type_param_{}", idx),
@@ -617,7 +570,13 @@ fn check_doc_tag_type(
     let type_list = doc_tag_type.get_type_list();
     let doc_ctx = DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id());
     for doc_type in type_list {
-        let explicit_args = explicit_generic_args(&doc_type);
+        let LuaDocType::Generic(generic_doc_type) = &doc_type else {
+            continue;
+        };
+        let explicit_args = generic_doc_type
+            .get_generic_types()
+            .map(|type_list| type_list.get_types().collect::<Vec<_>>())
+            .unwrap_or_default();
         if explicit_args.is_empty() {
             continue;
         }
@@ -632,21 +591,40 @@ fn check_doc_tag_type(
             .get_db()
             .get_type_index()
             .get_generic_params(&generic_type.get_base_type_id())?;
+        let substitutor = TypeSubstitutor::from_alias(
+            generic_type.get_params().clone(),
+            generic_type.get_base_type_id(),
+        );
         for (i, param_type) in generic_type
             .get_params()
             .iter()
             .take(explicit_args.len())
             .enumerate()
         {
-            let extend_type = generic_params.get(i)?.constraint.clone()?;
-            let result = semantic_model.type_check_detail(&extend_type, param_type);
+            let Some(extend_type) = generic_params
+                .get(i)
+                .and_then(|param| param.constraint.as_ref())
+            else {
+                continue;
+            };
+            let extend_type = normalize_constraint_type(
+                semantic_model.get_db(),
+                instantiate_type_generic_full(
+                    semantic_model.get_db(),
+                    extend_type,
+                    &substitutor,
+                    GenericResolveMode::Literal,
+                ),
+            );
+            let param_type = normalize_constraint_type(semantic_model.get_db(), param_type.clone());
+            let result = semantic_model.type_check_detail(&extend_type, &param_type);
             if result.is_err() {
                 add_type_check_diagnostic(
                     context,
                     semantic_model,
                     explicit_args.get(i)?.get_range(),
                     &extend_type,
-                    param_type,
+                    &param_type,
                     result,
                 );
             }
@@ -655,22 +633,9 @@ fn check_doc_tag_type(
     Some(())
 }
 
-fn explicit_generic_args(doc_type: &LuaDocType) -> Vec<LuaDocType> {
-    let LuaDocType::Generic(generic_doc_type) = doc_type else {
-        return Vec::new();
-    };
-
-    generic_doc_type
-        .get_generic_types()
-        .map(|type_list| type_list.get_types().collect())
-        .unwrap_or_default()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn check_param(
+fn check_call_arg(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    _call_expr: &LuaCallExpr,
     param_index: usize,
     param_type: &LuaType,
     args: &[CallConstraintArg],
@@ -680,12 +645,6 @@ fn check_param(
     // 应该先通过泛型体操约束到唯一类型再进行检查
     match param_type {
         LuaType::StrTplRef(str_tpl_ref) => {
-            let extend_type = str_tpl_ref.get_constraint().cloned().map(|ty| {
-                normalize_constraint_type(
-                    semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), &ty, substitutor),
-                )
-            });
             let arg = args.get(param_index)?;
             let arg_type = &arg.raw_type;
 
@@ -693,7 +652,18 @@ fn check_param(
                 return None;
             }
 
-            validate_str_tpl_ref(
+            let extend_type = str_tpl_ref.get_constraint().map(|ty| {
+                normalize_constraint_type(
+                    semantic_model.get_db(),
+                    instantiate_type_generic_full(
+                        semantic_model.get_db(),
+                        ty,
+                        substitutor,
+                        GenericResolveMode::Literal,
+                    ),
+                )
+            });
+            check_str_tpl_ref(
                 context,
                 semantic_model,
                 str_tpl_ref,
@@ -703,24 +673,42 @@ fn check_param(
             );
         }
         LuaType::TplRef(tpl_ref) => {
-            let extend_type = tpl_ref.get_constraint().cloned().map(|ty| {
+            let arg = args.get(param_index)?;
+            if let Some(extend_type) = tpl_ref.get_constraint().map(|ty| {
                 normalize_constraint_type(
                     semantic_model.get_db(),
-                    instantiate_type_generic(semantic_model.get_db(), &ty, substitutor),
+                    instantiate_type_generic_full(
+                        semantic_model.get_db(),
+                        ty,
+                        substitutor,
+                        GenericResolveMode::Literal,
+                    ),
                 )
-            });
-            let arg_type = args.get(param_index).map(|arg| &arg.check_type);
-            let arg_range = args.get(param_index).map(|arg| arg.range);
-            validate_tpl_ref(context, semantic_model, &extend_type, arg_type, arg_range);
+            }) {
+                let result = check_generic_default_satisfies_constraint(
+                    semantic_model,
+                    &extend_type,
+                    &arg.raw_type,
+                );
+                if result.is_err() {
+                    add_type_check_diagnostic(
+                        context,
+                        semantic_model,
+                        arg.range,
+                        &extend_type,
+                        &arg.raw_type,
+                        result,
+                    );
+                }
+            }
         }
         LuaType::Union(union_type) => {
             // 如果不是来自 union, 才展开 union 中的每个类型进行检查
             if !from_union {
                 for union_member_type in union_type.into_vec().iter() {
-                    check_param(
+                    check_call_arg(
                         context,
                         semantic_model,
-                        _call_expr,
                         param_index,
                         union_member_type,
                         args,
@@ -735,7 +723,7 @@ fn check_param(
     Some(())
 }
 
-fn validate_str_tpl_ref(
+fn check_str_tpl_ref(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
     str_tpl_ref: &LuaStringTplType,
@@ -794,30 +782,6 @@ fn validate_str_tpl_ref(
                 None,
             );
         }
-    }
-    Some(())
-}
-
-fn validate_tpl_ref(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    extend_type: &Option<LuaType>,
-    arg_type: Option<&LuaType>,
-    range: Option<TextRange>,
-) -> Option<()> {
-    let extend_type = extend_type.clone()?;
-    let arg_type = arg_type?;
-    let range = range?;
-    let result = semantic_model.type_check_detail(&extend_type, arg_type);
-    if result.is_err() {
-        add_type_check_diagnostic(
-            context,
-            semantic_model,
-            range,
-            &extend_type,
-            arg_type,
-            result,
-        );
     }
     Some(())
 }

@@ -8,30 +8,30 @@ b:
   - ['oslib.clock', 'd', doc, [18, 0, 21, 0], '9b2a917ccb76530b']
 - a: '--- @class std.osdate: std.osdateparam'
   g: '@class std.osdateparam'
-  r: [24, 0, 33, 67]
+  r: [24, 0, 33, 69]
   e:
-  - ['std.osdateparam.field.year', 'f:year', tail, [25, 35, 25, 46], '30212e7efed3b741']
-  - ['std.osdateparam.field.month', 'f:month', tail, [26, 35, 26, 39], '38cea8f11113c9ac']
-  - ['std.osdateparam.field.day', 'f:day', tail, [27, 35, 27, 39], '38c79ff1110d9bb3']
-  - ['std.osdateparam.field.hour', 'f:hour', tail, [28, 35, 28, 39], 'c772bdf95d76417d']
-  - ['std.osdateparam.field.min', 'f:min', tail, [29, 35, 29, 39], 'c76fabf95d73ed10']
-  - ['std.osdateparam.field.sec', 'f:sec', tail, [30, 35, 30, 60], '7de6ed0043babdcb']
-  - ['std.osdateparam.field.wday', 'f:wday', tail, [31, 35, 31, 51], 'd3245cd249132d0f']
-  - ['std.osdateparam.field.yday', 'f:yday', tail, [32, 35, 32, 40], '88e1499ffa2db2cc']
-  - ['std.osdateparam.field.isdst', 'f:isdst', tail, [33, 35, 33, 67], '0dca085c7f2cce30']
+  - ['std.osdateparam.field.year', 'f:year', tail, [25, 37, 25, 48], '30212e7efed3b741']
+  - ['std.osdateparam.field.month', 'f:month', tail, [26, 37, 26, 41], '38cea8f11113c9ac']
+  - ['std.osdateparam.field.day', 'f:day', tail, [27, 37, 27, 41], '38c79ff1110d9bb3']
+  - ['std.osdateparam.field.hour', 'f:hour', tail, [28, 37, 28, 41], 'c772bdf95d76417d']
+  - ['std.osdateparam.field.min', 'f:min', tail, [29, 37, 29, 41], 'c76fabf95d73ed10']
+  - ['std.osdateparam.field.sec', 'f:sec', tail, [30, 37, 30, 62], '7de6ed0043babdcb']
+  - ['std.osdateparam.field.wday', 'f:wday', tail, [31, 37, 31, 53], 'd3245cd249132d0f']
+  - ['std.osdateparam.field.yday', 'f:yday', tail, [32, 37, 32, 42], '88e1499ffa2db2cc']
+  - ['std.osdateparam.field.isdst', 'f:isdst', tail, [33, 37, 33, 69], '0dca085c7f2cce30']
 - a: '---'
   g: '@class std.osdate: std.osdateparam'
-  r: [35, 0, 44, 64]
+  r: [35, 0, 44, 66]
   e:
-  - ['std.osdate.field.year', 'f:year', tail, [36, 32, 36, 43], '30212e7efed3b741']
-  - ['std.osdate.field.month', 'f:month', tail, [37, 32, 37, 36], '38cea8f11113c9ac']
-  - ['std.osdate.field.day', 'f:day', tail, [38, 32, 38, 36], '38c79ff1110d9bb3']
-  - ['std.osdate.field.hour', 'f:hour', tail, [39, 32, 39, 36], 'c772bdf95d76417d']
-  - ['std.osdate.field.min', 'f:min', tail, [40, 32, 40, 36], 'c76fabf95d73ed10']
-  - ['std.osdate.field.sec', 'f:sec', tail, [41, 32, 41, 57], '7de6ed0043babdcb']
-  - ['std.osdate.field.wday', 'f:wday', tail, [42, 32, 42, 48], 'd3245cd249132d0f']
-  - ['std.osdate.field.yday', 'f:yday', tail, [43, 32, 43, 37], '88e1499ffa2db2cc']
-  - ['std.osdate.field.isdst', 'f:isdst', tail, [44, 32, 44, 64], '0dca085c7f2cce30']
+  - ['std.osdate.field.year', 'f:year', tail, [36, 34, 36, 45], '30212e7efed3b741']
+  - ['std.osdate.field.month', 'f:month', tail, [37, 34, 37, 38], '38cea8f11113c9ac']
+  - ['std.osdate.field.day', 'f:day', tail, [38, 34, 38, 38], '38c79ff1110d9bb3']
+  - ['std.osdate.field.hour', 'f:hour', tail, [39, 34, 39, 38], 'c772bdf95d76417d']
+  - ['std.osdate.field.min', 'f:min', tail, [40, 34, 40, 38], 'c76fabf95d73ed10']
+  - ['std.osdate.field.sec', 'f:sec', tail, [41, 34, 41, 59], '7de6ed0043babdcb']
+  - ['std.osdate.field.wday', 'f:wday', tail, [42, 34, 42, 50], 'd3245cd249132d0f']
+  - ['std.osdate.field.yday', 'f:yday', tail, [43, 34, 43, 39], '88e1499ffa2db2cc']
+  - ['std.osdate.field.isdst', 'f:isdst', tail, [44, 34, 44, 66], '0dca085c7f2cce30']
 - a: 'function os.date(format, time) end'
   g: 'Returns a string or a table containing date and time, formatted according'
   r: [46, 0, 82, 18]
@@ -43,7 +43,7 @@ b:
   e:
   - ['oslib.difftime', 'd', doc, [85, 0, 89, 0], '6a0b703ea28839f7']
 - a: 'function os.execute(command) end'
-  g: '@version > 5.2'
+  g: '@version >5.2'
   r: [94, 0, 112, 19]
   e:
   - ['oslib.execute@>5.2', 'd', doc, [95, 0, 108, 0], '534ea24d2e6da6c0']
@@ -53,7 +53,7 @@ b:
   e:
   - ['oslib.execute@5.1,JIT', 'd', doc, [116, 0, 121, 0], 'cfd1f1e32f605f58']
 - a: 'function os.exit(code, close) end'
-  g: '@version > 5.2, JIT'
+  g: '@version >5.2, JIT'
   r: [125, 0, 135, 25]
   e:
   - ['oslib.exit@>5.2,JIT', 'd', doc, [126, 0, 134, 0], '4fda0e69acf947bb']

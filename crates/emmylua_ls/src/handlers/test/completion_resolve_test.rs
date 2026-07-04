@@ -32,6 +32,7 @@ mod tests {
         ));
         Ok(())
     }
+
     #[gtest]
     fn test_2() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new();

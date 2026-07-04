@@ -11,7 +11,7 @@ use emmylua_code_analysis::{
 };
 use emmylua_parser::{
     LuaAst, LuaAstNode, LuaAstToken, LuaCallArgList, LuaCallExpr, LuaComment, LuaDocFieldKey,
-    LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocObjectFieldKey, LuaDocType, LuaExpr,
+    LuaDocGenericDecl, LuaDocGenericDeclList, LuaDocMappedKey, LuaDocObjectFieldKey, LuaExpr,
     LuaGeneralToken, LuaKind, LuaLiteralToken, LuaNameToken, LuaSyntaxKind, LuaSyntaxNode,
     LuaSyntaxToken, LuaTokenKind, LuaVarExpr,
 };
@@ -209,7 +209,6 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkTagReturnCast
         | LuaTokenKind::TkTagReturnOverload
         | LuaTokenKind::TkLanguage
-        | LuaTokenKind::TkTagAttribute
         | LuaTokenKind::TKTagSchema => {
             builder.push_with_modifier(
                 token,
@@ -352,6 +351,17 @@ fn build_node_semantic_token(
             );
             if let Some(generic_decl_list) = doc_alias.get_generic_decl_list() {
                 render_type_parameter_list(builder, &generic_decl_list);
+            }
+            if let Some(alias_type) = doc_alias.get_type() {
+                for mapped_key in alias_type
+                    .syntax()
+                    .descendants()
+                    .filter_map(LuaDocMappedKey::cast)
+                {
+                    if let Some(type_decl) = mapped_key.child::<LuaDocGenericDecl>() {
+                        render_type_parameter(builder, &type_decl);
+                    }
+                }
             }
         }
         LuaAst::LuaDocTagField(doc_field) => {
@@ -823,22 +833,6 @@ fn build_node_semantic_token(
                         SemanticTokenModifierKind::DECLARATION
                             | SemanticTokenModifierKind::DEFAULT_LIBRARY,
                     );
-                }
-            }
-        }
-        LuaAst::LuaDocTagAttribute(tag_attribute) => {
-            if let Some(name) = tag_attribute.get_name_token() {
-                builder.push_with_modifier(
-                    name.syntax(),
-                    SemanticTokenTypeKind::Type,
-                    SemanticTokenModifierKind::DECLARATION,
-                );
-            }
-            if let Some(LuaDocType::Attribute(attribute)) = tag_attribute.get_type() {
-                for param in attribute.get_params() {
-                    if let Some(name) = param.get_name_token() {
-                        builder.push(name.syntax(), SemanticTokenTypeKind::Parameter);
-                    }
                 }
             }
         }

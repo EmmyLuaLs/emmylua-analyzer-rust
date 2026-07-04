@@ -9,7 +9,7 @@ use emmylua_parser::{
 };
 use lsp_types::Uri;
 
-use crate::handlers::hover::find_member_origin_owner;
+use crate::handlers::common::find_member_origin_owner;
 
 #[allow(clippy::mutable_key_type)]
 pub fn rename_member_references(
@@ -30,7 +30,7 @@ pub fn rename_member_references(
             .get_reference_index()
             .get_index_references(key)?;
 
-    let origin_property_owner = find_member_origin_owner(compilation, semantic_model, member_id)
+    let origin_property_owner = find_member_origin_owner(semantic_model, member_id)
         .unwrap_or(LuaSemanticDeclId::Member(member_id));
     let property_owner = LuaSemanticDeclId::Member(member_id);
     let mut semantic_cache = HashMap::new();

@@ -295,7 +295,7 @@ mod test {
                 "Foo".to_string(),
                 LuaDeclTypeKind::Class,
                 LuaTypeFlag::Partial.into(),
-                LuaTypeDeclId::local(file_id, "Foo"),
+                LuaTypeDeclId::file(file_id, "Foo"),
             ),
         );
 
@@ -304,7 +304,7 @@ mod test {
                 .find_type_decl(file_id, "Foo", Some(workspace_id))
                 .unwrap()
                 .get_id(),
-            LuaTypeDeclId::local(file_id, "Foo")
+            LuaTypeDeclId::file(file_id, "Foo")
         );
         assert_eq!(
             index

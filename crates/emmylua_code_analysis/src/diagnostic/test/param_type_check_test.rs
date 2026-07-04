@@ -2,7 +2,49 @@
 mod test {
     use std::{ops::Deref, sync::Arc};
 
+    use lsp_types::{Diagnostic, NumberOrString};
+    use tokio_util::sync::CancellationToken;
+
     use crate::{DiagnosticCode, VirtualWorkspace};
+
+    fn param_type_diagnostics(ws: &mut VirtualWorkspace, block_str: &str) -> Vec<Diagnostic> {
+        ws.analysis
+            .diagnostic
+            .enable_only(DiagnosticCode::ParamTypeMismatch);
+        let file_id = ws.def(block_str);
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::ParamTypeMismatch.get_name().to_string(),
+        ));
+        ws.analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == code)
+            .collect()
+    }
+
+    #[test]
+    fn test_param_type_mismatch_still_runs_when_count_diagnostics_disabled() {
+        let mut ws = VirtualWorkspace::new();
+        let diagnostics = param_type_diagnostics(
+            &mut ws,
+            r#"
+                ---@param a string
+                ---@param b string
+                local function test(a, b)
+                end
+
+                test(1)
+        "#,
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(
+            diagnostics[0].message.contains("string"),
+            "{}",
+            diagnostics[0].message
+        );
+    }
 
     #[test]
     fn test_issue_216() {
@@ -39,6 +81,27 @@ mod test {
             foo(function() end)
         "#
         ));
+    }
+
+    #[test]
+    fn test_overload_param_type_mismatch_unions_failed_position() {
+        let mut ws = VirtualWorkspace::new();
+        let diagnostics = param_type_diagnostics(
+            &mut ws,
+            r#"
+            ---@type fun(name: "游戏-初始化") | fun(name: "游戏-开始")
+            local event
+            local bad ---@type boolean
+
+            event(bad)
+        "#,
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        let message = &diagnostics[0].message;
+        assert!(message.contains("boolean"), "{message}");
+        assert!(message.contains("游戏-初始化"), "{message}");
+        assert!(message.contains("游戏-开始"), "{message}");
     }
 
     #[test]
@@ -825,8 +888,9 @@ mod test {
 
                 ---@class (partial) D21.A
                 ---@field event fun(self: self, event: "游戏-初始化")
+                ---@field event fun(self: self, event: "游戏-开始")
 
-                ---@param p string
+                ---@param p boolean
                 local function test(p)
                     M:event(p)
                 end
@@ -1474,6 +1538,28 @@ mod test {
     }
 
     #[test]
+    fn test_index_access_with_keyof_alias() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@class A
+            ---@field one 1
+
+            ---@alias KeyofA keyof A
+            ---@type A[KeyofA]
+            local tmp
+
+            ---@param v 1
+            local function test(v)
+            end
+
+            test(tmp)
+        "#,
+        ));
+    }
+
+    #[test]
     fn test_origin_self() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -1623,7 +1709,47 @@ mod test {
             r#"
             local filename = 'flag.text'
             assert(io.open(filename, 'r'))
-        "#,
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_generic_constraint_arg_to_incompatible_param() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@param value string
+            local function takeString(value)
+            end
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                takeString(animal)
+            end
+        "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@class Animal
+            ---@field name string
+
+            ---@param value Animal
+            local function takeAnimal(value)
+            end
+
+            ---@generic T: Animal
+            ---@param animal T
+            local function checkAnimal(animal)
+                takeAnimal(animal)
+            end
+        "#
         ));
     }
 }

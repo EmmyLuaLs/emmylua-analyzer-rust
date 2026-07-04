@@ -1,7 +1,7 @@
 use emmylua_code_analysis::{
-    DbIndex, InFiled, LuaCompilation, LuaFunctionType, LuaGenericType, LuaInstanceType,
-    LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaSignatureId, LuaType,
-    LuaTypeDeclId, RenderLevel, SemanticModel, TypeSubstitutor,
+    DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType, LuaOperatorMetaMethod,
+    LuaOperatorOwner, LuaSemanticDeclId, LuaSignatureId, LuaType, LuaTypeDeclId, RenderLevel,
+    SemanticModel, TypeSubstitutor,
 };
 use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaSyntaxToken, LuaTokenKind};
 use lsp_types::{
@@ -16,13 +16,12 @@ use super::signature_helper_builder::SignatureHelperBuilder;
 
 pub fn build_signature_helper(
     semantic_model: &SemanticModel,
-    compilation: &LuaCompilation,
     call_expr: LuaCallExpr,
     token: LuaSyntaxToken,
 ) -> Option<SignatureHelp> {
     let prefix_expr = call_expr.get_prefix_expr()?;
     let prefix_expr_type = semantic_model.infer_expr(prefix_expr.clone()).ok()?;
-    let builder = SignatureHelperBuilder::new(compilation, semantic_model, call_expr.clone());
+    let builder = SignatureHelperBuilder::new(semantic_model, call_expr.clone());
     let colon_call = call_expr.is_colon_call();
     let current_idx = get_current_param_index(&call_expr, &token)?;
     let help = match prefix_expr_type {

@@ -53,6 +53,7 @@ fn check_vscode(client_info: &ClientInfo) -> bool {
     if name.contains("Visual Studio Code")
         || name.contains("Code - OSS")
         || name.contains("VSCodium")
+        || name.contains("Antigravity")
     {
         return true;
     }

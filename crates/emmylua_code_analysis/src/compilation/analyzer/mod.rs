@@ -17,6 +17,8 @@ use infer_cache_manager::InferCacheManager;
 use std::sync::Arc;
 use unresolve::UnResolve;
 
+pub(crate) use lua::{analyze_func_body_returns_with, analyze_return_point};
+
 pub(super) fn analyze_func_body_missing_return_flags_with<F>(
     body: LuaBlock,
     infer_expr_type: &mut F,

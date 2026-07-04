@@ -1,15 +1,44 @@
 #[cfg(test)]
 mod test {
-    use crate::{DiagnosticCode, EmmyrcLuaVersion, LuaType, VirtualWorkspace};
-    use emmylua_parser::{LuaAstToken, LuaLocalName};
+    use crate::{DiagnosticCode, EmmyrcLuaVersion, FileId, LuaType, VirtualWorkspace};
+    use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName, LuaNameExpr};
     use ntest::timeout;
 
     const STACKED_TYPE_GUARDS: usize = 180;
-    const LARGE_LINEAR_ASSIGNMENT_STEPS: usize = 2048;
     const MAXWELLHOME_ARRAY_VALUES: usize = 2048;
     const ISSUE_1100_HIGHLIGHT_GROUPS: usize = 2048;
     const REPEATED_SELF_ASSIGNMENT_STEPS: usize = 512;
     const REPEATED_SELF_ASSIGNMENT_VARIANT_STEPS: usize = 128;
+
+    fn last_name_expr_type(ws: &VirtualWorkspace, file_id: FileId, name: &str) -> LuaType {
+        let tree = ws
+            .analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_syntax_tree(&file_id)
+            .expect("syntax tree must exist");
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("semantic model must exist");
+        let name_expr = tree
+            .get_chunk_node()
+            .descendants::<LuaNameExpr>()
+            .filter(|name_expr| {
+                name_expr
+                    .get_name_token()
+                    .is_some_and(|token| token.get_name_text() == name)
+            })
+            .last()
+            .expect("name expr must exist");
+
+        semantic_model
+            .get_semantic_info(name_expr.syntax().clone().into())
+            .expect("name expr semantic info must exist")
+            .typ
+    }
 
     #[test]
     fn test_closure_return() {
@@ -615,6 +644,7 @@ mod test {
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
     }
 
+    #[cfg(feature = "slow-tests")]
     #[test]
     fn test_large_linear_assignment_file_builds_semantic_model() {
         let mut ws = VirtualWorkspace::new();
@@ -626,7 +656,7 @@ mod test {
         "#,
         );
 
-        for i in 0..LARGE_LINEAR_ASSIGNMENT_STEPS {
+        for i in 0..2048 {
             block.push_str(&format!("local alias_{i} = value\n"));
             block.push_str(&format!("value = alias_{i}\n"));
         }
@@ -792,6 +822,58 @@ mod test {
         );
 
         assert_eq!(ws.expr_ty("after_guard"), ws.ty("Player"));
+    }
+
+    #[test]
+    fn test_decl_initializer_assert_after_forward_method_guard_keeps_value_type() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+        ---@class Foo
+        local Foo = {}
+
+        ---@type string?
+        local nullable_string
+
+        function Foo:main()
+            assert(self:defined_later())
+
+            local _v3 = assert(nullable_string)
+        end
+
+        ---@return boolean
+        function Foo:defined_later()
+            return false
+        end
+        "#,
+        );
+
+        let tree = ws
+            .analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_syntax_tree(&file_id)
+            .expect("syntax tree must exist");
+        let semantic_model = ws
+            .analysis
+            .compilation
+            .get_semantic_model(file_id)
+            .expect("semantic model must exist");
+        let local_name = tree
+            .get_chunk_node()
+            .descendants::<LuaLocalName>()
+            .find(|name| {
+                name.get_name_token()
+                    .is_some_and(|token| token.get_name_text() == "_v3")
+            })
+            .expect("_v3 local name must exist");
+        let token = local_name.get_name_token().expect("_v3 token must exist");
+        let info = semantic_model
+            .get_semantic_info(token.syntax().clone().into())
+            .expect("_v3 semantic info must exist");
+
+        assert_eq!(ws.humanize_type(info.typ), "string");
     }
 
     #[test]
@@ -1308,6 +1390,22 @@ print(a.field)
     }
 
     #[test]
+    fn test_numeric_for_len_expr_narrows_loop_body_value_to_non_nil() {
+        let mut ws = VirtualWorkspace::new();
+
+        let code = r#"
+        ---@type false|fun(...)[]?
+        local calls
+
+        for i = 1, #calls do
+            calls[i](...)
+        end
+        "#;
+
+        assert!(ws.has_no_diagnostic(DiagnosticCode::NeedCheckNil, code));
+    }
+
+    #[test]
     fn test_issue_224() {
         let mut ws = VirtualWorkspace::new();
 
@@ -1344,6 +1442,38 @@ elseif a.a then
     print(a.a)
 end
 
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_elseif_chain_keeps_previous_false_conditions() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+local stat ---@type { size: integer }?
+if math.random() > 0.5 then
+elseif not stat then
+elseif stat.size > 0 then
+end
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_not_logical_and_return_narrows_rhs_to_truthy() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::NeedCheckNil,
+            r#"
+local n ---@type number?
+if not (n and n > 0) then
+    return
+end
+n = n + 1
         "#
         ));
     }
@@ -1636,9 +1766,10 @@ end
 
         ws.def(
             r#"
+        local stop ---@type integer
         local value ---@type string?
 
-        for i = 1, 3 do
+        for i = 1, stop do
             value = "loop"
         end
 
@@ -1647,6 +1778,117 @@ end
         );
 
         assert_eq!(ws.expr_ty("after_loop"), ws.ty("string?"));
+    }
+
+    #[test]
+    fn test_numeric_for_post_flow_adds_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local thing = nil
+        for i = 1, 10 do
+            thing = {} --[[@as MyClass]]
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+        let thing_type_desc = ws.humanize_type(thing_type);
+
+        assert!(thing_type_desc.contains("MyClass"), "{thing_type_desc}");
+    }
+
+    #[test]
+    fn test_dynamic_numeric_for_post_flow_ignores_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local stop ---@type integer
+        local thing = nil
+        for i = 1, stop do
+            thing = {} --[[@as MyClass]]
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+
+        assert_eq!(ws.humanize_type(thing_type), "nil");
+    }
+
+    #[test]
+    fn test_while_true_break_post_flow_adds_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local thing = nil
+        while true do
+            thing = {} --[[@as MyClass]]
+            break
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+        let thing_type_desc = ws.humanize_type(thing_type);
+
+        assert!(thing_type_desc.contains("MyClass"), "{thing_type_desc}");
+    }
+
+    #[test]
+    fn test_dynamic_while_post_flow_ignores_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local condition ---@type boolean
+        local thing = nil
+        while condition do
+            thing = {} --[[@as MyClass]]
+            break
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+
+        assert_eq!(ws.humanize_type(thing_type), "nil");
+    }
+
+    #[test]
+    fn test_while_false_post_flow_ignores_body_assignment_for_print_arg() {
+        let mut ws = VirtualWorkspace::new();
+
+        let file_id = ws.def(
+            r#"
+        ---@class MyClass
+
+        local thing = nil
+        while false do
+            thing = {} --[[@as MyClass]]
+        end
+
+        print(thing)
+        "#,
+        );
+        let thing_type = last_name_expr_type(&ws, file_id, "thing");
+
+        assert_eq!(ws.humanize_type(thing_type), "nil");
     }
 
     #[test]
@@ -2488,6 +2730,77 @@ end
     }
 
     #[test]
+    fn test_assignment_in_all_type_alias_branches_drops_original_union() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            ---@class FlowAliasA
+            local A
+
+            ---@class FlowAliasDisposable
+
+            ---@class FlowAliasAnonymousObserver: FlowAliasDisposable
+
+            ---@return FlowAliasAnonymousObserver
+            local function createAnonymousObserver()
+            end
+
+            ---@param observer fun() | string
+            function A:subscribe(observer)
+                local typ = type(observer)
+                if typ == 'function' then
+                    observer = createAnonymousObserver()
+                elseif typ == 'string' then
+                    observer = createAnonymousObserver()
+                else
+                    after_else_observer = observer
+                end
+
+                after_observer = observer
+            end
+            "#,
+        );
+        let after_else_observer = ws.expr_ty("after_else_observer");
+        assert_eq!(ws.humanize_type(after_else_observer), "never");
+        let after_observer = ws.expr_ty("after_observer");
+        assert_eq!(
+            ws.humanize_type(after_observer),
+            "FlowAliasAnonymousObserver"
+        );
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@class A
+            local A
+
+            ---@class IDisposable
+
+            ---@class AnonymousObserver: IDisposable
+
+            ---@return AnonymousObserver
+            local function createAnonymousObserver()
+            end
+
+            ---@param observer fun() | string
+            ---@return IDisposable
+            function A:subscribe(observer)
+                local typ = type(observer)
+                if typ == 'function' then
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    observer = createAnonymousObserver()
+                elseif typ == 'string' then
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    observer = createAnonymousObserver()
+                end
+
+                return observer
+            end
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_issue_524() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
@@ -2998,6 +3311,26 @@ _2 = a[1]
 
         let e_ty = ws.expr_ty("E");
         assert_eq!(ws.humanize_type(e_ty), "(MyClass|table)");
+    }
+
+    #[test]
+    fn test_or_table_literal_with_required_fields_narrows_to_class() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            --- @class Foo
+            --- @field [integer] string
+            --- @field other number
+
+            local foo --- @type Foo?
+
+            E = foo or { other = 5 }
+            "#,
+        );
+
+        let e_ty = ws.expr_ty("E");
+        assert_eq!(ws.humanize_type(e_ty), "Foo");
     }
 
     #[test]
@@ -3769,6 +4102,31 @@ _2 = a[1]
     }
 
     #[test]
+    fn test_enum_flag_bitop_assignment_keeps_declared_field_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@enum SubscriberFlags
+            local SubscriberFlags = {
+                Tracking = 1 << 0
+            }
+
+            ---@class Subscriber
+            ---@field flags SubscriberFlags
+
+            ---@type Subscriber
+            local subscriber
+
+            subscriber.flags = subscriber.flags & ~SubscriberFlags.Tracking
+            after_bitop = subscriber.flags
+            "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_bitop"), ws.ty("SubscriberFlags"));
+    }
+
+    #[test]
     fn test_index_expr_replay_keeps_literal_field_narrowing() {
         let mut ws = VirtualWorkspace::new();
 
@@ -3809,6 +4167,69 @@ _2 = a[1]
         );
 
         assert_eq!(ws.expr_ty("after_assign"), ws.ty("integer|string"));
+    }
+
+    #[test]
+    fn test_empty_table_fallback_assignment_keeps_indexed_table_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            ---@type table<int, table<int, table>>
+            local archiveCache = {}
+
+            local playerCache = archiveCache[0]
+            if not playerCache then
+                playerCache = {}
+            end
+
+            A = playerCache
+            "#,
+        );
+
+        let actual = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(actual), "table<integer,table>");
+    }
+
+    #[test]
+    fn test_empty_table_fallback_assignment_keeps_nullable_table_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local playerCache ---@type table<int, table>?
+            if not playerCache then
+                playerCache = {}
+            end
+
+            A = playerCache
+            "#,
+        );
+
+        let actual = ws.expr_ty("A");
+        assert_eq!(ws.humanize_type(actual), "table<integer,table>");
+    }
+
+    #[test]
+    fn test_empty_table_nil_guard_does_not_drop_false_slot_type() {
+        let mut ws = VirtualWorkspace::new();
+
+        ws.def(
+            r#"
+            local playerCache ---@type table<int, table>|false
+            if playerCache == nil then
+                playerCache = {}
+            end
+
+            A = playerCache
+            "#,
+        );
+
+        let actual = ws.expr_ty("A");
+        assert_eq!(
+            ws.humanize_type_detailed(actual),
+            "(table<integer,table>|false)"
+        );
     }
 
     #[test]

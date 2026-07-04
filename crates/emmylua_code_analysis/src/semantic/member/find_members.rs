@@ -4,8 +4,8 @@ use smol_str::SmolStr;
 
 use crate::{
     DbIndex, FileId, InferGuardRef, LuaGenericType, LuaInstanceType, LuaIntersectionType,
-    LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSemanticDeclId, LuaTupleType, LuaType,
-    LuaTypeDeclId, LuaUnionType,
+    LuaMemberFeature, LuaMemberIndexItem, LuaMemberKey, LuaMemberOwner, LuaObjectType,
+    LuaSemanticDeclId, LuaTupleType, LuaType, LuaTypeDeclId, LuaTypeOwner, LuaUnionType,
     semantic::{
         InferGuard,
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -213,7 +213,7 @@ fn find_table_generic_members(
 
     let key_type = ctx.instantiate_type(db, &table_type[0]);
     let value_type = ctx.instantiate_type(db, &table_type[1]);
-    let member_key = LuaMemberKey::ExprType(key_type);
+    let member_key = LuaMemberKey::TypeKey(key_type);
 
     if should_include_member(&member_key, filter) {
         members.push(LuaMemberInfo {
@@ -233,6 +233,17 @@ fn find_normal_members(
     member_owner: LuaMemberOwner,
     filter: &FindMemberFilter,
 ) -> FindMembersResult {
+    if let FindMemberFilter::ByKey {
+        member_key,
+        find_all,
+    } = filter
+    {
+        let member_item = db
+            .get_member_index()
+            .get_member_item(&member_owner, member_key)?;
+        return collect_member_infos_from_item(db, ctx, member_item, *find_all);
+    }
+
     let mut members = Vec::new();
     let member_index = db.get_member_index();
     let owner_members = member_index.get_members(&member_owner)?;
@@ -241,18 +252,14 @@ fn find_normal_members(
         let member_key = member.get_key().clone();
 
         if should_include_member(&member_key, filter) {
-            let raw_type = db
-                .get_type_index()
-                .get_type_cache(&member.get_id().into())
-                .map(|t| t.as_type().clone())
-                .unwrap_or(LuaType::Unknown);
-            members.push(LuaMemberInfo {
-                property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
-                key: member_key,
-                typ: ctx.instantiate_type(db, &raw_type),
-                feature: Some(member.get_feature()),
-                overload_index: None,
-            });
+            members.push(semantic_decl_to_member_info(
+                db,
+                ctx,
+                LuaTypeOwner::Member(member.get_id()),
+                LuaSemanticDeclId::Member(member.get_id()),
+                member_key,
+                Some(member.get_feature()),
+            ));
 
             if should_stop_collecting(members.len(), filter) {
                 break;
@@ -261,6 +268,55 @@ fn find_normal_members(
     }
 
     Some(members)
+}
+
+fn collect_member_infos_from_item(
+    db: &DbIndex,
+    ctx: &FindMembersContext,
+    member_item: &LuaMemberIndexItem,
+    find_all: bool,
+) -> FindMembersResult {
+    let mut members = Vec::new();
+    for member_id in member_item.get_member_ids() {
+        let member = db.get_member_index().get_member(&member_id)?;
+        members.push(semantic_decl_to_member_info(
+            db,
+            ctx,
+            LuaTypeOwner::Member(member.get_id()),
+            LuaSemanticDeclId::Member(member.get_id()),
+            member.get_key().clone(),
+            Some(member.get_feature()),
+        ));
+
+        if !find_all {
+            break;
+        }
+    }
+
+    Some(members)
+}
+
+fn semantic_decl_to_member_info(
+    db: &DbIndex,
+    ctx: &FindMembersContext,
+    type_owner: LuaTypeOwner,
+    property_owner_id: LuaSemanticDeclId,
+    key: LuaMemberKey,
+    feature: Option<LuaMemberFeature>,
+) -> LuaMemberInfo {
+    let raw_type = db
+        .get_type_index()
+        .get_type_cache(&type_owner)
+        .map(|t| t.as_type().clone())
+        .unwrap_or(LuaType::Unknown);
+
+    LuaMemberInfo {
+        property_owner_id: Some(property_owner_id),
+        key,
+        typ: ctx.instantiate_type(db, &raw_type),
+        feature,
+        overload_index: None,
+    }
 }
 
 fn find_custom_type_members(
@@ -282,25 +338,37 @@ fn find_custom_type_members(
 
     let mut members = Vec::new();
     let member_index = db.get_member_index();
-    if let Some(type_members) =
-        member_index.get_members(&LuaMemberOwner::Type(type_decl_id.clone()))
+    let type_owner = LuaMemberOwner::Type(type_decl_id.clone());
+    if let FindMemberFilter::ByKey {
+        member_key,
+        find_all,
+    } = filter
     {
+        if let Some(member_item) = member_index.get_member_item(&type_owner, member_key) {
+            members.extend(collect_member_infos_from_item(
+                db,
+                ctx,
+                member_item,
+                *find_all,
+            )?);
+
+            if should_stop_collecting(members.len(), filter) {
+                return Some(members);
+            }
+        }
+    } else if let Some(type_members) = member_index.get_members(&type_owner) {
         for member in type_members {
             let member_key = member.get_key().clone();
 
             if should_include_member(&member_key, filter) {
-                let raw_type = db
-                    .get_type_index()
-                    .get_type_cache(&member.get_id().into())
-                    .map(|t| t.as_type().clone())
-                    .unwrap_or(LuaType::Unknown);
-                members.push(LuaMemberInfo {
-                    property_owner_id: Some(LuaSemanticDeclId::Member(member.get_id())),
-                    key: member_key,
-                    typ: ctx.instantiate_type(db, &raw_type),
-                    feature: Some(member.get_feature()),
-                    overload_index: None,
-                });
+                members.push(semantic_decl_to_member_info(
+                    db,
+                    ctx,
+                    LuaTypeOwner::Member(member.get_id()),
+                    LuaSemanticDeclId::Member(member.get_id()),
+                    member_key,
+                    Some(member.get_feature()),
+                ));
 
                 if should_stop_collecting(members.len(), filter) {
                     return Some(members);
@@ -522,18 +590,14 @@ fn find_global_members(
             let member_key = LuaMemberKey::Name(decl.get_name().to_string().into());
 
             if should_include_member(&member_key, filter) {
-                let raw_type = db
-                    .get_type_index()
-                    .get_type_cache(&decl_id.into())
-                    .map(|t| t.as_type().clone())
-                    .unwrap_or(LuaType::Unknown);
-                members.push(LuaMemberInfo {
-                    property_owner_id: Some(LuaSemanticDeclId::LuaDecl(decl_id)),
-                    key: member_key,
-                    typ: ctx.instantiate_type(db, &raw_type),
-                    feature: None,
-                    overload_index: None,
-                });
+                members.push(semantic_decl_to_member_info(
+                    db,
+                    ctx,
+                    LuaTypeOwner::Decl(decl_id),
+                    LuaSemanticDeclId::LuaDecl(decl_id),
+                    member_key,
+                    None,
+                ));
 
                 if should_stop_collecting(members.len(), filter) {
                     break;

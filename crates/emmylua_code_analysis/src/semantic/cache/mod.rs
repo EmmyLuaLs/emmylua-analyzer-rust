@@ -126,6 +126,12 @@ impl LuaInferCache {
         self.file_id
     }
 
+    pub(in crate::semantic) fn fork_for_file(&self, file_id: FileId) -> Self {
+        let mut cache = Self::new(file_id, self.config.clone());
+        cache.no_flow_mode = self.no_flow_mode;
+        cache
+    }
+
     pub(in crate::semantic) fn is_no_flow(&self) -> bool {
         self.no_flow_mode
     }

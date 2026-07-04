@@ -13,7 +13,7 @@ b:
   - ['buf', 'd', doc, [122, 0, 130, 0], 'de3a26bc54bff1d6']
 - a: '--- Appends a string str, a number num or any object obj with a `__tostring` metamethod to the buffer. Multiple arguments are appended in the given order.'
   g: 'A string, number, or any object obj with a __tostring metamethod to the buffer.'
-  r: [134, 0, 136, 49]
+  r: [134, 0, 136, 53]
   e:
   - ['string.buffer.data', 'd', doc, [134, 0, 136, 0], 'f38347d61f3333ce']
 - a: 'function buf:put(data, ...) end'

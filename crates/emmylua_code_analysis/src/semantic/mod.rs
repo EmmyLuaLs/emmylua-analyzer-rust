@@ -21,7 +21,10 @@ use emmylua_parser::{
     LuaSyntaxToken, LuaTableExpr,
 };
 pub use infer::infer_index_expr;
-use infer::{apply_assignment_target_casts, infer_bind_value_type, infer_expr_list_types};
+use infer::{
+    apply_assignment_target_casts, infer_bind_value_type, infer_call_self_type,
+    infer_expr_list_types,
+};
 pub use infer::{infer_table_field_value_should_be, infer_table_should_be};
 use lsp_types::Uri;
 pub use member::LuaMemberInfo;
@@ -39,7 +42,7 @@ use semantic_info::{
     infer_node_semantic_info, infer_token_semantic_decl, infer_token_semantic_info,
 };
 pub(crate) use type_check::check_type_compact;
-use type_check::is_sub_type_of;
+pub(crate) use type_check::is_sub_type_of;
 pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
@@ -58,8 +61,13 @@ pub use infer::infer_call_expr_func;
 pub use infer::infer_param;
 pub(crate) use infer::try_infer_expr_for_index;
 pub(crate) use infer::{infer_expr, try_infer_expr_no_flow};
-pub(crate) use overload_resolve::collect_callable_overload_groups;
 use overload_resolve::resolve_signature;
+pub(crate) use overload_resolve::{
+    callable_accepts_args, get_func_param_type, is_func_last_param_variadic,
+};
+pub use overload_resolve::{
+    collect_callable_overload_groups, filter_callable_overloads, find_callable_overload,
+};
 pub use semantic_info::SemanticDeclLevel;
 pub use type_check::{TypeCheckFailReason, TypeCheckResult};
 
@@ -196,6 +204,16 @@ impl<'a> SemanticModel<'a> {
         .ok()
     }
 
+    pub fn callable_accepts_args(
+        &self,
+        func: &LuaFunctionType,
+        expr_types: &[LuaType],
+        is_colon_call: bool,
+        arg_count: Option<usize>,
+    ) -> bool {
+        callable_accepts_args(self.db, func, expr_types, is_colon_call, arg_count)
+    }
+
     /// 推断表达式列表类型, 位于最后的表达式会触发多值推断
     pub fn infer_expr_list_types(
         &self,
@@ -330,6 +348,10 @@ impl<'a> SemanticModel<'a> {
 
     pub fn get_member_origin_owner(&self, member_id: LuaMemberId) -> Option<LuaSemanticDeclId> {
         find_member_origin_owner(self.db, &mut self.infer_cache.borrow_mut(), member_id)
+    }
+
+    pub fn infer_call_self_type(&self, call_expr: &LuaCallExpr) -> Option<LuaType> {
+        infer_call_self_type(self.db, &mut self.infer_cache.borrow_mut(), call_expr)
     }
 
     pub fn get_index_decl_type(&self, index_expr: LuaIndexExpr) -> Option<LuaType> {

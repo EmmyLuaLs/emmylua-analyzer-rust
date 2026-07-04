@@ -10,7 +10,7 @@ use smol_str::SmolStr;
 use string_reference::StringReference;
 
 use super::{LuaDeclId, LuaMemberKey, LuaTypeDeclId, traits::LuaIndex};
-use crate::{FileId, InFiled};
+use crate::{FileId, InFiled, LuaClosureId};
 
 #[derive(Debug)]
 pub struct LuaReferenceIndex {
@@ -19,6 +19,7 @@ pub struct LuaReferenceIndex {
     global_references: HashMap<SmolStr, HashMap<FileId, HashSet<LuaSyntaxId>>>,
     string_references: HashMap<FileId, StringReference>,
     type_references: HashMap<FileId, HashMap<LuaTypeDeclId, HashSet<TextRange>>>,
+    label_references: HashMap<FileId, FileLabelReferences>,
 }
 
 impl Default for LuaReferenceIndex {
@@ -35,6 +36,7 @@ impl LuaReferenceIndex {
             global_references: HashMap::new(),
             string_references: HashMap::new(),
             type_references: HashMap::new(),
+            label_references: HashMap::new(),
         }
     }
 
@@ -94,6 +96,32 @@ impl LuaReferenceIndex {
             .entry(type_decl_id)
             .or_default()
             .insert(range);
+    }
+
+    pub fn add_label_declaration(
+        &mut self,
+        file_id: FileId,
+        closure_id: LuaClosureId,
+        name: &str,
+        range: TextRange,
+    ) {
+        self.label_references
+            .entry(file_id)
+            .or_default()
+            .add_declaration(closure_id, name, range);
+    }
+
+    pub fn add_label_reference(
+        &mut self,
+        file_id: FileId,
+        closure_id: LuaClosureId,
+        name: &str,
+        range: TextRange,
+    ) {
+        self.label_references
+            .entry(file_id)
+            .or_default()
+            .add_reference(closure_id, name, range);
     }
 
     pub fn get_local_reference(&self, file_id: &FileId) -> Option<&FileReference> {
@@ -210,6 +238,28 @@ impl LuaReferenceIndex {
 
         Some(results)
     }
+
+    pub fn get_label_definition(
+        &self,
+        file_id: &FileId,
+        closure_id: LuaClosureId,
+        name: &str,
+    ) -> Option<TextRange> {
+        self.label_references
+            .get(file_id)?
+            .get_definition(closure_id, name)
+    }
+
+    pub fn get_label_references(
+        &self,
+        file_id: &FileId,
+        closure_id: LuaClosureId,
+        name: &str,
+    ) -> Option<Vec<TextRange>> {
+        self.label_references
+            .get(file_id)?
+            .get_references(closure_id, name)
+    }
 }
 
 impl LuaIndex for LuaReferenceIndex {
@@ -217,6 +267,7 @@ impl LuaIndex for LuaReferenceIndex {
         self.file_references.remove(&file_id);
         self.string_references.remove(&file_id);
         self.type_references.remove(&file_id);
+        self.label_references.remove(&file_id);
         let mut to_be_remove = Vec::new();
         for (key, references) in self.index_reference.iter_mut() {
             references.remove(&file_id);
@@ -247,5 +298,90 @@ impl LuaIndex for LuaReferenceIndex {
         self.string_references.clear();
         self.index_reference.clear();
         self.global_references.clear();
+        self.type_references.clear();
+        self.label_references.clear();
     }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct LabelKey {
+    closure_id: LuaClosureId,
+    name: SmolStr,
+}
+
+impl LabelKey {
+    fn new(closure_id: LuaClosureId, name: &str) -> Self {
+        Self {
+            closure_id,
+            name: SmolStr::new(name),
+        }
+    }
+
+    fn is_match(&self, closure_id: LuaClosureId, name: &str) -> bool {
+        self.closure_id == closure_id && self.name.as_str() == name
+    }
+}
+
+#[derive(Debug, Default)]
+struct FileLabelReferences {
+    labels: Vec<LabelReferences>,
+}
+
+impl FileLabelReferences {
+    fn add_declaration(&mut self, closure_id: LuaClosureId, name: &str, range: TextRange) {
+        let key = LabelKey::new(closure_id, name);
+        self.get_or_create_label(key).declaration = Some(range);
+    }
+
+    fn add_reference(&mut self, closure_id: LuaClosureId, name: &str, range: TextRange) {
+        let key = LabelKey::new(closure_id, name);
+        let label = self.get_or_create_label(key);
+        if !label.references.contains(&range) {
+            label.references.push(range);
+        }
+    }
+
+    fn get_definition(&self, closure_id: LuaClosureId, name: &str) -> Option<TextRange> {
+        self.get_label(closure_id, name)?.declaration
+    }
+
+    fn get_references(&self, closure_id: LuaClosureId, name: &str) -> Option<Vec<TextRange>> {
+        let label = self.get_label(closure_id, name)?;
+        let mut ranges =
+            Vec::with_capacity(label.references.len() + usize::from(label.declaration.is_some()));
+
+        if let Some(declaration) = label.declaration {
+            ranges.push(declaration);
+        }
+
+        ranges.extend(label.references.iter().copied());
+
+        Some(ranges)
+    }
+
+    fn get_or_create_label(&mut self, key: LabelKey) -> &mut LabelReferences {
+        if let Some(index) = self.labels.iter().position(|label| label.key == key) {
+            return &mut self.labels[index];
+        }
+
+        self.labels.push(LabelReferences {
+            key,
+            declaration: None,
+            references: Vec::new(),
+        });
+        self.labels.last_mut().expect("label was just inserted")
+    }
+
+    fn get_label(&self, closure_id: LuaClosureId, name: &str) -> Option<&LabelReferences> {
+        self.labels
+            .iter()
+            .find(|label| label.key.is_match(closure_id, name))
+    }
+}
+
+#[derive(Debug)]
+struct LabelReferences {
+    key: LabelKey,
+    declaration: Option<TextRange>,
+    references: Vec<TextRange>,
 }

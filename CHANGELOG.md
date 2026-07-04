@@ -3,9 +3,33 @@
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
 ## [0.24.0] - Unreleased
+
+### ✨ Added
+
 - **Support LuaJIT-Ext**: Added support for LuaJIT‑Ext syntax, including compound assignment operators, null‑safe navigation, the null‑coalescing operator, constant variables, and the continue statement.
 
 - **Support LuaJIT3**: Besides LuaJIT‑Ext syntax, named variadic arguments and integer division are also supported.
+
+- **Support const generic parameters**: Added the `const T` syntax for generics, for example `---@generic const T`.
+
+- **emmylua_check severity filter**: Added the `--severity` option to filter diagnostic output by minimum severity.
+
+### ⚠️ Deprecated
+
+- **std.ConstTpl**: Marked `std.ConstTpl` as deprecated. Use the new `const T` generic syntax instead.
+
+### 🔧 Changed
+
+- **Rename table field optimization**: `lsp_optimization("skip_table_fields_check")` is now the documented name for skipping table field diagnostics. The old `check_table_field` name remains supported as a compatibility alias.
+- **Refactor hover signature**: Refactored signature rendering in hover.
+
+### 🗑️ Removed
+
+- **`---@attribute` tag**: Removed the `---@attribute` tag. Attribute definitions now use C#-like class definitions:
+```lua
+---@class NewAttribute: Attribute
+---@overload fun(args)
+```
 
 ## [0.23.2] - 2026-6-3
 

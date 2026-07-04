@@ -25,14 +25,9 @@ pub fn parse_type(p: &mut LuaDocParser) -> DocParseResult {
                 p.bump();
                 cm = m.complete(p);
             }
-            // <type> and <true type> or <false type>
-            LuaTokenKind::TkAnd => {
-                let m = cm.precede(p, LuaSyntaxKind::TypeConditional);
-                p.bump();
-                parse_type(p)?;
-                expect_token(p, LuaTokenKind::TkOr)?;
-                parse_type(p)?;
-                cm = m.complete(p);
+            // <type> extends <type> and <true type> or <false type>
+            LuaTokenKind::TkDocExtends => {
+                parse_extends_conditional_type(p, &mut cm)?;
                 break;
             }
             LuaTokenKind::TkDots => {
@@ -53,9 +48,61 @@ pub fn parse_type(p: &mut LuaDocParser) -> DocParseResult {
     Ok(cm)
 }
 
+fn parse_extends_conditional_type(
+    p: &mut LuaDocParser,
+    cm: &mut CompleteMarker,
+) -> Result<(), LuaParseError> {
+    let extends_range = p.current_token_range();
+    let condition_m = cm.precede(p, LuaSyntaxKind::TypeBinary);
+
+    let prev_lexer_state = p.lexer.state;
+    p.set_lexer_state(LuaDocLexerState::Extends);
+    p.bump();
+    p.set_lexer_state(prev_lexer_state);
+
+    let prev_state = p.state;
+    p.set_parser_state(LuaDocParserState::Extends);
+    let res = parse_sub_type(p, LuaTypeBinaryOperator::Extends.get_priority().right);
+    p.set_parser_state(prev_state);
+
+    match res {
+        Ok(_) => {}
+        Err(err) => {
+            p.push_error(LuaParseError::doc_error_from(
+                &t!("binary operator not followed by type"),
+                extends_range,
+            ));
+            return Err(err);
+        }
+    }
+
+    *cm = condition_m.complete(p);
+
+    if p.current_token() != LuaTokenKind::TkAnd {
+        return Err(LuaParseError::doc_error_from(
+            &t!("expected %{token}", token = "and"),
+            p.current_token_range(),
+        ));
+    }
+
+    let m = cm.precede(p, LuaSyntaxKind::TypeConditional);
+    p.bump();
+    parse_type(p)?;
+    if p.current_token() != LuaTokenKind::TkOr {
+        return Err(LuaParseError::doc_error_from(
+            &t!("expected %{token}", token = "or"),
+            p.current_token_range(),
+        ));
+    }
+    p.bump();
+    parse_type(p)?;
+    *cm = m.complete(p);
+    Ok(())
+}
+
 // <type>
 // keyof <type>, -1
-// <type> | <type> , <type> & <type>, <type> extends <type>, <type> in keyof <type>
+// <type> | <type> , <type> & <type>, <type> in keyof <type>
 fn parse_sub_type(p: &mut LuaDocParser, limit: i32) -> DocParseResult {
     let uop = LuaOpKind::to_type_unary_operator(p.current_token());
     let mut cm = if uop != LuaTypeUnaryOperator::None {
@@ -87,30 +134,16 @@ pub fn parse_binary_operator(
     limit: i32,
 ) -> Result<(), LuaParseError> {
     let mut bop = LuaOpKind::to_parse_binary_operator(p.current_token());
-    while bop != LuaTypeBinaryOperator::None && bop.get_priority().left > limit {
+    while bop != LuaTypeBinaryOperator::None
+        && bop != LuaTypeBinaryOperator::Extends
+        && bop.get_priority().left > limit
+    {
         let range = p.current_token_range();
         let m = cm.precede(p, LuaSyntaxKind::TypeBinary);
 
-        if bop == LuaTypeBinaryOperator::Extends {
-            let prev_lexer_state = p.lexer.state;
-            p.set_lexer_state(LuaDocLexerState::Extends);
-            p.bump();
-            p.set_lexer_state(prev_lexer_state);
-        } else {
-            p.bump();
-        }
+        p.bump();
         if p.current_token() != LuaTokenKind::TkDocQuestion {
-            // infer 只有在条件类型中才能被解析为关键词
-            let parse_result = if bop == LuaTypeBinaryOperator::Extends {
-                let prev_state = p.state;
-                p.set_parser_state(LuaDocParserState::Extends);
-                let res = parse_sub_type(p, bop.get_priority().right);
-                p.set_parser_state(prev_state);
-                res
-            } else {
-                parse_sub_type(p, bop.get_priority().right)
-            };
-            match parse_result {
+            match parse_sub_type(p, bop.get_priority().right) {
                 Ok(_) => {}
                 Err(err) => {
                     p.push_error(LuaParseError::doc_error_from(

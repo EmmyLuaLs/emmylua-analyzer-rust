@@ -74,6 +74,7 @@ pub async fn run_check(cmd_args: CmdArgs) -> Result<(), Box<dyn Error + Sync + S
         cmd_args.output_format,
         cmd_args.output,
         cmd_args.warnings_as_errors,
+        cmd_args.severity,
     )
     .await;
 

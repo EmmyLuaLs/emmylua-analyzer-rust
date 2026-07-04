@@ -50,7 +50,7 @@ impl RegisterCapabilities for ConfigurationCapabilities {
     fn register_capabilities(_: &mut ServerCapabilities, _: &ClientCapabilities) {}
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "slow-tests"))]
 mod tests {
     use super::*;
     use std::{

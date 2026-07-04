@@ -1,10 +1,7 @@
 use emmylua_code_analysis::{
-    GenericTplId, LuaCompilation, LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType,
-    RenderLevel, SemanticModel, TypeSubstitutor,
+    LuaMember, LuaMemberOwner, LuaSemanticDeclId, LuaType, RenderLevel, SemanticModel,
 };
-use emmylua_parser::{
-    LuaAstNode, LuaCallExpr, LuaExpr, LuaLocalName, LuaLocalStat, LuaSyntaxKind, LuaSyntaxToken,
-};
+use emmylua_parser::LuaSyntaxToken;
 use lsp_types::{Hover, HoverContents, MarkedString, MarkupContent};
 
 use crate::handlers::hover::humanize_types::{
@@ -19,8 +16,8 @@ pub struct HoverBuilder<'a> {
     pub primary: MarkedString,
     /// Full path of the class
     pub location_path: Option<MarkedString>,
-    /// Function overload signatures, with the first being the primary overload
-    pub signature_overload: Option<Vec<MarkedString>>,
+    /// Function overload signatures
+    pub signature_overload: Option<Vec<HoverSignatureOverload>>,
     /// Annotation descriptions, including function parameters and return values
     pub annotation_description: Vec<MarkedString>,
     /// 一些类型的完整追加显示, 通常是 @alias
@@ -30,17 +27,13 @@ pub struct HoverBuilder<'a> {
 
     trigger_token: Option<LuaSyntaxToken>,
     pub semantic_model: &'a SemanticModel<'a>,
-    pub compilation: &'a LuaCompilation,
     pub detail_render_level: RenderLevel,
 
     pub is_completion: bool,
-    // 默认的泛型替换器
-    pub substitutor: Option<TypeSubstitutor>,
 }
 
 impl<'a> HoverBuilder<'a> {
     pub fn new(
-        compilation: &'a LuaCompilation,
         semantic_model: &'a SemanticModel,
         token: Option<LuaSyntaxToken>,
         is_completion: bool,
@@ -52,14 +45,7 @@ impl<'a> HoverBuilder<'a> {
                 RenderLevel::Detailed
             };
 
-        let substitutor = if let Some(token) = token.clone() {
-            infer_substitutor_base_type(semantic_model, token)
-        } else {
-            None
-        };
-
         Self {
-            compilation,
             semantic_model,
             primary: MarkedString::String("".to_string()),
             location_path: None,
@@ -70,7 +56,6 @@ impl<'a> HoverBuilder<'a> {
             type_expansion: None,
             tag_content: None,
             detail_render_level,
-            substitutor,
         }
     }
 
@@ -98,7 +83,7 @@ impl<'a> HoverBuilder<'a> {
         }
     }
 
-    pub fn add_signature_overload(&mut self, signature_overload: String) {
+    pub fn add_signature_overload(&mut self, signature_overload: String, comment: Option<String>) {
         if signature_overload.is_empty() {
             return;
         }
@@ -108,10 +93,7 @@ impl<'a> HoverBuilder<'a> {
         self.signature_overload
             .as_mut()
             .unwrap()
-            .push(MarkedString::from_language_code(
-                "lua".to_string(),
-                signature_overload,
-            ));
+            .push(HoverSignatureOverload::new(signature_overload, comment));
     }
 
     pub fn add_type_expansion(&mut self, type_expansion: String) {
@@ -237,15 +219,8 @@ impl<'a> HoverBuilder<'a> {
             let mut expansion = String::new();
             if let Some(signature_overload) = &self.signature_overload {
                 expansion.push_str("\n---\n");
-                for signature in signature_overload {
-                    match signature {
-                        MarkedString::String(s) => {
-                            expansion.push_str(&format!("\n{}\n", s));
-                        }
-                        MarkedString::LanguageString(s) => {
-                            expansion.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
-                        }
-                    }
+                for overload in signature_overload {
+                    overload.append_markdown(&mut expansion);
                 }
             }
 
@@ -281,67 +256,64 @@ impl<'a> HoverBuilder<'a> {
     pub fn get_trigger_token(&self) -> Option<LuaSyntaxToken> {
         self.trigger_token.clone()
     }
-
-    pub fn get_call_expr(&self) -> Option<LuaCallExpr> {
-        if let Some(token) = self.trigger_token.clone()
-            && let Some(call_expr) = token.parent()?.parent()
-            && LuaCallExpr::can_cast(call_expr.kind().into())
-        {
-            return LuaCallExpr::cast(call_expr);
-        }
-        None
-    }
 }
 
-// 推断基础泛型替换器
-fn infer_substitutor_base_type(
-    semantic_model: &SemanticModel,
-    trigger_token: LuaSyntaxToken,
-) -> Option<TypeSubstitutor> {
-    let parent = trigger_token.parent()?;
-    match parent.kind().into() {
-        LuaSyntaxKind::LocalName => {
-            let target_local_name = LuaLocalName::cast(parent.clone())?;
-            let parent = parent.parent()?;
-            match parent.kind().into() {
-                LuaSyntaxKind::LocalStat => {
-                    let local_stat = LuaLocalStat::cast(parent.clone())?;
-                    let local_name_list = local_stat.get_local_name_list().collect::<Vec<_>>();
-                    let value_expr_list = local_stat.get_value_exprs().collect::<Vec<_>>();
+#[derive(Debug, Clone)]
+pub struct HoverSignatureOverload {
+    pub signature: MarkedString,
+    pub comment: Option<String>,
+}
 
-                    for (index, name) in local_name_list.iter().enumerate() {
-                        if target_local_name == *name {
-                            let value_expr = value_expr_list.get(index)?;
-                            return substitutor_form_expr(semantic_model, value_expr);
-                        }
+impl HoverSignatureOverload {
+    fn new(signature: String, comment: Option<String>) -> Self {
+        Self {
+            signature: MarkedString::from_language_code("lua".to_string(), signature),
+            comment: comment.filter(|comment| !comment.trim().is_empty()),
+        }
+    }
+
+    fn append_markdown(&self, content: &mut String) {
+        const LIMIT: usize = 80;
+        let inline_comment = self
+            .comment
+            .as_deref()
+            .filter(|comment| !comment.chars().any(|ch| ch == '\n' || ch == '\r'));
+
+        match &self.signature {
+            MarkedString::String(s) => {
+                if let Some(comment) = inline_comment {
+                    if s.chars().count() <= LIMIT {
+                        content.push_str(&format!("\n{} -- {}\n", s, comment));
+                    } else {
+                        content.push_str(&format!("\n{}\n-- {}\n", s, comment));
+                    }
+                } else {
+                    content.push_str(&format!("\n{}\n", s));
+                    if let Some(comment) = self.comment.as_deref() {
+                        content.push_str(&format!("\n{}\n", comment));
                     }
                 }
-                _ => return None,
+            }
+            MarkedString::LanguageString(s) => {
+                if let Some(comment) = inline_comment {
+                    if s.value.chars().count() <= LIMIT {
+                        content.push_str(&format!(
+                            "\n```{}\n{} -- {}\n```\n",
+                            s.language, s.value, comment
+                        ));
+                    } else {
+                        content.push_str(&format!(
+                            "\n```{}\n{}\n-- {}\n```\n",
+                            s.language, s.value, comment
+                        ));
+                    }
+                } else {
+                    content.push_str(&format!("\n```{}\n{}\n```\n", s.language, s.value));
+                    if let Some(comment) = self.comment.as_deref() {
+                        content.push_str(&format!("\n{}\n", comment));
+                    }
+                }
             }
         }
-        _ => return None,
     }
-
-    None
-}
-
-pub fn substitutor_form_expr(
-    semantic_model: &SemanticModel,
-    expr: &LuaExpr,
-) -> Option<TypeSubstitutor> {
-    if let LuaExpr::IndexExpr(index_expr) = expr {
-        let prefix_type = semantic_model
-            .infer_expr(index_expr.get_prefix_expr()?)
-            .ok()?;
-        let mut substitutor = TypeSubstitutor::new();
-        if let LuaType::Generic(generic) = prefix_type {
-            for (i, param) in generic.get_params().iter().enumerate() {
-                substitutor.insert_type(GenericTplId::Type(i as u32), param.clone(), true);
-            }
-            return Some(substitutor);
-        } else {
-            return None;
-        }
-    }
-    None
 }

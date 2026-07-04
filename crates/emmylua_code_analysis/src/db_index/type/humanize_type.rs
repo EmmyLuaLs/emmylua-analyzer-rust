@@ -259,13 +259,35 @@ impl<'a> TypeHumanizer<'a> {
         };
 
         w.write_str(&full_name)?;
-        w.write_char('<')?;
-        for (i, param) in generic.iter().enumerate() {
-            if i > 0 {
-                w.write_str(", ")?;
-            }
-            w.write_str(&param.name)?;
+        if generic.is_empty() {
+            return Ok(());
         }
+
+        w.write_char('<')?;
+        let saved = self.level;
+        self.level = self.child_level();
+        let result = (|| -> fmt::Result {
+            for (i, param) in generic.iter().enumerate() {
+                if i > 0 {
+                    w.write_str(", ")?;
+                }
+                if param.is_const {
+                    w.write_str("const ")?;
+                }
+                w.write_str(&param.name)?;
+                if let Some(constraint) = &param.constraint {
+                    w.write_str(" extends ")?;
+                    self.write_type(constraint, w)?;
+                }
+                if let Some(default_type) = &param.default {
+                    w.write_str(" = ")?;
+                    self.write_type(default_type, w)?;
+                }
+            }
+            Ok(())
+        })();
+        self.level = saved;
+        result?;
         w.write_char('>')
     }
 
@@ -308,6 +330,9 @@ impl<'a> TypeHumanizer<'a> {
         let mut function_vec = Vec::new();
         for member in members {
             let member_key = member.get_key();
+            if matches!(member_key, LuaMemberKey::TypeKey(typ) if typ.is_nil()) {
+                continue;
+            }
             let type_cache = self
                 .db
                 .get_type_index()
@@ -350,7 +375,7 @@ impl<'a> TypeHumanizer<'a> {
         if count < all_count {
             for function_key in &function_vec {
                 w.write_str("    ")?;
-                write_member_key_and_separator(function_key, saved, w)?;
+                self.write_member_key_and_separator(function_key, saved, w)?;
                 w.write_str("function,\n")?;
                 count += 1;
                 if count >= max_display_count {
@@ -512,29 +537,77 @@ impl<'a> TypeHumanizer<'a> {
     // ─── Call (alias call) ──────────────────────────────────────────
 
     fn write_call_type<W: Write>(&mut self, inner: &LuaAliasCallType, w: &mut W) -> fmt::Result {
-        let basic = match inner.get_call_kind() {
-            LuaAliasCallKind::Sub => "sub",
-            LuaAliasCallKind::Add => "add",
-            LuaAliasCallKind::KeyOf => "keyof",
-            LuaAliasCallKind::Extends => "extends",
-            LuaAliasCallKind::Select => "select",
-            LuaAliasCallKind::Unpack => "unpack",
-            LuaAliasCallKind::Index => "index",
-            LuaAliasCallKind::RawGet => "rawget",
-            LuaAliasCallKind::Merge => "Merge",
-        };
-        w.write_str(basic)?;
-        w.write_char('<')?;
+        let operands = inner.get_operands();
         let saved = self.level;
         self.level = self.child_level();
-        for (i, ty) in inner.get_operands().iter().enumerate() {
-            if i > 0 {
-                w.write_char(',')?;
+        let result = match inner.get_call_kind() {
+            LuaAliasCallKind::KeyOf => {
+                let mut result = w.write_str("keyof ");
+                for (i, ty) in operands.iter().enumerate() {
+                    if result.is_ok() && i > 0 {
+                        result = w.write_char(',');
+                    }
+                    if result.is_ok() {
+                        result = self.write_type(ty, w);
+                    }
+                }
+                result
             }
-            self.write_type(ty, w)?;
-        }
+            LuaAliasCallKind::Extends if operands.len() == 2 => {
+                let mut result = self.write_type(&operands[0], w);
+                if result.is_ok() {
+                    result = w.write_str(" extends ");
+                }
+                if result.is_ok() {
+                    result = self.write_type(&operands[1], w);
+                }
+                result
+            }
+            LuaAliasCallKind::Index if operands.len() == 2 => {
+                let mut result = self.write_type(&operands[0], w);
+                if result.is_ok() {
+                    result = w.write_char('[');
+                }
+                if result.is_ok() {
+                    result = self.write_type(&operands[1], w);
+                }
+                if result.is_ok() {
+                    result = w.write_char(']');
+                }
+                result
+            }
+            call_kind => {
+                let basic = match call_kind {
+                    LuaAliasCallKind::Sub => "sub",
+                    LuaAliasCallKind::Add => "add",
+                    LuaAliasCallKind::KeyOf => "keyof",
+                    LuaAliasCallKind::Extends => "extends",
+                    LuaAliasCallKind::Select => "select",
+                    LuaAliasCallKind::Unpack => "unpack",
+                    LuaAliasCallKind::Index => "index",
+                    LuaAliasCallKind::RawGet => "rawget",
+                    LuaAliasCallKind::Merge => "Merge",
+                };
+                let mut result = w.write_str(basic);
+                if result.is_ok() {
+                    result = w.write_char('<');
+                }
+                for (i, ty) in operands.iter().enumerate() {
+                    if result.is_ok() && i > 0 {
+                        result = w.write_char(',');
+                    }
+                    if result.is_ok() {
+                        result = self.write_type(ty, w);
+                    }
+                }
+                if result.is_ok() {
+                    result = w.write_char('>');
+                }
+                result
+            }
+        };
         self.level = saved;
-        w.write_char('>')
+        result
     }
 
     // ─── DocFunction ────────────────────────────────────────────────
@@ -622,7 +695,7 @@ impl<'a> TypeHumanizer<'a> {
                     w.write_str(": ")?;
                     self.write_type(field.1, w)?;
                 }
-                LuaMemberKey::None | LuaMemberKey::ExprType(_) => {
+                LuaMemberKey::None | LuaMemberKey::TypeKey(_) => {
                     self.write_type(field.1, w)?;
                 }
             }
@@ -781,6 +854,9 @@ impl<'a> TypeHumanizer<'a> {
 
         for member in members {
             let key = member.get_key();
+            if matches!(key, LuaMemberKey::TypeKey(typ) if typ.is_nil()) {
+                continue;
+            }
             let type_cache = self
                 .db
                 .get_type_index()
@@ -1033,7 +1109,7 @@ impl<'a> TypeHumanizer<'a> {
         parent_level: RenderLevel,
         w: &mut W,
     ) -> fmt::Result {
-        write_member_key_and_separator(member_key, parent_level, w)?;
+        self.write_member_key_and_separator(member_key, parent_level, w)?;
 
         if parent_level == RenderLevel::Detailed {
             // Show "integer = 42" style for const types
@@ -1060,32 +1136,40 @@ impl<'a> TypeHumanizer<'a> {
             self.write_type(ty, w)
         }
     }
+
+    fn write_member_key_and_separator<W: Write>(
+        &mut self,
+        member_key: &LuaMemberKey,
+        level: RenderLevel,
+        w: &mut W,
+    ) -> fmt::Result {
+        let separator = if level == RenderLevel::Detailed {
+            ": "
+        } else {
+            " = "
+        };
+
+        match member_key {
+            LuaMemberKey::Name(name) => {
+                w.write_str(name)?;
+                w.write_str(separator)
+            }
+            LuaMemberKey::Integer(i) => {
+                write!(w, "[{}]", i)?;
+                w.write_str(separator)
+            }
+            LuaMemberKey::TypeKey(typ) => {
+                w.write_char('[')?;
+                self.write_type(typ, w)?;
+                w.write_char(']')?;
+                w.write_str(separator)
+            }
+            LuaMemberKey::None => Ok(()),
+        }
+    }
 }
 
 // ─── Free helper functions ──────────────────────────────────────────────────
-
-fn write_member_key_and_separator<W: Write>(
-    member_key: &LuaMemberKey,
-    level: RenderLevel,
-    w: &mut W,
-) -> fmt::Result {
-    let separator = if level == RenderLevel::Detailed {
-        ": "
-    } else {
-        " = "
-    };
-    match member_key {
-        LuaMemberKey::Name(name) => {
-            w.write_str(name)?;
-            w.write_str(separator)
-        }
-        LuaMemberKey::Integer(i) => {
-            write!(w, "[{}]", i)?;
-            w.write_str(separator)
-        }
-        LuaMemberKey::None | LuaMemberKey::ExprType(_) => Ok(()),
-    }
-}
 
 /// Write an escaped version of `s` directly into `w`.
 fn write_hover_escape_string<W: Write>(s: &str, w: &mut W) -> fmt::Result {

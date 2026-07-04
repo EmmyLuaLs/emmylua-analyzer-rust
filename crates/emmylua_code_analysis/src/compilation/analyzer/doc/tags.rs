@@ -6,7 +6,7 @@ use crate::{
     AnalyzeError, DiagnosticCode, LuaDeclId,
     compilation::analyzer::doc::{
         attribute_tags::analyze_tag_attribute_use, property_tags::analyze_readonly,
-        type_def_tags::analyze_attribute, type_ref_tags::analyze_doc_tag_schema,
+        type_ref_tags::analyze_doc_tag_schema,
     },
     db_index::{LuaMemberId, LuaSemanticDeclId, LuaSignatureId},
 };
@@ -40,9 +40,6 @@ pub fn analyze_tag(analyzer: &mut DocAnalyzer, tag: LuaDocTag) -> Option<()> {
         }
         LuaDocTag::Alias(alias) => {
             analyze_alias(analyzer, alias)?;
-        }
-        LuaDocTag::Attribute(attribute) => {
-            analyze_attribute(analyzer, attribute)?;
         }
 
         // ref

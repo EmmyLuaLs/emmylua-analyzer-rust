@@ -6,32 +6,6 @@ use std::sync::Arc;
 
 use crate::{GenericParam, GenericTpl, GenericTplId};
 
-pub trait GenericIndex: std::fmt::Debug {
-    fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericScopeId;
-
-    fn append_generic_param(
-        &mut self,
-        scope_id: GenericScopeId,
-        param: GenericParam,
-    ) -> Option<GenericTplId>;
-
-    fn append_generic_params(&mut self, scope_id: GenericScopeId, params: Vec<GenericParam>) {
-        for param in params {
-            let _ = self.append_generic_param(scope_id, param);
-        }
-    }
-
-    fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)>;
-
-    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam>;
-
-    fn mark_generic_const(&mut self, tpl_id: GenericTplId) -> Option<GenericParam> {
-        let param = self.generic_param_mut(tpl_id)?;
-        param.is_const = true;
-        Some(param.clone())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct FileGenericIndex {
     scopes: Vec<FileGenericScope>,
@@ -61,17 +35,18 @@ impl FileGenericIndex {
                 .sum(),
         )
     }
-}
-
-impl GenericIndex for FileGenericIndex {
-    fn add_generic_scope(&mut self, ranges: Vec<TextRange>, is_func: bool) -> GenericScopeId {
+    pub(super) fn add_generic_scope(
+        &mut self,
+        ranges: Vec<TextRange>,
+        is_func: bool,
+    ) -> GenericScopeId {
         let scope_id = GenericScopeId::new(self.scopes.len());
         let next_tpl_id = self.next_tpl_id(&ranges, is_func);
         self.scopes.push(FileGenericScope::new(ranges, next_tpl_id));
         scope_id
     }
 
-    fn append_generic_param(
+    pub(super) fn append_generic_param(
         &mut self,
         scope_id: GenericScopeId,
         param: GenericParam,
@@ -82,14 +57,33 @@ impl GenericIndex for FileGenericIndex {
         None
     }
 
+    pub(super) fn append_generic_params(
+        &mut self,
+        scope_id: GenericScopeId,
+        params: Vec<GenericParam>,
+    ) {
+        for param in params {
+            let _ = self.append_generic_param(scope_id, param);
+        }
+    }
+
     /// Find generic parameter by position and name.
-    fn find_generic(&self, position: TextSize, name: &str) -> Option<(GenericTplId, GenericParam)> {
+    pub(super) fn find_generic(
+        &self,
+        position: TextSize,
+        name: &str,
+    ) -> Option<(GenericTplId, GenericParam)> {
         for scope in self.scopes.iter().rev() {
             if !scope.contains(position) {
                 continue;
             }
 
-            if let Some((id, param)) = scope.params.get(name) {
+            if let Some((id, param)) = scope
+                .params
+                .iter()
+                .rev()
+                .find(|(_, param)| param.name == name)
+            {
                 return Some((*id, param.clone()));
             }
         }
@@ -97,11 +91,16 @@ impl GenericIndex for FileGenericIndex {
         None
     }
 
-    fn generic_param_mut(&mut self, tpl_id: GenericTplId) -> Option<&mut GenericParam> {
+    pub(super) fn update_generic_param(
+        &mut self,
+        tpl_id: GenericTplId,
+        param: GenericParam,
+    ) -> Option<()> {
         for scope in self.scopes.iter_mut().rev() {
-            for (id, param) in scope.params.values_mut() {
+            for (id, current_param) in &mut scope.params {
                 if *id == tpl_id {
-                    return Some(param);
+                    *current_param = param;
+                    return Some(());
                 }
             }
         }
@@ -124,7 +123,7 @@ impl GenericScopeId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FileGenericScope {
     ranges: Vec<TextRange>,
-    params: HashMap<String, (GenericTplId, GenericParam)>,
+    params: Vec<(GenericTplId, GenericParam)>,
     next_tpl_id: GenericTplId,
 }
 
@@ -132,7 +131,7 @@ impl FileGenericScope {
     fn new(ranges: Vec<TextRange>, next_tpl_id: GenericTplId) -> Self {
         Self {
             ranges,
-            params: HashMap::new(),
+            params: Vec::new(),
             next_tpl_id,
         }
     }
@@ -144,7 +143,7 @@ impl FileGenericScope {
     fn insert_param(&mut self, param: GenericParam) -> GenericTplId {
         let tpl_id = self.next_tpl_id;
         self.next_tpl_id = self.next_tpl_id.with_idx((tpl_id.get_idx() + 1) as u32);
-        self.params.insert(param.name.to_string(), (tpl_id, param));
+        self.params.push((tpl_id, param));
         tpl_id
     }
 

@@ -67,7 +67,7 @@ impl LuaTupleType {
         self.contain_tpl_children()
     }
 
-    pub fn cast_down_array_base(&self, db: &DbIndex) -> LuaType {
+    pub fn collapse_to_union(&self, db: &DbIndex) -> LuaType {
         let mut ty = LuaType::Never;
         for t in &self.types {
             match t {
@@ -920,21 +920,6 @@ impl LuaArrayType {
 
     pub fn contain_tpl(&self) -> bool {
         self.contain_tpl_children()
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct LuaAttributeType {
-    params: Vec<(String, Option<LuaType>)>,
-}
-
-impl LuaAttributeType {
-    pub fn new(params: Vec<(String, Option<LuaType>)>) -> Self {
-        Self { params }
-    }
-
-    pub fn get_params(&self) -> &[(String, Option<LuaType>)] {
-        &self.params
     }
 }
 

@@ -123,7 +123,6 @@ pub fn completion_resolve(
             .get_semantic_model(completion_data.field_id);
         if let Some(semantic_model) = semantic_model {
             resolve_completion(
-                &analysis.compilation,
                 &semantic_model,
                 db,
                 &mut completion_item,
@@ -142,10 +141,12 @@ impl RegisterCapabilities for CompletionCapabilities {
         server_capabilities.completion_provider = Some(CompletionOptions {
             resolve_provider: Some(true),
             trigger_characters: Some(
-                ['.', ':', '(', '[', '"', '\'', ' ', '@', '\\', '/', '|', '?']
-                    .into_iter()
-                    .map(|s| s.to_string())
-                    .collect(),
+                [
+                    '.', ':', '(', '[', '"', '\'', ' ', '@', '\\', '/', '|', '#', '?',
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
             ),
             work_done_progress_options: Default::default(),
             completion_item: Some(CompletionOptionsCompletionItem {
