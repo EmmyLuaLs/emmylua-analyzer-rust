@@ -70,6 +70,40 @@ mod test {
     }
 
     #[test]
+    fn test_recursive_alias_accepts_expanded_origin_members() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@alias Recursive string | (Recursive[])
+        "#,
+        );
+
+        let recursive_ty = ws.ty("Recursive");
+        let expanded_ty = ws.ty("string | Recursive[]");
+        let invalid_ty = ws.ty("boolean | Recursive[]");
+
+        assert!(ws.check_type(&recursive_ty, &expanded_ty));
+        assert!(!ws.check_type(&recursive_ty, &invalid_ty));
+    }
+
+    #[test]
+    fn test_generic_recursive_alias_accepts_expanded_origin_members() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@alias Recursive<T> T | (Recursive<T>[])
+        "#,
+        );
+
+        let recursive_ty = ws.ty("Recursive<string>");
+        let expanded_ty = ws.ty("string | Recursive<string>[]");
+        let invalid_ty = ws.ty("boolean | Recursive<string>[]");
+
+        assert!(ws.check_type(&recursive_ty, &expanded_ty));
+        assert!(!ws.check_type(&recursive_ty, &invalid_ty));
+    }
+
+    #[test]
     fn test_object_types() {
         let mut ws = VirtualWorkspace::new();
 
