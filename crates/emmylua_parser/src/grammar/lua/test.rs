@@ -2070,4 +2070,27 @@ Syntax(Chunk)@0..356
             ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
         );
     }
+
+    #[test]
+    fn test_xor_assign() {
+        let code = "x ~= 1";
+        let result = r#"
+Syntax(Chunk)@0..6
+  Syntax(Block)@0..6
+    Syntax(AssignStat)@0..6
+      Syntax(NameExpr)@0..1
+        Token(TkName)@0..1 "x"
+      Token(TkWhitespace)@1..2 " "
+      Token(TkXorAssign)@2..4 "~="
+      Token(TkWhitespace)@4..5 " "
+      Syntax(LiteralExpr)@5..6
+        Token(TkInt)@5..6 "1"
+        "#;
+
+        assert_ast_eq!(
+            code,
+            result,
+            ParserConfig::with_level(LuaLanguageLevel::LuaJITExt)
+        );
+    }
 }

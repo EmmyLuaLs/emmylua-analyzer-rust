@@ -1,6 +1,9 @@
 use crate::{
     LuaFeatures, LuaLanguageLevel,
-    grammar::{ParseFailReason, ParseResult, lua::is_statement_start_token},
+    grammar::{
+        ParseFailReason, ParseResult,
+        lua::{expr::parse_simple_expr, is_statement_start_token},
+    },
     kind::{LuaSyntaxKind, LuaTokenKind},
     parser::{CompleteMarker, LuaParser, MarkerEventContainer},
     parser_error::LuaParseError,
@@ -913,7 +916,7 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
     let range = p.current_token_range();
 
     // 解析第一个表达式
-    let cm = match parse_expr(p) {
+    let cm = match parse_simple_expr(p) {
         Ok(cm) => cm,
         Err(err) => {
             p.push_error(LuaParseError::syntax_error_from(
@@ -952,10 +955,28 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
         return Err(ParseFailReason::UnexpectedToken);
     }
 
+    // single assignment
+    if is_single_assignment_start(p) {
+        if p.current_token() == LuaTokenKind::TkNe {
+            p.set_current_token_kind(LuaTokenKind::TkXorAssign);
+        }
+        p.bump(); // consume the XOR-assign operator
+        parse_expr(p).map_err(|_| {
+            p.push_error(LuaParseError::syntax_error_from(
+                &t!("expected expression after assignment operator"),
+                p.current_token_range(),
+            ));
+            ParseFailReason::UnexpectedToken
+        })?;
+
+        if_token_bump(p, LuaTokenKind::TkSemicolon);
+        return Ok(m.complete(p));
+    }
+
     // 解析更多左值（如果有逗号）
     while p.current_token() == LuaTokenKind::TkComma {
         p.bump();
-        match parse_expr(p) {
+        match parse_simple_expr(p) {
             Ok(expr_cm) => {
                 if !matches!(
                     expr_cm.kind,
@@ -982,7 +1003,7 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
     }
 
     // 期望赋值操作符
-    if p.current_token().is_assign_op() {
+    if p.current_token() == LuaTokenKind::TkAssign {
         p.bump();
 
         // 解析右值表达式列表
@@ -1000,6 +1021,11 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
 
     if_token_bump(p, LuaTokenKind::TkSemicolon);
     Ok(m.complete(p))
+}
+
+fn is_single_assignment_start(p: &LuaParser) -> bool {
+    (p.current_token() == LuaTokenKind::TkNe && p.parse_config.support(LuaFeatures::XorAssign))
+        || p.current_token().is_assign_op()
 }
 
 fn parse_label_stat(p: &mut LuaParser) -> ParseResult {

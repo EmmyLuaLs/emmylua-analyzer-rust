@@ -104,7 +104,7 @@ fn parse_sub_expr(p: &mut LuaParser, limit: i32) -> ParseResult {
     Ok(cm)
 }
 
-fn parse_simple_expr(p: &mut LuaParser) -> ParseResult {
+pub fn parse_simple_expr(p: &mut LuaParser) -> ParseResult {
     match p.current_token() {
         LuaTokenKind::TkInt
         | LuaTokenKind::TkFloat
