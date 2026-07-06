@@ -33,8 +33,8 @@ pub enum LuaFeatures {
     ShrArithmeticAssign,    // "~>>="
     ConcatAssign,           // "..="
     XorAssign,              // "~="
-    DoublePipe,             // "||"
-    DoubleAmp,              // "&&"
+    DoublePipeOr,           // "||"
+    DoubleAmpAnd,           // "&&"
     Exclamation,            // "!"
     NotEqual,               // "!="
     Continue,               // "continue"
@@ -119,8 +119,8 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::ShiftLeftAssign);
         set.add(LuaFeatures::ShiftRightAssign);
         set.add(LuaFeatures::XorAssign);
-        set.add(LuaFeatures::DoublePipe);
-        set.add(LuaFeatures::DoubleAmp);
+        set.add(LuaFeatures::DoublePipeOr);
+        set.add(LuaFeatures::DoubleAmpAnd);
         set.add(LuaFeatures::Exclamation);
         set.add(LuaFeatures::NotEqual);
         set.add(LuaFeatures::ShiftRightArithmetic);

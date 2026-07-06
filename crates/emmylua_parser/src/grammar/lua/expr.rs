@@ -121,6 +121,17 @@ pub fn parse_simple_expr(p: &mut LuaParser) -> ParseResult {
         }
         LuaTokenKind::TkLeftBrace => parse_table_expr(p),
         LuaTokenKind::TkFunction => parse_closure_expr(p),
+        LuaTokenKind::TkName
+            if p.parse_config.support(LuaFeatures::ShortFunction)
+                && p.peek_next_token() == LuaTokenKind::TkArrow =>
+        {
+            parse_short_function(p)
+        }
+        LuaTokenKind::TkLogicalOr | LuaTokenKind::TkBitOr
+            if p.parse_config.support(LuaFeatures::ShortFunction) =>
+        {
+            parse_short_function(p)
+        }
         LuaTokenKind::TkName | LuaTokenKind::TkLeftParen => parse_suffixed_expr(p),
         _ => {
             // Provide more specific error information
@@ -157,7 +168,7 @@ pub fn parse_closure_expr(p: &mut LuaParser) -> ParseResult {
 
     if_token_bump(p, LuaTokenKind::TkFunction);
 
-    parse_param_list(p)?;
+    parse_param_list(p, LuaTokenKind::TkLeftParen, LuaTokenKind::TkRightParen)?;
 
     if p.current_token() != LuaTokenKind::TkEnd {
         parse_block(p)?;
@@ -175,10 +186,71 @@ pub fn parse_closure_expr(p: &mut LuaParser) -> ParseResult {
     Ok(m.complete(p))
 }
 
-fn parse_param_list(p: &mut LuaParser) -> ParseResult {
+fn parse_short_function(p: &mut LuaParser) -> ParseResult {
+    let m = p.mark(LuaSyntaxKind::ClosureExpr);
+    match p.current_token() {
+        LuaTokenKind::TkName => {
+            p.bump(); // consume the name
+        }
+        LuaTokenKind::TkLogicalOr => {
+            p.set_current_token_kind(LuaTokenKind::TkEmptyShortParam);
+            p.bump();
+        }
+        LuaTokenKind::TkBitOr => {
+            parse_param_list(p, LuaTokenKind::TkBitOr, LuaTokenKind::TkBitOr)?;
+        }
+        _ => {}
+    }
+
+    if p.current_token() != LuaTokenKind::TkArrow {
+        p.push_error(LuaParseError::syntax_error_from(
+            &t!("expected '->' after parameter list in short function"),
+            p.current_token_range(),
+        ));
+    } else {
+        p.bump(); // consume '->'
+    }
+
+    // '-> expr' or '-> do block end'
+
+    if p.current_token() == LuaTokenKind::TkDo {
+        p.bump(); // consume 'do'
+        parse_block(p)?;
+        if p.current_token() == LuaTokenKind::TkEnd {
+            p.bump(); // consume 'end'
+        } else {
+            p.push_error(LuaParseError::syntax_error_from(
+                &t!("expected 'end' to close short function block"),
+                p.current_token_range(),
+            ));
+        }
+    } else {
+        let m_block = p.mark(LuaSyntaxKind::Block);
+        let m_return = p.mark(LuaSyntaxKind::ReturnStat);
+        match parse_expr(p) {
+            Ok(_) => {}
+            Err(_) => {
+                p.push_error(LuaParseError::syntax_error_from(
+                    &t!("expected expression after '->' in short function"),
+                    p.current_token_range(),
+                ));
+            }
+        };
+        m_return.complete(p);
+        m_block.complete(p);
+    }
+
+    Ok(m.complete(p))
+}
+
+fn parse_param_list(
+    p: &mut LuaParser,
+    open_token: LuaTokenKind,
+    close_token: LuaTokenKind,
+) -> ParseResult {
     let m = p.mark(LuaSyntaxKind::ParamList);
 
-    if p.current_token() == LuaTokenKind::TkLeftParen {
+    if p.current_token() == open_token {
         p.bump();
     } else {
         p.push_error(LuaParseError::syntax_error_from(
@@ -188,7 +260,7 @@ fn parse_param_list(p: &mut LuaParser) -> ParseResult {
     }
 
     let mut is_vararg = false;
-    if p.current_token() != LuaTokenKind::TkRightParen {
+    if p.current_token() != close_token {
         loop {
             match parse_param_name(p, &mut is_vararg) {
                 Ok(_) => {
@@ -208,6 +280,7 @@ fn parse_param_list(p: &mut LuaParser) -> ParseResult {
                             | LuaTokenKind::TkRightParen
                             | LuaTokenKind::TkEof
                             | LuaTokenKind::TkEnd
+                            | LuaTokenKind::TkBitOr
                     ) && !is_statement_start_token(p.current_token())
                     {
                         p.bump();
@@ -218,7 +291,7 @@ fn parse_param_list(p: &mut LuaParser) -> ParseResult {
             if p.current_token() == LuaTokenKind::TkComma {
                 p.bump();
                 // Check if there is a parameter after comma
-                if p.current_token() == LuaTokenKind::TkRightParen {
+                if p.current_token() == close_token {
                     p.push_error(LuaParseError::syntax_error_from(
                         &t!("expected parameter name after ','"),
                         p.current_token_range(),
@@ -231,7 +304,7 @@ fn parse_param_list(p: &mut LuaParser) -> ParseResult {
         }
     }
 
-    if p.current_token() == LuaTokenKind::TkRightParen {
+    if p.current_token() == close_token {
         p.bump();
     } else if is_vararg {
         p.push_error(LuaParseError::syntax_error_from(

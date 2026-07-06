@@ -65,7 +65,7 @@ pub enum LuaTokenKind {
     TkDbColon,       // ::
     TkSemicolon,     // ;
 
-    // extension assignment operators
+    // compound assignment operators
     TkPlusAssign,          // +=
     TkMinusAssign,         // -=
     TkStarAssign,          // *=
@@ -81,9 +81,15 @@ pub enum LuaTokenKind {
     TkConcatAssign,        // ..=
     TkXorAssign,           // ~=
     // TkNilCoalescingAssign, // ??=
-    TkNilCoalescing,  // ??
-    TkSafeNavigation, // ?.
-    TkTernary,        // ?
+
+    // luajit extension operators
+    TkNilCoalescing,   // ??
+    TkSafeNavigation,  // ?.
+    TkTernary,         // ?
+    TkArrow,           // ->
+    TkLogicalOr,       // ||
+    TkLogicalAnd,      // &&
+    TkEmptyShortParam, // ||
 
     TkLeftBracket,  // [
     TkRightBracket, // ]
@@ -263,6 +269,9 @@ impl LuaTokenKind {
             LuaTokenKind::TkShrArithmeticAssign => "~>>=",
             LuaTokenKind::TkConcatAssign => "..=",
             LuaTokenKind::TkXorAssign => "~=",
+            LuaTokenKind::TkArrow => "->",
+            LuaTokenKind::TkLogicalOr => "||",
+            LuaTokenKind::TkLogicalAnd => "&&",
             // LuaTokenKind::TkNilCoalescingAssign => "??=",
             _ => return None,
         })

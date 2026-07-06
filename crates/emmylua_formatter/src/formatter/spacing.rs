@@ -209,7 +209,10 @@ fn analyze_token_spacing(ctx: &FormatContext, spacing: &mut SpacingModel, token:
         | LuaTokenKind::TkLt
         | LuaTokenKind::TkNe
         | LuaTokenKind::TkAnd
-        | LuaTokenKind::TkOr => apply_operator_spacing(ctx, spacing, token, syntax_id),
+        | LuaTokenKind::TkOr
+        | LuaTokenKind::TkLogicalOr
+        | LuaTokenKind::TkLogicalAnd
+        | LuaTokenKind::TkArrow => apply_operator_spacing(ctx, spacing, token, syntax_id),
         LuaTokenKind::TkDocAnd
         | LuaTokenKind::TkDocExtends
         | LuaTokenKind::TkDocIn
