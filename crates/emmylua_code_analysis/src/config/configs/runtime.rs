@@ -67,8 +67,8 @@ impl EmmyrcLuaVersion {
         match self {
             EmmyrcLuaVersion::Lua51 => LuaVersionNumber::new(5, 1, 0),
             EmmyrcLuaVersion::LuaJIT => LuaVersionNumber::LUA_JIT,
-            EmmyrcLuaVersion::LuaJITExt => LuaVersionNumber::LUA_JIT_EXT,
-            EmmyrcLuaVersion::LuaJIT3 => LuaVersionNumber::LUA_JIT3,
+            EmmyrcLuaVersion::LuaJITExt => LuaVersionNumber::LUA_JIT,
+            EmmyrcLuaVersion::LuaJIT3 => LuaVersionNumber::LUA_JIT,
             EmmyrcLuaVersion::Lua52 => LuaVersionNumber::new(5, 2, 0),
             EmmyrcLuaVersion::Lua53 => LuaVersionNumber::new(5, 3, 0),
             EmmyrcLuaVersion::Lua54 => LuaVersionNumber::new(5, 4, 0),
