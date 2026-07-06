@@ -298,10 +298,13 @@ impl LuaTokenKind {
     }
 
     pub fn is_assign_op(self) -> bool {
+        self.is_compound_assign_op() || self == LuaTokenKind::TkAssign
+    }
+
+    pub fn is_compound_assign_op(self) -> bool {
         matches!(
             self,
-            LuaTokenKind::TkAssign
-                | LuaTokenKind::TkPlusAssign
+            LuaTokenKind::TkPlusAssign
                 | LuaTokenKind::TkMinusAssign
                 | LuaTokenKind::TkStarAssign
                 | LuaTokenKind::TkSlashAssign

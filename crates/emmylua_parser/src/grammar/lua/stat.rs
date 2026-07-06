@@ -956,7 +956,7 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
     }
 
     // single assignment
-    if is_single_assignment_start(p) {
+    if is_compound_assignment_start(p) {
         if p.current_token() == LuaTokenKind::TkNe {
             p.set_current_token_kind(LuaTokenKind::TkXorAssign);
         }
@@ -1007,8 +1007,13 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
         p.bump();
 
         // 解析右值表达式列表
-        if parse_expr_list_impl(p).is_err() {
-            push_expr_error_lazy(p, || t!("expected expression after '=' in assignment"));
+        if let Err(e) = parse_expr_list_impl(p) {
+            push_expr_error_lazy(p, || {
+                t!(
+                    "expected expression after '=' in assignment, got error: %{error}",
+                    error = e
+                )
+            });
         }
     } else {
         p.push_error(LuaParseError::syntax_error_from(
@@ -1023,9 +1028,9 @@ fn parse_assign_or_expr_or_soft_keyword_stat(p: &mut LuaParser) -> ParseResult {
     Ok(m.complete(p))
 }
 
-fn is_single_assignment_start(p: &LuaParser) -> bool {
+fn is_compound_assignment_start(p: &LuaParser) -> bool {
     (p.current_token() == LuaTokenKind::TkNe && p.parse_config.support(LuaFeatures::XorAssign))
-        || p.current_token().is_assign_op()
+        || p.current_token().is_compound_assign_op()
 }
 
 fn parse_label_stat(p: &mut LuaParser) -> ParseResult {
