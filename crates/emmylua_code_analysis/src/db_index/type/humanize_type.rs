@@ -5,9 +5,9 @@ use itertools::Itertools;
 
 use crate::{
     AsyncState, DbIndex, LuaAliasCallType, LuaConditionalType, LuaFunctionType, LuaGenericType,
-    LuaIntersectionType, LuaMemberKey, LuaMemberOwner, LuaObjectType, LuaSignatureId,
-    LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType, TypeSubstitutor,
-    VariadicType,
+    LuaIntersectionType, LuaMappedType, LuaMemberKey, LuaMemberOwner, LuaObjectType,
+    LuaSignatureId, LuaStringTplType, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
+    TypeSubstitutor, VariadicType,
 };
 
 use super::{LuaAliasCallKind, LuaMultiLineUnion};
@@ -217,9 +217,9 @@ impl<'a> TypeHumanizer<'a> {
             }
             LuaType::Language(s) => w.write_str(s),
             LuaType::Conditional(c) => self.write_conditional_type(c, w),
+            LuaType::Mapped(mapped) => self.write_mapped_type(mapped, w),
             LuaType::Never => w.write_str("never"),
             LuaType::ModuleRef(file_id) => self.write_module_ref(*file_id, w),
-            _ => w.write_str("unknown"),
         }
     }
 
@@ -1080,6 +1080,36 @@ impl<'a> TypeHumanizer<'a> {
         self.write_type(conditional.get_false_type(), w)?;
         self.level = saved;
         Ok(())
+    }
+
+    // ─── Mapped ─────────────────────────────────────────────────────
+
+    fn write_mapped_type<W: Write>(&mut self, mapped: &LuaMappedType, w: &mut W) -> fmt::Result {
+        w.write_str("{ ")?;
+        if mapped.is_readonly {
+            w.write_str("readonly ")?;
+        }
+
+        w.write_char('[')?;
+        w.write_str(mapped.param.1.name.as_str())?;
+        w.write_str(" in ")?;
+
+        let saved = self.level;
+        self.level = self.child_level();
+        if let Some(constraint) = &mapped.param.1.constraint {
+            self.write_type(constraint, w)?;
+        } else {
+            w.write_str("unknown")?;
+        }
+        w.write_char(']')?;
+        if mapped.is_optional {
+            w.write_char('?')?;
+        }
+        w.write_str(": ")?;
+        self.write_type(&mapped.value, w)?;
+        self.level = saved;
+
+        w.write_str("; }")
     }
 
     // ─── ModuleRef ──────────────────────────────────────────────────
