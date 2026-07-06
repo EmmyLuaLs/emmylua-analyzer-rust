@@ -2376,30 +2376,70 @@ fn format_short_function_expr(
     docs.push(ir::syntax_token(LuaTokenKind::TkArrow));
     docs.push(ir::space());
     let has_do_block = expr.has_do_block();
+    let block = expr.get_block();
+
     if has_do_block {
         docs.push(ir::syntax_token(LuaTokenKind::TkDo));
-        docs.push(ir::space());
+        let mut has_body_content = false;
+        if let Some(ref block) = block {
+            let mut body: Vec<DocIR> = Vec::new();
+            let mut has_content = false;
+            for element in block.syntax().children_with_tokens() {
+                match element {
+                    rowan::NodeOrToken::Token(token) => {
+                        let kind = token.kind().to_token();
+                        if kind == LuaTokenKind::TkEndOfLine || kind == LuaTokenKind::TkWhitespace {
+                            continue;
+                        }
+                        if has_content {
+                            body.push(ir::hard_line());
+                        }
+                        body.push(ir::source_token(token));
+                        has_content = true;
+                    }
+                    rowan::NodeOrToken::Node(node) => {
+                        if let Some(stat) = LuaStat::cast(node.clone()) {
+                            if has_content {
+                                body.push(ir::hard_line());
+                            }
+                            format_statement_tokens(ctx, plan, &stat, &mut body);
+                            has_content = true;
+                        } else if let Some(comment) = LuaComment::cast(node.clone()) {
+                            if has_content {
+                                body.push(ir::hard_line());
+                            }
+                            body.push(ir::source_node_trimmed(comment.syntax().clone()));
+                            has_content = true;
+                        }
+                    }
+                }
+            }
+            if has_content {
+                body.insert(0, ir::hard_line());
+                docs.push(ir::indent(body));
+                docs.push(ir::hard_line());
+                has_body_content = true;
+            }
+        }
+        if !has_body_content {
+            docs.push(ir::space());
+        }
+        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+        return docs;
     }
 
-    if let Some(block) = expr.get_block() {
-        if !has_do_block {
-            let stats: Vec<_> = block.get_stats().collect();
-            if stats.len() == 1
-                && let LuaStat::ReturnStat(return_stat) = &stats[0]
-            {
-                let exprs: Vec<_> = return_stat.get_expr_list().collect();
-                if let Some(first_expr) = exprs.first() {
-                    docs.extend(format_expr(ctx, plan, first_expr));
-                    return docs;
-                }
+    if let Some(block) = block {
+        let stats: Vec<_> = block.get_stats().collect();
+        if stats.len() == 1
+            && let LuaStat::ReturnStat(return_stat) = &stats[0]
+        {
+            let exprs: Vec<_> = return_stat.get_expr_list().collect();
+            if let Some(first_expr) = exprs.first() {
+                docs.extend(format_expr(ctx, plan, first_expr));
+                return docs;
             }
         }
         docs.push(ir::source_node_trimmed(block.syntax().clone()));
-    }
-
-    if has_do_block {
-        docs.push(ir::space());
-        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
     }
 
     docs
@@ -3708,4 +3748,47 @@ fn has_inline_non_trivia_after(node: &LuaSyntaxNode) -> bool {
         }
     }
     false
+}
+
+fn format_statement_tokens(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    stat: &LuaStat,
+    body: &mut Vec<DocIR>,
+) {
+    format_node_tokens(ctx, plan, stat.syntax(), body);
+}
+
+fn format_node_tokens(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    node: &LuaSyntaxNode,
+    body: &mut Vec<DocIR>,
+) {
+    for element in node.children_with_tokens() {
+        match element {
+            rowan::NodeOrToken::Token(token) => {
+                let kind = token.kind().to_token();
+                if kind == LuaTokenKind::TkEndOfLine {
+                    continue;
+                }
+                if kind == LuaTokenKind::TkWhitespace {
+                    if !body.is_empty()
+                        && !matches!(body.last(), Some(DocIR::HardLine | DocIR::Space))
+                    {
+                        body.push(ir::space());
+                    }
+                    continue;
+                }
+                body.push(ir::source_token(token));
+            }
+            rowan::NodeOrToken::Node(node) => {
+                if let Some(expr) = LuaExpr::cast(node.clone()) {
+                    body.extend(format_expr(ctx, plan, &expr));
+                } else {
+                    format_node_tokens(ctx, plan, &node, body);
+                }
+            }
+        }
+    }
 }
