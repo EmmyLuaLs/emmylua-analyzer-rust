@@ -190,7 +190,11 @@ fn parse_short_function(p: &mut LuaParser) -> ParseResult {
     let m = p.mark(LuaSyntaxKind::ClosureExpr);
     match p.current_token() {
         LuaTokenKind::TkName => {
+            let m_param_list = p.mark(LuaSyntaxKind::ParamList);
+            let m_param_name = p.mark(LuaSyntaxKind::ParamName);
             p.bump(); // consume the name
+            m_param_name.complete(p);
+            m_param_list.complete(p);
         }
         LuaTokenKind::TkLogicalOr => {
             p.set_current_token_kind(LuaTokenKind::TkEmptyShortParam);

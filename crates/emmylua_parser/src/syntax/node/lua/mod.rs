@@ -476,6 +476,13 @@ impl LuaParamList {
     pub fn get_params(&self) -> LuaAstChildren<LuaParamName> {
         self.children()
     }
+
+    pub fn is_simple_single_param(&self) -> bool {
+        self.syntax()
+            .children_with_tokens()
+            .next()
+            .is_some_and(|first| first.as_node().is_some())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

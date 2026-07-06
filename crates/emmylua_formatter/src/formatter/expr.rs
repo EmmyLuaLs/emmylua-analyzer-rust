@@ -2338,12 +2338,92 @@ fn format_closure_expr(
     plan: &FormatPlan,
     expr: &LuaClosureExpr,
 ) -> Vec<DocIR> {
+    if expr.is_short_closure() {
+        return format_short_function_expr(ctx, plan, expr);
+    }
+
     if let Some(inline_docs) = try_format_simple_inline_closure_expr(ctx, plan, expr) {
         return inline_docs;
     }
 
     let shell_plan = collect_closure_shell_plan(ctx, plan, expr);
     render_closure_shell(ctx, plan, expr, shell_plan)
+}
+
+fn format_short_function_expr(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    expr: &LuaClosureExpr,
+) -> Vec<DocIR> {
+    let mut docs = Vec::new();
+
+    if let Some(params) = expr.get_params_list() {
+        if params.is_simple_single_param() {
+            docs.extend(format_short_function_params(&params));
+        } else {
+            docs.push(ir::syntax_token(LuaTokenKind::TkBitOr));
+            docs.extend(format_short_function_params(&params));
+            docs.push(ir::syntax_token(LuaTokenKind::TkBitOr));
+        }
+
+        docs.push(ir::space());
+    } else {
+        docs.push(ir::syntax_token(LuaTokenKind::TkBitOr));
+        docs.push(ir::syntax_token(LuaTokenKind::TkBitOr));
+        docs.push(ir::space());
+    }
+
+    docs.push(ir::syntax_token(LuaTokenKind::TkArrow));
+    docs.push(ir::space());
+    let has_do_block = expr.has_do_block();
+    if has_do_block {
+        docs.push(ir::syntax_token(LuaTokenKind::TkDo));
+        docs.push(ir::space());
+    }
+
+    if let Some(block) = expr.get_block() {
+        if !has_do_block {
+            let stats: Vec<_> = block.get_stats().collect();
+            if stats.len() == 1
+                && let LuaStat::ReturnStat(return_stat) = &stats[0]
+            {
+                let exprs: Vec<_> = return_stat.get_expr_list().collect();
+                if let Some(first_expr) = exprs.first() {
+                    docs.extend(format_expr(ctx, plan, first_expr));
+                    return docs;
+                }
+            }
+        }
+        docs.push(ir::source_node_trimmed(block.syntax().clone()));
+    }
+
+    if has_do_block {
+        docs.push(ir::space());
+        docs.push(ir::syntax_token(LuaTokenKind::TkEnd));
+    }
+
+    docs
+}
+
+fn format_short_function_params(params: &LuaParamList) -> Vec<DocIR> {
+    let mut docs = Vec::new();
+    let mut first = true;
+    for param in params.get_params() {
+        if !first {
+            docs.push(ir::syntax_token(LuaTokenKind::TkComma));
+            docs.push(ir::space());
+        }
+        first = false;
+        if param.is_dots() {
+            docs.push(ir::syntax_token(LuaTokenKind::TkDots));
+            if let Some(token) = param.get_name_token() {
+                docs.push(ir::source_token(token.syntax().clone()));
+            }
+        } else if let Some(token) = param.get_name_token() {
+            docs.push(ir::source_token(token.syntax().clone()));
+        }
+    }
+    docs
 }
 
 fn format_ternary_expr(
