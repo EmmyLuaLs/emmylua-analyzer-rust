@@ -82,7 +82,9 @@ fn build_tokens_semantic_token(
         | LuaTokenKind::TkWhile
         | LuaTokenKind::TkConst
         | LuaTokenKind::TkContinue
-        | LuaTokenKind::TkGlobal => {
+        | LuaTokenKind::TkGlobal
+        | LuaTokenKind::TkLogicalOr
+        | LuaTokenKind::TkLogicalAnd => {
             builder.push(token, SemanticTokenTypeKind::Keyword);
         }
         LuaTokenKind::TkLocal => {

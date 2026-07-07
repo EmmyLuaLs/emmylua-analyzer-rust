@@ -1966,6 +1966,28 @@ end
         assert_eq!(result, expected);
     }
 
+    #[test]
+    fn test_ternary_format_method_call_in_branch() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local d = true ? 1 + fun(f:m()) : f()\n";
+        let expected = "local d = true ? 1 + fun(f:m()) : f()\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_ternary_format_with_paren_colon() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = cond ? (obj:method()) : default\n";
+        let expected = "local x = cond ? (obj:method()) : default\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
     // ========== LuaJIT extension: safe navigation ==========
 
     #[test]
@@ -2023,5 +2045,102 @@ end
         let expected = "local x = MyClass.myField?.:byte(1)\n";
         let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_do_block() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "f(|a, b, c| -> do\n    return a + b + c\nend, 1, 2, 3)\n";
+        let expected = "f(|a, b, c| -> do\n    return a + b + c\nend, 1, 2, 3)\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_do_block_nested() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "do\n    f(|a, b, c| -> do\n        local d = 123\n        return a + b + c\n    end, 1, 2, 3)\nend\n";
+        let expected = "do\n    f(|a, b, c| -> do\n        local d = 123\n        return a + b + c\n    end, 1, 2, 3)\nend\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_expr_body_single_param() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = e -> 42\n";
+        let expected = "local x = e -> 42\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_expr_body_no_params() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = || -> 42\n";
+        let expected = "local x = || -> 42\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_expr_body_multi_params() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = |a, b| -> a + b\n";
+        let expected = "local x = |a, b| -> a + b\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_do_block_single_line() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "f(|| -> do return 1 end)\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_short_function_do_block_with_comment() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "f(|| -> do\n    local x = 1\n    -- comment\n    return x\nend)\n";
+        let expected = "f(|| -> do\n    local x = 1\n    -- comment\n    return x\nend)\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_do_block_empty() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "f(|| -> do end)\n";
+        let expected = "f(|| -> do end)\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_short_function_do_block_empty_multiline() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "f(|| -> do\nend)\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert!(!result.is_empty());
     }
 }

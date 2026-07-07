@@ -121,9 +121,16 @@ impl<'a> LuaLexer<'a> {
             ' ' | '\t' => self.lex_white_space(),
             '-' => {
                 self.reader.bump();
-                if self.reader.current_char() == '=' && self.support(LuaFeatures::MinusAssign) {
-                    self.reader.bump();
-                    return LuaTokenKind::TkMinusAssign;
+                match self.reader.current_char() {
+                    '=' if self.support(LuaFeatures::MinusAssign) => {
+                        self.reader.bump();
+                        return LuaTokenKind::TkMinusAssign;
+                    }
+                    '>' if self.support(LuaFeatures::ShortFunction) => {
+                        self.reader.bump();
+                        return LuaTokenKind::TkArrow;
+                    }
+                    _ => {}
                 }
                 if self.reader.current_char() != '-' {
                     return LuaTokenKind::TkMinus;
@@ -392,9 +399,9 @@ impl<'a> LuaLexer<'a> {
             }
             '&' => {
                 self.reader.bump();
-                if self.reader.current_char() == '&' && self.support(LuaFeatures::DoubleAmp) {
+                if self.reader.current_char() == '&' && self.support(LuaFeatures::DoubleAmpAnd) {
                     self.reader.bump();
-                    return LuaTokenKind::TkAnd;
+                    return LuaTokenKind::TkLogicalAnd;
                 }
                 if self.reader.current_char() == '=' && self.support(LuaFeatures::AmpAssign) {
                     self.reader.bump();
@@ -408,9 +415,9 @@ impl<'a> LuaLexer<'a> {
             }
             '|' => {
                 self.reader.bump();
-                if self.reader.current_char() == '|' && self.support(LuaFeatures::DoublePipe) {
+                if self.reader.current_char() == '|' && self.support(LuaFeatures::DoublePipeOr) {
                     self.reader.bump();
-                    return LuaTokenKind::TkOr;
+                    return LuaTokenKind::TkLogicalOr;
                 }
 
                 if self.reader.current_char() == '=' && self.support(LuaFeatures::PipeAssign) {
@@ -614,16 +621,24 @@ impl<'a> LuaLexer<'a> {
         let first = self.reader.current_char();
         self.reader.bump();
         match first {
-            '0' if matches!(self.reader.current_char(), 'X' | 'x') => {
-                self.reader.bump();
-                state = NumberState::Hex;
-            }
-            '0' if matches!(self.reader.current_char(), 'B' | 'b')
-                && self.lexer_config.support(LuaFeatures::BinaryInteger) =>
-            {
-                self.reader.bump();
-                state = NumberState::Bin;
-            }
+            '0' => loop {
+                match self.reader.current_char() {
+                    'x' | 'X' => {
+                        self.reader.bump();
+                        state = NumberState::Hex;
+                        break;
+                    }
+                    'b' | 'B' if self.lexer_config.support(LuaFeatures::BinaryInteger) => {
+                        self.reader.bump();
+                        state = NumberState::Bin;
+                        break;
+                    }
+                    '_' if self.lexer_config.support(LuaFeatures::UnderscoreNumber) => {
+                        self.reader.bump();
+                    }
+                    _ => break,
+                }
+            },
             '.' => {
                 state = NumberState::Float;
             }

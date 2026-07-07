@@ -742,6 +742,14 @@ impl LuaClosureExpr {
     pub fn get_params_list(&self) -> Option<LuaParamList> {
         self.child()
     }
+
+    pub fn is_short_closure(&self) -> bool {
+        self.token_by_kind(LuaTokenKind::TkArrow).is_some()
+    }
+
+    pub fn has_do_block(&self) -> bool {
+        self.token_by_kind(LuaTokenKind::TkDo).is_some()
+    }
 }
 
 impl From<LuaClosureExpr> for LuaExpr {

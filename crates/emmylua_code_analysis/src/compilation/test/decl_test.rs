@@ -55,4 +55,116 @@ mod test {
         "#,
         ));
     }
+
+    #[test]
+    fn test_repeat_closure_in_until_can_access_body_locals() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedGlobal,
+            r#"
+                repeat
+                    local x = 1
+                until (function() return x end)() > 0
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_repeat_closure_in_body_can_access_body_locals() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedGlobal,
+            r#"
+                repeat
+                    local x = 1
+                    local f = function() return x + 1 end
+                until f() > 0
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_repeat_body_local_visible_in_until() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedGlobal,
+            r#"
+                repeat
+                    local x = 1
+                until x > 0
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_repeat_closure_in_until_type_infer() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@param n integer
+                local function check(n) end
+                repeat
+                    local x = 1
+                until (function()
+                    check(x)
+                    return x
+                end)() > 0
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_repeat_body_local_not_visible_after_until() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedGlobal,
+            r#"
+                repeat
+                    local x = 12
+                until false
+                print(x)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_do_block_local_not_visible_outside() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedGlobal,
+            r#"
+                do
+                    local x = 1
+                end
+                print(x)
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_local_assignment_closure_cannot_see_self() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedGlobal,
+            r#"
+                local x = function()
+                    return x
+                end
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_local_function_closure_can_see_self() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedGlobal,
+            r#"
+                local function x()
+                    return x
+                end
+            "#,
+        ));
+    }
 }

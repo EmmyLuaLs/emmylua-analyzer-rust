@@ -29,7 +29,7 @@ impl LuaDeclarationTree {
     pub fn find_local_decl(&self, name: &str, position: TextSize) -> Option<&LuaDecl> {
         let scope = self.find_scope(position)?;
         let mut result: Option<&LuaDecl> = None;
-        self.walk_up(scope, position, 0, &mut |decl_id| {
+        self.visit_visible_decls(scope, position, true, &mut |decl_id| {
             match decl_id {
                 ScopeOrDeclId::Decl(decl_id) => {
                     let decl = match self.get_decl(&decl_id) {
@@ -43,7 +43,6 @@ impl LuaDeclarationTree {
                 }
                 ScopeOrDeclId::Scope(_) => {}
             }
-
             false
         });
         result
@@ -52,7 +51,7 @@ impl LuaDeclarationTree {
     pub fn get_env_decls(&self, position: TextSize) -> Option<Vec<LuaDeclId>> {
         let scope = self.find_scope(position)?;
         let mut result = Vec::new();
-        self.walk_up(scope, position, 0, &mut |decl_id| {
+        self.visit_visible_decls(scope, position, true, &mut |decl_id| {
             match decl_id {
                 ScopeOrDeclId::Decl(decl_id) => {
                     if let Some(decl) = self.get_decl(&decl_id)
@@ -63,7 +62,6 @@ impl LuaDeclarationTree {
                 }
                 ScopeOrDeclId::Scope(_) => {}
             }
-
             false
         });
         Some(result)
@@ -93,117 +91,129 @@ impl LuaDeclarationTree {
         Some(scope)
     }
 
-    fn base_walk_up<F>(&self, scope: &LuaScope, start_pos: TextSize, level: usize, f: &mut F)
-    where
+    fn visit_visible_decls<F>(
+        &self,
+        scope: &LuaScope,
+        position: TextSize,
+        is_entry: bool,
+        f: &mut F,
+    ) where
         F: FnMut(ScopeOrDeclId) -> bool,
     {
-        let cur_index = scope.get_children().iter().rposition(|child| match child {
-            ScopeOrDeclId::Decl(decl_id) => decl_id.position < start_pos,
-            ScopeOrDeclId::Scope(scope_id) => {
-                let child_scope = match self.scopes.get(scope_id.id as usize) {
-                    Some(scope) => scope,
-                    None => return false,
-                };
-                child_scope.get_position() < start_pos
-            }
-        });
-
-        if let Some(cur_index) = cur_index {
-            for i in (0..=cur_index).rev() {
-                let scope_or_id = match scope.get_children().get(i) {
-                    Some(scope_or_id) => scope_or_id,
-                    None => continue,
-                };
-
-                match scope_or_id {
-                    ScopeOrDeclId::Decl(decl_id) => {
-                        if f(decl_id.into()) {
+        let search_scope = if is_entry {
+            match scope.get_kind() {
+                LuaScopeKind::LocalOrAssignStat => {
+                    let cutoff = scope.get_position();
+                    if let Some(parent_id) = scope.get_parent() {
+                        if let Some(parent) = self.get_scope(&parent_id) {
+                            self.visit_visible_decls(parent, cutoff, false, f);
                             return;
                         }
                     }
-                    ScopeOrDeclId::Scope(scope_id) => {
-                        let child_scope = match self.scopes.get(scope_id.id as usize) {
-                            Some(scope) => scope,
-                            None => continue,
-                        };
-
-                        if self.walk_over_scope(child_scope, f) {
+                    false
+                }
+                LuaScopeKind::Repeat => {
+                    if let Some(ScopeOrDeclId::Scope(child_id)) = scope.get_children().first() {
+                        if let Some(child) = self.get_scope(child_id) {
+                            self.visit_visible_decls(child, position, true, f);
+                            return;
+                        }
+                    }
+                    false
+                }
+                LuaScopeKind::ForRange => {
+                    if let Some(parent_id) = scope.get_parent() {
+                        if let Some(parent) = self.get_scope(&parent_id) {
+                            self.visit_visible_decls(parent, position, false, f);
+                            return;
+                        }
+                    }
+                    false
+                }
+                _ => true,
+            }
+        } else {
+            if scope.get_kind() == LuaScopeKind::LocalOrAssignStat {
+                let cutoff = scope.get_position();
+                if let Some(parent_id) = scope.get_parent() {
+                    if let Some(parent) = self.get_scope(&parent_id) {
+                        self.visit_visible_decls(parent, cutoff, false, f);
+                        return;
+                    }
+                }
+                return;
+            }
+            if scope.get_kind() == LuaScopeKind::Repeat {
+                if let Some(ScopeOrDeclId::Scope(child_id)) = scope.get_children().first() {
+                    if let Some(body) = self.get_scope(child_id) {
+                        if self.search_scope_children(body, position, f) {
                             return;
                         }
                     }
                 }
+            }
+            true
+        };
+
+        if search_scope {
+            if self.search_scope_children(scope, position, f) {
+                return;
             }
         }
 
         if let Some(parent_id) = scope.get_parent() {
-            let parent_scope = match self.scopes.get(parent_id.id as usize) {
-                Some(scope) => scope,
-                None => return,
-            };
-            self.walk_up(parent_scope, start_pos, level + 1, f);
-        }
-    }
-
-    /// Walks up the scope tree and calls `f` for each declaration.
-    fn walk_up<F>(&self, scope: &LuaScope, start_pos: TextSize, level: usize, f: &mut F)
-    where
-        F: FnMut(ScopeOrDeclId) -> bool,
-    {
-        match scope.get_kind() {
-            LuaScopeKind::LocalOrAssignStat => {
-                if level == 0 {
-                    let parent = scope.get_parent();
-                    if let Some(parent) = parent {
-                        let parent_scope = match self.scopes.get(parent.id as usize) {
-                            Some(scope) => scope,
-                            None => return,
-                        };
-                        self.walk_up(parent_scope, scope.get_position(), level, f);
-                    }
-                } else {
-                    self.base_walk_up(scope, start_pos, level, f);
-                }
-            }
-            LuaScopeKind::Repeat => {
-                if level == 0
-                    && let Some(ScopeOrDeclId::Scope(scope_id)) = scope.get_children().first()
-                {
-                    let scope = match self.scopes.get(scope_id.id as usize) {
-                        Some(scope) => scope,
-                        None => return,
-                    };
-                    self.walk_up(scope, start_pos, level, f);
-                    return;
-                }
-
-                self.base_walk_up(scope, start_pos, level, f);
-            }
-            LuaScopeKind::ForRange => {
-                if level == 0 {
-                    let parent = scope.get_parent();
-                    if let Some(parent) = parent {
-                        let parent_scope = match self.scopes.get(parent.id as usize) {
-                            Some(scope) => scope,
-                            None => return,
-                        };
-                        self.walk_up(parent_scope, start_pos, level, f);
-                    }
-                } else {
-                    self.base_walk_up(scope, start_pos, level, f);
-                }
-            }
-            _ => {
-                self.base_walk_up(scope, start_pos, level, f);
+            if let Some(parent) = self.get_scope(&parent_id) {
+                self.visit_visible_decls(parent, position, false, f);
             }
         }
     }
 
-    fn walk_over_scope<F>(&self, scope: &LuaScope, f: &mut F) -> bool
+    fn search_scope_children<F>(&self, scope: &LuaScope, position: TextSize, f: &mut F) -> bool
+    where
+        F: FnMut(ScopeOrDeclId) -> bool,
+    {
+        let children = scope.get_children();
+
+        // Find the rightmost child whose position is before `position`.
+        let cut = children.iter().rposition(|child| match child {
+            ScopeOrDeclId::Decl(decl_id) => decl_id.position < position,
+            ScopeOrDeclId::Scope(scope_id) => self
+                .get_scope(scope_id)
+                .is_some_and(|s| s.get_position() < position),
+        });
+
+        let Some(cut) = cut else {
+            return false;
+        };
+
+        // Walk children in reverse source order (closest first).
+        for i in (0..=cut).rev() {
+            match children.get(i) {
+                Some(ScopeOrDeclId::Decl(decl_id)) => {
+                    if f((*decl_id).into()) {
+                        return true;
+                    }
+                }
+                Some(ScopeOrDeclId::Scope(child_id)) => {
+                    if let Some(child) = self.get_scope(child_id) {
+                        if self.visit_child_scope(child, f) {
+                            return true;
+                        }
+                    }
+                }
+                None => continue,
+            }
+        }
+
+        false
+    }
+
+    fn visit_child_scope<F>(&self, scope: &LuaScope, f: &mut F) -> bool
     where
         F: FnMut(ScopeOrDeclId) -> bool,
     {
         match scope.get_kind() {
-            LuaScopeKind::LocalOrAssignStat | LuaScopeKind::FuncStat | LuaScopeKind::MethodStat => {
+            LuaScopeKind::FuncStat | LuaScopeKind::MethodStat => {
                 for child in scope.get_children() {
                     if let ScopeOrDeclId::Decl(decl_id) = child
                         && f(decl_id.into())
@@ -211,11 +221,20 @@ impl LuaDeclarationTree {
                         return true;
                     }
                 }
+                false
             }
-            _ => {}
+            LuaScopeKind::LocalOrAssignStat => {
+                for child in scope.get_children() {
+                    if let ScopeOrDeclId::Decl(decl_id) = child
+                        && f(decl_id.into())
+                    {
+                        return true;
+                    }
+                }
+                false
+            }
+            _ => false,
         }
-
-        f(scope.get_id().into())
     }
 
     pub fn add_decl(&mut self, decl: LuaDecl) -> LuaDeclId {

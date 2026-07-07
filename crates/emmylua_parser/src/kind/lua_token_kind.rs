@@ -65,7 +65,7 @@ pub enum LuaTokenKind {
     TkDbColon,       // ::
     TkSemicolon,     // ;
 
-    // extension assignment operators
+    // compound assignment operators
     TkPlusAssign,          // +=
     TkMinusAssign,         // -=
     TkStarAssign,          // *=
@@ -79,10 +79,17 @@ pub enum LuaTokenKind {
     TkShiftRightAssign,    // >>=
     TkShrArithmeticAssign, // ~>>=
     TkConcatAssign,        // ..=
+    TkXorAssign,           // ~=
     // TkNilCoalescingAssign, // ??=
-    TkNilCoalescing,  // ??
-    TkSafeNavigation, // ?.
-    TkTernary,        // ?
+
+    // luajit extension operators
+    TkNilCoalescing,   // ??
+    TkSafeNavigation,  // ?.
+    TkTernary,         // ?
+    TkArrow,           // ->
+    TkLogicalOr,       // ||
+    TkLogicalAnd,      // &&
+    TkEmptyShortParam, // ||
 
     TkLeftBracket,  // [
     TkRightBracket, // ]
@@ -261,6 +268,10 @@ impl LuaTokenKind {
             LuaTokenKind::TkTernary => "?",
             LuaTokenKind::TkShrArithmeticAssign => "~>>=",
             LuaTokenKind::TkConcatAssign => "..=",
+            LuaTokenKind::TkXorAssign => "~=",
+            LuaTokenKind::TkArrow => "->",
+            LuaTokenKind::TkLogicalOr => "||",
+            LuaTokenKind::TkLogicalAnd => "&&",
             // LuaTokenKind::TkNilCoalescingAssign => "??=",
             _ => return None,
         })
@@ -296,10 +307,13 @@ impl LuaTokenKind {
     }
 
     pub fn is_assign_op(self) -> bool {
+        self.is_compound_assign_op() || self == LuaTokenKind::TkAssign
+    }
+
+    pub fn is_compound_assign_op(self) -> bool {
         matches!(
             self,
-            LuaTokenKind::TkAssign
-                | LuaTokenKind::TkPlusAssign
+            LuaTokenKind::TkPlusAssign
                 | LuaTokenKind::TkMinusAssign
                 | LuaTokenKind::TkStarAssign
                 | LuaTokenKind::TkSlashAssign
@@ -311,7 +325,8 @@ impl LuaTokenKind {
                 | LuaTokenKind::TkShiftLeftAssign
                 | LuaTokenKind::TkShiftRightAssign
                 | LuaTokenKind::TkShrArithmeticAssign
-                | LuaTokenKind::TkConcatAssign // | LuaTokenKind::TkNilCoalescingAssign
+                | LuaTokenKind::TkConcatAssign
+                | LuaTokenKind::TkXorAssign
         )
     }
 }

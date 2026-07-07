@@ -27,13 +27,13 @@ mod test {
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::UndefinedGlobal,
             r#"
-            local fact = function(n)
+            local function fact(n)
                 if n == 0 then
                     return 1
                 end
                 return n * fact(n - 1)
             end
-            "#
+            "#,
         ));
     }
 }

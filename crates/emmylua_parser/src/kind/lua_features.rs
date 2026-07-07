@@ -32,8 +32,9 @@ pub enum LuaFeatures {
     ShiftRightAssign,       // ">>="
     ShrArithmeticAssign,    // "~>>="
     ConcatAssign,           // "..="
-    DoublePipe,             // "||"
-    DoubleAmp,              // "&&"
+    XorAssign,              // "~="
+    DoublePipeOr,           // "||"
+    DoubleAmpAnd,           // "&&"
     Exclamation,            // "!"
     NotEqual,               // "!="
     Continue,               // "continue"
@@ -42,12 +43,13 @@ pub enum LuaFeatures {
     SafeNavigationOperator, // "?."
     NilCoalescingOperator,  // "??"
     ConstDeclaration,       // "const"
+    UnderscoreNumber,       // "1_23"
+    ShortFunction,          // | a, b | -> a + b
 
     // luajit3
     StringInterpolation, // "`"
-    // luajit not consider this syntax
-    // NilCoalescingAssign, // "??="
-    UnderscoreNumber, // "1_23"
+                         // luajit not consider this syntax
+                         // NilCoalescingAssign, // "??="
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -116,8 +118,9 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::AmpAssign);
         set.add(LuaFeatures::ShiftLeftAssign);
         set.add(LuaFeatures::ShiftRightAssign);
-        set.add(LuaFeatures::DoublePipe);
-        set.add(LuaFeatures::DoubleAmp);
+        set.add(LuaFeatures::XorAssign);
+        set.add(LuaFeatures::DoublePipeOr);
+        set.add(LuaFeatures::DoubleAmpAnd);
         set.add(LuaFeatures::Exclamation);
         set.add(LuaFeatures::NotEqual);
         set.add(LuaFeatures::ShiftRightArithmetic);
@@ -128,6 +131,8 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::SafeNavigationOperator);
         set.add(LuaFeatures::NilCoalescingOperator);
         set.add(LuaFeatures::ConstDeclaration);
+        set.add(LuaFeatures::UnderscoreNumber);
+        set.add(LuaFeatures::ShortFunction);
         set
     }
 
@@ -138,7 +143,6 @@ impl LuaFeaturesSet {
         set.add(LuaFeatures::IntegerFloorDivision);
         // set.add(LuaFeatures::NilCoalescingAssign);
         set.add(LuaFeatures::StringInterpolation);
-        set.add(LuaFeatures::UnderscoreNumber);
         set.add(LuaFeatures::NamedVararg);
         set
     }

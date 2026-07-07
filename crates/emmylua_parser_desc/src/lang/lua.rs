@@ -50,7 +50,9 @@ fn to_highlight_kind(
         | LuaTokenKind::TkUntil
         | LuaTokenKind::TkWhile
         | LuaTokenKind::TkGlobal
-        | LuaTokenKind::TkLocal => CodeBlockHighlightKind::Keyword,
+        | LuaTokenKind::TkLocal
+        | LuaTokenKind::TkConst
+        | LuaTokenKind::TkContinue => CodeBlockHighlightKind::Keyword,
         LuaTokenKind::TkPlus
         | LuaTokenKind::TkMinus
         | LuaTokenKind::TkMul
@@ -80,6 +82,11 @@ fn to_highlight_kind(
         | LuaTokenKind::TkRightParen
         | LuaTokenKind::TkComma
         | LuaTokenKind::TkSemicolon
+        | LuaTokenKind::TkLogicalAnd
+        | LuaTokenKind::TkLogicalOr
+        | LuaTokenKind::TkSafeNavigation
+        | LuaTokenKind::TkTernary
+        | LuaTokenKind::TkArrow
         | LuaTokenKind::TkAssign => CodeBlockHighlightKind::Operators,
         LuaTokenKind::TkComplex | LuaTokenKind::TkInt | LuaTokenKind::TkFloat => {
             CodeBlockHighlightKind::Number
