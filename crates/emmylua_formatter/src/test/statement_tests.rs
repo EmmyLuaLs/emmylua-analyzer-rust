@@ -1966,6 +1966,28 @@ end
         assert_eq!(result, expected);
     }
 
+    #[test]
+    fn test_ternary_format_method_call_in_branch() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local d = true ? 1 + fun(f:m()) : f()\n";
+        let expected = "local d = true ? 1 + fun(f:m()) : f()\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_ternary_format_with_paren_colon() {
+        use crate::format_text;
+        use emmylua_parser::LuaLanguageLevel;
+        let config = LuaFormatConfig::default();
+        let input = "local x = cond ? (obj:method()) : default\n";
+        let expected = "local x = cond ? (obj:method()) : default\n";
+        let result = format_text(input, LuaLanguageLevel::LuaJITExt, &config).formatted;
+        assert_eq!(result, expected);
+    }
+
     // ========== LuaJIT extension: safe navigation ==========
 
     #[test]

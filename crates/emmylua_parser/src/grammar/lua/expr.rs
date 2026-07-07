@@ -904,6 +904,7 @@ fn parse_args(p: &mut LuaParser) -> ParseResult {
     match p.current_token() {
         LuaTokenKind::TkLeftParen => {
             p.bump();
+            p.enter_paren();
             if p.current_token() != LuaTokenKind::TkRightParen {
                 loop {
                     match parse_expr(p) {
@@ -913,7 +914,6 @@ fn parse_args(p: &mut LuaParser) -> ParseResult {
                                 &t!("expected argument expression"),
                                 p.current_token_range(),
                             ));
-                            // 跳过到下一个逗号或右括号
                             while !matches!(
                                 p.current_token(),
                                 LuaTokenKind::TkComma
@@ -947,6 +947,7 @@ fn parse_args(p: &mut LuaParser) -> ParseResult {
                 }
             }
 
+            p.leave_paren();
             if p.current_token() == LuaTokenKind::TkRightParen {
                 p.bump();
             } else {
