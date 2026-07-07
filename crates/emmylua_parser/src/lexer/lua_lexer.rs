@@ -621,26 +621,24 @@ impl<'a> LuaLexer<'a> {
         let first = self.reader.current_char();
         self.reader.bump();
         match first {
-            '0' => {
-                loop {
-                    match self.reader.current_char() {
-                        'x' | 'X' => {
-                            self.reader.bump();
-                            state = NumberState::Hex;
-                            break;
-                        }
-                        'b' | 'B' if self.lexer_config.support(LuaFeatures::BinaryInteger) => {
-                            self.reader.bump();
-                            state = NumberState::Bin;
-                            break;
-                        }
-                        '_' if self.lexer_config.support(LuaFeatures::UnderscoreNumber) => {
-                            self.reader.bump();
-                        }
-                        _ => break,
+            '0' => loop {
+                match self.reader.current_char() {
+                    'x' | 'X' => {
+                        self.reader.bump();
+                        state = NumberState::Hex;
+                        break;
                     }
+                    'b' | 'B' if self.lexer_config.support(LuaFeatures::BinaryInteger) => {
+                        self.reader.bump();
+                        state = NumberState::Bin;
+                        break;
+                    }
+                    '_' if self.lexer_config.support(LuaFeatures::UnderscoreNumber) => {
+                        self.reader.bump();
+                    }
+                    _ => break,
                 }
-            }
+            },
             '.' => {
                 state = NumberState::Float;
             }
