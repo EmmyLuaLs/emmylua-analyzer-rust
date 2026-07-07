@@ -261,6 +261,61 @@ foo({})
     }
 
     #[test]
+    fn test_union_enum_array_does_not_report_missing_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@enum NiceEnum
+            local GOODGUYS = {
+                superman = 1
+            }
+
+            ---@alias Evil string | NiceEnum
+
+            ---@param evils Evil | (Evil[])
+            local function do_evil(evils) end
+
+            do_evil({ "hi", "dead" })
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_union_array_named_table_still_reports_missing_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class Foo
+            ---@field name string
+
+            ---@param foo Foo | Foo[]
+            local function use_foo(foo) end
+
+            use_foo({ typo = 1 })
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_union_array_empty_table_does_not_report_missing_fields() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingFields,
+            r#"
+            ---@class Foo
+            ---@field name string
+
+            ---@param foo Foo | Foo[]
+            local function use_foo(foo) end
+
+            use_foo({})
+        "#
+        ));
+    }
+
+    #[test]
     fn test_multiline_union_nil_field_is_optional() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(
