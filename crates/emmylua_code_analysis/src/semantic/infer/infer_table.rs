@@ -260,16 +260,47 @@ fn infer_table_type_by_callee(
 fn union_remove_non_table_type(db: &DbIndex, union: &Arc<LuaUnionType>) -> LuaType {
     let result = TypeOps::union_all(
         db,
-        union.into_vec().into_iter().filter(|typ| match typ {
-            LuaType::Signature(_) | LuaType::DocFunction(_) => false,
-            _ if typ.is_string() || typ.is_number() || typ.is_boolean() => false,
-            _ => true,
-        }),
+        union
+            .into_vec()
+            .into_iter()
+            .filter(|typ| may_accept_table_literal(db, typ, 0)),
     );
     if matches!(result, LuaType::Never) {
         LuaType::Unknown
     } else {
         result
+    }
+}
+
+fn may_accept_table_literal(db: &DbIndex, typ: &LuaType, depth: usize) -> bool {
+    if depth >= 16 {
+        return false;
+    }
+
+    match typ {
+        LuaType::Ref(type_id) => {
+            let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
+                return true;
+            };
+            if !type_decl.is_alias() {
+                return true;
+            }
+
+            type_decl
+                .get_alias_ref()
+                .is_none_or(|alias_ref| may_accept_table_literal(db, alias_ref, depth + 1))
+        }
+        LuaType::Union(union) => union
+            .into_vec()
+            .iter()
+            .any(|typ| may_accept_table_literal(db, typ, depth + 1)),
+        LuaType::MultiLineUnion(union) => union
+            .get_unions()
+            .iter()
+            .any(|(typ, _)| may_accept_table_literal(db, typ, depth + 1)),
+        LuaType::Nil | LuaType::Never => false,
+        _ if typ.is_function() || typ.is_string() || typ.is_number() || typ.is_boolean() => false,
+        _ => true,
     }
 }
 

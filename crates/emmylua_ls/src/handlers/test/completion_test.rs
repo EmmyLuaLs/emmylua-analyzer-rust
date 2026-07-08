@@ -447,6 +447,67 @@ mod tests {
     }
 
     #[gtest]
+    fn test_union_array_literal_param_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        check!(ws.check_completion(
+            r#"
+                ---@alias Name 'foo' | 'bar' | 'baz'
+
+                ---@param name Name | Name[]
+                function foo(name) end
+
+                foo({'fo<??>'})
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "foo".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "bar".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "baz".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+            ],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
+    fn test_recursive_union_array_literal_param_completion() -> Result<()> {
+        let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
+        check!(ws.check_completion(
+            r#"
+                ---@alias RecursiveName RecursiveName | 'foo' | 'bar'
+
+                ---@param name RecursiveName | RecursiveName[]
+                function foo(name) end
+
+                foo({'fo<??>'})
+            "#,
+            vec![
+                VirtualCompletionItem {
+                    label: "foo".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+                VirtualCompletionItem {
+                    label: "bar".to_string(),
+                    kind: CompletionItemKind::ENUM_MEMBER,
+                    ..Default::default()
+                },
+            ],
+        ));
+        Ok(())
+    }
+
+    #[gtest]
     fn test_enum() -> Result<()> {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
 
