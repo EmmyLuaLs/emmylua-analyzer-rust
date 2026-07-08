@@ -2299,6 +2299,72 @@ local a = 1
     }
 
     #[test]
+    fn test_long_comment_in_multi_line_block_preserved() {
+        assert_format!(
+            r#"-- first line
+--[[ second line ]]
+local a = 1
+"#,
+            r#"-- first line
+--[[ second line ]]
+local a = 1
+"#
+        );
+    }
+
+    #[test]
+    fn test_long_comment_with_equals_preserved() {
+        assert_format!(
+            r#"--[==[ content ]==]
+local a = 1
+"#,
+            r#"--[==[ content ]==]
+local a = 1
+"#
+        );
+    }
+
+    #[test]
+    fn test_long_comment_not_first_line_preserved() {
+        assert_format!(
+            r#"-- some text
+--[[ long comment ]]
+-- more text
+local a = 1
+"#,
+            r#"-- some text
+--[[ long comment ]]
+-- more text
+local a = 1
+"#
+        );
+    }
+
+    #[test]
+    fn test_long_comment_no_space_after_dash_when_config_true() {
+        use crate::assert_format_with_config;
+        use crate::config::LuaFormatConfig;
+        let config = LuaFormatConfig {
+            comments: crate::config::CommentConfig {
+                space_after_comment_dash: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_format_with_config!(
+            r#"-- some text
+--[[ long comment ]]
+local a = 1
+"#,
+            r#"-- some text
+--[[ long comment ]]
+local a = 1
+"#,
+            config
+        );
+    }
+
+    #[test]
     fn test_tuple_type() {
         assert_format!(
             r#"---@cast assert [function]

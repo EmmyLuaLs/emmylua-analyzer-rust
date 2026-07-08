@@ -1,6 +1,6 @@
 mod comments;
+mod comments_ast;
 mod control;
-mod doc_comments;
 mod helpers;
 mod statements;
 #[cfg(test)]
@@ -12,9 +12,7 @@ use emmylua_parser::*;
 
 use super::FormatContext;
 use crate::formatter::expr::ExprFormatOptions;
-use crate::formatter::model::{
-    FormatPlan, LayoutNodePlan, SyntaxNodeLayoutPlan, TokenSpacingExpected,
-};
+use crate::formatter::model::{FormatPlan, LayoutNodePlan, SyntaxNodeLayoutPlan};
 use crate::formatter::sequence::*;
 use crate::formatter::trivia::*;
 

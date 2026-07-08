@@ -6,7 +6,7 @@
 
 ### ✨ Added
 
-- **Support LuaJIT-Ext**: Added support for LuaJIT‑Ext syntax, including compound assignment operators, null‑safe navigation, the null‑coalescing operator, constant variables, and the continue statement.
+- **Support LuaJIT-Ext**: Added support for LuaJIT‑Ext syntax, including compound assignment operators, null‑safe navigation, the null‑coalescing operator, constant variables statement, the continue statement, the underscore number, and the short function syntax.
 
 - **Support LuaJIT3**: Besides LuaJIT‑Ext syntax, named variadic arguments and integer division are also supported.
 
