@@ -26,7 +26,7 @@ pub fn resolve_code_lens(
             let file_id = member_id.file_id;
             let semantic_model = compilation.get_semantic_model(file_id)?;
             let mut results = Vec::new();
-            search_member_references(&semantic_model, compilation, member_id, &mut results);
+            search_member_references(&semantic_model, compilation, member_id, true, &mut results);
             let mut ref_count = results.len();
             ref_count = ref_count.saturating_sub(1);
             let uri = semantic_model.get_document().get_uri();

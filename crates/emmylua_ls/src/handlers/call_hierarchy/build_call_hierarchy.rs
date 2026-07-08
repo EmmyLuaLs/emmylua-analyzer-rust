@@ -103,7 +103,7 @@ pub fn build_incoming_hierarchy(
             search_decl_references(semantic_model, compilation, decl_id, &mut locations);
         }
         LuaSemanticDeclId::Member(member_id) => {
-            search_member_references(semantic_model, compilation, member_id, &mut locations);
+            search_member_references(semantic_model, compilation, member_id, true, &mut locations);
         }
         _ => return None,
     }
