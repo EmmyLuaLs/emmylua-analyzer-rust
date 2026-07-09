@@ -182,10 +182,9 @@ pub fn analyze_param(analyzer: &mut DocAnalyzer, tag: LuaDocTagParam) -> Option<
     };
 
     let nullable = tag.is_nullable();
-    let mut type_ref = if let Some(lua_doc_type) = tag.get_type() {
+    let mut type_ref = {
+        let lua_doc_type = tag.get_type()?;
         infer_type(&mut analyzer.type_context, lua_doc_type)
-    } else {
-        return None;
     };
 
     if nullable && !type_ref.is_nullable() {

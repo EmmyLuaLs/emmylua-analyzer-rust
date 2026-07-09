@@ -129,13 +129,10 @@ fn infer_require_module_semantic_decl(
     let first_arg = call_expr.get_args_list()?.get_args().next()?;
     let module_path = match first_arg {
         LuaExpr::LiteralExpr(literal_expr) => {
-            if let Some(literal_token) = literal_expr.get_literal() {
-                match literal_token {
-                    LuaLiteralToken::String(string_token) => string_token.get_value(),
-                    _ => return None,
-                }
-            } else {
-                return None;
+            let literal_token = literal_expr.get_literal()?;
+            match literal_token {
+                LuaLiteralToken::String(string_token) => string_token.get_value(),
+                _ => return None,
             }
         }
         _ => return None,
