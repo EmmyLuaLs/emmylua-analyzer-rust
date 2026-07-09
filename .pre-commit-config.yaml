@@ -38,3 +38,7 @@ repos:
       - id: check-symlinks
       - id: destroyed-symlinks
       - id: check-vcs-permalinks
+  - repo: https://github.com/crate-ci/typos
+    rev: master
+    hooks:
+      - id: typos

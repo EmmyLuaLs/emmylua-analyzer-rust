@@ -451,16 +451,16 @@ mod tests {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
         check!(ws.check_completion(
             r#"
-                ---@alias Name 'foo' | 'bar' | 'baz'
+                ---@alias Name 'foo1' | 'bar' | 'baz'
 
                 ---@param name Name | Name[]
                 function foo(name) end
 
-                foo({'fo<??>'})
+                foo({'foo<??>'})
             "#,
             vec![
                 VirtualCompletionItem {
-                    label: "foo".to_string(),
+                    label: "foo1".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
@@ -484,16 +484,16 @@ mod tests {
         let mut ws = ProviderVirtualWorkspace::new_with_init_std_lib();
         check!(ws.check_completion(
             r#"
-                ---@alias RecursiveName RecursiveName | 'foo' | 'bar'
+                ---@alias RecursiveName RecursiveName | 'foo1' | 'bar'
 
                 ---@param name RecursiveName | RecursiveName[]
                 function foo(name) end
 
-                foo({'fo<??>'})
+                foo({'foo1<??>'})
             "#,
             vec![
                 VirtualCompletionItem {
-                    label: "foo".to_string(),
+                    label: "foo1".to_string(),
                     kind: CompletionItemKind::ENUM_MEMBER,
                     ..Default::default()
                 },
