@@ -2,6 +2,7 @@ use regex::Regex;
 use std::{collections::HashSet, path::PathBuf, process::Command};
 
 use crate::config::configs::{EmmyrcWorkspacePathConfig, EmmyrcWorkspacePathItem};
+use crate::{file_path_to_uri, uri_to_file_path};
 
 pub struct PreProcessContext {
     workspace: PathBuf,
@@ -95,7 +96,7 @@ impl PreProcessContext {
             path = self.workspace.join(&path).to_string_lossy().to_string();
         }
 
-        path
+        normalize_path_string(path)
     }
 
     fn pre_process_workspace_path_item(
@@ -178,4 +179,14 @@ fn get_luarocks_deploy_dir() -> String {
             }
         })
         .unwrap_or_default()
+}
+
+fn normalize_path_string(path: String) -> String {
+    let path = PathBuf::from(path);
+    let path = path.canonicalize().unwrap_or(path);
+    file_path_to_uri(&path)
+        .and_then(|uri| uri_to_file_path(&uri))
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
 }
