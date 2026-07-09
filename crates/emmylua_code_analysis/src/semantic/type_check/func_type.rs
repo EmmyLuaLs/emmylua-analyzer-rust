@@ -89,10 +89,11 @@ fn check_doc_func_type_compact_for_params(
         let compact_param_type = &compact_param.1;
 
         if let (Some(source_type), Some(compact_type)) = (source_param_type, compact_param_type) {
+            // 函数赋值时, 被赋值函数必须接受目标类型可能传入的所有参数.
             match check_general_type_compact(
                 context,
-                source_type,
                 compact_type,
+                source_type,
                 check_guard.next_level()?,
             ) {
                 Ok(()) => {}
@@ -127,8 +128,8 @@ fn check_doc_func_type_compact_for_varargs(
             if let Some(compact_param_type) = compact_param_type {
                 check_general_type_compact(
                     context,
-                    varargs_type,
                     compact_param_type,
+                    varargs_type,
                     check_guard.next_level()?,
                 )?;
             }

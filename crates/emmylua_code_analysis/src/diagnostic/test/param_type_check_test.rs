@@ -986,18 +986,15 @@ mod test {
         assert!(ws.has_no_diagnostic(
             DiagnosticCode::ParamTypeMismatch,
             r#"
-                ---@class D23.A
+                ---@class A
 
-                ---@generic Extends: string
-                ---@param init? fun(self: self, super: Extends)
-                local function extends(init)
+                ---@param init fun(self: self)
+                local function test(init)
                 end
 
-                ---@generic Super: string
-                ---@param super? `Super`
-                ---@param superInit? fun(self: D23.A, super: Super, ...)
-                local function declare(super, superInit)
-                    extends(superInit)
+                ---@param superInit fun(self: A)
+                local function declare(superInit)
+                    test(superInit)
                 end
         "#
         ));
@@ -1750,6 +1747,47 @@ mod test {
                 takeAnimal(animal)
             end
         "#
+        ));
+    }
+
+    #[test]
+    fn test_generic_callback_parameter_contravariance() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@class B
+            ---@class C
+            ---@class D
+
+            ---@param a A | B | C
+            ---@return boolean
+            function condition(a)
+                return true
+            end
+
+            ---@generic T
+            ---@param a T[]
+            ---@param b fun(a: T): boolean
+            function test(a, b) end
+            "#,
+        );
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type (A | B | C | D)[]
+            local ABCD
+            test(ABCD, condition)
+            "#
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+            ---@type (A | B)[]
+            local AB
+            test(AB, condition)
+            "#
         ));
     }
 }

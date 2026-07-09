@@ -1422,6 +1422,40 @@ return t
     }
 
     #[test]
+    fn test_function_parameter_contravariance_assignment() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class A
+            ---@class B
+            ---@class C
+            ---@class D
+
+            ---@param a A | B | C
+            ---@return boolean
+            function condition(a)
+                return true
+            end
+            "#,
+        );
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type fun(a: A | B | C | D): boolean
+            local tmp = condition
+            "#,
+        ));
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@type fun(a: A | B): boolean
+            local tmp = condition
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_generic_extends_table() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
