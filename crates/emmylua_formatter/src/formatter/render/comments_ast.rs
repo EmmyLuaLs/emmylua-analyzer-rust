@@ -66,14 +66,36 @@ fn render_all_lines(ctx: &FormatContext, c: &LuaComment, plan: &FormatPlan) -> V
             | LuaTokenKind::TkDocStart
             | LuaTokenKind::TkDocContinue
             | LuaTokenKind::TkDocContinueOr => {
-                prefix = Some(tok);
-                prev = None;
-                had_ws = false;
-                multi_ws = None;
-                gap = None;
-                live = true;
-                seen_prefix = true;
-                preserve_spacing = false;
+                if seen_prefix && prev.is_some() {
+                    // Prefix-like token embedded in body — use raw source text.
+                    if gap.is_none() {
+                        if let Some(ref mw_text) = multi_ws {
+                            body.push(ir::text(mw_text.as_str()));
+                        } else {
+                            for _ in 0..usize::from(had_ws) {
+                                body.push(ir::space());
+                            }
+                        }
+                    }
+                    if let Some(g) = gap.take()
+                        && !g.is_empty()
+                    {
+                        body.push(ir::text(&g));
+                    }
+                    body.push(ir::source_token(tok.clone()));
+                    prev = Some(tok);
+                    had_ws = false;
+                    multi_ws = None;
+                } else {
+                    prefix = Some(tok);
+                    prev = None;
+                    had_ws = false;
+                    multi_ws = None;
+                    gap = None;
+                    live = true;
+                    seen_prefix = true;
+                    preserve_spacing = false;
+                }
             }
             LuaTokenKind::TkEndOfLine => {
                 lines.push(render_line(
