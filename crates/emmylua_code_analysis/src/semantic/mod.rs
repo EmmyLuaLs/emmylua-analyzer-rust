@@ -20,11 +20,9 @@ use emmylua_parser::{
     LuaCallExpr, LuaChunk, LuaExpr, LuaIndexExpr, LuaIndexKey, LuaParseError, LuaSyntaxNode,
     LuaSyntaxToken, LuaTableExpr,
 };
+use generic::resolve_call_self_type;
 pub use infer::infer_index_expr;
-use infer::{
-    apply_assignment_target_casts, infer_bind_value_type, infer_call_self_type,
-    infer_expr_list_types,
-};
+use infer::{apply_assignment_target_casts, infer_bind_value_type, infer_expr_list_types};
 pub use infer::{infer_table_field_value_should_be, infer_table_should_be};
 use lsp_types::Uri;
 pub use member::LuaMemberInfo;
@@ -350,8 +348,8 @@ impl<'a> SemanticModel<'a> {
         find_member_origin_owner(self.db, &mut self.infer_cache.borrow_mut(), member_id)
     }
 
-    pub fn infer_call_self_type(&self, call_expr: &LuaCallExpr) -> Option<LuaType> {
-        infer_call_self_type(self.db, &mut self.infer_cache.borrow_mut(), call_expr)
+    pub fn resolve_call_self_type(&self, call_expr: &LuaCallExpr) -> Option<LuaType> {
+        resolve_call_self_type(self.db, &mut self.infer_cache.borrow_mut(), call_expr)
     }
 
     pub fn get_index_decl_type(&self, index_expr: LuaIndexExpr) -> Option<LuaType> {

@@ -14,6 +14,7 @@ use super::{
     infer::{InferCallFuncResult, InferFailReason, infer_expr_list_types, try_infer_expr_no_flow},
 };
 
+pub(crate) use collect_overloads::call_operator_self_type;
 pub use collect_overloads::collect_callable_overload_groups;
 pub(crate) use filter_overloads::match_callable_by_arg_types;
 pub use filter_overloads::{filter_callable_overloads, find_callable_overload};

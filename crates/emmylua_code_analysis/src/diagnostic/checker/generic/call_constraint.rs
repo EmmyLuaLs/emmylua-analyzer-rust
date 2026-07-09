@@ -60,7 +60,7 @@ pub(super) fn build_call_constraint_context(
             params.insert(0, ("self".into(), Some(LuaType::SelfInfer)));
         }
         (true, false) => {
-            let self_type = semantic_model.infer_call_self_type(call_expr)?;
+            let self_type = semantic_model.resolve_call_self_type(call_expr)?;
             args.insert(
                 0,
                 CallConstraintArg {

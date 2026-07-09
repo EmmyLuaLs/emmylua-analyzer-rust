@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaIndexExpr, LuaSyntaxKind};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaExpr, LuaSyntaxKind};
 use rowan::TextRange;
 
 use super::{
@@ -9,17 +9,14 @@ use super::{
 };
 use crate::{
     AsyncState, CacheEntry, DbIndex, InFiled, LuaFunctionType, LuaGenericType, LuaInstanceType,
-    LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSemanticDeclId, LuaSignature,
-    LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, SemanticDeclLevel, TypeOps,
-    TypeVisitTrait, VariadicType,
+    LuaIntersectionType, LuaOperatorMetaMethod, LuaOperatorOwner, LuaSignature, LuaSignatureId,
+    LuaType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, TypeOps, TypeVisitTrait, VariadicType,
 };
 use crate::{
     InferGuardRef,
     semantic::{
-        generic::{TypeSubstitutor, infer_self_type},
+        generic::{TypeSubstitutor, instantiate_call_self_type},
         infer::narrow::get_type_at_call_expr_inline_cast,
-        infer_node_semantic_decl,
-        member::find_member_origin_owner,
         overload_resolve::{collect_callable_overload_groups, match_callable_by_arg_types},
     },
 };
@@ -332,22 +329,9 @@ fn infer_type_doc_function(
                     has_generic_tpl
                 };
 
-                if has_generic_tpl {
+                if has_generic_tpl || f.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer)) {
                     let result = infer_call_generic(db, cache, &f, call_expr.clone())?;
                     overloads.push(Arc::new(result));
-                } else if f.contain_self() {
-                    let mut substitutor = TypeSubstitutor::new();
-                    if let Some(self_type) = infer_self_type(db, cache, &call_expr, &substitutor) {
-                        substitutor.add_self_type(self_type);
-                        let func_type = LuaType::DocFunction(f.clone());
-                        if let LuaType::DocFunction(f) =
-                            instantiate_type_generic(db, &func_type, &substitutor)
-                        {
-                            overloads.push(f);
-                        }
-                    } else {
-                        overloads.push(f.clone());
-                    }
                 } else {
                     overloads.push(f.clone());
                 }
@@ -678,7 +662,8 @@ fn unwrapp_return_type(
         }
         LuaType::SelfInfer => {
             let substitutor = TypeSubstitutor::new();
-            if let Some(self_type) = infer_self_type(db, cache, &call_expr, &substitutor) {
+            if let Some(self_type) = instantiate_call_self_type(db, cache, &call_expr, &substitutor)
+            {
                 return Ok(self_type);
             }
         }
@@ -812,67 +797,6 @@ fn signature_is_generic(
         // 对于 Generic 直接认为是泛型
         LuaType::Generic(_) => Some(true),
         _ => Some(prefix_type.contain_tpl()),
-    }
-}
-
-/// 推断调用表达式中用于 self 参数的类型.
-pub fn infer_call_self_type(
-    db: &DbIndex,
-    cache: &mut LuaInferCache,
-    call_expr: &LuaCallExpr,
-) -> Option<LuaType> {
-    match call_expr.get_prefix_expr()? {
-        LuaExpr::IndexExpr(index_expr) => {
-            let decl = infer_node_semantic_decl(
-                db,
-                cache,
-                index_expr.syntax().clone(),
-                SemanticDeclLevel::default(),
-            )?;
-
-            if let LuaSemanticDeclId::Member(member_id) = decl
-                && let Some(LuaSemanticDeclId::Member(member_id)) =
-                    find_member_origin_owner(db, cache, member_id)
-            {
-                let root = db
-                    .get_vfs()
-                    .get_syntax_tree(&member_id.file_id)?
-                    .get_red_root();
-                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
-                let index_expr = LuaIndexExpr::cast(cur_node)?;
-
-                return index_expr.get_prefix_expr().map(|prefix_expr| {
-                    infer_expr(db, cache, prefix_expr).unwrap_or(LuaType::SelfInfer)
-                });
-            }
-
-            index_expr
-                .get_prefix_expr()
-                .map(|prefix_expr| infer_expr(db, cache, prefix_expr).unwrap_or(LuaType::SelfInfer))
-        }
-        LuaExpr::NameExpr(name_expr) => {
-            let decl = infer_node_semantic_decl(
-                db,
-                cache,
-                name_expr.syntax().clone(),
-                SemanticDeclLevel::default(),
-            )?;
-            if let LuaSemanticDeclId::Member(member_id) = decl {
-                let root = db
-                    .get_vfs()
-                    .get_syntax_tree(&member_id.file_id)?
-                    .get_red_root();
-                let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
-                let index_expr = LuaIndexExpr::cast(cur_node)?;
-
-                return index_expr.get_prefix_expr().map(|prefix_expr| {
-                    infer_expr(db, cache, prefix_expr).unwrap_or(LuaType::SelfInfer)
-                });
-            }
-
-            None
-        }
-        _ => None,
     }
 }
 

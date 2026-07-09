@@ -30,7 +30,7 @@ pub(super) fn check_param_types(
         .into_iter()
         .unzip();
 
-    let self_type = semantic_model.infer_call_self_type(&facts.call_expr);
+    let self_type = semantic_model.resolve_call_self_type(&facts.call_expr);
     let colon_range = facts
         .call_expr
         .get_colon_token()

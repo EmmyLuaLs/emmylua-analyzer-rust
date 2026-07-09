@@ -904,6 +904,131 @@ mod test {
     }
 
     #[test]
+    fn test_call_operator_self_infer_on_index() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Factory
+            ---@overload fun(): self
+
+            ---@class Mod
+            ---@field Factory Factory
+            ---@type Mod
+            local Mod
+
+            result = Mod.Factory()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "Factory");
+    }
+
+    #[test]
+    fn test_call_operator_self_infer_filters_union_receiver() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Callable
+            ---@overload fun(): self
+
+            ---@type Callable|string
+            local value
+
+            result = value()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "Callable");
+    }
+
+    #[test]
+    fn test_call_operator_self_infer_through_generic_alias() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Callable
+            ---@overload fun(): self
+
+            ---@alias Box<T> T
+
+            ---@type Box<Callable>
+            local value
+
+            result = value()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "Callable");
+    }
+
+    #[test]
+    fn test_call_operator_self_infer_through_intersection() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Callable
+            ---@overload fun(): self
+
+            ---@class Extra
+
+            ---@type Callable & Extra
+            local value
+
+            result = value()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "(Callable & Extra)");
+    }
+
+    #[test]
+    fn test_colon_call_generic_uses_receiver_when_member_is_callable() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Owner
+            ---@field run CallableMethod
+
+            ---@class CallableMethod
+            ---@overload fun<T>(owner: T): T
+
+            ---@type Owner
+            local owner
+
+            result = owner:run()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        assert_eq!(ws.humanize_type(result_ty), "Owner");
+    }
+
+    #[test]
+    fn test_plain_table_metatable_call_return_self() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        ws.def(
+            r#"
+            factory = setmetatable({}, {
+                ---@return self
+                __call = function(self)
+                    return self
+                end,
+            })
+
+            result = factory()
+            "#,
+        );
+
+        let result_ty = ws.expr_ty("result");
+        let humanized = ws.humanize_type(result_ty);
+        assert_eq!(humanized, "table");
+    }
+
+    #[test]
     fn test_function_generic_constraint_is_fallback() {
         let mut ws = VirtualWorkspace::new();
         {

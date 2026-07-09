@@ -1640,6 +1640,27 @@ mod test {
     }
 
     #[test]
+    fn test_colon_call_param_check_uses_receiver_when_member_is_callable() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ParamTypeMismatch,
+            r#"
+                ---@class Owner
+                ---@field run CallableMethod
+
+                ---@class CallableMethod
+                ---@overload fun(owner: Owner)
+
+                ---@type Owner
+                local owner
+
+                owner:run()
+        "#,
+        ));
+    }
+
+    #[test]
     fn test_generic_infer_function_2() {
         let mut ws = VirtualWorkspace::new();
         ws.def(
