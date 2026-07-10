@@ -28,7 +28,7 @@ pub fn load_configs_raw(config_files: Vec<PathBuf>, partial_emmyrcs: Option<Vec<
                 Err(e) => {
                     log::error!(
                         "Failed to parse lua config file: {:?}, error: {:?}",
-                        &config_file,
+                        config_file,
                         e
                     );
                     continue;
@@ -40,7 +40,7 @@ pub fn load_configs_raw(config_files: Vec<PathBuf>, partial_emmyrcs: Option<Vec<
                 Err(e) => {
                     log::error!(
                         "Failed to parse config file: {:?}, error: {:?}",
-                        &config_file,
+                        config_file,
                         e
                     );
                     continue;

@@ -140,9 +140,9 @@ pub fn get_index_expr_var_ref_id(
     cache: &mut LuaInferCache,
     index_expr: &LuaIndexExpr,
 ) -> Option<VarRefId> {
-    let access_path = match index_expr.get_access_path() {
-        Some(path) => ArcIntern::new(SmolStr::new(&path)),
-        None => return None,
+    let access_path = {
+        let path = index_expr.get_access_path()?;
+        ArcIntern::new(SmolStr::new(&path))
     };
 
     let mut prefix_expr = index_expr.get_prefix_expr()?;

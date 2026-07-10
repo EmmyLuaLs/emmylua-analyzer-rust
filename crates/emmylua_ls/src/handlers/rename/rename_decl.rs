@@ -108,10 +108,9 @@ fn rename_doc_param(
     let closure_expr = param_node.ancestors::<LuaClosureExpr>().next()?;
     let comments = if let Some(table_field) = closure_expr.get_parent::<LuaTableField>() {
         table_field.get_comments()
-    } else if let Some(stat) = closure_expr.ancestors::<LuaStat>().next() {
-        stat.get_comments()
     } else {
-        return None;
+        let stat = closure_expr.ancestors::<LuaStat>().next()?;
+        stat.get_comments()
     };
 
     let document = semantic_model.get_document();

@@ -317,11 +317,11 @@ impl Serialize for LuaTypeDeclId {
         match self.id.as_ref() {
             LuaTypeIdentifier::Global(name) => serializer.serialize_str(name.as_ref()),
             LuaTypeIdentifier::Internal(workspace_id, name) => {
-                let s = format!("ws:{}|{}", workspace_id.id, &name);
+                let s = format!("ws:{}|{}", workspace_id.id, name);
                 serializer.serialize_str(&s)
             }
             LuaTypeIdentifier::File(file_id, name) => {
-                let s = format!("{}|{}", file_id.id, &name);
+                let s = format!("{}|{}", file_id.id, name);
                 serializer.serialize_str(&s)
             }
         }

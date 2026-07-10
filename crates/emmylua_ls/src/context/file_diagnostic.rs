@@ -124,7 +124,7 @@ impl FileDiagnostic {
     #[allow(unused)]
     pub async fn cancel_all(&self) {
         let mut tokens = self.diagnostic_tokens.lock().await;
-        for (_, token) in tokens.iter() {
+        for token in tokens.values() {
             token.cancel();
         }
         tokens.clear();
