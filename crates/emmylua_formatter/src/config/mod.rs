@@ -154,6 +154,15 @@ pub struct LayoutConfig {
     /// This applies only to the last direct expression in a statement,
     /// including standalone call statements, plus keyed table-field values.
     pub prefer_chain_break_on_statement_tail: bool,
+    /// Offer a one-operand-per-line layout candidate for same-operator binary
+    /// chains (3 or more operands sharing the same operator, such as a run of
+    /// `and`/`or` conditions).
+    ///
+    /// When the chain does not fit compactly, this lets the formatter break at
+    /// the chain's own operators (one operand per line) instead of breaking
+    /// inside an individual operand, such as expanding a nested call's
+    /// argument list.
+    pub prefer_binary_chain_operand_per_line: bool,
 }
 
 impl Default for LayoutConfig {
@@ -167,6 +176,7 @@ impl Default for LayoutConfig {
             prefer_call_args_layout_from_source: false,
             prefer_table_layout_from_source: false,
             prefer_chain_break_on_statement_tail: false,
+            prefer_binary_chain_operand_per_line: false,
         }
     }
 }
