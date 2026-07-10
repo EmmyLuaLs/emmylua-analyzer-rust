@@ -5,6 +5,7 @@ use emmylua_parser::{LuaAstPtr, LuaCallExpr, LuaChunk};
 use crate::{
     DbIndex, FlowId, FlowTree, InferFailReason, LuaDeclId, LuaFunctionType, LuaInferCache,
     LuaSignature, LuaType, TypeOps,
+    db_index::return_row::get_overload_row_slot,
     semantic::{
         infer::{InferResult, VarRefId, narrow::narrow_down_type, try_infer_expr_no_flow},
         infer_call_generic,
@@ -482,20 +483,19 @@ fn collect_matching_correlated_types(
             }
             correlated_discriminant_call_expr_ids.insert(discriminant_call_expr_id);
             correlated_target_call_expr_ids.insert(target_ref.call_expr.get_syntax_id());
-            correlated_candidate_types.extend(overload_rows.iter().map(|overload| {
-                LuaSignature::get_overload_row_slot(overload, target_ref.return_index)
-            }));
+            correlated_candidate_types.extend(
+                overload_rows
+                    .iter()
+                    .map(|overload| get_overload_row_slot(overload, target_ref.return_index)),
+            );
             matching_target_types.extend(overload_rows.iter().filter_map(|overload| {
                 let discriminant_type =
-                    LuaSignature::get_overload_row_slot(overload, discriminant_ref.return_index);
+                    get_overload_row_slot(overload, discriminant_ref.return_index);
                 if !TypeOps::Intersect
                     .apply(db, &discriminant_type, narrowed_discriminant_type)
                     .is_never()
                 {
-                    return Some(LuaSignature::get_overload_row_slot(
-                        overload,
-                        target_ref.return_index,
-                    ));
+                    return Some(get_overload_row_slot(overload, target_ref.return_index));
                 }
 
                 None
@@ -519,7 +519,7 @@ fn collect_matching_correlated_types(
         unmatched_target_types.extend(
             return_rows
                 .iter()
-                .map(|row| LuaSignature::get_overload_row_slot(row, target_ref.return_index)),
+                .map(|row| get_overload_row_slot(row, target_ref.return_index)),
         );
     }
 
@@ -564,9 +564,9 @@ fn instantiate_return_rows(
     call_expr: LuaCallExpr,
     signature: &LuaSignature,
 ) -> Vec<Vec<LuaType>> {
-    let mut instantiate_return_type = |return_type: LuaType| {
-        if !return_type.contain_tpl() {
-            return return_type;
+    let mut instantiate_return_row = |return_row: Vec<LuaType>| {
+        if !return_row.iter().any(LuaType::contain_tpl) {
+            return return_row;
         }
 
         let func = LuaFunctionType::new(
@@ -574,26 +574,22 @@ fn instantiate_return_rows(
             signature.is_colon_define,
             signature.is_vararg,
             signature.get_type_params(),
-            return_type.clone(),
+            return_row.clone(),
             Some(signature.get_function_generic_params()),
         );
         match cache.with_no_flow(|cache| infer_call_generic(db, cache, &func, call_expr.clone())) {
-            Ok(instantiated) => instantiated.get_ret().clone(),
-            Err(_) => return_type,
+            Ok(instantiated) => instantiated.get_return_row().to_vec(),
+            Err(_) => return_row,
         }
     };
 
     if signature.return_overloads.is_empty() {
-        let instantiated_return_type = instantiate_return_type(signature.get_return_type());
-        return vec![LuaSignature::return_type_to_row(instantiated_return_type)];
+        return vec![instantiate_return_row(signature.get_return_row())];
     }
 
     let mut rows = Vec::with_capacity(signature.return_overloads.len());
     for overload in &signature.return_overloads {
-        let type_refs = &overload.type_refs;
-        let overload_return_type = LuaSignature::row_to_return_type(type_refs.to_vec());
-        let instantiated_return_type = instantiate_return_type(overload_return_type);
-        rows.push(LuaSignature::return_type_to_row(instantiated_return_type));
+        rows.push(instantiate_return_row(overload.type_refs.clone()));
     }
 
     rows

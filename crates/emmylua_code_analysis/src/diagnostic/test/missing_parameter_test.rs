@@ -205,6 +205,47 @@ mod test {
     }
 
     #[test]
+    fn test_empty_return_tail_call_counts_as_missing_parameter() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::MissingParameter,
+            r#"
+            ---@return
+            local function none()
+            end
+
+            ---@param value string
+            local function takes(value)
+            end
+
+            takes(none())
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_unbounded_tail_call_does_not_count_as_missing_parameter() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::MissingParameter,
+            r#"
+            ---@return string...
+            local function many()
+            end
+
+            ---@param first string
+            ---@param second string
+            local function takes(first, second)
+            end
+
+            takes(many())
+        "#
+        ));
+    }
+
+    #[test]
     fn test_alias() {
         let mut ws = VirtualWorkspace::new();
         assert!(ws.has_no_diagnostic(

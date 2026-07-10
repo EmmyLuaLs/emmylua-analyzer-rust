@@ -128,7 +128,9 @@ impl LuaTypeNode for LuaTupleType {
 
 impl LuaTypeNode for LuaFunctionType {
     fn push_direct_children<'a>(&'a self, stack: &mut Vec<&'a LuaType>) {
-        stack.push(self.get_ret());
+        for ty in self.get_return_row().iter().rev() {
+            stack.push(ty);
+        }
         for (_, ty) in self.get_params().iter().rev() {
             if let Some(ty) = ty {
                 stack.push(ty);

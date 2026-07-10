@@ -9,7 +9,7 @@ use crate::{InferFailReason, LuaType};
 pub enum LuaReturnPoint {
     Expr(LuaExpr),
     MuliExpr(Vec<LuaExpr>),
-    Nil,
+    Empty,
     Error,
 }
 
@@ -62,7 +62,7 @@ where
 {
     let mut flow = analyze_block_returns(body, infer_expr_type)?;
     if flow.can_fall_through || flow.can_break {
-        flow.return_points.push(LuaReturnPoint::Nil);
+        flow.return_points.push(LuaReturnPoint::Empty);
     }
 
     Ok(flow.return_points)
@@ -356,7 +356,7 @@ fn analyze_call_expr_stat_returns(
 fn analyze_return_stat_returns(return_stat: LuaReturnStat) -> ReturnFlow {
     let exprs: Vec<LuaExpr> = return_stat.get_expr_list().collect();
     let return_point = match exprs.len() {
-        0 => LuaReturnPoint::Nil,
+        0 => LuaReturnPoint::Empty,
         1 => LuaReturnPoint::Expr(exprs[0].clone()),
         _ => LuaReturnPoint::MuliExpr(exprs),
     };

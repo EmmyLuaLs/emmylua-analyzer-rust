@@ -6,11 +6,13 @@ use std::{collections::HashMap, sync::Arc};
 use emmylua_parser::{LuaAstNode, LuaClosureExpr, LuaDocFuncType};
 use rowan::TextSize;
 
-use super::return_rows;
 use crate::db_index::signature::async_state::AsyncState;
 use crate::{
     FileId, GenericParam, GenericTpl, GenericTplId,
-    db_index::{LuaFunctionType, LuaType},
+    db_index::{
+        LuaFunctionType, LuaType,
+        return_row::{merge_return_rows, merge_return_rows_shallow, row_to_return_type},
+    },
 };
 use crate::{
     LuaAttributeCollectionExt, LuaAttributeUse, LuaBuiltinAttributeKind, SemanticModel,
@@ -117,19 +119,31 @@ impl LuaSignature {
     }
 
     pub fn get_return_type(&self) -> LuaType {
-        return_rows::get_return_type(&self.return_docs, &self.return_overloads)
+        row_to_return_type(self.get_return_row())
     }
 
-    pub(crate) fn get_overload_row_slot(row: &[LuaType], idx: usize) -> LuaType {
-        return_rows::get_overload_row_slot(row, idx)
-    }
+    pub fn get_return_row(&self) -> Vec<LuaType> {
+        let return_docs_row = self
+            .return_docs
+            .iter()
+            .map(|info| info.type_ref.clone())
+            .collect::<Vec<_>>();
+        if self.return_overloads.is_empty() {
+            return return_docs_row;
+        }
 
-    pub(crate) fn row_to_return_type(row: Vec<LuaType>) -> LuaType {
-        return_rows::row_to_return_type(row)
-    }
-
-    pub(crate) fn return_type_to_row(return_type: LuaType) -> Vec<LuaType> {
-        return_rows::return_type_to_row(return_type)
+        let overload_return_row = merge_return_rows(
+            &self
+                .return_overloads
+                .iter()
+                .map(|overload| overload.type_refs.as_slice())
+                .collect::<Vec<_>>(),
+        );
+        if self.return_docs.is_empty() {
+            overload_return_row
+        } else {
+            merge_return_rows_shallow(&[overload_return_row.as_slice(), return_docs_row.as_slice()])
+        }
     }
 
     pub fn is_method(&self, semantic_model: &SemanticModel, owner_type: Option<&LuaType>) -> bool {
@@ -163,18 +177,14 @@ impl LuaSignature {
     }
 
     pub fn to_doc_func_type(&self) -> Arc<LuaFunctionType> {
-        let params = self.get_type_params();
-        let return_type = self.get_return_type();
-        let is_vararg = self.is_vararg;
-        let func_type = LuaFunctionType::new(
+        Arc::new(LuaFunctionType::new(
             self.async_state,
             self.is_colon_define,
-            is_vararg,
-            params,
-            return_type,
+            self.is_vararg,
+            self.get_type_params(),
+            self.get_return_row(),
             Some(self.get_function_generic_params()),
-        );
-        Arc::new(func_type)
+        ))
     }
 
     pub fn to_call_operator_func_type(&self) -> Arc<LuaFunctionType> {
@@ -183,13 +193,12 @@ impl LuaSignature {
             params.remove(0);
         }
 
-        let return_type = self.get_return_type();
         let func_type = LuaFunctionType::new(
             self.async_state,
             false,
             self.is_vararg,
             params,
-            return_type,
+            self.get_return_row(),
             Some(self.get_function_generic_params()),
         );
         Arc::new(func_type)

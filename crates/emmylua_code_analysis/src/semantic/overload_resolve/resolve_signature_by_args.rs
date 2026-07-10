@@ -241,7 +241,7 @@ pub fn resolve_signature_by_args(
         return Err(InferFailReason::None);
     };
 
-    if remaining_funcs.all(|func| func.get_ret() == first.get_ret()) {
+    if remaining_funcs.all(|func| func.get_return_row() == first.get_return_row()) {
         Ok(first)
     } else {
         Err(InferFailReason::None)

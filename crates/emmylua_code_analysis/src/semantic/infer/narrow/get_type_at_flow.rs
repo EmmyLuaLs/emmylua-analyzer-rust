@@ -10,6 +10,7 @@ use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason,
     LuaDeclId, LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
     semantic::{
+        adjusted_result_slot_type, assignment_rhs_source,
         cache::{FlowAssignmentInfo, FlowMode, FlowQueryResult, FlowVarCache},
         infer::{
             InferResult, VarRefId,
@@ -758,10 +759,7 @@ impl<'a> FlowTypeEngine<'a> {
                     Err(err) => return self.fail_query(&query, err),
                 };
 
-                let Some(init_type) = expr_type.get_result_slot_type(0) else {
-                    return self.fail_query(&query, fail_reason);
-                };
-
+                let init_type = adjusted_result_slot_type(&expr_type, 0);
                 Ok(self.finish_walk(walk, init_type))
             }
             FlowExprReplay::Condition {
@@ -1102,9 +1100,8 @@ impl<'a> FlowTypeEngine<'a> {
             .filter(|tc| tc.is_doc())
             .map(|tc| tc.as_type().clone());
 
-        if let Some(last_expr_idx) = assignment_info.exprs.len().checked_sub(1) {
-            let expr_idx = i.min(last_expr_idx);
-            let result_slot = i.saturating_sub(last_expr_idx);
+        if let Some((expr_idx, result_slot)) = assignment_rhs_source(assignment_info.exprs.len(), i)
+        {
             let expr = assignment_info.exprs[expr_idx].clone();
             let mut replay_query = FlowReplayQuery::new(
                 self.db,
@@ -1143,9 +1140,7 @@ impl<'a> FlowTypeEngine<'a> {
         replay_query: FlowReplayQuery,
     ) -> Result<SchedulerStep, InferFailReason> {
         let expr_type = match replay_query.replay_type(self.db, self.cache) {
-            Ok(Some(expr_type)) => expr_type
-                .get_result_slot_type(result_slot)
-                .unwrap_or(LuaType::Nil),
+            Ok(Some(expr_type)) => adjusted_result_slot_type(&expr_type, result_slot),
             Ok(None) => LuaType::Unknown,
             Err(err) => {
                 return self.finish_assignment_expr_error(

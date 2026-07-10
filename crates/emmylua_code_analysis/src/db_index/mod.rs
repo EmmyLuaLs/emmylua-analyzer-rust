@@ -9,6 +9,7 @@ mod module;
 mod operators;
 mod property;
 mod reference;
+pub(crate) mod return_row;
 mod schema;
 mod semantic_decl;
 mod signature;

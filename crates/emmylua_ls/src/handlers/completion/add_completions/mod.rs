@@ -149,13 +149,13 @@ pub fn get_detail(
                 }
                 _ => {}
             }
-            let ret_type = f.get_ret();
-            let rets_detail = match ret_type {
+            let ret_type = f.get_return_type();
+            let rets_detail = match &ret_type {
                 LuaType::Nil => "".to_string(),
                 _ => {
                     let type_detail = humanize_type(
                         builder.semantic_model.get_db(),
-                        ret_type,
+                        &ret_type,
                         RenderLevel::Minimal,
                     );
                     format!("-> {}", type_detail)

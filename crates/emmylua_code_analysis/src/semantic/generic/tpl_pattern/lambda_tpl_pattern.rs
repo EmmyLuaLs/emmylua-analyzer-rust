@@ -3,7 +3,8 @@ use hashbrown::HashMap;
 
 use crate::{
     InferFailReason, LuaDeclId, LuaFunctionType, LuaSignatureId, LuaType, LuaTypeNode, TplContext,
-    analyze_func_body_returns_with, analyze_return_point, infer_expr, instantiate_type_generic,
+    analyze_func_body_returns_with, analyze_return_point,
+    db_index::return_row::row_to_multi_return_type, infer_expr, instantiate_type_generic,
 };
 
 use super::{TplPatternMatchResult, return_type_pattern_match_target_type};
@@ -29,7 +30,8 @@ pub fn check_lambda_tpl_pattern(
         _ => return Ok(()),
     };
 
-    return_type_pattern_match_target_type(context, tpl_func.get_ret(), &inferred_return)
+    let expected_return = row_to_multi_return_type(tpl_func.get_return_row().to_vec());
+    return_type_pattern_match_target_type(context, &expected_return, &inferred_return)
 }
 
 fn find_current_call_lambda(

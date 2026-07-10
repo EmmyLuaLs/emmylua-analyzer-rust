@@ -128,7 +128,7 @@ fn get_call_expr_var_ref_id(
     let maybe_func = try_infer_expr_no_flow(db, cache, prefix_expr.clone()).ok()??;
 
     let ret = match maybe_func {
-        LuaType::DocFunction(f) => f.get_ret().clone(),
+        LuaType::DocFunction(f) => f.get_return_type(),
         LuaType::Signature(signature_id) => db
             .get_signature_index()
             .get(&signature_id)?

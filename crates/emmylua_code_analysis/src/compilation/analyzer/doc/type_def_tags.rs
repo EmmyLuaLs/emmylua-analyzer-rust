@@ -427,7 +427,7 @@ pub fn analyze_func_generic(analyzer: &mut DocAnalyzer, tag: LuaDocTagGeneric) -
             overload.is_colon_define(),
             overload.is_variadic(),
             overload.get_params().to_vec(),
-            overload.get_ret().clone(),
+            overload.get_return_row().to_vec(),
             Some(generic_params),
         ));
     }

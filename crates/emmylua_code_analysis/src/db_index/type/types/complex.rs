@@ -2,9 +2,9 @@ use hashbrown::{HashMap, HashSet};
 use internment::ArcIntern;
 use rowan::TextRange;
 use smol_str::SmolStr;
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
-use crate::db_index::LuaMemberKey;
+use crate::db_index::{LuaMemberKey, return_row::row_to_return_type};
 use crate::{
     AsyncState, DbIndex, InFiled, LuaAttributeUse, SemanticModel, first_param_may_not_self,
 };
@@ -111,7 +111,7 @@ pub struct LuaFunctionType {
     is_variadic: bool,
     generic_params: Option<Vec<GenericTpl>>,
     params: Vec<(String, Option<LuaType>)>,
-    ret: LuaType,
+    ret: Vec<LuaType>,
 }
 
 impl LuaFunctionType {
@@ -120,7 +120,7 @@ impl LuaFunctionType {
         is_colon_define: bool,
         is_variadic: bool,
         params: Vec<(String, Option<LuaType>)>,
-        ret: LuaType,
+        ret: Vec<LuaType>,
         generic_params: Option<Vec<GenericTpl>>,
     ) -> Self {
         let generic_params = generic_params.filter(|params| !params.is_empty());
@@ -150,8 +150,12 @@ impl LuaFunctionType {
         self.generic_params.as_deref().unwrap_or(&[])
     }
 
-    pub fn get_ret(&self) -> &LuaType {
+    pub fn get_return_row(&self) -> &[LuaType] {
         &self.ret
+    }
+
+    pub fn get_return_type(&self) -> LuaType {
+        row_to_return_type(self.ret.clone())
     }
 
     pub fn is_variadic(&self) -> bool {
@@ -159,11 +163,12 @@ impl LuaFunctionType {
     }
 
     pub fn get_variadic_ret(&self) -> VariadicType {
-        if let LuaType::Variadic(variadic) = &self.ret {
-            return variadic.deref().clone();
+        match self.ret.as_slice() {
+            [] => VariadicType::Base(LuaType::Nil),
+            [LuaType::Variadic(variadic)] => variadic.as_ref().clone(),
+            [ret] => VariadicType::Base(ret.clone()),
+            row => VariadicType::Multi(row.to_vec()),
         }
-
-        VariadicType::Base(self.ret.clone())
     }
 
     pub fn contain_tpl(&self) -> bool {
@@ -176,7 +181,7 @@ impl LuaFunctionType {
                 .params
                 .iter()
                 .any(|(name, t)| name == "self" || t.as_ref().is_some_and(|t| t.is_self_infer()))
-            || self.ret.is_self_infer()
+            || self.ret.iter().any(|t| t.is_self_infer())
     }
 
     pub fn is_method(&self, semantic_model: &SemanticModel, owner_type: Option<&LuaType>) -> bool {

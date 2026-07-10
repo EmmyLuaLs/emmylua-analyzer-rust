@@ -181,7 +181,6 @@ fn instantiate_doc_function_with_context(
     doc_func: &LuaFunctionType,
 ) -> LuaType {
     let tpl_func_params = doc_func.get_params();
-    let tpl_ret = doc_func.get_ret();
     let async_state = doc_func.get_async_state();
     let colon_define = doc_func.is_colon_define();
     let generic_params = instantiate_function_generic_params(context, doc_func);
@@ -284,19 +283,31 @@ fn instantiate_doc_function_with_context(
         }
     }
 
-    let mut inst_ret_type = instantiate_type_generic_inner(context, tpl_ret);
-    // 对于可变返回值, 如果实例化是 tuple, 那么我们将展开 tuple
-    if let LuaType::Variadic(_) = &&tpl_ret
-        && let LuaType::Tuple(tuple) = &inst_ret_type
-    {
-        match tuple.len() {
-            0 => {}
-            1 => inst_ret_type = tuple.get_types()[0].clone(),
-            _ => {
-                inst_ret_type =
-                    LuaType::Variadic(VariadicType::Multi(tuple.get_types().to_vec()).into())
+    let mut inst_ret = Vec::new();
+    for origin_ret_type in doc_func.get_return_row() {
+        let mut inst_ret_type = instantiate_type_generic_inner(context, origin_ret_type);
+        // 对于可变返回值, 如果实例化是 tuple, 那么我们将展开 tuple
+        if let LuaType::Variadic(_) = origin_ret_type
+            && let LuaType::Tuple(tuple) = &inst_ret_type
+        {
+            match tuple.len() {
+                0 => continue,
+                1 => inst_ret_type = tuple.get_types()[0].clone(),
+                _ => {
+                    inst_ret_type =
+                        LuaType::Variadic(VariadicType::Multi(tuple.get_types().to_vec()).into())
+                }
             }
         }
+        if let LuaType::Variadic(_) = origin_ret_type
+            && let LuaType::Variadic(variadic) = &inst_ret_type
+            && let VariadicType::Multi(types) = variadic.deref()
+        {
+            // A variadic return can instantiate to an empty row.
+            inst_ret.extend(types.iter().cloned());
+            continue;
+        }
+        inst_ret.push(inst_ret_type);
     }
     // 重新判断是否是可变参数
     let is_variadic = new_params
@@ -316,7 +327,7 @@ fn instantiate_doc_function_with_context(
             colon_define,
             is_variadic,
             new_params,
-            inst_ret_type,
+            inst_ret,
             Some(generic_params),
         )
         .into(),
@@ -361,7 +372,7 @@ fn instantiate_nested_doc_function(
         doc_func.is_colon_define(),
         doc_func.is_variadic(),
         doc_func.get_params().to_vec(),
-        doc_func.get_ret().clone(),
+        doc_func.get_return_row().to_vec(),
         Some(generic_params),
     );
     instantiate_doc_function_with_context(&nested_context, &doc_func)

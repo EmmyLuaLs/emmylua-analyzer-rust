@@ -135,11 +135,12 @@ fn build_doc_function_signature_help(
         current_idx = params.len() - 1;
     }
 
+    let return_type = func_type.get_return_type();
     let label = build_function_label(
         builder,
         &param_infos,
         func_type.is_method(builder.semantic_model, None),
-        func_type.get_ret(),
+        &return_type,
     );
 
     let documentation = description.map(|description| {

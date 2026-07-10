@@ -2,8 +2,8 @@ use std::{collections::HashSet, fmt::Write, sync::Arc};
 
 use emmylua_code_analysis::{
     AsyncState, DbIndex, LuaDocReturnInfo, LuaFunctionType, LuaMember, LuaMemberOwner,
-    LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel, VariadicType,
-    build_call_generic_substitutor, humanize_type, instantiate_type_generic,
+    LuaSemanticDeclId, LuaSignature, LuaType, RenderLevel, build_call_generic_substitutor,
+    humanize_type, instantiate_type_generic,
 };
 use emmylua_parser::LuaCallExpr;
 
@@ -340,31 +340,15 @@ fn format_function_type(
 }
 
 pub(super) fn convert_function_return_to_docs(func: &LuaFunctionType) -> Vec<LuaDocReturnInfo> {
-    match func.get_ret() {
-        LuaType::Variadic(variadic) => match variadic.as_ref() {
-            VariadicType::Base(base) => vec![LuaDocReturnInfo {
-                name: None,
-                type_ref: base.clone(),
-                description: None,
-                attributes: None,
-            }],
-            VariadicType::Multi(types) => types
-                .iter()
-                .map(|ty| LuaDocReturnInfo {
-                    name: None,
-                    type_ref: ty.clone(),
-                    description: None,
-                    attributes: None,
-                })
-                .collect(),
-        },
-        _ => vec![LuaDocReturnInfo {
+    func.get_return_row()
+        .iter()
+        .map(|ty| LuaDocReturnInfo {
             name: None,
-            type_ref: func.get_ret().clone(),
+            type_ref: ty.clone(),
             description: None,
             attributes: None,
-        }],
-    }
+        })
+        .collect()
 }
 
 fn build_function_returns(
