@@ -364,6 +364,18 @@ mod tests {
         check!(
             ws.check_hover(
                 r#"
+                ---@alias Co<??>py<T> { readonly [K in keyof T]?: T[K] }
+            "#,
+                VirtualHoverResult {
+                    value: "```lua\n(alias) Copy<T> = { readonly [K in keyof T]?: T[K]; }\n```"
+                        .to_string(),
+                },
+            )
+        );
+
+        check!(
+            ws.check_hover(
+                r#"
                 ---@class BoxHoverShape
                 ---@field name string
 

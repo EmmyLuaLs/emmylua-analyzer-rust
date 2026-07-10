@@ -1,6 +1,6 @@
 use hashbrown::{HashMap, HashSet};
 
-use emmylua_parser::{LuaAst, LuaAstNode, LuaSyntaxId, LuaTableExpr};
+use emmylua_parser::{LuaAst, LuaAstNode, LuaExpr, LuaSyntaxId, LuaTableExpr};
 use rowan::NodeOrToken;
 
 use crate::{
@@ -63,6 +63,13 @@ fn check_table_expr(
     let table_type = match semantic_model.infer_table_should_be(expr.clone())? {
         LuaType::Union(union) => {
             let mut check_type = None;
+            let array_like_expr_type = if expr.is_array() || expr.is_empty() {
+                semantic_model
+                    .infer_expr(LuaExpr::TableExpr(expr.clone()))
+                    .ok()
+            } else {
+                None
+            };
             for ty in union.into_vec() {
                 match &ty {
                     LuaType::Ref(_)
@@ -74,10 +81,14 @@ fn check_table_expr(
                         }
                         check_type = Some(ty);
                     }
-                    LuaType::Table | LuaType::Userdata => {
+                    LuaType::Table | LuaType::Userdata | LuaType::TableGeneric(_) => {
                         return Some(());
                     }
-                    LuaType::TableGeneric(_) => {
+                    LuaType::Array(_) | LuaType::Tuple(_)
+                        if array_like_expr_type.as_ref().is_some_and(|expr_type| {
+                            semantic_model.type_check(&ty, expr_type).is_ok()
+                        }) =>
+                    {
                         return Some(());
                     }
                     _ => {}

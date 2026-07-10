@@ -396,4 +396,123 @@ result = {
         let expected = ws.ty("string[]");
         assert_eq!(ty, expected);
     }
+
+    #[test]
+    fn test_colon_call_infers_generic_self_and_callback_return() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Promise<T>
+            local M = {}
+
+            ---@alias Unwrap<T> T extends Promise<infer U> and U or T
+
+            ---@generic T
+            ---@return Promise<T>
+            function M.new() return M end
+
+            ---@generic U
+            ---@param on_resolved fun(value: T): U
+            ---@return Promise<Unwrap<U>>
+            function M:then1(on_resolved) return self end
+
+            p1 = M.new():then1(function()
+                return {} ---@as Promise<integer>
+            end)
+
+        "#,
+        );
+
+        let expected = ws.ty("Promise<integer>");
+        assert_eq!(ws.expr_ty("p1"), expected);
+        // assert_eq!(ws.expr_ty("p2"), expected);
+    }
+
+    #[test]
+    fn test_simple_alias_param_still_infers_function_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Id<T> T
+
+            ---@generic T
+            ---@param value Id<T>
+            ---@return T
+            function id(value)
+            end
+
+            result = id("value")
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_function_and_alias_generic_same_name_do_not_collide() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@alias Id<U> U
+
+            ---@generic U
+            ---@param value Id<U>
+            ---@return U
+            function id(value)
+            end
+
+            result = id("value")
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("string"));
+    }
+
+    #[test]
+    fn test_nested_callback_return_alias_waits_for_function_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@class Promise<T>
+            local M = {}
+
+            ---@alias Unwrap<T> T extends Promise<infer U> and U or T
+            ---@alias Awaited<T> Unwrap<T>
+
+            ---@generic T
+            ---@return Promise<T>
+            function M.new() return M end
+
+            ---@generic U
+            ---@param on_resolved fun(value: T): U
+            ---@return Promise<Awaited<U>>
+            function M:then_nested(on_resolved) return self end
+
+            result = M.new():then_nested(function()
+                return {} ---@as Promise<integer>
+            end)
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("Promise<integer>"));
+    }
+
+    #[test]
+    fn test_nested_function_generic_shadows_outer_function_generic() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+            ---@generic T
+            ---@param value T
+            ---@return fun<T>(value: T): T
+            function make(value)
+            end
+
+            local fn = make("outer")
+            result = fn(1)
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("result"), ws.ty("integer"));
+    }
 }

@@ -2,7 +2,7 @@ use hashbrown::HashSet;
 use std::sync::Arc;
 
 use crate::{
-    DbIndex, LuaOperatorMetaMethod, LuaOperatorOwner, LuaTypeDeclId,
+    DbIndex, LuaOperatorMetaMethod, LuaOperatorOwner, LuaTypeDeclId, LuaUnionType,
     db_index::{LuaFunctionType, LuaType},
     semantic::{
         generic::{TypeSubstitutor, instantiate_type_generic},
@@ -165,4 +165,98 @@ fn push_call_operator_overload_group(
     if !overloads.is_empty() {
         groups.push(overloads);
     }
+}
+
+fn owner_has_call_operator(db: &DbIndex, owner: &LuaOperatorOwner) -> bool {
+    db.get_operator_index()
+        .get_operators(owner, LuaOperatorMetaMethod::Call)
+        .is_some_and(|ops| !ops.is_empty())
+}
+
+/// 如果类型可通过 `__call` 作为调用目标 (不含 signature/function 本身), 则返回 self.
+pub(crate) fn call_operator_self_type(db: &DbIndex, ty: &LuaType) -> Option<LuaType> {
+    let mut visiting_aliases = HashSet::new();
+    call_operator_self_type_inner(db, ty, &mut visiting_aliases)
+}
+
+fn call_operator_self_type_inner(
+    db: &DbIndex,
+    ty: &LuaType,
+    visiting_aliases: &mut HashSet<LuaTypeDeclId>,
+) -> Option<LuaType> {
+    match ty {
+        LuaType::Ref(type_id) | LuaType::Def(type_id) => {
+            call_operator_self_for_type_id(db, ty, type_id, None, visiting_aliases)
+        }
+        LuaType::Generic(generic) => {
+            let type_id = generic.get_base_type_id();
+            let substitutor = TypeSubstitutor::from_type_array(generic.get_params().to_vec());
+            call_operator_self_for_type_id(db, ty, &type_id, Some(&substitutor), visiting_aliases)
+        }
+        LuaType::Union(union) => {
+            let mut callable = Vec::new();
+            for member in union.into_vec() {
+                if let Some(projected) =
+                    call_operator_self_type_inner(db, &member, visiting_aliases)
+                {
+                    callable.push(projected);
+                }
+            }
+            match callable.len() {
+                0 => None,
+                1 => callable.pop(),
+                _ => Some(LuaType::Union(LuaUnionType::from_vec(callable).into())),
+            }
+        }
+        // intersection 任一成员可调用则整体可调用
+        LuaType::Intersection(intersection) => intersection
+            .get_types()
+            .iter()
+            .any(|member| call_operator_self_type_inner(db, member, visiting_aliases).is_some())
+            .then(|| ty.clone()),
+        LuaType::Instance(instance) => {
+            call_operator_self_type_inner(db, instance.get_base(), visiting_aliases)
+                .map(|_| ty.clone())
+        }
+        LuaType::TableConst(table) => {
+            // setmetatable 产生的 __call 挂在 metatable owner 上.
+            db.get_metatable_index()
+                .get(table)
+                .is_some_and(|meta_table| {
+                    owner_has_call_operator(db, &LuaOperatorOwner::Table(meta_table.clone()))
+                })
+                .then(|| ty.clone())
+        }
+        _ => None,
+    }
+}
+
+/// alias 的可调用性来自 origin, self 也按 origin 的可调用部分解析; 非 alias 则看自身是否挂了 __call.
+fn call_operator_self_for_type_id(
+    db: &DbIndex,
+    ty: &LuaType,
+    type_id: &LuaTypeDeclId,
+    substitutor: Option<&TypeSubstitutor>,
+    visiting_aliases: &mut HashSet<LuaTypeDeclId>,
+) -> Option<LuaType> {
+    if !visiting_aliases.insert(type_id.clone()) {
+        return None;
+    }
+    let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
+        visiting_aliases.remove(type_id);
+        return None;
+    };
+
+    if let Some(origin_type) = type_decl.get_alias_origin(db, substitutor)
+        && let Some(projected) = call_operator_self_type_inner(db, &origin_type, visiting_aliases)
+    {
+        visiting_aliases.remove(type_id);
+        return Some(projected);
+    }
+
+    let has_call = !type_decl.is_alias()
+        && !type_decl.is_enum()
+        && owner_has_call_operator(db, &type_id.clone().into());
+    visiting_aliases.remove(type_id);
+    has_call.then(|| ty.clone())
 }

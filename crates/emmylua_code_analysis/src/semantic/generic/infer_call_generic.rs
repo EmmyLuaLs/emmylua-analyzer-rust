@@ -1,11 +1,11 @@
-use emmylua_parser::{LuaAstNode, LuaDocTypeList};
-use emmylua_parser::{LuaCallExpr, LuaExpr};
+use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaDocTypeList, LuaExpr, LuaIndexExpr};
 use hashbrown::HashSet;
 use std::{ops::Deref, sync::Arc};
 
 use crate::semantic::infer::{InferResult, infer_expr_list_types};
 use crate::{
-    DocTypeInferContext, FileId, GenericTplId, LuaFunctionType, LuaGenericType, LuaTypeNode,
+    DocTypeInferContext, FileId, GenericTplId, LuaFunctionType, LuaGenericType, LuaMemberId,
+    LuaTypeNode,
     db_index::{DbIndex, LuaType},
     infer_doc_type,
     semantic::{
@@ -19,11 +19,14 @@ use crate::{
         },
         infer::InferFailReason,
         infer_expr,
-        overload_resolve::{callable_accepts_args, resolve_signature_by_args},
+        member::find_member_origin_owner,
+        overload_resolve::{
+            call_operator_self_type, callable_accepts_args, resolve_signature_by_args,
+        },
     },
 };
 use crate::{
-    LuaMemberOwner, LuaSemanticDeclId, LuaTypeOwner, SemanticDeclLevel, TypeVisitTrait,
+    LuaMemberOwner, LuaSemanticDeclId, SemanticDeclLevel, TypeVisitTrait,
     collect_callable_overload_groups, infer_node_semantic_decl,
     tpl_pattern_match_args_skip_unknown,
 };
@@ -87,12 +90,9 @@ pub fn build_call_generic_substitutor(
         }
     }
 
-    let self_type = if func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer)) {
-        infer_self_type(db, cache, call_expr, &substitutor)
-    } else {
-        None
-    };
-    if let Some(self_type) = self_type {
+    if func.any_nested_type(|ty| matches!(ty, LuaType::SelfInfer))
+        && let Some(self_type) = instantiate_call_self_type(db, cache, call_expr, &substitutor)
+    {
         substitutor.add_self_type(self_type);
     }
 
@@ -436,8 +436,12 @@ fn infer_generic_types_from_call(
         (false, true) => {
             if let Some(self_param) = func_params.first().cloned()
                 && self_param.contains_tpl_node()
-                && let Some(self_type) =
-                    infer_self_type(context.db, context.cache, call_expr, context.substitutor)
+                && let Some(self_type) = instantiate_call_self_type(
+                    context.db,
+                    context.cache,
+                    call_expr,
+                    context.substitutor,
+                )
             {
                 // 点定义被冒号调用时, 隐式 self 仍然会传给第一个参数.
                 tpl_pattern_match(context, &self_param, &self_type)?;
@@ -535,13 +539,92 @@ fn infer_generic_types_from_call(
     Ok(())
 }
 
-pub(crate) fn infer_self_type(
+/// 解析调用点 self 的实际类型 (不做泛型实参展开).
+pub(crate) fn resolve_call_self_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    call_expr: &LuaCallExpr,
+) -> Option<LuaType> {
+    match call_expr.get_prefix_expr()? {
+        LuaExpr::IndexExpr(index) => {
+            // 点调用可调用成员时 self 是 callee (例如 Mod.Factory());
+            // 冒号调用则隐式 self 仍是 receiver (例如 owner:run()).
+            if !call_expr.is_colon_call()
+                && let Ok(callee_ty) = infer_expr(db, cache, LuaExpr::IndexExpr(index.clone()))
+                && let Some(self_ty) = call_operator_self_type(db, &callee_ty)
+            {
+                return Some(self_ty);
+            }
+
+            // 成员赋值链上的定义点 prefix (例如 A.foo = B.foo)
+            if let Some(LuaSemanticDeclId::Member(member_id)) = infer_node_semantic_decl(
+                db,
+                cache,
+                index.syntax().clone(),
+                SemanticDeclLevel::default(),
+            ) && let Some(LuaSemanticDeclId::Member(origin_id)) =
+                find_member_origin_owner(db, cache, member_id)
+                && let Some(ty) = infer_member_index_prefix_type(db, cache, origin_id)
+            {
+                return Some(ty);
+            }
+
+            let self_expr = index.get_prefix_expr()?;
+            Some(infer_expr(db, cache, self_expr).unwrap_or(LuaType::SelfInfer))
+        }
+        LuaExpr::NameExpr(name) => {
+            if let Ok(name_ty) = infer_expr(db, cache, LuaExpr::NameExpr(name.clone()))
+                && let Some(self_ty) = call_operator_self_type(db, &name_ty)
+            {
+                return Some(self_ty);
+            }
+
+            let LuaSemanticDeclId::Member(member_id) = infer_node_semantic_decl(
+                db,
+                cache,
+                name.syntax().clone(),
+                SemanticDeclLevel::default(),
+            )?
+            else {
+                return None;
+            };
+
+            if let Some(LuaSemanticDeclId::Member(origin_id)) =
+                find_member_origin_owner(db, cache, member_id)
+                && let Some(ty) = infer_member_index_prefix_type(db, cache, origin_id)
+            {
+                return Some(ty);
+            }
+
+            if let Some(LuaMemberOwner::Type(id)) =
+                db.get_member_index().get_current_owner(&member_id)
+            {
+                return Some(LuaType::Ref(id.clone()));
+            }
+
+            None
+        }
+        _ => None,
+    }
+}
+
+/// 解析并实例化 self
+pub(crate) fn instantiate_call_self_type(
     db: &DbIndex,
     cache: &mut LuaInferCache,
     call_expr: &LuaCallExpr,
     call_substitutor: &TypeSubstitutor,
 ) -> Option<LuaType> {
-    let build_self_type = |self_type: &LuaType| match self_type {
+    let raw = resolve_call_self_type(db, cache, call_expr)?;
+    Some(expand_self_generic_params(db, &raw, call_substitutor))
+}
+
+fn expand_self_generic_params(
+    db: &DbIndex,
+    self_type: &LuaType,
+    call_substitutor: &TypeSubstitutor,
+) -> LuaType {
+    match self_type {
         LuaType::Def(id) | LuaType::Ref(id) => match db.get_type_index().get_generic_params(id) {
             Some(generic) => {
                 let mut params = Vec::with_capacity(generic.len());
@@ -576,50 +659,22 @@ pub(crate) fn infer_self_type(
             None => self_type.clone(),
         },
         _ => self_type.clone(),
-    };
-
-    let prefix_expr = call_expr.get_prefix_expr()?;
-    match prefix_expr {
-        LuaExpr::IndexExpr(index) => {
-            let self_expr = index.get_prefix_expr()?;
-            let self_type = infer_expr(db, cache, self_expr).ok()?;
-            let self_type = build_self_type(&self_type);
-            return Some(self_type);
-        }
-        LuaExpr::NameExpr(name) => {
-            let semantic_decl_id = infer_node_semantic_decl(
-                db,
-                cache,
-                name.syntax().clone(),
-                SemanticDeclLevel::default(),
-            )?;
-            match semantic_decl_id {
-                LuaSemanticDeclId::Member(member_id) => {
-                    let owner = db.get_member_index().get_current_owner(&member_id)?;
-                    if let LuaMemberOwner::Type(id) = owner {
-                        let typ = LuaType::Ref(id.clone());
-                        let self_type = build_self_type(&typ);
-                        return Some(self_type);
-                    }
-                    return None;
-                }
-                LuaSemanticDeclId::LuaDecl(decl_id) => {
-                    let typ = db
-                        .get_type_index()
-                        .get_type_cache(&LuaTypeOwner::Decl(decl_id))
-                        .map(|cache| cache.as_type())
-                        .unwrap_or(&LuaType::Unknown)
-                        .clone();
-                    let self_type = build_self_type(&typ);
-                    return Some(self_type);
-                }
-                _ => return None,
-            }
-        }
-        _ => {}
     }
+}
 
-    None
+fn infer_member_index_prefix_type(
+    db: &DbIndex,
+    cache: &mut LuaInferCache,
+    member_id: LuaMemberId,
+) -> Option<LuaType> {
+    let root = db
+        .get_vfs()
+        .get_syntax_tree(&member_id.file_id)?
+        .get_red_root();
+    let cur_node = member_id.get_syntax_id().to_node_from_root(&root)?;
+    let index_expr = LuaIndexExpr::cast(cur_node)?;
+    let prefix_expr = index_expr.get_prefix_expr()?;
+    Some(infer_expr(db, cache, prefix_expr).unwrap_or(LuaType::SelfInfer))
 }
 
 fn check_expr_can_later_infer_with_doc_func(

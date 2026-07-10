@@ -478,7 +478,6 @@ fn instantiate_generic_type(
     generic: &LuaGenericType,
 ) -> LuaType {
     let generic_params = generic.get_params();
-    let new_params = instantiate_types(context, generic_params.iter());
 
     let base = generic.get_base_type();
     let type_decl_id = if let LuaType::Ref(id) = base {
@@ -487,10 +486,32 @@ fn instantiate_generic_type(
         return LuaType::Unknown;
     };
 
+    // todo: 我们应该建立 scope 以解决这个问题, 但暂时没想好怎么处理 owner, 所以先暂时这样.
+    // 只有当前 substitutor 能消费参数里的模板时, 才递归实例化泛型实参.
+    // 否则像 `Promise<Unwrap<U>>` 这样的嵌套 alias 会在 U 尚未推导完成时被过早展开.
+    let should_instantiate_params = generic_params.iter().any(|param| {
+        param.any_type(|ty| match ty {
+            LuaType::TplRef(tpl) => context.substitutor.get(tpl.get_tpl_id()).is_some(),
+            LuaType::StrTplRef(str_tpl) => context.substitutor.get(str_tpl.get_tpl_id()).is_some(),
+            LuaType::SelfInfer => context.substitutor.get_self_type().is_some(),
+            _ => false,
+        })
+    });
+    let new_params = if should_instantiate_params {
+        instantiate_types(context, generic_params.iter())
+    } else {
+        generic_params.to_vec()
+    };
+
     if !context.substitutor.check_recursion(&type_decl_id)
         && let Some(type_decl) = context.db.get_type_index().get_type_decl(&type_decl_id)
         && type_decl.is_alias()
     {
+        // 参数已经被本轮实例化过但仍有模板残留时, 保留 alias 形态等待后续推导补齐.
+        if should_instantiate_params && new_params.iter().any(LuaTypeNode::contains_tpl_node) {
+            return LuaType::Generic(LuaGenericType::new(type_decl_id, new_params).into());
+        }
+
         let new_substitutor = TypeSubstitutor::from_alias(new_params.clone(), type_decl_id.clone());
         if let Some(origin) = type_decl.get_alias_origin(context.db, Some(&new_substitutor)) {
             return origin;

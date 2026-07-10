@@ -3269,6 +3269,14 @@ Syntax(Chunk)@0..110
     }
 
     #[test]
+    fn test_mapped_type_omits_trailing_semicolon_before_close_brace() {
+        let code = r#"---@alias Copy<T> { [K in keyof T]: T[K] }"#;
+        let tree = LuaParser::parse(code, ParserConfig::default());
+
+        assert_eq!(tree.get_errors(), &[]);
+    }
+
+    #[test]
     fn test_alias_conditional_infer_dots() {
         let code = r#"
         ---@alias ConstructorParameters<T> T extends new (fun(...: infer P): any) and P or never

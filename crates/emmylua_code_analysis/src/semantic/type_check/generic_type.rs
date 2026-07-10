@@ -18,6 +18,31 @@ pub fn check_generic_type_compact(
     check_guard: TypeCheckGuard,
 ) -> TypeCheckResult {
     if let Some(alias_origin) = instantiate_generic_alias_origin(context.db, source_generic) {
+        // Generic alias 期望类型需要接受实际 union 的每个分支.
+        if let LuaType::Union(compact_union) = compact_type {
+            for compact_sub_type in compact_union.into_vec() {
+                check_generic_type_compact(
+                    context,
+                    source_generic,
+                    &compact_sub_type,
+                    check_guard.next_level()?,
+                )?;
+            }
+            return Ok(());
+        }
+
+        // 递归 generic alias 的直接成员已经属于 alias 本身, 提前通过避免继续展开自引用.
+        let origin_contains_compact = match &alias_origin {
+            LuaType::Union(origin_union) => origin_union
+                .into_vec()
+                .iter()
+                .any(|origin_sub_type| origin_sub_type == compact_type),
+            _ => alias_origin == *compact_type,
+        };
+        if origin_contains_compact {
+            return Ok(());
+        }
+
         return check_general_type_compact(
             context,
             &alias_origin,

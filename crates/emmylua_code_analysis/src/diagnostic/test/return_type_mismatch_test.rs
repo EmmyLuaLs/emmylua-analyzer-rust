@@ -838,4 +838,30 @@ mod tests {
         "#
         ));
     }
+
+    #[test]
+    fn test_recursive_alias_field_return_before_class() {
+        let mut ws = VirtualWorkspace::new();
+
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::ReturnTypeMismatch,
+            r#"
+            ---@alias Recursive string | (Recursive[])
+
+            ---@class Container
+            ---@field recurse? Recursive
+
+            local A = {}
+
+            ---@param container? Container
+            ---@return Recursive
+            function A.return_recurse(container)
+                if container and container.recurse then
+                    return container.recurse
+                end
+                return A.return_recurse(container)
+            end
+            "#
+        ));
+    }
 }

@@ -17,7 +17,7 @@ use emmylua_parser::{
 };
 use infer_binary::infer_binary_expr;
 use infer_call::infer_call_expr;
-pub use infer_call::{infer_call_expr_func, infer_call_self_type};
+pub use infer_call::infer_call_expr_func;
 pub use infer_doc_type::{DocTypeInferContext, infer_doc_type};
 pub use infer_fail_reason::InferFailReason;
 pub use infer_index::infer_index_expr;

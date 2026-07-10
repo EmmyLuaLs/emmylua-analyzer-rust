@@ -641,7 +641,7 @@ impl ProviderVirtualWorkspace {
                 .map(|(file_name, content)| (file_name.as_str(), content.as_str()))
                 .collect(),
         );
-        let result = references(&self.analysis, file_id, position)
+        let result = references(&self.analysis, file_id, position, true)
             .ok_or("failed to get references")
             .or_fail()?;
         Self::assert_locations(result, expected)

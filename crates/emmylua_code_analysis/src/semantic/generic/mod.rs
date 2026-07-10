@@ -6,8 +6,8 @@ mod tpl_pattern;
 mod type_substitutor;
 mod widening;
 
-pub(crate) use infer_call_generic::infer_self_type;
 pub use infer_call_generic::{build_call_generic_substitutor, infer_call_generic};
+pub(crate) use infer_call_generic::{instantiate_call_self_type, resolve_call_self_type};
 pub use instantiate_type::get_keyof_members;
 pub use instantiate_type::*;
 pub use tpl_context::TplContext;

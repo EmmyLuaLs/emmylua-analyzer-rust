@@ -14,19 +14,37 @@ use emmylua_parser::{
 };
 use lsp_types::Location;
 
-#[derive(Default)]
 struct ReferenceSearchContext {
     visited_module_exports: HashSet<FileId>,
     visited_semantic_ids: HashSet<LuaSemanticDeclId>,
+    include_declaration: bool,
+}
+
+impl ReferenceSearchContext {
+    fn new(include_declaration: bool) -> Self {
+        Self {
+            visited_module_exports: HashSet::new(),
+            visited_semantic_ids: HashSet::new(),
+            include_declaration,
+        }
+    }
 }
 
 pub fn search_references(
     semantic_model: &SemanticModel,
     compilation: &LuaCompilation,
     token: LuaSyntaxToken,
+    include_declaration: bool,
 ) -> Option<Vec<Location>> {
     let mut result = Vec::new();
-    if search_label_references(semantic_model, token.clone(), &mut result).is_some() {
+    if search_label_references(
+        semantic_model,
+        token.clone(),
+        include_declaration,
+        &mut result,
+    )
+    .is_some()
+    {
         return Some(result);
     }
 
@@ -40,15 +58,26 @@ pub fn search_references(
                     compilation,
                     decl_id,
                     token,
+                    include_declaration,
                     &mut result,
                 );
             }
             LuaSemanticDeclId::Member(member_id) => {
-                let _ =
-                    search_member_references(semantic_model, compilation, member_id, &mut result);
+                let _ = search_member_references(
+                    semantic_model,
+                    compilation,
+                    member_id,
+                    include_declaration,
+                    &mut result,
+                );
             }
             LuaSemanticDeclId::TypeDecl(type_decl_id) => {
-                let _ = search_type_decl_references(semantic_model, type_decl_id, &mut result);
+                let _ = search_type_decl_references(
+                    semantic_model,
+                    type_decl_id,
+                    include_declaration,
+                    &mut result,
+                );
             }
             _ => {}
         }
@@ -68,6 +97,7 @@ pub fn search_references(
 fn search_label_references(
     semantic_model: &SemanticModel,
     token: LuaSyntaxToken,
+    include_declaration: bool,
     result: &mut Vec<Location>,
 ) -> Option<()> {
     let name_token = LuaNameToken::cast(token.clone())?;
@@ -78,12 +108,23 @@ fn search_label_references(
 
     let closure_id = LuaClosureId::from_node(&parent);
     let label_name = name_token.get_name_text();
-    let ranges = semantic_model
-        .get_db()
-        .get_reference_index()
-        .get_label_references(&semantic_model.get_file_id(), closure_id, label_name)?;
+    let reference_index = semantic_model.get_db().get_reference_index();
+    let ranges = reference_index.get_label_references(
+        &semantic_model.get_file_id(),
+        closure_id,
+        label_name,
+    )?;
+    let declaration = if include_declaration {
+        None
+    } else {
+        reference_index.get_label_definition(&semantic_model.get_file_id(), closure_id, label_name)
+    };
     let document = semantic_model.get_document();
     for range in ranges {
+        if declaration == Some(range) {
+            continue;
+        }
+
         let location = document.to_lsp_location(range)?;
         result.push(location);
     }
@@ -96,9 +137,10 @@ pub fn search_decl_references_with_token(
     compilation: &LuaCompilation,
     decl_id: LuaDeclId,
     token: LuaSyntaxToken,
+    include_declaration: bool,
     result: &mut Vec<Location>,
 ) -> Option<()> {
-    let mut ctx = ReferenceSearchContext::default();
+    let mut ctx = ReferenceSearchContext::new(include_declaration);
     let mut semantic_cache = HashMap::new();
     let previous_result = result.len();
     let ret = search_semantic_references_with_ctx(
@@ -136,7 +178,7 @@ pub fn search_decl_references(
     decl_id: LuaDeclId,
     result: &mut Vec<Location>,
 ) -> Option<()> {
-    let mut ctx = ReferenceSearchContext::default();
+    let mut ctx = ReferenceSearchContext::new(true);
     let mut semantic_cache = HashMap::new();
     search_semantic_references_with_ctx(
         &mut ctx,
@@ -166,8 +208,9 @@ fn search_decl_references_with_ctx<'a>(
             .get_reference_index()
             .get_decl_references(&decl_id.file_id, &decl_id)?;
         let document = semantic_model.get_document();
-        // 加入自己
-        if let Some(location) = document.to_lsp_location(decl.get_range()) {
+        if ctx.include_declaration
+            && let Some(location) = document.to_lsp_location(decl.get_range())
+        {
             result.push(location);
         }
         let typ = semantic_model.get_type(decl.get_id().into());
@@ -181,6 +224,10 @@ fn search_decl_references_with_ctx<'a>(
         );
 
         for decl_ref in &decl_refs.cells {
+            if !ctx.include_declaration && decl_ref.range == decl.get_range() {
+                continue;
+            }
+
             let location = document.to_lsp_location(decl_ref.range)?;
             result.push(location);
             if should_follow_value_alias {
@@ -206,6 +253,13 @@ fn search_decl_references_with_ctx<'a>(
             .get_reference_index()
             .get_global_references(name)?;
         for in_filed_syntax_id in global_references {
+            if !ctx.include_declaration
+                && in_filed_syntax_id.file_id == decl.get_file_id()
+                && in_filed_syntax_id.value.get_range() == decl.get_range()
+            {
+                continue;
+            }
+
             let document = semantic_model.get_document_by_file_id(in_filed_syntax_id.file_id)?;
             let location = document.to_lsp_location(in_filed_syntax_id.value.get_range())?;
             result.push(location);
@@ -219,9 +273,10 @@ pub fn search_member_references(
     _semantic_model: &SemanticModel,
     compilation: &LuaCompilation,
     member_id: LuaMemberId,
+    include_declaration: bool,
     result: &mut Vec<Location>,
 ) -> Option<()> {
-    let mut ctx = ReferenceSearchContext::default();
+    let mut ctx = ReferenceSearchContext::new(include_declaration);
     let mut semantic_cache = HashMap::new();
     search_semantic_references_with_ctx(
         &mut ctx,
@@ -264,6 +319,13 @@ fn search_member_references_with_ctx<'a>(
         ) {
             let document = reference_semantic_model.get_document();
             let range = in_filed_syntax_id.value.get_range();
+            if !ctx.include_declaration
+                && in_filed_syntax_id.file_id == member.get_file_id()
+                && range == member.get_range()
+            {
+                continue;
+            }
+
             let location = document.to_lsp_location(range)?;
             result.push(location);
             let _ = search_member_secondary_references(
@@ -376,9 +438,11 @@ fn search_member_secondary_references(
             let var = vars.get(idx)?;
             let decl_id = LuaDeclId::new(semantic_model.get_file_id(), var.get_position());
             enqueue_semantic_id(ctx, worklist, LuaSemanticDeclId::LuaDecl(decl_id));
-            let document = semantic_model.get_document();
-            let range = document.to_lsp_location(var.get_range())?;
-            result.push(range);
+            if ctx.include_declaration {
+                let document = semantic_model.get_document();
+                let range = document.to_lsp_location(var.get_range())?;
+                result.push(range);
+            }
         }
         LuaAst::LuaLocalStat(local_stat) => {
             let local_names = local_stat.get_local_name_list().collect::<Vec<_>>();
@@ -387,9 +451,11 @@ fn search_member_secondary_references(
             let name = local_names.get(idx)?;
             let decl_id = LuaDeclId::new(semantic_model.get_file_id(), name.get_position());
             enqueue_semantic_id(ctx, worklist, LuaSemanticDeclId::LuaDecl(decl_id));
-            let document = semantic_model.get_document();
-            let range = document.to_lsp_location(name.get_range())?;
-            result.push(range);
+            if ctx.include_declaration {
+                let document = semantic_model.get_document();
+                let range = document.to_lsp_location(name.get_range())?;
+                result.push(range);
+            }
         }
         _ => {}
     }
@@ -452,14 +518,32 @@ fn fuzzy_search_references(
 fn search_type_decl_references(
     semantic_model: &SemanticModel,
     type_decl_id: LuaTypeDeclId,
+    include_declaration: bool,
     result: &mut Vec<Location>,
 ) -> Option<()> {
     let refs = semantic_model
         .get_db()
         .get_reference_index()
         .get_type_references(&type_decl_id)?;
+    let type_decl = if include_declaration {
+        None
+    } else {
+        semantic_model
+            .get_db()
+            .get_type_index()
+            .get_type_decl(&type_decl_id)
+    };
     let mut document_cache = HashMap::new();
     for in_filed_reference_range in refs {
+        if type_decl.is_some_and(|type_decl| {
+            type_decl.get_locations().iter().any(|location| {
+                location.file_id == in_filed_reference_range.file_id
+                    && location.range == in_filed_reference_range.value
+            })
+        }) {
+            continue;
+        }
+
         let document = if let Some(document) = document_cache.get(&in_filed_reference_range.file_id)
         {
             document
@@ -651,52 +735,6 @@ fn find_require_call_binding_semantic(
     }
 
     None
-}
-
-#[allow(unused)]
-fn filter_duplicate_and_covered_locations(locations: Vec<Location>) -> Vec<Location> {
-    if locations.is_empty() {
-        return locations;
-    }
-    let mut sorted_locations = locations;
-    sorted_locations.sort_by(|a, b| {
-        a.uri
-            .to_string()
-            .cmp(&b.uri.to_string())
-            .then_with(|| a.range.start.line.cmp(&b.range.start.line))
-            .then_with(|| b.range.end.line.cmp(&a.range.end.line))
-    });
-
-    let mut result = Vec::new();
-    let mut seen_lines_by_uri: HashMap<String, HashSet<u32>> = HashMap::new();
-
-    for location in sorted_locations {
-        let uri_str = location.uri.to_string();
-        let seen_lines = seen_lines_by_uri.entry(uri_str).or_default();
-
-        let start_line = location.range.start.line;
-        let end_line = location.range.end.line;
-
-        let is_covered = (start_line..=end_line).any(|line| seen_lines.contains(&line));
-
-        if !is_covered {
-            for line in start_line..=end_line {
-                seen_lines.insert(line);
-            }
-            result.push(location);
-        }
-    }
-
-    // 最终按位置排序
-    result.sort_by(|a, b| {
-        a.uri
-            .to_string()
-            .cmp(&b.uri.to_string())
-            .then_with(|| a.range.start.line.cmp(&b.range.start.line))
-            .then_with(|| a.range.start.character.cmp(&b.range.start.character))
-    });
-
-    result
 }
 
 fn enqueue_semantic_id(

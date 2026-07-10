@@ -248,7 +248,11 @@ fn parse_mapped_type(p: &mut LuaDocParser, m: Marker) -> DocParseResult {
 
     parse_type(p)?;
 
-    expect_token(p, LuaTokenKind::TkSemicolon)?;
+    if p.current_token() == LuaTokenKind::TkSemicolon {
+        p.bump();
+    } else if p.current_token() != LuaTokenKind::TkRightBrace {
+        expect_token(p, LuaTokenKind::TkSemicolon)?;
+    }
     expect_token(p, LuaTokenKind::TkRightBrace)?;
 
     p.set_parser_state(LuaDocParserState::Normal);

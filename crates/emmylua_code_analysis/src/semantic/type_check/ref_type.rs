@@ -36,7 +36,32 @@ pub fn check_ref_type_compact(
         })?;
 
     if type_decl.is_alias() {
+        // Alias 期望类型需要接受实际 union 的每个分支.
+        if let LuaType::Union(compact_union) = compact_type {
+            for compact_sub_type in compact_union.into_vec() {
+                check_ref_type_compact(
+                    context,
+                    source_id,
+                    &compact_sub_type,
+                    check_guard.next_level()?,
+                )?;
+            }
+            return Ok(());
+        }
+
         if let Some(origin_type) = type_decl.get_alias_origin(context.db, None) {
+            // 递归 alias 的直接成员已经属于 alias 本身, 提前通过避免继续展开自引用.
+            let origin_contains_compact = match &origin_type {
+                LuaType::Union(origin_union) => origin_union
+                    .into_vec()
+                    .iter()
+                    .any(|origin_sub_type| origin_sub_type == compact_type),
+                _ => origin_type == *compact_type,
+            };
+            if origin_contains_compact {
+                return Ok(());
+            }
+
             let result = check_general_type_compact(
                 context,
                 &origin_type,

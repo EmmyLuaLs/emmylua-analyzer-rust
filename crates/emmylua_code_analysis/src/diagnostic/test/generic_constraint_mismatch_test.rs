@@ -532,6 +532,26 @@ mod test {
     }
 
     #[test]
+    fn test_colon_call_constraint_uses_receiver_when_member_is_callable() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::GenericConstraintMismatch,
+            r#"
+            ---@class Owner
+            ---@field run CallableMethod
+
+            ---@class CallableMethod
+            ---@overload fun<T: Owner>(owner: T)
+
+            ---@type Owner
+            local owner
+
+            owner:run()
+            "#,
+        ));
+    }
+
+    #[test]
     fn test_extend_string() {
         let mut ws = VirtualWorkspace::new();
         assert!(!ws.has_no_diagnostic(
