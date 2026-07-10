@@ -3231,6 +3231,17 @@ fn try_format_flat_binary_chain(
     let fill_parts =
         build_binary_chain_fill_parts(ctx, plan, &operands, &op_token.syntax().clone(), op);
     let packed = build_binary_chain_packed(ctx, plan, &operands, &op_token.syntax().clone(), op);
+    let one_per_line = if ctx.config.layout.prefer_binary_chain_operand_per_line {
+        Some(build_binary_chain_one_per_line(
+            ctx,
+            plan,
+            &operands,
+            &op_token.syntax().clone(),
+            op,
+        ))
+    } else {
+        None
+    };
 
     Some(choose_sequence_layout(
         ctx,
@@ -3239,6 +3250,7 @@ fn try_format_flat_binary_chain(
                 fill_parts,
             )])])]),
             packed: Some(packed),
+            one_per_line,
             ..Default::default()
         },
         SequenceLayoutPolicy {
@@ -3340,6 +3352,31 @@ fn build_binary_chain_packed(
         }
         tail.push(ir::hard_line());
         tail.extend(line);
+    }
+
+    vec![ir::group_break(vec![
+        ir::list(first_line),
+        ir::indent(tail),
+    ])]
+}
+
+fn build_binary_chain_one_per_line(
+    ctx: &FormatContext,
+    plan: &FormatPlan,
+    operands: &[LuaExpr],
+    op_token: &LuaSyntaxToken,
+    op: BinaryOperator,
+) -> Vec<DocIR> {
+    let first_line = format_expr(ctx, plan, &operands[0]);
+
+    let mut tail = Vec::new();
+    let mut previous = &operands[0];
+    for operand in operands.iter().skip(1) {
+        let (_space_before, segment) =
+            build_binary_chain_segment(ctx, plan, previous, operand, op_token, op);
+        tail.push(ir::hard_line());
+        tail.extend(segment);
+        previous = operand;
     }
 
     vec![ir::group_break(vec![

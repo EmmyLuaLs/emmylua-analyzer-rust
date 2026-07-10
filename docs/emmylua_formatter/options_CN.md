@@ -59,6 +59,7 @@ width = 4
 - `prefer_call_args_layout_from_source`：是否优先保留显式多行调用参数列表的源码排版目标
 - `prefer_table_layout_from_source`：是否优先保留显式多行纯数组 table 的源码排版目标
 - `prefer_chain_break_on_statement_tail`：是否优先把语句尾部的 fluent chain 断成多行
+- `prefer_binary_chain_operand_per_line`：为同一运算符的多元二元表达式链（3 个及以上操作数，例如一串 `and`/`or` 条件）提供“每个操作数一行”的候选布局
 
 默认值：
 
@@ -72,6 +73,7 @@ func_params_expand = "Auto"
 prefer_call_args_layout_from_source = false
 prefer_table_layout_from_source = false
 prefer_chain_break_on_statement_tail = false
+prefer_binary_chain_operand_per_line = false
 ```
 
 行为说明：
@@ -87,6 +89,8 @@ prefer_chain_break_on_statement_tail = false
 - `prefer_chain_break_on_statement_tail = true` 会影响语句中的最后一个直接表达式，包括独立调用语句，以及带 key 的 table field value；当它是一个足够长的 fluent chain 时，会优先改成链式断行。
 - 这里的 chain head 定义为：`root` 加上前导命名空间/字段访问，再加上第一个调用段；但如果 `root` 本身已经是一个调用，则 head 就停在这个调用本身。例如 `Builder:new():add():add()` 的 head 是 `Builder:new()`，`ConsoleFormattingBuilder():setColor():build()` 的 head 是 `ConsoleFormattingBuilder()`，`vim.api.nvim_set_keymap(...)` 的 head 是整个 `vim.api.nvim_set_keymap(...)`。
 - 这里的换行起点定义为：head 之后的第一个 continuation 段。也就是说，只有第一个调用之后仍然继续链下去的部分才会成为链式换行候选；纯命名空间限定调用不会因为这个选项被误判成 chain。
+- `prefer_binary_chain_operand_per_line = true` 适用于由同一个运算符连接的 3 个及以上操作数，最常见的场景是 `if`/`while` 条件头里的一串 `and`/`or`。它只是新增一个候选布局；格式化器仍然会在 flat、fill、packed、one-operand-per-line 之间挑选行数最少且不超过 `max_line_width` 的那个，所以短链条或者用 fill/packed 就已经能放下的链条不受影响。
+- 不开启这个选项时，如果整条链放不下，格式化器可能会转而在其中某个操作数内部断行（比如展开某个嵌套调用的参数列表），而不是在链自身的运算符处断行。开启后格式化器多了一个干净的备选方案：每个操作数单独一行，运算符放在每个续行的开头（`and`/`or` 在行首，与本项目现有二元表达式的前置运算符风格一致）。
 
 ## output
 

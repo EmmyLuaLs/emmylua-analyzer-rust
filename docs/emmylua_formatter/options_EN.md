@@ -59,6 +59,7 @@ width = 4
 - `prefer_call_args_layout_from_source`: prefer keeping the source layout goal for explicit multiline call argument lists
 - `prefer_table_layout_from_source`: prefer keeping the source layout goal for explicit multiline pure-array tables
 - `prefer_chain_break_on_statement_tail`: prefer multiline breaking for fluent chains in statement-tail position
+- `prefer_binary_chain_operand_per_line`: offer a one-operand-per-line layout candidate for same-operator binary chains (3 or more operands), such as a run of `and`/`or` conditions
 
 Default:
 
@@ -72,6 +73,7 @@ func_params_expand = "Auto"
 prefer_call_args_layout_from_source = false
 prefer_table_layout_from_source = false
 prefer_chain_break_on_statement_tail = false
+prefer_binary_chain_operand_per_line = false
 ```
 
 Behavior notes:
@@ -87,6 +89,8 @@ Behavior notes:
 - `prefer_chain_break_on_statement_tail = true` applies to the last direct expression in a statement, including standalone call statements, and also to keyed table-field values; when that expression is a long enough fluent chain, the formatter prefers chain-style breaking.
 - The chain head is defined as the `root`, plus any leading namespace or field accesses, plus the first call segment; however, if the `root` itself already ends in a call, the head stops at that call. For example, the head of `Builder:new():add():add()` is `Builder:new()`, the head of `ConsoleFormattingBuilder():setColor():build()` is `ConsoleFormattingBuilder()`, and the head of `vim.api.nvim_set_keymap(...)` is the whole `vim.api.nvim_set_keymap(...)` call.
 - The break start is defined as the first continuation segment after that head. In other words, only segments that continue after the first call are eligible for chain-style line breaking; a namespace-qualified terminal call is not treated as a fluent chain by this option.
+- `prefer_binary_chain_operand_per_line = true` applies to a run of 3 or more operands joined by the same operator, most commonly a chain of `and`/`or` conditions in an `if`/`while` header. It only adds a candidate layout; the formatter still picks whichever candidate (flat, fill, packed, or one-operand-per-line) produces the fewest lines without overflowing `max_line_width`, so short chains and chains that already fit with fill/packed are unaffected.
+- Without this option, a chain that does not fit can end up breaking inside one of its own operands (for example, expanding a nested call's argument list) instead of breaking at the chain's operators. Enabling it gives the formatter a clean alternative: one operand per line, with the operator leading each continuation line (`and`/`or` at the start of the line, matching this project's existing leading-operator style for binary expressions).
 
 ## output
 
