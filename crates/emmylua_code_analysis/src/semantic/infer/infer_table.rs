@@ -224,7 +224,7 @@ fn infer_table_type_by_callee(
     )?;
     let param_types = func_type.get_params();
     let mut call_arg_number = call_arg_list
-        .children::<LuaAst>()
+        .get_args()
         .enumerate()
         .find(|(_, arg)| arg.get_position() == table_expr.get_position())
         .ok_or(InferFailReason::None)?

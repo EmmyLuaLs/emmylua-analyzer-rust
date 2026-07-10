@@ -1,5 +1,8 @@
 #[cfg(test)]
 mod tests {
+    use lsp_types::NumberOrString;
+    use tokio_util::sync::CancellationToken;
+
     use crate::{DiagnosticCode, VirtualWorkspace};
 
     #[test]
@@ -354,5 +357,51 @@ foo({})
             }
         "#
         ));
+    }
+
+    #[test]
+    fn test_call_argument_comment_does_not_shift_missing_fields_range() {
+        let mut ws = VirtualWorkspace::new();
+        ws.analysis
+            .diagnostic
+            .enable_only(DiagnosticCode::MissingFields);
+        let file_id = ws.def(
+            r#"---@class A
+---@field a 1
+---@class B
+---@field b 2
+---@class C
+---@field c 3
+
+---@param a A
+---@param b B
+---@param c C
+local function test(a, b, c) end
+
+test(
+    -- What
+    {},
+    {},
+    {}
+)"#,
+        );
+        let code = Some(NumberOrString::String(
+            DiagnosticCode::MissingFields.get_name().to_string(),
+        ));
+        let diagnostics = ws
+            .analysis
+            .diagnose_file(file_id, CancellationToken::new())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == code)
+            .collect::<Vec<_>>();
+
+        assert_eq!(diagnostics.len(), 3, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].range.start.line, 14, "{diagnostics:#?}");
+        assert!(diagnostics[0].message.contains("`a`"), "{diagnostics:#?}");
+        assert_eq!(diagnostics[1].range.start.line, 15, "{diagnostics:#?}");
+        assert!(diagnostics[1].message.contains("`b`"), "{diagnostics:#?}");
+        assert_eq!(diagnostics[2].range.start.line, 16, "{diagnostics:#?}");
+        assert!(diagnostics[2].message.contains("`c`"), "{diagnostics:#?}");
     }
 }
