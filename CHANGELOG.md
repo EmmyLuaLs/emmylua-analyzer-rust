@@ -2,7 +2,7 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
-## [0.24.0] - Unreleased
+## [0.24.0] - 2026-7-10
 
 ### ✨ Added
 

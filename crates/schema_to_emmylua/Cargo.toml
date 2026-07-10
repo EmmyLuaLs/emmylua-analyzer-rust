@@ -1,6 +1,6 @@
 [package]
 name = "schema_to_emmylua"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["CppCXY"]
 description = "A tool to convert JSON schema to EmmyLua annotations."
