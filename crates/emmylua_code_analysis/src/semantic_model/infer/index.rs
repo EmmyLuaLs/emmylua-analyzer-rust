@@ -1,8 +1,6 @@
 //! 索引表达式推断 — `a.b`, `a["b"]`, `a:b()`
 
-use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult,
-};
+use emmylua_parser::{LuaAstNode, LuaIndexExpr, LuaIndexKey, LuaIndexMemberExpr, NumberResult};
 use smol_str::SmolStr;
 
 use crate::compilation::{SalsaDocVisibilityKindSummary, SalsaSummaryDatabase};
@@ -16,28 +14,13 @@ pub(super) fn infer_index_expr(infer: &InferQuery, index_expr: LuaIndexExpr) -> 
 
     let member_expr = LuaIndexMemberExpr::IndexExpr(index_expr);
 
-    // Salsa fast path: check if the member expression has a type annotation (e.g., ---@type integer[])
+    let db = infer.read_db();
+    if let Some(member_type_info) = db
+        .types()
+        .member_use(infer.file_id, member_expr.get_position())
     {
-        let db = infer.read_db();
-        let member_offset = member_expr.get_position();
-        if let Some(member_type_info) = db.types().member_use(infer.file_id, member_offset) {
-            if let Some(ty) = infer.resolve_member_decl_type(&db, &member_type_info) {
-                return Ok(ty);
-            }
-        }
-    }
-    // Fallback: try member key token position
-    let member_offset = member_expr.get_index_key().and_then(|k| match &k {
-        LuaIndexKey::Name(n) => Some(n.get_position()),
-        LuaIndexKey::String(s) => Some(s.get_position()),
-        _ => None,
-    });
-    if let Some(offset) = member_offset {
-        let db = infer.read_db();
-        if let Some(member_type_info) = db.types().member_use(infer.file_id, offset) {
-            if let Some(ty) = infer.resolve_member_decl_type(&db, &member_type_info) {
-                return Ok(ty);
-            }
+        if let Some(ty) = infer.resolve_member_type(&db, &member_type_info) {
+            return Ok(ty);
         }
     }
 

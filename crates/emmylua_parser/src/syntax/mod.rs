@@ -130,6 +130,10 @@ impl LuaSyntaxId {
         .find(|it| it.text_range() == self.range && it.kind() == self.kind)
     }
 
+    pub fn to_ast<A: LuaAstNode>(&self, root: &LuaChunk) -> Option<A> {
+        self.to_node_from_root(root.syntax()).and_then(A::cast)
+    }
+
     pub fn to_token(&self, tree: &LuaSyntaxTree) -> Option<LuaSyntaxToken> {
         let root = tree.get_red_root();
         if root.parent().is_some() {

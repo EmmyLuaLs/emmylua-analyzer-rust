@@ -24,10 +24,12 @@ mod unary;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use emmylua_parser::{
-    LuaAssignStat, LuaAstNode, LuaAstToken, LuaCallExpr, LuaChunk, LuaClosureExpr, LuaComment, LuaDocTagType, LuaExpr, LuaFuncStat, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaSyntaxKind, LuaTableField, NumberResult,
-};
 use emmylua_parser::LuaTableExpr;
+use emmylua_parser::{
+    LuaAssignStat, LuaAstNode, LuaAstToken, LuaCallExpr, LuaChunk, LuaClosureExpr, LuaComment,
+    LuaDocTagType, LuaExpr, LuaFuncStat, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken,
+    LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaSyntaxKind, LuaTableField, NumberResult,
+};
 use rowan::TextRange;
 use rowan::TextSize;
 use smol_str::SmolStr;
@@ -41,7 +43,9 @@ use crate::compilation::{
 use crate::semantic_model::SigQuery;
 use crate::semantic_model::type_check::check_type_compact;
 use crate::{
-    AsyncState, Emmyrc, FileId, LuaArrayLen, LuaArrayType, LuaDeclId, LuaFunctionType, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, SalsaDocTypeNodeKey, VariadicType,
+    AsyncState, Emmyrc, FileId, LuaArrayLen, LuaArrayType, LuaDeclId, LuaFunctionType,
+    LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, SalsaDocTypeNodeKey,
+    VariadicType,
 };
 
 use super::type_check::TypeCheckFailReason;
@@ -194,10 +198,7 @@ impl<'db> InferQuery<'db> {
     }
 
     /// 推断表应该符合的目标类型（如 `@type` 标注）。
-    pub fn infer_table_should_be(
-        &self,
-        table_expr: LuaTableExpr,
-    ) -> Option<LuaType> {
+    pub fn infer_table_should_be(&self, table_expr: LuaTableExpr) -> Option<LuaType> {
         let parent = table_expr.syntax().parent()?;
         let db = self.read_db();
 
@@ -320,9 +321,7 @@ impl<'db> InferQuery<'db> {
                             return Some(LuaType::Signature(sig_id));
                         }
                     };
-                    if let Some(parent_table) =
-                        table_field.get_parent::<LuaTableExpr>()
-                    {
+                    if let Some(parent_table) = table_field.get_parent::<LuaTableExpr>() {
                         if let Some(table_type) = self.infer_table_should_be(parent_table) {
                             if let Ok(member_type) =
                                 self.infer_member_type(&table_type, &member_key)
@@ -427,22 +426,21 @@ impl<'db> InferQuery<'db> {
         self.resolve_decl_type_depth(db, decl_type, 0)
     }
 
-    pub(super) fn resolve_member_decl_type(
+    pub(super) fn resolve_member_type(
         &self,
         db: &SalsaSummaryDatabase,
-        member_type_info: &crate::compilation::SalsaMemberTypeInfoSummary,
+        info: &crate::compilation::SalsaMemberTypeInfoSummary,
     ) -> Option<LuaType> {
-        for candidate in &member_type_info.candidates {
+        for candidate in &info.candidates {
             if !candidate.named_type_names.is_empty() {
                 return Some(self.resolve_named_types(db, &candidate.named_type_names));
             }
-            if !candidate.explicit_type_offsets.is_empty() {
-                let key = candidate.explicit_type_offsets.first()?;
+            if let Some(key) = candidate.explicit_type_offsets.first() {
                 if let Some(resolved) = db.doc().resolved_type_by_key(self.file_id, *key) {
-                    return lowered_node_to_lua_type_with_db(db, self.file_id, &resolved.lowered);
+                    return lowered_with_db(db, self.file_id, &resolved.lowered);
                 }
                 if let Some(lowered) = db.doc().lowered_type_by_key(self.file_id, *key) {
-                    return lowered_node_to_lua_type_with_db(db, self.file_id, &lowered);
+                    return lowered_with_db(db, self.file_id, &lowered);
                 }
             }
         }
@@ -793,16 +791,13 @@ impl<'db> InferQuery<'db> {
         };
 
         // 找到声明位点对应的 LuaLocalStat
-        let local = self
-            .root
-            .descendants::<LuaLocalStat>()
-            .find(|local| {
-                local.get_local_name_list().any(|n| {
-                    n.get_name_token()
-                        .map(|t| t.get_position() == decl_pos)
-                        .unwrap_or(false)
-                })
-            });
+        let local = self.root.descendants::<LuaLocalStat>().find(|local| {
+            local.get_local_name_list().any(|n| {
+                n.get_name_token()
+                    .map(|t| t.get_position() == decl_pos)
+                    .unwrap_or(false)
+            })
+        });
         let local = local?;
         let _local_pos = local.get_position();
         let local_pos = local.get_position();
@@ -829,10 +824,7 @@ impl<'db> InferQuery<'db> {
     }
 
     /// 从注释中提取第一个 @type 注解的类型。
-    fn extract_type_from_comment(
-        comment: &LuaComment,
-        infer: &InferQuery,
-    ) -> Option<LuaType> {
+    fn extract_type_from_comment(comment: &LuaComment, infer: &InferQuery) -> Option<LuaType> {
         for tag in comment.descendants::<LuaDocTagType>() {
             for doc_type in tag.get_type_list() {
                 let key = SalsaDocTypeNodeKey::from(doc_type.clone());
@@ -1168,55 +1160,23 @@ impl<'db> InferQuery<'db> {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 pub(super) fn lowered_node_to_lua_type(node: &SalsaDocTypeLoweredNode) -> Option<LuaType> {
-    match &node.kind {
-        SalsaDocTypeLoweredKind::Unknown => Some(LuaType::Any),
-        SalsaDocTypeLoweredKind::Name { name } => match name.as_str() {
-            "any" | "unknown" => Some(LuaType::Any),
-            "nil" => Some(LuaType::Nil),
-            "false" => Some(LuaType::BooleanConst(false)),
-            "true" => Some(LuaType::BooleanConst(true)),
-            "boolean" | "bool" => Some(LuaType::Boolean),
-            "string" => Some(LuaType::String),
-            "number" => Some(LuaType::Number),
-            "integer" | "int" => Some(LuaType::Integer),
-            "function" => Some(LuaType::Function),
-            "table" => Some(LuaType::Table),
-            "thread" => Some(LuaType::Thread),
-            "userdata" => Some(LuaType::Userdata),
-            _ => Some(LuaType::Ref(LuaTypeDeclId::global(name))),
-        },
-        SalsaDocTypeLoweredKind::Array { .. } => Some(LuaType::Array(
-            LuaArrayType::new(LuaType::Any, LuaArrayLen::None).into(),
-        )),
-        SalsaDocTypeLoweredKind::Variadic { .. } => {
-            Some(LuaType::Variadic(VariadicType::Base(LuaType::Any).into()))
-        }
-        SalsaDocTypeLoweredKind::Literal { text } => {
-            let s = text.as_str();
-            match s {
-                "nil" => Some(LuaType::Nil),
-                "true" => Some(LuaType::BooleanConst(true)),
-                "false" => Some(LuaType::BooleanConst(false)),
-                _ => {
-                    if let Ok(n) = s.parse::<i64>() {
-                        Some(LuaType::IntegerConst(n))
-                    } else if let Ok(f) = s.parse::<f64>() {
-                        Some(LuaType::FloatConst(f))
-                    } else {
-                        Some(LuaType::DocStringConst(SmolStr::new(s).into()))
-                    }
-                }
-            }
-        }
-        _ => None,
-    }
+    lowered_impl(node, |_| None)
 }
 
-/// Resolve a lowered type node with DB support, recursively resolving Array item types.
-pub(super) fn lowered_node_to_lua_type_with_db(
+pub(super) fn lowered_with_db(
     db: &SalsaSummaryDatabase,
     file_id: FileId,
     node: &SalsaDocTypeLoweredNode,
+) -> Option<LuaType> {
+    lowered_impl(node, |key| {
+        let lowered = db.doc().lowered_type_by_key(file_id, key)?;
+        lowered_with_db(db, file_id, &lowered)
+    })
+}
+
+fn lowered_impl(
+    node: &SalsaDocTypeLoweredNode,
+    resolve_ref: impl Fn(SalsaDocTypeNodeKey) -> Option<LuaType>,
 ) -> Option<LuaType> {
     match &node.kind {
         SalsaDocTypeLoweredKind::Unknown => Some(LuaType::Any),
@@ -1236,28 +1196,37 @@ pub(super) fn lowered_node_to_lua_type_with_db(
             _ => Some(LuaType::Ref(LuaTypeDeclId::global(name))),
         },
         SalsaDocTypeLoweredKind::Array { item_type } => {
-            let item_type = resolve_doc_type_ref(db, file_id, item_type).unwrap_or(LuaType::Any);
+            let item = match item_type {
+                SalsaDocTypeRef::Node(key) => resolve_ref(*key).unwrap_or(LuaType::Any),
+                _ => LuaType::Any,
+            };
             Some(LuaType::Array(
-                LuaArrayType::new(item_type, LuaArrayLen::None).into(),
+                LuaArrayType::new(item, LuaArrayLen::None).into(),
             ))
         }
         SalsaDocTypeLoweredKind::Variadic { item_type } => {
-            let item_type = resolve_doc_type_ref(db, file_id, item_type).unwrap_or(LuaType::Any);
-            Some(LuaType::Variadic(VariadicType::Base(item_type).into()))
+            let item = match item_type {
+                SalsaDocTypeRef::Node(key) => resolve_ref(*key).unwrap_or(LuaType::Any),
+                _ => LuaType::Any,
+            };
+            Some(LuaType::Variadic(VariadicType::Base(item).into()))
         }
-        _ => lowered_node_to_lua_type(node),
-    }
-}
-
-fn resolve_doc_type_ref(
-    db: &SalsaSummaryDatabase,
-    file_id: FileId,
-    ty_ref: &SalsaDocTypeRef,
-) -> Option<LuaType> {
-    match ty_ref {
-        SalsaDocTypeRef::Node(key) => {
-            let lowered = db.doc().lowered_type_by_key(file_id, *key)?;
-            lowered_node_to_lua_type_with_db(db, file_id, &lowered)
+        SalsaDocTypeLoweredKind::Literal { text } => {
+            let s = text.as_str();
+            match s {
+                "nil" => Some(LuaType::Nil),
+                "true" => Some(LuaType::BooleanConst(true)),
+                "false" => Some(LuaType::BooleanConst(false)),
+                _ => {
+                    if let Ok(n) = s.parse::<i64>() {
+                        Some(LuaType::IntegerConst(n))
+                    } else if let Ok(f) = s.parse::<f64>() {
+                        Some(LuaType::FloatConst(f))
+                    } else {
+                        Some(LuaType::DocStringConst(SmolStr::new(s).into()))
+                    }
+                }
+            }
         }
         _ => None,
     }
