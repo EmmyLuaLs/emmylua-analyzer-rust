@@ -1,12 +1,14 @@
 use std::{ops::Deref, sync::Arc};
 
-use emmylua_parser::{LuaAstNode, LuaAstToken, LuaLocalName};
+use emmylua_parser::{
+    LuaAssignStat, LuaAstNode, LuaAstToken, LuaLocalName, LuaLocalStat, LuaNameExpr,
+};
 use lsp_types::NumberOrString;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     DbIndex, DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, RenderLevel,
-    VirtualUrlGenerator, check_type_compact, humanize_type,
+    VirtualUrlGenerator, check_type_compact, humanize_type, semantic_model::SemanticModel,
 };
 
 /// A virtual workspace for testing.
@@ -125,6 +127,12 @@ impl VirtualWorkspace {
     }
 
     pub fn expr_ty(&mut self, expr: &str) -> LuaType {
+        if is_simple_name_expr(expr)
+            && let Some(ty) = self.find_existing_name_type(expr)
+        {
+            return ty;
+        }
+
         let virtual_content = format!("local t = {}", expr);
         let file_id = self.def(&virtual_content);
         let local_name = self.get_node::<LuaLocalName>(file_id);
@@ -138,6 +146,91 @@ impl VirtualWorkspace {
             .get_semantic_info(token.syntax().clone().into())
             .expect("Semantic info must exist");
         info.typ
+    }
+
+    fn find_existing_name_type(&self, name: &str) -> Option<LuaType> {
+        let file_ids = self
+            .analysis
+            .compilation
+            .get_db()
+            .get_vfs()
+            .get_all_local_file_ids();
+
+        for file_id in file_ids.into_iter().rev() {
+            let tree = self
+                .analysis
+                .compilation
+                .get_db()
+                .get_vfs()
+                .get_syntax_tree(&file_id)?;
+            let root = tree.get_chunk_node();
+            let semantic_model = self.analysis.compilation.get_semantic_model(file_id)?;
+
+            for local_stat in root.descendants::<LuaLocalStat>() {
+                for (local_name, value_expr) in local_stat
+                    .get_local_name_list()
+                    .zip(local_stat.get_value_exprs())
+                {
+                    let token = local_name.get_name_token()?;
+                    if token.get_name_text() != name {
+                        continue;
+                    }
+
+                    let bound_info =
+                        semantic_model.get_semantic_info(token.syntax().clone().into())?;
+                    if !bound_info.typ.is_unknown() {
+                        return Some(bound_info.typ);
+                    }
+
+                    let info =
+                        semantic_model.get_semantic_info(value_expr.syntax().clone().into())?;
+                    if !info.typ.is_unknown() {
+                        return Some(info.typ);
+                    }
+                }
+            }
+
+            for assign_stat in root.descendants::<LuaAssignStat>() {
+                let (vars, exprs) = assign_stat.get_var_and_expr_list();
+                for (var_expr, value_expr) in vars.into_iter().zip(exprs) {
+                    let Some(name_expr) = LuaNameExpr::cast(var_expr.syntax().clone()) else {
+                        continue;
+                    };
+                    let Some(token) = name_expr.get_name_token() else {
+                        continue;
+                    };
+                    if token.get_name_text() != name {
+                        continue;
+                    }
+
+                    let bound_info =
+                        semantic_model.get_semantic_info(token.syntax().clone().into())?;
+                    if !bound_info.typ.is_unknown() {
+                        return Some(bound_info.typ);
+                    }
+
+                    let info =
+                        semantic_model.get_semantic_info(value_expr.syntax().clone().into())?;
+                    if !info.typ.is_unknown() {
+                        return Some(info.typ);
+                    }
+                }
+            }
+
+            for name_expr in root.descendants::<LuaNameExpr>() {
+                let token = name_expr.get_name_token()?;
+                if token.get_name_text() != name {
+                    continue;
+                }
+
+                let info = semantic_model.get_semantic_info(token.syntax().clone().into())?;
+                if !info.typ.is_unknown() {
+                    return Some(info.typ);
+                }
+            }
+        }
+
+        None
     }
 
     pub fn check_type(&self, source: &LuaType, compact_type: &LuaType) -> bool {
@@ -209,6 +302,24 @@ impl VirtualWorkspace {
     pub fn get_db_mut(&mut self) -> &mut DbIndex {
         (self.analysis.compilation.get_db_mut()) as _
     }
+
+    /// 获取新架构 SemanticModel（基于 salsa）。
+    pub fn get_semantic_model(&self, file_id: FileId) -> Option<SemanticModel<'_>> {
+        self.analysis.compilation.semantic_model(file_id)
+    }
+}
+
+fn is_simple_name_expr(expr: &str) -> bool {
+    let mut chars = expr.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+
+    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 #[cfg(test)]

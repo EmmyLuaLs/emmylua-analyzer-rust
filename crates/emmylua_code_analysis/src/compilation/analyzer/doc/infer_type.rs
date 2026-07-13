@@ -286,6 +286,12 @@ fn infer_buildin_or_ref_type(
 
             analyzer.add_type_reference(type_id.clone(), range);
 
+            if let Some(summary_type) =
+                infer_summary_named_type(analyzer, type_id.clone(), name, Vec::new())
+            {
+                return summary_type;
+            }
+
             // 如果该类型具有泛型定义, 优先用默认值补齐; 仍缺少必填参数时保持原有报错.
             if let Some(generic_params) = analyzer
                 .db
@@ -338,8 +344,9 @@ fn infer_special_table_type(
         parent.kind().into(),
         LuaSyntaxKind::DocTagAs | LuaSyntaxKind::DocTagType
     ) {
+        let file_id = analyzer.file_id;
         return Some(LuaType::TableConst(InFiled::new(
-            analyzer.file_id,
+            file_id,
             table_type.get_range(),
         )));
     }
@@ -358,18 +365,14 @@ fn infer_generic_type(
             return typ;
         }
 
+        let file_id = analyzer.file_id;
         let id = if let Some(name_type_decl) = analyzer.db.get_type_index().find_type_decl(
-            analyzer.file_id,
+            file_id,
             &name,
             Some(analyzer.workspace_id),
         ) {
             name_type_decl.get_id()
         } else {
-            analyzer.add_diagnostic(AnalyzeError::new(
-                DiagnosticCode::TypeNotFound,
-                &t!("Type '%{name}' not found", name = name),
-                generic_type.get_range(),
-            ));
             return LuaType::Unknown;
         };
 
@@ -383,12 +386,11 @@ fn infer_generic_type(
                 generic_params.push(param_type);
             }
         }
-        if let Some(name_type) = generic_type.get_name_type() {
-            analyzer.add_type_reference(id.clone(), name_type.get_range());
-        }
 
-        if !analyzer.options.complete_missing_generic_args {
-            return LuaType::Generic(LuaGenericType::new(id, generic_params).into());
+        if let Some(summary_type) =
+            infer_summary_named_type(analyzer, id.clone(), &name, generic_params.clone())
+        {
+            return summary_type;
         }
 
         let declared_generic_count = analyzer
@@ -413,9 +415,63 @@ fn infer_generic_type(
         if let Some(completed_args) = completion.completed_args {
             return LuaType::Generic(LuaGenericType::new(id, completed_args).into());
         }
+
+        return LuaType::Any;
     }
 
     LuaType::Unknown
+}
+
+fn infer_summary_named_type(
+    analyzer: &mut DocTypeAnalyzeContext<'_>,
+    type_id: LuaTypeDeclId,
+    name: &str,
+    mut generic_args: Vec<LuaType>,
+) -> Option<LuaType> {
+    let type_def = analyzer
+        .db
+        .get_summary_db()
+        .doc()
+        .type_def_by_name(analyzer.file_id, name)?;
+
+    if type_def.generic_params.is_empty() {
+        return Some(LuaType::Ref(type_id));
+    }
+
+    for param in type_def.generic_params.iter().skip(generic_args.len()) {
+        let default_type = infer_summary_doc_type_key(analyzer, param.default_type_offset?)?;
+        generic_args.push(default_type);
+    }
+
+    if generic_args.len() < type_def.generic_params.len() {
+        return None;
+    }
+
+    Some(LuaType::Generic(
+        LuaGenericType::new(type_id, generic_args).into(),
+    ))
+}
+
+fn infer_summary_doc_type_key(
+    analyzer: &mut DocTypeAnalyzeContext<'_>,
+    type_key: SalsaDocTypeNodeKey,
+) -> Option<LuaType> {
+    let resolved = analyzer
+        .db
+        .get_summary_db()
+        .doc()
+        .resolved_type_by_key(analyzer.file_id, type_key)?;
+    let syntax_tree = analyzer.db.get_vfs().get_syntax_tree(&analyzer.file_id)?;
+    let root = syntax_tree.get_red_root();
+    let doc_type = LuaDocType::cast(
+        resolved
+            .doc_type
+            .syntax_id
+            .to_lua_syntax_id()
+            .to_node_from_root(&root)?,
+    )?;
+
+    Some(infer_type(analyzer, doc_type))
 }
 
 fn infer_special_generic_type(

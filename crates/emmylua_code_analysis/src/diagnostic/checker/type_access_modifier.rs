@@ -1,111 +1,57 @@
-use std::collections::{BTreeSet, HashSet};
+//! Inconsistent type access modifier — pure salsa.
 
-use crate::{DiagnosticCode, LuaTypeFlag, SemanticModel, db_index::LuaTypeIdentifier};
+use std::collections::HashSet;
 
-use super::{Checker, DiagnosticContext};
+use crate::DiagnosticCode;
+use crate::compilation::SalsaDocVisibilityKindSummary;
+use crate::semantic_model::SemanticModel;
 
-pub struct InconsistentTypeAccessModifierChecker;
+use super::DiagnosticContext;
 
-impl Checker for InconsistentTypeAccessModifierChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::InconsistentTypeAccessModifier];
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let type_names = model.file_type_names();
+    let mut visited = HashSet::new();
 
-    fn check(context: &mut DiagnosticContext, _: &SemanticModel) {
-        let file_id = context.get_file_id();
-        let current_workspace_id = context.get_db().resolve_workspace_id(file_id);
-        let type_index = context.get_db().get_type_index();
-        let mut visited_type_names = HashSet::new();
-        let mut pending_diagnostics = Vec::new();
+    for name in &type_names {
+        if !visited.insert(name.clone()) {
+            continue;
+        }
+        let Some(entries) = model.type_def_entries(name) else {
+            continue;
+        };
 
-        for type_decl in type_index.get_file_type_decls(file_id) {
-            let type_name = type_decl.get_full_name();
-            if !visited_type_names.insert(type_name.to_string()) {
-                continue;
-            }
-            let visible_type_decls = type_index.get_visible_type_decls_by_full_name(
-                file_id,
-                type_name,
-                current_workspace_id,
-            );
-            let mut modifiers = BTreeSet::new();
-            let mut current_file_ranges = Vec::new();
+        let mut visibilities = HashSet::new();
+        for e in &entries {
+            let vis_str = match e.visibility {
+                SalsaDocVisibilityKindSummary::Public => "public",
+                SalsaDocVisibilityKindSummary::Private => "private",
+                SalsaDocVisibilityKindSummary::Protected => "protected",
+                SalsaDocVisibilityKindSummary::Package => "package",
+                SalsaDocVisibilityKindSummary::Internal => "internal",
+            };
+            visibilities.insert(vis_str);
+        }
 
-            for visible_type_decl in visible_type_decls {
-                modifiers.insert(TypeAccessModifier::from_type_identifier(
-                    visible_type_decl.get_id().get_id(),
-                ));
-
-                for location in visible_type_decl.get_locations() {
-                    modifiers.insert(TypeAccessModifier::from_location_flags(location.flag));
-
-                    if location.file_id == file_id {
-                        current_file_ranges.push(location.range);
-                    }
-                }
-            }
-
-            if current_file_ranges.is_empty() || modifiers.len() <= 1 {
-                continue;
-            }
-
-            let modifiers = modifiers
-                .iter()
-                .map(TypeAccessModifier::as_str)
-                .collect::<Vec<_>>()
-                .join(", ");
-            let message = t!(
+        if visibilities.len() > 1 {
+            let modifiers: Vec<&str> = visibilities.into_iter().collect();
+            let msg = t!(
                 "Type '%{name}' has inconsistent access modifiers: %{modifiers}.",
-                name = type_name,
-                modifiers = modifiers
+                name = name,
+                modifiers = modifiers.join(", ")
             )
             .to_string();
-
-            for range in current_file_ranges {
-                pending_diagnostics.push((range, message.clone()));
+            // Report on current file's entries
+            for e in &entries {
+                if e.file_id == model.get_file_id() {
+                    let range = rowan::TextRange::new(e.syntax_offset, e.syntax_offset);
+                    context.add_diagnostic(
+                        DiagnosticCode::InconsistentTypeAccessModifier,
+                        range,
+                        msg.clone(),
+                        None,
+                    );
+                }
             }
-        }
-
-        for (range, message) in pending_diagnostics {
-            context.add_diagnostic(
-                DiagnosticCode::InconsistentTypeAccessModifier,
-                range,
-                message,
-                None,
-            );
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum TypeAccessModifier {
-    Public,
-    Internal,
-    File,
-}
-
-impl TypeAccessModifier {
-    fn from_location_flags(flags: flagset::FlagSet<LuaTypeFlag>) -> Self {
-        if flags.contains(LuaTypeFlag::File) {
-            Self::File
-        } else if flags.contains(LuaTypeFlag::Internal) {
-            Self::Internal
-        } else {
-            Self::Public
-        }
-    }
-
-    fn from_type_identifier(type_identifier: &LuaTypeIdentifier) -> Self {
-        match type_identifier {
-            LuaTypeIdentifier::Global(_) => Self::Public,
-            LuaTypeIdentifier::Internal(_, _) => Self::Internal,
-            LuaTypeIdentifier::File(_, _) => Self::File,
-        }
-    }
-
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Public => "public",
-            Self::Internal => "internal",
-            Self::File => "file",
         }
     }
 }

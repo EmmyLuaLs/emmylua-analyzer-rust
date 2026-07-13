@@ -1,5 +1,5 @@
 use crate::{
-    LuaFeatures, LuaLanguageLevel,
+    LuaFeatures, LuaLanguageLevel, SourceRange,
     grammar::{
         ParseFailReason, ParseResult,
         lua::{expr::parse_simple_expr, is_statement_start_token},
@@ -52,7 +52,7 @@ where
 }
 
 /// Expect 'end' keyword, report error at start keyword location if missing
-fn expect_end_keyword<F>(p: &mut LuaParser, start_range: crate::text::SourceRange, error_msg_fn: F)
+fn expect_end_keyword<F>(p: &mut LuaParser, start_range: SourceRange, error_msg_fn: F)
 where
     F: FnOnce() -> std::borrow::Cow<'static, str>,
 {

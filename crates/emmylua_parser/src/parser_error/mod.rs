@@ -8,7 +8,7 @@ pub enum LuaParseErrorKind {
     DocError,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LuaParseError {
     pub kind: LuaParseErrorKind,
     pub message: String,

@@ -1,48 +1,42 @@
+//! Undefined doc param — pure salsa.
+
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaClosureExpr, LuaDocTagParam};
 
-use crate::{DiagnosticCode, LuaSignatureId, SemanticModel};
+use crate::semantic_model::SemanticModel;
+use crate::{DiagnosticCode, LuaSignatureId};
 
-use super::{Checker, DiagnosticContext, get_closure_expr_comment};
+use super::DiagnosticContext;
 
-pub struct UndefinedDocParamChecker;
-
-impl Checker for UndefinedDocParamChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::UndefinedDocParam];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-        for closure_expr in root.descendants::<LuaClosureExpr>() {
-            check_doc_param(context, semantic_model, &closure_expr);
-        }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for closure in root.descendants::<LuaClosureExpr>() {
+        check_closure(context, model, &closure);
     }
 }
 
-fn check_doc_param(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    closure_expr: &LuaClosureExpr,
-) -> Option<()> {
-    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
-    let signature = context.db.get_signature_index().get(&signature_id)?;
+fn check_closure(context: &mut DiagnosticContext, model: &SemanticModel, closure: &LuaClosureExpr) {
+    let file_id = model.get_file_id();
+    let sig_id = LuaSignatureId::from_closure(file_id, closure);
+    let Some(sig) = model.get_signature(file_id, sig_id.get_position()) else {
+        return;
+    };
+    let actual_params: Vec<String> = sig.param_names();
 
-    get_closure_expr_comment(closure_expr)?
-        .children::<LuaDocTagParam>()
-        .for_each(|tag| {
-            if let Some(name_token) = tag.get_name_token() {
-                let info = signature.get_param_info_by_name(name_token.get_name_text());
-                if info.is_none() {
-                    context.add_diagnostic(
-                        DiagnosticCode::UndefinedDocParam,
-                        name_token.get_range(),
-                        t!(
-                            "Undefined doc param: `%{name}`",
-                            name = name_token.get_name_text()
-                        )
-                        .to_string(),
-                        None,
-                    );
-                }
-            }
-        });
-    Some(())
+    let Some(comment) = super::get_closure_expr_comment(closure) else {
+        return;
+    };
+    for tag in comment.children::<LuaDocTagParam>() {
+        let Some(name_tk) = tag.get_name_token() else {
+            continue;
+        };
+        let name = name_tk.get_name_text();
+        if !actual_params.contains(&name.to_string()) {
+            context.add_diagnostic(
+                DiagnosticCode::UndefinedDocParam,
+                name_tk.get_range(),
+                t!("Undefined doc param: `%{name}`", name = name).to_string(),
+                None,
+            );
+        }
+    }
 }

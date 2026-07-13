@@ -1,76 +1,67 @@
+//! Circle doc class checker — pure salsa.
+
 use std::collections::HashSet;
 
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaDocTagClass};
 use rowan::TextRange;
 
-use crate::{DiagnosticCode, SemanticModel, super_type_base_decl_id};
+use crate::DiagnosticCode;
+use crate::semantic_model::SemanticModel;
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct CircleDocClassChecker;
-
-impl Checker for CircleDocClassChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::CircleDocClass];
-
-    /// 检查循环继承的类
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-
-        for expr in root.descendants::<LuaDocTagClass>() {
-            check_doc_tag_class(context, semantic_model, &expr);
-        }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for tag in root.descendants::<LuaDocTagClass>() {
+        check_class(context, model, &tag);
     }
 }
 
-fn check_doc_tag_class(
-    context: &mut DiagnosticContext,
-    _: &SemanticModel,
-    tag: &LuaDocTagClass,
-) -> Option<()> {
-    let type_index = context.db.get_type_index();
-
-    let class_decl = type_index.find_type_decl(
-        context.file_id,
-        tag.get_name_token()?.get_name_text(),
-        context.get_db().resolve_workspace_id(context.file_id),
-    )?;
-
-    if !class_decl.is_class() {
-        return Some(());
+fn check_class(context: &mut DiagnosticContext, model: &SemanticModel, tag: &LuaDocTagClass) {
+    let Some(name) = tag.get_name_token().map(|t| t.get_name_text().to_string()) else {
+        return;
+    };
+    let db = model.salsa_db();
+    let Some(class_def) = db.doc().type_def_by_name(model.get_file_id(), &name) else {
+        return;
+    };
+    if !matches!(
+        class_def.kind,
+        crate::compilation::SalsaDocTypeDefKindSummary::Class
+    ) {
+        return;
     }
 
-    let class_id = class_decl.get_id();
-    let mut queue = Vec::new();
+    // BFS to detect circular inheritance through super_type_offsets
     let mut visited = HashSet::new();
-
-    queue.push(class_id.clone());
-    while let Some(current_id) = queue.pop() {
-        if !visited.insert(current_id.clone()) {
+    let mut queue: Vec<String> = vec![name.clone()];
+    while let Some(cur) = queue.pop() {
+        if !visited.insert(cur.clone()) {
             continue;
         }
-
-        let super_types = type_index.get_super_types_raw(&current_id);
-        if let Some(super_types) = super_types {
-            for super_type in super_types {
-                if let Some(super_type_id) = super_type_base_decl_id(&super_type) {
-                    if super_type_id == &class_id {
-                        context.add_diagnostic(
-                            DiagnosticCode::CircleDocClass,
-                            get_lint_range(tag).unwrap_or(tag.get_range()),
-                            t!("Circularly inherited classes.").to_string(),
-                            None,
-                        );
-                        return Some(());
-                    }
-
-                    if !visited.contains(super_type_id) {
-                        queue.push(super_type_id.clone());
+        if let Some(def) = db.doc().type_def_by_name(model.get_file_id(), &cur) {
+            for offset in &def.super_type_offsets {
+                if let Some(resolved) = db.doc().resolved_type_by_key(model.get_file_id(), *offset)
+                {
+                    if let crate::compilation::SalsaDocTypeLoweredKind::Name { name: super_name } =
+                        &resolved.lowered.kind
+                    {
+                        if super_name.as_str() == name {
+                            let range = get_lint_range(tag).unwrap_or(tag.get_range());
+                            context.add_diagnostic(
+                                DiagnosticCode::CircleDocClass,
+                                range,
+                                t!("Circularly inherited classes.").to_string(),
+                                None,
+                            );
+                            return;
+                        }
+                        queue.push(super_name.to_string());
                     }
                 }
             }
         }
     }
-    Some(())
 }
 
 fn get_lint_range(tag: &LuaDocTagClass) -> Option<TextRange> {

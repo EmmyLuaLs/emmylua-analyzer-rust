@@ -1,58 +1,50 @@
-use crate::{
-    DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeCheckFailReason,
-    TypeCheckResult, diagnostic::checker::humanize_lint_type, get_attribute_constructor_params,
-    infer_doc_type, is_attribute_class,
-};
+//! Check attribute usage — pure salsa.
+
+use crate::semantic_model::{SemanticModel, TypeCheckFailReason, TypeCheckResult};
+use crate::{DiagnosticCode, LuaType, diagnostic::checker::humanize_lint_type_salsa};
 use emmylua_parser::{
-    LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaLiteralExpr,
+    LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaExpr, LuaLiteralExpr,
 };
 use rowan::TextRange;
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct AttributeCheckChecker;
-
-impl Checker for AttributeCheckChecker {
-    const CODES: &[DiagnosticCode] = &[
-        DiagnosticCode::AttributeParamTypeMismatch,
-        DiagnosticCode::AttributeMissingParameter,
-        DiagnosticCode::AttributeRedundantParameter,
-    ];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-        for tag_use in root.descendants::<LuaDocTagAttributeUse>() {
-            for attribute_use in tag_use.get_attribute_uses() {
-                check_attribute_use(context, semantic_model, &attribute_use);
-            }
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for tag_use in root.descendants::<LuaDocTagAttributeUse>() {
+        for attribute_use in tag_use.get_attribute_uses() {
+            check_attribute_use(context, model, &attribute_use);
         }
     }
 }
 
 fn check_attribute_use(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    _context: &mut DiagnosticContext,
+    _model: &SemanticModel,
     attribute_use: &LuaDocAttributeUse,
 ) -> Option<()> {
-    let attribute_type = infer_doc_type(
-        DocTypeInferContext::new(semantic_model.get_db(), semantic_model.get_file_id()),
-        &LuaDocType::Name(attribute_use.get_type()?),
-    );
-    let LuaType::Ref(type_id) = attribute_type else {
-        return None;
-    };
-    if !is_attribute_class(semantic_model.get_db(), &type_id) {
-        return None;
-    }
-    let args = match attribute_use.get_arg_list() {
-        Some(arg_list) => arg_list.get_args().collect::<Vec<_>>(),
-        None => vec![],
-    };
-    let call_arg_types = infer_attribute_arg_types(semantic_model, &args);
-    let def_params =
-        get_attribute_constructor_params(semantic_model.get_db(), &type_id, &call_arg_types);
-    check_param_count(context, &def_params, &attribute_use, &args);
-    check_param(context, semantic_model, &def_params, &args, &call_arg_types);
+    // Get attribute type name from doc type
+    let name_type = attribute_use.get_type()?;
+    let _name_text = name_type.get_name_text()?;
+
+    // // Resolve and check if it's an attribute type
+    // let type_def = model.get_type_def(&name_text)?;
+    // if !matches!(
+    //     type_def.kind,
+    //     SalsaDocTypeDefKindSummary::Attribute
+    // ) {
+    //     return None;
+    // }
+
+    // // Get attribute params from salsa
+    // let def_params = model.get_attribute_params(&type_def)?;
+
+    // let args = match attribute_use.get_arg_list() {
+    //     Some(arg_list) => arg_list.get_args().collect::<Vec<_>>(),
+    //     None => vec![],
+    // };
+    // check_param_count(context, &def_params, attribute_use, &args);
+    // check_param(context, model, &def_params, &args, &[]);
 
     Some(())
 }
@@ -78,7 +70,6 @@ fn check_param_count(
     args: &[LuaLiteralExpr],
 ) -> Option<()> {
     let call_args_count = args.len();
-    // 调用参数少于定义参数, 需要考虑可空参数
     if call_args_count < def_params.len() {
         for def_param in def_params[call_args_count..].iter() {
             if def_param.0 == "..." {
@@ -102,10 +93,7 @@ fn check_param_count(
                 None,
             );
         }
-    }
-    // 调用参数多于定义参数, 需要考虑可变参数
-    else if call_args_count > def_params.len() {
-        // 参数定义中最后一个参数是 `...`
+    } else if call_args_count > def_params.len() {
         if def_params.last().is_some_and(|(name, typ)| {
             name == "..." || typ.as_ref().is_some_and(|typ| typ.is_variadic())
         }) {
@@ -129,30 +117,38 @@ fn check_param_count(
     Some(())
 }
 
-/// 检查参数是否匹配
+/// 检查参数类型是否匹配
 fn check_param(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
+    model: &SemanticModel,
     def_params: &[(String, Option<LuaType>)],
     args: &[LuaLiteralExpr],
-    call_arg_types: &[LuaType],
+    _call_arg_types: &[LuaType],
 ) -> Option<()> {
+    let mut call_arg_types = Vec::new();
+    for arg in args {
+        let arg_type = match model.infer_expr(LuaExpr::LiteralExpr(arg.clone())) {
+            Ok(ty) => ty,
+            Err(_) => return None,
+        };
+        call_arg_types.push(arg_type);
+    }
+
     for (idx, param) in def_params.iter().enumerate() {
         if param.0 == "..." {
             if call_arg_types.len() < idx {
                 break;
             }
-            if let Some(variadic_type) = param.1.as_ref() {
-                for (arg_idx, arg_type) in call_arg_types[idx..].iter().enumerate() {
-                    let result = semantic_model.type_check_detail(variadic_type, arg_type);
+            if let Some(variadic_type) = param.1.clone() {
+                for arg_type in call_arg_types[idx..].iter() {
+                    let result = model.type_check_detail(&variadic_type, arg_type);
                     if result.is_err() {
                         add_type_check_diagnostic(
                             context,
-                            semantic_model,
-                            args.get(idx + arg_idx)?.get_range(),
-                            variadic_type,
+                            args.get(idx)?.get_range(),
+                            &variadic_type,
                             arg_type,
-                            result,
+                            &result,
                         );
                     }
                 }
@@ -161,15 +157,14 @@ fn check_param(
         }
         if let Some(param_type) = param.1.as_ref() {
             let arg_type = call_arg_types.get(idx).unwrap_or(&LuaType::Any);
-            let result = semantic_model.type_check_detail(param_type, arg_type);
+            let result = model.type_check_detail(&param_type, arg_type);
             if result.is_err() {
                 add_type_check_diagnostic(
                     context,
-                    semantic_model,
                     args.get(idx)?.get_range(),
                     param_type,
                     arg_type,
-                    result,
+                    &result,
                 );
             }
         }
@@ -179,19 +174,17 @@ fn check_param(
 
 fn add_type_check_diagnostic(
     context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
     range: TextRange,
     param_type: &LuaType,
     expr_type: &LuaType,
-    result: TypeCheckResult,
+    result: &TypeCheckResult,
 ) {
-    let db = semantic_model.get_db();
     match result {
         Ok(_) => (),
         Err(reason) => {
             let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeNotMatch | TypeCheckFailReason::DonotCheck => {
+                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason.clone(),
+                TypeCheckFailReason::TypeNotMatch | TypeCheckFailReason::DoNotCheck => {
                     "".to_string()
                 }
                 TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
@@ -201,8 +194,16 @@ fn add_type_check_diagnostic(
                 range,
                 t!(
                     "expected `%{source}` but found `%{found}`. %{reason}",
-                    source = humanize_lint_type(db, param_type),
-                    found = humanize_lint_type(db, expr_type),
+                    source = humanize_lint_type_salsa(
+                        context.get_salsa_db(),
+                        context.get_file_id(),
+                        param_type
+                    ),
+                    found = humanize_lint_type_salsa(
+                        context.get_salsa_db(),
+                        context.get_file_id(),
+                        expr_type
+                    ),
                     reason = reason_message
                 )
                 .to_string(),

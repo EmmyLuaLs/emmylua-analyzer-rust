@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 
 use crate::{
     InferFailReason, LuaDeclId, LuaFunctionType, LuaSignatureId, LuaType, LuaTypeNode, TplContext,
-    analyze_func_body_returns_with, analyze_return_point, infer_expr, instantiate_type_generic,
+    infer_expr, instantiate_type_generic,
 };
 
 use super::{TplPatternMatchResult, return_type_pattern_match_target_type};
@@ -65,23 +65,25 @@ fn infer_lambda_return_type(
     closure: &LuaClosureExpr,
     expected_func: &LuaFunctionType,
 ) -> Result<Option<LuaType>, InferFailReason> {
-    let block = closure.get_block().ok_or(InferFailReason::None)?;
-    let param_overlays = collect_lambda_param_overlays(context, closure, expected_func);
-    let db = context.db;
+    let _block = closure.get_block().ok_or(InferFailReason::None)?;
+    let _param_overlays = collect_lambda_param_overlays(context, closure, expected_func);
+    let _db = context.db;
     // 在当前泛型调用轮次内重放闭包参数类型, 让 `return item` 能看到已推导出的 `T`.
-    let return_docs = context.cache.with_no_flow(|cache| {
-        cache.with_replay_overlay(&param_overlays, &[], |cache| {
-            // 这里只临时推断闭包返回值用于绑定回调返回泛型, 不写回签名索引.
-            let return_points = analyze_func_body_returns_with(block.clone(), &mut |expr| {
-                infer_expr(db, cache, expr.clone())
-            })?;
-            analyze_return_point(db, cache, &return_points)
-        })
-    })?;
+    // let return_docs = context.cache.with_no_flow(|cache| {
+    //     cache.with_replay_overlay(&param_overlays, &[], |cache| {
+    //         // 这里只临时推断闭包返回值用于绑定回调返回泛型, 不写回签名索引.
+    //         // let return_points = analyze_func_body_returns_with(block.clone(), &mut |expr| {
+    //         //     infer_expr(db, cache, expr.clone())
+    //         // })?;
+    //         // analyze_return_point(db, cache, &return_points)
+    //         todo!()
+    //     })
+    // })?;
 
-    Ok(return_docs
-        .first()
-        .map(|return_info| return_info.type_ref.clone()))
+    // Ok(return_docs
+    //     .first()
+    //     .map(|return_info| return_info.type_ref.clone()))
+    todo!()
 }
 
 fn collect_lambda_param_overlays(

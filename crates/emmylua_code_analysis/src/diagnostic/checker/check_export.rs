@@ -3,11 +3,11 @@ use std::collections::HashSet;
 use emmylua_parser::{LuaAst, LuaAstNode, LuaCallExpr, LuaIndexExpr, LuaVarExpr};
 
 use crate::{
-    DiagnosticCode, LuaSemanticDeclId, LuaType, ModuleInfo, SemanticDeclLevel, SemanticModel,
-    parse_require_module_info,
+    CompilationModuleInfo, DiagnosticCode, LuaSemanticDeclId, LuaType, SalsaSemanticTargetSummary,
+    SemanticDeclLevel, SemanticModel, parse_require_module_info,
 };
 
-use super::{Checker, DiagnosticContext, check_field, humanize_lint_type};
+use super::{Checker, DiagnosticContext, check_field, humanize_lint_type_salsa};
 
 pub struct CheckExportChecker;
 
@@ -56,7 +56,6 @@ fn check_export_index_expr(
     index_expr: &LuaIndexExpr,
     code: DiagnosticCode,
 ) -> Option<()> {
-    let db = context.db;
     let prefix_expr = index_expr.get_prefix_expr()?;
     let prefix_info = semantic_model.get_semantic_info(prefix_expr.syntax().clone().into())?;
     let prefix_typ = prefix_info.typ.clone();
@@ -75,7 +74,7 @@ fn check_export_index_expr(
             // 检查字段定义是否来自导入的表.
             if let Some(info) = semantic_model.get_semantic_info(index_expr.syntax().clone().into())
                 && is_cross_file_member_from_imported_export_table_const(
-                    module_info,
+                    &module_info,
                     info.semantic_decl,
                 )
             {
@@ -85,7 +84,7 @@ fn check_export_index_expr(
                     index_key.get_range()?,
                     t!(
                         "Fields cannot be injected into the reference of `%{class}` for `%{field}`. ",
-                        class = humanize_lint_type(db, &prefix_typ),
+                        class = humanize_lint_type_salsa(context.get_salsa_db(), context.get_file_id(), &prefix_typ),
                         field = index_name,
                     )
                     .to_string(),
@@ -109,7 +108,7 @@ fn check_export_index_expr(
                     index_key.get_range()?,
                     t!(
                         "Fields cannot be injected into the reference of `%{class}` for `%{field}`. ",
-                        class = humanize_lint_type(db, &prefix_typ),
+                        class = humanize_lint_type_salsa(context.get_salsa_db(), context.get_file_id(), &prefix_typ),
                         field = index_name,
                     )
                     .to_string(),
@@ -150,9 +149,12 @@ fn check_export_index_expr(
     let Some(module_info) = semantic_model.get_module() else {
         return Some(());
     };
-    if !module_info.has_export_type()
-        || module_info.semantic_id.as_ref() != Some(&LuaSemanticDeclId::LuaDecl(decl_id))
-    {
+    let exports_decl = matches!(
+        module_info.semantic_target,
+        Some(SalsaSemanticTargetSummary::Decl(target_decl_id))
+            if target_decl_id.as_position() == decl_id.position
+    );
+    if !module_info.has_export_type() || !exports_decl {
         return Some(());
     }
 
@@ -173,10 +175,10 @@ fn check_export_index_expr(
     Some(())
 }
 
-fn check_require_table_const_with_export_surface<'a>(
-    semantic_model: &'a SemanticModel,
+fn check_require_table_const_with_export_surface(
+    semantic_model: &SemanticModel,
     index_expr: &LuaIndexExpr,
-) -> Option<&'a ModuleInfo> {
+) -> Option<CompilationModuleInfo> {
     // 获取前缀表达式的语义信息
     let prefix_expr = index_expr.get_prefix_expr()?;
     if let Some(call_expr) = LuaCallExpr::cast(prefix_expr.syntax().clone()) {
@@ -209,10 +211,10 @@ fn check_require_table_const_with_export_surface<'a>(
     None
 }
 
-fn parse_require_expr_module_info<'a>(
-    semantic_model: &'a SemanticModel,
+fn parse_require_expr_module_info(
+    semantic_model: &SemanticModel,
     call_expr: &LuaCallExpr,
-) -> Option<&'a ModuleInfo> {
+) -> Option<CompilationModuleInfo> {
     let arg_list = call_expr.get_args_list()?;
     let first_arg = arg_list.get_args().next()?;
     let require_path_type = semantic_model.infer_expr(first_arg.clone()).ok()?;
@@ -221,14 +223,11 @@ fn parse_require_expr_module_info<'a>(
         _ => return None,
     };
 
-    semantic_model
-        .get_db()
-        .get_module_index()
-        .find_module(&module_path)
+    semantic_model.find_module_by_require_path(&module_path)
 }
 
 fn is_cross_file_member_from_imported_export_table_const(
-    module_info: &ModuleInfo,
+    module_info: &CompilationModuleInfo,
     semantic_decl: Option<LuaSemanticDeclId>,
 ) -> bool {
     if let Some(LuaSemanticDeclId::Member(member_id)) = semantic_decl

@@ -165,6 +165,21 @@ impl LuaSyntaxId {
     }
 }
 
+impl PartialOrd for LuaSyntaxId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for LuaSyntaxId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.range
+            .start()
+            .cmp(&other.range.start())
+            .then(self.range.end().cmp(&other.range.end()))
+    }
+}
+
 impl Serialize for LuaSyntaxId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

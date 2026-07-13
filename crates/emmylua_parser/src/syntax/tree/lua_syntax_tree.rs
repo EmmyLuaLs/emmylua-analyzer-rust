@@ -6,7 +6,7 @@ use crate::{
     syntax::{node::LuaChunk, traits::LuaAstNode},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LuaSyntaxTree {
     // store GreenNode instead of SyntaxNode, because SyntaxNode is not send and sync
     root: GreenNode,

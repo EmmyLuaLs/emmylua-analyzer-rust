@@ -1,134 +1,131 @@
+//! Redefined local checker — salsa-native.
+
 use hashbrown::{HashMap, HashSet};
 
-use emmylua_parser::LuaSyntaxKind;
-
-use crate::{
-    DiagnosticCode, LuaDecl, LuaDeclId, LuaDeclarationTree, LuaScope, LuaScopeKind, ScopeOrDeclId,
-    SemanticModel,
+use crate::DiagnosticCode;
+use crate::compilation::{
+    SalsaDeclId, SalsaDeclKindSummary, SalsaDeclTreeSummary, SalsaScopeChildSummary,
+    SalsaScopeKindSummary, SalsaScopeSummary,
 };
+use crate::semantic_model::SemanticModel;
+use rowan::TextRange;
 
-use super::{Checker, DiagnosticContext};
+use super::DiagnosticContext;
 
-pub struct RedefinedLocalChecker;
+pub fn check(context: &mut DiagnosticContext, model: &SemanticModel) {
+    let Some(decl_tree) = model.decl_tree() else {
+        return;
+    };
+    let Some(root_scope) = find_root_scope(&decl_tree) else {
+        return;
+    };
 
-impl Checker for RedefinedLocalChecker {
-    const CODES: &[DiagnosticCode] = &[DiagnosticCode::RedefinedLocal];
+    let mut diagnostics = HashSet::new();
+    let mut root_locals = HashMap::new();
+    check_scope(&decl_tree, root_scope, &mut root_locals, &mut diagnostics);
 
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let file_id = semantic_model.get_file_id();
-        let Some(decl_tree) = semantic_model
-            .get_db()
-            .get_decl_index()
-            .get_decl_tree(&file_id)
-        else {
-            return;
+    for decl_id in &diagnostics {
+        let Some(decl) = decl_tree.decls.iter().find(|d| d.id == *decl_id) else {
+            continue;
         };
-
-        let Some(root_scope) = decl_tree.get_root_scope() else {
-            return;
-        };
-        let mut diagnostics = HashSet::new();
-        let mut root_locals = HashMap::new();
-
-        check_scope_for_redefined_locals(decl_tree, root_scope, &mut root_locals, &mut diagnostics);
-
-        // 添加诊断信息
-        for decl_id in diagnostics {
-            if let Some(decl) = decl_tree.get_decl(&decl_id) {
-                context.add_diagnostic(
-                    DiagnosticCode::RedefinedLocal,
-                    decl.get_range(),
-                    t!("Redefined local variable `%{name}`", name = decl.get_name()).to_string(),
-                    None,
-                );
-            }
-        }
+        context.add_diagnostic(
+            DiagnosticCode::RedefinedLocal,
+            TextRange::new(decl.start_offset, decl.end_offset),
+            t!("Redefined local variable `%{name}`", name = decl.name).to_string(),
+            None,
+        );
     }
 }
 
-fn check_scope_for_redefined_locals(
-    decl_tree: &LuaDeclarationTree,
-    scope: &LuaScope,
-    parent_locals: &mut HashMap<String, LuaDeclId>,
-    diagnostics: &mut HashSet<LuaDeclId>,
+fn find_root_scope(tree: &SalsaDeclTreeSummary) -> Option<&SalsaScopeSummary> {
+    tree.scopes.iter().find(|s| s.parent.is_none())
+}
+
+fn check_scope(
+    tree: &SalsaDeclTreeSummary,
+    scope: &SalsaScopeSummary,
+    parent_locals: &mut HashMap<String, SalsaDeclId>,
+    diagnostics: &mut HashSet<SalsaDeclId>,
 ) {
-    let should_add_to_parent = should_add_to_parent_scope(scope);
+    let should_propagate = matches!(
+        scope.kind,
+        SalsaScopeKindSummary::FuncStat
+            | SalsaScopeKindSummary::LocalOrAssignStat
+            | SalsaScopeKindSummary::Repeat
+            | SalsaScopeKindSummary::MethodStat
+    );
+    let mut current = parent_locals.clone();
 
-    let mut current_locals = parent_locals.clone();
+    for child in &scope.children {
+        let decl_id = match child {
+            SalsaScopeChildSummary::Decl(id) => *id,
+            _ => continue,
+        };
+        let Some(decl) = tree.decls.iter().find(|d| d.id == decl_id) else {
+            continue;
+        };
+        // Only check local variables (not params, not implicit self)
+        if !matches!(decl.kind, SalsaDeclKindSummary::Local { .. }) {
+            continue;
+        }
+        let name = decl.name.to_string();
+        if name == "..." || name.starts_with('_') {
+            continue;
+        }
 
-    // 检查当前作用域中的声明
-    for child in scope.get_children() {
-        if let ScopeOrDeclId::Decl(decl_id) = child
-            && let Some(decl) = decl_tree.get_decl(decl_id)
-        {
-            let name = decl.get_name().to_string();
-            if decl.is_local() && name != "..." && !name.starts_with("_") {
-                if current_locals.contains_key(&name) {
-                    let old_decl = current_locals
-                        .get(&name)
-                        .and_then(|id| decl_tree.get_decl(id));
-                    if var_name_not_conflicts_with_function_param_name(decl, old_decl).is_some() {
-                        continue;
-                    }
+        if let Some(old_id) = current.get(&name) {
+            if !is_param_shadow_ok(tree, decl_id, *old_id) {
+                diagnostics.insert(decl_id);
+            }
+        }
+        current.insert(name, decl_id);
+    }
 
-                    // 发现重定义，记录诊断
-                    diagnostics.insert(*decl_id);
-                }
-                // 将当前声明加入映射
-                current_locals.insert(name.clone(), *decl_id);
+    // Recurse into child scopes
+    for child in &scope.children {
+        if let SalsaScopeChildSummary::Scope(sid) = child {
+            if let Some(child_scope) = tree.scopes.iter().find(|s| s.id == *sid) {
+                check_scope(tree, child_scope, &mut current, diagnostics);
             }
         }
     }
 
-    // 检查子作用域
-    for child in scope.get_children() {
-        if let ScopeOrDeclId::Scope(scope_id) = child
-            && let Some(child_scope) = decl_tree.get_scope(scope_id)
-        {
-            check_scope_for_redefined_locals(
-                decl_tree,
-                child_scope,
-                &mut current_locals,
-                diagnostics,
-            );
-        }
-    }
-
-    // 更新到父作用域
-    if should_add_to_parent {
-        for (name, decl_id) in current_locals {
-            parent_locals.insert(name, decl_id);
+    if should_propagate {
+        for (name, id) in current {
+            parent_locals.insert(name, id);
         }
     }
 }
 
-/// 处理 a = function(a)
-fn var_name_not_conflicts_with_function_param_name(
-    current_decl: &LuaDecl,
-    old_decl: Option<&LuaDecl>,
-) -> Option<()> {
-    let old_decl = old_decl?;
-    if old_decl.is_param() || !current_decl.is_param() {
-        return None;
+/// `local a = function(a)` — param shadowing its own closure is OK.
+fn is_param_shadow_ok(
+    tree: &SalsaDeclTreeSummary,
+    current_id: SalsaDeclId,
+    old_id: SalsaDeclId,
+) -> bool {
+    let current_decl = tree.decls.iter().find(|d| d.id == current_id);
+    let old_decl = tree.decls.iter().find(|d| d.id == old_id);
+    let (Some(current), Some(old)) = (current_decl, old_decl) else {
+        return false;
+    };
+    // Old must NOT be a param, current must BE a param
+    if matches!(old.kind, SalsaDeclKindSummary::Param { .. })
+        || !matches!(current.kind, SalsaDeclKindSummary::Param { .. })
+    {
+        return false;
     }
-    if let Some(value_syntax_id) = old_decl.get_value_syntax_id() {
-        if value_syntax_id.get_kind() != LuaSyntaxKind::ClosureExpr {
-            return None;
-        }
-        if let crate::LuaDeclExtra::Param { signature_id, .. } = current_decl.extra
-            && value_syntax_id.get_range().start() == signature_id.get_position()
-        {
-            return Some(()); // 不冲突
+    // Old's value expression must be a closure
+    let Some(val_syntax) = &old.value_expr_syntax_id else {
+        return false;
+    };
+    // Closure position must match param's signature offset
+    if let SalsaDeclKindSummary::Param {
+        signature_offset, ..
+    } = &current.kind
+    {
+        if val_syntax.start_offset == *signature_offset {
+            return true;
         }
     }
-
-    None
-}
-
-/// 检查是否需要加入到父作用域
-fn should_add_to_parent_scope(scope: &LuaScope) -> bool {
-    scope.get_kind() == LuaScopeKind::FuncStat
-        || scope.get_kind() == LuaScopeKind::LocalOrAssignStat
-        || scope.get_kind() == LuaScopeKind::Repeat
-        || scope.get_kind() == LuaScopeKind::MethodStat
+    false
 }

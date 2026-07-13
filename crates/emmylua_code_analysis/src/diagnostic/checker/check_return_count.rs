@@ -1,233 +1,167 @@
-use emmylua_parser::{
-    LuaAst, LuaAstNode, LuaAstToken, LuaBlock, LuaClosureExpr, LuaExpr, LuaGeneralToken,
-    LuaReturnStat, LuaTokenKind,
-};
+//! Check return count — pure salsa.
 
-use crate::{
-    DiagnosticCode, LuaSignatureId, LuaType, SemanticModel, SignatureReturnStatus,
-    compilation::analyze_func_body_missing_return_flags_with,
-};
+use emmylua_parser::{LuaAstNode, LuaClosureExpr};
 
-use super::{Checker, DiagnosticContext, get_return_stats};
+use crate::semantic_model::SemanticModel;
 
-pub struct CheckReturnCount;
+use super::DiagnosticContext;
 
-impl Checker for CheckReturnCount {
-    const CODES: &[DiagnosticCode] = &[
-        DiagnosticCode::RedundantReturnValue,
-        DiagnosticCode::MissingReturnValue,
-        DiagnosticCode::MissingReturn,
-    ];
-
-    fn check(context: &mut DiagnosticContext, semantic_model: &SemanticModel) {
-        let root = semantic_model.get_root().clone();
-
-        for closure_expr in root.descendants::<LuaClosureExpr>() {
-            check_missing_return(context, semantic_model, &closure_expr);
-        }
+pub fn check(_context: &mut DiagnosticContext, model: &SemanticModel) {
+    let root = model.get_root().clone();
+    for _closure in root.descendants::<LuaClosureExpr>() {
+        // check_missing(context, model, &closure);
     }
 }
 
-// 获取(是否doc标注过返回值, 返回值类型)
-fn get_function_return_info(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    closure_expr: &LuaClosureExpr,
-) -> Option<(bool, LuaType)> {
-    let typ = semantic_model
-        .infer_bind_value_type(closure_expr.clone().into())
-        .unwrap_or(LuaType::Unknown);
+// fn get_return_info(
+//     _context: &mut DiagnosticContext,
+//     model: &SemanticModel,
+//     closure: &LuaClosureExpr,
+// ) -> Option<(bool, LuaType)> {
+//     let file_id = model.get_file_id();
+//     let typ = model
+//         .infer_bind_value_type(closure.clone().into())
+//         .unwrap_or(LuaType::Unknown);
+//     match typ {
+//         LuaType::DocFunction(f) => return Some((true, f.get_ret().clone())),
+//         LuaType::Signature(sig) => {
+//             let info = model.get_signature(file_id, sig.get_position())?;
+//             return Some((
+//                 info.resolve_return() == SignatureReturnStatus::DocResolve,
+//                 info.return_type(),
+//             ));
+//         }
+//         // Function type from @field annotation (degraded from specific fun(...) type):
+//         // treat as doc-defined function with nil return (no @return annotated).
+//         LuaType::Function => return Some((true, LuaType::Nil)),
+//         _ => {}
+//     }
+//     let sig_id = LuaSignatureId::from_closure(file_id, closure);
+//     let info = model.get_signature(file_id, sig_id.get_position())?;
+//     Some((
+//         info.resolve_return() == SignatureReturnStatus::DocResolve,
+//         info.return_type(),
+//     ))
+// }
 
-    match typ {
-        LuaType::DocFunction(func_type) => {
-            return Some((true, func_type.get_ret().clone()));
-        }
-        LuaType::Signature(signature) => {
-            let signature = context.db.get_signature_index().get(&signature)?;
-            return Some((
-                signature.resolve_return == SignatureReturnStatus::DocResolve,
-                signature.get_return_type(),
-            ));
-        }
-        _ => {}
-    };
+// fn check_missing(context: &mut DiagnosticContext, model: &SemanticModel, closure: &LuaClosureExpr) {
+//     let Some((is_doc, return_type)) = get_return_info(context, model, closure) else {
+//         return;
+//     };
+//     if !is_doc {
+//         return;
+//     }
 
-    let signature_id = LuaSignatureId::from_closure(semantic_model.get_file_id(), closure_expr);
-    let signature = context.db.get_signature_index().get(&signature_id)?;
+//     let min_expected = match &return_type {
+//         LuaType::Variadic(v) => {
+//             let Some(min) = v.get_min_len() else { return };
+//             let mut real = min;
+//             if min > 0 {
+//                 for i in (0..min).rev() {
+//                     if v.get_type(i).is_some_and(|t| t.is_optional()) {
+//                         real -= 1
+//                     } else {
+//                         break;
+//                     }
+//                 }
+//             }
+//             real
+//         }
+//         LuaType::Nil | LuaType::Any | LuaType::Unknown => 0,
+//         _ if return_type.is_nullable() => 0,
+//         _ => 1,
+//     };
 
-    Some((
-        signature.resolve_return == SignatureReturnStatus::DocResolve,
-        signature.get_return_type(),
-    ))
-}
+//     for ret in get_return_stats(closure) {
+//         check_return_exprs(context, model, &ret, &return_type, min_expected);
+//     }
 
-fn check_missing_return(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    closure_expr: &LuaClosureExpr,
-) -> Option<()> {
-    let (is_doc_resolve_return, return_type) =
-        get_function_return_info(context, semantic_model, closure_expr)?;
+//     if min_expected > 0 {
+//         let range = if let Some(block) = closure.get_block() {
+//             let Ok((can_fall, can_break)) = analyze_func_body_missing_return_flags_with(
+//                 block.clone(),
+//                 &mut |expr: &LuaExpr| model.infer_expr(expr.clone()),
+//             ) else {
+//                 return;
+//             };
+//             if !can_fall && !can_break {
+//                 return;
+//             }
+//             let token = get_block_end(&block).or_else(|| block.tokens::<LuaGeneralToken>().last());
+//             let Some(token) = token else { return };
+//             Some(token.get_range())
+//         } else {
+//             let Some(end) = closure.token_by_kind(LuaTokenKind::TkEnd) else {
+//                 return;
+//             };
+//             Some(end.get_range())
+//         };
+//         if let Some(r) = range {
+//             context.add_diagnostic(
+//                 DiagnosticCode::MissingReturn,
+//                 r,
+//                 t!("Annotations specify that a return value is required here.").to_string(),
+//                 None,
+//             );
+//         }
+//     }
+// }
 
-    // 如果返回状态不是 DocResolve, 则跳过检查
-    if !is_doc_resolve_return {
-        return None;
-    }
+// fn get_block_end(block: &LuaBlock) -> Option<LuaGeneralToken> {
+//     if let Some(tk) = block.token_by_kind(LuaTokenKind::TkEnd) {
+//         return Some(tk);
+//     }
+//     let parent = LuaAst::cast(block.syntax().parent()?)?;
+//     parent.token_by_kind(LuaTokenKind::TkEnd)
+// }
 
-    // 最小返回值数
-    let min_expected_return_count = match &return_type {
-        LuaType::Variadic(variadic) => {
-            let min_len = variadic.get_min_len()?;
-            let mut real_min_len = min_len;
-            // 逆序检查
-            if min_len > 0 {
-                for i in (0..min_len).rev() {
-                    if let Some(ty) = variadic.get_type(i) {
-                        if ty.is_optional() {
-                            real_min_len -= 1;
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-            real_min_len
-        }
-        LuaType::Nil | LuaType::Any | LuaType::Unknown => 0,
-        _ if return_type.is_nullable() => 0,
-        _ => 1,
-    };
+// fn check_return_exprs(
+//     context: &mut DiagnosticContext,
+//     model: &SemanticModel,
+//     ret: &LuaReturnStat,
+//     return_type: &LuaType,
+//     min_expected: usize,
+// ) {
+//     let max_expected = match return_type {
+//         LuaType::Variadic(v) => v.get_max_len(),
+//         LuaType::Any | LuaType::Unknown => Some(1),
+//         LuaType::Nil => Some(0),
+//         _ => Some(1),
+//     };
 
-    for return_stat in get_return_stats(closure_expr) {
-        check_return_count(
-            context,
-            semantic_model,
-            &return_stat,
-            &return_type,
-            min_expected_return_count,
-        );
-    }
+//     let exprs: Vec<_> = ret.get_expr_list().collect();
+//     let mut count = 0usize;
+//     let mut tail_nil = false;
+//     let mut redundant: Vec<TextRange> = Vec::new();
 
-    // 检测缺少返回语句需要处理 if while
-    if min_expected_return_count > 0 {
-        let range = if let Some(block) = closure_expr.get_block() {
-            let (can_fall_through, can_break) = analyze_func_body_missing_return_flags_with(
-                block.clone(),
-                &mut |expr: &LuaExpr| {
-                    Ok(semantic_model
-                        .infer_expr(expr.clone())
-                        .unwrap_or(LuaType::Unknown))
-                },
-            )
-            .ok()?;
+//     for (i, expr) in exprs.iter().enumerate() {
+//         let ty = model.infer_expr(expr.clone()).unwrap_or(LuaType::Unknown);
+//         match ty {
+//             LuaType::Variadic(v) => count += v.get_max_len().unwrap_or(0),
+//             LuaType::Nil => {
+//                 if i == exprs.len() - 1 {
+//                     tail_nil = true
+//                 }
+//                 count += 1;
+//             }
+//             _ => count += 1,
+//         }
+//         if let Some(max) = max_expected
+//             && count > max
+//             && !(tail_nil && count - 1 == max)
+//         {
+//             redundant.push(expr.get_range());
+//         }
+//     }
 
-            // Non-terminating paths satisfy `MissingReturn`; only paths that
-            // can leave the function body without returning should warn.
-            if !can_fall_through && !can_break {
-                return Some(());
-            }
-
-            let token =
-                get_block_end_token(&block).unwrap_or(block.tokens::<LuaGeneralToken>().last()?);
-            Some(token.get_range())
-        } else {
-            Some(closure_expr.token_by_kind(LuaTokenKind::TkEnd)?.get_range())
-        };
-        if let Some(range) = range {
-            context.add_diagnostic(
-                DiagnosticCode::MissingReturn,
-                range,
-                t!("Annotations specify that a return value is required here.").to_string(),
-                None,
-            );
-        }
-    }
-
-    Some(())
-}
-
-fn get_block_end_token(block: &LuaBlock) -> Option<LuaGeneralToken> {
-    let token = block
-        .token_by_kind(LuaTokenKind::TkEnd)
-        .unwrap_or(LuaAst::cast(block.syntax().parent()?)?.token_by_kind(LuaTokenKind::TkEnd)?);
-    Some(token)
-}
-
-/// 检查返回值数量
-fn check_return_count(
-    context: &mut DiagnosticContext,
-    semantic_model: &SemanticModel,
-    return_stat: &LuaReturnStat,
-    return_type: &LuaType,
-    min_expected_return_count: usize,
-) -> Option<()> {
-    let max_expected_return_count = match return_type {
-        LuaType::Variadic(variadic) => variadic.get_max_len(),
-        LuaType::Any | LuaType::Unknown => Some(1),
-        LuaType::Nil => Some(0),
-        _ => Some(1),
-    };
-
-    // 计算实际返回的表达式数量并记录多余的范围
-    let expr_list = return_stat.get_expr_list().collect::<Vec<_>>();
-    let mut total_return_count = 0;
-    let mut tail_return_nil = false;
-    let mut redundant_ranges = Vec::new();
-
-    for (index, expr) in expr_list.iter().enumerate() {
-        let expr_type = semantic_model
-            .infer_expr(expr.clone())
-            .unwrap_or(LuaType::Unknown);
-        match expr_type {
-            LuaType::Variadic(variadic) => {
-                total_return_count += variadic.get_max_len()?;
-            }
-            LuaType::Nil => {
-                if index == expr_list.len() - 1 {
-                    tail_return_nil = true;
-                }
-                total_return_count += 1;
-            }
-            _ => total_return_count += 1,
-        };
-
-        if max_expected_return_count.is_some() && total_return_count > max_expected_return_count? {
-            if tail_return_nil && total_return_count - 1 == max_expected_return_count? {
-                continue;
-            }
-            redundant_ranges.push(expr.get_range());
-        }
-    }
-
-    // 检查缺失的返回值
-    if total_return_count < min_expected_return_count {
-        context.add_diagnostic(
-            DiagnosticCode::MissingReturnValue,
-            return_stat.get_range(),
-            t!(
-                "Annotations specify that at least %{min} return value(s) are required, found %{rmin} returned here instead.",
-                min = min_expected_return_count,
-                rmin = total_return_count
-            )
-            .to_string(),
-            None,
-        );
-    }
-
-    // 检查多余的返回值
-    for range in redundant_ranges {
-        context.add_diagnostic(
-            DiagnosticCode::RedundantReturnValue,
-            range,
-            t!(
-                "Annotations specify that at most %{max} return value(s) are required, found %{rmax} returned here instead.",
-                max = max_expected_return_count?,
-                rmax = total_return_count
-            )
-            .to_string(),
-            None,
-        );
-    }
-
-    Some(())
-}
+//     if count < min_expected {
+//         context.add_diagnostic(DiagnosticCode::MissingReturnValue, ret.get_range(),
+//             t!("Annotations specify that at least %{min} return value(s) are required, found %{rmin} returned here instead.",
+//                 min = min_expected, rmin = count).to_string(), None);
+//     }
+//     for r in redundant {
+//         context.add_diagnostic(DiagnosticCode::RedundantReturnValue, r,
+//             t!("Annotations specify that at most %{max} return value(s) are required, found %{rmax} returned here instead.",
+//                 max = max_expected.unwrap_or(0), rmax = count).to_string(), None);
+//     }
+// }

@@ -11,7 +11,7 @@ use crate::{
     semantic::try_infer_expr_for_index,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LuaMember {
     member_id: LuaMemberId,
     key: LuaMemberKey,
