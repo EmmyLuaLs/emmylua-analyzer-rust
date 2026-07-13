@@ -3,8 +3,8 @@ mod test;
 
 use crate::compilation::{
     ConditionNodeId, SalsaDeclTreeSummary, SalsaFlowConditionKindSummary,
-    SalsaFlowConditionSummary, SalsaFlowEdgeKindSummary, SalsaFlowEdgeSummary,
-    SalsaFlowLoopKindSummary, SalsaFlowNodeRefSummary, SalsaFlowQuerySummary, SalsaSummaryDatabase,
+    SalsaFlowConditionSummary, SalsaFlowEdgeKindSummary, SalsaFlowLoopKindSummary,
+    SalsaFlowNodeRefSummary, SalsaFlowQuerySummary, SalsaSummaryDatabase,
 };
 use crate::semantic_model::infer::lowered_node_to_lua_type;
 use crate::{
@@ -13,8 +13,7 @@ use crate::{
     SalsaFlowLoopSummary,
 };
 use emmylua_parser::{
-    BinaryOperator, LuaAstNode, LuaChunk, LuaExpr, LuaIndexExpr, LuaLiteralExpr, LuaLiteralToken,
-    LuaNameExpr, UnaryOperator,
+    BinaryOperator, LuaAstNode, LuaChunk, LuaExpr, LuaIndexExpr, LuaLiteralToken, UnaryOperator,
 };
 use rowan::TextSize;
 use smol_str::SmolStr;
@@ -442,7 +441,7 @@ fn match_len_cmp(
     op: BinaryOperator,
     is_true_branch: bool,
 ) -> Option<Vec<ConditionEffect>> {
-    let var_expr = extract_len_var(len_side, var_name)?;
+    let _var_expr = extract_len_var(len_side, var_name)?;
     let zero = is_literal_zero(num_side)?;
 
     let is_non_empty = match op {
@@ -1131,7 +1130,7 @@ fn narrow_at_block_inner(
     }
     let mut narrowed = base_type;
 
-    let mut narrows = collect_conditions_for_block(flow_query, flow_index, block_offset);
+    let narrows = collect_conditions_for_block(flow_query, flow_index, block_offset);
 
     let mut went_to_parent = false;
     let mut next_block = block_offset;

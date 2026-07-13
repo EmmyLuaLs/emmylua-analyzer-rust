@@ -25,9 +25,9 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaClosureExpr, LuaExpr, LuaLiteralExpr, LuaLiteralToken, LuaNameExpr,
-    LuaSyntaxKind, NumberResult,
+    LuaAssignStat, LuaAstNode, LuaAstToken, LuaCallExpr, LuaChunk, LuaClosureExpr, LuaComment, LuaDocTagType, LuaExpr, LuaFuncStat, LuaIndexKey, LuaLiteralExpr, LuaLiteralToken, LuaLocalFuncStat, LuaLocalStat, LuaNameExpr, LuaSyntaxKind, LuaTableField, NumberResult,
 };
+use emmylua_parser::LuaTableExpr;
 use rowan::TextRange;
 use rowan::TextSize;
 use smol_str::SmolStr;
@@ -41,8 +41,7 @@ use crate::compilation::{
 use crate::semantic_model::SigQuery;
 use crate::semantic_model::type_check::check_type_compact;
 use crate::{
-    AsyncState, Emmyrc, FileId, LuaArrayLen, LuaArrayType, LuaDeclId, LuaFunctionType,
-    LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, VariadicType,
+    AsyncState, Emmyrc, FileId, LuaArrayLen, LuaArrayType, LuaDeclId, LuaFunctionType, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, SalsaDocTypeNodeKey, VariadicType,
 };
 
 use super::type_check::TypeCheckFailReason;
@@ -91,7 +90,7 @@ pub struct InferQuery<'db> {
     file_id: FileId,
     emmyrc: Arc<Emmyrc>,
     cache: &'db RefCell<InferCache>,
-    pub(super) root: emmylua_parser::LuaChunk,
+    pub(super) root: LuaChunk,
 }
 
 impl<'db> InferQuery<'db> {
@@ -100,7 +99,7 @@ impl<'db> InferQuery<'db> {
         file_id: FileId,
         emmyrc: Arc<Emmyrc>,
         cache: &'db RefCell<InferCache>,
-        root: emmylua_parser::LuaChunk,
+        root: LuaChunk,
     ) -> Self {
         Self {
             db,
@@ -197,13 +196,13 @@ impl<'db> InferQuery<'db> {
     /// 推断表应该符合的目标类型（如 `@type` 标注）。
     pub fn infer_table_should_be(
         &self,
-        table_expr: emmylua_parser::LuaTableExpr,
+        table_expr: LuaTableExpr,
     ) -> Option<LuaType> {
         let parent = table_expr.syntax().parent()?;
         let db = self.read_db();
 
         // Case: local a = { ... } with @type annotation
-        if let Some(local) = emmylua_parser::LuaLocalStat::cast(parent.clone()) {
+        if let Some(local) = LuaLocalStat::cast(parent.clone()) {
             let names: Vec<_> = local.get_local_name_list().collect();
             let exprs: Vec<_> = local.get_value_exprs().collect();
             let idx = exprs
@@ -246,7 +245,7 @@ impl<'db> InferQuery<'db> {
         }
 
         // Case: a.b = { ... } — assign stat
-        if let Some(assign) = emmylua_parser::LuaAssignStat::cast(parent.clone()) {
+        if let Some(assign) = LuaAssignStat::cast(parent.clone()) {
             let (vars, exprs) = assign.get_var_and_expr_list();
             let idx = exprs
                 .iter()
@@ -256,7 +255,7 @@ impl<'db> InferQuery<'db> {
         }
 
         // Case: nested table field — delegate to parent table
-        if emmylua_parser::LuaTableField::cast(parent).is_some() {
+        if LuaTableField::cast(parent).is_some() {
             // table field inside another table — recursion not needed for current use cases
             return None;
         }
@@ -269,7 +268,7 @@ impl<'db> InferQuery<'db> {
     pub fn infer_bind_value_type(&self, expr: LuaExpr) -> Option<LuaType> {
         let parent = expr.syntax().parent()?;
         // Case 1: local f: SomeType = expr — find the local name and its type
-        if let Some(local) = emmylua_parser::LuaLocalStat::cast(parent.clone()) {
+        if let Some(local) = LuaLocalStat::cast(parent.clone()) {
             let names: Vec<_> = local.get_local_name_list().collect();
             let exprs: Vec<_> = local.get_value_exprs().collect();
             let idx = exprs
@@ -285,8 +284,8 @@ impl<'db> InferQuery<'db> {
             }
         }
         // Case 2: function definition — closure IS the body, return Signature
-        if emmylua_parser::LuaLocalFuncStat::cast(parent.clone()).is_some()
-            || emmylua_parser::LuaFuncStat::cast(parent.clone()).is_some()
+        if LuaLocalFuncStat::cast(parent.clone()).is_some()
+            || LuaFuncStat::cast(parent.clone()).is_some()
         {
             if let Some(closure) = LuaClosureExpr::cast(expr.syntax().clone()) {
                 let sig_id = LuaSignatureId::from_closure(self.file_id, &closure);
@@ -295,18 +294,18 @@ impl<'db> InferQuery<'db> {
         }
 
         // Case 2b: table field closure — look up field type from class definition
-        if let Some(table_field) = emmylua_parser::LuaTableField::cast(parent.clone()) {
+        if let Some(table_field) = LuaTableField::cast(parent.clone()) {
             if let Some(closure) = LuaClosureExpr::cast(expr.syntax().clone()) {
                 // Try to resolve the field type via the table's class definition
                 if let Some(field_key) = table_field.get_field_key() {
                     let member_key = match &field_key {
-                        emmylua_parser::LuaIndexKey::Name(token) => {
+                        LuaIndexKey::Name(token) => {
                             LuaMemberKey::Name(SmolStr::new(token.get_name_text()))
                         }
-                        emmylua_parser::LuaIndexKey::String(token) => {
+                        LuaIndexKey::String(token) => {
                             LuaMemberKey::Name(SmolStr::new(token.get_text()))
                         }
-                        emmylua_parser::LuaIndexKey::Integer(token) => {
+                        LuaIndexKey::Integer(token) => {
                             let val = match token.get_number_value() {
                                 NumberResult::Int(i) => i,
                                 NumberResult::Uint(u) => u as i64,
@@ -322,7 +321,7 @@ impl<'db> InferQuery<'db> {
                         }
                     };
                     if let Some(parent_table) =
-                        table_field.get_parent::<emmylua_parser::LuaTableExpr>()
+                        table_field.get_parent::<LuaTableExpr>()
                     {
                         if let Some(table_type) = self.infer_table_should_be(parent_table) {
                             if let Ok(member_type) =
@@ -339,7 +338,7 @@ impl<'db> InferQuery<'db> {
             }
         }
         // Case 3: f = expr — find assign target type
-        if let Some(assign) = emmylua_parser::LuaAssignStat::cast(parent) {
+        if let Some(assign) = LuaAssignStat::cast(parent) {
             let (vars, exprs) = assign.get_var_and_expr_list();
             let idx = exprs
                 .iter()
@@ -400,17 +399,21 @@ impl<'db> InferQuery<'db> {
 
     fn lookup_salsa_type(&self, expr: &LuaExpr) -> Option<LuaType> {
         if let LuaExpr::NameExpr(name) = expr {
-            let db = self.read_db();
-            let name_info = db.types().name(self.file_id, name.get_position())?;
-            if let Some(decl_type) = name_info.decl_type {
-                return self.resolve_decl_type(&db, decl_type);
-            }
-            // decl_type 为空时，通过声明 ID 查找类型
-            if let SalsaNameUseResolutionSummary::LocalDecl(decl_id) = name_info.name_use.resolution
-            {
-                if let Some(dt) = db.types().decl(self.file_id, decl_id) {
-                    return self.resolve_decl_type(&db, dt);
-                }
+            let pos = name.get_position();
+            return self.lookup_salsa_type_at_offset(pos);
+        }
+        None
+    }
+
+    pub(super) fn lookup_salsa_type_at_offset(&self, offset: TextSize) -> Option<LuaType> {
+        let db = self.read_db();
+        let name_info = db.types().name(self.file_id, offset)?;
+        if let Some(decl_type) = name_info.decl_type {
+            return self.resolve_decl_type(&db, decl_type);
+        }
+        if let SalsaNameUseResolutionSummary::LocalDecl(decl_id) = name_info.name_use.resolution {
+            if let Some(dt) = db.types().decl(self.file_id, decl_id) {
+                return self.resolve_decl_type(&db, dt);
             }
         }
         None
@@ -422,6 +425,28 @@ impl<'db> InferQuery<'db> {
         decl_type: SalsaDeclTypeInfoSummary,
     ) -> Option<LuaType> {
         self.resolve_decl_type_depth(db, decl_type, 0)
+    }
+
+    pub(super) fn resolve_member_decl_type(
+        &self,
+        db: &SalsaSummaryDatabase,
+        member_type_info: &crate::compilation::SalsaMemberTypeInfoSummary,
+    ) -> Option<LuaType> {
+        for candidate in &member_type_info.candidates {
+            if !candidate.named_type_names.is_empty() {
+                return Some(self.resolve_named_types(db, &candidate.named_type_names));
+            }
+            if !candidate.explicit_type_offsets.is_empty() {
+                let key = candidate.explicit_type_offsets.first()?;
+                if let Some(resolved) = db.doc().resolved_type_by_key(self.file_id, *key) {
+                    return lowered_node_to_lua_type_with_db(db, self.file_id, &resolved.lowered);
+                }
+                if let Some(lowered) = db.doc().lowered_type_by_key(self.file_id, *key) {
+                    return lowered_node_to_lua_type_with_db(db, self.file_id, &lowered);
+                }
+            }
+        }
+        None
     }
 
     fn resolve_decl_type_depth(
@@ -486,6 +511,10 @@ impl<'db> InferQuery<'db> {
                     | LuaSyntaxKind::CallExpr
                     | LuaSyntaxKind::BinaryExpr
                     | LuaSyntaxKind::UnaryExpr
+                    | LuaSyntaxKind::TableEmptyExpr
+                    | LuaSyntaxKind::TableArrayExpr
+                    | LuaSyntaxKind::TableObjectExpr
+                    | LuaSyntaxKind::ClosureExpr
             ) {
                 return Some(LuaType::Signature(LuaSignatureId::from_position(
                     self.file_id,
@@ -766,7 +795,7 @@ impl<'db> InferQuery<'db> {
         // 找到声明位点对应的 LuaLocalStat
         let local = self
             .root
-            .descendants::<emmylua_parser::LuaLocalStat>()
+            .descendants::<LuaLocalStat>()
             .find(|local| {
                 local.get_local_name_list().any(|n| {
                     n.get_name_token()
@@ -780,7 +809,7 @@ impl<'db> InferQuery<'db> {
 
         // 方式 A: get_owner() 匹配
         let mut owner_count = 0;
-        for comment in self.root.descendants::<emmylua_parser::LuaComment>() {
+        for comment in self.root.descendants::<LuaComment>() {
             let owner_pos = comment.get_owner().map(|o| o.get_position());
             owner_count += 1;
             if owner_pos == Some(local_pos) {
@@ -791,7 +820,7 @@ impl<'db> InferQuery<'db> {
         // 方式 B: prev_sibling 直接找（不依赖 get_owner）
         let prev = local.syntax().prev_sibling();
         if let Some(prev) = prev {
-            if let Some(comment) = emmylua_parser::LuaComment::cast(prev) {
+            if let Some(comment) = LuaComment::cast(prev) {
                 return Self::extract_type_from_comment(&comment, self);
             }
         }
@@ -801,11 +830,9 @@ impl<'db> InferQuery<'db> {
 
     /// 从注释中提取第一个 @type 注解的类型。
     fn extract_type_from_comment(
-        comment: &emmylua_parser::LuaComment,
+        comment: &LuaComment,
         infer: &InferQuery,
     ) -> Option<LuaType> {
-        use crate::compilation::SalsaDocTypeNodeKey;
-        use emmylua_parser::LuaDocTagType;
         for tag in comment.descendants::<LuaDocTagType>() {
             for doc_type in tag.get_type_list() {
                 let key = SalsaDocTypeNodeKey::from(doc_type.clone());
@@ -830,7 +857,7 @@ impl<'db> InferQuery<'db> {
 
         // 路径 B: 扫描 type_tags，找 decl 之前最近的 @type 注解
         let doc = db.doc().summary(self.file_id)?;
-        let mut best_key: Option<&crate::compilation::SalsaDocTypeNodeKey> = None;
+        let mut best_key: Option<&SalsaDocTypeNodeKey> = None;
         let mut best_dist: usize = usize::MAX;
         for tag in &doc.type_tags {
             if tag.syntax_offset < decl.start_offset {
@@ -1158,10 +1185,10 @@ pub(super) fn lowered_node_to_lua_type(node: &SalsaDocTypeLoweredNode) -> Option
             "userdata" => Some(LuaType::Userdata),
             _ => Some(LuaType::Ref(LuaTypeDeclId::global(name))),
         },
-        SalsaDocTypeLoweredKind::Array { item_type: _ } => Some(LuaType::Array(
-            LuaArrayType::new(LuaType::Unknown, LuaArrayLen::None).into(),
+        SalsaDocTypeLoweredKind::Array { .. } => Some(LuaType::Array(
+            LuaArrayType::new(LuaType::Any, LuaArrayLen::None).into(),
         )),
-        SalsaDocTypeLoweredKind::Variadic { item_type: _ } => {
+        SalsaDocTypeLoweredKind::Variadic { .. } => {
             Some(LuaType::Variadic(VariadicType::Base(LuaType::Any).into()))
         }
         SalsaDocTypeLoweredKind::Literal { text } => {
@@ -1171,7 +1198,6 @@ pub(super) fn lowered_node_to_lua_type(node: &SalsaDocTypeLoweredNode) -> Option
                 "true" => Some(LuaType::BooleanConst(true)),
                 "false" => Some(LuaType::BooleanConst(false)),
                 _ => {
-                    // Try integer / float / string
                     if let Ok(n) = s.parse::<i64>() {
                         Some(LuaType::IntegerConst(n))
                     } else if let Ok(f) = s.parse::<f64>() {
@@ -1181,6 +1207,57 @@ pub(super) fn lowered_node_to_lua_type(node: &SalsaDocTypeLoweredNode) -> Option
                     }
                 }
             }
+        }
+        _ => None,
+    }
+}
+
+/// Resolve a lowered type node with DB support, recursively resolving Array item types.
+pub(super) fn lowered_node_to_lua_type_with_db(
+    db: &SalsaSummaryDatabase,
+    file_id: FileId,
+    node: &SalsaDocTypeLoweredNode,
+) -> Option<LuaType> {
+    match &node.kind {
+        SalsaDocTypeLoweredKind::Unknown => Some(LuaType::Any),
+        SalsaDocTypeLoweredKind::Name { name } => match name.as_str() {
+            "any" | "unknown" => Some(LuaType::Any),
+            "nil" => Some(LuaType::Nil),
+            "false" => Some(LuaType::BooleanConst(false)),
+            "true" => Some(LuaType::BooleanConst(true)),
+            "boolean" | "bool" => Some(LuaType::Boolean),
+            "string" => Some(LuaType::String),
+            "number" => Some(LuaType::Number),
+            "integer" | "int" => Some(LuaType::Integer),
+            "function" => Some(LuaType::Function),
+            "table" => Some(LuaType::Table),
+            "thread" => Some(LuaType::Thread),
+            "userdata" => Some(LuaType::Userdata),
+            _ => Some(LuaType::Ref(LuaTypeDeclId::global(name))),
+        },
+        SalsaDocTypeLoweredKind::Array { item_type } => {
+            let item_type = resolve_doc_type_ref(db, file_id, item_type).unwrap_or(LuaType::Any);
+            Some(LuaType::Array(
+                LuaArrayType::new(item_type, LuaArrayLen::None).into(),
+            ))
+        }
+        SalsaDocTypeLoweredKind::Variadic { item_type } => {
+            let item_type = resolve_doc_type_ref(db, file_id, item_type).unwrap_or(LuaType::Any);
+            Some(LuaType::Variadic(VariadicType::Base(item_type).into()))
+        }
+        _ => lowered_node_to_lua_type(node),
+    }
+}
+
+fn resolve_doc_type_ref(
+    db: &SalsaSummaryDatabase,
+    file_id: FileId,
+    ty_ref: &SalsaDocTypeRef,
+) -> Option<LuaType> {
+    match ty_ref {
+        SalsaDocTypeRef::Node(key) => {
+            let lowered = db.doc().lowered_type_by_key(file_id, *key)?;
+            lowered_node_to_lua_type_with_db(db, file_id, &lowered)
         }
         _ => None,
     }
@@ -1205,7 +1282,7 @@ impl InferQuery<'_> {
     /// 纯 salsa 实现，不依赖旧 DbIndex。
     pub fn infer_call_expr_func(
         &self,
-        call_expr: emmylua_parser::LuaCallExpr,
+        call_expr: LuaCallExpr,
         _arg_count: Option<usize>,
     ) -> Option<CallFunctionInfo> {
         let prefix = call_expr.get_prefix_expr()?;

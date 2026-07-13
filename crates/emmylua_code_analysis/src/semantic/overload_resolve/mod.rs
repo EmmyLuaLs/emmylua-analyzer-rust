@@ -18,10 +18,7 @@ pub(crate) use collect_overloads::call_operator_self_type;
 pub use collect_overloads::collect_callable_overload_groups;
 pub(crate) use filter_overloads::match_callable_by_arg_types;
 pub use filter_overloads::{filter_callable_overloads, find_callable_overload};
-pub(crate) use resolve_signature_by_args::{
-    callable_accepts_args, get_func_param_type, is_func_last_param_variadic,
-    resolve_signature_by_args,
-};
+pub(crate) use resolve_signature_by_args::{callable_accepts_args, resolve_signature_by_args};
 
 pub fn resolve_signature(
     db: &DbIndex,
