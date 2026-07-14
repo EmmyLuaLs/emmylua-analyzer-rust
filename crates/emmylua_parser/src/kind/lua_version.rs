@@ -60,7 +60,7 @@ impl Ord for LuaVersionNumber {
 impl fmt::Display for LuaVersionNumber {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            LuaVersionNumber::LUA_JIT => write!(f, "Lua JIT"),
+            LuaVersionNumber::LUA_JIT => write!(f, "LuaJIT"),
             LuaVersionNumber { major, minor, .. } => write!(f, "Lua {}.{}", major, minor),
         }
     }
