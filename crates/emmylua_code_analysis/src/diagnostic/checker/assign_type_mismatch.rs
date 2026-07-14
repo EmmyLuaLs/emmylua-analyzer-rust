@@ -307,12 +307,10 @@ fn check_assign_type_mismatch(
     allow_nil: bool,
 ) -> Option<bool> {
     let source_type = source_type.unwrap_or(&LuaType::Any);
-    // 如果一致, 则不进行类型检查
     if source_type == value_type {
         return Some(false);
     }
 
-    // 某些情况下我们应允许可空
     if allow_nil && value_type.is_nullable() {
         return Some(false);
     }

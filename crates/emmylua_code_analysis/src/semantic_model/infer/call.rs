@@ -1,6 +1,6 @@
 //! 函数调用推断 — `f(args)`, `obj:method(args)`
 
-use emmylua_parser::{LuaAstNode, LuaCallExpr, LuaClosureExpr, LuaReturnStat};
+use emmylua_parser::LuaCallExpr;
 
 use crate::{LuaIntersectionType, LuaType, LuaUnionType};
 
@@ -29,27 +29,9 @@ fn extract_return_type(infer: &InferQuery, prefix_type: &LuaType) -> InferResult
 
         LuaType::DocFunction(func) => Ok(func.get_ret().clone()),
 
-        LuaType::Signature(sig_id) => {
-            let db = infer.read_db();
-            let file_id = infer.get_file_id();
-            if let Some(info) =
-                super::super::signature::SignatureInfo::query(&db, file_id, sig_id.get_position())
-            {
-                return Ok(info.return_type());
-            }
-            for closure in infer.root.descendants::<LuaClosureExpr>() {
-                if closure.get_position() == sig_id.get_position() {
-                    for ret in closure.descendants::<LuaReturnStat>() {
-                        let exprs: Vec<_> = ret.get_expr_list().collect();
-                        if let Some(first) = exprs.first() {
-                            if let Ok(ty) = infer.infer_expr(first.clone()) {
-                                return Ok(ty);
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
+        LuaType::Signature(_sig_id) => {
+            // Generic substitution requires the full call_explain pipeline.
+            // Defer to Path B which uses resolve_call_info.
             Err(InferFailReason::NotImplemented)
         }
 

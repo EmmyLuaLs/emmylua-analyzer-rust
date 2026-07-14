@@ -1220,17 +1220,17 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
                 if body.op == SalsaDocTypeUnaryOperatorSummary::Keyof =>
             {
                 match body.inner_type {
-                SalsaDocTypeRef::Node(offset) => collect_keyof_member_keys_from_type_offset(
-                    offset,
-                    property_query_index,
-                    doc,
-                    doc_types,
-                    lowered_types,
-                    visited_offsets,
-                    visited_type_names,
-                ),
-                SalsaDocTypeRef::Incomplete => Vec::new(),
-            }
+                    SalsaDocTypeRef::Node(offset) => collect_keyof_member_keys_from_type_offset(
+                        offset,
+                        property_query_index,
+                        doc,
+                        doc_types,
+                        lowered_types,
+                        visited_offsets,
+                        visited_type_names,
+                    ),
+                    SalsaDocTypeRef::Incomplete => Vec::new(),
+                }
             }
             SalsaDocTypeLoweredKind::Nullable { inner_type }
             | SalsaDocTypeLoweredKind::Array {
@@ -1300,16 +1300,18 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
                     )
                 })
                 .collect(),
-            SalsaDocTypeLoweredKind::Generic(body) => collect_index_access_member_keys_from_generic_instance(
-                body.0,
-                body.1.to_vec(),
-                property_query_index,
-                doc,
-                doc_types,
-                lowered_types,
-                visited_offsets,
-                visited_type_names,
-            ),
+            SalsaDocTypeLoweredKind::Generic(body) => {
+                collect_index_access_member_keys_from_generic_instance(
+                    body.0,
+                    body.1.to_vec(),
+                    property_query_index,
+                    doc,
+                    doc_types,
+                    lowered_types,
+                    visited_offsets,
+                    visited_type_names,
+                )
+            }
             _ => Vec::new(),
         })
         .unwrap_or_default()
@@ -1733,7 +1735,7 @@ fn collect_keyof_member_keys_from_type_offset(
                         )
                     })
                     .collect(),
-            SalsaDocTypeLoweredKind::Mapped(body) => body
+                SalsaDocTypeLoweredKind::Mapped(body) => body
                     .key_types
                     .iter()
                     .cloned()

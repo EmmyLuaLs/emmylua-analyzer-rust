@@ -41,11 +41,12 @@ use crate::compilation::{
     SalsaSummaryDatabase, SalsaSyntaxIdSummary,
 };
 use crate::semantic_model::SigQuery;
+use crate::semantic_model::generic::{GenericBindings, substitute};
 use crate::semantic_model::type_check::check_type_compact;
 use crate::{
-    AsyncState, Emmyrc, FileId, LuaArrayLen, LuaArrayType, LuaDeclId, LuaFunctionType,
-    LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType, SalsaDocTypeNodeKey,
-    VariadicType,
+    AsyncState, Emmyrc, FileId, GenericTplId, LuaArrayLen, LuaArrayType, LuaDeclId,
+    LuaFunctionType, LuaMemberKey, LuaSignatureId, LuaType, LuaTypeDeclId, LuaUnionType,
+    SalsaDocTypeNodeKey, VariadicType,
 };
 
 use super::type_check::TypeCheckFailReason;
@@ -432,16 +433,32 @@ impl<'db> InferQuery<'db> {
         info: &crate::compilation::SalsaMemberTypeInfoSummary,
     ) -> Option<LuaType> {
         for candidate in &info.candidates {
-            if !candidate.named_type_names.is_empty() {
-                return Some(self.resolve_named_types(db, &candidate.named_type_names));
+            if let Some(ty) = self.resolve_candidate(
+                db,
+                &candidate.named_type_names,
+                &candidate.explicit_type_offsets,
+            ) {
+                return Some(ty);
             }
-            if let Some(key) = candidate.explicit_type_offsets.first() {
-                if let Some(resolved) = db.doc().resolved_type_by_key(self.file_id, *key) {
-                    return lowered_with_db(db, self.file_id, &resolved.lowered);
-                }
-                if let Some(lowered) = db.doc().lowered_type_by_key(self.file_id, *key) {
-                    return lowered_with_db(db, self.file_id, &lowered);
-                }
+        }
+        None
+    }
+
+    fn resolve_candidate(
+        &self,
+        db: &SalsaSummaryDatabase,
+        named_names: &[SmolStr],
+        explicit_offsets: &[SalsaDocTypeNodeKey],
+    ) -> Option<LuaType> {
+        if !named_names.is_empty() {
+            return Some(self.resolve_named_types(db, named_names));
+        }
+        if let Some(key) = explicit_offsets.first() {
+            if let Some(resolved) = db.doc().resolved_type_by_key(self.file_id, *key) {
+                return lowered_with_db(db, self.file_id, &resolved.lowered);
+            }
+            if let Some(lowered) = db.doc().lowered_type_by_key(self.file_id, *key) {
+                return lowered_with_db(db, self.file_id, &lowered);
             }
         }
         None
@@ -482,14 +499,8 @@ impl<'db> InferQuery<'db> {
             return Some(ty);
         }
         // Priority 1.5: explicit type offsets (before Signature/closures)
-        if !decl_type.explicit_type_offsets.is_empty() {
-            let key = decl_type.explicit_type_offsets.first()?;
-            if let Some(resolved) = db.doc().resolved_type_by_key(self.file_id, *key) {
-                return lowered_node_to_lua_type(&resolved.lowered);
-            }
-            if let Some(lowered) = db.doc().lowered_type_by_key(self.file_id, *key) {
-                return lowered_node_to_lua_type(&lowered);
-            }
+        if let Some(ty) = self.resolve_candidate(db, &[], &decl_type.explicit_type_offsets) {
+            return Some(ty);
         }
         // Priority 0: Signature from function declarations
         if let Some(offset) = decl_type.value_signature_offset {
@@ -653,7 +664,7 @@ impl<'db> InferQuery<'db> {
                                         SalsaDocTypeRef::Node(pk) => db
                                             .doc()
                                             .lowered_type_by_key(file_id, *pk)
-                                            .and_then(|n| lowered_node_to_lua_type(&n)),
+                                            .and_then(|n| lowered_with_db(db, file_id, &n)),
                                         _ => None,
                                     };
                                     (name, ty)
@@ -670,7 +681,7 @@ impl<'db> InferQuery<'db> {
                                     SalsaDocTypeRef::Node(rk) => db
                                         .doc()
                                         .lowered_type_by_key(file_id, *rk)
-                                        .and_then(|n| lowered_node_to_lua_type(&n)),
+                                        .and_then(|n| lowered_with_db(db, file_id, &n)),
                                     _ => None,
                                 })
                                 .unwrap_or(LuaType::Nil);
@@ -688,7 +699,7 @@ impl<'db> InferQuery<'db> {
                             ));
                         }
                         _ => {
-                            if let Some(ty) = lowered_node_to_lua_type(&resolved.lowered) {
+                            if let Some(ty) = lowered_with_db(db, self.file_id, &resolved.lowered) {
                                 return Some(ty);
                             }
                         }
@@ -723,7 +734,7 @@ impl<'db> InferQuery<'db> {
                         && let Some(first_key) = tag.type_offsets.first()
                     {
                         let lowered = db.doc().resolved_type_by_key(self.file_id, *first_key)?;
-                        return lowered_node_to_lua_type(&lowered.lowered);
+                        return lowered_with_db(db, self.file_id, &lowered.lowered);
                     }
                 }
             }
@@ -830,7 +841,7 @@ impl<'db> InferQuery<'db> {
                 let key = SalsaDocTypeNodeKey::from(doc_type.clone());
                 let db = infer.read_db();
                 if let Some(resolved) = db.doc().resolved_type_by_key(infer.get_file_id(), key) {
-                    return lowered_node_to_lua_type(&resolved.lowered);
+                    return lowered_with_db(db, infer.get_file_id(), &resolved.lowered);
                 }
             }
         }
@@ -1160,7 +1171,7 @@ impl<'db> InferQuery<'db> {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 pub(super) fn lowered_node_to_lua_type(node: &SalsaDocTypeLoweredNode) -> Option<LuaType> {
-    lowered_impl(node, |_| None)
+    lowered_type(node, None, FileId::new(0), 0)
 }
 
 pub(super) fn lowered_with_db(
@@ -1168,16 +1179,23 @@ pub(super) fn lowered_with_db(
     file_id: FileId,
     node: &SalsaDocTypeLoweredNode,
 ) -> Option<LuaType> {
-    lowered_impl(node, |key| {
-        let lowered = db.doc().lowered_type_by_key(file_id, key)?;
-        lowered_with_db(db, file_id, &lowered)
-    })
+    lowered_type(node, Some((db, file_id)), file_id, 0)
 }
 
-fn lowered_impl(
+fn lowered_type(
     node: &SalsaDocTypeLoweredNode,
-    resolve_ref: impl Fn(SalsaDocTypeNodeKey) -> Option<LuaType>,
+    db: Option<(&SalsaSummaryDatabase, FileId)>,
+    _default_file_id: FileId,
+    depth: usize,
 ) -> Option<LuaType> {
+    if depth > 10 {
+        return None;
+    }
+    let resolve = |key: SalsaDocTypeNodeKey| -> Option<LuaType> {
+        let (db, file_id) = db?;
+        let lowered = db.doc().lowered_type_by_key(file_id, key)?;
+        lowered_type(&lowered, Some((db, file_id)), file_id, depth + 1)
+    };
     match &node.kind {
         SalsaDocTypeLoweredKind::Unknown => Some(LuaType::Any),
         SalsaDocTypeLoweredKind::Name { name } => match name.as_str() {
@@ -1197,7 +1215,7 @@ fn lowered_impl(
         },
         SalsaDocTypeLoweredKind::Array { item_type } => {
             let item = match item_type {
-                SalsaDocTypeRef::Node(key) => resolve_ref(*key).unwrap_or(LuaType::Any),
+                SalsaDocTypeRef::Node(key) => resolve(*key).unwrap_or(LuaType::Any),
                 _ => LuaType::Any,
             };
             Some(LuaType::Array(
@@ -1206,7 +1224,7 @@ fn lowered_impl(
         }
         SalsaDocTypeLoweredKind::Variadic { item_type } => {
             let item = match item_type {
-                SalsaDocTypeRef::Node(key) => resolve_ref(*key).unwrap_or(LuaType::Any),
+                SalsaDocTypeRef::Node(key) => resolve(*key).unwrap_or(LuaType::Any),
                 _ => LuaType::Any,
             };
             Some(LuaType::Variadic(VariadicType::Base(item).into()))
@@ -1271,10 +1289,11 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
         }),
         LuaType::Signature(sig_id) => {
             let db = infer.read_db();
+            let file_id = infer.get_file_id();
             let explain = db
                 .doc()
                 .signature()
-                .explain(infer.get_file_id(), sig_id.get_position())?;
+                .explain(file_id, sig_id.get_position())?;
             let params = explain
                 .params
                 .iter()
@@ -1282,7 +1301,7 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                     let ty = p
                         .doc_type
                         .as_ref()
-                        .and_then(|dt| lowered_node_to_lua_type(dt.lowered.as_ref()?));
+                        .and_then(|dt| lowered_with_db(db, file_id, dt.lowered.as_ref()?));
                     (p.name.to_string(), ty)
                 })
                 .collect();
@@ -1290,7 +1309,7 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                 .returns
                 .first()
                 .and_then(|r| r.items.first())
-                .and_then(|item| lowered_node_to_lua_type(item.doc_type.lowered.as_ref()?))
+                .and_then(|item| lowered_with_db(db, file_id, item.doc_type.lowered.as_ref()?))
                 .unwrap_or(LuaType::Unknown);
             let is_colon = explain.signature.is_method;
             let is_vararg = explain.signature.params.iter().any(|p| p.is_vararg);
@@ -1302,13 +1321,39 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                     )
                 })
             });
-            Some(CallFunctionInfo {
+
+            let mut info = CallFunctionInfo {
                 params,
                 is_colon_define: is_colon,
                 is_variadic: is_vararg,
                 return_type,
                 is_async,
-            })
+            };
+
+            // Apply generic constraint fallback
+            for generic in &explain.generics {
+                let constraints: Vec<(GenericTplId, Option<LuaType>)> = generic
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, gp)| {
+                        let constraint = gp
+                            .bound_type
+                            .as_ref()
+                            .and_then(|bt| lowered_with_db(db, file_id, bt.lowered.as_ref()?));
+                        (GenericTplId::Func(i as u32), constraint)
+                    })
+                    .collect();
+                let bindings = GenericBindings::from_type_args_with_constraints(&[], &constraints);
+                for (_, param_type) in &mut info.params {
+                    if let Some(ty) = param_type {
+                        *ty = substitute(ty, &bindings);
+                    }
+                }
+                info.return_type = substitute(&info.return_type, &bindings);
+            }
+
+            Some(info)
         }
         LuaType::Union(u) => {
             for m in u.into_vec() {
@@ -1318,7 +1363,20 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
             }
             None
         }
-        LuaType::Generic(g) => resolve_call_info(infer, &g.get_base_type()),
+        LuaType::Generic(g) => {
+            let mut info = resolve_call_info(infer, &g.get_base_type())?;
+            let type_args = g.get_params();
+            if !type_args.is_empty() {
+                let bindings = GenericBindings::from_type_args(&type_args);
+                for (_, param_type) in &mut info.params {
+                    if let Some(ty) = param_type {
+                        *ty = substitute(ty, &bindings);
+                    }
+                }
+                info.return_type = substitute(&info.return_type, &bindings);
+            }
+            Some(info)
+        }
         // Alias types: resolve Ref/Def through type_def → value_type_offset
         LuaType::Ref(id) | LuaType::Def(id) => {
             let db = infer.read_db();
@@ -1328,9 +1386,7 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                 if let Some(key) = &type_def.value_type_offset {
                     if let Some(resolved) = db.doc().resolved_type_by_key(file_id, *key) {
                         // Handle Function lowered kind directly — build CallFunctionInfo
-                        if let SalsaDocTypeLoweredKind::Function(body) =
-                            &resolved.lowered.kind
-                        {
+                        if let SalsaDocTypeLoweredKind::Function(body) = &resolved.lowered.kind {
                             let func_params: Vec<(String, Option<LuaType>)> = body
                                 .params
                                 .iter()
@@ -1341,7 +1397,7 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                                         SalsaDocTypeRef::Node(pk) => db
                                             .doc()
                                             .lowered_type_by_key(file_id, *pk)
-                                            .and_then(|n| lowered_node_to_lua_type(&n)),
+                                            .and_then(|n| lowered_with_db(db, file_id, &n)),
                                         _ => None,
                                     };
                                     (name, ty)
@@ -1358,7 +1414,7 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                                     SalsaDocTypeRef::Node(rk) => db
                                         .doc()
                                         .lowered_type_by_key(file_id, *rk)
-                                        .and_then(|n| lowered_node_to_lua_type(&n)),
+                                        .and_then(|n| lowered_with_db(db, file_id, &n)),
                                     _ => None,
                                 })
                                 .unwrap_or(LuaType::Nil);
@@ -1372,7 +1428,7 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                             });
                         }
                         // For non-Function types, recurse
-                        if let Some(ty) = lowered_node_to_lua_type(&resolved.lowered) {
+                        if let Some(ty) = lowered_with_db(db, file_id, &resolved.lowered) {
                             return resolve_call_info(infer, &ty);
                         }
                     }

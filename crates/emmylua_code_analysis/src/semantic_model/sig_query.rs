@@ -229,7 +229,8 @@ impl<'db> SigQuery<'db> {
 
             SalsaDocTypeLoweredKind::Generic(body) => {
                 let base = self.resolve_type_ref(&body.0, depth + 1)?;
-                let args: Vec<LuaType> = body.1
+                let args: Vec<LuaType> = body
+                    .1
                     .iter()
                     .filter_map(|t| self.resolve_type_ref(t, depth + 1))
                     .collect();

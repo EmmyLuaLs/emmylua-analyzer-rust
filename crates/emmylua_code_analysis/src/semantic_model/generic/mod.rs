@@ -50,8 +50,8 @@ use crate::{
 #[derive(Debug, Clone, Default)]
 pub struct GenericBindings {
     map: HashMap<GenericTplId, LuaType>,
+    constraints: HashMap<GenericTplId, LuaType>,
     self_type: Option<LuaType>,
-    /// 最大展开深度，超过后保留未展开的 Generic 节点
     max_depth: u32,
 }
 
@@ -59,18 +59,17 @@ impl GenericBindings {
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
+            constraints: HashMap::new(),
             self_type: None,
             max_depth: 8,
         }
     }
 
-    /// 设置最大展开深度。
     pub fn with_max_depth(mut self, depth: u32) -> Self {
         self.max_depth = depth;
         self
     }
 
-    /// 从显式泛型参数构建（如 `foo::<string, number>()`）。
     pub fn from_explicit_args(type_args: &[LuaType]) -> Self {
         let mut bindings = Self::new();
         for (i, ty) in type_args.iter().enumerate() {
@@ -81,13 +80,25 @@ impl GenericBindings {
         bindings
     }
 
-    /// 从类泛型参数构建（如 `MyClass<string>`）。
     pub fn from_type_args(type_args: &[LuaType]) -> Self {
         let mut bindings = Self::new();
         for (i, ty) in type_args.iter().enumerate() {
             bindings
                 .map
                 .insert(GenericTplId::Type(i as u32), ty.clone());
+        }
+        bindings
+    }
+
+    pub fn from_type_args_with_constraints(
+        type_args: &[LuaType],
+        generic_params: &[(GenericTplId, Option<LuaType>)],
+    ) -> Self {
+        let mut bindings = Self::from_type_args(type_args);
+        for (tpl_id, constraint) in generic_params {
+            if let Some(c) = constraint {
+                bindings.constraints.insert(*tpl_id, c.clone());
+            }
         }
         bindings
     }
@@ -115,15 +126,17 @@ impl GenericBindings {
         for (id, ty) in &other.map {
             self.map.insert(*id, ty.clone());
         }
+        for (id, c) in &other.constraints {
+            self.constraints.entry(*id).or_insert_with(|| c.clone());
+        }
         if other.self_type.is_some() {
             self.self_type = other.self_type.clone();
         }
         self
     }
 
-    /// 获取某个泛型参数的绑定值。
     pub fn get(&self, id: GenericTplId) -> Option<&LuaType> {
-        self.map.get(&id)
+        self.map.get(&id).or_else(|| self.constraints.get(&id))
     }
 
     /// 获取 self 类型。

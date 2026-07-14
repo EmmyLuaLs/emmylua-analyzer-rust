@@ -9,10 +9,7 @@ use crate::{FileId, LuaMemberKey, LuaType, LuaTypeDeclId, LuaUnionType};
 use super::{InferFailReason, InferQuery, InferResult};
 
 pub(super) fn infer_index_expr(infer: &InferQuery, index_expr: LuaIndexExpr) -> InferResult {
-    let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
-    let prefix_type = infer.infer_expr(prefix_expr)?;
-
-    let member_expr = LuaIndexMemberExpr::IndexExpr(index_expr);
+    let member_expr = LuaIndexMemberExpr::IndexExpr(index_expr.clone());
 
     let db = infer.read_db();
     if let Some(member_type_info) = db
@@ -24,6 +21,8 @@ pub(super) fn infer_index_expr(infer: &InferQuery, index_expr: LuaIndexExpr) -> 
         }
     }
 
+    let prefix_expr = index_expr.get_prefix_expr().ok_or(InferFailReason::None)?;
+    let prefix_type = infer.infer_expr(prefix_expr)?;
     dispatch_prefix_type(infer, &prefix_type, &member_expr)
 }
 

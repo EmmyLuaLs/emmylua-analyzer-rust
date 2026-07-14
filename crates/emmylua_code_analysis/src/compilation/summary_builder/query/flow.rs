@@ -2119,33 +2119,27 @@ fn collect_iterator_slot_offsets_from_type_offset(
             }
             | SalsaDocTypeLoweredKind::Variadic {
                 item_type: inner_type,
-            } => {
-                collect_iterator_slot_offsets_from_type_ref(
-                    inner_type,
-                    slot_index,
-                    doc_types,
-                    lowered_types,
-                    visited,
-                )
-            }
-            SalsaDocTypeLoweredKind::Unary(body) => {
-                collect_iterator_slot_offsets_from_type_ref(
-                    body.inner_type,
-                    slot_index,
-                    doc_types,
-                    lowered_types,
-                    visited,
-                )
-            }
-            SalsaDocTypeLoweredKind::Generic(body) => {
-                collect_iterator_slot_offsets_from_type_ref(
-                    body.0,
-                    slot_index,
-                    doc_types,
-                    lowered_types,
-                    visited,
-                )
-            }
+            } => collect_iterator_slot_offsets_from_type_ref(
+                inner_type,
+                slot_index,
+                doc_types,
+                lowered_types,
+                visited,
+            ),
+            SalsaDocTypeLoweredKind::Unary(body) => collect_iterator_slot_offsets_from_type_ref(
+                body.inner_type,
+                slot_index,
+                doc_types,
+                lowered_types,
+                visited,
+            ),
+            SalsaDocTypeLoweredKind::Generic(body) => collect_iterator_slot_offsets_from_type_ref(
+                body.0,
+                slot_index,
+                doc_types,
+                lowered_types,
+                visited,
+            ),
             SalsaDocTypeLoweredKind::Union(item_types)
             | SalsaDocTypeLoweredKind::Intersection(item_types)
             | SalsaDocTypeLoweredKind::Tuple(item_types)
@@ -2162,22 +2156,24 @@ fn collect_iterator_slot_offsets_from_type_offset(
                     )
                 })
                 .collect(),
-            SalsaDocTypeLoweredKind::Conditional(body) => collect_iterator_slot_offsets_from_type_ref(
-                body.true_type,
-                slot_index,
-                doc_types,
-                lowered_types,
-                visited,
-            )
-            .into_iter()
-            .chain(collect_iterator_slot_offsets_from_type_ref(
-                body.false_type,
-                slot_index,
-                doc_types,
-                lowered_types,
-                visited,
-            ))
-            .collect(),
+            SalsaDocTypeLoweredKind::Conditional(body) => {
+                collect_iterator_slot_offsets_from_type_ref(
+                    body.true_type,
+                    slot_index,
+                    doc_types,
+                    lowered_types,
+                    visited,
+                )
+                .into_iter()
+                .chain(collect_iterator_slot_offsets_from_type_ref(
+                    body.false_type,
+                    slot_index,
+                    doc_types,
+                    lowered_types,
+                    visited,
+                ))
+                .collect()
+            }
             _ => Vec::new(),
         })
         .unwrap_or_default()
