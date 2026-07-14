@@ -2104,7 +2104,8 @@ fn collect_iterator_slot_offsets_from_type_offset(
 
     find_resolved_doc_type_by_key_from_parts(doc_types, lowered_types, type_offset)
         .map(|resolved| match resolved.lowered.kind {
-            SalsaDocTypeLoweredKind::Function { returns, .. } => returns
+            SalsaDocTypeLoweredKind::Function(body) => body
+                .returns
                 .get(slot_index)
                 .and_then(|ret| match ret.doc_type {
                     SalsaDocTypeRef::Node(type_offset) => Some(type_offset),
@@ -2118,8 +2119,7 @@ fn collect_iterator_slot_offsets_from_type_offset(
             }
             | SalsaDocTypeLoweredKind::Variadic {
                 item_type: inner_type,
-            }
-            | SalsaDocTypeLoweredKind::Unary { inner_type, .. } => {
+            } => {
                 collect_iterator_slot_offsets_from_type_ref(
                     inner_type,
                     slot_index,
@@ -2128,20 +2128,30 @@ fn collect_iterator_slot_offsets_from_type_offset(
                     visited,
                 )
             }
-            SalsaDocTypeLoweredKind::Generic { base_type, .. } => {
+            SalsaDocTypeLoweredKind::Unary(body) => {
                 collect_iterator_slot_offsets_from_type_ref(
-                    base_type,
+                    body.inner_type,
                     slot_index,
                     doc_types,
                     lowered_types,
                     visited,
                 )
             }
-            SalsaDocTypeLoweredKind::Union { item_types }
-            | SalsaDocTypeLoweredKind::Intersection { item_types }
-            | SalsaDocTypeLoweredKind::Tuple { item_types }
-            | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => item_types
-                .into_iter()
+            SalsaDocTypeLoweredKind::Generic(body) => {
+                collect_iterator_slot_offsets_from_type_ref(
+                    body.0,
+                    slot_index,
+                    doc_types,
+                    lowered_types,
+                    visited,
+                )
+            }
+            SalsaDocTypeLoweredKind::Union(item_types)
+            | SalsaDocTypeLoweredKind::Intersection(item_types)
+            | SalsaDocTypeLoweredKind::Tuple(item_types)
+            | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => item_types
+                .iter()
+                .cloned()
                 .flat_map(|inner_type| {
                     collect_iterator_slot_offsets_from_type_ref(
                         inner_type,
@@ -2152,12 +2162,8 @@ fn collect_iterator_slot_offsets_from_type_offset(
                     )
                 })
                 .collect(),
-            SalsaDocTypeLoweredKind::Conditional {
-                true_type,
-                false_type,
-                ..
-            } => collect_iterator_slot_offsets_from_type_ref(
-                true_type,
+            SalsaDocTypeLoweredKind::Conditional(body) => collect_iterator_slot_offsets_from_type_ref(
+                body.true_type,
                 slot_index,
                 doc_types,
                 lowered_types,
@@ -2165,7 +2171,7 @@ fn collect_iterator_slot_offsets_from_type_offset(
             )
             .into_iter()
             .chain(collect_iterator_slot_offsets_from_type_ref(
-                false_type,
+                body.false_type,
                 slot_index,
                 doc_types,
                 lowered_types,

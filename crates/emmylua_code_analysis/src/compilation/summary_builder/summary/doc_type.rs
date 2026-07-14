@@ -41,14 +41,14 @@ impl From<SalsaDocTypeNodeKey> for TextSize {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SalsaDocTypeUnaryOperatorSummary {
     None,
     Keyof,
     Neg,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SalsaDocTypeBinaryOperatorSummary {
     None,
     Union,

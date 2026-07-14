@@ -158,9 +158,10 @@ fn narrow_literal_offset(
                     Vec::new()
                 }
             }
-            SalsaDocTypeLoweredKind::Union { item_types }
-            | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => item_types
-                .into_iter()
+            SalsaDocTypeLoweredKind::Union(item_types)
+            | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => item_types
+                .iter()
+                .cloned()
                 .flat_map(|type_ref| match type_ref {
                     SalsaDocTypeRef::Node(offset) => narrow_literal_offset(
                         offset,
@@ -482,9 +483,10 @@ fn narrow_field_literal_lowered_fallback(
             property_query_index,
             doc_types,
         ),
-        SalsaDocTypeLoweredKind::Union { item_types }
-        | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => item_types
-            .into_iter()
+        SalsaDocTypeLoweredKind::Union(item_types)
+        | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => item_types
+            .iter()
+            .cloned()
             .flat_map(|type_ref| match type_ref {
                 SalsaDocTypeRef::Node(offset) => narrow_field_literal_lowered_fallback(
                     offset,
@@ -522,9 +524,10 @@ fn narrow_truthy_type_offset(
         SalsaDocTypeLoweredKind::Nullable { inner_type } => {
             narrowed_refs_to_offsets(vec![inner_type])
         }
-        SalsaDocTypeLoweredKind::Union { item_types }
-        | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => item_types
-            .into_iter()
+        SalsaDocTypeLoweredKind::Union(item_types)
+        | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => item_types
+            .iter()
+            .cloned()
             .flat_map(|type_ref| {
                 narrow_truthy_type_ref(type_ref, doc_types, lowered_types, visited)
             })
@@ -566,9 +569,10 @@ fn narrow_falsey_type_offset(
             vec![offset]
         }
         SalsaDocTypeLoweredKind::Nullable { .. } => vec![offset],
-        SalsaDocTypeLoweredKind::Union { item_types }
-        | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => item_types
-            .into_iter()
+        SalsaDocTypeLoweredKind::Union(item_types)
+        | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => item_types
+            .iter()
+            .cloned()
             .flat_map(|type_ref| {
                 narrow_falsey_type_ref(type_ref, doc_types, lowered_types, visited)
             })
@@ -614,10 +618,14 @@ fn narrow_type_guard_offset(
             lowered_types,
             visited,
         ),
-        SalsaDocTypeLoweredKind::Union { item_types }
-        | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => {
-            narrowed_refs_by_type_guard(item_types, type_name, doc_types, lowered_types, visited)
-        }
+        SalsaDocTypeLoweredKind::Union(item_types)
+        | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => narrowed_refs_by_type_guard(
+            item_types.to_vec(),
+            type_name,
+            doc_types,
+            lowered_types,
+            visited,
+        ),
         _ => Vec::new(),
     }
 }
@@ -667,10 +675,14 @@ fn exclude_type_guard_offset(
             ));
             dedupe_offsets(narrowed)
         }
-        SalsaDocTypeLoweredKind::Union { item_types }
-        | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => {
-            excluded_refs_by_type_guard(item_types, type_name, doc_types, lowered_types, visited)
-        }
+        SalsaDocTypeLoweredKind::Union(item_types)
+        | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => excluded_refs_by_type_guard(
+            item_types.to_vec(),
+            type_name,
+            doc_types,
+            lowered_types,
+            visited,
+        ),
         _ => vec![offset],
     }
 }

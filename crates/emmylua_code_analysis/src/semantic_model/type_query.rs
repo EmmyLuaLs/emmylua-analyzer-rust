@@ -188,8 +188,9 @@ impl<'db> TypeQuery<'db> {
         let db = self.db;
         let offset = type_def.value_type_offset?;
         let resolved = db.doc().resolved_type_by_key(self.file_id, offset)?;
-        if let SalsaDocTypeLoweredKind::Function { params, .. } = &resolved.lowered.kind {
-            let def_params: Vec<(String, Option<LuaType>)> = params
+        if let SalsaDocTypeLoweredKind::Function(body) = &resolved.lowered.kind {
+            let def_params: Vec<(String, Option<LuaType>)> = body
+                .params
                 .iter()
                 .map(|p| {
                     (

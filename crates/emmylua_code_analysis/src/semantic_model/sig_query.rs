@@ -132,7 +132,7 @@ impl<'db> SigQuery<'db> {
                 self.resolve_type_ref(inner_type, depth + 1)
             }
 
-            SalsaDocTypeLoweredKind::Union { item_types } => {
+            SalsaDocTypeLoweredKind::Union(item_types) => {
                 let types: Vec<LuaType> = item_types
                     .iter()
                     .filter_map(|t| self.resolve_type_ref(t, depth + 1))
@@ -144,7 +144,7 @@ impl<'db> SigQuery<'db> {
                 }
             }
 
-            SalsaDocTypeLoweredKind::Intersection { item_types } => {
+            SalsaDocTypeLoweredKind::Intersection(item_types) => {
                 let types: Vec<LuaType> = item_types
                     .iter()
                     .filter_map(|t| self.resolve_type_ref(t, depth + 1))
@@ -158,7 +158,7 @@ impl<'db> SigQuery<'db> {
                 }
             }
 
-            SalsaDocTypeLoweredKind::Tuple { item_types } => {
+            SalsaDocTypeLoweredKind::Tuple(item_types) => {
                 let types: Vec<LuaType> = item_types
                     .iter()
                     .filter_map(|t| self.resolve_type_ref(t, depth + 1))
@@ -172,14 +172,9 @@ impl<'db> SigQuery<'db> {
                 }
             }
 
-            SalsaDocTypeLoweredKind::Function {
-                is_async: _,
-                is_sync: _,
-                generic_params: _,
-                params,
-                returns,
-            } => {
-                let func_params: Vec<(String, Option<LuaType>)> = params
+            SalsaDocTypeLoweredKind::Function(body) => {
+                let func_params: Vec<(String, Option<LuaType>)> = body
+                    .params
                     .iter()
                     .map(|p| {
                         let ty = self.resolve_type_ref(&p.doc_type, depth + 1);
@@ -189,8 +184,9 @@ impl<'db> SigQuery<'db> {
                         )
                     })
                     .collect();
-                let is_variadic = params.last().is_some_and(|p| p.is_dots);
-                let ret = returns
+                let is_variadic = body.params.last().is_some_and(|p| p.is_dots);
+                let ret = body
+                    .returns
                     .first()
                     .and_then(|r| self.resolve_type_ref(&r.doc_type, depth + 1))
                     .unwrap_or(LuaType::Nil);
@@ -210,9 +206,9 @@ impl<'db> SigQuery<'db> {
                 Some(LuaType::DocFunction(func_type.into()))
             }
 
-            SalsaDocTypeLoweredKind::Object { fields } => {
+            SalsaDocTypeLoweredKind::Object(body) => {
                 let mut obj_fields: Vec<(LuaIndexAccessKey, LuaType)> = Vec::new();
-                for f in fields {
+                for f in body.fields.iter() {
                     let ty = self
                         .resolve_type_ref(&f.value_type, depth + 1)
                         .unwrap_or(LuaType::Any);
@@ -231,12 +227,9 @@ impl<'db> SigQuery<'db> {
                 Some(LuaType::Object(LuaObjectType::new(obj_fields).into()))
             }
 
-            SalsaDocTypeLoweredKind::Generic {
-                base_type,
-                arg_types,
-            } => {
-                let base = self.resolve_type_ref(base_type, depth + 1)?;
-                let args: Vec<LuaType> = arg_types
+            SalsaDocTypeLoweredKind::Generic(body) => {
+                let base = self.resolve_type_ref(&body.0, depth + 1)?;
+                let args: Vec<LuaType> = body.1
                     .iter()
                     .filter_map(|t| self.resolve_type_ref(t, depth + 1))
                     .collect();
@@ -257,13 +250,13 @@ impl<'db> SigQuery<'db> {
             }
 
             // ── 未实现的 kind ──
-            SalsaDocTypeLoweredKind::Binary { .. }
-            | SalsaDocTypeLoweredKind::Unary { .. }
-            | SalsaDocTypeLoweredKind::Conditional { .. }
-            | SalsaDocTypeLoweredKind::MultiLineUnion { .. }
-            | SalsaDocTypeLoweredKind::Attribute { .. }
-            | SalsaDocTypeLoweredKind::Mapped { .. }
-            | SalsaDocTypeLoweredKind::IndexAccess { .. } => None,
+            SalsaDocTypeLoweredKind::Binary(_)
+            | SalsaDocTypeLoweredKind::Unary(_)
+            | SalsaDocTypeLoweredKind::Conditional(_)
+            | SalsaDocTypeLoweredKind::MultiLineUnion(_)
+            | SalsaDocTypeLoweredKind::Attribute(_)
+            | SalsaDocTypeLoweredKind::Mapped(_)
+            | SalsaDocTypeLoweredKind::IndexAccess(_) => None,
         }
     }
 

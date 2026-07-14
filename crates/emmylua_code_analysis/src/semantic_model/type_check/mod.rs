@@ -456,7 +456,7 @@ fn lowered_kind_to_type(
                 ))
             }
         }
-        SalsaDocTypeLoweredKind::Union { item_types } => {
+        SalsaDocTypeLoweredKind::Union(item_types) => {
             let types: Vec<LuaType> = item_types
                 .iter()
                 .filter_map(|ty_ref| resolve_doc_type_ref(db, file_id, ty_ref))

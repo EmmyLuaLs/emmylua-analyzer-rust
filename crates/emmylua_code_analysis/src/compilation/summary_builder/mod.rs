@@ -8,6 +8,8 @@ pub(crate) use index::*;
 #[cfg(test)]
 pub(crate) use query::*;
 pub use query::{
+    LoweredAttributeBody, LoweredBinaryBody, LoweredConditionalBody, LoweredFunctionBody,
+    LoweredIndexAccessBody, LoweredMappedBody, LoweredObjectBody, LoweredUnaryBody,
     SalsaCallArgExplainSummary, SalsaCallExplainSummary, SalsaDeclQueryIndex,
     SalsaDeclTypeInfoSummary, SalsaDeclTypeQueryIndex, SalsaDocDiagnosticActionKindSummary,
     SalsaDocDiagnosticActionSummary, SalsaDocOwnerResolutionSummary, SalsaDocOwnerResolveIndex,
@@ -33,7 +35,7 @@ pub use query::{
     SalsaSignatureParamExplainSummary, SalsaSignatureReturnExplainSummary,
     SalsaSignatureReturnItemExplainSummary, SalsaSignatureTypeExplainSummary,
     SalsaSingleFileSemanticSummary, SalsaTableShapeQueryIndex, SalsaTypeCandidateOriginSummary,
-    SalsaTypeCandidateSummary, SalsaTypeNarrowSummary,
+    SalsaTypeCandidateSummary, SalsaTypeNarrowSummary, Shared,
 };
 pub use summary::SalsaFileDiagnosticStatus;
 pub(crate) use summary::*;

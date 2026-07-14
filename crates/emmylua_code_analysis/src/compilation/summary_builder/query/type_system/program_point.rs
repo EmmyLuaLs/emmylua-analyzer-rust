@@ -1194,11 +1194,12 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
             SalsaDocTypeLoweredKind::Literal { text } => {
                 literal_member_key_from_text(&text).into_iter().collect()
             }
-            SalsaDocTypeLoweredKind::Union { item_types }
-            | SalsaDocTypeLoweredKind::Intersection { item_types }
-            | SalsaDocTypeLoweredKind::Tuple { item_types }
-            | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => item_types
-                .into_iter()
+            SalsaDocTypeLoweredKind::Union(item_types)
+            | SalsaDocTypeLoweredKind::Intersection(item_types)
+            | SalsaDocTypeLoweredKind::Tuple(item_types)
+            | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => item_types
+                .iter()
+                .cloned()
                 .filter_map(|item| match item {
                     SalsaDocTypeRef::Node(offset) => Some(offset),
                     SalsaDocTypeRef::Incomplete => None,
@@ -1215,10 +1216,10 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
                     )
                 })
                 .collect(),
-            SalsaDocTypeLoweredKind::Unary {
-                op: SalsaDocTypeUnaryOperatorSummary::Keyof,
-                inner_type,
-            } => match inner_type {
+            SalsaDocTypeLoweredKind::Unary(body)
+                if body.op == SalsaDocTypeUnaryOperatorSummary::Keyof =>
+            {
+                match body.inner_type {
                 SalsaDocTypeRef::Node(offset) => collect_keyof_member_keys_from_type_offset(
                     offset,
                     property_query_index,
@@ -1229,15 +1230,15 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
                     visited_type_names,
                 ),
                 SalsaDocTypeRef::Incomplete => Vec::new(),
-            },
+            }
+            }
             SalsaDocTypeLoweredKind::Nullable { inner_type }
             | SalsaDocTypeLoweredKind::Array {
                 item_type: inner_type,
             }
             | SalsaDocTypeLoweredKind::Variadic {
                 item_type: inner_type,
-            }
-            | SalsaDocTypeLoweredKind::Unary { inner_type, .. } => match inner_type {
+            } => match inner_type {
                 SalsaDocTypeRef::Node(offset) => collect_index_access_member_keys_from_type_offset(
                     offset,
                     property_query_index,
@@ -1249,11 +1250,19 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
                 ),
                 SalsaDocTypeRef::Incomplete => Vec::new(),
             },
-            SalsaDocTypeLoweredKind::Conditional {
-                true_type,
-                false_type,
-                ..
-            } => [true_type, false_type]
+            SalsaDocTypeLoweredKind::Unary(body) => match body.inner_type {
+                SalsaDocTypeRef::Node(offset) => collect_index_access_member_keys_from_type_offset(
+                    offset,
+                    property_query_index,
+                    doc,
+                    doc_types,
+                    lowered_types,
+                    visited_offsets,
+                    visited_type_names,
+                ),
+                SalsaDocTypeRef::Incomplete => Vec::new(),
+            },
+            SalsaDocTypeLoweredKind::Conditional(body) => [body.true_type, body.false_type]
                 .into_iter()
                 .filter_map(|branch| match branch {
                     SalsaDocTypeRef::Node(offset) => Some(offset),
@@ -1271,8 +1280,10 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
                     )
                 })
                 .collect(),
-            SalsaDocTypeLoweredKind::Mapped { key_types, .. } => key_types
-                .into_iter()
+            SalsaDocTypeLoweredKind::Mapped(body) => body
+                .key_types
+                .iter()
+                .cloned()
                 .filter_map(|key| match key {
                     SalsaDocTypeRef::Node(offset) => Some(offset),
                     SalsaDocTypeRef::Incomplete => None,
@@ -1289,12 +1300,9 @@ fn collect_index_access_member_keys_from_type_offset_with_substitution(
                     )
                 })
                 .collect(),
-            SalsaDocTypeLoweredKind::Generic {
-                base_type,
-                arg_types,
-            } => collect_index_access_member_keys_from_generic_instance(
-                base_type,
-                arg_types,
+            SalsaDocTypeLoweredKind::Generic(body) => collect_index_access_member_keys_from_generic_instance(
+                body.0,
+                body.1.to_vec(),
                 property_query_index,
                 doc,
                 doc_types,
@@ -1645,19 +1653,22 @@ fn collect_keyof_member_keys_from_type_offset(
                         visited_type_names,
                     )
                 }
-                SalsaDocTypeLoweredKind::Object { fields } => fields
-                    .into_iter()
+                SalsaDocTypeLoweredKind::Object(body) => body
+                    .fields
+                    .iter()
+                    .cloned()
                     .filter_map(|field| match field.key {
                         SalsaDocTypeLoweredObjectFieldKey::Name(name)
                         | SalsaDocTypeLoweredObjectFieldKey::String(name) => Some(name),
                         _ => None,
                     })
                     .collect(),
-                SalsaDocTypeLoweredKind::Union { item_types }
-                | SalsaDocTypeLoweredKind::Intersection { item_types }
-                | SalsaDocTypeLoweredKind::Tuple { item_types }
-                | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => item_types
-                    .into_iter()
+                SalsaDocTypeLoweredKind::Union(item_types)
+                | SalsaDocTypeLoweredKind::Intersection(item_types)
+                | SalsaDocTypeLoweredKind::Tuple(item_types)
+                | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => item_types
+                    .iter()
+                    .cloned()
                     .filter_map(|item| match item {
                         SalsaDocTypeRef::Node(offset) => Some(offset),
                         SalsaDocTypeRef::Incomplete => None,
@@ -1680,8 +1691,7 @@ fn collect_keyof_member_keys_from_type_offset(
                 }
                 | SalsaDocTypeLoweredKind::Variadic {
                     item_type: inner_type,
-                }
-                | SalsaDocTypeLoweredKind::Unary { inner_type, .. } => match inner_type {
+                } => match inner_type {
                     SalsaDocTypeRef::Node(offset) => collect_keyof_member_keys_from_type_offset(
                         offset,
                         property_query_index,
@@ -1693,11 +1703,19 @@ fn collect_keyof_member_keys_from_type_offset(
                     ),
                     SalsaDocTypeRef::Incomplete => Vec::new(),
                 },
-                SalsaDocTypeLoweredKind::Conditional {
-                    true_type,
-                    false_type,
-                    ..
-                } => [true_type, false_type]
+                SalsaDocTypeLoweredKind::Unary(body) => match body.inner_type {
+                    SalsaDocTypeRef::Node(offset) => collect_keyof_member_keys_from_type_offset(
+                        offset,
+                        property_query_index,
+                        doc,
+                        doc_types,
+                        lowered_types,
+                        visited_offsets,
+                        visited_type_names,
+                    ),
+                    SalsaDocTypeRef::Incomplete => Vec::new(),
+                },
+                SalsaDocTypeLoweredKind::Conditional(body) => [body.true_type, body.false_type]
                     .into_iter()
                     .filter_map(|branch| match branch {
                         SalsaDocTypeRef::Node(offset) => Some(offset),
@@ -1715,8 +1733,10 @@ fn collect_keyof_member_keys_from_type_offset(
                         )
                     })
                     .collect(),
-                SalsaDocTypeLoweredKind::Mapped { key_types, .. } => key_types
-                    .into_iter()
+            SalsaDocTypeLoweredKind::Mapped(body) => body
+                    .key_types
+                    .iter()
+                    .cloned()
                     .filter_map(|key| match key {
                         SalsaDocTypeRef::Node(offset) => Some(offset),
                         SalsaDocTypeRef::Incomplete => None,
@@ -2401,27 +2421,30 @@ fn collect_member_candidates_from_lowered_kind(
                 visited_type_names,
             ));
         }
-        SalsaDocTypeLoweredKind::Object { fields } => {
+        SalsaDocTypeLoweredKind::Object(body) => {
             candidates.extend(collect_object_field_candidates(
-                fields.into_iter().filter_map(|field| match field.key {
-                    SalsaDocTypeLoweredObjectFieldKey::Name(name)
-                    | SalsaDocTypeLoweredObjectFieldKey::String(name)
-                        if name == *member_name =>
-                    {
-                        Some((field.syntax_offset, field.value_type.doc_node_key()))
-                    }
-                    _ => None,
-                }),
+                body.fields
+                    .iter()
+                    .cloned()
+                    .filter_map(|field| match field.key {
+                        SalsaDocTypeLoweredObjectFieldKey::Name(name)
+                        | SalsaDocTypeLoweredObjectFieldKey::String(name)
+                            if name == *member_name =>
+                        {
+                            Some((field.syntax_offset, field.value_type.doc_node_key()))
+                        }
+                        _ => None,
+                    }),
             ));
         }
-        SalsaDocTypeLoweredKind::Union { item_types }
-        | SalsaDocTypeLoweredKind::Intersection { item_types }
-        | SalsaDocTypeLoweredKind::Tuple { item_types }
-        | SalsaDocTypeLoweredKind::MultiLineUnion { item_types } => {
-            for item in item_types {
+        SalsaDocTypeLoweredKind::Union(item_types)
+        | SalsaDocTypeLoweredKind::Intersection(item_types)
+        | SalsaDocTypeLoweredKind::Tuple(item_types)
+        | SalsaDocTypeLoweredKind::MultiLineUnion(item_types) => {
+            for item in item_types.iter() {
                 if let SalsaDocTypeRef::Node(offset) = item {
                     candidates.extend(collect_member_candidates_from_type_offset(
-                        offset,
+                        *offset,
                         member_name,
                         property_query_index,
                         chunk,
@@ -2455,13 +2478,10 @@ fn collect_member_candidates_from_lowered_kind(
                 ));
             }
         }
-        SalsaDocTypeLoweredKind::Generic {
-            base_type,
-            arg_types,
-        } => {
+        SalsaDocTypeLoweredKind::Generic(body) => {
             candidates.extend(collect_member_candidates_from_generic_instance(
-                base_type,
-                arg_types,
+                body.0,
+                body.1.to_vec(),
                 member_name,
                 property_query_index,
                 chunk,
@@ -2472,16 +2492,13 @@ fn collect_member_candidates_from_lowered_kind(
                 visited_type_names,
             ));
         }
-        SalsaDocTypeLoweredKind::IndexAccess {
-            base_type,
-            index_type,
-        } => {
+        SalsaDocTypeLoweredKind::IndexAccess(body) => {
             if let (SalsaDocTypeRef::Node(base_offset), SalsaDocTypeRef::Node(index_offset)) =
-                (base_type, index_type)
+                (body.base_type, body.index_type)
             {
                 candidates.extend(collect_member_candidates_from_index_access_type_offset(
-                    base_offset,
-                    index_offset,
+                    base_offset.clone(),
+                    index_offset.clone(),
                     member_name,
                     property_query_index,
                     chunk,
@@ -2491,15 +2508,11 @@ fn collect_member_candidates_from_lowered_kind(
                 ));
             }
         }
-        SalsaDocTypeLoweredKind::Conditional {
-            true_type,
-            false_type,
-            ..
-        } => {
-            for branch in [true_type, false_type] {
-                if let SalsaDocTypeRef::Node(offset) = branch {
+        SalsaDocTypeLoweredKind::Conditional(body) => {
+            for branch in [body.true_type, body.false_type] {
+                if let SalsaDocTypeRef::Node(offset) = &branch {
                     candidates.extend(collect_member_candidates_from_type_offset(
-                        offset,
+                        offset.clone(),
                         member_name,
                         property_query_index,
                         chunk,
@@ -2512,13 +2525,9 @@ fn collect_member_candidates_from_lowered_kind(
                 }
             }
         }
-        SalsaDocTypeLoweredKind::Mapped {
-            key_types,
-            value_type,
-            ..
-        } => {
+        SalsaDocTypeLoweredKind::Mapped(body) => {
             if mapped_key_types_allow_member_name(
-                key_types.into_iter().filter_map(|key| match key {
+                body.key_types.iter().cloned().filter_map(|key| match key {
                     SalsaDocTypeRef::Node(offset) => Some(offset),
                     SalsaDocTypeRef::Incomplete => None,
                 }),
@@ -2529,7 +2538,8 @@ fn collect_member_candidates_from_lowered_kind(
                 lowered_types,
             ) {
                 candidates.extend(collect_object_field_candidates(
-                    value_type
+                    body.value_type
+                        .clone()
                         .doc_node_key()
                         .into_iter()
                         .map(|offset| (syntax_offset, Some(offset))),
@@ -2567,9 +2577,9 @@ fn mapped_doc_type_allows_member_name_with_substitution(
     let lowered_keys =
         find_resolved_doc_type_by_key_from_parts(doc_types, lowered_types, type_offset)
             .and_then(|resolved| match resolved.lowered.kind {
-                SalsaDocTypeLoweredKind::Mapped { key_types, .. } => {
+                SalsaDocTypeLoweredKind::Mapped(body) => {
                     Some(collect_mapped_member_names_from_key_types(
-                        key_types.into_iter().filter_map(|key| match key {
+                        body.key_types.iter().cloned().filter_map(|key| match key {
                             SalsaDocTypeRef::Node(offset) => Some(offset),
                             SalsaDocTypeRef::Incomplete => None,
                         }),

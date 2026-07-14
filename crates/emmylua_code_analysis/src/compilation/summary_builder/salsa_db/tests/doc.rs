@@ -452,32 +452,26 @@ local result = map(1) ---@as string
     assert!(lowered_types.types.iter().any(|doc_type| matches!(
         doc_type,
         SalsaDocTypeLoweredNode {
-            kind: SalsaDocTypeLoweredKind::Function {
-                params,
-                returns,
-                ..
-            },
+            kind: SalsaDocTypeLoweredKind::Function(body),
             ..
-        } if !params.is_empty()
-            && returns.len() == 2
-            && matches!(params[0].doc_type, SalsaDocTypeRef::Node(_))
+        } if !body.params.is_empty()
+            && body.returns.len() == 2
+            && matches!(body.params[0].doc_type, SalsaDocTypeRef::Node(_))
     )));
     assert!(lowered_types.types.iter().any(|doc_type| matches!(
         doc_type,
         SalsaDocTypeLoweredNode {
-            kind: SalsaDocTypeLoweredKind::Union { item_types },
+            kind: SalsaDocTypeLoweredKind::Union(item_types),
             ..
         } if item_types.len() == 2
     )));
     assert!(lowered_types.types.iter().any(|doc_type| matches!(
         doc_type,
         SalsaDocTypeLoweredNode {
-            kind: SalsaDocTypeLoweredKind::Unary {
-                op: SalsaDocTypeUnaryOperatorSummary::Neg,
-                inner_type: SalsaDocTypeRef::Node(_),
-            },
+            kind: SalsaDocTypeLoweredKind::Unary(body),
             ..
-        }
+        } if body.op == SalsaDocTypeUnaryOperatorSummary::Neg
+            && matches!(&body.inner_type, SalsaDocTypeRef::Node(_))
     )));
 
     let lowered_union_offset = doc_types
@@ -494,7 +488,7 @@ local result = map(1) ---@as string
     assert!(matches!(
         doc_queries.lowered_type_at(FileId::new(8), lowered_union_offset),
         Some(SalsaDocTypeLoweredNode {
-            kind: SalsaDocTypeLoweredKind::Union { item_types },
+            kind: SalsaDocTypeLoweredKind::Union(item_types),
             ..
         }) if item_types.len() == 2
     ));
@@ -509,7 +503,7 @@ local result = map(1) ---@as string
                 ..
             },
             lowered: SalsaDocTypeLoweredNode {
-                kind: SalsaDocTypeLoweredKind::Union { item_types },
+                kind: SalsaDocTypeLoweredKind::Union(item_types),
                 ..
             },
             ..
@@ -632,21 +626,21 @@ local wrapped = fn(3)"#,
     assert!(incomplete_lowered.types.iter().any(|doc_type| matches!(
         doc_type,
         SalsaDocTypeLoweredNode {
-            kind: SalsaDocTypeLoweredKind::Function { params, .. },
+            kind: SalsaDocTypeLoweredKind::Function(body),
             ..
-        } if params.len() == 1
-            && matches!(params[0].doc_type, SalsaDocTypeRef::Incomplete)
+        } if body.params.len() == 1
+            && matches!(body.params[0].doc_type, SalsaDocTypeRef::Incomplete)
     )));
     assert!(incomplete_resolved.types.iter().any(|doc_type| matches!(
         doc_type,
         SalsaDocTypeResolvedSummary {
             lowered: SalsaDocTypeLoweredNode {
-                kind: SalsaDocTypeLoweredKind::Function { params, .. },
+                kind: SalsaDocTypeLoweredKind::Function(body),
                 ..
             },
             ..
-        } if params.len() == 1
-            && matches!(params[0].doc_type, SalsaDocTypeRef::Incomplete)
+        } if body.params.len() == 1
+            && matches!(body.params[0].doc_type, SalsaDocTypeRef::Incomplete)
     )));
 }
 

@@ -41,10 +41,12 @@ pub(crate) use doc_tag::{
     find_doc_tag_property_in_index,
 };
 pub use doc_type::{
+    LoweredAttributeBody, LoweredBinaryBody, LoweredConditionalBody, LoweredFunctionBody,
+    LoweredIndexAccessBody, LoweredMappedBody, LoweredObjectBody, LoweredUnaryBody,
     SalsaDocTypeDefQueryIndex, SalsaDocTypeLoweredGenericParam, SalsaDocTypeLoweredIndex,
     SalsaDocTypeLoweredKind, SalsaDocTypeLoweredNode, SalsaDocTypeLoweredObjectField,
     SalsaDocTypeLoweredObjectFieldKey, SalsaDocTypeLoweredParam, SalsaDocTypeLoweredReturn,
-    SalsaDocTypeRef, SalsaDocTypeResolvedIndex, SalsaDocTypeResolvedSummary,
+    SalsaDocTypeRef, SalsaDocTypeResolvedIndex, SalsaDocTypeResolvedSummary, Shared,
 };
 pub(crate) use doc_type::{
     build_doc_type_def_query_index, build_lowered_doc_type_index, build_resolved_doc_type_index,

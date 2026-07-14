@@ -642,10 +642,9 @@ impl<'db> InferQuery<'db> {
                 let file_id = self.file_id;
                 if let Some(resolved) = db.doc().resolved_type_by_key(file_id, *key) {
                     match &resolved.lowered.kind {
-                        SalsaDocTypeLoweredKind::Function {
-                            params, returns, ..
-                        } => {
-                            let func_params: Vec<(String, Option<LuaType>)> = params
+                        SalsaDocTypeLoweredKind::Function(body) => {
+                            let func_params: Vec<(String, Option<LuaType>)> = body
+                                .params
                                 .iter()
                                 .map(|p| {
                                     let name =
@@ -664,7 +663,8 @@ impl<'db> InferQuery<'db> {
                                 .first()
                                 .map(|(n, _)| n == "self")
                                 .unwrap_or(false);
-                            let ret = returns
+                            let ret = body
+                                .returns
                                 .first()
                                 .and_then(|r| match &r.doc_type {
                                     SalsaDocTypeRef::Node(rk) => db
@@ -674,7 +674,7 @@ impl<'db> InferQuery<'db> {
                                     _ => None,
                                 })
                                 .unwrap_or(LuaType::Nil);
-                            let is_var = params.last().is_some_and(|p| p.is_dots);
+                            let is_var = body.params.last().is_some_and(|p| p.is_dots);
                             return Some(LuaType::DocFunction(
                                 LuaFunctionType::new(
                                     AsyncState::None,
@@ -1328,11 +1328,11 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                 if let Some(key) = &type_def.value_type_offset {
                     if let Some(resolved) = db.doc().resolved_type_by_key(file_id, *key) {
                         // Handle Function lowered kind directly — build CallFunctionInfo
-                        if let SalsaDocTypeLoweredKind::Function {
-                            params, returns, ..
-                        } = &resolved.lowered.kind
+                        if let SalsaDocTypeLoweredKind::Function(body) =
+                            &resolved.lowered.kind
                         {
-                            let func_params: Vec<(String, Option<LuaType>)> = params
+                            let func_params: Vec<(String, Option<LuaType>)> = body
+                                .params
                                 .iter()
                                 .map(|p| {
                                     let name =
@@ -1351,7 +1351,8 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                                 .first()
                                 .map(|(n, _)| n == "self")
                                 .unwrap_or(false);
-                            let ret = returns
+                            let ret = body
+                                .returns
                                 .first()
                                 .and_then(|r| match &r.doc_type {
                                     SalsaDocTypeRef::Node(rk) => db
@@ -1361,7 +1362,7 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                                     _ => None,
                                 })
                                 .unwrap_or(LuaType::Nil);
-                            let is_var = params.last().is_some_and(|p| p.is_dots);
+                            let is_var = body.params.last().is_some_and(|p| p.is_dots);
                             return Some(CallFunctionInfo {
                                 params: func_params,
                                 is_colon_define: is_colon,

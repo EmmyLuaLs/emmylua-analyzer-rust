@@ -826,7 +826,7 @@ fn resolve_call_narrow(
 }
 
 fn is_type_guard_lowered(node: &SalsaDocTypeLoweredNode) -> bool {
-    matches!(&node.kind, SalsaDocTypeLoweredKind::Generic { .. })
+    matches!(&node.kind, SalsaDocTypeLoweredKind::Generic(_))
 }
 
 fn extract_guard_type(
@@ -835,8 +835,8 @@ fn extract_guard_type(
     node: &SalsaDocTypeLoweredNode,
 ) -> Option<LuaType> {
     match &node.kind {
-        SalsaDocTypeLoweredKind::Generic { arg_types, .. } => {
-            let first_param = arg_types.first()?;
+        SalsaDocTypeLoweredKind::Generic(body) => {
+            let first_param = body.1.first()?;
             match first_param {
                 SalsaDocTypeRef::Node(key) => {
                     if let Some(resolved) = db.doc().resolved_type_by_key(file_id, *key) {
