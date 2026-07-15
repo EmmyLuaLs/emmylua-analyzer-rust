@@ -491,31 +491,6 @@ fn collect_decl_named_type_names(
         SalsaDeclKindSummary::ImplicitSelf => {}
     }
 
-    // Fallback: if owner resolve found nothing, look at type_defs directly.
-    // Match any class/enum whose owner offset is near the decl (in either direction).
-    // The owner (comment's attached statement) may be before or after the decl's name token.
-    if collected.is_empty() {
-        let decl_pos = decl.start_offset;
-        for type_def in &doc.type_defs {
-            if let Some(owner_offset) = type_def.owner.syntax_offset {
-                // Owner must be within 100 bytes of the decl (covers `@class Foo\nlocal foo`)
-                let dist = if owner_offset > decl_pos {
-                    u32::from(owner_offset) - u32::from(decl_pos)
-                } else {
-                    u32::from(decl_pos) - u32::from(owner_offset)
-                };
-                if dist < 100
-                    && matches!(
-                        type_def.kind,
-                        SalsaDocTypeDefKindSummary::Class | SalsaDocTypeDefKindSummary::Enum
-                    )
-                {
-                    collected.insert(type_def.name.clone());
-                }
-            }
-        }
-    }
-
     collected.into_iter().collect()
 }
 

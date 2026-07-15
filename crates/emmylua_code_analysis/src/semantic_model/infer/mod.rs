@@ -1263,6 +1263,13 @@ fn lowered_type(
             };
             Some(LuaType::Variadic(VariadicType::Base(item).into()))
         }
+        SalsaDocTypeLoweredKind::Infer { generic_name } => {
+            if generic_name.is_empty() {
+                Some(LuaType::Any)
+            } else {
+                Some(LuaType::Ref(LuaTypeDeclId::global(generic_name)))
+            }
+        }
         SalsaDocTypeLoweredKind::Literal { text } => {
             let s = text.as_str();
             match s {

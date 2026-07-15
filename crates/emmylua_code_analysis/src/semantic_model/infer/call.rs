@@ -33,9 +33,12 @@ fn extract_return_type(infer: &InferQuery, prefix_type: &LuaType) -> InferResult
             if let Some(info) =
                 SignatureInfo::query(&db, infer.get_file_id(), sig_id.get_position())
             {
-                let ret = info.return_type();
-                if !ret.is_unknown() {
-                    return Ok(ret);
+                let has_generics = !info.generics().is_empty();
+                if !has_generics {
+                    let ret = info.return_type();
+                    if !ret.is_unknown() {
+                        return Ok(ret);
+                    }
                 }
             }
             Err(InferFailReason::NotImplemented)

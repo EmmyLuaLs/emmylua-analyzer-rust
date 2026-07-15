@@ -602,4 +602,48 @@ mod tests {
             ty
         );
     }
+
+    /// 复现 test_1 的 diagnostic 失败
+    #[test]
+    fn debug_sig_return_type_with_generic() {
+        let mut t = NarrowTester::new();
+        let f = t.add(
+            r#"---@namespace TestNamespace0
+---@generic T: string
+---@param name  `T` 类名
+---@return T
+local function meta(name)
+    return name
+end
+
+---@class Class
+local class = meta("class")"#,
+        );
+
+        let db = f.db;
+        let file_id = f.file_id;
+
+        let sig_summary = db.doc().signature().summary(file_id).expect("sig summary");
+        let sig = &sig_summary.signatures[0];
+        eprintln!("sig_offset={} doc_generic_offsets={}", u32::from(sig.syntax_offset), sig.doc_generic_offsets.len());
+        let explain = db.doc().signature().explain(file_id, sig.syntax_offset).expect("explain");
+        eprintln!("explain generics={} returns={}", explain.generics.len(), explain.returns.len());
+        eprintln!("return lowered={:?}", explain.returns[0].items[0].doc_type.lowered);
+
+        use crate::semantic_model::signature::SignatureInfo;
+        let info = SignatureInfo::query(db, file_id, sig.syntax_offset).expect("sig info");
+        let ret = info.return_type();
+        eprintln!("SignatureInfo::return_type() = {:?}", ret);
+
+        // 然后用 SemanticModel 模拟 checker 的 infer 路径
+        let model = SemanticModel::new(
+            file_id, db, Arc::new(Emmyrc::default()), f.chunk.clone(),
+        );
+        let call = model.get_root().descendants::<emmylua_parser::LuaCallExpr>().next().expect("call expr");
+        let call_ret = model.infer_expr(LuaExpr::CallExpr(call)).expect("infer call");
+        eprintln!("infer_expr(meta(\"class\")) = {:?}", call_ret);
+
+        // 预期：返回 string 或至少不是 Unknown
+        assert!(!call_ret.is_unknown(), "call return should not be Unknown");
+    }
 }
