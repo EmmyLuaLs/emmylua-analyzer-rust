@@ -760,7 +760,7 @@ end"#;
 #[test]
 fn test_summary_builder_flow_continue_statement() {
     use crate::Emmyrc;
-    use emmylua_parser::LuaFeatures;
+
     use std::sync::Arc;
 
     let mut db = SalsaSummaryDatabase::default();

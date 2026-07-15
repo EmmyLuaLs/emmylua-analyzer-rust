@@ -1164,6 +1164,40 @@ impl<'db> InferQuery<'db> {
 
         Err(InferFailReason::NotImplemented)
     }
+
+    fn rewrite_generic_ref(&self, ty: &LuaType, name: &str, tpl_id: GenericTplId) -> LuaType {
+        match ty {
+            LuaType::Ref(id) if id.get_name() == name => LuaType::TplRef(
+                crate::GenericTpl::new(tpl_id, SmolStr::new(name), None, None, false, None).into(),
+            ),
+            LuaType::Array(arr) => {
+                let base = self.rewrite_generic_ref(arr.get_base(), name, tpl_id);
+                if base == *arr.get_base() {
+                    ty.clone()
+                } else {
+                    LuaType::Array(LuaArrayType::new(base, arr.get_len().clone()).into())
+                }
+            }
+            LuaType::Union(u) => LuaType::from_vec(
+                u.into_vec()
+                    .iter()
+                    .map(|m| self.rewrite_generic_ref(m, name, tpl_id))
+                    .collect(),
+            ),
+            LuaType::Variadic(v) => match v.as_ref() {
+                VariadicType::Base(b) => {
+                    let new_b = self.rewrite_generic_ref(b, name, tpl_id);
+                    if &new_b == b {
+                        ty.clone()
+                    } else {
+                        LuaType::Variadic(VariadicType::Base(new_b).into())
+                    }
+                }
+                _ => ty.clone(),
+            },
+            _ => ty.clone(),
+        }
+    }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1347,8 +1381,17 @@ fn resolve_call_info(infer: &InferQuery, ty: &LuaType) -> Option<CallFunctionInf
                 let bindings = GenericBindings::from_type_args_with_constraints(&[], &constraints);
                 for (_, param_type) in &mut info.params {
                     if let Some(ty) = param_type {
+                        for (i, gp) in generic.params.iter().enumerate() {
+                            let tpl_id = GenericTplId::Func(i as u32);
+                            *ty = infer.rewrite_generic_ref(ty, &gp.name, tpl_id);
+                        }
                         *ty = substitute(ty, &bindings);
                     }
+                }
+                for (i, gp) in generic.params.iter().enumerate() {
+                    let tpl_id = GenericTplId::Func(i as u32);
+                    info.return_type =
+                        infer.rewrite_generic_ref(&info.return_type, &gp.name, tpl_id);
                 }
                 info.return_type = substitute(&info.return_type, &bindings);
             }

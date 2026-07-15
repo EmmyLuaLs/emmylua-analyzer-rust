@@ -32,7 +32,7 @@ mod tests {
             Self { db, next_id: 1 }
         }
 
-        fn add(&mut self, src: &str) -> TestFile {
+        fn add(&mut self, src: &str) -> TestFile<'_> {
             let fid = self.next_id;
             self.next_id += 1;
             let file_id = FileId::new(fid);
