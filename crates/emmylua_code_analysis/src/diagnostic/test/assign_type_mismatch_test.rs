@@ -1602,4 +1602,37 @@ return t
             "#
         ));
     }
+
+    #[test]
+    fn test_self_assignment_with_scalar_operator_keeps_declared_class() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Vector
+            ---@operator div(number): Vector
+
+            local v ---@type Vector
+            local position ---@type Vector
+
+            position = position / 1
+            v = position
+            "#,
+        ));
+    }
+
+    #[test]
+    fn test_self_assignment_without_scalar_operator_reports_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class Vector
+
+            local position ---@type Vector
+
+            position = position / 1
+            "#,
+        ));
+    }
 }
