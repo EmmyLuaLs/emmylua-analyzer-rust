@@ -892,6 +892,70 @@ return t
     }
 
     #[test]
+    fn test_literal_argument_selects_overload_return_type() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@class B
+            local C
+
+            ---@overload fun(): A
+            ---@overload fun(type: "fluid"): B
+            function C.name(type) end
+
+            local tmp = C.name("fluid")
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_explicit_signature_param_keeps_main_return_priority() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@class B
+            local C
+            local a ---@type A
+
+            ---@overload fun(type: "fluid"): B
+            ---@param type "fluid"
+            function C.name(type)
+                return a
+            end
+
+            local tmp = C.name("fluid")
+        "#
+        ));
+    }
+
+    #[test]
+    fn test_table_field_explicit_signature_param_keeps_main_return_priority() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@class B
+            local a ---@type A
+
+            local C = {
+                ---@overload fun(type: "fluid"): B
+                ---@param type "fluid"
+                name = function(type)
+                    return a
+                end
+            }
+
+            local tmp = C.name("fluid")
+        "#
+        ));
+    }
+
+    #[test]
     fn test_table_pack_in_function() {
         let mut ws = VirtualWorkspace::new_with_init_std_lib();
         assert!(ws.has_no_diagnostic(
