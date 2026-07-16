@@ -336,6 +336,19 @@ fn infer_member_by_lookup(
         LuaType::TableGeneric(table_generic) => {
             infer_table_generic_member_by_key_type(db, table_generic, &lookup.key_type)
         }
+        LuaType::Call(alias_call)
+            if alias_call.get_call_kind() == LuaAliasCallKind::Index
+                && !prefix_type.contain_tpl() =>
+        {
+            let index_guard = infer_guard.fork();
+            index_guard.check_type(prefix_type)?;
+            let resolved = instantiate_type_generic(db, prefix_type, &TypeSubstitutor::new());
+            if resolved == *prefix_type {
+                Err(InferFailReason::FieldNotFound)
+            } else {
+                infer_member_by_lookup(db, cache, &resolved, lookup, &index_guard)
+            }
+        }
         LuaType::TplRef(tpl) => infer_tpl_ref_member(db, cache, tpl, lookup, infer_guard),
         LuaType::ModuleRef(file_id) => {
             let module_info = db.get_module_index().get_module(*file_id);

@@ -1584,4 +1584,22 @@ return t
         "#
         ));
     }
+
+    #[test]
+    fn test_keyof_nested_doc_index_access_accepts_member_name() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+            ---@class A
+            ---@field test number
+
+            ---@class B
+            ---@field test A
+
+            ---@type keyof B["test"]
+            local tmp = "test"
+            "#
+        ));
+    }
 }

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
-use crate::{InferFailReason, LuaTypeDeclId};
+use crate::{InferFailReason, LuaType, LuaTypeDeclId};
 
 pub type InferGuardRef = Rc<InferGuard>;
 
@@ -8,7 +8,7 @@ pub type InferGuardRef = Rc<InferGuard>;
 ///
 /// This guard uses a lazy allocation strategy:
 /// - Fork is zero-cost (no HashSet allocation)
-/// - `current` HashSet is only created when needed (write-on-create)
+/// - Visited declaration and instantiated type sets are only created when needed
 /// - Most child guards never allocate memory if they only read from parents
 ///
 /// # Memory Layout
@@ -23,9 +23,10 @@ pub type InferGuardRef = Rc<InferGuard>;
 /// ```
 #[derive(Debug, Clone)]
 pub struct InferGuard {
-    /// Current level's visited types (lazily allocated)
-    /// Only created when we need to add a new type not in parent chain
+    /// Current level's visited type declarations (lazily allocated)
     current: RefCell<Option<HashSet<LuaTypeDeclId>>>,
+    /// Current level's visited instantiated types (lazily allocated)
+    current_types: RefCell<Option<HashSet<LuaType>>>,
     /// Parent guard (shared reference)
     parent: Option<Rc<InferGuard>>,
 }
@@ -34,6 +35,7 @@ impl InferGuard {
     pub fn new() -> Rc<Self> {
         Rc::new(Self {
             current: RefCell::new(None),
+            current_types: RefCell::new(None),
             parent: None,
         })
     }
@@ -44,6 +46,7 @@ impl InferGuard {
     pub fn fork(self: &Rc<Self>) -> Rc<Self> {
         Rc::new(Self {
             current: RefCell::new(None), // Lazy allocation
+            current_types: RefCell::new(None),
             parent: Some(Rc::clone(self)),
         })
     }
@@ -70,6 +73,20 @@ impl InferGuard {
         Ok(())
     }
 
+    pub fn check_type(&self, typ: &LuaType) -> Result<(), InferFailReason> {
+        if self.contains_type_in_parents(typ) {
+            return Err(InferFailReason::RecursiveInfer);
+        }
+
+        let mut current_types = self.current_types.borrow_mut();
+        let current_types = current_types.get_or_insert_with(HashSet::default);
+        if !current_types.insert(typ.clone()) {
+            return Err(InferFailReason::RecursiveInfer);
+        }
+
+        Ok(())
+    }
+
     /// Check if a type has been visited in parent chain
     fn contains_in_parents(&self, type_id: &LuaTypeDeclId) -> bool {
         let mut current_parent = self.parent.as_ref();
@@ -78,6 +95,19 @@ impl InferGuard {
                 if set.contains(type_id) {
                     return true;
                 }
+            }
+            current_parent = parent.parent.as_ref();
+        }
+        false
+    }
+
+    fn contains_type_in_parents(&self, typ: &LuaType) -> bool {
+        let mut current_parent = self.parent.as_ref();
+        while let Some(parent) = current_parent {
+            if let Some(ref types) = *parent.current_types.borrow()
+                && types.contains(typ)
+            {
+                return true;
             }
             current_parent = parent.parent.as_ref();
         }
@@ -99,6 +129,11 @@ impl InferGuard {
     /// Get the depth of current level
     pub fn current_depth(&self) -> usize {
         self.current.borrow().as_ref().map_or(0, |set| set.len())
+            + self
+                .current_types
+                .borrow()
+                .as_ref()
+                .map_or(0, |set| set.len())
     }
 
     /// Get the total depth of the entire guard chain
@@ -127,7 +162,7 @@ impl InferGuard {
     /// Useful for debugging and performance analysis
     #[cfg(test)]
     pub fn has_allocated(&self) -> bool {
-        self.current.borrow().is_some()
+        self.current.borrow().is_some() || self.current_types.borrow().is_some()
     }
 }
 
