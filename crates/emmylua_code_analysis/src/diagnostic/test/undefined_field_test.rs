@@ -1046,4 +1046,49 @@ mod test {
             "#
         ));
     }
+
+    #[test]
+    fn test_doc_index_access_type_resolves_object_field() {
+        let mut ws = VirtualWorkspace::new();
+        let code = r#"
+            ---@class A
+            ---@field b { test: number }
+
+            ---@type A['b']
+            local tmp
+            local out = tmp.test
+            result = out
+            "#;
+
+        let has_no_diagnostic = ws.has_no_diagnostic(DiagnosticCode::UndefinedField, code);
+        let result_ty = ws.expr_ty("result");
+        let expected_ty = ws.ty("number");
+        let result_type_text = ws.humanize_type(result_ty.clone());
+
+        assert!(
+            has_no_diagnostic && result_ty == expected_ty,
+            "undefined-field diagnostic: {}; result type: {}",
+            !has_no_diagnostic,
+            result_type_text
+        );
+    }
+
+    #[test]
+    fn test_doc_index_access_type_cycle_does_not_overflow() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(!ws.has_no_diagnostic(
+            DiagnosticCode::UndefinedField,
+            r#"
+            ---@class A
+            ---@field b B['c']
+
+            ---@class B
+            ---@field c A['b']
+
+            ---@type A['b']
+            local tmp
+            local out = tmp.test
+            "#
+        ));
+    }
 }

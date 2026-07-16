@@ -213,6 +213,7 @@ pub fn analyze_param(analyzer: &mut DocAnalyzer, tag: LuaDocTagParam) -> Option<
             .get_db()
             .get_signature_index_mut()
             .get_or_create(id);
+        signature.has_explicit_docs = true;
         let param_info = LuaDocParamInfo {
             name: name.clone(),
             type_ref: type_ref.clone(),
@@ -261,6 +262,7 @@ pub fn analyze_return(analyzer: &mut DocAnalyzer, tag: LuaDocTagReturn) -> Optio
         .collect::<Vec<_>>();
 
     bind_signature_return_docs(analyzer, &tag, |signature| {
+        signature.has_explicit_docs = true;
         signature.return_docs.extend(return_infos);
     })
 }

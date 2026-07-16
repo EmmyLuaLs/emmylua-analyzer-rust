@@ -3600,6 +3600,25 @@ _2 = a[1]
     }
 
     #[test]
+    fn test_assignment_rhs_keeps_self_type_for_scalar_operator() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        ---@class Vector
+        ---@operator div(number): Vector
+
+        local position ---@type Vector
+
+        position = position / 1
+        after_assign = position
+        "#,
+        );
+
+        let after_assign = ws.expr_ty("after_assign");
+        assert_eq!(ws.humanize_type(after_assign), "Vector");
+    }
+
+    #[test]
     #[timeout(5000)]
     fn test_issue_1114_repeated_self_dependent_assignments_build_semantic_model() {
         let cases = [

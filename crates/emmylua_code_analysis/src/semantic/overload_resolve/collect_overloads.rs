@@ -91,9 +91,14 @@ fn collect_callable_overload_groups_inner(
             let Some(signature) = db.get_signature_index().get(sig_id) else {
                 return Ok(());
             };
-            // 主签名描述了函数实现本身, 当它和 overload 同时可匹配时应作为同等匹配下的优先候选.
-            let mut overloads = vec![signature.to_doc_func_type()];
-            overloads.extend(signature.overloads.iter().cloned());
+            let main_signature = signature.to_doc_func_type();
+            let mut overloads = signature.overloads.clone();
+            // 显式声明参数或返回值的主签名, 在匹配程度相同时优先于 overload.
+            if signature.has_explicit_docs {
+                overloads.insert(0, main_signature);
+            } else {
+                overloads.push(main_signature);
+            }
             groups.push(overloads);
         }
         LuaType::Instance(instance) => {
@@ -136,7 +141,9 @@ fn push_call_operator_overload_group(
     };
 
     // 同一个 owner 的 call operators 作为一个 overload group, 由调用方再做参数匹配.
-    let mut overloads = Vec::new();
+    let mut declared_signatures = Vec::new();
+    let mut doc_functions = Vec::new();
+    let mut undeclared_signatures = Vec::new();
     for operator_id in operator_ids {
         let Some(operator) = db.get_operator_index().get_operator(operator_id) else {
             continue;
@@ -148,22 +155,29 @@ fn push_call_operator_overload_group(
         }
 
         match func_type {
-            LuaType::DocFunction(func) => overloads.push(func),
+            LuaType::DocFunction(func) => doc_functions.push(func),
             LuaType::Signature(signature_id) => {
                 let Some(signature) = db.get_signature_index().get(&signature_id) else {
                     continue;
                 };
                 // 未解析返回的 signature 不能安全转换成候选, 这里先跳过.
                 if signature.is_resolve_return() {
-                    overloads.push(signature.to_call_operator_func_type());
+                    let function = signature.to_call_operator_func_type();
+                    if signature.has_explicit_docs {
+                        declared_signatures.push(function);
+                    } else {
+                        undeclared_signatures.push(function);
+                    }
                 }
             }
             _ => {}
         }
     }
 
-    if !overloads.is_empty() {
-        groups.push(overloads);
+    declared_signatures.extend(doc_functions);
+    declared_signatures.extend(undeclared_signatures);
+    if !declared_signatures.is_empty() {
+        groups.push(declared_signatures);
     }
 }
 

@@ -218,14 +218,6 @@ impl FlowReplayQuery {
         Ok(())
     }
 
-    fn resolve_dependencies(&mut self, var_ref_id: &VarRefId, typ: LuaType) {
-        for query in &mut self.dependency_queries {
-            if query.var_ref_id == *var_ref_id {
-                query.resolved_type = Some(typ.clone());
-            }
-        }
-    }
-
     fn accept_result(&mut self, dependency_result: InferResult) -> Result<(), InferFailReason> {
         let dependency_query = self
             .dependency_queries
@@ -1114,11 +1106,18 @@ impl<'a> FlowTypeEngine<'a> {
                 expr.clone(),
                 true,
             );
-            // A plain self-dependent RHS would replay this assignment while
-            // trying to type itself. Treat that self read as unknown; `and`/`or`
-            // assignments still need the antecedent value for their semantics.
+            // 普通自引用 RHS 优先使用明确的自定义声明类型, 避免回放时重新进入当前赋值节点.
+            // `and`/`or` 中的读取仍保留表达式内部流位置, 以应用短路分支的收窄结果.
             if explicit_var_type.is_none() && !contains_short_circuit_binary_expr(&expr) {
-                replay_query.resolve_dependencies(&var_ref_id, LuaType::Unknown);
+                let self_dependency_type = get_var_ref_type(self.db, self.cache, &var_ref_id)
+                    .ok()
+                    .filter(|typ| typ.is_custom_type())
+                    .unwrap_or(LuaType::Unknown);
+                for dependency_query in &mut replay_query.dependency_queries {
+                    if dependency_query.var_ref_id == var_ref_id {
+                        dependency_query.resolved_type = Some(self_dependency_type.clone());
+                    }
+                }
             }
             return self.start_expr_replay(
                 walk,

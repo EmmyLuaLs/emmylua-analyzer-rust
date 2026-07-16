@@ -21,6 +21,7 @@ use crate::{
 pub struct LuaSignature {
     pub generic_params: Vec<GenericParam>,
     pub overloads: Vec<Arc<LuaFunctionType>>,
+    pub has_explicit_docs: bool,
     pub param_docs: HashMap<usize, LuaDocParamInfo>,
     pub params: Vec<String>,
     pub return_docs: Vec<LuaDocReturnInfo>,
@@ -49,6 +50,7 @@ impl LuaSignature {
         Self {
             generic_params: Vec::new(),
             overloads: Vec::new(),
+            has_explicit_docs: false,
             param_docs: HashMap::new(),
             params: Vec::new(),
             return_docs: Vec::new(),
