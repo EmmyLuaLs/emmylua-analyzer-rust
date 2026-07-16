@@ -3600,6 +3600,48 @@ _2 = a[1]
     }
 
     #[test]
+    fn test_issue_1180_self_assignment_replays_antecedent_type() {
+        let mut ws = VirtualWorkspace::new();
+        ws.def(
+            r#"
+        local index = 1
+        index = index - 1
+        after_assign = index
+        "#,
+        );
+
+        assert_eq!(ws.expr_ty("after_assign"), ws.ty("integer"));
+    }
+
+    #[test]
+    fn test_issue_1180_while_loop_preserves_integer_self_assignments() {
+        let mut ws = VirtualWorkspace::new_with_init_std_lib();
+        let file_id = ws.def(
+            r#"
+        function test()
+            local arr = {1, 2, 3, 4, "hello", 6, false, 7}
+            local index = 1
+
+            while index <= #arr do
+                local v = arr[index]
+
+                if type(v) == "boolean" then
+                    table.remove(arr, index)
+                    index = index - 1
+                    print(index)
+                end
+
+                index = index + 1
+            end
+        end
+        "#,
+        );
+        let index_type = last_name_expr_type(&ws, file_id, "index");
+
+        assert_eq!(ws.humanize_type(index_type), "integer");
+    }
+
+    #[test]
     #[timeout(5000)]
     fn test_issue_1114_repeated_self_dependent_assignments_build_semantic_model() {
         let cases = [
