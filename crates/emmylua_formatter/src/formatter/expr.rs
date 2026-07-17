@@ -390,7 +390,7 @@ pub fn format_param_list_ir(
             flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
             grouped_padding: grouped_padding_from_pair(plan, open.as_ref(), close.as_ref()),
             flat_trailing: vec![],
-            grouped_trailing: trailing_comma_ir(ctx.config.output.trailing_comma.clone()),
+            grouped_trailing: trailing_comma_ir(TrailingComma::Never),
         },
     )
 }
@@ -501,7 +501,7 @@ fn format_param_list_with_comments(
     let (open, close) = paren_tokens(params.syntax());
     let comma = first_direct_token(params.syntax(), LuaTokenKind::TkComma);
     let mut docs = vec![token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen)];
-    let trailing = trailing_comma_ir(ctx.config.output.trailing_comma.clone());
+    let trailing = trailing_comma_ir(TrailingComma::Never);
 
     if !collected.comments_after_open.is_empty() || !collected.entries.is_empty() {
         let entry_count = collected.entries.len();
@@ -834,7 +834,7 @@ fn format_call_arg_list_from_docs(
             flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
             grouped_padding: grouped_padding_from_pair(plan, open.as_ref(), close.as_ref()),
             flat_trailing: vec![],
-            grouped_trailing: trailing_comma_ir(ctx.config.output.trailing_comma.clone()),
+            grouped_trailing: trailing_comma_ir(TrailingComma::Never),
         },
     )
 }
@@ -1277,7 +1277,7 @@ fn format_call_arg_list_with_comments(
     let (open, close) = paren_tokens(args_list.syntax());
     let comma = first_direct_token(args_list.syntax(), LuaTokenKind::TkComma);
     let mut docs = vec![token_or_kind_doc(open.as_ref(), LuaTokenKind::TkLeftParen)];
-    let trailing = trailing_comma_ir(ctx.config.output.trailing_comma.clone());
+    let trailing = trailing_comma_ir(TrailingComma::Never);
 
     if !collected.comments_after_open.is_empty() || !collected.entries.is_empty() {
         let entry_count = collected.entries.len();
@@ -3182,7 +3182,7 @@ fn format_compact_call_arg_list(
             flat_close_padding: token_left_spacing_docs(plan, close.as_ref()),
             grouped_padding: grouped_padding_from_pair(plan, open.as_ref(), close.as_ref()),
             flat_trailing: vec![],
-            grouped_trailing: trailing_comma_ir(ctx.config.output.trailing_comma.clone()),
+            grouped_trailing: trailing_comma_ir(TrailingComma::Never),
         },
     ))
 }
