@@ -2373,4 +2373,20 @@ local a = 1
 "#
         );
     }
+
+    #[test]
+    fn test_param_vararg() {
+        assert_format!(
+            r#"
+---@param a string
+---@param ... any
+function foo(a, ...) end
+"#,
+            r#"
+---@param a   string
+---@param ... any
+function foo(a, ...) end
+"#
+        );
+    }
 }

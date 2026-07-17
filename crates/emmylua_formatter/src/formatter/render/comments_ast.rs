@@ -3,8 +3,8 @@ use crate::formatter::model::{FormatPlan, TokenSpacingExpected};
 use crate::ir;
 use crate::ir::DocIR;
 use emmylua_parser::{
-    LuaAstNode, LuaAstToken, LuaComment, LuaDocDescriptionOwner, LuaDocTag, LuaSyntaxId,
-    LuaSyntaxToken, LuaTokenKind,
+    LuaAstNode, LuaAstToken, LuaComment, LuaDocDescription, LuaDocDescriptionOwner, LuaDocFieldKey,
+    LuaDocTag, LuaSyntaxId, LuaSyntaxToken, LuaTokenKind,
 };
 use std::collections::HashMap;
 
@@ -477,10 +477,14 @@ fn extract_columns(
     let desc = tag_description(tag);
     match tag {
         LuaDocTag::Param(t) => {
-            let name = t
-                .get_name_token()
-                .map(|n| n.get_name_text().to_string())
-                .unwrap_or_default();
+            let name = if t.is_vararg() {
+                "...".to_string()
+            } else if let Some(name_token) = t.get_name_token() {
+                name_token.get_name_text().to_string()
+            } else {
+                "".to_string()
+            };
+
             let nullable = if t.is_nullable() { "?" } else { "" };
             let ty = t
                 .get_type()
@@ -544,12 +548,12 @@ fn extract_columns(
             let key = f
                 .get_field_key()
                 .map(|k| match k {
-                    emmylua_parser::LuaDocFieldKey::Name(n) => n.get_name_text().to_string(),
-                    emmylua_parser::LuaDocFieldKey::String(s) => format!("[\"{}\"]", s.get_value()),
-                    emmylua_parser::LuaDocFieldKey::Integer(i) => {
+                    LuaDocFieldKey::Name(n) => n.get_name_text().to_string(),
+                    LuaDocFieldKey::String(s) => format!("[\"{}\"]", s.get_value()),
+                    LuaDocFieldKey::Integer(i) => {
                         format!("[{}]", i.syntax().text())
                     }
-                    emmylua_parser::LuaDocFieldKey::Type(ty) => {
+                    LuaDocFieldKey::Type(ty) => {
                         format!("[{}]", format_node_tokens(plan, ty.syntax()))
                     }
                 })
@@ -649,7 +653,7 @@ fn extract_columns(
 }
 
 fn tag_description(tag: &LuaDocTag) -> String {
-    let d: Option<emmylua_parser::LuaDocDescription> = match tag {
+    let d: Option<LuaDocDescription> = match tag {
         LuaDocTag::Class(t) => t.get_description(),
         LuaDocTag::Param(t) => t.get_description(),
         LuaDocTag::Return(t) => t.get_description(),
@@ -674,7 +678,7 @@ fn comment_desc_for_tag(c: &LuaComment, tag: &LuaDocTag) -> String {
                     found_tag = true;
                     continue;
                 }
-                if found_tag && let Some(desc) = emmylua_parser::LuaDocDescription::cast(n) {
+                if found_tag && let Some(desc) = LuaDocDescription::cast(n) {
                     return desc.syntax().text().to_string().trim().to_string();
                 }
             }

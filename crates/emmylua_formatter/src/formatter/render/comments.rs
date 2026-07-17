@@ -22,10 +22,10 @@ pub(crate) fn extract_trailing_comment_rendered(
         LuaSyntaxKind::LocalStat | LuaSyntaxKind::AssignStat
     ) && trailing_gap_requests_alignment(
         node,
-        comment.syntax().text_range(),
+        comment.get_range(),
         ctx.config.comments.line_comment_min_spaces_before.max(1),
     );
-    Some((docs, comment.syntax().text_range(), align_hint))
+    Some((docs, comment.get_range(), align_hint))
 }
 
 pub(crate) fn append_trailing_comment_suffix(
