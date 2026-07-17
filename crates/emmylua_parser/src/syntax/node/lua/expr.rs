@@ -331,7 +331,20 @@ impl LuaIndexExpr {
 
                         return Some(LuaIndexKey::Expr(LuaExpr::cast(node).unwrap()));
                     }
-                    _ => return None,
+                    _ => {
+                        if let Some(token) = child.as_token()
+                            && matches!(
+                                token.kind().to_token(),
+                                LuaTokenKind::TkWhitespace
+                                    | LuaTokenKind::TkEndOfLine
+                                    | LuaTokenKind::TkShortComment
+                                    | LuaTokenKind::TkLongComment
+                            )
+                        {
+                            continue;
+                        }
+                        return None;
+                    }
                 }
             } else if let Some(token) = child.as_token() {
                 if token.kind() == LuaTokenKind::TkLeftBracket.into() {
