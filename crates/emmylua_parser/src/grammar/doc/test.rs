@@ -3733,7 +3733,8 @@ Syntax(Chunk)@0..47
 
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].kind, LuaParseErrorKind::SyntaxError);
-        assert_eq!(errors[0].message, "expected end of block after return")
+        assert_eq!(errors[0].message, "expected end of block after return");
+        assert_eq!(u32::from(errors[0].range.start()) as usize, 12);
     }
 
     #[test]
@@ -3744,6 +3745,16 @@ Syntax(Chunk)@0..47
 
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].kind, LuaParseErrorKind::SyntaxError);
-        assert_eq!(errors[0].message, "expected end of block after return")
+        assert_eq!(errors[0].message, "expected end of block after return");
+        assert_eq!(u32::from(errors[0].range.start()) as usize, 8);
+    }
+
+    #[test]
+    fn test_do_return_end() {
+      let code = "do return end";
+      let tree = LuaParser::parse(code, ParserConfig::default());
+      let errors = tree.get_errors();
+
+      assert!(errors.is_empty());
     }
 }
