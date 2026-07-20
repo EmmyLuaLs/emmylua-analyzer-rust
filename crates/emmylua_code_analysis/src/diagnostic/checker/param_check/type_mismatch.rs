@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr};
-use rowan::{NodeOrToken, TextRange};
+use rowan::TextRange;
 
 use crate::{
     DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel, TypeCheckFailReason,
@@ -72,13 +72,8 @@ pub(super) fn check_param_types(
         if failed_arg.typ.is_table()
             && let Some(arg_expr_idx) = failed_arg.expr_index
             && let Some(arg_expr) = facts.arg_exprs.get(arg_expr_idx)
-            && let Some(add_diagnostic) = check_table_expr(
-                context,
-                semantic_model,
-                NodeOrToken::Node(arg_expr.syntax().clone()),
-                arg_expr,
-                Some(&param_type),
-            )
+            && let Some(add_diagnostic) =
+                check_table_expr(context, semantic_model, arg_expr, Some(&param_type))
             && add_diagnostic
         {
             return Some(());

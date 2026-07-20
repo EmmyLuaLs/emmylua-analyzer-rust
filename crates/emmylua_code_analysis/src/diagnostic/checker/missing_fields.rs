@@ -1,12 +1,8 @@
 use hashbrown::{HashMap, HashSet};
 
-use emmylua_parser::{LuaAst, LuaAstNode, LuaExpr, LuaSyntaxId, LuaTableExpr};
-use rowan::NodeOrToken;
+use emmylua_parser::{LuaAstNode, LuaExpr, LuaTableExpr};
 
-use crate::{
-    DbIndex, DiagnosticCode, LuaBuiltinAttributeKind, LuaMemberOwner, LuaType, SemanticDeclLevel,
-    SemanticModel,
-};
+use crate::{DbIndex, DiagnosticCode, LuaMemberOwner, LuaType, SemanticModel};
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
 use itertools::Itertools;
@@ -24,22 +20,7 @@ impl Checker for MissingFieldsChecker {
 
         let mut required_fields_cache = HashMap::new();
         let mut optional_field_type_cache = HashMap::new();
-        let mut skipped_table_exprs: HashSet<LuaSyntaxId> = HashSet::new();
         for expr in root.descendants::<LuaTableExpr>() {
-            let expr_syntax_id = expr.get_syntax_id();
-            if skipped_table_exprs.contains(&expr_syntax_id) {
-                continue;
-            }
-
-            if table_expr_has_skip_table_fields_check_optimization(semantic_model, &expr) {
-                skipped_table_exprs.insert(expr_syntax_id);
-                skipped_table_exprs.extend(
-                    expr.descendants::<LuaTableExpr>()
-                        .map(|expr| expr.get_syntax_id()),
-                );
-                continue;
-            }
-
             check_table_expr(
                 context,
                 semantic_model,
@@ -158,61 +139,6 @@ fn check_table_expr(
     );
 
     Some(())
-}
-
-fn table_expr_has_skip_table_fields_check_optimization(
-    semantic_model: &SemanticModel,
-    expr: &LuaTableExpr,
-) -> bool {
-    let Some(parent) = expr.syntax().parent().and_then(LuaAst::cast) else {
-        return false;
-    };
-
-    let decl_node = match parent {
-        LuaAst::LuaLocalStat(local) => {
-            let Some(idx) = local
-                .get_value_exprs()
-                .position(|value| value.get_position() == expr.get_position())
-            else {
-                return false;
-            };
-            let Some(local_name) = local.get_local_name_list().nth(idx) else {
-                return false;
-            };
-            NodeOrToken::Node(local_name.syntax().clone())
-        }
-        LuaAst::LuaAssignStat(assign) => {
-            let (vars, exprs) = assign.get_var_and_expr_list();
-            let Some(idx) = exprs
-                .iter()
-                .position(|value| value.get_position() == expr.get_position())
-            else {
-                return false;
-            };
-            let Some(var) = vars.get(idx) else {
-                return false;
-            };
-            NodeOrToken::Node(var.syntax().clone())
-        }
-        _ => return false,
-    };
-
-    let Some(semantic_decl) = semantic_model.find_decl(decl_node, SemanticDeclLevel::default())
-    else {
-        return false;
-    };
-    let Some(property) = semantic_model
-        .get_db()
-        .get_property_index()
-        .get_property(&semantic_decl)
-    else {
-        return false;
-    };
-
-    property
-        .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
-        .and_then(|attribute_use| attribute_use.as_lsp_optimization())
-        .is_some_and(|attribute| attribute.is_skip_table_fields_check())
 }
 
 fn get_required_fields<'a>(

@@ -35,19 +35,6 @@ mod test {
     }
 
     #[test]
-    fn test_def_attribute() {
-        let mut ws = VirtualWorkspace::new_with_init_std_lib();
-
-        ws.has_no_diagnostic(
-            DiagnosticCode::AssignTypeMismatch,
-            r#"
-        ---@[lsp_optimization("skip_table_fields_check")]
-        local config = {}
-        "#,
-        );
-    }
-
-    #[test]
     fn test_attribute_overload_uses_arg_type_for_diagnostic() {
         let mut ws = VirtualWorkspace::new();
 

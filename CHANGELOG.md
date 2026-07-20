@@ -2,6 +2,12 @@
 
 *All notable changes to the EmmyLua Analyzer Rust project will be documented in this file.*
 
+## [Unreleased]
+
+### 🗑️ Removed
+
+- **`lsp_optimization`**: Removed the `skip_table_fields_check` optimization (including the old `check_table_field` alias). Table field diagnostics are no longer skipped via this attribute.
+
 ## [0.24.0] - 2026-7-10
 
 ### ✨ Added

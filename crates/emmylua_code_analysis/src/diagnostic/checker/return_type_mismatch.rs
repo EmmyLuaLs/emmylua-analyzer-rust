@@ -91,13 +91,7 @@ fn check_return_stat(
                     if return_expr_type.is_table()
                         && let Some(return_expr) = return_exprs.get(index)
                     {
-                        check_table_expr(
-                            context,
-                            semantic_model,
-                            NodeOrToken::Node(return_expr.syntax().clone()),
-                            return_expr,
-                            Some(check_type),
-                        );
+                        check_table_expr(context, semantic_model, return_expr, Some(check_type));
                     }
 
                     add_type_check_diagnostic(
@@ -129,13 +123,9 @@ fn check_return_stat(
                     && let Some(return_expr) = return_exprs.first()
                 {
                     // 表字段已经报错了, 则不添加返回值不匹配的诊断避免干扰
-                    if let Some(add_diagnostic) = check_table_expr(
-                        context,
-                        semantic_model,
-                        NodeOrToken::Node(return_expr.syntax().clone()),
-                        return_expr,
-                        Some(return_type),
-                    ) && add_diagnostic
+                    if let Some(add_diagnostic) =
+                        check_table_expr(context, semantic_model, return_expr, Some(return_type))
+                        && add_diagnostic
                     {
                         return Some(());
                     }

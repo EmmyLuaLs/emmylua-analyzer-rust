@@ -2,14 +2,14 @@ use std::ops::Deref;
 
 use emmylua_parser::{
     LuaAssignStat, LuaAst, LuaAstNode, LuaAstToken, LuaExpr, LuaIndexExpr, LuaLocalStat,
-    LuaNameExpr, LuaSyntaxNode, LuaSyntaxToken, LuaTableExpr, LuaVarExpr,
+    LuaNameExpr, LuaTableExpr, LuaVarExpr,
 };
 use rowan::{NodeOrToken, TextRange};
 
 use crate::{
-    DbIndex, DiagnosticCode, LuaBuiltinAttributeKind, LuaDeclExtra, LuaDeclId, LuaMemberKey,
-    LuaSemanticDeclId, LuaType, SemanticDeclLevel, SemanticModel, TypeCheckFailReason,
-    TypeCheckResult, VariadicType, get_real_type, infer_index_expr,
+    DbIndex, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey, LuaSemanticDeclId, LuaType,
+    SemanticDeclLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult, VariadicType,
+    get_real_type, infer_index_expr,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -117,13 +117,7 @@ fn check_name_expr(
         false,
     );
     if let Some(expr) = expr {
-        check_table_expr(
-            context,
-            semantic_model,
-            NodeOrToken::Node(name_expr.syntax().clone()),
-            &expr,
-            source_type.as_ref(),
-        );
+        check_table_expr(context, semantic_model, &expr, source_type.as_ref());
     }
 
     Some(())
@@ -157,13 +151,7 @@ fn check_index_expr(
         true,
     );
     if let Some(expr) = expr {
-        check_table_expr(
-            context,
-            semantic_model,
-            NodeOrToken::Node(index_expr.syntax().clone()),
-            &expr,
-            source_type.as_ref(),
-        );
+        check_table_expr(context, semantic_model, &expr, source_type.as_ref());
     }
     Some(())
 }
@@ -200,13 +188,7 @@ fn check_local_stat(
             false,
         );
         if let Some(expr) = value_exprs.get(idx) {
-            check_table_expr(
-                context,
-                semantic_model,
-                NodeOrToken::Node(var.syntax().clone()),
-                expr,
-                Some(&var_type),
-            );
+            check_table_expr(context, semantic_model, expr, Some(&var_type));
         }
     }
     Some(())
@@ -216,27 +198,9 @@ fn check_local_stat(
 pub fn check_table_expr(
     context: &mut DiagnosticContext,
     semantic_model: &SemanticModel,
-    decl_node: NodeOrToken<LuaSyntaxNode, LuaSyntaxToken>,
     table_expr: &LuaExpr,
     table_type: Option<&LuaType>, // 记录的类型
 ) -> Option<bool> {
-    // 检查是否附加了元数据以跳过诊断
-    if let Some(semantic_decl) = semantic_model.find_decl(decl_node, SemanticDeclLevel::default()) {
-        if let Some(property) = semantic_model
-            .get_db()
-            .get_property_index()
-            .get_property(&semantic_decl)
-        {
-            if property
-                .find_builtin_attribute(LuaBuiltinAttributeKind::LspOptimization)
-                .and_then(|attribute_use| attribute_use.as_lsp_optimization())
-                .is_some_and(|attribute| attribute.is_skip_table_fields_check())
-            {
-                return Some(false);
-            }
-        }
-    }
-
     let table_type = table_type?;
     let Some(table_expr) = LuaTableExpr::cast(table_expr.syntax().clone()) else {
         return Some(false);
