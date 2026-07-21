@@ -3751,10 +3751,10 @@ Syntax(Chunk)@0..47
 
     #[test]
     fn test_do_return_end() {
-      let code = "do return end";
-      let tree = LuaParser::parse(code, ParserConfig::default());
-      let errors = tree.get_errors();
+        let code = "do return end";
+        let tree = LuaParser::parse(code, ParserConfig::default());
+        let errors = tree.get_errors();
 
-      assert!(errors.is_empty());
+        assert!(errors.is_empty());
     }
 }
