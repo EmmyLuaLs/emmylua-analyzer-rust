@@ -132,27 +132,20 @@ mod tests {
         ));
     }
 
-    // #[test]
-    // fn test_3() {
-    //     let mut ws = VirtualWorkspace::new();
-    //     assert!(ws.has_no_diagnostic_in_namespace(
-    //         DiagnosticCode::AssignTypeMismatch,
-    //         r#"
-    //             ---@param s    string
-    //             ---@param i?   integer
-    //             ---@param j?   integer
-    //             ---@param lax? boolean
-    //             ---@return integer?
-    //             ---@return integer? errpos
-    //             ---@nodiscard
-    //             local function get_len(s, i, j, lax) end
-
-    //             local len = 0
-    //             ---@diagnostic disable-next-line: need-check-nil
-    //             len = len + get_len("", 1, 1, true)
-    //         "#
-    //     ));
-    // }
+    #[test]
+    fn test_enum_declaration_with_different_local_name_has_no_mismatch() {
+        let mut ws = VirtualWorkspace::new();
+        assert!(ws.has_no_diagnostic_in_namespace(
+            DiagnosticCode::AssignTypeMismatch,
+            r#"
+                ---@enum EA
+                local A = {
+                    A = 1,
+                    B = 2,
+                }
+            "#
+        ));
+    }
 
     #[test]
     fn test_enum() {

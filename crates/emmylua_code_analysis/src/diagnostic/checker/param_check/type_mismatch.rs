@@ -4,9 +4,10 @@ use emmylua_parser::{LuaAstNode, LuaAstToken, LuaCallExpr};
 use rowan::TextRange;
 
 use crate::{
-    DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel, TypeCheckFailReason,
-    TypeCheckResult, diagnostic::checker::assign_type_mismatch::check_table_expr, humanize_type,
-    semantic::get_func_param_type,
+    DiagnosticCode, LuaFunctionType, LuaType, RenderLevel, SemanticModel, TypeMismatch,
+    diagnostic::checker::assign_type_mismatch::check_table_expr,
+    humanize_type, render_type_mismatch,
+    semantic::{RelationKind, RelationOutcome, get_func_param_type, is_assignable_ex},
 };
 
 use super::{super::DiagnosticContext, call_facts::CallFacts};
@@ -54,7 +55,7 @@ pub(super) fn check_param_types(
             arg_index,
         );
 
-        let (failed_arg, param_type, result) = match arg_index_result {
+        let (failed_arg, param_type) = match arg_index_result {
             ArgIndexCheckResult::NoDiagnostic => return Some(()),
             ArgIndexCheckResult::MatchedCandidates(next_candidates) => {
                 candidates = next_candidates;
@@ -64,8 +65,7 @@ pub(super) fn check_param_types(
             ArgIndexCheckResult::Mismatch {
                 failed_arg,
                 param_type,
-                result,
-            } => (failed_arg, param_type, result),
+            } => (failed_arg, param_type),
         };
 
         // 表字段已经报错了, 则不添加参数不匹配的诊断避免干扰.
@@ -79,13 +79,16 @@ pub(super) fn check_param_types(
             return Some(());
         }
 
+        let mismatch = semantic_model
+            .check_assignable(failed_arg.typ, &param_type)
+            .err();
         add_diagnostic(
             context,
             semantic_model,
             failed_arg.range,
             &param_type,
             failed_arg.typ,
-            result,
+            mismatch.as_ref(),
         );
         return Some(());
     }
@@ -99,7 +102,6 @@ enum ArgIndexCheckResult<'func, 'arg> {
     Mismatch {
         failed_arg: DiagnosticArg<'arg>,
         param_type: LuaType,
-        result: TypeCheckResult,
     },
 }
 
@@ -124,7 +126,6 @@ fn check_arg_index_candidates<'func, 'arg>(
     let mut next_candidates = Vec::with_capacity(candidates.len());
     let mut failed_param_types = Vec::with_capacity(candidates.len());
     let mut failed_arg = None;
-    let mut failed_result = None;
 
     // 按参数位置逐步收窄候选, 第一处全体失败的位置就是本次诊断的位置.
     for func in candidates.iter().copied() {
@@ -166,8 +167,15 @@ fn check_arg_index_candidates<'func, 'arg>(
             continue;
         }
 
-        let type_check_result = semantic_model.type_check_detail(&param_type, arg.typ);
-        if type_check_result.is_ok() {
+        if matches!(
+            is_assignable_ex(
+                semantic_model.get_db(),
+                arg.typ,
+                &param_type,
+                RelationKind::Assignable,
+            ),
+            RelationOutcome::Related
+        ) {
             next_candidates.push(func);
             continue;
         }
@@ -175,9 +183,6 @@ fn check_arg_index_candidates<'func, 'arg>(
         failed_param_types.push(param_type);
         if failed_arg.is_none() {
             failed_arg = Some(arg);
-        }
-        if failed_result.is_none() {
-            failed_result = Some(type_check_result);
         }
     }
 
@@ -196,14 +201,9 @@ fn check_arg_index_candidates<'func, 'arg>(
     if failed_param_types.is_empty() {
         return ArgIndexCheckResult::NoDiagnostic;
     }
-    let Some(result) = failed_result else {
-        return ArgIndexCheckResult::NoDiagnostic;
-    };
-
     ArgIndexCheckResult::Mismatch {
         failed_arg,
         param_type: LuaType::from_vec(failed_param_types),
-        result,
     }
 }
 
@@ -248,7 +248,7 @@ fn add_diagnostic(
     range: TextRange,
     param_type: &LuaType,
     expr_type: &LuaType,
-    result: TypeCheckResult,
+    mismatch: Option<&TypeMismatch>,
 ) {
     if let (LuaType::Integer, LuaType::FloatConst(f)) = (param_type, expr_type)
         && f.fract() == 0.0
@@ -256,28 +256,18 @@ fn add_diagnostic(
         return;
     }
     let db = semantic_model.get_db();
-    match result {
-        Ok(_) => (),
-        Err(reason) => {
-            let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeNotMatch | TypeCheckFailReason::DonotCheck => {
-                    "".to_string()
-                }
-                TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
-            };
-            context.add_diagnostic(
-                DiagnosticCode::ParamTypeMismatch,
-                range,
-                t!(
-                    "expected `%{source}` but found `%{found}`. %{reason}",
-                    source = humanize_type(db, param_type, RenderLevel::Simple),
-                    found = humanize_type(db, expr_type, RenderLevel::Simple),
-                    reason = reason_message
-                )
-                .to_string(),
-                None,
-            );
-        }
-    }
+    context.add_diagnostic(
+        DiagnosticCode::ParamTypeMismatch,
+        range,
+        t!(
+            "expected `%{source}` but found `%{found}`. %{reason}",
+            source = humanize_type(db, param_type, RenderLevel::Simple),
+            found = humanize_type(db, expr_type, RenderLevel::Simple),
+            reason = mismatch
+                .map(|mismatch| render_type_mismatch(db, mismatch))
+                .unwrap_or_default()
+        )
+        .to_string(),
+        None,
+    );
 }

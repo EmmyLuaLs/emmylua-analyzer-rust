@@ -99,8 +99,8 @@ mod test {
         let integer = ws.ty("integer");
         let foo = ws.expr_ty("Foo");
         let bar = ws.expr_ty("Bar");
-        assert!(ws.check_type(&integer, &foo));
-        assert!(ws.check_type(&integer, &bar));
+        assert!(ws.check_type(&foo, &integer));
+        assert!(ws.check_type(&bar, &integer));
     }
 
     #[test]
@@ -117,7 +117,7 @@ mod test {
 
         let integer = ws.ty("integer");
         let foo = ws.expr_ty("Foo");
-        assert!(!ws.check_type(&integer, &foo));
+        assert!(!ws.check_type(&foo, &integer));
     }
 
     #[test]

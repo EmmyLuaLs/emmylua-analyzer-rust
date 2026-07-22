@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     DbIndex, InferFailReason, InferGuard, InferGuardRef, LuaGenericType, LuaMemberKey,
-    LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps,
-    check_type_compact,
+    LuaMemberOwner, LuaObjectType, LuaTupleType, LuaType, LuaTypeDeclId, TypeOps, is_assignable,
     semantic::generic::{TypeSubstitutor, instantiate_type_generic},
 };
 
@@ -107,7 +106,7 @@ fn infer_custom_type_raw_member_type(
                 continue;
             };
 
-            if check_type_compact(db, index_key_type, &access_key_type).is_err() {
+            if !is_assignable(db, &access_key_type, index_key_type) {
                 continue;
             }
 
@@ -175,7 +174,7 @@ fn infer_object_raw_member_type(
             continue;
         };
 
-        if check_type_compact(db, key, &access_key_type).is_ok() {
+        if is_assignable(db, &access_key_type, key) {
             return Ok(value.clone());
         }
     }
@@ -220,7 +219,7 @@ fn infer_table_generic_raw_member_type(
         return Err(InferFailReason::FieldNotFound);
     };
 
-    if check_type_compact(db, key_type, &access_key_type).is_ok() {
+    if is_assignable(db, &access_key_type, key_type) {
         return Ok(value_type.clone());
     }
 

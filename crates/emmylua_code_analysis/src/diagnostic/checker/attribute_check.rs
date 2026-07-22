@@ -1,7 +1,7 @@
 use crate::{
-    DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeCheckFailReason,
-    TypeCheckResult, diagnostic::checker::humanize_lint_type, get_attribute_constructor_params,
-    infer_doc_type, is_attribute_class,
+    DiagnosticCode, DocTypeInferContext, LuaType, SemanticModel, TypeMismatch,
+    diagnostic::checker::humanize_lint_type, get_attribute_constructor_params, infer_doc_type,
+    is_attribute_class, render_type_mismatch,
 };
 use emmylua_parser::{
     LuaAstNode, LuaDocAttributeUse, LuaDocTagAttributeUse, LuaDocType, LuaExpr, LuaLiteralExpr,
@@ -144,15 +144,15 @@ fn check_param(
             }
             if let Some(variadic_type) = param.1.as_ref() {
                 for (arg_idx, arg_type) in call_arg_types[idx..].iter().enumerate() {
-                    let result = semantic_model.type_check_detail(variadic_type, arg_type);
-                    if result.is_err() {
+                    if let Err(mismatch) = semantic_model.check_assignable(arg_type, variadic_type)
+                    {
                         add_type_check_diagnostic(
                             context,
                             semantic_model,
                             args.get(idx + arg_idx)?.get_range(),
                             variadic_type,
                             arg_type,
-                            result,
+                            &mismatch,
                         );
                     }
                 }
@@ -161,15 +161,14 @@ fn check_param(
         }
         if let Some(param_type) = param.1.as_ref() {
             let arg_type = call_arg_types.get(idx).unwrap_or(&LuaType::Any);
-            let result = semantic_model.type_check_detail(param_type, arg_type);
-            if result.is_err() {
+            if let Err(mismatch) = semantic_model.check_assignable(arg_type, param_type) {
                 add_type_check_diagnostic(
                     context,
                     semantic_model,
                     args.get(idx)?.get_range(),
                     param_type,
                     arg_type,
-                    result,
+                    &mismatch,
                 );
             }
         }
@@ -183,31 +182,19 @@ fn add_type_check_diagnostic(
     range: TextRange,
     param_type: &LuaType,
     expr_type: &LuaType,
-    result: TypeCheckResult,
+    mismatch: &TypeMismatch,
 ) {
     let db = semantic_model.get_db();
-    match result {
-        Ok(_) => (),
-        Err(reason) => {
-            let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeNotMatch | TypeCheckFailReason::DonotCheck => {
-                    "".to_string()
-                }
-                TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
-            };
-            context.add_diagnostic(
-                DiagnosticCode::AttributeParamTypeMismatch,
-                range,
-                t!(
-                    "expected `%{source}` but found `%{found}`. %{reason}",
-                    source = humanize_lint_type(db, param_type),
-                    found = humanize_lint_type(db, expr_type),
-                    reason = reason_message
-                )
-                .to_string(),
-                None,
-            );
-        }
-    }
+    context.add_diagnostic(
+        DiagnosticCode::AttributeParamTypeMismatch,
+        range,
+        t!(
+            "expected `%{source}` but found `%{found}`. %{reason}",
+            source = humanize_lint_type(db, param_type),
+            found = humanize_lint_type(db, expr_type),
+            reason = render_type_mismatch(db, mismatch)
+        )
+        .to_string(),
+        None,
+    );
 }

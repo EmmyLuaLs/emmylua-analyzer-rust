@@ -4,12 +4,12 @@ use smol_str::SmolStr;
 
 use crate::{
     InFiled, InferFailReason, InferGuardRef, LuaInferCache, LuaInstanceType, LuaMemberId,
-    LuaMemberOwner, LuaOperatorOwner, TypeOps, TypeSubstitutor, check_type_compact,
+    LuaMemberOwner, LuaOperatorOwner, TypeOps, TypeSubstitutor,
     db_index::{
         DbIndex, LuaGenericType, LuaIntersectionType, LuaMemberKey, LuaObjectType,
         LuaOperatorMetaMethod, LuaTupleType, LuaType, LuaTypeDeclId, LuaUnionType,
     },
-    infer_expr, instantiate_type_generic,
+    infer_expr, instantiate_type_generic, is_assignable,
     semantic::InferGuard,
 };
 
@@ -316,7 +316,7 @@ fn find_index_metamethod(
         LuaIndexKey::Expr(expr) => infer_expr(db, cache, expr.clone())?,
     };
 
-    if check_type_compact(db, key_type, &access_key_type).is_ok() {
+    if is_assignable(db, &access_key_type, key_type) {
         return Ok(value_type.clone());
     }
 
@@ -548,7 +548,7 @@ fn find_member_by_index_table(
                             LuaMemberKey::Integer(i) => LuaType::IntegerConst(*i),
                             _ => continue,
                         };
-                        if check_type_compact(db, &key_type, &member_key_type).is_ok() {
+                        if is_assignable(db, &member_key_type, &key_type) {
                             let member_type = db
                                 .get_type_index()
                                 .get_type_cache(&member.get_id().into())
@@ -663,7 +663,7 @@ fn infer_member_by_index_array(
     } else if member_key.is_expr() {
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
         let expr_type = infer_expr(db, cache, expr.clone())?;
-        if check_type_compact(db, &LuaType::Number, &expr_type).is_ok() {
+        if is_assignable(db, &expr_type, &LuaType::Number) {
             return Ok(base.clone());
         }
     }
@@ -683,7 +683,7 @@ fn infer_member_by_index_object(
         let expr = member_key.get_expr().ok_or(InferFailReason::None)?;
         let expr_type = infer_expr(db, cache, expr.clone())?;
         for (key, field) in access_member_type {
-            if check_type_compact(db, key, &expr_type).is_ok() {
+            if is_assignable(db, &expr_type, key) {
                 return Ok(field.clone());
             }
         }

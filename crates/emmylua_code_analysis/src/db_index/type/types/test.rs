@@ -4,7 +4,27 @@ mod tests {
     use smol_str::SmolStr;
     use std::mem::ManuallyDrop;
 
-    use crate::{GenericTpl, GenericTplId, LuaArrayType, LuaType, TypeVisitTrait, VariadicType};
+    use crate::{
+        GenericTpl, GenericTplId, LuaArrayType, LuaIndexAccessKey, LuaMemberKey, LuaObjectType,
+        LuaType, TypeVisitTrait, VariadicType,
+    };
+
+    #[test]
+    fn test_object_member_lookup_includes_exact_index_access() {
+        let field_key = LuaMemberKey::Name(SmolStr::new("name"));
+        let index_key = LuaMemberKey::TypeKey(LuaType::String);
+        let object = LuaObjectType::new(vec![
+            (
+                LuaIndexAccessKey::String(SmolStr::new("name")),
+                LuaType::String,
+            ),
+            (LuaIndexAccessKey::Type(LuaType::String), LuaType::Number),
+        ]);
+
+        assert_eq!(object.get_member_type(&field_key), Some(LuaType::String));
+        assert_eq!(object.get_field(&index_key), None);
+        assert_eq!(object.get_member_type(&index_key), Some(LuaType::Number));
+    }
 
     #[test]
     fn test_union_with_variadic_uses_result_slot_extraction() {

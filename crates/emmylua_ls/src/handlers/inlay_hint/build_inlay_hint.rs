@@ -541,9 +541,7 @@ fn set_meta_call_part(
     let hint_new = {
         LuaStat::can_cast(parent.kind().into())
             && !matches!(call_expr.get_prefix_expr()?, LuaExpr::CallExpr(_))
-            && semantic_model
-                .type_check(call_func.get_ret(), &target_type)
-                .is_ok()
+            && semantic_model.is_assignable(&target_type, call_func.get_ret())
     };
 
     let (value, hint_range, padding_right) = if hint_new {

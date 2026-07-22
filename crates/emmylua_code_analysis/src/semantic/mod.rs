@@ -39,13 +39,11 @@ pub(crate) use semantic_info::{infer_node_semantic_decl, resolve_global_decl_id}
 use semantic_info::{
     infer_node_semantic_info, infer_token_semantic_decl, infer_token_semantic_info,
 };
-pub(crate) use type_check::check_type_compact;
-pub(crate) use type_check::is_sub_type_of;
+pub(crate) use type_check::{RelationKind, RelationOutcome, is_assignable_ex, is_sub_type_of};
 pub use visibility::check_module_visibility;
 use visibility::check_visibility;
 
 pub use crate::semantic::member::find_members_with_key;
-use crate::semantic::type_check::check_type_compact_detail;
 use crate::{Emmyrc, LuaDocument, LuaSemanticDeclId, ModuleInfo, db_index::LuaTypeDeclId};
 use crate::{
     FileId,
@@ -67,7 +65,10 @@ pub use overload_resolve::{
     collect_callable_overload_groups, filter_callable_overloads, find_callable_overload,
 };
 pub use semantic_info::SemanticDeclLevel;
-pub use type_check::{TypeCheckFailReason, TypeCheckResult};
+pub use type_check::{
+    OverflowKind, TypeMismatch, TypeMismatchKind, TypePathSegment, check_assignable, is_assignable,
+    render_type_mismatch,
+};
 
 pub use generic::get_keyof_members;
 pub use infer::{DocTypeInferContext, infer_doc_type};
@@ -175,12 +176,12 @@ impl<'a> SemanticModel<'a> {
         get_member_map_in_scope(self.db, self.file_id, prefix_type)
     }
 
-    pub fn type_check(&self, source: &LuaType, compact_type: &LuaType) -> TypeCheckResult {
-        check_type_compact(self.db, source, compact_type)
+    pub fn is_assignable(&self, source: &LuaType, target: &LuaType) -> bool {
+        is_assignable(self.db, source, target)
     }
 
-    pub fn type_check_detail(&self, source: &LuaType, compact_type: &LuaType) -> TypeCheckResult {
-        check_type_compact_detail(self.db, source, compact_type)
+    pub fn check_assignable(&self, source: &LuaType, target: &LuaType) -> Result<(), TypeMismatch> {
+        check_assignable(self.db, source, target)
     }
 
     pub fn infer_call_expr_func(

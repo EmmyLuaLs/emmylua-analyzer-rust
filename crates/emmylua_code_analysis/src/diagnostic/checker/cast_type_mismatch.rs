@@ -4,7 +4,7 @@ use rowan::TextRange;
 
 use crate::{
     DbIndex, DiagnosticCode, DocTypeInferContext, LuaType, LuaUnionType, SemanticModel,
-    TypeCheckFailReason, TypeCheckResult, get_real_type, infer_doc_type,
+    TypeMismatch, get_real_type, infer_doc_type, render_type_mismatch,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -83,7 +83,7 @@ fn check_cast_compatibility(
                     return Some(());
                 }
             }
-            Err(TypeCheckFailReason::TypeNotMatch)
+            Err(CastCheckFailure::Mismatch(None))
         }
         _ => cast_type_check(semantic_model, origin_type, target_type, 0),
     };
@@ -108,18 +108,18 @@ fn add_cast_type_mismatch_diagnostic(
     range: TextRange,
     origin_type: &LuaType,
     target_type: &LuaType,
-    result: TypeCheckResult,
+    result: Result<(), CastCheckFailure>,
 ) {
     let db = semantic_model.get_db();
     match result {
         Ok(_) => (),
         Err(reason) => {
             let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeNotMatch | TypeCheckFailReason::DonotCheck => {
-                    "".to_string()
-                }
-                TypeCheckFailReason::TypeRecursion => t!("type recursion").to_string(),
+                CastCheckFailure::Mismatch(mismatch) => mismatch
+                    .as_ref()
+                    .map(|mismatch| render_type_mismatch(db, mismatch))
+                    .unwrap_or_default(),
+                CastCheckFailure::Recursion => t!("type recursion").to_string(),
             };
 
             context.add_diagnostic(
@@ -144,10 +144,10 @@ fn cast_type_check(
     origin_type: &LuaType,
     target_type: &LuaType,
     recursion_depth: u32,
-) -> TypeCheckResult {
+) -> Result<(), CastCheckFailure> {
     const MAX_RECURSION_DEPTH: u32 = 100;
     if recursion_depth >= MAX_RECURSION_DEPTH {
-        return Err(TypeCheckFailReason::TypeRecursion);
+        return Err(CastCheckFailure::Recursion);
     }
 
     if origin_type == target_type {
@@ -199,15 +199,27 @@ fn cast_type_check(
             } else if origin_type.is_number() && target_type.is_number() {
                 return Ok(());
             }
-            match semantic_model.type_check_detail(target_type, origin_type) {
-                Ok(_) => Ok(()),
-                Err(_) => match semantic_model.type_check_detail(origin_type, target_type) {
-                    Ok(_) => Ok(()),
-                    Err(reason) => Err(reason),
-                },
+            match semantic_model.check_assignable(origin_type, target_type) {
+                Ok(()) => Ok(()),
+                Err(mismatch) => {
+                    if semantic_model
+                        .check_assignable(target_type, origin_type)
+                        .is_ok()
+                    {
+                        Ok(())
+                    } else {
+                        Err(CastCheckFailure::Mismatch(Some(mismatch)))
+                    }
+                }
             }
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CastCheckFailure {
+    Mismatch(Option<TypeMismatch>),
+    Recursion,
 }
 
 fn expand_type(db: &DbIndex, typ: &LuaType) -> Option<LuaType> {
@@ -247,7 +259,8 @@ fn expand_type_recursive(
         }
         LuaType::Union(union_type) => {
             // 递归展开 union 中的每个类型
-            let mut expanded_types = HashSet::new();
+            let mut expanded_types = Vec::new();
+            let mut expanded_type_set = HashSet::new();
             let mut has_nil = false;
             for inner_type in union_type.into_vec() {
                 if inner_type.is_nil() {
@@ -258,14 +271,20 @@ fn expand_type_recursive(
                     match expanded {
                         LuaType::Union(inner_union) => {
                             // 如果展开后还是 union，则将其成员类型添加到结果中
-                            expanded_types.extend(inner_union.into_vec().iter().cloned());
+                            for inner_type in inner_union.into_vec() {
+                                if expanded_type_set.insert(inner_type.clone()) {
+                                    expanded_types.push(inner_type);
+                                }
+                            }
                         }
                         _ => {
-                            expanded_types.insert(expanded);
+                            if expanded_type_set.insert(expanded.clone()) {
+                                expanded_types.push(expanded);
+                            }
                         }
                     }
-                } else {
-                    expanded_types.insert(inner_type.clone());
+                } else if expanded_type_set.insert(inner_type.clone()) {
+                    expanded_types.push(inner_type);
                 }
             }
 
@@ -278,11 +297,11 @@ fn expand_type_recursive(
                     }
                 }
                 1 => {
-                    let single = expanded_types.iter().next().cloned()?;
+                    let single = expanded_types.into_iter().next()?;
                     Some(single)
                 }
                 _ => Some(LuaType::Union(
-                    LuaUnionType::from_set(expanded_types).into(),
+                    LuaUnionType::from_vec(expanded_types).into(),
                 )),
             };
         }

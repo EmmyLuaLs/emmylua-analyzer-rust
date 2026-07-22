@@ -42,6 +42,10 @@ impl LuaOwnerMembers {
         self.members.values()
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (&LuaMemberKey, &LuaMemberIndexItem)> {
+        self.members.iter()
+    }
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&LuaMemberKey, &mut LuaMemberIndexItem)> {
         self.members.iter_mut()
     }

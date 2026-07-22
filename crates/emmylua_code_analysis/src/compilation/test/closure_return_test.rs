@@ -10,8 +10,8 @@ mod test {
         let ty = ws.expr_ty("result");
         let expected = ws.ty("integer");
         let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &expected));
-        assert!(!ws.check_type(&ty, &nil));
+        assert!(ws.check_type(&expected, &ty));
+        assert!(!ws.check_type(&nil, &ty));
     }
 
     #[test]
@@ -364,8 +364,8 @@ mod test {
         let ty = ws.expr_ty("result");
         let expected = ws.ty("integer|string");
         let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &expected));
-        assert!(!ws.check_type(&ty, &nil));
+        assert!(ws.check_type(&expected, &ty));
+        assert!(!ws.check_type(&nil, &ty));
     }
 
     #[test]
@@ -393,7 +393,7 @@ mod test {
         let ty = ws.expr_ty("result");
         let expected = ws.ty("integer|string");
         let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &expected));
-        assert!(!ws.check_type(&ty, &nil));
+        assert!(ws.check_type(&expected, &ty));
+        assert!(!ws.check_type(&nil, &ty));
     }
 }

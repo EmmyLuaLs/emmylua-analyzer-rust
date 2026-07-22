@@ -191,7 +191,13 @@ impl LuaMemberIndex {
         Some(members)
     }
 
-    #[allow(unused)]
+    pub fn get_member_items(
+        &self,
+        owner: &LuaMemberOwner,
+    ) -> Option<impl Iterator<Item = (&LuaMemberKey, &LuaMemberIndexItem)>> {
+        Some(self.owner_members.get(owner)?.iter())
+    }
+
     pub fn get_member_item_by_member_id(
         &self,
         member_id: LuaMemberId,

@@ -5,7 +5,7 @@ use emmylua_parser::{
 
 use crate::{
     DbIndex, InferFailReason, LuaArrayLen, LuaArrayType, LuaInferCache, LuaMemberKey, LuaType,
-    TypeOps, check_type_compact,
+    TypeOps, is_assignable,
     semantic::infer::{infer_index::infer_expr_for_index, narrow::get_var_expr_var_ref_id},
 };
 
@@ -69,7 +69,7 @@ fn key_type_matches(db: &DbIndex, expected: &LuaType, actual: &LuaType) -> bool 
     !matches!(
         actual,
         LuaType::Any | LuaType::Unknown | LuaType::TplRef(_) | LuaType::StrTplRef(_)
-    ) && check_type_compact(db, expected, actual).is_ok()
+    ) && is_assignable(db, actual, expected)
 }
 
 pub(super) fn array_member_fallback(db: &DbIndex, base: &LuaType) -> LuaType {

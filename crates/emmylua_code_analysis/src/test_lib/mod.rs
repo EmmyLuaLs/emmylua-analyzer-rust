@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     DbIndex, DiagnosticCode, EmmyLuaAnalysis, Emmyrc, FileId, LuaType, RenderLevel,
-    VirtualUrlGenerator, check_type_compact, humanize_type,
+    VirtualUrlGenerator, humanize_type, is_assignable,
 };
 
 /// A virtual workspace for testing.
@@ -140,9 +140,8 @@ impl VirtualWorkspace {
         info.typ
     }
 
-    pub fn check_type(&self, source: &LuaType, compact_type: &LuaType) -> bool {
-        let db = &self.analysis.compilation.get_db();
-        check_type_compact(db, source, compact_type).is_ok()
+    pub fn check_type(&self, source: &LuaType, target: &LuaType) -> bool {
+        is_assignable(self.analysis.compilation.get_db(), source, target)
     }
 
     pub fn enable_check(&mut self, diagnostic_code: DiagnosticCode) {

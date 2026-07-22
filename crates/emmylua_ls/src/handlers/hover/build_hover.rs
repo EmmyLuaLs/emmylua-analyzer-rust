@@ -525,7 +525,7 @@ fn select_assignment_hover_type(
         return Some(target_type.clone());
     }
 
-    if semantic_model.type_check(target_type, &expr_type).is_ok() {
+    if semantic_model.is_assignable(&expr_type, target_type) {
         return Some(expr_type);
     }
 

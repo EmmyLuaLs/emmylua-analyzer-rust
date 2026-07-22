@@ -72,7 +72,7 @@ mod test {
 
         let result_ty = ws.expr_ty("Result");
         let expected_ty = ws.ty("string?");
-        assert!(ws.check_type(&result_ty, &expected_ty));
+        assert!(ws.check_type(&expected_ty, &result_ty));
     }
 
     #[test]

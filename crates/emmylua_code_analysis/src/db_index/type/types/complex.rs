@@ -196,10 +196,10 @@ impl LuaFunctionType {
                             {
                                 return false;
                             }
-                            if semantic_model.type_check(owner_type, t).is_ok() {
+                            if semantic_model.is_assignable(t, owner_type) {
                                 return true;
                             }
-                            name == "self" && semantic_model.type_check(t, owner_type).is_ok()
+                            name == "self" && semantic_model.is_assignable(owner_type, t)
                         }
                         None => name == "self",
                     }
@@ -291,6 +291,19 @@ impl LuaObjectType {
 
     pub fn get_field(&self, key: &LuaMemberKey) -> Option<&LuaType> {
         self.fields.get(key)
+    }
+
+    pub fn get_member_type(&self, key: &LuaMemberKey) -> Option<LuaType> {
+        self.get_field(key).cloned().or_else(|| {
+            let LuaMemberKey::TypeKey(key_type) = key else {
+                return None;
+            };
+            self.index_access
+                .iter()
+                .find_map(|(index_type, value_type)| {
+                    (index_type == key_type).then(|| value_type.clone())
+                })
+        })
     }
 
     pub fn contain_tpl(&self) -> bool {

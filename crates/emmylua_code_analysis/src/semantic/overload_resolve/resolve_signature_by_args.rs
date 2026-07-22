@@ -2,9 +2,9 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 use crate::{
-    InferFailReason, check_type_compact,
+    InferFailReason,
     db_index::{DbIndex, LuaFunctionType, LuaType},
-    semantic::infer::InferCallFuncResult,
+    semantic::{RelationKind, RelationOutcome, infer::InferCallFuncResult, is_assignable_ex},
 };
 
 pub(crate) fn callable_accepts_args(
@@ -27,7 +27,7 @@ pub(crate) fn callable_accepts_args(
             return false;
         };
 
-        if !param_type.is_any() && check_type_compact(db, &param_type, expr_type).is_err() {
+        if !param_type.is_any() && !is_definitely_assignable(db, expr_type, &param_type) {
             return false;
         }
     }
@@ -98,7 +98,7 @@ pub fn resolve_signature_by_args(
                 ParamMatchResult::Any
             } else if param_type.is_any() {
                 ParamMatchResult::Any
-            } else if check_type_compact(db, &param_type, expr_type).is_ok() {
+            } else if is_definitely_assignable(db, expr_type, &param_type) {
                 ParamMatchResult::Type
             } else {
                 ParamMatchResult::Not
@@ -383,8 +383,8 @@ fn compare_param_specificity(
         _ => {}
     }
 
-    let a_sub_b = check_type_compact(db, b, a).is_ok();
-    let b_sub_a = check_type_compact(db, a, b).is_ok();
+    let a_sub_b = is_definitely_assignable(db, a, b);
+    let b_sub_a = is_definitely_assignable(db, b, a);
     match (a_sub_b, b_sub_a) {
         (true, false) => Ordering::Greater,
         (false, true) => Ordering::Less,
@@ -439,4 +439,11 @@ enum ParamMatchResult {
     Not,
     Any,
     Type,
+}
+
+fn is_definitely_assignable(db: &DbIndex, source: &LuaType, target: &LuaType) -> bool {
+    matches!(
+        is_assignable_ex(db, source, target, RelationKind::Assignable),
+        RelationOutcome::Related
+    )
 }

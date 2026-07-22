@@ -5,8 +5,9 @@ use rowan::{NodeOrToken, TextRange};
 
 use crate::{
     DiagnosticCode, LuaSemanticDeclId, LuaSignatureId, LuaType, SemanticDeclLevel, SemanticModel,
-    SignatureReturnStatus, TypeCheckFailReason, TypeCheckResult,
+    SignatureReturnStatus, TypeMismatch,
     diagnostic::checker::{assign_type_mismatch::check_table_expr, humanize_lint_type},
+    render_type_mismatch,
 };
 
 use super::{Checker, DiagnosticContext, get_return_stats};
@@ -86,8 +87,8 @@ fn check_return_stat(
                     check_type = self_type;
                 }
 
-                let result = semantic_model.type_check_detail(check_type, return_expr_type);
-                if result.is_err() {
+                if let Err(mismatch) = semantic_model.check_assignable(return_expr_type, check_type)
+                {
                     if return_expr_type.is_table()
                         && let Some(return_expr) = return_exprs.get(index)
                     {
@@ -103,7 +104,7 @@ fn check_return_stat(
                             .unwrap_or(&return_stat.get_range()),
                         check_type,
                         return_expr_type,
-                        result,
+                        &mismatch,
                     );
                 }
             }
@@ -117,8 +118,7 @@ fn check_return_stat(
             }
             let return_expr_type = &return_expr_types[0];
             let return_expr_range = return_expr_ranges[0];
-            let result = semantic_model.type_check_detail(check_type, return_expr_type);
-            if result.is_err() {
+            if let Err(mismatch) = semantic_model.check_assignable(return_expr_type, check_type) {
                 if return_expr_type.is_table()
                     && let Some(return_expr) = return_exprs.first()
                 {
@@ -137,7 +137,7 @@ fn check_return_stat(
                     return_expr_range,
                     return_type,
                     return_expr_type,
-                    result,
+                    &mismatch,
                 );
             }
         }
@@ -153,34 +153,22 @@ fn add_type_check_diagnostic(
     range: TextRange,
     param_type: &LuaType,
     expr_type: &LuaType,
-    result: TypeCheckResult,
+    mismatch: &TypeMismatch,
 ) {
     let db = semantic_model.get_db();
-    match result {
-        Ok(_) => (),
-        Err(reason) => {
-            let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeNotMatch | TypeCheckFailReason::DonotCheck => {
-                    "".to_string()
-                }
-                TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
-            };
-            context.add_diagnostic(
-                DiagnosticCode::ReturnTypeMismatch,
-                range,
-                t!(
-                    "Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead. %{reason}",
-                    index = index + 1,
-                    source = humanize_lint_type(db, param_type),
-                    found = humanize_lint_type(db, expr_type),
-                    reason = reason_message
-                )
-                .to_string(),
-                None,
-            );
-        }
-    }
+    context.add_diagnostic(
+        DiagnosticCode::ReturnTypeMismatch,
+        range,
+        t!(
+            "Annotations specify that return value %{index} has a type of `%{source}`, returning value of type `%{found}` here instead. %{reason}",
+            index = index + 1,
+            source = humanize_lint_type(db, param_type),
+            found = humanize_lint_type(db, expr_type),
+            reason = render_type_mismatch(db, mismatch)
+        )
+        .to_string(),
+        None,
+    );
 }
 
 fn has_setmetatable(semantic_model: &SemanticModel, return_stat: &LuaReturnStat) -> Option<usize> {

@@ -324,7 +324,7 @@ fn in_env(builder: &mut CompletionBuilder, target_name: &str, target_type: &LuaT
             )
         };
         // 必须要名称相同 + 类型兼容
-        if name == target_name && builder.semantic_model.type_check(target_type, &typ).is_ok() {
+        if name == target_name && builder.semantic_model.is_assignable(&typ, target_type) {
             return Some(());
         }
     }

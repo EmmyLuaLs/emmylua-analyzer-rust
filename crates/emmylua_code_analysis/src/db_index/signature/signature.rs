@@ -153,9 +153,7 @@ impl LuaSignature {
                         return false;
                     }
 
-                    semantic_model
-                        .type_check(owner_type, &param_info.type_ref)
-                        .is_ok()
+                    semantic_model.is_assignable(&param_info.type_ref, owner_type)
                 }
                 None => param_info.name == "self",
             }

@@ -15,75 +15,96 @@ pub fn collect_callable_overload_groups(
     callable_type: &LuaType,
     groups: &mut Vec<Vec<Arc<LuaFunctionType>>>,
 ) -> Result<(), InferFailReason> {
-    let mut visiting_aliases = HashSet::new();
-    collect_callable_overload_groups_inner(db, callable_type, groups, &mut visiting_aliases)
+    let mut visiting_types = HashSet::new();
+    collect_callable_overload_groups_inner(db, callable_type, groups, &mut visiting_types)
 }
 
 fn collect_callable_overload_groups_inner(
     db: &DbIndex,
     callable_type: &LuaType,
     groups: &mut Vec<Vec<Arc<LuaFunctionType>>>,
-    visiting_aliases: &mut HashSet<LuaTypeDeclId>,
+    visiting_types: &mut HashSet<LuaTypeDeclId>,
 ) -> Result<(), InferFailReason> {
     match callable_type {
         LuaType::Ref(type_id) | LuaType::Def(type_id) => {
             let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
                 return Ok(());
             };
-            if !visiting_aliases.insert(type_id.clone()) {
+            if !visiting_types.insert(type_id.clone()) {
                 return Ok(());
             }
 
             let result = if let Some(origin_type) = type_decl.get_alias_origin(db, None) {
-                collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_aliases)
+                collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_types)
             } else {
                 Ok(())
             };
-            // alias 的可调用性来自 origin, 非 alias 类型再补充自身的 __call 候选
+            // alias 的可调用性来自 origin. 普通类型自身声明了 __call 时覆盖父类, 否则才继承父类构造签名.
             if !type_decl.is_alias() && !type_decl.is_enum() {
-                push_call_operator_overload_group(db, &type_id.clone().into(), groups, None);
+                let owner = type_id.clone().into();
+                if owner_has_call_operator(db, &owner) {
+                    push_call_operator_overload_group(db, &owner, groups, None);
+                } else if let Some(super_types) = db.get_type_index().get_super_types_iter(type_id)
+                {
+                    for super_type in super_types {
+                        collect_callable_overload_groups_inner(
+                            db,
+                            super_type,
+                            groups,
+                            visiting_types,
+                        )?;
+                    }
+                }
             }
-            visiting_aliases.remove(type_id);
+            visiting_types.remove(type_id);
             result?;
         }
         LuaType::Generic(generic) => {
             let type_id = generic.get_base_type_id();
-            if !visiting_aliases.insert(type_id.clone()) {
+            if !visiting_types.insert(type_id.clone()) {
                 return Ok(());
             }
             let substitutor = TypeSubstitutor::from_type_array(generic.get_params().to_vec());
             let Some(type_decl) = db.get_type_index().get_type_decl(&type_id) else {
-                visiting_aliases.remove(&type_id);
+                visiting_types.remove(&type_id);
                 return Ok(());
             };
 
-            let result = if let Some(origin_type) =
-                type_decl.get_alias_origin(db, Some(&substitutor))
-            {
-                collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_aliases)
-            } else {
-                Ok(())
-            };
-            // 泛型类型的 __call 需要先替换类型模板, 否则候选会保留未实例化的 T
+            let result =
+                if let Some(origin_type) = type_decl.get_alias_origin(db, Some(&substitutor)) {
+                    collect_callable_overload_groups_inner(db, &origin_type, groups, visiting_types)
+                } else {
+                    Ok(())
+                };
+            // 泛型类型的 __call 和继承链都要先替换类型模板, 否则候选会保留未实例化的 T.
             if !type_decl.is_alias() && !type_decl.is_enum() {
-                push_call_operator_overload_group(
-                    db,
-                    &type_id.clone().into(),
-                    groups,
-                    Some(&substitutor),
-                );
+                let owner = type_id.clone().into();
+                if owner_has_call_operator(db, &owner) {
+                    push_call_operator_overload_group(db, &owner, groups, Some(&substitutor));
+                } else if let Some(super_types) = db.get_type_index().get_super_types_iter(&type_id)
+                {
+                    for super_type in super_types {
+                        let super_type = instantiate_type_generic(db, super_type, &substitutor);
+                        collect_callable_overload_groups_inner(
+                            db,
+                            &super_type,
+                            groups,
+                            visiting_types,
+                        )?;
+                    }
+                }
             }
-            visiting_aliases.remove(&type_id);
+            visiting_types.remove(&type_id);
             result?;
         }
         LuaType::Union(union) => {
             for member in union.into_vec() {
-                collect_callable_overload_groups_inner(db, &member, groups, visiting_aliases)?;
+                collect_callable_overload_groups_inner(db, &member, groups, visiting_types)?;
             }
         }
         LuaType::Intersection(intersection) => {
             for member in intersection.get_types() {
-                collect_callable_overload_groups_inner(db, member, groups, visiting_aliases)?;
+                collect_callable_overload_groups_inner(db, member, groups, visiting_types)?;
             }
         }
         LuaType::DocFunction(doc_func) => groups.push(vec![doc_func.clone()]),
@@ -107,7 +128,7 @@ fn collect_callable_overload_groups_inner(
                 db,
                 instance.get_base(),
                 groups,
-                visiting_aliases,
+                visiting_types,
             )?;
         }
         LuaType::TableConst(table) => {
@@ -189,29 +210,28 @@ fn owner_has_call_operator(db: &DbIndex, owner: &LuaOperatorOwner) -> bool {
 
 /// 如果类型可通过 `__call` 作为调用目标 (不含 signature/function 本身), 则返回 self.
 pub(crate) fn call_operator_self_type(db: &DbIndex, ty: &LuaType) -> Option<LuaType> {
-    let mut visiting_aliases = HashSet::new();
-    call_operator_self_type_inner(db, ty, &mut visiting_aliases)
+    let mut visiting_types = HashSet::new();
+    call_operator_self_type_inner(db, ty, &mut visiting_types)
 }
 
 fn call_operator_self_type_inner(
     db: &DbIndex,
     ty: &LuaType,
-    visiting_aliases: &mut HashSet<LuaTypeDeclId>,
+    visiting_types: &mut HashSet<LuaTypeDeclId>,
 ) -> Option<LuaType> {
     match ty {
         LuaType::Ref(type_id) | LuaType::Def(type_id) => {
-            call_operator_self_for_type_id(db, ty, type_id, None, visiting_aliases)
+            call_operator_self_for_type_id(db, ty, type_id, None, visiting_types)
         }
         LuaType::Generic(generic) => {
             let type_id = generic.get_base_type_id();
             let substitutor = TypeSubstitutor::from_type_array(generic.get_params().to_vec());
-            call_operator_self_for_type_id(db, ty, &type_id, Some(&substitutor), visiting_aliases)
+            call_operator_self_for_type_id(db, ty, &type_id, Some(&substitutor), visiting_types)
         }
         LuaType::Union(union) => {
             let mut callable = Vec::new();
             for member in union.into_vec() {
-                if let Some(projected) =
-                    call_operator_self_type_inner(db, &member, visiting_aliases)
+                if let Some(projected) = call_operator_self_type_inner(db, &member, visiting_types)
                 {
                     callable.push(projected);
                 }
@@ -226,10 +246,10 @@ fn call_operator_self_type_inner(
         LuaType::Intersection(intersection) => intersection
             .get_types()
             .iter()
-            .any(|member| call_operator_self_type_inner(db, member, visiting_aliases).is_some())
+            .any(|member| call_operator_self_type_inner(db, member, visiting_types).is_some())
             .then(|| ty.clone()),
         LuaType::Instance(instance) => {
-            call_operator_self_type_inner(db, instance.get_base(), visiting_aliases)
+            call_operator_self_type_inner(db, instance.get_base(), visiting_types)
                 .map(|_| ty.clone())
         }
         LuaType::TableConst(table) => {
@@ -245,32 +265,51 @@ fn call_operator_self_type_inner(
     }
 }
 
-/// alias 的可调用性来自 origin, self 也按 origin 的可调用部分解析; 非 alias 则看自身是否挂了 __call.
+/// alias 的可调用性来自 origin. 普通类型遵循构造签名覆盖规则, 但继承成功后 self 仍保留当前类型.
 fn call_operator_self_for_type_id(
     db: &DbIndex,
     ty: &LuaType,
     type_id: &LuaTypeDeclId,
     substitutor: Option<&TypeSubstitutor>,
-    visiting_aliases: &mut HashSet<LuaTypeDeclId>,
+    visiting_types: &mut HashSet<LuaTypeDeclId>,
 ) -> Option<LuaType> {
-    if !visiting_aliases.insert(type_id.clone()) {
+    if !visiting_types.insert(type_id.clone()) {
         return None;
     }
     let Some(type_decl) = db.get_type_index().get_type_decl(type_id) else {
-        visiting_aliases.remove(type_id);
+        visiting_types.remove(type_id);
         return None;
     };
 
     if let Some(origin_type) = type_decl.get_alias_origin(db, substitutor)
-        && let Some(projected) = call_operator_self_type_inner(db, &origin_type, visiting_aliases)
+        && let Some(projected) = call_operator_self_type_inner(db, &origin_type, visiting_types)
     {
-        visiting_aliases.remove(type_id);
+        visiting_types.remove(type_id);
         return Some(projected);
     }
 
-    let has_call = !type_decl.is_alias()
-        && !type_decl.is_enum()
-        && owner_has_call_operator(db, &type_id.clone().into());
-    visiting_aliases.remove(type_id);
-    has_call.then(|| ty.clone())
+    if type_decl.is_alias() || type_decl.is_enum() {
+        visiting_types.remove(type_id);
+        return None;
+    }
+
+    if owner_has_call_operator(db, &type_id.clone().into()) {
+        visiting_types.remove(type_id);
+        return Some(ty.clone());
+    }
+
+    if let Some(super_types) = db.get_type_index().get_super_types_iter(type_id) {
+        for super_type in super_types {
+            let super_type = substitutor
+                .map(|substitutor| instantiate_type_generic(db, super_type, substitutor))
+                .unwrap_or_else(|| super_type.clone());
+            if call_operator_self_type_inner(db, &super_type, visiting_types).is_some() {
+                visiting_types.remove(type_id);
+                return Some(ty.clone());
+            }
+        }
+    }
+
+    visiting_types.remove(type_id);
+    None
 }

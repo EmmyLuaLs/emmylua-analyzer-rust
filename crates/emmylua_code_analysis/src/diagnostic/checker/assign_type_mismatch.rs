@@ -8,8 +8,8 @@ use rowan::{NodeOrToken, TextRange};
 
 use crate::{
     DbIndex, DiagnosticCode, LuaDeclExtra, LuaDeclId, LuaMemberKey, LuaSemanticDeclId, LuaType,
-    SemanticDeclLevel, SemanticModel, TypeCheckFailReason, TypeCheckResult, VariadicType,
-    get_real_type, infer_index_expr,
+    SemanticDeclLevel, SemanticModel, TypeMismatch, VariadicType, get_real_type, infer_index_expr,
+    render_type_mismatch,
 };
 
 use super::{Checker, DiagnosticContext, humanize_lint_type};
@@ -378,15 +378,14 @@ fn check_assign_type_mismatch(
         _ => {}
     }
 
-    let result = semantic_model.type_check_detail(source_type, value_type);
-    if result.is_err() {
+    if let Err(mismatch) = semantic_model.check_assignable(value_type, source_type) {
         add_type_check_diagnostic(
             context,
             semantic_model,
             range,
             source_type,
             value_type,
-            result,
+            &mismatch,
         );
         return Some(true);
     }
@@ -399,32 +398,21 @@ fn add_type_check_diagnostic(
     range: TextRange,
     source_type: &LuaType,
     value_type: &LuaType,
-    result: TypeCheckResult,
+    mismatch: &TypeMismatch,
 ) {
     let db = semantic_model.get_db();
-    match result {
-        Ok(_) => (),
-        Err(reason) => {
-            let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeRecursion => t!("type recursion").to_string(),
-                _ => "".to_string(),
-            };
-
-            context.add_diagnostic(
-                DiagnosticCode::AssignTypeMismatch,
-                range,
-                t!(
-                    "Cannot assign `%{value}` to `%{source}`. %{reason}",
-                    value = humanize_lint_type(db, value_type),
-                    source = humanize_lint_type(db, source_type),
-                    reason = reason_message
-                )
-                .to_string(),
-                None,
-            );
-        }
-    }
+    context.add_diagnostic(
+        DiagnosticCode::AssignTypeMismatch,
+        range,
+        t!(
+            "Cannot assign `%{value}` to `%{source}`. %{reason}",
+            value = humanize_lint_type(db, value_type),
+            source = humanize_lint_type(db, source_type),
+            reason = render_type_mismatch(db, mismatch)
+        )
+        .to_string(),
+        None,
+    );
 }
 
 fn get_real_type_or_self<'a>(db: &'a DbIndex, ty: &'a LuaType) -> &'a LuaType {

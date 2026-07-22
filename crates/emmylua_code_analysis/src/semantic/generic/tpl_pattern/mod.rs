@@ -11,9 +11,9 @@ use smol_str::SmolStr;
 use crate::{
     InferFailReason, LuaFunctionType, LuaMemberInfo, LuaMemberKey, LuaMemberOwner, LuaObjectType,
     LuaSemanticDeclId, LuaTupleType, LuaTypeDeclId, LuaTypeNode, LuaUnionType, SemanticDeclLevel,
-    VariadicType, check_type_compact,
+    VariadicType,
     db_index::{DbIndex, LuaGenericType, LuaType},
-    infer_node_semantic_decl,
+    infer_node_semantic_decl, is_assignable,
     semantic::{
         generic::{
             tpl_context::TplContext,
@@ -245,9 +245,9 @@ fn object_tpl_pattern_match(
             let target_index_access = target_object.get_index_access();
             for (origin_key, v) in origin_obj.get_index_access() {
                 // 先匹配 key 类型进行转换
-                let target_access = target_index_access.iter().find(|(target_key, _)| {
-                    check_type_compact(context.db, origin_key, target_key).is_ok()
-                });
+                let target_access = target_index_access
+                    .iter()
+                    .find(|(target_key, _)| is_assignable(context.db, target_key, origin_key));
                 if let Some(target_access) = target_access {
                     tpl_pattern_match(context, origin_key, &target_access.0)?;
                     tpl_pattern_match(context, v, &target_access.1)?;
@@ -499,8 +499,7 @@ fn table_generic_tpl_pattern_member_owner_match(
             _ => continue,
         };
 
-        if !target_key_type.is_generic()
-            && check_type_compact(context.db, &target_key_type, &key_type).is_err()
+        if !target_key_type.is_generic() && !is_assignable(context.db, &key_type, &target_key_type)
         {
             continue;
         }
@@ -534,7 +533,7 @@ fn table_generic_tpl_pattern_member_owner_match(
                     LuaMemberKey::TypeKey(typ) => typ.clone(),
                     _ => return,
                 };
-                if check_type_compact(context.db, &target_key_type, &key_type).is_ok() {
+                if is_assignable(context.db, &key_type, &target_key_type) {
                     keys.push(key_type);
                     values.push(m.typ.clone());
                 }

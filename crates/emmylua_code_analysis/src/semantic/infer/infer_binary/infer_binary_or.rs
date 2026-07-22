@@ -1,8 +1,9 @@
 use emmylua_parser::LuaExpr;
 
 use crate::{
-    BasicTypeKind, DbIndex, LuaType, LuaUnionType, TypeOps, check_type_compact,
+    BasicTypeKind, DbIndex, LuaType, LuaUnionType, TypeOps,
     db_index::{LuaMemberOwner, LuaTypeCache, LuaTypeDeclId},
+    is_assignable,
     semantic::infer::{InferResult, narrow::remove_false_or_nil},
 };
 
@@ -22,13 +23,13 @@ fn can_empty_table_satisfy_type(db: &DbIndex, ty: &LuaType) -> bool {
         LuaType::Table | LuaType::TableConst(_) => true,
 
         // For class/ref types, check if all fields (including inherited) are optional
-        LuaType::Ref(type_decl_id) => {
+        LuaType::Ref(type_decl_id) | LuaType::Def(type_decl_id) => {
             // Collect this type and all its super types (includes inheritance)
             let all_types = type_decl_id.collect_super_types_with_self(db, ty.clone());
 
             // Check each type in the hierarchy for required fields
             for typ in all_types {
-                if let LuaType::Ref(decl_id) = typ {
+                if let LuaType::Ref(decl_id) | LuaType::Def(decl_id) = typ {
                     if has_required_fields(db, &decl_id) {
                         return false; // Found a required field somewhere in hierarchy
                     }
@@ -105,7 +106,7 @@ pub fn special_or_rule(
             let left_without_nil = remove_false_or_nil(left_type.clone());
             if table_expr.is_empty() {
                 // Remove nil/false from left type and check if result is table-compatible
-                if check_type_compact(db, &left_without_nil, &LuaType::Table).is_ok() {
+                if is_assignable(db, &LuaType::Table, &left_without_nil) {
                     // Only narrow if empty table can actually satisfy the type
                     // (i.e., the type has no required fields)
                     if can_empty_table_satisfy_type(db, &left_without_nil) {
@@ -113,7 +114,7 @@ pub fn special_or_rule(
                     }
                     // Otherwise, fall through to regular OR logic which will create a union
                 }
-            } else if check_type_compact(db, &left_without_nil, right_type).is_ok() {
+            } else if is_assignable(db, right_type, &left_without_nil) {
                 return Some(left_without_nil);
             }
         }
@@ -127,7 +128,7 @@ pub fn special_or_rule(
                 return None;
             }
 
-            if check_type_compact(db, left_type, right_type).is_ok() {
+            if is_assignable(db, right_type, left_type) {
                 return Some(remove_false_or_nil(left_type.clone()));
             }
         }

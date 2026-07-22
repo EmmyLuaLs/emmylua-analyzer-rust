@@ -7,9 +7,9 @@ use infer_binary_or::{infer_binary_expr_or, special_or_rule};
 use smol_str::SmolStr;
 
 use crate::{
-    LuaInferCache, TypeOps, check_type_compact,
+    LuaInferCache, TypeOps,
     db_index::{DbIndex, LuaOperatorMetaMethod, LuaType},
-    get_real_type,
+    get_real_type, is_assignable,
 };
 
 use super::{InferFailReason, InferResult, get_custom_type_operator, infer_expr};
@@ -137,7 +137,7 @@ fn infer_binary_custom_operator(
     {
         for operator in operators {
             let operand = operator.get_operand(db);
-            if check_type_compact(db, &operand, right).is_ok() {
+            if is_assignable(db, right, &operand) {
                 return operator.get_result(db);
             }
         }
@@ -149,7 +149,7 @@ fn infer_binary_custom_operator(
     {
         for operator in operators {
             let operand = operator.get_operand(db);
-            if check_type_compact(db, &operand, left).is_ok() {
+            if is_assignable(db, left, &operand) {
                 return operator.get_result(db);
             }
         }

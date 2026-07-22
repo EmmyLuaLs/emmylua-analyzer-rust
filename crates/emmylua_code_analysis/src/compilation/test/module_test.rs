@@ -139,8 +139,8 @@ mod test {
         let ty = ws.expr_ty(r#"require("virtual_0")"#);
         let integer = ws.ty("integer");
         let nil = ws.ty("nil");
-        assert!(ws.check_type(&ty, &integer));
-        assert!(!ws.check_type(&ty, &nil));
+        assert!(ws.check_type(&integer, &ty));
+        assert!(!ws.check_type(&nil, &ty));
     }
 
     #[test]

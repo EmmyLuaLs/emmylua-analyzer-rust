@@ -7,9 +7,9 @@ use emmylua_parser::{
 
 use crate::{
     InFiled, InferGuard, LuaArrayType, LuaDeclId, LuaInferCache, LuaMemberId, LuaTupleStatus,
-    LuaTupleType, LuaUnionType, TypeOps, VariadicType, check_type_compact,
+    LuaTupleType, LuaUnionType, TypeOps, VariadicType,
     db_index::{DbIndex, LuaType},
-    infer_call_expr_func, infer_expr,
+    infer_call_expr_func, infer_expr, is_assignable,
 };
 
 use super::{InferFailReason, InferResult, infer_index::infer_member};
@@ -91,7 +91,7 @@ fn infer_table_tuple_or_array(
                 let field = fields.get(i).ok_or(InferFailReason::None)?;
                 let value_expr = field.get_value_expr().ok_or(InferFailReason::None)?;
                 let typ = infer_expr(db, cache, value_expr)?;
-                if check_type_compact(db, &non_nil_base, &typ).is_err() {
+                if !is_assignable(db, &typ, &non_nil_base) {
                     all_can_accept_base = false;
                     break;
                 }

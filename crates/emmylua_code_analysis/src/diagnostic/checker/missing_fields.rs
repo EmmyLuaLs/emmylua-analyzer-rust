@@ -67,7 +67,7 @@ fn check_table_expr(
                     }
                     LuaType::Array(_) | LuaType::Tuple(_)
                         if array_like_expr_type.as_ref().is_some_and(|expr_type| {
-                            semantic_model.type_check(&ty, expr_type).is_ok()
+                            semantic_model.is_assignable(expr_type, &ty)
                         }) =>
                     {
                         return Some(());

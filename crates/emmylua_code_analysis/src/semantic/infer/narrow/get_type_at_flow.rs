@@ -8,7 +8,7 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::{
     CacheEntry, DbIndex, FlowAntecedent, FlowId, FlowNode, FlowNodeKind, FlowTree, InferFailReason,
-    LuaDeclId, LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, check_type_compact,
+    LuaDeclId, LuaInferCache, LuaMemberId, LuaSignatureId, LuaType, TypeOps, is_assignable,
     semantic::{
         cache::{FlowAssignmentInfo, FlowMode, FlowQueryResult, FlowVarCache},
         infer::{
@@ -1987,7 +1987,7 @@ fn is_partial_assignment_expr_compatible(
     source_type: &LuaType,
     expr_type: &LuaType,
 ) -> bool {
-    if check_type_compact(db, source_type, expr_type).is_ok() {
+    if is_assignable(db, expr_type, source_type) {
         return true;
     }
 

@@ -3,9 +3,12 @@ use std::ops::Deref;
 
 use crate::{
     DbIndex, GenericTpl, GenericTplId, LuaConditionalType, LuaTypeDeclId, LuaTypeNode, TypeOps,
-    check_type_compact,
     db_index::{LuaObjectType, LuaTupleType, LuaType},
-    semantic::{member::find_members_with_key, type_check::check_type_compact_with_level},
+    is_assignable,
+    semantic::{
+        member::find_members_with_key,
+        type_check::{RelationKind, RelationOutcome, is_assignable_ex},
+    },
 };
 
 use super::{get_default_constructor, instantiate_type_generic_inner};
@@ -236,14 +239,10 @@ fn check_conditional_extends(db: &DbIndex, source: &LuaType, target: &LuaType) -
         return ConditionalCheck::False;
     }
 
-    if check_type_compact_with_level(
-        db,
-        source,
-        target,
-        crate::semantic::type_check::TypeCheckCheckLevel::GenericConditional,
-    )
-    .is_ok()
-    {
+    if matches!(
+        is_assignable_ex(db, source, target, RelationKind::ConditionalExtends),
+        RelationOutcome::Related
+    ) {
         ConditionalCheck::True
     } else {
         ConditionalCheck::False
@@ -572,7 +571,7 @@ fn strict_type_match(db: &DbIndex, source: &LuaType, pattern: &LuaType) -> bool 
         return true;
     }
 
-    check_type_compact(db, pattern, source).is_ok()
+    is_assignable(db, source, pattern)
 }
 
 fn is_optional_param_type(db: &DbIndex, ty: &LuaType) -> bool {

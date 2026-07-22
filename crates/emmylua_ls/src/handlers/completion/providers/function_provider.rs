@@ -666,8 +666,7 @@ fn add_str_tpl_ref_completion(
             let current_type = LuaType::Ref(type_decl.get_id());
             builder
                 .semantic_model
-                .type_check(&extend_type, &current_type)
-                .is_ok()
+                .is_assignable(&current_type, &extend_type)
         })
         .map(|type_decl| {
             let trimmed_name = type_decl

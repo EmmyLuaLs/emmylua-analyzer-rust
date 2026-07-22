@@ -192,9 +192,7 @@ fn filter_member_infos<'a>(
     let final_reference_owner = if let Some(file_decl_member_info) = file_decl_member {
         // 与第一个成员进行类型检查, 确保子类成员的类型与父类成员的类型一致
         if let Some((first_member, first_owner)) = member_with_owners.first() {
-            let type_check_result =
-                semantic_model.type_check(&file_decl_member_info.typ, &first_member.typ);
-            if type_check_result.is_ok() {
+            if semantic_model.is_assignable(&first_member.typ, &file_decl_member_info.typ) {
                 get_owner_type_id(semantic_model.get_db(), file_decl_member_info)
             } else {
                 first_owner.clone()

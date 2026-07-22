@@ -287,3 +287,8 @@ Cannot use `...` outside a vararg function.:
   en: "Missing comment for function `%{name}`."
   zh_CN: "函数 `%{name}` 缺少注解。"
   zh_HK: "函式 `%{name}` 缺少註解。"
+
+"The target requires at least %{count} element(s) but source may have fewer.":
+  en: "The target requires at least %{count} element(s) but source may have fewer."
+  zh_CN: "目标最少需要 %{count} 个元素，但源可能更少。"
+  zh_HK: "目標最少需要 %{count} 個元素，但源可能更少。"

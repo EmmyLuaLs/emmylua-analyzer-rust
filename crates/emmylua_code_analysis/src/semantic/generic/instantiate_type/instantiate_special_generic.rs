@@ -3,7 +3,7 @@ use crate::{
     LuaType, LuaTypeNode, TypeOps, VariadicType, get_member_map,
     semantic::{
         generic::key_type_to_member_key,
-        member::{find_members, infer_raw_member_type},
+        member::{find_index_operations, find_members, infer_raw_member_type},
         type_check,
     },
 };
@@ -70,8 +70,15 @@ pub(super) fn instantiate_alias_call(
                 );
             }
 
-            let compact =
-                type_check::check_type_compact(context.db, &operands[0], &operands[1]).is_ok();
+            let compact = matches!(
+                type_check::is_assignable_ex(
+                    context.db,
+                    &operands[0],
+                    &operands[1],
+                    type_check::RelationKind::ConditionalExtends,
+                ),
+                type_check::RelationOutcome::Related
+            );
             LuaType::BooleanConst(compact)
         }
         LuaAliasCallKind::Select => {
@@ -143,26 +150,51 @@ fn instantiate_merge_call(db: &DbIndex, operands: &[LuaType]) -> LuaType {
 
     let left_members = find_members(db, &operands[0]);
     let right_members = find_members(db, &operands[1]);
-    if left_members.is_none() && right_members.is_none() {
+    let left_index_members = find_index_operations(db, &operands[0]);
+    let right_index_members = find_index_operations(db, &operands[1]);
+    if left_members.is_none()
+        && right_members.is_none()
+        && left_index_members.is_none()
+        && right_index_members.is_none()
+    {
         return LuaType::Unknown;
     }
 
     let mut left_map: HashMap<_, _> = HashMap::new();
-    for member in left_members.unwrap_or_default() {
+    for member in left_members
+        .into_iter()
+        .flatten()
+        .chain(left_index_members.into_iter().flatten())
+    {
         left_map.entry(member.key).or_insert(member.typ);
     }
 
     let mut right_map: HashMap<_, _> = HashMap::new();
-    for member in right_members.unwrap_or_default() {
+    for member in right_members
+        .into_iter()
+        .flatten()
+        .chain(right_index_members.into_iter().flatten())
+    {
         right_map.entry(member.key).or_insert(member.typ);
     }
 
-    let mut fields = left_map;
+    let mut merged_members = left_map;
     for (k, v) in right_map {
-        fields.insert(k, v);
+        merged_members.insert(k, v);
     }
 
-    LuaType::Object(LuaObjectType::new_with_fields(fields, Vec::new()).into())
+    let mut fields = HashMap::new();
+    let mut index_access = Vec::new();
+    for (key, value) in merged_members {
+        match key {
+            LuaMemberKey::TypeKey(key_type) => index_access.push((key_type, value)),
+            key => {
+                fields.insert(key, value);
+            }
+        }
+    }
+
+    LuaType::Object(LuaObjectType::new_with_fields(fields, index_access).into())
 }
 
 fn resolve_literal_operand(

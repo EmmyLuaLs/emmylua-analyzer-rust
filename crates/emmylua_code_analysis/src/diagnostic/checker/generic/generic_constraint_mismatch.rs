@@ -14,9 +14,17 @@ use crate::{
     DiagnosticCode, DocTypeInferContext, GenericParam, GenericResolveMode, GenericTplId,
     LuaArrayType, LuaGenericType, LuaIntersectionType, LuaObjectType, LuaSignatureId,
     LuaStringTplType, LuaTupleType, LuaType, LuaUnionType, RenderLevel, SemanticModel,
-    TypeCheckFailReason, TypeCheckResult, TypeSubstitutor, VariadicType, humanize_type,
-    infer_doc_type, instantiate_type_generic_full,
+    TypeMismatch, TypeSubstitutor, VariadicType, humanize_type, infer_doc_type,
+    instantiate_type_generic_full, render_type_mismatch,
 };
+
+type ConstraintCheckResult = Result<(), ConstraintCheckFailure>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ConstraintCheckFailure {
+    Mismatch(Option<TypeMismatch>),
+    Recursion,
+}
 
 pub struct GenericConstraintMismatchChecker;
 
@@ -193,7 +201,7 @@ fn check_generic_default_satisfies_constraint(
     semantic_model: &SemanticModel,
     constraint: &LuaType,
     default_type: &LuaType,
-) -> TypeCheckResult {
+) -> ConstraintCheckResult {
     check_generic_default_satisfies_constraint_inner(semantic_model, constraint, default_type, 0)
 }
 
@@ -202,9 +210,9 @@ fn check_generic_default_satisfies_constraint_inner(
     constraint: &LuaType,
     default_type: &LuaType,
     depth: usize,
-) -> TypeCheckResult {
+) -> ConstraintCheckResult {
     if depth > 64 {
-        return Err(TypeCheckFailReason::TypeRecursion);
+        return Err(ConstraintCheckFailure::Recursion);
     }
 
     if constraint == default_type {
@@ -239,7 +247,7 @@ fn check_generic_default_satisfies_constraint_inner(
             return Ok(());
         }
 
-        return Err(TypeCheckFailReason::TypeNotMatch);
+        return Err(ConstraintCheckFailure::Mismatch(None));
     }
 
     if let Some(default_constraint) = generic_tpl_constraint(default_type) {
@@ -285,7 +293,7 @@ fn check_generic_default_satisfies_constraint_inner(
                     if constraint_field.is_nullable() || constraint_field.is_any() {
                         continue;
                     }
-                    return Err(TypeCheckFailReason::TypeNotMatch);
+                    return Err(ConstraintCheckFailure::Mismatch(None));
                 };
                 check_generic_default_satisfies_constraint_inner(
                     semantic_model,
@@ -347,7 +355,7 @@ fn check_generic_default_satisfies_constraint_inner(
                     return Ok(());
                 }
             }
-            return Err(TypeCheckFailReason::TypeNotMatch);
+            return Err(ConstraintCheckFailure::Mismatch(None));
         }
         (_, LuaType::Union(union)) => {
             for member in union.into_vec() {
@@ -384,14 +392,17 @@ fn check_generic_default_satisfies_constraint_inner(
                     return Ok(());
                 }
             }
-            return Err(TypeCheckFailReason::TypeNotMatch);
+            return Err(ConstraintCheckFailure::Mismatch(None));
         }
         _ => {}
     }
 
     let check_constraint = instantiate_decl_type_for_check(constraint, false);
     let check_default = instantiate_decl_type_for_check(default_type, true);
-    semantic_model.type_check_detail(&check_constraint, &check_default)
+    match semantic_model.check_assignable(&check_default, &check_constraint) {
+        Ok(()) => Ok(()),
+        Err(mismatch) => Err(ConstraintCheckFailure::Mismatch(Some(mismatch))),
+    }
 }
 
 fn check_variadic_default_satisfies_constraint(
@@ -399,7 +410,7 @@ fn check_variadic_default_satisfies_constraint(
     constraint_variadic: &VariadicType,
     default_variadic: &VariadicType,
     depth: usize,
-) -> TypeCheckResult {
+) -> ConstraintCheckResult {
     match (constraint_variadic, default_variadic) {
         (VariadicType::Base(constraint_base), VariadicType::Base(default_base)) => {
             check_generic_default_satisfies_constraint_inner(
@@ -422,7 +433,7 @@ fn check_variadic_default_satisfies_constraint(
             }
             Ok(())
         }
-        _ => Err(TypeCheckFailReason::TypeNotMatch),
+        _ => Err(ConstraintCheckFailure::Mismatch(None)),
     }
 }
 
@@ -617,7 +628,10 @@ fn check_doc_tag_type(
                 ),
             );
             let param_type = normalize_constraint_type(semantic_model.get_db(), param_type.clone());
-            let result = semantic_model.type_check_detail(&extend_type, &param_type);
+            let result = match semantic_model.check_assignable(&param_type, &extend_type) {
+                Ok(()) => Ok(()),
+                Err(mismatch) => Err(ConstraintCheckFailure::Mismatch(Some(mismatch))),
+            };
             if result.is_err() {
                 add_type_check_diagnostic(
                     context,
@@ -760,7 +774,10 @@ fn check_str_tpl_ref(
             {
                 let type_id = type_decl.get_id();
                 let ref_type = LuaType::Ref(type_id);
-                let result = semantic_model.type_check_detail(&extend_type, &ref_type);
+                let result = match semantic_model.check_assignable(&ref_type, &extend_type) {
+                    Ok(()) => Ok(()),
+                    Err(mismatch) => Err(ConstraintCheckFailure::Mismatch(Some(mismatch))),
+                };
                 if result.is_err() {
                     add_type_check_diagnostic(
                         context,
@@ -792,18 +809,18 @@ fn add_type_check_diagnostic(
     range: TextRange,
     extend_type: &LuaType,
     expr_type: &LuaType,
-    result: TypeCheckResult,
+    result: ConstraintCheckResult,
 ) {
     let db = semantic_model.get_db();
     match result {
         Ok(_) => (),
         Err(reason) => {
             let reason_message = match reason {
-                TypeCheckFailReason::TypeNotMatchWithReason(reason) => reason,
-                TypeCheckFailReason::TypeNotMatch | TypeCheckFailReason::DonotCheck => {
-                    "".to_string()
-                }
-                TypeCheckFailReason::TypeRecursion => "type recursion".to_string(),
+                ConstraintCheckFailure::Mismatch(mismatch) => mismatch
+                    .as_ref()
+                    .map(|mismatch| render_type_mismatch(db, mismatch))
+                    .unwrap_or_default(),
+                ConstraintCheckFailure::Recursion => "type recursion".to_string(),
             };
             context.add_diagnostic(
                 DiagnosticCode::GenericConstraintMismatch,

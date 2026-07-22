@@ -29,7 +29,7 @@ use crate::{
         },
         member::get_buildin_type_map_type_id,
         member::intersect_member_types,
-        type_check::check_type_compact,
+        type_check::is_assignable,
     },
 };
 
@@ -488,7 +488,7 @@ fn infer_matching_member_key_type(
             continue;
         };
 
-        if check_type_compact(db, key_type, &member_key_type).is_ok() {
+        if is_assignable(db, &member_key_type, key_type) {
             let member_type = db
                 .get_type_index()
                 .get_type_cache(&member.get_id().into())
@@ -617,7 +617,7 @@ fn infer_index_metamethod_by_key_type(
     key_type: &LuaType,
     value_type: &LuaType,
 ) -> InferResult {
-    if check_type_compact(db, key_type, access_key_type).is_ok() {
+    if is_assignable(db, access_key_type, key_type) {
         return Ok(value_type.clone());
     }
 
