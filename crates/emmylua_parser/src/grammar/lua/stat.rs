@@ -761,6 +761,14 @@ fn parse_return(p: &mut LuaParser) -> ParseResult {
     }
 
     if_token_bump(p, LuaTokenKind::TkSemicolon);
+
+    if !block_follow(p) {
+        p.push_error(LuaParseError::syntax_error_from(
+            &t!("expected end of block after return"),
+            p.current_token_range(),
+        ));
+    }
+
     Ok(m.complete(p))
 }
 
